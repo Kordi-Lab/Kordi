@@ -61,6 +61,152 @@ struct AgentExecutionTool: Identifiable, Codable, Hashable {
     }
 }
 
+struct BackgroundAgentSession: Identifiable, Codable, Hashable {
+    enum State: String, Codable, Hashable {
+        case running
+        case done
+        case failed
+        case stopped
+
+        var label: String {
+            switch self {
+            case .running: "Running"
+            case .done: "Done"
+            case .failed: "Failed"
+            case .stopped: "Stopped"
+            }
+        }
+
+        var agentActivity: AgentActivity {
+            switch self {
+            case .running: .replying
+            case .failed: .failed
+            case .done, .stopped: .ready
+            }
+        }
+
+        init?(wireValue: String) {
+            switch wireValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            case "running", "processing", "queued", "pending": self = .running
+            case "done", "complete", "completed", "success", "succeeded": self = .done
+            case "failed", "error", "crashed": self = .failed
+            case "stopped", "cancelled", "canceled", "interrupted": self = .stopped
+            default: return nil
+            }
+        }
+    }
+
+    struct Wire: Codable {
+        let sessionId: String
+        let turnId: String?
+        let title: String
+        let status: String
+    }
+
+    let sessionId: String
+    let turnId: String?
+    let title: String
+    let state: State
+
+    var id: String { sessionId }
+
+    init?(wire: Wire) {
+        guard let sessionId = Self.cleanIdentifier(wire.sessionId),
+              let state = State(wireValue: wire.status) else { return nil }
+        let title = wire.title
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        guard !title.isEmpty else { return nil }
+        self.sessionId = sessionId
+        turnId = wire.turnId.flatMap(Self.cleanIdentifier)
+        self.title = String(title.prefix(80))
+        self.state = state
+    }
+
+    static func validated(_ wires: [Wire]) -> [BackgroundAgentSession] {
+        var seen = Set<String>()
+        return wires.compactMap { wire in
+            guard let session = BackgroundAgentSession(wire: wire),
+                  seen.insert(session.sessionId).inserted else { return nil }
+            return session
+        }
+        .prefix(4)
+        .map { $0 }
+    }
+
+    static func fromTaskOperatorTools(_ tools: [AgentExecutionTool]) -> [BackgroundAgentSession] {
+        let prefix = "Background session: "
+        let wires = tools.compactMap { tool -> Wire? in
+            guard !tool.isError,
+                  tool.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "task_operator",
+                  let line = tool.resultText?
+                    .split(whereSeparator: \.isNewline)
+                    .map(String.init)
+                    .first(where: { $0.hasPrefix(prefix) }),
+                  let data = String(line.dropFirst(prefix.count)).data(using: .utf8) else {
+                return nil
+            }
+            return try? JSONDecoder().decode(Wire.self, from: data)
+        }
+        return validated(wires)
+    }
+
+    func resolvedState(in conversations: [ConversationSummary]) -> State {
+        guard let conversation = conversations.first(where: { $0.sessionId == sessionId }),
+              let activity = conversation.agentActivity else { return state }
+        return switch activity {
+        case .ready: .done
+        case .replying: .running
+        case .failed: .failed
+        }
+    }
+
+    func destination(
+        from source: ConversationSummary,
+        conversations: [ConversationSummary],
+        ownAccountId: String,
+        ownDisplayName: String,
+        createdAt: Date
+    ) -> ConversationSummary {
+        if let existing = conversations.first(where: { $0.sessionId == sessionId }) {
+            return existing
+        }
+        return ConversationSummary(
+            id: "agent-session:\(sessionId)",
+            kind: .agent,
+            peerAccountId: ownAccountId,
+            agentId: source.agentId ?? CanonicalAvatarSystem.defaultAgentId,
+            ownerDisplayName: ownDisplayName,
+            displayName: title,
+            lastMessage: "Background session",
+            lastActivityAt: createdAt,
+            unreadCount: 0,
+            avatarSource: source.kind == .agent ? source.avatarSource : nil,
+            agentActivity: state.agentActivity,
+            sessionId: sessionId,
+            agentDisplayName: source.agentDisplayName ?? "My Kordi",
+            forkedFromSessionId: source.sessionId
+        )
+    }
+
+    private static func cleanIdentifier(_ value: String) -> String? {
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty,
+              normalized.utf8.count <= 256,
+              normalized.unicodeScalars.allSatisfy({
+                  !CharacterSet.controlCharacters.contains($0)
+              }) else { return nil }
+        return normalized
+    }
+}
+
+struct BackgroundAgentSessionPresentation: Identifiable, Hashable {
+    let session: BackgroundAgentSession
+    let state: BackgroundAgentSession.State
+
+    var id: String { session.id }
+}
+
 struct AgentExecutionSnapshot: Codable, Hashable {
     enum Phase: String, Codable, Hashable {
         case preparing
@@ -560,6 +706,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var messageAction: MessageActionMetadata?
     var messageKind: String?
     var agentExecution: AgentExecutionSnapshot?
+    var backgroundAgentSessions: [BackgroundAgentSession]
 
     var callActivity: ChatCallActivity? {
         ChatCallActivity(messageKind: messageKind)
@@ -594,7 +741,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         replyToMessageId: String? = nil,
         messageAction: MessageActionMetadata? = nil,
         messageKind: String? = nil,
-        agentExecution: AgentExecutionSnapshot? = nil
+        agentExecution: AgentExecutionSnapshot? = nil,
+        backgroundAgentSessions: [BackgroundAgentSession] = []
     ) {
         self.id = id
         self.clientMessageId = clientMessageId
@@ -613,6 +761,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.messageAction = messageAction
         self.messageKind = messageKind
         self.agentExecution = agentExecution
+        self.backgroundAgentSessions = backgroundAgentSessions
     }
 
     var actionSource: MessageActionSource {
@@ -650,6 +799,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, messageAction
         case messageKind
         case agentExecution
+        case backgroundAgentSessions
     }
 
     init(from decoder: Decoder) throws {
@@ -674,5 +824,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             AgentExecutionSnapshot.self,
             forKey: .agentExecution
         )
+        backgroundAgentSessions = try container.decodeIfPresent(
+            [BackgroundAgentSession].self,
+            forKey: .backgroundAgentSessions
+        ) ?? []
     }
 }

@@ -132,6 +132,84 @@ final class CloudMessageCodecTests: XCTestCase {
         XCTAssertEqual(CloudMessageCodec.displayText(body), "Done")
     }
 
+    func testAgentResponseDecodesValidatedBackgroundSessions() throws {
+        let payload = try XCTUnwrap(
+            #"{"text":"Background session started","requestId":"msg_request","deliveryState":"complete","backgroundSessions":[{"sessionId":"session-child","turnId":"turn-child","title":"Review runtime","status":"running"},{"sessionId":"session-child","title":"Duplicate","status":"done"},{"sessionId":"invalid","title":"Invalid state","status":"unknown"}]}"#
+                .data(using: .utf8)
+        )
+        let body = CloudMessageCodec.agentResponsePrefix + payload.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+
+        let sessions = CloudMessageCodec.backgroundAgentSessions(body)
+
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(sessions.first?.sessionId, "session-child")
+        XCTAssertEqual(sessions.first?.turnId, "turn-child")
+        XCTAssertEqual(sessions.first?.title, "Review runtime")
+        XCTAssertEqual(sessions.first?.state, .running)
+    }
+
+    func testBackgroundSessionUsesSyncedConversationStateAndExactDestination() throws {
+        let session = try XCTUnwrap(BackgroundAgentSession(wire: .init(
+            sessionId: "session-child",
+            turnId: nil,
+            title: "Review runtime",
+            status: "running"
+        )))
+        let source = ConversationSummary(
+            id: "group:source",
+            kind: .group,
+            peerAccountId: "acct_peer",
+            agentId: nil,
+            ownerDisplayName: "Review group",
+            displayName: "Review group",
+            lastMessage: "Request",
+            lastActivityAt: Date(timeIntervalSince1970: 1),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: nil,
+            sessionId: "session:group:source"
+        )
+        let child = ConversationSummary(
+            id: "agent-session:session-child",
+            kind: .agent,
+            peerAccountId: "acct_me",
+            agentId: nil,
+            ownerDisplayName: "Alex",
+            displayName: "Review runtime",
+            lastMessage: "Done",
+            lastActivityAt: Date(timeIntervalSince1970: 2),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: .ready,
+            sessionId: "session-child"
+        )
+
+        XCTAssertEqual(session.resolvedState(in: [child]), .done)
+        XCTAssertEqual(
+            session.destination(
+                from: source,
+                conversations: [child],
+                ownAccountId: "acct_me",
+                ownDisplayName: "Alex",
+                createdAt: Date(timeIntervalSince1970: 1)
+            ),
+            child
+        )
+        let provisional = session.destination(
+            from: source,
+            conversations: [],
+            ownAccountId: "acct_me",
+            ownDisplayName: "Alex",
+            createdAt: Date(timeIntervalSince1970: 1)
+        )
+        XCTAssertEqual(provisional.sessionId, "session-child")
+        XCTAssertEqual(provisional.forkedFromSessionId, source.sessionId)
+        XCTAssertEqual(provisional.agentActivity, .replying)
+    }
+
     func testAgentResponseDecodesOwnerExecutionSnapshot() throws {
         let payload = try XCTUnwrap(
             #"{"text":"processing...","requestId":"msg_request","deliveryState":"processing","execution":{"phase":"using-tool","summary":"Using Search","steps":[{"id":"tool:search","label":"Using Search","state":"running"}],"thinkingText":"I need to search the index.","tools":[{"id":"search","name":"Search","status":"running","arguments":"{\"query\":\"status\"}","liveOutput":"Searching","isError":false}],"startedAtMs":1000,"updatedAtMs":2000,"completed":false}}"#

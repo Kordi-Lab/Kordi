@@ -43,6 +43,42 @@ final class LocalMessageStoreTests: XCTestCase {
         XCTAssertEqual(merged.map(\.text), ["Earlier message", "Synced latest"])
     }
 
+    func testCacheRoundTripsLinkedBackgroundSessions() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let session = try XCTUnwrap(BackgroundAgentSession(wire: .init(
+            sessionId: "session-child",
+            turnId: "turn-child",
+            title: "Review runtime",
+            status: "running"
+        )))
+        let message = ChatMessage(
+            id: "agent-response",
+            conversationId: "person:shared-contact",
+            author: .agent,
+            authorName: "My Kordi",
+            text: "Background session started",
+            createdAt: Date(timeIntervalSince1970: 2),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: "request",
+            backgroundAgentSessions: [session]
+        )
+
+        store.saveMessages(
+            [message],
+            conversationId: message.conversationId,
+            accountId: "account-a"
+        )
+
+        XCTAssertEqual(
+            store.loadMessages(
+                accountId: "account-a",
+                conversationId: message.conversationId
+            ).first?.backgroundAgentSessions,
+            [session]
+        )
+    }
+
     private func conversation(id: String, displayName: String) -> ConversationSummary {
         ConversationSummary(
             id: id,

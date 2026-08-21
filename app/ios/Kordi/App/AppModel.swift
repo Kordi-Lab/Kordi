@@ -3398,7 +3398,8 @@ final class AppModel: ObservableObject {
                 ?? responseRequestId,
             messageAction: CloudMessageCodec.directEnvelope(message.body)?.messageAction,
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
-            agentExecution: ownerExecution
+            agentExecution: ownerExecution,
+            backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body)
         )
     }
 
@@ -3491,7 +3492,10 @@ final class AppModel: ObservableObject {
                 readByAccountIds: delivery?.readByAccountIds ?? [],
                 attachments: (payload.attachments ?? wire.attachments).map(\.chatAttachment),
                 replyToMessageId: payload.replyToMessageId ?? payload.messageAction?.replyToMessageId,
-                messageAction: payload.messageAction
+                messageAction: payload.messageAction,
+                backgroundAgentSessions: BackgroundAgentSession.fromTaskOperatorTools(
+                    payload.structuredContent?.tools ?? []
+                )
             )
         }
         let readAgentRequestIds = CloudGroupAgentLifecycleProjector.readRequestIds(

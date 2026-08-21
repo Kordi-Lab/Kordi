@@ -60,6 +60,7 @@ struct ConversationView: View {
     @State private var shareItem: SharedFileItem?
     @State private var showSessionDetails = false
     @State private var authorProfileConversation: ConversationSummary?
+    @State private var backgroundConversation: ConversationSummary?
     @State private var showAgentModel = false
     @State private var highlightedMessageID: String?
     @State private var selectedMessageIDs = Set<String>()
@@ -210,6 +211,12 @@ struct ConversationView: View {
                                             let presentation = timelinePresentation[index - presentationStartIndex]
                                             let avatar = avatarIdentity(for: message)
                                             let readers = readReceiptParticipants(for: message)
+                                            let backgroundSessions = message.backgroundAgentSessions.map {
+                                                BackgroundAgentSessionPresentation(
+                                                    session: $0,
+                                                    state: $0.resolvedState(in: model.conversations)
+                                                )
+                                            }
 
                                             VStack(spacing: 0) {
                                                 if presentation.showsTimestamp {
@@ -236,6 +243,7 @@ struct ConversationView: View {
                                                         authorAvatarSource: avatar.source,
                                                         authorAvatarSeed: avatar.seed,
                                                         readByNames: readers.map(\.displayName),
+                                                        backgroundSessions: backgroundSessions,
                                                         onOpenAuthorProfile: {
                                                             authorProfileConversation = ConversationAuthorProfileResolver.destination(
                                                                 currentConversation: conversation,
@@ -280,6 +288,15 @@ struct ConversationView: View {
                                                     },
                                                     onShareAttachment: { attachment in
                                                         prepare(attachment, forSharing: true)
+                                                    },
+                                                    onOpenBackgroundSession: { session in
+                                                        backgroundConversation = session.destination(
+                                                            from: conversation,
+                                                            conversations: model.conversations,
+                                                            ownAccountId: model.account?.accountId ?? "",
+                                                            ownDisplayName: model.account?.preferredName ?? "Me",
+                                                            createdAt: message.createdAt
+                                                        )
                                                     },
                                                     onAgentExecutionExpansionChange: { expanded in
                                                         guard expanded else { return }
@@ -637,6 +654,9 @@ struct ConversationView: View {
         }
         .navigationDestination(item: $authorProfileConversation) { destination in
             SessionDetailView(conversation: destination)
+        }
+        .navigationDestination(item: $backgroundConversation) { destination in
+            ConversationView(conversation: destination)
         }
         .sheet(item: $forwardRequest) { request in
             ForwardMessageSheet(request: request) { destination in

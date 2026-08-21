@@ -218,7 +218,15 @@ enum PreviewData {
                     senderLabel: "You",
                     textPreview: "What should I focus on today?",
                     attachmentCount: 0
-                ))
+                )),
+                backgroundAgentSessions: [
+                    BackgroundAgentSession(wire: .init(
+                        sessionId: "session:self-agent:cloud_agent_research",
+                        turnId: "turn-preview-research",
+                        title: "Review the TestFlight checklist",
+                        status: "running"
+                    ))!
+                ]
             )
         ])
         return messages
