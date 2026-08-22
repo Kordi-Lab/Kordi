@@ -77,11 +77,6 @@ final class AppModel: ObservableObject {
     private static let cloudUnavailableMessage = "Kordi Cloud is unavailable. Check your connection and try again."
     private static let cloudSyncRepairInterval: Duration = .seconds(2)
 
-    private struct ConversationPresentationSnapshot: Equatable {
-        let latestMessageID: String?
-        let lastActivityAt: Date
-    }
-
     @Published private(set) var phase: AppPhase = .launching
     @Published private(set) var account: CloudAccount?
     @Published private(set) var contacts: [CloudContact] = []
@@ -159,7 +154,8 @@ final class AppModel: ObservableObject {
     private var pendingMentionByMessageId: [String: ComposerMentionTarget] = [:]
     private var pendingAgentContextByMessageId: [String: String] = [:]
     private var conversationLoadCounts: [String: Int] = [:]
-    private var settledConversationPresentations: [String: ConversationPresentationSnapshot] = [:]
+    private var conversationHistoryBeforeSequence: [String: Int64] = [:]
+    private var conversationsWithEarlierHistory = Set<String>()
     private var conversationReadPresentations: [UUID: ConversationReadPresentation] = [:]
     private var pendingVisibleReadMessageBySessionID: [String: String] = [:]
     private var persistedVisibleReadMessageBySessionID: [String: String] = [:]
@@ -382,7 +378,8 @@ final class AppModel: ObservableObject {
         agentExecutionLocation = [:]
         loadingConversationIDs = []
         conversationLoadCounts = [:]
-        settledConversationPresentations = [:]
+        conversationHistoryBeforeSequence = [:]
+        conversationsWithEarlierHistory = []
         conversationReadPresentations = [:]
         pendingVisibleReadMessageBySessionID = [:]
         persistedVisibleReadMessageBySessionID = [:]
@@ -991,25 +988,11 @@ final class AppModel: ObservableObject {
     }
 
     func canRevealConversationImmediately(_ conversation: ConversationSummary) -> Bool {
-        guard let messages = messagesByConversation[conversation.id], !messages.isEmpty else {
-            return false
-        }
-        let presentationSnapshot = ConversationPresentationSnapshot(
-            latestMessageID: messages.last?.id,
-            lastActivityAt: conversation.lastActivityAt
-        )
-        let localTimelineCoversCatalogRevision = messages.last.map {
-            $0.createdAt >= conversation.lastActivityAt
-        } ?? false
-        return localTimelineCoversCatalogRevision
-            || settledConversationPresentations[conversation.id] == presentationSnapshot
+        messagesByConversation[conversation.id]?.isEmpty == false
     }
 
-    func markConversationPresentationSettled(_ conversation: ConversationSummary) {
-        settledConversationPresentations[conversation.id] = ConversationPresentationSnapshot(
-            latestMessageID: messagesByConversation[conversation.id]?.last?.id,
-            lastActivityAt: conversation.lastActivityAt
-        )
+    func hasEarlierMessages(for conversation: ConversationSummary) -> Bool {
+        conversationsWithEarlierHistory.contains(conversation.id)
     }
 
     private func projectedMessages(
@@ -1056,38 +1039,15 @@ final class AppModel: ObservableObject {
         guard let token, let account else { return }
         async let fetchedPin = try? api.sessionPin(token: token, sessionId: conversation.sessionId)
         do {
-            let fetchedWireMessages = try await loadWireMessages(for: conversation, token: token)
-            try Task.checkCancellation()
-            let projection = await Task.detached(priority: .userInitiated) {
-                let projectedMessages = conversation.kind == .group
-                    ? Self.mapGroupMessages(
-                        fetchedWireMessages,
-                        conversation: conversation,
-                        ownAccountId: account.accountId
-                    )
-                    : CloudDirectMessageProjector.project(
-                        fetchedWireMessages.filter { message in
-                            guard let sessionId = message.sessionId?.nonEmpty else {
-                                return conversation.kind == .person
-                            }
-                            return sessionId == conversation.sessionId
-                        },
-                        conversation: conversation,
-                        ownAccountId: account.accountId
-                    )
-                return projectedMessages
-            }.value
-            let remote = Self.mergeProjectedMessages(
-                projection,
-                preservingLocalMessagesFrom: messagesByConversation[conversation.id, default: []]
+            let page = try await api.conversationMessagePage(
+                token: token,
+                sessionId: conversation.sessionId
             )
-            if messagesByConversation[conversation.id] != remote {
-                messagesByConversation[conversation.id] = remote
-                cacheCurrentMessages(conversation.id)
-            }
+            try Task.checkCancellation()
+            _ = await applyConversationHistoryPage(page, to: conversation, account: account)
             reconcilePendingAgentRequest(
                 conversationId: conversation.id,
-                wireMessages: fetchedWireMessages
+                wireMessages: page.messages
             )
             await rebuildConversationCatalog()
             if let pin = await fetchedPin {
@@ -1101,6 +1061,31 @@ final class AppModel: ObservableObject {
             if let pin = await fetchedPin {
                 sessionPinsByID[conversation.sessionId] = pin
             }
+            recordCloudConnectionFailure(error)
+        }
+    }
+
+    func loadEarlierMessages(for conversation: ConversationSummary) async {
+        guard let token, let account else { return }
+        do {
+            while conversationsWithEarlierHistory.contains(conversation.id),
+                  let beforeSequence = conversationHistoryBeforeSequence[conversation.id] {
+                let page = try await api.conversationMessagePage(
+                    token: token,
+                    sessionId: conversation.sessionId,
+                    beforeSequence: beforeSequence
+                )
+                try Task.checkCancellation()
+                let added = await applyConversationHistoryPage(
+                    page,
+                    to: conversation,
+                    account: account,
+                    requestedBeforeSequence: beforeSequence
+                )
+                if added > 0 || !page.hasMore { return }
+            }
+        } catch {
+            if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
             recordCloudConnectionFailure(error)
         }
     }
@@ -1583,18 +1568,80 @@ final class AppModel: ObservableObject {
         let projectedAgentRequestIDs = Set(projected.compactMap { message in
             message.author == .agent ? message.requestMessageId : nil
         })
-        var messagesByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
-        for message in existing {
-            if message.author == .agent,
-               let requestMessageId = message.requestMessageId,
+        let projectedClientMessageIDs = Set(projected.compactMap(\.clientMessageId))
+        var messagesByID: [String: ChatMessage] = [:]
+        for localMessage in existing {
+            if localMessage.author == .agent,
+               let requestMessageId = localMessage.requestMessageId,
                projectedAgentRequestIDs.contains(requestMessageId) {
-                messagesByID[message.id] = nil
+                continue
             }
+            if localMessage.isAgentModelChangeNotice,
+               projected.contains(where: {
+                   $0.isAgentModelChangeNotice
+                       && $0.text == localMessage.text
+                       && abs($0.createdAt.timeIntervalSince(localMessage.createdAt)) <= 60
+               }) {
+                continue
+            }
+            if localMessage.deliveryState == .sending || localMessage.deliveryState == .failed {
+                let clientMessageId = localMessage.clientMessageId
+                    ?? CloudAPIClient.stableOperationUUID(localMessage.id)
+                if projectedClientMessageIDs.contains(clientMessageId) { continue }
+            }
+            messagesByID[localMessage.id] = localMessage
         }
         projected.forEach { messagesByID[$0.id] = $0 }
         return messagesByID.values.sorted {
             $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
         }
+    }
+
+    static func rekeyMessages(
+        _ messagesByConversation: inout [String: [ChatMessage]],
+        from previousConversations: [ConversationSummary],
+        to updatedConversations: [ConversationSummary]
+    ) -> [String] {
+        let previousIDBySessionID = Dictionary(
+            previousConversations.map { ($0.sessionId, $0.id) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        var changedConversationIDs: [String] = []
+        for conversation in updatedConversations {
+            guard let previousID = previousIDBySessionID[conversation.sessionId],
+                  previousID != conversation.id,
+                  let previousMessages = messagesByConversation.removeValue(forKey: previousID) else {
+                continue
+            }
+            let rebased = previousMessages.map { message in
+                ChatMessage(
+                    id: message.id,
+                    clientMessageId: message.clientMessageId,
+                    conversationId: conversation.id,
+                    author: message.author,
+                    authorName: message.authorName,
+                    text: message.text,
+                    createdAt: message.createdAt,
+                    deliveryState: message.deliveryState,
+                    errorMessage: message.errorMessage,
+                    requestMessageId: message.requestMessageId,
+                    readByCount: message.readByCount,
+                    readByAccountIds: message.readByAccountIds,
+                    attachments: message.attachments,
+                    replyToMessageId: message.replyToMessageId,
+                    messageAction: message.messageAction,
+                    messageKind: message.messageKind,
+                    agentExecution: message.agentExecution,
+                    backgroundAgentSessions: message.backgroundAgentSessions
+                )
+            }
+            messagesByConversation[conversation.id] = mergePartialProjection(
+                rebased,
+                preserving: messagesByConversation[conversation.id, default: []]
+            )
+            changedConversationIDs.append(conversation.id)
+        }
+        return changedConversationIDs
     }
 
     func timelineIdentity(for message: ChatMessage) -> String {
@@ -3190,19 +3237,70 @@ final class AppModel: ObservableObject {
         return MessageHistoryLoadResult(messagesByPeer: result, complete: complete)
     }
 
-    private func loadWireMessages(
-        for conversation: ConversationSummary,
-        token: String
-    ) async throws -> [CloudMessageDTO] {
-        let fetched = try await api.listConversationMessages(
-            token: token,
-            sessionId: conversation.sessionId
-        )
-        for message in fetched { mergeCloudMessage(message, peerHint: nil) }
-        if conversation.kind == .group {
-            fullyHydratedCanonicalGroupSessionIds.insert(conversation.sessionId)
+    private func applyConversationHistoryPage(
+        _ page: CloudConversationMessagePage,
+        to conversation: ConversationSummary,
+        account: CloudAccount,
+        requestedBeforeSequence: Int64? = nil
+    ) async -> Int {
+        let existing = messagesByConversation[conversation.id, default: []]
+        let existingIDs = Set(existing.map(\.id))
+        for message in page.messages { mergeCloudMessage(message, peerHint: nil) }
+        let accumulatedWireMessages = conversation.kind == .group
+            ? cloudMessagesByPeer.values.flatMap { $0 }.filter {
+                CloudGroupMessageCodec.parse($0.body)?.groupId == conversation.sessionId
+            }
+            : Self.directWireMessages(for: conversation, in: cloudMessagesByPeer)
+        let projection = await Task.detached(priority: .userInitiated) {
+            Self.projectHistoryMessages(
+                accumulatedWireMessages,
+                conversation: conversation,
+                ownAccountId: account.accountId
+            )
+        }.value
+        let merged = Self.mergePartialProjection(projection, preserving: existing)
+        if merged != existing {
+            messagesByConversation[conversation.id] = merged
+            cacheCurrentMessages(conversation.id)
         }
-        return fetched
+
+        if page.hasMore,
+           let nextBeforeSequence = page.nextBeforeSequence,
+           nextBeforeSequence != requestedBeforeSequence {
+            conversationHistoryBeforeSequence[conversation.id] = nextBeforeSequence
+            conversationsWithEarlierHistory.insert(conversation.id)
+        } else {
+            conversationHistoryBeforeSequence[conversation.id] = nil
+            conversationsWithEarlierHistory.remove(conversation.id)
+            if conversation.kind == .group {
+                fullyHydratedCanonicalGroupSessionIds.insert(conversation.sessionId)
+            }
+        }
+        return projection.lazy.filter { !existingIDs.contains($0.id) }.count
+    }
+
+    nonisolated private static func projectHistoryMessages(
+        _ messages: [CloudMessageDTO],
+        conversation: ConversationSummary,
+        ownAccountId: String
+    ) -> [ChatMessage] {
+        if conversation.kind == .group {
+            return mapGroupMessages(
+                messages,
+                conversation: conversation,
+                ownAccountId: ownAccountId
+            )
+        }
+        return CloudDirectMessageProjector.project(
+            messages.filter { message in
+                guard let sessionId = message.sessionId?.nonEmpty else {
+                    return conversation.kind == .person
+                }
+                return sessionId == conversation.sessionId
+            },
+            conversation: conversation,
+            ownAccountId: ownAccountId
+        )
     }
 
     private struct CanonicalConversationHistoryPage {
@@ -3856,6 +3954,12 @@ final class AppModel: ObservableObject {
             }
             return copy
         }
+        let rekeyedConversationIDs = Self.rekeyMessages(
+            &messagesByConversation,
+            from: conversations,
+            to: titled
+        )
+        rekeyedConversationIDs.forEach(cacheCurrentMessages)
         titled.forEach(prepareConversationForPresentation)
         if titled != conversations {
             conversations = titled

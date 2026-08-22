@@ -93,6 +93,16 @@ final class KordiMarkdownParserTests: XCTestCase {
         }
     }
 
+    func testOversizedMessageHasBoundedInitialContent() throws {
+        let oversized = String(repeating: "Long agent response. ", count: 20_000)
+
+        let collapsed = try XCTUnwrap(MarkdownMessageContent.collapsedText(oversized))
+
+        XCTAssertEqual(collapsed.count, MarkdownMessageContent.oversizedTextPreviewCharacters + 1)
+        XCTAssertTrue(oversized.hasPrefix(collapsed.dropLast()))
+        XCTAssertNil(MarkdownMessageContent.collapsedText("Short response"))
+    }
+
     func testConversationTimelineMountsOnlyTheNewestPageInitially() {
         let messages = (0..<341).map { index in
             ChatMessage(
@@ -193,7 +203,7 @@ final class KordiMarkdownParserTests: XCTestCase {
     }
 
     @MainActor
-    func testCurrentOrPreviouslySettledConversationCanRevealBeforeReload() throws {
+    func testCachedConversationCanRevealBeforeRemoteReload() throws {
         let model = AppModel(previewMode: true)
         for conversationID in ["person:acct_maya", "group:mobile", "agent:my-kordi"] {
             let currentConversation = try XCTUnwrap(
@@ -211,14 +221,7 @@ final class KordiMarkdownParserTests: XCTestCase {
 
         var pendingConversation = conversation
         pendingConversation.lastActivityAt = latestMessage.createdAt.addingTimeInterval(1)
-        XCTAssertFalse(model.canRevealConversationImmediately(pendingConversation))
-
-        model.markConversationPresentationSettled(pendingConversation)
         XCTAssertTrue(model.canRevealConversationImmediately(pendingConversation))
-
-        var updatedConversation = pendingConversation
-        updatedConversation.lastActivityAt = pendingConversation.lastActivityAt.addingTimeInterval(1)
-        XCTAssertFalse(model.canRevealConversationImmediately(updatedConversation))
     }
 
     @MainActor
@@ -268,6 +271,11 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertEqual(
             ConversationIdentityResolver.current(cached, in: [refreshed]),
             refreshed
+        )
+        XCTAssertNotEqual(cached.id, refreshed.id)
+        XCTAssertEqual(
+            ConversationIdentityResolver.loadingTaskID(for: cached),
+            ConversationIdentityResolver.loadingTaskID(for: refreshed)
         )
     }
 

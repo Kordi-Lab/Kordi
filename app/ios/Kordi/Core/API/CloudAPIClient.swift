@@ -19,6 +19,12 @@ enum CloudTransportErrorPolicy {
     }
 }
 
+struct CloudConversationMessagePage {
+    let messages: [CloudMessageDTO]
+    let nextBeforeSequence: Int64?
+    let hasMore: Bool
+}
+
 actor CloudAPIClient {
     static let productionBaseURL = KordiAppEnvironment.productionBaseURL
     static var configuredBaseURL: URL { KordiAppEnvironment.current.cloudBaseURL }
@@ -527,6 +533,31 @@ actor CloudAPIClient {
         )
     }
 
+    func conversationMessagePage(
+        token: String,
+        sessionId: String,
+        beforeSequence: Int64? = nil,
+        limit: Int = 200
+    ) async throws -> CloudConversationMessagePage {
+        let accountId = try requireActiveAccountId()
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId]
+            ?? chatConversationsById[sessionId] else {
+            throw CloudAPIError(
+                code: "chat_conversation_missing",
+                message: "This conversation is not available in reliable chat sync.",
+                statusCode: 404
+            )
+        }
+        return try await loadMessagePage(
+            token: token,
+            conversation: conversation,
+            viewerAccountId: accountId,
+            beforeSequence: beforeSequence,
+            limit: limit
+        )
+    }
+
     private func loadMessages(
         token: String,
         conversation: CloudChatConversation,
@@ -538,32 +569,64 @@ actor CloudAPIClient {
         var remaining = limit.map { max($0, 1) }
         repeat {
             let pageLimit = min(remaining ?? 200, 200)
-            var query = [URLQueryItem(name: "limit", value: String(pageLimit))]
-            if let beforeSequence {
-                query.append(URLQueryItem(name: "before_sequence", value: String(beforeSequence)))
-            }
-            let response: ChatHistoryResponse = try await send(
-                path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages",
-                method: "GET",
+            let page = try await loadMessagePage(
                 token: token,
-                query: query,
-                fallback: "Could not load reliable message history."
+                conversation: conversation,
+                viewerAccountId: viewerAccountId,
+                beforeSequence: beforeSequence,
+                limit: pageLimit
             )
-            response.messages.forEach { chatMessagesById[$0.id] = $0 }
-            result.append(contentsOf: response.messages.map {
-                legacyMessage(from: $0, conversation: conversation, viewerAccountId: viewerAccountId)
-            })
+            result.append(contentsOf: page.messages)
             if let currentRemaining = remaining {
-                remaining = currentRemaining - response.messages.count
+                remaining = currentRemaining - page.messages.count
             }
-            beforeSequence = response.nextBeforeSequence
-            if !response.hasMore || response.messages.isEmpty || (remaining ?? 1) <= 0 { break }
+            beforeSequence = page.nextBeforeSequence
+            if !page.hasMore || page.messages.isEmpty || (remaining ?? 1) <= 0 { break }
         } while beforeSequence != nil
         return Dictionary(grouping: result, by: \.messageId)
             .compactMap { $0.value.max { left, right in left.createdAt < right.createdAt } }
             .sorted { left, right in
                 left.createdAt < right.createdAt || (left.createdAt == right.createdAt && left.messageId < right.messageId)
             }
+    }
+
+    private func loadMessagePage(
+        token: String,
+        conversation: CloudChatConversation,
+        viewerAccountId: String,
+        beforeSequence: Int64?,
+        limit: Int
+    ) async throws -> CloudConversationMessagePage {
+        var query = [URLQueryItem(name: "limit", value: String(min(max(limit, 1), 200)))]
+        if let beforeSequence {
+            query.append(URLQueryItem(name: "before_sequence", value: String(beforeSequence)))
+        }
+        let response: ChatHistoryResponse = try await send(
+            path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages",
+            method: "GET",
+            token: token,
+            query: query,
+            fallback: "Could not load reliable message history."
+        )
+        response.messages.forEach { chatMessagesById[$0.id] = $0 }
+        var messages: [CloudMessageDTO] = []
+        messages.reserveCapacity(response.messages.count)
+        for message in response.messages {
+            messages.append(legacyMessage(
+                from: message,
+                conversation: conversation,
+                viewerAccountId: viewerAccountId
+            ))
+        }
+        messages.sort { left, right in
+            left.createdAt < right.createdAt
+                || (left.createdAt == right.createdAt && left.messageId < right.messageId)
+        }
+        return CloudConversationMessagePage(
+            messages: messages,
+            nextBeforeSequence: response.nextBeforeSequence,
+            hasMore: response.hasMore
+        )
     }
 
     func cachedChatSessionTitles() -> [CloudSyncedSessionTitle] {

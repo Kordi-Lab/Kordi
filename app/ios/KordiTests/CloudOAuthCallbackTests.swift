@@ -90,6 +90,32 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         XCTAssertTrue(messages.isEmpty)
     }
 
+    func testConversationHistoryPageUsesOneBoundedCursorRequest() async throws {
+        HistoryPageURLProtocol.historyRequest = nil
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [HistoryPageURLProtocol.self]
+        let client = CloudAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:17081")!,
+            session: URLSession(configuration: configuration)
+        )
+        await client.activateAccount("acct_me")
+
+        let page = try await client.conversationMessagePage(
+            token: "oauth-session",
+            sessionId: "session:agent:history",
+            beforeSequence: 42,
+            limit: 64
+        )
+
+        let request = try XCTUnwrap(HistoryPageURLProtocol.historyRequest)
+        let query = try XCTUnwrap(URLComponents(url: request.url!, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(query.queryItems?.first(where: { $0.name == "limit" })?.value, "64")
+        XCTAssertEqual(query.queryItems?.first(where: { $0.name == "before_sequence" })?.value, "42")
+        XCTAssertEqual(page.messages.map(\.messageId), ["message-41"])
+        XCTAssertEqual(page.nextBeforeSequence, 41)
+        XCTAssertTrue(page.hasMore)
+    }
+
     func testAgentDefinitionEventsTriggerDirectoryRefreshProjection() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AgentDefinitionSyncURLProtocol.self]
@@ -162,6 +188,32 @@ private final class ChatBootstrapURLProtocol: URLProtocol {
         let payload = Data(
             #"{"protocol_version":2,"conversations":[],"latest_messages":[],"next_cursor":"0","last_stream_seq":0,"server_time":"2026-08-15T00:00:00Z"}"#.utf8
         )
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: payload)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+private final class HistoryPageURLProtocol: URLProtocol {
+    static var historyRequest: URLRequest?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let isHistory = request.url?.path.hasSuffix("/messages") == true
+        if isHistory { Self.historyRequest = request }
+        let payload = isHistory
+            ? Data(#"{"messages":[{"id":"message-41","client_message_id":"client-41","conversation_id":"conversation-history","conversation_sequence":41,"sender_account_id":"acct_me","kind":"message","content":{"schema":1,"blocks":[{"type":"text","text":"Saved history"}],"legacy_attachments":[]},"reply_to_message_id":null,"attachment_ids":[],"version":1,"generation_status":null,"provider_response_id":null,"created_at":"2026-08-21T00:00:00Z","edited_at":null,"deleted_at":null}],"next_before_sequence":41,"has_more":true}"#.utf8)
+            : Data(#"{"protocol_version":2,"conversations":[{"id":"conversation-history","kind":"ai","shared_title":"History","version":1,"created_by_account_id":"acct_me","legacy_session_id":"session:agent:history","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":41,"created_at":"2026-08-21T00:00:00Z","updated_at":"2026-08-21T00:00:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":41,"last_read_sequence":41,"joined_at":"2026-08-21T00:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-history","account_id":"acct_me","personal_title":null,"version":1}}],"latest_messages":[],"next_cursor":"0","last_stream_seq":0,"server_time":"2026-08-21T00:00:00Z"}"#.utf8)
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,

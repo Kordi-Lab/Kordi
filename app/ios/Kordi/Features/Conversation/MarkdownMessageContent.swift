@@ -353,6 +353,11 @@ struct MarkdownMessageContent: View {
     let text: String
     let density: Density
     let mentionTargets: [ComposerMentionTarget]
+    @State private var showsFullOversizedText = false
+
+    // ponytail: Keep first layout bounded; paginate rich Markdown blocks if expanded formatting becomes necessary.
+    static let oversizedTextByteLimit = 32 * 1_024
+    static let oversizedTextPreviewCharacters = 12_000
 
     init(
         text: String,
@@ -376,15 +381,37 @@ struct MarkdownMessageContent: View {
         density == .compact ? 5 : 9
     }
 
+    static func collapsedText(_ text: String) -> String? {
+        guard text.utf8.count > oversizedTextByteLimit else { return nil }
+        return String(text.prefix(oversizedTextPreviewCharacters)) + "…"
+    }
+
+    @ViewBuilder
     var body: some View {
-        VStack(alignment: .leading, spacing: blockSpacing) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                blockView(block)
+        if let collapsed = Self.collapsedText(text) {
+            VStack(alignment: .leading, spacing: blockSpacing) {
+                Text(showsFullOversizedText ? text : collapsed)
+                    .font(bodyFont)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                Button(showsFullOversizedText ? "Show less" : "Show full response") {
+                    showsFullOversizedText.toggle()
+                }
+                .font(.caption.weight(.semibold))
+                .buttonStyle(.plain)
+                .foregroundStyle(KordiTheme.signalBlue)
+                .accessibilityHint("Changes how much of this long message is visible")
             }
+        } else {
+            VStack(alignment: .leading, spacing: blockSpacing) {
+                ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                    blockView(block)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .textSelection(.enabled)
+            .environment(\.composerMentionTargets, mentionTargets)
         }
-        .fixedSize(horizontal: false, vertical: true)
-        .textSelection(.enabled)
-        .environment(\.composerMentionTargets, mentionTargets)
     }
 
     @ViewBuilder
