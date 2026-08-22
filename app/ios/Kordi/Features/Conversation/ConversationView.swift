@@ -19,6 +19,10 @@ enum ConversationIdentityResolver {
             ?? conversations.first(where: { $0.sessionId == initial.sessionId })
             ?? initial
     }
+
+    static func loadingTaskID(for conversation: ConversationSummary) -> String {
+        conversation.sessionId
+    }
 }
 
 enum ConversationInitialRevealPolicy {
@@ -198,12 +202,11 @@ struct ConversationView: View {
                         }
                     )
                 }
-
                 if hasPreparedInitialViewport {
                     GeometryReader { viewport in
                         ZStack(alignment: .bottomTrailing) {
                             ScrollView {
-                                LazyVStack(spacing: 0) {
+                                VStack(spacing: 0) {
                                     if timeline.isEmpty {
                                         EmptyConversation(
                                             conversation: conversation,
@@ -213,17 +216,21 @@ struct ConversationView: View {
                                         )
                                             .padding(.top, 70)
                                     } else {
-                                        if visibleStartIndex > 0 {
-                                            EarlierMessagesLoader(remainingCount: visibleStartIndex)
-                                                .id("earlier:\(firstVisibleTimelineIdentity ?? conversation.id)")
-                                                .onAppear {
-                                                    guard hasPositionedInitialTimeline else { return }
-                                                    loadEarlierMessages(
-                                                        preserving: firstVisibleTimelineIdentity,
-                                                        totalCount: timeline.count,
-                                                        proxy: proxy
-                                                    )
-                                                }
+                                        LazyVStack(spacing: 0) {
+                                            if visibleStartIndex > 0 || model.hasEarlierMessages(for: conversation) {
+                                                EarlierMessagesLoader(
+                                                    remainingCount: visibleStartIndex > 0 ? visibleStartIndex : nil
+                                                )
+                                                    .id("earlier:\(firstVisibleTimelineIdentity ?? conversation.id)")
+                                                    .onAppear {
+                                                        guard hasPositionedInitialTimeline else { return }
+                                                        loadEarlierMessages(
+                                                            preserving: firstVisibleTimelineIdentity,
+                                                            totalCount: timeline.count,
+                                                            proxy: proxy
+                                                        )
+                                                    }
+                                            }
                                         }
 
                                         ForEach(visibleTimelineRows) { row in
@@ -474,7 +481,7 @@ struct ConversationView: View {
                     shouldFollowLatestAfterInputSurfaceChange = false
                 }
             }
-            .task(id: conversation.id) {
+            .task(id: ConversationIdentityResolver.loadingTaskID(for: conversation)) {
                 await loadAndRevealInitialConversation(using: proxy)
                 await model.refreshActiveCall(in: conversation)
             }
@@ -834,14 +841,22 @@ struct ConversationView: View {
         proxy: ScrollViewProxy
     ) {
         guard !isLoadingEarlier,
-              visibleMessageLimit < totalCount,
+              visibleMessageLimit < totalCount || model.hasEarlierMessages(for: conversation),
               let anchorID else { return }
         isLoadingEarlier = true
-        visibleMessageLimit = min(
-            totalCount,
-            visibleMessageLimit + ConversationTimelineWindow.pageSize
-        )
         Task { @MainActor in
+            if visibleMessageLimit < totalCount {
+                visibleMessageLimit = min(
+                    totalCount,
+                    visibleMessageLimit + ConversationTimelineWindow.pageSize
+                )
+            } else {
+                await model.loadEarlierMessages(for: conversation)
+                visibleMessageLimit = min(
+                    messages.count,
+                    visibleMessageLimit + max(0, messages.count - totalCount)
+                )
+            }
             await Task.yield()
             proxy.scrollTo(anchorID, anchor: .top)
             isLoadingEarlier = false
@@ -863,7 +878,7 @@ struct ConversationView: View {
 
     @MainActor
     private func positionAndRevealInitialViewport(using proxy: ScrollViewProxy) async {
-        guard hasPreparedInitialViewport, !hasRevealedInitialViewport else { return }
+        guard hasPreparedInitialViewport, !hasPositionedInitialTimeline else { return }
         await Task.yield()
         await Task.yield()
 
@@ -890,7 +905,6 @@ struct ConversationView: View {
            messageID == initialMessageID {
             highlightReferencedMessage(messageID)
         }
-        model.markConversationPresentationSettled(conversation)
     }
 
     @MainActor
@@ -899,9 +913,7 @@ struct ConversationView: View {
         let latestMessageIDAtEntry = messages.last?.id
         let viewportAtEntry = initialViewport
 
-        if ConversationInitialRevealPolicy.shouldRevealImmediately(
-            messageCount: messages.count
-        ) {
+        if ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: messages.count) {
             await positionAndRevealInitialViewport(using: proxy)
         }
 
@@ -928,6 +940,13 @@ struct ConversationView: View {
         model.hydrateCachedMessages(for: conversation)
         model.prepareConversationForPresentation(conversation)
         prepareInitialViewport(in: messages)
+        if ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: messages.count) {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                hasRevealedInitialViewport = true
+            }
+        }
     }
 
     private func synchronizeReadPresentation() {
@@ -1858,13 +1877,13 @@ private struct ConversationTimestampDivider: View {
 }
 
 private struct EarlierMessagesLoader: View {
-    let remainingCount: Int
+    let remainingCount: Int?
 
     var body: some View {
         HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
-            Text("Loading \(remainingCount) earlier messages…")
+            Text(remainingCount.map { "Loading \($0) earlier messages…" } ?? "Loading earlier messages…")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

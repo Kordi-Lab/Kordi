@@ -605,6 +605,10 @@ final class CloudMessageCodecTests: XCTestCase {
         )
 
         XCTAssertEqual(merged.map(\.id), [canonical.id])
+        XCTAssertEqual(
+            AppModel.mergePartialProjection([canonical], preserving: [failed]).map(\.id),
+            [canonical.id]
+        )
     }
 
     func testStableOperationUUIDMakesRetriesIdempotent() {

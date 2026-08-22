@@ -28,19 +28,30 @@ final class LocalMessageStoreTests: XCTestCase {
         XCTAssertEqual(store.loadMessages(accountId: "account-b", conversationId: conversationID), [secondMessage])
     }
 
-    func testPartialProjectionUpdatesKnownRowsWithoutErasingCachedHistory() {
+    func testPartialProjectionPersistsWithoutErasingCachedHistory() throws {
+        let store = try LocalMessageStore(inMemory: true)
         let conversationID = "person:shared-contact"
         let cachedEarlier = message(id: "earlier", conversationID: conversationID, text: "Earlier message")
         let cachedLatest = message(id: "latest", conversationID: conversationID, text: "Cached latest")
         let projectedLatest = message(id: "latest", conversationID: conversationID, text: "Synced latest")
 
+        store.saveMessages(
+            [cachedEarlier, cachedLatest],
+            conversationId: conversationID,
+            accountId: "account-a"
+        )
         let merged = AppModel.mergePartialProjection(
             [projectedLatest],
             preserving: [cachedEarlier, cachedLatest]
         )
+        store.saveMessages(merged, conversationId: conversationID, accountId: "account-a")
 
         XCTAssertEqual(merged.map(\.id), ["earlier", "latest"])
         XCTAssertEqual(merged.map(\.text), ["Earlier message", "Synced latest"])
+        XCTAssertEqual(
+            store.loadMessages(accountId: "account-a", conversationId: conversationID),
+            merged
+        )
     }
 
     func testPartialProjectionReplacesPreviousAgentSnapshotForSameRequest() {
@@ -122,6 +133,38 @@ final class LocalMessageStoreTests: XCTestCase {
         XCTAssertEqual(
             store.loadMessages(accountId: "account-a", conversationId: conversationID),
             [visible]
+        )
+    }
+
+    func testCachedMessagesFollowStableSessionWhenConversationIDChanges() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let cachedConversation = conversation(id: "cached-id", displayName: "Cached")
+        let canonicalConversation = conversation(id: "canonical-id", displayName: "Canonical")
+        let cachedMessage = message(
+            id: "history",
+            conversationID: cachedConversation.id,
+            text: "Persisted history"
+        )
+        var messagesByConversation = [cachedConversation.id: [cachedMessage]]
+
+        let changed = AppModel.rekeyMessages(
+            &messagesByConversation,
+            from: [cachedConversation],
+            to: [canonicalConversation]
+        )
+        let rebased = try XCTUnwrap(messagesByConversation[canonicalConversation.id])
+        store.saveMessages(
+            rebased,
+            conversationId: canonicalConversation.id,
+            accountId: "account-a"
+        )
+
+        XCTAssertEqual(changed, [canonicalConversation.id])
+        XCTAssertNil(messagesByConversation[cachedConversation.id])
+        XCTAssertEqual(rebased.map(\.conversationId), [canonicalConversation.id])
+        XCTAssertEqual(
+            store.loadMessages(accountId: "account-a", conversationId: canonicalConversation.id),
+            rebased
         )
     }
 
