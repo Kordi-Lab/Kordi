@@ -496,6 +496,10 @@ struct ConversationView: View {
                     )
                 }
             }
+            .background(
+                Color(uiColor: .systemGroupedBackground)
+                    .ignoresSafeArea(edges: .bottom)
+            )
             .onChange(of: timeline.count) { oldCount, newCount in
                 visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(
                     currentLimit: visibleMessageLimit,
