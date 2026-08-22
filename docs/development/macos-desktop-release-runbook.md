@@ -147,29 +147,35 @@ Do not commit local cache paths to the repository.
 ## macOS linker compatibility
 
 The beta.9 toolchain produced malformed build-time Rust proc-macro dylibs when
-they were linked with the former macOS 12 minimum on the current linker.
-Beta.14 and later target macOS 15; lowering the application deployment target
-is not an acceptable workaround.
+they were linked with a macOS 12 minimum on the current linker. Beta.14
+temporarily targeted macOS 15; beta.15 restores the supported application
+minimum to macOS 12. The failure affected build-time proc macros, not the
+supported application runtime.
+
+The desktop release commands run through `scripts/build-macos-desktop.sh`. It
+sets the application and sidecar deployment target to macOS 12 and uses
+`scripts/macos-proc-macro-linker.sh` to link only build-time proc-macro dylibs
+with macOS 11. Do not bypass this wrapper in release builds.
 
 If that failure recurs:
 
 1. Confirm it affects a build-time proc-macro dylib under Cargo's `deps`
    directory, not `Kordi.app` or a shipped sidecar.
 2. Inspect the failing dylib with `otool -l` or `vtool -show-build`.
-3. Use a temporary target-linker wrapper scoped only to those proc-macro
-   dylibs, with macOS 11 as their linker minimum.
-4. Keep the application deployment target unchanged.
+3. Confirm `scripts/macos-proc-macro-linker.sh` scoped macOS 11 only to those
+   proc-macro dylibs.
+4. Keep the application deployment target at macOS 12.
 5. Verify the final app executable and sidecars still report the intended
-   macOS 15 minimum.
+   macOS 12 minimum.
 
-Do not apply this workaround proactively or globally. Record the exact linker
-command and toolchain with the release artifacts if it is needed.
+Do not broaden this workaround beyond build-time proc macros. Record the exact
+linker command and toolchain with the release artifacts.
 
 Changing only `MACOSX_DEPLOYMENT_TARGET` in the wrapper may be insufficient:
 Rust can pass an explicit `-mmacosx-version-min` or `-platform_version` linker
 argument. Rewrite that explicit argument only when the output is a build-time
-proc-macro dylib. Do not lower `Kordi.app`, the runtime sidecar, or a shipped
-library such as `libkordi_desktop_lib.dylib`.
+proc-macro dylib. Do not independently rewrite `Kordi.app`, the runtime
+sidecar, or a shipped library such as `libkordi_desktop_lib.dylib`.
 
 Cargo fingerprints the linker path and flags, but not necessarily the contents
 of a wrapper script. After changing the wrapper, use a new
