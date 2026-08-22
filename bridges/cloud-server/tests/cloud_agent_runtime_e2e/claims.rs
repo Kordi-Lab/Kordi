@@ -54,7 +54,7 @@ async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_offline(
 }
 
 #[tokio::test]
-async fn cloud_agent_runtime_fallback_claim_is_rejected_when_owner_mac_is_online() {
+async fn cloud_agent_runtime_fallback_claim_ignores_presence_without_an_execution_claim() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = test_router(state);
@@ -87,16 +87,16 @@ async fn cloud_agent_runtime_fallback_claim_is_rejected_when_owner_mac_is_online
         .await
         .unwrap();
 
-    assert_eq!(first.status(), StatusCode::CONFLICT);
+    assert_eq!(first.status(), StatusCode::OK);
     let first_body = read_json(first).await;
-    assert_eq!(first_body["errorCode"], "owner_online");
+    assert_eq!(first_body["status"], "queued");
     let idempotency_key = claim_body(&owner, &requester, "msg_online_owner")["idempotencyKey"]
         .as_str()
         .unwrap()
         .to_string();
     assert_eq!(
         count_cloud_agent_runs_for_key(&pool, &idempotency_key).await,
-        0
+        1
     );
 }
 
@@ -214,7 +214,7 @@ async fn cloud_agent_runtime_fallback_claim_requires_accepted_contact_or_self() 
 }
 
 #[tokio::test]
-async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
+async fn agent_authored_group_handoff_ignores_presence_without_an_execution_claim() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
@@ -222,10 +222,17 @@ async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
     let source = signup(&router, "handoff-source", "Source").await;
     let target = signup(&router, "handoff-target", "Target").await;
     accept_contacts(&router, &source, &target).await;
+    sqlx_core::query::query(
+        "UPDATE cloud_devices SET device_platform = 'macos' WHERE account_id = $1",
+    )
+    .bind(&target.account_id)
+    .execute(&pool)
+    .await
+    .unwrap();
     assert_eq!(
         router
             .clone()
-            .oneshot(post_with_token("/v1/cloud/presence/offline", &target.token))
+            .oneshot(post_with_token("/v1/cloud/presence/online", &target.token))
             .await
             .unwrap()
             .status(),
