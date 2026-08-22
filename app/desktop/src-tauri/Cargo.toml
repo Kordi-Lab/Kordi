@@ -13,6 +13,8 @@ crate-type = ["cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+anyhow.workspace = true
+async-trait = "0.1"
 kordi-core.workspace = true
 kordi-cli = { path = "../../../agent/crates/cli", default-features = false, features = ["desktop-runtime"] }
 kordi-session = { path = "../../../agent/crates/session" }

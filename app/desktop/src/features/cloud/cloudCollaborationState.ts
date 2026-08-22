@@ -61,6 +61,11 @@ import {
 } from './cloudAgentMessages';
 import { cloudAgentExecutionTurnForMessage } from './cloudAgentExecutionTrace';
 import {
+  cloudAgentBackgroundTurnForMessage,
+  cloudAgentSyntheticResponseDirection,
+  isDirectCloudContact,
+} from './cloudCollaborationPresentation';
+import {
   cleanCloudConversationTitle,
   cleanCloudSessionId,
 } from './cloudConversationMetadata';
@@ -194,6 +199,10 @@ export function cloudMessageToCollaborationMessage(
     message,
     agentResponse,
   );
+  const syncedBackgroundTurn = cloudAgentBackgroundTurnForMessage(
+    message,
+    agentResponse,
+  );
   const displayBody = cloudDirectMessageDisplayText(message.body);
   const agentRequestId = !agentResponse && cloudMessageActionAllowsAgentTrigger(directMessageAction) && (
     Boolean(cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body))
@@ -212,7 +221,7 @@ export function cloudMessageToCollaborationMessage(
         : COLLABORATION_MESSAGE_DIRECTION_INBOUND,
     sender: agentResponse ? options.targetAgentNameByRequestId?.get(agentResponse.requestId) ?? null : isOwn ? 'Me' : null,
     text: displayText,
-    timeLabel: formatCloudCollaborationTime(timestampMs),
+    timeLabel: formatDesktopClockTime(timestampMs),
     timestampMs,
     requestId: agentResponse?.requestId ?? agentRequestId,
     deliveryState: agentResponse?.deliveryState === 'failed'
@@ -231,14 +240,9 @@ export function cloudMessageToCollaborationMessage(
     localTurn: agentResponse?.requestId
       ? options.localAgentTurnsByRequestId?.[agentResponse.requestId]
         ?? syncedExecutionTurn
+        ?? syncedBackgroundTurn
       : null,
   };
-}
-
-function cloudAgentSyntheticResponseDirection(account: CloudAccount, targetAccountId: string) {
-  return targetAccountId === account.accountId
-    ? COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE
-    : COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE;
 }
 
 function cloudAgentProcessingCollaborationMessage({
@@ -260,7 +264,7 @@ function cloudAgentProcessingCollaborationMessage({
     direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
     sender: targetAgentName,
     text: 'processing...',
-    timeLabel: formatCloudCollaborationTime(timestampMs),
+    timeLabel: formatDesktopClockTime(timestampMs),
     timestampMs,
     requestId: request.messageId,
     deliveryState: 'processing',
@@ -302,7 +306,7 @@ function cloudAgentCompletedLocalTurnCollaborationMessage({
     direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
     sender: targetAgentName,
     text,
-    timeLabel: formatCloudCollaborationTime(timestampMs),
+    timeLabel: formatDesktopClockTime(timestampMs),
     timestampMs,
     requestId: request.messageId,
     deliveryState: cancelled ? 'cancelled' : succeeded ? 'complete' : 'failed',
@@ -332,7 +336,7 @@ function cloudAgentOfflineCollaborationMessage({
     direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
     sender: null,
     text: `${targetOwnerName} and ${targetAgentName} are offline.`,
-    timeLabel: formatCloudCollaborationTime(timestampMs),
+    timeLabel: formatDesktopClockTime(timestampMs),
     timestampMs,
     requestId: request.messageId,
     deliveryState: 'failed',
@@ -364,7 +368,7 @@ function cloudAgentCancelledCollaborationMessage({
     direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
     sender: null,
     text: `Request canceled by ${cancelledBy}.`,
-    timeLabel: formatCloudCollaborationTime(timestampMs),
+    timeLabel: formatDesktopClockTime(timestampMs),
     timestampMs,
     requestId: request.messageId,
     deliveryState: 'cancelled',
@@ -372,10 +376,6 @@ function cloudAgentCancelledCollaborationMessage({
     attachments: [],
     localTurn: null,
   };
-}
-
-function isDirectCloudContact(contact: Contact): boolean {
-  return contact.contactStatus?.trim().toLowerCase() !== 'group-member';
 }
 
 function cloudMessageIsAtOrBeforeReadCursor(message: CloudMessage, cursor?: CloudGroupReadCursor | null): boolean {
@@ -986,7 +986,4 @@ export function buildCloudDesktopCollaborationState({
     conversations,
     localAgentRouting: null,
   };
-}
-function formatCloudCollaborationTime(timestampMs: number): string {
-  return formatDesktopClockTime(timestampMs);
 }

@@ -14,6 +14,7 @@ use crate::session_bootstrap::{
 };
 use crate::tool_registry::ToolSelectionPreference;
 mod attachments;
+mod background_sessions;
 mod model_options;
 mod models;
 mod session_catalog;
@@ -25,6 +26,9 @@ mod turn_execution;
 use attachments::attachment_metadata_from_path;
 use attachments::attachment_summary_from_metadata;
 
+pub use background_sessions::{
+    background_session_for_parent_message, create_background_session, session_exists,
+};
 pub use model_options::{
     authenticated_model_options, clear_desktop_model_options_cache,
     desktop_thinking_levels_for_model, desktop_thinking_levels_for_model_id,
@@ -705,11 +709,6 @@ fn strip_session_prompt_context(prompt: &str) -> String {
         LEGACY_DESKTOP_BRIDGE_CONTEXT_START,
         LEGACY_DESKTOP_BRIDGE_CONTEXT_END,
     )
-}
-
-pub fn session_exists(session_id: &str) -> Result<bool> {
-    let conn = open_sessions_db()?;
-    Ok(kordi_session::store::get_session(&conn, session_id)?.is_some())
 }
 
 pub fn fork_session_from_message(

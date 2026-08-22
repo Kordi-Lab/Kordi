@@ -121,6 +121,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
 
   const {
     chatConversations,
+    companionConversations,
     filteredConversations,
     participantSpaces,
     contactParticipantSpaces,
@@ -390,6 +391,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
   return {
     conversations: {
       chatConversations,
+      companionConversations,
       filteredConversations,
       participantSpaces,
       contactParticipantSpaces,

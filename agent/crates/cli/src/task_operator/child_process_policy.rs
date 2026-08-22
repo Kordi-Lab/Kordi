@@ -4,9 +4,9 @@ pub(super) const CHILD_AGENT_PROCESS_TIMEOUT: Duration = Duration::from_secs(300
 
 pub(super) fn child_agent_tool_names(has_write_scope: bool) -> &'static str {
     if has_write_scope {
-        "read,grep,find,ls,web_fetch,search_sessions,read_session,bash,edit,write"
+        "read,grep,find,ls,web_search,web_fetch,search_sessions,read_session,bash,edit,write"
     } else {
-        "read,grep,find,ls,web_fetch,search_sessions,read_session"
+        "read,grep,find,ls,web_search,web_fetch,search_sessions,read_session"
     }
 }
 
@@ -31,6 +31,7 @@ mod tests {
 
         assert!(tools.split(',').any(|tool| tool == "search_sessions"));
         assert!(tools.split(',').any(|tool| tool == "read_session"));
+        assert!(tools.split(',').any(|tool| tool == "web_search"));
         assert!(!tools.split(',').any(|tool| tool == "bash"));
         assert!(!tools.split(',').any(|tool| tool == "edit"));
         assert!(!tools.split(',').any(|tool| tool == "write"));

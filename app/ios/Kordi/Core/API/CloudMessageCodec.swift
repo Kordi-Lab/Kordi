@@ -23,6 +23,7 @@ enum CloudMessageCodec {
         let requestId: String?
         let deliveryState: String?
         let execution: AgentExecutionSnapshot?
+        let backgroundSessions: [BackgroundAgentSession.Wire]?
     }
 
     struct AgentCancelEnvelope: Codable, Equatable {
@@ -117,6 +118,12 @@ enum CloudMessageCodec {
 
     static func agentExecution(_ body: String) -> AgentExecutionSnapshot? {
         parsedEnvelopes(body).response?.execution
+    }
+
+    static func backgroundAgentSessions(_ body: String) -> [BackgroundAgentSession] {
+        BackgroundAgentSession.validated(
+            parsedEnvelopes(body).response?.backgroundSessions ?? []
+        )
     }
 
     static func agentCancelEnvelope(_ body: String) -> AgentCancelEnvelope? {

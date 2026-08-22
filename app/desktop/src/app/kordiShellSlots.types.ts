@@ -8,6 +8,7 @@ import type {
   ComposerConfigTargetOverride,
 } from '@/features/chat/composerController.types';
 import type { KordiShellAttachmentArgs } from './kordiShellAttachment.types';
+import type { RightDetailShellArgs } from './kordiShellRightDetail.types';
 import type { SettingsSection, SettingsSectionId } from '@/kordi-app/data/settings';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
@@ -68,6 +69,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   showSessionRail: boolean;
   sessionRailWidth: number;
   chatConversations: Conversation[];
+  companionConversations: Conversation[];
   participantSpaces: ParticipantSpaceViewModel[];
   contactParticipantSpaces: ParticipantSpaceViewModel[];
   agentParticipantSpaces: ParticipantSpaceViewModel[];
@@ -399,7 +401,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeNav'
   | 'setActiveNav'
   | 'cloudSession'
-  | 'chatConversations' | 'participantSpaces'
+  | 'chatConversations' | 'companionConversations' | 'participantSpaces'
   | 'handleCreateChatSession'
   | 'handleCreateSideAgentSession' | 'handlePrefetchChatSession'
   | 'handleSelectChatSession'
@@ -580,38 +582,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   rightDetailRail?: ReactNode;
 };
 
-export type RightDetailShellArgs = Pick<AssembleKordiShellSlotsArgs,
-  | 'isNativeShell'
-  | 'activeNav'
-  | 'activeDetailTab'
-  | 'setActiveDetailTab'
-  | 'setIsDetailPanelCollapsed'
-  | 'activeSourcePreview'
-  | 'setActiveSourcePreview'
-  | 'activeArtifactId'
-  | 'setActiveArtifactId'
-  | 'activeChatArtifacts'
-  | 'activeProjectArtifacts'
-  | 'activeProject'
-  | 'activeProjectSession'
-  | 'activeProjectLastMessage'
-  | 'setActiveNav'
-  | 'setActiveConvId'
-  | 'getStatusBadgeClass'
-  | 'desktopLiveTurn'
-  | 'activeConv'
-  | 'activeConvHasSubtitle'
-  | 'activeLastMessage'
-  | 'activeConversationUsesCollaboration'
-  | 'activeCollaborationConversationHost'
-  | 'activeCollaborationConversation'
-  | 'activeCollaborationAwaitingReply'
-  | 'isCollaborationSyncing'
-  | 'lastCollaborationSyncAtLabel'
-  | 'activeSessionProject'
-  | 'activeQueuedDesktopMessages'
-  | 'chatTranscriptScrollRef'
->;
+export type { RightDetailShellArgs };
 
 export type OverlayShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'showAuthGate'

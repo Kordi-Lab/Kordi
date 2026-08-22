@@ -37,6 +37,7 @@ import type {
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import type { TranscriptDensityMode } from '@/kordi-app/components/transcript';
+import type { RelatedAgentSessionRunStatus } from '@/features/chat/relatedAgentSessions';
 import type { VirtualTranscriptNavigationRequest } from '@/features/chat/VirtualTranscript';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 
@@ -62,6 +63,7 @@ export type ChatsPageLayout = {
 export type ChatsPageSession = {
   activeConv: Conversation;
   chatConversations: Conversation[];
+  companionConversations?: Conversation[];
   participantSpaces: ParticipantSpaceViewModel[];
   activeConversationUsesCollaboration: boolean;
   activeCollaborationModelHost: DesktopCollaborationHost | null;
@@ -260,6 +262,7 @@ export type ChatSessionPanePresentation = {
   >;
   pinnedMessageId?: string | null;
   densityMode?: TranscriptDensityMode;
+  relatedAgentSessionStatusById?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
 };
 
 export type ChatSessionPaneActions = {

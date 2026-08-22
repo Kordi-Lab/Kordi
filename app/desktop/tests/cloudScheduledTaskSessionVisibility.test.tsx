@@ -19,12 +19,12 @@ test('desktop chat start message forwards visible scheduled-task session id to T
 
 test('cloud group agent scheduling uses the visible group session id, not the hidden runtime session id', () => {
   const source = cloudGroupAgentExecutionSource();
-  const runtimeStart = source.indexOf('startedTurn = await startDesktopChatMessage(');
+  const runtimeStart = source.indexOf('startedTurn = await startDesktopSharedChatMessage(');
   const turnStarted = source.indexOf('rememberLocalTurn(startedTurn);', runtimeStart);
   assert.ok(runtimeStart >= 0 && turnStarted > runtimeStart, 'expected group cloud agent start block');
   const block = source.slice(runtimeStart, turnStarted);
 
-  assert.match(block, /startDesktopChatMessage\([\s\S]*cloudVisibleTaskRecordsForSession\([\s\S]*envelope\.groupId,\s*\n\s*\),\s*\n\s*envelope\.groupId,\s*\n\s*\)/);
+  assert.match(block, /startDesktopSharedChatMessage\([\s\S]*cloudVisibleTaskRecordsForSession\([\s\S]*envelope\.groupId,\s*\n\s*\),\s*\n\s*envelope\.groupId,\s*\n\s*\)/);
 });
 
 test('direct contact agent scheduling uses the visible contact activity session id, not the hidden runtime session id', () => {
@@ -34,5 +34,5 @@ test('direct contact agent scheduling uses the visible contact activity session 
   assert.ok(runtimeStart >= 0 && publishStart > runtimeStart, 'expected direct contact cloud agent start block');
   const block = source.slice(runtimeStart, publishStart);
 
-  assert.match(block, /startDesktopChatMessage\([\s\S]*visibleTaskRecords,\s*\n\s*activitySessionId,\s*\n\s*\)/);
+  assert.match(block, /startDesktopSharedChatMessage\([\s\S]*visibleTaskRecords,\s*\n\s*activitySessionId,\s*\n\s*\)/);
 });

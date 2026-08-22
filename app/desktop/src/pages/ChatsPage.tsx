@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 import { suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
-import type { Message } from '@/kordi-app/types';
+import type { Conversation, Message } from '@/kordi-app/types';
+import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
@@ -61,6 +62,8 @@ export {
   COLLABORATION_ROUTING_NOTICE_EXIT_MS,
 } from '@/pages/chatsPage.constants';
 
+const EMPTY_CONVERSATIONS: Conversation[] = [];
+
 export function ChatsPage({
   layout,
   session,
@@ -78,7 +81,8 @@ export function ChatsPage({
   } = layout;
   const {
     activeConv,
-    chatConversations,
+    chatConversations = EMPTY_CONVERSATIONS,
+    companionConversations = chatConversations,
     activeConversationUsesCollaboration,
     activeCollaborationModelHost,
     desktopChatState,
@@ -118,6 +122,10 @@ export function ChatsPage({
   const activeLiveTurnIsRunning = Boolean(
     desktopLiveTurn && desktopLiveTurn.sessionId === activeConv.id && !desktopLiveTurn.completed,
   );
+  const backgroundSessionStatusById = useMemo(
+    () => relatedAgentSessionStatusById(companionConversations),
+    [companionConversations],
+  );
   const cloudPresence = useCloudPresence(cloudAccount);
   const activePresenceTarget = cloudAccount
     ? cloudCallTargetForConversation(cloudAccount, activeConv)
@@ -146,6 +154,7 @@ export function ChatsPage({
   const companionSession = useChatCompanionSession({
     activeConversation: activeConv,
     conversations: chatConversations,
+    directConversations: companionConversations,
     activePaneKind,
     attachmentCount: chatComposerAttachments.length,
     setComposerTextForSession: setChatComposerTextForSession,
@@ -297,6 +306,11 @@ export function ChatsPage({
     companionLayout.setFolded(false);
     return opened;
   };
+  const openRelatedAgentSession = (sessionId: string) => {
+    companionSession.actions.switchConversation(sessionId);
+    companionLayout.placeCompanion('right');
+    companionLayout.setFolded(false);
+  };
   const companionPane = companionConversation ? (
     <ChatCompanionWorkspace
       session={companionSession}
@@ -311,6 +325,7 @@ export function ChatsPage({
         isCollaborationAgent: companionConversationIsCollaborationAgent,
         showsLocalAgentControls: companionShowsLocalAgentControls,
         prefersReducedMotion,
+        relatedAgentSessionStatusById: backgroundSessionStatusById,
       }}
       shell={{
         isNativeShell,
@@ -373,6 +388,7 @@ export function ChatsPage({
             isCompressionActive,
             activeLiveTurnIsRunning,
             prefersReducedMotion,
+            relatedAgentSessionStatusById: backgroundSessionStatusById,
             showCompanionPane,
             activeSide: companionSide === 'left' ? 'right' : 'left',
           }}
@@ -380,6 +396,7 @@ export function ChatsPage({
             canOpen: canOpenSideAgentPanel,
             suggestedName: suggestedSideAgentConversation?.name,
             open: openSideAgentPanel,
+            openSession: openRelatedAgentSession,
           }}
         />
         {showCompanionPane && companionSide === 'right' ? splitDivider : null}

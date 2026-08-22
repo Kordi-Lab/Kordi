@@ -39,53 +39,16 @@ import {
 } from './readModel/conversationMapping';
 import type { ConversationSubtitleBuilder } from './readModel/conversationMapping';
 import type { CanonicalConversationLike } from './readModel/conversationTypes';
+import {
+  anchorUnmatchedFailedRuntimeMessages,
+  comparableAgentResponseText,
+  firstIndexGreaterThan,
+  firstUnusedCanonicalIndex,
+  messageResponseText,
+  runtimeTranscriptAnchorKey,
+  sameAgentResponseText,
+} from './readModel/runtimeMessageMatching';
 import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
-function messageResponseText(message: Message) {
-  return message.turn?.assistantText.trim()
-    || message.turn?.error?.trim()
-    || message.text.trim();
-}
-
-function comparableAgentResponseText(value: string) {
-  return value.trim().replace(/\s+/gu, '');
-}
-
-function sameAgentResponseText(left: string, right: string) {
-  const leftTrimmed = left.trim();
-  const rightTrimmed = right.trim();
-  if (!leftTrimmed || !rightTrimmed) return false;
-  return leftTrimmed === rightTrimmed
-    || comparableAgentResponseText(leftTrimmed) === comparableAgentResponseText(rightTrimmed);
-}
-
-function runtimeTranscriptAnchorKey(message: Message) {
-  const text = messageResponseText(message).replace(/\s+/gu, ' ').trim().toLowerCase();
-  if (!text) return null;
-  return [message.role, ...(message.role === 'owned-agent' ? [] : [message.time.trim()]), text].join('\u0000');
-}
-
-function firstIndexGreaterThan(sortedValues: readonly number[], target: number) {
-  let low = 0;
-  let high = sortedValues.length;
-  while (low < high) {
-    const middle = low + Math.floor((high - low) / 2);
-    if (sortedValues[middle] <= target) low = middle + 1;
-    else high = middle;
-  }
-  return low;
-}
-
-function firstUnusedCanonicalIndex(
-  candidates: readonly number[],
-  startIndex: number,
-  usedCanonicalIndexes: ReadonlySet<number>,
-) {
-  for (let index = startIndex; index < candidates.length; index += 1) {
-    const candidate = candidates[index];
-    if (!usedCanonicalIndexes.has(candidate)) return { candidate, nextCursor: index + 1 };
-  }
-  return null;
-}
 
 export function mergeCanonicalHistoryIntoRuntime(
   canonicalMessages: Message[],
@@ -147,6 +110,12 @@ export function mergeCanonicalHistoryIntoRuntime(
     if (canonicalIndex > lastCanonicalIndex) lastCanonicalIndex = canonicalIndex;
     return canonicalIndex;
   });
+  anchorUnmatchedFailedRuntimeMessages(
+    runtimeMessages,
+    canonicalMessages,
+    runtimeAnchorIndexes,
+    usedCanonicalIndexes,
+  );
   const enrichedRuntimeMessages = runtimeMessages.map((message, runtimeIndex) => {
     const canonicalIndex = runtimeAnchorIndexes[runtimeIndex];
     if (canonicalIndex === null) return message;

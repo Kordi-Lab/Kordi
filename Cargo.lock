@@ -3493,6 +3493,8 @@ dependencies = [
 name = "kordi-desktop"
 version = "0.0.1-beta.14"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "base64 0.22.1",
  "bytes",
  "chrono",

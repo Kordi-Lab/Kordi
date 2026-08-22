@@ -1,5 +1,9 @@
 import Foundation
 
+struct CloudGroupStructuredContent: Codable, Hashable {
+    let tools: [AgentExecutionTool]?
+}
+
 struct CloudGroupParticipant: Codable, Hashable, Identifiable {
     let accountId: String
     let displayName: String
@@ -26,6 +30,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
     let targetCloudAgentOwnerAccountId: String?
     let targetCloudAgentOwnerName: String?
     let agentRuntimeRoute: CloudModelRouting?
+    let structuredContent: CloudGroupStructuredContent?
 
     init(
         id: String,
@@ -43,7 +48,8 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         targetCloudAgentName: String? = nil,
         targetCloudAgentOwnerAccountId: String? = nil,
         targetCloudAgentOwnerName: String? = nil,
-        agentRuntimeRoute: CloudModelRouting? = nil
+        agentRuntimeRoute: CloudModelRouting? = nil,
+        structuredContent: CloudGroupStructuredContent? = nil
     ) {
         self.id = id
         self.senderAccountId = senderAccountId
@@ -65,6 +71,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         self.targetCloudAgentOwnerAccountId = targetCloudAgentOwnerAccountId
         self.targetCloudAgentOwnerName = targetCloudAgentOwnerName
         self.agentRuntimeRoute = agentRuntimeRoute
+        self.structuredContent = structuredContent
     }
 }
 

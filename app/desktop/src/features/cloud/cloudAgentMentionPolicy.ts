@@ -14,7 +14,9 @@ import {
 } from './cloudAgentMessages';
 import {
   cloudDirectMessageAction,
+  cloudDirectMessageDisplayText,
   cloudDirectMessageTargetsOwnedHostedCloudAgent,
+  parseCloudDirectMessageEnvelope,
 } from './cloudDirectMessages';
 import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
 import { parseCloudGroupControl } from './cloudGroupMessages';
@@ -178,11 +180,21 @@ export function shouldRunLocalCloudAgentForCloudMessage({
       message.body,
       account.accountId,
     );
+  const directEnvelope = parseCloudDirectMessageEnvelope(message.body);
+  const targetsLocalAgent =
+    directEnvelope?.targetCloudAgentId?.trim() === 'cloud-local-agent'
+    && directEnvelope.targetCloudAgentOwnerAccountId?.trim()
+      === account.accountId;
   if (
     !targetsHostedCloudAgent
-    && !cloudMessageMentionsLocalAgent(message.body, account, {
-      allowFirstPerson: message.fromAccountId === account.accountId,
-    })
+    && !targetsLocalAgent
+    && !cloudMessageMentionsLocalAgent(
+      cloudDirectMessageDisplayText(message.body),
+      account,
+      {
+        allowFirstPerson: message.fromAccountId === account.accountId,
+      },
+    )
   ) return false;
   if (!isRecentCloudAgentMention(message.createdAt)) return false;
   return !cloudAgentResponseExistsForRequest({

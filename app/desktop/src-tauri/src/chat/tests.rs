@@ -9,6 +9,7 @@ fn test_summary(title: &str, message_count: usize, draft: bool) -> DesktopChatSe
         updated_at_ms: 0,
         message_count,
         draft,
+        background_status: None,
         forked_from_session_id: None,
         forked_from_message_id: None,
     }
@@ -81,6 +82,14 @@ async fn running_turn_lookup_is_session_scoped() {
 
     assert!(session_has_running_turn(&manager, "session-a").await);
     assert!(!session_has_running_turn(&manager, "session-b").await);
+    assert!(active_turn_snapshots(&manager).await.unwrap().is_empty());
+
+    manager
+        .background_turn_ids
+        .lock()
+        .await
+        .insert("turn-a".to_string());
+    assert_eq!(active_turn_snapshots(&manager).await.unwrap().len(), 1);
 }
 
 #[tokio::test]

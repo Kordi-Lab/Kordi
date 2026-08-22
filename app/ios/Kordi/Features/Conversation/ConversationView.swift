@@ -21,6 +21,12 @@ enum ConversationIdentityResolver {
     }
 }
 
+enum ConversationInitialRevealPolicy {
+    static func shouldRevealImmediately(messageCount: Int) -> Bool {
+        messageCount > 0
+    }
+}
+
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
@@ -29,6 +35,7 @@ struct ConversationView: View {
     private let initialConversation: ConversationSummary
     private let initialMessageID: String?
     private let companionContext: CompanionChatContext?
+    private let linkedBackgroundSession: BackgroundAgentSession?
     private let allowsCompanionPanel: Bool
     private let showsNavigationChrome: Bool
     @State private var draft = ""
@@ -60,6 +67,8 @@ struct ConversationView: View {
     @State private var shareItem: SharedFileItem?
     @State private var showSessionDetails = false
     @State private var authorProfileConversation: ConversationSummary?
+    @State private var selectedBackgroundSession: BackgroundAgentSession?
+    @State private var backgroundConversation: ConversationSummary?
     @State private var showAgentModel = false
     @State private var highlightedMessageID: String?
     @State private var selectedMessageIDs = Set<String>()
@@ -78,12 +87,14 @@ struct ConversationView: View {
         conversation: ConversationSummary,
         initialMessageID: String? = nil,
         companionContext: CompanionChatContext? = nil,
+        linkedBackgroundSession: BackgroundAgentSession? = nil,
         allowsCompanionPanel: Bool = true,
         showsNavigationChrome: Bool = true
     ) {
         initialConversation = conversation
         self.initialMessageID = initialMessageID
         self.companionContext = companionContext
+        self.linkedBackgroundSession = linkedBackgroundSession
         self.allowsCompanionPanel = allowsCompanionPanel
         self.showsNavigationChrome = showsNavigationChrome
     }
@@ -100,6 +111,12 @@ struct ConversationView: View {
 
     private var messages: [ChatMessage] {
         ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
+    }
+    private var linkedBackgroundSessionState: BackgroundAgentSession.State? {
+        linkedBackgroundSession?.resolvedState(in: model.conversations)
+    }
+    private var isWaitingForLinkedBackgroundSession: Bool {
+        messages.isEmpty && linkedBackgroundSessionState == .running
     }
     private var mentionTargetRefreshID: [String] {
         [conversation.id] + ComposerMentionTargetCatalog.ownerAccountIDs(
@@ -188,7 +205,12 @@ struct ConversationView: View {
                             ScrollView {
                                 LazyVStack(spacing: 0) {
                                     if timeline.isEmpty {
-                                        EmptyConversation(conversation: conversation)
+                                        EmptyConversation(
+                                            conversation: conversation,
+                                            backgroundSessionState: linkedBackgroundSession.map {
+                                                $0.resolvedState(in: model.conversations)
+                                            }
+                                        )
                                             .padding(.top, 70)
                                     } else {
                                         if visibleStartIndex > 0 {
@@ -210,6 +232,12 @@ struct ConversationView: View {
                                             let presentation = timelinePresentation[index - presentationStartIndex]
                                             let avatar = avatarIdentity(for: message)
                                             let readers = readReceiptParticipants(for: message)
+                                            let backgroundSessions = message.backgroundAgentSessions.map {
+                                                BackgroundAgentSessionPresentation(
+                                                    session: $0,
+                                                    state: $0.resolvedState(in: model.conversations)
+                                                )
+                                            }
 
                                             VStack(spacing: 0) {
                                                 if presentation.showsTimestamp {
@@ -236,6 +264,7 @@ struct ConversationView: View {
                                                         authorAvatarSource: avatar.source,
                                                         authorAvatarSeed: avatar.seed,
                                                         readByNames: readers.map(\.displayName),
+                                                        backgroundSessions: backgroundSessions,
                                                         onOpenAuthorProfile: {
                                                             authorProfileConversation = ConversationAuthorProfileResolver.destination(
                                                                 currentConversation: conversation,
@@ -280,6 +309,16 @@ struct ConversationView: View {
                                                     },
                                                     onShareAttachment: { attachment in
                                                         prepare(attachment, forSharing: true)
+                                                    },
+                                                    onOpenBackgroundSession: { session in
+                                                        selectedBackgroundSession = session
+                                                        backgroundConversation = session.destination(
+                                                            from: conversation,
+                                                            conversations: model.conversations,
+                                                            ownAccountId: model.account?.accountId ?? "",
+                                                            ownDisplayName: model.account?.preferredName ?? "Me",
+                                                            createdAt: message.createdAt
+                                                        )
                                                     },
                                                     onAgentExecutionExpansionChange: { expanded in
                                                         guard expanded else { return }
@@ -344,20 +383,27 @@ struct ConversationView: View {
                                 }
                             )
 
-                            if ConversationTimelineScrollBehavior.shouldShowLatestButton(
-                                isAtBottom: isAtBottom,
-                                messageCount: timeline.count
-                            ) {
-                                LatestMessageButton {
-                                    scrollToBottom(animated: true)
+                            Group {
+                                if ConversationTimelineScrollBehavior.shouldShowLatestButton(
+                                    isAtBottom: isAtBottom,
+                                    messageCount: timeline.count
+                                ) {
+                                    LatestMessageButton {
+                                        scrollToBottom(animated: true)
+                                    }
+                                    .padding(.trailing, 18)
+                                    .padding(.bottom, 16)
+                                    .transition(.scale(scale: 0.82).combined(with: .opacity))
                                 }
-                                .padding(.trailing, 18)
-                                .padding(.bottom, 16)
-                                .transition(.scale(scale: 0.82).combined(with: .opacity))
                             }
+                            .animation(.snappy(duration: 0.2), value: isAtBottom)
                         }
                         .onChange(of: viewport.size) { previousViewportSize, currentViewportSize in
-                            let wasAtLatest = isAtBottom || trackedMessageID == bottomAnchorID
+                            let wasAtLatest = ConversationTimelineScrollBehavior.isFollowingLatest(
+                                isAtBottom: isAtBottom,
+                                trackedMessageID: trackedMessageID,
+                                bottomAnchorID: bottomAnchorID
+                            )
                             guard ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
                                 hasRevealedInitialViewport: hasRevealedInitialViewport,
                                 wasAtLatest: wasAtLatest,
@@ -371,13 +417,12 @@ struct ConversationView: View {
                                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                             }
                         }
-                        .animation(.snappy(duration: 0.2), value: isAtBottom)
                         .opacity(hasRevealedInitialViewport ? 1 : 0)
                         .allowsHitTesting(hasRevealedInitialViewport)
                         .accessibilityHidden(!hasRevealedInitialViewport)
                     }
                 } else {
-                    Color(uiColor: .systemGroupedBackground)
+                    ConversationInitialLoadingView()
                 }
             }
             .onChange(of: timeline.count) { oldCount, newCount in
@@ -388,16 +433,27 @@ struct ConversationView: View {
                     isInitialViewportRevealed: hasRevealedInitialViewport
                 )
             }
-            .onChange(of: timeline.last.map(model.timelineIdentity(for:))) {
-                previousLatestMessageID,
-                currentLatestMessageID in
+            .onChange(of: timeline.last) { previousLatestMessage, currentLatestMessage in
+                let previousLatestMessageID = previousLatestMessage.map(model.timelineIdentity(for:))
+                let currentLatestMessageID = currentLatestMessage.map(model.timelineIdentity(for:))
                 if ConversationTimelineScrollBehavior.shouldFollowLatest(
                     hasPositionedInitialTimeline: hasPositionedInitialTimeline,
-                    isAtBottom: isAtBottom,
+                    isAtBottom: ConversationTimelineScrollBehavior.isFollowingLatest(
+                        isAtBottom: isAtBottom,
+                        trackedMessageID: trackedMessageID,
+                        bottomAnchorID: bottomAnchorID
+                    ),
                     previousLatestMessageID: previousLatestMessageID,
                     currentLatestMessageID: currentLatestMessageID
                 ) {
-                    scrollToBottom(animated: true)
+                    let identityChanged = previousLatestMessageID != currentLatestMessageID
+                    scrollToBottom(animated: identityChanged)
+                    if !identityChanged {
+                        Task { @MainActor in
+                            await Task.yield()
+                            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+                        }
+                    }
                 }
             }
             .onChange(of: isExpressivePickerPresented) { _, isPresented in
@@ -468,7 +524,8 @@ struct ConversationView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if selectedMessageIDs.isEmpty {
-                ComposerView(
+                if !isWaitingForLinkedBackgroundSession {
+                    ComposerView(
                     text: $draft,
                     attachments: $attachments,
                     photoGrouping: $photoGrouping,
@@ -482,7 +539,11 @@ struct ConversationView: View {
                                     ConversationTimelineScrollBehavior
                                         .shouldFollowLatestWhenPresentingInputSurface(
                                             hasRevealedInitialViewport: hasRevealedInitialViewport,
-                                            wasAtLatest: isAtBottom || trackedMessageID == bottomAnchorID,
+                                            wasAtLatest: ConversationTimelineScrollBehavior.isFollowingLatest(
+                                                isAtBottom: isAtBottom,
+                                                trackedMessageID: trackedMessageID,
+                                                bottomAnchorID: bottomAnchorID
+                                            ),
                                             isPresented: true
                                         )
                             }
@@ -509,7 +570,8 @@ struct ConversationView: View {
                     onChooseFiles: { showFileImporter = true },
                     onSendExpressiveMedia: sendExpressiveMedia,
                     onSend: { Task { await send() } }
-                )
+                    )
+                }
             } else {
                 ConversationSelectionBar(
                     count: selectedMessageIDs.count,
@@ -534,6 +596,7 @@ struct ConversationView: View {
             rememberViewport(in: messages)
         }
         .onAppear {
+            prepareInitialConversationForDisplay()
             isReadPresentationVisible = true
             synchronizeReadPresentation()
             if !conversation.kind.supportsQuotedReplies {
@@ -637,6 +700,12 @@ struct ConversationView: View {
         }
         .navigationDestination(item: $authorProfileConversation) { destination in
             SessionDetailView(conversation: destination)
+        }
+        .navigationDestination(item: $backgroundConversation) { destination in
+            ConversationView(
+                conversation: destination,
+                linkedBackgroundSession: selectedBackgroundSession
+            )
         }
         .sheet(item: $forwardRequest) { request in
             ForwardMessageSheet(request: request) { destination in
@@ -826,12 +895,13 @@ struct ConversationView: View {
 
     @MainActor
     private func loadAndRevealInitialConversation(using proxy: ScrollViewProxy) async {
-        model.hydrateCachedMessages(for: conversation)
-        prepareInitialViewport(in: messages)
+        prepareInitialConversationForDisplay()
         let latestMessageIDAtEntry = messages.last?.id
         let viewportAtEntry = initialViewport
 
-        if model.canRevealConversationImmediately(conversation) {
+        if ConversationInitialRevealPolicy.shouldRevealImmediately(
+            messageCount: messages.count
+        ) {
             await positionAndRevealInitialViewport(using: proxy)
         }
 
@@ -851,6 +921,13 @@ struct ConversationView: View {
             }
         }
         await positionAndRevealInitialViewport(using: proxy)
+    }
+
+    @MainActor
+    private func prepareInitialConversationForDisplay() {
+        model.hydrateCachedMessages(for: conversation)
+        model.prepareConversationForPresentation(conversation)
+        prepareInitialViewport(in: messages)
     }
 
     private func synchronizeReadPresentation() {
@@ -1022,7 +1099,7 @@ struct ConversationView: View {
     }
 
     private var conversationHeaderStatus: String {
-        switch conversation.kind {
+        return switch conversation.kind {
         case .agent:
             agentHeaderStatus
         case .group:
@@ -1558,6 +1635,14 @@ final class ConversationViewportMemory {
 }
 
 enum ConversationTimelineScrollBehavior {
+    static func isFollowingLatest(
+        isAtBottom: Bool,
+        trackedMessageID: String?,
+        bottomAnchorID: String
+    ) -> Bool {
+        isAtBottom || trackedMessageID == bottomAnchorID
+    }
+
     static func shouldFollowLatest(
         hasPositionedInitialTimeline: Bool,
         isAtBottom: Bool,
@@ -1568,7 +1653,7 @@ enum ConversationTimelineScrollBehavior {
               isAtBottom,
               let previousLatestMessageID,
               let currentLatestMessageID else { return false }
-        return previousLatestMessageID != currentLatestMessageID
+        return true
     }
 
     static func shouldShowLatestButton(
@@ -1901,8 +1986,34 @@ private struct ConversationBottomTrackingModifier: ViewModifier {
     }
 }
 
+private struct ConversationInitialLoadingView: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.regular)
+                .accessibilityHidden(true)
+            Text("Loading messages…")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Loading messages")
+    }
+}
+
 private struct EmptyConversation: View {
     let conversation: ConversationSummary
+    let backgroundSessionState: BackgroundAgentSession.State?
+
+    init(
+        conversation: ConversationSummary,
+        backgroundSessionState: BackgroundAgentSession.State? = nil
+    ) {
+        self.conversation = conversation
+        self.backgroundSessionState = backgroundSessionState
+    }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -1933,6 +2044,9 @@ private struct EmptyConversation: View {
     }
 
     private var emptyStateTitle: String {
+        if backgroundSessionState != nil {
+            return conversation.displayName
+        }
         if conversation.kind == .agent {
             return conversation.agentDisplayName?.nonEmpty ?? "My Kordi"
         }
@@ -1940,7 +2054,19 @@ private struct EmptyConversation: View {
     }
 
     private var emptyStateText: String {
-        switch conversation.kind {
+        if let backgroundSessionState {
+            return switch backgroundSessionState {
+            case .running:
+                "Still running on your Mac. Progress and the final result will appear here as they synchronize."
+            case .done:
+                "The background session finished. Its result will appear here after synchronization."
+            case .failed:
+                "The background session needs attention on your Mac."
+            case .stopped:
+                "The background session was stopped before producing a final result."
+            }
+        }
+        return switch conversation.kind {
         case .agent: "Describe the outcome you want. Kordi Cloud or an available Mac handles the run."
         case .group: "Send the first message to this group from your iPhone."
         case .person: "Send the first message from your iPhone."

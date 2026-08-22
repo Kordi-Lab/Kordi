@@ -55,11 +55,16 @@ import type {
   Message,
   NavId,
   Project,
-  SessionStatusIndicator,
   SessionTaskActivity,
 } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
 import { applyCloudPresenceToConversations } from './viewModels/cloudConversationPresence';
+import {
+  backgroundSessionStatusIndicator,
+  canonicalAvatarSeed,
+  canonicalTaskActivitiesForSession,
+  companionConversationList,
+} from './viewModels/backgroundSessions';
 import {
   collaborationProfileImageUrl,
   sanitizeRemotePeerName,
@@ -83,12 +88,6 @@ import {
 } from './viewModels/helpers';
 
 const EMPTY_DESKTOP_SESSION_IDS: ReadonlySet<string> = new Set();
-
-function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {
-  const id = identityId?.trim();
-  if (!state || !id) return null;
-  return state.identities.find((identity) => identity.id === id)?.avatarKey?.trim() || null;
-}
 
 export { findCollaborationProjectForWorkspace } from './viewModels/helpers';
 export {
@@ -115,13 +114,6 @@ export function collaborationChatConversationIsVisible(
   conversation: Pick<DesktopCollaborationConversation, 'outreach'>,
 ) {
   return !conversation.outreach?.parentSessionId;
-}
-
-function canonicalTaskActivitiesForSession(
-  readModel: ReturnType<typeof createCanonicalSessionReadModel>,
-  sessionId: string,
-) {
-  return readModel?.taskActivities(sessionId) ?? [];
 }
 
 type UseWorkspaceViewModelsArgs = {
@@ -317,6 +309,9 @@ export function useWorkspaceViewModels({
         unreadCount,
         showBackgroundActivity: !isVisibleSession,
         liveTurn: desktopLiveTurnsForViewModel[session.id],
+        existingIndicator: backgroundSessionStatusIndicator(
+          'backgroundStatus' in session ? session.backgroundStatus : null,
+        ),
       });
 
       const outreachRecords = outreachThreadsByParentSession.get(session.id) ?? [];
@@ -456,6 +451,10 @@ export function useWorkspaceViewModels({
     hiddenSessionIds,
     localAgentCollaborationReachoutSessionIds,
   ]);
+  const companionConversations = useMemo(
+    () => companionConversationList(chatConversations, blankShellCollapsedChatConversations),
+    [blankShellCollapsedChatConversations, chatConversations],
+  );
 
   const visibleMaterializedChatConversations = useMemo(() => materializedChatConversations(chatConversations), [chatConversations]);
   const nativeChatPlaceholder = useMemo(
@@ -1084,6 +1083,7 @@ export function useWorkspaceViewModels({
 
   return {
     chatConversations,
+    companionConversations,
     filteredConversations,
     participantSpaces,
     contactParticipantSpaces,

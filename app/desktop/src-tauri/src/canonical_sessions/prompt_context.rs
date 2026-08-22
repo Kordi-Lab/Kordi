@@ -10,6 +10,9 @@ use super::{
     IdentityContextRole,
 };
 
+mod background_routing;
+use background_routing::SHARED_SESSION_BACKGROUND_WORK_POLICY;
+
 fn truncate_context_line(value: &str, max_chars: usize) -> String {
     let trimmed = value.trim().replace(['\r', '\n'], " ");
     if trimmed.chars().count() <= max_chars {
@@ -612,15 +615,12 @@ pub(crate) fn local_agent_session_prompt_context(
     };
     let conn = open_db()?;
     let Some(session) = select_session(&conn, session_id)? else {
-        return Ok(None);
+        return Ok(Some(SHARED_SESSION_BACKGROUND_WORK_POLICY.to_string()));
     };
     let participants = session_participant_rows(&conn, session_id)?;
 
     let mut lines = Vec::new();
-    lines.push(
-        "You are Kordi, the user's local agent participating inside this shared Kordi session. When the user mentions @Kordi, answer directly in this same session using the session context below. Do not create or switch sessions. Do not involve non-local participants unless the current user message explicitly mentions them. Do not begin your reply with @Name or a speaker label; the chat UI already shows who you are replying to."
-            .to_string(),
-    );
+    lines.push(SHARED_SESSION_BACKGROUND_WORK_POLICY.to_string());
 
     if should_render_identity_frame(
         &participants,

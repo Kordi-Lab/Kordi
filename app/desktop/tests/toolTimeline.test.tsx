@@ -57,6 +57,46 @@ test('timeline detail bodies constrain overflowing code blocks', () => {
   assert.match(detailsBodyBlock, /overflow:\s*hidden/);
 });
 
+test('folded timeline summary stays inside narrow response surfaces', () => {
+  const shellCss = readDesktopShellCss();
+  const timelineBlock = cssBlock(shellCss, '.app-transcript-tool-timeline');
+  const summaryBlock = cssBlock(shellCss, '.app-transcript-tool-timeline-summary');
+  const copyBlock = cssBlock(shellCss, '.app-transcript-tool-timeline-summary-copy');
+  const lineBlock = cssBlock(shellCss, '.app-transcript-tool-timeline-summary-line');
+  const textBlock = cssBlock(shellCss, '.app-transcript-tool-timeline-summary-text');
+
+  assert.match(timelineBlock, /width:\s*100%/);
+  assert.match(timelineBlock, /min-width:\s*0/);
+  assert.match(summaryBlock, /width:\s*min\(100%, 34rem\)/);
+  assert.match(summaryBlock, /overflow:\s*hidden/);
+  assert.match(copyBlock, /width:\s*100%/);
+  assert.match(copyBlock, /overflow:\s*hidden/);
+  assert.match(lineBlock, /display:\s*flex/);
+  assert.match(lineBlock, /max-width:\s*100%/);
+  assert.match(textBlock, /flex:\s*1 1 auto/);
+  assert.match(textBlock, /max-width:\s*100%/);
+});
+
+test('expanded thinking rows stay inside narrow response surfaces', () => {
+  const shellCss = readDesktopShellCss();
+  const revealBlock = cssBlock(shellCss, '.app-transcript-timeline-reveal');
+  const listBlock = cssBlock(shellCss, '.app-transcript-timeline-list');
+  const rowBlock = cssBlock(shellCss, '.app-transcript-timeline-row');
+  const lineBlock = cssBlock(shellCss, '.app-transcript-timeline-row-line');
+  const titleBlock = cssBlock(shellCss, '.app-transcript-timeline-row-title');
+  const responsePanelBlock = cssBlock(shellCss, '.app-live-turn-response-panel');
+
+  for (const block of [revealBlock, listBlock, rowBlock, lineBlock]) {
+    assert.match(block, /max-width:\s*100%/);
+  }
+  assert.match(listBlock, /overflow:\s*hidden/);
+  assert.match(lineBlock, /overflow:\s*hidden/);
+  assert.match(titleBlock, /flex:\s*1 1 auto/);
+  assert.match(titleBlock, /text-overflow:\s*ellipsis/);
+  assert.match(titleBlock, /white-space:\s*nowrap/);
+  assert.match(responsePanelBlock, /overflow:\s*hidden/);
+});
+
 test('summarizes foldable timeline state without raw tool activity wording', () => {
   assert.equal(
     toolTimelineSummary({ tools: [{ name: 'bash', status: 'running', arguments: '{"command":"df -h"}' }], active: true, completed: false }),

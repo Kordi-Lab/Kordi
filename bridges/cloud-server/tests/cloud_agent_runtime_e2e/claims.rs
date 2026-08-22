@@ -214,7 +214,7 @@ async fn cloud_agent_runtime_fallback_claim_requires_accepted_contact_or_self() 
 }
 
 #[tokio::test]
-async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
+async fn agent_authored_group_handoff_ignores_presence_without_an_execution_claim() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
@@ -222,10 +222,17 @@ async fn agent_authored_group_handoff_is_exact_prompted_and_one_hop() {
     let source = signup(&router, "handoff-source", "Source").await;
     let target = signup(&router, "handoff-target", "Target").await;
     accept_contacts(&router, &source, &target).await;
+    sqlx_core::query::query(
+        "UPDATE cloud_devices SET device_platform = 'macos' WHERE account_id = $1",
+    )
+    .bind(&target.account_id)
+    .execute(&pool)
+    .await
+    .unwrap();
     assert_eq!(
         router
             .clone()
-            .oneshot(post_with_token("/v1/cloud/presence/offline", &target.token))
+            .oneshot(post_with_token("/v1/cloud/presence/online", &target.token))
             .await
             .unwrap()
             .status(),

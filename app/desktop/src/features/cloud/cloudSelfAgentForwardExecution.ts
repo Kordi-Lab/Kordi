@@ -256,6 +256,7 @@ export async function publishCloudSelfAgentOperations({
             requestId: request.messageId,
             text: 'processing...',
             deliveryState: 'processing',
+            execution: executionSnapshotForOperation(operation),
           }),
           {
             sessionId: operation.sessionId,
