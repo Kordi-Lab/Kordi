@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   activeConversationForSelection,
   applyCanonicalHydrationPlaceholder,
+  conversationWithHydratedSupportRoute,
   pendingCloudCollaborationConversationForActiveId,
 } from '../src/app/viewModels/conversationSelection';
 import { resolveCanonicalPageSessionId } from '../src/app/useKordiCanonicalSessionStore';
@@ -79,6 +80,60 @@ test('legacy support selection follows the locked agent when the server uses a r
   assert.equal(selected.id, conversation.id);
   assert.equal(selected.collaborationTarget?.nodeId, 'acct_real_support_owner');
   assert.equal(selected.collaborationTarget?.agentId, 'cloud_agent_kordi_support');
+});
+
+test('legacy support history uses the hydrated system contact owner before a Cloud conversation exists', () => {
+  const legacy = {
+    ...supportConversation(),
+    collaborationTarget: undefined,
+    messages: [{
+      id: 'support-history',
+      role: 'person' as const,
+      sender: 'Kordi Support',
+      senderType: 'human' as const,
+      text: 'How can I help?',
+      time: '20:40',
+    }],
+  };
+  const selected = conversationWithHydratedSupportRoute(activeConversationForSelection(legacy.id, [legacy], {
+    isNativeShell: true,
+    nativeChatPlaceholder: legacy,
+  }), [{
+      id: 'cloud-contact:cloud-system:kordi-support',
+      name: 'Kordi Support',
+      initials: 'KS',
+      classType: 'other-users',
+      entityType: 'user',
+      subtitle: 'Ask questions or suggest improvements',
+      collaborationSources: ['cloud'],
+      status: 'online',
+      discoverableOn: ['cloud'],
+      detail: 'Official Kordi support',
+      owner: 'Kordi',
+      sourceHostId: 'cloud',
+      sourceHumanId: 'acct_real_support_owner',
+      sourceRuntime: 'kordi-desktop',
+      sourceAgentId: 'cloud_agent_kordi_support',
+      systemContact: true,
+      supportTicketEnabled: true,
+      targetCloudAgentId: 'cloud_agent_kordi_support',
+      targetCloudAgentName: 'Kordi Support',
+      targetCloudAgentOwnerAccountId: 'acct_real_support_owner',
+      targetCloudAgentOwnerName: 'Kordi',
+    }]);
+
+  assert.equal(selected.messages[0]?.id, 'support-history');
+  assert.equal(selected.collaborationTarget?.nodeId, 'acct_real_support_owner');
+  assert.deepEqual(resolveDirectHostedAgentTarget({
+    mentionedAgentId: null,
+    mentionedTarget: null,
+    activeTarget: selected.collaborationTarget,
+  }), {
+    targetCloudAgentId: 'cloud_agent_kordi_support',
+    targetCloudAgentName: 'Kordi Support',
+    targetCloudAgentOwnerAccountId: 'acct_real_support_owner',
+    targetCloudAgentOwnerName: 'Kordi',
+  });
 });
 
 test('a new scoped Support selection reuses a legacy message-backed Support thread', () => {
