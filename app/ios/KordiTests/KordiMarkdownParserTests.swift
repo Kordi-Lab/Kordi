@@ -634,7 +634,7 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
-    func testLatestButtonAnimationDoesNotWrapTranscript() throws {
+    func testConversationSourceLayoutContracts() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -645,6 +645,11 @@ final class KordiMarkdownParserTests: XCTestCase {
 
         XCTAssertTrue(lines.contains("                            \(animation)"))
         XCTAssertFalse(lines.contains("                        \(animation)"))
+        XCTAssertFalse(source.contains(".safeAreaInset(edge: .bottom"))
+
+        let composer = try XCTUnwrap(source.range(of: "                        ComposerView("))
+        let rootModifiers = try XCTUnwrap(source.range(of: "            .onChange(of: timeline.count)"))
+        XCTAssertLessThan(composer.lowerBound, rootModifiers.lowerBound)
     }
 
     func testConversationShowsLatestButtonWhenInitialScrollHasNotCompleted() {

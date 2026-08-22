@@ -431,6 +431,70 @@ struct ConversationView: View {
                 } else {
                     ConversationInitialLoadingView()
                 }
+
+                if selectedMessageIDs.isEmpty {
+                    if !isWaitingForLinkedBackgroundSession {
+                        ComposerView(
+                            text: $draft,
+                            attachments: $attachments,
+                            photoGrouping: $photoGrouping,
+                            replySource: $replySource,
+                            selectedMention: $selectedMention,
+                            isExpressivePickerPresented: Binding(
+                                get: { isExpressivePickerPresented },
+                                set: { isPresented in
+                                    if isPresented {
+                                        shouldFollowLatestAfterInputSurfaceChange =
+                                            ConversationTimelineScrollBehavior
+                                                .shouldFollowLatestWhenPresentingInputSurface(
+                                                    hasRevealedInitialViewport: hasRevealedInitialViewport,
+                                                    wasAtLatest: ConversationTimelineScrollBehavior.isFollowingLatest(
+                                                        isAtBottom: isAtBottom,
+                                                        trackedMessageID: trackedMessageID,
+                                                        bottomAnchorID: bottomAnchorID
+                                                    ),
+                                                    isPresented: true
+                                                )
+                                    }
+                                    isExpressivePickerPresented = isPresented
+                                }
+                            ),
+                            isAgentModelPickerPresented: $showAgentModel,
+                            conversation: conversation,
+                            mentionTargets: mentionTargets,
+                            isSending: isSending,
+                            isPreparingAttachments: isPreparingAttachments,
+                            destinationName: conversation.displayName,
+                            cameraAvailable: UIImagePickerController.isSourceTypeAvailable(.camera),
+                            onTakePhoto: { showCamera = true },
+                            onChoosePhotos: {
+                                guard canPresentPhotoPicker() else { return }
+                                selectedPhotoSubtype = nil
+                                showPhotoPicker = true
+                            },
+                            onChooseMeme: {
+                                selectedPhotoSubtype = .meme
+                                showMemePhotoPicker = true
+                            },
+                            onChooseFiles: { showFileImporter = true },
+                            onSendExpressiveMedia: sendExpressiveMedia,
+                            onSend: { Task { await send() } }
+                        )
+                    }
+                } else {
+                    ConversationSelectionBar(
+                        count: selectedMessageIDs.count,
+                        onCancel: { selectedMessageIDs.removeAll() },
+                        onCopy: { copySelectedMessages(from: timeline) },
+                        onForward: {
+                            let selected = timeline.filter { selectedMessageIDs.contains($0.id) }
+                            forwardRequest = MessageForwardRequest(
+                                sourceConversation: conversation,
+                                messages: selected
+                            )
+                        }
+                    )
+                }
             }
             .onChange(of: timeline.count) { oldCount, newCount in
                 visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(
@@ -527,71 +591,6 @@ struct ConversationView: View {
                         sessionActionsButton
                     }
                 }
-            }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selectedMessageIDs.isEmpty {
-                if !isWaitingForLinkedBackgroundSession {
-                    ComposerView(
-                    text: $draft,
-                    attachments: $attachments,
-                    photoGrouping: $photoGrouping,
-                    replySource: $replySource,
-                    selectedMention: $selectedMention,
-                    isExpressivePickerPresented: Binding(
-                        get: { isExpressivePickerPresented },
-                        set: { isPresented in
-                            if isPresented {
-                                shouldFollowLatestAfterInputSurfaceChange =
-                                    ConversationTimelineScrollBehavior
-                                        .shouldFollowLatestWhenPresentingInputSurface(
-                                            hasRevealedInitialViewport: hasRevealedInitialViewport,
-                                            wasAtLatest: ConversationTimelineScrollBehavior.isFollowingLatest(
-                                                isAtBottom: isAtBottom,
-                                                trackedMessageID: trackedMessageID,
-                                                bottomAnchorID: bottomAnchorID
-                                            ),
-                                            isPresented: true
-                                        )
-                            }
-                            isExpressivePickerPresented = isPresented
-                        }
-                    ),
-                    isAgentModelPickerPresented: $showAgentModel,
-                    conversation: conversation,
-                    mentionTargets: mentionTargets,
-                    isSending: isSending,
-                    isPreparingAttachments: isPreparingAttachments,
-                    destinationName: conversation.displayName,
-                    cameraAvailable: UIImagePickerController.isSourceTypeAvailable(.camera),
-                    onTakePhoto: { showCamera = true },
-                    onChoosePhotos: {
-                        guard canPresentPhotoPicker() else { return }
-                        selectedPhotoSubtype = nil
-                        showPhotoPicker = true
-                    },
-                    onChooseMeme: {
-                        selectedPhotoSubtype = .meme
-                        showMemePhotoPicker = true
-                    },
-                    onChooseFiles: { showFileImporter = true },
-                    onSendExpressiveMedia: sendExpressiveMedia,
-                    onSend: { Task { await send() } }
-                    )
-                }
-            } else {
-                ConversationSelectionBar(
-                    count: selectedMessageIDs.count,
-                    onCancel: { selectedMessageIDs.removeAll() },
-                    onCopy: { copySelectedMessages(from: timeline) },
-                    onForward: {
-                        let selected = timeline.filter { selectedMessageIDs.contains($0.id) }
-                        forwardRequest = MessageForwardRequest(
-                            sourceConversation: conversation,
-                            messages: selected
-                        )
-                    }
-                )
             }
         }
         .task(id: mentionTargetRefreshID) {
