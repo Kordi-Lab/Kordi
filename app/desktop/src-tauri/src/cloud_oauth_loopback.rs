@@ -9,6 +9,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 
 const KORDI_FAVICON_DATA_URL: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='10' r='9' fill='%231a1714' fill-opacity='.62'/%3E%3Ccircle cx='11' cy='22' r='9' fill='%231a1714' fill-opacity='.82'/%3E%3Ccircle cx='25' cy='22' r='9' fill='%231a1714'/%3E%3C/svg%3E";
+const MAX_LOOPBACK_REQUEST_BYTES: usize = 64 * 1024;
 
 #[derive(Default)]
 pub struct CloudOAuthLoopbackState {
@@ -103,14 +104,11 @@ async fn handle_loopback_connection(
     request_id: &str,
     sender: &mut Option<oneshot::Sender<Result<String, String>>>,
 ) -> bool {
-    let mut buffer = vec![0_u8; 64 * 1024];
-    let Ok(read) = stream.read(&mut buffer).await else {
+    let Ok(Some(request)) =
+        tokio::time::timeout(Duration::from_secs(10), read_loopback_request(&mut stream)).await
+    else {
         return false;
     };
-    if read == 0 {
-        return false;
-    }
-    let request = String::from_utf8_lossy(&buffer[..read]);
     let mut lines = request.lines();
     let first = lines.next().unwrap_or_default();
 
@@ -148,6 +146,47 @@ async fn handle_loopback_connection(
     )
     .await;
     false
+}
+
+async fn read_loopback_request(stream: &mut TcpStream) -> Option<String> {
+    let mut request = Vec::with_capacity(4 * 1024);
+    let header_end = loop {
+        let mut chunk = [0_u8; 4 * 1024];
+        let read = stream.read(&mut chunk).await.ok()?;
+        if read == 0 {
+            return None;
+        }
+        request.extend_from_slice(&chunk[..read]);
+        if request.len() > MAX_LOOPBACK_REQUEST_BYTES {
+            return None;
+        }
+        if let Some(index) = request.windows(4).position(|window| window == b"\r\n\r\n") {
+            break index + 4;
+        }
+    };
+    let headers = std::str::from_utf8(&request[..header_end]).ok()?;
+    let content_length = headers
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .find(|(name, _)| name.trim().eq_ignore_ascii_case("content-length"))
+        .map(|(_, value)| value.trim().parse::<usize>().ok())
+        .unwrap_or(Some(0))?;
+    let request_length = header_end.checked_add(content_length)?;
+    if request_length > MAX_LOOPBACK_REQUEST_BYTES {
+        return None;
+    }
+    while request.len() < request_length {
+        let remaining = request_length - request.len();
+        let mut chunk = [0_u8; 4 * 1024];
+        let chunk_length = remaining.min(chunk.len());
+        let read = stream.read(&mut chunk[..chunk_length]).await.ok()?;
+        if read == 0 {
+            return None;
+        }
+        request.extend_from_slice(&chunk[..read]);
+    }
+    request.truncate(request_length);
+    String::from_utf8(request).ok()
 }
 
 async fn write_response(
