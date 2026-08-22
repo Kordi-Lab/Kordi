@@ -2,6 +2,7 @@ import type { Conversation, Message } from '@/kordi-app/types';
 import { isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import {
   isKordiSupportConversation,
+  KORDI_SUPPORT_ACCOUNT_ID,
   KORDI_SUPPORT_AVATAR_URL,
   KORDI_SUPPORT_NAME,
 } from './supportIdentity';
@@ -104,6 +105,14 @@ function preferSupportConversation(
     : current;
 }
 
+function supportRoutingScore(conversation: Conversation): number {
+  const ownerAccountId = conversation.collaborationTarget?.humanId?.trim()
+    || conversation.collaborationTarget?.nodeId?.trim()
+    || '';
+  if (!ownerAccountId) return 0;
+  return ownerAccountId === KORDI_SUPPORT_ACCOUNT_ID ? 1 : 2;
+}
+
 export function collapseDuplicateKordiSupportConversations(
   conversations: Conversation[],
 ): Conversation[] {
@@ -113,9 +122,16 @@ export function collapseDuplicateKordiSupportConversations(
   if (supportConversations.length <= 1) return conversations;
 
   const preferred = supportConversations.reduce(preferSupportConversation);
-  return conversations.filter((conversation) => (
-    !isKordiSupportConversation(conversation) || conversation === preferred
-  ));
+  const routed = supportConversations.reduce((current, candidate) => (
+    supportRoutingScore(candidate) > supportRoutingScore(current) ? candidate : current
+  ), preferred);
+  const collapsed = routed === preferred
+    ? preferred
+    : { ...preferred, collaborationTarget: routed.collaborationTarget };
+  return conversations.flatMap((conversation) => {
+    if (!isKordiSupportConversation(conversation)) return [conversation];
+    return conversation === preferred ? [collapsed] : [];
+  });
 }
 
 export function normalizeSupportContactConversationCollection(

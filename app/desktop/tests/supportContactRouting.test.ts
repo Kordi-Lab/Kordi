@@ -13,6 +13,7 @@ import {
   resolveLockedKordiSupportAgentTarget,
 } from '../src/features/chat/messageActions/directHostedAgentTarget';
 import { shouldUseCollaborationConversationRouting } from '../src/features/chat/messageActions/chatMessages';
+import { normalizeSupportContactConversationCollection } from '../src/features/support/supportConversationPresentation';
 import type { Conversation } from '../src/kordi-app/types';
 import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
 
@@ -102,6 +103,28 @@ test('a new scoped Support selection reuses a legacy message-backed Support thre
 
   assert.equal(selected.id, existingConversation.id);
   assert.equal(selected.messages.length, 1);
+});
+
+test('duplicate Support collapse keeps history and the hydrated real-owner route', () => {
+  const legacy = {
+    ...supportConversation(),
+    collaborationTarget: undefined,
+    messages: [{
+      id: 'support-history',
+      role: 'person' as const,
+      sender: 'Kordi Support',
+      senderType: 'human' as const,
+      text: 'How can I help?',
+      time: '20:40',
+    }],
+  };
+  const hydrated = supportConversationWithRealOwner();
+
+  const [collapsed] = normalizeSupportContactConversationCollection([legacy, hydrated]);
+
+  assert.equal(collapsed?.messages.length, 1);
+  assert.equal(collapsed?.collaborationTarget?.nodeId, 'acct_real_support_owner');
+  assert.equal(collapsed?.collaborationTarget?.agentId, 'cloud_agent_kordi_support');
 });
 
 test('runtime-only support conversation does not show a permanent canonical loader', () => {
