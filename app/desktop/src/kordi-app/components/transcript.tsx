@@ -1177,26 +1177,18 @@ function MessageBubbleView({
         ) : null}
         <div data-message-context-menu-anchor="true"
           data-message-media-side={hasOnlyImageAttachments ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined}
-          data-message-sender-profile-trigger={canOpenSenderProfile ? 'true' : undefined}
           data-transcript-density={compactDensity}
           onClick={(event) => {
+            if (!selectableInSelectionMode) return;
             const target = event.target instanceof Element ? event.target : null;
             if (target?.closest('button,a,input,textarea,[role="button"]')) return;
-            if (selectableInSelectionMode) {
-              event.preventDefault();
-              event.stopPropagation();
-              onToggleSelectedMessage?.(msg);
-              return;
-            }
-            if (!canOpenSenderProfile) return;
             event.preventDefault();
             event.stopPropagation();
-            onOpenSenderProfile?.(msg, event.currentTarget.getBoundingClientRect());
+            onToggleSelectedMessage?.(msg);
           }}
           className={cn(
           'app-message-hover-time-trigger min-w-0',
           hasGroupedImageAttachments ? (isOwnHumanMessage ? 'mr-4' : isPeerHumanMessage ? 'ml-4' : '') : '',
-          canOpenSenderProfile ? 'cursor-pointer' : '',
           hasOnlyImageAttachments ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
@@ -1226,28 +1218,12 @@ function MessageBubbleView({
         {isOwnHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="own" /> : null}
         {isPeerHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="peer" /> : null}
         {showInlineHumanSender ? (
-          canOpenSenderProfile ? (
-            <button
-              type="button"
-              data-message-sender-profile="true"
-              className="app-message-inline-sender mb-1 block max-w-full truncate text-left text-[12px] font-semibold leading-4 hover:underline"
-              style={senderAccentStyle(msg.sender)}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onOpenSenderProfile?.(msg, event.currentTarget.getBoundingClientRect());
-              }}
-            >
-              {msg.sender}
-            </button>
-          ) : (
-            <div
-              className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
-              style={senderAccentStyle(msg.sender)}
-            >
-              {msg.sender}
-            </div>
-          )
+          <div
+            className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
+            style={senderAccentStyle(msg.sender)}
+          >
+            {msg.sender}
+          </div>
         ) : null}
         {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
         {msg.sourceMessage && !isForwardedMessage ? (

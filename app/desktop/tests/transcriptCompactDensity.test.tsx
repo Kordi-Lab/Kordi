@@ -131,9 +131,14 @@ test('renders peer human sender names inside the bubble with colorful bold styli
     senderAvatarSeed: 'person:xinhai',
   };
 
-  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    onOpenSenderProfile: () => undefined,
+  }));
 
   assert.match(markup, /app-chat-bubble-peer[\s\S]*app-message-inline-sender/);
+  assert.match(markup, /<div class="app-message-inline-sender/);
+  assert.doesNotMatch(markup, /<button[^>]*app-message-inline-sender/);
   assert.match(markup, /app-message-inline-sender[^>]*font-semibold/);
   assert.match(markup, /--app-message-sender-accent/);
   assert.match(markup, />xin hai Mouse</);
@@ -329,7 +334,7 @@ test('compact group density hides sender labels inside message bubbles', () => {
   assert.equal((markup.match(/data-avatar-kind="human"/g) ?? []).length, 1);
 });
 
-test('compact group transcript exposes a human sender profile action on the avatar', () => {
+test('compact group transcript exposes a human sender profile action only on the avatar', () => {
   const message: Message = {
     id: 'msg:group-member-profile',
     role: 'person',
@@ -349,8 +354,8 @@ test('compact group transcript exposes a human sender profile action on the avat
     onOpenSenderProfile: () => undefined,
   }));
 
-  assert.match(markup, /data-message-sender-profile="true"/);
-  assert.match(markup, /data-message-sender-profile-trigger="true"/);
+  assert.equal((markup.match(/data-message-sender-profile="true"/g) ?? []).length, 1);
+  assert.doesNotMatch(markup, /data-message-sender-profile-trigger/);
   assert.match(markup, /aria-label="Open Maya Chen profile"/);
   assert.match(markup, /data-avatar-kind="human"/);
 });
