@@ -158,6 +158,13 @@ export type MessageCallActivity = {
   durationSeconds?: number | null;
 };
 
+export type TranscriptLoadingPlaceholder = {
+  kind: 'message' | 'link' | 'image' | 'agent';
+  side: 'own' | 'peer';
+  lines: 1 | 2 | 3;
+  width: 'short' | 'medium' | 'long';
+};
+
 export type ComposerQuoteState = {
   action: 'quote';
   source: MessageActionSource;
@@ -186,6 +193,9 @@ export type Message = {
    * The underlying agent turn is intentionally removed from the presentation
    * model so the generic agent processing card cannot leak into this chat. */
   supportContactTyping?: boolean;
+  /** Layout-only preview derived from real cached rows while the selected
+   * transcript page is loading. It must never invent additional rows. */
+  loadingPlaceholders?: TranscriptLoadingPlaceholder[];
   text: string;
   time: string;
   /** Exact source timestamp used for transcript ordering and time separators.

@@ -184,7 +184,7 @@ export function applyCanonicalHydrationPlaceholder(
   }
   return {
     ...selectedConversation,
-    messages: [transcriptLoadingNotice()],
+    messages: [transcriptLoadingNotice(undefined, selectedConversation.messages)],
   };
 }
 

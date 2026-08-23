@@ -1,0 +1,75 @@
+.app-transcript-loading-skeleton {
+  contain: layout paint;
+}
+
+.app-transcript-skeleton-surface {
+  position: relative;
+  overflow: hidden;
+}
+
+.app-transcript-skeleton-surface::after {
+  position: absolute;
+  inset: 0;
+  content: '';
+  background: linear-gradient(
+    110deg,
+    transparent 18%,
+    color-mix(in oklab, white 38%, transparent) 48%,
+    transparent 78%
+  );
+  animation: app-attachment-shimmer 1.45s ease-in-out infinite;
+}
+
+.app-transcript-skeleton-avatar {
+  background: color-mix(in oklab, var(--utility-muted-text) 18%, transparent);
+}
+
+.app-transcript-skeleton-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.app-transcript-skeleton-bubble[data-transcript-skeleton-width='short'],
+.app-transcript-skeleton-agent[data-transcript-skeleton-width='short'] {
+  width: min(12rem, calc(100% - 2.5rem));
+}
+
+.app-transcript-skeleton-bubble[data-transcript-skeleton-width='medium'],
+.app-transcript-skeleton-agent[data-transcript-skeleton-width='medium'] {
+  width: min(19rem, calc(100% - 2.5rem));
+}
+
+.app-transcript-skeleton-bubble[data-transcript-skeleton-width='long'],
+.app-transcript-skeleton-agent[data-transcript-skeleton-width='long'] {
+  width: min(30rem, calc(100% - 2.5rem));
+}
+
+.app-transcript-skeleton-line {
+  height: 0.625rem;
+  margin-block: 0.3rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--utility-muted-text) 22%, transparent);
+}
+
+.app-transcript-skeleton-line-long {
+  width: 100%;
+}
+
+.app-transcript-skeleton-line-short {
+  width: 42%;
+}
+
+.app-transcript-skeleton-link-icon {
+  width: 14px;
+  height: 14px;
+  background: color-mix(in oklab, var(--utility-muted-text) 17%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-transcript-skeleton-surface::after {
+    animation: none;
+    opacity: 0.18;
+    transform: none;
+  }
+}

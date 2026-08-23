@@ -34,6 +34,12 @@ test('canonical history hydration hides an incomplete catalog preview', () => {
 
   assert.deepEqual(loading.messages.map((message) => message.text), ['Loading chat history…']);
   assert.equal(loading.messages[0]?.detail, 'transcript-loading');
+  assert.deepEqual(loading.messages[0]?.loadingPlaceholders, [{
+    kind: 'message',
+    side: 'own',
+    lines: 1,
+    width: 'medium',
+  }]);
 });
 
 test('desktop runtime selection shows a loading notice until its transcript cache is ready', () => {
