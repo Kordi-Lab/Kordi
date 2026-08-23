@@ -1400,7 +1400,8 @@ actor CloudAPIClient {
                 peerAccountId: nil,
                 messageId: nil,
                 payload: CloudSyncEventPayload(
-                    message: nil, messageIds: nil, readAt: nil, sessionId: sessionId,
+                    message: nil, messageIds: nil, messageId: nil, readAt: nil, sessionId: sessionId,
+                    scope: nil, updatedAt: nil,
                     forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
                     createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
                     deviceId: nil, call: nil
@@ -1416,7 +1417,8 @@ actor CloudAPIClient {
                 peerAccountId: nil,
                 messageId: nil,
                 payload: CloudSyncEventPayload(
-                    message: nil, messageIds: nil, readAt: nil, sessionId: nil,
+                    message: nil, messageIds: nil, messageId: nil, readAt: nil, sessionId: nil,
+                    scope: nil, updatedAt: nil,
                     forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
                     createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
                     deviceId: nil, call: call
@@ -1441,8 +1443,25 @@ actor CloudAPIClient {
                 occurredAt: event.occurredAt
             )]
         }
+        if event.eventType == "session.pin.updated" {
+            return [CloudSyncEvent(
+                eventId: event.eventId,
+                eventType: event.eventType,
+                peerAccountId: nil,
+                messageId: event.payload.messageId,
+                payload: CloudSyncEventPayload(
+                    message: nil, messageIds: nil, messageId: event.payload.messageId,
+                    readAt: nil, sessionId: event.payload.sessionId,
+                    scope: event.payload.scope, updatedAt: event.payload.updatedAt,
+                    forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
+                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
+                    deviceId: nil, call: nil
+                ),
+                occurredAt: event.occurredAt
+            )]
+        }
         let knownNonChatEvents: Set<String> = [
-            "task.upsert", "artifact.upsert", "artifact.archived", "session.pin.updated",
+            "task.upsert", "artifact.upsert", "artifact.archived",
             "session.hidden", "session.unhidden", "session.deleted", "session-forked"
         ]
         if ["device.added", "device.confirmed", "device.revoked", "device.renamed"]
@@ -1453,7 +1472,8 @@ actor CloudAPIClient {
                 peerAccountId: nil,
                 messageId: nil,
                 payload: CloudSyncEventPayload(
-                    message: nil, messageIds: nil, readAt: nil, sessionId: nil,
+                    message: nil, messageIds: nil, messageId: nil, readAt: nil, sessionId: nil,
+                    scope: nil, updatedAt: nil,
                     forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
                     createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
                     deviceId: event.payload.deviceId, call: nil
@@ -1483,7 +1503,8 @@ actor CloudAPIClient {
             peerAccountId: peer,
             messageId: message.id,
             payload: CloudSyncEventPayload(
-                message: projected, messageIds: nil, readAt: nil, sessionId: nil,
+                message: projected, messageIds: nil, messageId: nil, readAt: nil, sessionId: nil,
+                scope: nil, updatedAt: nil,
                 forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
                 createdByAccountId: nil, createdAt: nil, sessionTitle: nil, deviceId: nil,
                 call: nil
@@ -1506,7 +1527,8 @@ actor CloudAPIClient {
             peerAccountId: nil,
             messageId: nil,
             payload: CloudSyncEventPayload(
-                message: nil, messageIds: nil, readAt: nil, sessionId: nil,
+                message: nil, messageIds: nil, messageId: nil, readAt: nil, sessionId: nil,
+                scope: nil, updatedAt: nil,
                 forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
                 createdByAccountId: nil, createdAt: nil,
                 sessionTitle: CloudSyncedSessionTitle(

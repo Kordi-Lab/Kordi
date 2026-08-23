@@ -945,11 +945,14 @@ struct CloudChatEventPayload: Codable, Hashable {
     let cursor: CloudChatCursor?
     let call: CloudCall?
     let sessionId: String?
+    let messageId: String?
+    let scope: String?
+    let updatedAt: String?
     let deviceId: String?
 
     enum CodingKeys: String, CodingKey {
         case conversation, message, preferences, cursor, call
-        case sessionId = "sessionId"
+        case sessionId, messageId, scope, updatedAt
         case deviceId = "deviceId"
     }
 }
@@ -1209,8 +1212,11 @@ struct CloudSyncEvent: Codable, Hashable {
 struct CloudSyncEventPayload: Codable, Hashable {
     let message: CloudMessageDTO?
     let messageIds: [String]?
+    let messageId: String?
     let readAt: String?
     let sessionId: String?
+    let scope: String?
+    let updatedAt: String?
     let forkSessionId: String?
     let parentSessionId: String?
     let parentMessageId: String?
