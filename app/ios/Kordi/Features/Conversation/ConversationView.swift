@@ -543,6 +543,9 @@ struct ConversationView: View {
                     newCount: newCount,
                     isInitialViewportRevealed: hasRevealedInitialViewport
                 )
+                if oldCount == 0, newCount > 0, !hasRevealedInitialViewport {
+                    Task { await positionAndRevealInitialViewport(using: proxy) }
+                }
             }
             .onChange(of: timeline.last) { previousLatestMessage, currentLatestMessage in
                 let previousLatestMessageID = previousLatestMessage.map(model.timelineIdentity(for:))
