@@ -222,7 +222,7 @@ function TranscriptLoadingSkeleton({
 }) {
   return (
     <div
-      className="app-chat-pane-transcript-scroll app-transcript-loading-skeleton flex min-h-0 flex-1 flex-col justify-end overflow-hidden"
+      className="app-chat-pane-transcript-scroll app-transcript-loading-skeleton flex min-h-0 flex-1 flex-col overflow-hidden"
       data-transcript-loading-skeleton="true"
       role="status"
       aria-live="polite"

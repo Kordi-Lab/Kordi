@@ -182,6 +182,7 @@ test('initial history loading replaces the one-row transcript preview', async ()
   const skeleton = host.querySelector('[data-transcript-loading-skeleton="true"]');
   assert.ok(skeleton);
   assert.ok(skeleton.classList.contains('app-chat-pane-transcript-scroll'));
+  assert.equal(skeleton.classList.contains('justify-end'), false);
   assert.deepEqual(
     Array.from(host.querySelectorAll('[data-transcript-skeleton-kind]')).map(
       (node) => node.getAttribute('data-transcript-skeleton-kind'),
