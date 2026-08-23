@@ -11,6 +11,50 @@ struct ComposerTextReplacement: Equatable {
     var selection: ComposerTextSelection
 }
 
+@available(iOS 18.0, *)
+struct NativeComposerTextReplacement {
+    var text: String
+    var selection: TextSelection
+}
+
+@available(iOS 18.0, *)
+func replacingNativeComposerText(
+    _ text: String,
+    selection: TextSelection?,
+    with replacement: String
+) -> NativeComposerTextReplacement {
+    let range: Range<String.Index>
+    switch selection?.indices {
+    case .selection(let selectionRange):
+        range = selectionRange
+    case .multiSelection(let ranges):
+        range = ranges.ranges.first ?? text.endIndex..<text.endIndex
+    case nil:
+        range = text.endIndex..<text.endIndex
+    @unknown default:
+        range = text.endIndex..<text.endIndex
+    }
+    let insertionOffset = text.distance(from: text.startIndex, to: range.lowerBound)
+        + replacement.count
+    var updatedText = text
+    updatedText.replaceSubrange(range, with: replacement)
+    let insertionPoint = updatedText.index(updatedText.startIndex, offsetBy: insertionOffset)
+    return NativeComposerTextReplacement(
+        text: updatedText,
+        selection: TextSelection(insertionPoint: insertionPoint)
+    )
+}
+
+private struct NativeComposerTextSelectionStorage {
+    private var value: Any?
+
+    @available(iOS 18.0, *)
+    var selection: TextSelection? {
+        get { value as? TextSelection }
+        set { value = newValue }
+    }
+}
+
 func replacingComposerText(
     _ text: String,
     selection: ComposerTextSelection,
@@ -68,6 +112,23 @@ enum ComposerInputSurfaceMotion {
     }
 }
 
+enum ComposerKeyboardSurfaceLayout {
+    static func contentHeight(
+        keyboardFrame: CGRect,
+        windowBounds: CGRect,
+        bottomSafeAreaInset: CGFloat
+    ) -> CGFloat? {
+        let visibleFrame = windowBounds.intersection(keyboardFrame)
+        guard !visibleFrame.isNull,
+              visibleFrame.height > bottomSafeAreaInset else { return nil }
+        return visibleFrame.height - bottomSafeAreaInset
+    }
+
+    static func fallbackHeight(verticalSizeClass: UserInterfaceSizeClass?) -> CGFloat {
+        verticalSizeClass == .compact ? 226 : 300
+    }
+}
+
 enum ComposerTextFieldLayout {
     static func usesExpandedLayout(
         hasLineBreak: Bool,
@@ -86,6 +147,7 @@ struct ComposerView: View {
     @Binding var photoGrouping: PhotoSendGrouping
     @Binding var replySource: MessageActionSource?
     @Binding var selectedMention: ComposerMentionTarget?
+    @FocusState.Binding var isFocused: Bool
     @Binding var isExpressivePickerPresented: Bool
     @Binding var isAgentModelPickerPresented: Bool
     let conversation: ConversationSummary
@@ -100,8 +162,9 @@ struct ComposerView: View {
     let onChooseFiles: () -> Void
     let onSendExpressiveMedia: (PendingAttachment) async -> Void
     let onSend: () -> Void
-    @State private var isFocused = false
     @State private var textSelection = ComposerTextSelection(location: 0, length: 0)
+    @State private var nativeTextSelection = NativeComposerTextSelectionStorage()
+    @State private var keyboardSurfaceHeight: CGFloat = 0
     @State private var composerContentHeight: CGFloat = 0
     @State private var messageFieldWidth: CGFloat = 0
     @ScaledMetric(relativeTo: .body) private var composerControlHeight: CGFloat = 50
@@ -125,6 +188,9 @@ struct ComposerView: View {
             }
             .animation(.snappy(duration: 0.2), value: attachments.count)
             .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
+                rememberKeyboardSurfaceHeight(from: $0)
+            }
     }
 
     @ViewBuilder
@@ -192,14 +258,13 @@ struct ComposerView: View {
 
             if isExpressivePickerPresented {
                 ExpressiveMediaPicker(
+                    height: expressivePickerHeight,
                     isSending: isSending,
                     onInsertEmoji: insertEmoji,
                     onSendMedia: onSendExpressiveMedia
                 )
-                .transition(expressivePickerTransition)
             }
         }
-        .animation(inputSurfaceAnimation, value: isExpressivePickerPresented)
     }
 
     private var inputSurface: some View {
@@ -289,14 +354,29 @@ struct ComposerView: View {
     }
 
     private var messageEditor: some View {
-        ComposerTextView(
-            text: $text,
-            selection: $textSelection,
-            isFocused: $isFocused,
-            accessibilityLabel: "Message \(destinationName)"
-        )
+        Group {
+            if #available(iOS 18.0, *) {
+                TextField(
+                    "",
+                    text: $text,
+                    selection: nativeTextSelectionBinding,
+                    axis: .vertical
+                )
+                .focused($isFocused)
+                .lineLimit(1...4)
+                .textFieldStyle(.plain)
+            } else {
+                ComposerTextView(
+                    text: $text,
+                    selection: $textSelection,
+                    isFocused: $isFocused,
+                    accessibilityLabel: "Message \(destinationName)"
+                )
+            }
+        }
         .frame(minHeight: 44)
         .padding(.horizontal, 8)
+        .accessibilityLabel("Message \(destinationName)")
         .accessibilityHidden(isExpressivePickerPresented)
         .onChange(of: isFocused) { _, isFocused in
             if isFocused {
@@ -320,6 +400,14 @@ struct ComposerView: View {
                 .accessibilityLabel("Show keyboard")
             }
         }
+    }
+
+    @available(iOS 18.0, *)
+    private var nativeTextSelectionBinding: Binding<TextSelection?> {
+        Binding(
+            get: { nativeTextSelection.selection },
+            set: { nativeTextSelection.selection = $0 }
+        )
     }
 
     private var usesExpandedMessageFieldLayout: Bool {
@@ -357,6 +445,16 @@ struct ComposerView: View {
     }
 
     private func insertEmoji(_ emoji: String) {
+        if #available(iOS 18.0, *) {
+            let replacement = replacingNativeComposerText(
+                text,
+                selection: nativeTextSelection.selection,
+                with: emoji
+            )
+            text = replacement.text
+            nativeTextSelection.selection = replacement.selection
+            return
+        }
         let replacement = replacingComposerText(
             text,
             selection: textSelection,
@@ -367,9 +465,7 @@ struct ComposerView: View {
     }
 
     private func dismissExpressivePicker() {
-        withAnimation(inputSurfaceAnimation) {
-            isExpressivePickerPresented = false
-        }
+        isExpressivePickerPresented = false
     }
 
     private func showExpressivePicker() {
@@ -382,31 +478,38 @@ struct ComposerView: View {
         Task { @MainActor in
             try? await Task.sleep(for: transitionDuration)
             guard !isFocused, !isExpressivePickerPresented else { return }
-            withAnimation(inputSurfaceAnimation) {
-                isExpressivePickerPresented = true
-            }
+            isExpressivePickerPresented = true
         }
     }
 
     private func showKeyboard() {
         dismissExpressivePicker()
         dismissAgentModelPicker()
-        let transitionDuration = reduceMotion ? Duration.zero : ComposerInputSurfaceMotion.duration
-        Task { @MainActor in
-            try? await Task.sleep(for: transitionDuration)
-            guard !isExpressivePickerPresented else { return }
-            isFocused = true
-        }
+        isFocused = true
     }
 
     private var inputSurfaceAnimation: Animation? {
         reduceMotion ? nil : ComposerInputSurfaceMotion.animation
     }
 
-    private var expressivePickerTransition: AnyTransition {
-        reduceMotion
-            ? .identity
-            : .move(edge: .bottom)
+    private var expressivePickerHeight: CGFloat {
+        keyboardSurfaceHeight > 0
+            ? keyboardSurfaceHeight
+            : ComposerKeyboardSurfaceLayout.fallbackHeight(verticalSizeClass: verticalSizeClass)
+    }
+
+    private func rememberKeyboardSurfaceHeight(from notification: Notification) {
+        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let window = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap(\.windows)
+                .first(where: \.isKeyWindow),
+              let height = ComposerKeyboardSurfaceLayout.contentHeight(
+                keyboardFrame: window.convert(frame, from: nil),
+                windowBounds: window.bounds,
+                bottomSafeAreaInset: window.safeAreaInsets.bottom
+              ) else { return }
+        keyboardSurfaceHeight = height
     }
 
     private var mentionPickerTransition: AnyTransition {
@@ -817,6 +920,9 @@ struct ComposerView: View {
             length: 0
         )
         selectedMention = target
+        if #available(iOS 18.0, *) {
+            nativeTextSelection.selection = TextSelection(insertionPoint: text.endIndex)
+        }
         isFocused = true
     }
 
@@ -860,7 +966,7 @@ struct ComposerFloatingPanelSurfaceModifier: ViewModifier {
 private struct ComposerTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var selection: ComposerTextSelection
-    @Binding var isFocused: Bool
+    @FocusState.Binding var isFocused: Bool
     let accessibilityLabel: String
 
     func makeCoordinator() -> Coordinator {

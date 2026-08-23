@@ -646,6 +646,9 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(lines.contains("                            \(animation)"))
         XCTAssertFalse(lines.contains("                        \(animation)"))
         XCTAssertFalse(source.contains(".safeAreaInset(edge: .bottom"))
+        XCTAssertTrue(source.contains("@FocusState private var isComposerFocused: Bool"))
+        XCTAssertTrue(source.contains("isFocused: $isComposerFocused,"))
+        XCTAssertTrue(source.contains("isComposerFocused = false\n                                    dismissComposerPickers()"))
 
         let composer = try XCTUnwrap(source.range(of: "                        ComposerView("))
         let rootModifiers = try XCTUnwrap(source.range(of: "            .onChange(of: timeline.count)"))
