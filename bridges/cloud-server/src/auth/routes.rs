@@ -265,6 +265,10 @@ pub fn routes_with_config(
             get(crate::attachments::routes::content),
         )
         .route(
+            "/v1/cloud/attachments/:attachment_id/preview-content",
+            get(crate::attachments::routes::preview_content),
+        )
+        .route(
             "/v1/cloud/expressive-media",
             get(list_expressive_media).post(save_expressive_media),
         )

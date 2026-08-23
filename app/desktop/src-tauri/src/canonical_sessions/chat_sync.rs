@@ -36,6 +36,46 @@ pub struct ChatSyncLocalState {
     pub messages: Vec<Value>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSyncCursorState {
+    pub account_id: String,
+    pub cursor: Option<String>,
+    pub last_stream_seq: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSyncConversationHead {
+    pub conversation_id: String,
+    pub latest_message_sequence: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSyncApplyResult {
+    pub account_id: String,
+    pub cursor: Option<String>,
+    pub last_stream_seq: i64,
+    pub changed_conversation_heads: Vec<ChatSyncConversationHead>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSyncConversationCoverage {
+    pub conversation_id: String,
+    pub earliest_sequence: i64,
+    pub latest_sequence: i64,
+    pub message_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatSyncMessageRef {
+    pub id: String,
+    pub client_message_id: String,
+    pub conversation_id: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatSyncOutboxEnqueueRequest {
@@ -74,10 +114,71 @@ use projection::*;
 #[tauri::command]
 pub async fn desktop_chat_sync_apply(
     request: ChatSyncApplyRequest,
-) -> Result<ChatSyncLocalState, String> {
+) -> Result<ChatSyncApplyResult, String> {
     tauri::async_runtime::spawn_blocking(move || apply(request))
         .await
         .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn desktop_chat_sync_cursor(account_id: String) -> Result<ChatSyncCursorState, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let account_id = account_id.trim().to_string();
+        if account_id.is_empty() {
+            return Err("Chat sync account id is required".to_string());
+        }
+        let conn = open_db()?;
+        load_cursor_state(&conn, &account_id)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn desktop_chat_sync_coverage(
+    account_id: String,
+) -> Result<Vec<ChatSyncConversationCoverage>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let account_id = account_id.trim().to_string();
+        if account_id.is_empty() {
+            return Err("Chat sync account id is required".to_string());
+        }
+        let conn = open_db()?;
+        load_coverage(&conn, &account_id)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn desktop_chat_sync_conversations(account_id: String) -> Result<Vec<Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let account_id = account_id.trim().to_string();
+        if account_id.is_empty() {
+            return Err("Chat sync account id is required".to_string());
+        }
+        let conn = open_db()?;
+        load_conversations(&conn, &account_id)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn desktop_chat_sync_message_refs(
+    account_id: String,
+    conversation_ids: Vec<String>,
+) -> Result<Vec<ChatSyncMessageRef>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let account_id = account_id.trim().to_string();
+        if account_id.is_empty() {
+            return Err("Chat sync account id is required".to_string());
+        }
+        let conn = open_db()?;
+        load_message_refs(&conn, &account_id, &conversation_ids)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -148,7 +249,7 @@ mod tests {
 
     use super::{apply_event, apply_on_connection, ChatSyncApplyRequest};
 
-    fn test_connection() -> rusqlite::Connection {
+    pub(super) fn test_connection() -> rusqlite::Connection {
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE chat_sync_state (
@@ -161,7 +262,7 @@ mod tests {
                 PRIMARY KEY(account_id, conversation_id)
              );
              CREATE TABLE chat_sync_messages (
-                account_id TEXT, message_id TEXT, conversation_id TEXT,
+                account_id TEXT, message_id TEXT, client_message_id TEXT, conversation_id TEXT,
                 conversation_sequence INTEGER, version INTEGER,
                 snapshot_json TEXT, updated_at_ms INTEGER,
                 PRIMARY KEY(account_id, message_id),
@@ -318,3 +419,7 @@ mod tests {
         assert_eq!(message_count, 0);
     }
 }
+
+#[cfg(test)]
+#[path = "chat_sync/bounded_tests.rs"]
+mod bounded_tests;

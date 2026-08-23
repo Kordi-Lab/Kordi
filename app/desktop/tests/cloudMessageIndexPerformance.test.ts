@@ -172,6 +172,20 @@ test('durable Cloud group history keeps one compact preparation row per group', 
   );
 });
 
+test('updated Cloud group messages use a new durable replay source', () => {
+  const wire = buildScaleCloudMessagesByPeer().acct_scale_0[0]!;
+  const envelope = parseCloudGroupControl(wire.body)!;
+
+  assert.equal(
+    cloudGroupCanonicalMessageSource(wire, envelope)?.sourceEventId,
+    `cloud-group:${wire.messageId}`,
+  );
+  assert.equal(
+    cloudGroupCanonicalMessageSource({ ...wire, version: 2 }, envelope)?.sourceEventId,
+    `cloud-group:${wire.messageId}:2`,
+  );
+});
+
 test('canonical delivery patch preserves state identity after summaries are applied', () => {
   const messagesByPeer = buildScaleCloudMessagesByPeer();
   const index = buildCloudMessageIndex(SCALE_ACCOUNT_ID, messagesByPeer);

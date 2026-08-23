@@ -202,43 +202,6 @@ enum AttachmentTransferError: LocalizedError {
     }
 }
 
-actor AttachmentFileStore {
-    private let directory: URL?
-    private var cachedURLs: [String: URL] = [:]
-
-    init(directory: URL? = nil) {
-        self.directory = directory ?? FileManager.default.urls(
-            for: .cachesDirectory,
-            in: .userDomainMask
-        ).first?.appendingPathComponent("Kordi/Attachments", isDirectory: true)
-    }
-
-    func cachedURL(for attachmentId: String) -> URL? {
-        guard let url = cachedURLs[attachmentId], FileManager.default.fileExists(atPath: url.path) else {
-            cachedURLs[attachmentId] = nil
-            return nil
-        }
-        return url
-    }
-
-    func store(_ data: Data, attachment: ChatAttachment) throws -> URL {
-        guard let directory else { throw URLError(.cannotCreateFile) }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let safeId = sanitized(attachment.attachmentId, fallback: "attachment")
-        let safeName = sanitized(attachment.name, fallback: attachment.kind == .image ? "image.jpg" : "file")
-        let url = directory.appendingPathComponent("\(safeId)-\(safeName)", isDirectory: false)
-        try data.write(to: url, options: .atomic)
-        cachedURLs[attachment.attachmentId] = url
-        return url
-    }
-
-    private func sanitized(_ value: String, fallback: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
-        let result = value.unicodeScalars.map { allowed.contains($0) ? String($0) : "_" }.joined()
-        return result.nonEmpty ?? fallback
-    }
-}
-
 enum ExpressiveMediaLibraryKind: String, Codable, Hashable {
     case sticker
     case gif

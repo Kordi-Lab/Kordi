@@ -232,8 +232,6 @@ struct ConversationView: View {
                                                         )
                                                     }
                                             }
-                                        }
-
                                         ForEach(visibleTimelineRows) { row in
                                             let message = row.message
                                             let index = visibleStartIndex + row.offset
@@ -367,6 +365,7 @@ struct ConversationView: View {
                                                 }
                                             }
                                             .id(row.id)
+                                        }
                                         }
                                     }
 

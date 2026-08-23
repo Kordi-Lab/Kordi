@@ -42,6 +42,10 @@ const MAX_SERVER_FRAME_BYTES: usize = 512 * 1024;
 const MAX_UNACKNOWLEDGED_EVENTS: i64 = 1_000;
 const DEVICE_REVALIDATION_INTERVAL: Duration = Duration::from_secs(2);
 
+fn event_is_within_delivery_window(stream_seq: i64, acknowledged_stream_seq: i64) -> bool {
+    stream_seq.saturating_sub(acknowledged_stream_seq) <= MAX_UNACKNOWLEDGED_EVENTS
+}
+
 fn cursor_codec() -> Option<CursorCodec> {
     std::env::var("KORDI_CHAT_SYNC_CURSOR_SECRET")
         .ok()
@@ -221,8 +225,8 @@ async fn send_available_events(
             Err(_) => return Err("SERVER_ERROR"),
         };
         for event in &batch.events {
-            if event.stream_seq - acknowledged_stream_seq > MAX_UNACKNOWLEDGED_EVENTS {
-                return Err("CLIENT_TOO_SLOW");
+            if !event_is_within_delivery_window(event.stream_seq, acknowledged_stream_seq) {
+                return Ok(());
             }
             let frame = EventFrame {
                 frame_type: "event",
@@ -334,7 +338,7 @@ async fn run_socket(
     heartbeat_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut device_revalidation = tokio::time::interval(DEVICE_REVALIDATION_INTERVAL);
     device_revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut last_heartbeat = tokio::time::Instant::now();
+    let mut last_liveness = tokio::time::Instant::now();
     let mut last_applied_seq = connect_stream_seq;
 
     loop {
@@ -352,7 +356,7 @@ async fn run_socket(
                         return;
                     }
                     last_applied_seq = applied;
-                    last_heartbeat = tokio::time::Instant::now();
+                    last_liveness = tokio::time::Instant::now();
                     match persist_device_ack(
                         state.db_pool(),
                         &ticket.account_id,
@@ -378,9 +382,13 @@ async fn run_socket(
                     }
                 }
                 Some(Ok(Message::Ping(payload))) => {
+                    last_liveness = tokio::time::Instant::now();
                     if sender.send(Message::Pong(payload)).await.is_err() {
                         return;
                     }
+                }
+                Some(Ok(Message::Pong(_))) => {
+                    last_liveness = tokio::time::Instant::now();
                 }
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
                 Some(Ok(_)) => {
@@ -406,8 +414,11 @@ async fn run_socket(
                 }
             }
             _ = heartbeat_check.tick() => {
-                if last_heartbeat.elapsed() > HEARTBEAT_TIMEOUT {
+                if last_liveness.elapsed() > HEARTBEAT_TIMEOUT {
                     let _ = sender.send(Message::Close(None)).await;
+                    return;
+                }
+                if sender.send(Message::Ping(Vec::new())).await.is_err() {
                     return;
                 }
             }
@@ -430,5 +441,40 @@ async fn run_socket(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{event_is_within_delivery_window, MAX_UNACKNOWLEDGED_EVENTS};
+
+    #[test]
+    fn delivery_window_pauses_instead_of_overrunning_unacknowledged_limit() {
+        assert!(event_is_within_delivery_window(
+            MAX_UNACKNOWLEDGED_EVENTS,
+            0
+        ));
+        assert!(!event_is_within_delivery_window(
+            MAX_UNACKNOWLEDGED_EVENTS + 1,
+            0
+        ));
+        assert!(event_is_within_delivery_window(
+            MAX_UNACKNOWLEDGED_EVENTS + 501,
+            501
+        ));
+
+        let mut acknowledged = 0;
+        let mut delivered = 0;
+        let mut windows = 0;
+        while delivered < 1_200 {
+            windows += 1;
+            while delivered < 1_200 && event_is_within_delivery_window(delivered + 1, acknowledged)
+            {
+                delivered += 1;
+            }
+            acknowledged = delivered;
+        }
+        assert_eq!(delivered, 1_200);
+        assert_eq!(windows, 2);
     }
 }

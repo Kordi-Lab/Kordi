@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, ExternalLink, Image, LoaderCircle } from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
+import { Image } from 'lucide-react';
 import {
   attachmentMediaGalleryIndex,
   attachmentPreviewIdentity,
@@ -18,17 +16,14 @@ import {
   cloudAttachmentUploadSnapshot,
   subscribeCloudAttachmentUpload,
 } from '@/features/cloud/cloudAttachmentUpload';
+import { loadVisibleCloudAttachmentPreview, type CloudAttachmentPreviewLease } from '@/features/cloud/cloudAttachments';
 import {
-  loadVisibleCloudAttachmentPreview,
-  type CloudAttachmentPreviewLease,
-} from '@/features/cloud/cloudAttachments';
+  cloudAttachmentPreviewCacheId,
+  loadCachedCloudAttachmentLocalPath,
+} from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
-import {
-  downloadDesktopAttachment,
-  openDesktopExternalUrl,
-  storeDesktopChatAttachment,
-} from '@/lib/desktop';
 import { cn } from '@/lib/utils';
+import { AttachmentActions } from './transcriptAttachmentActions';
 import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
 import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
@@ -49,176 +44,6 @@ export {
 } from './transcriptAttachmentPreviewRecovery';
 export { attachmentImageDeliveryVisual };
 export type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
-
-function isNativeShell() {
-  return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__);
-}
-
-function formatAttachmentSize(sizeBytes?: number | null) {
-  if (typeof sizeBytes !== 'number' || !Number.isFinite(sizeBytes) || sizeBytes < 0) return null;
-  if (sizeBytes < 1024) return `${sizeBytes} B`;
-  const units = ['KB', 'MB', 'GB'];
-  let value = sizeBytes / 1024;
-  let unitIndex = 0;
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIndex]}`;
-}
-
-function AttachmentActions({ attachment, variant = 'icon' }: { attachment: MessageAttachment; variant?: 'icon' | 'menu' | 'original' }) {
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadedPath, setDownloadedPath] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const canDownload = Boolean((attachment.localPath && isNativeShell()) || attachment.attachmentId);
-  const canOpen = Boolean(((downloadedPath ?? attachment.localPath) && isNativeShell()));
-
-  if (!canDownload && !canOpen) {
-    return null;
-  }
-
-  async function ensureLocalPath() {
-    if (attachment.localPath) return attachment.localPath;
-    if (!attachment.attachmentId) return null;
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    const blob = await defaultCloudAuthClient().downloadAttachmentContent(session.token, attachment.attachmentId);
-    const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
-    return storeDesktopChatAttachment(attachment.name || 'attachment.bin', bytes);
-  }
-
-  async function handleDownload() {
-    setIsDownloading(true);
-    setError(null);
-    try {
-      const localPath = await ensureLocalPath();
-      if (!localPath) return;
-      const targetPath = await downloadDesktopAttachment(localPath, attachment.name);
-      setDownloadedPath(targetPath);
-    } catch (downloadError) {
-      setError(downloadError instanceof Error ? downloadError.message : 'Unable to download attachment');
-    } finally {
-      setIsDownloading(false);
-    }
-  }
-
-  async function handleOpen() {
-    const target = downloadedPath ?? attachment.localPath;
-    if (!target) return;
-    setError(null);
-    try {
-      await openDesktopExternalUrl(target);
-    } catch (openError) {
-      setError(openError instanceof Error ? openError.message : 'Unable to open attachment');
-    }
-  }
-
-  async function handleOpenOriginal() {
-    setIsDownloading(true);
-    setError(null);
-    try {
-      const localPath = await ensureLocalPath();
-      if (!localPath) return;
-      setDownloadedPath(localPath);
-      if (isNativeShell()) await openDesktopExternalUrl(localPath);
-    } catch (openError) {
-      setError(openError instanceof Error ? openError.message : 'Unable to open original attachment');
-    } finally {
-      setIsDownloading(false);
-    }
-  }
-
-  if (variant === 'original') {
-    const sizeLabel = formatAttachmentSize(attachment.sizeBytes);
-    return (
-      <button
-        type="button"
-        data-attachment-original-action="true"
-        onClick={(event) => {
-          event.stopPropagation();
-          void handleOpenOriginal();
-        }}
-        disabled={isDownloading}
-        className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-[10px] font-semibold text-white/92 shadow-lg shadow-black/20 backdrop-blur-md transition hover:bg-black/65 disabled:cursor-wait disabled:opacity-70"
-        aria-label={`Open original ${attachment.name}`}
-      >
-        {isDownloading ? <LoaderCircle className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
-        <span>Open original</span>
-        {sizeLabel ? <span className="font-medium opacity-75">{sizeLabel}</span> : null}
-      </button>
-    );
-  }
-
-  if (variant === 'menu') {
-    const menuButtonClass = 'app-transient-row app-transient-action-row flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-55';
-    return (
-      <div className="flex min-w-[170px] flex-col gap-1">
-        <button
-          type="button"
-          onClick={() => void handleDownload()}
-          disabled={isDownloading}
-          className={menuButtonClass}
-          aria-label={`Download ${attachment.name}`}
-        >
-          <Download className="app-transient-action-icon" />
-          <span className="app-transient-action-label">{downloadedPath ? 'Download again' : 'Download'}</span>
-        </button>
-        {canOpen ? (
-          <button
-            type="button"
-            onClick={() => void handleOpen()}
-            className={menuButtonClass}
-            aria-label={`Open ${attachment.name} with local app`}
-          >
-            <ExternalLink className="app-transient-action-icon" />
-            <span className="app-transient-action-label">Open with local app</span>
-          </button>
-        ) : null}
-        {isDownloading ? <span className="app-transient-muted app-transient-status px-2.5 pb-1">Downloading…</span> : null}
-        {downloadedPath && !isDownloading ? <span className="app-transient-muted app-transient-status px-2.5 pb-1">Downloaded</span> : null}
-        {error ? <span className="app-error-text app-transient-status max-w-[190px] px-2.5 pb-1 text-rose-300">{error}</span> : null}
-      </div>
-    );
-  }
-
-  const actionButtonClass = 'h-7 w-7 rounded-full p-0';
-
-  return (
-    <div className="flex shrink-0 flex-col items-end gap-1">
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          variant="quiet"
-          size="icon"
-          onClick={() => void handleDownload()}
-          disabled={isDownloading}
-          className={actionButtonClass}
-          aria-label={`Download ${attachment.name}`}
-          title={downloadedPath ? 'Downloaded to Downloads' : 'Download'}
-        >
-          <Download className="h-3.5 w-3.5" />
-        </Button>
-        {canOpen ? (
-          <Button
-            type="button"
-            variant="quiet"
-            size="icon"
-            onClick={() => void handleOpen()}
-            className={actionButtonClass}
-            aria-label={`Open ${attachment.name} with local app`}
-            title="Open with local app"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Button>
-        ) : null}
-      </div>
-      {isDownloading ? <span className="text-[10px] text-slate-400">Downloading…</span> : null}
-      {downloadedPath && !isDownloading ? <span className="text-[10px] text-slate-400">Downloaded</span> : null}
-      {error ? <span className="app-error-text max-w-[160px] text-right text-[10px] text-rose-300">{error}</span> : null}
-    </div>
-  );
-}
 
 function PortalLayer({ children }: { children: ReactNode }) {
   if (typeof document === 'undefined' || !document.body) return <>{children}</>;
@@ -443,12 +268,16 @@ function AttachmentImageCard({
   ) => void;
 }) {
   const attachmentId = recoverableAttachmentId(attachment);
+  const previewCacheId = attachmentId
+    ? cloudAttachmentPreviewCacheId(attachmentId, attachment.previewAttachmentId)
+    : null;
+  const [cachedLocalPath, setCachedLocalPath] = useState<string | null>(null);
   const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => recoveredAttachmentPreviewUrl(attachmentId));
   const [remotePreviewUrl, setRemotePreviewUrl] = useState<string | null>(null);
   const [failedPreviewUrls, setFailedPreviewUrls] = useState<string[]>([]);
   const [previewUnavailable, setPreviewUnavailable] = useState(false);
   const previewLeaseRef = useRef<CloudAttachmentPreviewLease | null>(null);
-  const directPreviewUrl = attachmentPreviewUrl(attachment);
+  const directPreviewUrl = attachmentPreviewUrl(cachedLocalPath ? { ...attachment, localPath: cachedLocalPath } : attachment);
   const usableRecoveredPreviewUrl = recoveredPreviewUrl && !failedPreviewUrls.includes(recoveredPreviewUrl) ? recoveredPreviewUrl : null;
   const usableRemotePreviewUrl = remotePreviewUrl && !failedPreviewUrls.includes(remotePreviewUrl) ? remotePreviewUrl : null;
   const usableDirectPreviewUrl = directPreviewUrl && !failedPreviewUrls.includes(directPreviewUrl) ? directPreviewUrl : null;
@@ -464,6 +293,15 @@ function AttachmentImageCard({
     if (usableRecoveredPreviewUrl || usableRemotePreviewUrl || usableDirectPreviewUrl || previewUnavailable || attachment.kind !== 'image' || !attachmentId) return;
     const controller = new AbortController();
     void (async () => {
+      if (previewCacheId) {
+        const cached = await loadCachedCloudAttachmentLocalPath(previewCacheId, attachment.name);
+        if (controller.signal.aborted) return;
+        if (cached) {
+          setCachedLocalPath(cached);
+          setPreviewUnavailable(false);
+          return;
+        }
+      }
       const session = await loadSession();
       if (!session?.token || controller.signal.aborted) {
         if (!controller.signal.aborted) setPreviewUnavailable(true);
@@ -484,6 +322,7 @@ function AttachmentImageCard({
         attachment: {
           attachmentId: attachment.attachmentId ?? '',
           previewAttachmentId: attachment.previewAttachmentId ?? null,
+          name: attachment.name,
           kind: 'image',
         },
         signal: controller.signal,
@@ -507,7 +346,7 @@ function AttachmentImageCard({
         }
       });
     return () => controller.abort();
-  }, [attachment, attachmentId, previewUnavailable, usableDirectPreviewUrl, usableRecoveredPreviewUrl, usableRemotePreviewUrl]);
+  }, [attachment, attachmentId, previewCacheId, previewUnavailable, usableDirectPreviewUrl, usableRecoveredPreviewUrl, usableRemotePreviewUrl]);
 
   useEffect(() => {
     return () => {

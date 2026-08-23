@@ -18,7 +18,7 @@ import type {
 import {
   loadSession,
 } from './session';
-import { loadChatSyncLocalState } from '@/lib/desktopChatSync';
+import { loadChatSyncCursor } from '@/lib/desktopChatSync';
 
 type SyncCloudCollaborationDiff =
   CloudMessageSyncController['syncCloudCollaborationDiff'];
@@ -143,7 +143,7 @@ export function useCloudRealtimeMessages({
         const session = await loadSession();
         if (!session?.token || cancelled) return;
         await syncCloudCollaborationDiffRef.current();
-        const local = await loadChatSyncLocalState(accountIdAtOpen);
+        const local = await loadChatSyncCursor(accountIdAtOpen);
         if (!local?.cursor || cancelled) {
           throw new Error('Reliable chat cursor is unavailable after bootstrap.');
         }
@@ -191,7 +191,7 @@ export function useCloudRealtimeMessages({
             if (frame.type !== 'event' || typeof frame.stream_seq !== 'number') return;
             void syncCloudCollaborationDiffRef.current()
               .then(async () => {
-                const applied = await loadChatSyncLocalState(accountIdAtOpen);
+                const applied = await loadChatSyncCursor(accountIdAtOpen);
                 if (applied) lastAppliedSeq = applied.lastStreamSeq;
               })
               .catch(() => socket.close());

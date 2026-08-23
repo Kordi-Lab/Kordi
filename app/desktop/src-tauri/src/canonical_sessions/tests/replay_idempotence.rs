@@ -162,6 +162,37 @@ fn identical_message_replay_preserves_message_and_session_timestamps() {
 }
 
 #[test]
+fn versioned_message_replay_rejects_cross_session_movement() {
+    let conn = test_conn();
+    upsert_identity_in_db(&conn, identity_request()).expect("insert identity");
+    open_or_create_session_in_db(&conn, session_request()).expect("insert source session");
+    let mut target_session = session_request();
+    target_session.id = Some("session:group:target".to_string());
+    target_session.title = Some("target".to_string());
+    open_or_create_session_in_db(&conn, target_session).expect("insert target session");
+
+    let mut target_message = message_request();
+    target_message.id = Some("msg:cloud:target-existing".to_string());
+    target_message.session_id = "session:group:target".to_string();
+    target_message.source_event_id = Some("cloud-group:target-existing".to_string());
+    upsert_message_in_db(&conn, target_message).expect("insert target message");
+    upsert_message_in_db(&conn, message_request()).expect("insert source message");
+
+    let mut updated = message_request();
+    updated.session_id = "session:group:target".to_string();
+    updated.content_text = "updated replay".to_string();
+    updated.source_event_id = Some("cloud-group:wire-replay:2".to_string());
+    let error = upsert_message_in_db(&conn, updated).expect_err("reject message movement");
+    let persisted = select_message(&conn, "msg:cloud:replay")
+        .expect("read source message")
+        .expect("source message remains");
+
+    assert_eq!(error, "Canonical message session cannot change");
+    assert_eq!(persisted.session_id, "session:group:replay");
+    assert_eq!(persisted.content_text, "hello from replay");
+}
+
+#[test]
 fn delayed_processing_fallback_does_not_regress_terminal_agent_response() {
     let conn = test_conn();
     upsert_identity_in_db(&conn, identity_request()).expect("insert identity");

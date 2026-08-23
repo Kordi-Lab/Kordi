@@ -112,6 +112,10 @@ test('cloud realtime WebSockets stay off for local SSH tunnel tests', () => {
   assert.equal(cloudRealtimeWebSocketEnabled('https://kordi.ai'), true);
   assert.equal(cloudRealtimeWebSocketEnabled('http://127.0.0.1:17081'), false);
   assert.equal(cloudRealtimeWebSocketEnabled('http://localhost:17081'), false);
+  assert.equal(cloudRealtimeWebSocketEnabled('http://127.0.0.1:17081', {
+    DEV: true,
+    VITE_KORDI_ENABLE_LOOPBACK_REALTIME: '1',
+  }), true);
 });
 
 test('cloud WebSocket URL derives from the cloud API origin', () => {

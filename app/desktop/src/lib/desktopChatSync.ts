@@ -9,6 +9,33 @@ export type ChatSyncLocalState = {
   messages: ChatSyncMessage[];
 };
 
+export type ChatSyncCursorState = {
+  accountId: string;
+  cursor: string | null;
+  lastStreamSeq: number;
+};
+
+export type ChatSyncConversationHead = {
+  conversationId: string;
+  latestMessageSequence: number;
+};
+
+export type ChatSyncApplyResult = ChatSyncCursorState & {
+  changedConversationHeads: ChatSyncConversationHead[];
+};
+
+export type ChatSyncConversationCoverage = {
+  conversationId: string;
+  earliestSequence: number;
+  latestSequence: number;
+  messageCount: number;
+};
+
+export type ChatSyncMessageRef = Pick<
+  ChatSyncMessage,
+  'id' | 'client_message_id' | 'conversation_id'
+>;
+
 export type ApplyChatSyncRequest = {
   accountId: string;
   bootstrap: boolean;
@@ -39,9 +66,32 @@ export async function loadChatSyncLocalState(accountId: string) {
   return invokeDesktop<ChatSyncLocalState>('desktop_chat_sync_load', { accountId });
 }
 
+export async function loadChatSyncCursor(accountId: string) {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<ChatSyncCursorState>('desktop_chat_sync_cursor', { accountId });
+}
+
+export async function loadChatSyncCoverage(accountId: string) {
+  if (!isNativeDesktopShell()) return [];
+  return invokeDesktop<ChatSyncConversationCoverage[]>('desktop_chat_sync_coverage', { accountId });
+}
+
+export async function loadChatSyncConversations(accountId: string) {
+  if (!isNativeDesktopShell()) return [];
+  return invokeDesktop<ChatSyncConversation[]>('desktop_chat_sync_conversations', { accountId });
+}
+
+export async function loadChatSyncMessageRefs(accountId: string, conversationIds: string[]) {
+  if (!isNativeDesktopShell() || conversationIds.length === 0) return [];
+  return invokeDesktop<ChatSyncMessageRef[]>('desktop_chat_sync_message_refs', {
+    accountId,
+    conversationIds,
+  });
+}
+
 export async function applyChatSyncLocalBatch(request: ApplyChatSyncRequest) {
   if (!isNativeDesktopShell()) return null;
-  return invokeDesktop<ChatSyncLocalState>('desktop_chat_sync_apply', { request });
+  return invokeDesktop<ChatSyncApplyResult>('desktop_chat_sync_apply', { request });
 }
 
 export async function enqueueChatSyncOutbox(

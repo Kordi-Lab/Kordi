@@ -205,6 +205,7 @@ final class AppModel: ObservableObject {
     private var conversationLoadCounts: [String: Int] = [:]
     private var conversationHistoryBeforeSequence: [String: Int64] = [:]
     private var conversationsWithEarlierHistory = Set<String>()
+    private var conversationsWithEarlierCachedHistory = Set<String>()
     private var conversationReadPresentations: [UUID: ConversationReadPresentation] = [:]
     private var pendingVisibleReadMessageBySessionID: [String: String] = [:]
     private var persistedVisibleReadMessageBySessionID: [String: String] = [:]
@@ -437,6 +438,7 @@ final class AppModel: ObservableObject {
         conversationLoadCounts = [:]
         conversationHistoryBeforeSequence = [:]
         conversationsWithEarlierHistory = []
+        conversationsWithEarlierCachedHistory = []
         conversationReadPresentations = [:]
         pendingVisibleReadMessageBySessionID = [:]
         persistedVisibleReadMessageBySessionID = [:]
@@ -966,12 +968,18 @@ final class AppModel: ObservableObject {
     func hydrateCachedMessages(for conversation: ConversationSummary) {
         guard messagesByConversation[conversation.id] == nil,
               let accountId = account?.accountId else { return }
-        let cached = cache?.loadMessages(
+        let page = cache?.loadMessagePage(
             accountId: accountId,
-            conversationId: conversation.id
-        ) ?? []
-        if !cached.isEmpty {
-            messagesByConversation[conversation.id] = cached
+            conversationId: conversation.id,
+            limit: ConversationTimelineWindow.initialLimit
+        ) ?? LocalMessagePage(messages: [], hasMore: false)
+        if !page.messages.isEmpty {
+            messagesByConversation[conversation.id] = page.messages
+        }
+        if page.hasMore {
+            conversationsWithEarlierCachedHistory.insert(conversation.id)
+        } else {
+            conversationsWithEarlierCachedHistory.remove(conversation.id)
         }
     }
 
@@ -1051,7 +1059,8 @@ final class AppModel: ObservableObject {
     }
 
     func hasEarlierMessages(for conversation: ConversationSummary) -> Bool {
-        conversationsWithEarlierHistory.contains(conversation.id)
+        conversationsWithEarlierCachedHistory.contains(conversation.id)
+            || conversationsWithEarlierHistory.contains(conversation.id)
     }
 
     private func projectedMessages(
@@ -1125,7 +1134,28 @@ final class AppModel: ObservableObject {
     }
 
     func loadEarlierMessages(for conversation: ConversationSummary) async {
-        guard let token, let account else { return }
+        guard let account else { return }
+        if conversationsWithEarlierCachedHistory.contains(conversation.id),
+           let oldest = messagesByConversation[conversation.id]?.min(by: ChatMessage.timelinePrecedes),
+           let page = cache?.loadMessagePage(
+               accountId: account.accountId,
+               conversationId: conversation.id,
+               before: oldest,
+               limit: ConversationTimelineWindow.pageSize
+           ) {
+            if page.hasMore {
+                conversationsWithEarlierCachedHistory.insert(conversation.id)
+            } else {
+                conversationsWithEarlierCachedHistory.remove(conversation.id)
+            }
+            let existing = messagesByConversation[conversation.id, default: []]
+            let merged = Self.mergePartialProjection(page.messages, preserving: existing)
+            if merged != existing {
+                messagesByConversation[conversation.id] = merged
+                return
+            }
+        }
+        guard let token else { return }
         do {
             while conversationsWithEarlierHistory.contains(conversation.id),
                   let beforeSequence = conversationHistoryBeforeSequence[conversation.id] {
@@ -2269,24 +2299,42 @@ final class AppModel: ObservableObject {
         _ attachment: ChatAttachment,
         allowsPreviewFallback: Bool
     ) async -> URL? {
-        if let cached = await attachmentFileStore.cachedURL(for: attachment.attachmentId) { return cached }
+        guard let accountId = account?.accountId else {
+            errorMessage = AttachmentTransferError.missingSession.localizedDescription
+            return nil
+        }
+        if let cached = await attachmentFileStore.cachedURL(for: attachment, accountId: accountId) {
+            return cached
+        }
         guard let token else {
             if allowsPreviewFallback,
-               let fallback = await storeInlinePreview(for: attachment) {
+               let fallback = await storeInlinePreview(for: attachment, accountId: accountId) {
                 return fallback
             }
             errorMessage = AttachmentTransferError.missingSession.localizedDescription
             return nil
         }
         do {
-            let data = try await api.downloadAttachmentContent(token: token, attachmentId: attachment.attachmentId)
-            let url = try await attachmentFileStore.store(data, attachment: attachment)
+            let data = if attachment.kind == .image,
+                          let preview = try? await api.downloadAttachmentPreviewContent(
+                            token: token,
+                            attachmentId: attachment.attachmentId
+                          ) {
+                preview
+            } else {
+                try await api.downloadAttachmentContent(token: token, attachmentId: attachment.attachmentId)
+            }
+            let url = try await attachmentFileStore.store(
+                data,
+                attachment: attachment,
+                accountId: accountId
+            )
             cloudConnectionState = .connected
             return url
         } catch {
             recordCloudConnectionFailure(error)
             if allowsPreviewFallback,
-               let fallback = await storeInlinePreview(for: attachment) {
+               let fallback = await storeInlinePreview(for: attachment, accountId: accountId) {
                 return fallback
             }
             errorMessage = userFacing(error, fallback: "Could not download \(attachment.name).")
@@ -2294,10 +2342,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func storeInlinePreview(for attachment: ChatAttachment) async -> URL? {
+    private func storeInlinePreview(for attachment: ChatAttachment, accountId: String) async -> URL? {
         guard let data = AttachmentPreviewDataURL.decode(attachment.previewURL),
               data.count <= PendingAttachmentLoader.maximumAttachmentBytes else { return nil }
-        return try? await attachmentFileStore.store(data, attachment: attachment)
+        return try? await attachmentFileStore.store(
+            data,
+            attachment: attachment,
+            accountId: accountId
+        )
     }
 
     func markConversationRead(_ conversation: ConversationSummary) async {
@@ -3598,6 +3650,7 @@ final class AppModel: ObservableObject {
             id: message.messageId,
             clientMessageId: message.clientMessageId,
             conversationId: conversation.id,
+            conversationSequence: message.conversationSequence,
             author: author,
             authorName: author == .me ? "You" : conversation.displayName,
             text: CloudMessageCodec.displayText(message.body),
@@ -3649,6 +3702,7 @@ final class AppModel: ObservableObject {
                     memberJoinMessagesByID[messageID] = ChatMessage(
                         id: messageID,
                         conversationId: conversation.id,
+                        conversationSequence: wire.conversationSequence,
                         author: envelope.actor.accountId == ownAccountId ? .me : .person,
                         authorName: inviterName,
                         text: "\(memberName) joined the group, invited by \(inviterName).",
@@ -3689,6 +3743,7 @@ final class AppModel: ObservableObject {
                 id: messageId,
                 clientMessageId: wire.clientMessageId,
                 conversationId: conversation.id,
+                conversationSequence: wire.conversationSequence,
                 author: author,
                 authorName: author == .me
                     ? "You"
@@ -3737,6 +3792,7 @@ final class AppModel: ObservableObject {
                 id: messageId,
                 clientMessageId: wire.clientMessageId,
                 conversationId: conversation.id,
+                conversationSequence: wire.conversationSequence,
                 author: author,
                 authorName: author == .me
                     ? "You"
@@ -3750,7 +3806,7 @@ final class AppModel: ObservableObject {
             )
         }
         return (chatMessages + callMessages + Array(memberJoinMessagesByID.values))
-            .sorted { $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id) }
+            .sorted(by: ChatMessage.timelinePrecedes)
     }
 
     /// Realtime frames wake the durable HTTP cursor reader immediately. This

@@ -181,6 +181,7 @@ export default function AttachmentMediaWindow() {
         attachment: {
           attachmentId,
           previewAttachmentId: attachment.previewAttachmentId ?? null,
+          name: attachment.name,
           kind: 'image',
         },
         signal: controller.signal,

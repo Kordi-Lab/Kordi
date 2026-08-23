@@ -133,11 +133,13 @@ export async function applyCloudGroupMessageControl({
     candidate.id === message.id
       || (ownAgentProcessingId !== null && candidate.id === ownAgentProcessingId)
   )) ?? null;
-  const messageAlreadyExists = stateOps.incomingAlreadyApplied(
-    existingCloudGroupMessage,
-    agentDeliveryState ?? humanOutgoingDeliveryState,
-    message.messageKind,
-  );
+  const messageAlreadyExists = existingCloudGroupMessage?.sourceTransport === incomingSourceTransport
+    && existingCloudGroupMessage.sourceEventId === incomingSourceEventId
+    && stateOps.incomingAlreadyApplied(
+      existingCloudGroupMessage,
+      agentDeliveryState ?? humanOutgoingDeliveryState,
+      message.messageKind,
+    );
   if (senderIsAgent) {
     const owner = participantByAccount.get(message.senderAccountId);
     const senderIdentity = await upsertCanonicalIdentityFast({

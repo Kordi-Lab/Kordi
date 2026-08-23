@@ -9,6 +9,7 @@ export type CloudApiEnvironment = {
   VITE_KORDI_CLOUD_API_BASE?: string;
   VITE_KORDI_DEV_PROFILE?: string;
   VITE_KORDI_PRODUCTION_DEBUG_ACK?: string;
+  VITE_KORDI_ENABLE_LOOPBACK_REALTIME?: string;
 };
 
 function cleanBaseUrl(value: string): string {
@@ -83,10 +84,21 @@ export function cloudApiBaseUrl(env?: CloudApiEnvironment): string {
   return DEFAULT_CLOUD_API_BASE_URL;
 }
 
-export function cloudRealtimeWebSocketEnabled(baseUrl = cloudApiBaseUrl()): boolean {
+export function cloudRealtimeWebSocketEnabled(
+  baseUrl = cloudApiBaseUrl(),
+  env?: CloudApiEnvironment,
+): boolean {
+  const meta = typeof import.meta !== 'undefined'
+    ? (import.meta as ImportMeta & { env?: CloudApiEnvironment }).env
+    : undefined;
+  const activeEnv = env ?? meta;
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
-    return host !== '127.0.0.1' && host !== 'localhost' && host !== '::1';
+    const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
+    return !loopback || Boolean(
+      activeEnv?.DEV
+      && activeEnv.VITE_KORDI_ENABLE_LOOPBACK_REALTIME?.trim() === '1',
+    );
   } catch {
     return true;
   }

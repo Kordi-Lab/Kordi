@@ -1,6 +1,6 @@
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import type { MessageAttachment } from '@/kordi-app/types';
-import { storeDesktopChatAttachment } from '@/lib/desktop';
+import { isNativeDesktopShell, storeDesktopChatAttachment } from '@/lib/desktop';
 import type {
   CloudAuthClient,
   CloudMessageAttachment,
@@ -10,6 +10,8 @@ import {
   cacheCloudAttachmentLocalPath,
   cachedCloudAttachmentLocalPath as cachedLocalPath,
   clearCloudAttachmentLocalPathCache,
+  cloudAttachmentPreviewCacheId,
+  persistCloudAttachmentBytes,
 } from './cloudAttachmentLocalPathCache';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
 
@@ -36,6 +38,7 @@ export type CloudAttachmentPreviewLease = {
   release(): void;
 };
 
+type PreviewDownloadClient = Pick<CloudAuthClient, 'downloadAttachmentContent'> & Partial<Pick<CloudAuthClient, 'downloadAttachmentPreviewContent'>>;
 const cloudAttachmentPreviewUrlCache = new Map<string, CloudAttachmentPreviewResource>();
 let cloudAttachmentPreviewLoaderEpoch = 0;
 
@@ -277,23 +280,30 @@ export async function loadCloudAttachmentPreview({
   createObjectUrl = (blob) => URL.createObjectURL(blob),
 }: {
   token: string;
-  client: Pick<CloudAuthClient, 'downloadAttachmentContent'>;
-  attachment: Pick<CloudMessageAttachment, 'attachmentId' | 'previewAttachmentId' | 'kind'>;
+  client: PreviewDownloadClient;
+  attachment: Pick<CloudMessageAttachment, 'attachmentId' | 'previewAttachmentId' | 'name' | 'kind'>;
   signal?: AbortSignal;
   createObjectUrl?: (blob: Blob) => string;
 }) {
   if (attachment.kind !== 'image') return null;
   const contentAttachmentId = attachment.previewAttachmentId?.trim() || attachment.attachmentId?.trim();
   if (!contentAttachmentId) return null;
-  const blob = await client.downloadAttachmentContent(token, contentAttachmentId, signal);
+  const previewBlob = client.downloadAttachmentPreviewContent
+    ? await client.downloadAttachmentPreviewContent(token, contentAttachmentId, signal).catch(() => null)
+    : null;
+  const blob = previewBlob
+    ?? await client.downloadAttachmentContent(token, contentAttachmentId, signal);
   if (signal?.aborted) throw abortError();
+  if (isNativeDesktopShell()) {
+    await persistCloudAttachmentBytes(cloudAttachmentPreviewCacheId(attachment.attachmentId, attachment.previewAttachmentId), attachment.name, blob);
+  }
   return createObjectUrl(blob);
 }
 
 export async function loadVisibleCloudAttachmentPreview(input: {
   token: string;
-  client: Pick<CloudAuthClient, 'downloadAttachmentContent'>;
-  attachment: Pick<CloudMessageAttachment, 'attachmentId' | 'previewAttachmentId' | 'kind'>;
+  client: PreviewDownloadClient;
+  attachment: Pick<CloudMessageAttachment, 'attachmentId' | 'previewAttachmentId' | 'name' | 'kind'>;
   signal?: AbortSignal;
 }) {
   const cacheId = input.attachment.previewAttachmentId?.trim() || input.attachment.attachmentId?.trim();

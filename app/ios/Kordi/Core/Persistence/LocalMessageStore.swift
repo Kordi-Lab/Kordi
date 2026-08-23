@@ -1,6 +1,11 @@
 import Foundation
 import SwiftData
 
+struct LocalMessagePage {
+    let messages: [ChatMessage]
+    let hasMore: Bool
+}
+
 private func scopedCacheRecordID(accountId: String, entityId: String) -> String {
     "\(accountId.count):\(accountId)\(entityId)"
 }
@@ -86,6 +91,7 @@ final class CachedMessageRecord {
     var accountId: String = ""
     var messageId: String = ""
     var conversationId: String
+    var conversationSequence: Int64?
     var author: String
     var authorName: String
     var text: String
@@ -107,6 +113,7 @@ final class CachedMessageRecord {
         self.accountId = accountId
         messageId = message.id
         conversationId = message.conversationId
+        conversationSequence = message.conversationSequence
         author = message.author.rawValue
         authorName = message.authorName
         text = message.text
@@ -126,6 +133,7 @@ final class CachedMessageRecord {
 
     func update(from message: ChatMessage) {
         conversationId = message.conversationId
+        conversationSequence = message.conversationSequence
         author = message.author.rawValue
         authorName = message.authorName
         text = message.text
@@ -150,6 +158,7 @@ final class CachedMessageRecord {
         return ChatMessage(
             id: messageId,
             conversationId: conversationId,
+            conversationSequence: conversationSequence,
             author: author,
             authorName: authorName,
             text: text,
@@ -225,9 +234,118 @@ final class LocalMessageStore {
             },
             sortBy: [SortDescriptor(\.createdAt)]
         )
-        let messages = (try? context.fetch(descriptor))?.compactMap(\.value) ?? []
+        let messages = ((try? context.fetch(descriptor))?.compactMap(\.value) ?? [])
+            .sorted(by: ChatMessage.timelinePrecedes)
         messageFingerprints[accountId, default: [:]][conversationId] = fingerprint(messages)
         return messages
+    }
+
+    func loadMessagePage(
+        accountId: String,
+        conversationId: String,
+        before: ChatMessage? = nil,
+        limit: Int
+    ) -> LocalMessagePage {
+        guard !accountId.isEmpty, limit > 0 else {
+            return LocalMessagePage(messages: [], hasMore: false)
+        }
+        let scope = accountId
+        let conversation = conversationId
+        let canonicalDescriptor: FetchDescriptor<CachedMessageRecord>
+        let legacyDescriptor: FetchDescriptor<CachedMessageRecord>
+        if let before, let beforeSequence = before.conversationSequence {
+            canonicalDescriptor = FetchDescriptor(
+                predicate: #Predicate {
+                    $0.accountId == scope
+                        && $0.conversationId == conversation
+                        && ($0.conversationSequence ?? 0) > 0
+                        && ($0.conversationSequence ?? 0) < beforeSequence
+                },
+                sortBy: [
+                    SortDescriptor(\.conversationSequence, order: .reverse),
+                    SortDescriptor(\.messageId, order: .reverse),
+                ]
+            )
+            let beforeDate = before.createdAt
+            let beforeMessageId = before.id
+            legacyDescriptor = FetchDescriptor(
+                predicate: #Predicate {
+                    $0.accountId == scope
+                        && $0.conversationId == conversation
+                        && $0.conversationSequence == nil
+                        && ($0.createdAt < beforeDate
+                            || ($0.createdAt == beforeDate && $0.messageId < beforeMessageId))
+                },
+                sortBy: [
+                    SortDescriptor(\.createdAt, order: .reverse),
+                    SortDescriptor(\.messageId, order: .reverse),
+                ]
+            )
+        } else if let before {
+            let beforeDate = before.createdAt
+            let beforeMessageId = before.id
+            canonicalDescriptor = FetchDescriptor(
+                predicate: #Predicate {
+                    $0.accountId == scope
+                        && $0.conversationId == conversation
+                        && $0.conversationSequence != nil
+                        && ($0.createdAt < beforeDate
+                            || ($0.createdAt == beforeDate && $0.messageId < beforeMessageId))
+                },
+                sortBy: [
+                    SortDescriptor(\.createdAt, order: .reverse),
+                    SortDescriptor(\.messageId, order: .reverse),
+                ]
+            )
+            legacyDescriptor = FetchDescriptor(
+                predicate: #Predicate {
+                    $0.accountId == scope
+                        && $0.conversationId == conversation
+                        && $0.conversationSequence == nil
+                        && ($0.createdAt < beforeDate
+                            || ($0.createdAt == beforeDate && $0.messageId < beforeMessageId))
+                },
+                sortBy: [
+                    SortDescriptor(\.createdAt, order: .reverse),
+                    SortDescriptor(\.messageId, order: .reverse),
+                ]
+            )
+        } else {
+            canonicalDescriptor = FetchDescriptor(
+                predicate: #Predicate {
+                    $0.accountId == scope
+                        && $0.conversationId == conversation
+                        && $0.conversationSequence != nil
+                },
+                sortBy: [
+                    SortDescriptor(\.conversationSequence, order: .reverse),
+                    SortDescriptor(\.messageId, order: .reverse),
+                ]
+            )
+            legacyDescriptor = FetchDescriptor(
+                predicate: #Predicate {
+                    $0.accountId == scope
+                        && $0.conversationId == conversation
+                        && $0.conversationSequence == nil
+                },
+                sortBy: [
+                    SortDescriptor(\.createdAt, order: .reverse),
+                    SortDescriptor(\.messageId, order: .reverse),
+                ]
+            )
+        }
+        var boundedCanonical = canonicalDescriptor
+        var boundedLegacy = legacyDescriptor
+        boundedCanonical.fetchLimit = limit + 1
+        boundedLegacy.fetchLimit = limit + 1
+        let messages = [boundedCanonical, boundedLegacy]
+            .flatMap { (try? context.fetch($0)) ?? [] }
+            .compactMap(\.value)
+            .sorted(by: ChatMessage.timelinePrecedes)
+        return LocalMessagePage(
+            messages: Array(messages.suffix(limit)),
+            hasMore: messages.count > limit
+        )
     }
 
     func saveConversations(_ conversations: [ConversationSummary], accountId: String) {
@@ -263,15 +381,14 @@ final class LocalMessageStore {
                 }
             )
             let existing = try context.fetch(descriptor)
-            var existingById = Dictionary(uniqueKeysWithValues: existing.map { ($0.messageId, $0) })
+            let existingById = Dictionary(uniqueKeysWithValues: existing.map { ($0.messageId, $0) })
             for message in messages {
-                if let record = existingById.removeValue(forKey: message.id) {
+                if let record = existingById[message.id] {
                     if record.value != message { record.update(from: message) }
                 } else {
                     context.insert(CachedMessageRecord(accountId: accountId, message: message))
                 }
             }
-            for stale in existingById.values { context.delete(stale) }
             try context.save()
             messageFingerprints[accountId, default: [:]][conversationId] = nextFingerprint
         } catch {

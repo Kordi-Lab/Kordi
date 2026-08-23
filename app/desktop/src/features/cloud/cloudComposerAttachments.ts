@@ -5,7 +5,10 @@ import type {
   SendCloudMessageAttachmentInput,
 } from './authClient';
 import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
-import { cacheCloudAttachmentLocalPath } from './cloudAttachmentLocalPathCache';
+import {
+  cacheCloudAttachmentLocalPath,
+  persistCloudAttachmentPath,
+} from './cloudAttachmentLocalPathCache';
 import {
   isNativeAttachmentUploadAvailable,
   uploadNativeCloudAttachment,
@@ -32,7 +35,8 @@ export async function uploadComposerAttachments({
   useNativeUpload = isNativeAttachmentUploadAvailable(),
 }: {
   token: string;
-  client: Pick<CloudAuthClient, 'uploadAttachment'>;
+  client: Pick<CloudAuthClient, 'uploadAttachment'>
+    & Partial<Pick<CloudAuthClient, 'updateAttachmentPreview'>>;
   attachments: AttachmentItem[];
   readAttachment?: (path: string) => Promise<number[]>;
   createPreviewDataUrl?: PreviewGenerator;
@@ -63,6 +67,10 @@ export async function uploadComposerAttachments({
       summary = await client.uploadAttachment(token, blob);
     }
     cacheCloudAttachmentLocalPath(summary.attachmentId, attachment.path);
+    await persistCloudAttachmentPath(summary.attachmentId, attachment.name, attachment.path);
+    if (previewUrl && client.updateAttachmentPreview) {
+      await client.updateAttachmentPreview(token, summary.attachmentId, previewUrl).catch(() => undefined);
+    }
     uploaded.push({
       attachmentId: summary.attachmentId,
       name: attachment.name,

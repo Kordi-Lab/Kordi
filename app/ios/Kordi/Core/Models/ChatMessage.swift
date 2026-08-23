@@ -824,6 +824,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     let id: String
     let clientMessageId: String?
     let conversationId: String
+    let conversationSequence: Int64?
     let author: MessageAuthor
     let authorName: String
     var text: String
@@ -857,10 +858,21 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         isAgentModelChangeNotice || isGroupMemberJoinNotice
     }
 
+    static func timelinePrecedes(_ left: ChatMessage, _ right: ChatMessage) -> Bool {
+        if let leftSequence = left.conversationSequence,
+           let rightSequence = right.conversationSequence,
+           leftSequence != rightSequence {
+            return leftSequence < rightSequence
+        }
+        if left.createdAt != right.createdAt { return left.createdAt < right.createdAt }
+        return left.id < right.id
+    }
+
     init(
         id: String,
         clientMessageId: String? = nil,
         conversationId: String,
+        conversationSequence: Int64? = nil,
         author: MessageAuthor,
         authorName: String,
         text: String,
@@ -881,6 +893,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.id = id
         self.clientMessageId = clientMessageId
         self.conversationId = conversationId
+        self.conversationSequence = conversationSequence
         self.author = author
         self.authorName = authorName
         self.text = text
@@ -932,7 +945,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, clientMessageId, conversationId, author, authorName, text, createdAt, deliveryState, errorMessage
+        case id, clientMessageId, conversationId, conversationSequence, author, authorName, text, createdAt, deliveryState, errorMessage
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, messageAction
         case messageKind
         case agentExecution
@@ -945,6 +958,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         id = try container.decode(String.self, forKey: .id)
         clientMessageId = try container.decodeIfPresent(String.self, forKey: .clientMessageId)
         conversationId = try container.decode(String.self, forKey: .conversationId)
+        conversationSequence = try container.decodeIfPresent(Int64.self, forKey: .conversationSequence)
         author = try container.decode(MessageAuthor.self, forKey: .author)
         authorName = try container.decode(String.self, forKey: .authorName)
         text = try container.decode(String.self, forKey: .text)

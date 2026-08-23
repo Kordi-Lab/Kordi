@@ -40,7 +40,6 @@ const cloudReadReceiptsSource = () => readFileSync(
   new URL('../src/features/cloud/useCloudMessageReadReceipts.ts', import.meta.url),
   'utf8',
 );
-
 const account: CloudAccount = {
   accountId: 'acct_me',
   displayName: 'Me Cloud',
