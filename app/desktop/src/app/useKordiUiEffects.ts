@@ -9,7 +9,7 @@ import {
 } from '@/features/chat/draftSessions';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { transcriptIsAtLatest } from '@/features/cloud/activeConversationReadPolicy';
-import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, NavId, ResolvedThemeMode } from '@/kordi-app/types';
+import type { ComposerScope, ContactClass, DesktopAuthState, DesktopChatState, DesktopChatTurnSnapshot, EditFilePreview, NavId, ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 
 type UseKordiUiEffectsArgs = {
   isNativeShell: boolean;
@@ -34,7 +34,8 @@ type UseKordiUiEffectsArgs = {
   setChatComposerAttachments: Dispatch<SetStateAction<Array<{ id: string; name: string; path: string; kind: 'image' | 'file' }>>>;
   openComposerSelector: { scope: ComposerScope; type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking' } | null;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
-  themeMode: ResolvedThemeMode;
+  themeMode: ThemeMode;
+  resolvedThemeMode: ResolvedThemeMode;
   activeConversationUsesCollaboration: boolean;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
   setIsEditingDesktopSessionTitle: Dispatch<SetStateAction<boolean>>;
@@ -110,6 +111,7 @@ export function useKordiUiEffects({
   openComposerSelector,
   composerControlsRef,
   themeMode,
+  resolvedThemeMode,
   activeConversationUsesCollaboration,
   setDesktopSessionRenameDraft,
   setIsEditingDesktopSessionTitle,
@@ -178,16 +180,16 @@ export function useKordiUiEffects({
   }, [composerControlsRef, openComposerSelector, setOpenComposerSelector]);
 
   useEffect(() => {
-    document.body.classList.toggle('theme-light', themeMode === 'light');
-    document.body.classList.toggle('theme-dark', themeMode === 'dark');
-    document.documentElement.style.colorScheme = themeMode;
+    document.body.classList.toggle('theme-light', resolvedThemeMode === 'light');
+    document.body.classList.toggle('theme-dark', resolvedThemeMode === 'dark');
+    document.documentElement.style.colorScheme = resolvedThemeMode;
     void syncNativeWindowTheme(themeMode).catch(() => undefined);
 
     return () => {
       document.body.classList.remove('theme-light', 'theme-dark');
       document.documentElement.style.colorScheme = 'dark';
     };
-  }, [themeMode]);
+  }, [resolvedThemeMode, themeMode]);
 
   useEffect(() => {
     if (!isNativeShell || !desktopChatState?.activeSession) return;

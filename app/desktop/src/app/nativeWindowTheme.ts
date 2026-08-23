@@ -1,9 +1,9 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
-import type { ResolvedThemeMode } from '@/kordi-app/types';
+import type { ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 
 export type NativeWindowThemeTarget = {
-  setTheme: (theme: ResolvedThemeMode) => Promise<void>;
+  setTheme: (theme: ResolvedThemeMode | null) => Promise<void>;
 };
 
 function currentNativeWindow(): NativeWindowThemeTarget | null {
@@ -13,8 +13,8 @@ function currentNativeWindow(): NativeWindowThemeTarget | null {
 }
 
 export function syncNativeWindowTheme(
-  theme: ResolvedThemeMode,
+  theme: ThemeMode,
   target: NativeWindowThemeTarget | null = currentNativeWindow(),
 ): Promise<void> {
-  return target?.setTheme(theme) ?? Promise.resolve();
+  return target?.setTheme(theme === 'auto' ? null : theme) ?? Promise.resolve();
 }
