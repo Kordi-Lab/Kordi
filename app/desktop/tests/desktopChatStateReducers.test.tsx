@@ -17,11 +17,39 @@ import {
   mergeDesktopSessionSourceMessagesCache,
   mergeLatestDesktopChatState,
   mergeMappedSessionMessagesCache,
+  recentDesktopSessionIds,
   pruneDesktopSessionCacheByKnownSessions,
   pruneDesktopLiveTurnsByKnownSessions,
   pruneLocalSessionUnreadCounts,
   pruneQueuedDesktopMessagesByKnownSessions,
 } from '../src/features/chat/desktopChatStateReducers';
+
+test('recent desktop transcripts stay bounded and promote cache hits', () => {
+  let recent: readonly string[] = [];
+  for (let index = 0; index < 10; index += 1) {
+    recent = recentDesktopSessionIds(recent, `session-${index}`);
+  }
+  assert.deepEqual(recent, [
+    'session-2',
+    'session-3',
+    'session-4',
+    'session-5',
+    'session-6',
+    'session-7',
+    'session-8',
+    'session-9',
+  ]);
+  assert.deepEqual(recentDesktopSessionIds(recent, 'session-4'), [
+    'session-2',
+    'session-3',
+    'session-5',
+    'session-6',
+    'session-7',
+    'session-8',
+    'session-9',
+    'session-4',
+  ]);
+});
 
 function session(overrides: Partial<DesktopChatSessionSummary> = {}): DesktopChatSessionSummary {
   return {

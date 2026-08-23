@@ -182,6 +182,50 @@ export function mergeCanonicalMessagePage(store: CanonicalStore, page: Canonical
   };
 }
 
+export function retainCanonicalSessionPages(
+  store: CanonicalStore,
+  retainedSessionIds: ReadonlySet<string>,
+): CanonicalStore {
+  if (!store.catalog) return store;
+  const summaries = new Map(
+    store.catalog.summaries.map((summary) => [summary.sessionId, summary]),
+  );
+  let changed = false;
+  const messagesBySessionId = { ...store.messagesBySessionId };
+  const hydrationBySessionId = { ...store.hydrationBySessionId };
+  const hasOlderBySessionId = { ...store.hasOlderBySessionId };
+
+  for (const session of store.catalog.sessions) {
+    if (retainedSessionIds.has(session.id)) continue;
+    const summary = summaries.get(session.id);
+    const latestMessage = summary?.latestMessage;
+    const currentMessages = store.messagesBySessionId[session.id] ?? [];
+    const nextMessages = latestMessage
+      ? currentMessages.length === 1
+        && canonicalMessagesEqual(currentMessages[0], latestMessage)
+        ? currentMessages
+        : [latestMessage]
+      : currentMessages.length === 0 ? currentMessages : [];
+    const hasOlder = (summary?.messageCount ?? 0) > nextMessages.length;
+    if (nextMessages !== currentMessages) {
+      messagesBySessionId[session.id] = nextMessages;
+      changed = true;
+    }
+    if (store.hydrationBySessionId[session.id] !== 'cold') {
+      hydrationBySessionId[session.id] = 'cold';
+      changed = true;
+    }
+    if (store.hasOlderBySessionId[session.id] !== hasOlder) {
+      hasOlderBySessionId[session.id] = hasOlder;
+      changed = true;
+    }
+  }
+
+  return changed
+    ? { ...store, messagesBySessionId, hydrationBySessionId, hasOlderBySessionId }
+    : store;
+}
+
 export function canonicalStateFromStore(store: CanonicalStore): CanonicalSessionState | null {
   if (!store.catalog) return null;
   const sessionOrder = new Map(store.catalog.sessions.map((session, index) => [session.id, index]));

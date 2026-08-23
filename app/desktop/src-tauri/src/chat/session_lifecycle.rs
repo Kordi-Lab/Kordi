@@ -1,5 +1,6 @@
 //! Persisted desktop session loading, activation, and state projection.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use kordi_cli::desktop_runtime::DesktopRuntimeSession;
@@ -19,6 +20,34 @@ pub(super) fn session_exists_globally(session_id: &str) -> Result<bool, String> 
 
 fn is_internal_runtime_session_id(session_id: &str) -> bool {
     is_cloud_agent_runtime_session_id(session_id)
+        || agent_builder::is_agent_builder_session_id(session_id)
+}
+
+async fn retain_active_or_running_sessions(manager: &DesktopChatManager, active_session_id: &str) {
+    let running_session_ids = manager
+        .turns
+        .lock()
+        .await
+        .values()
+        .filter_map(|turn| {
+            turn.snapshot
+                .lock()
+                .ok()
+                .and_then(|snapshot| (!snapshot.completed).then(|| snapshot.session_id.clone()))
+        })
+        .collect::<HashSet<_>>();
+    manager.sessions.lock().await.retain(|session_id, _| {
+        should_retain_desktop_session(session_id, active_session_id, &running_session_ids)
+    });
+}
+
+fn should_retain_desktop_session(
+    session_id: &str,
+    active_session_id: &str,
+    running_session_ids: &HashSet<String>,
+) -> bool {
+    session_id == active_session_id
+        || running_session_ids.contains(session_id)
         || agent_builder::is_agent_builder_session_id(session_id)
 }
 
@@ -141,6 +170,7 @@ pub(super) async fn build_chat_state(
         if let Err(error) = crate::canonical_sessions::sync_desktop_chat_state(&state) {
             eprintln!("Unable to sync desktop chat into canonical sessions: {error}");
         }
+        retain_active_or_running_sessions(manager, &state.active_session_id).await;
         return Ok(state);
     }
 
@@ -232,5 +262,37 @@ pub(super) async fn build_chat_state(
             eprintln!("Unable to sync desktop chat into canonical sessions: {error}");
         }
     }
+    retain_active_or_running_sessions(manager, &state.active_session_id).await;
     Ok(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inactive_desktop_runtimes_are_disposable() {
+        let running = HashSet::from(["session-running".to_string()]);
+
+        assert!(should_retain_desktop_session(
+            "session-active",
+            "session-active",
+            &running,
+        ));
+        assert!(should_retain_desktop_session(
+            "session-running",
+            "session-active",
+            &running,
+        ));
+        assert!(should_retain_desktop_session(
+            "session:agent-builder:draft",
+            "session-active",
+            &running,
+        ));
+        assert!(!should_retain_desktop_session(
+            "session-idle",
+            "session-active",
+            &running,
+        ));
+    }
 }
