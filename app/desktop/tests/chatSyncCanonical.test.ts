@@ -7,12 +7,7 @@ import {
   type ChatSyncConversation,
   type ChatSyncMessage,
 } from '../src/features/cloud/authClient';
-import {
-  applyCloudSyncEventsToMessagesByPeer,
-  applyCloudSyncEventsToSessionTitles,
-} from '../src/features/cloud/cloudDiffSync';
-import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
-import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
+import { applyCloudSyncEventsToSessionTitles } from '../src/features/cloud/cloudDiffSync';
 import { cloudSyncCursorRequiresFallback } from '../src/features/cloud/cloudSyncCursorProgress';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/cloudSelfAgentCanonicalSync';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
@@ -299,69 +294,29 @@ test('canonical history snapshot reuses the source-device local message id', () 
   assert.deepEqual(plan.messageRequests, []);
 });
 
-test('canonical group receipts identify the actual readers instead of the first peer', () => {
+test('canonical group snapshots become read after any recipient reads without waiting for every member', () => {
   const groupConversation: ChatSyncConversation = {
     ...conversation,
     kind: 'group',
     members: [
       { ...conversation.members[0], last_delivered_sequence: 8, last_read_sequence: 8 },
-      { ...conversation.members[1], last_delivered_sequence: 8, last_read_sequence: 0 },
+      { ...conversation.members[1], last_delivered_sequence: 8, last_read_sequence: 8 },
       {
         account_id: 'acct_c',
         role: 'member',
         membership_state: 'active',
         version: 1,
-        last_delivered_sequence: 8,
-        last_read_sequence: 8,
+        last_delivered_sequence: 0,
+        last_read_sequence: 0,
         joined_at: '2026-08-10T07:00:00Z',
         left_at: null,
       },
     ],
-    legacy_session_id: 'session:group:reader-attribution',
     preferences: { ...conversation.preferences, account_id: 'acct_a' },
   };
-  const body = encodeCloudGroupControl({
-    kind: 'group-message',
-    groupId: groupConversation.legacy_session_id!,
-    groupTitle: 'Readers',
-    createdByAccountId: 'acct_a',
-    actor: { accountId: 'acct_a', displayName: 'A', avatarUrl: null },
-    participants: [
-      { accountId: 'acct_a', displayName: 'A', avatarUrl: null },
-      { accountId: 'acct_b', displayName: 'B', avatarUrl: null },
-      { accountId: 'acct_c', displayName: 'C', avatarUrl: null },
-    ],
-    message: {
-      id: message.id,
-      senderAccountId: 'acct_a',
-      senderKind: 'human',
-      senderDisplayName: 'A',
-      text: 'hello',
-      createdAtMs: Date.parse(message.created_at),
-    },
-  });
-  const mapped = cloudMessageFromChatSync({
-    ...message,
-    content: { schema: 1, blocks: [{ type: 'text', text: body }] },
-  }, groupConversation, 'acct_a');
-  const messagesByPeer = applyCloudSyncEventsToMessagesByPeer('acct_a', {}, [{
-    eventId: 'event:reader-attribution',
-    eventType: 'message.upsert',
-    peerAccountId: 'acct_b',
-    messageId: mapped.messageId,
-    payload: { message: mapped },
-    occurredAt: message.created_at,
-  }]);
-  const summary = buildCloudMessageIndex('acct_a', messagesByPeer)
-    .deliveryByMessageId.get(message.id);
+  const mapped = cloudMessageFromChatSync(message, groupConversation, 'acct_a');
 
   assert.equal(mapped.readAt, message.created_at);
-  assert.deepEqual(mapped.readByAccountIds, ['acct_c']);
-  assert.deepEqual(summary?.readers, [{
-    accountId: 'acct_c',
-    identityId: 'human:acct_c',
-    readAt: null,
-  }]);
 });
 
 test('group bootstrap does not replace the envelope title with a generated member title', async () => {

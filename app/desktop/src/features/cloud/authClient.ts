@@ -169,7 +169,6 @@ export type CloudMessage = {
   version?: number | null;
 };
 
-
 export type CloudSyncEventType = string;
 
 export type CloudSyncEvent = {
