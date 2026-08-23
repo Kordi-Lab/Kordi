@@ -290,7 +290,6 @@ final class AppModel: ObservableObject {
                 hasHydratedForkLineage = snapshot.sessionForksById != nil
                     && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
             }
-            conversations.forEach(prepareConversationForPresentation)
             phase = .signedIn
             presencePublisher.start(token: savedToken)
             startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
@@ -983,21 +982,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func prepareConversationForPresentation(_ conversation: ConversationSummary) {
-        hydrateCachedMessages(for: conversation)
-        let projected = projectedMessages(
-            for: conversation,
-            wireSnapshot: cloudMessagesByPeer,
-            account: account
-        )
-        guard !projected.isEmpty else { return }
-        let existing = messagesByConversation[conversation.id, default: []]
-        let merged = Self.mergePartialProjection(projected, preserving: existing)
-        guard merged != existing else { return }
-        messagesByConversation[conversation.id] = merged
-        cacheCurrentMessages(conversation.id)
-    }
-
     /// An explicitly read or actively presented session updates the local
     /// catalog before network work so list and parent-space badges react at once.
     func markConversationOpened(_ conversation: ConversationSummary) {
@@ -1063,34 +1047,9 @@ final class AppModel: ObservableObject {
             || conversationsWithEarlierHistory.contains(conversation.id)
     }
 
-    private func projectedMessages(
-        for conversation: ConversationSummary,
-        wireSnapshot: [String: [CloudMessageDTO]],
-        account: CloudAccount?
-    ) -> [ChatMessage] {
-        guard let account else { return [] }
-        if conversation.kind == .group {
-            let wireMessages = wireSnapshot.values.flatMap { $0 }.filter { wire in
-                CloudGroupMessageCodec.parse(wire.body)?.groupId == conversation.sessionId
-            }
-            return Self.mapGroupMessages(
-                wireMessages,
-                conversation: conversation,
-                ownAccountId: account.accountId
-            )
-        }
-        let wireMessages = Self.directWireMessages(for: conversation, in: wireSnapshot)
-        return CloudDirectMessageProjector.project(
-            wireMessages,
-            conversation: conversation,
-            ownAccountId: account.accountId
-        )
-    }
-
     func loadConversation(_ conversation: ConversationSummary) async {
         beginConversationLoad(conversation.id)
         defer { endConversationLoad(conversation.id) }
-        prepareConversationForPresentation(conversation)
 
         if previewMode {
             guard ProcessInfo.processInfo.arguments.contains("--preview-slow-session-load") else {
@@ -4116,7 +4075,7 @@ final class AppModel: ObservableObject {
             to: titled
         )
         rekeyedConversationIDs.forEach(cacheCurrentMessages)
-        titled.forEach(prepareConversationForPresentation)
+        titled.forEach(hydrateCachedMessages)
         if titled != conversations {
             conversations = titled
             cacheCurrentConversations()

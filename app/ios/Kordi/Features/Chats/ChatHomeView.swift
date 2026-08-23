@@ -484,7 +484,6 @@ struct ChatHomeView: View {
     }
 
     private func openConversation(_ conversation: ConversationSummary) {
-        model.prepareConversationForPresentation(conversation)
         if let onOpenConversation {
             onOpenConversation(conversation)
         } else {

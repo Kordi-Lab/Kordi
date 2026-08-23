@@ -953,7 +953,6 @@ struct ConversationView: View {
     @MainActor
     private func prepareInitialConversationForDisplay() {
         model.hydrateCachedMessages(for: conversation)
-        model.prepareConversationForPresentation(conversation)
         prepareInitialViewport(in: messages)
         if ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: messages.count) {
             var transaction = Transaction(animation: nil)
