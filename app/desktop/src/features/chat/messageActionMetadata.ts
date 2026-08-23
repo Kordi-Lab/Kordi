@@ -1,4 +1,5 @@
-import type { Message, MessageAttachment } from '../../kordi-app/types/message';
+import { messageMentionsForText } from './messageMentions';
+import type { Message, MessageAttachment, MessageMention } from '../../kordi-app/types/message';
 
 export type MessageActionKind = 'quote' | 'forward';
 
@@ -8,6 +9,7 @@ export type MessageActionSource = {
   sourceMessageKind?: string | null;
   senderLabel: string;
   textPreview: string;
+  mentions?: MessageMention[];
   attachmentCount: number;
   createdAtMs?: number | null;
   timeLabel?: string | null;
@@ -59,12 +61,15 @@ export function messageActionSourceFromMessage(
   }
   const senderLabel = clean(message.sourceSenderLabel) || clean(message.sender)
     || (message.isOwnMessage ? 'You' : message.role === 'owned-agent' ? 'My Kordi' : message.role);
+  const textPreview = messageActionPreviewText(message);
+  const mentions = messageMentionsForText(textPreview, message.mentions);
   return {
     sourceSessionId: sessionId,
     sourceMessageId,
     sourceMessageKind: message.turn ? 'agent-turn' : 'text',
     senderLabel,
-    textPreview: messageActionPreviewText(message),
+    textPreview,
+    ...(mentions ? { mentions } : {}),
     attachmentCount: message.attachments?.length ?? 0,
     timeLabel: clean(message.time) || null,
     createdAtMs: null,
@@ -87,12 +92,14 @@ export function forwardMessageSourceFromMessage(
 }
 
 export function persistedMessageActionSource(source: MessageActionSource): MessageActionSource {
+  const mentions = messageMentionsForText(source.textPreview, source.mentions);
   return {
     sourceSessionId: source.sourceSessionId,
     sourceMessageId: source.sourceMessageId,
     sourceMessageKind: source.sourceMessageKind,
     senderLabel: source.senderLabel,
     textPreview: source.textPreview,
+    ...(mentions ? { mentions } : {}),
     attachmentCount: source.attachmentCount,
     createdAtMs: source.createdAtMs,
     timeLabel: source.timeLabel,

@@ -24,6 +24,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
     let replyToMessageId: String?
     let requestId: String?
     let attachments: [CloudMessageAttachment]?
+    let mentions: [MessageMention]?
     let messageAction: MessageActionMetadata?
     let targetCloudAgentId: String?
     let targetCloudAgentName: String?
@@ -43,6 +44,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         replyToMessageId: String?,
         requestId: String?,
         attachments: [CloudMessageAttachment]? = nil,
+        mentions: [MessageMention]? = nil,
         messageAction: MessageActionMetadata? = nil,
         targetCloudAgentId: String? = nil,
         targetCloudAgentName: String? = nil,
@@ -65,6 +67,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         self.replyToMessageId = replyToMessageId
         self.requestId = requestId
         self.attachments = attachments
+        self.mentions = mentions
         self.messageAction = messageAction
         self.targetCloudAgentId = targetCloudAgentId
         self.targetCloudAgentName = targetCloudAgentName

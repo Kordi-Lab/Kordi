@@ -168,6 +168,7 @@ export function appendOptimisticCollaborationMessage(
   attachments: AttachmentItem[] = [],
   subtitleText = text,
   quote: ComposerQuoteState | null = null,
+  mentions: MessageMention[] = [],
 ): DesktopCollaborationState | null {
   if (!current) return current;
 
@@ -196,6 +197,7 @@ export function appendOptimisticCollaborationMessage(
           requestId: expectsAgentReply ? optimisticMessageId : null,
           deliveryState: 'sending',
           attachments: toOptimisticAttachments(attachments),
+          mentions,
           messageAction: quoteAction,
         },
       ],

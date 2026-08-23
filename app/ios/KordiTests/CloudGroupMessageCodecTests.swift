@@ -278,6 +278,14 @@ final class CloudGroupMessageCodecTests: XCTestCase {
                     downloadUrl: nil,
                     previewUrl: nil
                 )],
+                mentions: [MessageMention(
+                    label: "Research Agent",
+                    targetKind: "agent",
+                    targetIdentityId: "agent:cloud_agent_research",
+                    startUtf16: 0,
+                    lengthUtf16: ("@Research Agent" as NSString).length,
+                    displayText: "@Research Agent"
+                )],
                 messageAction: .quote(source),
                 targetCloudAgentId: "cloud_agent_research",
                 targetCloudAgentName: "Research Agent",
@@ -291,6 +299,7 @@ final class CloudGroupMessageCodecTests: XCTestCase {
 
         XCTAssertEqual(decoded.message?.attachments?.first?.name, "notes.md")
         XCTAssertEqual(decoded.message?.messageAction?.source.sourceMessageId, "msg_source")
+        XCTAssertEqual(decoded.message?.mentions?.first?.targetIdentityId, "agent:cloud_agent_research")
         XCTAssertEqual(decoded.message?.targetCloudAgentId, "cloud_agent_research")
         XCTAssertEqual(decoded.message?.agentRuntimeRoute, runtimeRoute)
     }

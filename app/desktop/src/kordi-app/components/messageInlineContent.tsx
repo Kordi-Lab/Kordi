@@ -97,6 +97,8 @@ export function MessageInlineContent({
           key={`mention-${part.start}`}
           className={cn('app-message-mention', `app-message-mention-${part.targetKind}`)}
           data-mention-kind={part.targetKind}
+          data-mention-identity={part.targetIdentityId ?? undefined}
+          aria-label={`${part.label}, ${part.targetKind} mention`}
         >
           {part.label}
         </span>

@@ -384,6 +384,7 @@ struct MessageActionSource: Codable, Hashable, Identifiable {
     let sourceMessageKind: String?
     let senderLabel: String
     let textPreview: String
+    let mentions: [MessageMention]?
     let attachmentCount: Int
     let createdAtMs: Double?
     let timeLabel: String?
@@ -396,6 +397,7 @@ struct MessageActionSource: Codable, Hashable, Identifiable {
         sourceMessageKind: String? = "text",
         senderLabel: String,
         textPreview: String,
+        mentions: [MessageMention]? = nil,
         attachmentCount: Int,
         createdAtMs: Double? = nil,
         timeLabel: String? = nil
@@ -405,6 +407,7 @@ struct MessageActionSource: Codable, Hashable, Identifiable {
         self.sourceMessageKind = sourceMessageKind
         self.senderLabel = senderLabel
         self.textPreview = textPreview
+        self.mentions = mentions
         self.attachmentCount = attachmentCount
         self.createdAtMs = createdAtMs
         self.timeLabel = timeLabel
@@ -524,6 +527,135 @@ enum MemeAttachmentPolicy {
 enum ComposerMentionKind: String, Hashable {
     case person
     case agent
+}
+
+struct MessageMention: Codable, Hashable {
+    let label: String
+    let targetKind: String?
+    let targetIdentityId: String?
+    let startUtf16: Int?
+    let lengthUtf16: Int?
+    let displayText: String?
+    let sourceHostId: String?
+    let nodeId: String?
+    let humanId: String?
+    let agentId: String?
+    let displayLabel: String?
+
+    init(
+        label: String,
+        targetKind: String? = nil,
+        targetIdentityId: String? = nil,
+        startUtf16: Int? = nil,
+        lengthUtf16: Int? = nil,
+        displayText: String? = nil,
+        sourceHostId: String? = nil,
+        nodeId: String? = nil,
+        humanId: String? = nil,
+        agentId: String? = nil,
+        displayLabel: String? = nil
+    ) {
+        self.label = label
+        self.targetKind = targetKind
+        self.targetIdentityId = targetIdentityId
+        self.startUtf16 = startUtf16
+        self.lengthUtf16 = lengthUtf16
+        self.displayText = displayText
+        self.sourceHostId = sourceHostId
+        self.nodeId = nodeId
+        self.humanId = humanId
+        self.agentId = agentId
+        self.displayLabel = displayLabel
+    }
+
+    var kind: ComposerMentionKind? {
+        targetKind.flatMap(ComposerMentionKind.init(rawValue:))
+    }
+
+    private var hasValidIdentity: Bool {
+        guard let targetIdentityId = targetIdentityId?.nonEmpty, let kind else { return false }
+        return switch kind {
+        case .person: targetIdentityId.hasPrefix("human:")
+        case .agent: targetIdentityId.hasPrefix("agent:")
+        }
+    }
+
+    init(target: ComposerMentionTarget, text: String, range: Range<String.Index>) {
+        let nsRange = NSRange(range, in: text)
+        label = target.displayName
+        targetKind = target.kind.rawValue
+        targetIdentityId = target.kind == .person
+            ? "human:\(target.accountId)"
+            : target.id
+        startUtf16 = nsRange.location
+        lengthUtf16 = nsRange.length
+        displayText = String(text[range])
+        sourceHostId = nil
+        nodeId = target.accountId
+        humanId = target.accountId
+        agentId = target.agentId
+        displayLabel = target.displayName
+    }
+
+    static func rebased(_ mentions: [MessageMention], in text: String) -> [MessageMention] {
+        let source = text as NSString
+        var occupied: [NSRange] = []
+        return mentions.prefix(32).compactMap { mention in
+            let label = mention.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !label.isEmpty, label.count <= 256 else { return nil }
+            if let start = mention.startUtf16,
+               let length = mention.lengthUtf16,
+               start >= 0,
+               length > 0,
+               start + length <= source.length,
+               let displayText = mention.displayText,
+               displayText.hasPrefix("@"),
+               length == (displayText as NSString).length,
+               source.substring(with: NSRange(location: start, length: length)) == displayText,
+               mention.hasValidIdentity {
+                let range = NSRange(location: start, length: length)
+                guard !occupied.contains(where: { NSIntersectionRange($0, range).length > 0 }) else { return nil }
+                occupied.append(range)
+                return mention
+            }
+
+            let aliases = [
+                mention.displayText,
+                mention.displayLabel.map { "@\($0)" },
+                "@\(label)",
+            ].compactMap(\.self).filter { !$0.isEmpty }
+            for alias in aliases {
+                var searchRange = NSRange(location: 0, length: source.length)
+                while searchRange.length > 0 {
+                    let range = source.range(
+                        of: alias,
+                        options: [.caseInsensitive, .diacriticInsensitive],
+                        range: searchRange
+                    )
+                    guard range.location != NSNotFound else { break }
+                    if !occupied.contains(where: { NSIntersectionRange($0, range).length > 0 }) {
+                        occupied.append(range)
+                        return MessageMention(
+                            label: label,
+                            targetKind: mention.targetKind,
+                            targetIdentityId: mention.targetIdentityId,
+                            startUtf16: range.location,
+                            lengthUtf16: range.length,
+                            displayText: source.substring(with: range),
+                            sourceHostId: mention.sourceHostId,
+                            nodeId: mention.nodeId,
+                            humanId: mention.humanId,
+                            agentId: mention.agentId,
+                            displayLabel: mention.displayLabel
+                        )
+                    }
+                    let next = NSMaxRange(range)
+                    searchRange = NSRange(location: next, length: source.length - next)
+                }
+            }
+            return nil
+        }
+    }
 }
 
 struct ComposerMentionTarget: Identifiable, Hashable {
@@ -707,6 +839,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var messageKind: String?
     var agentExecution: AgentExecutionSnapshot?
     var backgroundAgentSessions: [BackgroundAgentSession]
+    var mentions: [MessageMention]
 
     var callActivity: ChatCallActivity? {
         ChatCallActivity(messageKind: messageKind)
@@ -740,6 +873,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         attachments: [ChatAttachment] = [],
         replyToMessageId: String? = nil,
         messageAction: MessageActionMetadata? = nil,
+        mentions: [MessageMention] = [],
         messageKind: String? = nil,
         agentExecution: AgentExecutionSnapshot? = nil,
         backgroundAgentSessions: [BackgroundAgentSession] = []
@@ -762,6 +896,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.messageKind = messageKind
         self.agentExecution = agentExecution
         self.backgroundAgentSessions = backgroundAgentSessions
+        self.mentions = mentions
     }
 
     var actionSource: MessageActionSource {
@@ -773,12 +908,14 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         let preview = normalized.count <= 220
             ? normalized
             : String(normalized.prefix(219)).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
+        let previewMentions = MessageMention.rebased(mentions, in: preview)
         return MessageActionSource(
             sourceSessionId: sessionId,
             sourceMessageId: id,
             sourceMessageKind: author == .agent ? "agent-turn" : "text",
             senderLabel: author == .me ? "You" : authorName,
             textPreview: preview,
+            mentions: previewMentions.isEmpty ? nil : previewMentions,
             attachmentCount: attachments.count,
             createdAtMs: createdAt.timeIntervalSince1970 * 1_000,
             timeLabel: createdAt.formatted(.dateTime.hour().minute())
@@ -800,6 +937,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         case messageKind
         case agentExecution
         case backgroundAgentSessions
+        case mentions
     }
 
     init(from decoder: Decoder) throws {
@@ -828,5 +966,6 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             [BackgroundAgentSession].self,
             forKey: .backgroundAgentSessions
         ) ?? []
+        mentions = try container.decodeIfPresent([MessageMention].self, forKey: .mentions) ?? []
     }
 }

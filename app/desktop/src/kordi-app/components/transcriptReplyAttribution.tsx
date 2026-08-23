@@ -52,7 +52,7 @@ export function SourceMessageQuote({
           <span className={cn('app-source-message-quote-text-frame', canFold && !expanded && 'app-source-message-quote-folded', 'block')}>
             <span className="app-source-message-quote-text block whitespace-pre-wrap text-[12px] leading-5" data-kordi-copy-surface="message">
               <span className="app-source-message-quote-label app-source-message-quote-inline-label font-medium">{senderLabel}{attachmentText}: </span>
-              <MessageInlineContent text={sourceQuoteText(sourceMessage)} showSiteIcons={false} />
+              <MessageInlineContent text={sourceQuoteText(sourceMessage)} mentions={sourceMessage.mentions} showSiteIcons={false} />
             </span>
           </span>
         </span>

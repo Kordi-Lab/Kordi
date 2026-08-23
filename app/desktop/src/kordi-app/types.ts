@@ -911,11 +911,11 @@ export type DesktopCollaborationConversationMessage = {
   detail?: string | null;
   outreach?: DesktopCollaborationOutreachMetadata | null;
   attachments?: MessageAttachment[];
+  mentions?: MessageMention[];
   messageAction?: MessageActionMetadata | null;
   messageKind?: string | null;
   localTurn?: DesktopChatTurnSnapshot | null;
 };
-
 export type DesktopCollaborationSessionThreadMessage = {
   role: Message['role'] | string;
   sender?: string | null;

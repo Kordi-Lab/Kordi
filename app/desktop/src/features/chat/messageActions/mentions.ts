@@ -6,23 +6,9 @@ import type {
   ConversationCollaborationTarget,
   DesktopCollaborationState,
   DesktopChatState,
-  MessageMention,
 } from '@/kordi-app/types';
 
 import type { ResolvedMentionedCollaborationTarget } from './types';
-
-export function mentionForCollaborationTarget(target: ResolvedMentionedCollaborationTarget | null): MessageMention[] {
-  if (!target) return [];
-  return [{
-    label: target.label,
-    targetKind: target.targetKind,
-    sourceHostId: target.host.id,
-    nodeId: target.peer.nodeId,
-    humanId: target.peer.humanId ?? null,
-    agentId: target.peer.agentId ?? null,
-    displayLabel: target.displayLabel,
-  }];
-}
 
 export function outreachIdentityForCollaborationTarget(target: ResolvedMentionedCollaborationTarget) {
   const targetDisplayName = target.displayLabel;

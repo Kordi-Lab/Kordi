@@ -213,8 +213,7 @@ export function planCloudSelfAgentCanonicalSync({
       responseRequestId,
       responseDeliveryState,
       responseExecution,
-      messageAction,
-      agentRuntimeRoute,
+      messageAction, mentions, agentRuntimeRoute,
     } = restoreMessage;
     const sourceTransport =
       forkSnapshotCloudMessageIds.has(message.messageId)
@@ -426,9 +425,10 @@ export function planCloudSelfAgentCanonicalSync({
           }
         : role === 'system' && agentRuntimeRoute
           ? { agentRuntimeRoute }
-          : messageAction
+          : messageAction || mentions?.length
           ? {
-              messageAction,
+              ...(messageAction ? { messageAction } : {}),
+              ...(mentions?.length ? { mentions } : {}),
               ...(quoteSourceMessageId
                 ? { replyToMessageId: quoteSourceMessageId }
                 : {}),

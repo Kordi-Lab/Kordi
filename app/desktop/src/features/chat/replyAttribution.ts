@@ -43,6 +43,7 @@ function sourceReferenceForMessage(message: Message, messageId: string): Message
     messageId,
     senderLabel: message.sender ?? (message.isOwnMessage ? 'You' : null),
     text: responseText,
+    mentions: message.mentions,
     attachmentCount: message.attachments?.length ?? 0,
     time: message.time,
   };

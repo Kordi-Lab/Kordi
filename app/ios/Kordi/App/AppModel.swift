@@ -1246,6 +1246,11 @@ final class AppModel: ObservableObject {
             )
         }
         let messageAction = actionOverride ?? replySource.map(MessageActionMetadata.quote)
+        let mentions = ComposerMentionTargetCatalog.mentions(
+            in: text,
+            selectedTarget: mentionTarget,
+            targets: mentionTargets(for: conversation)
+        )
         let optimistic = ChatMessage(
             id: localId,
             clientMessageId: clientMessageId,
@@ -1259,7 +1264,8 @@ final class AppModel: ObservableObject {
             requestMessageId: nil,
             attachments: attachments.map(\.optimisticAttachment),
             replyToMessageId: messageAction?.replyToMessageId,
-            messageAction: messageAction
+            messageAction: messageAction,
+            mentions: mentions
         )
         if !attachments.isEmpty { pendingAttachmentDraftsByMessageId[localId] = attachments }
         if let replySource { pendingReplyByMessageId[localId] = replySource }
@@ -1313,7 +1319,8 @@ final class AppModel: ObservableObject {
                     account: account,
                     attachments: uploadedAttachments,
                     messageAction: messageAction,
-                    mentionTarget: mentionTarget
+                    mentionTarget: mentionTarget,
+                    mentions: mentions
                 )
                 sentRows.forEach { mergeCloudMessage($0, peerHint: nil) }
                 replaceMessage(localId, with: ChatMessage(
@@ -1330,7 +1337,8 @@ final class AppModel: ObservableObject {
                     readByCount: 0,
                     attachments: uploadedAttachments.map(\.chatAttachment),
                     replyToMessageId: messageAction?.replyToMessageId,
-                    messageAction: messageAction
+                    messageAction: messageAction,
+                    mentions: mentions
                 ))
                 clearPendingSendMetadata(localId)
                 if mentionTarget?.kind == .agent {
@@ -1350,7 +1358,7 @@ final class AppModel: ObservableObject {
                 return
             }
             let wireBody: String
-            if conversation.kind == .agent || routedAgent != nil || messageAction != nil || routesToSupportAgent {
+            if conversation.kind == .agent || routedAgent != nil || messageAction != nil || routesToSupportAgent || !mentions.isEmpty {
                 wireBody = try CloudMessageCodec.encodeDirect(
                     text: text,
                     agentId: routedAgent?.agentId
@@ -1361,6 +1369,7 @@ final class AppModel: ObservableObject {
                         ?? ((conversation.kind == .agent || routesToSupportAgent) ? conversation.peerAccountId : nil),
                     ownerName: routedAgent?.ownerName
                         ?? ((conversation.kind == .agent || routesToSupportAgent) ? conversation.ownerDisplayName : nil),
+                    mentions: mentions.isEmpty ? nil : mentions,
                     agentRuntimeRoute: requestedRuntimeRoute(for: conversation),
                     messageAction: messageAction
                 )
@@ -3454,7 +3463,8 @@ final class AppModel: ObservableObject {
         account: CloudAccount,
         attachments: [CloudMessageAttachment],
         messageAction: MessageActionMetadata?,
-        mentionTarget: ComposerMentionTarget?
+        mentionTarget: ComposerMentionTarget?,
+        mentions: [MessageMention]
     ) async throws -> [CloudMessageDTO] {
         let participants = hydratedGroupParticipants(conversation, account: account)
         let recipients = Set(participants.map(\.accountId).filter { !$0.isEmpty && $0 != account.accountId })
@@ -3481,6 +3491,7 @@ final class AppModel: ObservableObject {
                 replyToMessageId: messageAction?.replyToMessageId,
                 requestId: nil,
                 attachments: attachments,
+                mentions: mentions.isEmpty ? nil : mentions,
                 messageAction: messageAction,
                 targetCloudAgentId: mentionTarget?.kind == .agent ? mentionTarget?.agentId : nil,
                 targetCloudAgentName: mentionTarget?.kind == .agent ? mentionTarget?.displayName : nil,
@@ -3598,6 +3609,10 @@ final class AppModel: ObservableObject {
             replyToMessageId: CloudMessageCodec.directEnvelope(message.body)?.messageAction?.replyToMessageId
                 ?? responseRequestId,
             messageAction: CloudMessageCodec.directEnvelope(message.body)?.messageAction,
+            mentions: MessageMention.rebased(
+                CloudMessageCodec.directEnvelope(message.body)?.mentions ?? [],
+                in: CloudMessageCodec.displayText(message.body)
+            ),
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
             agentExecution: ownerExecution,
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body)
@@ -3694,6 +3709,7 @@ final class AppModel: ObservableObject {
                 attachments: (payload.attachments ?? wire.attachments).map(\.chatAttachment),
                 replyToMessageId: payload.replyToMessageId ?? payload.messageAction?.replyToMessageId,
                 messageAction: payload.messageAction,
+                mentions: MessageMention.rebased(payload.mentions ?? [], in: payload.text),
                 backgroundAgentSessions: BackgroundAgentSession.fromTaskOperatorTools(
                     payload.structuredContent?.tools ?? []
                 )

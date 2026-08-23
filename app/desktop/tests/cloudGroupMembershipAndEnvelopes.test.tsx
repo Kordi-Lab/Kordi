@@ -28,6 +28,39 @@ test('iOS fractional millisecond timestamps normalize before native projection',
   assert.equal(parseCloudGroupControl(body)?.message?.createdAtMs, 1_786_443_676_216);
 });
 
+test('cloud group envelopes preserve cross-client mention identities and ranges', () => {
+  const displayText = '@Alex Smith';
+  const envelope = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:mention-identity',
+    groupSpaceId: 'session:group:mention-identity',
+    groupTitle: 'Mentions',
+    createdByAccountId: 'acct_sender',
+    actor: { accountId: 'acct_sender', displayName: 'Sender', avatarUrl: null, role: 'self' },
+    participants: [
+      { accountId: 'acct_sender', displayName: 'Sender', avatarUrl: null, role: 'self' },
+      { accountId: 'acct_alex', displayName: 'Alex Smith', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: 'msg_mention_identity',
+      senderAccountId: 'acct_sender',
+      text: `${displayText} hello`,
+      createdAtMs: 1,
+      mentions: [{
+        label: 'Alex Smith',
+        targetKind: 'person',
+        targetIdentityId: 'human:acct_alex',
+        startUtf16: 0,
+        lengthUtf16: displayText.length,
+        displayText,
+      }],
+    },
+  }));
+
+  assert.equal(envelope?.message?.mentions?.[0]?.displayText, displayText);
+  assert.equal(envelope?.message?.mentions?.[0]?.targetIdentityId, 'human:acct_alex');
+});
+
 test('group admin snapshots always keep the creator and explicit promoted admins', () => {
   const envelope = parseCloudGroupControl(encodeCloudGroupControl({
     kind: 'group-update',

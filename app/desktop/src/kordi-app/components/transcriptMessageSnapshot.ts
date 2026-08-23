@@ -24,9 +24,9 @@ export function messageSnapshotKey(msg: Message) {
     msg.replyAliasIds?.join('|') ?? '',
     msg.replySummary ? [msg.replySummary.replyCount, msg.replySummary.pending ? 'pending' : 'done', msg.replySummary.targetMessageId ?? ''].join(':') : '',
     msg.readReceiptSummary ? [msg.readReceiptSummary.count, msg.readReceiptSummary.participants.map((participant) => [participant.id, participant.name, participant.readAt ?? ''].join(':')).join('|')].join(':') : '',
-    msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? ''].join(':') : '',
+    msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? '', JSON.stringify(msg.sourceMessage.mentions ?? [])].join(':') : '',
     msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',
-    msg.mentions?.map((mention) => mention.label).join('|') ?? '',
+    JSON.stringify(msg.mentions ?? []),
     msg.turn ? liveTurnSnapshotKey(msg.turn) : '',
     msg.edit?.files.map((file) => [file.path, file.additions, file.deletions, file.lines.length].join(':')).join('|') ?? '',
   ].join('\u0001');

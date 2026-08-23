@@ -116,15 +116,16 @@ function collaborationMessageActionSourceReference(action: Message['messageActio
     messageId: action.source.sourceMessageId,
     senderLabel: action.source.senderLabel,
     text: action.source.textPreview,
+    mentions: action.source.mentions,
     attachmentCount: action.source.attachmentCount,
     time: action.source.timeLabel ?? null,
   };
 }
-
 function collaborationMessageMentions(
   conversation: DesktopCollaborationConversation,
   message: DesktopCollaborationConversationMessage,
 ): MessageMention[] | undefined {
+  if (message.mentions?.length) return message.mentions;
   const outreach = collaborationMessageOutreachForDisplay(conversation, message);
   const label = outreach?.targetDisplayName?.trim();
   if (!outreach || !label) return undefined;
@@ -137,7 +138,6 @@ function collaborationMessageMentions(
     agentId: outreach.targetAgentId ?? null,
   }];
 }
-
 function normalizeDeliveryState(value: string | null | undefined) {
   return value?.trim().toLowerCase() || '';
 }
