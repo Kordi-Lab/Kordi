@@ -302,6 +302,7 @@ pub fn run() {
             chat::attachments::desktop_chat_cache_cloud_attachment,
             chat::attachments::desktop_chat_cache_cloud_attachment_path,
             chat::attachments::desktop_chat_cached_cloud_attachment_path,
+            chat::attachments::desktop_chat_download_cloud_attachment,
             chat::attachments::desktop_chat_store_attachment_path,
             chat::attachments::desktop_chat_pick_attachment_paths,
             chat::attachments::desktop_chat_read_attachment,

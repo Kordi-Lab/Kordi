@@ -53,6 +53,40 @@ final class AttachmentTransferTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: second), Data([2]))
     }
 
+    func testAttachmentCachePrunesOlderFilesToItsDiskBudget() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-attachment-budget-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = AttachmentFileStore(directory: directory, diskByteLimit: 3)
+        func attachment(_ id: String) -> ChatAttachment {
+            ChatAttachment(
+                attachmentId: id,
+                name: "\(id).bin",
+                kind: .file,
+                mimeType: "application/octet-stream",
+                sizeBytes: 3,
+                previewURL: nil
+            )
+        }
+
+        let firstAttachment = attachment("first")
+        let firstURL = try await store.store(
+            Data([1, 2, 3]),
+            attachment: firstAttachment,
+            accountId: "acct_a"
+        )
+        let secondURL = try await store.store(
+            Data([4, 5, 6]),
+            attachment: attachment("second"),
+            accountId: "acct_a"
+        )
+
+        let restoredFirst = await store.cachedURL(for: firstAttachment, accountId: "acct_a")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: firstURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: secondURL.path))
+        XCTAssertNil(restoredFirst)
+    }
+
     func testPhotoLoaderProducesACloudSafeJPEG() throws {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 2_600, height: 1_900))
         let image = renderer.image { context in

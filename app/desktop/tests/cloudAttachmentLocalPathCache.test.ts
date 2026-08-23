@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  cacheCloudAttachmentLocalPath,
+  cachedCloudAttachmentLocalPath,
   clearCloudAttachmentLocalPathCache,
   cloudAttachmentPreviewCacheId,
+  downloadCloudAttachmentToLocalPath,
   loadCachedCloudAttachmentLocalPath,
   persistCloudAttachmentBytes,
 } from '../src/features/cloud/cloudAttachmentLocalPathCache';
@@ -50,5 +53,50 @@ test('downloaded preview bytes populate the durable and memory caches', async ()
   assert.equal(
     await loadCachedCloudAttachmentLocalPath('att_2', 'preview.webp', async () => null),
     path,
+  );
+});
+
+test('memory path cache evicts the least recently used entry', () => {
+  clearCloudAttachmentLocalPathCache();
+  for (let index = 0; index < 256; index += 1) {
+    cacheCloudAttachmentLocalPath(`att_${index}`, `/cache/${index}`);
+  }
+  assert.equal(cachedCloudAttachmentLocalPath('att_0'), '/cache/0');
+  cacheCloudAttachmentLocalPath('att_256', '/cache/256');
+
+  assert.equal(cachedCloudAttachmentLocalPath('att_1'), null);
+  assert.equal(cachedCloudAttachmentLocalPath('att_0'), '/cache/0');
+});
+
+test('native downloads become memory-hot without transferring bytes through JavaScript', async () => {
+  clearCloudAttachmentLocalPathCache();
+  let downloads = 0;
+  const download = async () => {
+    downloads += 1;
+    return '/cache/streamed.bin';
+  };
+
+  assert.equal(
+    await downloadCloudAttachmentToLocalPath('token', 'att_stream', 'streamed.bin', download),
+    '/cache/streamed.bin',
+  );
+  assert.equal(
+    await downloadCloudAttachmentToLocalPath('token', 'att_stream', 'streamed.bin', download),
+    '/cache/streamed.bin',
+  );
+  assert.equal(downloads, 1);
+});
+
+test('native download failures remain actionable to the attachment control', async () => {
+  clearCloudAttachmentLocalPathCache();
+
+  await assert.rejects(
+    downloadCloudAttachmentToLocalPath(
+      'token',
+      'att_failed',
+      'failed.bin',
+      async () => { throw new Error('Download failed.'); },
+    ),
+    /Download failed/,
   );
 });

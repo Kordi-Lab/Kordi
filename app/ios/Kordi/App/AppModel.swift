@@ -124,6 +124,7 @@ final class CloudPresencePublisher {
 final class AppModel: ObservableObject {
     private static let cloudUnavailableMessage = "Kordi Cloud is unavailable. Check your connection and try again."
     private static let cloudSyncRepairInterval: Duration = .seconds(2)
+    private static let cachedConversationPageLimit = 8
 
     @Published private(set) var phase: AppPhase = .launching
     @Published private(set) var account: CloudAccount?
@@ -206,6 +207,7 @@ final class AppModel: ObservableObject {
     private var conversationHistoryBeforeSequence: [String: Int64] = [:]
     private var conversationsWithEarlierHistory = Set<String>()
     private var conversationsWithEarlierCachedHistory = Set<String>()
+    private var recentCachedConversationIDs: [String] = []
     private var conversationReadPresentations: [UUID: ConversationReadPresentation] = [:]
     private var pendingVisibleReadMessageBySessionID: [String: String] = [:]
     private var persistedVisibleReadMessageBySessionID: [String: String] = [:]
@@ -278,7 +280,6 @@ final class AppModel: ObservableObject {
             token = savedToken
             account = restoredAccount
             conversations = cache?.loadConversations(accountId: restoredAccount.accountId) ?? []
-            conversations.forEach(hydrateCachedMessages)
             if let snapshot = await wireCache.load(accountId: restoredAccount.accountId) {
                 cloudMessagesByPeer = snapshot.messagesByPeer
                 sessionForksById = snapshot.sessionForksById ?? [:]
@@ -438,6 +439,7 @@ final class AppModel: ObservableObject {
         conversationHistoryBeforeSequence = [:]
         conversationsWithEarlierHistory = []
         conversationsWithEarlierCachedHistory = []
+        recentCachedConversationIDs = []
         conversationReadPresentations = [:]
         pendingVisibleReadMessageBySessionID = [:]
         persistedVisibleReadMessageBySessionID = [:]
@@ -965,6 +967,7 @@ final class AppModel: ObservableObject {
     }
 
     func hydrateCachedMessages(for conversation: ConversationSummary) {
+        retainCachedConversationPage(conversation.id)
         guard messagesByConversation[conversation.id] == nil,
               let accountId = account?.accountId else { return }
         let page = cache?.loadMessagePage(
@@ -980,6 +983,28 @@ final class AppModel: ObservableObject {
         } else {
             conversationsWithEarlierCachedHistory.remove(conversation.id)
         }
+    }
+
+    private func retainCachedConversationPage(_ conversationID: String) {
+        let previousIDs = Set(recentCachedConversationIDs)
+        recentCachedConversationIDs = Self.recentCachedConversationIDs(
+            recentCachedConversationIDs.filter { messagesByConversation[$0] != nil },
+            adding: conversationID
+        )
+        for evicted in previousIDs.subtracting(recentCachedConversationIDs) {
+            messagesByConversation[evicted] = nil
+            conversationsWithEarlierCachedHistory.remove(evicted)
+            conversationsWithEarlierHistory.remove(evicted)
+            conversationHistoryBeforeSequence[evicted] = nil
+        }
+    }
+
+    static func recentCachedConversationIDs(
+        _ current: [String],
+        adding conversationID: String
+    ) -> [String] {
+        Array((current.filter { $0 != conversationID } + [conversationID])
+            .suffix(cachedConversationPageLimit))
     }
 
     /// An explicitly read or actively presented session updates the local
@@ -1049,6 +1074,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func loadConversation(_ conversation: ConversationSummary) async -> Bool {
+        retainCachedConversationPage(conversation.id)
         beginConversationLoad(conversation.id)
         defer { endConversationLoad(conversation.id) }
 
@@ -2780,10 +2806,12 @@ final class AppModel: ObservableObject {
                     previousRouting,
                     sessionId: conversation.sessionId
                 )
-                messagesByConversation[conversation.id]?.removeAll {
-                    $0.id == notice.id
+                if messagesByConversation[conversation.id] != nil {
+                    messagesByConversation[conversation.id]?.removeAll {
+                        $0.id == notice.id
+                    }
+                    cacheCurrentMessages(conversation.id)
                 }
-                cacheCurrentMessages(conversation.id)
                 return false
             }
         }
@@ -2998,7 +3026,6 @@ final class AppModel: ObservableObject {
         previousRouting: CloudModelRouting?
     ) -> ChatMessage? {
         guard let model = model?.nonEmpty else { return nil }
-        hydrateCachedMessages(for: conversation)
         let qualifiedModel = model.contains("/")
             ? model
             : routing.defaultAuthProvider.map { "\($0)/\(model)" } ?? model
@@ -3013,14 +3040,10 @@ final class AppModel: ObservableObject {
             sessionId: conversation.sessionId
         )
         let messageID = "\(ChatMessage.agentModelChangeMessageKind):\(conversation.id):\(revision)"
-        var messages = messagesByConversation[conversation.id, default: []]
-        guard !messages.contains(where: { $0.id == messageID }) else {
+        guard messagesByConversation[conversation.id]?.contains(where: { $0.id == messageID }) != true else {
             return nil
         }
 
-        if messages.last?.isAgentModelChangeNotice == true {
-            messages.removeLast()
-        }
         let revisionDate = parseCloudDate(revision)
         let noticeText = ChatMessage.runtimeRouteChangeNotice(
             model: qualifiedModel,
@@ -3038,12 +3061,17 @@ final class AppModel: ObservableObject {
             requestMessageId: nil,
             messageKind: ChatMessage.agentModelChangeMessageKind
         )
-        messages.append(notice)
-        messages.sort {
-            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+        if var messages = messagesByConversation[conversation.id] {
+            if messages.last?.isAgentModelChangeNotice == true {
+                messages.removeLast()
+            }
+            messages.append(notice)
+            messages.sort {
+                $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+            }
+            messagesByConversation[conversation.id] = messages
+            cacheCurrentMessages(conversation.id)
         }
-        messagesByConversation[conversation.id] = messages
-        cacheCurrentMessages(conversation.id)
         return notice
     }
 
@@ -3091,15 +3119,16 @@ final class AppModel: ObservableObject {
                 conversation: conversation,
                 ownAccountId: account.accountId
             )
-            var messages = messagesByConversation[conversation.id, default: []]
-            messages.removeAll { $0.id == notice.id || $0.id == syncedNotice.id }
-            messages.append(syncedNotice)
-            messages.sort {
-                $0.createdAt < $1.createdAt
-                    || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+            if var messages = messagesByConversation[conversation.id] {
+                messages.removeAll { $0.id == notice.id || $0.id == syncedNotice.id }
+                messages.append(syncedNotice)
+                messages.sort {
+                    $0.createdAt < $1.createdAt
+                        || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+                }
+                messagesByConversation[conversation.id] = messages
+                cacheCurrentMessages(conversation.id)
             }
-            messagesByConversation[conversation.id] = messages
-            cacheCurrentMessages(conversation.id)
             cloudConnectionState = .connected
             return true
         } catch {
@@ -4078,7 +4107,6 @@ final class AppModel: ObservableObject {
             to: titled
         )
         rekeyedConversationIDs.forEach(cacheCurrentMessages)
-        titled.forEach(hydrateCachedMessages)
         if titled != conversations {
             conversations = titled
             cacheCurrentConversations()
@@ -4675,7 +4703,9 @@ final class AppModel: ObservableObject {
         cache?.saveMessages(
             messagesByConversation[conversationId] ?? [],
             conversationId: conversationId,
-            accountId: accountId
+            accountId: accountId,
+            hasEarlier: conversationsWithEarlierCachedHistory.contains(conversationId)
+                || conversationsWithEarlierHistory.contains(conversationId)
         )
     }
 

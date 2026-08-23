@@ -278,10 +278,13 @@ pub(super) async fn insert_sync_event(
     .fetch_one(&mut **transaction)
     .await?;
     query(
-        "INSERT INTO cloud_chat_user_sync_events \
+        "WITH inserted AS ( \
+           INSERT INTO cloud_chat_user_sync_events \
          (account_id, stream_seq, event_id, protocol_version, event_type, conversation_id, \
           entity_id, entity_version, critical, payload) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE, $9) \
+         RETURNING account_id \
+         ) SELECT pg_notify('chat_sync_events', account_id) FROM inserted",
     )
     .bind(account_id)
     .bind(head.0)
@@ -295,15 +298,6 @@ pub(super) async fn insert_sync_event(
     .execute(&mut **transaction)
     .await?;
     Ok(head.0)
-}
-
-pub(super) async fn wake_dispatcher(
-    transaction: &mut Transaction<'_, Postgres>,
-) -> Result<(), StoreError> {
-    query("SELECT pg_notify('chat_sync_events', 'new-events')")
-        .execute(&mut **transaction)
-        .await?;
-    Ok(())
 }
 
 /// Append a non-timeline domain event to each recipient's durable sync stream.
@@ -333,9 +327,6 @@ pub async fn append_user_sync_events_in_transaction(
             payload,
         )
         .await?;
-    }
-    if !recipients.is_empty() {
-        wake_dispatcher(transaction).await?;
     }
     Ok(())
 }

@@ -9,6 +9,7 @@ import {
   AppDialogTitle,
 } from '@/components/ui/dialog';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
+import { downloadCloudAttachmentToLocalPath } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import {
   cancelCloudAttachmentUpload,
   cloudAttachmentUploadSnapshot,
@@ -128,6 +129,13 @@ export function TranscriptFileAttachmentLink({
     if (!attachment.attachmentId) return null;
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
+    if (isNativeShell()) {
+      return downloadCloudAttachmentToLocalPath(
+        session.token,
+        attachment.attachmentId,
+        attachment.name || 'attachment.bin',
+      );
+    }
     const blob = await defaultCloudAuthClient().downloadAttachmentContent(session.token, attachment.attachmentId);
     const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
     return storeDesktopChatAttachment(attachment.name || 'attachment.bin', bytes);

@@ -9,6 +9,7 @@ use super::DesktopStoredChatAttachment;
 mod cloud_cache;
 pub(crate) mod cloud_upload;
 
+use cloud_cache::download as download_cloud_attachment;
 use cloud_cache::write as write_cloud_attachment_cache;
 use cloud_cache::{cached as cached_cloud_attachment, copy as copy_cloud_attachment_cache};
 
@@ -225,6 +226,15 @@ pub async fn desktop_chat_cached_cloud_attachment_path(
 ) -> Result<Option<String>, String> {
     cached_cloud_attachment(&attachment_id, &name)
         .map(|path| path.map(|value| value.display().to_string()))
+}
+
+#[tauri::command]
+pub async fn desktop_chat_download_cloud_attachment(
+    token: String,
+    attachment_id: String,
+    name: String,
+) -> Result<String, String> {
+    download_cloud_attachment(&token, &attachment_id, &name).await
 }
 
 #[tauri::command]

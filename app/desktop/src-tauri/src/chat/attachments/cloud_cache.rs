@@ -1,6 +1,11 @@
 use std::path::{Path, PathBuf};
 
+use futures_util::StreamExt;
+use tokio::io::AsyncWriteExt;
+
 use super::{attachment_storage_dir, ensure_attachment_file_path, safe_attachment_name};
+
+const MAX_CACHE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 fn path(attachment_id: &str, name: &str) -> Result<PathBuf, String> {
     let attachment_id = attachment_id.trim();
@@ -28,6 +33,42 @@ fn path(attachment_id: &str, name: &str) -> Result<PathBuf, String> {
     Ok(directory.join(format!("{encoded_id}-{}", safe_attachment_name(name))))
 }
 
+fn prune(directory: &Path, protected: &Path) -> Result<(), String> {
+    prune_to_limit(directory, protected, MAX_CACHE_BYTES)
+}
+
+fn prune_to_limit(directory: &Path, protected: &Path, limit: u64) -> Result<(), String> {
+    let mut files = std::fs::read_dir(directory)
+        .map_err(|error| error.to_string())?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let path = entry.path();
+            let metadata = entry.metadata().ok()?;
+            metadata.is_file().then_some((
+                path,
+                metadata.len(),
+                metadata
+                    .modified()
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+            ))
+        })
+        .collect::<Vec<_>>();
+    let mut total = files.iter().map(|(_, size, _)| size).sum::<u64>();
+    files.sort_by_key(|(_, _, modified)| *modified);
+    for (path, size, _) in files {
+        if total <= limit {
+            break;
+        }
+        if path == protected || path.extension().is_some_and(|value| value == "tmp") {
+            continue;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            total = total.saturating_sub(size);
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn cached(attachment_id: &str, name: &str) -> Result<Option<PathBuf>, String> {
     let path = path(attachment_id, name)?;
     match std::fs::metadata(&path) {
@@ -46,6 +87,11 @@ pub(super) fn write(attachment_id: &str, name: &str, data: &[u8]) -> Result<Stri
     let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
     std::fs::write(&temporary, data).map_err(|error| error.to_string())?;
     std::fs::rename(&temporary, &path).map_err(|error| error.to_string())?;
+    prune(
+        path.parent()
+            .ok_or_else(|| "Cloud attachment cache is unavailable".to_string())?,
+        &path,
+    )?;
     Ok(path.display().to_string())
 }
 
@@ -58,7 +104,87 @@ pub(super) fn copy(attachment_id: &str, name: &str, source: &Path) -> Result<Str
     let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
     std::fs::copy(source, &temporary).map_err(|error| error.to_string())?;
     std::fs::rename(&temporary, &path).map_err(|error| error.to_string())?;
+    prune(
+        path.parent()
+            .ok_or_else(|| "Cloud attachment cache is unavailable".to_string())?,
+        &path,
+    )?;
     Ok(path.display().to_string())
+}
+
+pub(super) async fn download(
+    token: &str,
+    attachment_id: &str,
+    name: &str,
+) -> Result<String, String> {
+    if token.trim().is_empty() {
+        return Err("Cloud session is unavailable".to_string());
+    }
+    if let Some(path) = cached(attachment_id, name)? {
+        return Ok(path.display().to_string());
+    }
+    let mut url = reqwest::Url::parse(&crate::cloud_api_endpoint::cloud_api_base_url_from_env()?)
+        .map_err(|_| "Cloud API base URL is invalid".to_string())?;
+    url.path_segments_mut()
+        .map_err(|_| "Cloud API base URL is invalid".to_string())?
+        .extend(["v1", "cloud", "attachments", attachment_id, "content"]);
+    let response = reqwest::Client::new()
+        .get(url)
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|error| format!("Unable to download attachment: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Unable to download attachment: server returned {}",
+            response.status()
+        ));
+    }
+    if response
+        .content_length()
+        .is_some_and(|length| length > super::MAX_CHAT_ATTACHMENT_SIZE_BYTES)
+    {
+        return Err("Attachment exceeds the 2 GiB limit".to_string());
+    }
+
+    let path = path(attachment_id, name)?;
+    let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
+    let result = async {
+        let mut file = tokio::fs::File::create(&temporary)
+            .await
+            .map_err(|error| error.to_string())?;
+        let mut stream = response.bytes_stream();
+        let mut written = 0_u64;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|error| format!("Attachment download failed: {error}"))?;
+            written = written.saturating_add(chunk.len() as u64);
+            if written > super::MAX_CHAT_ATTACHMENT_SIZE_BYTES {
+                return Err("Attachment exceeds the 2 GiB limit".to_string());
+            }
+            file.write_all(&chunk)
+                .await
+                .map_err(|error| error.to_string())?;
+        }
+        file.flush().await.map_err(|error| error.to_string())?;
+        if let Err(error) = tokio::fs::rename(&temporary, &path).await {
+            if path.is_file() {
+                let _ = tokio::fs::remove_file(&temporary).await;
+            } else {
+                return Err(error.to_string());
+            }
+        }
+        prune(
+            path.parent()
+                .ok_or_else(|| "Cloud attachment cache is unavailable".to_string())?,
+            &path,
+        )?;
+        Ok(path.display().to_string())
+    }
+    .await;
+    if result.is_err() {
+        let _ = tokio::fs::remove_file(&temporary).await;
+    }
+    result
 }
 
 #[cfg(test)]
@@ -97,5 +223,23 @@ mod tests {
         assert_eq!(std::fs::read(&second_path).unwrap(), b"second");
         std::fs::remove_file(first_path).ok();
         std::fs::remove_file(second_path).ok();
+    }
+
+    #[test]
+    fn pruning_keeps_the_new_file_and_enforces_the_cache_limit() {
+        let _storage = crate::test_support::ScopedKordiStorageRoot::new("attachment-pruning");
+        let first = path("att_first", "first.bin").unwrap();
+        let second = path("att_second", "second.bin").unwrap();
+        let protected = path("att_current", "current.bin").unwrap();
+        std::fs::write(&first, b"old").unwrap();
+        std::fs::write(&second, b"old").unwrap();
+        std::fs::write(&protected, b"new").unwrap();
+
+        prune_to_limit(protected.parent().unwrap(), &protected, 3).unwrap();
+
+        assert!(protected.exists());
+        assert!(!first.exists());
+        assert!(!second.exists());
+        std::fs::remove_file(protected).ok();
     }
 }

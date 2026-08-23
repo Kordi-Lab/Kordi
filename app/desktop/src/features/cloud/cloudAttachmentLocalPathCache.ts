@@ -2,9 +2,11 @@ import {
   cacheDesktopCloudAttachment,
   cacheDesktopCloudAttachmentPath,
   cachedDesktopCloudAttachmentPath,
+  downloadDesktopCloudAttachment,
 } from '@/lib/desktopCloudAttachmentCache';
 import { isNativeDesktopShell } from '@/lib/desktop';
 
+const MAX_MEMORY_PATHS = 256;
 const paths = new Map<string, string>();
 
 export function cloudAttachmentPreviewCacheId(attachmentId: string, previewAttachmentId?: string | null) {
@@ -12,11 +14,22 @@ export function cloudAttachmentPreviewCacheId(attachmentId: string, previewAttac
 }
 
 export function cachedCloudAttachmentLocalPath(attachmentId: string) {
-  return paths.get(attachmentId) ?? null;
+  const path = paths.get(attachmentId) ?? null;
+  if (path) {
+    paths.delete(attachmentId);
+    paths.set(attachmentId, path);
+  }
+  return path;
 }
 
 export function cacheCloudAttachmentLocalPath(attachmentId: string, path: string) {
+  paths.delete(attachmentId);
   paths.set(attachmentId, path);
+  while (paths.size > MAX_MEMORY_PATHS) {
+    const oldest = paths.keys().next().value;
+    if (typeof oldest !== 'string') break;
+    paths.delete(oldest);
+  }
 }
 
 export function clearCloudAttachmentLocalPathCache() {
@@ -37,6 +50,19 @@ export async function loadCachedCloudAttachmentLocalPath(
   } catch {
     return null;
   }
+}
+
+export async function downloadCloudAttachmentToLocalPath(
+  token: string,
+  attachmentId: string,
+  name: string,
+  download = downloadDesktopCloudAttachment,
+) {
+  const cached = await loadCachedCloudAttachmentLocalPath(attachmentId, name);
+  if (cached) return cached;
+  const path = await download(token, attachmentId, name);
+  cacheCloudAttachmentLocalPath(attachmentId, path);
+  return path;
 }
 
 export async function persistCloudAttachmentBytes(

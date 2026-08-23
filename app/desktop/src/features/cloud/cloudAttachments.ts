@@ -6,16 +6,21 @@ import type {
   CloudMessageAttachment,
 } from './authClient';
 import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
+import type { CloudAttachmentPreviewGenerator } from './cloudAttachmentPreviewRecovery';
 import {
   cacheCloudAttachmentLocalPath,
   cachedCloudAttachmentLocalPath as cachedLocalPath,
   clearCloudAttachmentLocalPathCache,
   cloudAttachmentPreviewCacheId,
-  loadCachedCloudAttachmentLocalPath, persistCloudAttachmentBlob, persistCloudAttachmentBytes,
+  downloadCloudAttachmentToLocalPath,
+  loadCachedCloudAttachmentLocalPath,
+  persistCloudAttachmentBlob,
+  persistCloudAttachmentBytes,
 } from './cloudAttachmentLocalPathCache';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
 
 export { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
+export { recoverCloudAttachmentPreview } from './cloudAttachmentPreviewRecovery';
 export { CLOUD_ATTACHMENT_PREVIEW_MAX_DATA_URL_LENGTH, safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
 export { uploadComposerAttachments } from './cloudComposerAttachments';
 
@@ -211,9 +216,7 @@ export class CloudAttachmentPreviewQueue {
 
 const visiblePreviewQueue = new CloudAttachmentPreviewQueue(4);
 
-type PreviewGenerator = (blob: Blob, attachment: { name: string; kind: 'image' | 'file'; mimeType?: string | null; sizeBytes?: number | null }) => Promise<string | null>;
-
-type PreviewRecoveryClient = Pick<CloudAuthClient, 'downloadAttachmentContent' | 'updateAttachmentPreview'>;
+type PreviewGenerator = CloudAttachmentPreviewGenerator;
 
 export function cachedCloudAttachmentLocalPath(attachmentId: string | null | undefined) {
   const id = attachmentId?.trim();
@@ -223,34 +226,6 @@ export function cachedCloudAttachmentLocalPath(attachmentId: string | null | und
 export function clearCloudAttachmentLocalPathCacheForTests() {
   clearCloudAttachmentLocalPathCache();
   resetCloudAttachmentPreviewLoader();
-}
-
-export async function recoverCloudAttachmentPreview({
-  token,
-  client,
-  attachment,
-  createPreviewDataUrl = createCompressedImagePreviewDataUrl,
-}: {
-  token: string;
-  client: PreviewRecoveryClient;
-  attachment: Pick<CloudMessageAttachment, 'attachmentId' | 'name' | 'kind' | 'mimeType' | 'sizeBytes' | 'previewUrl'>;
-  createPreviewDataUrl?: PreviewGenerator;
-}): Promise<string | null> {
-  if (attachment.kind !== 'image') return null;
-  if (safeCloudAttachmentPreviewUrl(attachment.previewUrl)) return null;
-  const attachmentId = attachment.attachmentId?.trim();
-  if (!attachmentId) return null;
-
-  const blob = await client.downloadAttachmentContent(token, attachmentId);
-  const previewUrl = safeCloudAttachmentPreviewUrl(await createPreviewDataUrl(blob, {
-    name: attachment.name,
-    kind: attachment.kind,
-    mimeType: attachment.mimeType,
-    sizeBytes: attachment.sizeBytes ?? blob.size,
-  }));
-  if (!previewUrl) return null;
-  await client.updateAttachmentPreview(token, attachmentId, previewUrl);
-  return previewUrl;
 }
 
 export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessageAttachment) {
@@ -368,6 +343,15 @@ export async function resolveCloudMessageAttachments({
       continue;
     }
     try {
+      if (isNativeDesktopShell()) {
+        const localPath = await downloadCloudAttachmentToLocalPath(
+          token,
+          attachment.attachmentId,
+          attachment.name || 'attachment.bin',
+        );
+        resolved.push({ ...mapped, localPath });
+        continue;
+      }
       const blob = await client.downloadAttachmentContent(token, attachment.attachmentId);
       if (blob.size > autoDownloadMaxBytes) {
         resolved.push(mapped);

@@ -3,7 +3,7 @@ pub(crate) mod multipart;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use axum::body::Bytes;
+use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -524,17 +524,7 @@ pub async fn content(
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
-    let bytes = match object_response.bytes().await {
-        Ok(value) => value,
-        Err(error) => {
-            eprintln!("[attachments] read content bytes failed: {error}");
-            return err(
-                "server_error",
-                "Could not download attachment.",
-                StatusCode::BAD_GATEWAY,
-            );
-        }
-    };
+    let object_content_length = object_response.content_length();
 
     let mut headers = HeaderMap::new();
     if let Some(value) = detected_content_type
@@ -546,13 +536,16 @@ pub async fn content(
             headers.insert(header::CONTENT_TYPE, header_value);
         }
     }
-    let length = size_bytes.unwrap_or_else(|| i64::try_from(bytes.len()).unwrap_or(0));
-    if length >= 0 {
+    let length =
+        object_content_length.or_else(|| size_bytes.and_then(|value| u64::try_from(value).ok()));
+    if let Some(length) = length {
         if let Ok(header_value) = HeaderValue::from_str(&length.to_string()) {
             headers.insert(header::CONTENT_LENGTH, header_value);
         }
     }
-    (headers, bytes).into_response()
+    let mut response = Response::new(Body::from_stream(object_response.bytes_stream()));
+    *response.headers_mut() = headers;
+    response
 }
 
 /// `GET /v1/cloud/attachments/:attachment_id/preview-content`

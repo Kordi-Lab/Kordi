@@ -1,5 +1,36 @@
 use super::support::*;
 use super::*;
+use std::collections::HashMap;
+
+type BootstrapConversationRow = (
+    Uuid,
+    String,
+    Option<String>,
+    i32,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    i64,
+    DateTime<Utc>,
+    DateTime<Utc>,
+    Option<String>,
+    i32,
+);
+
+type BootstrapMemberRow = (
+    Uuid,
+    String,
+    Option<String>,
+    Option<String>,
+    String,
+    String,
+    i32,
+    i64,
+    i64,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+);
 
 #[derive(Clone, Copy)]
 enum CursorKind {
@@ -130,7 +161,6 @@ async fn advance_conversation_cursor(
             )
             .await?;
         }
-        wake_dispatcher(&mut transaction).await?;
     }
     transaction.commit().await?;
     Ok(cursor)
@@ -299,33 +329,119 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             .fetch_optional(&mut *transaction)
             .await?;
     let stream_seq = head.map(|row| row.0).unwrap_or(0);
-    let conversation_rows: Vec<(Uuid,)> = query_as(
-        "SELECT conversation_id FROM cloud_chat_conversation_members \
-         WHERE account_id = $1 AND membership_state = 'active' \
-         ORDER BY conversation_id ASC",
+    let conversation_rows: Vec<BootstrapConversationRow> = query_as(
+        "SELECT conversation.conversation_id, conversation.kind, \
+                conversation.shared_title, conversation.version, \
+                conversation.created_by_account_id, conversation.legacy_session_id, \
+                fork.parent_session_id, fork.parent_message_id, \
+                conversation.latest_message_sequence, conversation.created_at, \
+                conversation.updated_at, viewer.personal_title, viewer.preferences_version \
+         FROM cloud_chat_conversation_members viewer \
+         JOIN cloud_chat_conversations conversation \
+           ON conversation.conversation_id = viewer.conversation_id \
+         LEFT JOIN cloud_session_forks fork \
+           ON fork.fork_session_id = conversation.legacy_session_id \
+         WHERE viewer.account_id = $1 AND viewer.membership_state = 'active' \
+         ORDER BY conversation.conversation_id ASC",
     )
     .bind(account_id)
     .fetch_all(&mut *transaction)
     .await?;
-    let mut conversations = Vec::with_capacity(conversation_rows.len());
-    let mut latest_messages = Vec::new();
-    for (conversation_id,) in conversation_rows {
-        let conversation = load_conversation(&mut transaction, conversation_id, account_id).await?;
-        if conversation.latest_message_sequence > 0 {
-            let latest: Option<(Uuid,)> = query_as(
-                "SELECT message_id FROM cloud_chat_messages \
-                 WHERE conversation_id = $1 AND conversation_sequence = $2",
-            )
-            .bind(conversation_id)
-            .bind(conversation.latest_message_sequence)
-            .fetch_optional(&mut *transaction)
-            .await?;
-            if let Some((message_id,)) = latest {
-                latest_messages.push(load_message(&mut transaction, message_id).await?);
-            }
-        }
-        conversations.push(conversation);
+    let conversation_ids = conversation_rows
+        .iter()
+        .map(|row| row.0)
+        .collect::<Vec<_>>();
+    let member_rows: Vec<BootstrapMemberRow> = query_as(
+        "SELECT member.conversation_id, member.account_id, account.display_name, \
+                account.avatar_url, member.role, member.membership_state, member.version, \
+                member.last_delivered_sequence, member.last_read_sequence, \
+                member.joined_at, member.left_at \
+         FROM cloud_chat_conversation_members member \
+         JOIN cloud_accounts account ON account.account_id = member.account_id \
+         WHERE member.conversation_id = ANY($1) \
+         ORDER BY member.conversation_id ASC, member.account_id ASC",
+    )
+    .bind(&conversation_ids)
+    .fetch_all(&mut *transaction)
+    .await?;
+    let mut members_by_conversation = HashMap::<Uuid, Vec<MemberSnapshot>>::new();
+    for row in member_rows {
+        members_by_conversation
+            .entry(row.0)
+            .or_default()
+            .push(member_from_row((
+                row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9, row.10,
+            )));
     }
+    let conversations = conversation_rows
+        .into_iter()
+        .map(|row| {
+            Ok(ConversationSnapshot {
+                id: row.0,
+                kind: parse_kind(&row.1)?,
+                shared_title: row.2,
+                version: row.3,
+                created_by_account_id: row.4,
+                legacy_session_id: row.5,
+                forked_from_session_id: row.6,
+                forked_from_message_id: row.7,
+                latest_message_sequence: row.8,
+                created_at: row.9,
+                updated_at: row.10,
+                members: members_by_conversation.remove(&row.0).unwrap_or_default(),
+                preferences: ConversationPreferencesSnapshot {
+                    conversation_id: row.0,
+                    account_id: account_id.to_string(),
+                    personal_title: row.11,
+                    version: row.12,
+                },
+            })
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+
+    let latest_rows: Vec<MessageRow> = query_as(
+        "SELECT message.message_id, message.client_message_id, message.conversation_id, \
+                message.conversation_sequence, message.sender_account_id, message.message_kind, \
+                message.content, message.reply_to_message_id, message.version, \
+                message.generation_status, message.provider_response_id, message.created_at, \
+                message.edited_at, message.deleted_at \
+         FROM cloud_chat_messages message \
+         JOIN cloud_chat_conversations conversation \
+           ON conversation.conversation_id = message.conversation_id \
+          AND conversation.latest_message_sequence = message.conversation_sequence \
+         WHERE message.conversation_id = ANY($1) \
+         ORDER BY message.conversation_id ASC",
+    )
+    .bind(&conversation_ids)
+    .fetch_all(&mut *transaction)
+    .await?;
+    let message_ids = latest_rows.iter().map(|row| row.0).collect::<Vec<_>>();
+    let attachment_rows: Vec<(Uuid, String)> = query_as(
+        "SELECT message_id, attachment_id FROM cloud_chat_message_attachments \
+         WHERE message_id = ANY($1) ORDER BY message_id ASC, position ASC",
+    )
+    .bind(&message_ids)
+    .fetch_all(&mut *transaction)
+    .await?;
+    let mut attachments_by_message = HashMap::<Uuid, Vec<String>>::new();
+    for (message_id, attachment_id) in attachment_rows {
+        attachments_by_message
+            .entry(message_id)
+            .or_default()
+            .push(attachment_id);
+    }
+    let latest_messages = latest_rows
+        .into_iter()
+        .map(|row| {
+            let message_id = row.0;
+            message_from_row(
+                row,
+                attachments_by_message
+                    .remove(&message_id)
+                    .unwrap_or_default(),
+            )
+        })
+        .collect();
     let server_time = Utc::now();
     transaction.commit().await?;
     Ok(BootstrapSnapshot {

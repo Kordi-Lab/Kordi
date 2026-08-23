@@ -27,15 +27,19 @@ use crate::chat_sync::store::{self, StoreError};
 use crate::chat_sync::PROTOCOL_VERSION;
 use crate::server::ServerState;
 
+#[cfg(test)]
+mod tests;
 mod ticket;
+mod wake;
 
 use ticket::{consume_ticket, ConsumedRealtimeTicket};
 pub use ticket::{issue_ticket, IssuedRealtimeTicket, TicketError};
+pub(crate) use wake::{spawn_wake_listener, ChatSyncWakeHub};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(65);
-const DURABLE_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const DURABLE_REPAIR_INTERVAL: Duration = Duration::from_secs(15);
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CLIENT_FRAME_BYTES: usize = 64 * 1024;
 const MAX_SERVER_FRAME_BYTES: usize = 512 * 1024;
@@ -303,6 +307,7 @@ async fn run_socket(
     };
     let mut sent_stream_seq = connect_stream_seq;
     let (mut sender, mut receiver): (SplitSink<_, _>, SplitStream<_>) = socket.split();
+    let mut event_wake = state.chat_sync_wakes().subscribe(&ticket.account_id);
     if send_json(
         &mut sender,
         &HelloFrame {
@@ -332,8 +337,9 @@ async fn run_socket(
         return;
     }
 
-    let mut durable_poll = tokio::time::interval(DURABLE_POLL_INTERVAL);
-    durable_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut durable_repair = tokio::time::interval(DURABLE_REPAIR_INTERVAL);
+    durable_repair.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    durable_repair.tick().await;
     let mut heartbeat_check = tokio::time::interval(HEARTBEAT_INTERVAL);
     heartbeat_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut device_revalidation = tokio::time::interval(DEVICE_REVALIDATION_INTERVAL);
@@ -396,7 +402,20 @@ async fn run_socket(
                     return;
                 }
             },
-            _ = durable_poll.tick() => {
+            _ = event_wake.recv() => {
+                if let Err(reason) = send_available_events(
+                    state.db_pool(),
+                    &ticket.account_id,
+                    &codec,
+                    &mut sender,
+                    &mut sent_stream_seq,
+                    last_applied_seq,
+                ).await {
+                    resync_and_close(&mut sender, reason).await;
+                    return;
+                }
+            }
+            _ = durable_repair.tick() => {
                 if let Err(reason) = send_available_events(
                     state.db_pool(),
                     &ticket.account_id,
@@ -441,40 +460,5 @@ async fn run_socket(
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{event_is_within_delivery_window, MAX_UNACKNOWLEDGED_EVENTS};
-
-    #[test]
-    fn delivery_window_pauses_instead_of_overrunning_unacknowledged_limit() {
-        assert!(event_is_within_delivery_window(
-            MAX_UNACKNOWLEDGED_EVENTS,
-            0
-        ));
-        assert!(!event_is_within_delivery_window(
-            MAX_UNACKNOWLEDGED_EVENTS + 1,
-            0
-        ));
-        assert!(event_is_within_delivery_window(
-            MAX_UNACKNOWLEDGED_EVENTS + 501,
-            501
-        ));
-
-        let mut acknowledged = 0;
-        let mut delivered = 0;
-        let mut windows = 0;
-        while delivered < 1_200 {
-            windows += 1;
-            while delivered < 1_200 && event_is_within_delivery_window(delivered + 1, acknowledged)
-            {
-                delivered += 1;
-            }
-            acknowledged = delivered;
-        }
-        assert_eq!(delivered, 1_200);
-        assert_eq!(windows, 2);
     }
 }

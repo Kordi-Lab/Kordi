@@ -11,3 +11,7 @@ export function cacheDesktopCloudAttachmentPath(attachmentId: string, name: stri
 export function cachedDesktopCloudAttachmentPath(attachmentId: string, name: string) {
   return invokeDesktop<string | null>('desktop_chat_cached_cloud_attachment_path', { attachmentId, name });
 }
+
+export function downloadDesktopCloudAttachment(token: string, attachmentId: string, name: string) {
+  return invokeDesktop<string>('desktop_chat_download_cloud_attachment', { token, attachmentId, name });
+}

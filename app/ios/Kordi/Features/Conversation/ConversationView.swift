@@ -1694,8 +1694,8 @@ enum ConversationTimelineScrollBehavior {
     ) -> Bool {
         guard hasPositionedInitialTimeline,
               isAtBottom,
-              let previousLatestMessageID,
-              let currentLatestMessageID else { return false }
+              previousLatestMessageID != nil,
+              currentLatestMessageID != nil else { return false }
         return true
     }
 

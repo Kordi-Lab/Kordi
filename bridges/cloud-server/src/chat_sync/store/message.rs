@@ -164,7 +164,6 @@ pub(crate) async fn send_message_in_transaction(
         )
         .await?;
     }
-    wake_dispatcher(transaction).await?;
     Ok(InsertOutcome {
         value: message,
         inserted: true,
@@ -225,7 +224,6 @@ pub(crate) async fn replace_server_message_in_transaction(
         )
         .await?;
     }
-    wake_dispatcher(transaction).await?;
     Ok(Some(message))
 }
 
@@ -326,7 +324,6 @@ pub async fn replace_message_snapshot(
         )
         .await?;
     }
-    wake_dispatcher(&mut transaction).await?;
     transaction.commit().await?;
     Ok(message)
 }

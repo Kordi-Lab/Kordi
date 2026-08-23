@@ -173,7 +173,6 @@ pub async fn add_conversation_members(
             )
             .await?;
         }
-        wake_dispatcher(&mut transaction).await?;
     }
     transaction.commit().await?;
     Ok(conversation)
@@ -294,6 +293,5 @@ pub async fn accept_invited_conversation_member(
         )
         .await?;
     }
-    wake_dispatcher(transaction).await?;
     Ok(invited_projection)
 }

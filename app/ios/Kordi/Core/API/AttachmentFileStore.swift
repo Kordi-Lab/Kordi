@@ -2,14 +2,20 @@ import Foundation
 import CryptoKit
 
 actor AttachmentFileStore {
-    private let directory: URL?
-    private var cachedURLs: [String: URL] = [:]
+    private static let memoryEntryLimit = 256
+    private static let defaultDiskByteLimit: Int64 = 512 * 1024 * 1024
 
-    init(directory: URL? = nil) {
+    private let directory: URL?
+    private let diskByteLimit: Int64
+    private var cachedURLs: [String: URL] = [:]
+    private var recentCacheKeys: [String] = []
+
+    init(directory: URL? = nil, diskByteLimit: Int64? = nil) {
         self.directory = directory ?? FileManager.default.urls(
             for: .cachesDirectory,
             in: .userDomainMask
         ).first?.appendingPathComponent("Kordi/Attachments", isDirectory: true)
+        self.diskByteLimit = diskByteLimit ?? Self.defaultDiskByteLimit
     }
 
     func cachedURL(for attachment: ChatAttachment, accountId: String) -> URL? {
@@ -19,9 +25,10 @@ actor AttachmentFileStore {
         }
         guard FileManager.default.fileExists(atPath: url.path) else {
             cachedURLs[cacheKey] = nil
+            recentCacheKeys.removeAll { $0 == cacheKey }
             return nil
         }
-        cachedURLs[cacheKey] = url
+        remember(url, for: cacheKey)
         return url
     }
 
@@ -32,8 +39,40 @@ actor AttachmentFileStore {
             throw URLError(.cannotCreateFile)
         }
         try data.write(to: url, options: .atomic)
-        cachedURLs["\(accountId):\(attachment.attachmentId)"] = url
+        remember(url, for: "\(accountId):\(attachment.attachmentId)")
+        pruneDiskCache(protecting: url)
         return url
+    }
+
+    private func remember(_ url: URL, for key: String) {
+        recentCacheKeys.removeAll { $0 == key }
+        recentCacheKeys.append(key)
+        cachedURLs[key] = url
+        while recentCacheKeys.count > Self.memoryEntryLimit {
+            cachedURLs[recentCacheKeys.removeFirst()] = nil
+        }
+    }
+
+    private func pruneDiskCache(protecting protectedURL: URL) {
+        guard let directory,
+              let enumerator = FileManager.default.enumerator(
+                at: directory,
+                includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+              ) else { return }
+        let files = enumerator.compactMap { value -> (URL, Int64, Date)? in
+            guard let url = value as? URL,
+                  let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
+                  values.isRegularFile == true else { return nil }
+            return (url, Int64(values.fileSize ?? 0), values.contentModificationDate ?? .distantPast)
+        }
+        var total = files.reduce(Int64(0)) { $0 + $1.1 }
+        for (url, size, _) in files.sorted(by: { $0.2 < $1.2 })
+            where total > diskByteLimit && url != protectedURL {
+            if (try? FileManager.default.removeItem(at: url)) != nil {
+                total -= size
+            }
+        }
     }
 
     private func cacheURL(for attachment: ChatAttachment, accountId: String) -> URL? {

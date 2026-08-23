@@ -36,4 +36,10 @@ test('file upload cancellation is an external opposite-avatar action with confir
   assert.match(source, /Keep uploading/);
   assert.match(source, /Cancel upload/);
   assert.doesNotMatch(inlineLinkSource, /cancelCloudAttachmentUpload/);
+  assert.match(inlineLinkSource, /isNativeShell\(\)[\s\S]*downloadCloudAttachmentToLocalPath/);
+  assert.ok(
+    inlineLinkSource.indexOf('downloadCloudAttachmentToLocalPath')
+      < inlineLinkSource.indexOf('downloadAttachmentContent'),
+    'native file downloads must stream before the browser Blob fallback',
+  );
 });
