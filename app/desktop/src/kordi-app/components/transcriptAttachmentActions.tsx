@@ -3,7 +3,10 @@ import { Download, ExternalLink, LoaderCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
-import { persistCloudAttachmentBytes } from '@/features/cloud/cloudAttachmentLocalPathCache';
+import {
+  loadCachedCloudAttachmentLocalPath,
+  persistCloudAttachmentBytes,
+} from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
 import {
   downloadDesktopAttachment,
@@ -44,6 +47,11 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
   async function ensureLocalPath() {
     if (attachment.localPath) return attachment.localPath;
     if (!attachment.attachmentId) return null;
+    const cachedPath = await loadCachedCloudAttachmentLocalPath(
+      attachment.attachmentId,
+      attachment.name || 'attachment.bin',
+    );
+    if (cachedPath) return cachedPath;
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
     const blob = await defaultCloudAuthClient().downloadAttachmentContent(session.token, attachment.attachmentId);

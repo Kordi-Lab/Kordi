@@ -11,7 +11,7 @@ import {
   cachedCloudAttachmentLocalPath as cachedLocalPath,
   clearCloudAttachmentLocalPathCache,
   cloudAttachmentPreviewCacheId,
-  persistCloudAttachmentBytes,
+  loadCachedCloudAttachmentLocalPath, persistCloudAttachmentBlob, persistCloudAttachmentBytes,
 } from './cloudAttachmentLocalPathCache';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
 
@@ -354,7 +354,8 @@ export async function resolveCloudMessageAttachments({
   const resolved = [];
   for (const attachment of attachments) {
     const mapped = cloudMessageAttachmentToMessageAttachment(attachment);
-    const cachedPath = cachedLocalPath(attachment.attachmentId);
+    const cachedPath = cachedLocalPath(attachment.attachmentId)
+      ?? await loadCachedCloudAttachmentLocalPath(attachment.attachmentId, attachment.name || 'attachment.bin');
     if (cachedPath) {
       resolved.push({ ...mapped, localPath: cachedPath });
       continue;
@@ -372,8 +373,7 @@ export async function resolveCloudMessageAttachments({
         resolved.push(mapped);
         continue;
       }
-      const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
-      const localPath = await storeAttachment(attachment.name || 'attachment.bin', bytes);
+      const localPath = await persistCloudAttachmentBlob(attachment.attachmentId, attachment.name || 'attachment.bin', blob, storeAttachment);
       cacheCloudAttachmentLocalPath(attachment.attachmentId, localPath);
       resolved.push({ ...mapped, localPath });
     } catch {

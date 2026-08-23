@@ -3,6 +3,7 @@ import {
   cacheDesktopCloudAttachmentPath,
   cachedDesktopCloudAttachmentPath,
 } from '@/lib/desktopCloudAttachmentCache';
+import { isNativeDesktopShell } from '@/lib/desktop';
 
 const paths = new Map<string, string>();
 
@@ -52,6 +53,21 @@ export async function persistCloudAttachmentBytes(
   } catch {
     return null;
   }
+}
+
+export async function persistCloudAttachmentBlob(
+  attachmentId: string,
+  name: string,
+  blob: Blob,
+  fallback: (name: string, data: number[]) => Promise<string>,
+) {
+  const cached = isNativeDesktopShell()
+    ? await persistCloudAttachmentBytes(attachmentId, name, blob)
+    : null;
+  return cached ?? fallback(
+    name,
+    Array.from(new Uint8Array(await blob.arrayBuffer())),
+  );
 }
 
 export async function persistCloudAttachmentPath(

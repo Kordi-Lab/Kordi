@@ -81,7 +81,6 @@ export async function uploadComposerAttachments({
       } : {}),
       mimeType,
       sizeBytes: attachment.sizeBytes ?? summary.sizeBytes,
-      ...(previewUrl ? { previewUrl } : {}),
     });
   }
   return uploaded;

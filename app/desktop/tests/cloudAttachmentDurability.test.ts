@@ -32,7 +32,7 @@ test('preview loading prefers canonical bytes and falls back to the original', a
 
 test('image upload stores its generated preview on the canonical attachment', async () => {
   const updates: string[] = [];
-  await uploadComposerAttachments({
+  const attachments = await uploadComposerAttachments({
     token: 'token',
     client: {
       async uploadAttachment(_token, blob) {
@@ -50,4 +50,5 @@ test('image upload stores its generated preview on the canonical attachment', as
   });
 
   assert.deepEqual(updates, ['att_2:data:image/webp;base64,preview']);
+  assert.equal(attachments[0]?.previewUrl, undefined);
 });
