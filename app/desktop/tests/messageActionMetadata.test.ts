@@ -43,6 +43,39 @@ test('quoteMessageAction and forwardMessageAction create schema-versioned metada
   assert.equal(quoteMessageAction(source).schemaVersion, 1);
 });
 
+test('reply and forward source metadata retains mention identity after preview normalization', () => {
+  const displayText = "@Alex Smith’s Kordi";
+  const source = messageActionSourceFromMessage({
+    ...sourceMessage,
+    text: `${displayText}\nplease review`,
+    mentions: [{
+      label: 'AlexSmithsKordi',
+      targetKind: 'agent',
+      targetIdentityId: 'agent:cloud_agent_alex',
+      startUtf16: 0,
+      lengthUtf16: displayText.length,
+      displayText,
+    }],
+  }, 'session:group:one');
+
+  assert.equal(source?.textPreview, `${displayText} please review`);
+  assert.deepEqual(source?.mentions?.[0], {
+    label: 'AlexSmithsKordi',
+    targetKind: 'agent',
+    targetIdentityId: 'agent:cloud_agent_alex',
+    startUtf16: 0,
+    lengthUtf16: displayText.length,
+    displayText,
+    sourceHostId: null,
+    nodeId: null,
+    humanId: null,
+    agentId: null,
+    displayLabel: null,
+  });
+  assert.deepEqual(quoteMessageAction(source!).source.mentions, source?.mentions);
+  assert.deepEqual(forwardMessageAction(source!).source.mentions, source?.mentions);
+});
+
 test('forwardMessageSourceFromMessage keeps attachments transient while persisted actions omit local paths', () => {
   const message: Message = {
     ...sourceMessage,

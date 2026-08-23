@@ -1,4 +1,5 @@
-import type { MessageActionMetadata } from '../../kordi-app/types/message';
+import { normalizedMessageMentions } from '@/features/chat/messageMentions';
+import type { MessageActionMetadata, MessageMention } from '../../kordi-app/types/message';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 export const CLOUD_DIRECT_MESSAGE_PREFIX = 'kordi-cloud-message:';
@@ -9,6 +10,7 @@ export type CloudDirectMessageEnvelope = {
   schemaVersion: 1;
   kind: 'message';
   text: string;
+  mentions?: MessageMention[];
   messageAction?: MessageActionMetadata | null;
   targetCloudAgentId?: string | null;
   targetCloudAgentName?: string | null;
@@ -53,7 +55,10 @@ export function parseCloudDirectMessageEnvelope(body: string): CloudDirectMessag
   if (!body.startsWith(CLOUD_DIRECT_MESSAGE_PREFIX)) return null;
   try {
     const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_DIRECT_MESSAGE_PREFIX.length)));
-    return isCloudDirectMessageEnvelope(parsed) ? parsed : null;
+    if (!isCloudDirectMessageEnvelope(parsed)) return null;
+    const { mentions: rawMentions, ...envelope } = parsed;
+    const mentions = normalizedMessageMentions(rawMentions);
+    return { ...envelope, ...(mentions ? { mentions } : {}) };
   } catch {
     return null;
   }
@@ -65,6 +70,10 @@ export function cloudDirectMessageDisplayText(body: string): string {
 
 export function cloudDirectMessageAction(body: string): MessageActionMetadata | null {
   return parseCloudDirectMessageEnvelope(body)?.messageAction ?? null;
+}
+
+export function cloudDirectMessageMentions(body: string): MessageMention[] | undefined {
+  return parseCloudDirectMessageEnvelope(body)?.mentions;
 }
 
 export function cloudDirectMessageTargetCloudAgentId(body: string): string | null {

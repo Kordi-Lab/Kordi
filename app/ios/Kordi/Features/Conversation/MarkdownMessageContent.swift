@@ -353,6 +353,7 @@ struct MarkdownMessageContent: View {
     let text: String
     let density: Density
     let mentionTargets: [ComposerMentionTarget]
+    let mentions: [MessageMention]
     @State private var showsFullOversizedText = false
 
     // ponytail: Keep first layout bounded; paginate rich Markdown blocks if expanded formatting becomes necessary.
@@ -362,11 +363,13 @@ struct MarkdownMessageContent: View {
     init(
         text: String,
         density: Density = .standard,
-        mentionTargets: [ComposerMentionTarget] = []
+        mentionTargets: [ComposerMentionTarget] = [],
+        mentions: [MessageMention] = []
     ) {
         self.text = text
         self.density = density
         self.mentionTargets = mentionTargets
+        self.mentions = mentions
     }
 
     private var blocks: [KordiMarkdownBlock] {
@@ -411,6 +414,7 @@ struct MarkdownMessageContent: View {
             .fixedSize(horizontal: false, vertical: true)
             .textSelection(.enabled)
             .environment(\.composerMentionTargets, mentionTargets)
+            .environment(\.messageMentions, mentions)
         }
     }
 
@@ -462,6 +466,7 @@ private struct InlineMarkdownText: View {
     let text: String
     let font: Font
     @Environment(\.composerMentionTargets) private var mentionTargets
+    @Environment(\.messageMentions) private var mentions
 
     var body: some View {
         Text(attributedText)
@@ -502,6 +507,7 @@ private struct InlineMarkdownText: View {
         var result = AttributedString()
         for segment in ComposerMentionTargetCatalog.highlightedSegments(
             in: value,
+            mentions: mentions,
             targets: mentionTargets
         ) {
             var fragment = AttributedString(segment.text)
@@ -521,6 +527,7 @@ private struct InlineMarkdownText: View {
 
 private extension EnvironmentValues {
     @Entry var composerMentionTargets: [ComposerMentionTarget] = []
+    @Entry var messageMentions: [MessageMention] = []
 }
 
 private struct MarkdownListRow: View {

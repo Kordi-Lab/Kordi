@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { MessageBubble, LiveChatTurnCard } from '../src/kordi-app/components/transcript';
+import { SourceMessageQuote } from '../src/kordi-app/components/transcriptReplyAttribution';
 import {
   MessageInlineContent,
 } from '../src/kordi-app/components/messageInlineContent';
@@ -15,7 +16,7 @@ import {
   siteIconRequestUrl,
 } from '../src/kordi-app/components/messageLinks';
 import { canonicalMentions } from '../src/features/canonical/readModel/mentionMapping';
-import { mentionForCollaborationTarget } from '../src/features/chat/messageActions/mentions';
+import { mentionForCollaborationTarget } from '../src/features/chat/messageMentions';
 import {
   clearRemoteAvatarImageCacheForTests,
   loadAvatarThroughNativeProxy,
@@ -112,6 +113,77 @@ test('structured mentions preserve and highlight the complete display label', ()
   assert.equal(parts[0]?.type === 'mention' ? parts[0].targetKind : null, 'agent');
 });
 
+test('legacy My Kordi messages highlight the complete built-in name without metadata', () => {
+  const text = '@My Kordi check all my Kordi project worktrees.';
+  const parts = parseMessageInlineParts(text);
+
+  assert.deepEqual(
+    parts.map((part) => part.type === 'text' ? part.value : part.label),
+    ['@My Kordi', ' check all my Kordi project worktrees.'],
+  );
+  assert.equal(parts[0]?.type === 'mention' ? parts[0].targetKind : null, 'agent');
+});
+
+test('legacy structured aliases match multi-word labels case-insensitively', () => {
+  const parts = parseMessageInlineParts('@project driver check this.', [{
+    label: 'ProjectDriver',
+    displayLabel: 'Project Driver',
+    targetKind: 'agent',
+  }]);
+
+  assert.deepEqual(
+    parts.map((part) => part.type === 'text' ? part.value : part.label),
+    ['@project driver', ' check this.'],
+  );
+  assert.equal(parts[0]?.type === 'mention' ? parts[0].targetKind : null, 'agent');
+});
+
+test('identity ranges preserve Unicode multi-word mentions without text inference', () => {
+  const displayText = "@ليان 🧭’s Kordi";
+  const text = `Ask ${displayText} to review this.`;
+  const startUtf16 = text.indexOf(displayText);
+  const parts = parseMessageInlineParts(text, canonicalMentions([{
+    label: 'LiansKordi',
+    targetKind: 'agent',
+    targetIdentityId: 'agent:cloud_agent_lian',
+    startUtf16,
+    lengthUtf16: displayText.length,
+    displayText,
+  }]));
+  const mention = parts.find((part) => part.type === 'mention');
+
+  assert.deepEqual(mention, {
+    type: 'mention',
+    label: displayText,
+    targetKind: 'agent',
+    targetIdentityId: 'agent:cloud_agent_lian',
+    start: startUtf16,
+  });
+});
+
+test('reply previews render the complete structured mention instead of the first word', () => {
+  const displayText = "@Alex Smith’s Kordi";
+  const html = renderToStaticMarkup(createElement(SourceMessageQuote, {
+    sourceMessage: {
+      messageId: 'msg_source',
+      senderLabel: 'Alex',
+      text: `${displayText} please review`,
+      mentions: [{
+        label: 'AlexSmithsKordi',
+        targetKind: 'agent',
+        targetIdentityId: 'agent:cloud_agent_alex',
+        startUtf16: 0,
+        lengthUtf16: displayText.length,
+        displayText,
+      }],
+    },
+    compactReplyPreview: true,
+  }));
+
+  assert.match(html, /data-mention-identity="agent:cloud_agent_alex"[^>]*aria-label="@Alex Smith’s Kordi, agent mention"[^>]*>@Alex Smith’s Kordi<\/span>/);
+  assert.doesNotMatch(html, /<\/span> Smith/);
+});
+
 test('collaboration mention metadata keeps the complete display label', () => {
   const mention = mentionForCollaborationTarget({
     host: { id: 'cloud' } as never,
@@ -124,6 +196,7 @@ test('collaboration mention metadata keeps the complete display label', () => {
 
   assert.equal(mention?.label, 'AlicesKordi');
   assert.equal(mention?.displayLabel, "Alice's Kordi");
+  assert.equal(mention?.targetIdentityId, 'agent:cloud-agent:acct_alice');
 });
 
 test('shared inline renderer gives human and agent mentions distinct semantic colors', () => {

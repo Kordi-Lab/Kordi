@@ -10,6 +10,7 @@ enum CloudMessageCodec {
         let schemaVersion: Int
         let kind: String
         let text: String
+        let mentions: [MessageMention]?
         let targetCloudAgentId: String?
         let targetCloudAgentName: String?
         let targetCloudAgentOwnerAccountId: String?
@@ -60,6 +61,7 @@ enum CloudMessageCodec {
         agentName: String?,
         ownerAccountId: String?,
         ownerName: String?,
+        mentions: [MessageMention]? = nil,
         agentRuntimeRoute: CloudModelRouting? = nil,
         messageAction: MessageActionMetadata? = nil
     ) throws -> String {
@@ -67,6 +69,7 @@ enum CloudMessageCodec {
             schemaVersion: 1,
             kind: "message",
             text: text,
+            mentions: mentions,
             targetCloudAgentId: agentId,
             targetCloudAgentName: agentName,
             targetCloudAgentOwnerAccountId: ownerAccountId,

@@ -92,6 +92,10 @@ export type DesktopChatAttachment = {
 export type MessageMention = {
   label: string;
   targetKind?: 'agent' | 'person' | string;
+  targetIdentityId?: string | null;
+  startUtf16?: number | null;
+  lengthUtf16?: number | null;
+  displayText?: string | null;
   sourceHostId?: string | null;
   nodeId?: string | null;
   humanId?: string | null;
@@ -103,6 +107,7 @@ export type MessageSourceReference = {
   messageId: string;
   senderLabel?: string | null;
   text: string;
+  mentions?: MessageMention[];
   attachmentCount?: number;
   time?: string | null;
 };
@@ -132,6 +137,7 @@ export type MessageActionSource = {
   sourceMessageKind?: string | null;
   senderLabel: string;
   textPreview: string;
+  mentions?: MessageMention[];
   attachmentCount: number;
   createdAtMs?: number | null;
   timeLabel?: string | null;

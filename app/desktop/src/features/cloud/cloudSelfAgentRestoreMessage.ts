@@ -1,4 +1,4 @@
-import type { MessageActionMetadata } from '@/kordi-app/types';
+import type { MessageActionMetadata, MessageMention } from '@/kordi-app/types';
 import type { CloudMessage } from './authClient';
 import {
   CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND,
@@ -12,6 +12,7 @@ import {
 import {
   cloudDirectMessageAction,
   cloudDirectMessageDisplayText,
+  cloudDirectMessageMentions,
 } from './cloudDirectMessages';
 import { parseCloudGroupControl } from './cloudGroupMessages';
 import type { CloudSelfAgentResponseDeliveryState } from './cloudSelfAgentResponseLifecycle';
@@ -31,6 +32,7 @@ export type CloudSelfAgentRestoreMessage = {
   responseDeliveryState: CloudSelfAgentResponseDeliveryState | null;
   responseExecution: CloudAgentExecutionSnapshot | undefined;
   messageAction: MessageActionMetadata | null;
+  mentions: MessageMention[] | undefined;
   agentRuntimeRoute: ReturnType<typeof cloudAgentRuntimeRouteChangeFromBody>;
 };
 
@@ -90,6 +92,7 @@ export function normalizeCloudSelfAgentRestoreMessage(
       : null,
     responseExecution: response?.execution,
     messageAction: response ? null : cloudDirectMessageAction(message.body),
+    mentions: response ? undefined : cloudDirectMessageMentions(message.body),
     agentRuntimeRoute: isModelChange
       ? cloudAgentRuntimeRouteChangeFromBody(message.body)
       : null,

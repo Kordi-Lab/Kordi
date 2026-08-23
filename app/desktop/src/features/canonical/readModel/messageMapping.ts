@@ -17,6 +17,7 @@ import { canonicalCallActivity } from './callActivity';
 import { canonicalAttachments } from './attachmentMapping';
 import { isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
 import { canonicalMentions } from './mentionMapping';
+import { canonicalMessageAction, canonicalMessageActionSourceReference } from './messageActionMapping';
 
 export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
 export { canonicalAttachments } from './attachmentMapping';
@@ -30,30 +31,6 @@ export function stringValue(value: unknown) {
 
 export function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function canonicalMessageAction(value: unknown): MessageActionMetadata | null {
-  const record = contentRecord(value);
-  if (record.schemaVersion !== 1 || (record.kind !== 'quote' && record.kind !== 'forward')) return null;
-  const source = contentRecord(record.source);
-  const sourceSessionId = stringValue(source.sourceSessionId)?.trim();
-  const sourceMessageId = stringValue(source.sourceMessageId)?.trim();
-  const senderLabel = stringValue(source.senderLabel)?.trim();
-  if (!sourceSessionId || !sourceMessageId || !senderLabel) return null;
-  return {
-    schemaVersion: 1,
-    kind: record.kind,
-    source: {
-      sourceSessionId,
-      sourceMessageId,
-      sourceMessageKind: stringValue(source.sourceMessageKind) ?? null,
-      senderLabel,
-      textPreview: stringValue(source.textPreview)?.trim() ?? '',
-      attachmentCount: Math.max(0, Math.floor(numberValue(source.attachmentCount) ?? 0)),
-      createdAtMs: numberValue(source.createdAtMs) ?? null,
-      timeLabel: stringValue(source.timeLabel) ?? null,
-    },
-  };
 }
 
 function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
@@ -82,17 +59,6 @@ function canonicalMessageActionWithRealSourceLabel(
       ...action.source,
       senderLabel,
     },
-  };
-}
-
-function canonicalMessageActionSourceReference(action: MessageActionMetadata | null): Message['sourceMessage'] {
-  if (!action || action.kind !== 'quote') return null;
-  return {
-    messageId: action.source.sourceMessageId,
-    senderLabel: action.source.senderLabel,
-    text: action.source.textPreview,
-    attachmentCount: action.source.attachmentCount,
-    time: action.source.timeLabel ?? null,
   };
 }
 

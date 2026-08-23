@@ -38,8 +38,8 @@ import { CHAT_COMPOSER_TEXTAREA_SELECTOR, formatDesktopEventTime, isSharedLocalS
 import type { AttachmentItem } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
+import { messageMentionsForSend } from '../messageMentions';
 import {
-  mentionForCollaborationTarget,
   mentionsLocalAgent,
   resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh,
 } from './mentions';
@@ -1055,14 +1055,11 @@ export function useChatMessageActions({
       setDesktopChatError(memeValidationError);
       return;
     }
-
     const mentionedTarget = await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
-      text,
-      desktopCollaborationState,
-      activeConvMentionScope,
-      sharedCloudAgents,
-      resolveSharedCloudAgentsForMention,
+      text, desktopCollaborationState, activeConvMentionScope,
+      sharedCloudAgents, resolveSharedCloudAgentsForMention,
     );
+    const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);
     const targetCloudAgentId = mentionedTarget?.peer.agentId?.startsWith('cloud_agent_') ? mentionedTarget.peer.agentId : null;
     const mentionedCloudSharedAgentOwnerAccountId = targetCloudAgentId
       ? cleanText(mentionedTarget?.peer.humanId) || cleanText(mentionedTarget?.peer.nodeId)
@@ -1279,7 +1276,7 @@ export function useChatMessageActions({
         sentAt,
         'cloud-group-ui',
         'sending',
-        mentionForCollaborationTarget(mentionedTarget),
+        messageMentions,
         activeChatQuote,
       );
       if (preparedCanonicalMessage) {
@@ -1306,6 +1303,7 @@ export function useChatMessageActions({
             id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
             senderAccountId: '',
             text,
+            mentions: messageMentions,
             createdAtMs: Date.now(),
             messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null,
             targetCloudAgentId,
@@ -1356,7 +1354,7 @@ export function useChatMessageActions({
         sentAt,
         'cloud-group-ui',
         'sending',
-        undefined,
+        messageMentions,
         activeChatQuote,
       );
       if (preparedCanonicalMessage) {
@@ -1383,6 +1381,7 @@ export function useChatMessageActions({
             id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
             senderAccountId: '',
             text,
+            mentions: messageMentions,
             createdAtMs: Date.now(),
             messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null,
           },
@@ -1424,7 +1423,7 @@ export function useChatMessageActions({
         setDesktopChatError(null);
         if (!preserveComposer) clearComposerAfterSend([activeConvId]);
         if (appendedOptimisticCollaborationMessage) {
-          setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeCloudConversationId, text, sentAt, optimisticMessageId, attachmentsToSend, attachmentSummaryText(text, attachmentsToSend), activeChatQuote));
+          setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeCloudConversationId, text, sentAt, optimisticMessageId, attachmentsToSend, attachmentSummaryText(text, attachmentsToSend), activeChatQuote, messageMentions));
         }
         const directHostedAgentTarget = resolveDirectHostedAgentTarget({
           mentionedAgentId: targetCloudAgentId,
@@ -1432,12 +1431,13 @@ export function useChatMessageActions({
           activeTarget: activeConvCollaborationTarget,
           lockedTarget: lockedSupportAgentTarget,
         });
-        const shouldEncodeDirectEnvelope = Boolean(activeChatQuote?.source || directHostedAgentTarget);
+        const shouldEncodeDirectEnvelope = Boolean(activeChatQuote?.source || directHostedAgentTarget || messageMentions.length);
         const cloudBody = shouldEncodeDirectEnvelope
           ? encodeCloudDirectMessageEnvelope({
               schemaVersion: 1,
               kind: 'message',
               text,
+              mentions: messageMentions,
               ...(directHostedAgentTarget ? {
                 agentRuntimeRoute: resolveChatRuntimeRoute(
                   activeConvCanonicalSessionId ?? activeConvId,

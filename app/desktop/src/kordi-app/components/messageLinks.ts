@@ -1,6 +1,7 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
 import { openDesktopExternalUrl } from '@/lib/desktop';
+import { messageMentionsForText } from '@/features/chat/messageMentions';
 import type { MessageMention } from '../types';
 
 type ExternalMessageLinkClickEvent = Pick<ReactMouseEvent<HTMLAnchorElement>, 'preventDefault'> & {
@@ -16,11 +17,11 @@ type ExternalMessageLinkOpener = (url: string) => unknown;
 
 export type MessageInlinePart =
   | { type: 'text'; value: string; start: number }
-  | { type: 'mention'; label: string; targetKind: 'agent' | 'person'; start: number }
+  | { type: 'mention'; label: string; targetKind: 'agent' | 'person'; targetIdentityId?: string | null; start: number }
   | { type: 'link'; label: string; href: string; start: number };
 
 type InlineRange =
-  | { type: 'mention'; label: string; targetKind: 'agent' | 'person'; start: number; end: number }
+  | { type: 'mention'; label: string; targetKind: 'agent' | 'person'; targetIdentityId?: string | null; start: number; end: number }
   | { type: 'link'; label: string; href: string; start: number; end: number };
 
 export type SiteIconDescriptor = {
@@ -31,6 +32,7 @@ export type SiteIconDescriptor = {
 export const bareHttpUrlStartPattern = /https?:\/\//i;
 const bareHttpUrlPattern = /https?:\/\/[^\s<>"']+/giu;
 const trailingBareUrlPunctuationPattern = /[.,!?;:，。！？；：]+$/u;
+const legacyMyKordiMentionPattern = /@My[ \t]+Kordi\b/giu;
 const textualMentionPattern = /@[\p{L}\p{N}][\p{L}\p{N}._'-]{0,63}/gu;
 const siteIconDescriptorCache = new Map<string, SiteIconDescriptor>();
 const MAX_SITE_ICON_DESCRIPTOR_CACHE_ENTRIES = 256;
@@ -176,53 +178,35 @@ function inferredMentionTargetKind(label: string): 'agent' | 'person' {
     : 'person';
 }
 
-function structuredMentionAliases(mention: MessageMention) {
-  const aliases = new Set([
-    mention.label.trim(),
-    mention.displayLabel?.trim() ?? '',
-  ]);
-  if (
-    mention.targetKind === 'agent'
-    && mention.label.replace(/\s+/g, '').toLowerCase() === 'mykordi'
-  ) {
-    aliases.add('My Kordi');
-  }
-  aliases.delete('');
-  return [...aliases];
-}
-
 function structuredMentionRanges(text: string, mentions: MessageMention[], reserved: InlineRange[]) {
   const ranges: InlineRange[] = [];
-  const candidates = mentions.flatMap((mention) => {
+  const candidates = messageMentionsForText(text, mentions)?.map((mention) => {
     const targetKind = mention.targetKind === 'agent' || mention.targetKind === 'person'
       ? mention.targetKind
       : inferredMentionTargetKind(mention.label);
-    return structuredMentionAliases(mention).map((label) => ({ label, targetKind }));
-  }).sort((left, right) => right.label.length - left.label.length);
-  const normalizedText = text.toLowerCase();
+    return {
+      mention,
+      targetKind,
+      start: mention.startUtf16!,
+      end: mention.startUtf16! + mention.lengthUtf16!,
+    };
+  }).sort((left, right) => left.start - right.start) ?? [];
 
-  for (const { label, targetKind } of candidates) {
-    const needle = `@${label}`;
-    const normalizedNeedle = needle.toLowerCase();
-    let searchFrom = 0;
-    while (searchFrom < text.length) {
-      const start = normalizedText.indexOf(normalizedNeedle, searchFrom);
-      if (start === -1) break;
-      const candidate: InlineRange = {
-        type: 'mention',
-        label: text.slice(start, start + needle.length),
-        targetKind,
-        start,
-        end: start + needle.length,
-      };
-      if (
-        isMentionBoundary(text, start, needle.length)
-        && !reserved.some((range) => rangesOverlap(candidate, range))
-        && !ranges.some((range) => rangesOverlap(candidate, range))
-      ) {
-        ranges.push(candidate);
-      }
-      searchFrom = candidate.end;
+  for (const { mention, targetKind, start, end } of candidates) {
+    const candidate: InlineRange = {
+      type: 'mention',
+      label: text.slice(start, end),
+      targetKind,
+      targetIdentityId: mention.targetIdentityId,
+      start,
+      end,
+    };
+    if (
+      isMentionBoundary(text, start, end - start)
+      && !reserved.some((range) => rangesOverlap(candidate, range))
+      && !ranges.some((range) => rangesOverlap(candidate, range))
+    ) {
+      ranges.push(candidate);
     }
   }
   return ranges;
@@ -230,20 +214,23 @@ function structuredMentionRanges(text: string, mentions: MessageMention[], reser
 
 function textualMentionRanges(text: string, reserved: InlineRange[]) {
   const ranges: InlineRange[] = [];
-  for (const match of text.matchAll(textualMentionPattern)) {
-    const start = match.index;
-    const candidate: InlineRange = {
-      type: 'mention',
-      label: match[0],
-      targetKind: inferredMentionTargetKind(match[0]),
-      start,
-      end: start + match[0].length,
-    };
-    if (
-      isMentionBoundary(text, start, match[0].length)
-      && !reserved.some((range) => rangesOverlap(candidate, range))
-    ) {
-      ranges.push(candidate);
+  for (const pattern of [legacyMyKordiMentionPattern, textualMentionPattern]) {
+    for (const match of text.matchAll(pattern)) {
+      const start = match.index;
+      const candidate: InlineRange = {
+        type: 'mention',
+        label: match[0],
+        targetKind: inferredMentionTargetKind(match[0]),
+        start,
+        end: start + match[0].length,
+      };
+      if (
+        isMentionBoundary(text, start, match[0].length)
+        && !reserved.some((range) => rangesOverlap(candidate, range))
+        && !ranges.some((range) => rangesOverlap(candidate, range))
+      ) {
+        ranges.push(candidate);
+      }
     }
   }
   return ranges;
@@ -266,7 +253,7 @@ export function parseMessageInlineParts(text: string, mentions: MessageMention[]
     if (range.type === 'link') {
       parts.push({ type: 'link', label: range.label, href: range.href, start: range.start });
     } else {
-      parts.push({ type: 'mention', label: range.label, targetKind: range.targetKind, start: range.start });
+      parts.push({ type: 'mention', label: range.label, targetKind: range.targetKind, targetIdentityId: range.targetIdentityId, start: range.start });
     }
     cursor = range.end;
   }

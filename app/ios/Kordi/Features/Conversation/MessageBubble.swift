@@ -276,7 +276,8 @@ struct MessageBubble: View, Equatable {
             if hasVisibleMessageText {
                 MarkdownMessageContent(
                     text: message.text,
-                    mentionTargets: mentionTargets
+                    mentionTargets: mentionTargets,
+                    mentions: message.mentions
                 )
                     .foregroundStyle(Color.primary)
             }
@@ -460,7 +461,12 @@ struct MessageBubble: View, Equatable {
     }
 
     private func replyPreview(_ source: MessageActionSource) -> some View {
-        Button {
+        let accessibilityText = ComposerMentionTargetCatalog.accessibilityText(
+            in: source.textPreview,
+            mentions: source.mentions ?? [],
+            targets: mentionTargets
+        )
+        return Button {
             onNavigateToReply(source.sourceMessageId)
         } label: {
             HStack(spacing: 8) {
@@ -471,8 +477,12 @@ struct MessageBubble: View, Equatable {
                     Text(source.senderLabel)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(message.author == .me ? KordiTheme.signalBlue : KordiTheme.agentViolet)
-                    Text(source.textPreview.nonEmpty ?? attachmentCountText(source.attachmentCount))
-                        .font(.caption)
+                    MarkdownMessageContent(
+                        text: source.textPreview.nonEmpty ?? attachmentCountText(source.attachmentCount),
+                        density: .compact,
+                        mentionTargets: mentionTargets,
+                        mentions: source.mentions ?? []
+                    )
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
@@ -481,7 +491,7 @@ struct MessageBubble: View, Equatable {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Reply to \(source.senderLabel): \(source.textPreview)")
+        .accessibilityLabel("Reply to \(source.senderLabel): \(accessibilityText)")
     }
 
     private var bubbleColor: Color {
@@ -499,7 +509,12 @@ struct MessageBubble: View, Equatable {
             message.deliveryState.label
         }
         let attachmentLabel = message.attachments.isEmpty ? "" : ", \(attachmentCountText(message.attachments.count))"
-        return "\(message.authorName), \(message.text)\(attachmentLabel), \(receipt)"
+        let messageText = ComposerMentionTargetCatalog.accessibilityText(
+            in: message.text,
+            mentions: message.mentions,
+            targets: mentionTargets
+        )
+        return "\(message.authorName), \(messageText)\(attachmentLabel), \(receipt)"
     }
 
     private func attachmentCountText(_ count: Int) -> String {

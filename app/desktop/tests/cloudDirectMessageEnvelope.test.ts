@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   cloudDirectMessageDisplayText,
+  cloudDirectMessageMentions,
   encodeCloudDirectMessageEnvelope,
   parseCloudDirectMessageEnvelope,
 } from '../src/features/cloud/cloudDirectMessages';
@@ -46,6 +47,37 @@ test('direct cloud envelopes preserve hosted Cloud Agent target metadata', () =>
   assert.equal(parsed?.targetCloudAgentOwnerAccountId, 'acct_owner');
   assert.equal(parsed?.targetCloudAgentOwnerName, '111');
   assert.equal(cloudDirectMessageDisplayText(encoded), '@KordiProjectDriver hi');
+});
+
+test('direct cloud envelopes preserve stable mention identity and exact display range', () => {
+  const displayText = "@Alex Smith’s Kordi";
+  const encoded = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1,
+    kind: 'message',
+    text: `${displayText} please review`,
+    mentions: [{
+      label: 'AlexSmithsKordi',
+      targetKind: 'agent',
+      targetIdentityId: 'agent:cloud_agent_alex',
+      startUtf16: 0,
+      lengthUtf16: displayText.length,
+      displayText,
+    }],
+  });
+
+  assert.deepEqual(cloudDirectMessageMentions(encoded), [{
+    label: 'AlexSmithsKordi',
+    targetKind: 'agent',
+    targetIdentityId: 'agent:cloud_agent_alex',
+    startUtf16: 0,
+    lengthUtf16: displayText.length,
+    displayText,
+    sourceHostId: null,
+    nodeId: null,
+    humanId: null,
+    agentId: null,
+    displayLabel: null,
+  }]);
 });
 
 test('direct cloud display text falls back to plaintext bodies', () => {

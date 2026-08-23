@@ -290,6 +290,7 @@ export async function applyCloudGroupMessageControl({
       contentText: senderIsAgent && agentDeliveryState === 'failed' ? '' : message.text,
       content: senderIsAgent ? {
         ...structuredContent,
+        ...(message.mentions?.length ? { mentions: message.mentions } : {}),
         sender: message.senderDisplayName?.trim() || 'Kordi',
         timestampMs: message.createdAtMs,
         deliveryState: agentDeliveryState,
@@ -298,9 +299,10 @@ export async function applyCloudGroupMessageControl({
         requestId: messageReplyToId,
         replyToMessageId: messageReplyToId,
         ...(agentDeliveryState === 'failed' ? { error: message.text || 'Message failed' } : {}),
-      } : (Object.keys(structuredContent).length > 0 || mappedAttachments.length > 0 || message.messageAction) ? {
+      } : (Object.keys(structuredContent).length > 0 || mappedAttachments.length > 0 || message.mentions?.length || message.messageAction) ? {
         ...structuredContent,
         ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
+        ...(message.mentions?.length ? { mentions: message.mentions } : {}),
         ...(message.messageAction ? {
           messageAction: message.messageAction,
           replyToMessageId: message.messageAction.kind === 'quote'

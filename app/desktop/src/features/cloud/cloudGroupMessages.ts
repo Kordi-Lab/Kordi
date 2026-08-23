@@ -8,10 +8,12 @@ import type {
   CanonicalSessionMessage,
   DesktopCollaborationSessionParticipant,
 } from '@/kordi-app/types';
-import type { MessageActionMetadata } from '@/kordi-app/types/message';
+import { normalizedMessageMentions } from '@/features/chat/messageMentions';
+import type { MessageActionMetadata, MessageMention } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import { cloudGroupMessageRuntimeFields, integerMilliseconds } from './cloudGroupDecoding';
+import { cloudMessageActionFromRecord } from './cloudMessageActionCodec';
 import { cloudMessageAttachmentsFromRecord } from './cloudGroupAttachmentCodec';
 import { cloudGroupMessageIsUnreadForAccount } from './cloudGroupUnreadPolicy';
 import type { CloudAccount, CloudContactSummary, CloudMessage, CloudMessageAttachment, CloudPublicProfile } from './authClient';
@@ -89,6 +91,7 @@ export type CloudGroupControlEnvelope = {
     requestId?: string | null;
     forkSnapshot?: boolean | null;
     attachments?: CloudMessageAttachment[];
+    mentions?: MessageMention[];
     messageAction?: MessageActionMetadata | null;
     targetCloudAgentId?: string | null;
     targetCloudAgentName?: string | null;
@@ -291,33 +294,6 @@ export function cloudGroupIdFromAgentConversationId(conversationId: string | nul
 
 export function isCloudGroupAgentConversationId(conversationId: string | null | undefined): boolean {
   return Boolean(cloudGroupIdFromAgentConversationId(conversationId));
-}
-
-function cloudMessageActionFromRecord(value: unknown): MessageActionMetadata | null {
-  const record = objectRecord(value);
-  if (record.schemaVersion !== 1 || (record.kind !== 'quote' && record.kind !== 'forward')) return null;
-  const source = objectRecord(record.source);
-  const sourceSessionId = cleanText(typeof source.sourceSessionId === 'string' ? source.sourceSessionId : null);
-  const sourceMessageId = cleanText(typeof source.sourceMessageId === 'string' ? source.sourceMessageId : null);
-  const senderLabel = cleanText(typeof source.senderLabel === 'string' ? source.senderLabel : null);
-  if (!sourceSessionId || !sourceMessageId || !senderLabel) return null;
-  const attachmentCount = typeof source.attachmentCount === 'number' && Number.isFinite(source.attachmentCount)
-    ? Math.max(0, Math.floor(source.attachmentCount))
-    : 0;
-  return {
-    schemaVersion: 1,
-    kind: record.kind,
-    source: {
-      sourceSessionId,
-      sourceMessageId,
-      sourceMessageKind: typeof source.sourceMessageKind === 'string' ? source.sourceMessageKind : null,
-      senderLabel,
-      textPreview: cleanText(typeof source.textPreview === 'string' ? source.textPreview : null),
-      attachmentCount,
-      createdAtMs: integerMilliseconds(source.createdAtMs),
-      timeLabel: cleanText(typeof source.timeLabel === 'string' ? source.timeLabel : null) || null,
-    },
-  };
 }
 
 function cloudAvatarUrlForLimit(value: string | null | undefined, maxDataUrlLength: number): string | null {
@@ -645,6 +621,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       if (!candidate || typeof candidate !== 'object') return null;
       if (typeof candidate.id !== 'string' || typeof candidate.senderAccountId !== 'string' || typeof candidate.text !== 'string') return null;
       const createdAtMs = integerMilliseconds(candidate.createdAtMs, Date.now())!;
+      const mentions = normalizedMessageMentions((candidate as { mentions?: unknown }).mentions);
       message = {
         id: candidate.id,
         senderAccountId: candidate.senderAccountId,
@@ -657,6 +634,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
         forkSnapshot: candidate.forkSnapshot === true,
         attachments: cloudMessageAttachmentsFromRecord((candidate as { attachments?: unknown }).attachments),
+        ...(mentions ? { mentions } : {}),
         messageAction: cloudMessageActionFromRecord((candidate as { messageAction?: unknown }).messageAction),
         targetCloudAgentId: cleanText(typeof candidate.targetCloudAgentId === 'string' ? candidate.targetCloudAgentId : null) || null,
         targetCloudAgentName: cleanText(typeof candidate.targetCloudAgentName === 'string' ? candidate.targetCloudAgentName : null) || null,

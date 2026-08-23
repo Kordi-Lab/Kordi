@@ -190,6 +190,146 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         XCTAssertFalse(segments.contains { $0.text == "@example.com" && $0.kind != nil })
     }
 
+    func testLegacyMyKordiMentionHighlightsCompletelyWithoutMetadataOrCurrentTargets() {
+        let segments = ComposerMentionTargetCatalog.highlightedSegments(
+            in: "@My Kordi check all my Kordi project worktrees.",
+            targets: []
+        )
+
+        XCTAssertEqual(segments, [
+            ComposerMentionTextSegment(text: "@My Kordi", kind: .agent),
+            ComposerMentionTextSegment(text: " check all my Kordi project worktrees.", kind: nil),
+        ])
+        XCTAssertEqual(
+            ComposerMentionTargetCatalog.accessibilityText(
+                in: "@My Kordi check all my Kordi project worktrees.",
+                targets: []
+            ),
+            "agent mention @My Kordi check all my Kordi project worktrees."
+        )
+    }
+
+    func testLegacyStructuredMentionAliasesMatchCaseInsensitively() {
+        let mention = MessageMention(
+            label: "ProjectDriver",
+            targetKind: "agent",
+            displayLabel: "Project Driver"
+        )
+
+        XCTAssertEqual(
+            ComposerMentionTargetCatalog.highlightedSegments(
+                in: "@project driver check this.",
+                mentions: [mention],
+                targets: []
+            ).filter { $0.kind != nil }.map(\.text),
+            ["@project driver"]
+        )
+    }
+
+    func testStructuredMentionEntitiesPreserveUnicodeRangesAndIdentityWithoutCurrentTargets() throws {
+        let person = ComposerMentionTarget(
+            id: "person:acct_alex",
+            displayName: "Alex Smith",
+            kind: .person,
+            accountId: "acct_alex",
+            agentId: nil,
+            ownerName: "Alex Smith",
+            avatarSource: nil
+        )
+        let agent = ComposerMentionTarget(
+            id: "agent:cloud_agent_project",
+            displayName: "مشروع 🧭 Kordi",
+            kind: .agent,
+            accountId: "acct_alex",
+            agentId: "cloud_agent_project",
+            ownerName: "Alex Smith",
+            avatarSource: nil
+        )
+        let text = "🧭 Ask @Alex Smith and @مشروع 🧭 Kordi, then @Alex Smith."
+        let mentions = ComposerMentionTargetCatalog.mentions(
+            in: text,
+            selectedTarget: agent,
+            targets: [person, agent]
+        )
+        let nsText = text as NSString
+        let firstPersonRange = nsText.range(of: person.mentionText)
+        let afterFirstPerson = NSMaxRange(firstPersonRange)
+        let secondPersonRange = nsText.range(
+            of: person.mentionText,
+            range: NSRange(
+                location: afterFirstPerson,
+                length: nsText.length - afterFirstPerson
+            )
+        )
+
+        XCTAssertEqual(mentions.map(\.targetIdentityId), ["human:acct_alex", agent.id, "human:acct_alex"])
+        XCTAssertEqual(
+            mentions.map(\.startUtf16),
+            [
+                firstPersonRange.location,
+                nsText.range(of: agent.mentionText).location,
+                secondPersonRange.location,
+            ]
+        )
+        XCTAssertEqual(
+            ComposerMentionTargetCatalog.highlightedSegments(
+                in: text,
+                mentions: mentions,
+                targets: []
+            ).filter { $0.kind != nil }.map(\.text),
+            [person.mentionText, agent.mentionText, person.mentionText]
+        )
+
+        let source = ChatMessage(
+            id: "msg_source",
+            conversationId: "session:group",
+            author: .person,
+            authorName: "Peer",
+            text: text,
+            createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            mentions: mentions
+        ).actionSource
+        XCTAssertEqual(source.mentions?.map(\.targetIdentityId), ["human:acct_alex", agent.id, "human:acct_alex"])
+    }
+
+    func testDuplicateDisplayNameUsesSelectedStableIdentity() throws {
+        let first = ComposerMentionTarget(
+            id: "agent:first",
+            displayName: "Research",
+            kind: .agent,
+            accountId: "acct_one",
+            agentId: "first",
+            ownerName: "One",
+            avatarSource: nil
+        )
+        let second = ComposerMentionTarget(
+            id: "agent:second",
+            displayName: "Research",
+            kind: .agent,
+            accountId: "acct_two",
+            agentId: "second",
+            ownerName: "Two",
+            avatarSource: nil
+        )
+
+        XCTAssertEqual(
+            ComposerMentionTargetCatalog.mentions(
+                in: "@Research check this",
+                selectedTarget: second,
+                targets: [first, second]
+            ).map(\.targetIdentityId),
+            [second.id]
+        )
+        XCTAssertTrue(ComposerMentionTargetCatalog.mentions(
+            in: "@Research check this",
+            selectedTarget: nil,
+            targets: [first, second]
+        ).isEmpty)
+    }
+
     func testDefaultKordiTargetsMatchMacContactReachability() {
         let conversation = conversation(
             kind: .group,

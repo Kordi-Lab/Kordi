@@ -144,14 +144,51 @@ enum ComposerMentionTargetCatalog {
         return equallySpecificMatches.count == 1 ? mostSpecificTarget : nil
     }
 
+    static func mentions(
+        in text: String,
+        selectedTarget: ComposerMentionTarget?,
+        targets: [ComposerMentionTarget]
+    ) -> [MessageMention] {
+        let targetsByName = Dictionary(grouping: targets) {
+            $0.displayName.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        }
+        var occupied: [NSRange] = []
+        var result: [MessageMention] = []
+        for target in targets.sorted(by: { $0.mentionText.count > $1.mentionText.count }) {
+            let key = target.displayName.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            if (targetsByName[key]?.count ?? 0) > 1, selectedTarget?.id != target.id { continue }
+            var searchStart = text.startIndex
+            while searchStart < text.endIndex,
+                  result.count < 32,
+                  let range = text.range(
+                    of: target.mentionText,
+                    options: [.caseInsensitive, .diacriticInsensitive],
+                    range: searchStart..<text.endIndex,
+                    locale: .current
+                  ) {
+                let nsRange = NSRange(range, in: text)
+                if hasLeadingBoundary(in: text, at: range.lowerBound),
+                   hasTrailingBoundary(in: text, at: range.upperBound),
+                   !occupied.contains(where: { NSIntersectionRange($0, nsRange).length > 0 }) {
+                    occupied.append(nsRange)
+                    result.append(MessageMention(target: target, text: text, range: range))
+                }
+                searchStart = range.upperBound
+            }
+        }
+        return result.sorted { ($0.startUtf16 ?? 0) < ($1.startUtf16 ?? 0) }
+    }
+
     static func highlightedSegments(
         in text: String,
+        mentions: [MessageMention] = [],
         targets: [ComposerMentionTarget]
     ) -> [ComposerMentionTextSegment] {
         guard !text.isEmpty, text.contains("@") else {
             return text.isEmpty ? [] : [ComposerMentionTextSegment(text: text, kind: nil)]
         }
 
+        let exactMentions = MessageMention.rebased(mentions, in: text)
         let exactTargets = targets.sorted { $0.mentionText.count > $1.mentionText.count }
         var segments: [ComposerMentionTextSegment] = []
         var plainStart = text.startIndex
@@ -164,7 +201,16 @@ enum ComposerMentionTargetCatalog {
             }
 
             var match: (range: Range<String.Index>, kind: ComposerMentionKind)?
-            for target in exactTargets where !target.displayName.isEmpty {
+            let cursorUtf16 = NSRange(cursor..<cursor, in: text).location
+            if let mention = exactMentions.first(where: { $0.startUtf16 == cursorUtf16 }),
+               let start = mention.startUtf16,
+               let length = mention.lengthUtf16,
+               let range = Range(NSRange(location: start, length: length), in: text),
+               hasLeadingBoundary(in: text, at: range.lowerBound),
+               hasTrailingBoundary(in: text, at: range.upperBound) {
+                match = (range, mention.kind ?? inferredKind(for: String(text[range])))
+            }
+            for target in exactTargets where match == nil && !target.displayName.isEmpty {
                 if let range = text.range(
                     of: target.mentionText,
                     options: [.anchored, .caseInsensitive, .diacriticInsensitive],
@@ -174,6 +220,16 @@ enum ComposerMentionTargetCatalog {
                     match = (range, target.kind)
                     break
                 }
+            }
+
+            if match == nil,
+               let range = text.range(
+                of: "@My Kordi",
+                options: [.anchored, .caseInsensitive],
+                range: cursor..<text.endIndex,
+                locale: .current
+               ), hasTrailingBoundary(in: text, at: range.upperBound) {
+                match = (range, .agent)
             }
 
             if match == nil {
@@ -215,6 +271,18 @@ enum ComposerMentionTargetCatalog {
             ))
         }
         return segments
+    }
+
+    static func accessibilityText(
+        in text: String,
+        mentions: [MessageMention] = [],
+        targets: [ComposerMentionTarget]
+    ) -> String {
+        highlightedSegments(in: text, mentions: mentions, targets: targets)
+            .map { segment in
+                segment.kind.map { "\($0.rawValue) mention \(segment.text)" } ?? segment.text
+            }
+            .joined()
     }
 
     private static func isMentionable(_ agent: CloudAgent) -> Bool {

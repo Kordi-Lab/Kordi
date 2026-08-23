@@ -23,19 +23,30 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
     }
 
     func testProjectorPreservesAttachmentAndReplyMetadata() throws {
+        let displayText = "@Alex Smith’s Kordi"
+        let mentions = [MessageMention(
+            label: "Alex Smith’s Kordi",
+            targetKind: "agent",
+            targetIdentityId: "agent:cloud_agent_alex",
+            startUtf16: 0,
+            lengthUtf16: (displayText as NSString).length,
+            displayText: displayText
+        )]
         let source = MessageActionSource(
             sourceSessionId: conversation.sessionId,
             sourceMessageId: "msg_source",
             senderLabel: "Maya",
-            textPreview: "Please review this",
+            textPreview: "\(displayText) please review this",
+            mentions: mentions,
             attachmentCount: 0
         )
         let body = try CloudMessageCodec.encodeDirect(
-            text: "Looks good",
+            text: "\(displayText) looks good",
             agentId: nil,
             agentName: nil,
             ownerAccountId: nil,
             ownerName: nil,
+            mentions: mentions,
             messageAction: .quote(source)
         )
         let message = CloudMessageDTO(
@@ -73,6 +84,8 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(projected.first?.attachments.first?.altText, "A reviewer approves the final change.")
         XCTAssertEqual(projected.first?.replyToMessageId, "msg_source")
         XCTAssertEqual(projected.first?.messageAction?.source.senderLabel, "Maya")
+        XCTAssertEqual(projected.first?.mentions.first?.targetIdentityId, "agent:cloud_agent_alex")
+        XCTAssertEqual(projected.first?.messageAction?.source.mentions?.first?.displayText, displayText)
         XCTAssertEqual(projected.first?.clientMessageId, "client_reply")
     }
 

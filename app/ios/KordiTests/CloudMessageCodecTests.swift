@@ -25,19 +25,30 @@ final class CloudMessageCodecTests: XCTestCase {
         runtimeRoute.defaultAuthProvider = "openai-codex"
         runtimeRoute.defaultAuthChoice = "local-active-oauth"
         runtimeRoute.thinking = "high"
+        let displayText = "@Research Agent"
+        let mentions = [MessageMention(
+            label: "Research Agent",
+            targetKind: "agent",
+            targetIdentityId: "agent:cloud_agent_research",
+            startUtf16: 0,
+            lengthUtf16: (displayText as NSString).length,
+            displayText: displayText
+        )]
         let encoded = try CloudMessageCodec.encodeDirect(
-            text: "Summarize the launch notes",
+            text: "\(displayText) summarize the launch notes",
             agentId: "cloud_agent_research",
             agentName: "Research Agent",
             ownerAccountId: "acct_owner",
             ownerName: "Maya",
+            mentions: mentions,
             agentRuntimeRoute: runtimeRoute
         )
 
         XCTAssertTrue(encoded.hasPrefix(CloudMessageCodec.directPrefix))
-        XCTAssertEqual(CloudMessageCodec.displayText(encoded), "Summarize the launch notes")
+        XCTAssertEqual(CloudMessageCodec.displayText(encoded), "\(displayText) summarize the launch notes")
         XCTAssertEqual(CloudMessageCodec.directEnvelope(encoded)?.targetCloudAgentId, "cloud_agent_research")
         XCTAssertEqual(CloudMessageCodec.directEnvelope(encoded)?.targetCloudAgentOwnerAccountId, "acct_owner")
+        XCTAssertEqual(CloudMessageCodec.directEnvelope(encoded)?.mentions, mentions)
         XCTAssertEqual(CloudMessageCodec.directEnvelope(encoded)?.agentRuntimeRoute, runtimeRoute)
     }
 

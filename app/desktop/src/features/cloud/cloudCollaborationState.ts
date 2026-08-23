@@ -65,10 +65,7 @@ import {
   cloudAgentSyntheticResponseDirection,
   isDirectCloudContact,
 } from './cloudCollaborationPresentation';
-import {
-  cleanCloudConversationTitle,
-  cleanCloudSessionId,
-} from './cloudConversationMetadata';
+import { cleanCloudConversationTitle, cleanCloudSessionId } from './cloudConversationMetadata';
 import {
   latestVisibleConversationMessage,
   selectVisibleCloudAgentResponses,
@@ -77,6 +74,7 @@ import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import {
   cloudDirectMessageAction,
   cloudDirectMessageDisplayText,
+  cloudDirectMessageMentions,
   cloudDirectMessageTargetCloudAgentId,
   cloudDirectMessageTargetCloudAgentName,
   cloudDirectMessageTargetCloudAgentOwnerAccountId,
@@ -235,6 +233,7 @@ export function cloudMessageToCollaborationMessage(
             : null,
     detail: undefined,
     attachments: (message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment),
+    mentions: agentResponse ? undefined : cloudDirectMessageMentions(message.body),
     messageAction: directMessageAction,
     messageKind: message.messageKind ?? null,
     localTurn: agentResponse?.requestId
