@@ -1455,6 +1455,14 @@ final class AppModel: ObservableObject {
         in conversation: ConversationSummary,
         shared: Bool
     ) async -> Bool {
+        if previewMode {
+            updatePreviewPin(
+                messageId: message.id,
+                sessionId: conversation.sessionId,
+                scope: shared ? "shared" : "private"
+            )
+            return true
+        }
         guard let token else { return false }
         do {
             let pin = try await api.updateSessionPin(
@@ -1472,9 +1480,13 @@ final class AppModel: ObservableObject {
     }
 
     func unpin(_ message: ChatMessage, in conversation: ConversationSummary) async -> Bool {
-        guard let token else { return false }
         let current = sessionPinsByID[conversation.sessionId]
         let scope = current?.privateMessageId == message.id ? "private" : "shared"
+        if previewMode {
+            updatePreviewPin(messageId: nil, sessionId: conversation.sessionId, scope: scope)
+            return true
+        }
+        guard let token else { return false }
         do {
             let pin = try await api.updateSessionPin(
                 token: token,
@@ -1488,6 +1500,19 @@ final class AppModel: ObservableObject {
             errorMessage = userFacing(error, fallback: "Could not unpin this message.")
             return false
         }
+    }
+
+    private func updatePreviewPin(messageId: String?, sessionId: String, scope: String) {
+        let current = sessionPinsByID[sessionId]
+        let sharedMessageId = scope == "shared" ? messageId : current?.sharedMessageId
+        let privateMessageId = scope == "private" ? messageId : current?.privateMessageId
+        sessionPinsByID[sessionId] = CloudSessionPin(
+            sessionId: sessionId,
+            sharedMessageId: sharedMessageId,
+            privateMessageId: privateMessageId,
+            effectiveMessageId: privateMessageId ?? sharedMessageId,
+            updatedAt: Date().ISO8601Format()
+        )
     }
 
     func messages(for conversation: ConversationSummary) -> [ChatMessage] {
@@ -4258,6 +4283,7 @@ final class AppModel: ObservableObject {
 
     private func applyCloudSyncEvents(_ events: [CloudSyncEvent]) {
         guard let accountId = account?.accountId else { return }
+        sessionPinsByID = Self.applyingSessionPinEvents(events, to: sessionPinsByID)
         var upsertsByPeer: [String: [CloudMessageDTO]] = [:]
         var readUpdatesByPeer: [String: [String: String]] = [:]
         var deviceListChanged = false
@@ -4368,6 +4394,37 @@ final class AppModel: ObservableObject {
             }
             if changed { cloudMessagesByPeer[peer] = messages }
         }
+    }
+
+    static func applyingSessionPinEvents(
+        _ events: [CloudSyncEvent],
+        to current: [String: CloudSessionPin]
+    ) -> [String: CloudSessionPin] {
+        var pins = current
+        for event in events where event.eventType == "session.pin.updated" {
+            guard let payload = event.payload,
+                  let sessionId = payload.sessionId?.nonEmpty,
+                  let scope = payload.scope?.nonEmpty?.lowercased(),
+                  scope == "private" || scope == "shared" else { continue }
+            let updatedAt = payload.updatedAt?.nonEmpty ?? event.occurredAt.nonEmpty
+            if let currentUpdatedAt = pins[sessionId]?.updatedAt?.nonEmpty,
+               let updatedAt,
+               updatedAt <= currentUpdatedAt {
+                continue
+            }
+            let currentPin = pins[sessionId]
+            let messageId = payload.messageId?.nonEmpty
+            let sharedMessageId = scope == "shared" ? messageId : currentPin?.sharedMessageId
+            let privateMessageId = scope == "private" ? messageId : currentPin?.privateMessageId
+            pins[sessionId] = CloudSessionPin(
+                sessionId: sessionId,
+                sharedMessageId: sharedMessageId,
+                privateMessageId: privateMessageId,
+                effectiveMessageId: privateMessageId ?? sharedMessageId,
+                updatedAt: updatedAt
+            )
+        }
+        return pins
     }
 
     private func applySyncedSessionTitles(_ titles: [CloudSyncedSessionTitle]) {

@@ -79,6 +79,102 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(pin.effectiveMessageId, "msg_private")
     }
 
+    @MainActor
+    func testSessionPinEventsApplyScopesAndIgnoreStaleUpdates() {
+        let sessionId = "session:group"
+        let initial = CloudSessionPin(
+            sessionId: sessionId,
+            sharedMessageId: "msg_shared_old",
+            privateMessageId: nil,
+            effectiveMessageId: "msg_shared_old",
+            updatedAt: "2026-08-17T12:00:00Z"
+        )
+        let privatePin = AppModel.applyingSessionPinEvents(
+            [sessionPinEvent(messageId: "msg_private", scope: "private", updatedAt: "2026-08-17T12:00:01Z")],
+            to: [sessionId: initial]
+        )
+        XCTAssertEqual(privatePin[sessionId]?.effectiveMessageId, "msg_private")
+
+        let sharedReplacement = AppModel.applyingSessionPinEvents(
+            [sessionPinEvent(messageId: "msg_shared_new", scope: "shared", updatedAt: "2026-08-17T12:00:02Z")],
+            to: privatePin
+        )
+        XCTAssertEqual(sharedReplacement[sessionId]?.sharedMessageId, "msg_shared_new")
+        XCTAssertEqual(sharedReplacement[sessionId]?.effectiveMessageId, "msg_private")
+
+        let privateUnpin = AppModel.applyingSessionPinEvents(
+            [sessionPinEvent(messageId: nil, scope: "private", updatedAt: "2026-08-17T12:00:03Z")],
+            to: sharedReplacement
+        )
+        XCTAssertNil(privateUnpin[sessionId]?.privateMessageId)
+        XCTAssertEqual(privateUnpin[sessionId]?.effectiveMessageId, "msg_shared_new")
+
+        let duplicate = AppModel.applyingSessionPinEvents(
+            [sessionPinEvent(messageId: nil, scope: "private", updatedAt: "2026-08-17T12:00:03Z")],
+            to: privateUnpin
+        )
+        XCTAssertEqual(duplicate, privateUnpin)
+
+        let staleUpdate = AppModel.applyingSessionPinEvents(
+            [sessionPinEvent(messageId: "msg_stale", scope: "shared", updatedAt: "2026-08-17T12:00:01Z")],
+            to: duplicate
+        )
+        XCTAssertEqual(staleUpdate, privateUnpin)
+    }
+
+    @MainActor
+    func testPreviewPinActionsStayInteractiveWithoutACloudSession() async throws {
+        let model = AppModel(previewMode: true)
+        let conversation = try XCTUnwrap(model.conversations.first(where: { $0.kind == .group }))
+        let messages = model.messages(for: conversation)
+        let privateMessage = try XCTUnwrap(messages.first)
+        let sharedMessage = try XCTUnwrap(messages.dropFirst().first)
+
+        let privatePinned = await model.pin(privateMessage, in: conversation, shared: false)
+        let sharedPinned = await model.pin(sharedMessage, in: conversation, shared: true)
+        XCTAssertTrue(privatePinned)
+        XCTAssertTrue(sharedPinned)
+        XCTAssertEqual(model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId, privateMessage.id)
+
+        let privateUnpinned = await model.unpin(privateMessage, in: conversation)
+        XCTAssertTrue(privateUnpinned)
+        XCTAssertEqual(model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId, sharedMessage.id)
+        let sharedUnpinned = await model.unpin(sharedMessage, in: conversation)
+        XCTAssertTrue(sharedUnpinned)
+        XCTAssertNil(model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId)
+    }
+
+    private func sessionPinEvent(
+        messageId: String?,
+        scope: String,
+        updatedAt: String
+    ) -> CloudSyncEvent {
+        CloudSyncEvent(
+            eventId: "event:\(scope):\(updatedAt)",
+            eventType: "session.pin.updated",
+            peerAccountId: nil,
+            messageId: messageId,
+            payload: CloudSyncEventPayload(
+                message: nil,
+                messageIds: nil,
+                messageId: messageId,
+                readAt: nil,
+                sessionId: "session:group",
+                scope: scope,
+                updatedAt: updatedAt,
+                forkSessionId: nil,
+                parentSessionId: nil,
+                parentMessageId: nil,
+                createdByAccountId: nil,
+                createdAt: nil,
+                sessionTitle: nil,
+                deviceId: nil,
+                call: nil
+            ),
+            occurredAt: updatedAt
+        )
+    }
+
     func testOwnedAndSharedAgentShapesDecodeThroughOneModel() throws {
         let avatar = #"{"entityType":"agent","entityId":"cloud_agent_owned","source":"generated","style":"thumbs","seed":"cloud_agent_owned","rendererVersion":"dicebear-rust-10.6.0-styles-10.5.0","uploadedAsset":null,"version":1,"updatedAt":"2026-08-08T00:00:00Z"}"#
         let owned = Data(#"{"agentId":"cloud_agent_owned","ownerAccountId":"acct_me","accessScope":"participant_conversations","status":"active","name":"Research Agent","role":"Researcher","description":null,"systemPrompt":"Help","sourceSummary":null,"boundaries":[],"resources":[],"skills":[{"name":"research","description":"Research sources","content":"Verify every source."}],"modelRouting":{"defaultModel":"codex/gpt-5.6-sol","thinking":"high","tools":["web-search"],"plugins":["citations"]},"createdAt":"2026-08-08T00:00:00Z","updatedAt":"2026-08-08T00:00:00Z","archivedAt":null,"avatar":\#(avatar)}"#.utf8)

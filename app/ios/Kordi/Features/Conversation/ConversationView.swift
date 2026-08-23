@@ -336,6 +336,31 @@ struct ConversationView: View {
                                                     }
                                                     )
                                                     .equatable()
+                                                    .confirmationDialog(
+                                                        "Pin this message?",
+                                                        isPresented: Binding(
+                                                            get: { pinTarget?.id == message.id },
+                                                            set: {
+                                                                if !$0, pinTarget?.id == message.id {
+                                                                    pinTarget = nil
+                                                                }
+                                                            }
+                                                        ),
+                                                        titleVisibility: .visible,
+                                                        presenting: pinTarget
+                                                    ) { target in
+                                                        Button("Pin for me") {
+                                                            pinMessage(target, shared: false)
+                                                        }
+                                                        Button("Pin for everyone") {
+                                                            pinMessage(target, shared: true)
+                                                        }
+                                                        Button("Cancel", role: .cancel) {
+                                                            pinTarget = nil
+                                                        }
+                                                    } message: { _ in
+                                                        Text("Pinned messages stay visible above this session on synced Kordi devices.")
+                                                    }
                                                     .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
                                                     .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
                                                 }
@@ -739,20 +764,6 @@ struct ConversationView: View {
                 sourceConversation: conversation
             )
         }
-        .confirmationDialog(
-            "Pin this message?",
-            isPresented: Binding(
-                get: { pinTarget != nil },
-                set: { if !$0 { pinTarget = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button("Pin for me") { pinMessage(shared: false) }
-            Button("Pin for everyone") { pinMessage(shared: true) }
-            Button("Cancel", role: .cancel) { pinTarget = nil }
-        } message: {
-            Text("Pinned messages stay visible above this session on synced Kordi devices.")
-        }
         .navigationDestination(item: $forwardedDestination) { destination in
             ConversationView(conversation: destination)
         }
@@ -816,8 +827,7 @@ struct ConversationView: View {
         UIPasteboard.general.string = text
     }
 
-    private func pinMessage(shared: Bool) {
-        guard let target = pinTarget else { return }
+    private func pinMessage(_ target: ChatMessage, shared: Bool) {
         pinTarget = nil
         Task { _ = await model.pin(target, in: conversation, shared: shared) }
     }
