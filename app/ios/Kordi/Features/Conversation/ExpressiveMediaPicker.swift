@@ -310,29 +310,18 @@ private enum ExpressiveMediaCatalogError: LocalizedError {
 }
 
 struct ExpressiveMediaPicker: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @AppStorage("kordi.expressive.recent-emojis") private var storedRecentEmojis = "[]"
     @State private var selectedTab = ExpressivePickerTab.emoji
     @State private var emojiCategoryID = EmojiCategory.smileysAndPeople.id
     @State private var emojiQuery = ""
-    private let bottomExtensionHeight: CGFloat = 80
+    let height: CGFloat
     let isSending: Bool
     let onInsertEmoji: (String) -> Void
     let onSendMedia: (PendingAttachment) async -> Void
 
     var body: some View {
         pickerContent
-            .background(keyboardSurfaceColor)
-            .background(alignment: .bottom) {
-                Rectangle()
-                    .fill(keyboardSurfaceColor)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: bottomExtensionHeight)
-                    .offset(y: bottomExtensionHeight)
-                    .ignoresSafeArea(.container, edges: .bottom)
-                    .allowsHitTesting(false)
-            }
+            .background(keyboardSurfaceColor.ignoresSafeArea(.container, edges: .bottom))
             .accessibilityElement(children: .contain)
     }
 
@@ -365,12 +354,7 @@ struct ExpressiveMediaPicker: View {
                 }
             }
         }
-        .frame(height: panelHeight)
-    }
-
-    private var panelHeight: CGFloat {
-        if verticalSizeClass == .compact { return 248 }
-        return dynamicTypeSize.isAccessibilitySize ? 380 : 334
+        .frame(height: height)
     }
 
     private var tabBar: some View {
@@ -407,7 +391,6 @@ struct ExpressiveMediaPicker: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
 
-            emojiCategoryBar
             Divider()
 
             if displayedEmojis.isEmpty {
@@ -436,6 +419,9 @@ struct ExpressiveMediaPicker: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
+
+            Divider()
+            emojiCategoryBar
         }
     }
 

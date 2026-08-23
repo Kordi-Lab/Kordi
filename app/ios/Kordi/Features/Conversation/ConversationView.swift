@@ -57,6 +57,7 @@ struct ConversationView: View {
     @State private var photoGrouping: PhotoSendGrouping = .combined
     @State private var replySource: MessageActionSource?
     @State private var selectedMention: ComposerMentionTarget?
+    @FocusState private var isComposerFocused: Bool
     @State private var isExpressivePickerPresented = false
     @State private var shouldFollowLatestAfterInputSurfaceChange = false
     @State private var showFileImporter = false
@@ -411,6 +412,7 @@ struct ConversationView: View {
                             .scrollDismissesKeyboard(.interactively)
                             .simultaneousGesture(
                                 TapGesture().onEnded {
+                                    isComposerFocused = false
                                     dismissComposerPickers()
                                 }
                             )
@@ -465,6 +467,7 @@ struct ConversationView: View {
                             photoGrouping: $photoGrouping,
                             replySource: $replySource,
                             selectedMention: $selectedMention,
+                            isFocused: $isComposerFocused,
                             isExpressivePickerPresented: Binding(
                                 get: { isExpressivePickerPresented },
                                 set: { isPresented in

@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Kordi
 
 final class CompanionChatPanelTests: XCTestCase {
@@ -72,6 +73,35 @@ final class CompanionChatPanelTests: XCTestCase {
         )
     }
 
+    func testExpressivePickerMatchesTheVisibleKeyboardContentHeight() {
+        XCTAssertEqual(
+            ComposerKeyboardSurfaceLayout.contentHeight(
+                keyboardFrame: CGRect(x: 0, y: 500, width: 390, height: 344),
+                windowBounds: CGRect(x: 0, y: 0, width: 390, height: 844),
+                bottomSafeAreaInset: 34
+            ),
+            310
+        )
+        XCTAssertNil(ComposerKeyboardSurfaceLayout.contentHeight(
+            keyboardFrame: CGRect(x: 0, y: 844, width: 390, height: 344),
+            windowBounds: CGRect(x: 0, y: 0, width: 390, height: 844),
+            bottomSafeAreaInset: 34
+        ))
+        XCTAssertEqual(ComposerKeyboardSurfaceLayout.fallbackHeight(verticalSizeClass: .compact), 226)
+        XCTAssertEqual(ComposerKeyboardSurfaceLayout.fallbackHeight(verticalSizeClass: .regular), 300)
+    }
+
+    func testExpressivePickerDoesNotOwnASecondLayoutAnimation() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ComposerView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertFalse(source.contains(".transition(expressivePickerTransition)"))
+        XCTAssertFalse(source.contains(".animation(inputSurfaceAnimation, value: isExpressivePickerPresented)"))
+    }
+
     func testStaleEndEditingCallbackCannotCancelRestoredKeyboardFocus() {
         XCTAssertFalse(ComposerFocusReconciliation.shouldApply(
             focused: false,
@@ -83,6 +113,19 @@ final class CompanionChatPanelTests: XCTestCase {
             textViewIsFirstResponder: false,
             currentFocus: true
         ))
+    }
+
+    @available(iOS 18.0, *)
+    func testNativeComposerInsertionPreservesTheSelectedRange() throws {
+        let text = "Hi 👋 world"
+        let start = text.index(text.startIndex, offsetBy: 3)
+        let end = text.index(after: start)
+        let selection = TextSelection(range: start..<end)
+
+        let replacement = replacingNativeComposerText(text, selection: selection, with: "🙂")
+
+        XCTAssertEqual(replacement.text, "Hi 🙂 world")
+        XCTAssertTrue(replacement.selection.isInsertion)
     }
 
     func testMentionPickerGrowsWithResultsUntilItsMaximumHeight() {
