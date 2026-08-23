@@ -85,21 +85,26 @@ test('navigation rail uses black glass in dark mode and translucent white glass 
   assert.match(lightTokens, /--app-native-session-fallback:\s*oklch\(98\.6% 0\.002 80\);/);
 });
 
-test('resolved Kordi theme is applied to the native macOS material', async () => {
-  const appliedThemes: string[] = [];
+test('system Kordi theme clears the native macOS material override', async () => {
+  const appliedThemes: Array<'light' | 'dark' | null> = [];
   const target = {
-    setTheme: async (theme: 'light' | 'dark') => {
+    setTheme: async (theme: 'light' | 'dark' | null) => {
       appliedThemes.push(theme);
     },
   };
 
+  await syncNativeWindowTheme('auto', target);
   await syncNativeWindowTheme('dark', target);
-  await syncNativeWindowTheme('light', target);
+  await syncNativeWindowTheme('auto', target);
 
-  assert.deepEqual(appliedThemes, ['dark', 'light']);
+  assert.deepEqual(appliedThemes, [null, 'dark', null]);
 
   const gateSource = readSource('src/KordiApp.tsx');
   const shellEffectsSource = readSource('src/app/useKordiUiEffects.ts');
-  assert.match(gateSource, /syncNativeWindowTheme\(theme\)/);
+  const workspaceSource = readSource('src/app/useKordiWorkspaceState.ts');
+  assert.match(gateSource, /syncNativeWindowTheme\(themeMode\)/);
   assert.match(shellEffectsSource, /syncNativeWindowTheme\(themeMode\)/);
+  assert.match(shellEffectsSource, /\[resolvedThemeMode, themeMode\]/);
+  assert.match(workspaceSource, /themeMode: settingsUi\.themeMode/);
+  assert.match(workspaceSource, /resolvedThemeMode: settingsUi\.resolvedThemeMode/);
 });

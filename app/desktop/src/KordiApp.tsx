@@ -24,7 +24,7 @@ import { applyKordiMainWindowSize, isTauriRuntime } from '@/features/cloud/login
 import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
-import type { ResolvedThemeMode } from '@/kordi-app/types';
+import type { ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
 import { GroupInvitationDialog } from '@/pages/GroupInvitationDialog';
 
 const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
@@ -60,13 +60,12 @@ const APP_WINDOW_BACKGROUND: Record<ResolvedThemeMode, string> = {
 // to the persisted theme preference; `auto` follows system while the
 // gate/splash is up. Once the shell mounts, its effect takes over.
 function useGateThemeClass() {
+  const [themeMode] = useState<ThemeMode>(() => readStoredThemeMode());
   const [theme, setTheme] = useState<ResolvedThemeMode>(() => {
-    const themeMode = readStoredThemeMode();
     return resolveThemeMode(themeMode, readSystemTheme());
   });
 
   useEffect(() => {
-    const themeMode = readStoredThemeMode();
     let disposed = false;
     let unlistenNativeTheme: (() => void) | undefined;
     const mediaQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -106,14 +105,14 @@ function useGateThemeClass() {
       mediaQuery?.removeEventListener('change', handleMediaTheme);
       unlistenNativeTheme?.();
     };
-  }, []);
+  }, [themeMode]);
 
   useEffect(() => {
     document.body.classList.toggle('theme-light', theme === 'light');
     document.body.classList.toggle('theme-dark', theme === 'dark');
     document.documentElement.style.colorScheme = theme;
-    void syncNativeWindowTheme(theme).catch(() => undefined);
-  }, [theme]);
+    void syncNativeWindowTheme(themeMode).catch(() => undefined);
+  }, [theme, themeMode]);
 
   useEffect(() => {
     document.body.classList.add('app-cloud-gate-active');
