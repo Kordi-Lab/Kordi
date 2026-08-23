@@ -73,6 +73,54 @@ private struct CloudRealtimeServerFrame: Decodable {
 }
 
 @MainActor
+final class CloudPresencePublisher {
+    private let api: CloudAPIClient
+    private let heartbeatInterval: Duration
+    private var token: String?
+    private var task: Task<Void, Never>?
+
+    init(api: CloudAPIClient, heartbeatInterval: Duration = .seconds(10)) {
+        self.api = api
+        self.heartbeatInterval = heartbeatInterval
+    }
+
+    deinit {
+        task?.cancel()
+    }
+
+    func start(token: String) {
+        guard task == nil || self.token != token else { return }
+        stop()
+        self.token = token
+        task = Task { [api, heartbeatInterval] in
+            try? await api.publishPresenceOnline(token: token)
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: heartbeatInterval)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                try? await api.publishPresenceHeartbeat(token: token)
+            }
+        }
+    }
+
+    func stop() {
+        task?.cancel()
+        task = nil
+        token = nil
+    }
+
+    func stopAndPublishOffline(token: String) async {
+        let activeTask = task
+        stop()
+        await activeTask?.value
+        try? await api.publishPresenceOffline(token: token)
+    }
+}
+
+@MainActor
 final class AppModel: ObservableObject {
     private static let cloudUnavailableMessage = "Kordi Cloud is unavailable. Check your connection and try again."
     private static let cloudSyncRepairInterval: Duration = .seconds(2)
@@ -113,6 +161,7 @@ final class AppModel: ObservableObject {
     private let cache: LocalMessageStore?
     private let wireCache: CloudWireCache
     private let sessionRuntimeRouteStore: SessionRuntimeRouteStore
+    private let presencePublisher: CloudPresencePublisher
     private let attachmentFileStore = AttachmentFileStore()
     private let expressiveMediaLibrary = ExpressiveMediaLibraryStore()
     let conversationViewportMemory = ConversationViewportMemory()
@@ -200,6 +249,7 @@ final class AppModel: ObservableObject {
         self.cache = cache ?? (try? LocalMessageStore())
         self.wireCache = wireCache
         self.sessionRuntimeRouteStore = sessionRuntimeRouteStore
+        self.presencePublisher = CloudPresencePublisher(api: api)
         self.previewMode = previewMode
         if ProcessInfo.processInfo.arguments.contains("--preview-login")
             || ProcessInfo.processInfo.arguments.contains("--preview-signup") {
@@ -241,6 +291,7 @@ final class AppModel: ObservableObject {
             }
             conversations.forEach(prepareConversationForPresentation)
             phase = .signedIn
+            presencePublisher.start(token: savedToken)
             startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
                 hasHydratedWireSnapshot: hasHydratedWireSnapshot,
                 hasHydratedForkLineage: hasHydratedForkLineage
@@ -249,6 +300,7 @@ final class AppModel: ObservableObject {
             await refreshWorkspace()
         } catch {
             if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
+            presencePublisher.stop()
             try? keychain.deleteToken()
             token = nil
             currentDeviceId = nil
@@ -327,6 +379,11 @@ final class AppModel: ObservableObject {
     func signOut() async {
         let oldToken = token
         let oldAccountId = account?.accountId
+        if let oldToken {
+            await presencePublisher.stopAndPublishOffline(token: oldToken)
+        } else {
+            presencePublisher.stop()
+        }
         cloudSyncTask?.cancel()
         cloudSyncTask = nil
         cloudRealtimeTask?.cancel()
@@ -553,7 +610,8 @@ final class AppModel: ObservableObject {
     }
 
     func appDidBecomeActive() async {
-        guard phase == .signedIn, !previewMode else { return }
+        guard phase == .signedIn, !previewMode, let token else { return }
+        presencePublisher.start(token: token)
         await refreshWorkspace()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
             hasHydratedWireSnapshot: hasHydratedWireSnapshot,
@@ -900,6 +958,7 @@ final class AppModel: ObservableObject {
     }
 
     func appDidEnterBackground() {
+        presencePublisher.stop()
         cloudSyncTask?.cancel()
         cloudSyncTask = nil
     }
@@ -4798,6 +4857,7 @@ final class AppModel: ObservableObject {
                 && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
         }
         phase = .signedIn
+        presencePublisher.start(token: response.session.token)
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
             hasHydratedWireSnapshot: hasHydratedWireSnapshot,
             hasHydratedForkLineage: hasHydratedForkLineage

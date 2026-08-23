@@ -309,6 +309,27 @@ actor CloudAPIClient {
         return response.accounts
     }
 
+    func publishPresenceOnline(token: String) async throws {
+        try await publishPresence("online", token: token)
+    }
+
+    func publishPresenceHeartbeat(token: String) async throws {
+        try await publishPresence("heartbeat", token: token)
+    }
+
+    func publishPresenceOffline(token: String) async throws {
+        try await publishPresence("offline", token: token)
+    }
+
+    private func publishPresence(_ state: String, token: String) async throws {
+        let _: CloudPresenceAccount = try await send(
+            path: "/v1/cloud/presence/\(state)",
+            method: "POST",
+            token: token,
+            fallback: "Could not update presence."
+        )
+    }
+
     func cachedChatParticipantsBySessionId() -> [String: [CloudGroupParticipant]] {
         var result: [String: [CloudGroupParticipant]] = [:]
         for conversation in chatConversationsById.values where conversation.kind == "group" {

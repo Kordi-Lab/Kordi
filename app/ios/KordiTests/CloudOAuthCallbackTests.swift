@@ -164,6 +164,101 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
     }
 }
 
+final class CloudPresencePublisherTests: XCTestCase {
+    @MainActor
+    func testForegroundHeartbeatAndSignOutPublishPresenceLifecycle() async throws {
+        let requestsReceived = expectation(description: "Presence online and heartbeat requests")
+        requestsReceived.expectedFulfillmentCount = 2
+        PresenceURLProtocol.reset(expectation: requestsReceived)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PresenceURLProtocol.self]
+        let client = CloudAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:17081")!,
+            session: URLSession(configuration: configuration)
+        )
+        let publisher = CloudPresencePublisher(
+            api: client,
+            heartbeatInterval: .milliseconds(100)
+        )
+
+        publisher.start(token: "test-session")
+        await fulfillment(of: [requestsReceived], timeout: 1)
+        await publisher.stopAndPublishOffline(token: "test-session")
+
+        XCTAssertEqual(
+            PresenceURLProtocol.requests(),
+            [
+                PresenceRequest(path: "/v1/cloud/presence/online", method: "POST", authorization: "Bearer test-session"),
+                PresenceRequest(path: "/v1/cloud/presence/heartbeat", method: "POST", authorization: "Bearer test-session"),
+                PresenceRequest(path: "/v1/cloud/presence/offline", method: "POST", authorization: "Bearer test-session"),
+            ]
+        )
+    }
+}
+
+private struct PresenceRequest: Equatable {
+    let path: String
+    let method: String
+    let authorization: String?
+}
+
+private final class PresenceURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var recordedRequests: [PresenceRequest] = []
+    private static var requestExpectation: XCTestExpectation?
+
+    static func reset(expectation: XCTestExpectation) {
+        lock.lock()
+        recordedRequests = []
+        requestExpectation = expectation
+        lock.unlock()
+    }
+
+    static func requests() -> [PresenceRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedRequests
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let presenceRequest = PresenceRequest(
+            path: request.url?.path ?? "",
+            method: request.httpMethod ?? "",
+            authorization: request.value(forHTTPHeaderField: "Authorization")
+        )
+        Self.lock.lock()
+        Self.recordedRequests.append(presenceRequest)
+        let expectation = Self.requestExpectation
+        if Self.recordedRequests.count == 2 {
+            Self.requestExpectation = nil
+        }
+        Self.lock.unlock()
+        expectation?.fulfill()
+
+        let offline = presenceRequest.path.hasSuffix("/offline")
+        let payload = Data(
+            (offline
+                ? #"{"accountId":"acct_me","status":"offline","lastSeenAt":"2026-08-23T12:00:00Z"}"#
+                : #"{"accountId":"acct_me","status":"online","lastSeenAt":null}"#
+            ).utf8
+        )
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: payload)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 private final class SignupAvatarURLProtocol: URLProtocol {
     static var body: Data?
 
