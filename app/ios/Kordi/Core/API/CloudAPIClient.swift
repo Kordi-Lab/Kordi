@@ -1325,10 +1325,12 @@ actor CloudAPIClient {
                 $0.lastDeliveredSequence >= message.conversationSequence
             }
             : true
+        let readByAccountIds = otherMembers
+            .filter { $0.lastReadSequence >= message.conversationSequence }
+            .map(\.accountId)
+            .sorted()
         let read = outgoing
-            ? !otherMembers.isEmpty && otherMembers.allSatisfy {
-                $0.lastReadSequence >= message.conversationSequence
-            }
+            ? !readByAccountIds.isEmpty
             : conversation.members.contains {
                 $0.accountId == viewerAccountId && $0.lastReadSequence >= message.conversationSequence
             }
@@ -1341,6 +1343,7 @@ actor CloudAPIClient {
             createdAt: message.createdAt,
             deliveredAt: delivered ? message.createdAt : nil,
             readAt: read ? message.createdAt : nil,
+            readByAccountIds: outgoing && conversation.kind == "group" ? readByAccountIds : nil,
             direction: outgoing ? "outgoing" : "incoming",
             sessionId: conversation.legacySessionId ?? conversation.id,
             attachments: message.content.legacyAttachments,

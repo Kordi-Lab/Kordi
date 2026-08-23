@@ -257,16 +257,20 @@ export function cloudMessageFromChatSync(
 ): CloudMessage {
   const peerAccountId = conversationPeer(conversation, viewerAccountId, message.sender_account_id);
   const outgoing = message.sender_account_id === viewerAccountId;
-  const otherMembers = conversation.members.filter((member) => member.account_id !== viewerAccountId);
+  const otherMembers = conversation.members.filter(
+    (member) => member.account_id !== viewerAccountId && member.membership_state === 'active',
+  );
+  const readByAccountIds = otherMembers
+    .filter((member) => member.last_read_sequence >= message.conversation_sequence)
+    .map((member) => member.account_id)
+    .sort();
   const delivered = outgoing
     ? otherMembers.length > 0 && otherMembers.every(
       (member) => member.last_delivered_sequence >= message.conversation_sequence,
     )
     : true;
   const read = outgoing
-    ? otherMembers.some(
-      (member) => member.last_read_sequence >= message.conversation_sequence,
-    )
+    ? readByAccountIds.length > 0
     : conversation.members.some(
       (member) => member.account_id === viewerAccountId
         && member.last_read_sequence >= message.conversation_sequence,
@@ -284,6 +288,7 @@ export function cloudMessageFromChatSync(
     createdAt,
     deliveredAt: delivered ? createdAt : null,
     readAt: read ? createdAt : null,
+    ...(outgoing && conversation.kind === 'group' ? { readByAccountIds } : {}),
     direction: outgoing ? 'outgoing' : 'incoming',
     sessionId: conversation.legacy_session_id ?? conversation.id,
     attachments: attachmentsFromChatContent(message.content),

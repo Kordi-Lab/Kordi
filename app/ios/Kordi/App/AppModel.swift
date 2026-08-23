@@ -4458,6 +4458,7 @@ final class AppModel: ObservableObject {
                     createdAt: message.createdAt,
                     deliveredAt: message.deliveredAt ?? readAt,
                     readAt: readAt,
+                    readByAccountIds: message.readByAccountIds,
                     direction: message.direction,
                     sessionId: message.sessionId,
                     attachments: message.attachments,
