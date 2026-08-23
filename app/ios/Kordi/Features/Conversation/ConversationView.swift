@@ -25,12 +25,6 @@ enum ConversationIdentityResolver {
     }
 }
 
-enum ConversationInitialRevealPolicy {
-    static func shouldRevealImmediately(messageCount: Int) -> Bool {
-        messageCount > 0
-    }
-}
-
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
@@ -943,7 +937,7 @@ struct ConversationView: View {
         let latestMessageIDAtEntry = messages.last?.id
         let viewportAtEntry = initialViewport
 
-        if ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: messages.count) {
+        if !messages.isEmpty {
             await positionAndRevealInitialViewport(using: proxy)
         }
 
@@ -974,13 +968,6 @@ struct ConversationView: View {
     private func prepareInitialConversationForDisplay() {
         model.hydrateCachedMessages(for: conversation)
         prepareInitialViewport(in: messages)
-        if ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: messages.count) {
-            var transaction = Transaction(animation: nil)
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                hasRevealedInitialViewport = true
-            }
-        }
     }
 
     private func synchronizeReadPresentation() {

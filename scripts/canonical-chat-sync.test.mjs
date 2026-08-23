@@ -138,6 +138,11 @@ test("iOS conversation taps navigate before bounded asynchronous hydration", asy
   assert.match(openConversation, /composedConversation = conversation/);
   assert.doesNotMatch(openConversation, /prepare|hydrate|loadConversation/);
   assert.match(initialDisplay, /hydrateCachedMessages/);
+  assert.doesNotMatch(initialDisplay, /hasRevealedInitialViewport/);
+  assert.match(
+    conversation,
+    /proxy\.scrollTo\([\s\S]*hasPositionedInitialTimeline = true[\s\S]*hasRevealedInitialViewport = true/,
+  );
   assert.match(
     conversation,
     /if !hasRevealedInitialViewport \{[\s\S]*ConversationInitialFailureView[\s\S]*ConversationInitialLoadingView/,
