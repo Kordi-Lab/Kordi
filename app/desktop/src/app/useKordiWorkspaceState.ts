@@ -8,6 +8,7 @@ import { useKordiMessageActions } from '@/app/useKordiMessageActions';
 import { useKordiUiEffects } from '@/app/useKordiUiEffects';
 import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
+import { conversationWithHydratedSupportRoute } from '@/app/viewModels/conversationSelection';
 import { existingBlankSessionIdForParticipantSpace } from '@/features/chat/chatCreateFlows';
 import {
   navigateToTranscriptMessage,
@@ -126,7 +127,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     participantSpaces,
     contactParticipantSpaces,
     agentParticipantSpaces,
-    activeConv,
+    activeConv: selectedActiveConv,
     activeConversationUsesCollaboration,
     activeLastMessage,
     activeConvHasSubtitle,
@@ -179,6 +180,10 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     cloudUnreadReady: initialMessagesSettled,
     transientChatConversations,
   });
+  const activeConv = useMemo(
+    () => conversationWithHydratedSupportRoute(selectedActiveConv, cloudContacts),
+    [cloudContacts, selectedActiveConv],
+  );
 
   const {
     activeMessageSelection,

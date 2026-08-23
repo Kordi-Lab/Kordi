@@ -136,6 +136,7 @@ async fn support_runs_use_the_dedicated_service_api_key_without_an_owner_snapsho
         .await
         .unwrap();
     assert_eq!(lease.status(), StatusCode::OK);
+    assert_eq!(read_json(lease).await["run"]["providerAuthAvailable"], true);
 
     let provider_auth = router
         .clone()

@@ -17,13 +17,48 @@ import {
   KORDI_SUPPORT_SUBTITLE,
   isKordiSupportConversation,
 } from '@/features/support/supportIdentity';
-import type { Conversation } from '@/kordi-app/types';
+import type { Contact, Conversation } from '@/kordi-app/types';
 
 type ActiveConversationSelectionOptions = {
   isNativeShell: boolean;
   nativeChatPlaceholder: Conversation;
   fallbackConversation?: Conversation;
 };
+
+export function conversationWithHydratedSupportRoute(
+  conversation: Conversation,
+  contacts: Contact[] = [],
+): Conversation {
+  if (!isKordiSupportConversation(conversation)) return conversation;
+  const supportContact = contacts.find((contact) => (
+    contact.supportTicketEnabled
+    && contact.targetCloudAgentId?.trim() === KORDI_SUPPORT_AGENT_ID
+  ));
+  const ownerAccountId = supportContact?.targetCloudAgentOwnerAccountId?.trim()
+    || supportContact?.sourceHumanId?.trim()
+    || '';
+  if (!supportContact || !ownerAccountId) return conversation;
+
+  const current = conversation.collaborationTarget;
+  if (
+    current?.agentId === KORDI_SUPPORT_AGENT_ID
+    && current.humanId === ownerAccountId
+    && current.nodeId === ownerAccountId
+  ) return conversation;
+
+  return {
+    ...conversation,
+    collaborationTarget: {
+      hostId: supportContact.sourceHostId?.trim() || current?.hostId || 'cloud',
+      nodeId: ownerAccountId,
+      displayName: supportContact.targetCloudAgentName?.trim() || KORDI_SUPPORT_NAME,
+      ownerName: supportContact.targetCloudAgentOwnerName?.trim() || current?.ownerName || 'Kordi',
+      runtime: supportContact.sourceRuntime?.trim() || current?.runtime || 'kordi-desktop',
+      humanId: ownerAccountId,
+      agentId: KORDI_SUPPORT_AGENT_ID,
+    },
+  };
+}
 
 function matchingConversation(
   activeConvId: string,

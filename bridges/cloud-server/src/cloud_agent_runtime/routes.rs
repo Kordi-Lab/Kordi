@@ -22,6 +22,7 @@ use crate::cloud_agent_runtime::runs::{
     complete_run, error_response, fail_run, lease_canary_run, lease_next_run,
     lookup_run_for_request, mark_run_running, run_error_response, runner_unauthorized,
     CompleteRunRequest, FailRunRequest, RunnerLeaseResponse, RunnerRunEnvelope, RunnerRunRequest,
+    RunnerRunResponse,
 };
 use crate::server::ServerState;
 
@@ -40,6 +41,20 @@ async fn notify_run_response(state: &ServerState, response_message_id: Option<&s
     notifications
         .send_message_attention(state.db_pool(), &message)
         .await;
+}
+
+fn include_service_provider_auth(state: &ServerState, run: &mut RunnerRunResponse) {
+    if run.provider_auth_available {
+        return;
+    }
+    let Some(support) = state.support() else {
+        return;
+    };
+    let config = support.config();
+    let provider_auth = config.provider_auth();
+    run.provider_auth_available = run.owner_account_id == config.owner_account_id
+        && run.runtime_route.default_auth_provider.as_deref() == Some(provider_auth.provider())
+        && run.runtime_route.default_auth_choice.as_deref() == Some(provider_auth.auth_choice());
 }
 
 pub fn routes(state: Arc<ServerState>) -> Router {
@@ -131,7 +146,12 @@ async fn lease_runner_run(
         None => lease_next_run(state.db_pool(), &runner_id).await,
     };
     match lease_result {
-        Ok(run) => Json(RunnerLeaseResponse { run }).into_response(),
+        Ok(mut run) => {
+            if let Some(run) = run.as_mut() {
+                include_service_provider_auth(&state, run);
+            }
+            Json(RunnerLeaseResponse { run }).into_response()
+        }
         Err(error) => run_error_response(
             "lease run",
             "Could not lease Cloud agent fallback run.",
