@@ -18,6 +18,17 @@ type WorkspaceChatSidebarModelOptions = {
   isCollaborationSyncUnavailable?: boolean;
 };
 
+export function participantSpaceExpanded(
+  space: Pick<ParticipantSpaceItem, 'id' | 'kind'>,
+  activeSpaceId: string | null,
+  selectedSpaceId: string | null,
+  collapsedSpaceIds: ReadonlySet<string>,
+) {
+  return space.kind !== 'direct-human'
+    && !collapsedSpaceIds.has(space.id)
+    && (selectedSpaceId === space.id || activeSpaceId === space.id);
+}
+
 export function useWorkspaceChatSidebarModel(
   chats: WorkspaceSidebarChats,
   options: WorkspaceChatSidebarModelOptions = {},
@@ -35,6 +46,9 @@ export function useWorkspaceChatSidebarModel(
   const [selectedParticipantSpaceId, setSelectedParticipantSpaceId] = useState<
     string | null
   >(initialSelectedParticipantSpaceId);
+  const [collapsedParticipantSpaceIds, setCollapsedParticipantSpaceIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [chatChannel, setChatChannel] = useState<ChatChannel>(initialChatChannel);
   const [collapsedForkParents, setCollapsedForkParents] = useState<Set<string>>(
     new Set(),
@@ -63,6 +77,27 @@ export function useWorkspaceChatSidebarModel(
       (space) => space.id === selectedParticipantSpaceId,
     ) ?? null)
     : null;
+  const isParticipantSpaceExpanded = useCallback(
+    (space: Pick<ParticipantSpaceItem, 'id' | 'kind'>) => participantSpaceExpanded(
+      space,
+      activeParticipantSpaceId,
+      selectedParticipantSpaceId,
+      collapsedParticipantSpaceIds,
+    ),
+    [activeParticipantSpaceId, collapsedParticipantSpaceIds, selectedParticipantSpaceId],
+  );
+  const setParticipantSpaceExpanded = useCallback((spaceId: string, expanded: boolean) => {
+    setCollapsedParticipantSpaceIds((current) => {
+      if (expanded === !current.has(spaceId)) return current;
+      const next = new Set(current);
+      if (expanded) next.delete(spaceId);
+      else next.add(spaceId);
+      return next;
+    });
+    setSelectedParticipantSpaceId((current) => (
+      expanded ? spaceId : current === spaceId ? null : current
+    ));
+  }, []);
 
   const allSidebarSessions = useMemo(() => {
     const seen = new Set<string>();
@@ -258,11 +293,7 @@ export function useWorkspaceChatSidebarModel(
     () =>
       buildChatSidebarRows({
         spaces: visibleContactParticipantSpaces.map((space) => {
-          const isDirectHuman = space.kind === 'direct-human';
-          const isActiveSpace = activeParticipantSpaceId === space.id;
-          const isSelectedSpace =
-            !isDirectHuman && selectedParticipantSpaceId === space.id;
-          const expanded = !isDirectHuman && (isSelectedSpace || isActiveSpace);
+          const expanded = isParticipantSpaceExpanded(space);
           const rootSessionIds = expanded
             ? space.sessions
               .filter((session) => {
@@ -279,11 +310,10 @@ export function useWorkspaceChatSidebarModel(
         includeSpaceRows: true,
       }),
     [
-      activeParticipantSpaceId,
       activeSidebarRowSessionId,
       allSidebarSessionRowsById,
       collapsedForkParents,
-      selectedParticipantSpaceId,
+      isParticipantSpaceExpanded,
       sidebarSessionInputs,
       visibleContactParticipantSpaces,
     ],
@@ -338,7 +368,8 @@ export function useWorkspaceChatSidebarModel(
     visibleContactParticipantSpaces,
     activeParticipantSpaceId,
     selectedParticipantSpaceId,
-    setSelectedParticipantSpaceId,
+    isParticipantSpaceExpanded,
+    setParticipantSpaceExpanded,
     selectedParticipantSpace,
     chatChannel,
     setChatChannel,

@@ -209,7 +209,7 @@ function ParticipantSpaceRow({
   );
   const isSelectedSpace =
     !isDirectHuman && model.selectedParticipantSpaceId === space.id;
-  const isExpanded = !isDirectHuman && (isSelectedSpace || isActiveSpace);
+  const isExpanded = model.isParticipantSpaceExpanded(space);
   const isAutoExpanded = isExpanded && isActiveSpace && !isSelectedSpace;
   const rowTimeLabel =
     space.updatedAtLabel ?? latestSession?.updatedAtLabel ?? '--:--';
@@ -224,14 +224,12 @@ function ParticipantSpaceRow({
   const selectPrimarySession = () => {
     const primarySession = space.sessions[0];
     if (!primarySession) return;
-    if (!isDirectHuman) model.setSelectedParticipantSpaceId(space.id);
+    if (!isDirectHuman) model.setParticipantSpaceExpanded(space.id, true);
     actions.onSelectChatSession(primarySession.id);
   };
   const toggleSpace = () => {
     if (isDirectHuman) return;
-    model.setSelectedParticipantSpaceId((current) =>
-      current === space.id ? null : space.id,
-    );
+    model.setParticipantSpaceExpanded(space.id, !isExpanded);
   };
 
   return (
@@ -309,7 +307,7 @@ function ParticipantSpaceRow({
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
-                    model.setSelectedParticipantSpaceId(space.id);
+                    model.setParticipantSpaceExpanded(space.id, true);
                     const rect = event.currentTarget.getBoundingClientRect();
                     actions.onOpenGroupDetails(space, {
                       left: rect.left,
@@ -349,7 +347,7 @@ function ParticipantSpaceRow({
                 }
                 onClick={(event) => {
                   event.stopPropagation();
-                  model.setSelectedParticipantSpaceId(space.id);
+                  model.setParticipantSpaceExpanded(space.id, true);
                   void actions.onCreateChatSessionInParticipantSpace(space);
                 }}
               >
@@ -359,8 +357,9 @@ function ParticipantSpaceRow({
                 type="button"
                 data-participant-space-toggle-button="true"
                 className="app-participant-space-action app-participant-space-enter-action grid h-6 w-6 place-items-center rounded-[8px]"
-                title={isSelectedSpace ? 'Collapse sessions' : 'Expand sessions'}
-                aria-label={`${isSelectedSpace ? 'Collapse' : 'Expand'} ${space.title}`}
+                title={isExpanded ? 'Collapse sessions' : 'Expand sessions'}
+                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${space.title}`}
+                aria-expanded={isExpanded}
                 onClick={(event) => {
                   event.stopPropagation();
                   toggleSpace();
@@ -368,8 +367,8 @@ function ParticipantSpaceRow({
               >
                 <ChevronDown
                   className={cn(
-                    'h-3.5 w-3.5 transition',
-                    isSelectedSpace ? 'rotate-180' : '',
+                    'app-participant-space-disclosure-icon h-3.5 w-3.5',
+                    isExpanded ? 'rotate-180' : '',
                   )}
                 />
               </button>
