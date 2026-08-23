@@ -459,12 +459,12 @@ struct ConversationView: View {
                                     }
                                 }
                             } else {
-                                ConversationInitialLoadingView()
+                                ConversationInitialLoadingView(messages: visibleTimeline)
                             }
                         }
                     }
                 } else {
-                    ConversationInitialLoadingView()
+                    ConversationInitialLoadingView(messages: visibleTimeline)
                 }
 
                 if selectedMessageIDs.isEmpty {
@@ -2026,23 +2026,6 @@ private struct ConversationBottomTrackingModifier: ViewModifier {
         } else {
             content
         }
-    }
-}
-
-private struct ConversationInitialLoadingView: View {
-    var body: some View {
-        VStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.regular)
-                .accessibilityHidden(true)
-            Text("Loading messages…")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(uiColor: .systemGroupedBackground))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Loading messages")
     }
 }
 
