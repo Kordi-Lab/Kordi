@@ -51,6 +51,7 @@ struct ConversationView: View {
     @State private var initialViewport = ConversationInitialViewport.latest
     @State private var hasPreparedInitialViewport = false
     @State private var hasRevealedInitialViewport = false
+    @State private var initialLoadFailed = false
     @State private var trackedMessageID: String?
     @State private var immediateBottomRequest = 0
     @State private var attachments: [PendingAttachment] = []
@@ -204,8 +205,9 @@ struct ConversationView: View {
                     )
                 }
                 if hasPreparedInitialViewport {
-                    GeometryReader { viewport in
-                        ZStack(alignment: .bottomTrailing) {
+                    ZStack {
+                        GeometryReader { viewport in
+                            ZStack(alignment: .bottomTrailing) {
                             ScrollView {
                                 VStack(spacing: 0) {
                                     if timeline.isEmpty {
@@ -450,9 +452,22 @@ struct ConversationView: View {
                                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                             }
                         }
-                        .opacity(hasRevealedInitialViewport ? 1 : 0)
-                        .allowsHitTesting(hasRevealedInitialViewport)
-                        .accessibilityHidden(!hasRevealedInitialViewport)
+                            .opacity(hasRevealedInitialViewport ? 1 : 0)
+                            .allowsHitTesting(hasRevealedInitialViewport)
+                            .accessibilityHidden(!hasRevealedInitialViewport)
+                        }
+                        if !hasRevealedInitialViewport {
+                            if initialLoadFailed {
+                                ConversationInitialFailureView {
+                                    initialLoadFailed = false
+                                    Task {
+                                        await loadAndRevealInitialConversation(using: proxy)
+                                    }
+                                }
+                            } else {
+                                ConversationInitialLoadingView()
+                            }
+                        }
                     }
                 } else {
                     ConversationInitialLoadingView()
@@ -932,8 +947,13 @@ struct ConversationView: View {
             await positionAndRevealInitialViewport(using: proxy)
         }
 
-        await model.loadConversation(conversation)
+        let didLoad = await model.loadConversation(conversation)
         guard !Task.isCancelled else { return }
+        if !didLoad, messages.isEmpty {
+            initialLoadFailed = true
+            return
+        }
+        initialLoadFailed = false
         if initialMessageID == nil,
            !hasRevealedInitialViewport,
            case .resumed = viewportAtEntry,
@@ -2033,6 +2053,23 @@ private struct ConversationInitialLoadingView: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Loading messages")
+    }
+}
+
+private struct ConversationInitialFailureView: View {
+    let retry: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Couldn’t load messages", systemImage: "wifi.exclamationmark")
+        } description: {
+            Text("Check your connection and try again.")
+        } actions: {
+            Button("Try again", action: retry)
+                .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(uiColor: .systemGroupedBackground))
     }
 }
 

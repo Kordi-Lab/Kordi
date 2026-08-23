@@ -1047,23 +1047,24 @@ final class AppModel: ObservableObject {
             || conversationsWithEarlierHistory.contains(conversation.id)
     }
 
-    func loadConversation(_ conversation: ConversationSummary) async {
+    @discardableResult
+    func loadConversation(_ conversation: ConversationSummary) async -> Bool {
         beginConversationLoad(conversation.id)
         defer { endConversationLoad(conversation.id) }
 
         if previewMode {
             guard ProcessInfo.processInfo.arguments.contains("--preview-slow-session-load") else {
-                return
+                return true
             }
             do {
                 try await Task.sleep(for: .seconds(2))
             } catch {
-                return
+                return false
             }
-            return
+            return true
         }
 
-        guard let token, let account else { return }
+        guard let token, let account else { return false }
         async let fetchedPin = try? api.sessionPin(token: token, sessionId: conversation.sessionId)
         do {
             let page = try await api.conversationMessagePage(
@@ -1083,12 +1084,14 @@ final class AppModel: ObservableObject {
             if errorMessage == Self.cloudUnavailableMessage {
                 errorMessage = nil
             }
+            return true
         } catch {
-            if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
+            if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return false }
             if let pin = await fetchedPin {
                 sessionPinsByID[conversation.sessionId] = pin
             }
             recordCloudConnectionFailure(error)
+            return false
         }
     }
 

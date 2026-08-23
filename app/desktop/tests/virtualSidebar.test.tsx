@@ -244,3 +244,28 @@ test('500 sidebar descriptors mount at most 80 rows and scroll the active row in
   assert.equal(allUnread, 50);
   assert.ok(mountedUnread < allUnread, 'offscreen rows must remain part of data totals without mounting');
 });
+
+test('ordinary session lists stay fully mounted while scrolling', async () => {
+  const rows: ChatSidebarRow[] = Array.from({ length: 45 }, (_, index) => ({
+    kind: 'session',
+    key: `session:ordinary-${index}`,
+    sessionId: `ordinary-${index}`,
+    spaceId: 'space:ordinary',
+    depth: 0,
+    activePath: false,
+  }));
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+
+  await act(async () => root?.render(
+    <VirtualChatList
+      rows={rows}
+      scrollStyle={{ height: 500 }}
+      renderRow={(row) => <div data-test-row-height="48">{row.key}</div>}
+    />,
+  ));
+  await flush();
+
+  assert.equal(host.querySelectorAll('[data-chat-sidebar-row]').length, rows.length);
+});
