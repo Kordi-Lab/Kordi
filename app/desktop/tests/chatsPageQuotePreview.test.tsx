@@ -454,7 +454,7 @@ test('fork boundary does not treat a new reply to inherited history as another s
   );
 });
 
-test('chat composer renders active quote preview with remove control', () => {
+test('chat composer renders a compact flat quote preview with remove control', () => {
   const markup = renderChatsPage({
     activeChatQuote: {
       action: 'quote',
@@ -475,4 +475,8 @@ test('chat composer renders active quote preview with remove control', () => {
   assert.match(markup, /Alice/);
   assert.match(markup, /Can we ship/);
   assert.match(markup, /aria-label="Remove quoted message"/);
+  assert.match(markup, /data-composer-quote-preview="true" class="[^"]*items-center[^"]*px-1 py-1/);
+  assert.doesNotMatch(markup, /data-composer-quote-preview="true" class="[^"]*(?:rounded-\[14px\]|border-sky-300\/20|bg-sky-400\/10)/);
+  assert.match(markup, /h-8 w-px shrink-0 bg-\[color:var\(--app-sidebar-accent\)\]/);
+  assert.match(markup, /aria-label="Remove quoted message" class="[^"]*rounded-\[8px\]/);
 });

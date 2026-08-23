@@ -34,6 +34,20 @@ final class CompanionChatPanelTests: XCTestCase {
         ))
     }
 
+    func testReplyPreviewKeepsItsRailBoundedAndCancelTargetAccessible() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ComposerView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "    private func replyPreview"))
+        let end = try XCTUnwrap(source.range(of: "    private var attachmentTray"))
+        let preview = source[start.lowerBound..<end.lowerBound]
+
+        XCTAssertTrue(preview.contains(".frame(width: 3, height: 32)"))
+        XCTAssertTrue(preview.contains(".frame(width: 44, height: 44)"))
+    }
+
     func testEmojiPickerWaitsForTheSoftwareKeyboardToFold() {
         XCTAssertEqual(
             ComposerInputSurfaceMotion.delayBeforePresentingPicker(

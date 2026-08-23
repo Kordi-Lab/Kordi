@@ -599,7 +599,7 @@ struct ComposerView: View {
         HStack(spacing: 10) {
             Capsule()
                 .fill(KordiTheme.signalBlue)
-                .frame(width: 3)
+                .frame(width: 3, height: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Replying to \(source.senderLabel)")
                     .font(.caption.weight(.semibold))
@@ -616,13 +616,14 @@ struct ComposerView: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.body)
                     .foregroundStyle(.tertiary)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel("Cancel reply")
         }
         .padding(.leading, 8)
         .padding(.trailing, 6)
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 
