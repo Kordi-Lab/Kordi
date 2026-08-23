@@ -1,5 +1,6 @@
 import type { CloudMessage, CloudMessageAttachment } from './authClient';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
+import { normalizeCloudReaderAccountIds } from './cloudMessageMerge';
 import { IndexedDbCloudMessageCacheStore } from './indexedDbCloudMessageCacheStore';
 
 export {
@@ -114,6 +115,7 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     && Number(record.conversationSequence) > 0 ? Number(record.conversationSequence) : null;
   const version = Number.isSafeInteger(record.version)
     && Number(record.version) > 0 ? Number(record.version) : null;
+  const readByAccountIds = normalizeCloudReaderAccountIds(record.readByAccountIds);
   return {
     messageId,
     fromAccountId,
@@ -122,6 +124,7 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     createdAt,
     deliveredAt: typeof record.deliveredAt === 'string' ? record.deliveredAt : null,
     readAt: typeof record.readAt === 'string' ? record.readAt : null,
+    ...(readByAccountIds !== undefined ? { readByAccountIds } : {}),
     direction: fromAccountId === accountId ? 'outgoing' : 'incoming',
     ...(sessionId ? { sessionId } : {}),
     ...(conversationId ? { conversationId } : {}),

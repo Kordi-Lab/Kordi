@@ -113,6 +113,27 @@ final class CloudMessageStateProjectorTests: XCTestCase {
         XCTAssertEqual(summary?.readByAccountIds, ["acct_a"])
     }
 
+    func testGroupReceiptUsesCanonicalReadersInsteadOfTheFirstPeer() throws {
+        let body = try groupBody(messageId: "group-message")
+        let message = wire(
+            id: "canonical-message",
+            from: "acct_me",
+            to: "acct_a",
+            body: body,
+            readAt: "2026-08-08T10:01:00Z",
+            readByAccountIds: ["acct_b"]
+        )
+
+        let summary = CloudMessageStateProjector.groupDeliverySummary(
+            messageId: "group-message",
+            messages: [message],
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(summary?.state, .read)
+        XCTAssertEqual(summary?.readByAccountIds, ["acct_b"])
+    }
+
     func testLocalReadProjectionOnlyMarksTheOpenedSession() {
         let target = wire(
             id: "target",
@@ -190,6 +211,7 @@ final class CloudMessageStateProjectorTests: XCTestCase {
         body: String = "Hello",
         deliveredAt: String? = "2026-08-08T10:00:01Z",
         readAt: String? = nil,
+        readByAccountIds: [String]? = nil,
         sessionId: String = "session:one",
         messageKind: String? = nil,
         conversationId: String? = nil,
@@ -204,6 +226,7 @@ final class CloudMessageStateProjectorTests: XCTestCase {
             createdAt: "2026-08-08T10:00:00Z",
             deliveredAt: deliveredAt,
             readAt: readAt,
+            readByAccountIds: readByAccountIds,
             direction: from == "acct_me" ? "outgoing" : "incoming",
             sessionId: sessionId,
             messageKind: messageKind,

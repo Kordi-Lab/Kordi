@@ -157,6 +157,7 @@ export type CloudMessage = {
   createdAt: string;
   deliveredAt: string | null;
   readAt: string | null;
+  readByAccountIds?: string[];
   direction: CloudMessageDirection;
   sessionId?: string | null;
   attachments?: CloudMessageAttachment[];
@@ -167,7 +168,6 @@ export type CloudMessage = {
   canonicalHistoryLocalMessageId?: string | null;
   version?: number | null;
 };
-
 
 export type CloudSyncEventType = string;
 

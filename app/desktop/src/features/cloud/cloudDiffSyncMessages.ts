@@ -4,6 +4,7 @@ import {
   compareCloudMessages,
   latestCloudReceiptAt,
   mergeCloudMessageMonotonicState,
+  normalizeCloudReaderAccountIds,
 } from './cloudMessageMerge';
 
 function cleanText(value: unknown): string {
@@ -35,6 +36,7 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
   const version = Number.isSafeInteger(record.version) && Number(record.version) > 0
     ? Number(record.version)
     : null;
+  const readByAccountIds = normalizeCloudReaderAccountIds(record.readByAccountIds);
   return cloudMessageMetadataOnly({
     messageId,
     fromAccountId,
@@ -43,6 +45,7 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
     createdAt,
     deliveredAt: typeof record.deliveredAt === 'string' ? record.deliveredAt : null,
     readAt: typeof record.readAt === 'string' ? record.readAt : null,
+    ...(readByAccountIds !== undefined ? { readByAccountIds } : {}),
     direction,
     ...(typeof record.sessionId === 'string' ? { sessionId: record.sessionId } : {}),
     ...(typeof record.conversationId === 'string' ? { conversationId: record.conversationId } : {}),

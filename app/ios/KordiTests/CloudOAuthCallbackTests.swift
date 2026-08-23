@@ -116,6 +116,22 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         XCTAssertTrue(page.hasMore)
     }
 
+    func testGroupBootstrapProjectsTheActualReaderInsteadOfTheFirstPeer() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [GroupReadBootstrapURLProtocol.self]
+        let client = CloudAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:17081")!,
+            session: URLSession(configuration: configuration)
+        )
+
+        let response = try await client.sync(token: "oauth-session", cursor: "0")
+        let message = try XCTUnwrap(response.events.compactMap(\.payload?.message).first)
+
+        XCTAssertEqual(message.toAccountId, "acct_first_peer")
+        XCTAssertEqual(message.readByAccountIds, ["acct_actual_reader"])
+        XCTAssertNotNil(message.readAt)
+    }
+
     func testAgentDefinitionEventsTriggerDirectoryRefreshProjection() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AgentDefinitionSyncURLProtocol.self]
@@ -302,6 +318,26 @@ private final class ChatBootstrapURLProtocol: URLProtocol {
         let payload = Data(
             #"{"protocol_version":2,"conversations":[],"latest_messages":[],"next_cursor":"0","last_stream_seq":0,"server_time":"2026-08-15T00:00:00Z"}"#.utf8
         )
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: payload)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+private final class GroupReadBootstrapURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let payload = Data(#"{"protocol_version":2,"conversations":[{"id":"conversation-group-reader","kind":"group","shared_title":"Readers","version":1,"created_by_account_id":"acct_me","legacy_session_id":"session:group:reader","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":8,"created_at":"2026-08-23T10:00:00Z","updated_at":"2026-08-23T10:01:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":8,"joined_at":"2026-08-23T10:00:00Z","left_at":null},{"account_id":"acct_first_peer","display_name":"First Peer","avatar_url":null,"role":"member","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":0,"joined_at":"2026-08-23T10:00:00Z","left_at":null},{"account_id":"acct_actual_reader","display_name":"Actual Reader","avatar_url":null,"role":"member","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":8,"joined_at":"2026-08-23T10:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-group-reader","account_id":"acct_me","personal_title":null,"version":1}}],"latest_messages":[{"id":"message-8","client_message_id":"client-8","conversation_id":"conversation-group-reader","conversation_sequence":8,"sender_account_id":"acct_me","kind":"text","content":{"schema":1,"blocks":[{"type":"text","text":"Hello"}],"legacy_attachments":[]},"reply_to_message_id":null,"attachment_ids":[],"version":1,"generation_status":null,"provider_response_id":null,"created_at":"2026-08-23T10:01:00Z","edited_at":null,"deleted_at":null}],"next_cursor":"8","last_stream_seq":8,"server_time":"2026-08-23T10:02:00Z"}"#.utf8)
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,

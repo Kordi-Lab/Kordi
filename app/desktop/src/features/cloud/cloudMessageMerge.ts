@@ -34,6 +34,19 @@ export function cloudMessageAttachmentsEqual(
   });
 }
 
+export function normalizeCloudReaderAccountIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return [...new Set(value.flatMap((accountId) => (
+    typeof accountId === 'string' && accountId.trim() ? [accountId.trim()] : []
+  )))].sort();
+}
+
+function cloudReaderAccountIdsEqual(left?: string[], right?: string[]): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  return left.length === right.length
+    && left.every((accountId, index) => accountId === right[index]);
+}
+
 export function cloudMessagesEqual(
   message: CloudMessage,
   other: CloudMessage | undefined,
@@ -46,6 +59,7 @@ export function cloudMessagesEqual(
     && message.createdAt === other.createdAt
     && message.deliveredAt === other.deliveredAt
     && message.readAt === other.readAt
+    && cloudReaderAccountIdsEqual(message.readByAccountIds, other.readByAccountIds)
     && message.direction === other.direction
     && (message.sessionId ?? null) === (other.sessionId ?? null)
     && (message.conversationId ?? null) === (other.conversationId ?? null)
@@ -92,6 +106,9 @@ export function mergeCloudMessageMonotonicState(
       : incoming.attachments ?? current.attachments,
     deliveredAt: latestCloudReceiptAt(current.deliveredAt, incoming.deliveredAt),
     readAt: latestCloudReceiptAt(current.readAt, incoming.readAt),
+    readByAccountIds: incomingIsOlder
+      ? current.readByAccountIds
+      : incoming.readByAccountIds ?? current.readByAccountIds,
   };
   return cloudMessagesEqual(current, merged) ? current : merged;
 }

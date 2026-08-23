@@ -15,6 +15,7 @@ final class CloudWireCacheTests: XCTestCase {
             createdAt: "2026-08-08T17:30:00Z",
             deliveredAt: "2026-08-08T17:30:01Z",
             readAt: nil,
+            readByAccountIds: ["acct-reader"],
             direction: "outgoing",
             sessionId: "session:direct-person:acct-me:acct-peer",
             messageKind: "call"
@@ -38,6 +39,7 @@ final class CloudWireCacheTests: XCTestCase {
         XCTAssertEqual(restored?.cursor, "842")
         XCTAssertEqual(restored?.messagesByPeer["acct-peer"], [message])
         XCTAssertEqual(restored?.messagesByPeer["acct-peer"]?.first?.messageKind, "call")
+        XCTAssertEqual(restored?.messagesByPeer["acct-peer"]?.first?.readByAccountIds, ["acct-reader"])
         XCTAssertEqual(restored?.sessionForksById?[fork.forkSessionId], fork)
         XCTAssertEqual(restored?.forkLineageVersion, CloudWireSnapshot.currentForkLineageVersion)
     }

@@ -57,9 +57,12 @@ enum CloudMessageStateProjector {
             return envelope.message?.id == messageId
         }
         guard !copies.isEmpty else { return nil }
-        let readers = Set(copies.compactMap { wire in
-            wire.readAt == nil ? nil : wire.toAccountId.nonEmpty
-        }).sorted()
+        let readers = Set(copies.flatMap { wire -> [String] in
+            if let readByAccountIds = wire.readByAccountIds {
+                return readByAccountIds.compactMap(\.nonEmpty)
+            }
+            return wire.readAt == nil ? [] : wire.toAccountId.nonEmpty.map { [$0] } ?? []
+        }.filter { $0 != ownAccountId }).sorted()
         return CloudGroupDeliverySummary(
             state: readers.isEmpty ? .delivered : .read,
             readByAccountIds: readers
@@ -88,6 +91,7 @@ enum CloudMessageStateProjector {
                     createdAt: message.createdAt,
                     deliveredAt: message.deliveredAt ?? readAt,
                     readAt: readAt,
+                    readByAccountIds: message.readByAccountIds,
                     direction: message.direction,
                     sessionId: message.sessionId,
                     attachments: message.attachments,

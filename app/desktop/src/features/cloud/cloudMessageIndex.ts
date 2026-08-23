@@ -13,7 +13,7 @@ import { compareCloudMessages } from './cloudMessageMerge';
 export type CloudDeliveryReader = {
   accountId: string;
   identityId: string;
-  readAt: string;
+  readAt: string | null;
 };
 
 export type CloudDeliverySummary = {
@@ -119,6 +119,7 @@ function revisionForMessages(messages: readonly CloudMessage[]): string {
     addFingerprintValue(message.createdAt);
     addFingerprintValue(message.deliveredAt ?? '');
     addFingerprintValue(message.readAt ?? '');
+    for (const accountId of message.readByAccountIds ?? []) addFingerprintValue(accountId);
     addFingerprintValue(message.sessionId ?? '');
     addFingerprintValue(message.messageKind ?? '');
     addFingerprintValue(String(message.version ?? ''));
@@ -288,16 +289,19 @@ export function buildCloudMessageIndex(
       readersByAccountId: new Map<string, CloudDeliveryReader>(),
     };
     const readAt = cleanText(wire.readAt);
-    const recipientAccountId = cleanText(wire.toAccountId);
-    if (readAt) {
+    const readerAccountIds = (wire.readByAccountIds ?? (readAt ? [wire.toAccountId] : []))
+      .map(cleanText)
+      .filter((accountId) => accountId && accountId !== localAccountId);
+    if (readerAccountIds.length > 0) {
       summary.state = 'read';
-      if (recipientAccountId) {
+      const readerReadAt = wire.readByAccountIds === undefined ? readAt : null;
+      for (const recipientAccountId of readerAccountIds) {
         const previousReader = summary.readersByAccountId.get(recipientAccountId);
-        if (!previousReader || previousReader.readAt < readAt) {
+        if (!previousReader || cleanText(previousReader.readAt) < cleanText(readerReadAt)) {
           summary.readersByAccountId.set(recipientAccountId, {
             accountId: recipientAccountId,
             identityId: `human:${recipientAccountId}`,
-            readAt,
+            readAt: readerReadAt,
           });
         }
       }

@@ -724,6 +724,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     let createdAt: String
     let deliveredAt: String?
     let readAt: String?
+    let readByAccountIds: [String]?
     let direction: String
     let sessionId: String?
     let attachments: [CloudMessageAttachment]
@@ -742,6 +743,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         createdAt: String,
         deliveredAt: String?,
         readAt: String?,
+        readByAccountIds: [String]? = nil,
         direction: String,
         sessionId: String?,
         attachments: [CloudMessageAttachment] = [],
@@ -757,6 +759,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         self.createdAt = createdAt
         self.deliveredAt = deliveredAt
         self.readAt = readAt
+        self.readByAccountIds = readByAccountIds
         self.direction = direction
         self.sessionId = sessionId
         self.attachments = attachments
@@ -766,7 +769,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case messageId, clientMessageId, fromAccountId, toAccountId, body, createdAt, deliveredAt, readAt, direction, sessionId, attachments
+        case messageId, clientMessageId, fromAccountId, toAccountId, body, createdAt, deliveredAt, readAt, readByAccountIds, direction, sessionId, attachments
         case messageKind = "kind"
         case conversationId, conversationSequence
     }
@@ -781,6 +784,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         createdAt = try container.decode(String.self, forKey: .createdAt)
         deliveredAt = try container.decodeIfPresent(String.self, forKey: .deliveredAt)
         readAt = try container.decodeIfPresent(String.self, forKey: .readAt)
+        readByAccountIds = try container.decodeIfPresent([String].self, forKey: .readByAccountIds)
         direction = try container.decode(String.self, forKey: .direction)
         sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
         attachments = try container.decodeIfPresent([CloudMessageAttachment].self, forKey: .attachments) ?? []
