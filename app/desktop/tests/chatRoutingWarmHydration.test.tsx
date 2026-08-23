@@ -32,7 +32,7 @@ test('canonical history hydration hides an incomplete catalog preview', () => {
 
   const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
 
-  assert.deepEqual(loading.messages.map((message) => message.text), ['Loading chat history…']);
+  assert.deepEqual(loading.messages.map((message) => message.text), ['']);
   assert.equal(loading.messages[0]?.detail, 'transcript-loading');
   assert.deepEqual(loading.messages[0]?.loadingPlaceholders, [{
     kind: 'message',
@@ -42,7 +42,7 @@ test('canonical history hydration hides an incomplete catalog preview', () => {
   }]);
 });
 
-test('desktop runtime selection shows a loading notice until its transcript cache is ready', () => {
+test('desktop runtime selection keeps an invisible loading marker until its transcript cache is ready', () => {
   const selected = {
     id: 'local-runtime-session',
     name: 'Agent session',
@@ -60,7 +60,7 @@ test('desktop runtime selection shows a loading notice until its transcript cach
 
   const loading = applyCanonicalHydrationPlaceholder(selected, undefined);
 
-  assert.deepEqual(loading.messages.map((message) => message.text), ['Loading chat history…']);
+  assert.deepEqual(loading.messages.map((message) => message.text), ['']);
   assert.equal(loading.messages[0]?.detail, 'transcript-loading');
 });
 

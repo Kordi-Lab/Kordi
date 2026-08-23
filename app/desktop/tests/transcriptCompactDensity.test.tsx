@@ -68,22 +68,21 @@ test('contact transcripts use the same neutral system-notice treatment', () => {
   assert.doesNotMatch(markup, /bg-muted|rounded-full|\bborder\b|text-muted-foreground/);
 });
 
-test('renders transcript loading once as neutral text without a notice background', () => {
+test('keeps transcript loading as an accessibility-only fallback', () => {
   const message: Message = {
     role: 'system',
-    text: 'Loading chat history…',
+    text: '',
     time: '--:--',
     detail: 'transcript-loading',
   };
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
-  assert.match(markup, /app-transcript-loading-notice/);
+  assert.match(markup, /class="sr-only"/);
   assert.match(markup, /role="status"/);
   assert.match(markup, /aria-live="polite"/);
-  assert.match(markup, /animate-spin/);
-  assert.match(markup, /text-\[color:var\(--utility-muted-text\)\]/);
-  assert.doesNotMatch(markup, /bg-muted|rounded-full|\bborder\b/);
+  assert.match(markup, />Loading messages</);
+  assert.doesNotMatch(markup, /animate-spin|app-transcript-loading-notice|Loading chat history/);
 });
 
 test('renders human messages with a larger reading width than before', () => {

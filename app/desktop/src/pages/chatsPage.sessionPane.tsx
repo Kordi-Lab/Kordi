@@ -384,7 +384,7 @@ export function ChatSessionPane({
       {isInitialTranscriptLoading ? (
         <div className="contents" data-transcript-initial-loading="true">
           <TranscriptLoadingSkeleton
-            label={messages[0]?.text ?? 'Loading messages…'}
+            label="Loading messages"
             compact={densityMode !== 'default'}
             placeholders={messages[0]?.loadingPlaceholders ?? []}
           />
