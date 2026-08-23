@@ -10,6 +10,7 @@ import {
   clearChatPerformanceRecords,
   readChatPerformanceRecords,
 } from '../src/features/performance/chatPerformance';
+import { transcriptLoadingNotice } from '../src/features/chat/transcriptLoadingNotice';
 
 let ChatSessionPane: typeof import('../src/pages/chatsPage.sessionPane').ChatSessionPane;
 let root: Root | null = null;
@@ -69,7 +70,10 @@ const presentation: ChatSessionPaneProps['presentation'] = {
 };
 const selection: ChatSessionPaneProps['selection'] = {};
 
-function sessionPane(composerLabel: string) {
+function sessionPane(
+  composerLabel: string,
+  paneMessages: ChatSessionPaneProps['viewport']['messages'] = messages,
+) {
   return (
     <ChatSessionPane
       presentation={presentation}
@@ -77,7 +81,7 @@ function sessionPane(composerLabel: string) {
       selection={selection}
       viewport={{
         sessionKey: 'session:stable',
-        messages,
+        messages: paneMessages,
         queuedMessages,
         scrollRef,
         scrollClassName: 'test-scroll',
@@ -133,4 +137,16 @@ test('composer-only updates do not rerender the transcript subtree', async () =>
     host.querySelector('[data-composer-label]')?.textContent,
     'second draft',
   );
+});
+
+test('initial history loading replaces the one-row transcript preview', async () => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+
+  await act(async () => root?.render(sessionPane('draft', [transcriptLoadingNotice()])));
+  await flush();
+
+  assert.ok(host.querySelector('[data-transcript-initial-loading="true"]'));
+  assert.equal(host.querySelector('[data-virtual-transcript-scroll]'), null);
 });

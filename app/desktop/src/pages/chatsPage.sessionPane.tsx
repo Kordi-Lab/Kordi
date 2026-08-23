@@ -12,6 +12,7 @@ import {
 
 import { buildReplyAttribution } from '@/features/chat/replyAttribution';
 import { buildDesktopLiveTurnTranscriptMessage } from '@/features/chat/desktopLiveTurns';
+import { isTranscriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import {
   transcriptWindowMessageIdentity,
 } from '@/features/chat/transcriptWindowing';
@@ -200,10 +201,28 @@ export function ChatSessionPane({
     transcriptMessages,
     transcriptTailKey,
   });
+  const isInitialTranscriptLoading =
+    messages.length === 1 && isTranscriptLoadingNotice(messages[0]);
 
   return (
     <>
-      {transcriptViewport}
+      {isInitialTranscriptLoading ? (
+        <div
+          className="flex min-h-0 flex-1 items-center justify-center"
+          data-transcript-initial-loading="true"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <div className="inline-flex items-center gap-2 text-[13px] font-medium text-[color:var(--utility-muted-text)]">
+            <LoaderCircle
+              className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+            <span>{messages[0]?.text}</span>
+          </div>
+        </div>
+      ) : transcriptViewport}
       {messageSelectionMode && selectedMessageCount > 0 ? (
         <div className="px-5 pt-3">
           <div

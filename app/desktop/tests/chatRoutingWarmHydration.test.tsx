@@ -9,7 +9,7 @@ import {
 } from '../src/app/useWorkspaceViewModels';
 import { mapDesktopMessagesForTranscript } from '../src/features/chat/useDesktopTranscriptAdapter';
 
-test('canonical history hydration keeps an already visible latest message in place', () => {
+test('canonical history hydration hides an incomplete catalog preview', () => {
   const selected = {
     id: 'session:group:warm-history',
     canonicalSessionId: 'session:group:warm-history',
@@ -32,8 +32,8 @@ test('canonical history hydration keeps an already visible latest message in pla
 
   const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
 
-  assert.equal(loading, selected);
-  assert.deepEqual(loading.messages.map((message) => message.text), ['latest message stays visible']);
+  assert.deepEqual(loading.messages.map((message) => message.text), ['Loading chat history…']);
+  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
 });
 
 test('desktop runtime selection shows a loading notice until its transcript cache is ready', () => {
