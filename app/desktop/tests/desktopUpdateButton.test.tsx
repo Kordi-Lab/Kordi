@@ -96,16 +96,13 @@ function sidebarProps(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test('WorkspaceSidebar keeps the update button visible while the native updater is idle', () => {
+test('WorkspaceSidebar keeps the native updater hidden until an update is available', () => {
   const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, sidebarProps({
     onCheckForUpdates: async () => ({ status: 'up-to-date', currentVersion: '0.0.1-beta.7' }),
   }) as never));
 
-  assert.match(markup, /app-update-logo-button/);
-  assert.match(markup, /aria-label="Check for Kordi updates"/);
-  assert.match(markup, /title="Check for updates"/);
-  assert.doesNotMatch(markup, /src="\/favicon\.svg"/);
-  assert.doesNotMatch(markup, /<span>Update<\/span>/);
+  assert.doesNotMatch(markup, /app-update-wave-button/);
+  assert.doesNotMatch(markup, /Kordi update/);
 });
 
 test('WorkspaceSidebar places the updater in the global rail above the profile', () => {
@@ -114,11 +111,10 @@ test('WorkspaceSidebar places the updater in the global rail above the profile',
   }) as never));
   const source = [
     readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../src/pages/workspaceSidebar.navigation.tsx', import.meta.url), 'utf8'),
     readFileSync(new URL('../src/pages/workspaceSidebar.update.tsx', import.meta.url), 'utf8'),
   ].join('\n');
   const css = readDesktopShellCss();
-  const updateButtonIndex = markup.indexOf('app-update-logo-button');
-  const profileButtonIndex = markup.indexOf('app-nav-rail-profile');
   const chatsHeaderStart = markup.indexOf('app-chat-sidebar-header');
   const chatsHeaderEnd = markup.indexOf('app-workspace-search', chatsHeaderStart);
   const chatsHeaderMarkup = markup.slice(chatsHeaderStart, chatsHeaderEnd);
@@ -126,19 +122,14 @@ test('WorkspaceSidebar places the updater in the global rail above the profile',
   assert.match(markup, /class="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2\.5"/);
   assert.match(markup, /class="app-chat-sidebar-actions flex shrink-0 items-center gap-2"/);
   assert.match(markup, /app-nav-rail-bottom/);
-  assert.ok(updateButtonIndex >= 0, 'update button should render');
-  assert.ok(
-    updateButtonIndex < profileButtonIndex,
-    'update button should render above the profile in rail order',
-  );
-  assert.doesNotMatch(chatsHeaderMarkup, /app-update-logo-button/);
-  assert.match(source, /app-update-logo-button app-update-rail-button app-workspace-nav-button relative mx-auto grid h-11 w-11 place-items-center rounded-\[14px\] p-0/);
+  assert.doesNotMatch(chatsHeaderMarkup, /app-update-wave-button/);
+  assert.match(source, /<SidebarUpdater[\s\S]*<SidebarProfileControl/);
+  assert.match(source, /app-update-wave-button app-workspace-nav-button relative mx-auto grid h-11 w-11 place-items-center rounded-\[14px\] p-0/);
   assert.match(source, /app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-\[10px\] p-0 transition/);
-  assert.match(source, /h-\[18px\] w-\[18px\] stroke-\[1\.9\]/);
+  assert.match(source, /src="\/blob-wave\.gif"/);
+  assert.match(source, /srcSet="\/blob-wave-static\.png"/);
   assert.doesNotMatch(source, /border border-slate-300\/70 bg-white text-slate-950/);
-  assert.match(css, /\.app-update-logo-button\[data-update-status='available'\]::after/);
-  assert.match(css, /\.app-update-rail-button\[data-update-status='available'\]::after/);
-  assert.match(css, /--app-update-control-active: oklch/);
+  assert.doesNotMatch(css, /app-update-logo-button/);
   assert.match(css, /\.app-chat-sidebar-actions \.app-icon-button:focus-visible/);
 });
 
@@ -148,41 +139,54 @@ test('WorkspaceSidebar does not expose the native updater control in web mode', 
     onCheckForUpdates: async () => ({ status: 'up-to-date', currentVersion: '0.0.1-beta.7' }),
   }) as never));
 
-  assert.doesNotMatch(markup, /app-update-logo-button/);
-  assert.doesNotMatch(markup, /Check for Kordi updates/);
+  assert.doesNotMatch(markup, /app-update-wave-button/);
+  assert.doesNotMatch(markup, /Kordi update/);
 });
 
-test('desktop update button presents pending and available states', () => {
+test('desktop update button only presents actionable update states', () => {
   assert.deepEqual(desktopUpdateButtonPresentation({ status: 'checking' }), {
-    disabled: true,
-    isSpinning: true,
-    title: 'Checking for updates…',
-    ariaLabel: 'Checking for Kordi updates',
+    visible: false,
+    title: 'Kordi update needs attention',
   });
   assert.deepEqual(desktopUpdateButtonPresentation({
     status: 'available',
     currentVersion: '0.0.1-beta.7',
     latestVersion: '0.0.1-beta.8',
   }), {
-    disabled: false,
-    isSpinning: false,
-    title: 'Kordi 0.0.1-beta.8 is available',
-    ariaLabel: 'Check for Kordi updates',
+    visible: true,
+    title: 'Kordi 0.0.1-beta.8 is ready — open update options',
   });
+  assert.equal(desktopUpdateButtonPresentation({ status: 'up-to-date' }).visible, false);
+  assert.equal(desktopUpdateButtonPresentation({
+    status: 'failed',
+    failureStage: 'check',
+  }).visible, false);
+  assert.equal(desktopUpdateButtonPresentation({
+    status: 'failed',
+    failureStage: 'install',
+  }).visible, true);
 });
 
-test('WorkspaceSidebar update affordance uses a refresh logo and confirmation popover', () => {
+test('WorkspaceSidebar update affordance uses a friendly wave and confirmation popover', () => {
+  const updaterSource = readFileSync(
+    new URL('../src/pages/workspaceSidebar.update.tsx', import.meta.url),
+    'utf8',
+  );
   const source = [
-    readFileSync(new URL('../src/pages/workspaceSidebar.update.tsx', import.meta.url), 'utf8'),
+    updaterSource,
     readFileSync(new URL('../src/pages/workspaceSidebar.updatePopover.tsx', import.meta.url), 'utf8'),
     readFileSync(new URL('../src/pages/workspaceSidebar.updatePresentation.ts', import.meta.url), 'utf8'),
   ].join('\n');
 
-  assert.match(source, /RefreshCw/);
-  assert.match(source, /app-update-logo-button/);
-  assert.match(source, /status === 'checking'/);
-  assert.match(source, /animate-spin/);
+  assert.match(source, /blob-wave\.gif/);
+  assert.match(source, /blob-wave-static\.png/);
+  assert.match(source, /buttonPresentation\.visible/);
+  assert.match(source, /void runUpdateCheck\(\)/);
+  assert.match(source, /className="sr-only" role="status"/);
+  assert.doesNotMatch(source, /Check for updates/);
   assert.match(source, /w-\[14\.5rem\]/);
+  assert.match(source, /w-\[12\.75rem\]/);
+  assert.match(source, /app-update-popover-tail/);
   assert.match(source, /app-update-popover/);
   assert.match(source, /data-update-state=\{state\.status\}/);
   assert.doesNotMatch(source, /app-update-popover overflow-hidden border/);
@@ -194,16 +198,17 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /Kordi is up to date/);
   assert.match(source, /Couldn’t check for updates/);
   assert.match(source, /state\.status === 'available'/);
-  assert.match(source, /Update available/);
-  assert.match(source, /Update now/);
-  assert.match(source, /Not now/);
+  assert.match(source, /New Kordi is here/);
+  assert.match(source, /aria-label=\{state\.status === 'available' \? 'Update Kordi now' : undefined\}/);
+  assert.doesNotMatch(source, />\s*Update now\s*</);
+  assert.doesNotMatch(source, />\s*Not now\s*</);
   assert.match(source, /onInstallUpdate/);
   assert.match(source, /Downloading/);
   assert.match(source, /Installing verified update…/);
   assert.doesNotMatch(source, /Installing signed update/);
   assert.match(source, /Relaunching/);
   assert.match(source, /Unable to install the verified update\./);
-  assert.match(source, /download, verify, install, and relaunch Kordi automatically\./);
+  assert.doesNotMatch(source, /download, verify, install, and relaunch Kordi automatically\./);
   assert.match(source, /Retry/);
   assert.match(source, /Download manually/);
   assert.match(source, /receivedBytes/);
@@ -218,7 +223,7 @@ test('WorkspaceSidebar update affordance uses a refresh logo and confirmation po
   assert.match(source, /position: 'fixed'/);
   assert.match(source, /bottom: anchor\.bottom/);
   assert.match(source, /if \(!anchor \|\| typeof document === 'undefined'\) return null/);
-  assert.doesNotMatch(source, /src="\/favicon\.svg"/);
+  assert.doesNotMatch(updaterSource, /RefreshCw/);
 });
 
 test('desktop update popover uses a quiet theme-aware surface in dark mode', () => {

@@ -5,7 +5,6 @@ import {
   CircleAlert,
   Download,
   RefreshCw,
-  Sparkles,
   X,
 } from 'lucide-react';
 
@@ -48,7 +47,7 @@ function updateDialogTitle(state: DesktopUpdaterState) {
     return 'Couldn’t check for updates';
   }
   if (state.status === 'failed') return 'Update failed';
-  return 'Update available';
+  return 'New Kordi is here';
 }
 
 type SidebarUpdatePopoverProps = {
@@ -84,13 +83,18 @@ export function SidebarUpdatePopover({
         zIndex: 180,
       }}
       className={cn(
-        'app-transient-surface app-popover app-update-popover overflow-hidden',
+        'app-transient-surface app-popover app-update-popover',
         state.status === 'checking'
-          ? 'w-[14.5rem] rounded-[14px] px-3 py-2.5'
-          : 'w-[18rem] rounded-[16px] p-3.5',
+          ? 'w-[14.5rem] overflow-hidden rounded-[14px] px-3 py-2.5'
+          : state.status === 'available'
+            ? 'w-[12.75rem] overflow-visible rounded-[15px] rounded-bl-[8px] p-2.5'
+            : 'w-[18rem] overflow-hidden rounded-[16px] p-3.5',
       )}
       data-update-state={state.status}
     >
+      {state.status === 'available' ? (
+        <span className="app-update-popover-tail" aria-hidden="true" />
+      ) : null}
       {state.status === 'checking' ? (
         <div
           role="status"
@@ -105,42 +109,38 @@ export function SidebarUpdatePopover({
           </div>
         </div>
       ) : (
-        <div className="flex items-start gap-3">
-          <div className={cn(
-            'app-update-popover-symbol mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full',
-            state.status === 'failed'
-              ? 'app-update-popover-symbol-danger'
-              : state.status === 'up-to-date'
-                ? 'app-update-popover-symbol-success'
-                : null,
-          )}>
-            {state.status === 'up-to-date' ? (
-              <CheckCircle2 className="h-[18px] w-[18px]" aria-hidden="true" />
-            ) : null}
-            {state.status === 'failed' ? (
-              <CircleAlert className="h-[18px] w-[18px]" aria-hidden="true" />
-            ) : null}
-            {state.status === 'available' ? (
-              <Sparkles className="h-[18px] w-[18px]" aria-hidden="true" />
-            ) : null}
-            {state.status === 'downloading' ? (
-              <Download className="h-[18px] w-[18px]" aria-hidden="true" />
-            ) : null}
-            {state.status === 'installing' || state.status === 'relaunching' ? (
-              <RefreshCw
-                className="h-[18px] w-[18px] animate-spin"
-                aria-hidden="true"
-              />
-            ) : null}
-          </div>
+        <div className="flex items-start gap-2">
+          {state.status !== 'available' ? (
+            <div className={cn(
+              'app-update-popover-symbol mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full',
+              state.status === 'failed' && 'app-update-popover-symbol-danger',
+              state.status === 'up-to-date' && 'app-update-popover-symbol-success',
+            )}>
+              {state.status === 'up-to-date' ? (
+                <CheckCircle2 className="h-[18px] w-[18px]" aria-hidden="true" />
+              ) : null}
+              {state.status === 'failed' ? (
+                <CircleAlert className="h-[18px] w-[18px]" aria-hidden="true" />
+              ) : null}
+              {state.status === 'downloading' ? (
+                <Download className="h-[18px] w-[18px]" aria-hidden="true" />
+              ) : null}
+              {state.status === 'installing' || state.status === 'relaunching' ? (
+                <RefreshCw
+                  className="h-[18px] w-[18px] animate-spin"
+                  aria-hidden="true"
+                />
+              ) : null}
+            </div>
+          ) : null}
           <div className="min-w-0 flex-1">
-            <div className="app-update-popover-title text-[12.5px] font-semibold tracking-[-0.01em]">
+            <div className="app-update-popover-title text-[12px] font-semibold tracking-[-0.01em]">
               {updateDialogTitle(state)}
             </div>
-            <div className="app-update-popover-copy mt-0.5 text-[11px] leading-[1.125rem]">
+            <div className="app-update-popover-copy mt-0.5 text-[10.5px] leading-4">
               {state.status === 'up-to-date' ? updateStatusMessage(state) : null}
               {state.status === 'available'
-                ? `Kordi ${state.latestVersion ?? 'update'} is ready to install.`
+                ? `${state.latestVersion ?? 'Update'} · Ready to install.`
                 : null}
               {state.status === 'failed' && state.failureStage === 'check'
                 ? 'The update server could not be reached. Your current app is unaffected.'
@@ -164,7 +164,7 @@ export function SidebarUpdatePopover({
             && state.status !== 'relaunching' ? (
               <button
                 type="button"
-                className="app-button-quiet app-update-popover-close grid h-6 w-6 shrink-0 place-items-center rounded-full p-0"
+                className="app-button-quiet app-update-popover-close grid h-5 w-5 shrink-0 place-items-center rounded-full p-0"
                 aria-label="Close update status"
                 onClick={onClose}
               >
@@ -173,12 +173,6 @@ export function SidebarUpdatePopover({
             ) : null}
         </div>
       )}
-
-      {state.status === 'available' ? (
-        <div className="app-update-popover-note ml-11 mt-2 text-[10.5px] leading-4">
-          Click Update now to download, verify, install, and relaunch Kordi automatically.
-        </div>
-      ) : null}
 
       {state.status === 'failed'
         || state.status === 'downloading'
@@ -237,7 +231,10 @@ export function SidebarUpdatePopover({
         || state.status === 'downloading'
         || state.status === 'installing'
         || state.status === 'relaunching' ? (
-          <div className="mt-3 flex items-center justify-end gap-2">
+          <div className={cn(
+            'flex items-center justify-end gap-2',
+            state.status === 'available' ? 'mt-2' : 'mt-3',
+          )}>
             {state.status === 'failed' && state.manualDownloadUrl ? (
               <button
                 type="button"
@@ -250,29 +247,27 @@ export function SidebarUpdatePopover({
               </button>
             ) : null}
             {state.status === 'available' || state.status === 'failed' ? (
-              <>
-                {state.status === 'available' || state.failureStage !== 'check' ? (
-                  <button
-                    type="button"
-                    className="app-button-quiet app-update-popover-action app-update-popover-action-secondary rounded-[9px] px-2.5 py-1.5 text-[11px] font-medium"
-                    onClick={onClose}
-                  >
-                    Not now
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  className="app-update-popover-action app-update-popover-action-primary rounded-[9px] px-2.5 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-55"
-                  disabled={state.status === 'available' ? !canInstall : false}
-                  onClick={onConfirm}
-                >
-                  {state.status === 'failed'
-                    ? state.failureStage === 'check'
-                      ? 'Try again'
-                      : 'Retry'
-                    : 'Update now'}
-                </button>
-              </>
+              <button
+                type="button"
+                className={cn(
+                  'app-update-popover-action app-update-popover-action-primary font-semibold transition disabled:cursor-not-allowed disabled:opacity-55',
+                  state.status === 'available'
+                    ? 'grid h-7 w-7 place-items-center rounded-full p-0'
+                    : 'rounded-[9px] px-2.5 py-1.5 text-[11px]',
+                )}
+                disabled={state.status === 'available' ? !canInstall : false}
+                onClick={onConfirm}
+                aria-label={state.status === 'available' ? 'Update Kordi now' : undefined}
+                title={state.status === 'available' ? 'Update now' : undefined}
+              >
+                {state.status === 'available' ? (
+                  <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                ) : state.failureStage === 'check' ? (
+                  'Try again'
+                ) : (
+                  'Retry'
+                )}
+              </button>
             ) : null}
             {state.status === 'downloading'
               || state.status === 'installing'
