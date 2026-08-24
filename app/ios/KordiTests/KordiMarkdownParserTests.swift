@@ -881,6 +881,24 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
+    func testConversationMovesMessagesWithKeyboardPresentationAndDismissal() {
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatestForKeyboardChange(
+            previousHeight: 0,
+            currentHeight: 310,
+            wasFollowingLatest: false
+        ))
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatestForKeyboardChange(
+            previousHeight: 310,
+            currentHeight: 0,
+            wasFollowingLatest: true
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatestForKeyboardChange(
+            previousHeight: 310,
+            currentHeight: 0,
+            wasFollowingLatest: false
+        ))
+    }
+
     func testConversationRestoresPositionForAQuickReturnWithoutNewMessages() {
         let memory = ConversationViewportMemory()
         let leftAt = Date(timeIntervalSince1970: 1_000)

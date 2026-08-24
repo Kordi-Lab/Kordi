@@ -1247,6 +1247,19 @@ struct ConversationView: View {
 
     private func setKeyboardAvoidanceHeight(_ height: CGFloat, from notification: Notification) {
         guard keyboardAvoidanceHeight != height else { return }
+        let wasFollowingLatest = ConversationTimelineScrollBehavior.isFollowingLatest(
+            isAtBottom: isAtBottom,
+            trackedMessageID: trackedMessageID,
+            bottomAnchorID: bottomAnchorID
+        )
+        if ConversationTimelineScrollBehavior.shouldFollowLatestForKeyboardChange(
+            previousHeight: keyboardAvoidanceHeight,
+            currentHeight: height,
+            wasFollowingLatest: wasFollowingLatest
+        ) {
+            isAtBottom = true
+            trackedMessageID = bottomAnchorID
+        }
         let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
             as? TimeInterval ?? 0.25
         withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
@@ -1780,6 +1793,14 @@ enum ConversationTimelineScrollBehavior {
         isPresented: Bool
     ) -> Bool {
         hasRevealedInitialViewport && wasAtLatest && isPresented
+    }
+
+    static func shouldFollowLatestForKeyboardChange(
+        previousHeight: CGFloat,
+        currentHeight: CGFloat,
+        wasFollowingLatest: Bool
+    ) -> Bool {
+        wasFollowingLatest || (previousHeight == 0 && currentHeight > 0)
     }
 }
 
