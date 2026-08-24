@@ -212,6 +212,17 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertFalse(source.contains(".animation(inputSurfaceAnimation, value: isExpressivePickerPresented)"))
     }
 
+    func testExpressivePickerDoesNotDragTheNativeInputSurface() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ExpressiveMediaPicker.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertFalse(source.contains(".scrollDismissesKeyboard(.interactively)"))
+        XCTAssertTrue(source.contains(".scrollDismissesKeyboard(.never)"))
+    }
+
     func testStaleEndEditingCallbackCannotCancelRestoredKeyboardFocus() {
         XCTAssertFalse(ComposerFocusReconciliation.shouldApply(
             focused: false,
@@ -225,7 +236,7 @@ final class CompanionChatPanelTests: XCTestCase {
         ))
     }
 
-    func testUserTapClaimsComposerFocusSynchronously() throws {
+    func testUserTapClaimsKeyboardFocusSynchronously() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -236,7 +247,120 @@ final class CompanionChatPanelTests: XCTestCase {
         let handler = source[start.lowerBound..<end.lowerBound]
 
         XCTAssertTrue(handler.contains("parent.isFocused = true"))
+        XCTAssertTrue(handler.contains("if !parent.isFocused"))
         XCTAssertFalse(handler.contains("DispatchQueue.main.async"))
+    }
+
+    func testKeyboardButtonRequestsUIKitFocusAfterPickerRemoval() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ComposerView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private func showKeyboard()"))
+        let end = try XCTUnwrap(source.range(of: "private var inputSurfaceAnimation"))
+        let handler = source[start.lowerBound..<end.lowerBound]
+        let dismissal = try XCTUnwrap(handler.range(of: "dismissExpressivePicker()"))
+        let focusState = try XCTUnwrap(handler.range(of: "isFocused = true"))
+        let focusRequest = try XCTUnwrap(handler.range(of: "keyboardFocusRequest &+= 1"))
+
+        XCTAssertLessThan(dismissal.lowerBound, focusState.lowerBound)
+        XCTAssertLessThan(focusState.lowerBound, focusRequest.lowerBound)
+    }
+
+    func testUIKitFocusRequestActivatesTheActualEditor() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ComposerView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "func updateUIView"))
+        let end = try XCTUnwrap(source.range(of: "private func updateHeight"))
+        let update = source[start.lowerBound..<end.lowerBound]
+
+        XCTAssertTrue(update.contains("lastHandledKeyboardFocusRequest != keyboardFocusRequest"))
+        XCTAssertTrue(update.contains("DispatchQueue.main.async"))
+        XCTAssertTrue(update.contains("textView.becomeFirstResponder()"))
+    }
+
+    @MainActor
+    func testUIKitEditorKeepsFocusAfterTheFirstTextUpdate() async throws {
+        let controller = UIHostingController(rootView: ComposerTextViewFocusHarness())
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 100))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+
+        let textView = try XCTUnwrap(firstTextView(in: controller.view))
+        XCTAssertTrue(textView.isFirstResponder)
+
+        textView.text = "V"
+        textView.delegate?.textViewDidChange?(textView)
+        try await Task.sleep(for: .milliseconds(50))
+        controller.view.layoutIfNeeded()
+
+        XCTAssertEqual(textView.text, "V")
+        XCTAssertTrue(textView.isFirstResponder)
+        window.isHidden = true
+    }
+
+    @MainActor
+    func testNativeKeyboardDismissalReleasesSwiftUIFocusSynchronously() async throws {
+        let model = ComposerTextViewInputSurfaceModel()
+        model.isExpressivePickerPresented = false
+        let controller = UIHostingController(
+            rootView: ComposerTextViewInputSurfaceHarness(model: model)
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 100))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+
+        let textView = try XCTUnwrap(firstTextView(in: controller.view))
+        XCTAssertTrue(textView.isFirstResponder)
+
+        textView.resignFirstResponder()
+
+        XCTAssertFalse(textView.isFirstResponder)
+        XCTAssertFalse(model.isFocused)
+        window.isHidden = true
+    }
+
+    @MainActor
+    func testExpressivePickerReplacesKeyboardThroughNativeInputView() async throws {
+        let model = ComposerTextViewInputSurfaceModel()
+        let controller = UIHostingController(
+            rootView: ComposerTextViewInputSurfaceHarness(model: model)
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 100))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+
+        let textView = try XCTUnwrap(firstTextView(in: controller.view))
+        XCTAssertTrue(textView.isFirstResponder)
+        XCTAssertTrue(textView.inputView is ComposerExpressiveInputView)
+
+        model.isExpressivePickerPresented = false
+        try await Task.sleep(for: .milliseconds(50))
+        controller.view.layoutIfNeeded()
+
+        XCTAssertNil(textView.inputView)
+        XCTAssertTrue(textView.isFirstResponder)
+
+        model.isFocused = false
+        model.keyboardDismissRequest &+= 1
+        try await Task.sleep(for: .milliseconds(50))
+        controller.view.layoutIfNeeded()
+
+        XCTAssertFalse(textView.isFirstResponder)
+        window.isHidden = true
     }
 
     func testMentionPickerGrowsWithResultsUntilItsMaximumHeight() {
@@ -538,5 +662,73 @@ final class CompanionChatPanelTests: XCTestCase {
             errorMessage: nil,
             requestMessageId: nil
         )
+    }
+
+    @MainActor
+    private func firstTextView(in view: UIView) -> UITextView? {
+        if let textView = view as? UITextView {
+            return textView
+        }
+        return view.subviews.lazy.compactMap(firstTextView(in:)).first
+    }
+}
+
+private struct ComposerTextViewFocusHarness: View {
+    @State private var text = ""
+    @State private var selection = ComposerTextSelection(location: 0, length: 0)
+    @State private var isFocused = true
+    @State private var isExpressivePickerPresented = false
+    @State private var measuredHeight: CGFloat = 44
+
+    var body: some View {
+        ComposerTextView(
+            text: $text,
+            selection: $selection,
+            isFocused: $isFocused,
+            isExpressivePickerPresented: $isExpressivePickerPresented,
+            keyboardFocusRequest: 1,
+            keyboardDismissRequest: 0,
+            expressivePickerHeight: 300,
+            isSending: false,
+            onInsertEmoji: { _ in },
+            onSendExpressiveMedia: { _ in },
+            measuredHeight: $measuredHeight,
+            draftButtonThreshold: 84,
+            accessibilityLabel: "Message"
+        )
+        .frame(height: measuredHeight)
+    }
+}
+
+@MainActor
+private final class ComposerTextViewInputSurfaceModel: ObservableObject {
+    @Published var isExpressivePickerPresented = true
+    @Published var isFocused = true
+    @Published var keyboardDismissRequest = 0
+}
+
+private struct ComposerTextViewInputSurfaceHarness: View {
+    @ObservedObject var model: ComposerTextViewInputSurfaceModel
+    @State private var text = ""
+    @State private var selection = ComposerTextSelection(location: 0, length: 0)
+    @State private var measuredHeight: CGFloat = 44
+
+    var body: some View {
+        ComposerTextView(
+            text: $text,
+            selection: $selection,
+            isFocused: $model.isFocused,
+            isExpressivePickerPresented: $model.isExpressivePickerPresented,
+            keyboardFocusRequest: 1,
+            keyboardDismissRequest: model.keyboardDismissRequest,
+            expressivePickerHeight: 300,
+            isSending: false,
+            onInsertEmoji: { _ in },
+            onSendExpressiveMedia: { _ in },
+            measuredHeight: $measuredHeight,
+            draftButtonThreshold: 84,
+            accessibilityLabel: "Message"
+        )
+        .frame(height: measuredHeight)
     }
 }

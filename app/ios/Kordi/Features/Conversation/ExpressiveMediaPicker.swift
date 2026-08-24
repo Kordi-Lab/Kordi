@@ -318,6 +318,7 @@ struct ExpressiveMediaPicker: View {
     let isSending: Bool
     let onInsertEmoji: (String) -> Void
     let onSendMedia: (PendingAttachment) async -> Void
+    let allowsSearch: Bool
 
     var body: some View {
         pickerContent
@@ -358,40 +359,29 @@ struct ExpressiveMediaPicker: View {
     }
 
     private var tabBar: some View {
-        HStack(spacing: 0) {
+        Picker("Media type", selection: $selectedTab) {
             ForEach(ExpressivePickerTab.allCases) { tab in
-                Button {
-                    selectedTab = tab
-                } label: {
-                    Text(tab.rawValue)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(selectedTab == tab ? .primary : .secondary)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .overlay(alignment: .bottom) {
-                            if selectedTab == tab {
-                                Capsule()
-                                    .fill(KordiTheme.agentViolet)
-                                    .frame(width: 42, height: 3)
-                            }
-                        }
-                }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selectedTab == tab ? .isSelected : [])
+                Text(tab.rawValue).tag(tab)
             }
         }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private var emojiPanel: some View {
         VStack(spacing: 0) {
-            KordiPullDownSearchField(
-                text: $emojiQuery,
-                prompt: "Search emoji",
-                accessibilityLabel: "Search emoji"
-            )
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            if allowsSearch {
+                KordiPullDownSearchField(
+                    text: $emojiQuery,
+                    prompt: "Search emoji",
+                    accessibilityLabel: "Search emoji"
+                )
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
 
-            Divider()
+                Divider()
+            }
 
             if displayedEmojis.isEmpty {
                 ContentUnavailableView.search(text: emojiQuery)
@@ -417,7 +407,7 @@ struct ExpressiveMediaPicker: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
                 }
-                .scrollDismissesKeyboard(.interactively)
+                .scrollDismissesKeyboard(.never)
             }
 
             Divider()
@@ -511,7 +501,7 @@ private struct ExpressiveMediaLibraryPanel: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
             }
-            .scrollDismissesKeyboard(.interactively)
+            .scrollDismissesKeyboard(.never)
         }
         .fileImporter(
             isPresented: $isShowingImporter,

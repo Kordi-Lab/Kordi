@@ -48,11 +48,12 @@ struct ConversationView: View {
     @State private var initialLoadFailed = false
     @State private var trackedMessageID: String?
     @State private var immediateBottomRequest = 0
+    @State private var keyboardDismissRequest = 0
     @State private var attachments: [PendingAttachment] = []
     @State private var photoGrouping: PhotoSendGrouping = .combined
     @State private var replySource: MessageActionSource?
     @State private var selectedMention: ComposerMentionTarget?
-    @FocusState private var isComposerFocused: Bool
+    @State private var isComposerFocused = false
     @State private var isExpressivePickerPresented = false
     @State private var shouldFollowLatestAfterInputSurfaceChange = false
     @State private var showFileImporter = false
@@ -402,10 +403,11 @@ struct ConversationView: View {
                                 )
                             )
                             .background(Color(uiColor: .systemGroupedBackground))
-                            .scrollDismissesKeyboard(.interactively)
+                            .scrollDismissesKeyboard(.immediately)
                             .simultaneousGesture(
                                 TapGesture().onEnded {
                                     isComposerFocused = false
+                                    keyboardDismissRequest &+= 1
                                     dismissComposerPickers()
                                 }
                             )
@@ -474,6 +476,7 @@ struct ConversationView: View {
                             replySource: $replySource,
                             selectedMention: $selectedMention,
                             isFocused: $isComposerFocused,
+                            keyboardDismissRequest: keyboardDismissRequest,
                             isExpressivePickerPresented: Binding(
                                 get: { isExpressivePickerPresented },
                                 set: { isPresented in
