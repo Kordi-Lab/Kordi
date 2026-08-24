@@ -59,13 +59,6 @@ enum ComposerFocusReconciliation {
 enum ComposerInputSurfaceMotion {
     static let duration = Duration.milliseconds(280)
     static let animation = Animation.smooth(duration: 0.28)
-
-    static func delayBeforePresentingPicker(
-        keyboardIsFocused: Bool,
-        reduceMotion: Bool
-    ) -> Duration {
-        keyboardIsFocused && !reduceMotion ? duration : .zero
-    }
 }
 
 enum ComposerKeyboardSurfaceLayout {
@@ -160,6 +153,7 @@ enum ComposerTextExclusionLayout {
 }
 
 struct ComposerView: View {
+    @EnvironmentObject private var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Binding var text: String
@@ -217,6 +211,7 @@ struct ComposerView: View {
             }
             .sheet(isPresented: $isDraftPanePresented, onDismiss: { isFocused = true }) {
                 ComposerDraftPane(
+                    model: model,
                     text: $text,
                     destinationName: destinationName,
                     pickerHeight: expressivePickerHeight,
@@ -349,6 +344,7 @@ struct ComposerView: View {
 
     private var messageEditor: some View {
         ComposerTextView(
+            model: model,
             text: $text,
             selection: $textSelection,
             isFocused: $isFocused,
@@ -367,8 +363,7 @@ struct ComposerView: View {
         .padding(.horizontal, 8)
         .accessibilityLabel("Message \(destinationName)")
         .onChange(of: isFocused) { _, isFocused in
-            if isFocused {
-                dismissExpressivePicker()
+            if isFocused, !isExpressivePickerPresented {
                 dismissAgentModelPicker()
             }
         }
@@ -943,6 +938,7 @@ struct ComposerFloatingPanelSurfaceModifier: ViewModifier {
 }
 
 struct ComposerTextView: UIViewRepresentable {
+    let model: AppModel
     @Binding var text: String
     @Binding var selection: ComposerTextSelection
     @Binding var isFocused: Bool
@@ -1083,13 +1079,14 @@ struct ComposerTextView: UIViewRepresentable {
         }
 
         func expressiveInputView(for parent: ComposerTextView) -> ComposerExpressiveInputView {
-            let rootView = AnyView(ExpressiveMediaPicker(
+            let rootView = ExpressiveMediaPicker(
+                model: parent.model,
                 height: parent.expressivePickerHeight,
                 isSending: parent.isSending,
                 onInsertEmoji: parent.onInsertEmoji,
                 onSendMedia: parent.onSendExpressiveMedia,
                 allowsSearch: false
-            ))
+            )
             if let hostedExpressiveInputView {
                 hostedExpressiveInputView.update(
                     rootView: rootView,
@@ -1154,10 +1151,10 @@ struct ComposerTextView: UIViewRepresentable {
 }
 
 final class ComposerExpressiveInputView: UIInputView {
-    private let hostingController: UIHostingController<AnyView>
+    private let hostingController: UIHostingController<ExpressiveMediaPicker>
     private var preferredHeight: CGFloat
 
-    init(rootView: AnyView, height: CGFloat) {
+    init(rootView: ExpressiveMediaPicker, height: CGFloat) {
         hostingController = UIHostingController(rootView: rootView)
         preferredHeight = height
         super.init(
@@ -1186,7 +1183,7 @@ final class ComposerExpressiveInputView: UIInputView {
         CGSize(width: UIView.noIntrinsicMetric, height: preferredHeight)
     }
 
-    func update(rootView: AnyView, height: CGFloat) {
+    func update(rootView: ExpressiveMediaPicker, height: CGFloat) {
         hostingController.rootView = rootView
         guard preferredHeight != height else { return }
         preferredHeight = height
@@ -1196,6 +1193,7 @@ final class ComposerExpressiveInputView: UIInputView {
 
 private struct ComposerDraftPane: View {
     @Environment(\.dismiss) private var dismiss
+    let model: AppModel
     @Binding var text: String
     let destinationName: String
     let pickerHeight: CGFloat
@@ -1233,6 +1231,7 @@ private struct ComposerDraftPane: View {
 
                 if isExpressivePickerPresented {
                     ExpressiveMediaPicker(
+                        model: model,
                         height: pickerHeight,
                         isSending: isSending,
                         onInsertEmoji: { text.append($0) },

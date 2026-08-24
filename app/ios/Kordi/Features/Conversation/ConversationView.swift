@@ -559,9 +559,7 @@ struct ConversationView: View {
                         bottomAnchorID: bottomAnchorID
                     ),
                     previousLatestMessageID: previousLatestMessageID,
-                    currentLatestMessageID: currentLatestMessageID,
-                    isNewOutgoingMessage: previousLatestMessageID != currentLatestMessageID
-                        && currentLatestMessage?.author == .me
+                    currentLatestMessageID: currentLatestMessageID
                 ) {
                     let identityChanged = previousLatestMessageID != currentLatestMessageID
                     scrollToBottom(animated: identityChanged)
@@ -1355,6 +1353,7 @@ struct ConversationView: View {
         reply: MessageActionSource?,
         mention: ComposerMentionTarget?
     ) async {
+        scrollToBottom(animated: true)
         let plannedBatches = OutgoingAttachmentGroupingPlan.batches(
             for: attachments,
             photoGrouping: grouping
@@ -1703,13 +1702,13 @@ enum ConversationTimelineScrollBehavior {
         hasPositionedInitialTimeline: Bool,
         isAtBottom: Bool,
         previousLatestMessageID: String?,
-        currentLatestMessageID: String?,
-        isNewOutgoingMessage: Bool = false
+        currentLatestMessageID: String?
     ) -> Bool {
         guard hasPositionedInitialTimeline,
+              isAtBottom,
               previousLatestMessageID != nil,
               currentLatestMessageID != nil else { return false }
-        return isAtBottom || isNewOutgoingMessage
+        return true
     }
 
     static func shouldShowLatestButton(

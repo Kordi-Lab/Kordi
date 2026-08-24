@@ -676,14 +676,20 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
-    func testConversationFollowsANewOutgoingMessageAfterScrollingUp() {
-        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatest(
-            hasPositionedInitialTimeline: true,
-            isAtBottom: false,
-            previousLatestMessageID: "message-12",
-            currentLatestMessageID: "message-13",
-            isNewOutgoingMessage: true
+    func testLocalOutgoingMessagesRequestTheBottomBeforeSending() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private func sendOutgoingMessages"))
+        let end = try XCTUnwrap(source.range(
+            of: "private func resolvedMentionTarget",
+            range: start.upperBound..<source.endIndex
         ))
+        let sender = source[start.lowerBound..<end.lowerBound]
+
+        XCTAssertTrue(sender.contains("scrollToBottom(animated: true)"))
     }
 
     func testConversationKeepsFollowingNewMessagesWhileAtLatest() {

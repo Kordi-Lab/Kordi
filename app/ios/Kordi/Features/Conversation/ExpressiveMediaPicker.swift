@@ -314,6 +314,7 @@ struct ExpressiveMediaPicker: View {
     @State private var selectedTab = ExpressivePickerTab.emoji
     @State private var emojiCategoryID = EmojiCategory.smileysAndPeople.id
     @State private var emojiQuery = ""
+    let model: AppModel
     let height: CGFloat
     let isSending: Bool
     let onInsertEmoji: (String) -> Void
@@ -340,6 +341,7 @@ struct ExpressiveMediaPicker: View {
                     emojiPanel
                 case .stickers:
                     ExpressiveMediaLibraryPanel(
+                        model: model,
                         kind: .sticker,
                         isSending: isSending,
                         onSendMedia: onSendMedia
@@ -347,6 +349,7 @@ struct ExpressiveMediaPicker: View {
                     .id(ExpressivePickerTab.stickers)
                 case .gifs:
                     ExpressiveMediaLibraryPanel(
+                        model: model,
                         kind: .gif,
                         isSending: isSending,
                         onSendMedia: onSendMedia
@@ -486,10 +489,10 @@ struct ExpressiveMediaPicker: View {
 }
 
 private struct ExpressiveMediaLibraryPanel: View {
-    @EnvironmentObject private var model: AppModel
     @State private var libraryEntries: [ExpressiveMediaLibraryEntry] = []
     @State private var isShowingImporter = false
     @State private var activeMediaID: String?
+    let model: AppModel
     let kind: ExpressiveMediaLibraryKind
     let isSending: Bool
     let onSendMedia: (PendingAttachment) async -> Void
