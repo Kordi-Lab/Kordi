@@ -6,7 +6,12 @@ use tauri::Manager;
 
 use super::DesktopStoredChatAttachment;
 
+mod cloud_cache;
 pub(crate) mod cloud_upload;
+
+use cloud_cache::download as download_cloud_attachment;
+use cloud_cache::write as write_cloud_attachment_cache;
+use cloud_cache::{cached as cached_cloud_attachment, copy as copy_cloud_attachment_cache};
 
 pub(crate) const MAX_CHAT_ATTACHMENT_SIZE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
@@ -194,6 +199,42 @@ pub(crate) fn store_chat_attachment_bytes(
 #[tauri::command]
 pub async fn desktop_chat_store_attachment(name: String, data: Vec<u8>) -> Result<String, String> {
     store_chat_attachment_bytes(&name, &data).map(|attachment| attachment.path)
+}
+
+#[tauri::command]
+pub async fn desktop_chat_cache_cloud_attachment(
+    attachment_id: String,
+    name: String,
+    data: Vec<u8>,
+) -> Result<String, String> {
+    write_cloud_attachment_cache(&attachment_id, &name, &data)
+}
+
+#[tauri::command]
+pub async fn desktop_chat_cache_cloud_attachment_path(
+    attachment_id: String,
+    name: String,
+    path: String,
+) -> Result<String, String> {
+    copy_cloud_attachment_cache(&attachment_id, &name, Path::new(&path))
+}
+
+#[tauri::command]
+pub async fn desktop_chat_cached_cloud_attachment_path(
+    attachment_id: String,
+    name: String,
+) -> Result<Option<String>, String> {
+    cached_cloud_attachment(&attachment_id, &name)
+        .map(|path| path.map(|value| value.display().to_string()))
+}
+
+#[tauri::command]
+pub async fn desktop_chat_download_cloud_attachment(
+    token: String,
+    attachment_id: String,
+    name: String,
+) -> Result<String, String> {
+    download_cloud_attachment(&token, &attachment_id, &name).await
 }
 
 #[tauri::command]

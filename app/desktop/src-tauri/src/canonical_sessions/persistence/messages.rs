@@ -318,6 +318,9 @@ fn upsert_message_in_transaction(
     {
         return Ok(existing_message);
     }
+    if existing_message.session_id != request.session_id {
+        return Err("Canonical message session cannot change".to_string());
+    }
     let now = now_ms();
 
     conn.execute(

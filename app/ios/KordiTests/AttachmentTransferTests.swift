@@ -3,6 +3,90 @@ import XCTest
 @testable import Kordi
 
 final class AttachmentTransferTests: XCTestCase {
+    func testAttachmentCacheRestoresAcrossStoreInstances() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-attachment-cache-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let attachment = ChatAttachment(
+            attachmentId: "att-cache",
+            name: "preview.png",
+            kind: .image,
+            mimeType: "image/png",
+            sizeBytes: 4,
+            previewURL: nil
+        )
+        let firstStore = AttachmentFileStore(directory: directory)
+        let stored = try await firstStore.store(
+            Data([1, 2, 3, 4]),
+            attachment: attachment,
+            accountId: "acct_a"
+        )
+
+        let restored = await AttachmentFileStore(directory: directory).cachedURL(
+            for: attachment,
+            accountId: "acct_a"
+        )
+
+        XCTAssertEqual(restored, stored)
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(restored)), Data([1, 2, 3, 4]))
+    }
+
+    func testAttachmentCacheIsAccountScoped() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-attachment-account-cache-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let attachment = ChatAttachment(
+            attachmentId: "att-shared",
+            name: "preview.png",
+            kind: .image,
+            mimeType: "image/png",
+            sizeBytes: 1,
+            previewURL: nil
+        )
+        let store = AttachmentFileStore(directory: directory)
+
+        let first = try await store.store(Data([1]), attachment: attachment, accountId: "acct_a")
+        let second = try await store.store(Data([2]), attachment: attachment, accountId: "acct_b")
+
+        XCTAssertNotEqual(first, second)
+        XCTAssertEqual(try Data(contentsOf: first), Data([1]))
+        XCTAssertEqual(try Data(contentsOf: second), Data([2]))
+    }
+
+    func testAttachmentCachePrunesOlderFilesToItsDiskBudget() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-attachment-budget-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = AttachmentFileStore(directory: directory, diskByteLimit: 3)
+        func attachment(_ id: String) -> ChatAttachment {
+            ChatAttachment(
+                attachmentId: id,
+                name: "\(id).bin",
+                kind: .file,
+                mimeType: "application/octet-stream",
+                sizeBytes: 3,
+                previewURL: nil
+            )
+        }
+
+        let firstAttachment = attachment("first")
+        let firstURL = try await store.store(
+            Data([1, 2, 3]),
+            attachment: firstAttachment,
+            accountId: "acct_a"
+        )
+        let secondURL = try await store.store(
+            Data([4, 5, 6]),
+            attachment: attachment("second"),
+            accountId: "acct_a"
+        )
+
+        let restoredFirst = await store.cachedURL(for: firstAttachment, accountId: "acct_a")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: firstURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: secondURL.path))
+        XCTAssertNil(restoredFirst)
+    }
+
     func testPhotoLoaderProducesACloudSafeJPEG() throws {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 2_600, height: 1_900))
         let image = renderer.image { context in

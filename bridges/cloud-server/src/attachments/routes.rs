@@ -3,7 +3,7 @@ pub(crate) mod multipart;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use axum::body::Bytes;
+use axum::body::{Body, Bytes};
 use axum::extract::{Path, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -17,6 +17,7 @@ use crate::attachments::access::attachment_access_row;
 use crate::attachments::content_type::{
     detected_raster_content_type, normalized_supported_raster_content_type,
 };
+use crate::attachments::preview::{normalize_preview_url, preview_content_response};
 use crate::attachments::response::{boxed_err, err};
 use crate::attachments::{presign_download_url, presign_upload_url, url_expires_at, S3Config};
 use crate::auth::routes::CloudSession;
@@ -84,45 +85,6 @@ pub struct UpdatePreviewResponse {
     pub preview_url: String,
     #[serde(rename = "updatedLinks")]
     pub updated_links: u64,
-}
-
-fn normalize_preview_url(value: Option<&str>) -> Result<String, Box<Response>> {
-    let Some(raw) = value else {
-        return Err(boxed_err(
-            "invalid_attachment",
-            "previewUrl is required.",
-            StatusCode::BAD_REQUEST,
-        ));
-    };
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Err(boxed_err(
-            "invalid_attachment",
-            "previewUrl is required.",
-            StatusCode::BAD_REQUEST,
-        ));
-    }
-    if trimmed.len() > 360_000 {
-        return Err(boxed_err(
-            "invalid_attachment",
-            "Attachment preview is too large.",
-            StatusCode::BAD_REQUEST,
-        ));
-    }
-    let lower = trimmed.to_ascii_lowercase();
-    let allowed = lower.starts_with("data:image/png;base64,")
-        || lower.starts_with("data:image/jpeg;base64,")
-        || lower.starts_with("data:image/jpg;base64,")
-        || lower.starts_with("data:image/webp;base64,")
-        || lower.starts_with("data:image/gif;base64,");
-    if !allowed {
-        return Err(boxed_err(
-            "invalid_attachment",
-            "Attachment preview must be a data:image base64 URL.",
-            StatusCode::BAD_REQUEST,
-        ));
-    }
-    Ok(trimmed.to_string())
 }
 
 pub(super) fn s3_or_503(state: &ServerState) -> Result<&S3Config, Box<Response>> {
@@ -427,7 +389,7 @@ pub async fn download_url(
         Err(resp) => return *resp,
     };
 
-    let (object_key, _, _, _, _, _) =
+    let (object_key, _, _, _, _, _, _) =
         match attachment_access_row(&state, &session, &attachment_id).await {
             Ok(value) => value,
             Err(resp) => return *resp,
@@ -469,7 +431,7 @@ pub async fn update_preview(
         Err(resp) => return *resp,
     };
 
-    let (_, _owner_account_id, _, _, _, _) =
+    let (_, _owner_account_id, _, _, _, _, _) =
         match attachment_access_row(&state, &session, &attachment_id).await {
             Ok(row) => row,
             Err(resp) => return *resp,
@@ -519,7 +481,7 @@ pub async fn content(
         Err(resp) => return *resp,
     };
 
-    let (object_key, _, _, content_type, detected_content_type, size_bytes) =
+    let (object_key, _, _, content_type, detected_content_type, size_bytes, _) =
         match attachment_access_row(&state, &session, &attachment_id).await {
             Ok(value) => value,
             Err(resp) => return *resp,
@@ -562,17 +524,7 @@ pub async fn content(
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
-    let bytes = match object_response.bytes().await {
-        Ok(value) => value,
-        Err(error) => {
-            eprintln!("[attachments] read content bytes failed: {error}");
-            return err(
-                "server_error",
-                "Could not download attachment.",
-                StatusCode::BAD_GATEWAY,
-            );
-        }
-    };
+    let object_content_length = object_response.content_length();
 
     let mut headers = HeaderMap::new();
     if let Some(value) = detected_content_type
@@ -584,11 +536,34 @@ pub async fn content(
             headers.insert(header::CONTENT_TYPE, header_value);
         }
     }
-    let length = size_bytes.unwrap_or_else(|| i64::try_from(bytes.len()).unwrap_or(0));
-    if length >= 0 {
+    let length =
+        object_content_length.or_else(|| size_bytes.and_then(|value| u64::try_from(value).ok()));
+    if let Some(length) = length {
         if let Ok(header_value) = HeaderValue::from_str(&length.to_string()) {
             headers.insert(header::CONTENT_LENGTH, header_value);
         }
     }
-    (headers, bytes).into_response()
+    let mut response = Response::new(Body::from_stream(object_response.bytes_stream()));
+    *response.headers_mut() = headers;
+    response
+}
+
+/// `GET /v1/cloud/attachments/:attachment_id/preview-content`
+///
+/// Returns the small canonical preview without repeating its data URL in
+/// every message snapshot. Clients fall back to `/content` when absent.
+pub async fn preview_content(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(attachment_id): Path<String>,
+) -> Response {
+    let (_, _, _, _, _, _, preview_url) =
+        match attachment_access_row(&state, &session, &attachment_id).await {
+            Ok(value) => value,
+            Err(resp) => return *resp,
+        };
+    match preview_content_response(preview_url.as_deref()) {
+        Ok(response) => response,
+        Err(response) => *response,
+    }
 }

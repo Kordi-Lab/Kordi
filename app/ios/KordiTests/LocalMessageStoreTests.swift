@@ -20,6 +20,22 @@ final class LocalMessageStoreTests: XCTestCase {
         XCTAssertEqual(store.loadConversations(accountId: "account-b").map(\.displayName), ["Second account chat"])
         XCTAssertEqual(store.loadMessages(accountId: "account-a", conversationId: conversationID).map(\.text), ["First account"])
         XCTAssertEqual(store.loadMessages(accountId: "account-b", conversationId: conversationID).map(\.text), ["Second account"])
+        XCTAssertEqual(
+            store.loadMessagePage(
+                accountId: "account-a",
+                conversationId: conversationID,
+                limit: 64
+            ).messages.map(\.text),
+            ["First account"]
+        )
+        XCTAssertEqual(
+            store.loadMessagePage(
+                accountId: "account-b",
+                conversationId: conversationID,
+                limit: 64
+            ).messages.map(\.text),
+            ["Second account"]
+        )
 
         store.clear(accountId: "account-a")
 
@@ -52,6 +68,129 @@ final class LocalMessageStoreTests: XCTestCase {
             store.loadMessages(accountId: "account-a", conversationId: conversationID),
             merged
         )
+    }
+
+    func testCacheLoadsBoundedPagesWithoutDeletingOlderRows() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let conversationID = "person:paged-contact"
+        let messages = (0..<100).map { index in
+            ChatMessage(
+                id: "paged-\(index)",
+                conversationId: conversationID,
+                author: .person,
+                authorName: "Paged contact",
+                text: "Message \(index)",
+                createdAt: Date(timeIntervalSince1970: TimeInterval(index)),
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: nil
+            )
+        }
+        store.saveMessages(messages, conversationId: conversationID, accountId: "account-a")
+
+        let latest = store.loadMessagePage(
+            accountId: "account-a",
+            conversationId: conversationID,
+            limit: 64
+        )
+        XCTAssertEqual(latest.messages.count, 64)
+        XCTAssertTrue(latest.hasMore)
+        XCTAssertEqual(latest.messages.first?.id, "paged-36")
+        XCTAssertEqual(latest.messages.last?.id, "paged-99")
+
+        store.saveMessages(
+            latest.messages,
+            conversationId: conversationID,
+            accountId: "account-a"
+        )
+        let earlier = store.loadMessagePage(
+            accountId: "account-a",
+            conversationId: conversationID,
+            before: latest.messages.first,
+            limit: 64
+        )
+        XCTAssertEqual(earlier.messages.count, 36)
+        XCTAssertFalse(earlier.hasMore)
+        XCTAssertEqual(earlier.messages.first?.id, "paged-0")
+        XCTAssertEqual(earlier.messages.last?.id, "paged-35")
+        XCTAssertEqual(
+            store.loadMessages(accountId: "account-a", conversationId: conversationID).count,
+            100
+        )
+    }
+
+    func testCachedPagesUseCanonicalSequenceInsteadOfTimestampOrID() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let conversationID = "person:sequenced-contact"
+        let messages = (1...100).reversed().map { sequence in
+            ChatMessage(
+                id: String(format: "reverse-id-%03d", 101 - sequence),
+                conversationId: conversationID,
+                conversationSequence: Int64(sequence),
+                author: .person,
+                authorName: "Sequenced contact",
+                text: "Message \(sequence)",
+                createdAt: Date(timeIntervalSince1970: TimeInterval(101 - sequence)),
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: nil
+            )
+        }
+        store.saveMessages(messages, conversationId: conversationID, accountId: "account-a")
+
+        let latest = store.loadMessagePage(
+            accountId: "account-a",
+            conversationId: conversationID,
+            limit: 10
+        )
+        let earlier = store.loadMessagePage(
+            accountId: "account-a",
+            conversationId: conversationID,
+            before: latest.messages.first,
+            limit: 10
+        )
+
+        XCTAssertEqual(latest.messages.compactMap(\.conversationSequence), Array(91...100).map(Int64.init))
+        XCTAssertEqual(earlier.messages.compactMap(\.conversationSequence), Array(81...90).map(Int64.init))
+    }
+
+    func testLatestPageRecordPreservesEarlierHistoryAtTheExactPageBoundary() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let conversationID = "person:exact-page"
+        let messages = (1...64).map { sequence in
+            message(
+                id: "exact-\(sequence)",
+                conversationID: conversationID,
+                text: "Message \(sequence)"
+            )
+        }
+
+        store.saveMessages(
+            messages,
+            conversationId: conversationID,
+            accountId: "account-a",
+            hasEarlier: true
+        )
+        let page = store.loadMessagePage(
+            accountId: "account-a",
+            conversationId: conversationID,
+            limit: 64
+        )
+
+        XCTAssertEqual(page.messages.count, 64)
+        XCTAssertTrue(page.hasMore)
+    }
+
+    func testRecentConversationPagesStayBoundedAndPromoteReopenedChats() {
+        var recent: [String] = []
+        for index in 0..<12 {
+            recent = AppModel.recentCachedConversationIDs(recent, adding: "conversation-\(index)")
+        }
+        XCTAssertEqual(recent, (4..<12).map { "conversation-\($0)" })
+
+        recent = AppModel.recentCachedConversationIDs(recent, adding: "conversation-4")
+
+        XCTAssertEqual(recent, (5..<12).map { "conversation-\($0)" } + ["conversation-4"])
     }
 
     func testPartialProjectionReplacesPreviousAgentSnapshotForSameRequest() {

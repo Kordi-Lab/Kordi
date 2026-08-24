@@ -176,14 +176,15 @@ export function applyCanonicalHydrationPlaceholder(
   if (
     typeof knownCanonicalMessageCount !== 'number'
     || knownCanonicalMessageCount <= 0
-    || selectedConversation.messages.length > 0
+    || selectedConversation.messages.length >= knownCanonicalMessageCount
+    || selectedConversation.desktopRuntimeBacked
     || (hydration !== 'cold' && hydration !== 'loading')
   ) {
     return selectedConversation;
   }
   return {
     ...selectedConversation,
-    messages: [transcriptLoadingNotice()],
+    messages: [transcriptLoadingNotice(undefined, selectedConversation.messages)],
   };
 }
 

@@ -27,20 +27,28 @@ use crate::chat_sync::store::{self, StoreError};
 use crate::chat_sync::PROTOCOL_VERSION;
 use crate::server::ServerState;
 
+#[cfg(test)]
+mod tests;
 mod ticket;
+mod wake;
 
 use ticket::{consume_ticket, ConsumedRealtimeTicket};
 pub use ticket::{issue_ticket, IssuedRealtimeTicket, TicketError};
+pub(crate) use wake::{spawn_wake_listener, ChatSyncWakeHub};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(65);
-const DURABLE_POLL_INTERVAL: Duration = Duration::from_millis(250);
+const DURABLE_REPAIR_INTERVAL: Duration = Duration::from_secs(15);
 const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_CLIENT_FRAME_BYTES: usize = 64 * 1024;
 const MAX_SERVER_FRAME_BYTES: usize = 512 * 1024;
 const MAX_UNACKNOWLEDGED_EVENTS: i64 = 1_000;
 const DEVICE_REVALIDATION_INTERVAL: Duration = Duration::from_secs(2);
+
+fn event_is_within_delivery_window(stream_seq: i64, acknowledged_stream_seq: i64) -> bool {
+    stream_seq.saturating_sub(acknowledged_stream_seq) <= MAX_UNACKNOWLEDGED_EVENTS
+}
 
 fn cursor_codec() -> Option<CursorCodec> {
     std::env::var("KORDI_CHAT_SYNC_CURSOR_SECRET")
@@ -221,8 +229,8 @@ async fn send_available_events(
             Err(_) => return Err("SERVER_ERROR"),
         };
         for event in &batch.events {
-            if event.stream_seq - acknowledged_stream_seq > MAX_UNACKNOWLEDGED_EVENTS {
-                return Err("CLIENT_TOO_SLOW");
+            if !event_is_within_delivery_window(event.stream_seq, acknowledged_stream_seq) {
+                return Ok(());
             }
             let frame = EventFrame {
                 frame_type: "event",
@@ -299,6 +307,7 @@ async fn run_socket(
     };
     let mut sent_stream_seq = connect_stream_seq;
     let (mut sender, mut receiver): (SplitSink<_, _>, SplitStream<_>) = socket.split();
+    let mut event_wake = state.chat_sync_wakes().subscribe(&ticket.account_id);
     if send_json(
         &mut sender,
         &HelloFrame {
@@ -328,13 +337,14 @@ async fn run_socket(
         return;
     }
 
-    let mut durable_poll = tokio::time::interval(DURABLE_POLL_INTERVAL);
-    durable_poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let mut durable_repair = tokio::time::interval(DURABLE_REPAIR_INTERVAL);
+    durable_repair.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    durable_repair.tick().await;
     let mut heartbeat_check = tokio::time::interval(HEARTBEAT_INTERVAL);
     heartbeat_check.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut device_revalidation = tokio::time::interval(DEVICE_REVALIDATION_INTERVAL);
     device_revalidation.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let mut last_heartbeat = tokio::time::Instant::now();
+    let mut last_liveness = tokio::time::Instant::now();
     let mut last_applied_seq = connect_stream_seq;
 
     loop {
@@ -352,7 +362,7 @@ async fn run_socket(
                         return;
                     }
                     last_applied_seq = applied;
-                    last_heartbeat = tokio::time::Instant::now();
+                    last_liveness = tokio::time::Instant::now();
                     match persist_device_ack(
                         state.db_pool(),
                         &ticket.account_id,
@@ -378,9 +388,13 @@ async fn run_socket(
                     }
                 }
                 Some(Ok(Message::Ping(payload))) => {
+                    last_liveness = tokio::time::Instant::now();
                     if sender.send(Message::Pong(payload)).await.is_err() {
                         return;
                     }
+                }
+                Some(Ok(Message::Pong(_))) => {
+                    last_liveness = tokio::time::Instant::now();
                 }
                 Some(Ok(Message::Close(_))) | None | Some(Err(_)) => return,
                 Some(Ok(_)) => {
@@ -388,7 +402,20 @@ async fn run_socket(
                     return;
                 }
             },
-            _ = durable_poll.tick() => {
+            _ = event_wake.recv() => {
+                if let Err(reason) = send_available_events(
+                    state.db_pool(),
+                    &ticket.account_id,
+                    &codec,
+                    &mut sender,
+                    &mut sent_stream_seq,
+                    last_applied_seq,
+                ).await {
+                    resync_and_close(&mut sender, reason).await;
+                    return;
+                }
+            }
+            _ = durable_repair.tick() => {
                 if let Err(reason) = send_available_events(
                     state.db_pool(),
                     &ticket.account_id,
@@ -406,8 +433,11 @@ async fn run_socket(
                 }
             }
             _ = heartbeat_check.tick() => {
-                if last_heartbeat.elapsed() > HEARTBEAT_TIMEOUT {
+                if last_liveness.elapsed() > HEARTBEAT_TIMEOUT {
                     let _ = sender.send(Message::Close(None)).await;
+                    return;
+                }
+                if sender.send(Message::Ping(Vec::new())).await.is_err() {
                     return;
                 }
             }

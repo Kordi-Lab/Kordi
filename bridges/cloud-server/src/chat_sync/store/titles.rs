@@ -92,7 +92,6 @@ pub async fn update_shared_title(
             )
             .await?;
         }
-        wake_dispatcher(&mut transaction).await?;
     }
     transaction.commit().await?;
     Ok(conversation)
@@ -199,7 +198,6 @@ pub async fn update_personal_title(
             &payload,
         )
         .await?;
-        wake_dispatcher(&mut transaction).await?;
     }
     transaction.commit().await?;
     Ok(preferences)

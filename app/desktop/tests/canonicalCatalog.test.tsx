@@ -10,6 +10,7 @@ import {
   mergeCanonicalCatalog,
   mergeCanonicalMessagePage,
   mergeCanonicalStateIntoStore,
+  retainCanonicalSessionPages,
 } from '../src/features/canonical/canonicalStore';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 import type {
@@ -122,6 +123,55 @@ test('an older page prepends without replacing the existing ready tail', () => {
 
   assert.deepEqual(store.messagesBySessionId['session:one']?.map((item) => item.id), ['m1', 'm2', 'm3']);
   assert.equal(store.hasOlderBySessionId['session:one'], false);
+});
+
+test('inactive canonical sessions retain only their catalog preview', () => {
+  const base = catalog();
+  const sessions = Array.from({ length: 10 }, (_, index) => ({
+    ...base.sessions[0]!,
+    id: `session-${index}`,
+    title: `Session ${index}`,
+  }));
+  const summaries = sessions.map((session) => ({
+    sessionId: session.id,
+    messageCount: 2,
+    latestMessage: message(`${session.id}-latest`, session.id, 2),
+    contextSnapshotCount: 0,
+  }));
+  let store = mergeCanonicalCatalog(createCanonicalStore(), {
+    ...base,
+    sessions,
+    summaries,
+  });
+  for (const session of sessions) {
+    store = mergeCanonicalMessagePage(store, {
+      sessionId: session.id,
+      messages: [
+        message(`${session.id}-first`, session.id, 1),
+        message(`${session.id}-latest`, session.id, 2),
+      ],
+      oldestSequenceNum: 1,
+      newestSequenceNum: 2,
+      hasOlder: false,
+    });
+  }
+
+  store = retainCanonicalSessionPages(
+    store,
+    new Set(sessions.slice(-8).map((session) => session.id)),
+  );
+
+  assert.deepEqual(
+    store.messagesBySessionId['session-0']?.map((item) => item.id),
+    ['session-0-latest'],
+  );
+  assert.equal(store.hydrationBySessionId['session-0'], 'cold');
+  assert.equal(store.hasOlderBySessionId['session-0'], true);
+  assert.deepEqual(
+    store.messagesBySessionId['session-2']?.map((item) => item.id),
+    ['session-2-first', 'session-2-latest'],
+  );
+  assert.equal(store.hydrationBySessionId['session-2'], 'ready');
 });
 
 test('hydration cannot replace a terminal agent turn with stale processing state', () => {

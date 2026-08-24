@@ -16,6 +16,24 @@ struct GroupSpaceSummary: Identifiable, Hashable {
     }
 }
 
+enum ChatListOrdering {
+    static func precedes(
+        id leftID: String,
+        displayName leftDisplayName: String,
+        lastActivityAt leftLastActivityAt: Date,
+        before rightID: String,
+        displayName rightDisplayName: String,
+        lastActivityAt rightLastActivityAt: Date
+    ) -> Bool {
+        if leftLastActivityAt != rightLastActivityAt {
+            return leftLastActivityAt > rightLastActivityAt
+        }
+        let nameOrder = leftDisplayName.localizedCaseInsensitiveCompare(rightDisplayName)
+        if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
+        return leftID < rightID
+    }
+}
+
 enum GroupSpaceCatalog {
     static func build(
         conversations: [ConversationSummary],
@@ -35,13 +53,19 @@ enum GroupSpaceCatalog {
                 conversation.messageCount == nil || (conversation.messageCount ?? 0) > 0
             }
             let visible = substantive.isEmpty
-                ? Array(conversations.sorted { $0.lastActivityAt > $1.lastActivityAt }.prefix(1))
+                ? Array(conversations.sorted(by: conversationPrecedes).prefix(1))
                 : substantive
-            let sessions = visible.sorted { $0.lastActivityAt > $1.lastActivityAt }
+            let sessions = visible.sorted(by: conversationPrecedes)
             let latest = sessions[0]
             let participants = mergedParticipants(from: sessions)
             let groupTitle = sessions
-                .sorted { groupTitlePriority($0) > groupTitlePriority($1) }
+                .sorted {
+                    let leftPriority = groupTitlePriority($0)
+                    let rightPriority = groupTitlePriority($1)
+                    return leftPriority != rightPriority
+                        ? leftPriority > rightPriority
+                        : $0.id < $1.id
+                }
                 .compactMap { $0.ownerDisplayName?.nonEmpty }
                 .first
             let participantTitle = participants
@@ -61,11 +85,29 @@ enum GroupSpaceCatalog {
             )
         }
         .sorted {
-            $0.lastActivityAt > $1.lastActivityAt || (
-                $0.lastActivityAt == $1.lastActivityAt
-                    && $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+            ChatListOrdering.precedes(
+                id: $0.id,
+                displayName: $0.displayName,
+                lastActivityAt: $0.lastActivityAt,
+                before: $1.id,
+                displayName: $1.displayName,
+                lastActivityAt: $1.lastActivityAt
             )
         }
+    }
+
+    private static func conversationPrecedes(
+        _ left: ConversationSummary,
+        _ right: ConversationSummary
+    ) -> Bool {
+        ChatListOrdering.precedes(
+            id: left.id,
+            displayName: left.displayName,
+            lastActivityAt: left.lastActivityAt,
+            before: right.id,
+            displayName: right.displayName,
+            lastActivityAt: right.lastActivityAt
+        )
     }
 
     private static func spaceKey(for conversation: ConversationSummary) -> String {

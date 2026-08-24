@@ -36,7 +36,7 @@ test('common app error surfaces opt into contained error text', () => {
     'kordi-app/agents/AgentCreateDialog.tsx',
     'kordi-app/agents/AgentDetailPane.tsx',
     'kordi-app/components/EditableIdentityAvatar.tsx',
-    'kordi-app/components/transcriptAttachments.tsx',
+    'kordi-app/components/transcriptAttachmentActions.tsx',
     'kordi-app/pages.tsx',
   ];
 

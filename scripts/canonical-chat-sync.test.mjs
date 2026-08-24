@@ -119,3 +119,40 @@ test("historical design records direct readers to the canonical chat contract", 
   assert.match(notice, /\.\.\/\.\.\/shared\/chat-sync\/README\.md/);
   assert.match(notice, /Do not restore a historical route or storage model/);
 });
+
+test("iOS conversation taps navigate before bounded asynchronous hydration", async () => {
+  const [home, conversation, model] = await readFiles([
+    "app/ios/Kordi/Features/Chats/ChatHomeView.swift",
+    "app/ios/Kordi/Features/Conversation/ConversationView.swift",
+    "app/ios/Kordi/App/AppModel.swift",
+  ]);
+  const openConversation = home.slice(
+    home.indexOf("private func openConversation"),
+    home.indexOf("\n    }", home.indexOf("private func openConversation")) + 6,
+  );
+  const initialDisplay = conversation.slice(
+    conversation.indexOf("private func prepareInitialConversationForDisplay"),
+    conversation.indexOf("\n    }", conversation.indexOf("private func prepareInitialConversationForDisplay")) + 6,
+  );
+
+  assert.match(openConversation, /composedConversation = conversation/);
+  assert.doesNotMatch(openConversation, /prepare|hydrate|loadConversation/);
+  assert.match(initialDisplay, /hydrateCachedMessages/);
+  assert.doesNotMatch(initialDisplay, /hasRevealedInitialViewport/);
+  assert.match(
+    conversation,
+    /proxy\.scrollTo\([\s\S]*hasPositionedInitialTimeline = true[\s\S]*hasRevealedInitialViewport = true/,
+  );
+  assert.match(
+    conversation,
+    /onChange\(of: timeline\.count\)[\s\S]*oldCount == 0[\s\S]*newCount > 0[\s\S]*positionAndRevealInitialViewport/,
+  );
+  assert.match(
+    conversation,
+    /if !hasRevealedInitialViewport \{[\s\S]*ConversationInitialFailureView[\s\S]*ConversationInitialLoadingView/,
+  );
+  assert.match(conversation, /Button\("Try again", action: retry\)/);
+  assert.match(model, /func loadConversation\(_ conversation: ConversationSummary\) async -> Bool/);
+  assert.doesNotMatch(model, /prepareConversationForPresentation/);
+  assert.match(model, /applyConversationHistoryPage[\s\S]*Task\.detached\(priority: \.userInitiated\)/);
+});

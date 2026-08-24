@@ -6,6 +6,7 @@ import { fetchDesktopChatSessionDetail } from '@/lib/desktop';
 import {
   appendDesktopSessionSourceMessageToCache,
   appendMappedSessionMessageToCache,
+  recentDesktopSessionIds,
   mergeDesktopSessionSourceMessagesCache,
   mergeMappedSessionMessagesCache,
   pruneDesktopSessionCacheByKnownSessions,
@@ -28,23 +29,24 @@ export function useDesktopSessionTranscriptCache({
 }: UseDesktopSessionTranscriptCacheArgs) {
   const sourceCacheRef = useRef<Record<string, DesktopChatMessage[]>>({});
   const hydratedSessionIdsRef = useRef<ReadonlySet<string>>(new Set());
+  const recentSessionIdsRef = useRef<readonly string[]>([]);
   const preloadFlightsRef = useRef(new Map<string, Promise<boolean>>());
   const [cachedChatSessionMessages, setCachedChatSessionMessages] = useState<Record<string, Message[]>>({});
-  const [cachedProjectSessionMessages, setCachedProjectSessionMessages] = useState<Record<string, Message[]>>({});
   const [cachedDesktopSessionSourceMessages, setCachedDesktopSessionSourceMessages] = useState<Record<string, DesktopChatMessage[]>>({});
   const [hydratedDesktopSessionIds, setHydratedDesktopSessionIds] = useState<ReadonlySet<string>>(new Set());
+  const cachedProjectSessionMessages = cachedChatSessionMessages;
 
   useEffect(() => {
     sourceCacheRef.current = cachedDesktopSessionSourceMessages;
   }, [cachedDesktopSessionSourceMessages]);
 
-  const markSessionTranscriptHydrated = useCallback((sessionId: string) => {
+  const retainedSessionIds = useCallback((sessionId: string) => {
     const normalizedSessionId = sessionId.trim();
-    if (!normalizedSessionId || hydratedSessionIdsRef.current.has(normalizedSessionId)) return;
-    const next = new Set(hydratedSessionIdsRef.current);
-    next.add(normalizedSessionId);
-    hydratedSessionIdsRef.current = next;
-    setHydratedDesktopSessionIds(next);
+    recentSessionIdsRef.current = recentDesktopSessionIds(
+      recentSessionIdsRef.current,
+      normalizedSessionId,
+    );
+    return new Set(recentSessionIdsRef.current);
   }, []);
 
   const mergeSessionTranscript = useCallback((
@@ -53,33 +55,42 @@ export function useDesktopSessionTranscriptCache({
     preserveExistingMessages: boolean,
     mappedMessagesOverride?: Message[],
   ) => {
+    const retained = retainedSessionIds(sessionId);
     const mappedMessages = mappedMessagesOverride ?? mapDesktopMessages(sessionId, sourceMessages);
-    sourceCacheRef.current = mergeDesktopSessionSourceMessagesCache(
-      sourceCacheRef.current,
-      sessionId,
-      sourceMessages,
-      preserveExistingMessages,
+    sourceCacheRef.current = pruneDesktopSessionCacheByKnownSessions(
+      mergeDesktopSessionSourceMessagesCache(
+        sourceCacheRef.current,
+        sessionId,
+        sourceMessages,
+        preserveExistingMessages,
+      ),
+      retained,
     );
-    setCachedDesktopSessionSourceMessages((current) => mergeDesktopSessionSourceMessagesCache(
-      current,
-      sessionId,
-      sourceMessages,
-      preserveExistingMessages,
+    setCachedDesktopSessionSourceMessages((current) => pruneDesktopSessionCacheByKnownSessions(
+      mergeDesktopSessionSourceMessagesCache(
+        current,
+        sessionId,
+        sourceMessages,
+        preserveExistingMessages,
+      ),
+      retained,
     ));
-    setCachedChatSessionMessages((current) => mergeMappedSessionMessagesCache(
-      current,
-      sessionId,
-      mappedMessages,
-      preserveExistingMessages,
+    setCachedChatSessionMessages((current) => pruneDesktopSessionCacheByKnownSessions(
+      mergeMappedSessionMessagesCache(
+        current,
+        sessionId,
+        mappedMessages,
+        preserveExistingMessages,
+      ),
+      retained,
     ));
-    setCachedProjectSessionMessages((current) => mergeMappedSessionMessagesCache(
-      current,
-      sessionId,
-      mappedMessages,
-      preserveExistingMessages,
-    ));
-    markSessionTranscriptHydrated(sessionId);
-  }, [mapDesktopMessages, markSessionTranscriptHydrated]);
+    const hydrated = new Set(
+      [...hydratedSessionIdsRef.current].filter((id) => retained.has(id)),
+    );
+    hydrated.add(sessionId.trim());
+    hydratedSessionIdsRef.current = hydrated;
+    setHydratedDesktopSessionIds(hydrated);
+  }, [mapDesktopMessages, retainedSessionIds]);
 
   const replaceSessionTranscript = useCallback((
     sessionId: string,
@@ -92,32 +103,31 @@ export function useDesktopSessionTranscriptCache({
   ) => {
     const mappedMessage = mapDesktopMessages(sessionId, [sourceMessage])[0];
     if (!mappedMessage) return false;
-    sourceCacheRef.current = appendDesktopSessionSourceMessageToCache(
-      sourceCacheRef.current,
-      sessionId,
-      sourceMessage,
+    const retained = retainedSessionIds(sessionId);
+    sourceCacheRef.current = pruneDesktopSessionCacheByKnownSessions(
+      appendDesktopSessionSourceMessageToCache(
+        sourceCacheRef.current,
+        sessionId,
+        sourceMessage,
+      ),
+      retained,
     );
-    setCachedChatSessionMessages((current) => appendMappedSessionMessageToCache(
-      current,
-      sessionId,
-      mappedMessage,
+    setCachedChatSessionMessages((current) => pruneDesktopSessionCacheByKnownSessions(
+      appendMappedSessionMessageToCache(current, sessionId, mappedMessage),
+      retained,
     ));
-    setCachedProjectSessionMessages((current) => appendMappedSessionMessageToCache(
-      current,
-      sessionId,
-      mappedMessage,
-    ));
-    setCachedDesktopSessionSourceMessages((current) => appendDesktopSessionSourceMessageToCache(
-      current,
-      sessionId,
-      sourceMessage,
+    setCachedDesktopSessionSourceMessages((current) => pruneDesktopSessionCacheByKnownSessions(
+      appendDesktopSessionSourceMessageToCache(current, sessionId, sourceMessage),
+      retained,
     ));
     return true;
-  }, [mapDesktopMessages]);
+  }, [mapDesktopMessages, retainedSessionIds]);
 
   const pruneKnownSessions = useCallback((knownSessionIds: ReadonlySet<string>) => {
+    recentSessionIdsRef.current = recentSessionIdsRef.current.filter((sessionId) => (
+      knownSessionIds.has(sessionId)
+    ));
     setCachedChatSessionMessages((current) => pruneDesktopSessionCacheByKnownSessions(current, knownSessionIds));
-    setCachedProjectSessionMessages((current) => pruneDesktopSessionCacheByKnownSessions(current, knownSessionIds));
     setCachedDesktopSessionSourceMessages((current) => pruneDesktopSessionCacheByKnownSessions(current, knownSessionIds));
     const nextHydratedSessionIds = new Set(
       [...hydratedSessionIdsRef.current].filter((sessionId) => knownSessionIds.has(sessionId)),
@@ -135,7 +145,10 @@ export function useDesktopSessionTranscriptCache({
   const preloadDesktopSessionTranscript = useCallback((sessionId: string) => {
     const normalizedSessionId = sessionId.trim();
     if (!isNativeShell || !normalizedSessionId) return Promise.resolve(false);
-    if (hydratedSessionIdsRef.current.has(normalizedSessionId)) return Promise.resolve(true);
+    if (hydratedSessionIdsRef.current.has(normalizedSessionId)) {
+      retainedSessionIds(normalizedSessionId);
+      return Promise.resolve(true);
+    }
     const existingFlight = preloadFlightsRef.current.get(normalizedSessionId);
     if (existingFlight) return existingFlight;
 
@@ -153,7 +166,7 @@ export function useDesktopSessionTranscriptCache({
       .finally(() => preloadFlightsRef.current.delete(normalizedSessionId));
     preloadFlightsRef.current.set(normalizedSessionId, request);
     return request;
-  }, [isNativeShell, liveTurnsBySessionRef, mergeSessionTranscript]);
+  }, [isNativeShell, liveTurnsBySessionRef, mergeSessionTranscript, retainedSessionIds]);
 
   return {
     cachedChatSessionMessages,

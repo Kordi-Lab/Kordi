@@ -314,6 +314,10 @@
   right: 0.25rem;
 }
 
+.app-participant-space-disclosure-icon {
+  transition: transform var(--app-motion-fast) var(--app-motion-ease);
+}
+
 .app-participant-space-menu-action {
   border-color: transparent;
   background: transparent;
@@ -380,6 +384,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .app-participant-space-disclosure-icon {
+    transition: none;
+  }
+
   .app-participant-space-session-preview-live {
     animation: none;
   }

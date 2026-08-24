@@ -6,6 +6,20 @@ import type {
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 
+export const MAX_CACHED_DESKTOP_SESSION_TRANSCRIPTS = 8;
+
+export function recentDesktopSessionIds(
+  current: readonly string[],
+  sessionId: string,
+) {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId || current[current.length - 1] === normalizedSessionId) {
+    return current;
+  }
+  return [...current.filter((id) => id !== normalizedSessionId), normalizedSessionId]
+    .slice(-MAX_CACHED_DESKTOP_SESSION_TRANSCRIPTS);
+}
+
 function mergeSessionSummaries(
   current: DesktopChatState['sessions'],
   next: DesktopChatState['sessions'],

@@ -9,6 +9,7 @@ import type { CloudMessageSnapshotResponse } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
 import type { CloudPresenceAccount, CloudPresenceContactsResponse } from './presence';
 import type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
+import { downloadCloudAttachmentBlob } from './cloudAttachmentDownloadClient';
 import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
 import type { CloudAuthErrorCode } from './cloudAuthError';
 import { CloudDeviceClient } from './cloudDeviceClient';
@@ -817,22 +818,11 @@ export class CloudAuthClient {
   }
 
   async downloadAttachmentContent(token: string, attachmentId: string, signal?: AbortSignal): Promise<Blob> {
-    let response: Response;
-    try {
-      response = await this.fetchImpl(`${this.baseUrl}/v1/cloud/attachments/${encodeURIComponent(attachmentId)}/content`, {
-        method: 'GET',
-        headers: { authorization: `Bearer ${token}` },
-        signal,
-      });
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : 'Network request failed.';
-      throw new CloudAuthError('network_error', message, 0);
-    }
-    if (!response.ok) {
-      const body = await readJsonSafe(response);
-      throw buildCloudAuthError(response.status, body, 'Could not download attachment.');
-    }
-    return response.blob();
+    return downloadCloudAttachmentBlob({ baseUrl: this.baseUrl, fetchImpl: this.fetchImpl, token, attachmentId, resource: 'content', signal });
+  }
+
+  async downloadAttachmentPreviewContent(token: string, attachmentId: string, signal?: AbortSignal): Promise<Blob> {
+    return downloadCloudAttachmentBlob({ baseUrl: this.baseUrl, fetchImpl: this.fetchImpl, token, attachmentId, resource: 'preview-content', signal });
   }
 
   async listExpressiveMedia(token: string): Promise<CloudExpressiveMediaItem[]> {

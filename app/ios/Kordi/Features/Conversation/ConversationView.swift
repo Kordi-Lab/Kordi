@@ -25,12 +25,6 @@ enum ConversationIdentityResolver {
     }
 }
 
-enum ConversationInitialRevealPolicy {
-    static func shouldRevealImmediately(messageCount: Int) -> Bool {
-        messageCount > 0
-    }
-}
-
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
@@ -51,6 +45,7 @@ struct ConversationView: View {
     @State private var initialViewport = ConversationInitialViewport.latest
     @State private var hasPreparedInitialViewport = false
     @State private var hasRevealedInitialViewport = false
+    @State private var initialLoadFailed = false
     @State private var trackedMessageID: String?
     @State private var immediateBottomRequest = 0
     @State private var attachments: [PendingAttachment] = []
@@ -204,8 +199,9 @@ struct ConversationView: View {
                     )
                 }
                 if hasPreparedInitialViewport {
-                    GeometryReader { viewport in
-                        ZStack(alignment: .bottomTrailing) {
+                    ZStack {
+                        GeometryReader { viewport in
+                            ZStack(alignment: .bottomTrailing) {
                             ScrollView {
                                 VStack(spacing: 0) {
                                     if timeline.isEmpty {
@@ -232,8 +228,6 @@ struct ConversationView: View {
                                                         )
                                                     }
                                             }
-                                        }
-
                                         ForEach(visibleTimelineRows) { row in
                                             let message = row.message
                                             let index = visibleStartIndex + row.offset
@@ -368,6 +362,7 @@ struct ConversationView: View {
                                             }
                                             .id(row.id)
                                         }
+                                        }
                                     }
 
                                     Color.clear
@@ -451,12 +446,25 @@ struct ConversationView: View {
                                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                             }
                         }
-                        .opacity(hasRevealedInitialViewport ? 1 : 0)
-                        .allowsHitTesting(hasRevealedInitialViewport)
-                        .accessibilityHidden(!hasRevealedInitialViewport)
+                            .opacity(hasRevealedInitialViewport ? 1 : 0)
+                            .allowsHitTesting(hasRevealedInitialViewport)
+                            .accessibilityHidden(!hasRevealedInitialViewport)
+                        }
+                        if !hasRevealedInitialViewport {
+                            if initialLoadFailed {
+                                ConversationInitialFailureView {
+                                    initialLoadFailed = false
+                                    Task {
+                                        await loadAndRevealInitialConversation(using: proxy)
+                                    }
+                                }
+                            } else {
+                                ConversationInitialLoadingView(messages: visibleTimeline)
+                            }
+                        }
                     }
                 } else {
-                    ConversationInitialLoadingView()
+                    ConversationInitialLoadingView(messages: visibleTimeline)
                 }
 
                 if selectedMessageIDs.isEmpty {
@@ -535,6 +543,9 @@ struct ConversationView: View {
                     newCount: newCount,
                     isInitialViewportRevealed: hasRevealedInitialViewport
                 )
+                if oldCount == 0, newCount > 0, !hasRevealedInitialViewport {
+                    Task { await positionAndRevealInitialViewport(using: proxy) }
+                }
             }
             .onChange(of: timeline.last) { previousLatestMessage, currentLatestMessage in
                 let previousLatestMessageID = previousLatestMessage.map(model.timelineIdentity(for:))
@@ -929,12 +940,17 @@ struct ConversationView: View {
         let latestMessageIDAtEntry = messages.last?.id
         let viewportAtEntry = initialViewport
 
-        if ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: messages.count) {
+        if !messages.isEmpty {
             await positionAndRevealInitialViewport(using: proxy)
         }
 
-        await model.loadConversation(conversation)
+        let didLoad = await model.loadConversation(conversation)
         guard !Task.isCancelled else { return }
+        if !didLoad, messages.isEmpty {
+            initialLoadFailed = true
+            return
+        }
+        initialLoadFailed = false
         if initialMessageID == nil,
            !hasRevealedInitialViewport,
            case .resumed = viewportAtEntry,
@@ -954,15 +970,7 @@ struct ConversationView: View {
     @MainActor
     private func prepareInitialConversationForDisplay() {
         model.hydrateCachedMessages(for: conversation)
-        model.prepareConversationForPresentation(conversation)
         prepareInitialViewport(in: messages)
-        if ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: messages.count) {
-            var transaction = Transaction(animation: nil)
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                hasRevealedInitialViewport = true
-            }
-        }
     }
 
     private func synchronizeReadPresentation() {
@@ -1686,8 +1694,8 @@ enum ConversationTimelineScrollBehavior {
     ) -> Bool {
         guard hasPositionedInitialTimeline,
               isAtBottom,
-              let previousLatestMessageID,
-              let currentLatestMessageID else { return false }
+              previousLatestMessageID != nil,
+              currentLatestMessageID != nil else { return false }
         return true
     }
 
@@ -2021,20 +2029,20 @@ private struct ConversationBottomTrackingModifier: ViewModifier {
     }
 }
 
-private struct ConversationInitialLoadingView: View {
+private struct ConversationInitialFailureView: View {
+    let retry: () -> Void
+
     var body: some View {
-        VStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.regular)
-                .accessibilityHidden(true)
-            Text("Loading messages…")
-                .font(.callout)
-                .foregroundStyle(.secondary)
+        ContentUnavailableView {
+            Label("Couldn’t load messages", systemImage: "wifi.exclamationmark")
+        } description: {
+            Text("Check your connection and try again.")
+        } actions: {
+            Button("Try again", action: retry)
+                .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(uiColor: .systemGroupedBackground))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Loading messages")
     }
 }
 

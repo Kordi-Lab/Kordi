@@ -64,7 +64,7 @@ test('compact transient typography uses shared rem-based action and identity rol
   assert.match(transientCss, /\.app-transient-metadata,[\s\S]*?\.app-transient-status\s*\{[\s\S]*?font-size:\s*0\.5625rem;[\s\S]*?line-height:\s*0\.75rem;/);
 
   const compactFamilies: Array<[string, RegExp]> = [
-    ['kordi-app/components/transcriptAttachments.tsx', /app-transient-action-row/],
+    ['kordi-app/components/transcriptAttachmentActions.tsx', /app-transient-action-row/],
     ['pages/MemberContactProfilePopover.tsx', /app-transient-identity-title[\s\S]*app-transient-metadata[\s\S]*app-transient-action-row/],
     ['pages/SessionActionOverlays.tsx', /app-transient-action-row/],
     ['kordi-app/components/composer.tsx', /app-transient-action-row[\s\S]*app-transient-metadata/],

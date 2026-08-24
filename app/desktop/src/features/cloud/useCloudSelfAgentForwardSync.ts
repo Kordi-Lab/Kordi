@@ -12,7 +12,8 @@ import {
   requestSingleFlightRun,
 } from '@/lib/singleFlight';
 import {
-  loadChatSyncLocalState,
+  loadChatSyncConversations,
+  loadChatSyncMessageRefs,
 } from '@/lib/desktopChatSync';
 import type {
   CloudAccount,
@@ -177,9 +178,9 @@ export function useCloudSelfAgentForwardSync({
         const latestState =
           canonicalStateRef.current ?? canonicalState ?? null;
         if (!latestState) return;
-        const [session, localChat] = await Promise.all([
+        const [session, localConversations] = await Promise.all([
           loadSession(),
-          loadChatSyncLocalState(account.accountId),
+          loadChatSyncConversations(account.accountId),
         ]);
         if (!session?.token || cancelledRef.current) return;
         const initialLedger = loadCloudSelfAgentSyncLedger(account.accountId);
@@ -192,7 +193,7 @@ export function useCloudSelfAgentForwardSync({
         );
         const reconciliation = planCloudSelfAgentSessionReconciliation(
           latestState,
-          localChat?.conversations ?? [],
+          localConversations,
           { identitySyncedSessionIds, pendingRecoverySessionIds },
         );
         for (const plan of reconciliation) {
@@ -248,7 +249,7 @@ export function useCloudSelfAgentForwardSync({
               client,
               session.token,
               [
-                ...(localChat?.conversations ?? []),
+                ...localConversations,
                 ...createdConversations,
               ],
               recoverySessionIds,
@@ -256,18 +257,8 @@ export function useCloudSelfAgentForwardSync({
             ),
           ]);
         if (cancelledRef.current) return;
-        const remoteMessages = [
-          ...(localChat?.messages ?? []),
-          ...remoteRecoveryMessages,
-        ];
-        const remoteMessageIds = new Set(
-          remoteMessages.map((message) => message.id),
-        );
-        const remoteMessageByClientId = new Map(
-          remoteMessages.map((message) => [
-            message.client_message_id,
-            message,
-          ]),
+        const remoteRecoveryMessageIds = new Set(
+          remoteRecoveryMessages.map((message) => message.id),
         );
         const recoveryState = {
           ...latestState,
@@ -278,7 +269,7 @@ export function useCloudSelfAgentForwardSync({
             ...canonicalRecoveryMessages.filter((message) => !(
               message.sourceTransport === 'cloud-self-agent'
               && message.sourceEventId
-              && remoteMessageIds.has(message.sourceEventId)
+              && remoteRecoveryMessageIds.has(message.sourceEventId)
             )),
           ],
         };
@@ -286,6 +277,20 @@ export function useCloudSelfAgentForwardSync({
           ...recoverySessionIds,
           ...cloudSyncedLocalAgentSessionIds(recoveryState),
         ]);
+        const relevantConversationIds = localConversations.flatMap((conversation) => {
+          const sessionId = conversation.legacy_session_id ?? conversation.id;
+          return historySessionIds.has(sessionId) ? [conversation.id] : [];
+        });
+        const remoteMessages = [
+          ...await loadChatSyncMessageRefs(account.accountId, relevantConversationIds),
+          ...remoteRecoveryMessages,
+        ];
+        const remoteMessageByClientId = new Map(
+          remoteMessages.map((message) => [
+            message.client_message_id,
+            message,
+          ]),
+        );
         let ledger = identityLedger;
         let forwardCutoffMs = loadCloudSelfAgentForwardCutoff(
           account.accountId,

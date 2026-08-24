@@ -1008,6 +1008,13 @@ actor CloudAPIClient {
             let (data, response) = try await session.data(for: request)
             try validate(response: response, data: data, fallback: "Could not upload \(attachment.name).")
             let uploaded = try decoder.decode(AttachmentUploadResponse.self, from: data)
+            if let previewURL = attachment.previewURL {
+                try? await updateAttachmentPreview(
+                    token: token,
+                    attachmentId: uploaded.attachmentId,
+                    previewURL: previewURL
+                )
+            }
             return CloudMessageAttachment(
                 attachmentId: uploaded.attachmentId,
                 name: attachment.name,
@@ -1054,6 +1061,37 @@ actor CloudAPIClient {
                 statusCode: 0
             )
         }
+    }
+
+    func downloadAttachmentPreviewContent(token: String, attachmentId: String) async throws -> Data {
+        let encodedId = attachmentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? attachmentId
+        var request = try makeRequest(
+            path: "/v1/cloud/attachments/\(encodedId)/preview-content",
+            method: "GET",
+            token: token,
+            query: [],
+            body: nil
+        )
+        request.setValue("image/*", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 30
+        let (data, response) = try await session.data(for: request)
+        try validate(response: response, data: data, fallback: "Could not download this attachment preview.")
+        return data
+    }
+
+    private func updateAttachmentPreview(
+        token: String,
+        attachmentId: String,
+        previewURL: String
+    ) async throws {
+        let encodedId = attachmentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? attachmentId
+        let _: AttachmentPreviewUpdateResponse = try await send(
+            path: "/v1/cloud/attachments/\(encodedId)/preview",
+            method: "POST",
+            token: token,
+            body: AttachmentPreviewUpdateRequest(previewURL: previewURL),
+            fallback: "Could not store the attachment preview."
+        )
     }
 
     func listExpressiveMedia(token: String) async throws -> [CloudExpressiveMediaItem] {
@@ -1978,6 +2016,18 @@ private struct AttachmentUploadResponse: Decodable {
     let attachmentId: String
     let sizeBytes: Int64?
     let contentType: String?
+}
+
+private struct AttachmentPreviewUpdateRequest: Encodable {
+    let previewURL: String
+
+    enum CodingKeys: String, CodingKey {
+        case previewURL = "previewUrl"
+    }
+}
+
+private struct AttachmentPreviewUpdateResponse: Decodable {
+    let attachmentId: String
 }
 
 private struct ClaimAgentRunRequest: Encodable {

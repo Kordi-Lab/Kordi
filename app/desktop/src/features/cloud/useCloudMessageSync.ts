@@ -11,7 +11,6 @@ import type {
   CloudAuthClient,
   CloudMessage,
   CloudSessionForkSummary,
-  ChatSyncMessage,
 } from './authClient';
 import { chatSyncSessionTitle, cloudMessageFromChatSync } from './authClient';
 import type { CloudAgentDefinition } from './cloudAgents';
@@ -41,6 +40,9 @@ import { CloudSyncCoordinator } from './cloudSyncCoordinator';
 import { loadSession } from './session';
 import {
   applyChatSyncLocalBatch,
+  loadChatSyncConversations,
+  loadChatSyncCoverage,
+  loadChatSyncCursor,
   loadChatSyncLocalState,
 } from '@/lib/desktopChatSync';
 
@@ -190,7 +192,7 @@ export function useCloudMessageSync({
             cursorOverride = null;
             return value;
           }
-          const local = await loadChatSyncLocalState(account.accountId);
+          const local = await loadChatSyncCursor(account.accountId);
           return local?.cursor ?? '0';
         },
         commitResponse: async (response) => {
@@ -209,11 +211,11 @@ export function useCloudMessageSync({
           publishCloudDeviceEvents(response.chat.events, account.accountId, session.deviceId, response.events);
           directoryBootstrapPending ||= chatEventsRequireDirectoryBootstrap(response.chat.events);
           if (local) {
-            await Promise.allSettled(local.conversations.map((conversation) => (
+            await Promise.allSettled(local.changedConversationHeads.map((conversation) => (
               client.acknowledgeChatDelivery(
                 session.token,
-                conversation.id,
-                conversation.latest_message_sequence,
+                conversation.conversationId,
+                conversation.latestMessageSequence,
               )
             )));
           }
@@ -350,28 +352,24 @@ export function useCloudMessageSync({
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
     const session = await loadSession();
     if (!session?.token || !coordinator.isCurrentGeneration(generation)) return;
-    const local = await loadChatSyncLocalState(account.accountId);
-    if (!local || !coordinator.isCurrentGeneration(generation)) return;
-    const messagesByConversation = new Map<string, ChatSyncMessage[]>();
-    for (const message of local.messages) {
-      const values = messagesByConversation.get(message.conversation_id) ?? [];
-      values.push(message);
-      messagesByConversation.set(message.conversation_id, values);
-    }
-    for (const conversation of local.conversations) {
+    const [conversations, coverage] = await Promise.all([
+      loadChatSyncConversations(account.accountId),
+      loadChatSyncCoverage(account.accountId),
+    ]);
+    if (!coordinator.isCurrentGeneration(generation)) return;
+    const coverageByConversation = new Map(coverage.map((value) => [value.conversationId, value]));
+    let historyChanged = false;
+    for (const conversation of conversations) {
       if (!coordinator.isCurrentGeneration(generation)) return;
       if (conversation.latest_message_sequence <= 0) continue;
-      const stored = messagesByConversation.get(conversation.id) ?? [];
-      const storedSequences = [...new Set(stored
-        .map((message) => message.conversation_sequence)
-        .filter((sequence) => Number.isSafeInteger(sequence) && sequence > 0))]
-        .sort((left, right) => left - right);
-      const hasLatest = storedSequences[storedSequences.length - 1]
-        === conversation.latest_message_sequence;
-      const hasContiguousSuffix = hasLatest && storedSequences.every((sequence, index) => (
-        index === 0 || sequence === storedSequences[index - 1] + 1
-      ));
-      const earliestSequence = storedSequences[0];
+      const stored = coverageByConversation.get(conversation.id);
+      const earliestSequence = stored?.earliestSequence;
+      const hasLatest = stored?.latestSequence === conversation.latest_message_sequence;
+      const hasContiguousSuffix = Boolean(
+        hasLatest
+        && earliestSequence
+        && stored?.messageCount === stored.latestSequence - earliestSequence + 1,
+      );
       if (hasContiguousSuffix && earliestSequence === 1) continue;
       // A clean bootstrap contains a contiguous suffix ending at the current
       // head, so page from its first item. If the local projection itself has
@@ -390,6 +388,7 @@ export function useCloudMessageSync({
           bootstrap: false,
           messages: page.messages,
         });
+        historyChanged ||= page.messages.length > 0;
         if (!page.hasMore) break;
         const next = page.nextBeforeSequence;
         if (!next || (beforeSequence !== undefined && next >= beforeSequence)) {
@@ -398,7 +397,7 @@ export function useCloudMessageSync({
         beforeSequence = next;
       }
     }
-    await hydrateChatLocalState(generation);
+    if (historyChanged) await hydrateChatLocalState(generation);
   }, [account, client, coordinator, hydrateChatLocalState]);
   const runCoordinatedSync = useCallback(async (generation: number) => {
     const request = pendingRequestRef.current;

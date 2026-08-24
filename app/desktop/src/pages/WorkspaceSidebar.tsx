@@ -379,7 +379,7 @@ export function WorkspaceSidebar({
                         onSelectChatSession,
                         onOpenSessionContextMenu: setSessionContextMenu,
                         onOpenGroupDetails: (space, anchor) => {
-                          chatModel.setSelectedParticipantSpaceId(space.id);
+                          chatModel.setParticipantSpaceExpanded(space.id, true);
                           setGroupDetailsAnchor(anchor);
                           setIsGroupDetailsDialogOpen(true);
                         },

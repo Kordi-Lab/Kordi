@@ -75,10 +75,12 @@ export function VirtualChatList({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => internalScrollRef.current,
-    estimateSize: () => 56,
+    estimateSize: () => 64,
     getItemKey: (index) => rows[index]?.key ?? `missing:${index}`,
-    overscan: 12,
+    overscan: rows.length <= 100 ? rows.length : 24,
     useFlushSync: false,
+    directDomUpdates: true,
+    directDomUpdatesMode: 'transform',
   });
   const activeRowIndex = useMemo(() => {
     const normalizedActiveId = activeSessionId?.trim();

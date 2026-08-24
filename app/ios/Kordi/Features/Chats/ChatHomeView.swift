@@ -76,9 +76,13 @@ struct ChatHomeView: View {
                 .map(ContactListItem.conversation)
         return (people + groupSpaces.map(ContactListItem.group))
             .sorted {
-                $0.lastActivityAt > $1.lastActivityAt || (
-                    $0.lastActivityAt == $1.lastActivityAt
-                        && $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+                ChatListOrdering.precedes(
+                    id: $0.id,
+                    displayName: $0.displayName,
+                    lastActivityAt: $0.lastActivityAt,
+                    before: $1.id,
+                    displayName: $1.displayName,
+                    lastActivityAt: $1.lastActivityAt
                 )
             }
     }
@@ -271,42 +275,44 @@ struct ChatHomeView: View {
             destination(for: conversation)
         case let .group(space):
             let isExpanded = groupIsExpanded(space)
-            Button {
-                toggleGroupSpace(space)
-            } label: {
-                GroupSpaceRow(space: space, isExpanded: isExpanded)
-            }
-            .buttonStyle(.plain)
-            .contextMenu {
+            VStack(spacing: 0) {
                 Button {
-                    groupManagementPresentation = GroupManagementPresentation(
-                        space: space,
-                        startsInInviteMode: false
-                    )
+                    toggleGroupSpace(space)
                 } label: {
-                    Label("Manage group", systemImage: "person.2")
+                    GroupSpaceRow(space: space, isExpanded: isExpanded)
                 }
-                Button {
-                    groupManagementPresentation = GroupManagementPresentation(
-                        space: space,
-                        startsInInviteMode: true
-                    )
-                } label: {
-                    Label("Invite people", systemImage: "person.badge.plus")
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button {
+                        groupManagementPresentation = GroupManagementPresentation(
+                            space: space,
+                            startsInInviteMode: false
+                        )
+                    } label: {
+                        Label("Manage group", systemImage: "person.2")
+                    }
+                    Button {
+                        groupManagementPresentation = GroupManagementPresentation(
+                            space: space,
+                            startsInInviteMode: true
+                        )
+                    } label: {
+                        Label("Invite people", systemImage: "person.badge.plus")
+                    }
+                    Button {
+                        Task { await model.markGroupSpaceRead(space) }
+                    } label: {
+                        Label("Mark as read", systemImage: "checkmark.circle")
+                    }
                 }
-                Button {
-                    Task { await model.markGroupSpaceRead(space) }
-                } label: {
-                    Label("Mark as read", systemImage: "checkmark.circle")
-                }
-            }
-            .accessibilityHint("Double-tap to show sessions. Touch and hold to manage or invite people.")
-            .chatHomeRow(separatorLeading: 71)
+                .accessibilityHint("Double-tap to show sessions. Touch and hold to manage or invite people.")
+                .chatHomeRow(separatorLeading: 71)
 
-            if isExpanded {
-                ForEach(space.sessions) { session in
-                    sessionActionRow(for: session) {
-                        GroupSessionRow(session: session)
+                if isExpanded {
+                    ForEach(space.sessions) { session in
+                        sessionActionRow(for: session) {
+                            GroupSessionRow(session: session)
+                        }
                     }
                 }
             }
@@ -484,7 +490,6 @@ struct ChatHomeView: View {
     }
 
     private func openConversation(_ conversation: ConversationSummary) {
-        model.prepareConversationForPresentation(conversation)
         if let onOpenConversation {
             onOpenConversation(conversation)
         } else {

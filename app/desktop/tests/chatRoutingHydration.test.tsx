@@ -113,12 +113,13 @@ test('workspace active conversation keeps selected canonical Cloud session in lo
   assert.equal(selected.canonicalSessionId, 'session:group:clicked-before-hydration');
   assert.equal(selected.unread, 0);
   assert.equal(selected.subtitle, '');
-  assert.equal(selected.messages.length > 0, true);
-  assert.match(selected.messages[0]?.text ?? '', /loading|opening/i);
+  assert.equal(selected.messages.length, 1);
+  assert.equal(selected.messages[0]?.text, '');
+  assert.equal(selected.messages[0]?.detail, 'transcript-loading');
   assert.notEqual(selected.messages[0]?.text, 'wrong local fallback');
 });
 
-test('workspace active conversation shows loading copy for an empty selected canonical Cloud shell', () => {
+test('workspace active conversation keeps an invisible loading marker for an empty selected canonical Cloud shell', () => {
   const emptyCloudShell = {
     id: 'session:group:main',
     canonicalSessionId: 'session:group:main',
@@ -142,8 +143,9 @@ test('workspace active conversation shows loading copy for an empty selected can
   assert.equal(selected.id, 'session:group:main');
   assert.equal(selected.name, 'main');
   assert.equal(selected.subtitle, '');
-  assert.equal(selected.messages.length > 0, true);
-  assert.match(selected.messages[0]?.text ?? '', /loading|opening/i);
+  assert.equal(selected.messages.length, 1);
+  assert.equal(selected.messages[0]?.text, '');
+  assert.equal(selected.messages[0]?.detail, 'transcript-loading');
 });
 
 test('workspace active conversation keeps a catalog-confirmed empty group session blank while hydration runs', () => {
@@ -187,7 +189,7 @@ test('workspace active conversation keeps a catalog-confirmed empty group sessio
   assert.deepEqual(hydrated.messages, []);
 });
 
-test('canonical history loading keeps one transcript notice without replacing the header subtitle', () => {
+test('canonical history loading keeps one invisible marker without replacing the header subtitle', () => {
   const selected = {
     id: 'session:group:history',
     canonicalSessionId: 'session:group:history',
@@ -206,11 +208,11 @@ test('canonical history loading keeps one transcript notice without replacing th
   const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
 
   assert.equal(loading.subtitle, 'Latest synced message');
-  assert.deepEqual(loading.messages.map((message) => message.text), ['Loading chat history…']);
+  assert.deepEqual(loading.messages.map((message) => message.text), ['']);
   assert.equal(loading.messages[0]?.detail, 'transcript-loading');
 });
 
-test('contact history loading uses the same single neutral transcript notice', () => {
+test('contact history loading uses the same invisible transcript marker', () => {
   const selected = {
     id: 'session:direct-person:acct_me:acct_peer',
     canonicalSessionId: 'session:direct-person:acct_me:acct_peer',
@@ -229,7 +231,7 @@ test('contact history loading uses the same single neutral transcript notice', (
   const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
 
   assert.equal(loading.subtitle, 'Latest synced contact message');
-  assert.deepEqual(loading.messages.map((message) => message.text), ['Loading chat history…']);
+  assert.deepEqual(loading.messages.map((message) => message.text), ['']);
   assert.equal(loading.messages[0]?.detail, 'transcript-loading');
 });
 

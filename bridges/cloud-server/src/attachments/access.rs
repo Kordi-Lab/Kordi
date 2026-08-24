@@ -13,6 +13,7 @@ pub(crate) type AttachmentAccessRow = (
     Option<String>,
     Option<String>,
     Option<i64>,
+    Option<String>,
 );
 
 pub(crate) async fn attachment_access_row(
@@ -22,7 +23,7 @@ pub(crate) async fn attachment_access_row(
 ) -> Result<AttachmentAccessRow, Box<Response>> {
     let pool = state.db_pool();
     let row: Option<AttachmentAccessRow> = match query_as(
-        "SELECT object_key, owner_account_id, finalized_at, content_type, detected_content_type, size_bytes \
+        "SELECT object_key, owner_account_id, finalized_at, content_type, detected_content_type, size_bytes, preview_url \
          FROM cloud_attachments \
          WHERE attachment_id = $1",
     )

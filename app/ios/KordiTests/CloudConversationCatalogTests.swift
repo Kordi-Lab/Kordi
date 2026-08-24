@@ -1128,6 +1128,42 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(spaces.count, 2)
     }
 
+    func testGroupSpaceCatalogUsesStableIDsWhenActivityAndTitlesTie() {
+        let participants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
+        ]
+        let date = Date(timeIntervalSince1970: 1)
+        let second = groupConversation(
+            id: "session:second",
+            spaceId: "session:second",
+            title: "Same title",
+            preview: "Second",
+            date: date,
+            participants: participants
+        )
+        let first = groupConversation(
+            id: "session:first",
+            spaceId: "session:first",
+            title: "Same title",
+            preview: "First",
+            date: date,
+            participants: participants
+        )
+
+        let forward = GroupSpaceCatalog.build(
+            conversations: [second, first],
+            ownAccountId: "acct_me"
+        )
+        let reverse = GroupSpaceCatalog.build(
+            conversations: [first, second],
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(forward.map(\.id), reverse.map(\.id))
+        XCTAssertEqual(forward.map(\.id), ["group:session:first", "group:session:second"])
+    }
+
     func testGroupSpaceCatalogHidesForksAndControlOnlyPlaceholders() {
         let participants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),

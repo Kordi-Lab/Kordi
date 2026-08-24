@@ -71,6 +71,7 @@ enum CloudDirectMessageProjector {
             result.append(ChatMessage(
                 id: "cloud-agent-cancelled:\(wire.messageId):\(cancel.messageId)",
                 conversationId: conversation.id,
+                conversationSequence: cancel.conversationSequence,
                 author: .agent,
                 authorName: conversation.agentDisplayName?.nonEmpty ?? "Kordi",
                 text: "Request canceled by \(cancelledBy).",
@@ -85,9 +86,7 @@ enum CloudDirectMessageProjector {
             && responseRequestIds.contains(result[index].id) {
             result[index].deliveryState = .read
         }
-        return result.sorted {
-            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
-        }
+        return result.sorted(by: ChatMessage.timelinePrecedes)
     }
 
     private static func map(
@@ -120,6 +119,7 @@ enum CloudDirectMessageProjector {
             id: message.messageId,
             clientMessageId: message.clientMessageId,
             conversationId: conversation.id,
+            conversationSequence: message.conversationSequence,
             author: author,
             authorName: authorName,
             text: CloudMessageCodec.displayText(message.body),

@@ -20,14 +20,12 @@ export function AgentSidebarRow({
   descriptor,
   model,
   activeConvId,
-  onPrefetchChatSession,
   onSelectChatSession,
   onOpenSessionContextMenu,
 }: {
   descriptor: ChatSidebarRow;
   model: WorkspaceChatSidebarModel;
   activeConvId: string;
-  onPrefetchChatSession?: (sessionId: string) => void;
   onSelectChatSession: (sessionId: string) => void;
   onOpenSessionContextMenu: (target: SessionContextMenuTarget) => void;
 }) {
@@ -107,8 +105,6 @@ export function AgentSidebarRow({
         }
         data-session-fork-depth={depth || undefined}
         style={indentPaddingLeft ? { paddingLeft: indentPaddingLeft } : undefined}
-        onPointerEnter={() => onPrefetchChatSession?.(session.id)}
-        onFocus={() => onPrefetchChatSession?.(session.id)}
         onClick={() => onSelectChatSession(session.id)}
         onContextMenu={(event) => {
           const target = sessionContextMenuTargetForConversation(

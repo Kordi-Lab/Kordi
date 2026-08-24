@@ -48,10 +48,11 @@ test('canonical Cloud chat selection begins page hydration on the click path', (
   assert.match(handler, /setActiveConvId\(sessionId\);[\s\S]*hydrateCanonicalSessionPage\(sessionId\)/);
 });
 
-test('sidebar session intent warms authoritative transcript state before selection', () => {
+test('sidebar traversal does not hydrate every session before selection', () => {
   for (const source of [agentSidebarRowsSource(), contactSidebarRowsSource()]) {
-    assert.match(source, /onPointerEnter=.*onPrefetchChatSession/);
-    assert.match(source, /onFocus=.*onPrefetchChatSession/);
+    assert.doesNotMatch(source, /onPointerEnter=.*onPrefetchChatSession/);
+    assert.doesNotMatch(source, /onFocus=.*onPrefetchChatSession/);
+    assert.match(source, /onClick=.*onSelectChatSession/);
   }
 });
 

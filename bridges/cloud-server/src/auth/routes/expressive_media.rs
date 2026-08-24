@@ -134,7 +134,7 @@ pub(super) async fn save_expressive_media(
         );
     };
 
-    let (_, _, _, declared_content_type, detected_content_type, size_bytes) =
+    let (_, _, _, declared_content_type, detected_content_type, size_bytes, _) =
         match crate::attachments::access::attachment_access_row(&state, &session, attachment_id)
             .await
         {

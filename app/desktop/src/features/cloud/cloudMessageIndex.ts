@@ -157,14 +157,14 @@ export function cloudGroupCanonicalMessageSource(
     : message.senderKind === 'agent'
       ? 'cloud-group-agent'
       : 'cloud-group';
-  const callActivityVersion = /^call\.(?:started|ended)\./.test(
-    message.messageKind?.trim() ?? '',
-  ) && Number.isSafeInteger(wire.version) && Number(wire.version) > 0
-    ? `:${wire.version}`
-    : '';
+  const version = Number(wire.version);
+  const versionedSource = Number.isSafeInteger(version) && (
+    version > 1
+    || /^call\.(?:started|ended)\./.test(message.messageKind?.trim() ?? '')
+  );
   return {
     sourceTransport,
-    sourceEventId: `${sourceTransport}:${messageId}${callActivityVersion}`,
+    sourceEventId: `${sourceTransport}:${messageId}${versionedSource ? `:${version}` : ''}`,
   };
 }
 

@@ -202,7 +202,6 @@ async fn create_conversation_in_transaction_with_trusted_peer(
         )
         .await?;
     }
-    wake_dispatcher(transaction).await?;
     Ok(InsertOutcome {
         value: conversation,
         inserted: true,

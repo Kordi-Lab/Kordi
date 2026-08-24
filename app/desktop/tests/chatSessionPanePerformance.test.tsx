@@ -10,6 +10,7 @@ import {
   clearChatPerformanceRecords,
   readChatPerformanceRecords,
 } from '../src/features/performance/chatPerformance';
+import { transcriptLoadingNotice } from '../src/features/chat/transcriptLoadingNotice';
 
 let ChatSessionPane: typeof import('../src/pages/chatsPage.sessionPane').ChatSessionPane;
 let root: Root | null = null;
@@ -69,15 +70,19 @@ const presentation: ChatSessionPaneProps['presentation'] = {
 };
 const selection: ChatSessionPaneProps['selection'] = {};
 
-function sessionPane(composerLabel: string) {
+function sessionPane(
+  composerLabel: string,
+  paneMessages: ChatSessionPaneProps['viewport']['messages'] = messages,
+  densityMode: ChatSessionPaneProps['presentation']['densityMode'] = 'default',
+) {
   return (
     <ChatSessionPane
-      presentation={presentation}
+      presentation={{ ...presentation, densityMode }}
       actions={actions}
       selection={selection}
       viewport={{
         sessionKey: 'session:stable',
-        messages,
+        messages: paneMessages,
         queuedMessages,
         scrollRef,
         scrollClassName: 'test-scroll',
@@ -133,4 +138,89 @@ test('composer-only updates do not rerender the transcript subtree', async () =>
     host.querySelector('[data-composer-label]')?.textContent,
     'second draft',
   );
+});
+
+test('initial history loading replaces the one-row transcript preview', async () => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+
+  await act(async () =>
+    root?.render(
+      sessionPane('draft', [transcriptLoadingNotice(undefined, [
+        {
+          role: 'person',
+          senderType: 'human',
+          text: 'A cached incoming preview',
+          time: '10:00',
+        },
+        {
+          role: 'user',
+          isOwnMessage: true,
+          text: 'A cached outgoing preview',
+          time: '10:01',
+        },
+        {
+          role: 'person',
+          senderType: 'human',
+          text: 'https://kordi.ai/cached-preview',
+          time: '10:02',
+        },
+        {
+          role: 'user',
+          isOwnMessage: true,
+          text: '',
+          time: '10:03',
+          attachments: [{ kind: 'image', name: 'cached-preview.png' }],
+        },
+      ])], 'contact-compact'),
+    ),
+  );
+  await flush();
+
+  assert.ok(host.querySelector('[data-transcript-initial-loading="true"]'));
+  const skeleton = host.querySelector('[data-transcript-loading-skeleton="true"]');
+  assert.ok(skeleton);
+  assert.equal(skeleton.getAttribute('aria-hidden'), 'true');
+  assert.equal(skeleton.getAttribute('role'), null);
+  assert.ok(skeleton.classList.contains('app-chat-pane-transcript-scroll'));
+  assert.equal(skeleton.classList.contains('justify-end'), false);
+  assert.deepEqual(
+    Array.from(host.querySelectorAll('[data-transcript-skeleton-kind]')).map(
+      (node) => node.getAttribute('data-transcript-skeleton-kind'),
+    ),
+    ['message', 'message', 'link', 'image'],
+  );
+  assert.equal(
+    skeleton.querySelectorAll('[data-transcript-skeleton-source="cached"]').length,
+    4,
+  );
+  assert.equal(skeleton.querySelectorAll('.app-message-bubble').length, 3);
+  assert.ok(skeleton.querySelector('.app-message-bubble-own'));
+  assert.ok(skeleton.querySelector('.app-message-bubble-peer'));
+  assert.ok(skeleton.querySelector('.app-message-bubble-contact-compact'));
+  assert.ok(
+    Array.from(skeleton.querySelectorAll('.app-transcript-skeleton-avatar')).every(
+      (node) => node.classList.contains('h-7') && node.classList.contains('w-7'),
+    ),
+  );
+  const image = skeleton.querySelector('[data-transcript-skeleton-kind="image"]');
+  assert.equal(
+    image?.querySelector('[data-message-media-side]')?.getAttribute(
+      'data-message-media-side',
+    ),
+    'own',
+  );
+  assert.ok(image?.querySelector('.app-attachment-image-collage'));
+  assert.ok(
+    Array.from(image?.querySelectorAll('div') ?? []).some((node) =>
+      node.classList.contains('aspect-[4/3]'),
+    ),
+  );
+  assert.equal(host.querySelector('.animate-spin'), null);
+  assert.equal(host.querySelector('[data-virtual-transcript-scroll]'), null);
+});
+
+test('history loading never invents placeholder rows without cached message metadata', () => {
+  assert.equal(transcriptLoadingNotice().loadingPlaceholders, undefined);
 });

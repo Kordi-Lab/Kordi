@@ -279,15 +279,6 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
-    func testCachedConversationRevealsBeforeNetworkReload() {
-        XCTAssertTrue(
-            ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: 19)
-        )
-        XCTAssertFalse(
-            ConversationInitialRevealPolicy.shouldRevealImmediately(messageCount: 0)
-        )
-    }
-
     @MainActor
     func testPreviewCallUpdatesOneActivityFromStartedToEnded() throws {
         let model = AppModel(previewMode: true)
@@ -660,6 +651,76 @@ final class KordiMarkdownParserTests: XCTestCase {
             isAtBottom: false,
             messageCount: 13
         ))
+    }
+
+    func testConversationInitialLoadingDoesNotInventRowsWithoutCachedMessages() {
+        XCTAssertTrue(ConversationInitialPlaceholderCatalog.make(from: []).isEmpty)
+    }
+
+    func testConversationInitialLoadingUsesBoundedCachedMessageGeometry() {
+        let baseDate = Date(timeIntervalSince1970: 1_000)
+        let image = ChatAttachment(
+            attachmentId: "image-1",
+            name: "preview.png",
+            kind: .image,
+            mimeType: "image/png",
+            sizeBytes: 1_024,
+            previewURL: nil
+        )
+        let messages = [
+            ChatMessage(
+                id: "message-1",
+                conversationId: "conversation-1",
+                author: .me,
+                authorName: "Me",
+                text: "A cached message",
+                createdAt: baseDate,
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil
+            ),
+            ChatMessage(
+                id: "message-2",
+                conversationId: "conversation-1",
+                author: .person,
+                authorName: "Alex",
+                text: "https://kordi.ai/cached-preview",
+                createdAt: baseDate.addingTimeInterval(1),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil
+            ),
+            ChatMessage(
+                id: "message-3",
+                conversationId: "conversation-1",
+                author: .person,
+                authorName: "Alex",
+                text: "",
+                createdAt: baseDate.addingTimeInterval(2),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil,
+                attachments: [image]
+            ),
+            ChatMessage(
+                id: "message-4",
+                conversationId: "conversation-1",
+                author: .agent,
+                authorName: "My Kordi",
+                text: "Cached agent response",
+                createdAt: baseDate.addingTimeInterval(3),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil
+            ),
+        ]
+
+        let placeholders = ConversationInitialPlaceholderCatalog.make(from: messages)
+
+        XCTAssertEqual(placeholders.map(\.id), messages.map(\.id))
+        XCTAssertEqual(placeholders.map(\.kind), [.message, .link, .image, .agent])
+        XCTAssertEqual(placeholders.map(\.author), [.me, .person, .person, .agent])
+        XCTAssertLessThanOrEqual(placeholders.count, ConversationInitialPlaceholderCatalog.limit)
     }
 
     func testConversationDetectsLatestPositionFromVisibleScrollGeometry() {

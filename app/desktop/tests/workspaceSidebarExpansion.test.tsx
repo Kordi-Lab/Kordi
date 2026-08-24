@@ -6,7 +6,16 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
+import { participantSpaceExpanded } from '../src/pages/workspaceSidebar.chatModel';
 import { conversation, baseSidebarProps } from './helpers/workspaceSidebarParticipantSpacesFixtures';
+
+test('an active participant space can be explicitly collapsed', () => {
+  const space = { id: 'space:group', kind: 'group' as const };
+
+  assert.equal(participantSpaceExpanded(space, space.id, null, new Set()), true);
+  assert.equal(participantSpaceExpanded(space, space.id, null, new Set([space.id])), false);
+  assert.equal(participantSpaceExpanded(space, null, space.id, new Set()), true);
+});
 
 test('WorkspaceSidebar auto-expands an active space without replacing its other sessions', () => {
   const chatConversations = [
@@ -61,7 +70,7 @@ test('WorkspaceSidebar auto-expands an active space without replacing its other 
   }) as never));
 
   assert.match(markup, /Saved Messages/);
-  assert.match(markup, /aria-label="Expand Saved Messages"/);
+  assert.match(markup, /aria-label="Collapse Saved Messages"/);
   assert.match(markup, /# Reviewer/);
   assert.match(markup, /# Old note/);
 });

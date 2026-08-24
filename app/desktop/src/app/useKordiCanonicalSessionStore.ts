@@ -16,6 +16,7 @@ import {
   failCanonicalSessionHydration,
   mergeCanonicalCatalog,
   mergeCanonicalMessagePage,
+  retainCanonicalSessionPages,
   type CanonicalStore,
 } from '@/features/canonical/canonicalStore';
 import type {
@@ -46,6 +47,16 @@ import {
 } from '@/features/support/supportIdentity';
 
 const CANONICAL_MESSAGE_PAGE_SIZE = 50;
+const CANONICAL_SESSION_PAGE_CACHE_LIMIT = 8;
+
+function recentCanonicalSessionIds(
+  current: readonly string[],
+  sessionId: string,
+) {
+  if (!sessionId || current[current.length - 1] === sessionId) return current;
+  return [...current.filter((id) => id !== sessionId), sessionId]
+    .slice(-CANONICAL_SESSION_PAGE_CACHE_LIMIT);
+}
 
 export function resolveCanonicalPageSessionId(
   candidate: string | null | undefined,
@@ -103,6 +114,7 @@ export function useKordiCanonicalSessionStore({
   const pageFlightsRef = useRef(
     new Map<string, Promise<CanonicalMessagePage | null>>(),
   );
+  const recentPageSessionIdsRef = useRef<readonly string[]>([]);
   const [
     initialRefreshSettled,
     setInitialRefreshSettled,
@@ -134,9 +146,10 @@ export function useKordiCanonicalSessionStore({
   const setState = useCallback<Dispatch<
     SetStateAction<CanonicalSessionState | null>
   >>((action) => {
-    updateStore((currentStore) => applyCanonicalSessionStateAction(
-      currentStore,
-      action,
+    const retained = new Set(recentPageSessionIdsRef.current);
+    updateStore((currentStore) => retainCanonicalSessionPages(
+      applyCanonicalSessionStateAction(currentStore, action),
+      retained,
     ));
   }, [updateStore]);
 
@@ -151,6 +164,11 @@ export function useKordiCanonicalSessionStore({
     if (!isNativeShell || !normalizedSessionId) {
       return Promise.resolve(null);
     }
+    recentPageSessionIdsRef.current = recentCanonicalSessionIds(
+      recentPageSessionIdsRef.current,
+      normalizedSessionId,
+    );
+    const retained = new Set(recentPageSessionIdsRef.current);
     const beforeSequenceNum = options.beforeSequenceNum ?? null;
     const flightKey =
       `${normalizedSessionId}:${beforeSequenceNum ?? 'latest'}`;
@@ -165,13 +183,14 @@ export function useKordiCanonicalSessionStore({
       && hydration === 'ready'
       && !options.force
     ) {
+      updateStore((current) => retainCanonicalSessionPages(current, retained));
       return Promise.resolve(null);
     }
 
     if (beforeSequenceNum === null) {
-      updateStore((current) => beginCanonicalSessionHydration(
-        current,
-        normalizedSessionId,
+      updateStore((current) => retainCanonicalSessionPages(
+        beginCanonicalSessionHydration(current, normalizedSessionId),
+        retained,
       ));
     }
     const request = fetchCanonicalSessionMessages(
@@ -181,14 +200,17 @@ export function useKordiCanonicalSessionStore({
     )
       .then((page) => {
         if (!page) return null;
-        updateStore((current) => mergeCanonicalMessagePage(current, page));
+        updateStore((current) => retainCanonicalSessionPages(
+          mergeCanonicalMessagePage(current, page),
+          new Set(recentPageSessionIdsRef.current),
+        ));
         return page;
       })
       .catch((error) => {
         if (beforeSequenceNum === null) {
-          updateStore((current) => failCanonicalSessionHydration(
-            current,
-            normalizedSessionId,
+          updateStore((current) => retainCanonicalSessionPages(
+            failCanonicalSessionHydration(current, normalizedSessionId),
+            new Set(recentPageSessionIdsRef.current),
           ));
         }
         throw error;
@@ -270,10 +292,13 @@ export function useKordiCanonicalSessionStore({
           )),
           contextSnapshots: [],
         });
-        updateStore((current) => mergeCanonicalCatalog(current, {
-          ...fetchedCatalog,
-          sessions: strippedState?.sessions ?? fetchedCatalog.sessions,
-        }));
+        updateStore((current) => retainCanonicalSessionPages(
+          mergeCanonicalCatalog(current, {
+            ...fetchedCatalog,
+            sessions: strippedState?.sessions ?? fetchedCatalog.sessions,
+          }),
+          new Set(recentPageSessionIdsRef.current),
+        ));
         setInitialRefreshError(false);
       } catch {
         setInitialRefreshError(true);
