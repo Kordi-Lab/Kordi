@@ -7,7 +7,8 @@ function callKindLabel(kind: MessageCallActivity['kind']): string {
   return 'voice call';
 }
 
-function callActivityText(activity: MessageCallActivity): string {
+function callActivityText(message: Message, activity: MessageCallActivity): string {
+  if (activity.kind === 'meeting' && message.text.trim()) return message.text.trim();
   const noun = callKindLabel(activity.kind);
   if (activity.outcome === 'missed') return `Missed ${noun}.`;
   if (activity.outcome === 'canceled') return `Canceled ${noun}.`;
@@ -30,8 +31,9 @@ function callDuration(seconds: number): string {
 export function TranscriptCallActivityContent({ message }: { message: Message }) {
   const activity = message.callActivity;
   if (!activity) return null;
-  const text = callActivityText(activity);
-  const duration = activity.durationSeconds !== null
+  const text = callActivityText(message, activity);
+  const duration = activity.kind !== 'meeting'
+    && activity.durationSeconds !== null
     && activity.durationSeconds !== undefined
     ? ` Duration ${callDuration(activity.durationSeconds)}.`
     : '';

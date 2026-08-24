@@ -891,7 +891,7 @@ function MessageBubbleView({
     );
   }
 
-  if (msg.role === 'system' && !msg.callActivity) {
+  if (msg.role === 'system' || msg.callActivity) {
     return (
       <MessageContextMenuHost msg={msg} {...menuActionHandlers} className="app-system-notice-row flex justify-center py-0.5">
         <TranscriptSystemNoticeContent message={msg}><MessageInlineContent text={msg.text} /></TranscriptSystemNoticeContent>

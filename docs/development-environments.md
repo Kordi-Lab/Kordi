@@ -68,6 +68,22 @@ export KORDI_DEV_SSH_TARGET="<DEV_GCE_INSTANCE>"
 pnpm dev:cloud:remote
 ```
 
+Call testing can keep signaling and ICE/TCP in the same launcher lifecycle by
+also setting all four media ports. The local and remote ICE/TCP values must be
+the same because LiveKit advertises that loopback candidate directly:
+
+```bash
+export KORDI_DEV_LOCAL_SIGNALING_PORT="<TASK_SIGNALING_PORT>"
+export KORDI_DEV_REMOTE_SIGNALING_PORT="<REMOTE_SIGNALING_PORT>"
+export KORDI_DEV_LOCAL_ICE_TCP_PORT="<TASK_ICE_TCP_PORT>"
+export KORDI_DEV_REMOTE_ICE_TCP_PORT="<TASK_ICE_TCP_PORT>"
+
+pnpm dev:cloud:remote
+```
+
+The launcher refuses occupied local media ports, mismatched advertised ICE/TCP
+ports, and signaling or media listeners that do not become reachable.
+
 The launcher verifies the active GitHub account against the ignored local allowlist, creates an IAP loopback tunnel, waits for the health endpoint, requires both development OAuth providers, and launches the gray isolated desktop profile. Exiting the desktop command also closes its tunnel. It refuses to reuse an already-serving local port because that would make the remote target ambiguous.
 
 For transport-only diagnosis, the equivalent low-level tunnel is:

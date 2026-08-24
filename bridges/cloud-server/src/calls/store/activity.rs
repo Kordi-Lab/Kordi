@@ -1,4 +1,4 @@
-use chrono::Duration;
+use chrono::{DateTime, Duration, Utc};
 use serde_json::json;
 use sqlx_core::transaction::Transaction;
 use sqlx_postgres::Postgres;
@@ -59,10 +59,17 @@ fn call_activity_text(
     }
 }
 
+fn call_activity_started_at(call: &CallSnapshot) -> Option<DateTime<Utc>> {
+    match call.kind {
+        CallKind::Meeting => Some(call.created_at),
+        CallKind::Voice | CallKind::Video => call.answered_at,
+    }
+}
+
 fn call_duration(call: &CallSnapshot) -> Duration {
-    match (call.answered_at, call.ended_at) {
-        (Some(answered_at), Some(ended_at)) => ended_at
-            .signed_duration_since(answered_at)
+    match (call_activity_started_at(call), call.ended_at) {
+        (Some(started_at), Some(ended_at)) => ended_at
+            .signed_duration_since(started_at)
             .max(Duration::zero()),
         _ => Duration::zero(),
     }
@@ -81,9 +88,9 @@ fn format_call_duration(duration: Duration) -> String {
 }
 
 fn call_activity_duration_seconds(call: &CallSnapshot) -> Option<i64> {
-    let answered_at = call.answered_at?;
+    let started_at = call_activity_started_at(call)?;
     let ended_at = call.ended_at?;
-    Some((ended_at - answered_at).num_seconds().max(0))
+    Some((ended_at - started_at).num_seconds().max(0))
 }
 
 fn call_activity_content(
@@ -111,7 +118,8 @@ fn call_activity_content(
             "kind": call.kind.as_str(),
             "event": event.as_str(),
             "createdAtMs": call.created_at.timestamp_millis(),
-            "answeredAtMs": call.answered_at.map(|value| value.timestamp_millis()),
+            "answeredAtMs": call_activity_started_at(call)
+                .map(|value| value.timestamp_millis()),
             "endedAtMs": call.ended_at.map(|value| value.timestamp_millis()),
             "durationSeconds": match event {
                 CallActivityEvent::Started => None,
@@ -162,8 +170,8 @@ pub(super) async fn record_call_activity(
 mod tests {
     use super::{
         call_activity_client_message_id, call_activity_content, call_activity_duration_seconds,
-        call_activity_message_kind, call_activity_text, call_duration, format_call_duration,
-        CallActivityEvent,
+        call_activity_message_kind, call_activity_started_at, call_activity_text, call_duration,
+        format_call_duration, CallActivityEvent,
     };
     use crate::calls::models::{CallKind, CallSnapshot, CallState};
     use chrono::{TimeZone, Utc};
@@ -219,7 +227,7 @@ mod tests {
         );
         assert_eq!(
             call_activity_text(&call(CallKind::Meeting), CallActivityEvent::Ended, None),
-            "The video chat ended. Duration 01:17."
+            "The video chat ended. Duration 01:22."
         );
     }
 
@@ -242,6 +250,16 @@ mod tests {
             }),
             None
         );
+    }
+
+    #[test]
+    fn meeting_activity_uses_creation_time_as_its_lifecycle_start() {
+        let mut meeting = call(CallKind::Meeting);
+        meeting.answered_at = None;
+
+        assert_eq!(call_activity_started_at(&meeting), Some(meeting.created_at));
+        assert_eq!(call_activity_duration_seconds(&meeting), Some(82));
+        assert_eq!(call_duration(&meeting).num_seconds(), 82);
     }
 
     #[test]

@@ -37,6 +37,7 @@ struct SessionDetailView: View {
     @State private var groupManagementPresentation: GroupManagementPresentation?
     @State private var groupInviteSpace: GroupSpaceSummary?
     @State private var relatedConversation: ConversationSummary?
+    @State private var callStartTask: Task<Void, Never>?
 
     init(conversation: ConversationSummary) {
         self.conversation = conversation
@@ -187,6 +188,7 @@ struct SessionDetailView: View {
                         kind: currentConversation.kind,
                         tint: heroTint,
                         notificationsMuted: notificationsMuted,
+                        isCallStarting: callCoordinator.isStartingCall,
                         onChat: dismiss.callAsFunction,
                         onCall: { startOrJoinCall(kind: .voice) },
                         onVideo: { startOrJoinCall(kind: .video) },
@@ -251,6 +253,11 @@ struct SessionDetailView: View {
         }
         .navigationDestination(item: $relatedConversation) { destination in
             ConversationView(conversation: destination)
+        }
+        .onDisappear {
+            callStartTask?.cancel()
+            callStartTask = nil
+            callCoordinator.cancelUnadmittedStart()
         }
         .alert(
             featureNotice?.title ?? "Feature unavailable",
@@ -428,7 +435,8 @@ struct SessionDetailView: View {
     }
 
     private func startOrJoinCall(kind: CloudCallKind) {
-        Task {
+        callStartTask?.cancel()
+        callStartTask = Task {
             if let call = model.activeCall(for: currentConversation) {
                 await callCoordinator.join(call, in: currentConversation)
             } else {
@@ -574,6 +582,7 @@ private struct SessionHeroActions: View {
     let kind: ConversationKind
     let tint: Color
     let notificationsMuted: Bool
+    let isCallStarting: Bool
     let onChat: () -> Void
     let onCall: () -> Void
     let onVideo: () -> Void
@@ -630,6 +639,7 @@ private struct SessionHeroActions: View {
                     isSelected: item == .mute && notificationsMuted,
                     action: { perform(item) }
                 )
+                .disabled(isCallStarting && (item == .call || item == .video))
             }
         }
     }
@@ -645,8 +655,8 @@ private struct SessionHeroActions: View {
     private func title(for item: SessionHeroAction) -> String {
         switch item {
         case .chat: "Chat"
-        case .call: "Call"
-        case .video: kind == .group ? "Video chat" : "Video"
+        case .call: isCallStarting ? "Starting…" : "Call"
+        case .video: isCallStarting ? "Starting…" : kind == .group ? "Video chat" : "Video"
         case .mute: notificationsMuted ? "Unmute" : "Mute"
         case .search: "Search"
         case .more: "More"

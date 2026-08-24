@@ -136,6 +136,7 @@ export function useCloudCallMedia({
     const refresh = () => { void rebuildMediaParticipants(room); };
     room.on(RoomEvent.Reconnecting, () => setPhase('reconnecting'));
     room.on(RoomEvent.Reconnected, () => {
+      setError(null);
       setPhase('connected');
       setConnectedAtMs((value) => value ?? Date.now());
       refresh();
