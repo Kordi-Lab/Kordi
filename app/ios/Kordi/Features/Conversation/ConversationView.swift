@@ -49,6 +49,7 @@ struct ConversationView: View {
     @State private var trackedMessageID: String?
     @State private var immediateBottomRequest = 0
     @State private var keyboardDismissRequest = 0
+    @State private var keyboardAvoidanceHeight: CGFloat = 0
     @State private var attachments: [PendingAttachment] = []
     @State private var photoGrouping: PhotoSendGrouping = .combined
     @State private var replySource: MessageActionSource?
@@ -537,6 +538,14 @@ struct ConversationView: View {
                 Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea(edges: .bottom)
             )
+            .padding(.bottom, keyboardAvoidanceHeight)
+            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
+                updateKeyboardAvoidance(from: $0)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { notification in
+                setKeyboardAvoidanceHeight(0, from: notification)
+            }
             .onChange(of: timeline.count) { oldCount, newCount in
                 visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(
                     currentLimit: visibleMessageLimit,
@@ -1218,6 +1227,31 @@ struct ConversationView: View {
     private func dismissComposerPickers() {
         isExpressivePickerPresented = false
         showAgentModel = false
+    }
+
+    private func updateKeyboardAvoidance(from notification: Notification) {
+        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
+              let window = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap(\.windows)
+                .first(where: \.isKeyWindow) else { return }
+        setKeyboardAvoidanceHeight(
+            ComposerKeyboardSurfaceLayout.avoidanceHeight(
+                keyboardFrame: window.convert(frame, from: nil),
+                windowBounds: window.bounds,
+                bottomSafeAreaInset: window.safeAreaInsets.bottom
+            ),
+            from: notification
+        )
+    }
+
+    private func setKeyboardAvoidanceHeight(_ height: CGFloat, from notification: Notification) {
+        guard keyboardAvoidanceHeight != height else { return }
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
+            as? TimeInterval ?? 0.25
+        withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
+            keyboardAvoidanceHeight = height
+        }
     }
 
     private func openCompanionPreviewIfReady() {

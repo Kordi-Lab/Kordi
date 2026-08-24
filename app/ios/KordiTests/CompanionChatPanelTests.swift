@@ -177,6 +177,26 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertEqual(ComposerKeyboardSurfaceLayout.fallbackHeight(verticalSizeClass: .regular), 300)
     }
 
+    func testComposerAvoidsOnlyDockedFullWidthKeyboards() {
+        let window = CGRect(x: 0, y: 0, width: 390, height: 844)
+
+        XCTAssertEqual(ComposerKeyboardSurfaceLayout.avoidanceHeight(
+            keyboardFrame: CGRect(x: 0, y: 500, width: 390, height: 344),
+            windowBounds: window,
+            bottomSafeAreaInset: 34
+        ), 310)
+        XCTAssertEqual(ComposerKeyboardSurfaceLayout.avoidanceHeight(
+            keyboardFrame: CGRect(x: 90, y: 500, width: 250, height: 220),
+            windowBounds: window,
+            bottomSafeAreaInset: 34
+        ), 0)
+        XCTAssertEqual(ComposerKeyboardSurfaceLayout.avoidanceHeight(
+            keyboardFrame: CGRect(x: 0, y: 844, width: 390, height: 344),
+            windowBounds: window,
+            bottomSafeAreaInset: 34
+        ), 0)
+    }
+
     func testExpressivePickerDoesNotOwnASecondLayoutAnimation() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

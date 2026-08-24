@@ -741,6 +741,8 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertFalse(source.contains(".safeAreaInset(edge: .bottom"))
         XCTAssertFalse(source.contains(".scrollDismissesKeyboard(.interactively)"))
         XCTAssertTrue(source.contains(".scrollDismissesKeyboard(.immediately)"))
+        XCTAssertTrue(source.contains(".padding(.bottom, keyboardAvoidanceHeight)"))
+        XCTAssertTrue(source.contains(".ignoresSafeArea(.keyboard, edges: .bottom)"))
         XCTAssertTrue(source.contains(".padding(.bottom, timelineVerticalInset)\n                                        .id(bottomAnchorID)"))
         XCTAssertTrue(source.contains("viewport.size.height - timelineVerticalInset"))
         XCTAssertTrue(source.contains(".padding(.top, timelineVerticalInset)"))

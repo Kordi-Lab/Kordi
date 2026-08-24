@@ -76,6 +76,21 @@ enum ComposerKeyboardSurfaceLayout {
     static func fallbackHeight(verticalSizeClass: UserInterfaceSizeClass?) -> CGFloat {
         verticalSizeClass == .compact ? 226 : 300
     }
+
+    static func avoidanceHeight(
+        keyboardFrame: CGRect,
+        windowBounds: CGRect,
+        bottomSafeAreaInset: CGFloat
+    ) -> CGFloat {
+        guard keyboardFrame.minX <= windowBounds.minX + 0.5,
+              keyboardFrame.maxX >= windowBounds.maxX - 0.5,
+              keyboardFrame.maxY >= windowBounds.maxY - 0.5 else { return 0 }
+        return contentHeight(
+            keyboardFrame: keyboardFrame,
+            windowBounds: windowBounds,
+            bottomSafeAreaInset: bottomSafeAreaInset
+        ) ?? 0
+    }
 }
 
 enum ComposerDraftPaneLayout {
