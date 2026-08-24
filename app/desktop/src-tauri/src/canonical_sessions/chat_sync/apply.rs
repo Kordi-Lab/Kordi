@@ -55,28 +55,11 @@ pub(super) fn load_state(
 ) -> Result<ChatSyncLocalState, String> {
     let cursor = load_cursor_state(conn, account_id)?;
     let conversations = load_conversations(conn, account_id)?;
-    // ponytail: direct-person scrollback still reads this projection; move it
-    // to canonical pages before bounding that branch to conversation heads.
     let mut message_statement = conn
         .prepare(
-            "SELECT message.snapshot_json
-             FROM chat_sync_messages AS message
-             JOIN (
-                 SELECT conversation_id, MAX(conversation_sequence) AS latest_sequence
-                 FROM chat_sync_messages
-                 WHERE account_id = ?1
-                 GROUP BY conversation_id
-             ) AS latest
-               ON latest.conversation_id = message.conversation_id
-             JOIN chat_sync_conversations AS conversation
-               ON conversation.account_id = message.account_id
-              AND conversation.conversation_id = message.conversation_id
-             WHERE message.account_id = ?1
-               AND (
-                   json_extract(conversation.snapshot_json, '$.kind') = 'direct'
-                   OR message.conversation_sequence = latest.latest_sequence
-               )
-             ORDER BY message.conversation_id ASC, message.conversation_sequence ASC",
+            "SELECT snapshot_json FROM chat_sync_messages
+             WHERE account_id = ?1
+             ORDER BY conversation_id ASC, conversation_sequence ASC",
         )
         .map_err(|error| error.to_string())?;
     let messages = message_statement
