@@ -9,6 +9,7 @@ import {
   cloudSelfAgentRequestClientMessageId,
   cloudSelfAgentResponseClientMessageId,
 } from '../src/features/cloud/cloudSelfAgentIdentity';
+import { cloudSelfAgentProcessingTextWouldRegress } from '../src/features/cloud/cloudSelfAgentResponseLifecycle';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/useCloudCollaborationState';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 
@@ -17,6 +18,11 @@ const account: CloudAccount = {
   avatarUrl: null,
     avatar: cloudAccountAvatarFixture, nodeId: 'node_me', passwordSet: true,
 };
+
+test('processing placeholder variants have no visible response text', () => {
+  assert.equal(cloudSelfAgentProcessingTextWouldRegress('Partial answer', 'Processing..'), true);
+  assert.equal(cloudSelfAgentProcessingTextWouldRegress('processing...', 'requesting…'), false);
+});
 
 function emptyState(messages: CanonicalSessionMessage[] = []): CanonicalSessionState {
   return {

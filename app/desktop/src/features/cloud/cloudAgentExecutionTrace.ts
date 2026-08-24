@@ -11,6 +11,7 @@ import type {
   CloudAgentResponseEnvelope,
 } from './cloudAgentMessages';
 import type { CloudMessage } from './authClient';
+import { isProcessingPlaceholderText } from '@/features/collaboration/agentPlaceholderText';
 
 function compactLabel(value: string, fallback: string): string {
   const cleaned = value
@@ -274,7 +275,7 @@ export function cloudAgentExecutionTurnSnapshot({
     status: execution.phase,
     message: execution.summary,
     assistantText: response.deliveryState === 'processing'
-      && response.text.trim() === 'processing...'
+      && isProcessingPlaceholderText(response.text)
       ? ''
       : response.text,
     thinkingText: execution.thinkingText ?? '',

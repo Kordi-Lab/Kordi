@@ -76,7 +76,7 @@ test('synced execution timeline renders only for the owning self-agent account',
     assistantText: '', thinkingText: 'provider reasoning', tools: [], completed: false, succeeded: false,
   }, 2_000);
   const body = encodeCloudAgentResponse({
-    requestId: 'msg_request', text: 'processing...', deliveryState: 'processing', execution,
+    requestId: 'msg_request', text: 'Processing..', deliveryState: 'processing', execution,
   });
   const message = (fromAccountId: string, sessionId: string) => cloudMessageToCollaborationMessage(account, {
     messageId: `msg_${fromAccountId}`, fromAccountId, toAccountId: 'acct_me', body,
@@ -84,6 +84,7 @@ test('synced execution timeline renders only for the owning self-agent account',
     direction: fromAccountId === 'acct_me' ? 'outgoing' : 'incoming', sessionId,
   });
   assert.equal(message('acct_me', 'session:self').localTurn?.thinkingText, 'provider reasoning');
+  assert.equal(message('acct_me', 'session:self').localTurn?.assistantText, '');
   assert.equal(message('acct_peer', 'session:direct').localTurn, null);
 });
 

@@ -19,6 +19,7 @@ import {
   canApplyCloudAgentTurnTransition,
   isTerminalCloudAgentTurn,
 } from '@/features/canonical/cloudAgentTurnLifecycle';
+import { isProcessingPlaceholderText } from '@/features/collaboration/agentPlaceholderText';
 
 export type CloudAgentRequestCandidate = {
   requestMessage: CanonicalSessionMessage;
@@ -349,7 +350,7 @@ export function setCloudGroupRequestPlaceholderProcessing(
         if (
           message.status === 'processing'
           && deliveryState === 'processing'
-          && message.contentText === 'processing...'
+          && isProcessingPlaceholderText(message.contentText)
         ) return [message];
         changed = true;
         return [{
