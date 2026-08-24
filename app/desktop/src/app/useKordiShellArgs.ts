@@ -261,6 +261,7 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         onClearChatQuote: args.onClearChatQuote,
         onReplyMessage: args.onReplyMessage,
         onForwardMessage: args.onForwardMessage,
+        onReactMessage: args.onReactMessage,
         onSelectMessage: args.onSelectMessage,
         messageSelectionMode: args.messageSelectionMode,
         selectedMessageCount: args.selectedMessageCount,

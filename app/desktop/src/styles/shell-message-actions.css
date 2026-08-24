@@ -2,6 +2,117 @@
   color: var(--app-sidebar-title-text);
 }
 
+.app-message-reaction-surface {
+  overflow: hidden;
+  margin-bottom: 0.25rem;
+  border: 1px solid var(--app-transient-border);
+  border-radius: 999px;
+  transition:
+    border-radius 220ms var(--app-motion-ease),
+    height 220ms var(--app-motion-ease);
+}
+
+.app-message-reaction-surface-expanded {
+  height: min(21rem, calc(100vh - 3rem));
+  border-radius: 1rem;
+}
+
+.app-message-reaction-quick-row {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0 0.25rem;
+}
+
+.app-message-reaction-quick,
+.app-message-reaction-expand {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 999px;
+}
+
+.app-message-reaction-quick > img,
+.app-message-reaction-quick > canvas {
+  width: 1.75rem;
+  height: 1.75rem;
+  object-fit: contain;
+}
+
+.app-message-reaction-expand {
+  margin-left: auto;
+  background: var(--app-transient-raised-bg);
+  color: var(--app-transient-text);
+}
+
+.app-message-reaction-expand > svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.app-message-reaction-quick:hover,
+.app-message-reaction-quick:focus-visible,
+.app-message-reaction-expand:hover,
+.app-message-reaction-expand:focus-visible {
+  background: var(--app-transient-hover-bg);
+}
+
+.app-message-reaction-surface-expanded .app-blob-emoji-picker {
+  height: calc(100% - 2.75rem);
+  border-top: 1px solid var(--app-transient-divider);
+}
+
+.app-message-reaction-chips {
+  display: flex;
+  max-width: 28rem;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  position: relative;
+  z-index: 1;
+  margin-top: -0.625rem;
+}
+
+.app-message-reaction-chips-peer {
+  margin-left: 2.25rem;
+}
+
+.app-message-reaction-chips-own {
+  margin-right: 2.25rem;
+}
+
+.app-message-reaction-chip {
+  display: inline-flex;
+  min-height: 1.75rem;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  background: var(--app-control-bg);
+  color: var(--utility-muted-text);
+  font-size: 0.6875rem;
+  font-weight: 650;
+}
+
+.app-message-reaction-chip > img,
+.app-message-reaction-chip > canvas {
+  width: 1.25rem;
+  height: 1.25rem;
+  object-fit: contain;
+}
+
+.app-message-reaction-chip:hover:not(:disabled),
+.app-message-reaction-chip:focus-visible:not(:disabled) {
+  background: var(--app-control-hover);
+  color: var(--utility-foreground);
+}
+
+.app-message-reaction-chip:disabled {
+  cursor: default;
+}
+
 .app-message-delivery-clock-face,
 .app-message-delivery-clock-hour-hand,
 .app-message-delivery-clock-minute-hand,

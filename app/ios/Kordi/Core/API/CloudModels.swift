@@ -731,6 +731,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     let messageKind: String?
     let conversationId: String?
     let conversationSequence: Int64?
+    let reactions: [MessageReaction]
 
     var id: String { messageId }
 
@@ -749,7 +750,8 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         attachments: [CloudMessageAttachment] = [],
         messageKind: String? = nil,
         conversationId: String? = nil,
-        conversationSequence: Int64? = nil
+        conversationSequence: Int64? = nil,
+        reactions: [MessageReaction] = []
     ) {
         self.messageId = messageId
         self.clientMessageId = clientMessageId
@@ -766,12 +768,13 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         self.messageKind = messageKind
         self.conversationId = conversationId
         self.conversationSequence = conversationSequence
+        self.reactions = reactions
     }
 
     enum CodingKeys: String, CodingKey {
         case messageId, clientMessageId, fromAccountId, toAccountId, body, createdAt, deliveredAt, readAt, readByAccountIds, direction, sessionId, attachments
         case messageKind = "kind"
-        case conversationId, conversationSequence
+        case conversationId, conversationSequence, reactions
     }
 
     init(from decoder: Decoder) throws {
@@ -791,6 +794,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         messageKind = try container.decodeIfPresent(String.self, forKey: .messageKind)
         conversationId = try container.decodeIfPresent(String.self, forKey: .conversationId)
         conversationSequence = try container.decodeIfPresent(Int64.self, forKey: .conversationSequence)
+        reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
     }
 }
 
@@ -895,6 +899,16 @@ struct CloudChatContent: Codable, Hashable {
     var body: String { blocks.map(\.text).joined() }
 }
 
+struct CloudChatReaction: Codable, Hashable {
+    let reaction: String
+    let accountIds: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case reaction
+        case accountIds = "account_ids"
+    }
+}
+
 struct CloudChatMessage: Codable, Hashable {
     let id: String
     let clientMessageId: String
@@ -911,6 +925,7 @@ struct CloudChatMessage: Codable, Hashable {
     let createdAt: String
     let editedAt: String?
     let deletedAt: String?
+    let reactions: [CloudChatReaction]?
 
     enum CodingKeys: String, CodingKey {
         case id, kind, content, version
@@ -925,6 +940,7 @@ struct CloudChatMessage: Codable, Hashable {
         case createdAt = "created_at"
         case editedAt = "edited_at"
         case deletedAt = "deleted_at"
+        case reactions
     }
 }
 

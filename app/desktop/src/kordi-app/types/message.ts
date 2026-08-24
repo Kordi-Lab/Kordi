@@ -131,6 +131,11 @@ export type MessageReadReceiptSummary = {
   participants: MessageReadReceiptParticipant[];
 };
 
+export type MessageReaction = {
+  value: string;
+  accountIds: string[];
+};
+
 export type MessageActionSource = {
   sourceSessionId: string;
   sourceMessageId: string;
@@ -214,6 +219,9 @@ export type Message = {
   replySummary?: MessageReplySummary;
   readReceiptSummary?: MessageReadReceiptSummary | null;
   messageAction?: MessageActionMetadata | null;
+  reactionConversationId?: string | null;
+  reactionTargetMessageId?: string | null;
+  reactions?: MessageReaction[];
   sourceMessage?: MessageSourceReference | null;
   turn?: DesktopChatTurnSnapshot;
   edit?: {

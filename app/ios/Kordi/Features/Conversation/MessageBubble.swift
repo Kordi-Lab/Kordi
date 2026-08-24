@@ -3,12 +3,16 @@ import SwiftUI
 import UIKit
 
 struct MessageBubble: View, Equatable {
+    static let reactionChipVerticalLift: CGFloat = 14
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let message: ChatMessage
     let mentionTargets: [ComposerMentionTarget]
     let showAuthor: Bool
     let showAvatar: Bool
     let replySourceMessage: ChatMessage?
     let isHighlighted: Bool
+    let isActionPresented: Bool
     let isPinned: Bool
     let selectionMode: Bool
     let isSelected: Bool
@@ -17,21 +21,25 @@ struct MessageBubble: View, Equatable {
     let authorAvatarName: String
     let authorAvatarSource: String?
     let authorAvatarSeed: String?
+    let ownAccountId: String?
+    let automaticallyPresentsActions: Bool
     let readByNames: [String]
     let backgroundSessions: [BackgroundAgentSessionPresentation]
     let onOpenAuthorProfile: () -> Void
     let onRetry: () async -> Void
-    let onReply: () -> Void
-    let onPin: () -> Void
-    let onForward: () -> Void
-    let onDetails: () -> Void
     let onSelect: () -> Void
+    let onOpenActions: (CGRect) -> Void
+    let onReact: (String) -> Void
     let onNavigateToReply: (String) -> Void
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
     let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
     @State private var isRetrying = false
+    @State private var actionFrame = CGRect.zero
+    @State private var didAutomaticallyPresentActions = false
+    @State private var isRequestingActionFrame = false
+    @GestureState private var isPressingActions = false
 
     static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message
@@ -40,6 +48,7 @@ struct MessageBubble: View, Equatable {
             && lhs.showAvatar == rhs.showAvatar
             && lhs.replySourceMessage == rhs.replySourceMessage
             && lhs.isHighlighted == rhs.isHighlighted
+            && lhs.isActionPresented == rhs.isActionPresented
             && lhs.isPinned == rhs.isPinned
             && lhs.selectionMode == rhs.selectionMode
             && lhs.isSelected == rhs.isSelected
@@ -48,6 +57,8 @@ struct MessageBubble: View, Equatable {
             && lhs.authorAvatarName == rhs.authorAvatarName
             && lhs.authorAvatarSource == rhs.authorAvatarSource
             && lhs.authorAvatarSeed == rhs.authorAvatarSeed
+            && lhs.ownAccountId == rhs.ownAccountId
+            && lhs.automaticallyPresentsActions == rhs.automaticallyPresentsActions
             && lhs.readByNames == rhs.readByNames
             && lhs.backgroundSessions == rhs.backgroundSessions
     }
@@ -131,43 +142,74 @@ struct MessageBubble: View, Equatable {
                                 lineWidth: isHighlighted ? 2 : 0
                             )
                     }
-                    .scaleEffect(isHighlighted ? 1.018 : 1)
-                    .animation(.snappy(duration: 0.24), value: isHighlighted)
+                    .scaleEffect(
+                        reduceMotion ? 1 : isActionPresented ? 1.016 : isHighlighted ? 1.018 : 1
+                    )
+                    .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: isHighlighted)
+                    .animation(
+                        reduceMotion
+                            ? nil
+                            : isActionPresented
+                                ? .smooth(duration: 0.22)
+                                : .easeOut(duration: 0.14),
+                        value: isActionPresented
+                    )
                     .contentShape(.contextMenuPreview, bubbleShape)
-                    .contextMenu {
-                        if allowsQuotedReplies {
-                            Button(action: onReply) {
-                                Label("Reply", systemImage: "arrowshape.turn.up.left")
+                    .onGeometryChange(for: CGRect.self) { [
+                        automaticallyPresentsActions,
+                        isActionPresented,
+                        isPressingActions,
+                        isRequestingActionFrame
+                    ] proxy in
+                        automaticallyPresentsActions || isActionPresented
+                            || isPressingActions || isRequestingActionFrame
+                            ? proxy.frame(in: .global)
+                            : .zero
+                    } action: { frame in
+                        if !frame.isEmpty, frame != actionFrame { actionFrame = frame }
+                        if isActionPresented, !frame.isEmpty { onOpenActions(frame) }
+                        if isRequestingActionFrame, !frame.isEmpty {
+                            isRequestingActionFrame = false
+                            onOpenActions(frame)
+                        }
+                        if automaticallyPresentsActions,
+                           !didAutomaticallyPresentActions,
+                           !frame.isEmpty {
+                            didAutomaticallyPresentActions = true
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .milliseconds(500))
+                                onOpenActions(actionFrame)
                             }
-                        }
-                        Button(action: onPin) {
-                            Label(isPinned ? "Unpin" : "Pin", systemImage: "pin")
-                        }
-                        .disabled(message.deliveryState == .sending || message.deliveryState == .failed)
-                        if !message.text.isEmpty {
-                            Button {
-                                UIPasteboard.general.string = message.text
-                            } label: {
-                                Label("Copy Text", systemImage: "doc.on.doc")
-                            }
-                        }
-                        Button(action: onForward) {
-                            Label("Forward", systemImage: "arrowshape.turn.up.right")
-                        }
-                        .disabled(message.deliveryState == .sending || message.deliveryState == .failed)
-                        Button(action: onDetails) {
-                            Label("Details", systemImage: "info.circle")
-                        }
-                        if message.author == .me, message.deliveryState == .read,
-                           (message.readByCount ?? 0) > 0 {
-                            Button(action: onDetails) {
-                                Label(readReceiptMenuLabel, systemImage: "eye")
-                            }
-                        }
-                        Button(action: onSelect) {
-                            Label("Select", systemImage: "checkmark.circle")
                         }
                     }
+                    .highPriorityGesture(
+                        LongPressGesture(minimumDuration: 0.32)
+                            .updating($isPressingActions) { current, state, _ in
+                                state = current
+                            }
+                            .onEnded { _ in
+                                guard !selectionMode else { return }
+                                Task { @MainActor in
+                                    await Task.yield()
+                                    guard !actionFrame.isEmpty else { return }
+                                    onOpenActions(actionFrame)
+                                }
+                            }
+                    )
+                    .accessibilityAction(named: "Show message actions") {
+                        guard !selectionMode else { return }
+                        isRequestingActionFrame = true
+                    }
+
+                if !message.reactions.isEmpty {
+                    MessageReactionChips(
+                        reactions: message.reactions,
+                        ownAccountId: ownAccountId,
+                        onReact: onReact
+                    )
+                    .offset(y: -Self.reactionChipVerticalLift)
+                    .padding(.bottom, -Self.reactionChipVerticalLift)
+                }
 
                 if !backgroundSessions.isEmpty {
                     BackgroundAgentSessionList(
@@ -206,6 +248,19 @@ struct MessageBubble: View, Equatable {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    static func allowsReactions(
+        for message: ChatMessage,
+        isPreviewMode: Bool = false
+    ) -> Bool {
+        !message.isSystemNotice
+            && message.callActivity == nil
+            && (isPreviewMode
+                || message.reactionTargetMessageId.flatMap(UUID.init(uuidString:)) != nil)
+            && message.deliveryState != .sending
+            && message.deliveryState != .failed
+            && (!message.text.isEmpty || !message.attachments.isEmpty)
     }
 
     @ViewBuilder
@@ -529,6 +584,68 @@ struct MessageBubble: View, Equatable {
             return "Read by \(readByNames.joined(separator: ", "))"
         }
         return "Read by \(readByNames[0]) and \(readByNames.count - 1) others"
+    }
+}
+
+private struct MessageReactionChips: View {
+    let reactions: [MessageReaction]
+    let ownAccountId: String?
+    let onReact: (String) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 4) {
+                ForEach(reactions) { reaction in
+                    Button {
+                        onReact(reaction.value)
+                    } label: {
+                        HStack(spacing: 4) {
+                            if let emoji = BlobEmojiCatalog.emoji(
+                                forReactionValue: reaction.value
+                            ) {
+                                BlobEmojiView(emoji: emoji, size: 22)
+                            } else {
+                                Text(reaction.value)
+                            }
+                            Text("\(reaction.accountIds.count)")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .padding(.horizontal, 9)
+                        .frame(minHeight: 32)
+                        .background(
+                            reaction.includes(accountId: ownAccountId)
+                                ? KordiTheme.agentViolet.opacity(0.14)
+                                : Color(uiColor: .tertiarySystemFill),
+                            in: Capsule()
+                        )
+                        .overlay {
+                            Capsule()
+                                .stroke(
+                                    reaction.includes(accountId: ownAccountId)
+                                        ? KordiTheme.agentViolet.opacity(0.36)
+                                        : Color.clear,
+                                    lineWidth: 1
+                                )
+                        }
+                        .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .frame(minHeight: 44)
+                    .accessibilityLabel(
+                        "\(reactionAccessibilityName(reaction.value)) reaction, \(reaction.accountIds.count) people"
+                    )
+                    .accessibilityValue(
+                        reaction.includes(accountId: ownAccountId) ? "You reacted" : ""
+                    )
+                    .accessibilityHint("Double tap to toggle this reaction")
+                }
+            }
+        }
+        .frame(maxWidth: 310, alignment: .leading)
+    }
+
+    private func reactionAccessibilityName(_ value: String) -> String {
+        BlobEmojiCatalog.emoji(forReactionValue: value)?.accessibilityName ?? value
     }
 }
 

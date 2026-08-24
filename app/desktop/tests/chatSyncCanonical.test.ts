@@ -43,6 +43,7 @@ const message: ChatSyncMessage = {
   created_at: '2026-08-10T07:20:00Z',
   edited_at: null,
   deleted_at: null,
+  reactions: [{ reaction: 'blob:blobwave', account_ids: ['acct_a'] }],
 };
 test('bootstrap returns a durable canonical local-apply batch', async () => {
   const calls: string[] = [];
@@ -169,6 +170,7 @@ test('canonical snapshots derive delivery and read state from monotonic member c
   assert.equal(mapped.conversationSequence, 8);
   assert.equal(mapped.deliveredAt, message.created_at);
   assert.equal(mapped.readAt, message.created_at);
+  assert.deepEqual(mapped.reactions, [{ value: 'blob:blobwave', accountIds: ['acct_a'] }]);
 });
 
 test('canonical history snapshots preserve original time and message kind', async () => {

@@ -16,6 +16,7 @@ use crate::chat_sync::models::{
     ConversationPreferencesResponse, ConversationResponse, CreateConversationRequest,
     CursorResponse, HistoryQuery, MessageResponse, RealtimeTicketResponse, SendMessageRequest,
     SyncQuery, SyncResponse, UpdateConversationTitleRequest, UpdatePersonalTitleRequest,
+    UpdateReactionRequest,
 };
 use crate::chat_sync::realtime;
 use crate::chat_sync::store::{self, StoreError};
@@ -26,8 +27,10 @@ const MAX_MESSAGE_CONTENT_BYTES: usize = 256 * 1024;
 const MAX_ATTACHMENTS_PER_MESSAGE: usize = 32;
 
 mod http;
+mod reaction;
 
 use http::*;
+use reaction::{add_reaction, remove_reaction};
 #[derive(Clone)]
 struct ChatSyncRuntime {
     cursor_codec: Option<CursorCodec>,
@@ -64,6 +67,10 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
         .route(
             "/v2/chat/conversations/:conversation_id/messages",
             get(history).post(send_message),
+        )
+        .route(
+            "/v2/chat/conversations/:conversation_id/messages/:message_id/reactions",
+            put(add_reaction).delete(remove_reaction),
         )
         .route(
             "/v2/chat/conversations/:conversation_id/delivered",

@@ -99,6 +99,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
       prepareCloudForwardAttachments,
       sendCloudCollaborationMessage,
       sendCloudGroupControl,
+      setCloudMessageReaction,
       refreshSharedCloudAgents,
       sharedCloudAgents,
       cloudAgentDefinitionsById,
@@ -191,6 +192,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     selectedMessageCount,
     onReplyMessage,
     onForwardMessage,
+    onReactMessage,
     onSelectMessage,
     isMessageSelectable,
     onToggleSelectedMessage,
@@ -219,6 +221,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
       prepareCloudForwardAttachments,
       sendCloudCollaborationMessage,
       sendCloudGroupControl,
+      setCloudMessageReaction,
     },
   });
 
@@ -434,6 +437,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
       selectedMessageCount,
       onReplyMessage,
       onForwardMessage,
+      onReactMessage,
       onSelectMessage,
       isMessageSelectable,
       onToggleSelectedMessage,

@@ -52,14 +52,20 @@ test('emoji insertion does not split an existing grapheme cluster', () => {
   );
 });
 
-test('composer uses emoji and private sticker and GIF libraries', () => {
+test('composer uses the complete Blob Emoji catalog and private sticker and GIF libraries', () => {
   const picker = readFileSync(
     new URL('../src/features/emoji/ComposerExpressivePicker.tsx', import.meta.url),
     'utf8',
   );
+  const catalog = JSON.parse(readFileSync(
+    new URL('../../../shared/blob-emoji/catalog.json', import.meta.url),
+    'utf8',
+  )) as { emoji: Array<{ animated: boolean }> };
 
-  assert.match(picker, /lazy\(\(\) => import\('emoji-picker-react'\)\)/);
-  assert.match(picker, /\['emoji', 'Emoji'\]/);
+  assert.equal(catalog.emoji.length, 547);
+  assert.equal(catalog.emoji.filter((emoji) => emoji.animated).length, 173);
+  assert.match(picker, /\['emoji', 'Blob Emoji'\]/);
+  assert.match(picker, /<BlobEmojiPicker/);
   assert.match(picker, /\['stickers', 'Stickers'\]/);
   assert.match(picker, /\['gifs', 'GIFs'\]/);
   assert.match(picker, /My Stickers/);
@@ -67,7 +73,7 @@ test('composer uses emoji and private sticker and GIF libraries', () => {
   assert.match(picker, /STICKER_FILE_ACCEPT/);
   assert.match(picker, /GIF_FILE_ACCEPT/);
   assert.match(picker, /sendMedia\(expressiveMediaAttachment\(item\)\)/);
-  assert.match(picker, /emojiStyle=\{'native' as EmojiStyle\}/);
+  assert.doesNotMatch(picker, /emoji-picker-react|EmojiStyle/);
   assert.doesNotMatch(picker, /PublicMemeGrid|PublicGifGrid|Public Stickers|Public GIFs/);
 });
 

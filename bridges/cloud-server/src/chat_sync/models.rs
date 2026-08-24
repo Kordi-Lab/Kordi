@@ -77,6 +77,14 @@ pub struct MessageSnapshot {
     pub created_at: DateTime<Utc>,
     pub edited_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub reactions: Vec<ReactionSnapshot>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ReactionSnapshot {
+    pub reaction: String,
+    pub account_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -109,6 +117,11 @@ pub struct SendMessageRequest {
     pub reply_to_message_id: Option<Uuid>,
     #[serde(default)]
     pub attachment_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct UpdateReactionRequest {
+    pub reaction: String,
 }
 
 fn default_message_kind() -> String {

@@ -11,9 +11,6 @@ configs:
   Debug: debug
   Release: release
 packages:
-  EmojiKit:
-    url: https://github.com/danielsaidi/EmojiKit.git
-    exactVersion: 2.5.0
   LiveKit:
     url: https://github.com/livekit/client-sdk-swift.git
     from: 2.16.0
@@ -34,6 +31,9 @@ targets:
       - path: Kordi
         excludes:
           - Supporting/Preview Content
+          - Resources/blob-emoji
+      - path: Kordi/Resources/blob-emoji
+        type: folder
     resources:
       - path: Kordi/Resources/Assets.xcassets
       - path: Kordi/Supporting/Preview Content
@@ -109,7 +109,6 @@ targets:
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
           APNS_ENVIRONMENT: production
     dependencies:
-      - package: EmojiKit
       - package: LiveKit
   KordiTests:
     type: bundle.unit-test

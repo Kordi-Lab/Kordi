@@ -147,10 +147,30 @@ export function useCloudDirectMessaging({
     );
   }, [client]);
 
+  const setReaction = useCallback(async (input: {
+    conversationId: string;
+    messageId: string;
+    reaction: string;
+    active: boolean;
+  }) => {
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    const message = await client.setReaction(
+      session.token,
+      input.conversationId,
+      input.messageId,
+      input.reaction,
+      input.active,
+    );
+    mergeMessage(message);
+    return message;
+  }, [client, mergeMessage]);
+
   return {
     mergeMessage,
     prepareForwardAttachments,
     sendMessage,
+    setReaction,
     updateSessionTitle,
   };
 }

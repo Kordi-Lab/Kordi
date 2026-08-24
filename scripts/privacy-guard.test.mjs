@@ -64,6 +64,7 @@ test('path rules allow examples, source schemas, and synthetic visual baselines'
     '.env.example',
     'deploy/dev/operator-github-allowlist.example.txt',
     'shared/chat-sync/schemas/message.schema.json',
+    'shared/blob-emoji/assets/blobwave.webp',
     'app/desktop/tests/visual/__screenshots__/transient-surfaces-dark.png',
   ];
   for (const repositoryPath of safe) {

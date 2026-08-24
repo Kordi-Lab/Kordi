@@ -11,15 +11,6 @@
       }
     },
     {
-      "identity" : "emojikit",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/danielsaidi/EmojiKit.git",
-      "state" : {
-        "revision" : "e615f635e0b45f852c37b3f7a42e17a2ce1857a9",
-        "version" : "2.5.0"
-      }
-    },
-    {
       "identity" : "livekit-uniffi-xcframework",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/livekit/livekit-uniffi-xcframework.git",

@@ -610,4 +610,21 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(conversation.forkedFromSessionId, "session:self-agent:root")
         XCTAssertEqual(conversation.forkedFromMessageId, "msg_root")
     }
+
+    func testCanonicalMessageDecodesGroupedReactionActors() throws {
+        let payload = Data(#"{"id":"msg_1","client_message_id":"client_1","conversation_id":"conversation_1","conversation_sequence":1,"sender_account_id":"acct_peer","kind":"text","content":{"schema":1,"blocks":[{"type":"text","text":"Hello"}]},"reply_to_message_id":null,"attachment_ids":[],"version":1,"generation_status":null,"provider_response_id":null,"created_at":"2026-08-24T00:00:00Z","edited_at":null,"deleted_at":null,"reactions":[{"reaction":"👍","account_ids":["acct_a","acct_b"]}]}"#.utf8)
+
+        let message = try JSONDecoder().decode(CloudChatMessage.self, from: payload)
+
+        XCTAssertEqual(message.reactions?.first?.reaction, "👍")
+        XCTAssertEqual(message.reactions?.first?.accountIds, ["acct_a", "acct_b"])
+    }
+
+    func testCachedLegacyMessageDefaultsMissingReactionsToEmpty() throws {
+        let payload = Data(#"{"messageId":"msg_legacy","fromAccountId":"acct_peer","toAccountId":"acct_me","body":"Hello","createdAt":"2026-08-24T00:00:00Z","deliveredAt":null,"readAt":null,"direction":"incoming","sessionId":"session_1","attachments":[]}"#.utf8)
+
+        let message = try JSONDecoder().decode(CloudMessageDTO.self, from: payload)
+
+        XCTAssertTrue(message.reactions.isEmpty)
+    }
 }

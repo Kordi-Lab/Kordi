@@ -32,6 +32,8 @@ GET  /v2/chat/conversations
 POST /v2/chat/conversations
 GET  /v2/chat/conversations/:conversationId/messages
 POST /v2/chat/conversations/:conversationId/messages
+PUT  /v2/chat/conversations/:conversationId/messages/:messageId/reactions
+DELETE /v2/chat/conversations/:conversationId/messages/:messageId/reactions
 PUT  /v2/chat/conversations/:conversationId/delivered
 PUT  /v2/chat/conversations/:conversationId/read
 PUT  /v2/chat/conversations/:conversationId/preferences

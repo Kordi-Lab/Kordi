@@ -158,6 +158,7 @@ pub(super) fn apply_event(
             | "message.created"
             | "message.updated"
             | "message.deleted"
+            | "reaction.updated"
             | "delivery_cursor.updated"
             | "read_cursor.updated"
             | "generation.updated"

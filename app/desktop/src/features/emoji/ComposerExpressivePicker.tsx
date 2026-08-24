@@ -1,16 +1,9 @@
 import {
-  lazy,
-  Suspense,
   useEffect,
   useRef,
   useState,
 } from 'react';
 import { Film, ImagePlus, Search, Smile } from 'lucide-react';
-import type {
-  EmojiClickData,
-  EmojiStyle,
-  Theme,
-} from 'emoji-picker-react';
 
 import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
@@ -18,6 +11,8 @@ import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
 import { cn } from '@/lib/utils';
 import type { EmojiTextSelection } from './emojiText';
+import { BlobEmojiPicker } from './BlobEmojiPicker';
+import { blobEmojiInlineToken } from './blobEmoji';
 import {
   addFilesToExpressiveMediaLibrary,
   expressiveMediaAttachment,
@@ -29,8 +24,6 @@ import {
   type ExpressiveMediaKind,
 } from './expressiveMediaLibrary';
 
-const EmojiPicker = lazy(() => import('emoji-picker-react'));
-
 type PickerTab = 'emoji' | 'stickers' | 'gifs';
 
 type ComposerExpressivePickerProps = {
@@ -39,14 +32,6 @@ type ComposerExpressivePickerProps = {
   onSendMedia: (attachment: AttachmentItem) => Promise<void> | void;
   accountId?: string | null;
 };
-
-function PickerLoading({ label }: { label: string }) {
-  return (
-    <div className="app-expressive-picker-empty" role="status">
-      {label}
-    </div>
-  );
-}
 
 function libraryKind(tab: Exclude<PickerTab, 'emoji'>): ExpressiveMediaKind {
   return tab === 'stickers' ? 'sticker' : 'gif';
@@ -61,7 +46,6 @@ export function ComposerExpressivePicker({
   const [isOpen, setIsOpen] = useState(false);
   const [tab, setTab] = useState<PickerTab>('emoji');
   const [query, setQuery] = useState('');
-  const [isLightTheme, setIsLightTheme] = useState(false);
   const [library, setLibrary] = useState(() => (
     readExpressiveMediaLibrary(undefined, accountId)
   ));
@@ -179,12 +163,11 @@ export function ComposerExpressivePicker({
           if (opening) {
             setLibrary(readExpressiveMediaLibrary(undefined, accountId));
             void synchronizeLibrary();
-            setIsLightTheme(Boolean(rootRef.current?.closest('.kordi-app')?.classList.contains('theme-light')));
           }
           setIsOpen(opening);
         }}
-        title="Emoji, stickers, and GIFs"
-        aria-label="Emoji, stickers, and GIFs"
+        title="Blob Emoji, stickers, and GIFs"
+        aria-label="Blob Emoji, stickers, and GIFs"
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         data-expressive-picker-trigger="true"
@@ -196,13 +179,13 @@ export function ComposerExpressivePicker({
         <section
           className="app-expressive-picker app-composer-popover app-transient-surface"
           role="dialog"
-          aria-label="Emoji, stickers, and GIF picker"
+          aria-label="Blob Emoji, stickers, and GIF picker"
           aria-busy={isMediaBusy}
           data-expressive-picker="true"
         >
           <div className="app-expressive-picker-tabs" role="tablist" aria-label="Media type">
             {([
-              ['emoji', 'Emoji'],
+              ['emoji', 'Blob Emoji'],
               ['stickers', 'Stickers'],
               ['gifs', 'GIFs'],
             ] as const).map(([value, label]) => (
@@ -221,20 +204,7 @@ export function ComposerExpressivePicker({
 
           {tab === 'emoji' ? (
             <div className="app-expressive-picker-emoji-library" role="tabpanel">
-              <Suspense fallback={<PickerLoading label="Loading emoji…" />}>
-                <EmojiPicker
-                  width="100%"
-                  height="100%"
-                  theme={(isLightTheme ? 'light' : 'dark') as Theme}
-                  emojiStyle={'native' as EmojiStyle}
-                  lazyLoadEmojis
-                  autoFocusSearch
-                  searchPlaceholder="Search emoji"
-                  searchClearButtonLabel="Clear emoji search"
-                  previewConfig={{ showPreview: true }}
-                  onEmojiClick={(emoji: EmojiClickData) => selectText(emoji.emoji)}
-                />
-              </Suspense>
+              <BlobEmojiPicker onSelect={(emoji) => selectText(blobEmojiInlineToken(emoji))} />
             </div>
           ) : (
             <div className="app-expressive-picker-media-panel" role="tabpanel">

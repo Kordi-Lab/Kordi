@@ -103,10 +103,12 @@ final class CachedMessageRecord {
     var readByAccountIdsJSON: String?
     var attachmentsJSON: String?
     var replyToMessageId: String?
+    var reactionTargetMessageId: String?
     var messageActionJSON: String?
     var messageKind: String?
     var agentExecutionJSON: String?
     var backgroundAgentSessionsJSON: String?
+    var reactionsJSON: String?
 
     init(accountId: String, message: ChatMessage) {
         id = scopedCacheRecordID(accountId: accountId, entityId: message.id)
@@ -125,10 +127,12 @@ final class CachedMessageRecord {
         readByAccountIdsJSON = Self.encode(message.readByAccountIds)
         attachmentsJSON = Self.encode(message.attachments)
         replyToMessageId = message.replyToMessageId
+        reactionTargetMessageId = message.reactionTargetMessageId
         messageActionJSON = Self.encode(message.messageAction)
         messageKind = message.messageKind
         agentExecutionJSON = Self.encode(message.agentExecution)
         backgroundAgentSessionsJSON = Self.encode(message.backgroundAgentSessions)
+        reactionsJSON = Self.encode(message.reactions)
     }
 
     func update(from message: ChatMessage) {
@@ -145,10 +149,12 @@ final class CachedMessageRecord {
         readByAccountIdsJSON = Self.encode(message.readByAccountIds)
         attachmentsJSON = Self.encode(message.attachments)
         replyToMessageId = message.replyToMessageId
+        reactionTargetMessageId = message.reactionTargetMessageId
         messageActionJSON = Self.encode(message.messageAction)
         messageKind = message.messageKind
         agentExecutionJSON = Self.encode(message.agentExecution)
         backgroundAgentSessionsJSON = Self.encode(message.backgroundAgentSessions)
+        reactionsJSON = Self.encode(message.reactions)
     }
 
     var value: ChatMessage? {
@@ -170,6 +176,7 @@ final class CachedMessageRecord {
             readByAccountIds: Self.decode([String].self, from: readByAccountIdsJSON) ?? [],
             attachments: Self.decode([ChatAttachment].self, from: attachmentsJSON) ?? [],
             replyToMessageId: replyToMessageId,
+            reactionTargetMessageId: reactionTargetMessageId,
             messageAction: Self.decode(MessageActionMetadata.self, from: messageActionJSON),
             messageKind: messageKind,
             agentExecution: Self.decode(
@@ -179,7 +186,8 @@ final class CachedMessageRecord {
             backgroundAgentSessions: Self.decode(
                 [BackgroundAgentSession].self,
                 from: backgroundAgentSessionsJSON
-            ) ?? []
+            ) ?? [],
+            reactions: Self.decode([MessageReaction].self, from: reactionsJSON) ?? []
         )
     }
 

@@ -541,7 +541,7 @@
   },
   "src/kordi-app/components/transcript.tsx": {
     "@typescript-eslint/no-misused-promises": {
-      "count": 2
+      "count": 1
     },
     "@typescript-eslint/no-unused-vars": {
       "count": 1

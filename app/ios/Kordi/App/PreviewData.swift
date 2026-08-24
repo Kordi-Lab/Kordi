@@ -361,7 +361,7 @@ enum PreviewData {
         messages.append(contentsOf: [
             ChatMessage(id: "m3", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "The rollout notes are ready.", createdAt: now.addingTimeInterval(-3_600), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
             ChatMessage(id: "m4", conversationId: conversationId, author: .me, authorName: "You", text: "Great — I’ll review them after lunch.", createdAt: now.addingTimeInterval(-3_400), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
-            ChatMessage(id: "m5", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "Can you send the latest numbers?", createdAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(id: "m5", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "Can you send the latest numbers?", createdAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil, reactionTargetMessageId: "018f47c2-9f4c-7a5e-b001-000000000005"),
         ])
         messages.append(contentsOf: previewMediaMessages(now: now))
         return messages

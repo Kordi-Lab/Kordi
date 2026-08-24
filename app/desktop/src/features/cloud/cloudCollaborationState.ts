@@ -235,7 +235,7 @@ export function cloudMessageToCollaborationMessage(
     attachments: (message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment),
     mentions: agentResponse ? undefined : cloudDirectMessageMentions(message.body),
     messageAction: directMessageAction,
-    messageKind: message.messageKind ?? null,
+    messageKind: message.messageKind ?? null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, reactions: message.reactions ?? [],
     localTurn: agentResponse?.requestId
       ? options.localAgentTurnsByRequestId?.[agentResponse.requestId]
         ?? syncedExecutionTurn

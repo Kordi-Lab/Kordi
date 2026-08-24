@@ -139,6 +139,53 @@ test('sendMessage uses canonical conversation identity and canonical idempotent 
   assert.equal(sent.attachments?.[0]?.attachmentId, 'att_1');
 });
 
+test('setReaction restores a missing conversation cache before mutating', async () => {
+  const conversation = chatConversation();
+  const message = {
+    id: '019cb2c9-0a77-7d84-b81b-97042279ad3d',
+    client_message_id: '019cb2c8-d133-7e52-b797-ad871be09d66',
+    conversation_id: conversation.id,
+    conversation_sequence: 1,
+    sender_account_id: 'acct_peer',
+    kind: 'text',
+    content: { schema: 1, blocks: [{ type: 'text', text: 'React here' }] },
+    reply_to_message_id: null,
+    attachment_ids: [],
+    version: 1,
+    generation_status: null,
+    provider_response_id: null,
+    created_at: '2026-05-12T00:00:00Z',
+    edited_at: null,
+    deleted_at: null,
+    reactions: [{ reaction: 'blob:blobwave', account_ids: ['acct_me'] }],
+  };
+  const { calls, fetchImpl } = recordingFetch((call) => (
+    call.url.endsWith('/sync/bootstrap')
+      ? jsonResponse(200, {
+          protocol_version: 2,
+          conversations: [conversation],
+          latest_messages: [],
+          next_cursor: 'opaque',
+          last_stream_seq: 1,
+          server_time: '2026-05-12T00:00:00Z',
+        })
+      : jsonResponse(200, { message })
+  ));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const updated = await client.setReaction(
+    'kordi_cs_xyz',
+    conversation.id,
+    message.id,
+    'blob:blobwave',
+    true,
+  );
+
+  assert.equal(calls[0].url, 'http://srv/v2/chat/sync/bootstrap');
+  assert.equal(calls[1].url, `http://srv/v2/chat/conversations/${conversation.id}/messages/${message.id}/reactions`);
+  assert.deepEqual(updated.reactions, [{ value: 'blob:blobwave', accountIds: ['acct_me'] }]);
+});
+
 test('sendMessage round-trips meme subtype and alt text in canonical attachment metadata', async () => {
   let sentContent: Record<string, unknown> | null = null;
   const { fetchImpl } = recordingFetch((call) => {

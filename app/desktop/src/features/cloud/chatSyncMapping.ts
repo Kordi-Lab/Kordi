@@ -299,6 +299,10 @@ export function cloudMessageFromChatSync(
     canonicalHistoryLocalMessageId:
       canonicalHistory?.localMessageId ?? null,
     version: message.version,
+    reactions: (message.reactions ?? []).map((reaction) => ({
+      value: reaction.reaction,
+      accountIds: reaction.account_ids,
+    })),
   };
 }
 

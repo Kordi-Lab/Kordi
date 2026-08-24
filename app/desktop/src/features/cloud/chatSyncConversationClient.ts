@@ -236,6 +236,37 @@ export class ChatSyncConversationClient {
     return delivered;
   }
 
+  async setReaction(
+    token: string,
+    conversationId: string,
+    messageId: string,
+    reaction: string,
+    active: boolean,
+  ): Promise<CloudMessage> {
+    let conversation = this.state.conversationById.get(conversationId);
+    if (!conversation) {
+      await this.state.bootstrap(token);
+      conversation = this.state.conversationById.get(conversationId);
+    }
+    if (!conversation) throw new Error('This conversation is unavailable for reliable chat sync.');
+    const response = await this.state.send<{ message: ChatSyncMessage }>(
+      `/v2/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/reactions`,
+      {
+        method: active ? 'PUT' : 'DELETE',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reaction }),
+      },
+      active ? 'Could not add the reaction.' : 'Could not remove the reaction.',
+    );
+    if (!response?.message) throw new Error('Empty response from chat sync server.');
+    this.state.messageById.set(response.message.id, response.message);
+    return cloudMessageFromChatSync(
+      response.message,
+      conversation,
+      conversation.preferences.account_id,
+    );
+  }
+
   async markMessagesRead(token: string, peerAccountId: string): Promise<void> {
     const accountId = this.state.activeAccountId;
     if (!accountId) throw new Error('Cloud account identity is unavailable.');

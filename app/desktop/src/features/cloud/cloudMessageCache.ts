@@ -116,6 +116,15 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
   const version = Number.isSafeInteger(record.version)
     && Number(record.version) > 0 ? Number(record.version) : null;
   const readByAccountIds = normalizeCloudReaderAccountIds(record.readByAccountIds);
+  const reactions = Array.isArray(record.reactions)
+    ? record.reactions.flatMap((value) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+        const reaction = value as Record<string, unknown>;
+        const emoji = cleanText(reaction.value);
+        const accountIds = normalizeCloudReaderAccountIds(reaction.accountIds);
+        return emoji && accountIds ? [{ value: emoji, accountIds }] : [];
+      })
+    : [];
   return {
     messageId,
     fromAccountId,
@@ -134,6 +143,7 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     ...(conversationSequence ? { conversationSequence } : {}),
     ...(version ? { version } : {}),
     ...(attachments.length > 0 ? { attachments } : {}),
+    ...(reactions.length > 0 ? { reactions } : {}),
   };
 }
 

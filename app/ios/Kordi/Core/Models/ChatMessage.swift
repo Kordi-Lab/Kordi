@@ -779,6 +779,17 @@ enum ChatCallActivityTimeline {
     }
 }
 
+struct MessageReaction: Identifiable, Codable, Hashable {
+    let value: String
+    var accountIds: [String]
+
+    var id: String { value }
+
+    func includes(accountId: String?) -> Bool {
+        accountId.map(accountIds.contains) ?? false
+    }
+}
+
 struct ChatMessage: Identifiable, Codable, Hashable {
     static let agentModelChangeMessageKind = "agent-model-change"
     static let groupMemberJoinMessageKind = "group-member-joined"
@@ -836,11 +847,13 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var readByAccountIds: [String]
     var attachments: [ChatAttachment]
     var replyToMessageId: String?
+    var reactionTargetMessageId: String?
     var messageAction: MessageActionMetadata?
     var messageKind: String?
     var agentExecution: AgentExecutionSnapshot?
     var backgroundAgentSessions: [BackgroundAgentSession]
     var mentions: [MessageMention]
+    var reactions: [MessageReaction]
 
     var callActivity: ChatCallActivity? {
         ChatCallActivity(messageKind: messageKind)
@@ -886,11 +899,13 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         readByAccountIds: [String] = [],
         attachments: [ChatAttachment] = [],
         replyToMessageId: String? = nil,
+        reactionTargetMessageId: String? = nil,
         messageAction: MessageActionMetadata? = nil,
         mentions: [MessageMention] = [],
         messageKind: String? = nil,
         agentExecution: AgentExecutionSnapshot? = nil,
-        backgroundAgentSessions: [BackgroundAgentSession] = []
+        backgroundAgentSessions: [BackgroundAgentSession] = [],
+        reactions: [MessageReaction] = []
     ) {
         self.id = id
         self.clientMessageId = clientMessageId
@@ -907,11 +922,13 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.readByAccountIds = readByAccountIds
         self.attachments = attachments
         self.replyToMessageId = replyToMessageId
+        self.reactionTargetMessageId = reactionTargetMessageId
         self.messageAction = messageAction
         self.messageKind = messageKind
         self.agentExecution = agentExecution
         self.backgroundAgentSessions = backgroundAgentSessions
         self.mentions = mentions
+        self.reactions = reactions
     }
 
     var actionSource: MessageActionSource {
@@ -948,11 +965,12 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, clientMessageId, conversationId, conversationSequence, author, authorName, text, createdAt, deliveryState, errorMessage
-        case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, messageAction
+        case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, reactionTargetMessageId, messageAction
         case messageKind
         case agentExecution
         case backgroundAgentSessions
         case mentions
+        case reactions
     }
 
     init(from decoder: Decoder) throws {
@@ -972,6 +990,10 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         readByAccountIds = try container.decodeIfPresent([String].self, forKey: .readByAccountIds) ?? []
         attachments = try container.decodeIfPresent([ChatAttachment].self, forKey: .attachments) ?? []
         replyToMessageId = try container.decodeIfPresent(String.self, forKey: .replyToMessageId)
+        reactionTargetMessageId = try container.decodeIfPresent(
+            String.self,
+            forKey: .reactionTargetMessageId
+        )
         messageAction = try container.decodeIfPresent(MessageActionMetadata.self, forKey: .messageAction)
         messageKind = try container.decodeIfPresent(String.self, forKey: .messageKind)
         agentExecution = try container.decodeIfPresent(
@@ -983,5 +1005,6 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             forKey: .backgroundAgentSessions
         ) ?? []
         mentions = try container.decodeIfPresent([MessageMention].self, forKey: .mentions) ?? []
+        reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
     }
 }

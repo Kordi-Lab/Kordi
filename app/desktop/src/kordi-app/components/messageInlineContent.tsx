@@ -2,6 +2,7 @@ import { Fragment, memo, useMemo, useState, type ReactNode } from 'react';
 import { Globe2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { BlobEmojiImage } from '@/features/emoji/BlobEmojiImage';
 import type { MessageMention } from '../types';
 import {
   openExternalMessageLink,
@@ -91,6 +92,15 @@ export function MessageInlineContent({
 }) {
   const parts = useMemo(() => parseMessageInlineParts(text, mentions), [mentions, text]);
   return parts.map((part) => {
+    if (part.type === 'blobEmoji') {
+      return (
+        <BlobEmojiImage
+          key={`blob-${part.start}`}
+          emoji={part.emoji}
+          className="app-inline-blob-emoji"
+        />
+      );
+    }
     if (part.type === 'mention') {
       return (
         <span

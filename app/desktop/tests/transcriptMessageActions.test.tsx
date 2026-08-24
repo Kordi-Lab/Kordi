@@ -266,7 +266,6 @@ test('message context menu actions stay flat at rest and retain interaction feed
     msg: message,
     onReplyMessage: () => undefined,
     onForwardMessage: () => undefined,
-    onOpenMessageDetail: () => undefined,
     onSelectMessage: () => undefined,
     onRequestPinMessage: () => undefined,
   }));
@@ -274,7 +273,7 @@ test('message context menu actions stay flat at rest and retain interaction feed
   const actionClasses = [...markup.matchAll(/data-message-context-menu-action="[^"]+" class="([^"]+)"/g)]
     .map((match) => match[1]);
 
-  assert.equal(actionClasses.length, 6);
+  assert.equal(actionClasses.length, 5);
   for (const className of actionClasses) {
     assert.match(className, /(?:^|\s)app-transient-flat-action(?:\s|$)/);
     assert.doesNotMatch(className, /(?:^|\s)app-transient-row(?:\s|$)/);
@@ -282,6 +281,81 @@ test('message context menu actions stay flat at rest and retain interaction feed
   assert.match(markup, /app-transient-surface/);
   assert.match(css, /\.app-transient-surface \.app-transient-flat-action \{[\s\S]*?background:\s*transparent;/);
   assert.match(css, /\.app-transient-surface \.app-transient-flat-action:hover,[\s\S]*?\.app-transient-surface \.app-transient-flat-action:focus-visible \{[\s\S]*?background:\s*var\(--app-transient-hover-bg\);/);
+});
+
+test('message context menu shows Blob Emoji reactions for synced messages', () => {
+  const message: Message = {
+    id: 'msg:blob-reaction',
+    role: 'person',
+    sender: 'Alice',
+    senderType: 'human',
+    text: 'React to me',
+    time: '10:42',
+    reactionConversationId: 'conversation-id',
+    reactionTargetMessageId: 'message-id',
+    reactions: [{ value: 'blob:blobwave', accountIds: ['alice'] }],
+  };
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: message,
+    onReactMessage: () => undefined,
+  }));
+
+  assert.match(markup, /data-message-context-menu-reactions="true"/);
+  assert.match(markup, /w-\[17\.5rem\]/);
+  assert.match(markup, /Show all reactions/);
+  assert.match(markup, /blob-emoji\/assets\//);
+  assert.doesNotMatch(markup, />Details</);
+});
+
+test('message reaction expansion chooses All when no Blob Emoji history exists', () => {
+  const source = readFileSync(
+    new URL('../src/kordi-app/components/messageReactions.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /initialCategory=\{recentReactions\.length \? 'recent' : 'all'\}/);
+  assert.doesNotMatch(source, /initialCategory=\{quickReactions\.length/);
+});
+
+test('message reaction retry clears a previous error before sending', () => {
+  const source = readFileSync(
+    new URL('../src/app/useKordiMessageActions.ts', import.meta.url),
+    'utf8',
+  );
+  const handler = source.slice(
+    source.indexOf('const onReactMessage'),
+    source.indexOf('const {', source.indexOf('const onReactMessage')),
+  );
+
+  assert.match(handler, /setDesktopChatError\(null\);\s*try \{\s*await setCloudMessageReaction/);
+});
+
+test('message reactions tuck under the bubble and clear the avatar', () => {
+  const peer: Message = {
+    id: 'peer-reaction',
+    role: 'person',
+    sender: 'Maya',
+    senderType: 'human',
+    text: 'React here',
+    time: '19:09',
+    reactions: [{ value: 'blob:blobwave', accountIds: ['maya'] }],
+  };
+  const own: Message = {
+    ...peer,
+    id: 'own-reaction',
+    role: 'user',
+    sender: 'Me',
+    isOwnMessage: true,
+  };
+  const peerMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: peer }));
+  const ownMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: own }));
+  const css = readDesktopShellCss();
+
+  assert.match(peerMarkup, /app-message-reaction-chips-peer/);
+  assert.match(ownMarkup, /app-message-reaction-chips-own/);
+  assert.match(css, /\.app-message-reaction-chips \{[\s\S]*?margin-top:\s*-0\.625rem;/);
+  assert.match(css, /\.app-message-reaction-chips-peer \{[\s\S]*?margin-left:\s*2\.25rem;/);
+  assert.match(css, /\.app-message-reaction-chips-own \{[\s\S]*?margin-right:\s*2\.25rem;/);
 });
 
 test('message context menu exposes only wired actions for eligible messages', () => {

@@ -1614,6 +1614,80 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func toggleReaction(
+        _ reaction: String,
+        on message: ChatMessage,
+        in conversation: ConversationSummary
+    ) async -> Bool {
+        let accountId = account?.accountId ?? "preview-self"
+        let wasActive = message.reactions
+            .first(where: { $0.value == reaction })?
+            .includes(accountId: accountId) == true
+        updateMessageReaction(
+            reaction,
+            accountId: accountId,
+            active: !wasActive,
+            messageId: message.id,
+            conversationId: message.conversationId
+        )
+        if previewMode { return true }
+        guard let token, account?.accountId != nil else {
+            updateMessageReaction(
+                reaction,
+                accountId: accountId,
+                active: wasActive,
+                messageId: message.id,
+                conversationId: message.conversationId
+            )
+            return false
+        }
+        do {
+            let updated = try await api.setReaction(
+                token: token,
+                sessionId: conversation.sessionId,
+                messageId: message.reactionTargetMessageId ?? message.id,
+                reaction: reaction,
+                active: !wasActive
+            )
+            mergeCloudMessage(updated, peerHint: conversation.peerAccountId)
+            return true
+        } catch {
+            updateMessageReaction(
+                reaction,
+                accountId: accountId,
+                active: wasActive,
+                messageId: message.id,
+                conversationId: message.conversationId
+            )
+            errorMessage = userFacing(error, fallback: "Could not update the reaction.")
+            return false
+        }
+    }
+
+    nonisolated static func updatingReaction(
+        _ value: String,
+        accountId: String,
+        active: Bool,
+        in reactions: [MessageReaction]
+    ) -> [MessageReaction] {
+        var accountsByReaction: [String: Set<String>] = [:]
+        for reaction in reactions {
+            accountsByReaction[reaction.value, default: []]
+                .formUnion(reaction.accountIds)
+        }
+        if active {
+            accountsByReaction[value, default: []].insert(accountId)
+        } else {
+            accountsByReaction[value]?.remove(accountId)
+            if accountsByReaction[value]?.isEmpty == true {
+                accountsByReaction[value] = nil
+            }
+        }
+        return accountsByReaction
+            .map { MessageReaction(value: $0.key, accountIds: $0.value.sorted()) }
+            .sorted { $0.value < $1.value }
+    }
+
     private func updatePreviewPin(messageId: String?, sessionId: String, scope: String) {
         let current = sessionPinsByID[sessionId]
         let sharedMessageId = scope == "shared" ? messageId : current?.sharedMessageId
@@ -1755,6 +1829,7 @@ final class AppModel: ObservableObject {
                     id: message.id,
                     clientMessageId: message.clientMessageId,
                     conversationId: conversation.id,
+                    conversationSequence: message.conversationSequence,
                     author: message.author,
                     authorName: message.authorName,
                     text: message.text,
@@ -1766,10 +1841,13 @@ final class AppModel: ObservableObject {
                     readByAccountIds: message.readByAccountIds,
                     attachments: message.attachments,
                     replyToMessageId: message.replyToMessageId,
+                    reactionTargetMessageId: message.reactionTargetMessageId,
                     messageAction: message.messageAction,
+                    mentions: message.mentions,
                     messageKind: message.messageKind,
                     agentExecution: message.agentExecution,
-                    backgroundAgentSessions: message.backgroundAgentSessions
+                    backgroundAgentSessions: message.backgroundAgentSessions,
+                    reactions: message.reactions
                 )
             }
             messagesByConversation[conversation.id] = mergePartialProjection(
@@ -3700,6 +3778,7 @@ final class AppModel: ObservableObject {
             attachments: message.attachments.map(\.chatAttachment),
             replyToMessageId: CloudMessageCodec.directEnvelope(message.body)?.messageAction?.replyToMessageId
                 ?? responseRequestId,
+            reactionTargetMessageId: message.messageId,
             messageAction: CloudMessageCodec.directEnvelope(message.body)?.messageAction,
             mentions: MessageMention.rebased(
                 CloudMessageCodec.directEnvelope(message.body)?.mentions ?? [],
@@ -3707,7 +3786,8 @@ final class AppModel: ObservableObject {
             ),
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
             agentExecution: ownerExecution,
-            backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body)
+            backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
+            reactions: message.reactions
         )
     }
 
@@ -3802,11 +3882,13 @@ final class AppModel: ObservableObject {
                 readByAccountIds: delivery?.readByAccountIds ?? [],
                 attachments: (payload.attachments ?? wire.attachments).map(\.chatAttachment),
                 replyToMessageId: payload.replyToMessageId ?? payload.messageAction?.replyToMessageId,
+                reactionTargetMessageId: wire.messageId,
                 messageAction: payload.messageAction,
                 mentions: MessageMention.rebased(payload.mentions ?? [], in: payload.text),
                 backgroundAgentSessions: BackgroundAgentSession.fromTaskOperatorTools(
                     payload.structuredContent?.tools ?? []
-                )
+                ),
+                reactions: Self.mergedReactions(rows.map { $0.0.reactions })
             )
         }
         let readAgentRequestIds = CloudGroupAgentLifecycleProjector.readRequestIds(
@@ -3841,11 +3923,26 @@ final class AppModel: ObservableObject {
                 deliveryState: CloudMessageStateProjector.deliveryState(for: wire, ownAccountId: ownAccountId),
                 errorMessage: nil,
                 requestMessageId: nil,
-                messageKind: wire.messageKind
+                reactionTargetMessageId: wire.messageId,
+                messageKind: wire.messageKind,
+                reactions: wire.reactions
             )
         }
         return (chatMessages + callMessages + Array(memberJoinMessagesByID.values))
             .sorted(by: ChatMessage.timelinePrecedes)
+    }
+
+    nonisolated static func mergedReactions(
+        _ reactionGroups: [[MessageReaction]]
+    ) -> [MessageReaction] {
+        var accountsByReaction: [String: Set<String>] = [:]
+        for reaction in reactionGroups.flatMap({ $0 }) {
+            accountsByReaction[reaction.value, default: []]
+                .formUnion(reaction.accountIds)
+        }
+        return accountsByReaction
+            .map { MessageReaction(value: $0.key, accountIds: $0.value.sorted()) }
+            .sorted { $0.value < $1.value }
     }
 
     /// Realtime frames wake the durable HTTP cursor reader immediately. This
@@ -4568,7 +4665,8 @@ final class AppModel: ObservableObject {
                     attachments: message.attachments,
                     messageKind: message.messageKind,
                     conversationId: message.conversationId,
-                    conversationSequence: message.conversationSequence
+                    conversationSequence: message.conversationSequence,
+                    reactions: message.reactions
                 )
                 changed = true
             }
@@ -4731,6 +4829,25 @@ final class AppModel: ObservableObject {
         messages[index] = replacement
         messagesByConversation[replacement.conversationId] = messages
         cacheCurrentMessages(replacement.conversationId)
+    }
+
+    private func updateMessageReaction(
+        _ reaction: String,
+        accountId: String,
+        active: Bool,
+        messageId: String,
+        conversationId: String
+    ) {
+        guard var messages = messagesByConversation[conversationId],
+              let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        messages[index].reactions = Self.updatingReaction(
+            reaction,
+            accountId: accountId,
+            active: active,
+            in: messages[index].reactions
+        )
+        messagesByConversation[conversationId] = messages
+        cacheCurrentMessages(conversationId)
     }
 
     private func markMessageFailed(_ id: String, error: String) {

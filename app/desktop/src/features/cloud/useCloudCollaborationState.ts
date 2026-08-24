@@ -340,7 +340,7 @@ export function useCloudCollaborationState({
     mergeMessage,
     prepareForwardAttachments: prepareCloudForwardAttachments,
     sendMessage: sendCloudCollaborationMessage,
-    updateSessionTitle: updateCloudCollaborationSessionTitle,
+    updateSessionTitle: updateCloudCollaborationSessionTitle, setReaction: setCloudMessageReaction,
   } = useCloudCollaborationTransport({
     account,
     canonicalState: canonicalSessionState,
@@ -358,7 +358,6 @@ export function useCloudCollaborationState({
     reportAvailabilityWarning:
       reportCloudAgentAvailabilityWarning,
   });
-
   useCloudSelfAgentForwardSync({
     account,
     canonicalState: canonicalSessionState,
@@ -652,6 +651,7 @@ export function useCloudCollaborationState({
     sendCloudCollaborationMessage,
     updateCloudCollaborationSessionTitle,
     sendCloudGroupControl,
+    setCloudMessageReaction,
     recordCloudSessionFork,
     updateCloudSessionPin,
     hideCloudSession,

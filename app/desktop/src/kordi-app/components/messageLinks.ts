@@ -1,6 +1,7 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
 import { openDesktopExternalUrl } from '@/lib/desktop';
+import { blobEmojiById, type BlobEmoji } from '@/features/emoji/blobEmoji';
 import { messageMentionsForText } from '@/features/chat/messageMentions';
 import type { MessageMention } from '../types';
 
@@ -17,10 +18,12 @@ type ExternalMessageLinkOpener = (url: string) => unknown;
 
 export type MessageInlinePart =
   | { type: 'text'; value: string; start: number }
+  | { type: 'blobEmoji'; emoji: BlobEmoji; start: number }
   | { type: 'mention'; label: string; targetKind: 'agent' | 'person'; targetIdentityId?: string | null; start: number }
   | { type: 'link'; label: string; href: string; start: number };
 
 type InlineRange =
+  | { type: 'blobEmoji'; emoji: BlobEmoji; start: number; end: number }
   | { type: 'mention'; label: string; targetKind: 'agent' | 'person'; targetIdentityId?: string | null; start: number; end: number }
   | { type: 'link'; label: string; href: string; start: number; end: number };
 
@@ -34,6 +37,7 @@ const bareHttpUrlPattern = /https?:\/\/[^\s<>"']+/giu;
 const trailingBareUrlPunctuationPattern = /[.,!?;:，。！？；：]+$/u;
 const legacyMyKordiMentionPattern = /@My[ \t]+Kordi\b/giu;
 const textualMentionPattern = /@[\p{L}\p{N}][\p{L}\p{N}._'-]{0,63}/gu;
+const blobEmojiPattern = /:blob:([A-Za-z0-9_-]+):/gu;
 const siteIconDescriptorCache = new Map<string, SiteIconDescriptor>();
 const MAX_SITE_ICON_DESCRIPTOR_CACHE_ENTRIES = 256;
 
@@ -164,6 +168,21 @@ function linkRanges(text: string): InlineRange[] {
   return ranges;
 }
 
+function blobEmojiRanges(text: string): InlineRange[] {
+  const ranges: InlineRange[] = [];
+  for (const match of text.matchAll(blobEmojiPattern)) {
+    const emoji = blobEmojiById.get(match[1]);
+    if (!emoji) continue;
+    ranges.push({
+      type: 'blobEmoji',
+      emoji,
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+  return ranges;
+}
+
 function isMentionBoundary(text: string, index: number, length: number) {
   const before = text[index - 1] ?? '';
   const after = text[index + length] ?? '';
@@ -238,10 +257,11 @@ function textualMentionRanges(text: string, reserved: InlineRange[]) {
 
 export function parseMessageInlineParts(text: string, mentions: MessageMention[] = []): MessageInlinePart[] {
   const links = linkRanges(text);
-  const structuredMentions = structuredMentionRanges(text, mentions, links);
-  const textualMentions = textualMentionRanges(text, [...links, ...structuredMentions]);
+  const blobEmoji = blobEmojiRanges(text);
+  const structuredMentions = structuredMentionRanges(text, mentions, [...links, ...blobEmoji]);
+  const textualMentions = textualMentionRanges(text, [...links, ...blobEmoji, ...structuredMentions]);
   const mentionRanges = [...structuredMentions, ...textualMentions];
-  const ranges = [...links, ...mentionRanges].sort((left, right) => left.start - right.start);
+  const ranges = [...links, ...blobEmoji, ...mentionRanges].sort((left, right) => left.start - right.start);
   const parts: MessageInlinePart[] = [];
   let cursor = 0;
 
@@ -252,6 +272,8 @@ export function parseMessageInlineParts(text: string, mentions: MessageMention[]
     }
     if (range.type === 'link') {
       parts.push({ type: 'link', label: range.label, href: range.href, start: range.start });
+    } else if (range.type === 'blobEmoji') {
+      parts.push({ type: 'blobEmoji', emoji: range.emoji, start: range.start });
     } else {
       parts.push({ type: 'mention', label: range.label, targetKind: range.targetKind, targetIdentityId: range.targetIdentityId, start: range.start });
     }

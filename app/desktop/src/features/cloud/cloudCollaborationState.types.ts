@@ -71,6 +71,12 @@ export type UseCloudCollaborationStateResult = {
     title: string,
   ) => Promise<CloudSessionTitle>;
   sendCloudGroupControl: (input: SendCloudGroupControlInput) => Promise<void>;
+  setCloudMessageReaction: (input: {
+    conversationId: string;
+    messageId: string;
+    reaction: string;
+    active: boolean;
+  }) => Promise<CloudMessage>;
   recordCloudSessionFork: (input: {
     sourceSessionId: string;
     forkSessionId: string;

@@ -76,6 +76,9 @@ struct ConversationView: View {
     @State private var forwardRequest: MessageForwardRequest?
     @State private var detailsMessage: ChatMessage?
     @State private var pinTarget: ChatMessage?
+    @State private var messageActionMessage: ChatMessage?
+    @State private var messageActionFrame = CGRect.zero
+    @State private var messageActionFeedback = 0
     @State private var forwardedDestination: ConversationSummary?
     @State private var selectedCompanionConversation: ConversationSummary?
     @State private var showsCompanionPanel = false
@@ -142,6 +145,9 @@ struct ConversationView: View {
             )
         }
         let firstVisibleTimelineIdentity = visibleTimelineRows.first?.id
+        let previewActionMessageID = visibleTimeline.last(where: {
+            !$0.text.isEmpty && $0.attachments.isEmpty && !$0.isSystemNotice
+        })?.id
         let visibleStartIndex = timeline.count - visibleTimeline.count
         let messagesById = Dictionary(uniqueKeysWithValues: timeline.map { ($0.id, $0) })
         let presentationStartIndex = max(timeline.startIndex, visibleStartIndex - 1)
@@ -254,6 +260,7 @@ struct ConversationView: View {
                                                         showAvatar: presentation.showsAvatar,
                                                         replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
                                                         isHighlighted: highlightedMessageID == message.id,
+                                                        isActionPresented: messageActionMessage?.id == message.id,
                                                         isPinned: pinnedMessage?.id == message.id,
                                                         selectionMode: !selectedMessageIDs.isEmpty,
                                                         isSelected: selectedMessageIDs.contains(message.id),
@@ -262,6 +269,9 @@ struct ConversationView: View {
                                                         authorAvatarName: avatar.name,
                                                         authorAvatarSource: avatar.source,
                                                         authorAvatarSeed: avatar.seed,
+                                                        ownAccountId: model.account?.accountId,
+                                                        automaticallyPresentsActions: ProcessInfo.processInfo.arguments.contains("--preview-message-actions")
+                                                            && message.id == previewActionMessageID,
                                                         readByNames: readers.map(\.displayName),
                                                         backgroundSessions: backgroundSessions,
                                                         onOpenAuthorProfile: {
@@ -276,56 +286,50 @@ struct ConversationView: View {
                                                         onRetry: {
                                                             await model.retry(message, in: conversation)
                                                         },
-                                                    onReply: {
-                                                        guard conversation.kind.supportsQuotedReplies else { return }
-                                                        replySource = message.actionSource(sessionId: conversation.sessionId)
-                                                    },
-                                                    onPin: {
-                                                        if pinnedMessage?.id == message.id {
-                                                            Task { _ = await model.unpin(message, in: conversation) }
-                                                        } else {
-                                                            pinTarget = message
+                                                        onSelect: { toggleSelection(message.id) },
+                                                        onOpenActions: { frame in
+                                                            presentMessageActions(message, frame: frame)
+                                                        },
+                                                        onReact: { reaction in
+                                                            Task {
+                                                                _ = await model.toggleReaction(
+                                                                    reaction,
+                                                                    on: message,
+                                                                    in: conversation
+                                                                )
+                                                            }
+                                                        },
+                                                        onNavigateToReply: { messageId in
+                                                            navigateToMessage(messageId, in: timeline, proxy: proxy)
+                                                        },
+                                                        onOpenAttachment: { attachment, previewImage in
+                                                            openAttachment(
+                                                                attachment,
+                                                                from: message,
+                                                                in: timeline,
+                                                                previewImage: previewImage
+                                                            )
+                                                        },
+                                                        onShareAttachment: { attachment in
+                                                            prepare(attachment, forSharing: true)
+                                                        },
+                                                        onOpenBackgroundSession: { session in
+                                                            selectedBackgroundSession = session
+                                                            backgroundConversation = session.destination(
+                                                                from: conversation,
+                                                                conversations: model.conversations,
+                                                                ownAccountId: model.account?.accountId ?? "",
+                                                                ownDisplayName: model.account?.preferredName ?? "Me",
+                                                                createdAt: message.createdAt
+                                                            )
+                                                        },
+                                                        onAgentExecutionExpansionChange: { expanded in
+                                                            guard expanded else { return }
+                                                            revealExpandedAgentExecution(
+                                                                row.id,
+                                                                using: proxy
+                                                            )
                                                         }
-                                                    },
-                                                    onForward: {
-                                                        forwardRequest = MessageForwardRequest(
-                                                            sourceConversation: conversation,
-                                                            messages: [message]
-                                                        )
-                                                    },
-                                                    onDetails: { detailsMessage = message },
-                                                    onSelect: { toggleSelection(message.id) },
-                                                    onNavigateToReply: { messageId in
-                                                        navigateToMessage(messageId, in: timeline, proxy: proxy)
-                                                    },
-                                                    onOpenAttachment: { attachment, previewImage in
-                                                        openAttachment(
-                                                            attachment,
-                                                            from: message,
-                                                            in: timeline,
-                                                            previewImage: previewImage
-                                                        )
-                                                    },
-                                                    onShareAttachment: { attachment in
-                                                        prepare(attachment, forSharing: true)
-                                                    },
-                                                    onOpenBackgroundSession: { session in
-                                                        selectedBackgroundSession = session
-                                                        backgroundConversation = session.destination(
-                                                            from: conversation,
-                                                            conversations: model.conversations,
-                                                            ownAccountId: model.account?.accountId ?? "",
-                                                            ownDisplayName: model.account?.preferredName ?? "Me",
-                                                            createdAt: message.createdAt
-                                                        )
-                                                    },
-                                                    onAgentExecutionExpansionChange: { expanded in
-                                                        guard expanded else { return }
-                                                        revealExpandedAgentExecution(
-                                                            row.id,
-                                                            using: proxy
-                                                        )
-                                                    }
                                                     )
                                                     .equatable()
                                                     .confirmationDialog(
@@ -533,6 +537,63 @@ struct ConversationView: View {
                 Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea(edges: .bottom)
             )
+            .overlay {
+                if let messageActionMessage, !messageActionFrame.isEmpty {
+                    MessageActionOverlay(
+                        message: messageActionMessage,
+                        sourceFrame: messageActionFrame,
+                        ownAccountId: model.account?.accountId,
+                        allowsReply: conversation.kind.supportsQuotedReplies,
+                        allowsReactions: MessageBubble.allowsReactions(
+                            for: messageActionMessage,
+                            isPreviewMode: model.isPreviewMode
+                        ),
+                        isPinned: pinnedMessage?.id == messageActionMessage.id,
+                        onDismiss: dismissMessageActions,
+                        onReact: { reaction in
+                            dismissMessageActions()
+                            Task {
+                                _ = await model.toggleReaction(
+                                    reaction,
+                                    on: messageActionMessage,
+                                    in: conversation
+                                )
+                            }
+                        },
+                        onReply: {
+                            replySource = messageActionMessage.actionSource(
+                                sessionId: conversation.sessionId
+                            )
+                            dismissMessageActions()
+                        },
+                        onPin: {
+                            if pinnedMessage?.id == messageActionMessage.id {
+                                Task { _ = await model.unpin(messageActionMessage, in: conversation) }
+                            } else {
+                                pinTarget = messageActionMessage
+                            }
+                            dismissMessageActions()
+                        },
+                        onCopy: {
+                            UIPasteboard.general.string = messageActionMessage.text
+                            dismissMessageActions()
+                        },
+                        onForward: {
+                            forwardRequest = MessageForwardRequest(
+                                sourceConversation: conversation,
+                                messages: [messageActionMessage]
+                            )
+                            dismissMessageActions()
+                        },
+                        onSelect: {
+                            toggleSelection(messageActionMessage.id)
+                            dismissMessageActions()
+                        }
+                    )
+                    .transition(.opacity)
+                }
+            }
+            .sensoryFeedback(.selection, trigger: messageActionFeedback)
             .onChange(of: timeline.count) { oldCount, newCount in
                 visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(
                     currentLimit: visibleMessageLimit,
@@ -590,10 +651,10 @@ struct ConversationView: View {
                 await model.refreshActiveCall(in: conversation)
             }
         }
-        .navigationTitle(showsNavigationChrome ? conversation.displayName : "")
+        .navigationTitle(showsNavigationChrome && messageActionMessage == nil ? conversation.displayName : "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if showsNavigationChrome {
+            if showsNavigationChrome, messageActionMessage == nil {
                 if canOpenCompanionPanel {
                     if #available(iOS 26.0, *) {
                         ToolbarItem(placement: .topBarLeading) {
@@ -685,6 +746,9 @@ struct ConversationView: View {
             if ProcessInfo.processInfo.arguments.contains("--preview-photo-send"),
                !showPhotoPicker {
                 showPhotoPicker = true
+            }
+            if ProcessInfo.processInfo.arguments.contains("--preview-emoji-picker") {
+                isExpressivePickerPresented = true
             }
             openCompanionPreviewIfReady()
         }
@@ -788,6 +852,24 @@ struct ConversationView: View {
         callJoinTask = Task {
             await callCoordinator.join(call, in: conversation)
         }
+    }
+
+    private func presentMessageActions(_ message: ChatMessage, frame: CGRect) {
+        messageActionFrame = frame
+        guard messageActionMessage?.id != message.id else { return }
+        isComposerFocused = false
+        dismissComposerPickers()
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) {
+            messageActionMessage = message
+        }
+        messageActionFeedback += 1
+    }
+
+    private func dismissMessageActions() {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+            messageActionMessage = nil
+        }
+        messageActionFrame = .zero
     }
 
     private func navigateToMessage(
