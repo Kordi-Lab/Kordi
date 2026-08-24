@@ -26,20 +26,37 @@ export function SidebarSessionStatusIndicator({
 
 export function SidebarUnreadBadge({
   count,
+  mentionCount,
   scope,
 }: {
   count?: number;
+  mentionCount?: number;
   scope?: string;
 }) {
   if (!count || count <= 0) return null;
 
+  const hasMention = Boolean(mentionCount && mentionCount > 0);
+  const displayCount = count > 99 ? '99+' : count;
+
   return (
     <span
-      className="app-sidebar-unread-badge inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none"
-      data-unread-scope={scope}
-      data-unread-count={count > 99 ? '99+' : count}
+      className="app-sidebar-attention inline-flex shrink-0 items-center justify-end gap-1"
+      aria-label={hasMention
+        ? `${displayCount} unread messages, ${mentionCount} mention${mentionCount === 1 ? '' : 's'} for you`
+        : `${displayCount} unread messages`}
     >
-      {count > 99 ? '99+' : count}
+      {hasMention ? (
+        <span className="app-sidebar-mention-indicator shrink-0" aria-hidden="true">@</span>
+      ) : null}
+      <span
+        className="app-sidebar-unread-badge inline-flex min-w-[1.05rem] shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold leading-none"
+        data-unread-scope={scope}
+        data-unread-count={displayCount}
+        data-unread-mention-count={hasMention ? mentionCount : undefined}
+        aria-hidden="true"
+      >
+        {displayCount}
+      </span>
     </span>
   );
 }
@@ -47,6 +64,7 @@ export function SidebarUnreadBadge({
 export function SidebarSessionMetaColumn({
   timeLabel,
   unreadCount,
+  unreadMentionCount,
   unreadScope,
   indicator,
   active = false,
@@ -54,6 +72,7 @@ export function SidebarSessionMetaColumn({
 }: {
   timeLabel: string;
   unreadCount?: number;
+  unreadMentionCount?: number;
   unreadScope?: string;
   indicator?: SessionStatusIndicator;
   active?: boolean;
@@ -72,7 +91,7 @@ export function SidebarSessionMetaColumn({
       </span>
       {reserveStatusSpace || hasStatusLine ? (
         <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
-          <SidebarUnreadBadge count={unreadCount} scope={unreadScope} />
+          <SidebarUnreadBadge count={unreadCount} mentionCount={unreadMentionCount} scope={unreadScope} />
           <SidebarSessionStatusIndicator indicator={indicator} />
         </div>
       ) : null}

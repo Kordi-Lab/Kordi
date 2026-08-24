@@ -2,6 +2,88 @@ import XCTest
 @testable import Kordi
 
 final class CloudConversationCatalogTests: XCTestCase {
+    func testDirectUnreadMentionCountRequiresVerifiedPersonIdentity() throws {
+        let sessionId = directPersonSessionId("acct_me", "acct_maya")
+        let canonicalId = "conversation-direct-mentions"
+        let personMention = MessageMention(
+            label: "Alex",
+            targetKind: "person",
+            targetIdentityId: "human:acct_me"
+        )
+        let agentMention = MessageMention(
+            label: "Research Agent",
+            targetKind: "agent",
+            targetIdentityId: "agent:research"
+        )
+        let mentioned = try CloudMessageCodec.encodeDirect(
+            text: "@Alex please review",
+            agentId: nil,
+            agentName: nil,
+            ownerAccountId: nil,
+            ownerName: nil,
+            mentions: [personMention, personMention]
+        )
+        let agentOnly = try CloudMessageCodec.encodeDirect(
+            text: "@Research Agent please review",
+            agentId: nil,
+            agentName: nil,
+            ownerAccountId: nil,
+            ownerName: nil,
+            mentions: [agentMention]
+        )
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [contact],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_maya": [
+                wire(
+                    id: "mention",
+                    body: mentioned,
+                    sessionId: sessionId,
+                    createdAt: "2026-08-08T10:00:00Z",
+                    from: "acct_maya",
+                    to: "acct_me",
+                    conversationId: canonicalId,
+                    conversationSequence: 1
+                ),
+                wire(
+                    id: "agent-mention",
+                    body: agentOnly,
+                    sessionId: sessionId,
+                    createdAt: "2026-08-08T10:01:00Z",
+                    from: "acct_maya",
+                    to: "acct_me",
+                    conversationId: canonicalId,
+                    conversationSequence: 2
+                ),
+                wire(
+                    id: "plain-text",
+                    body: "@Alex without structured identity",
+                    sessionId: sessionId,
+                    createdAt: "2026-08-08T10:02:00Z",
+                    from: "acct_maya",
+                    to: "acct_me",
+                    conversationId: canonicalId,
+                    conversationSequence: 3
+                ),
+            ]],
+            canonicalConversations: [canonicalConversation(
+                id: canonicalId,
+                kind: "direct",
+                sessionId: sessionId,
+                latestSequence: 3,
+                lastReadSequence: 0
+            )]
+        )
+
+        let conversation = try XCTUnwrap(catalog.first { $0.kind == .person })
+        XCTAssertEqual(conversation.unreadCount, 3)
+        XCTAssertEqual(conversation.unreadMentionCount, 1)
+        XCTAssertEqual(conversation.lastReadSequence, 0)
+    }
+
     func testCanonicalGroupCallActivityUpdatesSidebarPreviewAndCount() throws {
         let sessionId = "session:group:call-history"
         let canonical = canonicalConversation(
@@ -689,7 +771,12 @@ final class CloudConversationCatalogTests: XCTestCase {
                 senderDisplayName: "Maya",
                 deliveryState: "complete",
                 replyToMessageId: nil,
-                requestId: nil
+                requestId: nil,
+                mentions: [MessageMention(
+                    label: "Alex",
+                    targetKind: "person",
+                    targetIdentityId: "human:acct_me"
+                )]
             )
         ))
         let catalog = CloudConversationCatalog.build(
@@ -712,6 +799,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(groups[0].displayName, "Mobile builders")
         XCTAssertEqual(groups[0].lastMessage, "The iPhone build is ready")
         XCTAssertEqual(groups[0].unreadCount, 1)
+        XCTAssertEqual(groups[0].unreadMentionCount, 1)
         XCTAssertEqual(groups[0].groupParticipants.count, 2)
         XCTAssertEqual(groups[0].messageCount, 1)
     }

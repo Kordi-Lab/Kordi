@@ -160,6 +160,36 @@ final class CloudMessageStateProjectorTests: XCTestCase {
         XCTAssertNil(projected?.first(where: { $0.messageId == "other" })?.readAt)
     }
 
+    func testLocalReadProjectionStopsAtPresentedMentionSequence() {
+        let first = wire(
+            id: "first",
+            from: "acct_peer",
+            to: "acct_me",
+            sessionId: "session:one",
+            conversationId: "conversation-one",
+            conversationSequence: 41
+        )
+        let later = wire(
+            id: "later",
+            from: "acct_peer",
+            to: "acct_me",
+            sessionId: "session:one",
+            conversationId: "conversation-one",
+            conversationSequence: 42
+        )
+
+        let projected = CloudMessageStateProjector.markingIncomingRead(
+            ["acct_peer": [first, later]],
+            ownAccountId: "acct_me",
+            scope: .session("session:one"),
+            readAt: "2026-08-08T10:02:00Z",
+            throughSequence: 41
+        )["acct_peer"]
+
+        XCTAssertNotNil(projected?.first(where: { $0.messageId == "first" })?.readAt)
+        XCTAssertNil(projected?.first(where: { $0.messageId == "later" })?.readAt)
+    }
+
     func testLocalReadProjectionIgnoresOutgoingCopies() {
         let outgoing = wire(
             id: "outgoing",

@@ -382,12 +382,14 @@ struct MainTabView: View {
             } label: {
                 Label(MainTab.chats.rawValue, systemImage: MainTab.chats.symbol)
             }
+            .badge(unreadTabCounts.chats)
 
             Tab(value: MainTab.agents) {
                 agentsRoot
             } label: {
                 Label(MainTab.agents.rawValue, systemImage: MainTab.agents.symbol)
             }
+            .badge(unreadTabCounts.agents)
 
             Tab(value: MainTab.digest) {
                 digestRoot
@@ -412,10 +414,12 @@ struct MainTabView: View {
 
             chatsRoot
                 .tabItem { Label(MainTab.chats.rawValue, systemImage: MainTab.chats.symbol) }
+                .badge(unreadTabCounts.chats)
                 .tag(MainTab.chats)
 
             agentsRoot
                 .tabItem { Label(MainTab.agents.rawValue, systemImage: MainTab.agents.symbol) }
+                .badge(unreadTabCounts.agents)
                 .tag(MainTab.agents)
 
             digestRoot
@@ -477,6 +481,30 @@ struct MainTabView: View {
 
     private var pendingIncomingRequestCount: Int {
         model.contactRequests.lazy.filter { $0.isIncoming && $0.status == "pending" }.count
+    }
+
+    private var unreadTabCounts: MainTabUnreadCounts {
+        MainTabUnreadCounts.build(conversations: model.conversations)
+    }
+}
+
+struct MainTabUnreadCounts: Equatable {
+    let chats: Int
+    let agents: Int
+
+    static func build(conversations: [ConversationSummary]) -> MainTabUnreadCounts {
+        let people = conversations.lazy.filter {
+            $0.kind == .person && $0.unreadCount > 0
+        }.count
+        let groups = Set(conversations.lazy.filter {
+            $0.kind == .group
+                && $0.forkedFromSessionId == nil
+                && $0.unreadCount > 0
+        }.map { $0.groupSpaceId?.nonEmpty ?? $0.sessionId }).count
+        let agents = conversations.lazy.filter {
+            $0.kind == .agent && !$0.isAgentLaunchTemplate && $0.unreadCount > 0
+        }.count
+        return MainTabUnreadCounts(chats: people + groups, agents: agents)
     }
 }
 

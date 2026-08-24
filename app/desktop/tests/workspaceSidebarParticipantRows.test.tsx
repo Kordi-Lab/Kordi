@@ -64,6 +64,26 @@ test('WorkspaceSidebar moves participant-space unread totals between folded pare
   assert.doesNotMatch(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="3"/);
 });
 
+test('WorkspaceSidebar shows a separate @ indicator beside the total unread count', () => {
+  const chatConversations = [conversation({
+    id: 'session:mention',
+    canonicalSessionId: 'session:mention',
+    name: 'Mention sender',
+    unread: 3,
+    unreadMentions: 1,
+    _updatedAtMs: 2,
+  })];
+  const participantSpaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations,
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    activeConvId: 'session:outside-active',
+  }) as never));
+
+  assert.match(markup, /app-sidebar-mention-indicator[^>]*>@<\/span><span[^>]*data-unread-scope="participant-space"[^>]*data-unread-count="3"[^>]*data-unread-mention-count="1"[^>]*>3<\/span>/);
+});
+
 test('WorkspaceSidebar moves participant-space running light from expanded parent to child session', () => {
   const chatConversations = [
     conversation({

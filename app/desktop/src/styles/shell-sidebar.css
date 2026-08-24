@@ -264,6 +264,13 @@
   box-shadow: none;
 }
 
+.app-workspace-sidebar .app-sidebar-mention-indicator {
+  color: var(--app-sidebar-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .app-workspace-sidebar .app-session-row-active {
   border-color: transparent;
   background: var(--app-sidebar-selected-bg);

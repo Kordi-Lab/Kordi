@@ -48,6 +48,8 @@ struct ConversationSummary: Identifiable, Hashable {
     var lastMessage: String
     var lastActivityAt: Date
     var unreadCount: Int
+    var unreadMentionCount: Int
+    var lastReadSequence: Int64
     var avatarSource: String?
     var agentActivity: AgentActivity?
     let sessionId: String
@@ -74,7 +76,9 @@ struct ConversationSummary: Identifiable, Hashable {
         groupSpaceId: String? = nil,
         groupParticipants: [CloudGroupParticipant] = [],
         messageCount: Int? = nil,
-        forkedFromSessionId: String? = nil
+        forkedFromSessionId: String? = nil,
+        unreadMentionCount: Int = 0,
+        lastReadSequence: Int64 = 0
     ) {
         self.id = id
         self.kind = kind
@@ -87,6 +91,8 @@ struct ConversationSummary: Identifiable, Hashable {
         self.lastMessage = lastMessage
         self.lastActivityAt = lastActivityAt
         self.unreadCount = unreadCount
+        self.unreadMentionCount = unreadMentionCount
+        self.lastReadSequence = lastReadSequence
         self.avatarSource = avatarSource
         self.agentActivity = agentActivity
         self.sessionId = sessionId
@@ -114,8 +120,15 @@ struct ConversationSummary: Identifiable, Hashable {
 
     var accessibilitySummary: String {
         let unread = unreadCount > 0 ? ", \(unreadCount) unread" : ""
+        let mentions = unreadMentionCount > 0
+            ? ", \(unreadMentionCount) unread mention\(unreadMentionCount == 1 ? "" : "s")"
+            : ""
         let state = agentActivity.map { ", \($0.label)" } ?? ""
-        return "\(displayName)\(state)\(unread). \(lastMessage)"
+        return "\(displayName)\(state)\(unread)\(mentions). \(lastMessage)"
+    }
+
+    var hasUnreadAttention: Bool {
+        unreadCount > 0 || unreadMentionCount > 0
     }
 
     var representsKordiSupport: Bool {

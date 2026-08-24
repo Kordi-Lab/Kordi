@@ -91,6 +91,15 @@ enum CloudMessageCodec {
         return body
     }
 
+    static func mentions(in message: CloudMessageDTO) -> [MessageMention] {
+        if let payload = CloudGroupMessageCodec.parse(message.body)?.message {
+            return payload.messageAction?.kind == "forward" ? [] : payload.mentions ?? []
+        }
+        guard let envelope = directEnvelope(message.body),
+              envelope.messageAction?.kind != "forward" else { return [] }
+        return envelope.mentions ?? []
+    }
+
     static func isAgentProcessingPlaceholder(_ text: String) -> Bool {
         let normalized = text
             .trimmingCharacters(in: .whitespacesAndNewlines)

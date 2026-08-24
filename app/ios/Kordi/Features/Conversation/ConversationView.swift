@@ -86,6 +86,7 @@ struct ConversationView: View {
     @State private var hasOpenedCompanionPreview = false
     @State private var readPresentationID = UUID()
     @State private var isReadPresentationVisible = false
+    @State private var isNavigatingToMention = false
 
     init(
         conversation: ConversationSummary,
@@ -163,6 +164,7 @@ struct ConversationView: View {
             == activeConversationCall?.id
             && (callCoordinator.isCallScreenPresented || callCoordinator.isAwaitingIncomingAnswer)
         let mentionTargets = model.mentionTargets(for: conversation)
+        let pendingMentionCount = model.pendingMentionCount(for: conversation)
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 if !coordinatorOwnsConversationCall,
@@ -413,7 +415,15 @@ struct ConversationView: View {
                                 }
                             )
 
-                            Group {
+                            VStack(spacing: 8) {
+                                if pendingMentionCount > 0 {
+                                    MentionNavigationButton(
+                                        count: pendingMentionCount,
+                                        isLoading: isNavigatingToMention,
+                                        action: { navigateToNextMention(using: proxy) }
+                                    )
+                                    .transition(.scale(scale: 0.82).combined(with: .opacity))
+                                }
                                 if ConversationTimelineScrollBehavior.shouldShowLatestButton(
                                     isAtBottom: isAtBottom,
                                     messageCount: timeline.count
@@ -421,11 +431,12 @@ struct ConversationView: View {
                                     LatestMessageButton {
                                         scrollToBottom(animated: true)
                                     }
-                                    .padding(.trailing, 10)
-                                    .padding(.bottom, 16)
                                     .transition(.scale(scale: 0.82).combined(with: .opacity))
                                 }
                             }
+                            .padding(.trailing, 10)
+                            .padding(.bottom, 16)
+                            .animation(.snappy(duration: 0.2), value: pendingMentionCount)
                             .animation(.snappy(duration: 0.2), value: isAtBottom)
                         }
                         .onChange(of: viewport.size) { previousViewportSize, currentViewportSize in
@@ -604,6 +615,9 @@ struct ConversationView: View {
                 if oldCount == 0, newCount > 0, !hasRevealedInitialViewport {
                     Task { await positionAndRevealInitialViewport(using: proxy) }
                 }
+            }
+            .onChange(of: pendingMentionCount) {
+                synchronizeReadPresentation()
             }
             .onChange(of: timeline.last) { previousLatestMessage, currentLatestMessage in
                 let previousLatestMessageID = previousLatestMessage.map(model.timelineIdentity(for:))
@@ -894,6 +908,41 @@ struct ConversationView: View {
             withAnimation(.easeOut(duration: 0.25)) {
                 highlightedMessageID = nil
             }
+        }
+    }
+
+    private func navigateToNextMention(using proxy: ScrollViewProxy) {
+        guard !isNavigatingToMention else { return }
+        isNavigatingToMention = true
+        Task { @MainActor in
+            defer { isNavigatingToMention = false }
+
+            while model.hasEarlierMessages(for: conversation),
+                  let oldestSequence = messages.compactMap(\.conversationSequence).min(),
+                  oldestSequence > conversation.lastReadSequence {
+                let previousCount = messages.count
+                await model.loadEarlierMessages(for: conversation)
+                guard messages.count > previousCount else { break }
+            }
+
+            guard let target = model.pendingMentionMessages(for: conversation).first,
+                  let sourceIndex = messages.firstIndex(where: { $0.id == target.id }) else {
+                return
+            }
+            let targetIdentity = model.timelineIdentity(for: messages[sourceIndex])
+            visibleMessageLimit = max(visibleMessageLimit, messages.count - sourceIndex)
+            await Task.yield()
+            await Task.yield()
+            if reduceMotion {
+                proxy.scrollTo(targetIdentity, anchor: .center)
+            } else {
+                withAnimation(.easeInOut(duration: 0.24)) {
+                    proxy.scrollTo(targetIdentity, anchor: .center)
+                }
+            }
+            highlightReferencedMessage(target.id)
+            await Task.yield()
+            await model.markMentionPresented(target, in: conversation)
         }
     }
 
@@ -2012,6 +2061,45 @@ private struct EarlierMessagesLoader: View {
         }
         .frame(maxWidth: .infinity, minHeight: 44)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct MentionNavigationButton: View {
+    let count: Int
+    let isLoading: Bool
+    let action: () -> Void
+    @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 38
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "at")
+                .font(.subheadline.weight(.bold))
+                .frame(width: diameter, height: diameter)
+                .background(.regularMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
+                }
+                .overlay(alignment: .topTrailing) {
+                    Text(ConversationAttentionBadge.countLabel(count))
+                        .font(.caption2.bold())
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .frame(minWidth: 20, minHeight: 20)
+                        .background(KordiTheme.signalBlue, in: Capsule())
+                        .offset(x: 7, y: -6)
+                }
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+                .frame(width: max(44, diameter), height: max(44, diameter))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(KordiTheme.signalBlue)
+        .disabled(isLoading)
+        .opacity(isLoading ? 0.6 : 1)
+        .accessibilityLabel("Jump to next mention")
+        .accessibilityValue("\(count) unread mention\(count == 1 ? "" : "s")")
+        .accessibilityHint("Moves to the oldest unread message that mentions you")
     }
 }
 

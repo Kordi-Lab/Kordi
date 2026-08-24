@@ -295,6 +295,44 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         XCTAssertEqual(source.mentions?.map(\.targetIdentityId), ["human:acct_alex", agent.id, "human:acct_alex"])
     }
 
+    func testPendingMentionAttentionUsesStablePersonIdentityAndReadCursor() {
+        let personMention = MessageMention(
+            label: "Alex",
+            targetKind: "person",
+            targetIdentityId: "human:acct_me"
+        )
+        let agentMention = MessageMention(
+            label: "Research",
+            targetKind: "agent",
+            targetIdentityId: "agent:research"
+        )
+        let forwarded = MessageActionMetadata.forward(MessageActionSource(
+            sourceSessionId: "source-session",
+            sourceMessageId: "source-message",
+            senderLabel: "Maya",
+            textPreview: "@Alex quoted text",
+            attachmentCount: 0
+        ))
+        let messages = [
+            message(id: "read", sequence: 1, author: .person, mentions: [personMention]),
+            message(id: "pending", sequence: 2, author: .person, mentions: [personMention, personMention]),
+            message(id: "agent", sequence: 3, author: .person, mentions: [agentMention]),
+            message(id: "self", sequence: 4, author: .me, mentions: [personMention]),
+            message(id: "forwarded", sequence: 5, author: .person, mentions: [personMention], action: forwarded),
+        ]
+
+        XCTAssertTrue(personMention.targetsPerson(accountId: "acct_me"))
+        XCTAssertFalse(agentMention.targetsPerson(accountId: "acct_me"))
+        XCTAssertEqual(
+            MentionAttention.pendingMessages(
+                in: messages,
+                accountId: "acct_me",
+                lastReadSequence: 1
+            ).map(\.id),
+            ["pending"]
+        )
+    }
+
     func testDuplicateDisplayNameUsesSelectedStableIdentity() throws {
         let first = ComposerMentionTarget(
             id: "agent:first",
@@ -401,6 +439,29 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
                 forOwnerAccountIDs: ["acct_peer"]
             ).map(\.agentId),
             ["agent_outside"]
+        )
+    }
+
+    private func message(
+        id: String,
+        sequence: Int64,
+        author: MessageAuthor,
+        mentions: [MessageMention],
+        action: MessageActionMetadata? = nil
+    ) -> ChatMessage {
+        ChatMessage(
+            id: id,
+            conversationId: "conversation",
+            conversationSequence: sequence,
+            author: author,
+            authorName: author == .me ? "You" : "Maya",
+            text: "@Alex please review",
+            createdAt: Date(timeIntervalSince1970: TimeInterval(sequence)),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageAction: action,
+            mentions: mentions
         )
     }
 

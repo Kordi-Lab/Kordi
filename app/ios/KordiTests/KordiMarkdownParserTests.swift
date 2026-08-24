@@ -194,7 +194,7 @@ final class KordiMarkdownParserTests: XCTestCase {
     }
 
     @MainActor
-    func testExpandingPreviewGroupClearsUnreadWithoutCloud() async throws {
+    func testExplicitlyMarkingPreviewGroupReadClearsUnreadWithoutCloud() async throws {
         let model = AppModel(previewMode: true)
         let space = try XCTUnwrap(
             GroupSpaceCatalog.build(
@@ -621,6 +621,7 @@ final class KordiMarkdownParserTests: XCTestCase {
             lastMessage: "Yesterday",
             lastActivityAt: Date(timeIntervalSince1970: 1_000),
             unreadCount: 0,
+            unreadMentionCount: 0,
             participants: [
                 CloudGroupParticipant(
                     accountId: "acct_maya",

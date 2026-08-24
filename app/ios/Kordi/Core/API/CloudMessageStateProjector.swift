@@ -73,7 +73,8 @@ enum CloudMessageStateProjector {
         _ messagesByPeer: [String: [CloudMessageDTO]],
         ownAccountId: String,
         scope: CloudReadScope,
-        readAt: String
+        readAt: String,
+        throughSequence: Int64? = nil
     ) -> [String: [CloudMessageDTO]] {
         messagesByPeer.mapValues { messages in
             messages.map { message in
@@ -81,6 +82,9 @@ enum CloudMessageStateProjector {
                       message.fromAccountId != ownAccountId,
                       message.direction == "incoming",
                       message.readAt == nil,
+                      throughSequence.map({ sequence in
+                          message.conversationSequence.map { $0 <= sequence } ?? false
+                      }) ?? true,
                       matches(message, scope: scope) else { return message }
                 return CloudMessageDTO(
                     messageId: message.messageId,

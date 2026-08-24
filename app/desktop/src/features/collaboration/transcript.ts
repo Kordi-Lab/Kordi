@@ -19,6 +19,7 @@ import { normalizeSupportContactMessages } from '@/features/support/supportConve
 import { isKordiSupportConversation, KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
 import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/avatarIdentity';
 import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
+import { collaborationUnreadByParentSessionId, collaborationUnreadMentionCount } from './unreadState';
 import {
   collaborationHostLabel,
   collaborationOutboundStatusChip,
@@ -174,38 +175,10 @@ function isGroupScopedCollaborationMessage(message: DesktopCollaborationConversa
     || outreach.parentSessionId?.trim().startsWith('session:group:') === true;
 }
 
-function isVisibleCollaborationUnreadMessage(message: DesktopCollaborationConversationMessage) {
-  const contextPolicy = message.outreach?.contextPolicy?.trim().toLowerCase();
-  return contextPolicy !== 'session-invite' && contextPolicy !== 'session-update' && contextPolicy !== 'session-title-update';
-}
-
 function realAgentLabelForOwner(ownerLabel: string | null | undefined, fallbackAgentLabel: string) {
   const owner = ownerLabel?.trim();
   if (!owner || owner.toLowerCase() === 'me') return fallbackAgentLabel;
   return `${owner}'s Kordi`;
-}
-
-function collaborationUnreadByParentSessionId(conversation: DesktopCollaborationConversation) {
-  const unreadCount = Math.max(0, conversation.unreadCount);
-  if (unreadCount <= 0) return undefined;
-
-  const unreadByParentSessionId: Record<string, number> = {};
-  let countedUnreadMessages = 0;
-  for (const message of [...conversation.messages].reverse()) {
-    if (countedUnreadMessages >= unreadCount) break;
-    if (message.direction !== COLLABORATION_MESSAGE_DIRECTION_INBOUND && message.direction !== COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE) {
-      continue;
-    }
-    countedUnreadMessages += 1;
-    if (!isVisibleCollaborationUnreadMessage(message)) continue;
-    const parentSessionId = message.outreach?.parentSessionId?.trim()
-      || conversation.outreach?.parentSessionId?.trim()
-      || conversation.canonicalSessionId?.trim();
-    if (!parentSessionId) continue;
-    unreadByParentSessionId[parentSessionId] = (unreadByParentSessionId[parentSessionId] ?? 0) + 1;
-  }
-
-  return Object.keys(unreadByParentSessionId).length > 0 ? unreadByParentSessionId : undefined;
 }
 
 export function mapCollaborationConversationToViewModel(
@@ -558,6 +531,7 @@ export function mapCollaborationConversationToViewModel(
         ? `${conversation.projectName} • ${conversation.subtitle || (isPersonChat ? 'Person chat' : 'Remote agent chat')}`
         : (conversation.subtitle || (isPersonChat ? 'Person chat' : 'Remote agent chat')),
     unread: conversation.unreadCount,
+    unreadMentions: collaborationUnreadMentionCount(conversation),
     collaborationSources: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
     trust: 'Cloud',
     directness: isCloudSelfAgent ? 'Agent chat' : outreachPrefix ?? (isPersonChat ? 'Person chat' : 'Agent chat'),

@@ -572,6 +572,12 @@ struct MessageMention: Codable, Hashable {
         targetKind.flatMap(ComposerMentionKind.init(rawValue:))
     }
 
+    func targetsPerson(accountId: String) -> Bool {
+        kind == .person
+            && targetIdentityId == "human:\(accountId)"
+            && hasValidIdentity
+    }
+
     private var hasValidIdentity: Bool {
         guard let targetIdentityId = targetIdentityId?.nonEmpty, let kind else { return false }
         return switch kind {
@@ -1006,5 +1012,24 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         ) ?? []
         mentions = try container.decodeIfPresent([MessageMention].self, forKey: .mentions) ?? []
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
+    }
+}
+
+enum MentionAttention {
+    static func pendingMessages(
+        in messages: [ChatMessage],
+        accountId: String,
+        lastReadSequence: Int64
+    ) -> [ChatMessage] {
+        messages.filter { message in
+            guard message.author != .me,
+                  message.messageAction?.kind != "forward",
+                  message.mentions.contains(where: { $0.targetsPerson(accountId: accountId) }) else {
+                return false
+            }
+            return message.conversationSequence.map { $0 > lastReadSequence }
+                ?? (message.deliveryState != .read)
+        }
+        .sorted(by: ChatMessage.timelinePrecedes)
     }
 }
