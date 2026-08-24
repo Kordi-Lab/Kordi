@@ -7,6 +7,29 @@ enum AppPhase: Equatable {
     case signedIn
 }
 
+enum KordiPreviewModePersistence {
+    private static let storageKey = "kordi.debug.preview-mode"
+
+    static func resolve(
+        arguments: [String],
+        launchRequested: Bool,
+        defaults: UserDefaults = .standard
+    ) -> Bool {
+#if DEBUG
+        if arguments.contains("--disable-preview-data") {
+            defaults.removeObject(forKey: storageKey)
+            return false
+        }
+        if arguments.contains("--preview-data") {
+            defaults.set(true, forKey: storageKey)
+        }
+        return launchRequested || defaults.bool(forKey: storageKey)
+#else
+        return launchRequested
+#endif
+    }
+}
+
 enum AgentPromptContext {
     static func compose(userText: String, referenceText: String?) -> String {
         guard let referenceText = referenceText?
@@ -222,29 +245,32 @@ final class AppModel: ObservableObject {
         cache: LocalMessageStore? = nil,
         wireCache: CloudWireCache = CloudWireCache(),
         sessionRuntimeRouteStore: SessionRuntimeRouteStore = SessionRuntimeRouteStore(),
-        previewMode: Bool = ProcessInfo.processInfo.arguments.contains("--preview-data")
-            || ProcessInfo.processInfo.arguments.contains("--preview-markdown")
-            || ProcessInfo.processInfo.arguments.contains("--preview-login")
-            || ProcessInfo.processInfo.arguments.contains("--preview-signup")
-            || ProcessInfo.processInfo.arguments.contains("--preview-account")
-            || ProcessInfo.processInfo.arguments.contains("--preview-devices")
-            || ProcessInfo.processInfo.arguments.contains("--preview-authentication")
-            || ProcessInfo.processInfo.arguments.contains("--preview-authentication-detail")
-            || ProcessInfo.processInfo.arguments.contains("--preview-contacts")
-            || ProcessInfo.processInfo.arguments.contains("--preview-new-chat")
-            || ProcessInfo.processInfo.arguments.contains("--preview-add-contact")
-            || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
-            || ProcessInfo.processInfo.arguments.contains("--preview-companion-return")
-            || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
-            || ProcessInfo.processInfo.arguments.contains("--preview-direct-call")
-            || ProcessInfo.processInfo.arguments.contains("--preview-group-call")
-            || ProcessInfo.processInfo.arguments.contains("--preview-group-detail")
-            || ProcessInfo.processInfo.arguments.contains("--preview-group-invite")
-            || ProcessInfo.processInfo.arguments.contains("--preview-media")
-            || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
-            || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
-            || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
-            || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
+        previewMode: Bool = KordiPreviewModePersistence.resolve(
+            arguments: ProcessInfo.processInfo.arguments,
+            launchRequested: ProcessInfo.processInfo.arguments.contains("--preview-data")
+                || ProcessInfo.processInfo.arguments.contains("--preview-markdown")
+                || ProcessInfo.processInfo.arguments.contains("--preview-login")
+                || ProcessInfo.processInfo.arguments.contains("--preview-signup")
+                || ProcessInfo.processInfo.arguments.contains("--preview-account")
+                || ProcessInfo.processInfo.arguments.contains("--preview-devices")
+                || ProcessInfo.processInfo.arguments.contains("--preview-authentication")
+                || ProcessInfo.processInfo.arguments.contains("--preview-authentication-detail")
+                || ProcessInfo.processInfo.arguments.contains("--preview-contacts")
+                || ProcessInfo.processInfo.arguments.contains("--preview-new-chat")
+                || ProcessInfo.processInfo.arguments.contains("--preview-add-contact")
+                || ProcessInfo.processInfo.arguments.contains("--preview-companion-panel")
+                || ProcessInfo.processInfo.arguments.contains("--preview-companion-return")
+                || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")
+                || ProcessInfo.processInfo.arguments.contains("--preview-direct-call")
+                || ProcessInfo.processInfo.arguments.contains("--preview-group-call")
+                || ProcessInfo.processInfo.arguments.contains("--preview-group-detail")
+                || ProcessInfo.processInfo.arguments.contains("--preview-group-invite")
+                || ProcessInfo.processInfo.arguments.contains("--preview-media")
+                || ProcessInfo.processInfo.arguments.contains("--preview-media-messages")
+                || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
+                || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
+                || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
+        )
     ) {
         self.api = api
         self.oauth = CloudOAuthSession(api: api)

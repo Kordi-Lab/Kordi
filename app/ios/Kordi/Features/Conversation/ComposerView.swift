@@ -11,50 +11,6 @@ struct ComposerTextReplacement: Equatable {
     var selection: ComposerTextSelection
 }
 
-@available(iOS 18.0, *)
-struct NativeComposerTextReplacement {
-    var text: String
-    var selection: TextSelection
-}
-
-@available(iOS 18.0, *)
-func replacingNativeComposerText(
-    _ text: String,
-    selection: TextSelection?,
-    with replacement: String
-) -> NativeComposerTextReplacement {
-    let range: Range<String.Index>
-    switch selection?.indices {
-    case .selection(let selectionRange):
-        range = selectionRange
-    case .multiSelection(let ranges):
-        range = ranges.ranges.first ?? text.endIndex..<text.endIndex
-    case nil:
-        range = text.endIndex..<text.endIndex
-    @unknown default:
-        range = text.endIndex..<text.endIndex
-    }
-    let insertionOffset = text.distance(from: text.startIndex, to: range.lowerBound)
-        + replacement.count
-    var updatedText = text
-    updatedText.replaceSubrange(range, with: replacement)
-    let insertionPoint = updatedText.index(updatedText.startIndex, offsetBy: insertionOffset)
-    return NativeComposerTextReplacement(
-        text: updatedText,
-        selection: TextSelection(insertionPoint: insertionPoint)
-    )
-}
-
-private struct NativeComposerTextSelectionStorage {
-    private var value: Any?
-
-    @available(iOS 18.0, *)
-    var selection: TextSelection? {
-        get { value as? TextSelection }
-        set { value = newValue }
-    }
-}
-
 func replacingComposerText(
     _ text: String,
     selection: ComposerTextSelection,
@@ -129,13 +85,77 @@ enum ComposerKeyboardSurfaceLayout {
     }
 }
 
-enum ComposerTextFieldLayout {
-    static func usesExpandedLayout(
-        hasLineBreak: Bool,
-        textWidth: CGFloat,
-        compactTextWidth: CGFloat
-    ) -> Bool {
-        hasLineBreak || (compactTextWidth > 0 && textWidth > compactTextWidth)
+enum ComposerDraftPaneLayout {
+    static func showsExpandButton(editorHeight: CGFloat, threshold: CGFloat) -> Bool {
+        editorHeight >= threshold
+    }
+}
+
+enum ComposerTextViewLayout {
+    static let maximumLines: CGFloat = 6
+
+    static func height(fittingHeight: CGFloat, lineHeight: CGFloat, insets: CGFloat) -> CGFloat {
+        min(
+            max(fittingHeight, max(44, lineHeight + insets)),
+            lineHeight * maximumLines + insets
+        )
+    }
+
+    static func stableHeight(
+        minimumHeight: CGFloat,
+        measure: (CGFloat) -> CGFloat
+    ) -> CGFloat {
+        var candidate = minimumHeight
+        var visited = [candidate]
+        for _ in 0..<8 {
+            let next = measure(candidate)
+            if abs(next - candidate) <= 0.5 {
+                return next
+            }
+            if visited.contains(where: { abs($0 - next) <= 0.5 }) {
+                return max(next, visited.max() ?? next)
+            }
+            visited.append(next)
+            candidate = next
+        }
+        return visited.max() ?? candidate
+    }
+}
+
+enum ComposerMessageFieldLayout {
+    static func surfaceHeight(
+        editorHeight: CGFloat,
+        controlHeight: CGFloat,
+        verticalPadding: CGFloat
+    ) -> CGFloat {
+        max(controlHeight, editorHeight + verticalPadding * 2)
+    }
+}
+
+enum ComposerTextExclusionLayout {
+    static func rects(
+        containerWidth: CGFloat,
+        contentHeight: CGFloat,
+        showsDraftButton: Bool
+    ) -> [CGRect] {
+        let bottomWidth = min(88, containerWidth)
+        let accessoryHeight = min(44, contentHeight)
+        var rects = [CGRect(
+            x: max(0, containerWidth - bottomWidth),
+            y: max(0, contentHeight - accessoryHeight),
+            width: bottomWidth,
+            height: accessoryHeight
+        )]
+        if showsDraftButton {
+            let topWidth = min(44, containerWidth)
+            rects.append(CGRect(
+                x: max(0, containerWidth - topWidth),
+                y: 0,
+                width: topWidth,
+                height: accessoryHeight
+            ))
+        }
+        return rects
     }
 }
 
@@ -163,11 +183,13 @@ struct ComposerView: View {
     let onSendExpressiveMedia: (PendingAttachment) async -> Void
     let onSend: () -> Void
     @State private var textSelection = ComposerTextSelection(location: 0, length: 0)
-    @State private var nativeTextSelection = NativeComposerTextSelectionStorage()
     @State private var keyboardSurfaceHeight: CGFloat = 0
     @State private var composerContentHeight: CGFloat = 0
-    @State private var messageFieldWidth: CGFloat = 0
+    @State private var messageEditorHeight: CGFloat = 44
+    @State private var isDraftPanePresented = false
     @ScaledMetric(relativeTo: .body) private var composerControlHeight: CGFloat = 50
+    @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 38
+    @ScaledMetric(relativeTo: .body) private var draftPaneExpansionThreshold: CGFloat = 84
     @ScaledMetric(relativeTo: .body) private var mentionPickerMaxHeight: CGFloat = 264
     @ScaledMetric(relativeTo: .body) private var mentionPickerRowHeight: CGFloat = 46
     @ScaledMetric(relativeTo: .caption) private var mentionPickerChromeHeight: CGFloat = 36
@@ -190,6 +212,20 @@ struct ComposerView: View {
             .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
                 rememberKeyboardSurfaceHeight(from: $0)
+            }
+            .sheet(isPresented: $isDraftPanePresented, onDismiss: { isFocused = true }) {
+                ComposerDraftPane(
+                    text: $text,
+                    destinationName: destinationName,
+                    pickerHeight: expressivePickerHeight,
+                    canSend: canSend,
+                    isSending: isSending,
+                    isPreparingAttachments: isPreparingAttachments,
+                    onSendExpressiveMedia: onSendExpressiveMedia,
+                    onSend: onSend
+                )
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
             }
     }
 
@@ -272,7 +308,6 @@ struct ComposerView: View {
             attachmentMenu
             messageFieldSurface
                 .layoutPriority(1)
-            sendButton
         }
     }
 
@@ -301,80 +336,36 @@ struct ComposerView: View {
     }
 
     private var messageFieldContent: some View {
-        messageFieldLayout
+        messageEditor
             .padding(.horizontal, 4)
             .padding(.vertical, 3)
-            .frame(minHeight: composerControlHeight)
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.size.width
-            } action: { width in
-                messageFieldWidth = width
+            .animation(messageFieldAnimation) { content in
+                content.frame(height: messageFieldHeight, alignment: .bottom)
             }
-            .animation(.snappy(duration: 0.2), value: usesExpandedMessageFieldLayout)
-    }
-
-    @ViewBuilder
-    private var messageFieldLayout: some View {
-        if usesExpandedMessageFieldLayout {
-            VStack(spacing: 0) {
-                messageEditor
+            .overlay(alignment: .bottomTrailing) {
                 HStack(spacing: 0) {
-                    modelMenuButton
-                    Spacer(minLength: 0)
                     expressivePickerButton
+                    sendButton
                 }
-                .frame(height: 44)
+                .transaction { $0.disablesAnimations = true }
             }
-        } else {
-            HStack(alignment: .bottom, spacing: 0) {
-                modelMenuButton
-                messageEditor
-                expressivePickerButton
+            .overlay(alignment: .topTrailing) {
+                if showsDraftPaneButton {
+                    draftPaneButton
+                }
             }
-        }
-    }
-
-    private var modelMenuButton: some View {
-        Button {
-            dismissExpressivePicker()
-            isFocused = false
-            isAgentModelPickerPresented.toggle()
-        } label: {
-            Image(systemName: "line.3.horizontal")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .contentShape(Rectangle())
-        .padding(.trailing, -8)
-        .accessibilityLabel("Change session model")
-        .accessibilityHint("Opens provider, model, and thinking level settings for this session")
     }
 
     private var messageEditor: some View {
-        Group {
-            if #available(iOS 18.0, *) {
-                TextField(
-                    "",
-                    text: $text,
-                    selection: nativeTextSelectionBinding,
-                    axis: .vertical
-                )
-                .focused($isFocused)
-                .lineLimit(1...4)
-                .textFieldStyle(.plain)
-            } else {
-                ComposerTextView(
-                    text: $text,
-                    selection: $textSelection,
-                    isFocused: $isFocused,
-                    accessibilityLabel: "Message \(destinationName)"
-                )
-            }
-        }
-        .frame(minHeight: 44)
+        ComposerTextView(
+            text: $text,
+            selection: $textSelection,
+            isFocused: $isFocused,
+            measuredHeight: $messageEditorHeight,
+            draftButtonThreshold: draftPaneExpansionThreshold,
+            accessibilityLabel: "Message \(destinationName)"
+        )
+        .frame(height: messageEditorHeight)
         .padding(.horizontal, 8)
         .accessibilityLabel("Message \(destinationName)")
         .accessibilityHidden(isExpressivePickerPresented)
@@ -402,26 +393,43 @@ struct ComposerView: View {
         }
     }
 
-    @available(iOS 18.0, *)
-    private var nativeTextSelectionBinding: Binding<TextSelection?> {
-        Binding(
-            get: { nativeTextSelection.selection },
-            set: { nativeTextSelection.selection = $0 }
-        )
-    }
-
-    private var usesExpandedMessageFieldLayout: Bool {
-        ComposerTextFieldLayout.usesExpandedLayout(
-            hasLineBreak: text.contains("\n"),
-            textWidth: (text as NSString).size(withAttributes: [
-                .font: UIFont.preferredFont(forTextStyle: .body)
-            ]).width,
-            compactTextWidth: messageFieldWidth - 96
-        )
+    private var messageFieldAnimation: Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.18)
     }
 
     private var messageFieldCornerRadius: CGFloat {
-        usesExpandedMessageFieldLayout ? 28 : composerControlHeight / 2
+        composerControlHeight / 2
+    }
+
+    private var messageFieldHeight: CGFloat {
+        ComposerMessageFieldLayout.surfaceHeight(
+            editorHeight: messageEditorHeight,
+            controlHeight: composerControlHeight,
+            verticalPadding: 3
+        )
+    }
+
+    private var showsDraftPaneButton: Bool {
+        ComposerDraftPaneLayout.showsExpandButton(
+            editorHeight: messageEditorHeight,
+            threshold: draftPaneExpansionThreshold
+        )
+    }
+
+    private var draftPaneButton: some View {
+        Button {
+            isFocused = false
+            isDraftPanePresented = true
+        } label: {
+            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open message draft")
+        .accessibilityHint("Opens a larger editor for this message")
     }
 
     private var expressivePickerButton: some View {
@@ -445,16 +453,6 @@ struct ComposerView: View {
     }
 
     private func insertEmoji(_ emoji: String) {
-        if #available(iOS 18.0, *) {
-            let replacement = replacingNativeComposerText(
-                text,
-                selection: nativeTextSelection.selection,
-                with: emoji
-            )
-            text = replacement.text
-            nativeTextSelection.selection = replacement.selection
-            return
-        }
         let replacement = replacingComposerText(
             text,
             selection: textSelection,
@@ -539,6 +537,10 @@ struct ComposerView: View {
 
     private var attachmentMenuContent: some View {
         Menu {
+            Button(action: showAgentModelPicker) {
+                Label("Model and reasoning", systemImage: "slider.horizontal.3")
+            }
+            Divider()
             Button(action: onTakePhoto) {
                 Label("Camera", systemImage: "camera")
             }
@@ -576,45 +578,28 @@ struct ComposerView: View {
         .accessibilityLabel("Add photo or file")
     }
 
-    @ViewBuilder
     private var sendButton: some View {
-        if #available(iOS 26.0, *) {
-            sendButtonContent
-                .buttonStyle(.plain)
-                .glassEffect(
-                    .regular
-                        .tint(canSend ? KordiTheme.signalBlue : Color(uiColor: .tertiarySystemFill))
-                        .interactive(),
-                    in: .circle
-                )
-        } else {
-            sendButtonContent
-                .buttonStyle(.plain)
-                .background(
-                    canSend ? KordiTheme.signalBlue : Color(uiColor: .tertiarySystemFill),
-                    in: Circle()
-                )
-        }
-    }
-
-    private var sendButtonContent: some View {
         Button {
             dismissExpressivePicker()
             dismissAgentModelPicker()
             onSend()
         } label: {
-            Group {
+            ZStack {
+                Circle()
+                    .fill(canSend ? KordiTheme.signalBlue : Color(uiColor: .tertiarySystemFill))
                 if isSending {
                     ProgressView().tint(.white).controlSize(.small)
                 } else {
                     Image(systemName: "arrow.up")
-                        .font(.body.weight(.bold))
+                        .font(.subheadline.weight(.bold))
                         .foregroundStyle(canSend ? .white : .secondary)
                 }
             }
-            .frame(width: composerControlHeight, height: composerControlHeight)
+            .frame(width: sendButtonDiameter, height: sendButtonDiameter)
+            .frame(width: max(44, sendButtonDiameter), height: max(44, sendButtonDiameter))
             .contentShape(Circle())
         }
+        .buttonStyle(.plain)
         .disabled(!canSend || isSending || isPreparingAttachments)
         .accessibilityLabel("Send message")
         .accessibilityHint(memeValidationError ?? "Sends the message")
@@ -696,6 +681,12 @@ struct ComposerView: View {
 
     private func dismissAgentModelPicker() {
         isAgentModelPickerPresented = false
+    }
+
+    private func showAgentModelPicker() {
+        dismissExpressivePicker()
+        isFocused = false
+        isAgentModelPickerPresented = true
     }
 
     private func replyPreview(_ source: MessageActionSource) -> some View {
@@ -920,9 +911,6 @@ struct ComposerView: View {
             length: 0
         )
         selectedMention = target
-        if #available(iOS 18.0, *) {
-            nativeTextSelection.selection = TextSelection(insertionPoint: text.endIndex)
-        }
         isFocused = true
     }
 
@@ -967,6 +955,8 @@ private struct ComposerTextView: UIViewRepresentable {
     @Binding var text: String
     @Binding var selection: ComposerTextSelection
     @FocusState.Binding var isFocused: Bool
+    @Binding var measuredHeight: CGFloat
+    let draftButtonThreshold: CGFloat
     let accessibilityLabel: String
 
     func makeCoordinator() -> Coordinator {
@@ -981,6 +971,7 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.adjustsFontForContentSizeCategory = true
         textView.isScrollEnabled = false
         textView.showsVerticalScrollIndicator = false
+        textView.clipsToBounds = true
         textView.textContainerInset = UIEdgeInsets(top: 11, left: 5, bottom: 11, right: 5)
         textView.textContainer.lineFragmentPadding = 0
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -991,9 +982,11 @@ private struct ComposerTextView: UIViewRepresentable {
     func updateUIView(_ textView: UITextView, context: Context) {
         context.coordinator.parent = self
         textView.accessibilityLabel = accessibilityLabel
+        updateExclusionPaths(of: textView, height: measuredHeight)
 
         if textView.markedTextRange == nil, textView.text != text {
             textView.text = text
+            textView.invalidateIntrinsicContentSize()
         }
         if textView.markedTextRange == nil {
             let utf16Count = (textView.text as NSString).length
@@ -1010,26 +1003,49 @@ private struct ComposerTextView: UIViewRepresentable {
         } else if !isFocused, textView.isFirstResponder {
             textView.resignFirstResponder()
         }
+
+        updateHeight(of: textView)
     }
 
-    func sizeThatFits(
-        _ proposal: ProposedViewSize,
-        uiView: UITextView,
-        context: Context
-    ) -> CGSize? {
-        guard let width = proposal.width else { return nil }
-        let fittingSize = uiView.sizeThatFits(
-            CGSize(width: width, height: .greatestFiniteMagnitude)
-        )
-        let lineHeight = uiView.font?.lineHeight ?? UIFont.preferredFont(forTextStyle: .body).lineHeight
-        let insets = uiView.textContainerInset.top + uiView.textContainerInset.bottom
-        let minimumHeight = lineHeight + insets
-        let maximumHeight = lineHeight * 4 + insets
-        uiView.isScrollEnabled = fittingSize.height > maximumHeight
-        return CGSize(
-            width: width,
-            height: min(max(fittingSize.height, minimumHeight), maximumHeight)
-        )
+    private func updateHeight(of textView: UITextView) {
+        guard textView.bounds.width > 0 else { return }
+        let lineHeight = textView.font?.lineHeight
+            ?? UIFont.preferredFont(forTextStyle: .body).lineHeight
+        let insets = textView.textContainerInset.top + textView.textContainerInset.bottom
+        let minimumHeight = max(44, lineHeight + insets)
+        var fittingHeight: CGFloat = minimumHeight
+        let nextHeight = ComposerTextViewLayout.stableHeight(
+            minimumHeight: minimumHeight
+        ) { candidate in
+            updateExclusionPaths(of: textView, height: candidate)
+            fittingHeight = textView.sizeThatFits(
+                CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)
+            ).height
+            return ComposerTextViewLayout.height(
+                fittingHeight: fittingHeight,
+                lineHeight: lineHeight,
+                insets: insets
+            )
+        }
+        updateExclusionPaths(of: textView, height: nextHeight)
+        fittingHeight = textView.sizeThatFits(
+            CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)
+        ).height
+        let maximumHeight = lineHeight * ComposerTextViewLayout.maximumLines + insets
+        textView.isScrollEnabled = fittingHeight > maximumHeight
+        guard abs(measuredHeight - nextHeight) > 0.5 else { return }
+        DispatchQueue.main.async { measuredHeight = nextHeight }
+    }
+
+    private func updateExclusionPaths(of textView: UITextView, height: CGFloat) {
+        let insets = textView.textContainerInset
+        let containerWidth = max(0, textView.bounds.width - insets.left - insets.right)
+        let contentHeight = max(0, height - insets.top - insets.bottom)
+        textView.textContainer.exclusionPaths = ComposerTextExclusionLayout.rects(
+            containerWidth: containerWidth,
+            contentHeight: contentHeight,
+            showsDraftButton: height >= draftButtonThreshold
+        ).map(UIBezierPath.init(rect:))
     }
 
     final class Coordinator: NSObject, UITextViewDelegate {
@@ -1040,7 +1056,8 @@ private struct ComposerTextView: UIViewRepresentable {
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
-            updateFocus(true, textView: textView)
+            guard !parent.isFocused else { return }
+            parent.isFocused = true
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
@@ -1049,6 +1066,7 @@ private struct ComposerTextView: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             guard textView.markedTextRange == nil else { return }
+            parent.updateHeight(of: textView)
             let updatedText = textView.text ?? ""
             let updatedSelection = ComposerTextSelection(
                 location: textView.selectedRange.location,
@@ -1088,5 +1106,99 @@ private struct ComposerTextView: UIViewRepresentable {
                 self.parent.isFocused = focused
             }
         }
+    }
+}
+
+private struct ComposerDraftPane: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var text: String
+    let destinationName: String
+    let pickerHeight: CGFloat
+    let canSend: Bool
+    let isSending: Bool
+    let isPreparingAttachments: Bool
+    let onSendExpressiveMedia: (PendingAttachment) async -> Void
+    let onSend: () -> Void
+    @FocusState private var isFocused: Bool
+    @State private var isExpressivePickerPresented = false
+    @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 38
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                TextEditor(text: $text)
+                    .focused($isFocused)
+                    .font(.body)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 8)
+                    .accessibilityLabel("Message \(destinationName)")
+
+                HStack(spacing: 4) {
+                    Spacer(minLength: 0)
+                    expressivePickerButton
+                    sendButton
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+
+                if isExpressivePickerPresented {
+                    ExpressiveMediaPicker(
+                        height: pickerHeight,
+                        isSending: isSending,
+                        onInsertEmoji: { text.append($0) },
+                        onSendMedia: onSendExpressiveMedia
+                    )
+                }
+            }
+            .navigationTitle("Message draft")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .onAppear { isFocused = true }
+    }
+
+    private var expressivePickerButton: some View {
+        Button {
+            isExpressivePickerPresented.toggle()
+            isFocused = !isExpressivePickerPresented
+        } label: {
+            Image(systemName: isExpressivePickerPresented ? "keyboard" : "face.smiling")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(isExpressivePickerPresented ? KordiTheme.agentViolet : .secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isPreparingAttachments)
+        .accessibilityLabel(isExpressivePickerPresented ? "Show keyboard" : "Open emoji and media picker")
+    }
+
+    private var sendButton: some View {
+        Button {
+            onSend()
+            dismiss()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(canSend ? KordiTheme.signalBlue : Color(uiColor: .tertiarySystemFill))
+                if isSending {
+                    ProgressView().tint(.white).controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.up")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundStyle(canSend ? .white : .secondary)
+                }
+            }
+            .frame(width: sendButtonDiameter, height: sendButtonDiameter)
+            .frame(width: max(44, sendButtonDiameter), height: max(44, sendButtonDiameter))
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canSend || isSending || isPreparingAttachments)
+        .accessibilityLabel("Send message")
     }
 }
