@@ -52,7 +52,7 @@ struct ConversationView: View {
     @State private var photoGrouping: PhotoSendGrouping = .combined
     @State private var replySource: MessageActionSource?
     @State private var selectedMention: ComposerMentionTarget?
-    @FocusState private var isComposerFocused: Bool
+    @State private var isComposerFocused = false
     @State private var isExpressivePickerPresented = false
     @State private var shouldFollowLatestAfterInputSurfaceChange = false
     @State private var showFileImporter = false
@@ -364,6 +364,7 @@ struct ConversationView: View {
 
                                     Color.clear
                                         .frame(height: 1)
+                                        .padding(.bottom, timelineVerticalInset)
                                         .id(bottomAnchorID)
                                         .background(
                                             ConversationScrollCommandBridge(
@@ -383,12 +384,12 @@ struct ConversationView: View {
                                 .frame(
                                     minHeight: max(
                                         0,
-                                        viewport.size.height - timelineVerticalInset * 2
+                                        viewport.size.height - timelineVerticalInset
                                     ),
                                     alignment: timeline.isEmpty ? .top : .bottom
                                 )
                                 .padding(.horizontal, 12)
-                                .padding(.vertical, timelineVerticalInset)
+                                .padding(.top, timelineVerticalInset)
                             }
                             .defaultScrollAnchor(.bottom)
                             .scrollPosition(id: $trackedMessageID, anchor: initialViewport.scrollAnchor)
@@ -401,10 +402,9 @@ struct ConversationView: View {
                                 )
                             )
                             .background(Color(uiColor: .systemGroupedBackground))
-                            .scrollDismissesKeyboard(.interactively)
                             .simultaneousGesture(
                                 TapGesture().onEnded {
-                                    isComposerFocused = false
+                                    dismissKeyboard()
                                     dismissComposerPickers()
                                 }
                             )
@@ -417,7 +417,7 @@ struct ConversationView: View {
                                     LatestMessageButton {
                                         scrollToBottom(animated: true)
                                     }
-                                    .padding(.trailing, 18)
+                                    .padding(.trailing, 10)
                                     .padding(.bottom, 16)
                                     .transition(.scale(scale: 0.82).combined(with: .opacity))
                                 }
@@ -1216,6 +1216,15 @@ struct ConversationView: View {
         showAgentModel = false
     }
 
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+    }
+
     private func openCompanionPreviewIfReady() {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("--preview-companion-panel")
@@ -1349,6 +1358,7 @@ struct ConversationView: View {
         reply: MessageActionSource?,
         mention: ComposerMentionTarget?
     ) async {
+        scrollToBottom(animated: true)
         let plannedBatches = OutgoingAttachmentGroupingPlan.batches(
             for: attachments,
             photoGrouping: grouping
@@ -1925,30 +1935,32 @@ private struct EarlierMessagesLoader: View {
 
 private struct LatestMessageButton: View {
     let action: () -> Void
+    @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 38
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.down")
-                .font(.system(size: 22, weight: .semibold))
-                .frame(width: 52, height: 52)
+                .font(.subheadline.weight(.bold))
+                .frame(width: diameter, height: diameter)
+                .background(.regularMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
+                }
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+                .frame(width: max(44, diameter), height: max(44, diameter))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
-        .background(.regularMaterial, in: Circle())
-        .overlay {
-            Circle()
-                .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 5)
         .accessibilityLabel("Go to latest message")
         .accessibilityHint("Moves to the bottom of the conversation")
     }
 }
 
-/// SwiftUI's identity-based scroll command can be deferred while UIScrollView
-/// is decelerating. The button must win immediately, so this bridge cancels the
-/// active momentum and starts one interruptible animation to the true bottom.
+/// Keeps keyboard dismissal on UIKit's native on-drag path. SwiftUI's
+/// identity-based scroll command can also be deferred while UIScrollView is
+/// decelerating, so the button cancels momentum before moving to the true bottom.
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let scrollToBottomRequest: Int
 
@@ -1964,13 +1976,17 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     }
 
     func updateUIView(_ view: UIView, context: Context) {
-        guard scrollToBottomRequest > 0,
-              context.coordinator.lastHandledRequest != scrollToBottomRequest else { return }
-        context.coordinator.lastHandledRequest = scrollToBottomRequest
+        let shouldScrollToBottom = scrollToBottomRequest > 0
+            && context.coordinator.lastHandledRequest != scrollToBottomRequest
+        if shouldScrollToBottom {
+            context.coordinator.lastHandledRequest = scrollToBottomRequest
+        }
 
         DispatchQueue.main.async { [weak view] in
             guard let view,
                   let scrollView = enclosingScrollView(from: view) else { return }
+            scrollView.keyboardDismissMode = .onDrag
+            guard shouldScrollToBottom else { return }
             scrollView.layer.removeAllAnimations()
             scrollView.setContentOffset(scrollView.contentOffset, animated: false)
             if scrollView.panGestureRecognizer.state != .possible {

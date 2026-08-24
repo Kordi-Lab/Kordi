@@ -59,13 +59,6 @@ enum ComposerFocusReconciliation {
 enum ComposerInputSurfaceMotion {
     static let duration = Duration.milliseconds(280)
     static let animation = Animation.smooth(duration: 0.28)
-
-    static func delayBeforePresentingPicker(
-        keyboardIsFocused: Bool,
-        reduceMotion: Bool
-    ) -> Duration {
-        keyboardIsFocused && !reduceMotion ? duration : .zero
-    }
 }
 
 enum ComposerKeyboardSurfaceLayout {
@@ -160,6 +153,7 @@ enum ComposerTextExclusionLayout {
 }
 
 struct ComposerView: View {
+    @EnvironmentObject private var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Binding var text: String
@@ -167,7 +161,7 @@ struct ComposerView: View {
     @Binding var photoGrouping: PhotoSendGrouping
     @Binding var replySource: MessageActionSource?
     @Binding var selectedMention: ComposerMentionTarget?
-    @FocusState.Binding var isFocused: Bool
+    @Binding var isFocused: Bool
     @Binding var isExpressivePickerPresented: Bool
     @Binding var isAgentModelPickerPresented: Bool
     let conversation: ConversationSummary
@@ -187,6 +181,7 @@ struct ComposerView: View {
     @State private var composerContentHeight: CGFloat = 0
     @State private var messageEditorHeight: CGFloat = 44
     @State private var isDraftPanePresented = false
+    @State private var keyboardFocusRequest = 0
     @ScaledMetric(relativeTo: .body) private var composerControlHeight: CGFloat = 50
     @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 38
     @ScaledMetric(relativeTo: .body) private var draftPaneExpansionThreshold: CGFloat = 84
@@ -200,7 +195,7 @@ struct ComposerView: View {
                 floatingPanelLayer
             }
             .padding(.top, 9)
-            .padding(.bottom, isExpressivePickerPresented ? 0 : 9)
+            .padding(.bottom, 9)
             .background {
                 if #available(iOS 26.0, *) {
                     Color.clear
@@ -215,6 +210,7 @@ struct ComposerView: View {
             }
             .sheet(isPresented: $isDraftPanePresented, onDismiss: { isFocused = true }) {
                 ComposerDraftPane(
+                    model: model,
                     text: $text,
                     destinationName: destinationName,
                     pickerHeight: expressivePickerHeight,
@@ -288,19 +284,8 @@ struct ComposerView: View {
     }
 
     private var inputSurfaceAssembly: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            inputSurface
-                .padding(.horizontal, 10)
-
-            if isExpressivePickerPresented {
-                ExpressiveMediaPicker(
-                    height: expressivePickerHeight,
-                    isSending: isSending,
-                    onInsertEmoji: insertEmoji,
-                    onSendMedia: onSendExpressiveMedia
-                )
-            }
-        }
+        inputSurface
+            .padding(.horizontal, 10)
     }
 
     private var inputSurface: some View {
@@ -358,9 +343,16 @@ struct ComposerView: View {
 
     private var messageEditor: some View {
         ComposerTextView(
+            model: model,
             text: $text,
             selection: $textSelection,
             isFocused: $isFocused,
+            isExpressivePickerPresented: $isExpressivePickerPresented,
+            keyboardFocusRequest: keyboardFocusRequest,
+            expressivePickerHeight: expressivePickerHeight,
+            isSending: isSending,
+            onInsertEmoji: insertEmoji,
+            onSendExpressiveMedia: onSendExpressiveMedia,
             measuredHeight: $messageEditorHeight,
             draftButtonThreshold: draftPaneExpansionThreshold,
             accessibilityLabel: "Message \(destinationName)"
@@ -368,10 +360,8 @@ struct ComposerView: View {
         .frame(height: messageEditorHeight)
         .padding(.horizontal, 8)
         .accessibilityLabel("Message \(destinationName)")
-        .accessibilityHidden(isExpressivePickerPresented)
         .onChange(of: isFocused) { _, isFocused in
-            if isFocused {
-                dismissExpressivePicker()
+            if isFocused, !isExpressivePickerPresented {
                 dismissAgentModelPicker()
             }
         }
@@ -468,22 +458,16 @@ struct ComposerView: View {
 
     private func showExpressivePicker() {
         dismissAgentModelPicker()
-        let transitionDuration = ComposerInputSurfaceMotion.delayBeforePresentingPicker(
-            keyboardIsFocused: isFocused,
-            reduceMotion: reduceMotion
-        )
-        isFocused = false
-        Task { @MainActor in
-            try? await Task.sleep(for: transitionDuration)
-            guard !isFocused, !isExpressivePickerPresented else { return }
-            isExpressivePickerPresented = true
-        }
+        isFocused = true
+        isExpressivePickerPresented = true
+        keyboardFocusRequest &+= 1
     }
 
     private func showKeyboard() {
         dismissExpressivePicker()
         dismissAgentModelPicker()
         isFocused = true
+        keyboardFocusRequest &+= 1
     }
 
     private var inputSurfaceAnimation: Animation? {
@@ -951,10 +935,17 @@ struct ComposerFloatingPanelSurfaceModifier: ViewModifier {
     }
 }
 
-private struct ComposerTextView: UIViewRepresentable {
+struct ComposerTextView: UIViewRepresentable {
+    let model: AppModel
     @Binding var text: String
     @Binding var selection: ComposerTextSelection
-    @FocusState.Binding var isFocused: Bool
+    @Binding var isFocused: Bool
+    @Binding var isExpressivePickerPresented: Bool
+    let keyboardFocusRequest: Int
+    let expressivePickerHeight: CGFloat
+    let isSending: Bool
+    let onInsertEmoji: (String) -> Void
+    let onSendExpressiveMedia: (PendingAttachment) async -> Void
     @Binding var measuredHeight: CGFloat
     let draftButtonThreshold: CGFloat
     let accessibilityLabel: String
@@ -984,6 +975,26 @@ private struct ComposerTextView: UIViewRepresentable {
         textView.accessibilityLabel = accessibilityLabel
         updateExclusionPaths(of: textView, height: measuredHeight)
 
+        let inputView = isExpressivePickerPresented
+            ? context.coordinator.expressiveInputView(for: self)
+            : nil
+        if textView.inputView !== inputView {
+            textView.inputView = inputView
+            if textView.isFirstResponder {
+                textView.reloadInputViews()
+            }
+        }
+
+        if keyboardFocusRequest > 0,
+           context.coordinator.lastHandledKeyboardFocusRequest != keyboardFocusRequest {
+            let coordinator = context.coordinator
+            coordinator.lastHandledKeyboardFocusRequest = keyboardFocusRequest
+            DispatchQueue.main.async { [weak textView] in
+                guard let textView else { return }
+                textView.becomeFirstResponder()
+            }
+        }
+
         if textView.markedTextRange == nil, textView.text != text {
             textView.text = text
             textView.invalidateIntrinsicContentSize()
@@ -998,7 +1009,9 @@ private struct ComposerTextView: UIViewRepresentable {
             }
         }
 
-        if isFocused, !textView.isFirstResponder {
+        if isFocused,
+           !textView.isFirstResponder,
+           !context.coordinator.isEndingEditing {
             textView.becomeFirstResponder()
         } else if !isFocused, textView.isFirstResponder {
             textView.resignFirstResponder()
@@ -1050,18 +1063,65 @@ private struct ComposerTextView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: ComposerTextView
+        var lastHandledKeyboardFocusRequest = 0
+        var isEndingEditing = false
+        private var hostedExpressiveInputView: ComposerExpressiveInputView?
 
         init(parent: ComposerTextView) {
             self.parent = parent
         }
 
+        func expressiveInputView(for parent: ComposerTextView) -> ComposerExpressiveInputView {
+            let rootView = ExpressiveMediaPicker(
+                model: parent.model,
+                height: parent.expressivePickerHeight,
+                isSending: parent.isSending,
+                onInsertEmoji: parent.onInsertEmoji,
+                onSendMedia: parent.onSendExpressiveMedia,
+                allowsSearch: false
+            )
+            if let hostedExpressiveInputView {
+                hostedExpressiveInputView.update(
+                    rootView: rootView,
+                    height: parent.expressivePickerHeight
+                )
+                return hostedExpressiveInputView
+            }
+            let inputView = ComposerExpressiveInputView(
+                rootView: rootView,
+                height: parent.expressivePickerHeight
+            )
+            hostedExpressiveInputView = inputView
+            return inputView
+        }
+
         func textViewDidBeginEditing(_ textView: UITextView) {
-            guard !parent.isFocused else { return }
-            parent.isFocused = true
+            isEndingEditing = false
+            if !parent.isFocused {
+                parent.isFocused = true
+            }
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
-            updateFocus(false, textView: textView)
+            guard ComposerFocusReconciliation.shouldApply(
+                focused: false,
+                textViewIsFirstResponder: textView.isFirstResponder,
+                currentFocus: parent.isFocused
+            ) else {
+                isEndingEditing = false
+                return
+            }
+            isEndingEditing = true
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView else { return }
+                defer { self.isEndingEditing = false }
+                guard ComposerFocusReconciliation.shouldApply(
+                    focused: false,
+                    textViewIsFirstResponder: textView.isFirstResponder,
+                    currentFocus: self.parent.isFocused
+                ) else { return }
+                self.parent.isFocused = false
+            }
         }
 
         func textViewDidChange(_ textView: UITextView) {
@@ -1094,23 +1154,53 @@ private struct ComposerTextView: UIViewRepresentable {
                 self.parent.selection = updatedSelection
             }
         }
+    }
+}
 
-        private func updateFocus(_ focused: Bool, textView: UITextView) {
-            DispatchQueue.main.async { [weak self] in
-                guard let self,
-                      ComposerFocusReconciliation.shouldApply(
-                        focused: focused,
-                        textViewIsFirstResponder: textView.isFirstResponder,
-                        currentFocus: self.parent.isFocused
-                      ) else { return }
-                self.parent.isFocused = focused
-            }
-        }
+final class ComposerExpressiveInputView: UIInputView {
+    private let hostingController: UIHostingController<ExpressiveMediaPicker>
+    private var preferredHeight: CGFloat
+
+    init(rootView: ExpressiveMediaPicker, height: CGFloat) {
+        hostingController = UIHostingController(rootView: rootView)
+        preferredHeight = height
+        super.init(
+            frame: CGRect(x: 0, y: 0, width: 0, height: height),
+            inputViewStyle: .keyboard
+        )
+        allowsSelfSizing = true
+        backgroundColor = .systemGray6
+        hostingController.view.backgroundColor = .clear
+        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(hostingController.view)
+        NSLayoutConstraint.activate([
+            hostingController.view.leadingAnchor.constraint(equalTo: leadingAnchor),
+            hostingController.view.trailingAnchor.constraint(equalTo: trailingAnchor),
+            hostingController.view.topAnchor.constraint(equalTo: topAnchor),
+            hostingController.view.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is unavailable")
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: preferredHeight)
+    }
+
+    func update(rootView: ExpressiveMediaPicker, height: CGFloat) {
+        hostingController.rootView = rootView
+        guard preferredHeight != height else { return }
+        preferredHeight = height
+        invalidateIntrinsicContentSize()
     }
 }
 
 private struct ComposerDraftPane: View {
     @Environment(\.dismiss) private var dismiss
+    let model: AppModel
     @Binding var text: String
     let destinationName: String
     let pickerHeight: CGFloat
@@ -1132,6 +1222,11 @@ private struct ComposerDraftPane: View {
                     .padding(.horizontal, 12)
                     .padding(.bottom, 8)
                     .accessibilityLabel("Message \(destinationName)")
+                    .onChange(of: isFocused) { _, isFocused in
+                        if isFocused {
+                            isExpressivePickerPresented = false
+                        }
+                    }
 
                 HStack(spacing: 4) {
                     Spacer(minLength: 0)
@@ -1143,10 +1238,12 @@ private struct ComposerDraftPane: View {
 
                 if isExpressivePickerPresented {
                     ExpressiveMediaPicker(
+                        model: model,
                         height: pickerHeight,
                         isSending: isSending,
                         onInsertEmoji: { text.append($0) },
-                        onSendMedia: onSendExpressiveMedia
+                        onSendMedia: onSendExpressiveMedia,
+                        allowsSearch: true
                     )
                 }
             }

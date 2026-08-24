@@ -676,6 +676,22 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
+    func testLocalOutgoingMessagesRequestTheBottomBeforeSending() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private func sendOutgoingMessages"))
+        let end = try XCTUnwrap(source.range(
+            of: "private func resolvedMentionTarget",
+            range: start.upperBound..<source.endIndex
+        ))
+        let sender = source[start.lowerBound..<end.lowerBound]
+
+        XCTAssertTrue(sender.contains("scrollToBottom(animated: true)"))
+    }
+
     func testConversationKeepsFollowingNewMessagesWhileAtLatest() {
         XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatest(
             hasPositionedInitialTimeline: true,
@@ -723,9 +739,16 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(lines.contains("                            \(animation)"))
         XCTAssertFalse(lines.contains("                        \(animation)"))
         XCTAssertFalse(source.contains(".safeAreaInset(edge: .bottom"))
-        XCTAssertTrue(source.contains("@FocusState private var isComposerFocused: Bool"))
+        XCTAssertFalse(source.contains(".scrollDismissesKeyboard("))
+        XCTAssertFalse(source.contains("keyboardAvoidanceHeight"))
+        XCTAssertTrue(source.contains("scrollView.keyboardDismissMode = .onDrag"))
+        XCTAssertTrue(source.contains(".padding(.bottom, timelineVerticalInset)\n                                        .id(bottomAnchorID)"))
+        XCTAssertTrue(source.contains("viewport.size.height - timelineVerticalInset"))
+        XCTAssertTrue(source.contains(".padding(.top, timelineVerticalInset)"))
+        XCTAssertFalse(source.contains(".padding(.vertical, timelineVerticalInset)"))
+        XCTAssertTrue(source.contains("@State private var isComposerFocused = false"))
         XCTAssertTrue(source.contains("isFocused: $isComposerFocused,"))
-        XCTAssertTrue(source.contains("isComposerFocused = false\n                                    dismissComposerPickers()"))
+        XCTAssertTrue(source.contains("dismissKeyboard()\n                                    dismissComposerPickers()"))
 
         let composer = try XCTUnwrap(source.range(of: "                        ComposerView("))
         let rootModifiers = try XCTUnwrap(source.range(of: "            .onChange(of: timeline.count)"))
