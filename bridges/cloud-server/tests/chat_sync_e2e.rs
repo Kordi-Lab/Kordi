@@ -1,7 +1,6 @@
 //! PostgreSQL invariant tests for the additive reliable chat protocol.
 //!
-//! These tests skip when `DATABASE_URL` is unavailable, matching the other
-//! cloud-server integration suites.
+//! These tests skip without `DATABASE_URL`, matching the other cloud-server integration suites.
 use kordi_cloud_server::chat_sync::models::{
     AddConversationMembersRequest, AdvanceConversationCursorRequest, ConversationKind,
     CreateConversationRequest, SendMessageRequest, UpdateConversationTitleRequest,
@@ -15,6 +14,8 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
+#[path = "chat_sync_e2e/reactions.rs"]
+mod reactions;
 async fn try_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
     match init_pool(&url).await {

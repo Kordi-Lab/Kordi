@@ -50,7 +50,7 @@ const EXPORT_NAME = /(?:^|[-_.])(?:session|account|message|conversation|chat|tra
 const LOCAL_AUTH_NAME = /(?:^|\/)(?:auth|credentials?|tokens?|cookies?)\.json$/i;
 const ENV_FILE = /(?:^|\/)\.env(?:\..+)?$/i;
 const RASTER_IMAGE = /\.(?:png|jpe?g|gif|webp|heic|tiff?|bmp)$/i;
-const APPROVED_RASTER_PATH = /^(?:\.github\/assets\/|agent\/assets\/|app\/desktop\/public\/|app\/desktop\/src\/assets\/|app\/desktop\/src-tauri\/icons\/|app\/desktop\/tests\/visual\/__screenshots__\/|app\/ios\/Kordi\/Resources\/Assets\.xcassets\/)/;
+const APPROVED_RASTER_PATH = /^(?:\.github\/assets\/|agent\/assets\/|app\/desktop\/public\/|app\/desktop\/src\/assets\/|app\/desktop\/src-tauri\/icons\/|app\/desktop\/tests\/visual\/__screenshots__\/|app\/ios\/Kordi\/Resources\/Assets\.xcassets\/|shared\/blob-emoji\/assets\/)/;
 const TRANSCRIPT_SHAPED_JSON = /"messages"\s*:\s*\[[\s\S]{0,200000}"role"\s*:\s*"(?:user|assistant)"/i;
 
 function runGit(repositoryRoot, args, options = {}) {

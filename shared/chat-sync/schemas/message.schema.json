@@ -41,6 +41,22 @@
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1 }
     },
+    "reactions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reaction", "account_ids"],
+        "properties": {
+          "reaction": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "account_ids": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
     "version": { "type": "integer", "minimum": 1 },
     "generation_status": { "type": ["string", "null"] },
     "provider_response_id": { "type": ["string", "null"] },

@@ -46,6 +46,7 @@ type MessageActionCloudTransport = Pick<
   | 'prepareCloudForwardAttachments'
   | 'sendCloudCollaborationMessage'
   | 'sendCloudGroupControl'
+  | 'setCloudMessageReaction'
 >;
 
 type UseKordiMessageActionsArgs = {
@@ -94,6 +95,7 @@ export function useKordiMessageActions({
     prepareCloudForwardAttachments,
     sendCloudCollaborationMessage,
     sendCloudGroupControl,
+    setCloudMessageReaction,
   } = cloudTransport;
   const copyTextToClipboard = useCallback(async (value: string) => {
     try {
@@ -152,6 +154,29 @@ export function useKordiMessageActions({
     if (!destinations.length) return;
     setForwardDialog({ sources: [source], destinations });
   }, [conversations, sourceForSelectableMessage]);
+
+  const onReactMessage = useCallback(async (message: Message, reaction: string) => {
+    const conversationId = message.reactionConversationId?.trim();
+    const messageId = message.reactionTargetMessageId?.trim();
+    const accountId = account?.accountId?.trim();
+    if (!conversationId || !messageId || !accountId) return;
+    const active = message.reactions
+      ?.find((item) => item.value === reaction)
+      ?.accountIds.includes(accountId) === true;
+    setDesktopChatError(null);
+    try {
+      await setCloudMessageReaction({
+        conversationId,
+        messageId,
+        reaction,
+        active: !active,
+      });
+    } catch (error) {
+      setDesktopChatError(
+        error instanceof Error ? error.message : 'Unable to update reaction',
+      );
+    }
+  }, [account?.accountId, setCloudMessageReaction, setDesktopChatError]);
 
   const {
     activeMessageSelection,
@@ -404,6 +429,7 @@ export function useKordiMessageActions({
     selectedMessageCount,
     onReplyMessage,
     onForwardMessage,
+    onReactMessage,
     onSelectMessage,
     isMessageSelectable,
     onToggleSelectedMessage,

@@ -198,6 +198,7 @@ export function ChatCompanionWorkspace({
             : undefined,
           onOpenForkSession: session.actions.switchConversation,
           onForwardMessage: composer.onForwardMessage,
+          onReactMessage: composer.onReactMessage,
           onSelectMessage: composer.onSelectMessage,
         },
         selection: {},

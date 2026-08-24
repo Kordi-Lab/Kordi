@@ -55,6 +55,19 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertEqual(parts.last, .text("."))
     }
 
+    func testParsesKnownBlobEmojiAndLeavesUnknownShortcodesAsText() throws {
+        let emoji = try XCTUnwrap(BlobEmojiCatalog.byID["blobwave"])
+
+        XCTAssertTrue(
+            KordiMarkdownParser.parseInline("Hello :blob:blobwave:")
+                .contains(.blobEmoji(emoji))
+        )
+        XCTAssertFalse(
+            KordiMarkdownParser.parseInline(":blob:not-in-the-catalog:")
+                .contains(where: { if case .blobEmoji = $0 { true } else { false } })
+        )
+    }
+
     func testMarkdownParserPerformance() {
         let markdown = Array(repeating: """
         ## Release status

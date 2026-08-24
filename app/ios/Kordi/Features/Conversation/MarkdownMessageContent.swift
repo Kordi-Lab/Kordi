@@ -7,6 +7,7 @@ enum KordiMarkdownInlinePart: Equatable {
     case strong(String)
     case emphasis(String)
     case link(label: String, url: URL)
+    case blobEmoji(BlobEmoji)
 }
 
 struct KordiMarkdownListItem: Equatable {
@@ -148,6 +149,9 @@ enum KordiMarkdownParser {
         while !remainder.isEmpty {
             let value = String(remainder)
             let patterns: [(String, ([String]) -> (part: KordiMarkdownInlinePart, suffix: String)?)] = [
+                ("^:blob:([A-Za-z0-9_-]+):", { captures in
+                    BlobEmojiCatalog.byID[captures[1]].map { (.blobEmoji($0), "") }
+                }),
                 ("^\\[([^\\]]+)\\]\\((https?://[^\\s)]+)\\)", { captures in
                     guard let url = URL(string: captures[2]) else { return nil }
                     return (.link(label: captures[1], url: url), "")
@@ -179,7 +183,7 @@ enum KordiMarkdownParser {
             }
             if matched { continue }
 
-            let tokens = ["[", "`", "*", "http://", "https://"]
+            let tokens = [":blob:", "[", "`", "*", "http://", "https://"]
             let next = tokens.compactMap { value.range(of: $0)?.lowerBound }
                 .min { value.distance(from: value.startIndex, to: $0) < value.distance(from: value.startIndex, to: $1) }
 
@@ -469,14 +473,39 @@ private struct InlineMarkdownText: View {
     @Environment(\.messageMentions) private var mentions
 
     var body: some View {
-        Text(attributedText)
-            .font(font)
-            .fixedSize(horizontal: false, vertical: true)
+        let parts = KordiMarkdownParser.parseInline(text)
+        if parts.contains(where: { part in
+            if case .blobEmoji = part { return true }
+            return false
+        }) {
+            BlobEmojiInlineFlowLayout(spacing: 2) {
+                ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+                    inlineView(part)
+                }
+            }
+        } else {
+            Text(attributedText(parts))
+                .font(font)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
-    private var attributedText: AttributedString {
+    @ViewBuilder
+    private func inlineView(_ part: KordiMarkdownInlinePart) -> some View {
+        switch part {
+        case let .blobEmoji(emoji):
+            BlobEmojiView(emoji: emoji, size: 22)
+                .accessibilityLabel(emoji.accessibilityName)
+        default:
+            Text(attributedText([part]))
+                .font(font)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func attributedText(_ parts: [KordiMarkdownInlinePart]) -> AttributedString {
         var result = AttributedString()
-        for part in KordiMarkdownParser.parseInline(text) {
+        for part in parts {
             var fragment: AttributedString
             switch part {
             case let .text(value):
@@ -494,6 +523,8 @@ private struct InlineMarkdownText: View {
                 fragment.link = url
                 fragment.foregroundColor = KordiTheme.signalBlue
                 fragment.underlineStyle = .single
+            case .blobEmoji:
+                continue
             }
             result.append(fragment)
         }
@@ -522,6 +553,71 @@ private struct InlineMarkdownText: View {
             result.append(fragment)
         }
         return result
+    }
+}
+
+private struct BlobEmojiInlineFlowLayout: Layout {
+    let spacing: CGFloat
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        layout(proposal: proposal, subviews: subviews).size
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        let result = layout(
+            proposal: ProposedViewSize(width: bounds.width, height: proposal.height),
+            subviews: subviews
+        )
+        for (index, origin) in result.origins.enumerated() {
+            subviews[index].place(
+                at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(result.sizes[index])
+            )
+        }
+    }
+
+    private func layout(
+        proposal: ProposedViewSize,
+        subviews: Subviews
+    ) -> (size: CGSize, origins: [CGPoint], sizes: [CGSize]) {
+        let maximumWidth = max(1, proposal.width ?? .greatestFiniteMagnitude)
+        var origins: [CGPoint] = []
+        var sizes: [CGSize] = []
+        var cursor = CGPoint.zero
+        var lineHeight: CGFloat = 0
+        var usedWidth: CGFloat = 0
+
+        for subview in subviews {
+            var size = subview.sizeThatFits(.unspecified)
+            if size.width > maximumWidth {
+                size = subview.sizeThatFits(ProposedViewSize(width: maximumWidth, height: nil))
+            }
+            if cursor.x > 0, cursor.x + size.width > maximumWidth {
+                cursor.x = 0
+                cursor.y += lineHeight + spacing
+                lineHeight = 0
+            }
+            origins.append(cursor)
+            sizes.append(size)
+            cursor.x += size.width + spacing
+            lineHeight = max(lineHeight, size.height)
+            usedWidth = max(usedWidth, min(maximumWidth, cursor.x - spacing))
+        }
+        return (
+            CGSize(width: usedWidth, height: cursor.y + lineHeight),
+            origins,
+            sizes
+        )
     }
 }
 

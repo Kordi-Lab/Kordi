@@ -140,6 +140,7 @@ export type ChatsPageComposer = {
   onClearChatQuote?: () => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onReactMessage?: (message: Message, reaction: string) => Promise<void> | void;
   onSelectMessage?: (message: Message) => void;
   messageSelectionMode?: boolean;
   selectedMessageCount?: number;
@@ -289,6 +290,7 @@ export type ChatSessionPaneActions = {
   onOpenForkSession?: (sessionId: string) => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onReactMessage?: (message: Message, reaction: string) => Promise<void> | void;
   onRetryMessage?: (message: Message) => Promise<void> | void;
   onSelectMessage?: (message: Message) => void;
   onRequestPinMessage?: (message: Message) => void;

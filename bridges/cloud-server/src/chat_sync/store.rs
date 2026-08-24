@@ -13,7 +13,7 @@ use uuid::Uuid;
 use crate::chat_sync::models::{
     AddConversationMembersRequest, AdvanceConversationCursorRequest, ConversationCursorSnapshot,
     ConversationKind, ConversationPreferencesSnapshot, ConversationSnapshot,
-    CreateConversationRequest, HistoryResponse, MemberSnapshot, MessageSnapshot,
+    CreateConversationRequest, HistoryResponse, MemberSnapshot, MessageSnapshot, ReactionSnapshot,
     SendMessageRequest, SyncEventSnapshot, UpdateConversationTitleRequest,
     UpdatePersonalTitleRequest,
 };
@@ -194,7 +194,9 @@ mod cursors;
 mod members;
 mod meme_validation;
 mod message;
+mod reaction;
 mod support;
+mod sync_events;
 mod titles;
 
 pub(crate) use conversation::create_conversation_in_transaction;
@@ -205,7 +207,10 @@ pub use message::{
     conversation_id_for_session, load_message_snapshot, replace_message_snapshot, send_message,
 };
 pub(crate) use message::{replace_server_message_in_transaction, send_message_in_transaction};
+use reaction::reactions_by_message;
+pub use reaction::set_reaction;
 pub use support::{
     append_user_sync_events_in_transaction, identity_sync_recipient_ids, publish_user_sync_events,
 };
+use sync_events::{insert_noncritical_sync_event, insert_sync_event};
 pub use titles::{update_personal_title, update_shared_title};

@@ -249,6 +249,7 @@ export class ChatSyncSyncClient {
     if ([
       'message.created',
       'message.updated',
+      'reaction.updated',
       'generation.updated',
       'generation.completed',
       'generation.failed',

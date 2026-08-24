@@ -250,7 +250,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   activeChatQuote: ComposerQuoteState | null;
   onClearChatQuote: () => void;
   onReplyMessage: (message: Message) => void;
-  onForwardMessage: (message: Message) => void;
+  onForwardMessage: (message: Message) => void; onReactMessage: (message: Message, reaction: string) => Promise<void> | void;
   onSelectMessage: (message: Message) => void;
   messageSelectionMode: boolean;
   selectedMessageCount: number;
@@ -549,7 +549,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeChatQuote'
   | 'onClearChatQuote'
   | 'onReplyMessage'
-  | 'onForwardMessage'
+  | 'onForwardMessage' | 'onReactMessage'
   | 'onSelectMessage'
   | 'messageSelectionMode'
   | 'selectedMessageCount'

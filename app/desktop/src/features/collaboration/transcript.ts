@@ -406,7 +406,7 @@ export function mapCollaborationConversationToViewModel(
         text: '',
         time: message.timeLabel,
         timestampMs: message.timestampMs,
-        replyToMessageId,
+        replyToMessageId, reactionConversationId: message.reactionConversationId, reactionTargetMessageId: message.reactionTargetMessageId, reactions: message.reactions,
         turn: {
           id: localTurn?.id ?? `collaboration-live-turn:${conversation.id}:${message.id}`,
           sessionId: conversation.id,
@@ -461,7 +461,7 @@ export function mapCollaborationConversationToViewModel(
           : [],
       mentions,
       attachments,
-      messageAction,
+      messageAction, reactionConversationId: message.reactionConversationId, reactionTargetMessageId: message.reactionTargetMessageId, reactions: message.reactions,
       sourceMessage,
       replyToMessageId: message.messageAction?.kind === 'quote' ? sourceMessage?.messageId ?? null : undefined,
       detail: message.detail ?? undefined,

@@ -24,6 +24,7 @@ fn message(content: Value, attachments: usize) -> MessageSnapshot {
         created_at: Utc::now(),
         edited_at: None,
         deleted_at: None,
+        reactions: Vec::new(),
     }
 }
 

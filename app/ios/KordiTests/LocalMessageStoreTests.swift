@@ -70,6 +70,31 @@ final class LocalMessageStoreTests: XCTestCase {
         )
     }
 
+    func testCacheRoundTripsMessageReactions() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let conversationID = "person:reaction-contact"
+        var reacted = message(
+            id: "reaction-message",
+            conversationID: conversationID,
+            text: "Reacted"
+        )
+        reacted.reactions = [
+            MessageReaction(value: "❤️", accountIds: ["acct_a", "acct_b"])
+        ]
+        reacted.reactionTargetMessageId = "018f47c2-9f4c-7a5e-b001-000000000001"
+
+        store.saveMessages(
+            [reacted],
+            conversationId: conversationID,
+            accountId: "account-a"
+        )
+
+        XCTAssertEqual(
+            store.loadMessages(accountId: "account-a", conversationId: conversationID),
+            [reacted]
+        )
+    }
+
     func testCacheLoadsBoundedPagesWithoutDeletingOlderRows() throws {
         let store = try LocalMessageStore(inMemory: true)
         let conversationID = "person:paged-contact"
@@ -279,11 +304,13 @@ final class LocalMessageStoreTests: XCTestCase {
         let store = try LocalMessageStore(inMemory: true)
         let cachedConversation = conversation(id: "cached-id", displayName: "Cached")
         let canonicalConversation = conversation(id: "canonical-id", displayName: "Canonical")
-        let cachedMessage = message(
+        var cachedMessage = message(
             id: "history",
             conversationID: cachedConversation.id,
             text: "Persisted history"
         )
+        cachedMessage.reactionTargetMessageId = "018f47c2-9f4c-7a5e-b001-000000000001"
+        cachedMessage.reactions = [MessageReaction(value: "blob:blobwave", accountIds: ["account-a"])]
         var messagesByConversation = [cachedConversation.id: [cachedMessage]]
 
         let changed = AppModel.rekeyMessages(
@@ -301,6 +328,8 @@ final class LocalMessageStoreTests: XCTestCase {
         XCTAssertEqual(changed, [canonicalConversation.id])
         XCTAssertNil(messagesByConversation[cachedConversation.id])
         XCTAssertEqual(rebased.map(\.conversationId), [canonicalConversation.id])
+        XCTAssertEqual(rebased.first?.reactionTargetMessageId, cachedMessage.reactionTargetMessageId)
+        XCTAssertEqual(rebased.first?.reactions, cachedMessage.reactions)
         XCTAssertEqual(
             store.loadMessages(accountId: "account-a", conversationId: canonicalConversation.id),
             rebased

@@ -168,8 +168,8 @@ export type CloudMessage = {
   messageKind?: string | null;
   canonicalHistoryLocalMessageId?: string | null;
   version?: number | null;
+  reactions?: Array<{ value: string; accountIds: string[] }>;
 };
-
 export type CloudSyncEventType = string;
 
 export type CloudSyncEvent = {
@@ -746,7 +746,7 @@ export class CloudAuthClient {
   }
 
   async drainChatOutbox(token: string, accountId: string): Promise<CloudMessage[]> { return this.chat.drainOutbox(token, accountId); }
-
+  async setReaction(token: string, conversationId: string, messageId: string, reaction: string, active: boolean): Promise<CloudMessage> { return this.chat.setReaction(token, conversationId, messageId, reaction, active); }
   async initiateAttachment(token: string): Promise<CloudAttachmentInitiateResult> {
     return this.send<CloudAttachmentInitiateResult>(
       '/v1/cloud/attachments/initiate',

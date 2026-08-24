@@ -225,10 +225,21 @@ pub async fn history(
     .fetch_all(&mut *transaction)
     .await?;
     let has_more = rows.len() as i64 > limit;
+    let message_ids = rows
+        .iter()
+        .take(limit as usize)
+        .map(|row| row.0)
+        .collect::<Vec<_>>();
+    let mut reactions = reactions_by_message(&mut transaction, &message_ids).await?;
     let mut messages = Vec::with_capacity(rows.len().min(limit as usize));
     for row in rows.into_iter().take(limit as usize) {
+        let message_id = row.0;
         let attachments = attachment_ids(&mut transaction, row.0).await?;
-        messages.push(message_from_row(row, attachments));
+        messages.push(message_from_row(
+            row,
+            attachments,
+            reactions.remove(&message_id).unwrap_or_default(),
+        ));
     }
     let next_before_sequence = if has_more {
         messages.last().map(|message| message.conversation_sequence)
@@ -430,6 +441,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             .or_default()
             .push(attachment_id);
     }
+    let mut reactions_by_message = reactions_by_message(&mut transaction, &message_ids).await?;
     let latest_messages = latest_rows
         .into_iter()
         .map(|row| {
@@ -439,6 +451,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 attachments_by_message
                     .remove(&message_id)
                     .unwrap_or_default(),
+                reactions_by_message.remove(&message_id).unwrap_or_default(),
             )
         })
         .collect();

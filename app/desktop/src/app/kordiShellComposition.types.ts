@@ -196,6 +196,7 @@ export type KordiShellCompositionArgs = {
     | 'onClearChatQuote'
     | 'onReplyMessage'
     | 'onForwardMessage'
+    | 'onReactMessage'
     | 'onSelectMessage'
     | 'messageSelectionMode'
     | 'selectedMessageCount'

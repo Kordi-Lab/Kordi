@@ -108,6 +108,7 @@ export function useChatTranscriptViewport({
     onOpenForkSession,
     onReplyMessage,
     onForwardMessage,
+    onReactMessage,
     onRetryMessage,
     onSelectMessage,
     onRequestPinMessage,
@@ -187,6 +188,7 @@ export function useChatTranscriptViewport({
             relatedAgentSessionStatusById={relatedAgentSessionStatusById}
             onReplyMessage={onReplyMessage}
             onForwardMessage={onForwardMessage}
+            onReactMessage={onReactMessage}
             onRetryMessage={onRetryMessage}
             onOpenMessageDetail={onOpenMessageDetail}
             onSelectMessage={onSelectMessage}
@@ -267,6 +269,7 @@ export function useChatTranscriptViewport({
     onOpenSenderProfile,
     onOpenSource,
     onReplyMessage,
+    onReactMessage,
     onRequestCollaborationContact,
     onRequestPinMessage,
     onRequestUnpinMessage,

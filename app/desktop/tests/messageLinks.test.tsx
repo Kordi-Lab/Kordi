@@ -76,6 +76,17 @@ test('plain message content tokenizes structured mentions and safe URLs without 
   assert.equal(urlMention.filter((part) => part.type === 'mention').length, 0);
 });
 
+test('plain message content renders known Blob Emoji shortcodes inline', () => {
+  const parts = parseMessageInlineParts('hello :blob:blobwave: :blob:not-real:');
+  const html = renderToStaticMarkup(createElement(MessageInlineContent, {
+    text: 'hello :blob:blobwave: :blob:not-real:',
+  }));
+
+  assert.equal(parts.filter((part) => part.type === 'blobEmoji').length, 1);
+  assert.match(html, /blobwave\.webp/);
+  assert.match(html, /:blob:not-real:/);
+});
+
 test('plain message content emphasizes every textual mention alongside a structured target', () => {
   const parts = parseMessageInlineParts(
     '@AlexMorgansKordi, please ask @EthanParksKordi to reply. Email test@example.com.',

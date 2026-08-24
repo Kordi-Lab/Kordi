@@ -281,6 +281,7 @@ export function useKordiAppFoundation({
     sendCloudCollaborationMessage,
     updateCloudCollaborationSessionTitle,
     sendCloudGroupControl,
+    setCloudMessageReaction,
     recordCloudSessionFork,
     updateCloudSessionPin,
     hideCloudSession,
@@ -468,7 +469,7 @@ export function useKordiAppFoundation({
     cloud: {
       setCloudCollaborationState, desktopCollaborationState,
       prepareCloudForwardAttachments, sendCloudCollaborationMessage,
-      sendCloudGroupControl, recordCloudSessionFork, updateCloudSessionPin,
+      sendCloudGroupControl, setCloudMessageReaction, recordCloudSessionFork, updateCloudSessionPin,
       hideCloudSession, deleteCloudSession, cancelCloudAgentRequest,
       refreshCloudMessages, refreshSharedCloudAgents, sharedCloudAgents,
       cloudAgentDefinitionsById, refreshCloudContacts, cloudContacts,

@@ -47,6 +47,10 @@ export class ChatSyncClient {
     return this.conversations.drainChatOutbox(token, accountId);
   }
 
+  setReaction(token: string, conversationId: string, messageId: string, reaction: string, active: boolean): Promise<CloudMessage> {
+    return this.conversations.setReaction(token, conversationId, messageId, reaction, active);
+  }
+
   markMessagesRead(token: string, peerAccountId: string): Promise<void> {
     return this.conversations.markMessagesRead(token, peerAccountId);
   }

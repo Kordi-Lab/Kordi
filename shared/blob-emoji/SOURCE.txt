@@ -1,0 +1,6 @@
+Blob Emoji catalog
+
+Official project: https://blobs.gg/
+Official download: https://files.lostluma.net/blobs.zip
+Pinned archive SHA-256: ae8d34bdce80e2f9ccec63ca17b01caa0221b8ef90d5876cffdf302db803d278
+License: Apache License 2.0 (see LICENSE.txt)

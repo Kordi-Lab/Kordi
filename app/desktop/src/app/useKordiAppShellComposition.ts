@@ -318,6 +318,7 @@ export function useKordiAppShellComposition({
       onClearChatQuote: composer.onClearChatQuote,
       onReplyMessage: messages.onReplyMessage,
       onForwardMessage: messages.onForwardMessage,
+      onReactMessage: messages.onReactMessage,
       onSelectMessage: messages.onSelectMessage,
       messageSelectionMode: Boolean(messages.activeMessageSelection),
       selectedMessageCount: messages.selectedMessageCount,

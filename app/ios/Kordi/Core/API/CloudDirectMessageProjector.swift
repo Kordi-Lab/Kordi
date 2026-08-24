@@ -129,6 +129,7 @@ enum CloudDirectMessageProjector {
             requestMessageId: responseRequestId,
             attachments: message.attachments.map(\.chatAttachment),
             replyToMessageId: messageAction?.replyToMessageId ?? responseRequestId,
+            reactionTargetMessageId: message.messageId,
             messageAction: messageAction,
             mentions: MessageMention.rebased(
                 CloudMessageCodec.directEnvelope(message.body)?.mentions ?? [],
@@ -136,7 +137,8 @@ enum CloudDirectMessageProjector {
             ),
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
             agentExecution: visibleOwnerExecution,
-            backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body)
+            backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
+            reactions: message.reactions
         )
     }
 }

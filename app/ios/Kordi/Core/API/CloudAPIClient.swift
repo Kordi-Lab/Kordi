@@ -831,6 +831,38 @@ actor CloudAPIClient {
         return legacyMessage(from: response.message, conversation: conversation, viewerAccountId: accountId)
     }
 
+    func setReaction(
+        token: String,
+        sessionId: String,
+        messageId: String,
+        reaction: String,
+        active: Bool
+    ) async throws -> CloudMessageDTO {
+        let accountId = try requireActiveAccountId()
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId]
+            ?? chatConversationsById[sessionId] else {
+            throw CloudAPIError(
+                code: "chat_conversation_missing",
+                message: "This conversation is not available in reliable chat sync.",
+                statusCode: 404
+            )
+        }
+        let response: ChatMessageResponse = try await send(
+            path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages/\(escapedPath(messageId))/reactions",
+            method: active ? "PUT" : "DELETE",
+            token: token,
+            body: ChatUpdateReactionRequest(reaction: reaction),
+            fallback: active ? "Could not add the reaction." : "Could not remove the reaction."
+        )
+        chatMessagesById[response.message.id] = response.message
+        return legacyMessage(
+            from: response.message,
+            conversation: conversation,
+            viewerAccountId: accountId
+        )
+    }
+
     func startCall(
         token: String,
         conversation: ConversationSummary,
@@ -1387,7 +1419,10 @@ actor CloudAPIClient {
             attachments: message.content.legacyAttachments,
             messageKind: message.kind,
             conversationId: conversation.id,
-            conversationSequence: message.conversationSequence
+            conversationSequence: message.conversationSequence,
+            reactions: (message.reactions ?? []).map {
+                MessageReaction(value: $0.reaction, accountIds: $0.accountIds)
+            }
         )
     }
 
@@ -1416,7 +1451,8 @@ actor CloudAPIClient {
         if let conversation { remember(conversation) }
         let messageTypes: Set<String> = [
             "message.created", "message.updated", "message.deleted",
-            "generation.updated", "generation.completed", "generation.failed"
+            "generation.updated", "generation.completed", "generation.failed",
+            "reaction.updated"
         ]
         if messageTypes.contains(event.eventType),
            let message = event.payload.message,
@@ -1984,6 +2020,10 @@ private struct ChatSendMessageRequest: Encodable {
         case replyToMessageId = "reply_to_message_id"
         case attachmentIds = "attachment_ids"
     }
+}
+
+private struct ChatUpdateReactionRequest: Encodable {
+    let reaction: String
 }
 
 private struct ChatAdvanceCursorRequest: Encodable {

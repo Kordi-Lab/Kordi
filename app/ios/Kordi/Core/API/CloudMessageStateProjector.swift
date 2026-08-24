@@ -97,7 +97,8 @@ enum CloudMessageStateProjector {
                     attachments: message.attachments,
                     messageKind: message.messageKind,
                     conversationId: message.conversationId,
-                    conversationSequence: message.conversationSequence
+                    conversationSequence: message.conversationSequence,
+                    reactions: message.reactions
                 )
             }
         }

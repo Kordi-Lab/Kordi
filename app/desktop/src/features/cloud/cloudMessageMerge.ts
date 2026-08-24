@@ -47,6 +47,16 @@ function cloudReaderAccountIdsEqual(left?: string[], right?: string[]): boolean 
     && left.every((accountId, index) => accountId === right[index]);
 }
 
+function cloudReactionsEqual(left: CloudMessage['reactions'] = [], right: CloudMessage['reactions'] = []) {
+  if (left.length !== right.length) return false;
+  return left.every((reaction, index) => {
+    const other = right[index];
+    return Boolean(other)
+      && reaction.value === other.value
+      && cloudReaderAccountIdsEqual(reaction.accountIds, other.accountIds);
+  });
+}
+
 export function cloudMessagesEqual(
   message: CloudMessage,
   other: CloudMessage | undefined,
@@ -68,6 +78,7 @@ export function cloudMessagesEqual(
     && (message.messageKind ?? null) === (other.messageKind ?? null)
     && (message.canonicalHistoryLocalMessageId ?? null) === (other.canonicalHistoryLocalMessageId ?? null)
     && (message.version ?? null) === (other.version ?? null)
+    && cloudReactionsEqual(message.reactions, other.reactions)
     && cloudMessageAttachmentsEqual(message.attachments, other.attachments);
 }
 
@@ -109,6 +120,9 @@ export function mergeCloudMessageMonotonicState(
     readByAccountIds: incomingIsOlder
       ? current.readByAccountIds
       : incoming.readByAccountIds ?? current.readByAccountIds,
+    reactions: incomingIsOlder
+      ? current.reactions
+      : incoming.reactions ?? current.reactions,
   };
   return cloudMessagesEqual(current, merged) ? current : merged;
 }

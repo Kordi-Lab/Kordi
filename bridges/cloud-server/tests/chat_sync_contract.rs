@@ -85,6 +85,10 @@ fn durable_event_and_message_schemas_are_valid_json_contracts() {
         .expect("message content required list");
     assert!(content_required.iter().any(|value| value == "schema"));
     assert!(content_required.iter().any(|value| value == "blocks"));
+    assert_eq!(
+        message["properties"]["reactions"]["items"]["properties"]["account_ids"]["uniqueItems"],
+        true
+    );
 }
 
 #[test]
@@ -205,6 +209,7 @@ fn canonical_routes_are_exclusive_for_chat_and_require_signed_cursors() {
         "/v2/chat/conversations/:conversation_id/preferences",
         "/v2/chat/conversations/:conversation_id/members",
         "/v2/chat/conversations/:conversation_id/messages",
+        "/v2/chat/conversations/:conversation_id/messages/:message_id/reactions",
         "/v2/chat/conversations/:conversation_id/delivered",
         "/v2/chat/conversations/:conversation_id/read",
         "/v2/chat/sync",

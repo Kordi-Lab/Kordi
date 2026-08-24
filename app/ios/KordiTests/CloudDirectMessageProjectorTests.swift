@@ -2,6 +2,33 @@ import XCTest
 @testable import Kordi
 
 final class CloudDirectMessageProjectorTests: XCTestCase {
+    func testProjectorPreservesCanonicalBlobReactionTargetAndActors() throws {
+        let messageID = "018f47c2-9f4c-7a5e-b001-000000000001"
+        let projected = CloudDirectMessageProjector.project(
+            [CloudMessageDTO(
+                messageId: messageID,
+                fromAccountId: "acct_peer",
+                toAccountId: "acct_me",
+                body: "React to this",
+                createdAt: "2026-08-24T10:00:00Z",
+                deliveredAt: "2026-08-24T10:00:00Z",
+                readAt: nil,
+                direction: "incoming",
+                sessionId: conversation.sessionId,
+                conversationId: "018f47c2-9f4c-7a5e-b001-000000000002",
+                conversationSequence: 1,
+                reactions: [MessageReaction(value: "blob:blobwave", accountIds: ["acct_peer"])]
+            )],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+        let message = try XCTUnwrap(projected.first)
+
+        XCTAssertEqual(message.reactionTargetMessageId, messageID)
+        XCTAssertEqual(message.reactions, [MessageReaction(value: "blob:blobwave", accountIds: ["acct_peer"])])
+        XCTAssertTrue(MessageBubble.allowsReactions(for: message))
+    }
+
     func testCancelEnvelopeBecomesReadableTerminalMessageWithoutLeakingWireText() {
         let requestId = "msg:ui:05f68dc1-8d3f-4955-9131-b6429369bcce"
         let cancel = "kordi-cloud-agent-cancel:eyJraW5kIjoiYWdlbnQtY2FuY2VsIiwicmVxdWVzdElkIjoibXNnOnVpOjA1ZjY4ZGMxLThkM2YtNDk1NS05MTMxLWI2NDI5MzY5YmNjZSJ9"

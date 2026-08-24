@@ -4,18 +4,13 @@ import {
   ArrowRightLeft,
   Bot,
   Check,
-  CheckCheck,
   CheckCircle2,
-  Copy,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Clock3,
-  Forward,
   Split,
   LoaderCircle,
-  Pin,
-  Reply,
   Sparkles,
   SquareArrowOutUpRight,
   Undo2,
@@ -37,6 +32,11 @@ import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, typ
 import { ForwardedFromHeader } from './forwardedFromHeader';
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent } from './messageInlineContent';
+import { MessageReactionChips } from './messageReactions';
+import {
+  MessageContextMenuContent,
+  type MessageContextMenuActionHandlers,
+} from './messageContextMenuContent';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
 import { AttachmentPreview } from './transcriptAttachments';
 import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
@@ -50,6 +50,8 @@ import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { ContactRequestTime, MessageHoverTime } from './transcriptMessageTime';
 import type { MessageForkSummary } from './transcriptMessageForks';
 export { LiveChatTurnCard, LiveChatTurnMessage };
+export { MessageContextMenuContent };
+export type { MessageContextMenuActionHandlers };
 export { openInlineChangedFile } from './transcriptChangedFiles';
 import type {
   Contact,
@@ -227,76 +229,6 @@ function MessageFooter({
   );
 }
 
-function messageReadReceiptCount(summary?: Message['readReceiptSummary'] | null) {
-  return Math.max(0, Math.floor(summary?.count ?? 0));
-}
-
-const messageContextMenuTextStyle = {
-  fontSize: '10px',
-  fontWeight: 400,
-  lineHeight: 1.45,
-} satisfies CSSProperties;
-
-function MessageContextMenuSeenRow({ summary }: { summary?: Message['readReceiptSummary'] | null }) {
-  const count = messageReadReceiptCount(summary);
-  if (count <= 0) return null;
-  const participants = (summary?.participants ?? []).slice(0, 4);
-  const names = participants.map((participant) => participant.name).filter(Boolean);
-  const title = names.length > 0 ? `Seen by ${names.join(', ')}` : `${count} seen`;
-
-  return (
-    <div
-      className="app-transient-divider app-transient-muted flex items-center gap-2 border-t px-3 py-1.5 text-[10px] font-normal leading-[1.45]"
-      data-message-context-menu-seen-row="true"
-      title={title}
-      style={messageContextMenuTextStyle}
-    >
-      <CheckCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-      <span>{count} Seen</span>
-      {participants.length > 0 ? (
-        <span className="ml-auto inline-flex -space-x-1" aria-hidden="true">
-          {participants.map((participant) => (
-            <IdentityAvatar
-              key={participant.id}
-              kind="human"
-              seed={participant.avatarSeed ?? participant.id}
-              name={participant.name}
-              imageUrl={participant.profileImageUrl}
-              className="h-4.5 w-4.5"
-            />
-          ))}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function MessageContextMenuAction({ icon, label, action, onClick }: { icon: ReactNode; label: string; action: string; onClick?: () => void }) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      data-message-context-menu-action={action}
-      className="app-transient-flat-action app-transient-action-row app-message-context-menu-action flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left font-normal transition"
-      style={messageContextMenuTextStyle}
-      onClick={onClick}
-    >
-      <span className="grid h-4 w-4 shrink-0 place-items-center" aria-hidden="true">{icon}</span>
-      <span className="app-transient-action-label">{label}</span>
-    </button>
-  );
-}
-
-export type MessageContextMenuActionHandlers = {
-  onReplyMessage?: (message: Message) => void;
-  onForwardMessage?: (message: Message) => void;
-  onOpenMessageDetail?: (message: Message) => void;
-  onSelectMessage?: (message: Message) => void;
-  onRequestPinMessage?: (message: Message) => void;
-  onRequestUnpinMessage?: (message: Message) => void;
-  isPinned?: boolean;
-};
-
 export type MessageSelectionProps = {
   selectionMode?: boolean;
   selectedMessageIds?: ReadonlySet<string>;
@@ -309,82 +241,6 @@ export type MessageSelectionProps = {
 
 function messageSelectionId(msg: Message) {
   return msg.id ?? msg.entryId ?? msg.turn?.id ?? '';
-}
-
-function isMessageContextActionEligible(msg: Message) {
-  if (!messageSelectionId(msg)) return false;
-  if (msg.role === 'system' || msg.role === 'action' || msg.role === 'edit') return false;
-  if (msg.turn && !msg.turn.completed) return false;
-  return true;
-}
-
-export function MessageContextMenuContent({
-  msg,
-  onClose,
-  onReplyMessage,
-  onForwardMessage,
-  onOpenMessageDetail,
-  onSelectMessage,
-  onRequestPinMessage,
-  onRequestUnpinMessage,
-  isPinned = false,
-}: {
-  msg: Message;
-  onClose?: () => void;
-} & MessageContextMenuActionHandlers) {
-  const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
-  const actionEligible = isMessageContextActionEligible(msg);
-  const copyText = async () => {
-    if (!copyableText) return;
-    try {
-      await navigator.clipboard?.writeText(copyableText);
-      onClose?.();
-    } catch {
-      onClose?.();
-    }
-  };
-  const handleReply = () => {
-    onReplyMessage?.(msg);
-    onClose?.();
-  };
-  const handleForward = () => {
-    onForwardMessage?.(msg);
-    onClose?.();
-  };
-  const handleOpenDetails = () => {
-    onOpenMessageDetail?.(msg);
-    onClose?.();
-  };
-  const handleSelect = () => {
-    onSelectMessage?.(msg);
-    onClose?.();
-  };
-  const handlePin = () => {
-    onRequestPinMessage?.(msg);
-    onClose?.();
-  };
-  const handleUnpin = () => {
-    onRequestUnpinMessage?.(msg);
-    onClose?.();
-  };
-
-  return (
-    <div className="app-message-context-menu-content w-[13.5rem] max-w-[calc(100vw-1rem)]" data-message-context-menu-content="true">
-      <div className="app-transient-surface overflow-hidden rounded-[14px] border p-1">
-        {actionEligible ? <MessageContextMenuAction action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={handleReply} /> : null}
-        {actionEligible && (onRequestPinMessage || onRequestUnpinMessage) ? (
-          isPinned
-            ? <MessageContextMenuAction action="unpin" icon={<Pin className="h-4 w-4" />} label="Unpin" onClick={handleUnpin} />
-            : <MessageContextMenuAction action="pin" icon={<Pin className="h-4 w-4" />} label="Pin" onClick={handlePin} />
-        ) : null}
-        {copyableText ? <MessageContextMenuAction action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={copyText} /> : null}
-        {actionEligible ? <MessageContextMenuAction action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={handleForward} /> : null}
-        {actionEligible && onOpenMessageDetail ? <MessageContextMenuAction action="details" icon={<SquareArrowOutUpRight className="h-4 w-4" />} label="Details" onClick={handleOpenDetails} /> : null}
-        {actionEligible ? <MessageContextMenuAction action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={handleSelect} /> : null}
-        <MessageContextMenuSeenRow summary={msg.readReceiptSummary} />
-      </div>
-    </div>
-  );
 }
 
 export function messageContextMenuPosition({
@@ -437,6 +293,7 @@ function MessageContextMenuHost({
   onSelectMessage,
   onRequestPinMessage,
   onRequestUnpinMessage,
+  onReactMessage,
   isPinned,
 }: {
   msg: Message;
@@ -475,19 +332,29 @@ function MessageContextMenuHost({
   };
   useLayoutEffect(() => {
     if (!messageContextMenu || !menuRef.current) return;
-    const rect = menuRef.current.getBoundingClientRect();
-    const next = messageContextMenuPosition({
-      clientX: messageContextMenu.clientX,
-      clientY: messageContextMenu.clientY,
-      targetRect: messageContextMenu.targetRect,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      menuWidth: rect.width,
-      menuHeight: rect.height,
-    });
-    if (Math.abs(next.x - messageContextMenu.x) > 0.5 || Math.abs(next.y - messageContextMenu.y) > 0.5) {
-      setMessageContextMenu({ ...messageContextMenu, ...next });
-    }
+    const menu = menuRef.current;
+    const positionMenu = () => {
+      const rect = menu.getBoundingClientRect();
+      setMessageContextMenu((current) => {
+        if (!current) return null;
+        const next = messageContextMenuPosition({
+          clientX: current.clientX,
+          clientY: current.clientY,
+          targetRect: current.targetRect,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+          menuWidth: rect.width,
+          menuHeight: rect.height,
+        });
+        return Math.abs(next.x - current.x) > 0.5 || Math.abs(next.y - current.y) > 0.5
+          ? { ...current, ...next }
+          : current;
+      });
+    };
+    positionMenu();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(positionMenu);
+    observer?.observe(menu);
+    return () => observer?.disconnect();
   }, [messageContextMenu]);
   useLayoutEffect(() => {
     if (!messageContextMenu || typeof document === 'undefined') return;
@@ -528,6 +395,7 @@ function MessageContextMenuHost({
         onSelectMessage={onSelectMessage}
         onRequestPinMessage={onRequestPinMessage}
         onRequestUnpinMessage={onRequestUnpinMessage}
+        onReactMessage={onReactMessage}
         isPinned={isPinned}
       />
     </div>
@@ -626,6 +494,7 @@ function MessageBubbleView({
   onSelectMessage,
   onRequestPinMessage,
   onRequestUnpinMessage,
+  onReactMessage,
   pinnedMessageId,
   selectionMode = false,
   selectedMessageIds,
@@ -660,6 +529,7 @@ function MessageBubbleView({
   onSelectMessage?: (message: Message) => void;
   onRequestPinMessage?: (message: Message) => void;
   onRequestUnpinMessage?: (message: Message) => void;
+  onReactMessage?: (message: Message, reaction: string) => Promise<void> | void;
   pinnedMessageId?: string | null;
   plainAgentResponse?: boolean;
   isGroupedWithPrevious?: boolean;
@@ -671,7 +541,7 @@ function MessageBubbleView({
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const selectionId = messageSelectionId(msg);
   const isPinned = Boolean(selectionId && pinnedMessageId === selectionId);
-  const menuActionHandlers = { onReplyMessage, onForwardMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, isPinned };
+  const menuActionHandlers = { onReplyMessage, onForwardMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, onReactMessage, isPinned };
   const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
@@ -1301,6 +1171,11 @@ function MessageBubbleView({
         {forkButton}
         {forkChip}
       </div>
+      <MessageReactionChips
+        msg={msg}
+        onReactMessage={onReactMessage}
+        side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'standalone'}
+      />
       {showContactRequestAction && onRequestCollaborationContact ? (
         <div className="self-center">
           <ContactRequestFailureNotice detail={msg.detail} onRequestCollaborationContact={onRequestCollaborationContact} />
@@ -1329,6 +1204,7 @@ export const MessageBubble = memo(
     && previous.onSelectMessage === next.onSelectMessage
     && previous.onRequestPinMessage === next.onRequestPinMessage
     && previous.onRequestUnpinMessage === next.onRequestUnpinMessage
+    && previous.onReactMessage === next.onReactMessage
     && previous.pinnedMessageId === next.pinnedMessageId
     && previous.selectionMode === next.selectionMode
     && previous.selectedMessageIds === next.selectedMessageIds

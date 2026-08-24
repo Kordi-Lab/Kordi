@@ -71,7 +71,7 @@ test('compact transient typography uses shared rem-based action and identity rol
     ['kordi-app/components/composerAttachments.tsx', /app-transient-action-row/],
     ['pages/chatsPage.companionHeader.tsx', /app-transient-action-row/],
     ['pages/workspaceSidebar.profile.tsx', /app-transient-action-row[\s\S]*app-transient-metadata/],
-    ['kordi-app/components/transcript.tsx', /app-transient-action-row/],
+    ['kordi-app/components/messageContextMenuContent.tsx', /app-transient-action-row/],
   ];
 
   for (const [path, role] of compactFamilies) {
@@ -85,7 +85,7 @@ test('representative popup families opt into the shared transient contract', () 
     ['components/ui/dialog.tsx', /app-transient-surface app-frosted-popover app-dialog-popover/],
     ['pages/SessionActionOverlays.tsx', /app-transient-surface app-modal-panel/],
     ['kordi-app/components/composer.tsx', /app-transient-surface app-transient-scroll app-compact-model-menu/],
-    ['kordi-app/components/transcript.tsx', /app-transient-surface overflow-hidden rounded-\[14px\]/],
+    ['kordi-app/components/messageContextMenuContent.tsx', /app-transient-surface overflow-hidden rounded-\[14px\]/],
     ['pages/MessageForwardDialog.tsx', /app-transient-surface app-message-forward-dialog/],
     ['pages/workspaceSidebar.updatePopover.tsx', /app-transient-surface app-popover app-update-popover/],
     ['pages/GroupDetailsDialog.tsx', /app-transient-surface app-frosted-popover app-group-management-popover/],

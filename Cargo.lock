@@ -3471,6 +3471,8 @@ dependencies = [
  "tower",
  "tower-http 0.5.2",
  "unicode-normalization",
+ "unicode-properties",
+ "unicode-segmentation",
  "url",
  "uuid",
 ]
