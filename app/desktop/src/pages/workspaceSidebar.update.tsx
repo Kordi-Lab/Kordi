@@ -5,10 +5,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { RefreshCw } from 'lucide-react';
 
 import type { DesktopUpdaterState } from '@/features/updates/desktopUpdater';
-import { cn } from '@/lib/utils';
 import { SidebarUpdatePopover } from '@/pages/workspaceSidebar.updatePopover';
 import { desktopUpdateButtonPresentation } from '@/pages/workspaceSidebar.updatePresentation';
 
@@ -39,11 +37,7 @@ export function SidebarUpdater({
     left: number;
     bottom: number;
   } | null>(null);
-  const [isUpdateCheckPending, setIsUpdateCheckPending] = useState(false);
-  const buttonPresentation = desktopUpdateButtonPresentation(
-    updateState,
-    isUpdateCheckPending,
-  );
+  const buttonPresentation = desktopUpdateButtonPresentation(updateState);
 
   const applyUpdateState = useCallback((nextState: DesktopUpdaterState) => {
     updateStateRef.current = nextState;
@@ -55,14 +49,12 @@ export function SidebarUpdater({
     return onSubscribeToUpdate(applyUpdateState);
   }, [applyUpdateState, onSubscribeToUpdate]);
 
-  const runUpdateCheck = useCallback((showResult: boolean) => {
+  const runUpdateCheck = useCallback(() => {
     if (!isNativeShell || !onCheckForUpdates) {
       return Promise.resolve<DesktopUpdaterState>({ status: 'idle' });
     }
-    if (showResult) setIsUpdateConfirmOpen(true);
     if (updateCheckPromiseRef.current) return updateCheckPromiseRef.current;
 
-    setIsUpdateCheckPending(true);
     applyUpdateState({
       ...updateStateRef.current,
       status: 'checking',
@@ -91,7 +83,6 @@ export function SidebarUpdater({
         if (updateCheckPromiseRef.current === pending) {
           updateCheckPromiseRef.current = null;
         }
-        setIsUpdateCheckPending(false);
       });
     updateCheckPromiseRef.current = pending;
     return pending;
@@ -101,7 +92,7 @@ export function SidebarUpdater({
     if (!isNativeShell || !onCheckForUpdates) return;
     let active = true;
     queueMicrotask(() => {
-      if (active) void runUpdateCheck(false);
+      if (active) void runUpdateCheck();
     });
     return () => {
       active = false;
@@ -112,15 +103,14 @@ export function SidebarUpdater({
     const trigger = updateButtonRef.current;
     if (!trigger || typeof window === 'undefined') return;
     const rect = trigger.getBoundingClientRect();
-    const popoverWidth = updateState.status === 'checking' ? 232 : 288;
     setUpdateConfirmAnchor({
       left: Math.max(
         12,
-        Math.min(rect.right + 8, window.innerWidth - popoverWidth - 12),
+        Math.min(rect.right + 8, window.innerWidth - 288 - 12),
       ),
       bottom: Math.max(12, window.innerHeight - rect.bottom),
     });
-  }, [updateState.status]);
+  }, []);
 
   useLayoutEffect(() => {
     if (!isUpdateConfirmOpen) return;
@@ -149,30 +139,15 @@ export function SidebarUpdater({
     };
   }, [isUpdateConfirmOpen]);
 
-  useEffect(() => {
-    if (!isUpdateConfirmOpen || updateState.status !== 'up-to-date') return;
-    const timer = window.setTimeout(() => setIsUpdateConfirmOpen(false), 5000);
-    return () => window.clearTimeout(timer);
-  }, [isUpdateConfirmOpen, updateState.status]);
-
   const handleUpdateButtonClick = () => {
-    if (updateState.status === 'checking' || isUpdateCheckPending) return;
     if (isUpdateConfirmOpen) {
       setIsUpdateConfirmOpen(false);
-      return;
-    }
-    if (updateState.status === 'idle' || updateState.status === 'up-to-date') {
-      void runUpdateCheck(true);
       return;
     }
     setIsUpdateConfirmOpen(true);
   };
 
   const handleConfirmUpdate = async () => {
-    if (updateState.status === 'failed' && updateState.failureStage === 'check') {
-      await runUpdateCheck(true);
-      return;
-    }
     const action = updateState.status === 'failed'
       ? (onRetryUpdate ?? onInstallUpdate)
       : onInstallUpdate;
@@ -190,7 +165,7 @@ export function SidebarUpdater({
     }
   };
 
-  if (!isNativeShell || !onCheckForUpdates) return null;
+  if (!isNativeShell || !onCheckForUpdates || !buttonPresentation.visible) return null;
 
   return (
     <>
@@ -198,27 +173,30 @@ export function SidebarUpdater({
         ref={updateButtonRef}
         type="button"
         onClick={handleUpdateButtonClick}
-        disabled={buttonPresentation.disabled}
         data-update-status={updateState.status}
-        className={cn(
-          'app-update-logo-button app-update-rail-button app-workspace-nav-button relative mx-auto grid h-11 w-11 place-items-center rounded-[14px] p-0',
-          (updateState.status === 'checking' || isUpdateCheckPending)
-            && 'cursor-wait opacity-80',
-        )}
+        className="app-update-wave-button app-workspace-nav-button relative mx-auto grid h-11 w-11 place-items-center rounded-[14px] p-0"
         title={isUpdateConfirmOpen ? undefined : buttonPresentation.title}
-        aria-label={buttonPresentation.ariaLabel}
+        aria-label={buttonPresentation.title}
+        aria-haspopup="dialog"
         aria-expanded={isUpdateConfirmOpen}
       >
-        <RefreshCw
-          className={cn(
-            'h-[18px] w-[18px] stroke-[1.9]',
-            buttonPresentation.isSpinning && 'animate-spin',
-          )}
-          aria-hidden="true"
-        />
+        <picture>
+          <source
+            media="(prefers-reduced-motion: reduce)"
+            srcSet="/blob-wave-static.png"
+          />
+          <img
+            src="/blob-wave.gif"
+            alt=""
+            className="h-8 w-8 object-contain"
+            draggable={false}
+          />
+        </picture>
       </button>
-      {updateState.status === 'checking' ? (
-        <span className="sr-only" role="status">Checking for Kordi updates</span>
+      {updateState.status === 'available' ? (
+        <span className="sr-only" role="status">
+          Kordi {updateState.latestVersion ?? 'update'} is ready to install
+        </span>
       ) : null}
       {isUpdateConfirmOpen ? (
         <SidebarUpdatePopover

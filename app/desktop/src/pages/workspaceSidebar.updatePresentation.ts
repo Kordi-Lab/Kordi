@@ -2,19 +2,23 @@ import type { DesktopUpdaterState } from '@/features/updates/desktopUpdater';
 
 export function desktopUpdateButtonPresentation(
   state: DesktopUpdaterState,
-  isCheckPending = false,
 ) {
-  const isChecking = state.status === 'checking' || isCheckPending;
+  const visible = state.status === 'available'
+    || state.status === 'downloading'
+    || state.status === 'installing'
+    || state.status === 'relaunching'
+    || (state.status === 'failed' && state.failureStage === 'install');
+  const version = state.latestVersion ? ` ${state.latestVersion}` : '';
   return {
-    disabled: isChecking,
-    isSpinning: isChecking,
-    title: isChecking
-      ? 'Checking for updates…'
-      : state.status === 'available'
-        ? `Kordi ${state.latestVersion ?? 'update'} is available`
-        : state.status === 'failed'
-          ? 'Open update details'
-          : 'Check for updates',
-    ariaLabel: isChecking ? 'Checking for Kordi updates' : 'Check for Kordi updates',
+    visible,
+    title: state.status === 'available'
+      ? `Kordi${version} is ready — open update options`
+      : state.status === 'downloading'
+        ? `Downloading Kordi${version}…`
+        : state.status === 'installing'
+          ? `Installing Kordi${version}…`
+          : state.status === 'relaunching'
+            ? 'Relaunching Kordi…'
+            : 'Kordi update needs attention',
   };
 }
