@@ -676,6 +676,16 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
+    func testConversationFollowsANewOutgoingMessageAfterScrollingUp() {
+        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true,
+            isAtBottom: false,
+            previousLatestMessageID: "message-12",
+            currentLatestMessageID: "message-13",
+            isNewOutgoingMessage: true
+        ))
+    }
+
     func testConversationKeepsFollowingNewMessagesWhileAtLatest() {
         XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatest(
             hasPositionedInitialTimeline: true,
@@ -723,6 +733,10 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(lines.contains("                            \(animation)"))
         XCTAssertFalse(lines.contains("                        \(animation)"))
         XCTAssertFalse(source.contains(".safeAreaInset(edge: .bottom"))
+        XCTAssertTrue(source.contains(".padding(.bottom, timelineVerticalInset)\n                                        .id(bottomAnchorID)"))
+        XCTAssertTrue(source.contains("viewport.size.height - timelineVerticalInset"))
+        XCTAssertTrue(source.contains(".padding(.top, timelineVerticalInset)"))
+        XCTAssertFalse(source.contains(".padding(.vertical, timelineVerticalInset)"))
         XCTAssertTrue(source.contains("@FocusState private var isComposerFocused: Bool"))
         XCTAssertTrue(source.contains("isFocused: $isComposerFocused,"))
         XCTAssertTrue(source.contains("isComposerFocused = false\n                                    dismissComposerPickers()"))

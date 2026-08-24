@@ -364,6 +364,7 @@ struct ConversationView: View {
 
                                     Color.clear
                                         .frame(height: 1)
+                                        .padding(.bottom, timelineVerticalInset)
                                         .id(bottomAnchorID)
                                         .background(
                                             ConversationScrollCommandBridge(
@@ -383,12 +384,12 @@ struct ConversationView: View {
                                 .frame(
                                     minHeight: max(
                                         0,
-                                        viewport.size.height - timelineVerticalInset * 2
+                                        viewport.size.height - timelineVerticalInset
                                     ),
                                     alignment: timeline.isEmpty ? .top : .bottom
                                 )
                                 .padding(.horizontal, 12)
-                                .padding(.vertical, timelineVerticalInset)
+                                .padding(.top, timelineVerticalInset)
                             }
                             .defaultScrollAnchor(.bottom)
                             .scrollPosition(id: $trackedMessageID, anchor: initialViewport.scrollAnchor)
@@ -417,7 +418,7 @@ struct ConversationView: View {
                                     LatestMessageButton {
                                         scrollToBottom(animated: true)
                                     }
-                                    .padding(.trailing, 18)
+                                    .padding(.trailing, 10)
                                     .padding(.bottom, 16)
                                     .transition(.scale(scale: 0.82).combined(with: .opacity))
                                 }
@@ -555,7 +556,9 @@ struct ConversationView: View {
                         bottomAnchorID: bottomAnchorID
                     ),
                     previousLatestMessageID: previousLatestMessageID,
-                    currentLatestMessageID: currentLatestMessageID
+                    currentLatestMessageID: currentLatestMessageID,
+                    isNewOutgoingMessage: previousLatestMessageID != currentLatestMessageID
+                        && currentLatestMessage?.author == .me
                 ) {
                     let identityChanged = previousLatestMessageID != currentLatestMessageID
                     scrollToBottom(animated: identityChanged)
@@ -1697,13 +1700,13 @@ enum ConversationTimelineScrollBehavior {
         hasPositionedInitialTimeline: Bool,
         isAtBottom: Bool,
         previousLatestMessageID: String?,
-        currentLatestMessageID: String?
+        currentLatestMessageID: String?,
+        isNewOutgoingMessage: Bool = false
     ) -> Bool {
         guard hasPositionedInitialTimeline,
-              isAtBottom,
               previousLatestMessageID != nil,
               currentLatestMessageID != nil else { return false }
-        return true
+        return isAtBottom || isNewOutgoingMessage
     }
 
     static func shouldShowLatestButton(
@@ -1925,22 +1928,24 @@ private struct EarlierMessagesLoader: View {
 
 private struct LatestMessageButton: View {
     let action: () -> Void
+    @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 38
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.down")
-                .font(.system(size: 22, weight: .semibold))
-                .frame(width: 52, height: 52)
+                .font(.subheadline.weight(.bold))
+                .frame(width: diameter, height: diameter)
+                .background(.regularMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
+                }
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+                .frame(width: max(44, diameter), height: max(44, diameter))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
-        .background(.regularMaterial, in: Circle())
-        .overlay {
-            Circle()
-                .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.16), radius: 12, y: 5)
         .accessibilityLabel("Go to latest message")
         .accessibilityHint("Moves to the bottom of the conversation")
     }
