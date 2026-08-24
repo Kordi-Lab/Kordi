@@ -264,7 +264,7 @@ enum CloudGroupAgentLifecycleProjector {
 
     private static func visibleTextLength(_ text: String) -> Int {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed == "processing..." ? 0 : trimmed.count
+        return CloudMessageCodec.isAgentProcessingPlaceholder(trimmed) ? 0 : trimmed.count
     }
 
     private static func messagePrecedes(

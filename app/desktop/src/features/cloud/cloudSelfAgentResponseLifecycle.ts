@@ -1,6 +1,7 @@
 import type {
   CanonicalSessionMessage,
 } from '@/kordi-app/types';
+import { isProcessingPlaceholderText } from '@/features/collaboration/agentPlaceholderText';
 
 export type CloudSelfAgentResponseDeliveryState =
   | 'processing'
@@ -28,7 +29,7 @@ export function cloudSelfAgentProcessingTextWouldRegress(
 ): boolean {
   const visibleLength = (text: string) => {
     const trimmed = text.trim();
-    return trimmed === 'processing...' ? 0 : trimmed.length;
+    return isProcessingPlaceholderText(trimmed) ? 0 : trimmed.length;
   };
   return visibleLength(nextText) < visibleLength(existingText);
 }

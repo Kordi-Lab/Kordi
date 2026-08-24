@@ -337,6 +337,14 @@ final class CloudMessageCodecTests: XCTestCase {
         ))
         XCTAssertTrue(MessageBubble.showsAgentWaitingIndicator(
             execution: execution,
+            responseText: "Processing.."
+        ))
+        XCTAssertTrue(MessageBubble.showsAgentWaitingIndicator(
+            execution: execution,
+            responseText: "requesting…"
+        ))
+        XCTAssertTrue(MessageBubble.showsAgentWaitingIndicator(
+            execution: execution,
             responseText: "  "
         ))
         XCTAssertFalse(

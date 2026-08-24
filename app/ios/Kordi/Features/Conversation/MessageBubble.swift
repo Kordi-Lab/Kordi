@@ -411,7 +411,7 @@ struct MessageBubble: View, Equatable {
 
     static func hasVisibleAgentResponseText(_ responseText: String) -> Bool {
         let text = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !text.isEmpty && text != "processing..."
+        return !text.isEmpty && !CloudMessageCodec.isAgentProcessingPlaceholder(text)
     }
 
     static func showsAgentWaitingIndicator(

@@ -91,6 +91,14 @@ enum CloudMessageCodec {
         return body
     }
 
+    static func isAgentProcessingPlaceholder(_ text: String) -> Bool {
+        let normalized = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".…"))
+        return normalized == "queued" || normalized == "processing" || normalized == "requesting"
+    }
+
     static func isAgentResponse(_ body: String) -> Bool {
         parsedEnvelopes(body).response != nil
     }
@@ -365,7 +373,7 @@ enum CloudAgentLifecycleProjector {
     private static func processingTextLength(_ message: CloudMessageDTO) -> Int {
         let text = CloudMessageCodec.displayText(message.body)
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return text == "processing..." ? 0 : text.count
+        return CloudMessageCodec.isAgentProcessingPlaceholder(text) ? 0 : text.count
     }
 
     private static func messagePrecedes(_ lhs: CloudMessageDTO, _ rhs: CloudMessageDTO) -> Bool {

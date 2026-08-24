@@ -117,7 +117,10 @@ test('local request upsert cannot replace a failed stable response with processi
 });
 
 test('availability reconciliation can keep an existing processing slot processing', () => {
-  const processing = responseMessage('processing');
+  const processing = {
+    ...responseMessage('processing'),
+    contentText: 'Processing..',
+  };
   const state = stateWith(processing);
 
   const next = setCloudGroupRequestPlaceholderProcessing(
