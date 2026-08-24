@@ -163,6 +163,7 @@ export type Conversation = {
   type: ConversationType;
   subtitle: string;
   unread: number;
+  unreadMentions?: number;
   collaborationSources: string[];
   trust: string;
   directness: string;

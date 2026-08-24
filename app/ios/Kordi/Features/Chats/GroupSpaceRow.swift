@@ -36,21 +36,17 @@ struct GroupSpaceRow: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(relativeTimestamp(space.lastActivityAt))
                     .font(.caption)
-                    .foregroundStyle(space.unreadCount > 0 ? KordiTheme.signalBlue : .secondary)
+                    .foregroundStyle(
+                        space.unreadCount > 0 || space.unreadMentionCount > 0
+                            ? KordiTheme.signalBlue
+                            : .secondary
+                    )
                 HStack(spacing: 5) {
-                    if space.unreadCount > 0 && !isExpanded {
-                        Text(String(space.unreadCount))
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(KordiTheme.signalBlue, in: Capsule())
-                    }
-                    if !dynamicTypeSize.isAccessibilitySize {
-                        Text(String(space.sessions.count))
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                            .accessibilityHidden(true)
+                    if !isExpanded {
+                        ConversationAttentionBadge(
+                            unreadCount: space.unreadCount,
+                            mentionCount: space.unreadMentionCount
+                        )
                     }
                     Image(systemName: "chevron.down")
                         .font(.caption.weight(.semibold))
@@ -106,14 +102,12 @@ struct GroupSessionRow: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(relativeTimestamp(session.lastActivityAt))
                     .font(.caption)
-                    .foregroundStyle(session.unreadCount > 0 ? KordiTheme.signalBlue : .secondary)
-                if session.unreadCount > 0 {
-                    Text(String(session.unreadCount))
-                        .font(.caption2.bold())
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(KordiTheme.signalBlue, in: Capsule())
+                    .foregroundStyle(session.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
+                if session.hasUnreadAttention {
+                    ConversationAttentionBadge(
+                        unreadCount: session.unreadCount,
+                        mentionCount: session.unreadMentionCount
+                    )
                 }
             }
         }

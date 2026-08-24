@@ -208,6 +208,26 @@ function collaborationUnreadByParentSessionId(conversation: DesktopCollaboration
   return Object.keys(unreadByParentSessionId).length > 0 ? unreadByParentSessionId : undefined;
 }
 
+function collaborationUnreadMentionCount(conversation: DesktopCollaborationConversation) {
+  const localHumanId = conversation.identity?.localHumanId?.trim();
+  const unreadCount = Math.max(0, conversation.unreadCount);
+  if (!localHumanId || unreadCount <= 0) return 0;
+
+  let countedUnreadMessages = 0;
+  let mentionCount = 0;
+  for (const message of [...conversation.messages].reverse()) {
+    if (message.direction !== COLLABORATION_MESSAGE_DIRECTION_INBOUND && message.direction !== COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE) continue;
+    if (countedUnreadMessages >= unreadCount) break;
+    countedUnreadMessages += 1;
+    if (message.messageAction?.kind === 'forward') continue;
+    if (message.mentions?.some((mention) => (
+      mention.targetKind === 'person'
+      && (mention.targetIdentityId === `human:${localHumanId}` || mention.humanId === localHumanId)
+    ))) mentionCount += 1;
+  }
+  return mentionCount;
+}
+
 export function mapCollaborationConversationToViewModel(
   conversation: DesktopCollaborationConversation,
   host: DesktopCollaborationHost | undefined,
@@ -558,6 +578,7 @@ export function mapCollaborationConversationToViewModel(
         ? `${conversation.projectName} • ${conversation.subtitle || (isPersonChat ? 'Person chat' : 'Remote agent chat')}`
         : (conversation.subtitle || (isPersonChat ? 'Person chat' : 'Remote agent chat')),
     unread: conversation.unreadCount,
+    unreadMentions: collaborationUnreadMentionCount(conversation),
     collaborationSources: conversation.projectName ? [hostLabel, conversation.projectName] : [hostLabel],
     trust: 'Cloud',
     directness: isCloudSelfAgent ? 'Agent chat' : outreachPrefix ?? (isPersonChat ? 'Person chat' : 'Agent chat'),

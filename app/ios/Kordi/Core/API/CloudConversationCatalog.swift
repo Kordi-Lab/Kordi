@@ -121,12 +121,15 @@ enum CloudConversationCatalog {
                 return sourceSessionId == sessionId
             }
             let latest = matching.max { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
-            let unread = matching.filter {
-                $0.toAccountId == account.accountId
-                    && $0.fromAccountId != account.accountId
-                    && $0.direction == "incoming"
-                    && $0.readAt == nil
-            }.count
+            let canonical = canonicalConversationsBySessionId[sessionId]
+            let unreadMessages = matching.filter {
+                messageIsUnread(
+                    $0,
+                    conversation: canonical,
+                    accountId: account.accountId,
+                    allowSelfAuthoredAgent: false
+                )
+            }
             return ConversationSummary(
                 id: "person:\(contact.accountId)",
                 kind: .person,
@@ -136,10 +139,18 @@ enum CloudConversationCatalog {
                 displayName: contact.preferredName,
                 lastMessage: latest.map { CloudMessageCodec.displayText($0.body) } ?? "Start a conversation",
                 lastActivityAt: latest.map { parseCloudDate($0.createdAt) } ?? parseCloudDate(contact.createdAt),
-                unreadCount: unread,
+                unreadCount: Set(unreadMessages.map(\.messageId)).count,
                 avatarSource: contact.avatarUrl.nonEmpty,
                 agentActivity: nil,
-                sessionId: sessionId
+                sessionId: sessionId,
+                unreadMentionCount: unreadMentionMessageIDs(
+                    unreadMessages,
+                    accountId: account.accountId
+                ).count,
+                lastReadSequence: lastReadSequence(
+                    in: canonical,
+                    accountId: account.accountId
+                )
             )
         }
 
@@ -268,6 +279,22 @@ enum CloudConversationCatalog {
                       ) else { return nil }
                 return message.id
             })
+            let unreadMentionMessageIds = Set(sorted.compactMap { wire, envelope -> String? in
+                guard envelope.kind == "group-message",
+                      let message = envelope.message,
+                      message.senderAccountId != account.accountId,
+                      messageIsUnread(
+                        wire,
+                        conversation: canonical,
+                        accountId: account.accountId,
+                        allowSelfAuthoredAgent: false
+                      ),
+                      containsVerifiedPersonMention(
+                        wire,
+                        accountId: account.accountId
+                      ) else { return nil }
+                return message.id
+            })
             return ConversationSummary(
                 id: "group:\(groupId)",
                 kind: .group,
@@ -288,7 +315,12 @@ enum CloudConversationCatalog {
                 groupParticipants: participants,
                 messageCount: groupMessages.count + callMessages.count,
                 forkedFromSessionId: canonicalLineage[groupId]?.forkedFromSessionId
-                    ?? canonical?.forkedFromSessionId?.nonEmpty
+                    ?? canonical?.forkedFromSessionId?.nonEmpty,
+                unreadMentionCount: unreadMentionMessageIds.count,
+                lastReadSequence: lastReadSequence(
+                    in: canonical,
+                    accountId: account.accountId
+                )
             )
         }
     }
@@ -422,7 +454,22 @@ enum CloudConversationCatalog {
                 agentActivity: CloudAgentLifecycleProjector.activity(in: conversationalRows),
                 sessionId: sessionId,
                 agentDisplayName: agentName,
-                forkedFromSessionId: sessionForksById[sessionId]?.parentSessionId.nonEmpty
+                forkedFromSessionId: sessionForksById[sessionId]?.parentSessionId.nonEmpty,
+                unreadMentionCount: unreadMentionMessageIDs(
+                    conversationalRows.filter {
+                        messageIsUnread(
+                            $0,
+                            conversation: canonical,
+                            accountId: account.accountId,
+                            allowSelfAuthoredAgent: false
+                        )
+                    },
+                    accountId: account.accountId
+                ).count,
+                lastReadSequence: lastReadSequence(
+                    in: canonical,
+                    accountId: account.accountId
+                )
             )
         }
     }
@@ -547,9 +594,55 @@ enum CloudConversationCatalog {
                 agentDisplayName: agentName,
                 messageCount: Int(clamping: conversation.latestMessageSequence),
                 forkedFromSessionId: conversation.forkedFromSessionId?.nonEmpty
-                    ?? sessionForksById[sessionId]?.parentSessionId.nonEmpty
+                    ?? sessionForksById[sessionId]?.parentSessionId.nonEmpty,
+                unreadMentionCount: unreadMentionMessageIDs(
+                    conversationalRows.filter {
+                        messageIsUnread(
+                            $0,
+                            conversation: conversation,
+                            accountId: account.accountId,
+                            allowSelfAuthoredAgent: false
+                        )
+                    },
+                    accountId: account.accountId
+                ).count,
+                lastReadSequence: lastReadSequence(
+                    in: conversation,
+                    accountId: account.accountId
+                )
             )
         }
+    }
+
+    private static func unreadMentionMessageIDs(
+        _ messages: [CloudMessageDTO],
+        accountId: String
+    ) -> Set<String> {
+        Set(messages.compactMap { message in
+            guard message.fromAccountId != accountId,
+                  containsVerifiedPersonMention(message, accountId: accountId) else {
+                return nil
+            }
+            return message.messageId
+        })
+    }
+
+    private static func containsVerifiedPersonMention(
+        _ message: CloudMessageDTO,
+        accountId: String
+    ) -> Bool {
+        CloudMessageCodec.mentions(in: message).contains {
+            $0.targetsPerson(accountId: accountId)
+        }
+    }
+
+    private static func lastReadSequence(
+        in conversation: CloudChatConversation?,
+        accountId: String
+    ) -> Int64 {
+        conversation?.members.first {
+            $0.accountId == accountId && $0.membershipState == "active"
+        }?.lastReadSequence ?? 0
     }
 
     private static func isKordiSupport(agent: CloudAgent) -> Bool {

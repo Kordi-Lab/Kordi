@@ -205,6 +205,24 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
     }
 
+    func testTabUnreadCountsDeduplicateGroupSpacesAndExcludeAgentTemplates() {
+        let conversations = [
+            conversation(id: "person", kind: .person, unread: 2),
+            conversation(id: "group-main", kind: .group, unread: 3, groupSpaceId: "space"),
+            conversation(id: "group-followup", kind: .group, unread: 1, groupSpaceId: "space"),
+            conversation(id: "agent-session", kind: .agent, unread: 4),
+            conversation(id: "agent-template:unused", kind: .agent, unread: 9),
+        ]
+
+        XCTAssertEqual(
+            MainTabUnreadCounts.build(
+                conversations: conversations
+            ),
+            MainTabUnreadCounts(chats: 2, agents: 1)
+        )
+        XCTAssertEqual(ConversationAttentionBadge.countLabel(120), "99+")
+    }
+
     @MainActor
     func testMessageNotificationPreferencesPersistPerDevice() throws {
         let suiteName = "KordiNotificationPreferencesTests.\(UUID().uuidString)"
@@ -223,5 +241,29 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(restored.previewsEnabled)
         XCTAssertTrue(restored.soundEnabled)
         XCTAssertTrue(restored.badgeEnabled)
+    }
+
+    private func conversation(
+        id: String,
+        kind: ConversationKind,
+        unread: Int,
+        groupSpaceId: String? = nil
+    ) -> ConversationSummary {
+        ConversationSummary(
+            id: id,
+            kind: kind,
+            peerAccountId: "acct_peer",
+            agentId: kind == .agent ? "agent" : nil,
+            ownerDisplayName: "Conversation",
+            displayName: "Conversation",
+            lastMessage: "Latest message",
+            lastActivityAt: Date(timeIntervalSince1970: 1),
+            unreadCount: unread,
+            avatarSource: nil,
+            agentActivity: nil,
+            sessionId: "session:\(id)",
+            groupSpaceId: groupSpaceId,
+            messageCount: 1
+        )
     }
 }

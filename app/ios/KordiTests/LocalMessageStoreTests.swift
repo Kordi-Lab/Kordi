@@ -275,6 +275,52 @@ final class LocalMessageStoreTests: XCTestCase {
         )
     }
 
+    func testCacheRoundTripsMentionAttentionStateAndEntities() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        var conversation = conversation(id: "person:mentions", displayName: "Mentions")
+        conversation.unreadCount = 4
+        conversation.unreadMentionCount = 2
+        conversation.lastReadSequence = 7
+        let mention = MessageMention(
+            label: "Alex",
+            targetKind: "person",
+            targetIdentityId: "human:acct_me"
+        )
+        let message = ChatMessage(
+            id: "mentioned-message",
+            conversationId: conversation.id,
+            conversationSequence: 8,
+            author: .person,
+            authorName: "Shared contact",
+            text: "@Alex please review",
+            createdAt: Date(timeIntervalSince1970: 8),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            mentions: [mention]
+        )
+
+        store.saveConversations([conversation], accountId: "account-a")
+        store.saveMessages(
+            [message],
+            conversationId: conversation.id,
+            accountId: "account-a"
+        )
+
+        let restoredConversation = try XCTUnwrap(
+            store.loadConversations(accountId: "account-a").first
+        )
+        XCTAssertEqual(restoredConversation.unreadMentionCount, 2)
+        XCTAssertEqual(restoredConversation.lastReadSequence, 7)
+        XCTAssertEqual(
+            store.loadMessages(
+                accountId: "account-a",
+                conversationId: conversation.id
+            ).first?.mentions,
+            [mention]
+        )
+    }
+
     func testCacheOmitsAgentSessionIdentityMarkers() throws {
         let store = try LocalMessageStore(inMemory: true)
         let conversationID = "agent:my-kordi"

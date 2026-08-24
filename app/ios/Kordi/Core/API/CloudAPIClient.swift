@@ -1156,7 +1156,11 @@ actor CloudAPIClient {
         return response.item
     }
 
-    func markMessagesRead(token: String, peerAccountId: String) async throws {
+    func markMessagesRead(
+        token: String,
+        peerAccountId: String,
+        throughSequence: Int64? = nil
+    ) async throws {
         let accountId = try requireActiveAccountId()
         let sessionId = directSessionId(accountId: accountId, peerAccountId: peerAccountId)
         let conversation = try await ensureChatConversation(
@@ -1165,15 +1169,29 @@ actor CloudAPIClient {
             kind: accountId == peerAccountId ? "ai" : "direct",
             memberAccountIds: [peerAccountId]
         )
-        try await advanceChatCursor(token: token, conversation: conversation, kind: "read")
+        try await advanceChatCursor(
+            token: token,
+            conversation: conversation,
+            kind: "read",
+            throughSequence: throughSequence
+        )
     }
 
-    func markSessionMessagesRead(token: String, sessionId: String) async throws {
+    func markSessionMessagesRead(
+        token: String,
+        sessionId: String,
+        throughSequence: Int64? = nil
+    ) async throws {
         _ = try await bootstrapChat(token: token)
         guard let conversation = chatConversationsBySessionId[sessionId] else {
             throw CloudAPIError(code: "chat_conversation_missing", message: "Reliable chat conversation is unavailable.", statusCode: 404)
         }
-        try await advanceChatCursor(token: token, conversation: conversation, kind: "read")
+        try await advanceChatCursor(
+            token: token,
+            conversation: conversation,
+            kind: "read",
+            throughSequence: throughSequence
+        )
     }
 
     func claimAgentRun(
@@ -1351,18 +1369,20 @@ actor CloudAPIClient {
     private func advanceChatCursor(
         token: String,
         conversation: CloudChatConversation,
-        kind: String
+        kind: String,
+        throughSequence: Int64? = nil
     ) async throws {
-        guard conversation.latestMessageSequence > 0 else { return }
+        let sequence = throughSequence ?? conversation.latestMessageSequence
+        guard sequence > 0 else { return }
         let response: ChatCursorResponse = try await send(
             path: "/v2/chat/conversations/\(escapedPath(conversation.id))/\(kind)",
             method: "PUT",
             token: token,
             body: ChatAdvanceCursorRequest(
                 clientOperationId: operationUUID(
-                    "cursor:\(kind):\(conversation.id):\(conversation.latestMessageSequence)"
+                    "cursor:\(kind):\(conversation.id):\(sequence)"
                 ),
-                sequence: conversation.latestMessageSequence
+                sequence: sequence
             ),
             fallback: "Could not mark messages \(kind)."
         )

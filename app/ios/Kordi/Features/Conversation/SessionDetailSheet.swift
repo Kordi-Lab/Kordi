@@ -116,6 +116,7 @@ struct SessionDetailView: View {
             lastMessage: currentConversation.lastMessage,
             lastActivityAt: currentConversation.lastActivityAt,
             unreadCount: currentConversation.unreadCount,
+            unreadMentionCount: currentConversation.unreadMentionCount,
             participants: currentConversation.groupParticipants,
             sessions: [currentConversation]
         )

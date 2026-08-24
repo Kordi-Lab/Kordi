@@ -61,8 +61,8 @@ struct AgentSessionRow: View {
 
             HStack(spacing: 10) {
                 timestamp
-                if conversation.unreadCount > 0 {
-                    unreadBadge
+                if conversation.hasUnreadAttention {
+                    attentionBadge
                 }
             }
         }
@@ -81,8 +81,8 @@ struct AgentSessionRow: View {
             VStack(alignment: .trailing, spacing: 4) {
                 timestamp
 
-                if conversation.unreadCount > 0 {
-                    unreadBadge
+                if conversation.hasUnreadAttention {
+                    attentionBadge
                 } else if let activity = conversation.agentActivity,
                           activity != .ready {
                     AgentSessionActivityLabel(activity: activity, compact: true)
@@ -123,17 +123,15 @@ struct AgentSessionRow: View {
     private var timestamp: some View {
         Text(relativeTimestamp)
             .font(.caption)
-            .foregroundStyle(conversation.unreadCount > 0 ? KordiTheme.signalBlue : .secondary)
+            .foregroundStyle(conversation.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
             .lineLimit(1)
     }
 
-    private var unreadBadge: some View {
-        Text(String(conversation.unreadCount))
-            .font(.caption2.bold())
-            .foregroundStyle(.white)
-            .padding(.horizontal, 7)
-            .padding(.vertical, 4)
-            .background(KordiTheme.signalBlue, in: Capsule())
+    private var attentionBadge: some View {
+        ConversationAttentionBadge(
+            unreadCount: conversation.unreadCount,
+            mentionCount: conversation.unreadMentionCount
+        )
     }
 
     private var sessionTitle: String {

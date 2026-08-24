@@ -6,13 +6,17 @@ struct GroupSpaceSummary: Identifiable, Hashable {
     let lastMessage: String
     let lastActivityAt: Date
     let unreadCount: Int
+    let unreadMentionCount: Int
     let participants: [CloudGroupParticipant]
     let sessions: [ConversationSummary]
 
     var accessibilitySummary: String {
         let sessionLabel = sessions.count == 1 ? "1 session" : "\(sessions.count) sessions"
         let unread = unreadCount > 0 ? ", \(unreadCount) unread" : ""
-        return "\(displayName), \(sessionLabel)\(unread). \(lastMessage)"
+        let mentions = unreadMentionCount > 0
+            ? ", \(unreadMentionCount) unread mention\(unreadMentionCount == 1 ? "" : "s")"
+            : ""
+        return "\(displayName), \(sessionLabel)\(unread)\(mentions). \(lastMessage)"
     }
 }
 
@@ -80,6 +84,7 @@ enum GroupSpaceCatalog {
                 lastMessage: latest.lastMessage,
                 lastActivityAt: latest.lastActivityAt,
                 unreadCount: sessions.reduce(0) { $0 + $1.unreadCount },
+                unreadMentionCount: sessions.reduce(0) { $0 + $1.unreadMentionCount },
                 participants: participants,
                 sessions: sessions
             )

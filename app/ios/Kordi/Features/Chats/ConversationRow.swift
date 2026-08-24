@@ -43,8 +43,8 @@ struct ConversationRow: View {
                 HStack(spacing: 10) {
                     Text(relativeTimestamp)
                         .font(.caption)
-                        .foregroundStyle(conversation.unreadCount > 0 ? KordiTheme.signalBlue : .secondary)
-                    unreadBadge
+                        .foregroundStyle(conversation.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
+                    attentionBadge
                 }
             }
         }
@@ -137,23 +137,18 @@ struct ConversationRow: View {
         VStack(alignment: .trailing, spacing: 4) {
             Text(relativeTimestamp)
                 .font(.caption)
-                .foregroundStyle(conversation.unreadCount > 0 ? KordiTheme.signalBlue : .secondary)
+                .foregroundStyle(conversation.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
                 .lineLimit(1)
-            unreadBadge
+            attentionBadge
         }
     }
 
     @ViewBuilder
-    private var unreadBadge: some View {
-        if conversation.unreadCount > 0 {
-            Text(String(conversation.unreadCount))
-                .font(.caption2.bold())
-                .foregroundStyle(.white)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 4)
-                .background(KordiTheme.signalBlue, in: Capsule())
-                .accessibilityLabel("\(conversation.unreadCount) unread messages")
-        }
+    private var attentionBadge: some View {
+        ConversationAttentionBadge(
+            unreadCount: conversation.unreadCount,
+            mentionCount: conversation.unreadMentionCount
+        )
     }
 
     private func contactAgentStatus(ownerName: String, activity: AgentActivity) -> Text {
@@ -183,6 +178,40 @@ struct ConversationRow: View {
 
     private func shortOwnerName(_ name: String) -> String {
         name.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? name
+    }
+}
+
+struct ConversationAttentionBadge: View {
+    let unreadCount: Int
+    let mentionCount: Int
+
+    var body: some View {
+        let displayUnreadCount = max(unreadCount, mentionCount)
+        if displayUnreadCount > 0 {
+            HStack(spacing: 5) {
+                if mentionCount > 0 {
+                    Text("@")
+                        .font(.caption.bold())
+                        .foregroundStyle(KordiTheme.signalBlue)
+                }
+                Text(Self.countLabel(displayUnreadCount))
+                    .font(.caption2.bold())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .frame(minWidth: 20, minHeight: 20)
+                    .background(KordiTheme.signalBlue, in: Capsule())
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(
+                mentionCount > 0
+                    ? "\(displayUnreadCount) unread messages, \(mentionCount) mention\(mentionCount == 1 ? "" : "s") for you"
+                    : "\(displayUnreadCount) unread messages"
+            )
+        }
+    }
+
+    static func countLabel(_ count: Int) -> String {
+        count > 99 ? "99+" : String(max(0, count))
     }
 }
 

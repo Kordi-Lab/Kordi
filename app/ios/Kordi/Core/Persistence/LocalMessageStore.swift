@@ -23,6 +23,8 @@ final class CachedConversationRecord {
     var lastMessage: String
     var lastActivityAt: Date
     var unreadCount: Int
+    var unreadMentionCount: Int = 0
+    var lastReadSequence: Int64 = 0
     var avatarURL: String?
     var agentActivity: String?
     var sessionId: String
@@ -44,6 +46,8 @@ final class CachedConversationRecord {
         lastMessage = conversation.lastMessage
         lastActivityAt = conversation.lastActivityAt
         unreadCount = conversation.unreadCount
+        unreadMentionCount = conversation.unreadMentionCount
+        lastReadSequence = conversation.lastReadSequence
         avatarURL = conversation.avatarSource
         agentActivity = conversation.agentActivity?.rawValue
         sessionId = conversation.sessionId
@@ -80,7 +84,9 @@ final class CachedConversationRecord {
             groupSpaceId: groupSpaceId,
             groupParticipants: groupParticipants,
             messageCount: messageCount,
-            forkedFromSessionId: forkedFromSessionId
+            forkedFromSessionId: forkedFromSessionId,
+            unreadMentionCount: unreadMentionCount,
+            lastReadSequence: lastReadSequence
         )
     }
 }
@@ -109,6 +115,7 @@ final class CachedMessageRecord {
     var agentExecutionJSON: String?
     var backgroundAgentSessionsJSON: String?
     var reactionsJSON: String?
+    var mentionsJSON: String?
 
     init(accountId: String, message: ChatMessage) {
         id = scopedCacheRecordID(accountId: accountId, entityId: message.id)
@@ -133,6 +140,7 @@ final class CachedMessageRecord {
         agentExecutionJSON = Self.encode(message.agentExecution)
         backgroundAgentSessionsJSON = Self.encode(message.backgroundAgentSessions)
         reactionsJSON = Self.encode(message.reactions)
+        mentionsJSON = Self.encode(message.mentions)
     }
 
     func update(from message: ChatMessage) {
@@ -155,6 +163,7 @@ final class CachedMessageRecord {
         agentExecutionJSON = Self.encode(message.agentExecution)
         backgroundAgentSessionsJSON = Self.encode(message.backgroundAgentSessions)
         reactionsJSON = Self.encode(message.reactions)
+        mentionsJSON = Self.encode(message.mentions)
     }
 
     var value: ChatMessage? {
@@ -178,6 +187,7 @@ final class CachedMessageRecord {
             replyToMessageId: replyToMessageId,
             reactionTargetMessageId: reactionTargetMessageId,
             messageAction: Self.decode(MessageActionMetadata.self, from: messageActionJSON),
+            mentions: Self.decode([MessageMention].self, from: mentionsJSON) ?? [],
             messageKind: messageKind,
             agentExecution: Self.decode(
                 AgentExecutionSnapshot.self,

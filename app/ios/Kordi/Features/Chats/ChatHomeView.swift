@@ -475,8 +475,6 @@ struct ChatHomeView: View {
                 expandedGroupSpaceIds.remove(space.id)
             }
         }
-        guard willExpand else { return }
-        Task { await model.markGroupSpaceRead(space) }
     }
 
     private func toggleAgentForks(for conversation: ConversationSummary) {

@@ -1037,8 +1037,15 @@ final class AppModel: ObservableObject {
     /// catalog before network work so list and parent-space badges react at once.
     func markConversationOpened(_ conversation: ConversationSummary) {
         guard let index = conversations.firstIndex(where: { $0.id == conversation.id }),
-              conversations[index].unreadCount != 0 else { return }
+              conversations[index].hasUnreadAttention else { return }
         conversations[index].unreadCount = 0
+        conversations[index].unreadMentionCount = 0
+        conversations[index].lastReadSequence = max(
+            conversations[index].lastReadSequence,
+            messagesByConversation[conversation.id, default: []]
+                .compactMap(\.conversationSequence)
+                .max() ?? 0
+        )
         cacheCurrentConversations()
     }
 
@@ -1065,6 +1072,7 @@ final class AppModel: ObservableObject {
         }), let conversation = conversations.first(where: { $0.id == conversationID }) else {
             return
         }
+        guard pendingMentionCount(for: conversation) == 0 else { return }
         markConversationOpened(conversation)
         Task { [weak self] in
             await self?.reconcileVisibleConversationReadState()
@@ -1202,8 +1210,15 @@ final class AppModel: ObservableObject {
         var changedUnreadState = false
         for index in conversations.indices
         where conversationIds.contains(conversations[index].id)
-            && conversations[index].unreadCount != 0 {
+            && conversations[index].hasUnreadAttention {
             conversations[index].unreadCount = 0
+            conversations[index].unreadMentionCount = 0
+            conversations[index].lastReadSequence = max(
+                conversations[index].lastReadSequence,
+                messagesByConversation[conversations[index].id, default: []]
+                    .compactMap(\.conversationSequence)
+                    .max() ?? 0
+            )
             changedUnreadState = true
         }
         if changedUnreadState {
@@ -1738,6 +1753,48 @@ final class AppModel: ObservableObject {
         )
         return (messages + [placeholder]).sorted {
             $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+        }
+    }
+
+    func pendingMentionMessages(for conversation: ConversationSummary) -> [ChatMessage] {
+        guard let accountId = account?.accountId else { return [] }
+        let current = conversations.first(where: { $0.id == conversation.id }) ?? conversation
+        return MentionAttention.pendingMessages(
+            in: messagesByConversation[current.id] ?? [],
+            accountId: accountId,
+            lastReadSequence: current.lastReadSequence
+        )
+    }
+
+    func pendingMentionCount(for conversation: ConversationSummary) -> Int {
+        let current = conversations.first(where: { $0.id == conversation.id }) ?? conversation
+        return max(current.unreadMentionCount, pendingMentionMessages(for: current).count)
+    }
+
+    func markMentionPresented(
+        _ message: ChatMessage,
+        in conversation: ConversationSummary
+    ) async {
+        guard let accountId = account?.accountId,
+              message.author != .me,
+              message.mentions.contains(where: { $0.targetsPerson(accountId: accountId) }),
+              let sequence = message.conversationSequence else { return }
+        let current = conversations.first(where: { $0.id == conversation.id }) ?? conversation
+        guard sequence > current.lastReadSequence,
+              let messageID = await applyConversationReadLocally(
+                current,
+                throughSequence: sequence
+              ) else { return }
+        guard !previewMode else { return }
+        do {
+            try await persistConversationRead(
+                current,
+                throughSequence: sequence
+            )
+            persistedVisibleReadMessageBySessionID[current.sessionId] = messageID
+            cloudConnectionState = .connected
+        } catch {
+            recordCloudConnectionFailure(error)
         }
     }
 
@@ -4279,6 +4336,7 @@ final class AppModel: ObservableObject {
 
         let readableConversations = conversations.filter {
             readableConversationIDs.contains($0.id)
+                && pendingMentionCount(for: $0) == 0
         }
         for conversation in readableConversations {
             guard let latestIncomingMessageID =
@@ -4294,12 +4352,18 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     private func applyConversationReadLocally(
-        _ conversation: ConversationSummary
+        _ conversation: ConversationSummary,
+        throughSequence: Int64? = nil
     ) async -> String? {
-        guard let latestIncomingMessageID = latestIncomingMessageID(for: conversation) else {
+        guard let latestIncomingMessageID = latestIncomingMessageID(
+            for: conversation,
+            throughSequence: throughSequence
+        ) else {
             return nil
         }
-        markConversationOpened(conversation)
+        if throughSequence == nil {
+            markConversationOpened(conversation)
+        }
         guard let account else { return nil }
 
         let readAt = ISO8601DateFormatter().string(from: Date())
@@ -4307,7 +4371,8 @@ final class AppModel: ObservableObject {
             cloudMessagesByPeer,
             ownAccountId: account.accountId,
             scope: readScope(for: conversation),
-            readAt: readAt
+            readAt: readAt,
+            throughSequence: throughSequence
         )
         if projected != cloudMessagesByPeer {
             cloudMessagesByPeer = projected
@@ -4315,15 +4380,54 @@ final class AppModel: ObservableObject {
             await refreshLoadedConversationProjections()
             await persistCloudSnapshot(accountId: account.accountId)
         }
+        if let throughSequence {
+            updatePartialReadSummary(
+                conversationID: conversation.id,
+                throughSequence: throughSequence,
+                accountId: account.accountId
+            )
+        }
         return latestIncomingMessageID
     }
 
     private func latestIncomingMessageID(
-        for conversation: ConversationSummary
+        for conversation: ConversationSummary,
+        throughSequence: Int64? = nil
     ) -> String? {
         messagesByConversation[conversation.id]?
-            .last(where: { $0.author != .me })?
+            .last(where: { message in
+                guard message.author != .me else { return false }
+                return throughSequence.map { sequence in
+                    message.conversationSequence.map { $0 <= sequence } ?? false
+                } ?? true
+            })?
             .id
+    }
+
+    private func updatePartialReadSummary(
+        conversationID: String,
+        throughSequence: Int64,
+        accountId: String
+    ) {
+        guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else {
+            return
+        }
+        conversations[index].lastReadSequence = max(
+            conversations[index].lastReadSequence,
+            throughSequence
+        )
+        let remaining = messagesByConversation[conversationID, default: []].filter { message in
+            message.author != .me
+                && !message.isSystemNotice
+                && message.conversationSequence.map { $0 > throughSequence } == true
+        }
+        conversations[index].unreadCount = remaining.count
+        conversations[index].unreadMentionCount = MentionAttention.pendingMessages(
+            in: remaining,
+            accountId: accountId,
+            lastReadSequence: throughSequence
+        ).count
+        cacheCurrentConversations()
     }
 
     private func readScope(for conversation: ConversationSummary) -> CloudReadScope {
@@ -4335,7 +4439,8 @@ final class AppModel: ObservableObject {
     }
 
     private func persistConversationRead(
-        _ conversation: ConversationSummary
+        _ conversation: ConversationSummary,
+        throughSequence: Int64? = nil
     ) async throws {
         guard let token, !previewMode else { return }
         let supportUsesCanonicalSession = conversation.representsKordiSupport
@@ -4343,12 +4448,14 @@ final class AppModel: ObservableObject {
         if conversation.kind == .person && !supportUsesCanonicalSession {
             try await api.markMessagesRead(
                 token: token,
-                peerAccountId: conversation.peerAccountId
+                peerAccountId: conversation.peerAccountId,
+                throughSequence: throughSequence
             )
         } else {
             try await api.markSessionMessagesRead(
                 token: token,
-                sessionId: conversation.sessionId
+                sessionId: conversation.sessionId,
+                throughSequence: throughSequence
             )
         }
     }

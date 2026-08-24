@@ -133,6 +133,7 @@ function ParticipantSpaceSessionRow({
         <SidebarSessionMetaColumn
           timeLabel={sessionRowTimeLabel}
           unreadCount={rowUnreadCount}
+          unreadMentionCount={ownSessionUnreadCount > 0 ? conversation.unreadMentions : 0}
           unreadScope="participant-session"
           indicator={session.statusIndicator}
           active={isActive}
@@ -216,6 +217,10 @@ function ParticipantSpaceRow({
   const spaceUnreadCount =
     model.unreadByParticipantSpaceIdWithForkDescendants.get(space.id)
     ?? space.unread;
+  const spaceUnreadMentionCount = space.sessions.reduce(
+    (sum, session) => sum + (session.unread > 0 ? session.conversation.unreadMentions ?? 0 : 0),
+    0,
+  );
   const participantSpaceDetail = participantSpaceDetailText(space);
   const previewAttachment = participantSpacePreviewAttachment(space);
   const previewThumbnailUrl = previewAttachment?.kind === 'image'
@@ -378,6 +383,7 @@ function ParticipantSpaceRow({
             <SidebarSessionMetaColumn
               timeLabel={rowTimeLabel}
               unreadCount={isExpanded ? 0 : spaceUnreadCount}
+              unreadMentionCount={isExpanded ? 0 : spaceUnreadMentionCount}
               unreadScope="participant-space"
               indicator={isExpanded ? undefined : latestSession?.statusIndicator}
               active={isDirectHuman && isPrimarySessionActive}
