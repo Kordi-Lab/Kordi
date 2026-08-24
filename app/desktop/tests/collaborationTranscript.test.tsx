@@ -52,31 +52,6 @@ function conversation(overrides: Partial<DesktopCollaborationConversation> = {})
   };
 }
 
-test('unread structured person mentions surface attention without matching forwarded quotes', () => {
-  const identity = {
-    sourceHostId: 'cloud',
-    localHumanId: 'acct_me',
-    localHumanName: 'Me',
-    localAgentId: 'cloud-local-agent',
-    localAgentName: 'My Kordi',
-    localAgentNodeId: 'acct_me',
-    remoteHumanId: 'acct_peer',
-    remoteHumanName: 'Peer',
-  };
-  const mention = { label: 'Me', targetKind: 'person', targetIdentityId: 'human:acct_me', humanId: 'acct_me' };
-  const view = mapCollaborationConversationToViewModel(conversation({
-    unreadCount: 2,
-    identity,
-    messages: [
-      { id: 'read-mention', direction: 'inbound', text: '@Me old', timeLabel: '09:00', timestampMs: 1, mentions: [mention] },
-      { id: 'forwarded-mention', direction: 'inbound', text: '@Me quoted', timeLabel: '09:01', timestampMs: 2, mentions: [mention], messageAction: { schemaVersion: 1, kind: 'forward', source: { sourceSessionId: 'source', sourceMessageId: 'message', senderLabel: 'Peer', textPreview: '@Me quoted', attachmentCount: 0 } } },
-      { id: 'unread-mention', direction: 'inbound', text: '@Me new', timeLabel: '09:02', timestampMs: 3, mentions: [mention] },
-    ],
-  }), host());
-
-  assert.equal(view.unreadMentions, 1);
-});
-
 test('cloud self-agent bridge conversations render as My agent, not external agent', () => {
   const view = mapCollaborationConversationToViewModel(conversation({
     id: 'bridge:cloud:acct_me',

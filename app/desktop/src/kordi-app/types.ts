@@ -194,7 +194,6 @@ export type Conversation = {
   /** Source message entry id this conversation was forked at, if any. */
   forkedFromMessageId?: string | null;
 };
-
 export type ParticipantSpaceKind = 'self' | 'direct-human' | 'direct-agent' | 'group';
 
 export type ParticipantSpaceAvatar = {
