@@ -127,7 +127,7 @@ enum CloudDirectMessageProjector {
             deliveryState: state,
             errorMessage: nil,
             requestMessageId: responseRequestId,
-            attachments: message.attachments.map(\.chatAttachment),
+            attachments: message.voiceMessage == nil ? message.attachments.map(\.chatAttachment) : [],
             replyToMessageId: messageAction?.replyToMessageId ?? responseRequestId,
             reactionTargetMessageId: message.messageId,
             messageAction: messageAction,
@@ -136,6 +136,7 @@ enum CloudDirectMessageProjector {
                 in: CloudMessageCodec.displayText(message.body)
             ),
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
+            voiceMessage: message.voiceMessage,
             agentExecution: visibleOwnerExecution,
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
             reactions: message.reactions

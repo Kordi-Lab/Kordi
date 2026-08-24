@@ -38,7 +38,7 @@ import {
   cloudSelfAgentMessagesBySession,
   cloudTurnRevision,
 } from './cloudCollaborationMemo';
-import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
+import { cloudMessageAttachmentToMessageAttachment, cloudVoiceMessageToMessageVoice } from './cloudAttachments';
 import { cloudAvatarImageUrl } from './avatar';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
 import {
@@ -233,6 +233,7 @@ export function cloudMessageToCollaborationMessage(
             : null,
     detail: undefined,
     attachments: (message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment),
+    voiceMessage: message.voiceMessage ? cloudVoiceMessageToMessageVoice(message.voiceMessage) : null,
     mentions: agentResponse ? undefined : cloudDirectMessageMentions(message.body),
     messageAction: directMessageAction,
     messageKind: message.messageKind ?? null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, reactions: message.reactions ?? [],

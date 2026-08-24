@@ -1,5 +1,5 @@
 import { messageMentionsForText } from './messageMentions';
-import type { Message, MessageAttachment, MessageMention } from '../../kordi-app/types/message';
+import type { Message, MessageAttachment, MessageMention, MessageVoice } from '../../kordi-app/types/message';
 
 export type MessageActionKind = 'quote' | 'forward';
 
@@ -22,6 +22,7 @@ export type MessageActionSource = {
  */
 export type ForwardMessageSource = MessageActionSource & {
   attachments: MessageAttachment[];
+  voiceMessage?: MessageVoice | null;
   attachmentOnly: boolean;
 };
 
@@ -87,6 +88,7 @@ export function forwardMessageSourceFromMessage(
   return {
     ...source,
     attachments,
+    voiceMessage: message.voiceMessage ?? null,
     attachmentOnly: attachments.length > 0 && !messageText,
   };
 }

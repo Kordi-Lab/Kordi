@@ -32,6 +32,7 @@ import {
   firstCloudGroupSendFailure,
   firstRequiredCloudGroupSendFailure,
   fulfilledCloudGroupSends,
+  parseCloudGroupControl,
   requiredCloudGroupControlTargetAccountIds,
 } from './cloudGroupMessages';
 import type {
@@ -213,11 +214,19 @@ export function useCloudGroupControlSender({
             senderAccountId:
               input.message.senderAccountId?.trim()
               || account.accountId,
-            attachments: groupMessageAttachments.length > 0
+            attachments: input.message.voiceMessage
+              ? undefined
+              : groupMessageAttachments.length > 0
               ? cloudGroupAttachmentReferences(
                   groupMessageAttachments,
                 )
               : input.message.attachments,
+            ...(input.message.voiceMessage && groupMessageAttachments[0] ? {
+              voiceMessage: {
+                ...input.message.voiceMessage,
+                mediaId: groupMessageAttachments[0].attachmentId,
+              },
+            } : {}),
           }
         : null;
       const envelope = encodeCloudGroupControl({
@@ -312,6 +321,10 @@ export function useCloudGroupControlSender({
             }),
           });
           const ready = await preparedEntry;
+          const readyMessage = parseCloudGroupControl(ready.envelope)?.message;
+          const readyVoiceMessage = readyMessage?.voiceMessage?.mediaId
+            ? { ...readyMessage.voiceMessage, mediaId: readyMessage.voiceMessage.mediaId }
+            : null;
           const sentMessage = await client.sendMessage(
             session.token,
             recipientId,
@@ -321,6 +334,8 @@ export function useCloudGroupControlSender({
               attachments: ready.attachments,
               clientCreatedAt: ready.clientCreatedAt,
               clientMessageId,
+              messageKind: readyMessage?.messageKind,
+              voiceMessage: readyVoiceMessage,
               conversationKind: 'group',
               memberAccountIds: targetAccountIds,
             },
@@ -363,6 +378,9 @@ export function useCloudGroupControlSender({
         })
       : [];
     const payload = buildPayload(uploadedAttachments);
+    const payloadVoiceMessage = payload.message?.voiceMessage?.mediaId
+      ? { ...payload.message.voiceMessage, mediaId: payload.message.voiceMessage.mediaId }
+      : null;
     const results = await Promise.allSettled(
       targetAccountIds.map(async (peerId) => {
         const sentMessage = await client.sendMessage(
@@ -372,6 +390,8 @@ export function useCloudGroupControlSender({
           {
             sessionId: input.groupId,
             attachments: uploadedAttachments,
+            messageKind: payload.message?.messageKind,
+            voiceMessage: payloadVoiceMessage,
             ...(clientCreatedAt ? { clientCreatedAt } : {}),
             conversationKind: 'group',
             memberAccountIds: targetAccountIds,

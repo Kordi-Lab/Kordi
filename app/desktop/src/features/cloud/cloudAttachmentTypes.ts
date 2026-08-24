@@ -23,6 +23,17 @@ export type SendCloudMessageAttachmentInput = {
   previewUrl?: string | null;
 };
 
+export type CloudVoiceMessage = {
+  mediaId: string;
+  mimeType: string;
+  durationMs: number;
+  waveformSamples: number[];
+  transcript: string;
+  localPath?: string | null;
+};
+
+export type SendCloudVoiceMessageInput = Omit<CloudVoiceMessage, 'mediaId'>;
+
 export type CloudAttachmentInitiateResult = {
   attachmentId: string;
   objectKey: string;

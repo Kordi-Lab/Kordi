@@ -12,6 +12,8 @@ import type {
   MessageAttachment,
   MessageMention,
   MessageSourceReference,
+  MessageVoice,
+  MessageVoiceDraft,
   QueuedDesktopChatMessage,
   SessionArtifact,
   SessionStatusIndicator,
@@ -39,6 +41,8 @@ export type {
   MessageReadReceiptSummary,
   MessageReplySummary,
   MessageSourceReference,
+  MessageVoice,
+  MessageVoiceDraft,
   QueuedDesktopChatMessage,
   SessionArtifact,
   SessionStatusIndicator,
@@ -914,7 +918,11 @@ export type DesktopCollaborationConversationMessage = {
   mentions?: MessageMention[];
   messageAction?: MessageActionMetadata | null;
   messageKind?: string | null;
-  localTurn?: DesktopChatTurnSnapshot | null; reactionConversationId?: string | null; reactionTargetMessageId?: string | null; reactions?: Array<{ value: string; accountIds: string[] }>;
+  voiceMessage?: MessageVoice | null;
+  localTurn?: DesktopChatTurnSnapshot | null;
+  reactionConversationId?: string | null;
+  reactionTargetMessageId?: string | null;
+  reactions?: Array<{ value: string; accountIds: string[] }>;
 };
 export type DesktopCollaborationSessionThreadMessage = {
   role: Message['role'] | string;

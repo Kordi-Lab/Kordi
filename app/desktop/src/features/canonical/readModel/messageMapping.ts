@@ -33,6 +33,22 @@ export function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
+function canonicalVoiceMessage(value: unknown): Message['voiceMessage'] {
+  const record = contentRecord(value);
+  const mediaId = stringValue(record.mediaId)?.trim() ?? '';
+  const mimeType = stringValue(record.mimeType)?.trim() ?? '';
+  const transcript = stringValue(record.transcript)?.trim() ?? '';
+  const durationMs = numberValue(record.durationMs);
+  const waveformSamples = Array.isArray(record.waveformSamples)
+    ? record.waveformSamples.flatMap((sample) => {
+        const value = numberValue(sample);
+        return value === undefined ? [] : [Math.max(0, Math.min(1, value))];
+      }).slice(0, 96)
+    : [];
+  if (!mediaId || !mimeType || !durationMs || durationMs <= 0) return null;
+  return { mediaId, mimeType, durationMs: Math.round(durationMs), waveformSamples, transcript };
+}
+
 function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
   const trimmed = label.trim();
   const normalized = trimmed.toLowerCase();
@@ -480,6 +496,7 @@ export function mapCanonicalMessage(
   const messageAction = canonicalMessageActionWithRealSourceLabel(rawMessageAction, sourceHumanLabel, sourceAgentLabel);
   const sourceMessage = canonicalMessageActionSourceReference(messageAction);
   if (role === 'system' && !displayText.trim()) return null;
+  const voiceMessage = canonicalVoiceMessage(content.voiceMessage);
 
   return {
     id: message.id,
@@ -502,6 +519,8 @@ export function mapCanonicalMessage(
     time,
     timestampMs: message.createdAtMs,
     callActivity: canonicalCallActivity(message, content, isOwnMessage),
+    messageKind: voiceMessage ? 'voice' : undefined,
+    voiceMessage,
     detail: stringValue(content.detail),
     attachments: canonicalAttachments(content.attachments),
     mentions: canonicalMentions(content.mentions),

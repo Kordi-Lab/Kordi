@@ -729,6 +729,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     let sessionId: String?
     let attachments: [CloudMessageAttachment]
     let messageKind: String?
+    let voiceMessage: VoiceMessage?
     let conversationId: String?
     let conversationSequence: Int64?
     let reactions: [MessageReaction]
@@ -749,6 +750,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         sessionId: String?,
         attachments: [CloudMessageAttachment] = [],
         messageKind: String? = nil,
+        voiceMessage: VoiceMessage? = nil,
         conversationId: String? = nil,
         conversationSequence: Int64? = nil,
         reactions: [MessageReaction] = []
@@ -766,6 +768,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         self.sessionId = sessionId
         self.attachments = attachments
         self.messageKind = messageKind
+        self.voiceMessage = voiceMessage
         self.conversationId = conversationId
         self.conversationSequence = conversationSequence
         self.reactions = reactions
@@ -774,6 +777,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case messageId, clientMessageId, fromAccountId, toAccountId, body, createdAt, deliveredAt, readAt, readByAccountIds, direction, sessionId, attachments
         case messageKind = "kind"
+        case voiceMessage
         case conversationId, conversationSequence, reactions
     }
 
@@ -792,6 +796,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
         attachments = try container.decodeIfPresent([CloudMessageAttachment].self, forKey: .attachments) ?? []
         messageKind = try container.decodeIfPresent(String.self, forKey: .messageKind)
+        voiceMessage = try container.decodeIfPresent(VoiceMessage.self, forKey: .voiceMessage)
         conversationId = try container.decodeIfPresent(String.self, forKey: .conversationId)
         conversationSequence = try container.decodeIfPresent(Int64.self, forKey: .conversationSequence)
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
@@ -868,20 +873,56 @@ struct CloudChatConversation: Codable, Hashable {
     }
 }
 
-struct CloudChatTextBlock: Codable, Hashable {
+struct CloudChatBlock: Codable, Hashable {
     let type: String
-    let text: String
+    let text: String?
+    let mediaId: String?
+    let mimeType: String?
+    let durationMs: Int?
+    let waveformSamples: [Double]?
+    let transcript: String?
+
+    init(text: String) {
+        type = "text"
+        self.text = text
+        mediaId = nil
+        mimeType = nil
+        durationMs = nil
+        waveformSamples = nil
+        transcript = nil
+    }
+
+    init(voiceMessage: VoiceMessage) {
+        type = "voice"
+        text = nil
+        mediaId = voiceMessage.mediaId
+        mimeType = voiceMessage.mimeType
+        durationMs = voiceMessage.durationMs
+        waveformSamples = voiceMessage.waveformSamples
+        transcript = voiceMessage.transcript
+    }
+
+    var voiceMessage: VoiceMessage? {
+        guard type == "voice", let mediaId, let mimeType, let durationMs else { return nil }
+        return VoiceMessage(
+            mediaId: mediaId,
+            mimeType: mimeType,
+            durationMs: durationMs,
+            waveformSamples: Array((waveformSamples ?? []).prefix(96)),
+            transcript: transcript ?? ""
+        )
+    }
 }
 
 struct CloudChatContent: Codable, Hashable {
     let schema: Int
-    let blocks: [CloudChatTextBlock]
+    let blocks: [CloudChatBlock]
     let legacyAttachments: [CloudMessageAttachment]
 
-    init(body: String, attachments: [CloudMessageAttachment]) {
+    init(body: String, attachments: [CloudMessageAttachment], voiceMessage: VoiceMessage? = nil) {
         schema = 1
-        blocks = [CloudChatTextBlock(type: "text", text: body)]
-        legacyAttachments = attachments
+        blocks = [CloudChatBlock(text: body)] + (voiceMessage.map { [CloudChatBlock(voiceMessage: $0)] } ?? [])
+        legacyAttachments = voiceMessage == nil ? attachments : []
     }
 
     enum CodingKeys: String, CodingKey {
@@ -892,11 +933,12 @@ struct CloudChatContent: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         schema = try container.decode(Int.self, forKey: .schema)
-        blocks = try container.decode([CloudChatTextBlock].self, forKey: .blocks)
+        blocks = try container.decode([CloudChatBlock].self, forKey: .blocks)
         legacyAttachments = try container.decodeIfPresent([CloudMessageAttachment].self, forKey: .legacyAttachments) ?? []
     }
 
-    var body: String { blocks.map(\.text).joined() }
+    var body: String { blocks.compactMap(\.text).joined() }
+    var voiceMessage: VoiceMessage? { blocks.lazy.compactMap(\.voiceMessage).first }
 }
 
 struct CloudChatReaction: Codable, Hashable {

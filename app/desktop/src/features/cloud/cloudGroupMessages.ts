@@ -7,6 +7,7 @@ import type {
   CanonicalSession,
   CanonicalSessionMessage,
   DesktopCollaborationSessionParticipant,
+  MessageVoiceDraft,
 } from '@/kordi-app/types';
 import { groupMentionTargetIdentityId, normalizedMessageMentions } from '@/features/chat/messageMentions';
 import type { MessageActionMetadata, MessageMention } from '@/kordi-app/types/message';
@@ -99,6 +100,7 @@ export type CloudGroupControlEnvelope = {
     targetCloudAgentOwnerName?: string | null;
     agentMentionDepth?: number | null;
     agentRuntimeRoute?: DesktopChatMessageRoute | null;
+    voiceMessage?: (MessageVoiceDraft & { mediaId?: string | null }) | null;
   } & ReturnType<typeof cloudGroupMessageRuntimeFields>) | null;
 };
 type CloudGroupAttachmentReferenceInput = Pick<
@@ -137,7 +139,15 @@ export function cloudGroupControlWithAttachmentReferences(
     ...envelope,
     message: {
       ...envelope.message,
-      attachments: cloudGroupAttachmentReferences(attachments),
+      attachments: envelope.message.voiceMessage
+        ? undefined
+        : cloudGroupAttachmentReferences(attachments),
+      ...(envelope.message.voiceMessage && attachments[0] ? {
+        voiceMessage: {
+          ...envelope.message.voiceMessage,
+          mediaId: attachments[0].attachmentId,
+        },
+      } : {}),
     },
   });
 }

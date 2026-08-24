@@ -31,6 +31,8 @@ struct CloudGroupMessagePayload: Codable, Hashable {
     let targetCloudAgentOwnerAccountId: String?
     let targetCloudAgentOwnerName: String?
     let agentRuntimeRoute: CloudModelRouting?
+    let messageKind: String?
+    let voiceMessage: VoiceMessage?
     let structuredContent: CloudGroupStructuredContent?
 
     init(
@@ -51,6 +53,8 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         targetCloudAgentOwnerAccountId: String? = nil,
         targetCloudAgentOwnerName: String? = nil,
         agentRuntimeRoute: CloudModelRouting? = nil,
+        messageKind: String? = nil,
+        voiceMessage: VoiceMessage? = nil,
         structuredContent: CloudGroupStructuredContent? = nil
     ) {
         self.id = id
@@ -74,6 +78,8 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         self.targetCloudAgentOwnerAccountId = targetCloudAgentOwnerAccountId
         self.targetCloudAgentOwnerName = targetCloudAgentOwnerName
         self.agentRuntimeRoute = agentRuntimeRoute
+        self.messageKind = messageKind
+        self.voiceMessage = voiceMessage
         self.structuredContent = structuredContent
     }
 }

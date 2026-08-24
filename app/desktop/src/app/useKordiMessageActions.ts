@@ -276,9 +276,16 @@ export function useKordiMessageActions({
       setActiveConversationId(directCloudConversationId);
       void (async () => {
         for (const draft of drafts) {
-          const attachments = await prepareCloudForwardAttachments(
-            draft.attachments,
-          );
+          const voiceAttachment = draft.voiceMessage ? [{
+            kind: 'file' as const,
+            name: 'Voice message.m4a',
+            mimeType: draft.voiceMessage.mimeType,
+            localPath: draft.voiceMessage.localPath ?? null,
+            attachmentId: draft.voiceMessage.mediaId,
+          }] : [];
+          const attachments = draft.voiceMessage
+            ? await prepareCloudForwardAttachments(voiceAttachment)
+            : await prepareCloudForwardAttachments(draft.attachments);
           const body = encodeCloudDirectMessageEnvelope({
             schemaVersion: 1,
             kind: 'message',
@@ -289,6 +296,15 @@ export function useKordiMessageActions({
             directCloudConversationId,
             body,
             attachments,
+            draft.voiceMessage ? {
+              messageKind: 'voice',
+              voiceMessage: {
+                mimeType: draft.voiceMessage.mimeType,
+                durationMs: draft.voiceMessage.durationMs,
+                waveformSamples: draft.voiceMessage.waveformSamples,
+                transcript: draft.voiceMessage.transcript,
+              },
+            } : {},
           );
         }
         revealForward(directCloudConversationId);
@@ -314,12 +330,13 @@ export function useKordiMessageActions({
           sessionId: destination.id,
           senderIdentityId,
           senderRole: 'user',
-          messageKind: 'text',
+          messageKind: draft.voiceMessage ? 'voice' : 'text',
           contentText: draft.text,
           content: {
             ...(draft.attachments.length > 0
               ? { attachments: draft.attachments }
               : {}),
+            ...(draft.voiceMessage ? { voiceMessage: draft.voiceMessage } : {}),
             forwardedFrom: draft.forwardedFrom,
             messageAction: draft.messageAction,
           },
@@ -365,7 +382,13 @@ export function useKordiMessageActions({
         const groupSpaceId =
           collaborationGroupSessionSpaceId(groupScope);
         const attachments = await prepareCloudForwardAttachments(
-          draft.attachments,
+          draft.voiceMessage ? [{
+            kind: 'file',
+            name: 'Voice message.m4a',
+            mimeType: draft.voiceMessage.mimeType,
+            localPath: draft.voiceMessage.localPath ?? null,
+            attachmentId: draft.voiceMessage.mediaId,
+          }] : draft.attachments,
         );
         await sendCloudGroupControl({
           targetAccountIds,
@@ -386,6 +409,13 @@ export function useKordiMessageActions({
             text: draft.text,
             createdAtMs: now + index,
             messageAction: draft.messageAction,
+            messageKind: draft.voiceMessage ? 'voice' : 'text',
+            voiceMessage: draft.voiceMessage ? {
+              mimeType: draft.voiceMessage.mimeType,
+              durationMs: draft.voiceMessage.durationMs,
+              waveformSamples: draft.voiceMessage.waveformSamples,
+              transcript: draft.voiceMessage.transcript,
+            } : null,
           },
           attachments,
         });

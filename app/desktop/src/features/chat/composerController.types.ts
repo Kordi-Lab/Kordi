@@ -23,6 +23,7 @@ import type {
   DetailTab,
   Message,
   MessageAttachment,
+  MessageVoiceDraft,
   NavId,
   QueuedDesktopChatMessage,
   Project,
@@ -41,6 +42,7 @@ export type AttachmentItem = MessageAttachment & {
   id: string;
   path: string;
   memeRightsConfirmed?: boolean;
+  voiceMessage?: MessageVoiceDraft;
 };
 export type SaveDesktopAttachmentOptions = {
   subtype?: MessageAttachment['subtype'];

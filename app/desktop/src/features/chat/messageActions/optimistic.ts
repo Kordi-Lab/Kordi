@@ -34,7 +34,44 @@ export function toOptimisticAttachments(attachments: AttachmentItem[]) {
   }));
 }
 
+export function voiceMessageDraftFromAttachments(attachments: readonly AttachmentItem[]) {
+  const draft = attachments.length === 1 ? attachments[0]?.voiceMessage ?? null : null;
+  if (!draft) return null;
+  const { localPath: _localPath, ...portableDraft } = draft;
+  return portableDraft;
+}
+
+function optimisticVoiceMessage(attachments: readonly AttachmentItem[]) {
+  const draft = voiceMessageDraftFromAttachments(attachments);
+  const attachment = attachments[0];
+  if (!draft || !attachment) return null;
+  return {
+    ...draft,
+    mediaId: attachment.attachmentId?.trim() || `pending:${attachment.id}`,
+    localPath: attachment.path,
+  };
+}
+
 export function retryAttachmentItemsFromMessage(message: Message): AttachmentItem[] | null {
+  if (message.voiceMessage?.localPath) {
+    const path = message.voiceMessage.localPath;
+    return [{
+      id: message.voiceMessage.mediaId || `${message.id ?? 'voice'}:${path}`,
+      path,
+      localPath: path,
+      name: 'Voice message.m4a',
+      kind: 'file',
+      mimeType: message.voiceMessage.mimeType,
+      formatLabel: 'M4A',
+      voiceMessage: {
+        mimeType: message.voiceMessage.mimeType,
+        durationMs: message.voiceMessage.durationMs,
+        waveformSamples: message.voiceMessage.waveformSamples,
+        transcript: message.voiceMessage.transcript,
+        localPath: path,
+      },
+    }];
+  }
   const attachments = message.attachments ?? [];
   const retryAttachments = attachments.map((attachment, index) => {
     const path = attachment.localPath?.trim();
@@ -73,11 +110,14 @@ export function appendOptimisticOutboundMessage(
 ) {
   const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
   const updatedAtMs = Date.now();
+  const voiceMessage = optimisticVoiceMessage(attachments);
   const optimisticMessage = {
     role: 'user' as const,
     sender: 'Me',
     text: messageText,
-    attachments: toOptimisticAttachments(attachments),
+    attachments: voiceMessage ? [] : toOptimisticAttachments(attachments),
+    messageKind: voiceMessage ? 'voice' : 'text',
+    voiceMessage,
     mentions,
     replyToMessageId: quoteAction?.source.sourceMessageId ?? null,
     messageAction: quoteAction,
@@ -174,6 +214,7 @@ export function appendOptimisticCollaborationMessage(
 
   const timestampMs = Date.now();
   const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
+  const voiceMessage = optimisticVoiceMessage(attachments);
   const nextConversations = current.conversations.map((conversation) => {
     if (conversation.id !== conversationId) return conversation;
     const expectsAgentReply = Boolean(conversation.supportTicketEnabled)
@@ -196,7 +237,9 @@ export function appendOptimisticCollaborationMessage(
           timestampMs,
           requestId: expectsAgentReply ? optimisticMessageId : null,
           deliveryState: 'sending',
-          attachments: toOptimisticAttachments(attachments),
+          attachments: voiceMessage ? [] : toOptimisticAttachments(attachments),
+          messageKind: voiceMessage ? 'voice' : 'text',
+          voiceMessage,
           mentions,
           messageAction: quoteAction,
         },
@@ -393,6 +436,7 @@ export function prepareCanonicalUserMessage(
     : `${timestampMs}-${Math.random().toString(16).slice(2)}`;
   const messageId = `msg:ui:${randomId}`;
   const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
+  const voiceMessage = optimisticVoiceMessage(attachments);
   const quoteSourceMessageId = quoteAction?.source.sourceMessageId ?? null;
   const quoteMatchesSession = quoteAction?.source.sourceSessionId === sessionId;
   return {
@@ -403,13 +447,14 @@ export function prepareCanonicalUserMessage(
       sessionId,
       senderIdentityId,
       senderRole: 'user',
-      messageKind: 'text',
+      messageKind: voiceMessage ? 'voice' : 'text',
       contentText: text,
       content: {
         sender: 'Me',
         timeLabel: sentAt,
         timestampMs,
-        attachments: toOptimisticAttachments(attachments),
+        attachments: voiceMessage ? [] : toOptimisticAttachments(attachments),
+        ...(voiceMessage ? { voiceMessage } : null),
         mentions,
         ...(quoteAction ? {
           replyToMessageId: quoteSourceMessageId,

@@ -1,5 +1,5 @@
 import type { CloudMessage, CloudSyncEvent } from './authClient';
-import { cloudMessageMetadataOnly } from './cloudMessageCache';
+import { cloudMessageMetadataOnly, cloudVoiceMessageMetadataOnly } from './cloudMessageCache';
 import {
   compareCloudMessages,
   latestCloudReceiptAt,
@@ -29,6 +29,7 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
   const attachments = Array.isArray(record.attachments)
     ? record.attachments as CloudMessage['attachments']
     : undefined;
+  const voiceMessage = cloudVoiceMessageMetadataOnly(record.voiceMessage);
   const conversationSequence = Number.isSafeInteger(record.conversationSequence)
     && Number(record.conversationSequence) > 0
     ? Number(record.conversationSequence)
@@ -57,6 +58,7 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
       : {}),
     ...(version ? { version } : {}),
     ...(attachments ? { attachments } : {}),
+    ...(voiceMessage ? { voiceMessage } : {}),
   });
 }
 

@@ -33,6 +33,7 @@ struct MessageBubble: View, Equatable {
     let onNavigateToReply: (String) -> Void
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
+    let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
     let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
     @State private var isRetrying = false
@@ -328,6 +329,13 @@ struct MessageBubble: View, Equatable {
                 )
             }
 
+            if let voiceMessage = message.voiceMessage {
+                VoiceMessageBubbleContent(
+                    voiceMessage: voiceMessage,
+                    onPrepare: onPrepareVoiceMessage
+                )
+            }
+
             if hasVisibleMessageText {
                 MarkdownMessageContent(
                     text: message.text,
@@ -457,6 +465,7 @@ struct MessageBubble: View, Equatable {
     }
 
     private var hasVisibleMessageText: Bool {
+        if message.voiceMessage != nil { return false }
         let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
         return !text.isEmpty && (
             message.agentExecution == nil
@@ -563,7 +572,9 @@ struct MessageBubble: View, Equatable {
         } else {
             message.deliveryState.label
         }
-        let attachmentLabel = message.attachments.isEmpty ? "" : ", \(attachmentCountText(message.attachments.count))"
+        let attachmentLabel = message.voiceMessage != nil
+            ? ", voice message"
+            : message.attachments.isEmpty ? "" : ", \(attachmentCountText(message.attachments.count))"
         let messageText = ComposerMentionTargetCatalog.accessibilityText(
             in: message.text,
             mentions: message.mentions,

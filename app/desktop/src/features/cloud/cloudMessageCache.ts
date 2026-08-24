@@ -1,4 +1,4 @@
-import type { CloudMessage, CloudMessageAttachment } from './authClient';
+import type { CloudMessage, CloudMessageAttachment, CloudVoiceMessage } from './authClient';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
 import { normalizeCloudReaderAccountIds } from './cloudMessageMerge';
 import { IndexedDbCloudMessageCacheStore } from './indexedDbCloudMessageCacheStore';
@@ -86,12 +86,37 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
   };
 }
 
+export function cloudVoiceMessageMetadataOnly(value: unknown): CloudVoiceMessage | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const mediaId = cleanText(record.mediaId);
+  const mimeType = cleanText(record.mimeType);
+  const transcript = cleanText(record.transcript);
+  const durationMs = typeof record.durationMs === 'number' && Number.isFinite(record.durationMs)
+    ? Math.max(0, Math.round(record.durationMs))
+    : 0;
+  const waveformSamples = Array.isArray(record.waveformSamples)
+    ? record.waveformSamples.flatMap((sample) => (
+        typeof sample === 'number' && Number.isFinite(sample)
+          ? [Math.max(0, Math.min(1, sample))]
+          : []
+      )).slice(0, 96)
+    : [];
+  if (!mediaId || !mimeType || durationMs <= 0) return null;
+  return { mediaId, mimeType, durationMs, waveformSamples, transcript };
+}
+
 export function cloudMessageMetadataOnly(message: CloudMessage): CloudMessage {
   const attachments = (message.attachments ?? [])
     .map(cloudMessageAttachmentMetadataOnly)
     .filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
-  const { attachments: _attachments, ...metadata } = message;
-  return attachments.length > 0 ? { ...metadata, attachments } : metadata;
+  const voiceMessage = cloudVoiceMessageMetadataOnly(message.voiceMessage);
+  const { attachments: _attachments, voiceMessage: _voiceMessage, ...metadata } = message;
+  return {
+    ...metadata,
+    ...(attachments.length > 0 ? { attachments } : {}),
+    ...(voiceMessage ? { voiceMessage } : {}),
+  };
 }
 
 function normalizedMessage(accountId: string, value: unknown): CloudMessage | null {
@@ -110,6 +135,7 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
   const conversationId = cleanText(record.conversationId);
   const clientMessageId = cleanText(record.clientMessageId);
   const messageKind = cleanText(record.messageKind);
+  const voiceMessage = cloudVoiceMessageMetadataOnly(record.voiceMessage);
   const canonicalHistoryLocalMessageId = cleanText(record.canonicalHistoryLocalMessageId);
   const conversationSequence = Number.isSafeInteger(record.conversationSequence)
     && Number(record.conversationSequence) > 0 ? Number(record.conversationSequence) : null;
@@ -139,6 +165,7 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     ...(conversationId ? { conversationId } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
     ...(messageKind ? { messageKind } : {}),
+    ...(voiceMessage ? { voiceMessage } : {}),
     ...(canonicalHistoryLocalMessageId ? { canonicalHistoryLocalMessageId } : {}),
     ...(conversationSequence ? { conversationSequence } : {}),
     ...(version ? { version } : {}),

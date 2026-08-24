@@ -1,4 +1,4 @@
-import type { CloudMessage, CloudMessageAttachment, SendCloudMessageAttachmentInput } from './authClient';
+import type { CloudMessage, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './authClient';
 import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
 import {
   encodeCloudGroupControl,
@@ -64,11 +64,22 @@ export function chatTextContent(
     localMessageId: string;
     originalCreatedAt: string;
   } | null,
+  voiceMessage?: CloudVoiceMessage | null,
 ) {
   return {
     schema: 1,
-    blocks: [{ type: 'text', text: body }],
-    legacy_attachments: attachments,
+    blocks: [
+      { type: 'text', text: body },
+      ...(voiceMessage ? [{
+        type: 'voice',
+        mediaId: voiceMessage.mediaId,
+        mimeType: voiceMessage.mimeType,
+        durationMs: voiceMessage.durationMs,
+        waveformSamples: voiceMessage.waveformSamples,
+        transcript: voiceMessage.transcript,
+      }] : []),
+    ],
+    legacy_attachments: voiceMessage ? [] : attachments,
     ...(canonicalHistory ? {
       canonical_history: {
         local_message_id: canonicalHistory.localMessageId,
@@ -76,6 +87,33 @@ export function chatTextContent(
       },
     } : {}),
   };
+}
+
+function voiceMessageFromChatContent(content: unknown): CloudVoiceMessage | null {
+  if (!content || typeof content !== 'object' || Array.isArray(content)) return null;
+  const blocks = (content as { blocks?: unknown }).blocks;
+  if (!Array.isArray(blocks)) return null;
+  for (const value of blocks) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+    const block = value as Record<string, unknown>;
+    if (block.type !== 'voice') continue;
+    const mediaId = typeof block.mediaId === 'string' ? block.mediaId.trim() : '';
+    const mimeType = typeof block.mimeType === 'string' ? block.mimeType.trim() : '';
+    const transcript = typeof block.transcript === 'string' ? block.transcript.trim() : '';
+    const durationMs = typeof block.durationMs === 'number' && Number.isFinite(block.durationMs)
+      ? Math.max(0, Math.round(block.durationMs))
+      : 0;
+    const waveformSamples = Array.isArray(block.waveformSamples)
+      ? block.waveformSamples.flatMap((sample) => (
+          typeof sample === 'number' && Number.isFinite(sample)
+            ? [Math.max(0, Math.min(1, sample))]
+            : []
+        )).slice(0, 96)
+      : [];
+    if (!mediaId || !mimeType || durationMs <= 0) return null;
+    return { mediaId, mimeType, durationMs, waveformSamples, transcript };
+  }
+  return null;
 }
 
 function canonicalHistoryMetadata(content: unknown): {
@@ -292,6 +330,7 @@ export function cloudMessageFromChatSync(
     direction: outgoing ? 'outgoing' : 'incoming',
     sessionId: conversation.legacy_session_id ?? conversation.id,
     attachments: attachmentsFromChatContent(message.content),
+    voiceMessage: voiceMessageFromChatContent(message.content),
     conversationId: conversation.id,
     conversationSequence: message.conversation_sequence,
     clientMessageId: message.client_message_id,
