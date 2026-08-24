@@ -1752,7 +1752,6 @@ enum ConversationTimelineScrollBehavior {
     ) -> Bool {
         hasRevealedInitialViewport && wasAtLatest && isPresented
     }
-
 }
 
 enum ConversationTimelineWindow {
@@ -1959,9 +1958,9 @@ private struct LatestMessageButton: View {
     }
 }
 
-/// SwiftUI's identity-based scroll command can be deferred while UIScrollView
-/// is decelerating. The button must win immediately, so this bridge cancels the
-/// active momentum and starts one interruptible animation to the true bottom.
+/// Keeps keyboard dismissal on UIKit's native on-drag path. SwiftUI's
+/// identity-based scroll command can also be deferred while UIScrollView is
+/// decelerating, so the button cancels momentum before moving to the true bottom.
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let scrollToBottomRequest: Int
 
