@@ -1,6 +1,25 @@
 use super::support::*;
 use super::*;
 
+const LEGACY_DEFAULT_SELF_AGENT_SESSION_ID: &str = "session:self-agent:default";
+
+fn account_scoped_client_session_id(
+    account_id: &str,
+    kind: ConversationKind,
+    members: &[String],
+    session_id: String,
+) -> Result<String, StoreError> {
+    if session_id != LEGACY_DEFAULT_SELF_AGENT_SESSION_ID {
+        return Ok(session_id);
+    }
+    if kind != ConversationKind::Ai || members.len() != 1 || members[0] != account_id {
+        return Err(StoreError::InvalidInput(
+            "default self-agent session must belong to one account",
+        ));
+    }
+    Ok(format!("session:self-agent:{account_id}:default"))
+}
+
 pub async fn create_conversation(
     pool: &PgPool,
     account_id: &str,
@@ -43,9 +62,13 @@ async fn create_conversation_in_transaction_with_trusted_peer(
     trusted_peer_account_id: Option<&str>,
 ) -> Result<InsertOutcome<ConversationSnapshot>, StoreError> {
     let shared_title = normalize_title(request.shared_title.as_deref())?;
+    let members = normalized_members(account_id, &request.member_account_ids);
     let client_session_id = normalize_client_session_id(Some(&request.client_session_id))?
         .ok_or(StoreError::InvalidInput("client session id is required"))?;
-    let members = normalized_members(account_id, &request.member_account_ids);
+    let client_session_id =
+        account_scoped_client_session_id(account_id, request.kind, &members, client_session_id)?;
+    let client_session_id = normalize_client_session_id(Some(&client_session_id))?
+        .ok_or(StoreError::InvalidInput("client session id is required"))?;
     match request.kind {
         ConversationKind::Direct if members.len() != 2 => {
             return Err(StoreError::InvalidInput(
@@ -206,4 +229,44 @@ async fn create_conversation_in_transaction_with_trusted_peer(
         value: conversation,
         inserted: true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_default_self_agent_session_is_scoped_per_account() {
+        let first = account_scoped_client_session_id(
+            "acct_first",
+            ConversationKind::Ai,
+            &["acct_first".to_string()],
+            LEGACY_DEFAULT_SELF_AGENT_SESSION_ID.to_string(),
+        )
+        .expect("scope first account");
+        let second = account_scoped_client_session_id(
+            "acct_second",
+            ConversationKind::Ai,
+            &["acct_second".to_string()],
+            LEGACY_DEFAULT_SELF_AGENT_SESSION_ID.to_string(),
+        )
+        .expect("scope second account");
+
+        assert_eq!(first, "session:self-agent:acct_first:default");
+        assert_eq!(second, "session:self-agent:acct_second:default");
+        assert_ne!(first, second);
+    }
+
+    #[test]
+    fn legacy_default_self_agent_session_rejects_non_private_shapes() {
+        assert!(matches!(
+            account_scoped_client_session_id(
+                "acct_first",
+                ConversationKind::Ai,
+                &["acct_first".to_string(), "acct_second".to_string()],
+                LEGACY_DEFAULT_SELF_AGENT_SESSION_ID.to_string(),
+            ),
+            Err(StoreError::InvalidInput(_))
+        ));
+    }
 }

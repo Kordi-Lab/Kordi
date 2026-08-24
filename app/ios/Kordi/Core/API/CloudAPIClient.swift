@@ -1829,9 +1829,14 @@ actor CloudAPIClient {
         query: [URLQueryItem],
         body: Data?
     ) throws -> URLRequest {
-        guard var components = URLComponents(url: baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))), resolvingAgainstBaseURL: false) else {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
             throw CloudAPIError(code: "invalid_url", message: "Kordi Cloud URL is invalid.", statusCode: 0)
         }
+        let basePath = components.percentEncodedPath.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let requestPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.percentEncodedPath = "/" + [basePath, requestPath]
+            .filter { !$0.isEmpty }
+            .joined(separator: "/")
         if !query.isEmpty { components.queryItems = query }
         guard let url = components.url else {
             throw CloudAPIError(code: "invalid_url", message: "Kordi Cloud URL is invalid.", statusCode: 0)

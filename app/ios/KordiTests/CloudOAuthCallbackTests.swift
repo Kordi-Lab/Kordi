@@ -178,6 +178,33 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         XCTAssertEqual(event.payload?.scope, "shared")
         XCTAssertEqual(event.payload?.updatedAt, "2026-08-17T12:00:01Z")
     }
+
+    func testSessionPinPathEncodesTheSessionExactlyOnce() async throws {
+        SessionPinMutationURLProtocol.request = nil
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SessionPinMutationURLProtocol.self]
+        let client = CloudAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:17081")!,
+            session: URLSession(configuration: configuration)
+        )
+
+        _ = try await client.updateSessionPin(
+            token: "oauth-session",
+            sessionId: "session:direct-person:acct_a:acct_b",
+            messageId: "message-1",
+            scope: "private"
+        )
+
+        let url = try XCTUnwrap(SessionPinMutationURLProtocol.request?.url)
+        let path = try XCTUnwrap(
+            URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath
+        )
+        XCTAssertEqual(
+            path,
+            "/v1/cloud/sessions/session%3Adirect-person%3Aacct_a%3Aacct_b/pin"
+        )
+        XCTAssertFalse(path.contains("%253A"))
+    }
 }
 
 final class CloudPresencePublisherTests: XCTestCase {
@@ -432,6 +459,31 @@ private final class SessionPinSyncURLProtocol: URLProtocol {
     override func startLoading() {
         let payload = Data(
             #"{"protocol_version":2,"events":[{"stream_seq":44,"event_id":"event_session_pin","protocol_version":2,"type":"session.pin.updated","critical":true,"conversation_id":"conversation-group","entity_id":null,"entity_version":null,"occurred_at":"2026-08-17T12:00:01Z","payload":{"sessionId":"session:group","messageId":"message-1","scope":"shared","updatedAt":"2026-08-17T12:00:01Z"}}],"next_cursor":"44","last_stream_seq":44,"has_more":false,"server_time":"2026-08-17T12:00:01Z"}"#.utf8
+        )
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: payload)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+private final class SessionPinMutationURLProtocol: URLProtocol {
+    static var request: URLRequest?
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.request = request
+        let payload = Data(
+            #"{"pin":{"sessionId":"session:direct-person:acct_a:acct_b","sharedMessageId":null,"privateMessageId":"message-1","effectiveMessageId":"message-1","updatedAt":"2026-08-24T12:00:00Z"}}"#.utf8
         )
         let response = HTTPURLResponse(
             url: request.url!,

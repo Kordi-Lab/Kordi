@@ -651,8 +651,9 @@ enum CloudConversationCatalog {
     }
 
     private static func defaultAgentConversation(account: CloudAccount, now: Date) -> ConversationSummary {
-        ConversationSummary(
-            id: "agent-template:session:self-agent:default",
+        let sessionId = defaultSelfAgentSessionId(account.accountId)
+        return ConversationSummary(
+            id: "agent-template:\(sessionId)",
             kind: .agent,
             peerAccountId: account.accountId,
             agentId: CanonicalAvatarSystem.defaultAgentId,
@@ -663,7 +664,7 @@ enum CloudConversationCatalog {
             unreadCount: 0,
             avatarSource: nil,
             agentActivity: .ready,
-            sessionId: "session:self-agent:default",
+            sessionId: sessionId,
             agentDisplayName: "My Kordi"
         )
     }
@@ -802,6 +803,10 @@ enum CloudConversationCatalog {
 
 func directPersonSessionId(_ first: String, _ second: String) -> String {
     "session:direct-person:" + [first, second].sorted().joined(separator: ":")
+}
+
+func defaultSelfAgentSessionId(_ accountId: String) -> String {
+    "session:self-agent:\(accountId):default"
 }
 
 func parseCloudDate(_ value: String) -> Date {

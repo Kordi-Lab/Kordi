@@ -175,9 +175,10 @@ enum AgentSessionFactory {
         randomId: String = UUID().uuidString.lowercased(),
         now: Date = Date()
     ) -> ConversationSummary {
-        make(
+        let sessionId = defaultSelfAgentSessionId(ownAccountId)
+        return make(
             from: ConversationSummary(
-                id: "agent-template:session:self-agent:default",
+                id: "agent-template:\(sessionId)",
                 kind: .agent,
                 peerAccountId: ownAccountId,
                 agentId: CanonicalAvatarSystem.defaultAgentId,
@@ -188,7 +189,7 @@ enum AgentSessionFactory {
                 unreadCount: 0,
                 avatarSource: nil,
                 agentActivity: .ready,
-                sessionId: "session:self-agent:default",
+                sessionId: sessionId,
                 agentDisplayName: "My Kordi"
             ),
             ownAccountId: ownAccountId,
