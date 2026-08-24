@@ -1,31 +1,14 @@
-import {
-  FileText,
-  LoaderCircle,
-  Pause,
-  Play,
-  RotateCcw,
-  Send,
-  Trash2,
-} from 'lucide-react';
+import { FileText, LoaderCircle, Pause, Play, RotateCcw, Send, Trash2 } from 'lucide-react';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import {
-  displayVoiceWaveform,
-  type VoiceMessageRecorderState,
-} from '@/features/chat/useVoiceMessageRecorder';
+import { displayVoiceWaveform, type VoiceMessageRecorderState } from '@/features/chat/useVoiceMessageRecorder';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { downloadCloudAttachmentToLocalPath } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
-import type { MessageVoice } from '@/kordi-app/types';
-import {
-  isNativeDesktopShell,
-  pauseDesktopVoiceMessage,
-  playDesktopVoiceMessage,
-  readDesktopChatAttachment,
-  seekDesktopVoiceMessage,
-  stopDesktopVoiceMessage,
-} from '@/lib/desktop';
+import type { MessageVoice } from '@/kordi-app/types/message';
+import { isNativeDesktopShell, readDesktopChatAttachment } from '@/lib/desktop';
+import { pauseDesktopVoiceMessage, playDesktopVoiceMessage, seekDesktopVoiceMessage, stopDesktopVoiceMessage } from '@/lib/desktopVoice';
 import { cn } from '@/lib/utils';
 
 const VOICE_PLAY_EVENT = 'kordi:voice-message-play';

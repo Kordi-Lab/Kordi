@@ -1,5 +1,7 @@
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
-import type { MessageVoiceDraft } from '@/kordi-app/types';
+import type { MessageVoiceDraft } from '@/kordi-app/types/message';
+
+export { cloudVoiceAttachmentReference } from './cloudVoiceMessage';
 
 function cleanText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';

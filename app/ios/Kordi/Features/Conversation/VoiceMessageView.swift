@@ -22,16 +22,6 @@ struct VoiceRecordingComposer: View {
         .frame(height: 50, alignment: .center)
         .padding(.horizontal, 14)
         .background(.ultraThinMaterial, in: Capsule())
-        .overlay(alignment: .topLeading) {
-            if let error = recorder.errorMessage {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .offset(y: -36)
-            }
-        }
         .accessibilityElement(children: .contain)
     }
 

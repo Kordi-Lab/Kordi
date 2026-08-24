@@ -142,8 +142,7 @@ export type SendCloudMessageOptions = {
   attachments?: SendCloudMessageAttachmentInput[];
   clientCreatedAt?: string | null;
   clientMessageId?: string | null;
-  messageKind?: string | null;
-  voiceMessage?: CloudVoiceMessage | null;
+  messageKind?: string | null; voiceMessage?: CloudVoiceMessage | null;
   canonicalHistoryLocalMessageId?: string | null;
   accountId?: string | null;
   conversationKind?: ChatSyncConversation['kind'];
@@ -162,8 +161,7 @@ export type CloudMessage = {
   readByAccountIds?: string[];
   direction: CloudMessageDirection;
   sessionId?: string | null;
-  attachments?: CloudMessageAttachment[];
-  voiceMessage?: CloudVoiceMessage | null;
+  attachments?: CloudMessageAttachment[]; voiceMessage?: CloudVoiceMessage | null;
   conversationId?: string | null;
   conversationSequence?: number | null;
   clientMessageId?: string | null;

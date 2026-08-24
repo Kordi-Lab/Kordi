@@ -1284,6 +1284,7 @@ final class AppModel: ObservableObject {
         _ rawText: String,
         attachments: [PendingAttachment] = [],
         voiceMessage: PendingVoiceMessage? = nil,
+        resolvedVoiceMessage: Task<PendingVoiceMessage?, Never>? = nil,
         replyingTo replySource: MessageActionSource? = nil,
         mentioning mentionTarget: ComposerMentionTarget? = nil,
         messageAction actionOverride: MessageActionMetadata? = nil,
@@ -1291,7 +1292,7 @@ final class AppModel: ObservableObject {
         to conversation: ConversationSummary,
         retrying retryMessage: ChatMessage? = nil
     ) async {
-        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoingAttachments = voiceMessage.map { [$0.attachment] } ?? attachments
         guard (!text.isEmpty || !outgoingAttachments.isEmpty), let token, let account else { return }
         if let error = MemeAttachmentPolicy.draftError(for: outgoingAttachments) {
@@ -1309,7 +1310,7 @@ final class AppModel: ObservableObject {
             || routesToSupportAgent
         let isNewAgentSession = conversation.kind == .agent
             && !conversations.contains { $0.sessionId == conversation.sessionId }
-        let initialAgentSessionTitle = isNewAgentSession
+        var initialAgentSessionTitle = isNewAgentSession
             ? initialSessionTitle(text: text, attachmentCount: attachments.count)
             : nil
         let inheritedRuntimeRoute = isNewAgentSession
@@ -1379,8 +1380,20 @@ final class AppModel: ObservableObject {
         )
 
         do {
-            let uploadedAttachments = try await uploadAttachments(outgoingAttachments, token: token)
-            let uploadedVoiceMessage = voiceMessage.flatMap { draft in
+            async let attachmentUpload = uploadAttachments(outgoingAttachments, token: token)
+            let resolvedVoiceMessage = await resolvedVoiceMessage?.value ?? voiceMessage
+            if let resolvedVoiceMessage {
+                pendingVoiceDraftsByMessageId[localId] = resolvedVoiceMessage
+                text = resolvedVoiceMessage.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                if isNewAgentSession {
+                    initialAgentSessionTitle = initialSessionTitle(
+                        text: text,
+                        attachmentCount: outgoingAttachments.count
+                    )
+                }
+            }
+            let uploadedAttachments = try await attachmentUpload
+            let uploadedVoiceMessage = resolvedVoiceMessage.flatMap { draft in
                 uploadedAttachments.first.map { draft.voiceMessage(mediaId: $0.attachmentId) }
             }
             if let inheritedRouteNotice, let inheritedRuntimeRoute,

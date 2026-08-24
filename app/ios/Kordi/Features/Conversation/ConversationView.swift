@@ -1437,6 +1437,7 @@ struct ConversationView: View {
 
     private func sendVoiceMessage() async {
         guard !isSending, let pending = await voiceRecorder.prepareForSend() else { return }
+        let resolvedVoiceMessage = Task { await voiceRecorder.resolvedMessageForSend() }
         let message = pending.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoingMention = resolvedMentionTarget(in: message)
         guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return }
@@ -1447,6 +1448,7 @@ struct ConversationView: View {
         await model.send(
             message,
             voiceMessage: pending,
+            resolvedVoiceMessage: resolvedVoiceMessage,
             replyingTo: outgoingReply,
             mentioning: outgoingMention,
             agentContext: companionContext?.referenceText,

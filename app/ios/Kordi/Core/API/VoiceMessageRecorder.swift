@@ -43,12 +43,13 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     private var rawSamples: [Double] = []
     private var recognitionTask: SFSpeechRecognitionTask?
     private var preparationTask: Task<PendingVoiceMessage?, Never>?
+    private var transcriptionTask: Task<Void, Never>?
     private var generation = 0
     private var preparedTrimStartMs = 0
     private var preparedTrimEndMs = 0
 
     var isVisible: Bool {
-        phase != .idle && !(phase == .review && shouldAutoSend)
+        phase == .recording || phase == .paused || phase == .failed
     }
 
     @discardableResult
@@ -172,6 +173,12 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         return pendingMessage
     }
 
+    func resolvedMessageForSend() async -> PendingVoiceMessage? {
+        if let preparationTask { _ = await preparationTask.value }
+        if let transcriptionTask { await transcriptionTask.value }
+        return pendingMessage
+    }
+
     func cancel() {
         cancel(removeFile: true)
         phase = .idle
@@ -196,6 +203,8 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         recognitionTask = nil
         preparationTask?.cancel()
         preparationTask = nil
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
         meterTimer?.invalidate()
         meterTimer = nil
         if removeFile {
@@ -226,6 +235,7 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
     private func beginPreparation(url: URL, startMs: Int, endMs: Int) -> Task<PendingVoiceMessage?, Never> {
         preparationTask?.cancel()
         recognitionTask?.cancel()
+        transcriptionTask?.cancel()
         let preparationGeneration = generation
         transcriptionPhase = .transcribing
         errorMessage = nil
@@ -239,8 +249,6 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
                 let outputURL = trimmed
                     ? try await exportTrimmedAudio(url: url, startMs: startMs, endMs: endMs)
                     : url
-                try Task.checkCancellation()
-                let text = try await transcribe(url: outputURL)
                 try Task.checkCancellation()
                 let data = try Data(contentsOf: outputURL, options: [.mappedIfSafe])
                 let preparedDurationMs = endMs - startMs
@@ -263,15 +271,34 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
                     ),
                     durationMs: preparedDurationMs,
                     waveformSamples: preparedWaveform,
-                    transcript: text
+                    transcript: ""
                 )
                 guard preparationGeneration == generation else { return nil }
                 preparedURL = outputURL
                 preparedTrimStartMs = startMs
                 preparedTrimEndMs = endMs
-                transcript = text
                 pendingMessage = pending
-                transcriptionPhase = .ready
+                transcriptionTask = Task { [weak self] in
+                    guard let self else { return }
+                    do {
+                        let text = try await transcribe(url: outputURL)
+                        try Task.checkCancellation()
+                        guard preparationGeneration == generation else { return }
+                        transcript = text
+                        pendingMessage = PendingVoiceMessage(
+                            attachment: pending.attachment,
+                            durationMs: pending.durationMs,
+                            waveformSamples: pending.waveformSamples,
+                            transcript: text
+                        )
+                        transcriptionPhase = .ready
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        guard preparationGeneration == generation else { return }
+                        transcriptionPhase = .failed
+                    }
+                }
                 return pending
             } catch is CancellationError {
                 return nil

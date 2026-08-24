@@ -23,11 +23,11 @@ import type {
   DetailTab,
   Message,
   MessageAttachment,
-  MessageVoiceDraft,
   NavId,
   QueuedDesktopChatMessage,
   Project,
 } from '@/kordi-app/types';
+import type { MessageVoiceDraft } from '@/kordi-app/types/message';
 
 export type ComposerSelection = { mode: string; model: string; thinking: string };
 export type ComposerSelectionState = Record<ComposerScope, ComposerSelection>;

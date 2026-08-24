@@ -7,7 +7,7 @@ import {
   stopDesktopVoiceRecording,
   transcribeDesktopVoiceMessage,
   trimDesktopVoiceMessage,
-} from '@/lib/desktop';
+} from '@/lib/desktopVoice';
 import type { AttachmentItem } from './composerController.types';
 
 export const MAX_VOICE_MESSAGE_DURATION_MS = 60_000;

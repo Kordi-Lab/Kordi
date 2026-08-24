@@ -9,7 +9,7 @@ import {
 } from '../src/features/chat/useVoiceMessageRecorder';
 import { voiceMessageDraftFromAttachments } from '../src/features/chat/messageActions/optimistic';
 import { chatTextContent } from '../src/features/cloud/chatSyncMapping';
-import { desktopVoiceTranscriptionLocales } from '../src/lib/desktop';
+import { desktopVoiceTranscriptionLocales } from '../src/lib/desktopVoice';
 import {
   cloudGroupControlWithAttachmentReferences,
   encodeCloudGroupControl,

@@ -1,15 +1,12 @@
 import type {
-  CanonicalIdentity,
-  CanonicalSessionMessage,
-  CanonicalSessionState,
-  DesktopChatToolSnapshot,
-  Message,
-  MessageActionMetadata,
+  CanonicalIdentity, CanonicalSessionMessage, CanonicalSessionState,
+  DesktopChatToolSnapshot, Message, MessageActionMetadata,
 } from '@/kordi-app/types';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
+import { cloudVoiceMessageMetadataOnly } from '@/features/cloud/cloudVoiceMessage';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
@@ -31,22 +28,6 @@ export function stringValue(value: unknown) {
 
 export function numberValue(value: unknown) {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-function canonicalVoiceMessage(value: unknown): Message['voiceMessage'] {
-  const record = contentRecord(value);
-  const mediaId = stringValue(record.mediaId)?.trim() ?? '';
-  const mimeType = stringValue(record.mimeType)?.trim() ?? '';
-  const transcript = stringValue(record.transcript)?.trim() ?? '';
-  const durationMs = numberValue(record.durationMs);
-  const waveformSamples = Array.isArray(record.waveformSamples)
-    ? record.waveformSamples.flatMap((sample) => {
-        const value = numberValue(sample);
-        return value === undefined ? [] : [Math.max(0, Math.min(1, value))];
-      }).slice(0, 96)
-    : [];
-  if (!mediaId || !mimeType || !durationMs || durationMs <= 0) return null;
-  return { mediaId, mimeType, durationMs: Math.round(durationMs), waveformSamples, transcript };
 }
 
 function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
@@ -496,7 +477,7 @@ export function mapCanonicalMessage(
   const messageAction = canonicalMessageActionWithRealSourceLabel(rawMessageAction, sourceHumanLabel, sourceAgentLabel);
   const sourceMessage = canonicalMessageActionSourceReference(messageAction);
   if (role === 'system' && !displayText.trim()) return null;
-  const voiceMessage = canonicalVoiceMessage(content.voiceMessage);
+  const voiceMessage = cloudVoiceMessageMetadataOnly(content.voiceMessage);
 
   return {
     id: message.id,

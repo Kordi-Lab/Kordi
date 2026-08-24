@@ -1,5 +1,6 @@
 import type { CloudMessage, CloudSyncEvent } from './authClient';
-import { cloudMessageMetadataOnly, cloudVoiceMessageMetadataOnly } from './cloudMessageCache';
+import { cloudMessageMetadataOnly } from './cloudMessageCache';
+import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
 import {
   compareCloudMessages,
   latestCloudReceiptAt,

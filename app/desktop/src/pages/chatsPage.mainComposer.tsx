@@ -1,25 +1,11 @@
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
-import { ArrowUp, Mic, Send } from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
+import { useId, useRef } from 'react';
 import type { AttachmentItem, ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
-import {
-  CHAT_COMPOSER_TEXTAREA_SELECTOR,
-  focusComposerTextareaForNativeInput,
-} from '@/features/chat/composerController.shared';
+import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
-import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
-import { uploadNativeCloudAttachment } from '@/features/cloud/cloudAttachmentUpload';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
 import { MEME_IMAGE_ACCEPT, memeAttachmentDraftError } from '@/features/chat/memeAttachments';
-import {
-  voiceGestureIntent,
-  type VoiceGestureIntent,
-  useVoiceMessageRecorder,
-} from '@/features/chat/useVoiceMessageRecorder';
 import {
   CompactComposerModelMenu,
   ComposerMentionMenu,
@@ -28,15 +14,8 @@ import {
   ComposerSlashMenu,
   type CompactComposerModelMenuSaveInput,
 } from '@/kordi-app/components';
-import {
-  ComposerAttachmentAddMenu,
-  ComposerAttachmentList,
-} from '@/kordi-app/components/composerAttachments';
-import { VoiceRecordingRail } from '@/kordi-app/components/voiceMessage';
-import type {
-  Conversation,
-  DesktopChatContextWindowStatus,
-} from '@/kordi-app/types';
+import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
+import type { Conversation, DesktopChatContextWindowStatus } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ComposerDropSurface } from './chatsPage.composerDropSurface';
 import {
@@ -56,6 +35,8 @@ import type {
   ChatsPageComposer,
   ChatsPageRuntime,
 } from '@/pages/chatsPage.types';
+import { useVoiceComposer } from './chatsPage.voiceComposer';
+import { VoiceComposerControls, VoiceRecordingSurface } from './chatsPage.voiceControls';
 
 type MainComposerLocalRouting = {
   paneKind: 'human' | 'agent' | null;
@@ -77,11 +58,6 @@ type MainComposerCollaborationRouting = {
     currentThinking: string | null | undefined,
   ) => string;
 };
-
-function formatRecordingDuration(durationMs: number) {
-  const seconds = Math.max(0, Math.round(durationMs / 1_000));
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
 
 export type MainComposerProps = {
   conversation: Conversation;
@@ -152,131 +128,17 @@ export function MainComposer({
   const memeAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const memeValidationMessageId = useId();
   const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
-  const voiceRecorder = useVoiceMessageRecorder();
-  const voiceSurfaceActive = voiceRecorder.state.phase === 'review'
-    || voiceRecorder.state.phase === 'error';
-  const voiceRecording = voiceRecorder.state.phase === 'recording';
-  const [voiceCancelArmed, setVoiceCancelArmed] = useState(false);
-  const voiceGestureRef = useRef<{
-    pointerId: number;
-    startY: number;
-    intent: VoiceGestureIntent;
-    recorderStarted: boolean;
-    released: boolean;
-  } | null>(null);
-  const suppressVoiceClickRef = useRef(false);
-  const voiceGestureCleanupRef = useRef<() => void>(() => {});
   const hasSendableDraft = Boolean(chatComposerText.trim() || chatComposerAttachments.length > 0);
   const canConfigureModelRoute = canConfigureConversationModelRoute(conversation);
   const useCompactRouteMenu = canConfigureModelRoute
     && shouldUseCompactModelRouteMenu(conversation);
-  const prefetchesVoiceUpload = Boolean(
-    cloudAccountId
-      && (isCloudCollaborationConversationId(conversation.id) || conversation.directness === 'group'),
-  );
-
-  const sendPreparedVoice = useCallback(async () => {
-    const attachment = await voiceRecorder.prepareForSend();
-    const transcript = attachment?.voiceMessage?.transcript.trim();
-    if (!attachment || !transcript) return;
-    await onSend(transcript, [attachment]);
-    voiceRecorder.reset();
-    window.requestAnimationFrame(() => textareaRef.current?.focus());
-  }, [onSend, voiceRecorder]);
-
-  const finishAndSendVoice = useCallback(async () => {
-    const attachment = await voiceRecorder.stop({
-      directSend: true,
-      onAttachmentReady: prefetchesVoiceUpload
-        ? (readyAttachment) => {
-            void uploadNativeCloudAttachment({
-              path: readyAttachment.path,
-              contentType: readyAttachment.mimeType,
-            }).catch(() => undefined);
-          }
-        : undefined,
-    });
-    const transcript = attachment?.voiceMessage?.transcript.trim();
-    if (!attachment || !transcript) {
-      voiceRecorder.discardReview();
-      return;
-    }
-    await onSend(transcript, [attachment]);
-    voiceRecorder.reset();
-  }, [onSend, prefetchesVoiceUpload, voiceRecorder]);
-
-  const finishVoiceGesture = useCallback(async () => {
-    const gesture = voiceGestureRef.current;
-    if (!gesture?.released || !gesture.recorderStarted) return;
-    voiceGestureRef.current = null;
-    setVoiceCancelArmed(false);
-    if (gesture.intent === 'cancel') {
-      voiceRecorder.reset();
-      return;
-    }
-    await finishAndSendVoice();
-  }, [finishAndSendVoice, voiceRecorder]);
-
-  function beginVoiceGesture(event: ReactPointerEvent<HTMLButtonElement>) {
-    if (event.button !== 0 || voiceGestureRef.current) return;
-    event.preventDefault();
-    suppressVoiceClickRef.current = true;
-    const gesture = {
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      intent: 'hold' as VoiceGestureIntent,
-      recorderStarted: false,
-      released: false,
-    };
-    voiceGestureRef.current = gesture;
-    setVoiceCancelArmed(false);
-    const cleanup = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', end);
-      window.removeEventListener('pointercancel', cancel);
-      voiceGestureCleanupRef.current = () => {};
-    };
-    const move = (nextEvent: PointerEvent) => {
-      if (nextEvent.pointerId !== gesture.pointerId || gesture.released) return;
-      gesture.intent = voiceGestureIntent(nextEvent.clientY - gesture.startY);
-      setVoiceCancelArmed(gesture.intent === 'cancel');
-    };
-    const end = (nextEvent: PointerEvent) => {
-      if (nextEvent.pointerId !== gesture.pointerId) return;
-      if (voiceGestureIntent(nextEvent.clientY - gesture.startY) === 'cancel') {
-        gesture.intent = 'cancel';
-      }
-      gesture.released = true;
-      cleanup();
-      void finishVoiceGesture();
-      window.setTimeout(() => { suppressVoiceClickRef.current = false; }, 0);
-    };
-    const cancel = (nextEvent: PointerEvent) => {
-      if (nextEvent.pointerId !== gesture.pointerId) return;
-      cleanup();
-      voiceGestureRef.current = null;
-      setVoiceCancelArmed(false);
-      voiceRecorder.reset();
-      window.setTimeout(() => { suppressVoiceClickRef.current = false; }, 0);
-    };
-    voiceGestureCleanupRef.current = cleanup;
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', cancel);
-    void voiceRecorder.start({ locked: false }).then((started) => {
-      gesture.recorderStarted = started;
-      if (!started) {
-        cleanup();
-        voiceGestureRef.current = null;
-        setVoiceCancelArmed(false);
-        window.setTimeout(() => { suppressVoiceClickRef.current = false; }, 0);
-      } else if (gesture.released) {
-        void finishVoiceGesture();
-      }
-    });
-  }
-
-  useEffect(() => () => voiceGestureCleanupRef.current(), []);
+  const voice = useVoiceComposer({
+    conversation,
+    cloudAccountId,
+    onSend,
+    focusComposer: () => textareaRef.current?.focus(),
+  });
+  const voiceSurfaceActive = voice.surfaceActive;
 
   return (
     <div className="shrink-0 px-5 pb-4 pt-3">
@@ -350,16 +212,7 @@ export function MainComposer({
               </p>
             ) : null}
             {voiceSurfaceActive ? (
-              <VoiceRecordingRail
-                state={voiceRecorder.state}
-                onCancel={voiceRecorder.reset}
-                onSend={() => { void sendPreparedVoice(); }}
-                onRetry={() => {
-                  if (voiceRecorder.state.attachment) void voiceRecorder.prepareForSend();
-                  else void voiceRecorder.start();
-                }}
-                onTrimRange={voiceRecorder.setTrimRange}
-              />
+              <VoiceRecordingSurface voice={voice} />
             ) : <div className="flex min-w-0">
               <textarea
                 ref={textareaRef}
@@ -606,65 +459,13 @@ export function MainComposer({
                     }}
                   />
                 ) : null}
-            {voiceRecording ? (
-              <span
-                className={cn(
-                  'app-voice-swipe-notice',
-                  voiceCancelArmed && 'app-voice-cancel-armed',
-                )}
-                role="status"
-                aria-live="polite"
-              >
-                <ArrowUp className="h-3 w-3" aria-hidden="true" />
-                {voiceCancelArmed ? 'Release to cancel' : 'Swipe up to cancel'}
-              </span>
-            ) : null}
-            {voiceRecording ? (
-              <span className={cn(
-                'app-voice-button-duration tabular-nums',
-                voiceCancelArmed && 'app-voice-cancel-armed',
-              )} aria-live="off">
-                {formatRecordingDuration(voiceRecorder.state.durationMs)}
-              </span>
-            ) : null}
-            {!voiceSurfaceActive ? <Button
-              className={cn(
-                'app-composer-send h-10 w-10 shrink-0 rounded-full p-0',
-                voiceRecording && 'app-composer-voice-recording-button',
-                voiceCancelArmed && 'app-voice-cancel-armed',
-              )}
-              onPointerDown={!hasSendableDraft && voiceRecorder.state.phase === 'idle'
-                ? beginVoiceGesture
-                : undefined}
-              onContextMenu={!hasSendableDraft ? (event) => event.preventDefault() : undefined}
-              onKeyDown={(event) => {
-                if (voiceRecording && event.key === 'Escape') {
-                  event.preventDefault();
-                  voiceRecorder.reset();
-                }
-              }}
-              onClick={() => {
-                if (!hasSendableDraft) {
-                  if (suppressVoiceClickRef.current) return;
-                  if (voiceRecording && voiceRecorder.state.locked) {
-                    void finishAndSendVoice();
-                  } else if (!voiceRecording) {
-                    void voiceRecorder.start();
-                  }
-                  return;
-                }
-                void onSend();
-              }}
-              disabled={Boolean(memeValidationError) || voiceRecorder.state.phase === 'sending'}
-              title={!hasSendableDraft
-                ? 'Hold to record · release to send · swipe up to cancel'
-                : memeValidationError ?? (display.activeLiveTurnIsRunning
-                  ? 'Queue message for this session'
-                  : 'Send message')}
-              aria-label={!hasSendableDraft ? 'Record voice message' : 'Send message'}
-            >
-              {!hasSendableDraft ? <Mic className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-            </Button> : null}
+            <VoiceComposerControls
+              voice={voice}
+              hasSendableDraft={hasSendableDraft}
+              validationError={memeValidationError}
+              activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
+              onSend={() => { void onSend(); }}
+            />
           </div>
         </div>
       </ComposerDropSurface>

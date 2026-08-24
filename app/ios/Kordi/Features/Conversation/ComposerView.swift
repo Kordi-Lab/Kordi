@@ -211,11 +211,6 @@ struct ComposerView: View {
             }
             .animation(.snappy(duration: 0.2), value: attachments.count)
             .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
-            .onChange(of: voiceRecorder.pendingMessage?.attachment.id) {
-                if voiceRecorder.shouldAutoSend, voiceRecorder.pendingMessage != nil {
-                    onSendVoice()
-                }
-            }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
                 rememberKeyboardSurfaceHeight(from: $0)
             }
@@ -669,6 +664,10 @@ struct ComposerView: View {
             voiceRecorder.cancel()
         case .hold:
             voiceRecorder.stop(autoSend: true)
+            Task {
+                guard await voiceRecorder.prepareForSend() != nil else { return }
+                onSendVoice()
+            }
         }
     }
 

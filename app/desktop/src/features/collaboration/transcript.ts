@@ -424,9 +424,7 @@ export function mapCollaborationConversationToViewModel(
       showSenderMeta: isAgent,
       senderAvatarSeed,
       senderProfileImageUrl,
-      text: displayText,
-      ...('messageKind' in message ? { messageKind: message.messageKind ?? null } : {}),
-      ...('voiceMessage' in message ? { voiceMessage: message.voiceMessage ?? null } : {}),
+      text: displayText, ...('messageKind' in message ? { messageKind: message.messageKind ?? null } : {}), ...('voiceMessage' in message ? { voiceMessage: message.voiceMessage ?? null } : {}),
       time: message.timeLabel,
       timestampMs: message.timestampMs,
       statusChips: isOutboundHuman

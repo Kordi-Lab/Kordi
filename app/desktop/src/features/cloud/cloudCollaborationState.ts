@@ -233,10 +233,9 @@ export function cloudMessageToCollaborationMessage(
             : null,
     detail: undefined,
     attachments: (message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment),
-    voiceMessage: message.voiceMessage ? cloudVoiceMessageToMessageVoice(message.voiceMessage) : null,
     mentions: agentResponse ? undefined : cloudDirectMessageMentions(message.body),
     messageAction: directMessageAction,
-    messageKind: message.messageKind ?? null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, reactions: message.reactions ?? [],
+    messageKind: message.messageKind ?? null, voiceMessage: message.voiceMessage ? cloudVoiceMessageToMessageVoice(message.voiceMessage) : null, reactionConversationId: message.conversationId ?? null, reactionTargetMessageId: message.messageId, reactions: message.reactions ?? [],
     localTurn: agentResponse?.requestId
       ? options.localAgentTurnsByRequestId?.[agentResponse.requestId]
         ?? syncedExecutionTurn

@@ -944,12 +944,9 @@ function MessageBubbleView({
       : 'app-chat-bubble-agent';
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
-  const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage;
-  const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
-  const hasVoice = Boolean(msg.voiceMessage);
-  const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0);
-  const hasAttachments = (msg.attachments?.length ?? 0) > 0;
-  const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
+  const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
+  const hasVoice = Boolean(msg.voiceMessage); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0);
+  const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
   const hasGroupedImageAttachments = hasOnlyImageAttachments && (msg.attachments?.length ?? 0) > 1;
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage);
   const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
@@ -1083,8 +1080,7 @@ function MessageBubbleView({
                     msg.supportContactTyping ? 'min-w-[4rem]' : 'min-w-[6.75rem]',
                     humanMessageBubbleShapeClass('peer'),
                   )
-              : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5',
-          hasVoice && !hasOnlyImageAttachments ? 'px-2.5 py-1.5' : '',
+               : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyImageAttachments ? 'px-2.5 py-1.5' : '',
           !hasOnlyImageAttachments && bubble,
         )}
         >
@@ -1124,21 +1120,7 @@ function MessageBubbleView({
           ) : (
             <>
               <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
-                {msg.voiceMessage ? (
-                  <VoiceMessageContent
-                    voice={msg.voiceMessage}
-                    footer={(
-                      <MessageFooter
-                        status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined}
-                        detail={footerDetail}
-                        isUser={isOwnHumanMessage}
-                        compact
-                        replySummary={msg.replySummary}
-                        onNavigateToMessage={onNavigateToMessage}
-                      />
-                    )}
-                  />
-                ) : null}
+                {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} footer={<MessageFooter status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
                 {hasAttachments ? (
                   <AttachmentPreview
                     msg={msg}
@@ -1167,8 +1149,7 @@ function MessageBubbleView({
           )
         ) : (
           <>
-            <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
-              {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
+            <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
               {hasAttachments ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}
               {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} showLinkIcons copySurface="message" />) : null}
             </div>
