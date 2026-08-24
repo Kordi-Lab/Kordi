@@ -177,26 +177,6 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertEqual(ComposerKeyboardSurfaceLayout.fallbackHeight(verticalSizeClass: .regular), 300)
     }
 
-    func testComposerAvoidsOnlyDockedFullWidthKeyboards() {
-        let window = CGRect(x: 0, y: 0, width: 390, height: 844)
-
-        XCTAssertEqual(ComposerKeyboardSurfaceLayout.avoidanceHeight(
-            keyboardFrame: CGRect(x: 0, y: 500, width: 390, height: 344),
-            windowBounds: window,
-            bottomSafeAreaInset: 34
-        ), 310)
-        XCTAssertEqual(ComposerKeyboardSurfaceLayout.avoidanceHeight(
-            keyboardFrame: CGRect(x: 90, y: 500, width: 250, height: 220),
-            windowBounds: window,
-            bottomSafeAreaInset: 34
-        ), 0)
-        XCTAssertEqual(ComposerKeyboardSurfaceLayout.avoidanceHeight(
-            keyboardFrame: CGRect(x: 0, y: 844, width: 390, height: 344),
-            windowBounds: window,
-            bottomSafeAreaInset: 34
-        ), 0)
-    }
-
     func testExpressivePickerDoesNotOwnASecondLayoutAnimation() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -322,7 +302,7 @@ final class CompanionChatPanelTests: XCTestCase {
     }
 
     @MainActor
-    func testNativeKeyboardDismissalReleasesSwiftUIFocusSynchronously() async throws {
+    func testNativeKeyboardDismissalCompletesBeforeSwiftUIFocusReconciles() async throws {
         let model = ComposerTextViewInputSurfaceModel()
         model.isExpressivePickerPresented = false
         let controller = UIHostingController(
@@ -342,9 +322,16 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertTrue(textView.isFirstResponder)
 
         textView.resignFirstResponder()
+        controller.view.layoutIfNeeded()
 
         XCTAssertFalse(textView.isFirstResponder)
+        XCTAssertTrue(model.isFocused)
+
+        try await Task.sleep(for: .milliseconds(50))
+        controller.view.layoutIfNeeded()
+
         XCTAssertFalse(model.isFocused)
+        XCTAssertFalse(textView.isFirstResponder)
         window.isHidden = true
     }
 
@@ -376,7 +363,6 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertTrue(textView.isFirstResponder)
 
         model.isFocused = false
-        model.keyboardDismissRequest &+= 1
         try await Task.sleep(for: .milliseconds(50))
         controller.view.layoutIfNeeded()
 
@@ -749,7 +735,6 @@ private struct ComposerTextViewFocusHarness: View {
             isFocused: $isFocused,
             isExpressivePickerPresented: $isExpressivePickerPresented,
             keyboardFocusRequest: 1,
-            keyboardDismissRequest: 0,
             expressivePickerHeight: 300,
             isSending: false,
             onInsertEmoji: { _ in },
@@ -766,7 +751,6 @@ private struct ComposerTextViewFocusHarness: View {
 private final class ComposerTextViewInputSurfaceModel: ObservableObject {
     @Published var isExpressivePickerPresented = true
     @Published var isFocused = true
-    @Published var keyboardDismissRequest = 0
 }
 
 private struct ComposerTextViewInputSurfaceHarness: View {
@@ -784,7 +768,6 @@ private struct ComposerTextViewInputSurfaceHarness: View {
             isFocused: $model.isFocused,
             isExpressivePickerPresented: $model.isExpressivePickerPresented,
             keyboardFocusRequest: 1,
-            keyboardDismissRequest: model.keyboardDismissRequest,
             expressivePickerHeight: 300,
             isSending: false,
             onInsertEmoji: { _ in },

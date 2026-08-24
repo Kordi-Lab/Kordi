@@ -76,21 +76,6 @@ enum ComposerKeyboardSurfaceLayout {
     static func fallbackHeight(verticalSizeClass: UserInterfaceSizeClass?) -> CGFloat {
         verticalSizeClass == .compact ? 226 : 300
     }
-
-    static func avoidanceHeight(
-        keyboardFrame: CGRect,
-        windowBounds: CGRect,
-        bottomSafeAreaInset: CGFloat
-    ) -> CGFloat {
-        guard keyboardFrame.minX <= windowBounds.minX + 0.5,
-              keyboardFrame.maxX >= windowBounds.maxX - 0.5,
-              keyboardFrame.maxY >= windowBounds.maxY - 0.5 else { return 0 }
-        return contentHeight(
-            keyboardFrame: keyboardFrame,
-            windowBounds: windowBounds,
-            bottomSafeAreaInset: bottomSafeAreaInset
-        ) ?? 0
-    }
 }
 
 enum ComposerDraftPaneLayout {
@@ -177,7 +162,6 @@ struct ComposerView: View {
     @Binding var replySource: MessageActionSource?
     @Binding var selectedMention: ComposerMentionTarget?
     @Binding var isFocused: Bool
-    let keyboardDismissRequest: Int
     @Binding var isExpressivePickerPresented: Bool
     @Binding var isAgentModelPickerPresented: Bool
     let conversation: ConversationSummary
@@ -365,7 +349,6 @@ struct ComposerView: View {
             isFocused: $isFocused,
             isExpressivePickerPresented: $isExpressivePickerPresented,
             keyboardFocusRequest: keyboardFocusRequest,
-            keyboardDismissRequest: keyboardDismissRequest,
             expressivePickerHeight: expressivePickerHeight,
             isSending: isSending,
             onInsertEmoji: insertEmoji,
@@ -959,7 +942,6 @@ struct ComposerTextView: UIViewRepresentable {
     @Binding var isFocused: Bool
     @Binding var isExpressivePickerPresented: Bool
     let keyboardFocusRequest: Int
-    let keyboardDismissRequest: Int
     let expressivePickerHeight: CGFloat
     let isSending: Bool
     let onInsertEmoji: (String) -> Void
@@ -1003,12 +985,6 @@ struct ComposerTextView: UIViewRepresentable {
             }
         }
 
-        if keyboardDismissRequest > 0,
-           context.coordinator.lastHandledKeyboardDismissRequest != keyboardDismissRequest {
-            context.coordinator.lastHandledKeyboardDismissRequest = keyboardDismissRequest
-            textView.resignFirstResponder()
-        }
-
         if keyboardFocusRequest > 0,
            context.coordinator.lastHandledKeyboardFocusRequest != keyboardFocusRequest {
             let coordinator = context.coordinator
@@ -1033,7 +1009,9 @@ struct ComposerTextView: UIViewRepresentable {
             }
         }
 
-        if isFocused, !textView.isFirstResponder {
+        if isFocused,
+           !textView.isFirstResponder,
+           !context.coordinator.isEndingEditing {
             textView.becomeFirstResponder()
         } else if !isFocused, textView.isFirstResponder {
             textView.resignFirstResponder()
@@ -1086,7 +1064,7 @@ struct ComposerTextView: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: ComposerTextView
         var lastHandledKeyboardFocusRequest = 0
-        var lastHandledKeyboardDismissRequest = 0
+        var isEndingEditing = false
         private var hostedExpressiveInputView: ComposerExpressiveInputView?
 
         init(parent: ComposerTextView) {
@@ -1118,6 +1096,7 @@ struct ComposerTextView: UIViewRepresentable {
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
+            isEndingEditing = false
             if !parent.isFocused {
                 parent.isFocused = true
             }
@@ -1128,8 +1107,21 @@ struct ComposerTextView: UIViewRepresentable {
                 focused: false,
                 textViewIsFirstResponder: textView.isFirstResponder,
                 currentFocus: parent.isFocused
-            ) else { return }
-            parent.isFocused = false
+            ) else {
+                isEndingEditing = false
+                return
+            }
+            isEndingEditing = true
+            DispatchQueue.main.async { [weak self, weak textView] in
+                guard let self, let textView else { return }
+                defer { self.isEndingEditing = false }
+                guard ComposerFocusReconciliation.shouldApply(
+                    focused: false,
+                    textViewIsFirstResponder: textView.isFirstResponder,
+                    currentFocus: self.parent.isFocused
+                ) else { return }
+                self.parent.isFocused = false
+            }
         }
 
         func textViewDidChange(_ textView: UITextView) {

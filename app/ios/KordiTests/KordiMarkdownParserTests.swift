@@ -739,17 +739,16 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(lines.contains("                            \(animation)"))
         XCTAssertFalse(lines.contains("                        \(animation)"))
         XCTAssertFalse(source.contains(".safeAreaInset(edge: .bottom"))
-        XCTAssertFalse(source.contains(".scrollDismissesKeyboard(.interactively)"))
-        XCTAssertTrue(source.contains(".scrollDismissesKeyboard(.immediately)"))
-        XCTAssertTrue(source.contains(".padding(.bottom, keyboardAvoidanceHeight)"))
-        XCTAssertTrue(source.contains(".ignoresSafeArea(.keyboard, edges: .bottom)"))
+        XCTAssertFalse(source.contains(".scrollDismissesKeyboard("))
+        XCTAssertFalse(source.contains("keyboardAvoidanceHeight"))
+        XCTAssertTrue(source.contains("scrollView.keyboardDismissMode = .onDrag"))
         XCTAssertTrue(source.contains(".padding(.bottom, timelineVerticalInset)\n                                        .id(bottomAnchorID)"))
         XCTAssertTrue(source.contains("viewport.size.height - timelineVerticalInset"))
         XCTAssertTrue(source.contains(".padding(.top, timelineVerticalInset)"))
         XCTAssertFalse(source.contains(".padding(.vertical, timelineVerticalInset)"))
         XCTAssertTrue(source.contains("@State private var isComposerFocused = false"))
         XCTAssertTrue(source.contains("isFocused: $isComposerFocused,"))
-        XCTAssertTrue(source.contains("isComposerFocused = false\n                                    keyboardDismissRequest &+= 1\n                                    dismissComposerPickers()"))
+        XCTAssertTrue(source.contains("dismissKeyboard()\n                                    dismissComposerPickers()"))
 
         let composer = try XCTUnwrap(source.range(of: "                        ComposerView("))
         let rootModifiers = try XCTUnwrap(source.range(of: "            .onChange(of: timeline.count)"))
@@ -878,24 +877,6 @@ final class KordiMarkdownParserTests: XCTestCase {
             hasRevealedInitialViewport: true,
             wasAtLatest: false,
             isPresented: true
-        ))
-    }
-
-    func testConversationMovesMessagesWithKeyboardPresentationAndDismissal() {
-        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatestForKeyboardChange(
-            previousHeight: 0,
-            currentHeight: 310,
-            wasFollowingLatest: false
-        ))
-        XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatestForKeyboardChange(
-            previousHeight: 310,
-            currentHeight: 0,
-            wasFollowingLatest: true
-        ))
-        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatestForKeyboardChange(
-            previousHeight: 310,
-            currentHeight: 0,
-            wasFollowingLatest: false
         ))
     }
 

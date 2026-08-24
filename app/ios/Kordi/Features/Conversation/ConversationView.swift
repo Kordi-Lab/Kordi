@@ -48,8 +48,6 @@ struct ConversationView: View {
     @State private var initialLoadFailed = false
     @State private var trackedMessageID: String?
     @State private var immediateBottomRequest = 0
-    @State private var keyboardDismissRequest = 0
-    @State private var keyboardAvoidanceHeight: CGFloat = 0
     @State private var attachments: [PendingAttachment] = []
     @State private var photoGrouping: PhotoSendGrouping = .combined
     @State private var replySource: MessageActionSource?
@@ -404,11 +402,9 @@ struct ConversationView: View {
                                 )
                             )
                             .background(Color(uiColor: .systemGroupedBackground))
-                            .scrollDismissesKeyboard(.immediately)
                             .simultaneousGesture(
                                 TapGesture().onEnded {
-                                    isComposerFocused = false
-                                    keyboardDismissRequest &+= 1
+                                    dismissKeyboard()
                                     dismissComposerPickers()
                                 }
                             )
@@ -477,7 +473,6 @@ struct ConversationView: View {
                             replySource: $replySource,
                             selectedMention: $selectedMention,
                             isFocused: $isComposerFocused,
-                            keyboardDismissRequest: keyboardDismissRequest,
                             isExpressivePickerPresented: Binding(
                                 get: { isExpressivePickerPresented },
                                 set: { isPresented in
@@ -538,14 +533,6 @@ struct ConversationView: View {
                 Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea(edges: .bottom)
             )
-            .padding(.bottom, keyboardAvoidanceHeight)
-            .ignoresSafeArea(.keyboard, edges: .bottom)
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
-                updateKeyboardAvoidance(from: $0)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { notification in
-                setKeyboardAvoidanceHeight(0, from: notification)
-            }
             .onChange(of: timeline.count) { oldCount, newCount in
                 visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(
                     currentLimit: visibleMessageLimit,
@@ -1229,42 +1216,13 @@ struct ConversationView: View {
         showAgentModel = false
     }
 
-    private func updateKeyboardAvoidance(from notification: Notification) {
-        guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect,
-              let window = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .flatMap(\.windows)
-                .first(where: \.isKeyWindow) else { return }
-        setKeyboardAvoidanceHeight(
-            ComposerKeyboardSurfaceLayout.avoidanceHeight(
-                keyboardFrame: window.convert(frame, from: nil),
-                windowBounds: window.bounds,
-                bottomSafeAreaInset: window.safeAreaInsets.bottom
-            ),
-            from: notification
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
         )
-    }
-
-    private func setKeyboardAvoidanceHeight(_ height: CGFloat, from notification: Notification) {
-        guard keyboardAvoidanceHeight != height else { return }
-        let wasFollowingLatest = ConversationTimelineScrollBehavior.isFollowingLatest(
-            isAtBottom: isAtBottom,
-            trackedMessageID: trackedMessageID,
-            bottomAnchorID: bottomAnchorID
-        )
-        if ConversationTimelineScrollBehavior.shouldFollowLatestForKeyboardChange(
-            previousHeight: keyboardAvoidanceHeight,
-            currentHeight: height,
-            wasFollowingLatest: wasFollowingLatest
-        ) {
-            isAtBottom = true
-            trackedMessageID = bottomAnchorID
-        }
-        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey]
-            as? TimeInterval ?? 0.25
-        withAnimation(reduceMotion ? nil : .easeOut(duration: duration)) {
-            keyboardAvoidanceHeight = height
-        }
     }
 
     private func openCompanionPreviewIfReady() {
@@ -1795,13 +1753,6 @@ enum ConversationTimelineScrollBehavior {
         hasRevealedInitialViewport && wasAtLatest && isPresented
     }
 
-    static func shouldFollowLatestForKeyboardChange(
-        previousHeight: CGFloat,
-        currentHeight: CGFloat,
-        wasFollowingLatest: Bool
-    ) -> Bool {
-        wasFollowingLatest || (previousHeight == 0 && currentHeight > 0)
-    }
 }
 
 enum ConversationTimelineWindow {
@@ -2026,13 +1977,17 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     }
 
     func updateUIView(_ view: UIView, context: Context) {
-        guard scrollToBottomRequest > 0,
-              context.coordinator.lastHandledRequest != scrollToBottomRequest else { return }
-        context.coordinator.lastHandledRequest = scrollToBottomRequest
+        let shouldScrollToBottom = scrollToBottomRequest > 0
+            && context.coordinator.lastHandledRequest != scrollToBottomRequest
+        if shouldScrollToBottom {
+            context.coordinator.lastHandledRequest = scrollToBottomRequest
+        }
 
         DispatchQueue.main.async { [weak view] in
             guard let view,
                   let scrollView = enclosingScrollView(from: view) else { return }
+            scrollView.keyboardDismissMode = .onDrag
+            guard shouldScrollToBottom else { return }
             scrollView.layer.removeAllAnimations()
             scrollView.setContentOffset(scrollView.contentOffset, animated: false)
             if scrollView.panGestureRecognizer.state != .possible {
