@@ -84,6 +84,37 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(conversation.lastReadSequence, 0)
     }
 
+    func testDefaultAgentTemplateSessionIsAccountScoped() throws {
+        let first = try XCTUnwrap(CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [:]
+        ).first(where: \.isAgentLaunchTemplate))
+        let secondAccount = CloudAccount(
+            accountId: "acct_other",
+            kordiId: "234567891",
+            displayName: "Sam",
+            primaryEmail: "sam@example.com",
+            avatarUrl: nil,
+            avatar: avatar(entityId: "acct_other"),
+            nodeId: nil,
+            passwordSet: true
+        )
+        let second = try XCTUnwrap(CloudConversationCatalog.build(
+            account: secondAccount,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [:]
+        ).first(where: \.isAgentLaunchTemplate))
+
+        XCTAssertEqual(first.sessionId, "session:self-agent:acct_me:default")
+        XCTAssertEqual(second.sessionId, "session:self-agent:acct_other:default")
+        XCTAssertNotEqual(first.sessionId, second.sessionId)
+    }
+
     func testCanonicalGroupCallActivityUpdatesSidebarPreviewAndCount() throws {
         let sessionId = "session:group:call-history"
         let canonical = canonicalConversation(
