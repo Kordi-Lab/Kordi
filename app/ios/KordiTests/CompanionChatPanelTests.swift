@@ -3,6 +3,29 @@ import SwiftUI
 @testable import Kordi
 
 final class CompanionChatPanelTests: XCTestCase {
+    func testDemoPreviewModePersistsAcrossDebugRelaunches() throws {
+        let suiteName = "KordiPreviewModePersistenceTests"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertTrue(KordiPreviewModePersistence.resolve(
+            arguments: ["--preview-data"],
+            launchRequested: true,
+            defaults: defaults
+        ))
+        XCTAssertTrue(KordiPreviewModePersistence.resolve(
+            arguments: [],
+            launchRequested: false,
+            defaults: defaults
+        ))
+        XCTAssertFalse(KordiPreviewModePersistence.resolve(
+            arguments: ["--disable-preview-data"],
+            launchRequested: false,
+            defaults: defaults
+        ))
+    }
+
     func testNewChatMenuRoutesEveryActionToItsNavigationDestination() {
         XCTAssertEqual(
             NewChatMode.allCases.map(\.menuTitle),
@@ -17,24 +40,6 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertEqual(NewChatMode.previewMode(arguments: ["--preview-add-contact"]), .addContact)
     }
 
-    func testWrappedComposerTextUsesTheExpandedControlLayout() {
-        XCTAssertTrue(ComposerTextFieldLayout.usesExpandedLayout(
-            hasLineBreak: false,
-            textWidth: 220,
-            compactTextWidth: 180
-        ))
-        XCTAssertTrue(ComposerTextFieldLayout.usesExpandedLayout(
-            hasLineBreak: true,
-            textWidth: 40,
-            compactTextWidth: 180
-        ))
-        XCTAssertFalse(ComposerTextFieldLayout.usesExpandedLayout(
-            hasLineBreak: false,
-            textWidth: 120,
-            compactTextWidth: 180
-        ))
-    }
-
     func testReplyPreviewKeepsItsRailBoundedAndCancelTargetAccessible() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -47,6 +52,111 @@ final class CompanionChatPanelTests: XCTestCase {
 
         XCTAssertTrue(preview.contains(".frame(width: 3, height: 32)"))
         XCTAssertTrue(preview.contains(".frame(width: 44, height: 44)"))
+    }
+
+    func testDraftPaneButtonAppearsAfterTheInlineComposerGrows() {
+        XCTAssertFalse(ComposerDraftPaneLayout.showsExpandButton(
+            editorHeight: 83,
+            threshold: 84
+        ))
+        XCTAssertTrue(ComposerDraftPaneLayout.showsExpandButton(
+            editorHeight: 84,
+            threshold: 84
+        ))
+    }
+
+    func testComposerTextViewHeightGrowsAndCapsAtSixLines() {
+        XCTAssertEqual(ComposerTextViewLayout.height(
+            fittingHeight: 20,
+            lineHeight: 20,
+            insets: 22
+        ), 44)
+        XCTAssertEqual(ComposerTextViewLayout.height(
+            fittingHeight: 90,
+            lineHeight: 20,
+            insets: 22
+        ), 90)
+        XCTAssertEqual(ComposerTextViewLayout.height(
+            fittingHeight: 300,
+            lineHeight: 20,
+            insets: 22
+        ), 142)
+    }
+
+    func testMessageFieldSurfaceOwnsTheEditorHeight() {
+        XCTAssertEqual(ComposerMessageFieldLayout.surfaceHeight(
+            editorHeight: 44,
+            controlHeight: 50,
+            verticalPadding: 3
+        ), 50)
+        XCTAssertEqual(ComposerMessageFieldLayout.surfaceHeight(
+            editorHeight: 100,
+            controlHeight: 50,
+            verticalPadding: 3
+        ), 106)
+    }
+
+    func testAnimatedMessageFieldKeepsControlsBottomAnchored() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ComposerView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private var messageFieldContent"))
+        let end = try XCTUnwrap(source.range(
+            of: "private var messageEditor",
+            range: start.upperBound..<source.endIndex
+        ))
+        let field = source[start.lowerBound..<end.lowerBound]
+
+        XCTAssertTrue(field.contains(".frame(height: messageFieldHeight, alignment: .bottom)"))
+        XCTAssertTrue(field.contains(".transaction { $0.disablesAnimations = true }"))
+    }
+
+    func testComposerTextOnlyAvoidsTheVisibleControls() {
+        XCTAssertEqual(
+            ComposerTextExclusionLayout.rects(
+                containerWidth: 280,
+                contentHeight: 110,
+                showsDraftButton: true
+            ),
+            [
+                CGRect(x: 192, y: 66, width: 88, height: 44),
+                CGRect(x: 236, y: 0, width: 44, height: 44)
+            ]
+        )
+    }
+
+    func testComposerEmojiHeightDoesNotOscillate() {
+        let textView = UITextView(frame: CGRect(x: 0, y: 0, width: 230, height: 44))
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.textContainerInset = UIEdgeInsets(top: 11, left: 5, bottom: 11, right: 5)
+        textView.textContainer.lineFragmentPadding = 0
+        var measuredHeight: CGFloat = 44
+
+        for count in 1...50 {
+            textView.text = String(repeating: "😊", count: count)
+            let previousHeight = measuredHeight
+            measuredHeight = ComposerTextViewLayout.stableHeight(minimumHeight: 44) { candidate in
+                let insets = textView.textContainerInset
+                let containerWidth = textView.bounds.width - insets.left - insets.right
+                let contentHeight = candidate - insets.top - insets.bottom
+                textView.textContainer.exclusionPaths = ComposerTextExclusionLayout.rects(
+                    containerWidth: containerWidth,
+                    contentHeight: contentHeight,
+                    showsDraftButton: candidate >= 84
+                ).map { UIBezierPath(rect: $0) }
+                let fittingHeight = textView.sizeThatFits(
+                    CGSize(width: textView.bounds.width, height: .greatestFiniteMagnitude)
+                ).height
+                return ComposerTextViewLayout.height(
+                    fittingHeight: fittingHeight,
+                    lineHeight: textView.font?.lineHeight ?? 0,
+                    insets: insets.top + insets.bottom
+                )
+            }
+            XCTAssertGreaterThanOrEqual(measuredHeight, previousHeight)
+        }
     }
 
     func testEmojiPickerWaitsForTheSoftwareKeyboardToFold() {
@@ -115,17 +225,18 @@ final class CompanionChatPanelTests: XCTestCase {
         ))
     }
 
-    @available(iOS 18.0, *)
-    func testNativeComposerInsertionPreservesTheSelectedRange() throws {
-        let text = "Hi 👋 world"
-        let start = text.index(text.startIndex, offsetBy: 3)
-        let end = text.index(after: start)
-        let selection = TextSelection(range: start..<end)
+    func testUserTapClaimsComposerFocusSynchronously() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ComposerView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "func textViewDidBeginEditing"))
+        let end = try XCTUnwrap(source.range(of: "func textViewDidEndEditing"))
+        let handler = source[start.lowerBound..<end.lowerBound]
 
-        let replacement = replacingNativeComposerText(text, selection: selection, with: "🙂")
-
-        XCTAssertEqual(replacement.text, "Hi 🙂 world")
-        XCTAssertTrue(replacement.selection.isInsertion)
+        XCTAssertTrue(handler.contains("parent.isFocused = true"))
+        XCTAssertFalse(handler.contains("DispatchQueue.main.async"))
     }
 
     func testMentionPickerGrowsWithResultsUntilItsMaximumHeight() {
