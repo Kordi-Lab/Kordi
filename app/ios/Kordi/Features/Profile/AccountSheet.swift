@@ -557,6 +557,7 @@ private struct SettingsNavigationLabel: View {
 
 private struct ProfileSettingsView: View {
     @EnvironmentObject private var model: AppModel
+    @EnvironmentObject private var callCoordinator: KordiCallCoordinator
     @State private var displayName = ""
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var avatarDraft: String?
@@ -691,7 +692,10 @@ private struct ProfileSettingsView: View {
 
             Section {
                 Button("Sign out", role: .destructive) {
-                    Task { await model.signOut() }
+                    Task {
+                        await callCoordinator.prepareForAccountTeardown()
+                        await model.signOut()
+                    }
                 }
             }
         }
@@ -1368,6 +1372,7 @@ private extension AppAppearance {
 #Preview("Account settings") {
     AccountSheet()
         .environmentObject(AppModel(previewMode: true))
+        .environmentObject(KordiCallCoordinator())
         .tint(KordiTheme.signalBlue)
 }
 

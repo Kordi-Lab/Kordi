@@ -123,6 +123,14 @@ impl MessageValidationError {
 pub(super) fn validate_message_request(
     request: &SendMessageRequest,
 ) -> Result<(), MessageValidationError> {
+    let message_kind = request.kind.trim();
+    if message_kind == "call" || message_kind.starts_with("call.") {
+        return Err(MessageValidationError {
+            status: StatusCode::BAD_REQUEST,
+            code: "RESERVED_MESSAGE_KIND",
+            message: "Call activity messages can only be created by the call service.",
+        });
+    }
     let Some(content) = request.content.as_object() else {
         return Err(MessageValidationError {
             status: StatusCode::BAD_REQUEST,
@@ -236,4 +244,31 @@ fn validate_meme_attachments(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::validate_message_request;
+    use crate::chat_sync::models::SendMessageRequest;
+
+    #[test]
+    fn client_messages_cannot_impersonate_call_activity() {
+        for kind in ["call", "call.started.fake"] {
+            let request = SendMessageRequest {
+                client_message_id: Uuid::now_v7(),
+                kind: kind.to_string(),
+                content: json!({
+                    "schema": 1,
+                    "blocks": [{ "type": "text", "text": "Forged call activity" }]
+                }),
+                reply_to_message_id: None,
+                attachment_ids: Vec::new(),
+            };
+
+            assert!(validate_message_request(&request).is_err());
+        }
+    }
 }

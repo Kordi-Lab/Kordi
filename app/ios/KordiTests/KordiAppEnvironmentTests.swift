@@ -34,6 +34,19 @@ final class KordiAppEnvironmentTests: XCTestCase {
         XCTAssertEqual(environment.keychainService, "ai.kordi.ios.beta")
     }
 
+    func testBetaEnvironmentAcceptsATaskOwnedLoopbackPort() throws {
+        let environment = try KordiAppEnvironment.configured(
+            infoDictionary: info(
+                channel: "beta",
+                baseURL: "http://127.0.0.1:60039",
+                callbackScheme: "kordi-beta"
+            ),
+            bundleIdentifier: "ai.kordi.ios.beta"
+        )
+
+        XCTAssertEqual(environment.cloudBaseURL, URL(string: "http://127.0.0.1:60039"))
+    }
+
     func testBetaEnvironmentRejectsProductionOrigin() {
         XCTAssertThrowsError(
             try KordiAppEnvironment.configured(

@@ -353,6 +353,7 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
   const binDir = join(tempRoot, 'bin');
   const allowlistPath = join(tempRoot, 'operator-github-allowlist.txt');
   const tunnelReadyPath = join(tempRoot, 'tunnel-ready');
+  const tunnelAttemptPath = join(tempRoot, 'tunnel-attempt');
   const gcloudCapturePath = join(tempRoot, 'gcloud.txt');
   const desktopCapturePath = join(tempRoot, 'desktop.txt');
   const scriptPath = join(repoRoot, 'scripts', 'dev-cloud-remote.sh');
@@ -361,7 +362,7 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
     writeFileSync(join(binDir, 'gh'), '#!/bin/sh\nprintf \'%s\\n\' "$TEST_GITHUB_LOGIN"\n');
     writeFileSync(
       join(binDir, 'gcloud'),
-      '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" > "$TEST_GCLOUD_CAPTURE"\n: > "$TEST_TUNNEL_READY"\ntrap \'exit 0\' TERM INT\nwhile true; do sleep 1; done\n',
+      '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*" > "$TEST_GCLOUD_CAPTURE"\n: > "$TEST_TUNNEL_READY"\nif [[ -n "${TEST_TUNNEL_ATTEMPT_FILE:-}" ]]; then\n  attempt=1\n  if [[ -f "$TEST_TUNNEL_ATTEMPT_FILE" ]]; then attempt=$(( $(cat "$TEST_TUNNEL_ATTEMPT_FILE") + 1 )); fi\n  printf \'%s\\n\' "$attempt" > "$TEST_TUNNEL_ATTEMPT_FILE"\n  if (( attempt == 1 )); then sleep 0.2; rm -f "$TEST_TUNNEL_READY"; exit 255; fi\nfi\ntrap \'exit 0\' TERM INT\nwhile true; do sleep 1; done\n',
     );
     writeFileSync(
       join(binDir, 'curl'),
@@ -369,9 +370,13 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
     );
     writeFileSync(
       join(binDir, 'pnpm'),
-      '#!/usr/bin/env bash\nprintf \'%s\\n\' "$*|$VITE_KORDI_CLOUD_API_BASE|$VITE_KORDI_DEV_PROFILE|${DATABASE_URL:-}|${KORDI_OAUTH_GOOGLE_CLIENT_SECRET:-}|${KORDI_CLOUD_GCP_PROJECT:-}" > "$TEST_DESKTOP_CAPTURE"\n',
+      '#!/usr/bin/env bash\nif [[ -n "${TEST_TUNNEL_ATTEMPT_FILE:-}" ]]; then\n  for _attempt in $(seq 1 80); do\n    if [[ -f "$TEST_TUNNEL_ATTEMPT_FILE" ]] && (( $(cat "$TEST_TUNNEL_ATTEMPT_FILE") >= 2 )); then break; fi\n    sleep 0.1\n  done\nfi\nprintf \'%s\\n\' "$*|$VITE_KORDI_CLOUD_API_BASE|$VITE_KORDI_DEV_PROFILE|${DATABASE_URL:-}|${KORDI_OAUTH_GOOGLE_CLIENT_SECRET:-}|${KORDI_CLOUD_GCP_PROJECT:-}" > "$TEST_DESKTOP_CAPTURE"\n',
     );
-    for (const command of ['gh', 'gcloud', 'curl', 'pnpm']) {
+    writeFileSync(
+      join(binDir, 'nc'),
+      '#!/usr/bin/env bash\n[[ -f "$TEST_TUNNEL_READY" ]]\n',
+    );
+    for (const command of ['gh', 'gcloud', 'curl', 'pnpm', 'nc']) {
       chmodSync(join(binDir, command), 0o755);
     }
     writeFileSync(allowlistPath, 'example-maintainer\n');
@@ -412,6 +417,51 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
       'dev:desktop:profile -- --profile remote-isolated --title Kordi Remote Dev --port 1498|http://127.0.0.1:17081|community|||',
     );
     assert.match(launched.stdout, /Verified Google and GitHub OAuth/);
+
+    rmSync(tunnelReadyPath);
+    const recovered = spawnSync('bash', [scriptPath], {
+      cwd: repoRoot,
+      env: { ...env, TEST_TUNNEL_ATTEMPT_FILE: tunnelAttemptPath },
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.match(recovered.stdout, /The IAP tunnel exited; reconnecting/);
+    assert.ok(Number(readFileSync(tunnelAttemptPath, 'utf8')) >= 2);
+
+    rmSync(tunnelReadyPath);
+    const mediaLaunched = spawnSync('bash', [scriptPath], {
+      cwd: repoRoot,
+      env: {
+        ...env,
+        KORDI_DEV_LOCAL_SIGNALING_PORT: '17880',
+        KORDI_DEV_REMOTE_SIGNALING_PORT: '7880',
+        KORDI_DEV_LOCAL_ICE_TCP_PORT: '17881',
+        KORDI_DEV_REMOTE_ICE_TCP_PORT: '17881',
+      },
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    assert.equal(mediaLaunched.status, 0, mediaLaunched.stderr);
+    const mediaGcloudArgs = readFileSync(gcloudCapturePath, 'utf8');
+    assert.match(mediaGcloudArgs, /-L 127\.0\.0\.1:17880:127\.0\.0\.1:7880/);
+    assert.match(mediaGcloudArgs, /-L 127\.0\.0\.1:17881:127\.0\.0\.1:17881/);
+    assert.match(mediaLaunched.stdout, /Verified API, OAuth, signaling, and ICE\/TCP/);
+
+    const mismatchedIce = spawnSync('bash', [scriptPath], {
+      cwd: repoRoot,
+      env: {
+        ...env,
+        KORDI_DEV_LOCAL_SIGNALING_PORT: '17880',
+        KORDI_DEV_REMOTE_SIGNALING_PORT: '7880',
+        KORDI_DEV_LOCAL_ICE_TCP_PORT: '17882',
+        KORDI_DEV_REMOTE_ICE_TCP_PORT: '17881',
+      },
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    assert.notEqual(mismatchedIce.status, 0);
+    assert.match(mismatchedIce.stderr, /must match the advertised loopback candidate/);
 
     const packageJson = read('package.json');
     const guide = read('docs/development-environments.md');

@@ -2,6 +2,38 @@ import XCTest
 @testable import Kordi
 
 final class CloudConversationCatalogTests: XCTestCase {
+    func testCanonicalGroupCallActivityUpdatesSidebarPreviewAndCount() throws {
+        let sessionId = "session:group:call-history"
+        let canonical = canonicalConversation(
+            id: "conversation-group-call-history",
+            kind: "group",
+            sessionId: sessionId,
+            latestSequence: 1,
+            lastReadSequence: 1,
+            sharedTitle: "Synthetic Call Lab"
+        )
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_me": [wire(
+                id: "call-history",
+                body: "The video chat ended. Duration 00:05.",
+                sessionId: sessionId,
+                createdAt: "2026-08-24T07:04:31Z",
+                messageKind: "call.ended.0198aabc-8b27-7a30-8cba-215495609c7a",
+                conversationId: canonical.id,
+                conversationSequence: 1
+            )]],
+            canonicalConversations: [canonical]
+        )
+
+        let group = try XCTUnwrap(catalog.first { $0.sessionId == sessionId })
+        XCTAssertEqual(group.lastMessage, "The video chat ended. Duration 00:05.")
+        XCTAssertEqual(group.messageCount, 1)
+    }
+
     func testAgentTemplateUsesTheCanonicalDescriptorAvatar() throws {
         let catalog = CloudConversationCatalog.build(
             account: account,

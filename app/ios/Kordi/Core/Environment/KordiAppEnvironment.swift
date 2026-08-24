@@ -82,7 +82,7 @@ struct KordiAppEnvironment: Equatable {
             guard callbackScheme == "kordi-beta" else {
                 throw KordiAppEnvironmentError.invalidSetting("KordiOAuthCallbackScheme")
             }
-            guard isExactBetaURL(baseURL) || isTemporaryPhysicalDeviceRelayURL(baseURL) else {
+            guard isLoopbackBetaURL(baseURL) || isTemporaryPhysicalDeviceRelayURL(baseURL) else {
                 throw KordiAppEnvironmentError.invalidSetting("KordiCloudBaseURL")
             }
         }
@@ -121,10 +121,10 @@ struct KordiAppEnvironment: Equatable {
             && hasNoExtraURLComponents(url)
     }
 
-    private static func isExactBetaURL(_ url: URL) -> Bool {
+    private static func isLoopbackBetaURL(_ url: URL) -> Bool {
         url.scheme?.lowercased() == "http"
             && url.host?.lowercased() == "127.0.0.1"
-            && url.port == 17081
+            && url.port != nil
             && hasNoExtraURLComponents(url)
     }
 

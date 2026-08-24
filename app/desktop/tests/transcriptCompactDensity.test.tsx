@@ -25,12 +25,12 @@ test('renders transcript system notices as neutral text without a colored pill',
   assert.doesNotMatch(markup, /flex justify-center py-2/);
 });
 
-test('renders calls as simple transcript bubbles', () => {
+test('renders group meetings as neutral video-chat service events', () => {
   const message: Message = {
     role: 'person',
     sender: 'Taylor',
     senderType: 'human',
-    text: 'The video call ended.',
+    text: 'The video chat ended. Duration 00:10.',
     time: '14:35',
     callActivity: {
       callId: 'call-one',
@@ -44,10 +44,34 @@ test('renders calls as simple transcript bubbles', () => {
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
-  assert.match(markup, /app-chat-bubble-peer/);
+  assert.match(markup, /app-system-notice-row/);
   assert.match(markup, /app-call-activity-inline/);
-  assert.match(markup, /The group call ended\. Duration 00:10\./);
-  assert.doesNotMatch(markup, /app-system-notice-text|app-call-activity-icon|app-call-activity-row/);
+  assert.match(markup, /The video chat ended\. Duration 00:10\./);
+  assert.doesNotMatch(markup, /app-chat-bubble-peer|app-chat-bubble-user|app-message-delivery-footer/);
+});
+
+test('renders direct call history with the same neutral service-event alignment', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Taylor',
+    senderType: 'human',
+    text: 'The voice call ended.',
+    time: '14:35',
+    callActivity: {
+      callId: 'call-two',
+      kind: 'voice',
+      event: 'ended',
+      direction: 'incoming',
+      outcome: 'completed',
+      durationSeconds: 7,
+    },
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /app-system-notice-row/);
+  assert.match(markup, /The voice call ended\. Duration 00:07\./);
+  assert.doesNotMatch(markup, /app-chat-bubble-peer|app-chat-bubble-user|app-message-delivery-footer/);
 });
 
 test('contact transcripts use the same neutral system-notice treatment', () => {

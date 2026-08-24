@@ -61,6 +61,7 @@ enum CloudConversationCatalog {
         let groups = groupConversations(
             account: account,
             contactsById: contactsById,
+            messages: allMessages,
             canonicalConversations: visibleCanonicalConversations,
             canonicalParticipantsBySessionId: canonicalParticipantsBySessionId,
             canonicalConversationsBySessionId: canonicalConversationsBySessionId,
@@ -160,6 +161,7 @@ enum CloudConversationCatalog {
     private static func groupConversations(
         account: CloudAccount,
         contactsById: [String: CloudContact],
+        messages: [CloudMessageDTO],
         canonicalConversations: [CloudChatConversation],
         canonicalParticipantsBySessionId: [String: [CloudGroupParticipant]],
         canonicalConversationsBySessionId: [String: CloudChatConversation],
@@ -191,6 +193,32 @@ enum CloudConversationCatalog {
             let peers = participants.filter { $0.accountId != account.accountId }
             let groupMessages = deduplicatedGroupMessages(sorted)
             let latestMessage = groupMessages.max { $0.createdAtMs < $1.createdAtMs }
+            let callMessages = Dictionary(
+                grouping: messages.filter {
+                    ChatCallActivity(messageKind: $0.messageKind) != nil
+                        && CloudMessageStateProjector.sessionKeys(for: $0).contains(groupId)
+                },
+                by: \.messageId
+            ).compactMap { _, rows in
+                rows.max { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
+            }
+            let latestCallMessage = callMessages.max {
+                parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt)
+            }
+            let latestGroupDate = latestMessage.map {
+                Date(timeIntervalSince1970: $0.createdAtMs / 1_000)
+            }
+            let latestCallDate = latestCallMessage.map { parseCloudDate($0.createdAt) }
+            let latestVisibleText: String?
+            let latestVisibleDate: Date?
+            if let latestCallMessage, let latestCallDate,
+               latestCallDate >= (latestGroupDate ?? .distantPast) {
+                latestVisibleText = latestCallMessage.body.nonEmpty
+                latestVisibleDate = latestCallDate
+            } else {
+                latestVisibleText = latestMessage?.text.nonEmpty
+                latestVisibleDate = latestGroupDate
+            }
             let sessionTitle = sorted.reversed().compactMap { row -> String? in
                 row.1.kind == "session-title-update" ? nonGenericTitle(row.1.groupTitle) : nil
             }.first
@@ -247,8 +275,8 @@ enum CloudConversationCatalog {
                 agentId: nil,
                 ownerDisplayName: groupTitle,
                 displayName: title,
-                lastMessage: latestMessage?.text.nonEmpty ?? "Group conversation",
-                lastActivityAt: latestMessage.map { Date(timeIntervalSince1970: $0.createdAtMs / 1_000) }
+                lastMessage: latestVisibleText ?? "Group conversation",
+                lastActivityAt: latestVisibleDate
                     ?? sorted.last.map(rowDate)
                     ?? canonical.map { parseCloudDate($0.updatedAt) }
                     ?? .distantPast,
@@ -258,7 +286,7 @@ enum CloudConversationCatalog {
                 sessionId: groupId,
                 groupSpaceId: groupSpaceId,
                 groupParticipants: participants,
-                messageCount: groupMessages.count,
+                messageCount: groupMessages.count + callMessages.count,
                 forkedFromSessionId: canonicalLineage[groupId]?.forkedFromSessionId
                     ?? canonical?.forkedFromSessionId?.nonEmpty
             )

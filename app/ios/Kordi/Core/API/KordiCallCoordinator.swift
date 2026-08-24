@@ -58,9 +58,48 @@ enum KordiCallActionPolicy {
     }
 }
 
+enum KordiCallStartPolicy {
+    static func canBegin(
+        hasActiveCall: Bool,
+        isStartInFlight: Bool,
+        hasSystemCall: Bool
+    ) -> Bool {
+        !hasActiveCall && !isStartInFlight && !hasSystemCall
+    }
+}
+
+enum KordiCallSystemStartErrorPresentation {
+    static func message(for error: Error) -> String {
+        let error = error as NSError
+        return message(domain: error.domain, code: error.code)
+    }
+
+    static func message(domain: String, code: Int) -> String {
+        guard domain == CXErrorDomainRequestTransaction else {
+            return "The call could not start. Try again."
+        }
+        if code == CXErrorCodeRequestTransactionError.Code.callUUIDAlreadyExists.rawValue {
+            return "A call is already starting. Wait a moment, then try again."
+        }
+        if code == CXErrorCodeRequestTransactionError.Code.maximumCallGroupsReached.rawValue {
+            return "End the current system call before starting a Kordi call."
+        }
+        return "The system could not start the call. Try again."
+    }
+}
+
 enum KordiCallConnectionReadiness {
     static func isConnected(kind: CloudCallKind, hasRemoteParticipant: Bool) -> Bool {
         kind == .meeting || hasRemoteParticipant
+    }
+}
+
+enum KordiCallMediaFailurePolicy {
+    static func isFatalInitialMicrophonePublication(
+        requestedEnabled: Bool,
+        hasPublished: Bool
+    ) -> Bool {
+        requestedEnabled && !hasPublished
     }
 }
 
@@ -73,8 +112,6 @@ enum KordiCallMediaFailureStage: Equatable {
     case iceOrTurn
     case device
     case microphonePublication
-    case cameraPublication
-    case subscription
 
     var message: String {
         switch self {
@@ -83,13 +120,9 @@ enum KordiCallMediaFailureStage: Equatable {
         case .iceOrTurn:
             "Call media could not establish an ICE or TURN connection."
         case .device:
-            "Kordi could not find the microphone or camera needed for this call."
+            "Kordi could not find the microphone needed for this call."
         case .microphonePublication:
             "The microphone connected, but its audio track could not be published."
-        case .cameraPublication:
-            "The camera connected, but its video track could not be published."
-        case .subscription:
-            "A remote camera or microphone track could not be subscribed."
         }
     }
 
@@ -127,6 +160,7 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
     @Published private(set) var isCameraEnabled = false
     @Published private(set) var previewVideoTrack: LocalVideoTrack?
     @Published private(set) var connectedAt: Date?
+    @Published private(set) var isStartingCall = false
     @Published var isCallScreenPresented = false
     @Published var isParticipantListPresented = false
 
@@ -146,10 +180,62 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
     private var isSystemAudioSessionActive = false
     private var isPublishingMicrophone = false
     private var isPublishingCamera = false
+    private var hasPublishedMicrophone = false
     private var microphonePublicationTask: Task<Void, Never>?
     private var cameraPublicationTask: Task<Void, Never>?
     private var roomRecoveryTask: Task<Void, Never>?
     private var roomRecoveryID: UUID?
+    private var systemStartWorkTasks: [UUID: Task<Void, Never>] = [:]
+
+    private enum PendingSystemStartRequest {
+        case start(conversation: ConversationSummary, kind: CloudCallKind)
+        case join(call: CloudCall, conversation: ConversationSummary)
+
+        var conversation: ConversationSummary {
+            switch self {
+            case .start(let conversation, _), .join(_, let conversation):
+                conversation
+            }
+        }
+
+        var startsWithVideo: Bool {
+            switch self {
+            case .start(_, let kind): kind.allowsVideo
+            case .join(let call, _): call.kind.allowsVideo
+            }
+        }
+    }
+
+    private struct PendingSystemStart {
+        let callUUID: UUID
+        let request: PendingSystemStartRequest
+        let continuation: CheckedContinuation<Void, Error>
+    }
+
+    private enum SystemStartFailure: LocalizedError {
+        case existingSystemCall
+        case timedOut
+        case providerReset
+        case accountUnavailable
+        case cancelled
+
+        var errorDescription: String? {
+            switch self {
+            case .existingSystemCall:
+                "End the current system call before starting a Kordi call."
+            case .timedOut:
+                "The system call control did not respond. Try again."
+            case .providerReset:
+                "The system call service restarted. Try again."
+            case .accountUnavailable:
+                "Sign in again before starting a call."
+            case .cancelled:
+                "Call canceled."
+            }
+        }
+    }
+
+    private var pendingSystemStart: PendingSystemStart?
 
     private var usesSystemCallIntegration: Bool {
         KordiCallSystemIntegration.usesCallKit
@@ -186,6 +272,24 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         }
     }
 
+    func cancelUnadmittedStart() {
+        guard activeCall == nil else { return }
+        cancelPendingSystemStart(with: .cancelled)
+    }
+
+    func prepareForAccountTeardown() async {
+        cancelPendingSystemStart(with: .accountUnavailable)
+        _ = await finishActiveCallForTeardown()
+        let tasks = Array(systemStartWorkTasks.values)
+        for task in tasks {
+            await task.value
+        }
+        _ = await finishActiveCallForTeardown()
+        guard activeCall != nil else { return }
+        await cleanUpRoom()
+        resetPresentation()
+    }
+
     func start(conversation: ConversationSummary, kind: CloudCallKind) async {
         guard activeCall == nil else {
             isCallScreenPresented = true
@@ -200,6 +304,23 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
             return
         }
 
+        guard !isStartingCall else { return }
+        let hasSystemCall = usesSystemCallIntegration && callController.callObserver.calls.contains {
+            !$0.hasEnded
+        }
+        guard KordiCallStartPolicy.canBegin(
+            hasActiveCall: activeCall != nil,
+            isStartInFlight: isStartingCall,
+            hasSystemCall: hasSystemCall
+        ) else {
+            if hasSystemCall {
+                phase = .failed("End the current system call before starting a Kordi call.")
+            }
+            return
+        }
+        isStartingCall = true
+        defer { isStartingCall = false }
+
         if model.isPreviewMode {
             await startPreview(conversation: conversation, kind: kind)
             return
@@ -208,31 +329,43 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
             phase = .failed("Allow microphone and camera access in Settings to start this call.")
             return
         }
+        guard !Task.isCancelled else { return }
 
         phase = .preparing
         do {
-            let response = try await model.startCall(in: conversation, kind: kind)
-            media = response.media
-            activeCall = KordiCallPresentation(
-                call: response.call,
-                conversation: conversation,
-                direction: .outgoing,
-                startsWithVideo: kind.allowsVideo,
-                isPreview: false
-            )
-            isCameraEnabled = kind.allowsVideo
-            isMicrophoneEnabled = true
-            phase = response.call.state == .ringing ? .ringing : .connecting
-            isCallScreenPresented = true
-            try await beginCurrentCall(response.call, conversation: conversation)
-        } catch {
-            let message = error.localizedDescription
-            if let activeCall {
-                await finish(activeCall: activeCall, action: .end)
+            if usesSystemCallIntegration {
+                try await withTaskCancellationHandler {
+                    try await requestSystemStart(.start(conversation: conversation, kind: kind))
+                } onCancel: {
+                    Task { @MainActor [weak self] in self?.cancelUnadmittedStart() }
+                }
             } else {
-                await cleanUpRoom()
+                let response = try await model.startCall(in: conversation, kind: kind)
+                media = response.media
+                activeCall = KordiCallPresentation(
+                    call: response.call,
+                    conversation: conversation,
+                    direction: .outgoing,
+                    startsWithVideo: kind.allowsVideo,
+                    isPreview: false
+                )
+                isCameraEnabled = kind.allowsVideo
+                isMicrophoneEnabled = true
+                phase = response.call.state == .ringing ? .ringing : .connecting
+                isCallScreenPresented = true
+                try activateAppManagedAudioSession()
+                try await connectCurrentRoom()
             }
-            phase = .failed(message)
+        } catch {
+            if let failure = error as? SystemStartFailure, case .cancelled = failure { return }
+            if !usesSystemCallIntegration {
+                if let activeCall {
+                    await finish(activeCall: activeCall, action: .end)
+                } else {
+                    await cleanUpRoom()
+                }
+            }
+            phase = .failed(systemStartMessage(for: error))
         }
     }
 
@@ -248,6 +381,24 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
             return
         }
         guard let model else { return }
+
+        guard !isStartingCall else { return }
+        let hasSystemCall = usesSystemCallIntegration && callController.callObserver.calls.contains {
+            !$0.hasEnded
+        }
+        guard KordiCallStartPolicy.canBegin(
+            hasActiveCall: activeCall != nil,
+            isStartInFlight: isStartingCall,
+            hasSystemCall: hasSystemCall
+        ) else {
+            if hasSystemCall {
+                phase = .failed("End the current system call before starting a Kordi call.")
+            }
+            return
+        }
+        isStartingCall = true
+        defer { isStartingCall = false }
+
         if model.isPreviewMode {
             await startPreview(conversation: conversation, kind: call.kind)
             return
@@ -256,29 +407,41 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
             phase = .failed("Allow microphone and camera access in Settings to join this call.")
             return
         }
+        guard !Task.isCancelled else { return }
 
         phase = .connecting
         do {
-            let response = try await model.joinCall(call)
-            media = response.media
-            activeCall = KordiCallPresentation(
-                call: response.call,
-                conversation: conversation,
-                direction: .incoming,
-                startsWithVideo: response.call.kind.allowsVideo,
-                isPreview: false
-            )
-            isCameraEnabled = response.call.kind.allowsVideo
-            isCallScreenPresented = true
-            try await beginCurrentCall(response.call, conversation: conversation)
-        } catch {
-            let message = error.localizedDescription
-            if let activeCall {
-                await finish(activeCall: activeCall, action: .leave)
+            if usesSystemCallIntegration {
+                try await withTaskCancellationHandler {
+                    try await requestSystemStart(.join(call: call, conversation: conversation))
+                } onCancel: {
+                    Task { @MainActor [weak self] in self?.cancelUnadmittedStart() }
+                }
             } else {
-                await cleanUpRoom()
+                let response = try await model.joinCall(call)
+                media = response.media
+                activeCall = KordiCallPresentation(
+                    call: response.call,
+                    conversation: conversation,
+                    direction: .incoming,
+                    startsWithVideo: response.call.kind.allowsVideo,
+                    isPreview: false
+                )
+                isCameraEnabled = response.call.kind.allowsVideo
+                isCallScreenPresented = true
+                try activateAppManagedAudioSession()
+                try await connectCurrentRoom()
             }
-            phase = .failed(message)
+        } catch {
+            if let failure = error as? SystemStartFailure, case .cancelled = failure { return }
+            if !usesSystemCallIntegration {
+                if let activeCall {
+                    await finish(activeCall: activeCall, action: .leave)
+                } else {
+                    await cleanUpRoom()
+                }
+            }
+            phase = .failed(systemStartMessage(for: error))
         }
     }
 
@@ -410,12 +573,46 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         updateActiveCall(updated, conversation: activeCall.conversation)
     }
 
-    private func requestSystemStart(
+    private func requestSystemStart(_ request: PendingSystemStartRequest) async throws {
+        guard activeCall == nil,
+              pendingSystemStart == nil,
+              !callController.callObserver.calls.contains(where: { !$0.hasEnded }) else {
+            throw SystemStartFailure.existingSystemCall
+        }
+        try configureCallAudioSession(startsWithVideo: request.startsWithVideo)
+        let callUUID = UUID()
+        let handle = CXHandle(type: .generic, value: request.conversation.displayName)
+        let action = CXStartCallAction(call: callUUID, handle: handle)
+        action.isVideo = request.startsWithVideo
+        let transaction = CXTransaction(action: action)
+
+        try await withCheckedThrowingContinuation {
+            (continuation: CheckedContinuation<Void, Error>) in
+            pendingSystemStart = PendingSystemStart(
+                callUUID: callUUID,
+                request: request,
+                continuation: continuation
+            )
+            Task { @MainActor in
+                do {
+                    try await callController.request(transaction)
+                } catch {
+                    logSystemStartFailure(error, stage: "transaction")
+                    completePendingSystemStart(callUUID: callUUID, result: .failure(error))
+                }
+            }
+        }
+    }
+
+    private func requestPreviewSystemStart(
         for call: CloudCall,
         conversation: ConversationSummary
     ) async throws {
+        guard !callController.callObserver.calls.contains(where: { !$0.hasEnded }) else {
+            throw SystemStartFailure.existingSystemCall
+        }
         try configureCallAudioSession(startsWithVideo: call.kind.allowsVideo)
-        let callUUID = UUID(uuidString: call.id) ?? UUID()
+        let callUUID = UUID()
         activeCallUUID = callUUID
         let handle = CXHandle(type: .generic, value: conversation.displayName)
         let action = CXStartCallAction(call: callUUID, handle: handle)
@@ -423,16 +620,56 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         try await callController.request(CXTransaction(action: action))
     }
 
-    private func beginCurrentCall(
-        _ call: CloudCall,
-        conversation: ConversationSummary
-    ) async throws {
-        if usesSystemCallIntegration {
-            try await requestSystemStart(for: call, conversation: conversation)
-        } else {
-            try activateAppManagedAudioSession()
-            try await connectCurrentRoom()
+    private func completePendingSystemStart(
+        callUUID: UUID,
+        result: Result<Void, Error>
+    ) {
+        guard let pendingSystemStart,
+              pendingSystemStart.callUUID == callUUID else { return }
+        self.pendingSystemStart = nil
+        switch result {
+        case .success:
+            pendingSystemStart.continuation.resume()
+        case .failure(let error):
+            pendingSystemStart.continuation.resume(throwing: error)
         }
+    }
+
+    private func cancelPendingSystemStart(with error: SystemStartFailure) {
+        guard let pendingSystemStart else { return }
+        completePendingSystemStart(
+            callUUID: pendingSystemStart.callUUID,
+            result: .failure(error)
+        )
+    }
+
+    private func finishActiveCallForTeardown() async -> Bool {
+        guard let activeCall else { return true }
+        if let activeCallUUID {
+            provider.reportCall(with: activeCallUUID, endedAt: Date(), reason: .failed)
+        }
+        let action: FinishAction = activeCall.direction == .outgoing ? .end : .leave
+        return await finish(activeCall: activeCall, action: action)
+    }
+
+    private func systemStartMessage(for error: Error) -> String {
+        if let error = error as? SystemStartFailure {
+            return error.localizedDescription
+        }
+        if error is CloudAPIError {
+            return error.localizedDescription
+        }
+        return KordiCallSystemStartErrorPresentation.message(for: error)
+    }
+
+    private func logSystemStartFailure(
+        _ error: Error,
+        stage: StaticString
+    ) {
+        let error = error as NSError
+        kordiCallLogger.error(
+            "Call start failed, stage: \(stage), domain: \(error.domain, privacy: .public), code: \(error.code, privacy: .public), pending: \(self.pendingSystemStart != nil), active: \(self.activeCall != nil)"
+        )
     }
 
     private func answerPendingIncomingCall(
@@ -722,20 +959,29 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         defer { isPublishingMicrophone = false }
         do {
             try await room.localParticipant.setMicrophone(enabled: requestedState)
+            if requestedState { hasPublishedMicrophone = true }
             kordiCallLogger.notice("LiveKit microphone publication completed")
         } catch {
             guard activeCall?.id == callID else { return }
             if isMicrophoneEnabled == requestedState {
                 isMicrophoneEnabled = !requestedState
             }
+            let stage = KordiCallMediaFailureStage.publicationStage(
+                for: error,
+                fallback: .microphonePublication
+            )
             let error = error as NSError
             kordiCallLogger.error(
                 "LiveKit microphone publication failed, domain: \(error.domain, privacy: .public), code: \(error.code)"
             )
-            phase = .failed(KordiCallMediaFailureStage.publicationStage(
-                for: error,
-                fallback: .microphonePublication
-            ).message)
+            if KordiCallMediaFailurePolicy.isFatalInitialMicrophonePublication(
+                requestedEnabled: requestedState,
+                hasPublished: hasPublishedMicrophone
+            ) {
+                await failCurrentCallForMedia(stage)
+            } else {
+                phase = .failed(stage.message)
+            }
         }
     }
 
@@ -760,11 +1006,18 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
             kordiCallLogger.error(
                 "LiveKit camera publication failed, domain: \(error.domain, privacy: .public), code: \(error.code)"
             )
-            phase = .failed(KordiCallMediaFailureStage.publicationStage(
-                for: error,
-                fallback: .cameraPublication
-            ).message)
+            updateConnectionPhaseFromRoom()
         }
+    }
+
+    private func failCurrentCallForMedia(_ stage: KordiCallMediaFailureStage) async {
+        phase = .failed(stage.message)
+        guard let activeCall, finishingCallID != activeCall.id else { return }
+        if let activeCallUUID {
+            provider.reportCall(with: activeCallUUID, endedAt: Date(), reason: .failed)
+        }
+        let action: FinishAction = activeCall.direction == .outgoing ? .end : .leave
+        _ = await finish(activeCall: activeCall, action: action)
     }
 
     private func applyMicrophoneState(_ enabled: Bool) async {
@@ -783,28 +1036,38 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         case end
     }
 
-    private func finish(activeCall: KordiCallPresentation, action: FinishAction) async {
-        guard finishingCallID != activeCall.id else { return }
+    @discardableResult
+    private func finish(activeCall: KordiCallPresentation, action: FinishAction) async -> Bool {
+        guard finishingCallID != activeCall.id else { return false }
         finishingCallID = activeCall.id
         defer {
             if finishingCallID == activeCall.id {
                 finishingCallID = nil
             }
         }
+        let didFinish: Bool
         if activeCall.isPreview {
             model?.recordPreviewCallEnded(activeCall.call, in: activeCall.conversation)
+            didFinish = true
         } else if let model {
             switch action {
             case .decline:
-                await model.declineCall(activeCall.call)
+                didFinish = await model.declineCall(activeCall.call)
             case .leave:
-                await model.leaveCall(activeCall.call)
+                didFinish = await model.leaveCall(activeCall.call)
             case .end:
-                await model.endCall(activeCall.call)
+                didFinish = await model.endCall(activeCall.call)
             }
+        } else {
+            didFinish = false
+        }
+        guard didFinish else {
+            phase = .failed("Could not update the call state. Check your connection and try again.")
+            return false
         }
         await cleanUpRoom()
         resetPresentation()
+        return true
     }
 
     private func cleanUpRoom() async {
@@ -864,6 +1127,7 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         isSystemAudioSessionActive = false
         isPublishingMicrophone = false
         isPublishingCamera = false
+        hasPublishedMicrophone = false
     }
 
     private func startPreview(
@@ -915,7 +1179,7 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         model?.recordPreviewCallStarted(call, in: conversation)
         do {
             if usesSystemCallIntegration {
-                try await requestSystemStart(for: call, conversation: conversation)
+                try await requestPreviewSystemStart(for: call, conversation: conversation)
             } else {
                 markConnected()
             }
@@ -923,11 +1187,10 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
                 await setPreviewCameraEnabled(true)
             }
         } catch {
-            let message = error.localizedDescription
             if let activeCall {
                 await finish(activeCall: activeCall, action: .leave)
             }
-            phase = .failed(message)
+            phase = .failed(systemStartMessage(for: error))
         }
     }
 
@@ -984,38 +1247,181 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
 extension KordiCallCoordinator: CXProviderDelegate {
     nonisolated func providerDidReset(_ provider: CXProvider) {
         Task { @MainActor [weak self] in
-            guard let self,
-                  let activeCall,
+            guard let self else { return }
+            if let pendingSystemStart {
+                let error = SystemStartFailure.providerReset
+                logSystemStartFailure(
+                    error,
+                    stage: "provider-reset"
+                )
+                cancelPendingSystemStart(with: error)
+                if let activeCall, finishingCallID != activeCall.id {
+                    let action: FinishAction = activeCall.direction == .outgoing ? .end : .leave
+                    guard await finish(activeCall: activeCall, action: action) else { return }
+                }
+                phase = .failed(error.localizedDescription)
+                return
+            }
+            guard let activeCall,
                   finishingCallID != activeCall.id else { return }
             kordiCallLogger.error("CallKit provider reset an active call")
-            await finish(activeCall: activeCall, action: .leave)
+            let action: FinishAction = activeCall.direction == .outgoing ? .end : .leave
+            await finish(activeCall: activeCall, action: action)
         }
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
         Task { @MainActor [weak self] in
-            guard let self, let activeCall else {
+            guard let self else {
                 action.fail()
                 return
             }
-            let startedAt = Date()
-            provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: startedAt)
-            if activeCall.isPreview {
-                action.fulfill(withDateStarted: startedAt)
-                markConnected()
-                isCallScreenPresented = true
+            beginSystemStartWork(provider: provider, action: action)
+        }
+    }
+
+    private func beginSystemStartWork(provider: CXProvider, action: CXStartCallAction) {
+        let callUUID = action.callUUID
+        let task = Task { @MainActor [weak self] in
+            guard let self else {
+                action.fail()
                 return
             }
-            action.fulfill(withDateStarted: startedAt)
-            do {
-                try await connectCurrentRoom()
-            } catch {
-                phase = .failed(error.localizedDescription)
-                provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .failed)
-                kordiCallLogger.error("Outgoing call media connection failed before CallKit acknowledgement")
-                await finish(activeCall: activeCall, action: .end)
-            }
+            await performSystemStart(provider: provider, action: action)
         }
+        systemStartWorkTasks[callUUID] = task
+        Task { @MainActor [weak self] in
+            await task.value
+            self?.systemStartWorkTasks[callUUID] = nil
+        }
+    }
+
+    private func performSystemStart(provider: CXProvider, action: CXStartCallAction) async {
+        let startedAt = Date()
+        if let activeCall,
+           activeCall.isPreview,
+           activeCallUUID == action.callUUID {
+            provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: startedAt)
+            action.fulfill(withDateStarted: startedAt)
+            markConnected()
+            isCallScreenPresented = true
+            return
+        }
+
+        guard let pending = pendingSystemStart,
+              pending.callUUID == action.callUUID else {
+            action.fail()
+            return
+        }
+        guard let model else {
+            let error = SystemStartFailure.accountUnavailable
+            action.fail()
+            completePendingSystemStart(
+                callUUID: action.callUUID,
+                result: .failure(error)
+            )
+            phase = .failed(error.localizedDescription)
+            return
+        }
+
+        let request = pending.request
+        var actionWasFulfilled = false
+        do {
+            let response: CloudCallSessionResponse
+            let direction: KordiCallPresentation.Direction
+            switch request {
+            case .start(let conversation, let kind):
+                response = try await model.startCall(in: conversation, kind: kind)
+                direction = response.call.createdByAccountId == model.account?.accountId
+                    ? .outgoing
+                    : .incoming
+            case .join(let call, _):
+                response = try await model.joinCall(call)
+                direction = .incoming
+            }
+
+            guard self.pendingSystemStart?.callUUID == action.callUUID else {
+                action.fail()
+                let didRollback: Bool
+                switch request {
+                case .start:
+                    didRollback = await model.endCall(response.call)
+                case .join:
+                    didRollback = await model.leaveCall(response.call)
+                }
+                if !didRollback {
+                    retainUnreconciledCall(
+                        response,
+                        request: request,
+                        direction: direction
+                    )
+                }
+                return
+            }
+
+            media = response.media
+            activeCallUUID = action.callUUID
+            activeCall = KordiCallPresentation(
+                call: response.call,
+                conversation: request.conversation,
+                direction: direction,
+                startsWithVideo: request.startsWithVideo,
+                isPreview: false
+            )
+            isCameraEnabled = request.startsWithVideo
+            isMicrophoneEnabled = true
+            phase = response.call.state == .ringing ? .ringing : .connecting
+            isCallScreenPresented = true
+            provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: startedAt)
+            action.fulfill(withDateStarted: startedAt)
+            actionWasFulfilled = true
+            try await connectCurrentRoom()
+            completePendingSystemStart(callUUID: action.callUUID, result: .success(()))
+        } catch {
+            guard self.pendingSystemStart?.callUUID == action.callUUID else { return }
+            logSystemStartFailure(error, stage: "cloud-or-media")
+            if actionWasFulfilled {
+                provider.reportCall(with: action.callUUID, endedAt: Date(), reason: .failed)
+            } else {
+                action.fail()
+            }
+            let didConfirmTerminalState: Bool
+            if let activeCall {
+                let finishAction: FinishAction = activeCall.direction == .outgoing ? .end : .leave
+                didConfirmTerminalState = await finish(
+                    activeCall: activeCall,
+                    action: finishAction
+                )
+            } else {
+                activeCallUUID = nil
+                await cleanUpRoom()
+                didConfirmTerminalState = true
+            }
+            phase = .failed(didConfirmTerminalState
+                ? systemStartMessage(for: error)
+                : "Could not update the call state. Check your connection and try again.")
+            completePendingSystemStart(callUUID: action.callUUID, result: .failure(error))
+        }
+    }
+
+    private func retainUnreconciledCall(
+        _ response: CloudCallSessionResponse,
+        request: PendingSystemStartRequest,
+        direction: KordiCallPresentation.Direction
+    ) {
+        media = response.media
+        activeCallUUID = nil
+        activeCall = KordiCallPresentation(
+            call: response.call,
+            conversation: request.conversation,
+            direction: direction,
+            startsWithVideo: request.startsWithVideo,
+            isPreview: false
+        )
+        isCameraEnabled = request.startsWithVideo
+        isMicrophoneEnabled = true
+        isCallScreenPresented = true
+        phase = .failed("Could not update the call state. Check your connection and try again.")
     }
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
@@ -1063,7 +1469,18 @@ extension KordiCallCoordinator: CXProviderDelegate {
 
     nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         Task { @MainActor [weak self] in
-            guard let self, let activeCall else {
+            guard let self else {
+                action.fulfill()
+                return
+            }
+            if pendingSystemStart?.callUUID == action.callUUID {
+                cancelPendingSystemStart(with: .cancelled)
+                if activeCall == nil {
+                    action.fulfill()
+                    return
+                }
+            }
+            guard let activeCall else {
                 action.fulfill()
                 return
             }
@@ -1105,9 +1522,20 @@ extension KordiCallCoordinator: CXProviderDelegate {
                 "CallKit action timed out: \(String(describing: type(of: action)), privacy: .public)"
             )
             guard KordiCallActionPolicy.timeoutEndsCall(action) else { return }
-            guard
-                  let callAction = action as? CXCallAction,
-                  let activeCall else {
+            guard let callAction = action as? CXCallAction else { return }
+            if pendingSystemStart?.callUUID == callAction.callUUID {
+                let error = SystemStartFailure.timedOut
+                logSystemStartFailure(error, stage: "timeout")
+                provider.reportCall(with: callAction.callUUID, endedAt: Date(), reason: .failed)
+                cancelPendingSystemStart(with: error)
+                if let activeCall {
+                    let finishAction: FinishAction = activeCall.direction == .outgoing ? .end : .leave
+                    guard await finish(activeCall: activeCall, action: finishAction) else { return }
+                }
+                phase = .failed(error.localizedDescription)
+                return
+            }
+            guard let activeCall else {
                 phase = .failed("The system call control did not respond. Try again.")
                 return
             }
@@ -1281,9 +1709,6 @@ extension KordiCallCoordinator: RoomDelegate {
         kordiCallLogger.error(
             "LiveKit remote track subscription failed, code: \(error.code, privacy: .public)"
         )
-        Task { @MainActor [weak self] in
-            self?.phase = .failed(KordiCallMediaFailureStage.subscription.message)
-        }
     }
 
     nonisolated func room(_ room: Room, participantDidDisconnect participant: RemoteParticipant) {

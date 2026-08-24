@@ -1874,46 +1874,67 @@ final class AppModel: ObservableObject {
         return updated
     }
 
-    func declineCall(_ call: CloudCall) async {
-        guard let token, !previewMode else {
+    @discardableResult
+    func declineCall(_ call: CloudCall) async -> Bool {
+        if previewMode {
             callsByConversationID[call.conversationId] = nil
-            return
+            return true
+        }
+        guard let token else {
+            errorMessage = "Sign in again before declining the call."
+            return false
         }
         do {
             if let updated = try await api.declineCall(token: token, callId: call.id) {
                 applyCallSnapshot(updated)
+                return true
             }
         } catch {
             errorMessage = userFacing(error, fallback: "Could not decline the call.")
         }
+        return false
     }
 
-    func leaveCall(_ call: CloudCall) async {
-        guard let token, !previewMode else {
+    @discardableResult
+    func leaveCall(_ call: CloudCall) async -> Bool {
+        if previewMode {
             callsByConversationID[call.conversationId] = nil
-            return
+            return true
+        }
+        guard let token else {
+            errorMessage = "Sign in again before leaving the call."
+            return false
         }
         do {
             if let updated = try await api.leaveCall(token: token, callId: call.id) {
                 applyCallSnapshot(updated)
+                return true
             }
         } catch {
             errorMessage = userFacing(error, fallback: "Could not leave the call.")
         }
+        return false
     }
 
-    func endCall(_ call: CloudCall) async {
-        guard let token, !previewMode else {
+    @discardableResult
+    func endCall(_ call: CloudCall) async -> Bool {
+        if previewMode {
             callsByConversationID[call.conversationId] = nil
-            return
+            return true
+        }
+        guard let token else {
+            errorMessage = "Sign in again before ending the call."
+            return false
         }
         do {
             if let updated = try await api.endCall(token: token, callId: call.id) {
                 applyCallSnapshot(updated)
+                return true
             }
         } catch {
             errorMessage = userFacing(error, fallback: "Could not end the call.")
         }
+        return false
     }
 
     func recordPreviewCallStarted(_ call: CloudCall, in conversation: ConversationSummary) {
@@ -3383,9 +3404,10 @@ final class AppModel: ObservableObject {
         let existingIDs = Set(existing.map(\.id))
         for message in page.messages { mergeCloudMessage(message, peerHint: nil) }
         let accumulatedWireMessages = conversation.kind == .group
-            ? cloudMessagesByPeer.values.flatMap { $0 }.filter {
-                CloudGroupMessageCodec.parse($0.body)?.groupId == conversation.sessionId
-            }
+            ? Self.groupWireMessages(
+                for: conversation,
+                in: cloudMessagesByPeer.values.flatMap { $0 }
+            )
             : Self.directWireMessages(for: conversation, in: cloudMessagesByPeer)
         let projection = await Task.detached(priority: .userInitiated) {
             Self.projectHistoryMessages(
@@ -3993,9 +4015,10 @@ final class AppModel: ObservableObject {
             Dictionary(uniqueKeysWithValues: loadedConversations.map { conversation in
                 let projected: [ChatMessage]
                 if conversation.kind == .group {
-                    let wireMessages = wireSnapshot.values.flatMap { $0 }.filter { wire in
-                        CloudGroupMessageCodec.parse(wire.body)?.groupId == conversation.sessionId
-                    }
+                    let wireMessages = Self.groupWireMessages(
+                        for: conversation,
+                        in: wireSnapshot.values.flatMap { $0 }
+                    )
                     projected = Self.mapGroupMessages(
                         wireMessages,
                         conversation: conversation,
@@ -4049,6 +4072,15 @@ final class AppModel: ObservableObject {
         }
         return byID.values.sorted {
             $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.messageId < $1.messageId)
+        }
+    }
+
+    nonisolated static func groupWireMessages(
+        for conversation: ConversationSummary,
+        in messages: [CloudMessageDTO]
+    ) -> [CloudMessageDTO] {
+        messages.filter {
+            CloudMessageStateProjector.sessionKeys(for: $0).contains(conversation.sessionId)
         }
     }
 

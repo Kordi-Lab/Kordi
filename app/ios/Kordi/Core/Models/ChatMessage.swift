@@ -855,7 +855,9 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     }
 
     var isSystemNotice: Bool {
-        isAgentModelChangeNotice || isGroupMemberJoinNotice
+        isAgentModelChangeNotice
+            || isGroupMemberJoinNotice
+            || callActivity != nil
     }
 
     static func timelinePrecedes(_ left: ChatMessage, _ right: ChatMessage) -> Bool {

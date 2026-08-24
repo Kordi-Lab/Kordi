@@ -69,6 +69,7 @@ struct ConversationView: View {
     @State private var authorProfileConversation: ConversationSummary?
     @State private var selectedBackgroundSession: BackgroundAgentSession?
     @State private var backgroundConversation: ConversationSummary?
+    @State private var callJoinTask: Task<Void, Never>?
     @State private var showAgentModel = false
     @State private var highlightedMessageID: String?
     @State private var selectedMessageIDs = Set<String>()
@@ -165,9 +166,7 @@ struct ConversationView: View {
                         call: activeCall,
                         title: "Meeting in progress",
                         subtitle: ConversationCallBanner.connectedLabel(for: activeCall),
-                        onJoin: {
-                            Task { await callCoordinator.join(activeCall, in: conversation) }
-                        }
+                        onJoin: { joinCall(activeCall) }
                     )
                 } else if !coordinatorOwnsConversationCall,
                           let activeCall = activeConversationCall,
@@ -182,9 +181,7 @@ struct ConversationView: View {
                             ? "Incoming video call"
                             : "Incoming voice call",
                         subtitle: "\(conversation.displayName) is calling",
-                        onJoin: {
-                            Task { await callCoordinator.join(activeCall, in: conversation) }
-                        }
+                        onJoin: { joinCall(activeCall) }
                     )
                 }
                 if let pinnedMessage {
@@ -640,6 +637,9 @@ struct ConversationView: View {
             await model.refreshMentionTargets(for: conversation)
         }
         .onDisappear {
+            callJoinTask?.cancel()
+            callJoinTask = nil
+            callCoordinator.cancelUnadmittedStart()
             isReadPresentationVisible = false
             synchronizeReadPresentation()
             rememberViewport(in: messages)
@@ -780,6 +780,13 @@ struct ConversationView: View {
         }
         .navigationDestination(item: $forwardedDestination) { destination in
             ConversationView(conversation: destination)
+        }
+    }
+
+    private func joinCall(_ call: CloudCall) {
+        callJoinTask?.cancel()
+        callJoinTask = Task {
+            await callCoordinator.join(call, in: conversation)
         }
     }
 

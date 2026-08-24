@@ -383,6 +383,94 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(KordiCallActionPolicy.timeoutEndsCall(answer))
     }
 
+    func testCallStartPolicyRejectsEveryConcurrentOwnershipState() {
+        XCTAssertTrue(KordiCallStartPolicy.canBegin(
+            hasActiveCall: false,
+            isStartInFlight: false,
+            hasSystemCall: false
+        ))
+        XCTAssertFalse(KordiCallStartPolicy.canBegin(
+            hasActiveCall: true,
+            isStartInFlight: false,
+            hasSystemCall: false
+        ))
+        XCTAssertFalse(KordiCallStartPolicy.canBegin(
+            hasActiveCall: false,
+            isStartInFlight: true,
+            hasSystemCall: false
+        ))
+        XCTAssertFalse(KordiCallStartPolicy.canBegin(
+            hasActiveCall: false,
+            isStartInFlight: false,
+            hasSystemCall: true
+        ))
+    }
+
+    func testDuplicateCallKitUUIDUsesBoundedRecoveryCopy() {
+        let message = KordiCallSystemStartErrorPresentation.message(
+            domain: CXErrorDomainRequestTransaction,
+            code: CXErrorCodeRequestTransactionError.Code.callUUIDAlreadyExists.rawValue
+        )
+
+        XCTAssertEqual(message, "A call is already starting. Wait a moment, then try again.")
+        XCTAssertFalse(message.contains("com.apple.CallKit"))
+    }
+
+    func testDirectCallActivityIsANeutralSystemNotice() {
+        let message = ChatMessage(
+            id: "voice-ended",
+            conversationId: "contact",
+            author: .me,
+            authorName: "Alex",
+            text: "The voice call ended. Duration 00:07.",
+            createdAt: Date(timeIntervalSince1970: 1_000),
+            deliveryState: .read,
+            errorMessage: nil,
+            requestMessageId: nil,
+            messageKind: ChatCallActivity.messageKind(for: .ended, callId: UUID().uuidString)
+        )
+
+        XCTAssertTrue(message.isSystemNotice)
+    }
+
+    func testOnlyInitialMicrophonePublicationFailuresAreFatal() {
+        XCTAssertTrue(KordiCallMediaFailurePolicy.isFatalInitialMicrophonePublication(
+            requestedEnabled: true,
+            hasPublished: false
+        ))
+        XCTAssertFalse(KordiCallMediaFailurePolicy.isFatalInitialMicrophonePublication(
+            requestedEnabled: true,
+            hasPublished: true
+        ))
+        XCTAssertFalse(KordiCallMediaFailurePolicy.isFatalInitialMicrophonePublication(
+            requestedEnabled: false,
+            hasPublished: false
+        ))
+    }
+
+    @MainActor
+    func testTerminalCallMutationRequiresASessionOutsidePreview() async {
+        let call = CloudCall(
+            id: "0198aabc-8b27-7a30-8cba-215495609c7a",
+            conversationId: "session:group:test",
+            kind: .meeting,
+            state: .active,
+            createdByAccountId: "acct_me",
+            createdAt: "2026-08-14T10:00:00Z",
+            answeredAt: nil,
+            endedAt: nil,
+            participants: []
+        )
+        let signedOutModel = AppModel(previewMode: false)
+        let previewModel = AppModel(previewMode: true)
+        let signedOutResult = await signedOutModel.endCall(call)
+        let previewResult = await previewModel.endCall(call)
+
+        XCTAssertFalse(signedOutResult)
+        XCTAssertEqual(signedOutModel.errorMessage, "Sign in again before ending the call.")
+        XCTAssertTrue(previewResult)
+    }
+
     func testDirectCallConnectsOnlyAfterRemoteParticipantJoinsRoom() {
         XCTAssertFalse(
             KordiCallConnectionReadiness.isConnected(
@@ -417,9 +505,7 @@ final class KordiMarkdownParserTests: XCTestCase {
     func testCallMediaFailuresIdentifyTheirStage() {
         XCTAssertTrue(KordiCallMediaFailureStage.signaling.message.contains("signaling"))
         XCTAssertTrue(KordiCallMediaFailureStage.iceOrTurn.message.contains("ICE or TURN"))
-        XCTAssertTrue(KordiCallMediaFailureStage.device.message.contains("microphone or camera"))
-        XCTAssertTrue(KordiCallMediaFailureStage.cameraPublication.message.contains("published"))
-        XCTAssertTrue(KordiCallMediaFailureStage.subscription.message.contains("subscribed"))
+        XCTAssertTrue(KordiCallMediaFailureStage.device.message.contains("microphone"))
     }
 
     func testTimelinePresentationShowsAvatarOnlyOnTheLastAdjacentHumanMessage() {

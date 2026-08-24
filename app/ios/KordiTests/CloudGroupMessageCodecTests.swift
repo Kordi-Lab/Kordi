@@ -2,6 +2,45 @@ import XCTest
 @testable import Kordi
 
 final class CloudGroupMessageCodecTests: XCTestCase {
+    func testCanonicalGroupCallActivityProjectsWithoutALegacyGroupEnvelope() {
+        let conversation = ConversationSummary(
+            id: "group:mobile",
+            kind: .group,
+            peerAccountId: "acct_peer",
+            agentId: nil,
+            ownerDisplayName: "Mobile builders",
+            displayName: "Mobile builders",
+            lastMessage: "",
+            lastActivityAt: Date(timeIntervalSince1970: 1),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: nil,
+            sessionId: "session:group:mobile",
+            groupSpaceId: "session:group:mobile"
+        )
+        let wire = CloudMessageDTO(
+            messageId: "call-activity",
+            fromAccountId: "acct_me",
+            toAccountId: "acct_peer",
+            body: "The video chat ended. Duration 00:05.",
+            createdAt: "2026-08-14T10:00:00Z",
+            deliveredAt: "2026-08-14T10:00:01Z",
+            readAt: nil,
+            direction: "outgoing",
+            sessionId: conversation.sessionId,
+            messageKind: "call.ended.0198aabc-8b27-7a30-8cba-215495609c7a"
+        )
+
+        let projected = AppModel.mapGroupMessages(
+            AppModel.groupWireMessages(for: conversation, in: [wire]),
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.map(\.text), [wire.body])
+        XCTAssertTrue(projected.allSatisfy(\.isSystemNotice))
+    }
+
     func testGroupAgentResponseProjectsLinkedBackgroundSession() throws {
         let participant = CloudGroupParticipant(
             accountId: "acct_me",
