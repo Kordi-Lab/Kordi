@@ -138,7 +138,7 @@ struct MessageSyncStatusView: View {
         case let .pulling(progress):
             return progress >= 1 ? "Release to refresh messages" : "Pull to refresh messages"
         case .idle:
-            if isLoadingMessages { return "Loading messages" }
+            if isLoadingMessages { return "Syncing messages" }
             switch model.messageSyncState {
             case .syncing: return "Syncing messages"
             case .upToDate:

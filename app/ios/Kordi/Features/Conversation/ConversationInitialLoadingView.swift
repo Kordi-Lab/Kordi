@@ -115,8 +115,7 @@ struct ConversationInitialLoadingView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Loading messages")
+        .accessibilityHidden(true)
     }
 }
 

@@ -16,18 +16,7 @@ export function TranscriptSystemNoticeContent({
 }) {
   if (message.callActivity) return <TranscriptCallActivityContent message={message} />;
   const loading = isTranscriptLoadingNotice(message);
-  if (loading) {
-    return (
-      <span
-        className="sr-only"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-      >
-        Loading messages
-      </span>
-    );
-  }
+  if (loading) return null;
   return (
     <div
       className={transcriptSystemNoticeClassName(message)}

@@ -212,11 +212,9 @@ function TranscriptSkeletonAgentRow({
 }
 
 function TranscriptLoadingSkeleton({
-  label,
   compact,
   placeholders,
 }: {
-  label: string;
   compact: boolean;
   placeholders: readonly TranscriptLoadingPlaceholder[];
 }) {
@@ -224,12 +222,8 @@ function TranscriptLoadingSkeleton({
     <div
       className="app-chat-pane-transcript-scroll app-transcript-loading-skeleton flex min-h-0 flex-1 flex-col overflow-hidden"
       data-transcript-loading-skeleton="true"
-      role="status"
-      aria-live="polite"
-      aria-busy="true"
-      aria-atomic="true"
+      aria-hidden="true"
     >
-      <span className="sr-only">{label}</span>
       <div className="flex w-full flex-col gap-1" aria-hidden="true">
         {placeholders.map((placeholder, index) => (
           placeholder.kind === 'image' ? (
@@ -384,7 +378,6 @@ export function ChatSessionPane({
       {isInitialTranscriptLoading ? (
         <div className="contents" data-transcript-initial-loading="true">
           <TranscriptLoadingSkeleton
-            label="Loading messages"
             compact={densityMode !== 'default'}
             placeholders={messages[0]?.loadingPlaceholders ?? []}
           />

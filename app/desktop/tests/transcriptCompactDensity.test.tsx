@@ -68,7 +68,7 @@ test('contact transcripts use the same neutral system-notice treatment', () => {
   assert.doesNotMatch(markup, /bg-muted|rounded-full|\bborder\b|text-muted-foreground/);
 });
 
-test('keeps transcript loading as an accessibility-only fallback', () => {
+test('renders no fallback notice when transcript placeholders own loading', () => {
   const message: Message = {
     role: 'system',
     text: '',
@@ -78,11 +78,10 @@ test('keeps transcript loading as an accessibility-only fallback', () => {
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
-  assert.match(markup, /class="sr-only"/);
-  assert.match(markup, /role="status"/);
-  assert.match(markup, /aria-live="polite"/);
-  assert.match(markup, />Loading messages</);
-  assert.doesNotMatch(markup, /animate-spin|app-transcript-loading-notice|Loading chat history/);
+  assert.doesNotMatch(
+    markup,
+    /role="status"|aria-live|animate-spin|app-transcript-loading-notice|Loading messages|Loading chat history/,
+  );
 });
 
 test('renders human messages with a larger reading width than before', () => {
