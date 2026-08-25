@@ -20,7 +20,10 @@ test('settings data keeps only final Cloud settings sections', () => {
     settingsSections.map((section) => section.label),
     ['Authentication', 'Notifications', 'Appearance'],
   );
-  assert.deepEqual(settingsSections[2]?.items.map((item) => item.label), ['Theme']);
+  assert.deepEqual(
+    settingsSections[2]?.items.map((item) => item.label),
+    ['App appearance', 'Chat theme'],
+  );
   assert.equal(normalizeSettingsSectionIdForCloud('general'), 'auth');
   assert.equal(normalizeSettingsSectionIdForCloud('appearance'), 'appearance');
 });

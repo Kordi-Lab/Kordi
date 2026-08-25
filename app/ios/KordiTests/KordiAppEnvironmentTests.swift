@@ -2,6 +2,14 @@ import XCTest
 @testable import Kordi
 
 final class KordiAppEnvironmentTests: XCTestCase {
+    func testChatThemesHaveStablePersistedIdentifiers() {
+        XCTAssertEqual(KordiChatTheme.storageKey, "kordi.chatTheme.v1")
+        XCTAssertEqual(
+            KordiChatTheme.allCases.map(\.rawValue),
+            ["quiet", "midnight", "sand", "ocean"]
+        )
+    }
+
     func testProductionEnvironmentUsesProductIdentity() throws {
         let environment = try KordiAppEnvironment.configured(
             infoDictionary: info(

@@ -216,7 +216,7 @@ export function ChatMainWorkspace({
         {models.destinations.value === 'messages' ? (
           <div
             id="chat-main-messages-panel"
-            className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+            className="app-chat-theme-surface flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
             role="tabpanel"
             aria-labelledby="chat-main-messages-tab"
             data-chat-destination-page="messages"

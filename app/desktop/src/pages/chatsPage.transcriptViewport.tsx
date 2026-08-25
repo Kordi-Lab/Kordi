@@ -146,7 +146,7 @@ export function useChatTranscriptViewport({
       items={transcriptEntries}
       sessionKey={sessionKey}
       scrollRef={scrollRef}
-      scrollClassName={scrollClassName}
+      scrollClassName={['app-chat-canvas', scrollClassName].join(' ')}
       onScroll={() => onTranscriptScroll?.()}
       navigationRequest={navigationRequest}
       onNavigationHandled={onNavigationHandled}

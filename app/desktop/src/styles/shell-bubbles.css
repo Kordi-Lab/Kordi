@@ -11,11 +11,11 @@
 }
 
 .kordi-app.theme-light .app-chat-bubble-user {
-  --app-message-bubble-fill: rgb(226 235 245);
+  --app-message-bubble-fill: var(--app-chat-bubble-user-bg);
   --app-message-bubble-stroke: transparent;
-  --app-message-mention: rgb(59 99 148);
-  --app-message-meta: rgba(31, 49, 69, 0.58);
-  color: rgb(31 49 69);
+  --app-message-mention: var(--app-chat-mention-own);
+  --app-message-meta: var(--app-chat-meta-own);
+  color: var(--app-chat-bubble-user-text);
 }
 
 .app-chat-bubble-peer {
@@ -26,7 +26,7 @@
   --app-message-meta: var(--app-chat-meta-peer);
   border: 0;
   background: transparent;
-  color: var(--utility-foreground);
+  color: var(--app-chat-bubble-peer-text);
   box-shadow: none;
 }
 
@@ -34,9 +34,18 @@
   --app-message-mention: var(--app-chat-mention-peer);
   --app-message-meta: var(--app-chat-meta-peer);
   border: 0;
-  background: color-mix(in oklab, var(--utility-foreground) 3%, transparent);
-  color: var(--utility-foreground);
+  background: var(--app-chat-bubble-agent-bg);
+  color: var(--app-chat-bubble-agent-text);
   box-shadow: none;
+}
+
+.app-chat-theme-surface {
+  background: var(--app-chat-wallpaper);
+  background-size: var(--app-chat-wallpaper-size);
+}
+
+.app-chat-canvas {
+  background: transparent;
 }
 
 .app-message-bubble {

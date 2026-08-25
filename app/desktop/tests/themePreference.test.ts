@@ -2,9 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  KORDI_CHAT_THEME_STORAGE_KEY,
+  KORDI_CHAT_THEMES,
   KORDI_THEME_MODE_STORAGE_KEY,
+  readStoredChatTheme,
   readStoredThemeMode,
   resolveThemeMode,
+  writeStoredChatTheme,
   writeStoredThemeMode,
 } from '../src/app/themePreference';
 
@@ -46,4 +50,17 @@ test('theme resolver follows system mode only when preference is auto', () => {
   assert.equal(resolveThemeMode('auto', 'dark'), 'dark');
   assert.equal(resolveThemeMode('light', 'dark'), 'light');
   assert.equal(resolveThemeMode('dark', 'light'), 'dark');
+});
+
+test('chat theme preference accepts the four bundled themes and rejects unknown values', () => {
+  assert.deepEqual(KORDI_CHAT_THEMES, ['quiet', 'midnight', 'sand', 'ocean']);
+  for (const theme of KORDI_CHAT_THEMES) {
+    assert.equal(readStoredChatTheme(storage({ [KORDI_CHAT_THEME_STORAGE_KEY]: theme })), theme);
+  }
+  assert.equal(readStoredChatTheme(storage()), 'quiet');
+  assert.equal(readStoredChatTheme(storage({ [KORDI_CHAT_THEME_STORAGE_KEY]: 'custom' })), 'quiet');
+
+  const target = storage();
+  writeStoredChatTheme('ocean', target);
+  assert.equal(target.values.get(KORDI_CHAT_THEME_STORAGE_KEY), 'ocean');
 });

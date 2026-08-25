@@ -1140,17 +1140,29 @@ private struct AuthenticationErrorRow: View {
 
 private struct AppearanceSettingsView: View {
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
+    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var selectedAppearance: AppAppearance {
         AppAppearance(rawValue: appearanceRawValue) ?? .system
     }
 
-    private var columns: [GridItem] {
+    private var selectedChatTheme: KordiChatTheme {
+        KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet
+    }
+
+    private var appearanceColumns: [GridItem] {
         if dynamicTypeSize.isAccessibilitySize {
             return [GridItem(.flexible())]
         }
         return Array(repeating: GridItem(.flexible(), spacing: 12), count: 3)
+    }
+
+    private var chatThemeColumns: [GridItem] {
+        if dynamicTypeSize.isAccessibilitySize {
+            return [GridItem(.flexible())]
+        }
+        return Array(repeating: GridItem(.flexible(), spacing: 12), count: 2)
     }
 
     var body: some View {
@@ -1160,14 +1172,16 @@ private struct AppearanceSettingsView: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
 
-                LazyVGrid(columns: columns, spacing: 12) {
-                ForEach(AppAppearance.allCases) { appearance in
+                Text("App appearance")
+                    .font(.headline)
+
+                LazyVGrid(columns: appearanceColumns, spacing: 12) {
+                    ForEach(AppAppearance.allCases) { appearance in
                         AppearanceOptionButton(
                             appearance: appearance,
                             isSelected: appearance == selectedAppearance,
                             usesWideLayout: dynamicTypeSize.isAccessibilitySize
                         ) {
-                            UISelectionFeedbackGenerator().selectionChanged()
                             withAnimation(.easeOut(duration: 0.18)) {
                                 appearanceRawValue = appearance.rawValue
                             }
@@ -1180,6 +1194,36 @@ private struct AppearanceSettingsView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
                     .contentTransition(.opacity)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Chat theme")
+                        .font(.headline)
+                    Text("Changes conversation backgrounds and message colors on this iPhone.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                LazyVGrid(columns: chatThemeColumns, spacing: 12) {
+                    ForEach(KordiChatTheme.allCases) { theme in
+                        ChatThemeOptionButton(
+                            theme: theme,
+                            isSelected: theme == selectedChatTheme,
+                            usesWideLayout: dynamicTypeSize.isAccessibilitySize
+                        ) {
+                            withAnimation(.easeOut(duration: 0.18)) {
+                                chatThemeRawValue = theme.rawValue
+                            }
+                        }
+                    }
+                }
+
+                Label(selectedChatTheme.detail, systemImage: selectedChatTheme.systemImage)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+                    .contentTransition(.opacity)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
@@ -1188,6 +1232,7 @@ private struct AppearanceSettingsView: View {
         .preferredColorScheme(preferredColorScheme)
         .navigationTitle("Appearance")
         .navigationBarTitleDisplayMode(.inline)
+        .sensoryFeedback(.selection, trigger: appearanceRawValue + ":" + chatThemeRawValue)
     }
 
     private var preferredColorScheme: ColorScheme? {
@@ -1196,6 +1241,108 @@ private struct AppearanceSettingsView: View {
         case .light: .light
         case .dark: .dark
         }
+    }
+}
+
+private struct ChatThemeOptionButton: View {
+    let theme: KordiChatTheme
+    let isSelected: Bool
+    let usesWideLayout: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if usesWideLayout {
+                    HStack(spacing: 14) {
+                        ChatThemePreviewThumbnail(theme: theme)
+                            .frame(width: 112, height: 80)
+                        selectionLabel
+                    }
+                } else {
+                    VStack(spacing: 10) {
+                        ChatThemePreviewThumbnail(theme: theme)
+                            .aspectRatio(4 / 3, contentMode: .fit)
+                        selectionLabel
+                    }
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                isSelected
+                    ? theme.accent.opacity(0.09)
+                    : Color(uiColor: .secondarySystemGroupedBackground),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(
+                        isSelected ? theme.accent : Color(uiColor: .separator).opacity(0.45),
+                        lineWidth: isSelected ? 2 : 0.5
+                    )
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(theme.label) chat theme")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    private var selectionLabel: some View {
+        HStack(spacing: 6) {
+            Text(theme.label)
+                .font(.subheadline.weight(isSelected ? .semibold : .medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if isSelected {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(theme.accent)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
+private struct ChatThemePreviewThumbnail: View {
+    let theme: KordiChatTheme
+
+    var body: some View {
+        KordiChatWallpaper(theme: theme)
+            .overlay {
+                VStack(spacing: 7) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(KordiTheme.agentViolet)
+                            .frame(width: 12, height: 12)
+                        Capsule()
+                            .fill(theme.peerText.opacity(0.45))
+                            .frame(width: 34, height: 4)
+                        Spacer(minLength: 0)
+                    }
+                    HStack {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(theme.peerBubble)
+                            .frame(width: 44, height: 13)
+                        Spacer(minLength: 0)
+                    }
+                    HStack {
+                        Spacer(minLength: 0)
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(theme.ownBubble)
+                            .frame(width: 58, height: 13)
+                    }
+                }
+                .padding(8)
+            }
+            .compositingGroup()
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color(uiColor: .separator).opacity(0.55), lineWidth: 0.5)
+            }
     }
 }
 

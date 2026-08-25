@@ -80,6 +80,7 @@ struct KordiApp: App {
     @StateObject private var notificationCoordinator: KordiNotificationCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
+    @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
 
     init() {
         let model = AppModel()
@@ -98,6 +99,7 @@ struct KordiApp: App {
                 .environmentObject(model)
                 .environmentObject(callCoordinator)
                 .environmentObject(notificationCoordinator)
+                .environment(\.kordiChatTheme, selectedChatTheme)
                 .tint(KordiTheme.signalBlue)
                 .preferredColorScheme(preferredColorScheme)
                 .fullScreenCover(isPresented: $callCoordinator.isCallScreenPresented) {
@@ -163,6 +165,10 @@ struct KordiApp: App {
         case .light: .light
         case .dark: .dark
         }
+    }
+
+    private var selectedChatTheme: KordiChatTheme {
+        KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet
     }
 }
 

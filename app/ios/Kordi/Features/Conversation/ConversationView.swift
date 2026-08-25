@@ -27,6 +27,7 @@ enum ConversationIdentityResolver {
 
 struct ConversationView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.kordiChatTheme) private var chatTheme
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -411,7 +412,6 @@ struct ConversationView: View {
                                     hasMessages: !timeline.isEmpty
                                 )
                             )
-                            .background(Color(uiColor: .systemGroupedBackground))
                             .simultaneousGesture(
                                 TapGesture().onEnded {
                                     dismissKeyboard()
@@ -551,7 +551,7 @@ struct ConversationView: View {
                 }
             }
             .background(
-                Color(uiColor: .systemGroupedBackground)
+                KordiChatWallpaper(theme: chatTheme)
                     .ignoresSafeArea(edges: .bottom)
             )
             .overlay {
@@ -673,6 +673,9 @@ struct ConversationView: View {
         }
         .navigationTitle(showsNavigationChrome && messageActionMessage == nil ? conversation.displayName : "")
         .navigationBarTitleDisplayMode(.inline)
+        .tint(chatTheme.accent)
+        .toolbarBackground(.regularMaterial, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .toolbar {
             if showsNavigationChrome, messageActionMessage == nil {
                 if canOpenCompanionPanel {

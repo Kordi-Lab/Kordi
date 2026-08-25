@@ -1,5 +1,12 @@
+import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
+import {
+  applyChatTheme,
+  readStoredChatTheme,
+  writeStoredChatTheme,
+  type ChatTheme,
+} from '@/app/themePreference';
 import { cn } from '@/lib/utils';
 import { settingsSections } from '../data';
 import type { ThemeMode } from '../types';
@@ -8,6 +15,13 @@ const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string; detail: string }> =
   { mode: 'auto', label: 'System', detail: 'Match your device' },
   { mode: 'light', label: 'Light', detail: 'Always use light appearance' },
   { mode: 'dark', label: 'Dark', detail: 'Always use dark appearance' },
+];
+
+const CHAT_THEME_OPTIONS: Array<{ theme: ChatTheme; label: string; detail: string }> = [
+  { theme: 'quiet', label: 'Quiet Signal', detail: 'Calm neutrals with restrained blue signals' },
+  { theme: 'midnight', label: 'Midnight Violet', detail: 'Deep violet surfaces with a subtle star field' },
+  { theme: 'sand', label: 'Warm Sand', detail: 'Low-glare earth tones with warm message color' },
+  { theme: 'ocean', label: 'Ocean Slate', detail: 'Cool mineral surfaces with a quiet ripple pattern' },
 ];
 
 function ThemePreview({ mode, selected }: { mode: ThemeMode; selected: boolean }) {
@@ -85,6 +99,67 @@ function ThemeModeSelector({ themeMode, onSelectThemeMode }: { themeMode: ThemeM
   );
 }
 
+function ChatThemePreview({ theme, selected }: { theme: ChatTheme; selected: boolean }) {
+  return (
+    <div
+      data-kordi-chat-theme={theme}
+      className={cn(
+        'app-chat-theme-preview relative h-24 overflow-hidden rounded-[12px] border bg-[image:var(--app-chat-wallpaper)] [background-size:var(--app-chat-wallpaper-size)]',
+        selected
+          ? 'border-[color:var(--app-chat-accent)] ring-2 ring-[color:var(--app-chat-accent)] ring-offset-1 ring-offset-transparent'
+          : 'border-[color:var(--app-chat-bubble-peer-border)]',
+      )}
+      aria-hidden="true"
+    >
+      <div className="absolute inset-x-0 top-0 flex h-7 items-center gap-1.5 border-b border-[color:var(--app-chat-bubble-peer-border)] bg-[color:var(--app-chat-bubble-peer-bg)] px-2">
+        <span className="h-2.5 w-2.5 rounded-full bg-[#847ac4]" />
+        <span className="h-1.5 w-12 rounded-full bg-[color:var(--app-chat-bubble-peer-text)] opacity-45" />
+      </div>
+      <div className="absolute bottom-8 left-2 h-3 w-[48%] rounded-[8px_8px_8px_3px] bg-[color:var(--app-chat-bubble-peer-bg)]" />
+      <div className="absolute bottom-3 right-2 h-3 w-[58%] rounded-[8px_8px_3px_8px] bg-[color:var(--app-chat-bubble-user-bg)]" />
+      <span className="absolute bottom-[15px] right-4 h-1 w-10 rounded-full bg-[color:var(--app-chat-bubble-user-text)] opacity-55" />
+    </div>
+  );
+}
+
+function ChatThemeSelector() {
+  const [chatTheme, setChatTheme] = useState<ChatTheme>(() => readStoredChatTheme());
+
+  return (
+    <div className="w-full" role="radiogroup" aria-label="Chat theme">
+      <div className="grid grid-cols-2 gap-3">
+        {CHAT_THEME_OPTIONS.map((option) => {
+          const selected = chatTheme === option.theme;
+          return (
+            <button
+              key={option.theme}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-label={option.label + ' chat theme'}
+              title={option.detail}
+              onClick={() => {
+                setChatTheme(option.theme);
+                writeStoredChatTheme(option.theme);
+                applyChatTheme(option.theme);
+              }}
+              className="group min-w-0 rounded-[14px] bg-transparent p-1 text-center outline-none transition-none hover:bg-white/[0.04] focus-visible:ring-2 focus-visible:ring-[color:var(--app-chat-accent)]"
+            >
+              <ChatThemePreview theme={option.theme} selected={selected} />
+              <div className={cn(
+                'mt-2 truncate text-[12px] leading-4 text-[color:var(--utility-foreground)]',
+                selected ? 'font-semibold' : 'font-medium opacity-65 group-hover:opacity-90',
+              )}>
+                {option.label}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsValueControl({
   item,
   themeMode,
@@ -99,6 +174,10 @@ export function SettingsValueControl({
 
   if (controlType === 'theme') {
     return <ThemeModeSelector themeMode={themeMode} onSelectThemeMode={onSelectThemeMode} />;
+  }
+
+  if (controlType === 'chat-theme') {
+    return <ChatThemeSelector />;
   }
 
   if (controlType === 'toggle') {
