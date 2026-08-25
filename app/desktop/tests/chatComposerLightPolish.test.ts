@@ -11,16 +11,51 @@ function cssRule(css: string, selector: string) {
   return match[0];
 }
 
-test('light outgoing human bubble is quiet blue-gray with no visible outline', () => {
+test('light outgoing human bubble uses the selected chat-theme tokens with no visible outline', () => {
   const css = readDesktopShellCss();
+  const tokens = readFileSync(new URL('../src/styles/chat-theme-tokens.css', import.meta.url), 'utf8');
   const rule = cssRule(css, '.kordi-app.theme-light .app-chat-bubble-user');
 
-  assert.match(rule, /--app-message-bubble-fill:\s*rgb\(226 235 245\);/);
+  assert.match(rule, /--app-message-bubble-fill:\s*var\(--app-chat-bubble-user-bg\);/);
   assert.match(rule, /--app-message-bubble-stroke:\s*transparent;/);
-  assert.match(rule, /--app-message-mention:\s*rgb\(59 99 148\);/);
-  assert.match(rule, /--app-message-meta:\s*rgba\(31, 49, 69, 0\.58\);/);
-  assert.match(rule, /color:\s*rgb\(31 49 69\);/);
-  assert.doesNotMatch(rule, /rgb\(17 17 17\)|rgb\(183 220 255\)|255 255 255|245 241|255 251 235|251,\s*191,\s*36|oklch\([^)]*70|yellow|amber/i);
+  assert.match(rule, /--app-message-mention:\s*var\(--app-chat-mention-own\);/);
+  assert.match(rule, /--app-message-meta:\s*var\(--app-chat-meta-own\);/);
+  assert.match(rule, /color:\s*var\(--app-chat-bubble-user-text\);/);
+  assert.match(tokens, /--app-chat-bubble-user-bg:\s*#E2EBF5;/);
+  assert.match(tokens, /--app-chat-bubble-user-text:\s*#1F3145;/);
+});
+
+test('every chat theme keeps small metadata at its verified WCAG AA opacity floor', () => {
+  const tokens = readFileSync(new URL('../src/styles/chat-theme-tokens.css', import.meta.url), 'utf8');
+
+  assert.equal(tokens.match(/--app-chat-meta-own:\s*rgb\([^;]+\/ 0\.88\);/g)?.length, 8);
+  assert.equal(tokens.match(/--app-chat-meta-peer:\s*rgb\([^;]+\/ 0\.68\);/g)?.length, 8);
+});
+
+test('chat wallpaper spans the transcript and composer gutter as one surface', () => {
+  const mainWorkspace = readFileSync(
+    new URL('../src/pages/chatsPage.mainWorkspace.tsx', import.meta.url),
+    'utf8',
+  );
+  const companionPane = readFileSync(
+    new URL('../src/pages/chatsPage.companionPane.tsx', import.meta.url),
+    'utf8',
+  );
+  const css = readDesktopShellCss();
+
+  assert.match(
+    mainWorkspace,
+    /id="chat-main-messages-panel"[^>]*className="app-chat-theme-surface/s,
+  );
+  assert.match(
+    companionPane,
+    /id="chat-companion-messages-panel"[^>]*className="app-chat-theme-surface/s,
+  );
+  assert.match(
+    cssRule(css, '.app-chat-theme-surface'),
+    /background:\s*var\(--app-chat-wallpaper\);/,
+  );
+  assert.match(cssRule(css, '.app-chat-canvas'), /background:\s*transparent;/);
 });
 
 test('compact reply indicator is inline icon plus count so it does not expand message spacing', () => {

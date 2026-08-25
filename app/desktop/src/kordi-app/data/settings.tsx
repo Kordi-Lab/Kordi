@@ -18,7 +18,8 @@ export type SettingsControl =
   | { type: 'select'; iconGlyph?: string }
   | { type: 'toggle'; enabled: boolean }
   | { type: 'action'; actionLabel?: string }
-  | { type: 'theme' };
+  | { type: 'theme' }
+  | { type: 'chat-theme' };
 
 export type SettingsItem = {
   label: string;
@@ -57,9 +58,15 @@ export const settingsSections: SettingsSection[] = [
     title: 'Appearance',
     items: [
       {
-        label: 'Theme',
-        value: 'Obsidian',
+        label: 'App appearance',
+        value: 'System',
         control: { type: 'theme' },
+      },
+      {
+        label: 'Chat theme',
+        value: 'Quiet Signal',
+        hint: 'Changes conversation backgrounds and message colors on this Mac.',
+        control: { type: 'chat-theme' },
       },
     ],
   },

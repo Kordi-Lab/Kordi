@@ -1,0 +1,170 @@
+body[data-kordi-chat-theme="quiet"] .kordi-app,
+.app-chat-theme-preview[data-kordi-chat-theme="quiet"] {
+  --app-chat-bubble-user-bg: #2D425B;
+  --app-chat-bubble-user-text: #F5F8FC;
+  --app-chat-bubble-peer-bg: #20242C;
+  --app-chat-bubble-peer-text: #F8FAFC;
+  --app-chat-bubble-peer-border: #2A2E37;
+  --app-chat-bubble-agent-bg: #262238;
+  --app-chat-bubble-agent-text: #F8FAFC;
+  --app-chat-mention-own: #DCEBFA;
+  --app-chat-mention-peer: #60A5FA;
+  --app-chat-meta-own: rgb(245 248 252 / 0.88);
+  --app-chat-meta-peer: rgb(248 250 252 / 0.68);
+  --app-chat-accent: #60A5FA;
+  --app-chat-accent-text: #08111F;
+  --app-chat-wallpaper:
+    radial-gradient(circle at 1px 1px, rgb(96 165 250 / 0.055) 1px, transparent 1.2px),
+    #0F1115;
+  --app-chat-wallpaper-size: 18px 18px, auto;
+}
+
+body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="quiet"] {
+  --app-chat-bubble-user-bg: #E2EBF5;
+  --app-chat-bubble-user-text: #1F3145;
+  --app-chat-bubble-peer-bg: #FFFFFF;
+  --app-chat-bubble-peer-text: #111827;
+  --app-chat-bubble-peer-border: #D7DCE3;
+  --app-chat-bubble-agent-bg: #EEEAF8;
+  --app-chat-bubble-agent-text: #221D30;
+  --app-chat-mention-own: #3B6394;
+  --app-chat-mention-peer: #2563EB;
+  --app-chat-meta-own: rgb(31 49 69 / 0.88);
+  --app-chat-meta-peer: rgb(17 24 39 / 0.68);
+  --app-chat-accent: #2563EB;
+  --app-chat-accent-text: #FFFFFF;
+  --app-chat-wallpaper:
+    radial-gradient(circle at 1px 1px, rgb(37 99 235 / 0.045) 1px, transparent 1.2px),
+    #F4F5F7;
+}
+
+body[data-kordi-chat-theme="midnight"] .kordi-app,
+.app-chat-theme-preview[data-kordi-chat-theme="midnight"] {
+  --app-chat-bubble-user-bg: #6554A2;
+  --app-chat-bubble-user-text: #FFFFFF;
+  --app-chat-bubble-peer-bg: #242032;
+  --app-chat-bubble-peer-text: #F8F6FC;
+  --app-chat-bubble-peer-border: #302B3E;
+  --app-chat-bubble-agent-bg: #2A2340;
+  --app-chat-bubble-agent-text: #F8F6FC;
+  --app-chat-mention-own: #F2ECFF;
+  --app-chat-mention-peer: #AFA3E9;
+  --app-chat-meta-own: rgb(255 255 255 / 0.88);
+  --app-chat-meta-peer: rgb(248 246 252 / 0.68);
+  --app-chat-accent: #AFA3E9;
+  --app-chat-accent-text: #151020;
+  --app-chat-wallpaper:
+    radial-gradient(circle at 12% 18%, rgb(175 163 233 / 0.16) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 78% 36%, rgb(132 122 196 / 0.15) 0 1.2px, transparent 1.6px),
+    radial-gradient(circle at 42% 82%, rgb(175 163 233 / 0.11) 0 1px, transparent 1.5px),
+    #100F18;
+  --app-chat-wallpaper-size: 84px 84px, 108px 108px, 96px 96px, auto;
+}
+
+body[data-kordi-chat-theme="midnight"] .kordi-app.theme-light,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="midnight"] {
+  --app-chat-bubble-user-bg: #6652A3;
+  --app-chat-bubble-user-text: #FFFFFF;
+  --app-chat-bubble-peer-bg: #FCFAFF;
+  --app-chat-bubble-peer-text: #221D30;
+  --app-chat-bubble-peer-border: #D3CCDF;
+  --app-chat-bubble-agent-bg: #E8E0F4;
+  --app-chat-bubble-agent-text: #221D30;
+  --app-chat-mention-own: #F3EEFF;
+  --app-chat-mention-peer: #5D4A9D;
+  --app-chat-meta-own: rgb(255 255 255 / 0.88);
+  --app-chat-meta-peer: rgb(34 29 48 / 0.68);
+  --app-chat-accent: #6D5CB2;
+  --app-chat-accent-text: #FFFFFF;
+  --app-chat-wallpaper:
+    radial-gradient(circle at 12% 18%, rgb(109 92 178 / 0.11) 0 1px, transparent 1.4px),
+    radial-gradient(circle at 78% 36%, rgb(132 122 196 / 0.09) 0 1.2px, transparent 1.6px),
+    radial-gradient(circle at 42% 82%, rgb(109 92 178 / 0.08) 0 1px, transparent 1.5px),
+    #F1EFF8;
+}
+
+body[data-kordi-chat-theme="sand"] .kordi-app,
+.app-chat-theme-preview[data-kordi-chat-theme="sand"] {
+  --app-chat-bubble-user-bg: #9A5734;
+  --app-chat-bubble-user-text: #FFFFFF;
+  --app-chat-bubble-peer-bg: #2A221C;
+  --app-chat-bubble-peer-text: #FBF6EF;
+  --app-chat-bubble-peer-border: #3A3028;
+  --app-chat-bubble-agent-bg: #2D2533;
+  --app-chat-bubble-agent-text: #FBF6EF;
+  --app-chat-mention-own: #FFF8F2;
+  --app-chat-mention-peer: #DE9968;
+  --app-chat-meta-own: rgb(255 255 255 / 0.88);
+  --app-chat-meta-peer: rgb(251 246 239 / 0.68);
+  --app-chat-accent: #DE9968;
+  --app-chat-accent-text: #23150D;
+  --app-chat-wallpaper:
+    radial-gradient(circle at 4px 4px, rgb(222 153 104 / 0.09) 0 1px, transparent 1.2px),
+    radial-gradient(circle at 12px 12px, rgb(183 168 154 / 0.06) 0 1px, transparent 1.2px),
+    #181411;
+  --app-chat-wallpaper-size: 16px 16px, 16px 16px, auto;
+}
+
+body[data-kordi-chat-theme="sand"] .kordi-app.theme-light,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="sand"] {
+  --app-chat-bubble-user-bg: #9D572F;
+  --app-chat-bubble-user-text: #FFFFFF;
+  --app-chat-bubble-peer-bg: #FFF9F0;
+  --app-chat-bubble-peer-text: #2D2118;
+  --app-chat-bubble-peer-border: #D9CBB8;
+  --app-chat-bubble-agent-bg: #ECE6F3;
+  --app-chat-bubble-agent-text: #2D2118;
+  --app-chat-mention-own: #FFF8F2;
+  --app-chat-mention-peer: #94502D;
+  --app-chat-meta-own: rgb(255 255 255 / 0.88);
+  --app-chat-meta-peer: rgb(45 33 24 / 0.68);
+  --app-chat-accent: #A75C33;
+  --app-chat-accent-text: #FFFFFF;
+  --app-chat-wallpaper:
+    radial-gradient(circle at 4px 4px, rgb(157 87 47 / 0.065) 0 1px, transparent 1.2px),
+    radial-gradient(circle at 12px 12px, rgb(117 101 86 / 0.045) 0 1px, transparent 1.2px),
+    #F2EBDD;
+}
+
+body[data-kordi-chat-theme="ocean"] .kordi-app,
+.app-chat-theme-preview[data-kordi-chat-theme="ocean"] {
+  --app-chat-bubble-user-bg: #2D6872;
+  --app-chat-bubble-user-text: #FFFFFF;
+  --app-chat-bubble-peer-bg: #1B2D30;
+  --app-chat-bubble-peer-text: #F3FAFA;
+  --app-chat-bubble-peer-border: #294044;
+  --app-chat-bubble-agent-bg: #222B3B;
+  --app-chat-bubble-agent-text: #F3FAFA;
+  --app-chat-mention-own: #ECFEFF;
+  --app-chat-mention-peer: #68C7CA;
+  --app-chat-meta-own: rgb(255 255 255 / 0.88);
+  --app-chat-meta-peer: rgb(243 250 250 / 0.68);
+  --app-chat-accent: #68C7CA;
+  --app-chat-accent-text: #0A2022;
+  --app-chat-wallpaper:
+    radial-gradient(ellipse at 0% 100%, transparent 0 36px, rgb(104 199 202 / 0.07) 37px 38px, transparent 39px 62px, rgb(104 199 202 / 0.04) 63px 64px, transparent 65px),
+    #0D1719;
+  --app-chat-wallpaper-size: 108px 108px, auto;
+}
+
+body[data-kordi-chat-theme="ocean"] .kordi-app.theme-light,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="ocean"] {
+  --app-chat-bubble-user-bg: #2E6F7A;
+  --app-chat-bubble-user-text: #FFFFFF;
+  --app-chat-bubble-peer-bg: #F8FBFB;
+  --app-chat-bubble-peer-text: #17272A;
+  --app-chat-bubble-peer-border: #C8D8D7;
+  --app-chat-bubble-agent-bg: #E5E5F2;
+  --app-chat-bubble-agent-text: #17272A;
+  --app-chat-mention-own: #ECFEFF;
+  --app-chat-mention-peer: #1F6270;
+  --app-chat-meta-own: rgb(255 255 255 / 0.88);
+  --app-chat-meta-peer: rgb(23 39 42 / 0.68);
+  --app-chat-accent: #236979;
+  --app-chat-accent-text: #FFFFFF;
+  --app-chat-wallpaper:
+    radial-gradient(ellipse at 0% 100%, transparent 0 36px, rgb(35 105 121 / 0.04) 37px 38px, transparent 39px 62px, rgb(35 105 121 / 0.025) 63px 64px, transparent 65px),
+    #E8F0EF;
+  --app-chat-wallpaper-size: 108px 108px, auto;
+}

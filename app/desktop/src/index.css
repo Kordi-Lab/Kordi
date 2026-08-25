@@ -2,6 +2,7 @@
 
 @import './styles/base.css';
 @import './styles/theme-tokens.css';
+@import './styles/chat-theme-tokens.css';
 @import './styles/shell.css';
 @import './styles/shell-contacts.css';
 @import './styles/shell-navigation.css';

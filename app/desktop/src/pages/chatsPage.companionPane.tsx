@@ -46,7 +46,7 @@ export function CompanionPane({
       {destination === 'messages' ? (
         <div
           id="chat-companion-messages-panel"
-          className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          className="app-chat-theme-surface flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
           role="tabpanel"
           aria-labelledby="chat-companion-messages-tab"
           aria-busy={messagesLoading || undefined}

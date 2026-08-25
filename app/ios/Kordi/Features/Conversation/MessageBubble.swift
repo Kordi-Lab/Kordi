@@ -6,6 +6,8 @@ struct MessageBubble: View, Equatable {
     static let reactionChipVerticalLift: CGFloat = 14
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.kordiChatTheme) private var chatTheme
     let message: ChatMessage
     let mentionTargets: [ComposerMentionTarget]
     let showAuthor: Bool
@@ -70,7 +72,7 @@ struct MessageBubble: View, Equatable {
                 Button(action: onSelect) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.title3)
-                        .foregroundStyle(isSelected ? KordiTheme.signalBlue : Color.secondary)
+                        .foregroundStyle(isSelected ? chatTheme.accent : Color.secondary)
                         .frame(width: 44, height: 44)
                 }
                 .buttonStyle(.plain)
@@ -126,7 +128,7 @@ struct MessageBubble: View, Equatable {
                                     readByCount: message.readByCount
                                 )
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(bubbleSecondaryTextColor)
                                 .padding(.trailing, 8)
                                 .padding(.bottom, 2)
                                 .allowsHitTesting(false)
@@ -136,12 +138,12 @@ struct MessageBubble: View, Equatable {
                     .overlay {
                         if isHighlighted {
                             bubbleShape
-                                .fill(KordiTheme.signalBlue.opacity(0.10))
+                                .fill(chatTheme.accent.opacity(0.10))
                                 .allowsHitTesting(false)
                         }
                         bubbleShape
                             .stroke(
-                                isHighlighted ? KordiTheme.signalBlue : Color.clear,
+                                isHighlighted ? chatTheme.accent : Color.clear,
                                 lineWidth: isHighlighted ? 2 : 0
                             )
                             .allowsHitTesting(false)
@@ -293,6 +295,8 @@ struct MessageBubble: View, Equatable {
                     )
                     .padding(.vertical, message.voiceMessage == nil ? 8 : 6)
             }
+            .environment(\.colorScheme, bubbleContentColorScheme)
+            .foregroundStyle(bubbleTextColor)
             .background(bubbleColor, in: bubbleShape)
             .compositingGroup()
             .clipShape(bubbleShape)
@@ -319,7 +323,7 @@ struct MessageBubble: View, Equatable {
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(bubbleSecondaryTextColor)
             }
 
             if let source = visibleReplySource {
@@ -351,7 +355,7 @@ struct MessageBubble: View, Equatable {
                     mentionTargets: mentionTargets,
                     mentions: message.mentions
                 )
-                    .foregroundStyle(Color.primary)
+                    .foregroundStyle(bubbleTextColor)
             }
 
             if !message.attachments.isEmpty {
@@ -544,19 +548,19 @@ struct MessageBubble: View, Equatable {
         } label: {
             HStack(spacing: 8) {
                 Capsule()
-                    .fill(message.author == .me ? KordiTheme.signalBlue : KordiTheme.agentViolet)
+                    .fill(message.author == .me ? chatTheme.accent : KordiTheme.agentViolet)
                     .frame(width: 3)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(source.senderLabel)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(message.author == .me ? KordiTheme.signalBlue : KordiTheme.agentViolet)
+                        .foregroundStyle(message.author == .me ? chatTheme.accent : KordiTheme.agentViolet)
                     MarkdownMessageContent(
                         text: source.textPreview.nonEmpty ?? attachmentCountText(source.attachmentCount),
                         density: .compact,
                         mentionTargets: mentionTargets,
                         mentions: source.mentions ?? []
                     )
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(bubbleSecondaryTextColor)
                         .lineLimit(2)
                 }
                 Spacer(minLength: 0)
@@ -569,10 +573,31 @@ struct MessageBubble: View, Equatable {
 
     private var bubbleColor: Color {
         switch message.author {
-        case .me: KordiTheme.ownBubble
-        case .agent: KordiTheme.agentWash
-        case .person: Color(uiColor: .secondarySystemGroupedBackground)
+        case .me: chatTheme.ownBubble
+        case .agent: chatTheme.agentBubble
+        case .person: chatTheme.peerBubble
         }
+    }
+
+    private var bubbleTextColor: Color {
+        message.author == .me ? chatTheme.ownText : chatTheme.peerText
+    }
+
+    private var bubbleSecondaryTextColor: Color {
+        bubbleTextColor.opacity(
+            message.author == .me
+                ? KordiChatTheme.ownMetadataOpacity
+                : KordiChatTheme.otherMetadataOpacity
+        )
+    }
+
+    private var bubbleContentColorScheme: ColorScheme {
+        if colorScheme == .light,
+           message.author == .me,
+           chatTheme.usesLightOwnTextInLightAppearance {
+            return .dark
+        }
+        return colorScheme
     }
 
     private var accessibilityLabel: String {

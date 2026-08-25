@@ -78,6 +78,7 @@ enum ConversationInitialPlaceholderCatalog {
 
 struct ConversationInitialLoadingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.kordiChatTheme) private var chatTheme
 
     private let placeholders: [ConversationInitialPlaceholder]
 
@@ -87,7 +88,7 @@ struct ConversationInitialLoadingView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            Color(uiColor: .systemGroupedBackground)
+            KordiChatWallpaper(theme: chatTheme)
             if !placeholders.isEmpty {
                 TimelineView(
                     .animation(
@@ -120,6 +121,7 @@ struct ConversationInitialLoadingView: View {
 }
 
 private struct ConversationInitialPlaceholderRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let placeholder: ConversationInitialPlaceholder
     let phase: CGFloat
 
@@ -264,9 +266,9 @@ private struct ConversationInitialPlaceholderRow: View {
 
     private var bubbleColor: Color {
         switch placeholder.author {
-        case .me: KordiTheme.ownBubble
-        case .agent: KordiTheme.agentWash
-        case .person: Color(uiColor: .secondarySystemGroupedBackground)
+        case .me: chatTheme.ownBubble
+        case .agent: chatTheme.agentBubble
+        case .person: chatTheme.peerBubble
         }
     }
 
