@@ -286,7 +286,7 @@ function AttachmentImageCard({
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
   const showImage = Boolean(previewUrl);
   const singleImage = totalCount <= 1;
-  const intrinsicSingleImage = singleImage && showImage;
+  const intrinsicSingleImage = singleImage && showImage && imageLoaded;
   const showOriginalAction = !decorative && showImage && isLargeAttachment(attachment);
 
   useEffect(() => {

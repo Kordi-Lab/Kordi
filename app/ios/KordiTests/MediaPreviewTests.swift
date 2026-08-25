@@ -115,6 +115,43 @@ final class MediaPreviewTests: XCTestCase {
 
         selected = PhotoLibrarySelection.toggling("second", in: selected)
         XCTAssertEqual(selected, ["first"])
+        XCTAssertEqual(PhotoLibrarySelection.editingID(in: ["first", "second"]), "second")
+        XCTAssertNil(PhotoLibrarySelection.editingID(in: []))
+    }
+
+    func testPhotoEditorRotationSwapsImageDimensionsAndKeepsDrawnOutput() throws {
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 12, height: 8)).image { context in
+            UIColor.white.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 12, height: 8))
+        }
+        let drawn = PhotoEditorRenderer.applying(
+            [PhotoEditorStroke(points: [CGPoint(x: 0.1, y: 0.2), CGPoint(x: 0.9, y: 0.8)])],
+            to: source
+        )
+        let rotated = PhotoEditorRenderer.rotatedClockwise(drawn)
+
+        XCTAssertEqual(rotated.size, CGSize(width: 8, height: 12))
+        XCTAssertNotNil(rotated.jpegData(compressionQuality: 0.8))
+    }
+
+    func testPhotoEditorCropStaysInBoundsAndProducesTheSelectedDimensions() {
+        let resized = PhotoEditorCrop.resized(
+            .init(x: 0, y: 0, width: 1, height: 1),
+            corner: .bottomTrailing,
+            translation: CGSize(width: -40, height: -20),
+            canvasSize: CGSize(width: 100, height: 100)
+        )
+        XCTAssertEqual(resized, CGRect(x: 0, y: 0, width: 0.6, height: 0.8))
+
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 100, height: 80)).image { context in
+            UIColor.white.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 100, height: 80))
+        }
+        let cropped = PhotoEditorRenderer.cropped(
+            source,
+            to: CGRect(x: 0.1, y: 0.25, width: 0.6, height: 0.5)
+        )
+        XCTAssertEqual(cropped.size, CGSize(width: 60, height: 40))
     }
 
     func testSeparatePhotoPreparationCanEnterChatOnePhotoAtATime() {

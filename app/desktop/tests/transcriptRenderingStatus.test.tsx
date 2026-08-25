@@ -426,7 +426,7 @@ test('image-only human messages use compact frosted attachment padding', () => {
   assert.doesNotMatch(markup, /px-4 py-2\.5/);
 });
 
-test('image-only messages align their outside edge with the matching text bubble tail', () => {
+test('image-only messages align their outside edge with the text bubble body', () => {
   const peerMessage: Message = {
     role: 'person',
     sender: 'Shu Yang',
@@ -445,8 +445,7 @@ test('image-only messages align their outside edge with the matching text bubble
   const stylesheet = readFileSync(new URL('../src/styles/shell-bubbles.css', import.meta.url), 'utf8');
 
   assert.match(markup, /data-message-media-side="peer"/);
-  assert.match(stylesheet, /\[data-message-media-side="own"\]\s*{[^}]*translateX\(var\(--app-message-media-edge-offset\)\)/s);
-  assert.match(stylesheet, /\[data-message-media-side="peer"\]\s*{[^}]*translateX\(calc\(-1 \* var\(--app-message-media-edge-offset\)\)\)/s);
+  assert.doesNotMatch(stylesheet, /app-message-media-edge-offset|\[data-message-media-side[^}]*translateX/);
   assert.match(stylesheet, /\[data-message-media-side="own"\] \.app-attachment-image-collage\s*{[^}]*align-self:\s*flex-end;/s);
   assert.match(stylesheet, /\[data-message-media-side="peer"\] \.app-attachment-image-collage\s*{[^}]*align-self:\s*flex-start;/s);
 });

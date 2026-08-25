@@ -10,6 +10,7 @@ import type {
 import type { CloudAccount, CloudSessionPin } from '@/features/cloud/authClient';
 import type {
   AttachmentItem,
+  AttachmentItemUpdate,
   ComposerConfigTargetOverride,
   SaveDesktopAttachmentOptions,
 } from '@/features/chat/composerController.types';
@@ -127,7 +128,7 @@ export type ChatsPageComposer = {
   removeChatComposerAttachment: (id: string) => void;
   updateChatComposerAttachment: (
     id: string,
-    update: Pick<ChatAttachment, 'subtype' | 'altText' | 'memeRightsConfirmed'>,
+    update: AttachmentItemUpdate,
   ) => void;
   chatComposerText: string;
   updateChatComposerDraft: (
