@@ -400,6 +400,29 @@ enum PreviewData {
         messages.append(contentsOf: [
             ChatMessage(id: "m3", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "The rollout notes are ready.", createdAt: now.addingTimeInterval(-3_600), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
             ChatMessage(id: "m4", conversationId: conversationId, author: .me, authorName: "You", text: "Great — I’ll review them after lunch.", createdAt: now.addingTimeInterval(-3_400), deliveryState: .read, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(
+                id: "m4-voice",
+                conversationId: conversationId,
+                author: .me,
+                authorName: "You",
+                text: "I reviewed the latest numbers. The release is ready for the final device check.",
+                createdAt: now.addingTimeInterval(-180),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil,
+                messageKind: "voice",
+                voiceMessage: VoiceMessage(
+                    mediaId: "preview-voice-message",
+                    mimeType: "audio/mp4",
+                    durationMs: 9_000,
+                    waveformSamples: [
+                        0.16, 0.28, 0.48, 0.72, 0.42, 0.86, 0.36, 0.64,
+                        0.24, 0.56, 0.78, 0.34, 0.68, 0.46, 0.82, 0.26,
+                        0.58, 0.38, 0.74, 0.44, 0.66, 0.32, 0.54, 0.22,
+                    ],
+                    transcript: "I reviewed the latest numbers. The release is ready for the final device check."
+                )
+            ),
             ChatMessage(id: "m5", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "Can you send the latest numbers?", createdAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil, reactionTargetMessageId: "018f47c2-9f4c-7a5e-b001-000000000005"),
         ])
         messages.append(contentsOf: previewMediaMessages(now: now))

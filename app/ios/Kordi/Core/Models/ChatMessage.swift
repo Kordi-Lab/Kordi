@@ -378,6 +378,31 @@ struct ChatAttachment: Identifiable, Codable, Hashable {
     }
 }
 
+struct VoiceMessage: Codable, Hashable {
+    let mediaId: String
+    let mimeType: String
+    let durationMs: Int
+    let waveformSamples: [Double]
+    let transcript: String
+}
+
+struct PendingVoiceMessage: Hashable, @unchecked Sendable {
+    let attachment: PendingAttachment
+    let durationMs: Int
+    let waveformSamples: [Double]
+    let transcript: String
+
+    func voiceMessage(mediaId: String) -> VoiceMessage {
+        VoiceMessage(
+            mediaId: mediaId,
+            mimeType: attachment.mimeType ?? "audio/mp4",
+            durationMs: durationMs,
+            waveformSamples: waveformSamples,
+            transcript: transcript
+        )
+    }
+}
+
 struct MessageActionSource: Codable, Hashable, Identifiable {
     let sourceSessionId: String
     let sourceMessageId: String
@@ -881,6 +906,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var reactionTargetMessageId: String?
     var messageAction: MessageActionMetadata?
     var messageKind: String?
+    var voiceMessage: VoiceMessage?
     var agentExecution: AgentExecutionSnapshot?
     var backgroundAgentSessions: [BackgroundAgentSession]
     var mentions: [MessageMention]
@@ -934,6 +960,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         messageAction: MessageActionMetadata? = nil,
         mentions: [MessageMention] = [],
         messageKind: String? = nil,
+        voiceMessage: VoiceMessage? = nil,
         agentExecution: AgentExecutionSnapshot? = nil,
         backgroundAgentSessions: [BackgroundAgentSession] = [],
         reactions: [MessageReaction] = []
@@ -956,6 +983,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.reactionTargetMessageId = reactionTargetMessageId
         self.messageAction = messageAction
         self.messageKind = messageKind
+        self.voiceMessage = voiceMessage
         self.agentExecution = agentExecution
         self.backgroundAgentSessions = backgroundAgentSessions
         self.mentions = mentions
@@ -997,7 +1025,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, clientMessageId, conversationId, conversationSequence, author, authorName, text, createdAt, deliveryState, errorMessage
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, reactionTargetMessageId, messageAction
-        case messageKind
+        case messageKind, voiceMessage
         case agentExecution
         case backgroundAgentSessions
         case mentions
@@ -1027,6 +1055,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         )
         messageAction = try container.decodeIfPresent(MessageActionMetadata.self, forKey: .messageAction)
         messageKind = try container.decodeIfPresent(String.self, forKey: .messageKind)
+        voiceMessage = try container.decodeIfPresent(VoiceMessage.self, forKey: .voiceMessage)
         agentExecution = try container.decodeIfPresent(
             AgentExecutionSnapshot.self,
             forKey: .agentExecution

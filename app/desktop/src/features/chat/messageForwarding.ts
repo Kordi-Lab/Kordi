@@ -46,6 +46,7 @@ export function createForwardedMessageDraft({
   return {
     text,
     attachments: source.attachments.map((attachment) => ({ ...attachment })),
+    voiceMessage: source.voiceMessage ?? null,
     forwardedFrom: messageAction.source,
     messageAction,
   };

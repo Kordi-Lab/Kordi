@@ -9,10 +9,10 @@ import type {
   DesktopCollaborationSessionParticipant,
 } from '@/kordi-app/types';
 import { groupMentionTargetIdentityId, normalizedMessageMentions } from '@/features/chat/messageMentions';
-import type { MessageActionMetadata, MessageMention } from '@/kordi-app/types/message';
+import type { MessageActionMetadata, MessageMention, MessageVoiceDraft } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
-import { cloudGroupMessageRuntimeFields, integerMilliseconds } from './cloudGroupDecoding';
+import { cloudGroupMessageRuntimeFields, cloudVoiceAttachmentReference, integerMilliseconds } from './cloudGroupDecoding';
 import { cloudMessageActionFromRecord } from './cloudMessageActionCodec';
 import { cloudMessageAttachmentsFromRecord } from './cloudGroupAttachmentCodec';
 import { cloudGroupMessageIsUnreadForAccount } from './cloudGroupUnreadPolicy';
@@ -22,8 +22,7 @@ import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTarg
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import { normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
-const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:';
-const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
+const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:'; const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
 export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update' | 'session-fork';
 
@@ -98,7 +97,7 @@ export type CloudGroupControlEnvelope = {
     targetCloudAgentOwnerAccountId?: string | null;
     targetCloudAgentOwnerName?: string | null;
     agentMentionDepth?: number | null;
-    agentRuntimeRoute?: DesktopChatMessageRoute | null;
+    agentRuntimeRoute?: DesktopChatMessageRoute | null; voiceMessage?: (MessageVoiceDraft & { mediaId?: string | null }) | null;
   } & ReturnType<typeof cloudGroupMessageRuntimeFields>) | null;
 };
 type CloudGroupAttachmentReferenceInput = Pick<
@@ -136,8 +135,8 @@ export function cloudGroupControlWithAttachmentReferences(
   return encodeCloudGroupControl({
     ...envelope,
     message: {
-      ...envelope.message,
-      attachments: cloudGroupAttachmentReferences(attachments),
+      ...envelope.message, attachments: envelope.message.voiceMessage ? undefined : cloudGroupAttachmentReferences(attachments),
+      ...cloudVoiceAttachmentReference(envelope.message.voiceMessage, attachments[0]),
     },
   });
 }

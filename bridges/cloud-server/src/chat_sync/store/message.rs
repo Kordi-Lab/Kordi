@@ -103,6 +103,28 @@ pub(crate) async fn send_message_in_transaction(
                 "one or more attachments are unavailable",
             ));
         }
+        if message_kind == "voice" {
+            let voice_attachment: Option<(Option<String>,)> = query_as(
+                "SELECT content_type FROM cloud_attachments \
+                 WHERE attachment_id = $1 AND owner_account_id = $2 AND finalized_at IS NOT NULL",
+            )
+            .bind(&attachment_ids[0])
+            .bind(account_id)
+            .fetch_optional(&mut **transaction)
+            .await?;
+            let content_type = voice_attachment
+                .and_then(|row| row.0)
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if !matches!(
+                content_type.as_str(),
+                "audio/mp4" | "audio/m4a" | "audio/x-m4a" | "audio/aac"
+            ) {
+                return Err(StoreError::InvalidInput(
+                    "voice message media type is invalid",
+                ));
+            }
+        }
     }
     validate_meme_attachment_bytes(transaction, account_id, &meme_attachments).await?;
 

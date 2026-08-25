@@ -166,6 +166,7 @@ export class ChatSyncConversationClient {
               body,
               attachments,
               canonicalHistory,
+              options.voiceMessage,
             ),
             reply_to_message_id: null,
             attachment_ids: attachments.map((attachment) => attachment.attachmentId),

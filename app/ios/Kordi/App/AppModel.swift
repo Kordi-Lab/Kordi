@@ -222,6 +222,7 @@ final class AppModel: ObservableObject {
     private var pendingProviderAuthBindingsBySessionID: [String: String] = [:]
     private var providerAuthenticationSyncTask: Task<Void, Never>?
     private var pendingAttachmentDraftsByMessageId: [String: [PendingAttachment]] = [:]
+    private var pendingVoiceDraftsByMessageId: [String: PendingVoiceMessage] = [:]
     private var pendingReplyByMessageId: [String: MessageActionSource] = [:]
     private var pendingMessageActionByMessageId: [String: MessageActionMetadata] = [:]
     private var pendingMentionByMessageId: [String: ComposerMentionTarget] = [:]
@@ -1282,6 +1283,8 @@ final class AppModel: ObservableObject {
     func send(
         _ rawText: String,
         attachments: [PendingAttachment] = [],
+        voiceMessage: PendingVoiceMessage? = nil,
+        resolvedVoiceMessage: Task<PendingVoiceMessage?, Never>? = nil,
         replyingTo replySource: MessageActionSource? = nil,
         mentioning mentionTarget: ComposerMentionTarget? = nil,
         messageAction actionOverride: MessageActionMetadata? = nil,
@@ -1289,9 +1292,10 @@ final class AppModel: ObservableObject {
         to conversation: ConversationSummary,
         retrying retryMessage: ChatMessage? = nil
     ) async {
-        let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard (!text.isEmpty || !attachments.isEmpty), let token, let account else { return }
-        if let error = MemeAttachmentPolicy.draftError(for: attachments) {
+        var text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let outgoingAttachments = voiceMessage.map { [$0.attachment] } ?? attachments
+        guard (!text.isEmpty || !outgoingAttachments.isEmpty), let token, let account else { return }
+        if let error = MemeAttachmentPolicy.draftError(for: outgoingAttachments) {
             errorMessage = error
             return
         }
@@ -1306,7 +1310,7 @@ final class AppModel: ObservableObject {
             || routesToSupportAgent
         let isNewAgentSession = conversation.kind == .agent
             && !conversations.contains { $0.sessionId == conversation.sessionId }
-        let initialAgentSessionTitle = isNewAgentSession
+        var initialAgentSessionTitle = isNewAgentSession
             ? initialSessionTitle(text: text, attachmentCount: attachments.count)
             : nil
         let inheritedRuntimeRoute = isNewAgentSession
@@ -1338,12 +1342,15 @@ final class AppModel: ObservableObject {
             deliveryState: .sending,
             errorMessage: nil,
             requestMessageId: nil,
-            attachments: attachments.map(\.optimisticAttachment),
+            attachments: voiceMessage == nil ? outgoingAttachments.map(\.optimisticAttachment) : [],
             replyToMessageId: messageAction?.replyToMessageId,
             messageAction: messageAction,
-            mentions: mentions
+            mentions: mentions,
+            messageKind: voiceMessage == nil ? nil : "voice",
+            voiceMessage: voiceMessage?.voiceMessage(mediaId: "pending:\(voiceMessage?.attachment.id ?? localId)")
         )
-        if !attachments.isEmpty { pendingAttachmentDraftsByMessageId[localId] = attachments }
+        if !outgoingAttachments.isEmpty { pendingAttachmentDraftsByMessageId[localId] = outgoingAttachments }
+        if let voiceMessage { pendingVoiceDraftsByMessageId[localId] = voiceMessage }
         if let replySource { pendingReplyByMessageId[localId] = replySource }
         if let messageAction { pendingMessageActionByMessageId[localId] = messageAction }
         if let mentionTarget { pendingMentionByMessageId[localId] = mentionTarget }
@@ -1368,12 +1375,27 @@ final class AppModel: ObservableObject {
         cacheCurrentMessages(conversation.id)
         updateConversationPreview(
             conversation.id,
-            text: text.nonEmpty ?? attachmentSummary(attachments.count),
+            text: voiceMessage == nil ? text.nonEmpty ?? attachmentSummary(outgoingAttachments.count) : "Voice message",
             date: optimistic.createdAt
         )
 
         do {
-            let uploadedAttachments = try await uploadAttachments(attachments, token: token)
+            async let attachmentUpload = uploadAttachments(outgoingAttachments, token: token)
+            let resolvedVoiceMessage = await resolvedVoiceMessage?.value ?? voiceMessage
+            if let resolvedVoiceMessage {
+                pendingVoiceDraftsByMessageId[localId] = resolvedVoiceMessage
+                text = resolvedVoiceMessage.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                if isNewAgentSession {
+                    initialAgentSessionTitle = initialSessionTitle(
+                        text: text,
+                        attachmentCount: outgoingAttachments.count
+                    )
+                }
+            }
+            let uploadedAttachments = try await attachmentUpload
+            let uploadedVoiceMessage = resolvedVoiceMessage.flatMap { draft in
+                uploadedAttachments.first.map { draft.voiceMessage(mediaId: $0.attachmentId) }
+            }
             if let inheritedRouteNotice, let inheritedRuntimeRoute,
                await publishAgentModelChangeNotice(
                  inheritedRouteNotice,
@@ -1394,6 +1416,7 @@ final class AppModel: ObservableObject {
                     token: token,
                     account: account,
                     attachments: uploadedAttachments,
+                    voiceMessage: uploadedVoiceMessage,
                     messageAction: messageAction,
                     mentionTarget: mentionTarget,
                     mentions: mentions
@@ -1411,10 +1434,12 @@ final class AppModel: ObservableObject {
                     errorMessage: nil,
                     requestMessageId: nil,
                     readByCount: 0,
-                    attachments: uploadedAttachments.map(\.chatAttachment),
+                    attachments: uploadedVoiceMessage == nil ? uploadedAttachments.map(\.chatAttachment) : [],
                     replyToMessageId: messageAction?.replyToMessageId,
                     messageAction: messageAction,
-                    mentions: mentions
+                    mentions: mentions,
+                    messageKind: uploadedVoiceMessage == nil ? nil : "voice",
+                    voiceMessage: uploadedVoiceMessage
                 ))
                 clearPendingSendMetadata(localId)
                 if mentionTarget?.kind == .agent {
@@ -1459,6 +1484,8 @@ final class AppModel: ObservableObject {
                 sessionId: conversation.sessionId,
                 clientMessageId: clientMessageId,
                 attachments: uploadedAttachments,
+                messageKind: uploadedVoiceMessage == nil ? "text" : "voice",
+                voiceMessage: uploadedVoiceMessage,
                 sharedTitle: initialAgentSessionTitle
             )
             if let initialAgentSessionTitle {
@@ -1520,6 +1547,7 @@ final class AppModel: ObservableObject {
 
     func retry(_ message: ChatMessage, in conversation: ConversationSummary) async {
         let attachments = pendingAttachmentDraftsByMessageId[message.id] ?? []
+        let voiceMessage = pendingVoiceDraftsByMessageId[message.id]
         let reply = pendingReplyByMessageId[message.id]
         let messageAction = pendingMessageActionByMessageId[message.id]
         let mention = pendingMentionByMessageId[message.id]
@@ -1528,6 +1556,7 @@ final class AppModel: ObservableObject {
         await send(
             message.text,
             attachments: attachments,
+            voiceMessage: voiceMessage,
             replyingTo: reply,
             mentioning: mention,
             messageAction: messageAction,
@@ -1547,6 +1576,19 @@ final class AppModel: ObservableObject {
         let cleanCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
         for (index, message) in sourceMessages.enumerated() {
             let source = message.forwardSource(sessionId: sourceConversation.sessionId)
+            if let voiceMessage = message.voiceMessage {
+                guard let pendingVoice = await forwardingVoiceMessage(voiceMessage) else { return false }
+                await send(
+                    cleanCaption.nonEmpty ?? voiceMessage.transcript,
+                    voiceMessage: pendingVoice,
+                    messageAction: .forward(source),
+                    to: destination
+                )
+                guard messagesByConversation[destination.id]?.last?.deliveryState != .failed else {
+                    return false
+                }
+                continue
+            }
             let fallback = message.text.nonEmpty ?? attachmentSummary(message.attachments.count)
             let text = sourceMessages.count == 1 && index == 0
                 ? cleanCaption.nonEmpty ?? fallback
@@ -1565,6 +1607,29 @@ final class AppModel: ObservableObject {
             }
         }
         return true
+    }
+
+    private func forwardingVoiceMessage(_ voiceMessage: VoiceMessage) async -> PendingVoiceMessage? {
+        guard let url = await prepareVoiceMessageForPresentation(voiceMessage) else { return nil }
+        do {
+            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            return PendingVoiceMessage(
+                attachment: PendingAttachment(
+                    id: UUID().uuidString.lowercased(),
+                    name: "Voice message.m4a",
+                    kind: .file,
+                    mimeType: voiceMessage.mimeType,
+                    data: data,
+                    previewURL: nil
+                ),
+                durationMs: voiceMessage.durationMs,
+                waveformSamples: voiceMessage.waveformSamples,
+                transcript: voiceMessage.transcript
+            )
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not prepare this voice message for forwarding.")
+            return nil
+        }
     }
 
     private func forwardingAttachments(_ attachments: [ChatAttachment]) async -> [PendingAttachment]? {
@@ -2283,6 +2348,17 @@ final class AppModel: ObservableObject {
 
     func prepareAttachmentForPresentation(_ attachment: ChatAttachment) async -> URL? {
         await prepareAttachment(attachment, allowsPreviewFallback: false)
+    }
+
+    func prepareVoiceMessageForPresentation(_ voiceMessage: VoiceMessage) async -> URL? {
+        await prepareAttachmentForPresentation(ChatAttachment(
+            attachmentId: voiceMessage.mediaId,
+            name: "Voice message.m4a",
+            kind: .file,
+            mimeType: voiceMessage.mimeType,
+            sizeBytes: nil,
+            previewURL: nil
+        ))
     }
 
     func prepareAttachmentForSharing(_ attachment: ChatAttachment) async -> URL? {
@@ -3490,6 +3566,7 @@ final class AppModel: ObservableObject {
 
     private func clearPendingSendMetadata(_ messageId: String) {
         pendingAttachmentDraftsByMessageId[messageId] = nil
+        pendingVoiceDraftsByMessageId[messageId] = nil
         pendingReplyByMessageId[messageId] = nil
         pendingMessageActionByMessageId[messageId] = nil
         pendingMentionByMessageId[messageId] = nil
@@ -3710,6 +3787,7 @@ final class AppModel: ObservableObject {
         token: String,
         account: CloudAccount,
         attachments: [CloudMessageAttachment],
+        voiceMessage: VoiceMessage?,
         messageAction: MessageActionMetadata?,
         mentionTarget: ComposerMentionTarget?,
         mentions: [MessageMention]
@@ -3745,7 +3823,9 @@ final class AppModel: ObservableObject {
                 targetCloudAgentName: mentionTarget?.kind == .agent ? mentionTarget?.displayName : nil,
                 targetCloudAgentOwnerAccountId: mentionTarget?.kind == .agent ? mentionTarget?.accountId : nil,
                 targetCloudAgentOwnerName: mentionTarget?.kind == .agent ? mentionTarget?.ownerName : nil,
-                agentRuntimeRoute: requestedRuntimeRoute(for: conversation)
+                agentRuntimeRoute: requestedRuntimeRoute(for: conversation),
+                messageKind: voiceMessage == nil ? "text" : "voice",
+                voiceMessage: voiceMessage
             )
         )
         let body = try CloudGroupMessageCodec.encode(envelope)
@@ -3756,6 +3836,8 @@ final class AppModel: ObservableObject {
             sessionId: conversation.sessionId,
             clientMessageId: localMessageId,
             attachments: attachments,
+            messageKind: voiceMessage == nil ? "text" : "voice",
+            voiceMessage: voiceMessage,
             conversationKind: "group",
             memberAccountIds: participants.map(\.accountId)
         )
@@ -3864,6 +3946,7 @@ final class AppModel: ObservableObject {
                 in: CloudMessageCodec.displayText(message.body)
             ),
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
+            voiceMessage: message.voiceMessage,
             agentExecution: ownerExecution,
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
             reactions: message.reactions
@@ -3959,11 +4042,15 @@ final class AppModel: ObservableObject {
                 requestMessageId: payload.requestId,
                 readByCount: delivery?.readByAccountIds.count,
                 readByAccountIds: delivery?.readByAccountIds ?? [],
-                attachments: (payload.attachments ?? wire.attachments).map(\.chatAttachment),
+                attachments: payload.voiceMessage == nil
+                    ? (payload.attachments ?? wire.attachments).map(\.chatAttachment)
+                    : [],
                 replyToMessageId: payload.replyToMessageId ?? payload.messageAction?.replyToMessageId,
                 reactionTargetMessageId: wire.messageId,
                 messageAction: payload.messageAction,
                 mentions: MessageMention.rebased(payload.mentions ?? [], in: payload.text),
+                messageKind: payload.messageKind,
+                voiceMessage: payload.voiceMessage ?? wire.voiceMessage,
                 backgroundAgentSessions: BackgroundAgentSession.fromTaskOperatorTools(
                     payload.structuredContent?.tools ?? []
                 ),
@@ -4796,6 +4883,7 @@ final class AppModel: ObservableObject {
                     sessionId: message.sessionId,
                     attachments: message.attachments,
                     messageKind: message.messageKind,
+                    voiceMessage: message.voiceMessage,
                     conversationId: message.conversationId,
                     conversationSequence: message.conversationSequence,
                     reactions: message.reactions

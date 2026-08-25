@@ -1,15 +1,12 @@
 import type {
-  CanonicalIdentity,
-  CanonicalSessionMessage,
-  CanonicalSessionState,
-  DesktopChatToolSnapshot,
-  Message,
-  MessageActionMetadata,
+  CanonicalIdentity, CanonicalSessionMessage, CanonicalSessionState,
+  DesktopChatToolSnapshot, Message, MessageActionMetadata,
 } from '@/kordi-app/types';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
+import { cloudVoiceMessageMetadataOnly } from '@/features/cloud/cloudVoiceMessage';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
 import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
@@ -480,6 +477,7 @@ export function mapCanonicalMessage(
   const messageAction = canonicalMessageActionWithRealSourceLabel(rawMessageAction, sourceHumanLabel, sourceAgentLabel);
   const sourceMessage = canonicalMessageActionSourceReference(messageAction);
   if (role === 'system' && !displayText.trim()) return null;
+  const voiceMessage = cloudVoiceMessageMetadataOnly(content.voiceMessage);
 
   return {
     id: message.id,
@@ -502,6 +500,8 @@ export function mapCanonicalMessage(
     time,
     timestampMs: message.createdAtMs,
     callActivity: canonicalCallActivity(message, content, isOwnMessage),
+    messageKind: voiceMessage ? 'voice' : undefined,
+    voiceMessage,
     detail: stringValue(content.detail),
     attachments: canonicalAttachments(content.attachments),
     mentions: canonicalMentions(content.mentions),

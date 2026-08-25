@@ -13,6 +13,7 @@ import type {
   CloudAccount,
   CloudAuthClient,
   CloudMessage,
+  SendCloudVoiceMessageInput,
 } from './authClient';
 import {
   resolveForwardAttachmentItems,
@@ -36,6 +37,7 @@ export type SendCloudCollaborationMessageOptions = {
   sharedTitle?: string | null;
   conversationKind?: 'ai' | 'direct' | 'group';
   memberAccountIds?: string[];
+  voiceMessage?: SendCloudVoiceMessageInput | null;
 };
 
 export function useCloudDirectMessaging({
@@ -98,6 +100,12 @@ export function useCloudDirectMessaging({
           attachments,
         })
       : [];
+    const voiceMessage = options.voiceMessage && uploadedAttachments[0]
+      ? {
+          ...options.voiceMessage,
+          mediaId: uploadedAttachments[0].attachmentId,
+        }
+      : null;
     const cloudSessionId = cloudSessionIdForCollaborationSend(
       account?.accountId,
       peerId,
@@ -112,6 +120,7 @@ export function useCloudDirectMessaging({
         attachments: uploadedAttachments,
         clientMessageId: options.clientMessageId,
         messageKind: options.messageKind,
+        voiceMessage,
         accountId: account?.accountId,
         sharedTitle: options.sharedTitle,
         conversationKind: options.conversationKind,

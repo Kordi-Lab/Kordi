@@ -301,9 +301,15 @@ export async function applyCloudGroupMessageControl({
         requestId: messageReplyToId,
         replyToMessageId: messageReplyToId,
         ...(agentDeliveryState === 'failed' ? { error: message.text || 'Message failed' } : {}),
-      } : (Object.keys(structuredContent).length > 0 || mappedAttachments.length > 0 || message.mentions?.length || message.messageAction) ? {
+      } : (Object.keys(structuredContent).length > 0 || mappedAttachments.length > 0 || message.voiceMessage?.mediaId || message.mentions?.length || message.messageAction) ? {
         ...structuredContent,
         ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
+        ...(message.voiceMessage?.mediaId ? {
+          voiceMessage: {
+            ...message.voiceMessage,
+            mediaId: message.voiceMessage.mediaId,
+          },
+        } : {}),
         ...(message.mentions?.length ? { mentions: message.mentions } : {}),
         ...(message.messageAction ? {
           messageAction: message.messageAction,

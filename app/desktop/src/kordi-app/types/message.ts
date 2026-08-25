@@ -163,6 +163,17 @@ export type MessageCallActivity = {
   durationSeconds?: number | null;
 };
 
+export type MessageVoice = {
+  mediaId: string;
+  mimeType: string;
+  durationMs: number;
+  waveformSamples: number[];
+  transcript: string;
+  localPath?: string | null;
+};
+
+export type MessageVoiceDraft = Omit<MessageVoice, 'mediaId'>;
+
 export type TranscriptLoadingPlaceholder = {
   kind: 'message' | 'link' | 'image' | 'agent';
   side: 'own' | 'peer';
@@ -210,6 +221,8 @@ export type Message = {
   /** Structured call history metadata rendered as a dedicated call item rather
    * than a generic system notice or ordinary message bubble. */
   callActivity?: MessageCallActivity;
+  messageKind?: string | null;
+  voiceMessage?: MessageVoice | null;
   detail?: string;
   statusChips?: string[];
   attachments?: MessageAttachment[];

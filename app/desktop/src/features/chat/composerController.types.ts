@@ -27,6 +27,7 @@ import type {
   QueuedDesktopChatMessage,
   Project,
 } from '@/kordi-app/types';
+import type { MessageVoiceDraft } from '@/kordi-app/types/message';
 
 export type ComposerSelection = { mode: string; model: string; thinking: string };
 export type ComposerSelectionState = Record<ComposerScope, ComposerSelection>;
@@ -41,6 +42,7 @@ export type AttachmentItem = MessageAttachment & {
   id: string;
   path: string;
   memeRightsConfirmed?: boolean;
+  voiceMessage?: MessageVoiceDraft;
 };
 export type SaveDesktopAttachmentOptions = {
   subtype?: MessageAttachment['subtype'];

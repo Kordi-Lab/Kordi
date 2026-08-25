@@ -62,6 +62,7 @@ struct ConversationView: View {
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var selectedPhotoSubtype: ChatAttachmentSubtype?
     @State private var isPreparingAttachments = false
+    @State private var voiceRecorder = VoiceMessageRecorder()
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
     @State private var shareItem: SharedFileItem?
@@ -315,6 +316,9 @@ struct ConversationView: View {
                                                         onShareAttachment: { attachment in
                                                             prepare(attachment, forSharing: true)
                                                         },
+                                                        onPrepareVoiceMessage: { voiceMessage in
+                                                            await model.prepareVoiceMessageForPresentation(voiceMessage)
+                                                        },
                                                         onOpenBackgroundSession: { session in
                                                             selectedBackgroundSession = session
                                                             backgroundConversation = session.destination(
@@ -512,6 +516,7 @@ struct ConversationView: View {
                             mentionTargets: mentionTargets,
                             isSending: isSending,
                             isPreparingAttachments: isPreparingAttachments,
+                            voiceRecorder: voiceRecorder,
                             destinationName: conversation.displayName,
                             cameraAvailable: UIImagePickerController.isSourceTypeAvailable(.camera),
                             onTakePhoto: { showCamera = true },
@@ -526,7 +531,8 @@ struct ConversationView: View {
                             },
                             onChooseFiles: { showFileImporter = true },
                             onSendExpressiveMedia: sendExpressiveMedia,
-                            onSend: { Task { await send() } }
+                            onSend: { Task { await send() } },
+                            onSendVoice: { Task { await sendVoiceMessage() } }
                         )
                     }
                 } else {
@@ -712,6 +718,7 @@ struct ConversationView: View {
             await model.refreshMentionTargets(for: conversation)
         }
         .onDisappear {
+            voiceRecorder.cancel()
             callJoinTask?.cancel()
             callJoinTask = nil
             callCoordinator.cancelUnadmittedStart()
@@ -776,9 +783,14 @@ struct ConversationView: View {
             synchronizeReadPresentation()
         }
         .onChange(of: scenePhase) { _, _ in
+            if scenePhase != .active,
+               [.recording, .paused].contains(voiceRecorder.phase) {
+                voiceRecorder.stop()
+            }
             synchronizeReadPresentation()
         }
         .onChange(of: conversation.id) { _, _ in
+            voiceRecorder.cancel()
             synchronizeReadPresentation()
         }
         .fileImporter(
@@ -1421,6 +1433,29 @@ struct ConversationView: View {
             mention: nil
         )
         isSending = false
+    }
+
+    private func sendVoiceMessage() async {
+        guard !isSending, let pending = await voiceRecorder.prepareForSend() else { return }
+        let resolvedVoiceMessage = Task { @MainActor in
+            await VoiceMessageRecorder().resolvedMessageForSend(pending)
+        }
+        let message = pending.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let outgoingMention = resolvedMentionTarget(in: message)
+        guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return }
+        let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
+        replySource = nil
+        selectedMention = nil
+        voiceRecorder.cancel()
+        await model.send(
+            message,
+            voiceMessage: pending,
+            resolvedVoiceMessage: resolvedVoiceMessage,
+            replyingTo: outgoingReply,
+            mentioning: outgoingMention,
+            agentContext: companionContext?.referenceText,
+            to: conversation
+        )
     }
 
     private func canPresentPhotoPicker() -> Bool {

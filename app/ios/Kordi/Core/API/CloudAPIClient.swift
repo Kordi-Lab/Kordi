@@ -794,6 +794,7 @@ actor CloudAPIClient {
         clientMessageId: String,
         attachments: [CloudMessageAttachment] = [],
         messageKind: String = "text",
+        voiceMessage: VoiceMessage? = nil,
         conversationKind: String? = nil,
         memberAccountIds: [String]? = nil,
         sharedTitle: String? = nil
@@ -819,7 +820,7 @@ actor CloudAPIClient {
             body: ChatSendMessageRequest(
                 clientMessageId: operationUUID(clientMessageId),
                 kind: messageKind.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "text",
-                content: CloudChatContent(body: body, attachments: attachments),
+                content: CloudChatContent(body: body, attachments: attachments, voiceMessage: voiceMessage),
                 replyToMessageId: nil,
                 attachmentIds: attachments.map(\.attachmentId)
             ),
@@ -1438,6 +1439,7 @@ actor CloudAPIClient {
             sessionId: conversation.legacySessionId ?? conversation.id,
             attachments: message.content.legacyAttachments,
             messageKind: message.kind,
+            voiceMessage: message.content.voiceMessage,
             conversationId: conversation.id,
             conversationSequence: message.conversationSequence,
             reactions: (message.reactions ?? []).map {

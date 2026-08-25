@@ -42,6 +42,11 @@ notify-rust = "4.18.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 system-configuration = "0.7"
+block2 = "0.6"
+objc2 = "0.6"
+objc2-avf-audio = { version = "0.3.2", default-features = false, features = ["AVAudioBuffer", "AVAudioEngine", "AVAudioFile", "AVAudioFormat", "AVAudioIONode", "AVAudioNode", "AVAudioTime", "AVAudioTypes", "block2"] }
+objc2-foundation = { version = "0.3", features = ["NSError", "NSLocale", "NSString", "NSURL"] }
+objc2-speech = "0.3.2"
 
 [dev-dependencies]
 # The Tauri updater uses reqwest 0.13 while the rest of the native runtime uses

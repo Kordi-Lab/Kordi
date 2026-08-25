@@ -2,6 +2,7 @@ import type { CloudMessage, CloudMessageAttachment } from './authClient';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
 import { normalizeCloudReaderAccountIds } from './cloudMessageMerge';
 import { IndexedDbCloudMessageCacheStore } from './indexedDbCloudMessageCacheStore';
+import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
 
 export {
   CLOUD_MESSAGES_INDEXED_DB_NAME,
@@ -90,8 +91,13 @@ export function cloudMessageMetadataOnly(message: CloudMessage): CloudMessage {
   const attachments = (message.attachments ?? [])
     .map(cloudMessageAttachmentMetadataOnly)
     .filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
-  const { attachments: _attachments, ...metadata } = message;
-  return attachments.length > 0 ? { ...metadata, attachments } : metadata;
+  const voiceMessage = cloudVoiceMessageMetadataOnly(message.voiceMessage);
+  const { attachments: _attachments, voiceMessage: _voiceMessage, ...metadata } = message;
+  return {
+    ...metadata,
+    ...(attachments.length > 0 ? { attachments } : {}),
+    ...(voiceMessage ? { voiceMessage } : {}),
+  };
 }
 
 function normalizedMessage(accountId: string, value: unknown): CloudMessage | null {
@@ -110,6 +116,7 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
   const conversationId = cleanText(record.conversationId);
   const clientMessageId = cleanText(record.clientMessageId);
   const messageKind = cleanText(record.messageKind);
+  const voiceMessage = cloudVoiceMessageMetadataOnly(record.voiceMessage);
   const canonicalHistoryLocalMessageId = cleanText(record.canonicalHistoryLocalMessageId);
   const conversationSequence = Number.isSafeInteger(record.conversationSequence)
     && Number(record.conversationSequence) > 0 ? Number(record.conversationSequence) : null;
@@ -139,6 +146,7 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
     ...(conversationId ? { conversationId } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
     ...(messageKind ? { messageKind } : {}),
+    ...(voiceMessage ? { voiceMessage } : {}),
     ...(canonicalHistoryLocalMessageId ? { canonicalHistoryLocalMessageId } : {}),
     ...(conversationSequence ? { conversationSequence } : {}),
     ...(version ? { version } : {}),

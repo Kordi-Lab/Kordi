@@ -33,6 +33,7 @@ struct MessageBubble: View, Equatable {
     let onNavigateToReply: (String) -> Void
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
+    let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
     let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
     @State private var isRetrying = false
@@ -128,6 +129,7 @@ struct MessageBubble: View, Equatable {
                                 .foregroundStyle(.secondary)
                                 .padding(.trailing, 8)
                                 .padding(.bottom, 2)
+                                .allowsHitTesting(false)
                             }
                         }
                     }
@@ -135,12 +137,14 @@ struct MessageBubble: View, Equatable {
                         if isHighlighted {
                             bubbleShape
                                 .fill(KordiTheme.signalBlue.opacity(0.10))
+                                .allowsHitTesting(false)
                         }
                         bubbleShape
                             .stroke(
                                 isHighlighted ? KordiTheme.signalBlue : Color.clear,
                                 lineWidth: isHighlighted ? 2 : 0
                             )
+                            .allowsHitTesting(false)
                     }
                     .scaleEffect(
                         reduceMotion ? 1 : isActionPresented ? 1.016 : isHighlighted ? 1.018 : 1
@@ -182,7 +186,7 @@ struct MessageBubble: View, Equatable {
                             }
                         }
                     }
-                    .highPriorityGesture(
+                    .simultaneousGesture(
                         LongPressGesture(minimumDuration: 0.32)
                             .updating($isPressingActions) { current, state, _ in
                                 state = current
@@ -280,9 +284,14 @@ struct MessageBubble: View, Equatable {
                 minimumWidth: agentExecutionMinimumWidth
             ) {
                 bubbleContents
-                    .padding(.leading, 12)
-                    .padding(.trailing, message.author == .me ? 30 : 12)
-                    .padding(.vertical, 8)
+                    .padding(.leading, message.voiceMessage == nil ? 12 : 10)
+                    .padding(
+                        .trailing,
+                        message.author == .me
+                            ? (message.voiceMessage == nil ? 30 : 26)
+                            : (message.voiceMessage == nil ? 12 : 10)
+                    )
+                    .padding(.vertical, message.voiceMessage == nil ? 8 : 6)
             }
             .background(bubbleColor, in: bubbleShape)
             .compositingGroup()
@@ -325,6 +334,14 @@ struct MessageBubble: View, Equatable {
                         responseText: message.text
                     ),
                     onExpansionChange: onAgentExecutionExpansionChange
+                )
+            }
+
+            if let voiceMessage = message.voiceMessage {
+                VoiceMessageBubbleContent(
+                    voiceMessage: voiceMessage,
+                    reservesDeliveryStatus: message.author == .me,
+                    onPrepare: onPrepareVoiceMessage
                 )
             }
 
@@ -457,6 +474,7 @@ struct MessageBubble: View, Equatable {
     }
 
     private var hasVisibleMessageText: Bool {
+        if message.voiceMessage != nil { return false }
         let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
         return !text.isEmpty && (
             message.agentExecution == nil
@@ -563,7 +581,9 @@ struct MessageBubble: View, Equatable {
         } else {
             message.deliveryState.label
         }
-        let attachmentLabel = message.attachments.isEmpty ? "" : ", \(attachmentCountText(message.attachments.count))"
+        let attachmentLabel = message.voiceMessage != nil
+            ? ", voice message"
+            : message.attachments.isEmpty ? "" : ", \(attachmentCountText(message.attachments.count))"
         let messageText = ComposerMentionTargetCatalog.accessibilityText(
             in: message.text,
             mentions: message.mentions,

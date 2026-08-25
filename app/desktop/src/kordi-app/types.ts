@@ -913,7 +913,7 @@ export type DesktopCollaborationConversationMessage = {
   attachments?: MessageAttachment[];
   mentions?: MessageMention[];
   messageAction?: MessageActionMetadata | null;
-  messageKind?: string | null;
+  messageKind?: string | null; voiceMessage?: Message['voiceMessage'];
   localTurn?: DesktopChatTurnSnapshot | null; reactionConversationId?: string | null; reactionTargetMessageId?: string | null; reactions?: Array<{ value: string; accountIds: string[] }>;
 };
 export type DesktopCollaborationSessionThreadMessage = {

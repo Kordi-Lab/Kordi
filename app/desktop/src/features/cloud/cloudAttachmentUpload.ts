@@ -19,6 +19,7 @@ type UploadProgressEvent = Omit<CloudAttachmentUploadState, 'error'>;
 const states = new Map<string, CloudAttachmentUploadState>();
 const listeners = new Map<string, Set<() => void>>();
 const pathByRequestId = new Map<string, string>();
+const reusableUploads = new Map<string, Promise<DesktopCloudAttachmentUploadResult>>();
 
 function publish(path: string, state: CloudAttachmentUploadState | null) {
   if (state) states.set(path, state);
@@ -54,7 +55,7 @@ export function cloudAttachmentUploadSnapshot(path: string) {
   return path ? states.get(path) ?? null : null;
 }
 
-export async function uploadNativeCloudAttachment({
+async function runNativeCloudAttachmentUpload({
   path,
   contentType,
 }: {
@@ -95,6 +96,32 @@ export async function uploadNativeCloudAttachment({
     pathByRequestId.delete(id);
     unlisten?.();
   }
+}
+
+export function uploadNativeCloudAttachment({
+  path,
+  contentType,
+}: {
+  path: string;
+  contentType?: string | null;
+}): Promise<DesktopCloudAttachmentUploadResult> {
+  const key = `${path}\u0000${contentType?.trim() ?? ''}`;
+  const existing = reusableUploads.get(key);
+  if (existing) return existing;
+  const upload = runNativeCloudAttachmentUpload({ path, contentType }).then(
+    (result) => {
+      window.setTimeout(() => {
+        if (reusableUploads.get(key) === upload) reusableUploads.delete(key);
+      }, 5 * 60_000);
+      return result;
+    },
+    (error: unknown) => {
+      reusableUploads.delete(key);
+      throw error;
+    },
+  );
+  reusableUploads.set(key, upload);
+  return upload;
 }
 
 export async function cancelCloudAttachmentUpload(path: string) {

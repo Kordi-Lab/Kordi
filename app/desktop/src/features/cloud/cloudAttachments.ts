@@ -4,6 +4,7 @@ import { isNativeDesktopShell, storeDesktopChatAttachment } from '@/lib/desktop'
 import type {
   CloudAuthClient,
   CloudMessageAttachment,
+  CloudVoiceMessage,
 } from './authClient';
 import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
 import type { CloudAttachmentPreviewGenerator } from './cloudAttachmentPreviewRecovery';
@@ -244,6 +245,13 @@ export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessa
     localPath,
     attachmentId: attachment.attachmentId,
     ...(attachment.previewAttachmentId ? { previewAttachmentId: attachment.previewAttachmentId } : {}),
+  };
+}
+
+export function cloudVoiceMessageToMessageVoice(voice: CloudVoiceMessage) {
+  return {
+    ...voice,
+    localPath: voice.localPath ?? cachedCloudAttachmentLocalPath(voice.mediaId),
   };
 }
 

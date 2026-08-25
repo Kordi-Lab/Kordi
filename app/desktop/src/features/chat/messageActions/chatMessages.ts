@@ -54,7 +54,7 @@ import {
   markOptimisticCanonicalMessageSending,
   persistCanonicalUserMessage,
   prepareCanonicalUserMessage,
-  retryAttachmentItemsFromMessage,
+  retryAttachmentItemsFromMessage, voiceMessageSendFields,
   type PreparedCanonicalUserMessage,
 } from './optimistic';
 import { reconcileOptimisticCollaborationMessageUpdater } from './optimisticReconciliation';
@@ -1045,7 +1045,7 @@ export function useChatMessageActions({
     }
     const rawText = retryMessage?.text ?? draftOverride ?? composerDrafts.chat;
     const text = rawText.trim();
-    const attachmentsToSend = retryAttachments ?? attachmentOverride ?? chatComposerAttachments;
+    const attachmentsToSend = retryAttachments ?? attachmentOverride ?? chatComposerAttachments; const voiceFields = voiceMessageSendFields(attachmentsToSend);
     const preserveComposer = attachmentOverride !== undefined;
     if (!text && attachmentsToSend.length === 0) return;
     const memeValidationError = memeAttachmentDraftError(attachmentsToSend, {
@@ -1154,7 +1154,7 @@ export function useChatMessageActions({
               senderAccountId: '',
               text,
               createdAtMs: Date.now(),
-              messageAction: retryMessage.messageAction ?? null,
+              messageAction: retryMessage.messageAction ?? null, ...voiceFields,
             },
             attachments: retryAttachments,
             retryFailed: true,
@@ -1219,7 +1219,7 @@ export function useChatMessageActions({
             activeCloudConversationId,
             retryCloudBody,
             retryAttachments,
-            { clientMessageId: retryMessageId },
+            { clientMessageId: retryMessageId, ...voiceFields },
           );
           setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, retryMessageId, canonicalMessage));
         } catch (error) {
@@ -1310,7 +1310,7 @@ export function useChatMessageActions({
             targetCloudAgentName: targetCloudAgentId ? mentionedTarget?.displayLabel ?? null : null,
             targetCloudAgentOwnerAccountId: targetCloudAgentId ? mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null : null,
             targetCloudAgentOwnerName: targetCloudAgentId ? mentionedTarget?.peer.ownerName ?? null : null,
-            agentRuntimeRoute: resolveChatRuntimeRoute(cloudAgentMentionSessionId),
+            agentRuntimeRoute: resolveChatRuntimeRoute(cloudAgentMentionSessionId), ...voiceFields,
           },
           attachments: attachmentsToSend,
         });
@@ -1383,7 +1383,7 @@ export function useChatMessageActions({
             text,
             mentions: messageMentions,
             createdAtMs: Date.now(),
-            messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null,
+            messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null, ...voiceFields,
           },
           attachments: attachmentsToSend,
         });
@@ -1451,7 +1451,7 @@ export function useChatMessageActions({
           activeCloudConversationId,
           cloudBody,
           attachmentsToSend,
-          { clientMessageId: optimisticMessageId },
+          { clientMessageId: optimisticMessageId, ...voiceFields },
         );
         if (appendedOptimisticCollaborationMessage && isCloudCollaborationConversationId(activeCloudConversationId)) {
           setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, optimisticMessageId, canonicalMessage));

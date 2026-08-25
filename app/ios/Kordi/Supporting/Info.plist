@@ -51,7 +51,9 @@
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Kordi uses the local network to establish audio and video calls when required.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Kordi uses the microphone when you join an audio or video call.</string>
+	<string>Kordi uses the microphone when you record a voice message or join a call.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Kordi transcribes voice messages on this iPhone so people and agents can read them.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Kordi shows your photo library when you choose images to send in a conversation.</string>
 	<key>UIBackgroundModes</key>

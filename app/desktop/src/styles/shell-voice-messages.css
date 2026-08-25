@@ -1,0 +1,304 @@
+.app-voice-recording-rail,
+.app-voice-draft-review {
+  display: flex;
+  min-width: min(26rem, 100%);
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.app-voice-recording-rail {
+  position: relative;
+  min-height: 3rem;
+  color: var(--utility-foreground);
+}
+
+.app-voice-control,
+.app-voice-play-button,
+.app-voice-send-button {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+}
+
+.app-voice-play-button {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  background: color-mix(in oklab, currentColor 12%, transparent);
+  color: inherit;
+  cursor: pointer;
+}
+
+.app-voice-play-button:hover,
+.app-voice-transcript-trigger:hover {
+  background: color-mix(in oklab, currentColor 18%, transparent);
+}
+
+.app-voice-send-button {
+  background: var(--app-sidebar-accent);
+  color: white;
+}
+
+.app-voice-message {
+  position: relative;
+  width: min(15.5rem, calc(100vw - 10rem));
+  min-width: min(12.5rem, calc(100vw - 10rem));
+}
+
+.app-voice-message audio,
+.app-voice-draft-review audio {
+  display: none;
+}
+
+.app-voice-draft-review {
+  min-width: 0;
+}
+
+.app-voice-player-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.app-voice-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.app-voice-draft-review {
+  flex: 1;
+}
+
+.app-voice-button-duration {
+  min-width: 2.5rem;
+  color: var(--app-sidebar-accent);
+  font-size: 0.72rem;
+  font-weight: 650;
+  text-align: right;
+}
+
+.app-voice-swipe-notice {
+  display: inline-flex;
+  min-width: 7.5rem;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  color: color-mix(in oklab, currentColor 62%, transparent);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.app-voice-swipe-notice.app-voice-cancel-armed {
+  color: #dc2626;
+}
+
+.app-composer-voice-recording-button {
+  color: #dc2626;
+}
+
+.app-voice-button-duration.app-voice-cancel-armed,
+.app-composer-voice-recording-button.app-voice-cancel-armed {
+  color: #dc2626;
+  transform: translateY(-2px);
+}
+
+.app-voice-scrubber {
+  position: relative;
+  min-width: 0;
+  flex: 1;
+  height: 1.55rem;
+}
+
+.app-voice-scrubber > input[type='range'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.app-voice-scrubber > input[type='range']:focus-visible {
+  opacity: 1;
+  accent-color: var(--app-sidebar-accent);
+}
+
+.app-voice-waveform {
+  display: flex;
+  height: 1.55rem;
+  align-items: center;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.app-voice-waveform-bar {
+  width: 2px;
+  min-height: 3px;
+  min-width: 2px;
+  max-width: 3px;
+  flex: 1 1 0;
+  border-radius: 999px;
+  background: color-mix(in oklab, currentColor 33%, transparent);
+  transition: background-color 120ms ease-out;
+}
+
+.app-voice-waveform-bar-played,
+.app-voice-waveform-bar[data-live='true'] {
+  background: var(--app-sidebar-accent);
+}
+
+.app-voice-trim-controls {
+  position: absolute;
+  inset: auto 0 -0.3rem;
+  height: 0.75rem;
+}
+
+.app-voice-trim-controls input[type='range'] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  margin: 0;
+  pointer-events: none;
+  appearance: none;
+  background: transparent;
+}
+
+.app-voice-trim-controls input[type='range']::-webkit-slider-runnable-track {
+  height: 1px;
+  background: transparent;
+}
+
+.app-voice-trim-controls input[type='range']::-webkit-slider-thumb {
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-top: -0.35rem;
+  pointer-events: auto;
+  appearance: none;
+  border: 2px solid var(--app-sidebar-accent);
+  border-radius: 999px;
+  background: var(--app-frame-bg);
+  cursor: ew-resize;
+}
+
+.app-voice-duration {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  color: color-mix(in oklab, currentColor 66%, transparent);
+}
+
+.app-voice-duration[data-error='true'] {
+  color: var(--app-error-text, #dc2626);
+}
+
+.app-voice-transcript-trigger {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in oklab, currentColor 66%, transparent);
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity 120ms ease-out;
+}
+
+.app-voice-transcript-trigger:hover,
+.app-voice-transcript-trigger:focus-visible,
+.app-voice-transcript-trigger[aria-expanded='true'] {
+  opacity: 1;
+}
+
+.app-voice-metadata-row {
+  display: flex;
+  min-height: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-voice-inline-footer {
+  display: flex;
+  min-width: 1rem;
+  align-items: center;
+}
+
+.app-voice-meta-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.app-voice-inline-footer .app-message-footer {
+  margin: 0;
+  padding-left: 0.35rem;
+}
+
+.app-voice-transcript {
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid color-mix(in oklab, currentColor 12%, transparent);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.app-voice-transcript-toggle {
+  border: 0;
+  background: transparent;
+  color: var(--app-sidebar-accent);
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.app-voice-transcript-toggle {
+  margin-top: 0.25rem;
+}
+
+.app-voice-transcript-unavailable,
+.app-voice-gesture-hint {
+  color: color-mix(in oklab, currentColor 62%, transparent);
+}
+
+.app-voice-inline-error {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 3.25rem;
+  z-index: 1;
+  padding-top: 0.25rem;
+  color: var(--app-error-text, #dc2626);
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+
+@media (max-width: 760px) {
+  .app-voice-recording-rail,
+  .app-voice-player-row,
+  .app-voice-draft-review {
+    min-width: 0;
+  }
+
+  .app-voice-message {
+    width: min(15.5rem, calc(100vw - 7rem));
+    min-width: min(12.5rem, calc(100vw - 7rem));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-voice-waveform-bar {
+    transition: none;
+  }
+
+  .app-voice-transcript-trigger {
+    transition: none;
+  }
+}

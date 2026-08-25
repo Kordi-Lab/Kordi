@@ -57,6 +57,16 @@ function cloudReactionsEqual(left: CloudMessage['reactions'] = [], right: CloudM
   });
 }
 
+function cloudVoiceMessagesEqual(left: CloudMessage['voiceMessage'], right: CloudMessage['voiceMessage']) {
+  if (!left || !right) return left === right;
+  return left.mediaId === right.mediaId
+    && left.mimeType === right.mimeType
+    && left.durationMs === right.durationMs
+    && left.transcript === right.transcript
+    && left.waveformSamples.length === right.waveformSamples.length
+    && left.waveformSamples.every((sample, index) => sample === right.waveformSamples[index]);
+}
+
 export function cloudMessagesEqual(
   message: CloudMessage,
   other: CloudMessage | undefined,
@@ -76,6 +86,7 @@ export function cloudMessagesEqual(
     && (message.conversationSequence ?? null) === (other.conversationSequence ?? null)
     && (message.clientMessageId ?? null) === (other.clientMessageId ?? null)
     && (message.messageKind ?? null) === (other.messageKind ?? null)
+    && cloudVoiceMessagesEqual(message.voiceMessage, other.voiceMessage)
     && (message.canonicalHistoryLocalMessageId ?? null) === (other.canonicalHistoryLocalMessageId ?? null)
     && (message.version ?? null) === (other.version ?? null)
     && cloudReactionsEqual(message.reactions, other.reactions)
@@ -115,6 +126,9 @@ export function mergeCloudMessageMonotonicState(
     attachments: incomingIsOlder
       ? current.attachments
       : incoming.attachments ?? current.attachments,
+    voiceMessage: incomingIsOlder
+      ? current.voiceMessage
+      : incoming.voiceMessage ?? current.voiceMessage,
     deliveredAt: latestCloudReceiptAt(current.deliveredAt, incoming.deliveredAt),
     readAt: latestCloudReceiptAt(current.readAt, incoming.readAt),
     readByAccountIds: incomingIsOlder

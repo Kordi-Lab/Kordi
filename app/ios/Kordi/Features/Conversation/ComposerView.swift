@@ -168,6 +168,7 @@ struct ComposerView: View {
     let mentionTargets: [ComposerMentionTarget]
     let isSending: Bool
     let isPreparingAttachments: Bool
+    let voiceRecorder: VoiceMessageRecorder
     let destinationName: String
     let cameraAvailable: Bool
     let onTakePhoto: () -> Void
@@ -176,14 +177,19 @@ struct ComposerView: View {
     let onChooseFiles: () -> Void
     let onSendExpressiveMedia: (PendingAttachment) async -> Void
     let onSend: () -> Void
+    let onSendVoice: () -> Void
     @State private var textSelection = ComposerTextSelection(location: 0, length: 0)
     @State private var keyboardSurfaceHeight: CGFloat = 0
     @State private var composerContentHeight: CGFloat = 0
     @State private var messageEditorHeight: CGFloat = 44
     @State private var isDraftPanePresented = false
     @State private var keyboardFocusRequest = 0
+    @State private var voiceGestureIntent = VoiceRecordingGestureIntent.hold
+    @State private var voiceGestureActive = false
+    @State private var voiceGestureEnded = false
+    @Namespace private var voiceRecordingTransition
     @ScaledMetric(relativeTo: .body) private var composerControlHeight: CGFloat = 50
-    @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 38
+    @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 44
     @ScaledMetric(relativeTo: .body) private var draftPaneExpansionThreshold: CGFloat = 84
     @ScaledMetric(relativeTo: .body) private var mentionPickerMaxHeight: CGFloat = 264
     @ScaledMetric(relativeTo: .body) private var mentionPickerRowHeight: CGFloat = 46
@@ -191,6 +197,21 @@ struct ComposerView: View {
 
     var body: some View {
         composerContainer
+            .overlay(alignment: .bottomTrailing) {
+                VoiceRecordingGestureCapture(
+                    isEnabled: !canSend
+                        && !isSending
+                        && !isPreparingAttachments
+                        && voiceRecorder.phase != .failed
+                        && !voiceRecorder.isLocked,
+                    onBegan: beginVoiceRecordingGesture,
+                    onChanged: updateVoiceRecordingGesture,
+                    onEnded: endVoiceRecordingGesture,
+                    onCancelled: cancelVoiceRecordingGesture
+                )
+                .frame(width: max(44, sendButtonDiameter), height: composerControlHeight)
+                .padding(.trailing, 10)
+            }
             .overlay(alignment: .bottom) {
                 floatingPanelLayer
             }
@@ -286,14 +307,43 @@ struct ComposerView: View {
     private var inputSurfaceAssembly: some View {
         inputSurface
             .padding(.horizontal, 10)
+            .sensoryFeedback(.selection, trigger: voiceGestureIntent)
+            .animation(voiceRecordingTransitionAnimation, value: voiceRecorder.isVisible)
     }
 
+    @ViewBuilder
     private var inputSurface: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            attachmentMenu
-            messageFieldSurface
-                .layoutPriority(1)
+        if voiceRecorder.isVisible {
+            VoiceRecordingComposer(
+                recorder: voiceRecorder,
+                gestureIntent: voiceGestureIntent,
+                transitionNamespace: voiceRecordingTransition,
+                onCancel: voiceRecorder.cancel,
+                onSend: finishVoiceRecordingAndSend
+            )
+            .transition(voiceRecordingSurfaceTransition)
+        } else {
+            HStack(alignment: .bottom, spacing: 8) {
+                attachmentMenu
+                messageFieldSurface
+                    .layoutPriority(1)
+            }
+            .transition(voiceRecordingSurfaceTransition)
         }
+    }
+
+    private var voiceRecordingSurfaceTransition: AnyTransition {
+        reduceMotion
+            ? .identity
+            : .scale(scale: 0.96, anchor: .bottomTrailing)
+                .combined(with: .opacity)
+    }
+
+    private var voiceRecordingTransitionAnimation: Animation? {
+        guard !reduceMotion else { return nil }
+        return voiceRecorder.isVisible
+            ? .smooth(duration: 0.24)
+            : .easeOut(duration: 0.16)
     }
 
     @ViewBuilder
@@ -332,6 +382,7 @@ struct ComposerView: View {
                     expressivePickerButton
                     sendButton
                 }
+                .padding(.bottom, 3)
                 .transaction { $0.disablesAnimations = true }
             }
             .overlay(alignment: .topTrailing) {
@@ -566,7 +617,12 @@ struct ComposerView: View {
         Button {
             dismissExpressivePicker()
             dismissAgentModelPicker()
-            onSend()
+            if canSend {
+                onSend()
+            } else {
+                isFocused = false
+                Task { await voiceRecorder.start() }
+            }
         } label: {
             ZStack {
                 Circle()
@@ -574,19 +630,104 @@ struct ComposerView: View {
                 if isSending {
                     ProgressView().tint(.white).controlSize(.small)
                 } else {
-                    Image(systemName: "arrow.up")
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(canSend ? .white : .secondary)
+                    Image(systemName: canSend ? "arrow.up" : "mic.fill")
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(canSend ? .white : KordiTheme.signalBlue)
                 }
             }
             .frame(width: sendButtonDiameter, height: sendButtonDiameter)
             .frame(width: max(44, sendButtonDiameter), height: max(44, sendButtonDiameter))
             .contentShape(Circle())
+            .matchedGeometryEffect(id: "voice-recording-control", in: voiceRecordingTransition)
         }
         .buttonStyle(.plain)
-        .disabled(!canSend || isSending || isPreparingAttachments)
-        .accessibilityLabel("Send message")
-        .accessibilityHint(memeValidationError ?? "Sends the message")
+        .disabled(isSending || isPreparingAttachments)
+        .accessibilityLabel(canSend ? "Send message" : "Record voice message")
+        .accessibilityHint(
+            memeValidationError
+                ?? (canSend
+                    ? "Sends the message"
+                    : "Hold to record, release to send, slide left to cancel, or slide up to lock")
+        )
+    }
+
+    private func beginVoiceRecordingGesture() {
+        guard !isSending, !isPreparingAttachments, !voiceGestureActive else { return }
+        voiceGestureActive = true
+        voiceGestureEnded = false
+        isFocused = false
+        dismissExpressivePicker()
+        dismissAgentModelPicker()
+        Task {
+            let started = await voiceRecorder.start(locked: false)
+            if started, voiceGestureEnded {
+                completeVoiceRecordingGesture()
+            }
+        }
+    }
+
+    private func updateVoiceRecordingGesture(_ translation: CGSize) {
+        guard voiceGestureActive else { return }
+        voiceGestureIntent = Self.voiceGestureIntent(
+            horizontal: translation.width,
+            vertical: translation.height
+        )
+    }
+
+    private func endVoiceRecordingGesture(_ translation: CGSize) {
+        guard voiceGestureActive else { return }
+        voiceGestureIntent = Self.voiceGestureIntent(
+            horizontal: translation.width,
+            vertical: translation.height
+        )
+        voiceGestureActive = false
+        voiceGestureEnded = true
+        if voiceRecorder.phase == .recording || voiceRecorder.phase == .paused {
+            completeVoiceRecordingGesture()
+        }
+    }
+
+    private func cancelVoiceRecordingGesture() {
+        guard voiceGestureActive else { return }
+        voiceGestureActive = false
+        voiceGestureEnded = false
+        voiceGestureIntent = .hold
+        voiceRecorder.cancel()
+    }
+
+    private func completeVoiceRecordingGesture() {
+        voiceGestureEnded = false
+        defer {
+            voiceGestureIntent = .hold
+        }
+        switch voiceGestureIntent {
+        case .cancel:
+            voiceRecorder.cancel()
+        case .lock:
+            voiceRecorder.lock()
+        case .hold:
+            finishVoiceRecordingAndSend()
+        }
+    }
+
+    private func finishVoiceRecordingAndSend() {
+        voiceRecorder.stop(autoSend: true)
+        Task {
+            guard await voiceRecorder.prepareForSend() != nil else { return }
+            onSendVoice()
+        }
+    }
+
+    static func voiceGestureIntent(
+        horizontal: CGFloat,
+        vertical: CGFloat,
+        threshold: CGFloat = 64
+    ) -> VoiceRecordingGestureIntent {
+        if horizontal <= -threshold, abs(horizontal) >= abs(vertical) {
+            return .cancel
+        }
+        if vertical <= -threshold { return .lock }
+        return .hold
     }
 
     private var mentionPicker: some View {

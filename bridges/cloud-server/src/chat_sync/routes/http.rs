@@ -169,8 +169,78 @@ pub(super) fn validate_message_request(
             message: "The message references too many attachments.",
         });
     }
+    if message_kind == "voice" {
+        validate_voice_message(content, &request.attachment_ids)?;
+    }
     validate_meme_attachments(content, &request.attachment_ids)?;
     Ok(())
+}
+
+fn validate_voice_message(
+    content: &serde_json::Map<String, serde_json::Value>,
+    attachment_ids: &[String],
+) -> Result<(), MessageValidationError> {
+    let blocks = content
+        .get("blocks")
+        .and_then(serde_json::Value::as_array)
+        .expect("message blocks validated before voice metadata");
+    let voice_blocks = blocks
+        .iter()
+        .filter_map(serde_json::Value::as_object)
+        .filter(|block| block.get("type").and_then(serde_json::Value::as_str) == Some("voice"))
+        .collect::<Vec<_>>();
+    let valid = voice_blocks.len() == 1
+        && attachment_ids.len() == 1
+        && voice_blocks.first().is_some_and(|voice| {
+            let media_id = voice
+                .get("mediaId")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .unwrap_or_default();
+            let mime_type = voice
+                .get("mimeType")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let duration_ms = voice
+                .get("durationMs")
+                .and_then(serde_json::Value::as_u64)
+                .unwrap_or_default();
+            let transcript = voice
+                .get("transcript")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .unwrap_or_default();
+            let waveform = voice
+                .get("waveformSamples")
+                .and_then(serde_json::Value::as_array);
+            media_id == attachment_ids[0].trim()
+                && matches!(
+                    mime_type.as_str(),
+                    "audio/mp4" | "audio/m4a" | "audio/x-m4a" | "audio/aac"
+                )
+                && (1..=60_000).contains(&duration_ms)
+                && !transcript.is_empty()
+                && transcript.chars().count() <= 20_000
+                && waveform.is_some_and(|samples| {
+                    !samples.is_empty()
+                        && samples.len() <= 96
+                        && samples.iter().all(|sample| {
+                            sample.as_f64().is_some_and(|value| {
+                                value.is_finite() && (0.0..=1.0).contains(&value)
+                            })
+                        })
+                })
+        });
+    if valid {
+        return Ok(());
+    }
+    Err(MessageValidationError {
+        status: StatusCode::BAD_REQUEST,
+        code: "INVALID_VOICE_MESSAGE",
+        message: "Voice messages require one finalized audio item, a transcript, a duration of at most 60 seconds, and bounded waveform samples.",
+    })
 }
 
 fn validate_meme_attachments(
@@ -270,5 +340,39 @@ mod tests {
 
             assert!(validate_message_request(&request).is_err());
         }
+    }
+
+    #[test]
+    fn voice_messages_require_bounded_native_audio_metadata() {
+        let request = |voice: serde_json::Value| SendMessageRequest {
+            client_message_id: Uuid::now_v7(),
+            kind: "voice".to_string(),
+            content: json!({
+                "schema": 1,
+                "blocks": [
+                    { "type": "text", "text": "Meet me after lunch." },
+                    voice
+                ]
+            }),
+            reply_to_message_id: None,
+            attachment_ids: vec!["att_voice".to_string()],
+        };
+        let valid = json!({
+            "type": "voice",
+            "mediaId": "att_voice",
+            "mimeType": "audio/mp4",
+            "durationMs": 12_000,
+            "waveformSamples": [0.1, 0.5, 1.0],
+            "transcript": "Meet me after lunch."
+        });
+        assert!(validate_message_request(&request(valid.clone())).is_ok());
+
+        let mut too_long = valid.clone();
+        too_long["durationMs"] = json!(60_001);
+        assert!(validate_message_request(&request(too_long)).is_err());
+
+        let mut wrong_media = valid;
+        wrong_media["mediaId"] = json!("att_other");
+        assert!(validate_message_request(&request(wrong_media)).is_err());
     }
 }

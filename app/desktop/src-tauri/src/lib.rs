@@ -16,6 +16,7 @@ mod skill_library;
 mod system_proxy;
 #[cfg(test)]
 mod test_support;
+mod voice_message;
 mod window_lifecycle;
 mod workspace;
 use std::process::Command;
@@ -365,7 +366,18 @@ pub fn run() {
             cloud_session::cloud_device_identity_store,
             cloud_session::cloud_device_identity_load,
             cloud_session::cloud_device_system_metadata,
-            remote_image::desktop_fetch_remote_image_data_url
+            remote_image::desktop_fetch_remote_image_data_url,
+            voice_message::desktop_voice_transcribe,
+            voice_message::desktop_voice_trim,
+            voice_message::desktop_voice_record_start,
+            voice_message::desktop_voice_record_sample,
+            voice_message::desktop_voice_record_stop,
+            voice_message::desktop_voice_record_cancel,
+            voice_message::desktop_voice_play,
+            voice_message::desktop_voice_pause,
+            voice_message::desktop_voice_seek,
+            voice_message::desktop_voice_playback_sample,
+            voice_message::desktop_voice_stop
         ])
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");

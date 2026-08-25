@@ -1,12 +1,6 @@
 import { useId, useRef } from 'react';
-import { Send } from 'lucide-react';
-
-import { Button } from '@/components/ui/button';
 import type { AttachmentItem, ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
-import {
-  CHAT_COMPOSER_TEXTAREA_SELECTOR,
-  focusComposerTextareaForNativeInput,
-} from '@/features/chat/composerController.shared';
+import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
@@ -20,14 +14,8 @@ import {
   ComposerSlashMenu,
   type CompactComposerModelMenuSaveInput,
 } from '@/kordi-app/components';
-import {
-  ComposerAttachmentAddMenu,
-  ComposerAttachmentList,
-} from '@/kordi-app/components/composerAttachments';
-import type {
-  Conversation,
-  DesktopChatContextWindowStatus,
-} from '@/kordi-app/types';
+import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
+import type { Conversation, DesktopChatContextWindowStatus } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ComposerDropSurface } from './chatsPage.composerDropSurface';
 import {
@@ -47,6 +35,8 @@ import type {
   ChatsPageComposer,
   ChatsPageRuntime,
 } from '@/pages/chatsPage.types';
+import { useVoiceComposer } from './chatsPage.voiceComposer';
+import { VoiceComposerControls, VoiceRecordingSurface } from './chatsPage.voiceControls';
 
 type MainComposerLocalRouting = {
   paneKind: 'human' | 'agent' | null;
@@ -138,9 +128,17 @@ export function MainComposer({
   const memeAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const memeValidationMessageId = useId();
   const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
+  const hasSendableDraft = Boolean(chatComposerText.trim() || chatComposerAttachments.length > 0);
   const canConfigureModelRoute = canConfigureConversationModelRoute(conversation);
   const useCompactRouteMenu = canConfigureModelRoute
     && shouldUseCompactModelRouteMenu(conversation);
+  const voice = useVoiceComposer({
+    conversation,
+    cloudAccountId,
+    onSend,
+    focusComposer: () => textareaRef.current?.focus(),
+  });
+  const voiceSurfaceActive = voice.surfaceActive;
 
   return (
     <div className="shrink-0 px-5 pb-4 pt-3">
@@ -213,7 +211,9 @@ export function MainComposer({
                 {memeValidationError}
               </p>
             ) : null}
-            <div className="flex min-w-0">
+            {voiceSurfaceActive ? (
+              <VoiceRecordingSurface voice={voice} />
+            ) : <div className="flex min-w-0">
               <textarea
                 ref={textareaRef}
                 rows={1}
@@ -329,12 +329,15 @@ export function MainComposer({
                 aria-describedby={memeValidationError ? memeValidationMessageId : undefined}
                 placeholder={display.placeholder}
               />
-            </div>
+            </div>}
           </div>
         </div>
         <div
           ref={composerControlsRef}
-          className="app-composer-meta mt-2 flex items-center justify-between gap-4 pt-2.5"
+          className={cn(
+            'app-composer-meta mt-2 items-center justify-between gap-4 pt-2.5',
+            voiceSurfaceActive ? 'hidden' : 'flex',
+          )}
         >
           <div
             className="flex shrink-0 items-center gap-2 overflow-visible pr-1"
@@ -355,14 +358,15 @@ export function MainComposer({
                 onSave={collaborationRouting.onSaveCompact}
               />
             ) : null}
-            <ComposerAttachmentAddMenu
+            {!voiceSurfaceActive ? <ComposerAttachmentAddMenu
               inputRef={chatAttachmentInputRef}
               memeInputRef={memeAttachmentInputRef}
               onChooseFiles={display.isNativeShell
                 ? () => { void saveDesktopAttachmentPaths(); }
                 : undefined}
-            />
-            <ComposerExpressivePicker
+              disabled={false}
+            /> : null}
+            {!voiceSurfaceActive ? <ComposerExpressivePicker
               key={cloudAccountId?.trim() || 'local'}
               accountId={cloudAccountId}
               captureSelection={() => ({
@@ -383,7 +387,7 @@ export function MainComposer({
                 });
               }}
               onSendMedia={(attachment) => onSend('', [attachment])}
-            />
+            /> : null}
           </div>
           <div
             className={cn(
@@ -391,7 +395,7 @@ export function MainComposer({
               display.showCompanionPane ? 'shrink gap-2' : 'shrink-0 gap-3',
             )}
           >
-            {localRouting.paneKind === 'agent'
+            {!voiceSurfaceActive && localRouting.paneKind === 'agent'
               && !collaborationRouting.enabled
               && (display.isNativeShell || localRouting.contextStatus) ? (
                 <ComposerRuntimeStatus
@@ -399,7 +403,7 @@ export function MainComposer({
                   cacheText={localRouting.cacheText}
                 />
               ) : null}
-            {canConfigureModelRoute
+            {!voiceSurfaceActive && canConfigureModelRoute
               && localRouting.paneKind === 'agent'
               && !collaborationRouting.enabled
               && !useCompactRouteMenu ? (
@@ -430,7 +434,7 @@ export function MainComposer({
                     : undefined}
                   compact={display.showCompanionPane}
                 />
-              ) : canConfigureModelRoute
+              ) : !voiceSurfaceActive && canConfigureModelRoute
                 && collaborationRouting.enabled
                 && !useCompactRouteMenu
                 && collaborationRouting.model ? (
@@ -455,17 +459,13 @@ export function MainComposer({
                     }}
                   />
                 ) : null}
-            <Button
-              className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
-              onClick={() => void onSend()}
-              disabled={Boolean(memeValidationError)}
-              title={memeValidationError ?? (display.activeLiveTurnIsRunning
-                ? 'Queue message for this session'
-                : 'Send message')}
-              aria-label="Send message"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+            <VoiceComposerControls
+              voice={voice}
+              hasSendableDraft={hasSendableDraft}
+              validationError={memeValidationError}
+              activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
+              onSend={() => { void onSend(); }}
+            />
           </div>
         </div>
       </ComposerDropSurface>
