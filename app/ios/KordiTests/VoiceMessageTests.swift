@@ -20,6 +20,18 @@ final class VoiceMessageTests: XCTestCase {
     }
 
     @MainActor
+    func testShortVoiceMessagesUseACompactBubbleWidth() {
+        XCTAssertLessThan(
+            VoiceMessageBubbleContent.compactWidth(durationMs: 1_000),
+            VoiceMessageBubbleContent.compactWidth(durationMs: 60_000)
+        )
+        XCTAssertLessThanOrEqual(
+            VoiceMessageBubbleContent.compactWidth(durationMs: 60_000),
+            260
+        )
+    }
+
+    @MainActor
     func testTelegramVoiceGestureThresholdsPreferDominantDirection() {
         XCTAssertEqual(ComposerView.voiceGestureIntent(horizontal: -70, vertical: -20), .cancel)
         XCTAssertEqual(ComposerView.voiceGestureIntent(horizontal: -20, vertical: -70), .lock)

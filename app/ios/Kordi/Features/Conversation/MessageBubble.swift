@@ -281,9 +281,14 @@ struct MessageBubble: View, Equatable {
                 minimumWidth: agentExecutionMinimumWidth
             ) {
                 bubbleContents
-                    .padding(.leading, 12)
-                    .padding(.trailing, message.author == .me ? 30 : 12)
-                    .padding(.vertical, 8)
+                    .padding(.leading, message.voiceMessage == nil ? 12 : 10)
+                    .padding(
+                        .trailing,
+                        message.author == .me
+                            ? (message.voiceMessage == nil ? 30 : 26)
+                            : (message.voiceMessage == nil ? 12 : 10)
+                    )
+                    .padding(.vertical, message.voiceMessage == nil ? 8 : 6)
             }
             .background(bubbleColor, in: bubbleShape)
             .compositingGroup()
@@ -332,6 +337,7 @@ struct MessageBubble: View, Equatable {
             if let voiceMessage = message.voiceMessage {
                 VoiceMessageBubbleContent(
                     voiceMessage: voiceMessage,
+                    reservesDeliveryStatus: message.author == .me,
                     onPrepare: onPrepareVoiceMessage
                 )
             }

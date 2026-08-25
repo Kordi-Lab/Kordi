@@ -375,6 +375,7 @@ private struct VoiceTrimControl: View {
 
 struct VoiceMessageBubbleContent: View {
     let voiceMessage: VoiceMessage
+    let reservesDeliveryStatus: Bool
     let onPrepare: (VoiceMessage) async -> URL?
 
     @State private var playback = VoiceMessagePlayback()
@@ -382,7 +383,7 @@ struct VoiceMessageBubbleContent: View {
     @State private var showsFullTranscript = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 8) {
                 Button {
                     Task {
@@ -391,69 +392,92 @@ struct VoiceMessageBubbleContent: View {
                 } label: {
                     Group {
                         if playback.isLoading {
-                            ProgressView().controlSize(.small)
+                            ProgressView().controlSize(.mini)
                         } else {
                             Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
+                                .font(.callout.weight(.semibold))
                         }
                     }
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 36)
                     .background(Color.primary.opacity(0.08), in: Circle())
                     .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle().inset(by: -4))
                 .accessibilityLabel(playback.isPlaying ? "Pause voice message" : "Play voice message")
 
-                ZStack {
-                    VoiceWaveform(samples: voiceMessage.waveformSamples, progress: playback.progress)
-                    Slider(value: $playback.progress, in: 0...1) { editing in
-                        if !editing { playback.seek(to: playback.progress) }
+                VStack(spacing: 0) {
+                    ZStack {
+                        VoiceWaveform(samples: voiceMessage.waveformSamples, progress: playback.progress)
+                        Slider(value: $playback.progress, in: 0...1) { editing in
+                            if !editing { playback.seek(to: playback.progress) }
+                        }
+                        .tint(.clear)
+                        .opacity(0.02)
+                        .accessibilityLabel("Voice message position")
+                        .accessibilityValue(
+                            "\(VoiceRecordingComposer.duration(playback.elapsedMs)) of \(VoiceRecordingComposer.duration(voiceMessage.durationMs))"
+                        )
                     }
-                    .tint(.clear)
-                    .opacity(0.02)
-                    .accessibilityLabel("Voice message position")
-                    .accessibilityValue(
-                        "\(VoiceRecordingComposer.duration(playback.elapsedMs)) of \(VoiceRecordingComposer.duration(voiceMessage.durationMs))"
-                    )
-                }
-                .frame(maxWidth: .infinity)
+                    .frame(height: 24)
+                    .clipped()
 
-                Button("\(playback.speed.formatted())×") {
-                    playback.cycleSpeed()
-                }
-                .font(.caption2.weight(.bold))
-                .buttonStyle(.plain)
-                .frame(minWidth: 36, minHeight: 44)
-                .accessibilityLabel("Playback speed (playback.speed.formatted()) times")
+                    HStack(spacing: 3) {
+                        Text(VoiceRecordingComposer.duration(
+                            playback.isPlaying ? playback.elapsedMs : voiceMessage.durationMs
+                        ))
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
 
-                Button {
-                    showsTranscript.toggle()
-                } label: {
-                    Image(systemName: "text.bubble")
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(showsTranscript ? "Hide voice transcript" : "Show voice transcript")
-                .accessibilityValue(showsTranscript ? "Expanded" : "Collapsed")
-            }
+                        Spacer(minLength: 2)
 
-            HStack {
-                Text(VoiceRecordingComposer.duration(playback.isPlaying ? playback.elapsedMs : voiceMessage.durationMs))
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if playback.errorMessage != nil {
-                    Button("Retry playback") {
-                        playback.reset()
-                        Task {
-                            await playback.toggle(voiceMessage, prepare: onPrepare)
+                        if playback.errorMessage != nil {
+                            Button {
+                                playback.reset()
+                                Task {
+                                    await playback.toggle(voiceMessage, prepare: onPrepare)
+                                }
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption2.weight(.semibold))
+                                    .frame(width: 24, height: 24)
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle().inset(by: -8))
+                            .foregroundStyle(KordiTheme.signalBlue)
+                            .accessibilityLabel("Retry playback")
+                        }
+
+                        Button("\(playback.speed.formatted())×") {
+                            playback.cycleSpeed()
+                        }
+                        .font(.caption2.weight(.bold))
+                        .buttonStyle(.plain)
+                        .frame(minWidth: 27, minHeight: 24)
+                        .contentShape(Rectangle().inset(by: -8))
+                        .accessibilityLabel("Playback speed \(playback.speed.formatted()) times")
+
+                        Button {
+                            showsTranscript.toggle()
+                        } label: {
+                            Image(systemName: "text.bubble")
+                                .font(.caption2)
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle().inset(by: -8))
+                        .accessibilityLabel(showsTranscript ? "Hide voice transcript" : "Show voice transcript")
+                        .accessibilityValue(showsTranscript ? "Expanded" : "Collapsed")
+
+                        if reservesDeliveryStatus {
+                            Color.clear
+                                .frame(width: 14, height: 1)
+                                .accessibilityHidden(true)
                         }
                     }
-                    .font(.caption2.weight(.semibold))
-                    .buttonStyle(.plain)
-                    .foregroundStyle(KordiTheme.signalBlue)
+                    .frame(height: 20)
                 }
             }
-            .padding(.leading, 52)
 
             if showsTranscript {
                 Divider().opacity(0.35)
@@ -478,9 +502,14 @@ struct VoiceMessageBubbleContent: View {
                 }
             }
         }
-        .frame(minWidth: 248, maxWidth: 340, alignment: .leading)
+        .frame(width: showsTranscript ? 280 : Self.compactWidth(durationMs: voiceMessage.durationMs))
         .animation(.easeOut(duration: 0.16), value: showsTranscript)
         .accessibilityElement(children: .contain)
+    }
+
+    static func compactWidth(durationMs: Int) -> CGFloat {
+        let seconds = CGFloat(max(1, min(60, Int(ceil(Double(durationMs) / 1_000)))))
+        return min(260, 168 + seconds * 1.45)
     }
 }
 
