@@ -4,14 +4,6 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
-## [0.0.1-beta.16] - 2026-08-22
-
-### Fixed
-
-- Completed desktop OAuth loopback request bodies before parsing the returned
-  session and preserved hydrated Kordi Support routing when legacy history is
-  selected.
-
 ## [0.0.1-beta.15] - 2026-08-22
 
 ### Changed
@@ -259,8 +251,7 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta16...HEAD
-[0.0.1-beta.16]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta15...V0.0.1.beta16
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta15...HEAD
 [0.0.1-beta.15]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta14...V0.0.1.beta15
 [0.0.1-beta.14]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta13...V0.0.1.beta14
 [0.0.1-beta.13]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta12...V0.0.1.beta13
