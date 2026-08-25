@@ -117,15 +117,25 @@ test('fallback participant spaces preserve per-participant profile image urls', 
   assert.equal(spaces[0]?.participants.find((participant) => participant.name === 'Me')?.profileImageUrl, 'https://images.test/me.png');
 });
 
-test('group participant avatar stack is stable and uses the first three human participants', () => {
+test('group participant avatar stack uses the canonical first three human members', () => {
   const alice = participant('acct_a', 'seed-a', 'Alice');
   const bob = participant('acct_b', 'seed-b', 'Bob');
   const carol = participant('acct_c', 'seed-c', 'Carol');
   const dana = participant('acct_d', 'seed-d', 'Dana');
 
-  const first = buildParticipantSpaces([groupConversation([alice, bob, carol, dana])])[0];
-  const second = buildParticipantSpaces([groupConversation([dana, carol, bob, alice])])[0];
+  const metadata = {
+    groupSpaceId: 'session:group:test',
+    avatarAccountIds: ['acct_b', 'acct_d', 'acct_a', 'acct_c'],
+  };
+  const first = buildParticipantSpaces([{
+    ...groupConversation([alice, bob, carol, dana]),
+    metadata,
+  }])[0];
+  const second = buildParticipantSpaces([{
+    ...groupConversation([dana, carol, bob, alice]),
+    metadata,
+  }])[0];
 
-  assert.deepEqual(first?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);
-  assert.deepEqual(second?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);
+  assert.deepEqual(first?.avatarStack.map((avatar) => avatar.seed), ['seed-b', 'seed-d', 'seed-a']);
+  assert.deepEqual(second?.avatarStack.map((avatar) => avatar.seed), ['seed-b', 'seed-d', 'seed-a']);
 });

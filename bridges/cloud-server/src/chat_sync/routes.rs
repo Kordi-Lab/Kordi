@@ -26,9 +26,11 @@ use crate::server::ServerState;
 const MAX_MESSAGE_CONTENT_BYTES: usize = 256 * 1024;
 const MAX_ATTACHMENTS_PER_MESSAGE: usize = 32;
 
+mod group_envelope;
 mod http;
 mod reaction;
 
+use group_envelope::normalize_legacy_group_envelope;
 use http::*;
 use reaction::{add_reaction, remove_reaction};
 #[derive(Clone)]
@@ -137,8 +139,11 @@ async fn send_message(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Path(conversation_id): Path<Uuid>,
-    Json(request): Json<SendMessageRequest>,
+    Json(mut request): Json<SendMessageRequest>,
 ) -> Response {
+    if let Err(error) = normalize_legacy_group_envelope(&mut request) {
+        return error.into_response();
+    }
     if let Err(error) = validate_message_request(&request) {
         return error.into_response();
     }

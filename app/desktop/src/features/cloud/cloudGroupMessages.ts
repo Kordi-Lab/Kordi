@@ -22,19 +22,12 @@ import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTarg
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import { normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
+import { cloudGroupTransportParticipant, type CloudGroupActor, type CloudGroupParticipant } from './cloudGroupParticipantTypes';
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:'; const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
 export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update' | 'session-fork';
 
-export type CloudGroupParticipant = {
-  accountId: string;
-  kordiId?: string | null;
-  displayName: string;
-  avatarUrl: string | null;
-  role?: 'admin' | 'person' | 'self' | string | null;
-};
-
-export type CloudGroupActor = CloudGroupParticipant;
+export type { CloudGroupActor, CloudGroupParticipant } from './cloudGroupParticipantTypes';
 
 export { cloudGroupIdentityRequest } from './cloudGroupIdentity';
 
@@ -330,6 +323,9 @@ function uniqueByAccount(
         displayName: existing.displayName === accountId ? displayName : existing.displayName,
         avatarUrl: existing.avatarUrl || avatarUrl,
         role: existing.role ?? participant.role ?? 'person',
+        ...((existing.joinedAt || participant.joinedAt)
+          ? { joinedAt: existing.joinedAt || participant.joinedAt }
+          : {}),
       });
       continue;
     }
@@ -340,10 +336,12 @@ function uniqueByAccount(
       displayName,
       avatarUrl,
       role: participant.role ?? 'person',
+      ...(participant.joinedAt ? { joinedAt: participant.joinedAt } : {}),
     });
   }
   return [...byAccountId.values()];
 }
+
 
 export function cloudGroupUniqueParticipants(participants: CloudGroupParticipant[]): CloudGroupParticipant[] {
   return uniqueByAccount(participants);
@@ -586,8 +584,8 @@ export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): strin
     groupSpaceId: cleanText(input.groupSpaceId) || null,
     groupTitle: cleanText(input.groupTitle) || null,
     createdByAccountId: cleanText(input.createdByAccountId),
-    actor: cloudGroupNormalizeParticipant(input.actor),
-    participants: uniqueByAccount(input.participants),
+    actor: cloudGroupTransportParticipant(cloudGroupNormalizeParticipant(input.actor)),
+    participants: uniqueByAccount(input.participants).map(cloudGroupTransportParticipant),
     sessionTitle,
     message: input.message ? {
       ...input.message,

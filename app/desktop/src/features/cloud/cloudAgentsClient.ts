@@ -11,6 +11,7 @@ import {
   type SharedCloudAgentSummary,
 } from './cloudAgents';
 import type { CanonicalAvatarMutation } from './canonicalAvatar';
+import { avatarDataUrlBlob } from './canonicalAvatar';
 
 export type CloudAgentAccessScope = 'private' | 'participant_conversations';
 export type CloudAgentStatus = 'active' | 'archived';
@@ -128,25 +129,72 @@ export class CloudAgentsClient {
   }
 
   async createCloudAgent(token: string, input: CreateCloudAgentInput): Promise<CloudAgentDefinition> {
+    const pendingAvatar = input.avatarMutation?.action === 'upload'
+      && input.avatarMutation.uploadedAsset?.startsWith('data:image/')
+      ? input.avatarMutation
+      : null;
     const body = await this.send<CloudAgentEnvelope>('/v1/cloud/agents', {
       method: 'POST',
       headers: this.authHeaders(token),
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, ...(pendingAvatar ? { avatarMutation: undefined } : {}) }),
     }, 'Could not create Cloud Agent.');
+    const agent = normalizeCloudAgentDefinition(body.agent);
+    if (!agent) throw new CloudAuthError('unknown', 'Cloud Agent response was invalid.', 0);
+    if (pendingAvatar?.uploadedAsset) {
+      try {
+        return await this.updateCloudAgent(token, agent.agentId, {
+          avatarMutation: {
+            ...pendingAvatar,
+            uploadedAsset: await this.uploadAvatarAsset(
+              token,
+              agent.agentId,
+              pendingAvatar.uploadedAsset,
+            ),
+            expectedVersion: agent.avatar.version,
+          },
+        });
+      } catch {
+        return agent;
+      }
+    }
+    return agent;
+  }
+
+  async updateCloudAgent(token: string, agentId: string, input: UpdateCloudAgentInput): Promise<CloudAgentDefinition> {
+    let avatarMutation = input.avatarMutation;
+    if (
+      avatarMutation?.action === 'upload'
+      && avatarMutation.uploadedAsset?.startsWith('data:image/')
+    ) {
+      avatarMutation = {
+        ...avatarMutation,
+        uploadedAsset: await this.uploadAvatarAsset(token, agentId, avatarMutation.uploadedAsset),
+      };
+    }
+    const body = await this.send<CloudAgentEnvelope>(`/v1/cloud/agents/${encodeURIComponent(agentId)}`, {
+      method: 'PUT',
+      headers: this.authHeaders(token),
+      body: JSON.stringify({ ...input, ...(avatarMutation ? { avatarMutation } : {}) }),
+    }, 'Could not update Cloud Agent.');
     const agent = normalizeCloudAgentDefinition(body.agent);
     if (!agent) throw new CloudAuthError('unknown', 'Cloud Agent response was invalid.', 0);
     return agent;
   }
 
-  async updateCloudAgent(token: string, agentId: string, input: UpdateCloudAgentInput): Promise<CloudAgentDefinition> {
-    const body = await this.send<CloudAgentEnvelope>(`/v1/cloud/agents/${encodeURIComponent(agentId)}`, {
-      method: 'PUT',
-      headers: this.authHeaders(token),
-      body: JSON.stringify(input),
-    }, 'Could not update Cloud Agent.');
-    const agent = normalizeCloudAgentDefinition(body.agent);
-    if (!agent) throw new CloudAuthError('unknown', 'Cloud Agent response was invalid.', 0);
-    return agent;
+  private async uploadAvatarAsset(token: string, agentId: string, dataUrl: string) {
+    const blob = avatarDataUrlBlob(dataUrl);
+    const params = new URLSearchParams({ entityType: 'agent', entityId: agentId });
+    const body = await this.send<{ uploadedAsset?: string }>(
+      `/v1/cloud/avatar-assets?${params.toString()}`,
+      {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': blob.type },
+        body: blob,
+      },
+      'Could not upload the Agent avatar.',
+    );
+    if (!body.uploadedAsset) throw new CloudAuthError('unknown', 'Avatar upload response was invalid.', 0);
+    return body.uploadedAsset;
   }
 
   async archiveCloudAgent(token: string, agentId: string): Promise<CloudAgentDefinition> {

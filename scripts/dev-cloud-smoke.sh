@@ -3,7 +3,9 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose_file="$repo_root/deploy/dev/compose.yaml"
-env_file="$repo_root/deploy/dev/.env"
+env_file="${KORDI_DEBUG_ENV_FILE:-$repo_root/deploy/dev/.env}"
+project_name="${KORDI_DEBUG_PROJECT_NAME:-kordi-debug}"
+compose=(docker compose --project-name "$project_name" --env-file "$env_file" -f "$compose_file")
 
 if [[ ! -f "$env_file" ]]; then
   echo "[kordi-debug] Missing deploy/dev/.env. Run pnpm debug:cloud:up first." >&2
@@ -14,10 +16,10 @@ api_port="${KORDI_DEBUG_API_PORT:-$(sed -n 's/^KORDI_DEBUG_API_PORT=//p' "$env_f
 api_port="${api_port:-17081}"
 
 for service in postgres redis nats minio cloud-server cloud-agent-runner; do
-  container_id="$(docker compose --env-file "$env_file" -f "$compose_file" ps -q "$service")"
+  container_id="$("${compose[@]}" ps -q "$service")"
   if [[ -z "$container_id" ]] || [[ "$(docker inspect -f '{{.State.Running}}' "$container_id")" != "true" ]]; then
     echo "[kordi-debug] Service is not running: $service" >&2
-    docker compose --env-file "$env_file" -f "$compose_file" ps >&2
+    "${compose[@]}" ps >&2
     exit 1
   fi
 done
@@ -36,7 +38,7 @@ done
 
 if [[ "$healthy" != "true" ]]; then
   echo "[kordi-debug] Cloud API did not become healthy: $health_url" >&2
-  docker compose --env-file "$env_file" -f "$compose_file" logs --tail=120 cloud-server >&2
+  "${compose[@]}" logs --tail=120 cloud-server >&2
   exit 1
 fi
 

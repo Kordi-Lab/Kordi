@@ -400,6 +400,9 @@ final class AppModel: ObservableObject {
                 avatarMutation: avatarMutation
             )
             try await completeAuthentication(response)
+            if let warning = response.avatarUploadWarning {
+                errorMessage = warning
+            }
             return true
         } catch {
             errorMessage = userFacing(error, fallback: "Could not create account.")
@@ -3862,16 +3865,18 @@ final class AppModel: ObservableObject {
                 accountId: participant.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl?.nonEmpty ?? participant.avatarUrl,
-                role: participant.role
+                role: participant.role,
+                joinedAt: participant.joinedAt
             )
         }
         byAccountID[account.accountId] = CloudGroupParticipant(
             accountId: account.accountId,
             displayName: account.preferredName,
             avatarUrl: account.avatar.imageSource,
-            role: byAccountID[account.accountId]?.role.nonEmpty ?? "self"
+            role: byAccountID[account.accountId]?.role.nonEmpty ?? "self",
+            joinedAt: byAccountID[account.accountId]?.joinedAt
         )
-        return byAccountID.values.sorted { $0.accountId < $1.accountId }
+        return byAccountID.values.sorted(by: CloudGroupParticipant.canonicalPrecedes)
     }
 
     private func sendGroupControl(

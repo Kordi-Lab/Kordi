@@ -183,7 +183,7 @@ struct GroupAvatarStack: View {
     var size: CGFloat = 52
 
     private var visibleParticipants: [CloudGroupParticipant] {
-        Array(participants.sorted { $0.accountId < $1.accountId }.prefix(3))
+        Array(participants.sorted(by: CloudGroupParticipant.canonicalPrecedes).prefix(3))
     }
 
     var body: some View {

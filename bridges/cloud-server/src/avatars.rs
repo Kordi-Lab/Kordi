@@ -7,7 +7,6 @@ use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Extension, Json, Router};
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sqlx_core::query::query;
@@ -25,12 +24,13 @@ use self::rendering::{
     AVATAR_RENDER_SIZE,
 };
 
+pub mod assets;
 mod rendering;
 
 pub const AVATAR_RENDERER_VERSION: &str = "dicebear-rust-10.6.0-styles-10.5.0";
 pub const HUMAN_AVATAR_STYLE: &str = "lorelei";
 pub const AGENT_AVATAR_STYLE: &str = "thumbs";
-pub const AVATAR_UPLOAD_MAX_BYTES: usize = 200 * 1024;
+pub use assets::clean_uploaded_avatar;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -169,42 +169,6 @@ pub fn new_avatar_seed() -> String {
     Uuid::new_v4().simple().to_string()
 }
 
-pub fn clean_uploaded_avatar(value: Option<&str>) -> Result<Option<String>, String> {
-    let Some(raw) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(None);
-    };
-    let Some((metadata, payload)) = raw.split_once(',') else {
-        return Err("Avatar must be a PNG, JPEG, or WebP image.".to_string());
-    };
-    let media_type = match metadata.to_ascii_lowercase().as_str() {
-        "data:image/png;base64" => "image/png",
-        "data:image/jpeg;base64" => "image/jpeg",
-        "data:image/webp;base64" => "image/webp",
-        _ => return Err("Avatar must be a PNG, JPEG, or WebP image.".to_string()),
-    };
-    if decoded_base64_len(payload) > AVATAR_UPLOAD_MAX_BYTES {
-        return Err("Avatar payload is too large after processing.".to_string());
-    }
-    let decoded = STANDARD
-        .decode(payload)
-        .map_err(|_| "Avatar image data is invalid.".to_string())?;
-    if decoded.len() > AVATAR_UPLOAD_MAX_BYTES {
-        return Err("Avatar payload is too large after processing.".to_string());
-    }
-    let has_expected_signature = match media_type {
-        "image/png" => decoded.starts_with(b"\x89PNG\r\n\x1a\n"),
-        "image/jpeg" => decoded.starts_with(b"\xff\xd8\xff"),
-        "image/webp" => {
-            decoded.starts_with(b"RIFF") && decoded.get(8..12) == Some(b"WEBP".as_slice())
-        }
-        _ => false,
-    };
-    if !has_expected_signature {
-        return Err("Avatar image data does not match its file type.".to_string());
-    }
-    Ok(Some(raw.to_string()))
-}
-
 pub fn apply_avatar_mutation(
     current: &AvatarDescriptor,
     mutation: &AvatarMutationRequest,
@@ -297,6 +261,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route(
             "/v1/avatars/preview/:style/:file_name",
             get(render_avatar_preview),
+        )
+        .route(
+            "/v1/avatars/assets/:asset_id/:file_name",
+            get(assets::render_uploaded_avatar),
         )
         .layer(Extension(rate_limiter))
         .with_state(state)
@@ -454,11 +422,6 @@ pub fn is_valid_avatar_seed(seed: &str) -> bool {
         && seed
             .bytes()
             .all(|value| value.is_ascii_alphanumeric() || matches!(value, b'-' | b'_'))
-}
-
-fn decoded_base64_len(encoded: &str) -> usize {
-    let trimmed = encoded.trim_end_matches('=');
-    (trimmed.len() * 3) / 4
 }
 
 fn avatar_png_response(bytes: Arc<[u8]>) -> Response {

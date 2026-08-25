@@ -1,6 +1,6 @@
 use super::*;
 mod signup_avatar;
-use signup_avatar::signup_avatar;
+use signup_avatar::{apply_deferred_signup_avatar, deferred_signup_avatar_bytes, signup_avatar};
 
 pub(super) async fn signup(
     State(state): State<Arc<ServerState>>,
@@ -49,9 +49,7 @@ pub(super) async fn signup(
 
     let pool = state.db_pool();
 
-    // Email uniqueness precheck — cleaner error code than mapping a UNIQUE
-    // violation. The partial unique index on LOWER(primary_email) is the
-    // ground-truth backstop.
+    // The partial unique index on LOWER(primary_email) remains the backstop.
     let existing: Option<(String,)> =
         match query_as("SELECT account_id FROM cloud_accounts WHERE LOWER(primary_email) = $1")
             .bind(&normalized_email)
@@ -94,7 +92,24 @@ pub(super) async fn signup(
 
     let now = Utc::now().to_rfc3339();
     let account_id = format!("acct_{}", uuid::Uuid::new_v4().simple());
-    let avatar = match signup_avatar(&account_id, avatar_seed, req.avatar_mutation.as_ref(), &now) {
+    let deferred_avatar_bytes = match deferred_signup_avatar_bytes(req.avatar_mutation.as_ref()) {
+        Ok(value) => value,
+        Err(crate::avatars::assets::AvatarAssetError::Invalid(message)) => {
+            return err("invalid_avatar", message, StatusCode::BAD_REQUEST)
+        }
+        Err(_) => {
+            return err(
+                "avatar_storage_unavailable",
+                "Avatar storage is unavailable.",
+                StatusCode::SERVICE_UNAVAILABLE,
+            )
+        }
+    };
+    let immediate_avatar_mutation = deferred_avatar_bytes
+        .is_none()
+        .then_some(req.avatar_mutation.as_ref())
+        .flatten();
+    let avatar = match signup_avatar(&account_id, avatar_seed, immediate_avatar_mutation, &now) {
         Ok(value) => value,
         Err(AvatarMutationError::Conflict) => {
             return err(
@@ -221,6 +236,8 @@ pub(super) async fn signup(
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
+
+    apply_deferred_signup_avatar(&state, &account_id, &avatar, &now, deferred_avatar_bytes).await;
 
     // Fire-and-forget event publish. We don't want NATS hiccups to slow
     // down or fail signup; the bus is a no-op when NATS isn't wired.

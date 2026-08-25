@@ -9,7 +9,6 @@ import type {
 } from '@/kordi-app/types';
 import {
   deterministicGroupParticipantTitle,
-  groupParticipantStableKey,
   sharedGroupCustomTitle,
 } from './groupTitle';
 import {
@@ -22,6 +21,7 @@ import {
 import {
   filterParticipantSpacesByChannel,
 } from './participantSpaceFilters';
+import { participantSpaceAvatarParticipants } from './participantSpaceAvatars';
 
 export {
   isBlankConversation,
@@ -421,25 +421,6 @@ function spaceTitle(
   return primaryParticipantForKind(kind, participants)?.name || safePreviewText(latestSession?.conversation.name) || 'Chat';
 }
 
-function avatarParticipantStableKey(participant: ConversationParticipant) {
-  return groupParticipantStableKey(participant);
-}
-
-function avatarParticipants(kind: ParticipantSpaceKind, participants: ConversationParticipant[]) {
-  if (kind === 'self') {
-    const primary = selfParticipant(participants) ?? participants.find((participant) => participant.kind === 'human') ?? participants[0];
-    return primary ? [primary] : [];
-  }
-  if (kind === 'group') {
-    return participants
-      .filter((participant) => participant.kind === 'human')
-      .sort((left, right) => avatarParticipantStableKey(left).localeCompare(avatarParticipantStableKey(right)))
-      .slice(0, 3);
-  }
-  const primary = primaryParticipantForKind(kind, participants);
-  return primary ? [primary] : [];
-}
-
 export function buildParticipantSpaces(conversations: Conversation[]): ParticipantSpaceViewModel[] {
   const cloudRootIdsByParticipantKey = new Map<string, Set<string>>();
   for (const conversation of conversations) {
@@ -576,6 +557,12 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
           ].map((identityId) => cleanOptionalText(identityId)).filter(Boolean))];
         })()
         : undefined;
+      const avatarAccountIds = group.kind === 'group'
+        ? metadataStringArrayValue(
+          metadataRecord(groupRootSession?.conversation.metadata),
+          'avatarAccountIds',
+        )
+        : [];
       const sessions = collapseDuplicateBlankSessions(
         group.kind === 'group'
           ? sortedSessions.filter((session) => !isPersistedBlankGroupContinuation(session))
@@ -595,7 +582,11 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
         updatedAtMs: latest?.updatedAtMs ?? 0,
         createdAtMs: groupCreatedAtMs,
         preview: latest?.preview ?? '',
-        avatarStack: avatarParticipants(group.kind, group.participants).map(avatarForParticipant),
+        avatarStack: participantSpaceAvatarParticipants(
+          group.kind,
+          group.participants,
+          avatarAccountIds,
+        ).map(avatarForParticipant),
         sessions,
         groupCreatorIdentityId,
         groupAdminIdentityIds,

@@ -50,6 +50,10 @@ enum CanonicalAvatarSystem {
         let version: Int64
     }
 
+    struct UploadedMarker: Equatable {
+        let assetId: String
+    }
+
     static func marker(from value: String?) -> Marker? {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
               value.hasPrefix(markerPrefix),
@@ -69,7 +73,25 @@ enum CanonicalAvatarSystem {
         return "\(markerPrefix)\(rendererVersion)/\(style)/\(seed)?version=\(version)"
     }
 
+    static func uploadedMarker(from value: String?) -> UploadedMarker? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              value.hasPrefix(markerPrefix),
+              let components = URLComponents(string: value),
+              components.host == "uploaded" else { return nil }
+        let path = components.path.split(separator: "/").map(String.init)
+        guard path.count == 1,
+              path[0].range(of: #"^ava_[0-9a-fA-F]{32}$"#, options: .regularExpression) != nil
+        else { return nil }
+        return UploadedMarker(assetId: path[0])
+    }
+
     static func renderURL(from value: String?, baseURL: URL = CloudAPIClient.configuredBaseURL) -> URL? {
+        if let uploaded = uploadedMarker(from: value) {
+            return baseURL
+                .appendingPathComponent("v1/avatars/assets")
+                .appendingPathComponent(uploaded.assetId)
+                .appendingPathComponent("256.jpg")
+        }
         guard let marker = marker(from: value) else { return nil }
         return baseURL
             .appendingPathComponent("v1/avatars")
@@ -196,6 +218,7 @@ struct CloudSessionPin: Codable, Hashable {
 struct CloudAuthResponse: Codable, Hashable {
     let account: CloudAccount
     let session: CloudSession
+    var avatarUploadWarning: String? = nil
 }
 
 struct CloudContact: Codable, Hashable, Identifiable {

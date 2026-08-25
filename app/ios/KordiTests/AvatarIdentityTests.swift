@@ -52,6 +52,24 @@ final class AvatarIdentityTests: XCTestCase {
         XCTAssertNotNil(AvatarImageLoader.normalizedSource(marker))
     }
 
+    func testUploadedAvatarMarkerResolvesToTheCanonicalAssetRoute() throws {
+        let marker = "kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef"
+
+        XCTAssertEqual(
+            CanonicalAvatarSystem.uploadedMarker(from: marker),
+            CanonicalAvatarSystem.UploadedMarker(
+                assetId: "ava_0123456789abcdef0123456789abcdef"
+            )
+        )
+        XCTAssertEqual(
+            CanonicalAvatarSystem.renderURL(
+                from: marker,
+                baseURL: URL(string: "https://avatars.example")!
+            )?.absoluteString,
+            "https://avatars.example/v1/avatars/assets/ava_0123456789abcdef0123456789abcdef/256.jpg"
+        )
+    }
+
     func testGeneratedAgentUsesThePinnedThumbsRenderer() throws {
         let seed = CanonicalAvatarSystem.defaultAgentId
         let preview = try XCTUnwrap(CanonicalAvatarSystem.previewURL(

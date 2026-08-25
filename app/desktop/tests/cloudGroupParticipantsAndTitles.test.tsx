@@ -24,6 +24,36 @@ test('cloud group participant envelopes drop local-only ids, huge data avatars, 
   ]);
 });
 
+test('encoded cloud group controls never transport avatar image values', () => {
+  const decoded = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:avatars',
+    groupTitle: 'Avatar test',
+    createdByAccountId: 'acct_a',
+    actor: {
+      accountId: 'acct_a',
+      displayName: 'Alice',
+      avatarUrl: 'https://images.test/alice.jpg',
+      role: 'admin',
+    },
+    participants: [{
+      accountId: 'acct_b',
+      displayName: 'Bob',
+      avatarUrl: 'data:image/jpeg;base64,avatar',
+      role: 'person',
+    }],
+    message: {
+      id: 'message',
+      senderAccountId: 'acct_a',
+      text: 'hello',
+      createdAtMs: 1,
+    },
+  }));
+
+  assert.equal(decoded?.actor.avatarUrl, null);
+  assert.deepEqual(decoded?.participants.map((participant) => participant.avatarUrl), [null]);
+});
+
 test('cloud group participant normalization rejects kh local ids', () => {
   const participants = cloudGroupUniqueParticipants([
     { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },

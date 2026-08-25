@@ -731,7 +731,7 @@ private struct ProfileSettingsView: View {
     private func loadAvatar(_ item: PhotosPickerItem) async {
         guard let data = try? await item.loadTransferable(type: Data.self),
               let prepared = SignupAvatarRenderer.uploadedImage(from: data) else {
-            model.errorMessage = "Choose a smaller PNG, JPEG, or WebP photo."
+            model.errorMessage = "Choose a supported photo up to 2 MiB."
             return
         }
         avatarDraft = prepared.dataURL

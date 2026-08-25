@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { AVATAR_SOURCE_MAX_BYTES } from '@/features/cloud/canonicalAvatar';
 
 const STORAGE_KEY = 'kordi.avatarOverrides.v1';
 const CHANGE_EVENT = 'kordi-avatar-overrides-change';
@@ -122,6 +123,9 @@ function dataUrlPayloadBytes(dataUrl: string) {
 export async function fileToAvatarDataUrl(file: File) {
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
     throw new Error('Choose a PNG, JPEG, or WebP image.');
+  }
+  if (file.size > AVATAR_SOURCE_MAX_BYTES) {
+    throw new Error('Avatar source must be 2 MiB or smaller.');
   }
 
   const rawDataUrl = await readFileAsDataUrl(file);

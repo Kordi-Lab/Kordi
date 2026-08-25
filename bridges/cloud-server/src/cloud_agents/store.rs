@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use sqlx_core::query_as::query_as;
 use sqlx_core::transaction::Transaction;
 use sqlx_postgres::{PgPool, Postgres};
-use uuid::Uuid;
 
 use crate::avatars::{
     apply_avatar_mutation, descriptor_from_parts, new_avatar_seed, preserve_avatar_render_key,
@@ -15,8 +14,9 @@ use crate::cloud_agents::models::{
     UpdateCloudAgentRequest, CLOUD_AGENT_ACCESS_PARTICIPANT_CONVERSATIONS,
     CLOUD_AGENT_STATUS_ACTIVE, CLOUD_AGENT_STATUS_ARCHIVED,
 };
+use crate::cloud_agents::store_avatar::activate_agent_avatar_reference;
 use crate::cloud_agents::store_cleaning::{
-    clean_resources, clean_skills, json_or_array, timestamp,
+    clean_resources, clean_skills, json_or_array, timestamp, BOUNDARY_MAX_ITEMS,
 };
 use crate::cloud_agents::store_rows::{row_to_definition, CloudAgentRow};
 
@@ -25,7 +25,6 @@ const ROLE_MAX_LEN: usize = 160;
 const DESCRIPTION_MAX_LEN: usize = 1_200;
 const PROMPT_MAX_LEN: usize = 80_000;
 const SOURCE_SUMMARY_MAX_LEN: usize = 4_000;
-const BOUNDARY_MAX_ITEMS: usize = 12;
 const BOUNDARY_MAX_LEN: usize = 240;
 
 #[derive(Debug)]
@@ -101,6 +100,7 @@ async fn insert_agent_sync_event(
 pub async fn create_agent_definition(
     pool: &PgPool,
     owner_account_id: &str,
+    agent_id: String,
     input: CreateCloudAgentRequest,
     now: DateTime<Utc>,
 ) -> Result<CloudAgentDefinition, CloudAgentStoreError> {
@@ -117,12 +117,12 @@ pub async fn create_agent_definition(
     let source_summary =
         clean_optional_text(input.source_summary.as_deref(), SOURCE_SUMMARY_MAX_LEN)
             .map_err(CloudAgentStoreError::Invalid)?;
+    let avatar_mutation = input.avatar_mutation;
     let boundaries = clean_string_list(input.boundaries, BOUNDARY_MAX_ITEMS, BOUNDARY_MAX_LEN);
     let resources = clean_resources(input.resources);
     let skills = clean_skills(input.skills);
     let model_routing = input.model_routing.unwrap_or_else(|| serde_json::json!({}));
     let now_text = timestamp(now);
-    let agent_id = format!("cloud_agent_{}", Uuid::new_v4().simple());
     let initial_avatar = AvatarDescriptor {
         entity_type: "agent".to_string(),
         entity_id: agent_id.clone(),
@@ -134,7 +134,7 @@ pub async fn create_agent_definition(
         version: 1,
         updated_at: now_text.clone(),
     };
-    let avatar = match input.avatar_mutation.as_ref() {
+    let avatar = match avatar_mutation.as_ref() {
         Some(mutation) => apply_avatar_mutation(&initial_avatar, mutation, &now_text).map_err(
             |error| match error {
                 AvatarMutationError::Conflict => CloudAgentStoreError::AvatarConflict,
@@ -145,6 +145,14 @@ pub async fn create_agent_definition(
     };
     let avatar_url = avatar.image_url();
     let mut transaction = pool.begin().await?;
+    activate_agent_avatar_reference(
+        &mut transaction,
+        owner_account_id,
+        &agent_id,
+        avatar_mutation.as_ref(),
+        &avatar_url,
+    )
+    .await?;
 
     let row = query_as::<_, CloudAgentRow>(
         "INSERT INTO cloud_agent_definitions (
@@ -365,6 +373,14 @@ pub async fn update_agent_definition(
                 AvatarMutationError::Invalid(message) => CloudAgentStoreError::Invalid(message),
             },
         )?;
+        activate_agent_avatar_reference(
+            &mut transaction,
+            owner_account_id,
+            agent_id,
+            Some(mutation),
+            current.avatar.uploaded_asset.as_deref().unwrap_or_default(),
+        )
+        .await?;
         current.avatar_url = Some(current.avatar.image_url());
     }
     let row = query_as::<_, CloudAgentRow>(

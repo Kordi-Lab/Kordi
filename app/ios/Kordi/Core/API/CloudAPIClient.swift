@@ -84,6 +84,14 @@ actor CloudAPIClient {
         avatarMutation: CanonicalAvatarMutation? = nil
     ) async throws -> CloudAuthResponse {
         let device = try await deviceRegistration()
+        let pendingAvatar: CanonicalAvatarMutation?
+        if let avatarMutation,
+           avatarMutation.action == "upload",
+           avatarMutation.uploadedAsset?.hasPrefix("data:image/") == true {
+            pendingAvatar = avatarMutation
+        } else {
+            pendingAvatar = nil
+        }
         let response: CloudAuthResponse = try await send(
             path: "/v1/cloud/auth/signup",
             method: "POST",
@@ -92,12 +100,37 @@ actor CloudAPIClient {
                 password: password,
                 displayName: displayName,
                 avatarSeed: avatarSeed,
-                avatarMutation: avatarMutation,
+                avatarMutation: pendingAvatar == nil ? avatarMutation : nil,
                 device: device
             ),
             fallback: "Could not create account."
         )
         activateAccount(response.account.accountId)
+        if let pendingAvatar, let dataURL = pendingAvatar.uploadedAsset {
+            do {
+                let uploadedAsset = try await uploadAvatarAsset(
+                    token: response.session.token,
+                    entityType: "human",
+                    entityId: response.account.accountId,
+                    dataURL: dataURL
+                )
+                let account = try await updateProfile(
+                    token: response.session.token,
+                    displayName: displayName ?? response.account.preferredName,
+                    avatarMutation: .upload(
+                        uploadedAsset,
+                        expectedVersion: response.account.avatar.version
+                    )
+                )
+                return CloudAuthResponse(account: account, session: response.session)
+            } catch {
+                return CloudAuthResponse(
+                    account: response.account,
+                    session: response.session,
+                    avatarUploadWarning: "Account created, but the avatar could not be uploaded. Retry from Profile."
+                )
+            }
+        }
         return response
     }
 
@@ -145,7 +178,13 @@ actor CloudAPIClient {
         displayName: String,
         avatarMutation: CanonicalAvatarMutation?
     ) async throws -> CloudAccount {
-        try await send(
+        let avatarMutation = try await referenceBackedAvatarMutation(
+            token: token,
+            entityType: "human",
+            entityId: try requireActiveAccountId(),
+            mutation: avatarMutation
+        )
+        return try await send(
             path: "/v1/cloud/auth/me",
             method: "PATCH",
             token: token,
@@ -340,7 +379,8 @@ actor CloudAPIClient {
                         accountId: member.accountId,
                         displayName: member.displayName?.nonEmpty ?? "Kordi user",
                         avatarUrl: member.avatarUrl?.nonEmpty,
-                        role: member.role.nonEmpty
+                        role: member.role.nonEmpty,
+                        joinedAt: member.joinedAt.nonEmpty
                     )
                 }
             result[conversation.id] = participants
@@ -499,6 +539,12 @@ actor CloudAPIClient {
         agentId: String,
         mutation: CanonicalAvatarMutation
     ) async throws -> CloudAgent {
+        let mutation = try await referenceBackedAvatarMutation(
+            token: token,
+            entityType: "agent",
+            entityId: agentId,
+            mutation: mutation
+        ) ?? mutation
         let response: AgentResponse = try await send(
             path: "/v1/cloud/agents/\(agentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? agentId)",
             method: "PUT",
@@ -507,6 +553,71 @@ actor CloudAPIClient {
             fallback: "Could not update this agent's avatar."
         )
         return response.agent
+    }
+
+    private func referenceBackedAvatarMutation(
+        token: String,
+        entityType: String,
+        entityId: String,
+        mutation: CanonicalAvatarMutation?
+    ) async throws -> CanonicalAvatarMutation? {
+        guard let mutation,
+              mutation.action == "upload",
+              let dataURL = mutation.uploadedAsset,
+              dataURL.hasPrefix("data:image/") else { return mutation }
+        return .upload(
+            try await uploadAvatarAsset(
+                token: token,
+                entityType: entityType,
+                entityId: entityId,
+                dataURL: dataURL
+            ),
+            expectedVersion: mutation.expectedVersion
+        )
+    }
+
+    private func uploadAvatarAsset(
+        token: String,
+        entityType: String,
+        entityId: String,
+        dataURL: String
+    ) async throws -> String {
+        guard let comma = dataURL.firstIndex(of: ","),
+              let data = Data(base64Encoded: String(dataURL[dataURL.index(after: comma)...])),
+              data.count <= SignupAvatarRenderer.maximumSourceBytes else {
+            throw CloudAPIError(
+                code: "invalid_avatar",
+                message: "Choose a supported photo up to 2 MiB.",
+                statusCode: 0
+            )
+        }
+        let metadata = dataURL[..<comma].lowercased()
+        let contentType: String
+        switch metadata {
+        case "data:image/png;base64": contentType = "image/png"
+        case "data:image/jpeg;base64": contentType = "image/jpeg"
+        case "data:image/webp;base64": contentType = "image/webp"
+        default:
+            throw CloudAPIError(
+                code: "invalid_avatar",
+                message: "Choose a PNG, JPEG, or WebP image.",
+                statusCode: 0
+            )
+        }
+        var request = try makeRequest(
+            path: "/v1/cloud/avatar-assets",
+            method: "POST",
+            token: token,
+            query: [
+                URLQueryItem(name: "entityType", value: entityType),
+                URLQueryItem(name: "entityId", value: entityId)
+            ],
+            body: data
+        )
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        let (responseData, response) = try await session.data(for: request)
+        try validate(response: response, data: responseData, fallback: "Could not upload the avatar.")
+        return try decoder.decode(AvatarAssetUploadResponse.self, from: responseData).uploadedAsset
     }
 
     func archiveAgent(token: String, agentId: String) async throws -> CloudAgent {
@@ -1919,6 +2030,7 @@ private struct AgentResponse: Decodable { let agent: CloudAgent }
 private struct CloudAgentAvatarRequest: Encodable {
     let avatarMutation: CanonicalAvatarMutation
 }
+private struct AvatarAssetUploadResponse: Decodable { let uploadedAsset: String }
 private struct CloudAgentDefinitionRequest: Encodable {
     let accessScope: String
     let name: String

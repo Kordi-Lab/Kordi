@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  avatarDataUrlBlob,
   canonicalAvatarImageSource,
   generatedAvatarMarker,
   generatedAvatarPreviewUrl,
   HUMAN_CANONICAL_AVATAR_STYLE,
   normalizeCanonicalAvatarDescriptor,
   parseGeneratedAvatarMarker,
+  parseUploadedAvatarMarker,
 } from '../src/features/cloud/canonicalAvatar';
 
 test('canonical avatar image sources come only from the descriptor', () => {
@@ -53,6 +55,22 @@ test('canonical avatar markers preserve the pinned renderer, style, seed, and ve
     seed: 'acct_123',
     version: 4,
   });
+});
+
+test('uploaded avatar markers remain small environment-independent references', () => {
+  const marker = 'kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef';
+
+  assert.deepEqual(parseUploadedAvatarMarker(marker), {
+    assetId: 'ava_0123456789abcdef0123456789abcdef',
+  });
+  assert.equal(parseUploadedAvatarMarker('data:image/jpeg;base64,avatar'), null);
+});
+
+test('avatar data urls become bounded binary upload bodies', () => {
+  const blob = avatarDataUrlBlob('data:image/jpeg;base64,/9j/');
+
+  assert.equal(blob.type, 'image/jpeg');
+  assert.equal(blob.size, 3);
 });
 
 test('canonical avatar descriptors reject unsupported runtime styles', () => {

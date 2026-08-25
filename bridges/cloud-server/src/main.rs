@@ -36,6 +36,12 @@ enum Commands {
         #[arg(long)]
         redis_url: Option<String>,
     },
+    /// Migrate legacy inline uploaded avatars into reference-backed assets.
+    BackfillAvatarAssets {
+        /// Postgres connection string. Falls back to the DATABASE_URL env var.
+        #[arg(long)]
+        database_url: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -60,6 +66,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 redis_url.as_deref(),
             )
             .await?;
+        }
+        Commands::BackfillAvatarAssets { database_url } => {
+            let database_url = database_url
+                .or_else(|| std::env::var("DATABASE_URL").ok())
+                .ok_or("DATABASE_URL is required (env var or --database-url flag)")?;
+            let pool = kordi_cloud_server::pg::init_pool(&database_url).await?;
+            let s3 = kordi_cloud_server::attachments::S3Config::from_env()
+                .ok_or("Avatar object storage is not configured")?;
+            let summary =
+                kordi_cloud_server::avatars::assets::backfill_inline_avatars(&pool, &s3).await?;
+            println!(
+                "Avatar asset backfill complete: migrated={}, skipped={}, failed={}",
+                summary.migrated, summary.skipped, summary.failed
+            );
+            if summary.failed > 0 {
+                return Err("Avatar asset backfill completed with failures".into());
+            }
         }
     }
     Ok(())

@@ -190,6 +190,7 @@ function groupCallActivityBody(
       displayName: member.display_name?.trim() || member.account_id,
       avatarUrl: member.avatar_url?.trim() || null,
       role: member.role,
+      joinedAt: member.joined_at,
     }));
   const actor = participants.find(
     (participant) => participant.accountId === message.sender_account_id,

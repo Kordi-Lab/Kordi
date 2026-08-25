@@ -2,6 +2,80 @@ import XCTest
 @testable import Kordi
 
 final class CloudGroupMessageCodecTests: XCTestCase {
+    func testOutboundGroupControlsNeverTransportAvatarImageValues() throws {
+        let actor = CloudGroupParticipant(
+            accountId: "acct_me",
+            displayName: "Me",
+            avatarUrl: "data:image/jpeg;base64,\(String(repeating: "a", count: 190_000))",
+            role: "owner"
+        )
+        let peer = CloudGroupParticipant(
+            accountId: "acct_peer",
+            displayName: "Peer",
+            avatarUrl: "https://images.example/peer.jpg",
+            role: "member"
+        )
+        let envelope = CloudGroupControlEnvelope(
+            kind: "group-message",
+            groupId: "session:group:avatars",
+            groupSpaceId: "session:group:avatars",
+            groupTitle: "Avatar test",
+            createdByAccountId: actor.accountId,
+            actor: actor,
+            participants: [actor, peer],
+            message: CloudGroupMessagePayload(
+                id: "message",
+                senderAccountId: actor.accountId,
+                text: "hello",
+                createdAtMs: 1,
+                senderKind: "human",
+                senderDisplayName: actor.displayName,
+                deliveryState: "complete",
+                replyToMessageId: nil,
+                requestId: nil
+            )
+        )
+
+        let body = try CloudGroupMessageCodec.encode(envelope)
+        let decoded = try XCTUnwrap(CloudGroupMessageCodec.parse(body))
+
+        XCTAssertNil(decoded.actor.avatarUrl)
+        XCTAssertTrue(decoded.participants.allSatisfy { $0.avatarUrl == nil })
+        XCTAssertLessThan(body.utf8.count, 4_096)
+    }
+
+    func testGroupAvatarOrderUsesJoinTimeThenAccountIdentity() {
+        let participants = [
+            CloudGroupParticipant(
+                accountId: "acct_z",
+                displayName: "Later",
+                avatarUrl: nil,
+                role: "member",
+                joinedAt: "2026-08-25T10:00:00Z"
+            ),
+            CloudGroupParticipant(
+                accountId: "acct_b",
+                displayName: "First B",
+                avatarUrl: nil,
+                role: "member",
+                joinedAt: "2026-08-24T10:00:00Z"
+            ),
+            CloudGroupParticipant(
+                accountId: "acct_a",
+                displayName: "First A",
+                avatarUrl: nil,
+                role: "member",
+                joinedAt: "2026-08-24T10:00:00Z"
+            )
+        ]
+
+        XCTAssertEqual(
+            participants.sorted(by: CloudGroupParticipant.canonicalPrecedes).map(\.accountId),
+            ["acct_a", "acct_b", "acct_z"]
+        )
+    }
+
+
     func testCanonicalGroupCallActivityProjectsWithoutALegacyGroupEnvelope() {
         let conversation = ConversationSummary(
             id: "group:mobile",

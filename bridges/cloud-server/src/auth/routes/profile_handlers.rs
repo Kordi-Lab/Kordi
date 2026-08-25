@@ -6,9 +6,32 @@ pub(super) async fn update_me(
     Json(req): Json<UpdateProfileRequest>,
 ) -> Response {
     let display_name = clean_profile_display_name(req.display_name.as_deref());
-    let avatar_mutation = req.avatar_mutation;
+    let mut avatar_mutation = req.avatar_mutation;
     let now = Utc::now().to_rfc3339();
     let pool = state.db_pool();
+    if let Some(mutation) = avatar_mutation.as_mut() {
+        if let Err(error) = crate::avatars::assets::materialize_legacy_avatar_mutation(
+            pool,
+            state.s3(),
+            &session.account_id,
+            "human",
+            &session.account_id,
+            mutation,
+        )
+        .await
+        {
+            return match error {
+                crate::avatars::assets::AvatarAssetError::Invalid(message) => {
+                    err("invalid_avatar", message, StatusCode::BAD_REQUEST)
+                }
+                _ => err(
+                    "avatar_storage_unavailable",
+                    "Avatar storage is unavailable.",
+                    StatusCode::SERVICE_UNAVAILABLE,
+                ),
+            };
+        }
+    }
     let mut tx = match pool.begin().await {
         Ok(value) => value,
         Err(_) => {
@@ -61,7 +84,7 @@ pub(super) async fn update_me(
                     StatusCode::INTERNAL_SERVER_ERROR,
                 );
             }
-            match apply_avatar_mutation(&current_avatar, mutation, &now) {
+            let next = match apply_avatar_mutation(&current_avatar, mutation, &now) {
                 Ok(value) => value,
                 Err(AvatarMutationError::Conflict) => {
                     return err(
@@ -73,7 +96,26 @@ pub(super) async fn update_me(
                 Err(AvatarMutationError::Invalid(message)) => {
                     return err("invalid_avatar", message, StatusCode::BAD_REQUEST);
                 }
+            };
+            if mutation.action.trim() == "upload"
+                && crate::avatars::assets::parse_uploaded_avatar_marker(
+                    next.uploaded_asset.as_deref().unwrap_or_default(),
+                )
+                .is_some()
+            {
+                if let Err(error) = crate::avatars::assets::activate_avatar_asset(
+                    &mut tx,
+                    &session.account_id,
+                    "human",
+                    &session.account_id,
+                    next.uploaded_asset.as_deref().unwrap_or_default(),
+                )
+                .await
+                {
+                    return avatar_activation_error(error);
+                }
             }
+            next
         }
         None => current_avatar,
     };
@@ -178,6 +220,28 @@ pub(super) async fn update_me(
         }
     });
     Json(account).into_response()
+}
+
+fn avatar_activation_error(error: crate::avatars::assets::AvatarAssetError) -> Response {
+    match error {
+        crate::avatars::assets::AvatarAssetError::Invalid(message) => {
+            err("invalid_avatar", message, StatusCode::BAD_REQUEST)
+        }
+        crate::avatars::assets::AvatarAssetError::Database(error) => {
+            eprintln!("[avatars] activate profile asset: {error}");
+            err(
+                "server_error",
+                "Could not update profile.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+        crate::avatars::assets::AvatarAssetError::Unavailable
+        | crate::avatars::assets::AvatarAssetError::ObjectStore => err(
+            "avatar_storage_unavailable",
+            "Avatar storage is unavailable.",
+            StatusCode::SERVICE_UNAVAILABLE,
+        ),
+    }
 }
 
 pub(super) async fn me(
@@ -311,4 +375,18 @@ pub(super) async fn get_profile(
         is_self,
     })
     .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn avatar_activation_database_errors_stay_internal() {
+        let response = avatar_activation_error(crate::avatars::assets::AvatarAssetError::Database(
+            sqlx_core::Error::PoolClosed,
+        ));
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
 }

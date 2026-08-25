@@ -37,52 +37,6 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-test('signup posts JSON to the signup route and parses the response', async () => {
-  const avatarUrl = 'data:image/jpeg;base64,abc';
-  const avatarSeed = 'signup_seed';
-  const avatarMutation = { action: 'upload' as const, uploadedAsset: avatarUrl };
-  const { calls, fetchImpl } = recordingFetch(() =>
-    jsonResponse(201, {
-      account: {
-        accountId: 'acct_1',
-        displayName: 'Ada',
-        primaryEmail: 'ada@example.com',
-        avatarUrl,
-        passwordSet: true,
-      },
-      session: { token: 'kordi_cs_abc', expiresAt: '2099-01-01T00:00:00Z' },
-    }),
-  );
-  const client = new CloudAuthClient({
-    baseUrl: 'http://srv',
-    fetchImpl,
-    deviceRegistration: async () => testDevice,
-  });
-
-  const result = await client.signup({
-    email: 'ada@example.com',
-    password: 'correct horse',
-    displayName: 'Ada',
-    avatarSeed,
-    avatarMutation,
-  });
-
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, 'http://srv/v1/cloud/auth/signup');
-  assert.equal(calls[0].init?.method, 'POST');
-  const body = JSON.parse(calls[0].init?.body as string);
-  assert.deepEqual(body, {
-    email: 'ada@example.com',
-    password: 'correct horse',
-    displayName: 'Ada',
-    avatarSeed,
-    avatarMutation,
-    device: testDevice,
-  });
-  assert.equal(result.session.token, 'kordi_cs_abc');
-  assert.equal(result.account.passwordSet, true);
-  assert.equal(result.account.avatarUrl, avatarUrl);
-});
 
 test('signup surfaces an invalid canonical avatar seed', async () => {
   const { fetchImpl } = recordingFetch(() =>

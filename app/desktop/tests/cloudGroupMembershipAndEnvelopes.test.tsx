@@ -278,7 +278,7 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   const parsed = parseCloudGroupControl(body);
   assert.equal(parsed?.kind, 'group-message');
   assert.equal(parsed?.groupId, 'session:group:one');
-  assert.equal(parsed?.participants[1]?.avatarUrl, 'data:image/jpeg;base64,bob');
+  assert.equal(parsed?.participants[1]?.avatarUrl, null);
   assert.equal(parsed?.message?.text, 'hello group');
   assert.equal(parsed?.message?.senderKind, 'agent');
   assert.equal(parsed?.message?.senderDisplayName, 'Agent');
