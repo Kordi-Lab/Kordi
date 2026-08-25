@@ -7,15 +7,20 @@ import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
+  COMPOSER_IMAGE_FULL_CROP,
+  composerImageCropPixels,
+  composerEditedImageOutput,
   displayAttachmentName,
   friendlyAttachmentName,
   parseStoredComposerAttachments,
+  resizedComposerImageCrop,
   serializeStoredComposerAttachments,
 } from '../src/features/chat/composerAttachments';
 import {
   ComposerAttachmentAddMenu,
   ComposerAttachmentList,
 } from '../src/kordi-app/components/composerAttachments';
+import { ComposerImageEditor } from '../src/kordi-app/components/composerImageEditor';
 
 function installDom() {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {
@@ -164,6 +169,67 @@ test('composer attachment tiles keep the filename and remove control on one comp
   assert.match(markup, /inline-flex h-8/);
   assert.match(markup, /aria-label="Remove 2607\.28802v1\.pdf"/);
   assert.doesNotMatch(markup, /rounded-full border[^>]*2607\.28802v1\.pdf/);
+});
+
+test('image attachments expose rotate, crop, draw, and done before sending', () => {
+  const attachment = {
+    id: 'image-1',
+    name: 'diagram.webp',
+    path: '/tmp/diagram.webp',
+    kind: 'image' as const,
+    mimeType: 'image/webp',
+  };
+  const tileMarkup = renderToStaticMarkup(createElement(ComposerAttachmentList, {
+    attachments: [attachment],
+    onRemove: () => undefined,
+    onReplace: () => undefined,
+  }));
+  const editorMarkup = renderToStaticMarkup(createElement(ComposerImageEditor, {
+    attachment,
+    onClose: () => undefined,
+    onSave: () => undefined,
+  }));
+
+  assert.match(tileMarkup, /aria-label="Edit diagram\.webp before sending"/);
+  assert.match(editorMarkup, /aria-label="Rotate image clockwise"/);
+  assert.match(editorMarkup, /aria-label="Crop image"/);
+  assert.match(editorMarkup, /aria-label="Draw on image"/);
+  assert.match(editorMarkup, /aria-label="Done editing image"/);
+  assert.deepEqual(composerEditedImageOutput(attachment), {
+    mimeType: 'image/webp',
+    name: 'diagram.webp',
+  });
+  assert.deepEqual(composerEditedImageOutput({ name: 'animation.gif', mimeType: 'image/gif' }), {
+    mimeType: 'image/png',
+    name: 'animation.png',
+  });
+  const crop = resizedComposerImageCrop(
+    COMPOSER_IMAGE_FULL_CROP,
+    'bottom-right',
+    -0.4,
+    -0.2,
+  );
+  assert.deepEqual(crop, { x: 0, y: 0, width: 0.6, height: 0.8 });
+  assert.deepEqual(composerImageCropPixels(crop, 100, 80), {
+    x: 0,
+    y: 0,
+    width: 60,
+    height: 64,
+  });
+  assert.deepEqual(
+    resizedComposerImageCrop(crop, 'right', -0.1, 0),
+    { x: 0, y: 0, width: 0.5, height: 0.8 },
+  );
+});
+
+test('main composer opens pasted images directly in the editor', () => {
+  const source = readFileSync(
+    new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /openPastedImageEditor\(saveDesktopAttachments\(files\)\)/);
+  assert.match(source, /openPastedImageEditor\(saveDesktopAttachmentPaths\(pastedPaths\)\)/);
+  assert.match(source, /requestedEditAttachmentId=\{pastedImageEditId\}/);
 });
 
 test('composer add trigger opens one Files and folders action and dismisses accessibly', async () => {

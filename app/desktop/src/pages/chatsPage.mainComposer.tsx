@@ -1,4 +1,4 @@
-import { useId, useRef } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { AttachmentItem, ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
@@ -126,6 +126,7 @@ export function MainComposer({
   const imeCompositionGuard = useImeCompositionGuard();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const memeAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const [pastedImageEditId, setPastedImageEditId] = useState<string | null>(null);
   const memeValidationMessageId = useId();
   const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
   const hasSendableDraft = Boolean(chatComposerText.trim() || chatComposerAttachments.length > 0);
@@ -139,6 +140,13 @@ export function MainComposer({
     focusComposer: () => textareaRef.current?.focus(),
   });
   const voiceSurfaceActive = voice.surfaceActive;
+
+  function openPastedImageEditor(pendingAttachments: Promise<AttachmentItem[]>) {
+    void pendingAttachments.then((saved) => {
+      const image = saved.find((attachment) => attachment.kind === 'image');
+      if (image) setPastedImageEditId(image.id);
+    });
+  }
 
   return (
     <div className="shrink-0 px-5 pb-4 pt-3">
@@ -201,6 +209,9 @@ export function MainComposer({
               attachments={chatComposerAttachments}
               onRemove={removeChatComposerAttachment}
               onUpdate={updateChatComposerAttachment}
+              onReplace={updateChatComposerAttachment}
+              requestedEditAttachmentId={pastedImageEditId}
+              onRequestedEditClosed={() => setPastedImageEditId(null)}
             />
             {memeValidationError ? (
               <p
@@ -235,7 +246,7 @@ export function MainComposer({
                   const files = extractClipboardFiles(event.clipboardData);
                   if (files.length > 0) {
                     event.preventDefault();
-                    void saveDesktopAttachments(files);
+                    openPastedImageEditor(saveDesktopAttachments(files));
                     return;
                   }
                   const pastedPaths = extractPastedLocalFilePaths(
@@ -244,7 +255,7 @@ export function MainComposer({
                   );
                   if (pastedPaths.length > 0) {
                     event.preventDefault();
-                    void saveDesktopAttachmentPaths(pastedPaths);
+                    openPastedImageEditor(saveDesktopAttachmentPaths(pastedPaths));
                   }
                 }}
                 onCompositionStart={imeCompositionGuard.onCompositionStart}

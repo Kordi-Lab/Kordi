@@ -2,6 +2,7 @@ import type { MutableRefObject } from 'react';
 
 import type {
   AttachmentItem,
+  AttachmentItemUpdate,
   SaveDesktopAttachmentOptions,
 } from '@/features/chat/composerController.types';
 
@@ -16,6 +17,6 @@ export type KordiShellAttachmentArgs = {
   removeChatComposerAttachment: (id: string) => void;
   updateChatComposerAttachment: (
     id: string,
-    update: Pick<AttachmentItem, 'subtype' | 'altText' | 'memeRightsConfirmed'>,
+    update: AttachmentItemUpdate,
   ) => void;
 };

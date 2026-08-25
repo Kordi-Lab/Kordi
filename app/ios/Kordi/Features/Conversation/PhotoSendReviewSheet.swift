@@ -15,6 +15,10 @@ enum PhotoLibrarySelection {
         }
         return selectedIDs + [id]
     }
+
+    static func editingID(in selectedIDs: [String]) -> String? {
+        selectedIDs.last
+    }
 }
 
 enum PhotoSelectionPreparationPlan {
@@ -29,6 +33,11 @@ enum PhotoSelectionPreparationPlan {
     }
 }
 
+private struct PhotoEditorRequest: Identifiable {
+    let asset: PHAsset
+    var id: String { asset.localIdentifier }
+}
+
 struct PhotoLibrarySendPicker: View {
     @Environment(\.dismiss) private var dismiss
     let allowsSeparateMessages: Bool
@@ -38,6 +47,8 @@ struct PhotoLibrarySendPicker: View {
     @State private var authorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
     @State private var assets: [PHAsset] = []
     @State private var selectedAssetIDs: [String] = []
+    @State private var editedPhotos: [String: PhotoLibraryEdit] = [:]
+    @State private var editingRequest: PhotoEditorRequest?
     @State private var grouping: PhotoSendGrouping = .combined
     @State private var isSending = false
 
@@ -70,6 +81,12 @@ struct PhotoLibrarySendPicker: View {
             }
         }
         .interactiveDismissDisabled(isSending)
+        .fullScreenCover(item: $editingRequest) { request in
+            PhotoLibraryImageEditor(
+                asset: request.asset,
+                edit: $editedPhotos[request.id]
+            )
+        }
         .task {
             await loadLibrary()
         }
@@ -125,7 +142,10 @@ struct PhotoLibrarySendPicker: View {
                 in: selectedAssetIDs
             )
         } label: {
-            PhotoLibraryThumbnail(asset: asset)
+            PhotoLibraryThumbnail(
+                asset: asset,
+                editedImage: editedPhotos[asset.localIdentifier]?.image
+            )
                 .overlay(alignment: .topTrailing) {
                     ZStack {
                         Circle()
@@ -189,11 +209,24 @@ struct PhotoLibrarySendPicker: View {
                 .frame(minHeight: 52)
             }
 
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 Text(selectedAssetIDs.isEmpty ? "Select photos" : "\(selectedAssetIDs.count) selected")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                Spacer()
+                Spacer(minLength: 8)
+                Button("Edit", systemImage: "pencil") {
+                    beginEditingSelection()
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(KordiTheme.signalBlue)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .opacity(selectedAssetIDs.isEmpty ? 0 : 1)
+                .disabled(selectedAssetIDs.isEmpty || isSending)
+                .accessibilityHidden(selectedAssetIDs.isEmpty)
+                .accessibilityHint("Edits the most recently selected photo")
+                Spacer(minLength: 8)
                 Button {
                     sendSelection()
                 } label: {
@@ -216,6 +249,13 @@ struct PhotoLibrarySendPicker: View {
             .padding(.vertical, 10)
         }
         .background(.bar)
+    }
+
+    @MainActor
+    private func beginEditingSelection() {
+        guard let id = PhotoLibrarySelection.editingID(in: selectedAssetIDs),
+              let asset = assets.first(where: { $0.localIdentifier == id }) else { return }
+        editingRequest = PhotoEditorRequest(asset: asset)
     }
 
     @MainActor
@@ -251,12 +291,16 @@ struct PhotoLibrarySendPicker: View {
             for: selectedAssets,
             grouping: grouping
         )
+        let selectedEdits = editedPhotos.filter { selectedAssetIDs.contains($0.key) }
         dismiss()
         Task {
             await Task.yield()
             do {
                 for batch in batches {
-                    let attachments = try await PhotoLibraryAttachmentLoader.load(batch)
+                    let attachments = try await PhotoLibraryAttachmentLoader.load(
+                        batch,
+                        edits: selectedEdits
+                    )
                     guard await onSend(attachments, grouping) else { return }
                 }
             } catch {
@@ -270,6 +314,7 @@ private struct PhotoLibraryThumbnail: View {
     private static let imageManager = PHCachingImageManager()
 
     let asset: PHAsset
+    let editedImage: UIImage?
     @State private var image: UIImage?
     @State private var requestID = PHInvalidImageRequestID
 
@@ -278,8 +323,8 @@ private struct PhotoLibraryThumbnail: View {
             .fill(Color(uiColor: .secondarySystemFill))
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                if let image {
-                    Image(uiImage: image)
+                if let displayImage = editedImage ?? image {
+                    Image(uiImage: displayImage)
                         .resizable()
                         .scaledToFill()
                 }
@@ -292,7 +337,7 @@ private struct PhotoLibraryThumbnail: View {
     }
 
     private func requestImage() {
-        guard image == nil else { return }
+        guard image == nil, editedImage == nil else { return }
         let options = PHImageRequestOptions()
         options.deliveryMode = .opportunistic
         options.resizeMode = .fast
@@ -309,14 +354,25 @@ private struct PhotoLibraryThumbnail: View {
     }
 }
 
-private enum PhotoLibraryAttachmentLoader {
-    static func load(_ assets: [PHAsset]) async throws -> [PendingAttachment] {
+enum PhotoLibraryAttachmentLoader {
+    static func load(
+        _ assets: [PHAsset],
+        edits: [String: PhotoLibraryEdit] = [:]
+    ) async throws -> [PendingAttachment] {
         var attachments: [PendingAttachment] = []
         attachments.reserveCapacity(assets.count)
         for (index, asset) in assets.enumerated() {
-            let data = try await imageData(for: asset)
-            let originalName = PHAssetResource.assetResources(for: asset).first?.originalFilename
-                ?? "Photo-\(index + 1).jpg"
+            let edit = edits[asset.localIdentifier]
+            let data: Data
+            let originalName: String
+            if let edit {
+                data = edit.data
+                originalName = edit.suggestedName
+            } else {
+                data = try await imageData(for: asset)
+                originalName = PHAssetResource.assetResources(for: asset).first?.originalFilename
+                    ?? "Photo-\(index + 1).jpg"
+            }
             let attachment = try await Task.detached(priority: .userInitiated) {
                 try PendingAttachmentLoader.loadImage(data: data, suggestedName: originalName)
             }.value
@@ -325,7 +381,7 @@ private enum PhotoLibraryAttachmentLoader {
         return attachments
     }
 
-    private static func imageData(for asset: PHAsset) async throws -> Data {
+    static func imageData(for asset: PHAsset) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             let options = PHImageRequestOptions()
             options.deliveryMode = .highQualityFormat

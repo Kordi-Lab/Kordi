@@ -5,6 +5,13 @@
   grid-auto-rows: auto;
 }
 
+.app-attachment-image-collage[data-attachment-image-count="1"]:has(
+  [data-attachment-image-loaded="false"]
+) {
+  width: min(100%, 20rem);
+  grid-auto-rows: 4rem;
+}
+
 .app-attachment-image-group-shell {
   display: flex;
   width: 16.25rem;

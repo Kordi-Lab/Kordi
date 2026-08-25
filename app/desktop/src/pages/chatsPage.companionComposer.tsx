@@ -107,6 +107,7 @@ export function CompanionComposer({
     saveDesktopAttachments,
     saveDesktopAttachmentPaths,
     removeChatComposerAttachment,
+    updateChatComposerAttachment,
   } = composer;
   const {
     composerProviderOptions,
@@ -148,6 +149,7 @@ export function CompanionComposer({
             <ComposerAttachmentList
               attachments={chatComposerAttachments}
               onRemove={removeChatComposerAttachment}
+              onReplace={updateChatComposerAttachment}
             />
             <textarea
               rows={1}

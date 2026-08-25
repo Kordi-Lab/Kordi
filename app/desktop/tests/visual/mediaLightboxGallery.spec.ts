@@ -90,9 +90,9 @@ test('media lightbox remains image-first across desktop sizes and themes', async
   await page.setViewportSize({ width: 760, height: 1500 });
   await page.goto('/tests/visual/mediaLightboxGallery.html?theme=dark&surface=transcript');
   await expect(page.locator('body[data-visual-ready="true"]')).toBeVisible();
-  const ownTextShape = page.getByLabel('Transcript message 1').locator('.app-message-bubble-shape');
+  const ownTextShape = page.getByLabel('Transcript message 1').locator('[data-message-context-menu-anchor="true"]');
   const ownImage = page.getByLabel('Transcript message 2').locator('[data-attachment-image-count="1"] img');
-  const peerTextShape = page.getByLabel('Transcript message 3').locator('.app-message-bubble-shape');
+  const peerTextShape = page.getByLabel('Transcript message 3').locator('[data-message-context-menu-anchor="true"]');
   const peerImage = page.getByLabel('Transcript message 4').locator('[data-attachment-image-count="1"] img');
   const singleImage = ownImage;
   const imageGroupMessage = page.getByLabel('Transcript message 5');

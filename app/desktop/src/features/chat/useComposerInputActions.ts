@@ -12,7 +12,7 @@ import {
   composerAttachmentKindFromName,
   composerAttachmentNameFromPath,
   friendlyAttachmentName,
-  updatedComposerAttachmentMetadata,
+  updatedComposerAttachment,
 } from './composerAttachments';
 export { composerAttachmentItemFromStoredPath } from './composerAttachments';
 import { updateScopeDraft } from './composerDrafts';
@@ -28,6 +28,7 @@ import {
 import type { ComposerScope, ComposerSelectorType } from '@/kordi-app/types';
 import type {
   AttachmentItem,
+  AttachmentItemUpdate,
   ComposerConfigTargetOverride,
   ComposerDraftState,
   ComposerSelection,
@@ -409,10 +410,10 @@ export function useComposerInputActions({
 
   const updateChatComposerAttachment = useCallback((
     id: string,
-    update: Pick<AttachmentItem, 'subtype' | 'altText' | 'memeRightsConfirmed'>,
+    update: AttachmentItemUpdate,
   ) => {
     setChatComposerAttachments((current) => current.map((attachment) => (
-      attachment.id === id ? updatedComposerAttachmentMetadata(attachment, update) : attachment
+      attachment.id === id ? updatedComposerAttachment(attachment, update) : attachment
     )));
   }, [setChatComposerAttachments]);
 

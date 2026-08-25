@@ -1,4 +1,4 @@
-import type { AttachmentItem } from './composerController.types';
+import type { AttachmentItem, AttachmentItemUpdate } from './composerController.types';
 import type { SaveDesktopAttachmentOptions } from './composerController.types';
 import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
 import {
@@ -83,6 +83,94 @@ export function attachmentFormatLabel(name: string, mimeType?: string) {
   return name.split('.').pop()?.trim().toUpperCase()
     || mimeType?.split('/').pop()?.trim().toUpperCase()
     || 'FILE';
+}
+
+export function composerEditedImageOutput(
+  attachment: Pick<AttachmentItem, 'mimeType' | 'name'>,
+) {
+  const extension = attachment.name.match(/\.([A-Za-z0-9]+)$/)?.[1]?.toLowerCase() ?? '';
+  const declaredMimeType = attachment.mimeType === 'image/jpeg'
+    || attachment.mimeType === 'image/png'
+    || attachment.mimeType === 'image/webp'
+    ? attachment.mimeType
+    : null;
+  const mimeType = declaredMimeType
+    ?? (extension === 'jpg' || extension === 'jpeg'
+      ? 'image/jpeg'
+      : extension === 'webp' ? 'image/webp' : 'image/png');
+  const acceptedExtensions = mimeType === 'image/jpeg' ? ['jpg', 'jpeg'] : [mimeType.split('/')[1]];
+  if (acceptedExtensions.includes(extension)) return { mimeType, name: attachment.name };
+  const baseName = attachment.name.replace(/\.[A-Za-z0-9]+$/, '') || 'Edited image';
+  return { mimeType, name: `${baseName}.${mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1]}` };
+}
+
+export type ComposerImageCropRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type ComposerImageCropHandle =
+  | 'top-left'
+  | 'top'
+  | 'top-right'
+  | 'right'
+  | 'bottom-right'
+  | 'bottom'
+  | 'bottom-left'
+  | 'left';
+
+export const COMPOSER_IMAGE_FULL_CROP: ComposerImageCropRect = {
+  x: 0,
+  y: 0,
+  width: 1,
+  height: 1,
+};
+
+export function movedComposerImageCrop(
+  crop: ComposerImageCropRect,
+  dx: number,
+  dy: number,
+): ComposerImageCropRect {
+  return {
+    ...crop,
+    x: Math.min(Math.max(0, crop.x + dx), 1 - crop.width),
+    y: Math.min(Math.max(0, crop.y + dy), 1 - crop.height),
+  };
+}
+
+export function resizedComposerImageCrop(
+  crop: ComposerImageCropRect,
+  handle: ComposerImageCropHandle,
+  dx: number,
+  dy: number,
+  minimumSide = 0.12,
+): ComposerImageCropRect {
+  let left = crop.x;
+  let top = crop.y;
+  let right = crop.x + crop.width;
+  let bottom = crop.y + crop.height;
+  if (handle.includes('left')) left = Math.min(Math.max(0, left + dx), right - minimumSide);
+  else if (handle.includes('right')) right = Math.max(Math.min(1, right + dx), left + minimumSide);
+  if (handle.includes('top')) top = Math.min(Math.max(0, top + dy), bottom - minimumSide);
+  else if (handle.includes('bottom')) bottom = Math.max(Math.min(1, bottom + dy), top + minimumSide);
+  return { x: left, y: top, width: right - left, height: bottom - top };
+}
+
+export function composerImageCropPixels(
+  crop: ComposerImageCropRect,
+  width: number,
+  height: number,
+) {
+  const x = Math.round(crop.x * width);
+  const y = Math.round(crop.y * height);
+  return {
+    x,
+    y,
+    width: Math.max(1, Math.round((crop.x + crop.width) * width) - x),
+    height: Math.max(1, Math.round((crop.y + crop.height) * height) - y),
+  };
 }
 
 export function composerAttachmentNameFromPath(path: string) {
@@ -175,10 +263,16 @@ export async function composerAttachmentItemFromFile(
   };
 }
 
-export function updatedComposerAttachmentMetadata(
+export function updatedComposerAttachment(
   attachment: AttachmentItem,
-  update: Pick<AttachmentItem, 'subtype' | 'altText' | 'memeRightsConfirmed'>,
+  update: AttachmentItemUpdate,
 ): AttachmentItem {
+  if ('path' in update) {
+    if (attachment.previewUrl?.startsWith('blob:') && attachment.previewUrl !== update.previewUrl) {
+      URL.revokeObjectURL(attachment.previewUrl);
+    }
+    return update;
+  }
   if (update.subtype === 'meme') {
     return {
       ...attachment,

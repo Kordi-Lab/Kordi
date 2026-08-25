@@ -16,12 +16,15 @@ import {
   FileText,
   FolderOpen,
   ImagePlus,
+  Pencil,
   Plus,
   X,
   type LucideIcon,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import type { AttachmentItem } from '@/features/chat/composerController.types';
+import { ComposerImageEditor } from './composerImageEditor';
 
 export type ComposerAttachmentPresentation = {
   id: string;
@@ -31,6 +34,7 @@ export type ComposerAttachmentPresentation = {
   subtype?: 'meme' | null;
   altText?: string | null;
   memeRightsConfirmed?: boolean;
+  path?: string;
 };
 
 type AttachmentVisual = {
@@ -110,6 +114,9 @@ export function ComposerAttachmentList({
   attachments,
   onRemove,
   onUpdate,
+  onReplace,
+  requestedEditAttachmentId = null,
+  onRequestedEditClosed,
 }: {
   attachments: ComposerAttachmentPresentation[];
   onRemove: (id: string) => void;
@@ -117,15 +124,32 @@ export function ComposerAttachmentList({
     id: string,
     update: Pick<ComposerAttachmentPresentation, 'subtype' | 'altText' | 'memeRightsConfirmed'>,
   ) => void;
+  onReplace?: (id: string, replacement: AttachmentItem) => Promise<void> | void;
+  requestedEditAttachmentId?: string | null;
+  onRequestedEditClosed?: () => void;
 }) {
+  const [editingAttachmentId, setEditingAttachmentId] = useState<string | null>(null);
+  const editTriggerRef = useRef<HTMLButtonElement | null>(null);
   if (attachments.length === 0) return null;
 
+  const activeEditingAttachmentId = requestedEditAttachmentId ?? editingAttachmentId;
+  const editingAttachment = attachments.find((attachment) => (
+    attachment.id === activeEditingAttachmentId && attachment.kind === 'image' && attachment.path
+  ));
+
+  function closeEditor() {
+    setEditingAttachmentId(null);
+    onRequestedEditClosed?.();
+    queueMicrotask(() => editTriggerRef.current?.focus());
+  }
+
   return (
-    <div
-      data-composer-attachment-list="true"
-      className="mb-1.5 flex flex-wrap items-center gap-1.5"
-    >
-      {attachments.map((attachment) => {
+    <>
+      <div
+        data-composer-attachment-list="true"
+        className="mb-1.5 flex flex-wrap items-center gap-1.5"
+      >
+        {attachments.map((attachment) => {
         const visual = attachmentVisual(attachment);
         const Icon = visual.Icon;
         const isMeme = attachment.subtype === 'meme';
@@ -155,6 +179,20 @@ export function ComposerAttachmentList({
               <span className="min-w-0 max-w-[220px] flex-1 truncate text-[11.5px] font-medium leading-none">
                 {attachment.name}
               </span>
+              {onReplace && attachment.kind === 'image' && attachment.path ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    editTriggerRef.current = event.currentTarget;
+                    setEditingAttachmentId(attachment.id);
+                  }}
+                  className="app-button-quiet inline-flex min-h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[10px] font-medium"
+                  aria-label={`Edit ${attachment.name} before sending`}
+                >
+                  <Pencil className="h-3 w-3" aria-hidden="true" />
+                  <span>Edit</span>
+                </button>
+              ) : null}
               {onUpdate && attachment.kind === 'image' ? (
                 <button
                   type="button"
@@ -216,8 +254,19 @@ export function ComposerAttachmentList({
             ) : null}
           </div>
         );
-      })}
-    </div>
+        })}
+      </div>
+      {editingAttachment && onReplace && typeof document !== 'undefined'
+        ? createPortal(
+            <ComposerImageEditor
+              attachment={editingAttachment as AttachmentItem}
+              onClose={closeEditor}
+              onSave={(replacement) => onReplace(editingAttachment.id, replacement)}
+            />,
+            document.querySelector('.kordi-app') ?? document.body,
+          )
+        : null}
+    </>
   );
 }
 

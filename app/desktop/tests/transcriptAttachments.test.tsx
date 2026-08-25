@@ -222,7 +222,7 @@ test('attachment image preview identity changes when its remote preview is repla
 });
 
 test('image attachments render as clickable lightweight previews without heavy footer banner', () => {
-  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: { ...imageMessage, attachments: [{ ...imageMessage.attachments[0], previewUrl: 'data:image/png;base64,loaded-preview' }] } }));
   const stylesheet = readFileSync(new URL('../src/styles/shell-bubbles.css', import.meta.url), 'utf8');
 
   assert.match(markup, /data-attachment-image-card="true"/);

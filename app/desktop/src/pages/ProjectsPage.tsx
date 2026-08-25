@@ -32,6 +32,10 @@ import {
   ComposerAttachmentList,
 } from '@/kordi-app/components/composerAttachments';
 import { buildDesktopLiveTurnTranscriptMessage } from '@/features/chat/desktopLiveTurns';
+import type {
+  AttachmentItem as Attachment,
+  AttachmentItemUpdate,
+} from '@/features/chat/composerController.types';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
@@ -76,13 +80,6 @@ type ProjectWorkspace = {
   sessions: ProjectSession[];
 };
 
-type Attachment = {
-  id: string;
-  name: string;
-  path: string;
-  kind: 'image' | 'file';
-};
-
 type ProjectsPageProps = {
   isNativeShell: boolean;
   collapseChatSessions: boolean;
@@ -114,6 +111,7 @@ type ProjectsPageProps = {
   saveDesktopAttachments: (files: File[]) => Promise<Attachment[]>;
   saveDesktopAttachmentPaths: (paths?: string[]) => Promise<Attachment[]>;
   removeChatComposerAttachment: (id: string) => void;
+  updateChatComposerAttachment: (id: string, update: AttachmentItemUpdate) => void;
   projectComposerText: string;
   updateProjectComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
   setProjectComposerText: (value: string) => void;
@@ -170,6 +168,7 @@ export function ProjectsPage({
   saveDesktopAttachments,
   saveDesktopAttachmentPaths,
   removeChatComposerAttachment,
+  updateChatComposerAttachment,
   projectComposerText,
   updateProjectComposerDraft,
   setProjectComposerText,
@@ -398,6 +397,7 @@ export function ProjectsPage({
               <ComposerAttachmentList
                 attachments={chatComposerAttachments}
                 onRemove={removeChatComposerAttachment}
+                onReplace={updateChatComposerAttachment}
               />
               <textarea
                 rows={1}
