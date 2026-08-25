@@ -298,14 +298,14 @@ private struct GroupInvitePreviewHost: View {
 
 private struct LaunchingView: View {
     var body: some View {
-        VStack(spacing: 14) {
-            KordiMark(size: 58)
-            ProgressView("Connecting to Kordi")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        ZStack {
+            KordiMark(size: 58, colorRelay: true)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(uiColor: .systemGroupedBackground))
+        .ignoresSafeArea()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Connecting to Kordi")
     }
 }
 

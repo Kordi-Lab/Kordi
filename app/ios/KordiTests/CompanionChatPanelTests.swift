@@ -26,6 +26,15 @@ final class CompanionChatPanelTests: XCTestCase {
         ))
     }
 
+    @MainActor
+    func testPreviewLaunchFlowKeepsTheLoadingPhaseUntilStart() {
+        let launching = AppModel(previewMode: true, previewLaunchFlow: true)
+        let immediate = AppModel(previewMode: true, previewLaunchFlow: false)
+
+        XCTAssertEqual(launching.phase, .launching)
+        XCTAssertEqual(immediate.phase, .signedIn)
+    }
+
     func testNewChatMenuRoutesEveryActionToItsNavigationDestination() {
         XCTAssertEqual(
             NewChatMode.allCases.map(\.menuTitle),
