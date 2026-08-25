@@ -187,7 +187,6 @@ struct ComposerView: View {
     @State private var voiceGestureIntent = VoiceRecordingGestureIntent.hold
     @State private var voiceGestureActive = false
     @State private var voiceGestureEnded = false
-    @State private var suppressVoiceTap = false
     @ScaledMetric(relativeTo: .body) private var composerControlHeight: CGFloat = 50
     @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 44
     @ScaledMetric(relativeTo: .body) private var draftPaneExpansionThreshold: CGFloat = 84
@@ -197,6 +196,21 @@ struct ComposerView: View {
 
     var body: some View {
         composerContainer
+            .overlay(alignment: .bottomTrailing) {
+                VoiceRecordingGestureCapture(
+                    isEnabled: !canSend
+                        && !isSending
+                        && !isPreparingAttachments
+                        && voiceRecorder.phase != .failed
+                        && !voiceRecorder.isLocked,
+                    onBegan: beginVoiceRecordingGesture,
+                    onChanged: updateVoiceRecordingGesture,
+                    onEnded: endVoiceRecordingGesture,
+                    onCancelled: cancelVoiceRecordingGesture
+                )
+                .frame(width: max(44, sendButtonDiameter), height: composerControlHeight)
+                .padding(.trailing, 10)
+            }
             .overlay(alignment: .bottom) {
                 floatingPanelLayer
             }
@@ -292,16 +306,6 @@ struct ComposerView: View {
     private var inputSurfaceAssembly: some View {
         inputSurface
             .padding(.horizontal, 10)
-            .overlay(alignment: .bottomTrailing) {
-                if !canSend, voiceRecorder.phase != .failed, !voiceRecorder.isLocked {
-                    Color.clear
-                        .frame(width: max(44, sendButtonDiameter), height: composerControlHeight)
-                        .contentShape(Rectangle())
-                        .highPriorityGesture(voiceRecordingGesture)
-                        .padding(.trailing, 10)
-                        .accessibilityHidden(true)
-                }
-            }
             .sensoryFeedback(.selection, trigger: voiceGestureIntent)
     }
 
@@ -597,7 +601,6 @@ struct ComposerView: View {
             if canSend {
                 onSend()
             } else {
-                if suppressVoiceTap { return }
                 isFocused = false
                 Task { await voiceRecorder.start() }
             }
@@ -628,41 +631,48 @@ struct ComposerView: View {
         )
     }
 
-    private var voiceRecordingGesture: some Gesture {
-        DragGesture(minimumDistance: 0)
-            .onChanged { value in
-                guard !isSending, !isPreparingAttachments else { return }
-                if !voiceGestureActive {
-                    voiceGestureActive = true
-                    voiceGestureEnded = false
-                    isFocused = false
-                    dismissExpressivePicker()
-                    dismissAgentModelPicker()
-                    Task {
-                        let started = await voiceRecorder.start(locked: false)
-                        if started, voiceGestureEnded {
-                            completeVoiceRecordingGesture()
-                        }
-                    }
-                }
-                voiceGestureIntent = Self.voiceGestureIntent(
-                    horizontal: value.translation.width,
-                    vertical: value.translation.height
-                )
+    private func beginVoiceRecordingGesture() {
+        guard !isSending, !isPreparingAttachments, !voiceGestureActive else { return }
+        voiceGestureActive = true
+        voiceGestureEnded = false
+        isFocused = false
+        dismissExpressivePicker()
+        dismissAgentModelPicker()
+        Task {
+            let started = await voiceRecorder.start(locked: false)
+            if started, voiceGestureEnded {
+                completeVoiceRecordingGesture()
             }
-            .onEnded { _ in
-                guard voiceGestureActive else { return }
-                voiceGestureActive = false
-                voiceGestureEnded = true
-                suppressVoiceTap = true
-                if voiceRecorder.phase == .recording || voiceRecorder.phase == .paused {
-                    completeVoiceRecordingGesture()
-                }
-                Task {
-                    await Task.yield()
-                    suppressVoiceTap = false
-                }
-            }
+        }
+    }
+
+    private func updateVoiceRecordingGesture(_ translation: CGSize) {
+        guard voiceGestureActive else { return }
+        voiceGestureIntent = Self.voiceGestureIntent(
+            horizontal: translation.width,
+            vertical: translation.height
+        )
+    }
+
+    private func endVoiceRecordingGesture(_ translation: CGSize) {
+        guard voiceGestureActive else { return }
+        voiceGestureIntent = Self.voiceGestureIntent(
+            horizontal: translation.width,
+            vertical: translation.height
+        )
+        voiceGestureActive = false
+        voiceGestureEnded = true
+        if voiceRecorder.phase == .recording || voiceRecorder.phase == .paused {
+            completeVoiceRecordingGesture()
+        }
+    }
+
+    private func cancelVoiceRecordingGesture() {
+        guard voiceGestureActive else { return }
+        voiceGestureActive = false
+        voiceGestureEnded = false
+        voiceGestureIntent = .hold
+        voiceRecorder.cancel()
     }
 
     private func completeVoiceRecordingGesture() {

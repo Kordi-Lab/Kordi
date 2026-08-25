@@ -1,11 +1,75 @@
 import AVFoundation
 import Observation
 import SwiftUI
+import UIKit
 
 enum VoiceRecordingGestureIntent: Equatable {
     case hold
     case cancel
     case lock
+}
+
+struct VoiceRecordingGestureCapture: UIViewRepresentable {
+    let isEnabled: Bool
+    let onBegan: () -> Void
+    let onChanged: (CGSize) -> Void
+    let onEnded: (CGSize) -> Void
+    let onCancelled: () -> Void
+
+    final class Coordinator: NSObject {
+        var parent: VoiceRecordingGestureCapture
+        private var startLocation = CGPoint.zero
+
+        init(parent: VoiceRecordingGestureCapture) {
+            self.parent = parent
+        }
+
+        @objc func handle(_ recognizer: UILongPressGestureRecognizer) {
+            let location = recognizer.location(in: nil)
+            switch recognizer.state {
+            case .began:
+                startLocation = location
+                parent.onBegan()
+            case .changed:
+                parent.onChanged(translation(to: location))
+            case .ended:
+                parent.onEnded(translation(to: location))
+            case .cancelled, .failed:
+                parent.onCancelled()
+            default:
+                break
+            }
+        }
+
+        private func translation(to location: CGPoint) -> CGSize {
+            CGSize(width: location.x - startLocation.x, height: location.y - startLocation.y)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        view.isAccessibilityElement = false
+        view.accessibilityElementsHidden = true
+        let gesture = UILongPressGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handle(_:))
+        )
+        gesture.minimumPressDuration = 0
+        gesture.allowableMovement = .greatestFiniteMagnitude
+        gesture.cancelsTouchesInView = true
+        view.addGestureRecognizer(gesture)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.parent = self
+        uiView.isUserInteractionEnabled = isEnabled
+    }
 }
 
 struct VoiceRecordingComposer: View {

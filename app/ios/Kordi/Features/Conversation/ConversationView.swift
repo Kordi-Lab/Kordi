@@ -1437,13 +1437,16 @@ struct ConversationView: View {
 
     private func sendVoiceMessage() async {
         guard !isSending, let pending = await voiceRecorder.prepareForSend() else { return }
-        let resolvedVoiceMessage = Task { await voiceRecorder.resolvedMessageForSend() }
+        let resolvedVoiceMessage = Task { @MainActor in
+            await VoiceMessageRecorder().resolvedMessageForSend(pending)
+        }
         let message = pending.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoingMention = resolvedMentionTarget(in: message)
         guard canSendWithCurrentAuthentication(mention: outgoingMention) else { return }
         let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
         replySource = nil
         selectedMention = nil
+        voiceRecorder.cancel()
         await model.send(
             message,
             voiceMessage: pending,
@@ -1453,7 +1456,6 @@ struct ConversationView: View {
             agentContext: companionContext?.referenceText,
             to: conversation
         )
-        voiceRecorder.cancel()
     }
 
     private func canPresentPhotoPicker() -> Bool {

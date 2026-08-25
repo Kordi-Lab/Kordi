@@ -173,10 +173,22 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         return pendingMessage
     }
 
-    func resolvedMessageForSend() async -> PendingVoiceMessage? {
-        if let preparationTask { _ = await preparationTask.value }
-        if let transcriptionTask { await transcriptionTask.value }
-        return pendingMessage
+    func resolvedMessageForSend(_ pending: PendingVoiceMessage) async -> PendingVoiceMessage? {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-voice-transcription-\(UUID().uuidString.lowercased()).m4a")
+        do {
+            try pending.attachment.data.write(to: url, options: .atomic)
+            defer { try? FileManager.default.removeItem(at: url) }
+            let text = try await transcribe(url: url)
+            return PendingVoiceMessage(
+                attachment: pending.attachment,
+                durationMs: pending.durationMs,
+                waveformSamples: pending.waveformSamples,
+                transcript: text
+            )
+        } catch {
+            return pending
+        }
     }
 
     func cancel() {
