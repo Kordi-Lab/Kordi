@@ -1135,7 +1135,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             CloudGroupParticipant(accountId: "acct_me", displayName: "", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "", avatarUrl: nil, role: "person")
         ]
-        let invite = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+        let legacyInvite = CloudGroupControlEnvelope(
             kind: "group-invite",
             groupId: "session:group:sparse-profile",
             groupSpaceId: "session:group:sparse-profile",
@@ -1144,7 +1144,12 @@ final class CloudConversationCatalogTests: XCTestCase {
             actor: richParticipants[1],
             participants: richParticipants,
             message: nil
-        ))
+        )
+        let legacyInviteData = try JSONEncoder().encode(legacyInvite)
+        let invite = "kordi-cloud-group:" + legacyInviteData.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
         let sparseMessage = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
             kind: "group-message",
             groupId: "session:group:sparse-profile",
