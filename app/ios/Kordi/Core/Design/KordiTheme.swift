@@ -59,6 +59,8 @@ enum KordiChatTheme: String, CaseIterable, Identifiable {
     case ocean
 
     static let storageKey = "kordi.chatTheme.v1"
+    static let ownMetadataOpacity = 0.88
+    static let otherMetadataOpacity = 0.68
 
     var id: String { rawValue }
 

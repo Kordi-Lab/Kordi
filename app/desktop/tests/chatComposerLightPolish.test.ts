@@ -25,6 +25,13 @@ test('light outgoing human bubble uses the selected chat-theme tokens with no vi
   assert.match(tokens, /--app-chat-bubble-user-text:\s*#1F3145;/);
 });
 
+test('every chat theme keeps small metadata at its verified WCAG AA opacity floor', () => {
+  const tokens = readFileSync(new URL('../src/styles/chat-theme-tokens.css', import.meta.url), 'utf8');
+
+  assert.equal(tokens.match(/--app-chat-meta-own:\s*rgb\([^;]+\/ 0\.88\);/g)?.length, 8);
+  assert.equal(tokens.match(/--app-chat-meta-peer:\s*rgb\([^;]+\/ 0\.68\);/g)?.length, 8);
+});
+
 test('chat wallpaper spans the transcript and composer gutter as one surface', () => {
   const mainWorkspace = readFileSync(
     new URL('../src/pages/chatsPage.mainWorkspace.tsx', import.meta.url),

@@ -1142,6 +1142,7 @@ private struct AppearanceSettingsView: View {
     @AppStorage(AppAppearance.storageKey) private var appearanceRawValue = AppAppearance.system.rawValue
     @AppStorage(KordiChatTheme.storageKey) private var chatThemeRawValue = KordiChatTheme.quiet.rawValue
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var selectedAppearance: AppAppearance {
         AppAppearance(rawValue: appearanceRawValue) ?? .system
@@ -1182,7 +1183,7 @@ private struct AppearanceSettingsView: View {
                             isSelected: appearance == selectedAppearance,
                             usesWideLayout: dynamicTypeSize.isAccessibilitySize
                         ) {
-                            withAnimation(.easeOut(duration: 0.18)) {
+                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
                                 appearanceRawValue = appearance.rawValue
                             }
                         }
@@ -1212,7 +1213,7 @@ private struct AppearanceSettingsView: View {
                             isSelected: theme == selectedChatTheme,
                             usesWideLayout: dynamicTypeSize.isAccessibilitySize
                         ) {
-                            withAnimation(.easeOut(duration: 0.18)) {
+                            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
                                 chatThemeRawValue = theme.rawValue
                             }
                         }

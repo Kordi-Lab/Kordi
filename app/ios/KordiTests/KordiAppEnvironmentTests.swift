@@ -8,6 +8,8 @@ final class KordiAppEnvironmentTests: XCTestCase {
             KordiChatTheme.allCases.map(\.rawValue),
             ["quiet", "midnight", "sand", "ocean"]
         )
+        XCTAssertEqual(KordiChatTheme.ownMetadataOpacity, 0.88)
+        XCTAssertEqual(KordiChatTheme.otherMetadataOpacity, 0.68)
     }
 
     func testProductionEnvironmentUsesProductIdentity() throws {

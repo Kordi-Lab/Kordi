@@ -175,8 +175,8 @@
   --app-chat-mention-peer: var(--app-sidebar-accent);
   --app-chat-mention-agent: #2563EB;
   --app-chat-mention-person: oklch(43% 0.105 165);
-  --app-chat-meta-own: rgb(31 49 69 / 0.64);
-  --app-chat-meta-peer: rgb(17 24 39 / 0.58);
+  --app-chat-meta-own: rgb(31 49 69 / 0.88);
+  --app-chat-meta-peer: rgb(17 24 39 / 0.68);
   --app-tool-running-fg: oklch(43% 0.07 70);
   --app-tool-running-icon: oklch(47% 0.065 70);
   --app-tool-running-muted: oklch(50% 0.05 70);

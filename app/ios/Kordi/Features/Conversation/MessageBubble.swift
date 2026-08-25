@@ -584,7 +584,11 @@ struct MessageBubble: View, Equatable {
     }
 
     private var bubbleSecondaryTextColor: Color {
-        bubbleTextColor.opacity(0.68)
+        bubbleTextColor.opacity(
+            message.author == .me
+                ? KordiChatTheme.ownMetadataOpacity
+                : KordiChatTheme.otherMetadataOpacity
+        )
     }
 
     private var bubbleContentColorScheme: ColorScheme {
