@@ -624,15 +624,27 @@ private final class VoiceMessagePlayback: NSObject, AVAudioPlayerDelegate {
         elapsedMs = 0
     }
 
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        stopTimer()
+        player.stop()
+        isPlaying = false
+        errorMessage = "Unable to play this voice message."
+    }
+
     private func preparePlayer(url: URL, identifier: String) -> Bool {
         do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, mode: .spokenAudio)
+            try session.setActive(true)
             let player = try AVAudioPlayer(contentsOf: url)
             self.player = player
             mediaId = identifier
             player.delegate = self
             player.enableRate = true
             player.rate = Float(speed)
-            player.prepareToPlay()
+            guard player.prepareToPlay() else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
             errorMessage = nil
             return true
         } catch {
@@ -654,7 +666,12 @@ private final class VoiceMessagePlayback: NSObject, AVAudioPlayerDelegate {
             }
             player.enableRate = true
             player.rate = Float(speed)
-            player.play()
+            guard player.play() else {
+                stopTimer()
+                isPlaying = false
+                errorMessage = "Unable to play this voice message."
+                return
+            }
             isPlaying = true
             startTimer()
         }
