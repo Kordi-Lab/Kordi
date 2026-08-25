@@ -3,10 +3,7 @@ import { LoaderCircle, Send, StopCircle } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
-import {
-  composerAttachmentItemFromFile,
-  updatedComposerAttachment,
-} from '@/features/chat/composerAttachments';
+import { composerAttachmentItemFromFile } from '@/features/chat/composerAttachments';
 import { composerAttachmentItemFromStoredPath } from '@/features/chat/useComposerInputActions';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { mapDesktopMessagesForTranscript } from '@/features/chat/useDesktopTranscriptAdapter';
@@ -305,12 +302,6 @@ export function AgentStudioConversation({
     });
   };
 
-  const replaceAttachment = (id: string, replacement: AttachmentItem) => {
-    setAttachments((current) => current.map((attachment) => (
-      attachment.id === id ? updatedComposerAttachment(attachment, replacement) : attachment
-    )));
-  };
-
   const applySuggestion = (suggestion: string) => {
     setDraft(suggestion);
     composerInputRef.current?.focus();
@@ -467,11 +458,7 @@ export function AgentStudioConversation({
               attachments.length > 0 ? 'px-3 pb-1.5 pt-1' : 'px-4 py-2.5',
             )}
           >
-            <ComposerAttachmentList
-              attachments={attachments}
-              onRemove={removeAttachment}
-              onReplace={replaceAttachment}
-            />
+            <ComposerAttachmentList attachments={attachments} onRemove={removeAttachment} />
             <textarea
               ref={composerInputRef}
               rows={1}

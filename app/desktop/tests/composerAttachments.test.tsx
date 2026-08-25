@@ -383,7 +383,6 @@ test('Chats, Ask Agent, Projects, and Factory use the same attachment tile and a
   ]) {
     const source = readFileSync(new URL(sourcePath, import.meta.url), 'utf8');
     assert.match(source, /<ComposerAttachmentList/);
-    assert.match(source, /onReplace=/);
     assert.match(source, /<ComposerAttachmentAddMenu/);
     assert.doesNotMatch(source, /<Paperclip/);
   }

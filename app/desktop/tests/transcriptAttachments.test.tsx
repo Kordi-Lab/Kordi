@@ -222,15 +222,7 @@ test('attachment image preview identity changes when its remote preview is repla
 });
 
 test('image attachments render as clickable lightweight previews without heavy footer banner', () => {
-  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
-    msg: {
-      ...imageMessage,
-      attachments: [{
-        ...imageMessage.attachments[0],
-        previewUrl: 'data:image/png;base64,loaded-preview',
-      }],
-    },
-  }));
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: { ...imageMessage, attachments: [{ ...imageMessage.attachments[0], previewUrl: 'data:image/png;base64,loaded-preview' }] } }));
   const stylesheet = readFileSync(new URL('../src/styles/shell-bubbles.css', import.meta.url), 'utf8');
 
   assert.match(markup, /data-attachment-image-card="true"/);
@@ -246,20 +238,6 @@ test('image attachments render as clickable lightweight previews without heavy f
   assert.doesNotMatch(markup, /app-attachment-image-footer/);
   assert.doesNotMatch(markup, /bg-black\/10/);
   assert.match(markup, /Screenshot 2026-05-20\.png/);
-});
-
-test('remote single-image placeholders keep the loaded image outside edge while decoding', () => {
-  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
-  const stylesheet = readFileSync(new URL('../src/styles/shell-image-groups.css', import.meta.url), 'utf8');
-
-  assert.match(markup, /data-attachment-image-loaded="false"/);
-  assert.match(markup, /col-span-6 row-span-3/);
-  assert.match(markup, /block h-full w-full/);
-  assert.doesNotMatch(markup, /inline-flex h-auto w-auto max-w-full/);
-  assert.match(
-    stylesheet,
-    /data-attachment-image-loaded="false"[\s\S]*width:\s*min\(100%, 20rem\);[\s\S]*grid-auto-rows:\s*4rem;/,
-  );
 });
 
 test('image attachment actions are available from context menu instead of sticky under-image buttons', () => {

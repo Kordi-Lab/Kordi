@@ -135,6 +135,8 @@ final class MediaPreviewTests: XCTestCase {
     }
 
     func testPhotoEditorCropStaysInBoundsAndProducesTheSelectedDimensions() {
+        XCTAssertEqual(PhotoEditorCrop.initial, CGRect(x: 0.06, y: 0.06, width: 0.88, height: 0.88))
+
         let resized = PhotoEditorCrop.resized(
             .init(x: 0, y: 0, width: 1, height: 1),
             corner: .bottomTrailing,
