@@ -14,6 +14,7 @@ import {
   Search,
   Settings2,
   Sparkles,
+  Users,
   Wrench,
   X,
 } from 'lucide-react';
@@ -61,7 +62,7 @@ export type ComposerMentionOption = {
   value: string;
   label: string;
   detail?: string | null;
-  targetKind: 'agent' | 'person';
+  targetKind: 'agent' | 'person' | 'all';
   sourceHostId: string;
   nodeId: string;
   runtime: string;
@@ -229,6 +230,9 @@ export function ComposerMentionMenu({
         <div className="space-y-0.5">
           {items.map((item, index) => {
             const active = index === selectedIndex;
+            const kindLabel = item.targetKind === 'all'
+              ? 'people'
+              : item.targetKind;
             return (
               <button
                 key={`${item.sourceHostId}-${item.nodeId}-${item.value}`}
@@ -241,19 +245,26 @@ export function ComposerMentionMenu({
                   'app-composer-mention-menu-item flex w-full items-center gap-2.5 rounded-[16px] px-2.5 py-2 text-left text-[13px] transition',
                   active && 'app-composer-mention-menu-item-active',
                 )}
+                aria-label={item.targetKind === 'all' ? 'Mention all people in this group' : undefined}
               >
-                <IdentityAvatar
-                  kind={item.targetKind === 'agent' ? 'agent' : 'human'}
-                  seed={item.avatarSeed ?? item.agentId ?? item.humanId ?? item.nodeId ?? item.label}
-                  name={item.label}
-                  imageUrl={item.avatarImageUrl}
-                  className="app-composer-mention-menu-icon h-7 w-7 shrink-0 border border-[color:var(--app-composer-mention-menu-border)]"
-                />
+                {item.targetKind === 'all' ? (
+                  <span className="app-composer-mention-menu-icon grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[color:var(--app-composer-mention-menu-border)]" aria-hidden="true">
+                    <Users className="h-3.5 w-3.5" />
+                  </span>
+                ) : (
+                  <IdentityAvatar
+                    kind={item.targetKind === 'agent' ? 'agent' : 'human'}
+                    seed={item.avatarSeed ?? item.agentId ?? item.humanId ?? item.nodeId ?? item.label}
+                    name={item.label}
+                    imageUrl={item.avatarImageUrl}
+                    className="app-composer-mention-menu-icon h-7 w-7 shrink-0 border border-[color:var(--app-composer-mention-menu-border)]"
+                  />
+                )}
                 <div className="min-w-0 flex-1 overflow-hidden">
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="app-composer-mention-menu-label truncate text-[13px] font-semibold leading-5"><span className="app-composer-mention-menu-at mr-px">@</span>{item.label}</span>
                     <span className="app-composer-mention-menu-kind shrink-0 rounded-full px-1.5 py-0.5 text-[9px]">
-                      {item.targetKind === 'agent' ? 'agent' : 'person'}
+                      {kindLabel}
                     </span>
                   </div>
                 </div>

@@ -3,12 +3,38 @@ import {
   normalizeCollaborationTargetKind,
 } from '@/features/collaboration/legacyBridgeCompatibility';
 import type { MessageMention } from '@/kordi-app/types';
-import { mentionHandleForLabel, type MentionScopeConversation } from './messageActions/mentions';
+import {
+  conversationHasGroupMentionScope,
+  mentionHandleForLabel,
+  type MentionScopeConversation,
+} from './messageActions/mentions';
 import type { ResolvedMentionedCollaborationTarget } from './messageActions/types';
 
 const MAX_MENTIONS = 32;
 const MAX_MENTION_TEXT_LENGTH = 256;
 const MAX_MENTION_ID_LENGTH = 256;
+export const ALL_GROUP_MENTION_LABEL = 'all';
+
+export function groupMentionTargetIdentityId(sessionId: string | null | undefined) {
+  const value = sessionId?.trim();
+  if (!value) return null;
+  return value.startsWith('group:') ? value : `group:${value}`;
+}
+
+export function isVerifiedAllGroupMention(mention: Pick<
+  MessageMention,
+  'label' | 'targetKind' | 'targetIdentityId' | 'startUtf16' | 'lengthUtf16' | 'displayText'
+>) {
+  const targetIdentityId = mention.targetIdentityId?.trim() ?? '';
+  return mention.targetKind === 'all'
+    && mention.label.trim().toLocaleLowerCase() === ALL_GROUP_MENTION_LABEL
+    && Number.isSafeInteger(mention.startUtf16)
+    && (mention.startUtf16 ?? -1) >= 0
+    && mention.lengthUtf16 === 4
+    && mention.displayText?.toLocaleLowerCase() === '@all'
+    && groupMentionTargetIdentityId(targetIdentityId) === targetIdentityId
+    && Boolean(targetIdentityId.slice('group:'.length).trim());
+}
 
 function mentionIdentityId(target: ResolvedMentionedCollaborationTarget) {
   const rawId = target.targetKind === 'agent'
@@ -103,6 +129,39 @@ export function mentionsForConversationParticipants(
   return mentions.sort((left, right) => (left.startUtf16 ?? 0) - (right.startUtf16 ?? 0));
 }
 
+export function mentionsForAllGroupMembers(
+  text: string,
+  conversation: MentionScopeConversation | null | undefined,
+): MessageMention[] {
+  if (!conversationHasGroupMentionScope(conversation)) return [];
+  const targetIdentityId = groupMentionTargetIdentityId(
+    conversation?.canonicalSessionId ?? conversation?.id,
+  );
+  if (!targetIdentityId) return [];
+
+  const mentions: MessageMention[] = [];
+  for (const match of text.matchAll(/@all/giu)) {
+    const startUtf16 = match.index;
+    const before = text[startUtf16 - 1] ?? '';
+    const after = text[startUtf16 + match[0].length] ?? '';
+    if (
+      (!before || !/[\p{L}\p{N}._%+-]/u.test(before))
+      && (!after || !/[\p{L}\p{N}_'-]/u.test(after))
+    ) {
+      mentions.push({
+        label: ALL_GROUP_MENTION_LABEL,
+        targetKind: 'all',
+        targetIdentityId,
+        startUtf16,
+        lengthUtf16: match[0].length,
+        displayText: match[0],
+        displayLabel: 'All',
+      });
+    }
+  }
+  return mentions.slice(0, MAX_MENTIONS);
+}
+
 export function messageMentionsForSend(
   text: string,
   conversation: MentionScopeConversation | null | undefined,
@@ -111,6 +170,7 @@ export function messageMentionsForSend(
   return [...new Map([
     ...mentionsForConversationParticipants(text, conversation),
     ...mentionForCollaborationTarget(target, text),
+    ...mentionsForAllGroupMembers(text, conversation),
   ].map((mention) => [`${mention.startUtf16}:${mention.lengthUtf16}`, mention])).values()]
     .sort((left, right) => (left.startUtf16 ?? 0) - (right.startUtf16 ?? 0))
     .slice(0, MAX_MENTIONS);
@@ -151,7 +211,15 @@ export function normalizedMessageMentions(value: unknown): MessageMention[] | un
     const targetKind = normalizeCollaborationTargetKind(record.targetKind);
     const hasRangeField = (record.startUtf16 !== undefined && record.startUtf16 !== null)
       || (record.lengthUtf16 !== undefined && record.lengthUtf16 !== null);
-    if (hasRangeField && (
+    const invalidAllMention = targetKind === 'all' && !isVerifiedAllGroupMention({
+      label,
+      targetKind,
+      targetIdentityId,
+      startUtf16,
+      lengthUtf16,
+      displayText,
+    });
+    if (invalidAllMention || (hasRangeField && (
       startUtf16 === null
       || startUtf16 < 0
       || lengthUtf16 === null
@@ -159,10 +227,10 @@ export function normalizedMessageMentions(value: unknown): MessageMention[] | un
       || !displayText?.startsWith('@')
       || lengthUtf16 !== displayText.length
       || !targetIdentityId
-      || (targetKind !== 'agent' && targetKind !== 'person')
+      || (targetKind !== 'agent' && targetKind !== 'person' && targetKind !== 'all')
       || (targetKind === 'agent' && !targetIdentityId.startsWith('agent:'))
       || (targetKind === 'person' && !targetIdentityId.startsWith('human:'))
-    )) return [];
+    ))) return [];
 
     return [{
       label,

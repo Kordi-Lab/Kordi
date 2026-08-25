@@ -281,7 +281,12 @@ enum CloudConversationCatalog {
             })
             let unreadMentionMessageIds = Set(sorted.compactMap { wire, envelope -> String? in
                 guard envelope.kind == "group-message",
-                      let message = envelope.message,
+                      let message = envelope.message else { return nil }
+                let humanGroupSessionId = message.senderKind != "agent"
+                    && envelope.participants.contains { $0.accountId == message.senderAccountId }
+                    ? groupId
+                    : nil
+                guard
                       message.senderAccountId != account.accountId,
                       messageIsUnread(
                         wire,
@@ -291,7 +296,8 @@ enum CloudConversationCatalog {
                       ),
                       containsVerifiedPersonMention(
                         wire,
-                        accountId: account.accountId
+                        accountId: account.accountId,
+                        groupSessionId: humanGroupSessionId
                       ) else { return nil }
                 return message.id
             })
@@ -629,10 +635,14 @@ enum CloudConversationCatalog {
 
     private static func containsVerifiedPersonMention(
         _ message: CloudMessageDTO,
-        accountId: String
+        accountId: String,
+        groupSessionId: String? = nil
     ) -> Bool {
         CloudMessageCodec.mentions(in: message).contains {
-            $0.targetsPerson(accountId: accountId)
+            $0.targetsPerson(
+                accountId: accountId,
+                groupSessionId: groupSessionId
+            )
         }
     }
 

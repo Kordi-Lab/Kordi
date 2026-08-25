@@ -4,6 +4,7 @@ import { test } from 'node:test';
 
 import {
   buildBeforeDevCommand,
+  resolveDesktopDevUrl,
   resolveDesktopPreviewIcons,
 } from '../scripts/tauri-dev-env.mjs';
 
@@ -110,6 +111,18 @@ test('desktop preview icons visibly distinguish development from product', () =>
   assert.deepEqual(
     resolveDesktopPreviewIcons({ VITE_KORDI_DEV_PROFILE: 'operator' }),
     ['icons/icon.png', 'icons/icon.icns'],
+  );
+});
+
+test('named profiles may open one local development preview entry', () => {
+  assert.equal(resolveDesktopDevUrl({
+    host: '127.0.0.1',
+    port: 14371,
+    path: '/tests/visual/groupMentionPreview.html',
+  }), 'http://127.0.0.1:14371/tests/visual/groupMentionPreview.html');
+  assert.throws(
+    () => resolveDesktopDevUrl({ host: '127.0.0.1', port: 14371, path: '//example.com' }),
+    /local absolute URL path/i,
   );
 });
 

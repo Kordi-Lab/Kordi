@@ -17,3 +17,27 @@ test('unread structured person mentions exclude read and forwarded messages', ()
     ],
   }), 1);
 });
+
+test('group @all attention is human-only, session-scoped, and counted once per message', () => {
+  const all = {
+    label: 'all',
+    targetKind: 'all',
+    targetIdentityId: 'group:session:group:triad',
+    startUtf16: 0,
+    lengthUtf16: 4,
+    displayText: '@all',
+  };
+  const direct = { label: 'Me', targetKind: 'person', targetIdentityId: 'human:acct_me' };
+
+  assert.equal(collaborationUnreadMentionCount({
+    canonicalSessionId: 'session:group:triad',
+    unreadCount: 4,
+    identity: { localHumanId: 'acct_me' },
+    messages: [
+      { direction: 'inbound', messageKind: 'text', mentions: [all, all] },
+      { direction: 'inbound', messageKind: 'agent-turn', mentions: [all] },
+      { direction: 'inbound', messageKind: 'text', mentions: [{ ...all, targetIdentityId: 'group:session:group:other' }] },
+      { direction: 'inbound', messageKind: 'agent-turn', mentions: [direct] },
+    ],
+  }), 2);
+});

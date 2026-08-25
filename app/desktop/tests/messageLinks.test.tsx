@@ -220,6 +220,23 @@ test('shared inline renderer gives human and agent mentions distinct semantic co
   assert.match(html, /app-message-mention-agent[^>]*data-mention-kind="agent"[^>]*>@EthanParksKordi<\/span>/);
 });
 
+test('shared inline renderer announces structured @all as a human group mention', () => {
+  const html = renderToStaticMarkup(createElement(MessageInlineContent, {
+    text: '@all please review',
+    mentions: [{
+      label: 'all',
+      targetKind: 'all',
+      targetIdentityId: 'group:session:group:triad',
+      startUtf16: 0,
+      lengthUtf16: 4,
+      displayText: '@all',
+    }],
+  }));
+
+  assert.match(html, /app-message-mention-all[^>]*app-message-mention-person/);
+  assert.match(html, /data-mention-kind="all"[^>]*aria-label="@all, all people in this group"/);
+});
+
 test('message URL validation leaves unsafe or credential-bearing schemes inert', () => {
   const text = 'javascript:alert(1) data:text/html,test https://user:secret@example.com/private';
   assert.equal(parseMessageInlineParts(text).some((part) => part.type === 'link'), false);

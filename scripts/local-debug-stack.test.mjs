@@ -366,7 +366,7 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
     );
     writeFileSync(
       join(binDir, 'curl'),
-      '#!/usr/bin/env bash\nurl="${@: -1}"\n[[ -f "$TEST_TUNNEL_READY" ]] || exit 7\ncase "$url" in\n  */health) printf \'{"ok":true,"server":"kordi-cloud"}\\n\' ;;\n  */v1/cloud/auth/capabilities) printf \'{"password":true,"oauthProviders":["google","github"]}\\n\' ;;\n  *) exit 22 ;;\nesac\n',
+      '#!/usr/bin/env bash\nurl="${@: -1}"\n[[ -f "$TEST_TUNNEL_READY" ]] || exit 7\ncase "$url" in\n  */health) printf \'{"ok":true,"server":"kordi-cloud"}\\n\' ;;\n  */v1/cloud/auth/capabilities) [[ -z "${KORDI_DEV_PREVIEW_PATH:-}" ]] || exit 22; printf \'{"password":true,"oauthProviders":["google","github"]}\\n\' ;;\n  *) exit 22 ;;\nesac\n',
     );
     writeFileSync(
       join(binDir, 'pnpm'),
@@ -417,6 +417,16 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
       'dev:desktop:profile -- --profile remote-isolated --title Kordi Remote Dev --port 1498|http://127.0.0.1:17081|community|||',
     );
     assert.match(launched.stdout, /Verified Google and GitHub OAuth/);
+
+    rmSync(tunnelReadyPath);
+    const previewLaunched = spawnSync('bash', [scriptPath], {
+      cwd: repoRoot,
+      env: { ...env, KORDI_DEV_PREVIEW_PATH: '/tests/visual/groupMentionPreview.html' },
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    assert.equal(previewLaunched.status, 0, previewLaunched.stderr);
+    assert.match(previewLaunched.stdout, /login-free fixture preview/);
 
     rmSync(tunnelReadyPath);
     const recovered = spawnSync('bash', [scriptPath], {

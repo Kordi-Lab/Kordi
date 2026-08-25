@@ -1,4 +1,5 @@
 import { isInboundCollaborationMessageDirection } from '@/features/collaboration/messages';
+import { groupMentionTargetIdentityId, isVerifiedAllGroupMention } from '@/features/chat/messageMentions';
 import type { DesktopCollaborationConversation, DesktopCollaborationConversationMessage } from '@/kordi-app/types';
 
 function isVisibleCollaborationUnreadMessage(message: DesktopCollaborationConversationMessage) {
@@ -27,15 +28,17 @@ export function collaborationUnreadByParentSessionId(conversation: DesktopCollab
 }
 
 type UnreadMentionConversation = {
+  canonicalSessionId?: string | null;
   unreadCount: number;
   identity?: { localHumanId?: string | null } | null;
-  messages: Array<Pick<DesktopCollaborationConversationMessage, 'direction' | 'mentions' | 'messageAction'>>;
+  messages: Array<Pick<DesktopCollaborationConversationMessage, 'direction' | 'mentions' | 'messageAction' | 'messageKind'>>;
 };
 
 export function collaborationUnreadMentionCount(conversation: UnreadMentionConversation) {
   const localHumanId = conversation.identity?.localHumanId?.trim();
   const unreadCount = Math.max(0, conversation.unreadCount);
   if (!localHumanId || unreadCount <= 0) return 0;
+  const groupMentionIdentity = groupMentionTargetIdentityId(conversation.canonicalSessionId);
 
   let countedUnreadMessages = 0;
   let mentionCount = 0;
@@ -44,8 +47,17 @@ export function collaborationUnreadMentionCount(conversation: UnreadMentionConve
     if (!message || !isInboundCollaborationMessageDirection(message.direction)) continue;
     countedUnreadMessages += 1;
     if (message.messageAction?.kind === 'forward') continue;
-    if (message.mentions?.some((mention) => mention.targetKind === 'person'
-      && (mention.targetIdentityId === `human:${localHumanId}` || mention.humanId === localHumanId))) {
+    const humanMessageKind = message.messageKind?.trim().toLowerCase();
+    const humanAuthored = !humanMessageKind || humanMessageKind === 'text';
+    if (message.mentions?.some((mention) => (
+      mention.targetKind === 'person'
+        && (mention.targetIdentityId === `human:${localHumanId}` || mention.humanId === localHumanId)
+    ) || (
+      humanAuthored
+      && groupMentionIdentity
+      && isVerifiedAllGroupMention(mention)
+      && mention.targetIdentityId === groupMentionIdentity
+    ))) {
       mentionCount += 1;
     }
   }

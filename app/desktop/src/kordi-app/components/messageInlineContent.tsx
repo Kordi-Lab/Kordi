@@ -105,10 +105,16 @@ export function MessageInlineContent({
       return (
         <span
           key={`mention-${part.start}`}
-          className={cn('app-message-mention', `app-message-mention-${part.targetKind}`)}
+          className={cn(
+            'app-message-mention',
+            `app-message-mention-${part.targetKind}`,
+            part.targetKind === 'all' && 'app-message-mention-person',
+          )}
           data-mention-kind={part.targetKind}
           data-mention-identity={part.targetIdentityId ?? undefined}
-          aria-label={`${part.label}, ${part.targetKind} mention`}
+          aria-label={part.targetKind === 'all'
+            ? `${part.label}, all people in this group`
+            : `${part.label}, ${part.targetKind} mention`}
         >
           {part.label}
         </span>

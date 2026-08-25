@@ -604,25 +604,34 @@ struct ComposerView: View {
                             insertMention(target)
                         } label: {
                             HStack(spacing: 10) {
-                                IdentityAvatar(
-                                    name: target.displayName,
-                                    imageSource: target.avatarSource,
-                                    kind: target.kind == .agent ? .agent : .person,
-                                    size: 30,
-                                    seed: target.agentId ?? target.accountId
-                                )
+                                if target.kind == .all {
+                                    Image(systemName: "person.2.fill")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(KordiTheme.signalBlue)
+                                        .frame(width: 30, height: 30)
+                                        .background(KordiTheme.signalBlue.opacity(0.14), in: Circle())
+                                        .accessibilityHidden(true)
+                                } else {
+                                    IdentityAvatar(
+                                        name: target.displayName,
+                                        imageSource: target.avatarSource,
+                                        kind: target.kind == .agent ? .agent : .person,
+                                        size: 30,
+                                        seed: target.agentId ?? target.accountId
+                                    )
+                                }
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(target.displayName)
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(.primary)
                                         .lineLimit(1)
-                                    Text(target.kind == .agent ? agentMentionSubtitle(target) : "Person")
+                                    Text(mentionSubtitle(target))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
                                 Spacer(minLength: 8)
-                                Image(systemName: target.kind == .agent ? "sparkles" : "at")
+                                Image(systemName: mentionIconName(target))
                                     .foregroundStyle(target.kind == .agent ? KordiTheme.agentViolet : KordiTheme.signalBlue)
                                     .accessibilityHidden(true)
                             }
@@ -903,11 +912,31 @@ struct ComposerView: View {
         return "\(ownerName)’s agent · Cloud or Mac"
     }
 
-    private func mentionAccessibilityLabel(_ target: ComposerMentionTarget) -> String {
-        if target.kind == .agent {
-            return "\(target.displayName), \(agentMentionSubtitle(target))"
+    private func mentionSubtitle(_ target: ComposerMentionTarget) -> String {
+        switch target.kind {
+        case .all: "All people in this group"
+        case .agent: agentMentionSubtitle(target)
+        case .person: "Person"
         }
-        return "\(target.displayName), person"
+    }
+
+    private func mentionIconName(_ target: ComposerMentionTarget) -> String {
+        switch target.kind {
+        case .all: "person.2.fill"
+        case .agent: "sparkles"
+        case .person: "at"
+        }
+    }
+
+    private func mentionAccessibilityLabel(_ target: ComposerMentionTarget) -> String {
+        switch target.kind {
+        case .all:
+            return "All people in this group"
+        case .agent:
+            return "\(target.displayName), \(agentMentionSubtitle(target))"
+        case .person:
+            return "\(target.displayName), person"
+        }
     }
 
     private func attachmentCountText(_ count: Int) -> String {

@@ -3,7 +3,9 @@ import test from 'node:test';
 
 import {
   mentionForCollaborationTarget,
+  mentionsForAllGroupMembers,
   mentionsForConversationParticipants,
+  normalizedMessageMentions,
 } from '../src/features/chat/messageMentions';
 import type { Conversation } from '../src/kordi-app/types';
 
@@ -49,4 +51,38 @@ test('collaboration mention metadata preserves every occurrence of one agent', (
   assert.deepEqual(mentions.map((mention) => mention.displayText), ["@Alice's Kordi", '@AlicesKordi']);
   assert.deepEqual(mentions.map((mention) => mention.startUtf16), [0, text.indexOf('@AlicesKordi')]);
   assert.ok(mentions.every((mention) => mention.targetIdentityId === 'agent:cloud_agent_alice'));
+});
+
+test('group @all mentions use one scoped entity and reject plain or invalid scopes', () => {
+  const group = {
+    id: 'session:group:triad',
+    canonicalSessionId: 'session:group:triad',
+    directness: 'Group chat',
+  } as Conversation;
+  const text = 'Email me@all.example, then @all and @ALL.';
+  const mentions = mentionsForAllGroupMembers(text, group);
+
+  assert.deepEqual(mentions.map((mention) => ({
+    displayText: mention.displayText,
+    targetKind: mention.targetKind,
+    targetIdentityId: mention.targetIdentityId,
+  })), [{
+    displayText: '@all',
+    targetKind: 'all',
+    targetIdentityId: 'group:session:group:triad',
+  }, {
+    displayText: '@ALL',
+    targetKind: 'all',
+    targetIdentityId: 'group:session:group:triad',
+  }]);
+  assert.deepEqual(mentionsForAllGroupMembers('@all', { id: 'direct', directness: 'Direct chat' }), []);
+  assert.equal(normalizedMessageMentions([{
+    ...mentions[0],
+    targetIdentityId: 'human:acct_me',
+  }]), undefined);
+  assert.equal(normalizedMessageMentions([{
+    label: 'all',
+    targetKind: 'all',
+    targetIdentityId: 'group:session:group:triad',
+  }]), undefined);
 });

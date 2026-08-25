@@ -61,6 +61,50 @@ test('cloud group envelopes preserve cross-client mention identities and ranges'
   assert.equal(envelope?.message?.mentions?.[0]?.targetIdentityId, 'human:acct_alex');
 });
 
+test('cloud group envelopes accept human @all and reject agent or mismatched broadcasts', () => {
+  const base = {
+    kind: 'group-message' as const,
+    groupId: 'session:group:human-all',
+    groupSpaceId: 'session:group:human-all',
+    groupTitle: 'Mentions',
+    createdByAccountId: 'acct_sender',
+    actor: { accountId: 'acct_sender', displayName: 'Sender', avatarUrl: null, role: 'self' },
+    participants: [
+      { accountId: 'acct_sender', displayName: 'Sender', avatarUrl: null, role: 'self' },
+      { accountId: 'acct_receiver', displayName: 'Receiver', avatarUrl: null, role: 'person' },
+    ],
+  };
+  const mention = {
+    label: 'all',
+    targetKind: 'all',
+    targetIdentityId: 'group:session:group:human-all',
+    startUtf16: 0,
+    lengthUtf16: 4,
+    displayText: '@all',
+  };
+  const message = {
+    id: 'msg_all',
+    senderAccountId: 'acct_sender',
+    senderKind: 'human' as const,
+    text: '@all hello',
+    createdAtMs: 1,
+    mentions: [mention],
+  };
+
+  assert.equal(parseCloudGroupControl(encodeCloudGroupControl({ ...base, message }))?.message?.mentions?.length, 1);
+  assert.equal(parseCloudGroupControl(encodeCloudGroupControl({
+    ...base,
+    message: { ...message, senderKind: 'agent' },
+  }))?.message?.mentions, undefined);
+  assert.equal(parseCloudGroupControl(encodeCloudGroupControl({
+    ...base,
+    message: {
+      ...message,
+      mentions: [{ ...mention, targetIdentityId: 'group:session:group:other' }],
+    },
+  }))?.message?.mentions, undefined);
+});
+
 test('group admin snapshots always keep the creator and explicit promoted admins', () => {
   const envelope = parseCloudGroupControl(encodeCloudGroupControl({
     kind: 'group-update',
