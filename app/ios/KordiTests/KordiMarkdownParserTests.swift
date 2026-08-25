@@ -957,6 +957,26 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertEqual(KordiSyncMarkGeometry.pullProgress(for: 120, triggerDistance: 68), 1)
     }
 
+    func testColorRelayPulsesBrandCirclesInOrder() {
+        let initial = (0..<3).map {
+            KordiColorRelayMotion.sample(index: $0, elapsed: 0)
+        }
+        let samples = (0..<3).map {
+            KordiColorRelayMotion.sample(
+                index: $0,
+                elapsed: KordiColorRelayMotion.handoffDuration
+                    + (KordiColorRelayMotion.cycleDuration / 4)
+            )
+        }
+
+        XCTAssertEqual(initial.map(\.scale), [1, 1, 1])
+        XCTAssertEqual(initial.map(\.opacity), [1, 1, 1])
+        XCTAssertEqual(samples[0].scale, 1.12, accuracy: 0.001)
+        XCTAssertEqual(samples[0].opacity, 1, accuracy: 0.001)
+        XCTAssertGreaterThan(samples[0].scale, samples[1].scale)
+        XCTAssertGreaterThan(samples[1].scale, samples[2].scale)
+    }
+
     func testThreeBallMarkReturnsToNormalSpacingWhileRefreshing() {
         for index in 0..<3 {
             let pull = KordiSyncMarkGeometry.sample(

@@ -109,6 +109,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 
 | Argument | Surface |
 | --- | --- |
+| `--preview-launching` | Color Relay app launch state |
 | `--preview-data` | Complete signed-in Contact chat flow |
 | `--preview-agent-page` | Agents root tab (combine with preview data) |
 | `--preview-login` | Email and social login |
@@ -144,6 +145,8 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-profile` | Profile settings |
 
 Focused arguments that require conversation fixtures should be combined with `--preview-data` unless their preview root installs data itself.
+
+Set `KORDI_PREVIEW_LAUNCH_FLOW=1` in the simulator process environment to show Color Relay briefly before persisted preview data opens the full app. The loading-only `--preview-launching` state continues animating until the app is relaunched without that argument.
 
 ## Run on a physical iPhone
 

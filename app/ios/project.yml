@@ -63,7 +63,8 @@ targets:
         KordiOAuthCallbackScheme: $(KORDI_OAUTH_CALLBACK_SCHEME)
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
-        UILaunchScreen: {}
+        UILaunchScreen:
+          UIImageName: KordiLaunchMark
         UIBackgroundModes:
           - audio
           - remote-notification

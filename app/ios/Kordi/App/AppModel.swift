@@ -236,6 +236,7 @@ final class AppModel: ObservableObject {
     private var persistedVisibleReadMessageBySessionID: [String: String] = [:]
     private var sessionTitleOverrides: [String: String] = UserDefaults.standard.dictionary(forKey: "kordi.session-title-overrides") as? [String: String] ?? [:]
     private let previewMode: Bool
+    private let previewLaunchFlow: Bool
 
     var isPreviewMode: Bool { previewMode }
 
@@ -247,7 +248,8 @@ final class AppModel: ObservableObject {
         sessionRuntimeRouteStore: SessionRuntimeRouteStore = SessionRuntimeRouteStore(),
         previewMode: Bool = KordiPreviewModePersistence.resolve(
             arguments: ProcessInfo.processInfo.arguments,
-            launchRequested: ProcessInfo.processInfo.arguments.contains("--preview-data")
+            launchRequested: ProcessInfo.processInfo.arguments.contains("--preview-launching")
+                || ProcessInfo.processInfo.arguments.contains("--preview-data")
                 || ProcessInfo.processInfo.arguments.contains("--preview-markdown")
                 || ProcessInfo.processInfo.arguments.contains("--preview-login")
                 || ProcessInfo.processInfo.arguments.contains("--preview-signup")
@@ -270,7 +272,9 @@ final class AppModel: ObservableObject {
                 || ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
                 || ProcessInfo.processInfo.arguments.contains("--preview-media-separated")
                 || ProcessInfo.processInfo.arguments.contains("--preview-photo-send")
-        )
+        ),
+        previewLaunchFlow: Bool = ProcessInfo.processInfo.environment["KORDI_PREVIEW_LAUNCH_FLOW"] == "1"
+            && !ProcessInfo.processInfo.arguments.contains("--preview-launching")
     ) {
         self.api = api
         self.oauth = CloudOAuthSession(api: api)
@@ -280,10 +284,13 @@ final class AppModel: ObservableObject {
         self.sessionRuntimeRouteStore = sessionRuntimeRouteStore
         self.presencePublisher = CloudPresencePublisher(api: api)
         self.previewMode = previewMode
-        if ProcessInfo.processInfo.arguments.contains("--preview-login")
+        self.previewLaunchFlow = previewLaunchFlow
+        if ProcessInfo.processInfo.arguments.contains("--preview-launching") {
+            // Keep the initial phase so the network-free launch surface remains visible.
+        } else if ProcessInfo.processInfo.arguments.contains("--preview-login")
             || ProcessInfo.processInfo.arguments.contains("--preview-signup") {
             phase = .signedOut
-        } else if previewMode {
+        } else if previewMode && !previewLaunchFlow {
             installPreviewData()
         }
     }
@@ -296,7 +303,17 @@ final class AppModel: ObservableObject {
     }
 
     func start() async {
-        guard !previewMode else { return }
+        guard !previewMode else {
+            guard previewLaunchFlow, phase == .launching else { return }
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            installPreviewData()
+            return
+        }
         do {
             guard let savedToken = try keychain.loadToken() else {
                 phase = .signedOut
