@@ -189,7 +189,7 @@ struct ComposerView: View {
     @State private var voiceGestureEnded = false
     @State private var suppressVoiceTap = false
     @ScaledMetric(relativeTo: .body) private var composerControlHeight: CGFloat = 50
-    @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 38
+    @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 44
     @ScaledMetric(relativeTo: .body) private var draftPaneExpansionThreshold: CGFloat = 84
     @ScaledMetric(relativeTo: .body) private var mentionPickerMaxHeight: CGFloat = 264
     @ScaledMetric(relativeTo: .body) private var mentionPickerRowHeight: CGFloat = 46
@@ -293,7 +293,7 @@ struct ComposerView: View {
         inputSurface
             .padding(.horizontal, 10)
             .overlay(alignment: .bottomTrailing) {
-                if !canSend, voiceRecorder.phase != .failed {
+                if !canSend, voiceRecorder.phase != .failed, !voiceRecorder.isLocked {
                     Color.clear
                         .frame(width: max(44, sendButtonDiameter), height: composerControlHeight)
                         .contentShape(Rectangle())
@@ -302,6 +302,7 @@ struct ComposerView: View {
                         .accessibilityHidden(true)
                 }
             }
+            .sensoryFeedback(.selection, trigger: voiceGestureIntent)
     }
 
     @ViewBuilder
@@ -309,7 +310,9 @@ struct ComposerView: View {
         if voiceRecorder.isVisible {
             VoiceRecordingComposer(
                 recorder: voiceRecorder,
-                gestureIntent: voiceGestureIntent
+                gestureIntent: voiceGestureIntent,
+                onCancel: voiceRecorder.cancel,
+                onSend: finishVoiceRecordingAndSend
             )
         } else {
             HStack(alignment: .bottom, spacing: 8) {
@@ -621,9 +624,8 @@ struct ComposerView: View {
             memeValidationError
                 ?? (canSend
                     ? "Sends the message"
-                    : "Hold to record, release to send, or swipe up to cancel")
+                    : "Hold to record, release to send, slide left to cancel, or slide up to lock")
         )
-        .sensoryFeedback(.selection, trigger: voiceGestureIntent)
     }
 
     private var voiceRecordingGesture: some Gesture {
@@ -671,12 +673,18 @@ struct ComposerView: View {
         switch voiceGestureIntent {
         case .cancel:
             voiceRecorder.cancel()
+        case .lock:
+            voiceRecorder.lock()
         case .hold:
-            voiceRecorder.stop(autoSend: true)
-            Task {
-                guard await voiceRecorder.prepareForSend() != nil else { return }
-                onSendVoice()
-            }
+            finishVoiceRecordingAndSend()
+        }
+    }
+
+    private func finishVoiceRecordingAndSend() {
+        voiceRecorder.stop(autoSend: true)
+        Task {
+            guard await voiceRecorder.prepareForSend() != nil else { return }
+            onSendVoice()
         }
     }
 
@@ -688,7 +696,7 @@ struct ComposerView: View {
         if horizontal <= -threshold, abs(horizontal) >= abs(vertical) {
             return .cancel
         }
-        if vertical <= -threshold { return .cancel }
+        if vertical <= -threshold { return .lock }
         return .hold
     }
 

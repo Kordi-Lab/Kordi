@@ -1444,7 +1444,6 @@ struct ConversationView: View {
         let outgoingReply = conversation.kind.supportsQuotedReplies ? replySource : nil
         replySource = nil
         selectedMention = nil
-        isSending = true
         await model.send(
             message,
             voiceMessage: pending,
@@ -1454,7 +1453,6 @@ struct ConversationView: View {
             agentContext: companionContext?.referenceText,
             to: conversation
         )
-        isSending = false
         voiceRecorder.cancel()
     }
 

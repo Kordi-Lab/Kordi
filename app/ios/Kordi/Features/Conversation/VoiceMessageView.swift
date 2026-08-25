@@ -5,31 +5,110 @@ import SwiftUI
 enum VoiceRecordingGestureIntent: Equatable {
     case hold
     case cancel
+    case lock
 }
 
 struct VoiceRecordingComposer: View {
     let recorder: VoiceMessageRecorder
     let gestureIntent: VoiceRecordingGestureIntent
+    let onCancel: () -> Void
+    let onSend: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        Group {
             if recorder.phase == .recording || recorder.phase == .paused {
-                recordingControls
+                if recorder.isLocked {
+                    lockedControls
+                } else {
+                    heldControls
+                }
             } else {
                 failedControls
+                    .frame(height: 56)
+                    .padding(.horizontal, 14)
+                    .background(.ultraThinMaterial, in: Capsule())
             }
         }
-        .frame(height: 50, alignment: .center)
-        .padding(.horizontal, 14)
-        .background(.ultraThinMaterial, in: Capsule())
         .accessibilityElement(children: .contain)
+        .animation(.snappy(duration: 0.18), value: gestureIntent)
+        .animation(.snappy(duration: 0.18), value: recorder.isLocked)
     }
 
-    private var recordingControls: some View {
-        Group {
-            Image(systemName: gestureIntent == .cancel ? "xmark" : "mic.fill")
-                .foregroundStyle(gestureIntent == .cancel ? .red : KordiTheme.signalBlue)
+    private var heldControls: some View {
+        ZStack(alignment: .bottomTrailing) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(.red)
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
+
+                Text(Self.duration(recorder.durationMs))
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.primary)
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.left")
+                    .font(.caption.weight(.bold))
+                    .accessibilityHidden(true)
+
+                Text(gestureIntent == .cancel ? "Release to cancel" : "Slide to cancel")
+                    .font(.callout)
+                    .foregroundStyle(gestureIntent == .cancel ? .red : .secondary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .padding(.leading, 18)
+            .padding(.trailing, 88)
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .background(.ultraThinMaterial, in: Capsule())
+
+            if gestureIntent != .cancel {
+                VStack(spacing: 2) {
+                    Image(systemName: gestureIntent == .lock ? "lock.fill" : "lock.open.fill")
+                        .font(.body.weight(.semibold))
+                    Image(systemName: "chevron.up")
+                        .font(.caption2.weight(.bold))
+                }
+                .foregroundStyle(gestureIntent == .lock ? KordiTheme.signalBlue : .secondary)
+                .frame(width: 44, height: 64)
+                .background(.ultraThinMaterial, in: Capsule())
+                .offset(x: -17, y: -58)
                 .accessibilityHidden(true)
+            }
+
+            Circle()
+                .fill(gestureIntent == .cancel ? Color.red : KordiTheme.signalBlue)
+                .frame(width: 78, height: 78)
+                .overlay {
+                    Image(systemName: gestureIntent == .cancel ? "xmark" : "mic.fill")
+                        .font(.title2.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+                .shadow(
+                    color: (gestureIntent == .cancel ? Color.red : KordiTheme.signalBlue)
+                        .opacity(0.24),
+                    radius: 10,
+                    y: 4
+                )
+                .scaleEffect(gestureIntent == .lock ? 1.08 : 1)
+                .offset(y: gestureIntent == .lock ? -8 : 0)
+                .accessibilityHidden(true)
+        }
+        .frame(height: 82)
+        .accessibilityLabel("Recording voice message")
+        .accessibilityValue(Self.duration(recorder.durationMs))
+        .accessibilityHint("Release to send, slide left to cancel, or slide up to lock")
+    }
+
+    private var lockedControls: some View {
+        HStack(spacing: 8) {
+            Button(role: .destructive, action: onCancel) {
+                Image(systemName: "trash")
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cancel voice recording")
 
             VoiceWaveform(samples: recorder.waveformSamples, progress: 1)
                 .frame(maxWidth: .infinity, minHeight: 24)
@@ -38,13 +117,33 @@ struct VoiceRecordingComposer: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
 
-            Text(Self.gestureHint(gestureIntent))
-                .font(.caption2)
-                .foregroundStyle(gestureIntent == .cancel ? .red : KordiTheme.signalBlue)
-                .lineLimit(2)
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(1)
+            Button {
+                if recorder.phase == .paused {
+                    recorder.resume()
+                } else {
+                    recorder.pause()
+                }
+            } label: {
+                Image(systemName: recorder.phase == .paused ? "mic.fill" : "pause.fill")
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(recorder.phase == .paused ? "Resume recording" : "Pause recording")
+
+            Button(action: onSend) {
+                Image(systemName: "arrow.up")
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 50, height: 50)
+                    .background(KordiTheme.signalBlue, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Send voice message")
         }
+        .frame(height: 58)
+        .padding(.leading, 4)
+        .padding(.trailing, 4)
+        .background(.ultraThinMaterial, in: Capsule())
     }
 
     private var failedControls: some View {
@@ -61,13 +160,6 @@ struct VoiceRecordingComposer: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Record voice message again")
-        }
-    }
-
-    static func gestureHint(_ gestureIntent: VoiceRecordingGestureIntent) -> String {
-        switch gestureIntent {
-        case .hold: "Release to send\nSwipe up to cancel"
-        case .cancel: "Release to cancel"
         }
     }
 
