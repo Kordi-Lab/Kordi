@@ -129,6 +129,7 @@ struct MessageBubble: View, Equatable {
                                 .foregroundStyle(.secondary)
                                 .padding(.trailing, 8)
                                 .padding(.bottom, 2)
+                                .allowsHitTesting(false)
                             }
                         }
                     }
@@ -136,12 +137,14 @@ struct MessageBubble: View, Equatable {
                         if isHighlighted {
                             bubbleShape
                                 .fill(KordiTheme.signalBlue.opacity(0.10))
+                                .allowsHitTesting(false)
                         }
                         bubbleShape
                             .stroke(
                                 isHighlighted ? KordiTheme.signalBlue : Color.clear,
                                 lineWidth: isHighlighted ? 2 : 0
                             )
+                            .allowsHitTesting(false)
                     }
                     .scaleEffect(
                         reduceMotion ? 1 : isActionPresented ? 1.016 : isHighlighted ? 1.018 : 1
@@ -183,7 +186,7 @@ struct MessageBubble: View, Equatable {
                             }
                         }
                     }
-                    .highPriorityGesture(
+                    .simultaneousGesture(
                         LongPressGesture(minimumDuration: 0.32)
                             .updating($isPressingActions) { current, state, _ in
                                 state = current
