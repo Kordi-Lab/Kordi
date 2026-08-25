@@ -292,6 +292,16 @@ struct ComposerView: View {
     private var inputSurfaceAssembly: some View {
         inputSurface
             .padding(.horizontal, 10)
+            .overlay(alignment: .bottomTrailing) {
+                if !canSend, voiceRecorder.phase != .failed {
+                    Color.clear
+                        .frame(width: max(44, sendButtonDiameter), height: composerControlHeight)
+                        .contentShape(Rectangle())
+                        .highPriorityGesture(voiceRecordingGesture)
+                        .padding(.trailing, 10)
+                        .accessibilityHidden(true)
+                }
+            }
     }
 
     @ViewBuilder
@@ -611,9 +621,8 @@ struct ComposerView: View {
             memeValidationError
                 ?? (canSend
                     ? "Sends the message"
-                    : "Hold to record, release to send, or slide up to cancel")
+                    : "Hold to record, release to send, or swipe up to cancel")
         )
-        .highPriorityGesture(voiceRecordingGesture, including: canSend ? .none : .all)
         .sensoryFeedback(.selection, trigger: voiceGestureIntent)
     }
 

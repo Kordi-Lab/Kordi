@@ -38,10 +38,12 @@ struct VoiceRecordingComposer: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
 
-            Text(gestureHint)
+            Text(Self.gestureHint(gestureIntent))
                 .font(.caption2)
                 .foregroundStyle(gestureIntent == .cancel ? .red : KordiTheme.signalBlue)
-                .lineLimit(1)
+                .lineLimit(2)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
         }
     }
 
@@ -62,9 +64,9 @@ struct VoiceRecordingComposer: View {
         }
     }
 
-    private var gestureHint: String {
+    static func gestureHint(_ gestureIntent: VoiceRecordingGestureIntent) -> String {
         switch gestureIntent {
-        case .hold: "Release to send · swipe up to cancel"
+        case .hold: "Release to send\nSwipe up to cancel"
         case .cancel: "Release to cancel"
         }
     }

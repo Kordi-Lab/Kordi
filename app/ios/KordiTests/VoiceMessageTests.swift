@@ -24,6 +24,10 @@ final class VoiceMessageTests: XCTestCase {
         XCTAssertEqual(ComposerView.voiceGestureIntent(horizontal: -70, vertical: -20), .cancel)
         XCTAssertEqual(ComposerView.voiceGestureIntent(horizontal: -20, vertical: -70), .cancel)
         XCTAssertEqual(ComposerView.voiceGestureIntent(horizontal: -20, vertical: -20), .hold)
+        XCTAssertEqual(
+            VoiceRecordingComposer.gestureHint(.hold),
+            "Release to send\nSwipe up to cancel"
+        )
     }
 
     @MainActor
