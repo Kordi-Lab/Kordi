@@ -1072,12 +1072,12 @@ function MessageBubbleView({
                 : useHumanCompactDensity
                   ? cn(
                     'app-message-bubble-contact-compact w-fit max-w-[52rem] rounded-[8px] px-3 py-1.5',
-                    msg.supportContactTyping ? 'min-w-[3.25rem]' : 'min-w-[5.5rem]',
+                    msg.supportContactTyping ? 'min-w-[3.25rem]' : undefined,
                     humanMessageBubbleShapeClass('peer'),
                   )
                   : cn(
                     'w-fit max-w-[52rem] px-4 py-2.5',
-                    msg.supportContactTyping ? 'min-w-[4rem]' : 'min-w-[6.75rem]',
+                    msg.supportContactTyping ? 'min-w-[4rem]' : undefined,
                     humanMessageBubbleShapeClass('peer'),
                   )
                : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyImageAttachments ? 'px-2.5 py-1.5' : '',

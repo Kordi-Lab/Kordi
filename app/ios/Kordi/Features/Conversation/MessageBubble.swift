@@ -1207,7 +1207,8 @@ private struct AdaptiveBubbleLayout: Layout {
         let ideal = subview.sizeThatFits(.unspecified)
         let width = min(availableWidth, max(minimumWidth, ideal.width))
         let fitted = subview.sizeThatFits(ProposedViewSize(width: width, height: nil))
-        return CGSize(width: ceil(width), height: ceil(fitted.height))
+        let compactWidth = min(width, max(minimumWidth, fitted.width))
+        return CGSize(width: ceil(compactWidth), height: ceil(fitted.height))
     }
 
     func placeSubviews(

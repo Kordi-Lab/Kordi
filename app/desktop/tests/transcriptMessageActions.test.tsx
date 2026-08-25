@@ -117,6 +117,35 @@ test('sent-message delivery glyph keeps one stable slot so status changes do not
   assert.doesNotMatch(markup, /title="Sent"/);
 });
 
+test('short peer messages shrink to their content while typing indicators keep a stable slot', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Maya',
+    senderType: 'human',
+    isOwnMessage: false,
+    text: 'hi',
+    time: '00:45',
+  };
+
+  const defaultMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+  const compactMarkup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message,
+    densityMode: 'contact-compact',
+  }));
+  const defaultTypingMarkup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: { ...message, text: '', supportContactTyping: true },
+  }));
+  const compactTypingMarkup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: { ...message, text: '', supportContactTyping: true },
+    densityMode: 'contact-compact',
+  }));
+
+  assert.doesNotMatch(defaultMarkup, /min-w-\[/);
+  assert.doesNotMatch(compactMarkup, /min-w-\[/);
+  assert.match(defaultTypingMarkup, /min-w-\[4rem\]/);
+  assert.match(compactTypingMarkup, /min-w-\[3\.25rem\]/);
+});
+
 test('sending own message renders a Telegram-style clock with moving hands in the stable delivery slot', () => {
   const message: Message = {
     role: 'user',

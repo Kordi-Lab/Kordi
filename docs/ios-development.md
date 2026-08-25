@@ -119,6 +119,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-add-contact` | Add-contact search inside the new-chat sheet |
 | `--preview-new-group` | New-group flow inside the new-chat sheet |
 | `--preview-contact-chat` | Direct conversation |
+| `--preview-bubble-width` | Message bubble width and delivery-state stress cases |
 | `--preview-direct-call` | Active one-to-one voice call |
 | `--preview-group-call` | Active group video chat |
 | `--preview-media` | Full-screen image gallery with multiple preview images |
