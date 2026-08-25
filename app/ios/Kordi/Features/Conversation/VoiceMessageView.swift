@@ -73,8 +73,10 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
 }
 
 struct VoiceRecordingComposer: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let recorder: VoiceMessageRecorder
     let gestureIntent: VoiceRecordingGestureIntent
+    let transitionNamespace: Namespace.ID
     let onCancel: () -> Void
     let onSend: () -> Void
 
@@ -94,8 +96,8 @@ struct VoiceRecordingComposer: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .animation(.snappy(duration: 0.18), value: gestureIntent)
-        .animation(.snappy(duration: 0.18), value: recorder.isLocked)
+        .animation(recordingAnimation, value: gestureIntent)
+        .animation(recordingAnimation, value: recorder.isLocked)
     }
 
     private var heldControls: some View {
@@ -138,6 +140,10 @@ struct VoiceRecordingComposer: View {
                 .frame(width: 44, height: 64)
                 .background(.ultraThinMaterial, in: Capsule())
                 .offset(x: -17, y: -58)
+                .transition(
+                    .scale(scale: 0.9, anchor: .bottom)
+                        .combined(with: .opacity)
+                )
                 .accessibilityHidden(true)
             }
 
@@ -157,12 +163,20 @@ struct VoiceRecordingComposer: View {
                 )
                 .scaleEffect(gestureIntent == .lock ? 1.08 : 1)
                 .offset(y: gestureIntent == .lock ? -8 : 0)
+                .matchedGeometryEffect(
+                    id: "voice-recording-control",
+                    in: transitionNamespace
+                )
                 .accessibilityHidden(true)
         }
         .frame(height: 82)
         .accessibilityLabel("Recording voice message")
         .accessibilityValue(Self.duration(recorder.durationMs))
         .accessibilityHint("Release to send, slide left to cancel, or slide up to lock")
+    }
+
+    private var recordingAnimation: Animation? {
+        reduceMotion ? nil : .smooth(duration: 0.24)
     }
 
     private var lockedControls: some View {

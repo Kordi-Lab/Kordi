@@ -187,6 +187,7 @@ struct ComposerView: View {
     @State private var voiceGestureIntent = VoiceRecordingGestureIntent.hold
     @State private var voiceGestureActive = false
     @State private var voiceGestureEnded = false
+    @Namespace private var voiceRecordingTransition
     @ScaledMetric(relativeTo: .body) private var composerControlHeight: CGFloat = 50
     @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 44
     @ScaledMetric(relativeTo: .body) private var draftPaneExpansionThreshold: CGFloat = 84
@@ -307,6 +308,7 @@ struct ComposerView: View {
         inputSurface
             .padding(.horizontal, 10)
             .sensoryFeedback(.selection, trigger: voiceGestureIntent)
+            .animation(voiceRecordingTransitionAnimation, value: voiceRecorder.isVisible)
     }
 
     @ViewBuilder
@@ -315,16 +317,33 @@ struct ComposerView: View {
             VoiceRecordingComposer(
                 recorder: voiceRecorder,
                 gestureIntent: voiceGestureIntent,
+                transitionNamespace: voiceRecordingTransition,
                 onCancel: voiceRecorder.cancel,
                 onSend: finishVoiceRecordingAndSend
             )
+            .transition(voiceRecordingSurfaceTransition)
         } else {
             HStack(alignment: .bottom, spacing: 8) {
                 attachmentMenu
                 messageFieldSurface
                     .layoutPriority(1)
             }
+            .transition(voiceRecordingSurfaceTransition)
         }
+    }
+
+    private var voiceRecordingSurfaceTransition: AnyTransition {
+        reduceMotion
+            ? .identity
+            : .scale(scale: 0.96, anchor: .bottomTrailing)
+                .combined(with: .opacity)
+    }
+
+    private var voiceRecordingTransitionAnimation: Animation? {
+        guard !reduceMotion else { return nil }
+        return voiceRecorder.isVisible
+            ? .smooth(duration: 0.24)
+            : .easeOut(duration: 0.16)
     }
 
     @ViewBuilder
@@ -619,6 +638,7 @@ struct ComposerView: View {
             .frame(width: sendButtonDiameter, height: sendButtonDiameter)
             .frame(width: max(44, sendButtonDiameter), height: max(44, sendButtonDiameter))
             .contentShape(Circle())
+            .matchedGeometryEffect(id: "voice-recording-control", in: voiceRecordingTransition)
         }
         .buttonStyle(.plain)
         .disabled(isSending || isPreparingAttachments)
