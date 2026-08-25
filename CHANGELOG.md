@@ -11,6 +11,10 @@ This file records notable user-facing changes to Kordi Desktop.
 - Completed desktop OAuth loopback request bodies before parsing the returned
   session and preserved hydrated Kordi Support routing when legacy history is
   selected.
+- Moved uploaded person and Agent avatars to bounded reference-backed assets,
+  restored group sends that previously exceeded the message limit, and kept
+  group avatar stacks pinned to the first three human members. ([#1179],
+  [#1181])
 
 ## [0.0.1-beta.15] - 2026-08-22
 
@@ -384,3 +388,5 @@ This release is the comparison baseline for beta.8. See the
 [#1082]: https://github.com/Kordi-Lab/Kordi/pull/1082
 [#1084]: https://github.com/Kordi-Lab/Kordi/pull/1084
 [#1102]: https://github.com/Kordi-Lab/Kordi/issues/1102
+[#1179]: https://github.com/Kordi-Lab/Kordi/issues/1179
+[#1181]: https://github.com/Kordi-Lab/Kordi/pull/1181
