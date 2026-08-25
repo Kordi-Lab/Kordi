@@ -708,10 +708,11 @@ enum CloudConversationCatalog {
                 accountId: accountId,
                 displayName: participant.displayName.nonEmpty ?? previous?.displayName ?? "Kordi user",
                 avatarUrl: participant.avatarUrl?.nonEmpty ?? previous?.avatarUrl,
-                role: participant.role?.nonEmpty ?? previous?.role
+                role: participant.role?.nonEmpty ?? previous?.role,
+                joinedAt: participant.joinedAt?.nonEmpty ?? previous?.joinedAt
             )
         }
-        return byId.values.sorted { $0.accountId < $1.accountId }
+        return byId.values.sorted(by: CloudGroupParticipant.canonicalPrecedes)
     }
 
     private static func enrichedParticipants(
@@ -725,7 +726,8 @@ enum CloudConversationCatalog {
                     accountId: participant.accountId,
                     displayName: account.preferredName,
                     avatarUrl: account.avatar.imageSource,
-                    role: participant.role
+                    role: participant.role,
+                    joinedAt: participant.joinedAt
                 )
             }
             guard let contact = contactsById[participant.accountId] else { return participant }
@@ -733,7 +735,8 @@ enum CloudConversationCatalog {
                 accountId: participant.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl?.nonEmpty ?? participant.avatarUrl,
-                role: participant.role
+                role: participant.role,
+                joinedAt: participant.joinedAt
             )
         }
     }
@@ -749,10 +752,11 @@ enum CloudConversationCatalog {
                 accountId: participant.accountId,
                 displayName: participant.displayName.nonEmpty ?? previous?.displayName ?? "Kordi user",
                 avatarUrl: participant.avatarUrl?.nonEmpty ?? previous?.avatarUrl,
-                role: participant.role?.nonEmpty ?? previous?.role
+                role: participant.role?.nonEmpty ?? previous?.role,
+                joinedAt: participant.joinedAt?.nonEmpty ?? previous?.joinedAt
             )
         }
-        return byAccountId.values.sorted { $0.accountId < $1.accountId }
+        return byAccountId.values.sorted(by: CloudGroupParticipant.canonicalPrecedes)
     }
 
     private static func deduplicatedGroupMessages(

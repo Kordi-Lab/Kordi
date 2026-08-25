@@ -9,6 +9,7 @@ import type {
 import { CloudAuthError } from './cloudAuthError';
 import { isProductionCloudOrigin } from './cloudApiEnvironment';
 import type { CloudDeviceRegistration } from './deviceIdentity';
+import { referenceBackedAvatarMutation } from './avatarAssetClient';
 
 type CloudIdentityRequest = <TResponse>(
   path: string,
@@ -31,15 +32,40 @@ export class CloudIdentityAuthClient {
     avatarMutation?: CloudProfileUpdateInput['avatarMutation'];
   }): Promise<CloudAuthResult> {
     const device = await this.deviceRegistration();
-    return this.request<CloudAuthResult>(
+    const pendingAvatar = input.avatarMutation?.action === 'upload'
+      && input.avatarMutation.uploadedAsset?.startsWith('data:image/')
+      ? input.avatarMutation
+      : null;
+    const result = await this.request<CloudAuthResult>(
       '/v1/cloud/auth/signup',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ ...input, device }),
+        body: JSON.stringify({ ...input, ...(pendingAvatar ? { avatarMutation: undefined } : {}), device }),
       },
       'Could not create account.',
     );
+    if (!pendingAvatar?.uploadedAsset) return result;
+    try {
+      const avatarMutation = await referenceBackedAvatarMutation({
+        request: this.request,
+        token: result.session.token,
+        entityType: 'human',
+        entityId: result.account.accountId,
+        mutation: { ...pendingAvatar, expectedVersion: result.account.avatar.version },
+      });
+      const account = await this.updateProfile(
+        result.session.token,
+        { avatarMutation },
+        result.account.accountId,
+      );
+      return { ...result, account };
+    } catch {
+      return {
+        ...result,
+        avatarUploadWarning: 'Account created, but the avatar could not be uploaded. Retry from Profile.',
+      };
+    }
   }
 
   async capabilities(): Promise<CloudAuthCapabilities> {
@@ -110,13 +136,24 @@ export class CloudIdentityAuthClient {
     );
   }
 
-  updateProfile(token: string, input: CloudProfileUpdateInput): Promise<CloudAccount> {
+  async updateProfile(
+    token: string,
+    input: CloudProfileUpdateInput,
+    accountId: string | null = null,
+  ): Promise<CloudAccount> {
+    const avatarMutation = await referenceBackedAvatarMutation({
+      request: this.request,
+      token,
+      entityType: 'human',
+      entityId: accountId,
+      mutation: input.avatarMutation,
+    });
     return this.request<CloudAccount>(
       '/v1/cloud/auth/me',
       {
         method: 'PATCH',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ ...input, ...(avatarMutation ? { avatarMutation } : {}) }),
       },
       'Could not update profile.',
     );

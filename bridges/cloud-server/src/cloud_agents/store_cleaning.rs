@@ -3,6 +3,8 @@ use chrono::{DateTime, Utc};
 use crate::cloud_agents::models::{clean_optional_text, CloudAgentResource, CloudAgentSkill};
 use crate::cloud_agents::store::CloudAgentStoreError;
 
+pub(super) const BOUNDARY_MAX_ITEMS: usize = 12;
+
 const SOURCE_SUMMARY_MAX_LEN: usize = 4_000;
 const RESOURCE_MAX_ITEMS: usize = 24;
 const RESOURCE_VALUE_MAX_LEN: usize = 4_000;

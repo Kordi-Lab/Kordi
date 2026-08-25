@@ -44,8 +44,8 @@ final class CloudOAuthCallbackTests: XCTestCase {
 }
 
 final class CloudAPIClientAccountActivationTests: XCTestCase {
-    func testSignupSendsUploadedAvatarMutation() async throws {
-        SignupAvatarURLProtocol.body = nil
+    func testSignupUploadsAvatarAsAReferenceBackedBinaryAsset() async throws {
+        SignupAvatarURLProtocol.requests = []
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [SignupAvatarURLProtocol.self]
         let client = CloudAPIClient(
@@ -62,11 +62,17 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
             avatarMutation: .upload(uploadedAsset, expectedVersion: nil)
         )
 
-        let body = try XCTUnwrap(SignupAvatarURLProtocol.body)
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
-        let mutation = try XCTUnwrap(json["avatarMutation"] as? [String: Any])
-        XCTAssertEqual(mutation["action"] as? String, "upload")
-        XCTAssertEqual(mutation["uploadedAsset"] as? String, uploadedAsset)
+        let requests = SignupAvatarURLProtocol.requests
+        XCTAssertEqual(requests.map(\.url?.path), [
+            "/v1/cloud/auth/signup",
+            "/v1/cloud/avatar-assets",
+            "/v1/cloud/auth/me"
+        ])
+        XCTAssertEqual(
+            requests[1].value(forHTTPHeaderField: "Content-Type"),
+            "image/jpeg"
+        )
+        XCTAssertEqual(requests[2].httpMethod, "PATCH")
     }
 
     func testOAuthAccountActivationAllowsReliableChatBootstrap() async throws {
@@ -303,28 +309,33 @@ private final class PresenceURLProtocol: URLProtocol {
 }
 
 private final class SignupAvatarURLProtocol: URLProtocol {
-    static var body: Data?
+    static var requests: [URLRequest] = []
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        Self.body = request.httpBody ?? request.httpBodyStream.flatMap { stream in
-            stream.open()
-            defer { stream.close() }
-            var data = Data()
-            var buffer = [UInt8](repeating: 0, count: 4_096)
-            while stream.hasBytesAvailable {
-                let count = stream.read(&buffer, maxLength: buffer.count)
-                guard count > 0 else { break }
-                data.append(contentsOf: buffer.prefix(count))
-            }
-            return data
+        Self.requests.append(request)
+        let uploadedAsset = "kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef"
+        let account = request.url?.path == "/v1/cloud/auth/me"
+            ? #"{"accountId":"acct_signup","kordiId":"482731906","displayName":"Avatar","primaryEmail":"avatar@example.com","avatarUrl":"\#(uploadedAsset)","avatar":{"entityType":"human","entityId":"acct_signup","source":"uploaded","style":"lorelei","seed":"signup_seed","rendererVersion":"dicebear-rust-10.6.0-styles-10.5.0","uploadedAsset":"\#(uploadedAsset)","version":2,"updatedAt":"2026-08-20T00:00:00Z"},"nodeId":null,"passwordSet":true}"#
+            : #"{"accountId":"acct_signup","kordiId":"482731906","displayName":"Avatar","primaryEmail":"avatar@example.com","avatarUrl":null,"avatar":{"entityType":"human","entityId":"acct_signup","source":"generated","style":"lorelei","seed":"signup_seed","rendererVersion":"dicebear-rust-10.6.0-styles-10.5.0","uploadedAsset":null,"version":1,"updatedAt":"2026-08-20T00:00:00Z"},"nodeId":null,"passwordSet":true}"#
+        let payload: Data
+        let status: Int
+        switch request.url?.path {
+        case "/v1/cloud/avatar-assets":
+            payload = Data(#"{"uploadedAsset":"\#(uploadedAsset)"}"#.utf8)
+            status = 200
+        case "/v1/cloud/auth/me":
+            payload = Data(account.utf8)
+            status = 200
+        default:
+            payload = Data("{\"account\":\(account),\"session\":{\"token\":\"session_secret\",\"expiresAt\":\"2026-09-08T00:00:00Z\",\"deviceId\":\"device_signup\"}}".utf8)
+            status = 201
         }
-        let payload = Data(#"{"account":{"accountId":"acct_signup","kordiId":"482731906","displayName":"Avatar","primaryEmail":"avatar@example.com","avatarUrl":"data:image/jpeg;base64,YXZhdGFy","avatar":{"entityType":"human","entityId":"acct_signup","source":"uploaded","style":"lorelei","seed":"signup_seed","rendererVersion":"dicebear-rust-10.6.0-styles-10.5.0","uploadedAsset":"data:image/jpeg;base64,YXZhdGFy","version":2,"updatedAt":"2026-08-20T00:00:00Z"},"nodeId":null,"passwordSet":true},"session":{"token":"session_secret","expiresAt":"2026-09-08T00:00:00Z","deviceId":"device_signup"}}"#.utf8)
         let response = HTTPURLResponse(
             url: request.url!,
-            statusCode: 201,
+            statusCode: status,
             httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"]
         )!
@@ -510,5 +521,25 @@ final class SignupAvatarPreviewTests: XCTestCase {
             preview.absoluteString,
             "http://127.0.0.1:17081/v1/avatars/preview/lorelei/signup_seed.png"
         )
+    }
+
+
+    func testUploadedAvatarIsDownsampledAndCompressedAutomatically() throws {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1_200, height: 800))
+        let source = renderer.image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1_200, height: 800))
+        }
+        let sourceData = try XCTUnwrap(source.pngData())
+        let prepared = try XCTUnwrap(SignupAvatarRenderer.uploadedImage(from: sourceData))
+        let payload = try XCTUnwrap(prepared.dataURL.split(separator: ",", maxSplits: 1).last)
+        let encoded = try XCTUnwrap(Data(base64Encoded: String(payload)))
+
+        XCTAssertEqual(prepared.image.size.width, prepared.image.size.height)
+        XCTAssertLessThanOrEqual(prepared.image.size.width, 512)
+        XCTAssertLessThanOrEqual(encoded.count, 190_000)
+        XCTAssertNil(SignupAvatarRenderer.uploadedImage(
+            from: Data(repeating: 0, count: SignupAvatarRenderer.maximumSourceBytes + 1)
+        ))
     }
 }

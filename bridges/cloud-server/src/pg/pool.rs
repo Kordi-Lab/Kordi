@@ -302,6 +302,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "account-scoped default self-agent sessions",
         sql: include_str!("../../migrations/0063_account_scoped_default_self_agent_sessions.sql"),
     },
+    EmbeddedMigration {
+        version: 64,
+        description: "reference-backed uploaded avatar assets",
+        sql: include_str!("../../migrations/0064_avatar_assets.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

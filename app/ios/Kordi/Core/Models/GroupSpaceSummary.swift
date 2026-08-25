@@ -139,10 +139,11 @@ enum GroupSpaceCatalog {
                 accountId: participant.accountId,
                 displayName: existing.displayName.nonEmpty ?? participant.displayName,
                 avatarUrl: existing.avatarUrl?.nonEmpty ?? participant.avatarUrl,
-                role: existing.role?.nonEmpty ?? participant.role
+                role: existing.role?.nonEmpty ?? participant.role,
+                joinedAt: existing.joinedAt?.nonEmpty ?? participant.joinedAt
             )
         }
-        return byAccountId.values.sorted { $0.accountId < $1.accountId }
+        return byAccountId.values.sorted(by: CloudGroupParticipant.canonicalPrecedes)
     }
 
     private static func groupTitlePriority(_ conversation: ConversationSummary) -> Int {

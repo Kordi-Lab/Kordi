@@ -101,7 +101,7 @@ pub(super) async fn member_rows(
          FROM cloud_chat_conversation_members member \
          JOIN cloud_accounts account ON account.account_id = member.account_id \
          WHERE member.conversation_id = $1 \
-         ORDER BY member.account_id ASC",
+         ORDER BY member.joined_at ASC, member.account_id ASC",
     )
     .bind(conversation_id)
     .fetch_all(&mut **transaction)

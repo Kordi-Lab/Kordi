@@ -31,6 +31,7 @@ import {
   type CloudGroupControlEnvelope,
   type CloudGroupSessionTitleSnapshot,
 } from './cloudGroupMessages';
+import { compareCloudGroupParticipants } from './cloudGroupParticipantTypes';
 import { loadSession } from './session';
 import type {
   CloudGroupCanonicalRuntime,
@@ -353,6 +354,9 @@ export async function applyCloudGroupSessionControl({
     ...(adminSnapshot.applies ? { groupAdminUpdatedAtMs: controlCreatedAtMs } : {}),
     initialContactIds: [...participantByAccount.keys()].map((accountId) => `cloud:${accountId}`),
     initialParticipantNames: participantNames,
+    avatarAccountIds: [...participantByAccount.values()]
+      .sort(compareCloudGroupParticipants)
+      .map((participant) => participant.accountId),
     memberApprovalPolicy: 'under-50-open',
     createdFrom: envelope.kind === 'session-fork' || forkMetadata ? 'cloud-group-fork-sync' : 'cloud-group-sync',
     ...(authorizedSessionTitle ? {

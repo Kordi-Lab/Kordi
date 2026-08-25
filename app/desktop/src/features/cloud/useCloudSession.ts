@@ -357,6 +357,9 @@ export function useCloudSession({
           setAuthenticated,
           reloadWindow: reloadForAccountStorageSwitch,
         });
+        if (result.avatarUploadWarning) {
+          setError(new CloudAuthError('unknown', result.avatarUploadWarning, 0));
+        }
       } catch (caught) {
         if (caught instanceof CloudAuthError) {
           setError(caught);

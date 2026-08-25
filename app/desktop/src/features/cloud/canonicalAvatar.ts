@@ -4,6 +4,8 @@ export const CANONICAL_AVATAR_RENDERER_VERSION = 'dicebear-rust-10.6.0-styles-10
 export const HUMAN_CANONICAL_AVATAR_STYLE = 'lorelei';
 export const AGENT_CANONICAL_AVATAR_STYLE = 'thumbs';
 export const CANONICAL_AVATAR_URL_PREFIX = 'kordi-avatar://';
+export const AVATAR_SOURCE_MAX_BYTES = 2 * 1024 * 1024;
+const UPLOADED_AVATAR_HOST = 'uploaded';
 
 export type CanonicalAvatarStyle = 'lorelei' | 'thumbs';
 export type CanonicalAvatarSource = 'generated' | 'uploaded';
@@ -32,6 +34,10 @@ export type GeneratedAvatarMarker = {
   style: CanonicalAvatarStyle;
   seed: string;
   version: number;
+};
+
+export type UploadedAvatarMarker = {
+  assetId: string;
 };
 
 function supportedStyle(value: string): value is CanonicalAvatarStyle {
@@ -88,6 +94,38 @@ export function generatedAvatarRenderUrl(value: string | null | undefined): stri
   }
 }
 
+export function parseUploadedAvatarMarker(
+  value: string | null | undefined,
+): UploadedAvatarMarker | null {
+  const trimmed = value?.trim();
+  if (!trimmed?.startsWith(CANONICAL_AVATAR_URL_PREFIX)) return null;
+  try {
+    const url = new URL(trimmed);
+    const assetId = url.pathname.split('/').filter(Boolean)[0] ?? '';
+    if (
+      url.hostname !== UPLOADED_AVATAR_HOST
+      || !/^ava_[0-9a-f]{32}$/i.test(assetId)
+      || url.pathname.split('/').filter(Boolean).length !== 1
+    ) return null;
+    return { assetId };
+  } catch {
+    return null;
+  }
+}
+
+export function uploadedAvatarRenderUrl(
+  value: string | null | undefined,
+  size: 64 | 128 | 256 | 512 = 256,
+): string | null {
+  const marker = parseUploadedAvatarMarker(value);
+  if (!marker) return null;
+  try {
+    return `${cloudApiBaseUrl()}/v1/avatars/assets/${encodeURIComponent(marker.assetId)}/${size}.jpg`;
+  } catch {
+    return null;
+  }
+}
+
 export function generatedAvatarPreviewUrl(
   style: CanonicalAvatarStyle,
   seed: string,
@@ -105,9 +143,19 @@ export function canonicalAvatarImageUrl(value: string | null | undefined): strin
   const trimmed = value?.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith(CANONICAL_AVATAR_URL_PREFIX)) {
-    return generatedAvatarRenderUrl(trimmed);
+    return uploadedAvatarRenderUrl(trimmed) ?? generatedAvatarRenderUrl(trimmed);
   }
   return trimmed;
+}
+
+export function avatarDataUrlBlob(value: string): Blob {
+  const [metadata, payload] = value.split(',', 2);
+  const contentType = /^data:(image\/(?:png|jpeg|webp));base64$/i.exec(metadata)?.[1]?.toLowerCase();
+  if (!contentType || !payload) throw new Error('Choose a PNG, JPEG, or WebP image.');
+  const binary = atob(payload);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  if (bytes.byteLength > AVATAR_SOURCE_MAX_BYTES) throw new Error('Avatar source must be 2 MiB or smaller.');
+  return new Blob([bytes], { type: contentType });
 }
 
 export function canonicalAvatarImageSource(descriptor: CanonicalAvatarDescriptor): string | null {

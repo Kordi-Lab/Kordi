@@ -78,6 +78,9 @@ test('debug setup upgrades old env files and rejects parent-shell credential ove
   assert.match(helper, /unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET/);
   assert.match(helper, /unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET/);
   assert.doesNotMatch(helper, /pnpm dev"/);
+  assert.match(helper, /KORDI_DEBUG_PROJECT_NAME:-kordi-debug/);
+  assert.match(helper, /KORDI_DEBUG_ENV_FILE:-\$repo_root\/deploy\/dev\/\.env/);
+  assert.match(helper, /--project-name "\$project_name"/);
 });
 
 test('debug smoke reports OAuth readiness and a copyable isolated desktop command', () => {
@@ -88,6 +91,8 @@ test('debug smoke reports OAuth readiness and a copyable isolated desktop comman
   assert.match(smoke, /pnpm debug:cloud:oauth -- \$\{provider_command\}/);
   assert.match(smoke, /VITE_KORDI_CLOUD_API_BASE=\$\{health_url%\/health\}/);
   assert.match(smoke, /--profile dev-isolated/);
+  assert.match(smoke, /KORDI_DEBUG_PROJECT_NAME:-kordi-debug/);
+  assert.match(smoke, /--project-name "\$project_name"/);
 });
 
 test('OAuth helper hides secrets and only restarts isolated app services', () => {

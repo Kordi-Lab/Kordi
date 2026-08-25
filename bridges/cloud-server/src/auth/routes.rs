@@ -46,6 +46,7 @@ use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, touch_device_activity,
     DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX,
 };
+use crate::avatars::assets::AVATAR_SOURCE_MAX_BYTES;
 use crate::avatars::{
     apply_avatar_mutation, descriptor_from_parts, is_valid_avatar_seed, new_avatar_seed,
     parse_generated_avatar_marker, preserve_avatar_render_key, AvatarDescriptor,
@@ -227,6 +228,12 @@ pub fn routes_with_config(
         .route(
             "/v1/cloud/attachments/initiate",
             post(crate::attachments::routes::initiate),
+        )
+        .route(
+            "/v1/cloud/avatar-assets",
+            post(crate::avatars::assets::upload_avatar_asset)
+                .layer::<_, Infallible>(ConcurrencyLimitLayer::new(4))
+                .layer(DefaultBodyLimit::max(AVATAR_SOURCE_MAX_BYTES)),
         )
         .route(
             "/v1/cloud/attachments/:attachment_id/upload",

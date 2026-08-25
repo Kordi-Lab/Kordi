@@ -3,7 +3,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose_file="$repo_root/deploy/dev/compose.yaml"
-env_file="$repo_root/deploy/dev/.env"
+env_file="${KORDI_DEBUG_ENV_FILE:-$repo_root/deploy/dev/.env}"
+project_name="${KORDI_DEBUG_PROJECT_NAME:-kordi-debug}"
 
 for command_name in docker openssl curl; do
   if ! command -v "$command_name" >/dev/null 2>&1; then
@@ -65,5 +66,5 @@ unset KORDI_CHAT_SYNC_CURSOR_SECRET
 unset KORDI_OAUTH_GITHUB_CLIENT_ID KORDI_OAUTH_GITHUB_CLIENT_SECRET
 unset KORDI_OAUTH_GOOGLE_CLIENT_ID KORDI_OAUTH_GOOGLE_CLIENT_SECRET
 
-docker compose --env-file "$env_file" -f "$compose_file" up --build --detach
+docker compose --project-name "$project_name" --env-file "$env_file" -f "$compose_file" up --build --detach
 bash "$repo_root/scripts/dev-cloud-smoke.sh"

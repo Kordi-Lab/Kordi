@@ -131,9 +131,26 @@ async fn list_shared_agents(
 async fn create_agent(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
-    Json(input): Json<CreateCloudAgentRequest>,
+    Json(mut input): Json<CreateCloudAgentRequest>,
 ) -> Response {
-    match create_agent_definition(state.db_pool(), &session.account_id, input, Utc::now()).await {
+    let agent_id = format!("cloud_agent_{}", uuid::Uuid::new_v4().simple());
+    if let Some(mutation) = input.avatar_mutation.as_mut() {
+        if let Err(response) =
+            materialize_avatar_mutation(&state, &session.account_id, "agent", &agent_id, mutation)
+                .await
+        {
+            return *response;
+        }
+    }
+    match create_agent_definition(
+        state.db_pool(),
+        &session.account_id,
+        agent_id,
+        input,
+        Utc::now(),
+    )
+    .await
+    {
         Ok(agent) => (StatusCode::CREATED, Json(CloudAgentEnvelope { agent })).into_response(),
         Err(err) => store_error_response("create", err),
     }
@@ -143,8 +160,16 @@ async fn update_agent(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Path(agent_id): Path<String>,
-    Json(input): Json<UpdateCloudAgentRequest>,
+    Json(mut input): Json<UpdateCloudAgentRequest>,
 ) -> Response {
+    if let Some(mutation) = input.avatar_mutation.as_mut() {
+        if let Err(response) =
+            materialize_avatar_mutation(&state, &session.account_id, "agent", &agent_id, mutation)
+                .await
+        {
+            return *response;
+        }
+    }
     match update_agent_definition(
         state.db_pool(),
         &session.account_id,
@@ -162,6 +187,36 @@ async fn update_agent(
         ),
         Err(err) => store_error_response("update", err),
     }
+}
+
+async fn materialize_avatar_mutation(
+    state: &ServerState,
+    owner_account_id: &str,
+    entity_type: &str,
+    entity_id: &str,
+    mutation: &mut crate::avatars::AvatarMutationRequest,
+) -> Result<(), Box<Response>> {
+    crate::avatars::assets::materialize_legacy_avatar_mutation(
+        state.db_pool(),
+        state.s3(),
+        owner_account_id,
+        entity_type,
+        entity_id,
+        mutation,
+    )
+    .await
+    .map_err(|error| {
+        Box::new(match error {
+            crate::avatars::assets::AvatarAssetError::Invalid(message) => {
+                error_response("invalid_cloud_agent", message, StatusCode::BAD_REQUEST)
+            }
+            _ => error_response(
+                "avatar_storage_unavailable",
+                "Avatar storage is unavailable.",
+                StatusCode::SERVICE_UNAVAILABLE,
+            ),
+        })
+    })
 }
 
 async fn archive_agent(

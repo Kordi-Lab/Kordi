@@ -77,7 +77,6 @@ export type {
   CloudGroupInvitationPreview,
   CloudPublicProfile,
 } from './cloudIdentityTypes';
-
 export {
   chatSyncWebSocketUrl,
   cloudApiBaseUrl,
@@ -97,6 +96,7 @@ export type CloudSession = {
 export type CloudAuthResult = {
   account: CloudAccount;
   session: CloudSession;
+  avatarUploadWarning?: string;
 };
 
 export type CloudOAuthProvider = 'google' | 'github';
@@ -457,7 +457,7 @@ export class CloudAuthClient {
   }
 
   async updateProfile(token: string, input: CloudProfileUpdateInput): Promise<CloudAccount> {
-    return this.identity.updateProfile(token, input);
+    return this.identity.updateProfile(token, input, this.activeAccountId);
   }
 
   async logout(token: string): Promise<void> {

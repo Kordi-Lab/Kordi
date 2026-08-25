@@ -108,10 +108,11 @@ pub(super) fn store_error(context: &str, error: StoreError) -> Response {
     }
 }
 
+#[derive(Debug)]
 pub(super) struct MessageValidationError {
-    status: StatusCode,
-    code: &'static str,
-    message: &'static str,
+    pub(super) status: StatusCode,
+    pub(super) code: &'static str,
+    pub(super) message: &'static str,
 }
 
 impl MessageValidationError {

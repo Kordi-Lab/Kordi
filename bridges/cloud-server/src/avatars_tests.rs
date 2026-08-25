@@ -1,4 +1,5 @@
 use super::*;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 const ONE_PIXEL_PNG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
@@ -14,6 +15,50 @@ fn generated_marker_round_trips() {
             version: 7,
         })
     );
+}
+
+#[test]
+fn uploaded_asset_marker_round_trips_and_is_a_valid_mutation_value() {
+    let asset_id = "ava_0123456789abcdef0123456789abcdef";
+    let marker = assets::uploaded_avatar_marker(asset_id).expect("uploaded marker");
+    assert_eq!(
+        assets::parse_uploaded_avatar_marker(&marker),
+        Some(assets::UploadedAvatarMarker {
+            asset_id: asset_id.to_string(),
+        })
+    );
+    assert_eq!(clean_uploaded_avatar(Some(&marker)), Ok(Some(marker)));
+}
+
+#[test]
+fn uploaded_avatar_normalization_is_bounded_and_generates_all_variants() {
+    let bytes = STANDARD
+        .decode(ONE_PIXEL_PNG.split_once(',').unwrap().1)
+        .expect("decode fixture");
+    let normalized = assets::normalize_avatar(&bytes).expect("normalize avatar");
+
+    assert_eq!(normalized.source_content_type, "image/png");
+    assert_eq!(normalized.source_width, 1);
+    assert_eq!(normalized.source_height, 1);
+    assert_eq!(
+        normalized
+            .variants
+            .iter()
+            .map(|(size, _)| *size)
+            .collect::<Vec<_>>(),
+        assets::AVATAR_VARIANT_SIZES
+    );
+    assert!(normalized
+        .variants
+        .iter()
+        .all(|(_, bytes)| bytes.starts_with(b"\xff\xd8\xff")));
+
+    assert!(matches!(
+        assets::normalize_avatar(&vec![0; assets::AVATAR_SOURCE_MAX_BYTES + 1]),
+        Err(assets::AvatarAssetError::Invalid(
+            "Avatar source exceeds 2 MiB."
+        ))
+    ));
 }
 
 #[test]

@@ -9,8 +9,36 @@ struct CloudGroupParticipant: Codable, Hashable, Identifiable {
     let displayName: String
     let avatarUrl: String?
     let role: String?
+    let joinedAt: String?
 
     var id: String { accountId }
+
+    init(
+        accountId: String,
+        displayName: String,
+        avatarUrl: String?,
+        role: String?,
+        joinedAt: String? = nil
+    ) {
+        self.accountId = accountId
+        self.displayName = displayName
+        self.avatarUrl = avatarUrl
+        self.role = role
+        self.joinedAt = joinedAt
+    }
+
+    static func canonicalPrecedes(
+        _ left: CloudGroupParticipant,
+        _ right: CloudGroupParticipant
+    ) -> Bool {
+        let leftJoinedAt = left.joinedAt?.nonEmpty
+        let rightJoinedAt = right.joinedAt?.nonEmpty
+        if leftJoinedAt != rightJoinedAt {
+            if let leftJoinedAt, let rightJoinedAt { return leftJoinedAt < rightJoinedAt }
+            return leftJoinedAt != nil
+        }
+        return left.accountId < right.accountId
+    }
 }
 
 struct CloudGroupMessagePayload: Codable, Hashable {
@@ -160,7 +188,19 @@ enum CloudGroupMessageCodec {
     }()
 
     static func encode(_ envelope: CloudGroupControlEnvelope) throws -> String {
-        prefix + base64URL(try JSONEncoder().encode(envelope))
+        let normalized = CloudGroupControlEnvelope(
+            kind: envelope.kind,
+            groupId: envelope.groupId,
+            groupSpaceId: envelope.groupSpaceId,
+            groupTitle: envelope.groupTitle,
+            createdByAccountId: envelope.createdByAccountId,
+            actor: transportParticipant(envelope.actor),
+            participants: envelope.participants.map(transportParticipant),
+            memberJoins: envelope.memberJoins,
+            fork: envelope.fork,
+            message: envelope.message
+        )
+        return prefix + base64URL(try JSONEncoder().encode(normalized))
     }
 
     static func parse(_ body: String) -> CloudGroupControlEnvelope? {
@@ -200,6 +240,18 @@ enum CloudGroupMessageCodec {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+
+    private static func transportParticipant(
+        _ participant: CloudGroupParticipant
+    ) -> CloudGroupParticipant {
+        CloudGroupParticipant(
+            accountId: participant.accountId,
+            displayName: participant.displayName,
+            avatarUrl: nil,
+            role: participant.role,
+            joinedAt: participant.joinedAt
+        )
     }
 
     private static func dataFromBase64URL(_ value: String) -> Data? {
