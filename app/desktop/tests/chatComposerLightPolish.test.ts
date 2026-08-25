@@ -13,7 +13,7 @@ function cssRule(css: string, selector: string) {
 
 test('light outgoing human bubble uses the selected chat-theme tokens with no visible outline', () => {
   const css = readDesktopShellCss();
-  const tokens = readFileSync(new URL('../src/styles/theme-tokens.css', import.meta.url), 'utf8');
+  const tokens = readFileSync(new URL('../src/styles/chat-theme-tokens.css', import.meta.url), 'utf8');
   const rule = cssRule(css, '.kordi-app.theme-light .app-chat-bubble-user');
 
   assert.match(rule, /--app-message-bubble-fill:\s*var\(--app-chat-bubble-user-bg\);/);
