@@ -157,6 +157,23 @@ test('mentionHandleForLabel keeps only unicode letters and numbers', () => {
   assert.equal(mentionHandleForLabel('!!!', 'node-123'), 'node123');
 });
 
+test('group @all is reserved from agent resolution', () => {
+  const collaborationState = bridgeStateWithPeers([peer({
+    nodeId: 'agent-all',
+    displayName: 'All',
+    ownerName: 'Alex',
+    runtime: 'kordi-desktop',
+    humanId: 'human-alex',
+    agentId: 'agent-all',
+    isDefaultAgent: true,
+  })]);
+  const group = groupConversationWithHumans([
+    { id: 'human:alex', name: 'Alex', humanId: 'human-alex', sourceIdentityId: 'node-alex' },
+  ]);
+
+  assert.equal(resolveMentionedCollaborationTarget('@all check this', collaborationState, group, { targetKind: 'agent' }), null);
+});
+
 test('buildCollaborationMentionCandidates creates unique stable handles for sanitized collisions', () => {
   const collaborationState = bridgeStateWithPeers([
     peer({

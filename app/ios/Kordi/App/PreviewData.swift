@@ -96,7 +96,7 @@ enum PreviewData {
             ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: CanonicalAvatarSystem.defaultAgentId, ownerDisplayName: "Alex", displayName: "Plan the mobile release", lastMessage: "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
             ConversationSummary(id: "agent:research", kind: .agent, peerAccountId: "acct_me", agentId: "cloud_agent_research", ownerDisplayName: "Alex", displayName: "Review the TestFlight checklist", lastMessage: "Comparing the latest sources…", lastActivityAt: now.addingTimeInterval(-160), unreadCount: 0, avatarSource: nil, agentActivity: .replying, sessionId: "session:self-agent:cloud_agent_research", agentDisplayName: "Research Agent", forkedFromSessionId: "session:self-agent:default"),
             ConversationSummary(id: "agent:support", kind: .agent, peerAccountId: "acct_maya", agentId: "cloud_agent_support", ownerDisplayName: "Maya Chen", displayName: "Support Agent", lastMessage: "I can help with that.", lastActivityAt: now.addingTimeInterval(-300), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:direct-agent:acct_maya:cloud_agent_support"),
-            ConversationSummary(id: "group:mobile", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Mobile builders", displayName: "main", lastMessage: showsMentionAttention ? "@Alex Please review the notification copy." : "The latest iPhone build is ready.", lastActivityAt: now.addingTimeInterval(-120), unreadCount: showsMentionAttention ? 2 : 1, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile", groupParticipants: [
+            ConversationSummary(id: "group:mobile", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Mobile builders", displayName: "main", lastMessage: showsMentionAttention ? "@Alex Please review the notification copy." : "@all I also added the device matrix.", lastActivityAt: now.addingTimeInterval(-120), unreadCount: showsMentionAttention ? 2 : 1, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile", groupParticipants: [
                 CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: previewAvatarSource, role: "self"),
                 CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya Chen", avatarUrl: previewAvatarSource, role: "admin"),
                 CloudGroupParticipant(accountId: "acct_ethan", displayName: "Ethan Park", avatarUrl: nil, role: "person")
@@ -328,7 +328,26 @@ enum PreviewData {
             ChatMessage(id: "gm2", conversationId: conversationId, author: .me, authorName: "You", text: "Got it", createdAt: now.addingTimeInterval(-700), deliveryState: .read, errorMessage: nil, requestMessageId: nil, readByCount: 2, readByAccountIds: ["acct_maya", "acct_ethan"]),
             ChatMessage(id: "gm2b", conversationId: conversationId, author: .me, authorName: "You", text: "I’ll send the review notes here.", createdAt: now.addingTimeInterval(-670), deliveryState: .read, errorMessage: nil, requestMessageId: nil, readByCount: 2, readByAccountIds: ["acct_maya", "acct_ethan"]),
             ChatMessage(id: "msg:group-member-join:preview:session:group:mobile", conversationId: conversationId, author: .me, authorName: "You", text: "Ethan Park joined the group, invited by Alex.", createdAt: now.addingTimeInterval(-150), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil, messageKind: ChatMessage.groupMemberJoinMessageKind),
-            ChatMessage(id: "gm3", conversationId: conversationId, author: .person, authorName: "Ethan Park", text: "I also added the device matrix.", createdAt: now.addingTimeInterval(-120), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
+            ChatMessage(
+                id: "gm3",
+                conversationId: conversationId,
+                author: .person,
+                authorName: "Ethan Park",
+                text: "@all I also added the device matrix.",
+                createdAt: now.addingTimeInterval(-120),
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: nil,
+                mentions: [MessageMention(
+                    label: "all",
+                    targetKind: "all",
+                    targetIdentityId: "group:session:group:mobile",
+                    startUtf16: 0,
+                    lengthUtf16: 4,
+                    displayText: "@all",
+                    displayLabel: "All"
+                )]
+            )
         ])
         if includesMentionAttention {
             let mention = MessageMention(

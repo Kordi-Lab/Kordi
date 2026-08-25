@@ -37,9 +37,19 @@ enum ComposerMentionTargetCatalog {
         var targets: [ComposerMentionTarget] = []
 
         if conversation.kind == .group {
+            targets.append(ComposerMentionTarget(
+                id: "group:\(conversation.sessionId)",
+                displayName: "All",
+                kind: .all,
+                accountId: conversation.sessionId,
+                agentId: nil,
+                ownerName: "All people in this group",
+                avatarSource: nil
+            ))
             var seenPeople = Set<String>()
             for participant in conversation.groupParticipants
                 where participant.accountId != account.accountId
+                    && participant.displayName.localizedCaseInsensitiveCompare("all") != .orderedSame
                     && seenPeople.insert(participant.accountId).inserted {
                 targets.append(ComposerMentionTarget(
                     id: "person:\(participant.accountId)",
@@ -77,6 +87,7 @@ enum ComposerMentionTargetCatalog {
         for agent in ownedAgents + sharedAgents
             where ownerAccountIDs.contains(agent.ownerAccountId)
                 && isMentionable(agent)
+                && agent.name.localizedCaseInsensitiveCompare("all") != .orderedSame
                 && seenAgentIDs.insert(agent.agentId).inserted {
             targets.append(ComposerMentionTarget(
                 id: "agent:\(agent.agentId)",
@@ -280,7 +291,7 @@ enum ComposerMentionTargetCatalog {
     ) -> String {
         highlightedSegments(in: text, mentions: mentions, targets: targets)
             .map { segment in
-                segment.kind.map { "\($0.rawValue) mention \(segment.text)" } ?? segment.text
+                segment.kind.map { "\($0.accessibilityDescription) \(segment.text)" } ?? segment.text
             }
             .joined()
     }
@@ -295,12 +306,20 @@ enum ComposerMentionTargetCatalog {
         _ lhs: ComposerMentionTarget,
         _ rhs: ComposerMentionTarget
     ) -> Bool {
-        if lhs.kind != rhs.kind { return lhs.kind == .agent }
+        if lhs.kind != rhs.kind { return mentionKindRank(lhs.kind) < mentionKindRank(rhs.kind) }
         let nameComparison = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
         if nameComparison != .orderedSame { return nameComparison == .orderedAscending }
         let ownerComparison = (lhs.ownerName ?? "").localizedCaseInsensitiveCompare(rhs.ownerName ?? "")
         if ownerComparison != .orderedSame { return ownerComparison == .orderedAscending }
         return lhs.id < rhs.id
+    }
+
+    private static func mentionKindRank(_ kind: ComposerMentionKind) -> Int {
+        switch kind {
+        case .all: 0
+        case .agent: 1
+        case .person: 2
+        }
     }
 
     private static func hasLeadingBoundary(in text: String, at index: String.Index) -> Bool {

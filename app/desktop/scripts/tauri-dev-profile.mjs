@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 
 import {
   buildBeforeDevCommand,
+  resolveDesktopDevUrl,
   resolveDesktopPreviewIcons,
 } from './tauri-dev-env.mjs';
 
@@ -133,7 +134,11 @@ if (!isCloudIdentifier(identifier)) {
   console.error(`[kordi] Received identifier: ${identifier}`);
   process.exit(1);
 }
-const devUrl = `http://${options.host}:${port}`;
+const devUrl = resolveDesktopDevUrl({
+  host: options.host,
+  port,
+  path: process.env.KORDI_DEV_PREVIEW_PATH,
+});
 const beforeDevCommand = buildBeforeDevCommand({
   title,
   host: options.host,

@@ -103,7 +103,7 @@ function conversationParticipantNameKeys(participants: string[] | undefined) {
     .filter((key) => key && !['me', 'you', 'my kordi', 'kordi'].includes(key));
 }
 
-export type MentionScopeConversation = object & Partial<Pick<Conversation, 'type' | 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness' | 'collaborationTarget'>>;
+export type MentionScopeConversation = object & Partial<Pick<Conversation, 'id' | 'canonicalSessionId' | 'type' | 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness' | 'collaborationTarget'>>;
 
 function conversationHumanOwnerKeys(conversation: MentionScopeConversation | null | undefined) {
   const keys = new Set<string>();
@@ -636,6 +636,7 @@ export function resolveMentionedCollaborationTarget(
     const leadingWhitespace = rawAfterAt.length - rawAfterAt.trimStart().length;
     const afterAt = rawAfterAt.trimStart();
     if (!afterAt) continue;
+    if (mentionTextStartsWithLabel(afterAt, 'all')) continue;
 
     const sharedMatch = sharedCandidates
       .filter((candidate) => mentionTextStartsWithLabel(afterAt, candidate.handle) || mentionTextStartsWithLabel(afterAt, candidate.displayLabel))

@@ -8,7 +8,7 @@ import type {
   CanonicalSessionMessage,
   DesktopCollaborationSessionParticipant,
 } from '@/kordi-app/types';
-import { normalizedMessageMentions } from '@/features/chat/messageMentions';
+import { groupMentionTargetIdentityId, normalizedMessageMentions } from '@/features/chat/messageMentions';
 import type { MessageActionMetadata, MessageMention } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
@@ -621,7 +621,15 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       if (!candidate || typeof candidate !== 'object') return null;
       if (typeof candidate.id !== 'string' || typeof candidate.senderAccountId !== 'string' || typeof candidate.text !== 'string') return null;
       const createdAtMs = integerMilliseconds(candidate.createdAtMs, Date.now())!;
-      const mentions = normalizedMessageMentions((candidate as { mentions?: unknown }).mentions);
+      const validMentions = normalizedMessageMentions((candidate as { mentions?: unknown }).mentions)?.filter((mention) => (
+        mention.targetKind !== 'all'
+        || (
+          candidate.senderKind !== 'agent'
+          && participants.some((participant) => participant.accountId === candidate.senderAccountId)
+          && mention.targetIdentityId === groupMentionTargetIdentityId(parsed.groupId)
+        )
+      ));
+      const mentions = validMentions?.length ? validMentions : undefined;
       message = {
         id: candidate.id,
         senderAccountId: candidate.senderAccountId,

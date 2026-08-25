@@ -23,6 +23,16 @@ export function resolveDesktopPreviewIcons(env = process.env) {
     : DEVELOPMENT_DESKTOP_ICONS;
 }
 
+export function resolveDesktopDevUrl({ host, port, path = '' }) {
+  const origin = `http://${host}:${port}`;
+  const previewPath = String(path).trim();
+  if (!previewPath) return origin;
+  if (!previewPath.startsWith('/') || previewPath.startsWith('//') || /[\r\n]/.test(previewPath)) {
+    throw new Error('KORDI_DEV_PREVIEW_PATH must be a local absolute URL path.');
+  }
+  return new URL(previewPath, `${origin}/`).toString();
+}
+
 export function buildBeforeDevCommand({ title, host, port, env = process.env }) {
   const cloudApiBase = resolveCloudDevApiBase(env);
   const devProfile = resolveCloudDevProfile(env);

@@ -1779,7 +1779,8 @@ final class AppModel: ObservableObject {
         return MentionAttention.pendingMessages(
             in: messagesByConversation[current.id] ?? [],
             accountId: accountId,
-            lastReadSequence: current.lastReadSequence
+            lastReadSequence: current.lastReadSequence,
+            groupSessionId: current.kind == .group ? current.sessionId : nil
         )
     }
 
@@ -1792,11 +1793,15 @@ final class AppModel: ObservableObject {
         _ message: ChatMessage,
         in conversation: ConversationSummary
     ) async {
+        let current = conversations.first(where: { $0.id == conversation.id }) ?? conversation
         guard let accountId = account?.accountId,
               message.author != .me,
-              message.mentions.contains(where: { $0.targetsPerson(accountId: accountId) }),
+              MentionAttention.messageTargetsPerson(
+                message,
+                accountId: accountId,
+                groupSessionId: current.kind == .group ? current.sessionId : nil
+              ),
               let sequence = message.conversationSequence else { return }
-        let current = conversations.first(where: { $0.id == conversation.id }) ?? conversation
         guard sequence > current.lastReadSequence,
               let messageID = await applyConversationReadLocally(
                 current,
@@ -4442,7 +4447,10 @@ final class AppModel: ObservableObject {
         conversations[index].unreadMentionCount = MentionAttention.pendingMessages(
             in: remaining,
             accountId: accountId,
-            lastReadSequence: throughSequence
+            lastReadSequence: throughSequence,
+            groupSessionId: conversations[index].kind == .group
+                ? conversations[index].sessionId
+                : nil
         ).count
         cacheCurrentConversations()
     }

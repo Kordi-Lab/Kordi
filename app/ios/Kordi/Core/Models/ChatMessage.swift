@@ -525,8 +525,17 @@ enum MemeAttachmentPolicy {
 }
 
 enum ComposerMentionKind: String, Hashable {
+    case all
     case person
     case agent
+
+    var accessibilityDescription: String {
+        switch self {
+        case .all: "all people in this group mention"
+        case .person: "person mention"
+        case .agent: "agent mention"
+        }
+    }
 }
 
 struct MessageMention: Codable, Hashable {
@@ -572,15 +581,30 @@ struct MessageMention: Codable, Hashable {
         targetKind.flatMap(ComposerMentionKind.init(rawValue:))
     }
 
-    func targetsPerson(accountId: String) -> Bool {
-        kind == .person
-            && targetIdentityId == "human:\(accountId)"
-            && hasValidIdentity
+    func targetsPerson(accountId: String, groupSessionId: String? = nil) -> Bool {
+        guard hasValidIdentity else { return false }
+        if kind == .person {
+            return targetIdentityId == "human:\(accountId)"
+        }
+        guard kind == .all,
+              hasVerifiedAllToken,
+              let groupSessionId = groupSessionId?.nonEmpty else { return false }
+        return targetIdentityId == "group:\(groupSessionId)"
+    }
+
+    private var hasVerifiedAllToken: Bool {
+        label.caseInsensitiveCompare("all") == .orderedSame
+            && (startUtf16 ?? -1) >= 0
+            && lengthUtf16 == 4
+            && displayText?.caseInsensitiveCompare("@all") == .orderedSame
     }
 
     private var hasValidIdentity: Bool {
         guard let targetIdentityId = targetIdentityId?.nonEmpty, let kind else { return false }
         return switch kind {
+        case .all:
+            targetIdentityId.hasPrefix("group:")
+                && targetIdentityId.count > "group:".count
         case .person: targetIdentityId.hasPrefix("human:")
         case .agent: targetIdentityId.hasPrefix("agent:")
         }
@@ -590,15 +614,16 @@ struct MessageMention: Codable, Hashable {
         let nsRange = NSRange(range, in: text)
         label = target.displayName
         targetKind = target.kind.rawValue
-        targetIdentityId = target.kind == .person
-            ? "human:\(target.accountId)"
-            : target.id
+        targetIdentityId = switch target.kind {
+        case .all, .agent: target.id
+        case .person: "human:\(target.accountId)"
+        }
         startUtf16 = nsRange.location
         lengthUtf16 = nsRange.length
         displayText = String(text[range])
         sourceHostId = nil
-        nodeId = target.accountId
-        humanId = target.accountId
+        nodeId = target.kind == .all ? target.id : target.accountId
+        humanId = target.kind == .all ? nil : target.accountId
         agentId = target.agentId
         displayLabel = target.displayName
     }
@@ -673,7 +698,7 @@ struct ComposerMentionTarget: Identifiable, Hashable {
     let ownerName: String?
     let avatarSource: String?
 
-    var mentionText: String { "@\(displayName)" }
+    var mentionText: String { kind == .all ? "@all" : "@\(displayName)" }
 }
 
 enum ChatCallActivityEvent: String, Codable, Hashable {
@@ -1016,15 +1041,37 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 }
 
 enum MentionAttention {
+    static func messageTargetsPerson(
+        _ message: ChatMessage,
+        accountId: String,
+        groupSessionId: String? = nil
+    ) -> Bool {
+        message.mentions.contains { mention in
+            if mention.kind == .all {
+                return message.author == .person
+                    && mention.targetsPerson(
+                        accountId: accountId,
+                        groupSessionId: groupSessionId
+                    )
+            }
+            return mention.targetsPerson(accountId: accountId)
+        }
+    }
+
     static func pendingMessages(
         in messages: [ChatMessage],
         accountId: String,
-        lastReadSequence: Int64
+        lastReadSequence: Int64,
+        groupSessionId: String? = nil
     ) -> [ChatMessage] {
         messages.filter { message in
             guard message.author != .me,
                   message.messageAction?.kind != "forward",
-                  message.mentions.contains(where: { $0.targetsPerson(accountId: accountId) }) else {
+                  messageTargetsPerson(
+                    message,
+                    accountId: accountId,
+                    groupSessionId: groupSessionId
+                  ) else {
                 return false
             }
             return message.conversationSequence.map { $0 > lastReadSequence }

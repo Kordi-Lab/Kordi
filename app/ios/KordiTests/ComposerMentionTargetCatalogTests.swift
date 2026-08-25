@@ -119,6 +119,51 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         XCTAssertFalse(targets.contains { $0.accountId == "acct_outside" })
     }
 
+    func testGroupAllTargetCreatesOneHumanBroadcastMention() throws {
+        let group = conversation(
+            kind: .group,
+            peerAccountID: "acct_peer",
+            participants: [
+                CloudGroupParticipant(accountId: "acct_me", displayName: "Me", avatarUrl: nil, role: "self"),
+                CloudGroupParticipant(accountId: "acct_peer", displayName: "Peer", avatarUrl: nil, role: "member")
+            ],
+            sessionID: "session:group:triad"
+        )
+        let targets = ComposerMentionTargetCatalog.targets(
+            account: account,
+            conversation: group,
+            ownedAgents: [],
+            sharedAgents: []
+        )
+        let all = try XCTUnwrap(targets.first)
+
+        XCTAssertEqual(all.kind, .all)
+        XCTAssertEqual(all.mentionText, "@all")
+        XCTAssertEqual(all.id, "group:session:group:triad")
+        XCTAssertFalse(ComposerMentionTargetCatalog.targets(
+            account: account,
+            conversation: conversation(kind: .person, peerAccountID: "acct_peer"),
+            ownedAgents: [],
+            sharedAgents: []
+        ).contains { $0.kind == .all })
+
+        let mentions = ComposerMentionTargetCatalog.mentions(
+            in: "@all please review",
+            selectedTarget: all,
+            targets: targets
+        )
+        XCTAssertEqual(mentions.count, 1)
+        XCTAssertEqual(mentions.first?.targetIdentityId, "group:session:group:triad")
+        XCTAssertEqual(
+            ComposerMentionTargetCatalog.accessibilityText(
+                in: "@all please review",
+                mentions: mentions,
+                targets: []
+            ),
+            "all people in this group mention @all please review"
+        )
+    }
+
     func testSameNameAgentsKeepDistinctIdentityAndRequirePickerSelection() throws {
         let conversation = conversation(
             kind: .group,
@@ -333,6 +378,60 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         )
     }
 
+    func testPendingAllAttentionRequiresMatchingGroupAndHumanAuthor() {
+        let all = MessageMention(
+            label: "all",
+            targetKind: "all",
+            targetIdentityId: "group:session:group:triad",
+            startUtf16: 0,
+            lengthUtf16: 4,
+            displayText: "@all"
+        )
+        let messages = [
+            message(id: "human", sequence: 2, author: .person, mentions: [all, all]),
+            message(id: "agent", sequence: 3, author: .agent, mentions: [all]),
+            message(
+                id: "wrong-group",
+                sequence: 4,
+                author: .person,
+                mentions: [MessageMention(
+                    label: "all",
+                    targetKind: "all",
+                    targetIdentityId: "group:session:group:other",
+                    startUtf16: 0,
+                    lengthUtf16: 4,
+                    displayText: "@all"
+                )]
+            ),
+        ]
+
+        XCTAssertTrue(all.targetsPerson(
+            accountId: "acct_me",
+            groupSessionId: "session:group:triad"
+        ))
+        XCTAssertFalse(all.targetsPerson(
+            accountId: "acct_me",
+            groupSessionId: "session:group:other"
+        ))
+        XCTAssertFalse(MessageMention(
+            label: "all",
+            targetKind: "all",
+            targetIdentityId: "group:session:group:triad"
+        ).targetsPerson(
+            accountId: "acct_me",
+            groupSessionId: "session:group:triad"
+        ))
+        XCTAssertEqual(
+            MentionAttention.pendingMessages(
+                in: messages,
+                accountId: "acct_me",
+                lastReadSequence: 1,
+                groupSessionId: "session:group:triad"
+            ).map(\.id),
+            ["human"]
+        )
+    }
+
     func testDuplicateDisplayNameUsesSelectedStableIdentity() throws {
         let first = ComposerMentionTarget(
             id: "agent:first",
@@ -468,7 +567,8 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
     private func conversation(
         kind: ConversationKind,
         peerAccountID: String,
-        participants: [CloudGroupParticipant] = []
+        participants: [CloudGroupParticipant] = [],
+        sessionID: String = "session"
     ) -> ConversationSummary {
         ConversationSummary(
             id: "conversation",
@@ -482,7 +582,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             unreadCount: 0,
             avatarSource: nil,
             agentActivity: nil,
-            sessionId: "session",
+            sessionId: sessionID,
             groupParticipants: participants
         )
     }

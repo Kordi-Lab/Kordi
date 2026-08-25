@@ -233,9 +233,12 @@ final class CloudGroupMessageCodecTests: XCTestCase {
         let fixture = PreviewData.make(now: Date(timeIntervalSince1970: 1_000))
         let messages = try XCTUnwrap(fixture.messagesByConversation["group:mobile"])
         let notice = try XCTUnwrap(messages.first(where: \.isGroupMemberJoinNotice))
+        let broadcast = try XCTUnwrap(messages.first(where: { $0.id == "gm3" }))
 
         XCTAssertEqual(notice.text, "Ethan Park joined the group, invited by Alex.")
         XCTAssertTrue(notice.isSystemNotice)
+        XCTAssertEqual(broadcast.text, "@all I also added the device matrix.")
+        XCTAssertEqual(broadcast.mentions.first?.targetIdentityId, "group:session:group:mobile")
     }
 
     func testOutboundMessageNormalizesFractionalMilliseconds() throws {

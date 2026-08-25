@@ -19,12 +19,12 @@ type ExternalMessageLinkOpener = (url: string) => unknown;
 export type MessageInlinePart =
   | { type: 'text'; value: string; start: number }
   | { type: 'blobEmoji'; emoji: BlobEmoji; start: number }
-  | { type: 'mention'; label: string; targetKind: 'agent' | 'person'; targetIdentityId?: string | null; start: number }
+  | { type: 'mention'; label: string; targetKind: 'agent' | 'person' | 'all'; targetIdentityId?: string | null; start: number }
   | { type: 'link'; label: string; href: string; start: number };
 
 type InlineRange =
   | { type: 'blobEmoji'; emoji: BlobEmoji; start: number; end: number }
-  | { type: 'mention'; label: string; targetKind: 'agent' | 'person'; targetIdentityId?: string | null; start: number; end: number }
+  | { type: 'mention'; label: string; targetKind: 'agent' | 'person' | 'all'; targetIdentityId?: string | null; start: number; end: number }
   | { type: 'link'; label: string; href: string; start: number; end: number };
 
 export type SiteIconDescriptor = {
@@ -200,9 +200,11 @@ function inferredMentionTargetKind(label: string): 'agent' | 'person' {
 function structuredMentionRanges(text: string, mentions: MessageMention[], reserved: InlineRange[]) {
   const ranges: InlineRange[] = [];
   const candidates = messageMentionsForText(text, mentions)?.map((mention) => {
-    const targetKind = mention.targetKind === 'agent' || mention.targetKind === 'person'
-      ? mention.targetKind
-      : inferredMentionTargetKind(mention.label);
+    const targetKind: 'agent' | 'person' | 'all' = mention.targetKind === 'all'
+      ? 'all'
+      : mention.targetKind === 'agent' || mention.targetKind === 'person'
+        ? mention.targetKind
+        : inferredMentionTargetKind(mention.label);
     return {
       mention,
       targetKind,

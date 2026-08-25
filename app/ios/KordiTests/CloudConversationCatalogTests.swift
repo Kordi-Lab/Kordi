@@ -796,7 +796,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             message: CloudGroupMessagePayload(
                 id: "group_message_1",
                 senderAccountId: "acct_maya",
-                text: "The iPhone build is ready",
+                text: "@all The iPhone build is ready",
                 createdAtMs: 1_786_180_800_000,
                 senderKind: "human",
                 senderDisplayName: "Maya",
@@ -804,9 +804,12 @@ final class CloudConversationCatalogTests: XCTestCase {
                 replyToMessageId: nil,
                 requestId: nil,
                 mentions: [MessageMention(
-                    label: "Alex",
-                    targetKind: "person",
-                    targetIdentityId: "human:acct_me"
+                    label: "all",
+                    targetKind: "all",
+                    targetIdentityId: "group:session:group:mobile",
+                    startUtf16: 0,
+                    lengthUtf16: 4,
+                    displayText: "@all"
                 )]
             )
         ))
@@ -828,7 +831,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(groups.count, 1)
         XCTAssertEqual(groups[0].sessionId, "session:group:mobile")
         XCTAssertEqual(groups[0].displayName, "Mobile builders")
-        XCTAssertEqual(groups[0].lastMessage, "The iPhone build is ready")
+        XCTAssertEqual(groups[0].lastMessage, "@all The iPhone build is ready")
         XCTAssertEqual(groups[0].unreadCount, 1)
         XCTAssertEqual(groups[0].unreadMentionCount, 1)
         XCTAssertEqual(groups[0].groupParticipants.count, 2)

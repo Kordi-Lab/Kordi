@@ -11,6 +11,7 @@ remote_api_port="${KORDI_DEV_REMOTE_API_PORT:-17081}"
 desktop_port="${KORDI_DEV_DESKTOP_PORT:-1422}"
 desktop_profile="${KORDI_DEV_DESKTOP_PROFILE:-dev-isolated}"
 desktop_title="${KORDI_DEV_DESKTOP_TITLE:-Kordi Dev}"
+preview_path="${KORDI_DEV_PREVIEW_PATH:-}"
 local_signaling_port="${KORDI_DEV_LOCAL_SIGNALING_PORT:-}"
 remote_signaling_port="${KORDI_DEV_REMOTE_SIGNALING_PORT:-}"
 local_ice_tcp_port="${KORDI_DEV_LOCAL_ICE_TCP_PORT:-}"
@@ -183,11 +184,13 @@ if [[ "$media_tunnel" == "true" ]]; then
   fi
 fi
 
-capabilities="$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
-  "$api_base/v1/cloud/auth/capabilities")"
-if ! grep -q '"google"' <<<"$capabilities" || ! grep -q '"github"' <<<"$capabilities"; then
-  echo "[kordi-remote-dev] The development API must advertise both Google and GitHub OAuth before launch." >&2
-  exit 1
+if [[ -z "$preview_path" ]]; then
+  capabilities="$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 \
+    "$api_base/v1/cloud/auth/capabilities")"
+  if ! grep -q '"google"' <<<"$capabilities" || ! grep -q '"github"' <<<"$capabilities"; then
+    echo "[kordi-remote-dev] The development API must advertise both Google and GitHub OAuth before launch." >&2
+    exit 1
+  fi
 fi
 
 # A desktop preview receives only the loopback API origin. Server credentials
@@ -203,7 +206,9 @@ unset KORDI_CLOUD_GCP_PROJECT KORDI_CLOUD_SSH_ZONE KORDI_CLOUD_SSH_TARGET
 export VITE_KORDI_CLOUD_API_BASE="$api_base"
 export VITE_KORDI_DEV_PROFILE="community"
 
-if [[ "$media_tunnel" == "true" ]]; then
+if [[ -n "$preview_path" ]]; then
+  echo "[kordi-remote-dev] Verified the isolated API for a login-free fixture preview."
+elif [[ "$media_tunnel" == "true" ]]; then
   echo "[kordi-remote-dev] Verified API, OAuth, signaling, and ICE/TCP."
 else
   echo "[kordi-remote-dev] Verified Google and GitHub OAuth."

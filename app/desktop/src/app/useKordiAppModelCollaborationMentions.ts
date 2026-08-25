@@ -13,6 +13,7 @@ import { cloudAgentDefinitionToSharedCloudAgentSummary, type CloudAgentDefinitio
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import type { Conversation, DesktopCollaborationState, DesktopChatState } from '@/kordi-app/types';
 import { possessiveScopedLabel } from '@/lib/identityLabels';
+import { ALL_GROUP_MENTION_LABEL, groupMentionTargetIdentityId } from '@/features/chat/messageMentions';
 
 import { normalizeMentionSearch } from '@/app/useKordiAppModelHelpers';
 
@@ -136,12 +137,33 @@ export function buildCollaborationMentionTargetsByScope({
 
     const options: ComposerMentionOption[] = [];
     const seen = new Set<string>();
+    const groupMentionIdentity = conversationHasGroupMentionScope(conversation)
+      ? groupMentionTargetIdentityId(conversation?.canonicalSessionId ?? conversation?.id)
+      : null;
     const pushOption = (option: ComposerMentionOption) => {
+      if (
+        option.targetKind !== 'all'
+        && normalizeMentionSearch(option.value) === ALL_GROUP_MENTION_LABEL
+      ) return;
       const key = `${option.targetKind}:${option.sourceHostId}:${option.nodeId}:${normalizeMentionSearch(option.value)}`;
       if (seen.has(key)) return;
       seen.add(key);
       options.push(option);
     };
+
+    if (groupMentionIdentity) {
+      pushOption({
+        value: ALL_GROUP_MENTION_LABEL,
+        label: 'All',
+        detail: 'All people in this group',
+        targetKind: 'all',
+        sourceHostId: 'conversation',
+        nodeId: groupMentionIdentity,
+        runtime: 'group',
+        avatarSeed: groupMentionIdentity,
+        unreadCount: 0,
+      });
+    }
 
     const localAgentBaseLabel = 'Kordi';
     const ownerName = activeHost?.ownerName?.trim();
