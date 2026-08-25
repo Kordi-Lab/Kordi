@@ -364,6 +364,9 @@ enum PreviewData {
     }
 
     private static func mayaConversation(now: Date) -> [ChatMessage] {
+        if ProcessInfo.processInfo.arguments.contains("--preview-bubble-width") {
+            return bubbleWidthRiskConversation(now: now)
+        }
         if ProcessInfo.processInfo.arguments.contains("--preview-call-activity") {
             return callActivityConversation(now: now)
         }
@@ -427,6 +430,40 @@ enum PreviewData {
         ])
         messages.append(contentsOf: previewMediaMessages(now: now))
         return messages
+    }
+
+    private static func bubbleWidthRiskConversation(now: Date) -> [ChatMessage] {
+        let conversationId = "person:acct_maya"
+        let cases: [(id: String, author: MessageAuthor, text: String, state: MessageDeliveryState)] = [
+            ("sending", .me, "sending", .sending),
+            ("sent", .me, "sent", .sent),
+            ("delivered", .me, "delivered", .delivered),
+            ("read", .me, "read", .read),
+            ("failed", .me, "failed", .failed),
+            ("cancelled", .me, "cancelled", .cancelled),
+            ("long-token", .person, "https://example.com/" + String(repeating: "unbroken", count: 28), .delivered),
+            ("markdown", .me, "**Bold text** with a [long link](https://kordi.ai) must wrap without widening the bubble.", .read),
+            ("emoji", .person, "🥰🥰🥰🥰🥰🥰🥰", .delivered),
+            ("incoming-wrapped", .person, "recommend everyone use iOS version, its insane🥰🥰🥰", .delivered),
+            ("outgoing-wrapped", .me, "yes also i found your model still says processing which i removed early", .read),
+            ("incoming-short", .person, "hi", .delivered),
+            ("outgoing-short", .me, "hi", .read),
+        ]
+        return cases.enumerated().map { index, item in
+            ChatMessage(
+                id: "bubble-width-\(item.id)",
+                conversationId: conversationId,
+                author: item.author,
+                authorName: item.author == .me ? "You" : "Maya Chen",
+                text: item.text,
+                createdAt: now.addingTimeInterval(Double(index - cases.count) * 60),
+                deliveryState: item.state,
+                errorMessage: item.state == .failed ? "Synthetic delivery failure" : nil,
+                requestMessageId: nil,
+                readByCount: item.state == .read ? 1 : nil,
+                readByAccountIds: item.state == .read ? ["acct_maya"] : []
+            )
+        }
     }
 
     private static func callActivityConversation(now: Date) -> [ChatMessage] {
