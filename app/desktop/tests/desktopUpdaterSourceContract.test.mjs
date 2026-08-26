@@ -23,13 +23,21 @@ test('desktop update path contains no URL-driven native installer or destructive
   assert.doesNotMatch(sidebar, /onInstallUpdate\?\(\{[^}]*url/i);
 });
 
-test('the real updater adapter delegates verification and installation to Tauri plugins', () => {
+test('the real updater adapter delegates installation to Tauri and relaunch to the native lifecycle', () => {
   const controller = source('../src/features/updates/desktopUpdater.ts');
+  const lifecycle = source('../src-tauri/src/window_lifecycle.rs');
 
   assert.match(controller, /@tauri-apps\/plugin-updater/);
   assert.match(controller, /downloadAndInstall/);
-  assert.match(controller, /@tauri-apps\/plugin-process/);
-  assert.match(controller, /relaunch/);
+  assert.match(controller, /invoke\('desktop_relaunch_after_update'\)/);
+  assert.doesNotMatch(controller, /@tauri-apps\/plugin-process/);
+  assert.match(lifecycle, /Command::new\("\/usr\/bin\/open"\)/);
+  assert.match(lifecycle, /\.arg\("-n"\)/);
+  assert.match(lifecycle, /--kordi-update-relaunch/);
+  assert.match(lifecycle, /\.stdin\(Stdio::null\(\)\)/);
+  assert.match(lifecycle, /\.stdout\(Stdio::null\(\)\)/);
+  assert.match(lifecycle, /\.stderr\(Stdio::null\(\)\)/);
+  assert.match(lifecycle, /app\.exit\(tauri::RESTART_EXIT_CODE\)/);
   assert.match(controller, /const KORDI_RELEASE_ORIGIN = 'https:\/\/kordi\.ai'/);
   assert.match(controller, /manualUpdateUrlForVersion\(update\.version\)/);
   assert.match(controller, /\/updates\/releases\/\$\{encoded\}\/Kordi_\$\{encoded\}_aarch64\.dmg/);

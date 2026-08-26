@@ -274,6 +274,23 @@ test('signature or install failure never relaunches and retry reuses the checked
   assert.equal(adapter.relaunchCalls, 1);
 });
 
+test('relaunch failure leaves the installed update in an actionable failed state', async () => {
+  const update = fakeUpdate();
+  const adapter = fakeAdapter(update);
+  adapter.relaunch = async () => {
+    throw new Error('Quit Kordi and open it from Applications.');
+  };
+  const controller = createDesktopUpdaterController({ adapter, isTauriRuntime: () => true });
+  await controller.check();
+
+  await assert.rejects(controller.install(), /open it from Applications/);
+
+  assert.equal(controller.getState().status, 'failed');
+  assert.equal(controller.getState().failureStage, 'install');
+  assert.equal(controller.getState().error, 'Quit Kordi and open it from Applications.');
+  assert.equal(controller.getState().manualDownloadUrl, BETA6_MANUAL_UPDATE_URL);
+});
+
 test('an uninformative install failure uses verified-update fallback copy', async () => {
   const update = fakeUpdate({
     async downloadAndInstall() {

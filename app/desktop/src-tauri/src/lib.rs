@@ -20,6 +20,7 @@ mod voice_message;
 mod window_lifecycle;
 mod workspace;
 use std::process::Command;
+
 fn is_cloud_edition_context(
     kordi_edition: Option<&str>,
     vite_kordi_edition: Option<&str>,
@@ -78,13 +79,14 @@ fn activate_stored_cloud_account_data_dir(is_cloud_edition: bool) {
 
 use auth::DesktopAuthManager;
 use chat::DesktopChatManager;
-use cloud_presence::publish_stored_offline_on_exit;
+use cloud_presence::{publish_stored_offline_on_exit, should_publish_offline_on_exit};
 use media_preview_window::{
     desktop_open_media_preview_window, desktop_reveal_media_preview_window,
 };
 use tauri::Manager;
 use window_lifecycle::{
-    should_hide_window_instead_of_close, should_show_main_window_on_reopen, MAIN_WINDOW_LABEL,
+    desktop_relaunch_after_update, should_hide_window_instead_of_close,
+    should_show_main_window_on_reopen, show_and_focus_main_window, update_relaunch_requested,
 };
 use workspace::DesktopWorkspaceStatus;
 
@@ -95,8 +97,12 @@ mod window_lifecycle_tests {
     use crate::cloud_presence::{offline_url, should_publish_offline_on_exit};
 
     #[test]
-    fn explicit_app_exit_publishes_presence_offline() {
-        assert!(should_publish_offline_on_exit());
+    fn update_restart_skips_presence_offline() {
+        assert!(should_publish_offline_on_exit(None));
+        assert!(should_publish_offline_on_exit(Some(0)));
+        assert!(!should_publish_offline_on_exit(Some(
+            tauri::RESTART_EXIT_CODE
+        )));
     }
 
     #[test]
@@ -195,7 +201,6 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())
         .manage(DesktopAuthManager::default())
@@ -210,6 +215,9 @@ pub fn run() {
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }
+            if update_relaunch_requested() {
+                show_and_focus_main_window(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -217,6 +225,7 @@ pub fn run() {
             desktop_read_workspace_text_file,
             desktop_write_workspace_text_file,
             desktop_open_external_url,
+            desktop_relaunch_after_update,
             desktop_open_media_preview_window,
             desktop_reveal_media_preview_window,
             message_notification::desktop_show_message_notification,
@@ -382,7 +391,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Kordi desktop");
     app.run(|app_handle, event| match event {
-        tauri::RunEvent::ExitRequested { .. } => {
+        tauri::RunEvent::ExitRequested { code, .. } if should_publish_offline_on_exit(code) => {
             publish_stored_offline_on_exit();
         }
         tauri::RunEvent::WindowEvent {
@@ -402,17 +411,8 @@ pub fn run() {
             has_visible_windows,
             ..
         } if should_show_main_window_on_reopen(has_visible_windows) => {
-            if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW_LABEL) {
-                if let Err(err) = window.show() {
-                    eprintln!("[kordi] Unable to show window on reopen: {err}");
-                }
-                if let Err(err) = window.set_focus() {
-                    eprintln!("[kordi] Unable to focus window on reopen: {err}");
-                }
-            }
+            show_and_focus_main_window(app_handle);
         }
         _ => {}
     });
-    // macOS Quit can bypass browser lifecycle, so publish once after Tauri exits.
-    publish_stored_offline_on_exit();
 }
