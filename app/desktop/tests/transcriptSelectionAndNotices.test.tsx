@@ -4,7 +4,12 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { PinActivityNotice, PinMessageDialog, PinnedMessageBar } from '../src/pages/ChatsPage';
-import { MessageBubble, MessageContextMenuContent, messageContextMenuPosition } from '../src/kordi-app/components/transcript';
+import { isExplicitMessageContextMenuAction } from '../src/kordi-app/components/messageContextMenuInteraction';
+import {
+  MessageBubble,
+  MessageContextMenuContent,
+  messageContextMenuPosition,
+} from '../src/kordi-app/components/transcript';
 import type { Message } from '../src/kordi-app/types';
 
 test('multi-pin shelf is folded by default and single pins keep their controls visible', () => {
@@ -175,6 +180,12 @@ test('message context menu position stays close to the clicked message rectangle
   assert.equal(below.y, 150);
   assert.equal(above.y, 302);
   assert.equal(measuredAbove.y, 206);
+});
+
+test('opening a message context menu cannot trigger an action without a separate selection', () => {
+  assert.equal(isExplicitMessageContextMenuAction(1, false), false);
+  assert.equal(isExplicitMessageContextMenuAction(1, true), true);
+  assert.equal(isExplicitMessageContextMenuAction(0, false), true);
 });
 
 test('messages without read receipts still expose the Telegram-style message context menu', () => {

@@ -650,7 +650,6 @@ struct VoiceMessageBubbleContent: View {
                     Text(voiceMessage.transcript)
                         .font(.body)
                         .lineLimit(showsFullTranscript ? nil : 6)
-                        .textSelection(.enabled)
                     if voiceMessage.transcript.count > 320
                         || voiceMessage.transcript.split(separator: "\n").count > 5 {
                         Button(showsFullTranscript ? "Show less" : "Show full transcript") {

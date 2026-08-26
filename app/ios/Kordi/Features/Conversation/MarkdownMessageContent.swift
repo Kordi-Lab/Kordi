@@ -358,6 +358,8 @@ struct MarkdownMessageContent: View {
     let density: Density
     let mentionTargets: [ComposerMentionTarget]
     let mentions: [MessageMention]
+    let allowsTextSelection: Bool
+    let onSelectedTextChange: (String?) -> Void
     @State private var showsFullOversizedText = false
 
     // ponytail: Keep first layout bounded; paginate rich Markdown blocks if expanded formatting becomes necessary.
@@ -368,12 +370,16 @@ struct MarkdownMessageContent: View {
         text: String,
         density: Density = .standard,
         mentionTargets: [ComposerMentionTarget] = [],
-        mentions: [MessageMention] = []
+        mentions: [MessageMention] = [],
+        allowsTextSelection: Bool = false,
+        onSelectedTextChange: @escaping (String?) -> Void = { _ in }
     ) {
         self.text = text
         self.density = density
         self.mentionTargets = mentionTargets
         self.mentions = mentions
+        self.allowsTextSelection = allowsTextSelection
+        self.onSelectedTextChange = onSelectedTextChange
     }
 
     private var blocks: [KordiMarkdownBlock] {
@@ -395,30 +401,36 @@ struct MarkdownMessageContent: View {
 
     @ViewBuilder
     var body: some View {
-        if let collapsed = Self.collapsedText(text) {
-            VStack(alignment: .leading, spacing: blockSpacing) {
-                Text(showsFullOversizedText ? text : collapsed)
-                    .font(bodyFont)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-                Button(showsFullOversizedText ? "Show less" : "Show full response") {
-                    showsFullOversizedText.toggle()
-                }
-                .font(.caption.weight(.semibold))
-                .buttonStyle(.plain)
-                .foregroundStyle(KordiTheme.signalBlue)
-                .accessibilityHint("Changes how much of this long message is visible")
-            }
+        if allowsTextSelection {
+            SelectableMessageTextView(
+                text: text,
+                density: density,
+                onSelectionChange: onSelectedTextChange
+            )
         } else {
-            VStack(alignment: .leading, spacing: blockSpacing) {
-                ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                    blockView(block)
+            if let collapsed = Self.collapsedText(text) {
+                VStack(alignment: .leading, spacing: blockSpacing) {
+                    Text(showsFullOversizedText ? text : collapsed)
+                        .font(bodyFont)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(showsFullOversizedText ? "Show less" : "Show full response") {
+                        showsFullOversizedText.toggle()
+                    }
+                    .font(.caption.weight(.semibold))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(KordiTheme.signalBlue)
+                    .accessibilityHint("Changes how much of this long message is visible")
                 }
+            } else {
+                VStack(alignment: .leading, spacing: blockSpacing) {
+                    ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                        blockView(block)
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .environment(\.composerMentionTargets, mentionTargets)
+                .environment(\.messageMentions, mentions)
             }
-            .fixedSize(horizontal: false, vertical: true)
-            .textSelection(.enabled)
-            .environment(\.composerMentionTargets, mentionTargets)
-            .environment(\.messageMentions, mentions)
         }
     }
 
@@ -621,6 +633,93 @@ private struct BlobEmojiInlineFlowLayout: Layout {
     }
 }
 
+private struct SelectableMessageTextView: UIViewRepresentable {
+    let text: String
+    let density: MarkdownMessageContent.Density
+    let onSelectionChange: (String?) -> Void
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: SelectableMessageTextView
+
+        init(parent: SelectableMessageTextView) {
+            self.parent = parent
+        }
+
+        func textViewDidChangeSelection(_ textView: UITextView) {
+            let range = textView.selectedRange
+            guard range.length > 0,
+                  NSMaxRange(range) <= (textView.text as NSString).length else {
+                parent.onSelectionChange(nil)
+                return
+            }
+            parent.onSelectionChange((textView.text as NSString).substring(with: range))
+        }
+
+        func textView(
+            _ textView: UITextView,
+            editMenuForTextIn range: NSRange,
+            suggestedActions: [UIMenuElement]
+        ) -> UIMenu? {
+            UIMenu(children: [])
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.backgroundColor = .clear
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isScrollEnabled = false
+        textView.adjustsFontForContentSizeCategory = true
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        configure(textView)
+        selectAll(in: textView)
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        context.coordinator.parent = self
+        guard textView.text != text else { return }
+        configure(textView)
+        selectAll(in: textView)
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: UITextView,
+        context: Context
+    ) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        let size = uiView.sizeThatFits(
+            CGSize(width: width, height: .greatestFiniteMagnitude)
+        )
+        return CGSize(width: min(width, ceil(size.width)), height: ceil(size.height))
+    }
+
+    private func configure(_ textView: UITextView) {
+        textView.text = text
+        textView.font = .preferredFont(forTextStyle: density == .compact ? .caption1 : .body)
+        textView.textColor = .label
+    }
+
+    private func selectAll(in textView: UITextView) {
+        DispatchQueue.main.async {
+            textView.selectedRange = NSRange(
+                location: 0,
+                length: (textView.text as NSString).length
+            )
+            textView.becomeFirstResponder()
+        }
+    }
+}
+
 private extension EnvironmentValues {
     @Entry var composerMentionTargets: [ComposerMentionTarget] = []
     @Entry var messageMentions: [MessageMention] = []
@@ -693,7 +792,6 @@ private struct MarkdownCodeBlock: View {
                 Text(source)
                     .font(.system(.caption, design: .monospaced))
                     .lineSpacing(3)
-                    .textSelection(.enabled)
                     .padding(10)
             }
         }

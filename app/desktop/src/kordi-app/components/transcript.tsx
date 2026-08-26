@@ -37,6 +37,7 @@ import {
   MessageContextMenuContent,
   type MessageContextMenuActionHandlers,
 } from './messageContextMenuContent';
+import { isExplicitMessageContextMenuAction } from './messageContextMenuInteraction';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
 import { AttachmentPreview } from './transcriptAttachments';
 import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
@@ -312,9 +313,11 @@ function MessageContextMenuHost({
 } & MessageContextMenuActionHandlers) {
   const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; clientX: number; clientY: number; targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const receivedMenuPointerDown = useRef(false);
   const openMessageContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    receivedMenuPointerDown.current = false;
     const eventTarget = event.target instanceof Element ? event.target : null;
     const anchorElement = eventTarget?.closest('[data-message-context-menu-anchor="true"]') ?? null;
     const targetRect = (anchorElement ?? event.currentTarget).getBoundingClientRect();
@@ -385,7 +388,20 @@ function MessageContextMenuHost({
       style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
       role="menu"
       onMouseDown={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => {
+        receivedMenuPointerDown.current = true;
+        event.stopPropagation();
+      }}
+      onClickCapture={(event) => {
+        const isExplicitAction = isExplicitMessageContextMenuAction(
+          event.detail,
+          receivedMenuPointerDown.current,
+        );
+        receivedMenuPointerDown.current = false;
+        if (isExplicitAction) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
       onContextMenu={(event) => event.preventDefault()}
     >
       <MessageContextMenuContent
