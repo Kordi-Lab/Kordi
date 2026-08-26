@@ -12,6 +12,7 @@ import type { AttachmentItem } from './composerController.types';
 
 export const MAX_VOICE_MESSAGE_DURATION_MS = 60_000;
 export const VOICE_CANCEL_SWIPE_PX = 64;
+const VOICE_RECORDING_TOO_SHORT_ERROR = 'Voice recording must be at least one second.';
 export type VoiceGestureIntent = 'hold' | 'cancel';
 type VoiceStopOptions = {
   directSend?: boolean;
@@ -317,6 +318,10 @@ export function useVoiceMessageRecorder() {
       return prepared;
     } catch (error) {
       if (stopGeneration !== generationRef.current) return null;
+      if (error instanceof Error && error.message === VOICE_RECORDING_TOO_SHORT_ERROR) {
+        commit(IDLE_STATE);
+        return null;
+      }
       commit({
         ...IDLE_STATE,
         phase: 'error',

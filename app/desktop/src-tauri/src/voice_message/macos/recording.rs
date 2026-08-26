@@ -9,7 +9,10 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use super::super::{voice_audio_is_playable, NativeVoiceRecordingSample, NativeVoiceRecordingStop};
+use super::super::{
+    voice_audio_is_playable, voice_recording_duration_is_sendable, NativeVoiceRecordingSample,
+    NativeVoiceRecordingStop, VOICE_RECORDING_TOO_SHORT_ERROR,
+};
 
 struct NativeRecording {
     engine: usize,
@@ -210,6 +213,10 @@ pub(in crate::voice_message) fn record_stop() -> Result<NativeVoiceRecordingStop
     let size_bytes = std::fs::metadata(&path)
         .map(|metadata| metadata.len())
         .unwrap_or_default();
+    if !voice_recording_duration_is_sendable(duration_ms) {
+        let _ = std::fs::remove_file(path);
+        return Err(VOICE_RECORDING_TOO_SHORT_ERROR.to_string());
+    }
     if write_failed || !voice_audio_is_playable(frame_count, size_bytes) {
         let _ = std::fs::remove_file(path);
         return Err("The Mac microphone stopped before audio could be saved.".to_string());

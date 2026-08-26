@@ -32,10 +32,20 @@ final class VoiceMessageTests: XCTestCase {
     }
 
     @MainActor
-    func testTelegramVoiceGestureThresholdsPreferDominantDirection() {
-        XCTAssertEqual(ComposerView.voiceGestureIntent(horizontal: -70, vertical: -20), .cancel)
-        XCTAssertEqual(ComposerView.voiceGestureIntent(horizontal: -20, vertical: -70), .lock)
-        XCTAssertEqual(ComposerView.voiceGestureIntent(horizontal: -20, vertical: -20), .hold)
+    func testVoiceMessagesShorterThanOneSecondAreRejected() {
+        XCTAssertFalse(VoiceMessageRecorder.isDurationSendable(999))
+        XCTAssertTrue(VoiceMessageRecorder.isDurationSendable(1_000))
+    }
+
+    @MainActor
+    func testHoldToTalkGestureRequiresDistanceInsideSideSectors() {
+        XCTAssertEqual(VoiceHoldToTalkTargetLayout.intent(for: CGSize(width: -72, height: -60)), .cancel)
+        XCTAssertEqual(VoiceHoldToTalkTargetLayout.intent(for: CGSize(width: 72, height: -60)), .convertToText)
+        XCTAssertEqual(VoiceHoldToTalkTargetLayout.intent(for: CGSize(width: -60, height: -40)), .hold)
+        XCTAssertEqual(VoiceHoldToTalkTargetLayout.intent(for: CGSize(width: 0, height: -100)), .hold)
+        XCTAssertEqual(VoiceHoldToTalkTargetLayout.intent(for: CGSize(width: 100, height: 0)), .hold)
+        XCTAssertEqual(VoiceHoldToTalkTargetLayout.intent(for: CGSize(width: -100, height: -28)), .hold)
+        XCTAssertEqual(VoiceHoldToTalkTargetLayout.intent(for: CGSize(width: 100, height: -28)), .hold)
     }
 
     @MainActor

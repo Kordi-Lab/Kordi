@@ -21,6 +21,7 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         case failed
     }
 
+    static let minimumDurationMs = 1_000
     static let maximumDurationMs = 60_000
 
     private(set) var phase = Phase.idle
@@ -109,11 +110,6 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         }
     }
 
-    func lock() {
-        guard phase == .recording else { return }
-        isLocked = true
-    }
-
     func pause() {
         guard phase == .recording, let recorder else { return }
         recorder.pause()
@@ -131,22 +127,28 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
         phase = .recording
     }
 
-    func stop(autoSend: Bool = false) {
+    @discardableResult
+    func stop(autoSend: Bool = false) -> Bool {
         guard [.recording, .paused].contains(phase),
               let recorder,
-              let url = recordingURL else { return }
-        shouldAutoSend = autoSend
+              let url = recordingURL else { return false }
         durationMs = min(Self.maximumDurationMs, max(1, Int(recorder.currentTime * 1_000)))
         recorder.stop()
         meterTimer?.invalidate()
         meterTimer = nil
         self.recorder = nil
+        guard Self.isDurationSendable(durationMs) else {
+            cancel()
+            return false
+        }
+        shouldAutoSend = autoSend
         waveformSamples = Self.downsample(rawSamples)
         trimStartMs = 0
         trimEndMs = durationMs
         reviewURL = url
         phase = .review
         beginPreparation(url: url, startMs: 0, endMs: durationMs)
+        return true
     }
 
     func setTrim(startMs: Int, endMs: Int) {
@@ -171,6 +173,12 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
             return await preparationTask.value
         }
         return pendingMessage
+    }
+
+    func prepareTranscript() async -> String? {
+        guard await prepareForSend() != nil else { return nil }
+        await transcriptionTask?.value
+        return transcript.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
     }
 
     func resolvedMessageForSend(_ pending: PendingVoiceMessage) async -> PendingVoiceMessage? {
@@ -428,6 +436,10 @@ final class VoiceMessageRecorder: NSObject, AVAudioRecorderDelegate {
             let end = max(start + 1, ((index + 1) * samples.count) / outputCount)
             return max(0.08, samples[start..<min(end, samples.count)].max() ?? 0.08)
         }
+    }
+
+    static func isDurationSendable(_ durationMs: Int) -> Bool {
+        durationMs >= minimumDurationMs
     }
 
     static func transcriptionLocaleIdentifiers(preferred: String) -> [String] {
