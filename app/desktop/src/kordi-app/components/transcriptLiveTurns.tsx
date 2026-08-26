@@ -35,7 +35,6 @@ import {
   formatRunningElapsed,
   LEGACY_PARTICIPANT_REQUEST_TOOL_NAME,
   toolTimelineDisplayArguments,
-  toolTimelineFailureLabel,
   toolTimelineFoldedLabel,
   toolTimelineLayerGroups,
   toolTimelineRunningToolLabel,
@@ -428,19 +427,18 @@ function ToolTimelineToolRow({ tool }: { tool: ToolSnapshot }) {
   );
 }
 
-function ToolTimelineCompletionRow({ failedCount }: { failedCount: number }) {
-  const failed = failedCount > 0;
+function ToolTimelineCompletionRow() {
   return (
-    <div className={cn('app-transcript-timeline-row app-transcript-timeline-row-complete', failed && 'app-transcript-timeline-row-error')}>
+    <div className="app-transcript-timeline-row app-transcript-timeline-row-complete">
       <span className="app-transcript-timeline-rail" aria-hidden="true">
         <span className="app-transcript-timeline-node">
-          {failed ? <CircleAlert className="h-3.5 w-3.5" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+          <CheckCircle2 className="h-3.5 w-3.5" />
         </span>
       </span>
       <div className="app-transcript-timeline-row-body">
         <div className="app-transcript-timeline-row-line">
-          <span className="app-transcript-timeline-row-title">{failed ? toolTimelineFailureLabel(failedCount) : 'Done'}</span>
-          {failed ? null : <span className="app-transcript-timeline-pill">Complete</span>}
+          <span className="app-transcript-timeline-row-title">Done</span>
+          <span className="app-transcript-timeline-pill">Complete</span>
         </div>
       </div>
     </div>
@@ -467,8 +465,6 @@ function FoldableToolTimeline({
   const [expandedTimeline, setExpandedTimeline] = useState(false);
   const [timelineMounted, setTimelineMounted] = useState(false);
   const hasThinking = thinkingText.trim().length > 0;
-  const failedCount = tools.filter(isFailedTool).length;
-  const failed = failedCount > 0;
   const runningTool = tools.find(isRunningTool);
   const runningElapsed = useRunningElapsedLabel(Boolean(runningTool), runningTool?.id ?? null);
   const summary = summaryOverride?.trim()
@@ -521,7 +517,7 @@ function FoldableToolTimeline({
               {toolTimelineLayerGroups(tools).map((group) => (
                 <ToolTimelineToolGroupRow key={group.id} group={group} />
               ))}
-              {completed || failed ? <ToolTimelineCompletionRow failedCount={failedCount} /> : null}
+              {completed ? <ToolTimelineCompletionRow /> : null}
             </div>
           ) : null}
         </div>
@@ -847,7 +843,7 @@ function LiveChatTurnCardView({
               thinkingText={visibleTurn.thinkingText}
               active={liveTurnActive}
               completed={visibleTurn.completed}
-              summaryOverride={visibleTurn.tools.some(isFailedTool) ? null : desktopTurnWorkDurationLabel(visibleTurn)}
+              summaryOverride={desktopTurnWorkDurationLabel(visibleTurn)}
               separatesAnswer={hasAssistant}
               trailing={pendingCollaborationAgentRequest && onStopCollaborationAgentRequest ? (
                 <CollaborationAgentStopButton

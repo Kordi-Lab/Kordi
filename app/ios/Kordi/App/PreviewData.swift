@@ -92,8 +92,11 @@ enum PreviewData {
         let showsMentionAttention = ProcessInfo.processInfo.arguments.contains(
             "--preview-mention-attention"
         )
+        let showsToolFailure = ProcessInfo.processInfo.arguments.contains(
+            "--preview-tool-failure"
+        )
         let conversations = [
-            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: CanonicalAvatarSystem.defaultAgentId, ownerDisplayName: "Alex", displayName: "Plan the mobile release", lastMessage: "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
+            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: CanonicalAvatarSystem.defaultAgentId, ownerDisplayName: "Alex", displayName: showsToolFailure ? "Tool failure recovery" : "Plan the mobile release", lastMessage: showsToolFailure ? "The useful result is ready." : "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
             ConversationSummary(id: "agent:research", kind: .agent, peerAccountId: "acct_me", agentId: "cloud_agent_research", ownerDisplayName: "Alex", displayName: "Review the TestFlight checklist", lastMessage: "Comparing the latest sources…", lastActivityAt: now.addingTimeInterval(-160), unreadCount: 0, avatarSource: nil, agentActivity: .replying, sessionId: "session:self-agent:cloud_agent_research", agentDisplayName: "Research Agent", forkedFromSessionId: "session:self-agent:default"),
             ConversationSummary(id: "agent:support", kind: .agent, peerAccountId: "acct_maya", agentId: "cloud_agent_support", ownerDisplayName: "Maya Chen", displayName: "Support Agent", lastMessage: "I can help with that.", lastActivityAt: now.addingTimeInterval(-300), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:direct-agent:acct_maya:cloud_agent_support"),
             ConversationSummary(id: "group:mobile", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Mobile builders", displayName: "main", lastMessage: showsMentionAttention ? "@Alex Please review the notification copy." : "@all I also added the device matrix.", lastActivityAt: now.addingTimeInterval(-120), unreadCount: showsMentionAttention ? 2 : 1, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile", groupParticipants: [
@@ -206,6 +209,9 @@ enum PreviewData {
     }
 
     private static func agentConversation(now: Date) -> [ChatMessage] {
+        if ProcessInfo.processInfo.arguments.contains("--preview-tool-failure") {
+            return toolFailureAgentConversation(now: now)
+        }
         let conversationId = "agent:my-kordi"
         let sampleTurns = [
             "Review the mobile API contract before the next build.",
@@ -281,6 +287,74 @@ enum PreviewData {
             )
         ])
         return messages
+    }
+
+    private static func toolFailureAgentConversation(now: Date) -> [ChatMessage] {
+        let conversationId = "agent:my-kordi"
+        let requestId = "preview-tool-failure-request"
+        let startedAtMs = now.addingTimeInterval(-12).timeIntervalSince1970 * 1_000
+        return [
+            ChatMessage(
+                id: requestId,
+                conversationId: conversationId,
+                author: .me,
+                authorName: "You",
+                text: "Inspect the repository and continue if an optional tool fails.",
+                createdAt: now.addingTimeInterval(-12),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil
+            ),
+            ChatMessage(
+                id: "preview-tool-failure-response",
+                conversationId: conversationId,
+                author: .agent,
+                authorName: "My Kordi",
+                text: "The repository check completed and the useful result is ready.",
+                createdAt: now,
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: requestId,
+                agentExecution: AgentExecutionSnapshot(
+                    phase: .complete,
+                    summary: "Response complete",
+                    steps: [
+                        AgentExecutionStep(id: "analysis", label: "Planning the repository check", state: .complete),
+                        AgentExecutionStep(id: "tool:read", label: "Reading project files", state: .complete),
+                        AgentExecutionStep(id: "tool:optional", label: "Reading an optional file", state: .failed),
+                        AgentExecutionStep(id: "response", label: "Writing the useful result", state: .complete)
+                    ],
+                    thinkingText: "I’ll inspect the available files and keep the useful result even if an optional read fails.",
+                    tools: [
+                        AgentExecutionTool(
+                            id: "read",
+                            name: "read",
+                            status: "completed",
+                            arguments: "{\"path\":\"README.md\"}",
+                            liveOutput: "",
+                            resultText: "Project overview loaded.",
+                            detail: "Read project overview",
+                            toolLayer: "observation",
+                            isError: false
+                        ),
+                        AgentExecutionTool(
+                            id: "optional",
+                            name: "read",
+                            status: "error",
+                            arguments: "{\"path\":\"OPTIONAL.md\"}",
+                            liveOutput: "",
+                            resultText: "Optional file unavailable.",
+                            detail: "Read optional context",
+                            toolLayer: "observation",
+                            isError: true
+                        )
+                    ],
+                    startedAtMs: startedAtMs,
+                    updatedAtMs: now.timeIntervalSince1970 * 1_000,
+                    completed: true
+                )
+            )
+        ]
     }
 
     private static func groupConversation(

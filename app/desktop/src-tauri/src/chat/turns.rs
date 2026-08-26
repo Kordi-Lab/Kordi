@@ -68,11 +68,74 @@ pub(super) async fn turn_snapshot_by_id(
     manager: &DesktopChatManager,
     turn_id: &str,
 ) -> Result<DesktopChatTurnSnapshot, String> {
-    let turns = manager.turns.lock().await;
-    let turn = turns
+    let turn = manager
+        .turns
+        .lock()
+        .await
         .get(turn_id)
+        .cloned()
         .ok_or_else(|| format!("Unknown chat turn: {turn_id}"))?;
+    let current = snapshot_turn(&turn.snapshot)?;
+    if current.completed
+        || (current.status != "cancelling" && !current.tools.iter().any(|tool| tool.is_error))
+    {
+        return Ok(current);
+    }
+
+    let session = manager
+        .sessions
+        .lock()
+        .await
+        .get(&current.session_id)
+        .cloned();
+    if let Some(session) = session {
+        if let Ok(detail) = session.lock().await.detail() {
+            update_turn(&turn.snapshot, |state| {
+                reconcile_persisted_cancelled_turn(state, &detail.messages);
+            });
+        }
+    }
     snapshot_turn(&turn.snapshot)
+}
+
+fn reconcile_persisted_cancelled_turn(
+    turn: &mut DesktopChatTurnSnapshot,
+    messages: &[kordi_cli::desktop_runtime::DesktopChatMessage],
+) -> bool {
+    if turn.completed {
+        return false;
+    }
+    let Some(message) = messages
+        .iter()
+        .rev()
+        .take_while(|message| !message.role.eq_ignore_ascii_case("user"))
+        .find(|message| {
+            message.role.eq_ignore_ascii_case("assistant")
+                && message.cancelled
+                && message.timestamp_ms >= turn.started_at_ms
+        })
+    else {
+        return false;
+    };
+
+    turn.status = "cancelled".to_string();
+    turn.message = "Response stopped".to_string();
+    if message.text.len() >= turn.assistant_text.len() {
+        turn.assistant_text = message.text.clone();
+    }
+    if let Some(thinking_text) = message
+        .thinking_text
+        .as_ref()
+        .filter(|text| text.len() >= turn.thinking_text.len())
+    {
+        turn.thinking_text = thinking_text.clone();
+    }
+    turn.completed = true;
+    turn.succeeded = false;
+    turn.completed_at_ms = Some(message.timestamp_ms);
+    turn.transcript_entry_id = message.entry_id.clone();
+    turn.error = None;
+    true
 }
 
 pub(super) async fn active_turn_snapshots(
@@ -367,4 +430,80 @@ fn tool_detail(details: &Option<serde_json::Value>) -> Option<String> {
         parts.push("cancelled".to_string());
     }
     (!parts.is_empty()).then(|| parts.join(" • "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn persisted_message(
+        role: &str,
+        timestamp_ms: i64,
+        cancelled: bool,
+    ) -> kordi_cli::desktop_runtime::DesktopChatMessage {
+        kordi_cli::desktop_runtime::DesktopChatMessage {
+            role: role.to_string(),
+            sender: None,
+            text: String::new(),
+            detail: None,
+            time_label: String::new(),
+            timestamp_ms,
+            failed: false,
+            cancelled,
+            attachments: Vec::new(),
+            thinking_text: None,
+            tools: Vec::new(),
+            entry_id: cancelled.then(|| "entry:aborted".to_string()),
+        }
+    }
+
+    #[test]
+    fn persisted_abort_completes_only_its_mounted_live_turn() {
+        let mut turn = DesktopChatTurnSnapshot {
+            id: "turn-live".to_string(),
+            session_id: "session-live".to_string(),
+            prompt: "work".to_string(),
+            status: "tooling".to_string(),
+            message: "Tool failed".to_string(),
+            assistant_text: String::new(),
+            thinking_text: String::new(),
+            tools: vec![DesktopChatToolSnapshot {
+                id: "tool-failed".to_string(),
+                name: "read".to_string(),
+                status: "error".to_string(),
+                arguments: String::new(),
+                live_output: String::new(),
+                result_text: Some("late failure".to_string()),
+                detail: None,
+                artifact_path: None,
+                tool_layer: None,
+                is_error: true,
+            }],
+            completed: false,
+            succeeded: false,
+            started_at_ms: 100,
+            completed_at_ms: None,
+            transcript_entry_id: None,
+            error: Some("tool failed".to_string()),
+            transcript_refresh_required: false,
+        };
+
+        assert!(!reconcile_persisted_cancelled_turn(
+            &mut turn,
+            &[persisted_message("assistant", 99, true)],
+        ));
+        assert!(reconcile_persisted_cancelled_turn(
+            &mut turn,
+            &[
+                persisted_message("user", 100, false),
+                persisted_message("assistant", 200, true),
+            ],
+        ));
+        assert!(turn.completed);
+        assert_eq!(turn.status, "cancelled");
+        assert_eq!(turn.message, "Response stopped");
+        assert_eq!(turn.completed_at_ms, Some(200));
+        assert_eq!(turn.transcript_entry_id.as_deref(), Some("entry:aborted"));
+        assert!(turn.error.is_none());
+    }
 }

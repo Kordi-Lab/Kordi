@@ -658,6 +658,60 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(responses.map(\.text), ["Done."])
     }
 
+    @MainActor
+    func testLateProcessingHeartbeatCannotRegressCancelledResponse() throws {
+        let request = wire(
+            id: "msg_request",
+            body: "Run the task",
+            createdAt: "2026-08-08T10:00:00Z"
+        )
+        let cancelled = try agentResponse(
+            requestId: "msg_request",
+            text: "Response stopped.",
+            deliveryState: "cancelled"
+        )
+        let lateProcessing = try agentResponse(
+            requestId: "msg_request",
+            text: "processing...",
+            deliveryState: "processing"
+        )
+        let wireMessages = [
+            request,
+            wire(id: "msg_cancelled", body: cancelled, createdAt: "2026-08-08T10:00:02Z"),
+            wire(id: "msg_late_processing", body: lateProcessing, createdAt: "2026-08-08T10:00:03Z")
+        ]
+
+        let projected = CloudDirectMessageProjector.project(
+            wireMessages,
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(projected.filter { $0.author == .agent }.map(\.text), ["Response stopped."])
+        XCTAssertEqual(
+            CloudAgentLifecycleProjector.state(forRequestId: "msg_request", in: wireMessages),
+            .cancelled
+        )
+        XCTAssertEqual(CloudAgentLifecycleProjector.activity(in: wireMessages), .ready)
+
+        let initial = CloudDirectMessageProjector.project(
+            [request, wire(id: "msg_processing", body: lateProcessing, createdAt: "2026-08-08T10:00:01Z")],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+        let terminal = CloudDirectMessageProjector.project(
+            [request, wire(id: "msg_cancelled", body: cancelled, createdAt: "2026-08-08T10:00:02Z")],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+        let terminalMerge = AppModel.mergePartialProjection(terminal, preserving: initial)
+        let lateMerge = AppModel.mergePartialProjection(projected, preserving: terminalMerge)
+        let responses = lateMerge.filter { $0.requestMessageId == "msg_request" }
+
+        XCTAssertEqual(responses.map(\.id), ["msg_cancelled"])
+        XCTAssertEqual(responses.map(\.text), ["Response stopped."])
+    }
+
     func testCanonicalProcessingAndFailureMapToConversationActivity() throws {
         let processing = try agentResponse(
             requestId: "msg_processing_request",

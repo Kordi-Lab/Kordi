@@ -254,7 +254,6 @@ struct AgentExecutionTimelinePresentation: Equatable {
     let responseStep: AgentExecutionStep?
     let thinkingText: String?
     let tools: [AgentExecutionTool]
-    let failedToolCount: Int
     let headline: String
     let completionLabel: String?
 
@@ -264,7 +263,6 @@ struct AgentExecutionTimelinePresentation: Equatable {
             || thinkingText != nil
             || !tools.isEmpty
             || responseStep != nil
-            || failedToolCount > 0
     }
 
     var activeOutputStatus: String? {
@@ -295,7 +293,6 @@ struct AgentExecutionTimelinePresentation: Equatable {
         responseStep = execution.steps.first { $0.id == "response" }
         thinkingText = execution.thinkingText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
         tools = execution.tools ?? []
-        failedToolCount = toolSteps.filter { $0.state == .failed }.count
         headline = execution.summary
         if execution.completed, let startedAtMs = execution.startedAtMs {
             let elapsedSeconds = max(
