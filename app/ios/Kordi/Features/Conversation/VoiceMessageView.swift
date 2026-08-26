@@ -6,7 +6,7 @@ import UIKit
 enum VoiceRecordingGestureIntent: Equatable {
     case hold
     case cancel
-    case lock
+    case convertToText
 }
 
 struct VoiceRecordingGestureCapture: UIViewRepresentable {
@@ -25,7 +25,8 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
         }
 
         @objc func handle(_ recognizer: UILongPressGestureRecognizer) {
-            let location = recognizer.location(in: nil)
+            let window = recognizer.view?.window
+            let location = recognizer.location(in: window)
             switch recognizer.state {
             case .began:
                 startLocation = location
@@ -42,7 +43,10 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
         }
 
         private func translation(to location: CGPoint) -> CGSize {
-            CGSize(width: location.x - startLocation.x, height: location.y - startLocation.y)
+            CGSize(
+                width: location.x - startLocation.x,
+                height: location.y - startLocation.y
+            )
         }
     }
 
@@ -59,7 +63,7 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
             target: context.coordinator,
             action: #selector(Coordinator.handle(_:))
         )
-        gesture.minimumPressDuration = 0
+        gesture.minimumPressDuration = 0.25
         gesture.allowableMovement = .greatestFiniteMagnitude
         gesture.cancelsTouchesInView = true
         view.addGestureRecognizer(gesture)
@@ -72,11 +76,230 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
     }
 }
 
-struct VoiceRecordingComposer: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+enum VoiceHoldToTalkTargetLayout {
+    static let activationDistance: CGFloat = 92
+    static let cancelSectorDegrees = 215.0...260.0
+    static let convertToTextSectorDegrees = 280.0...325.0
+
+    static func intent(
+        for translation: CGSize
+    ) -> VoiceRecordingGestureIntent {
+        let distance = sqrt(
+            translation.width * translation.width
+                + translation.height * translation.height
+        )
+        guard distance >= activationDistance else { return .hold }
+        let rawDegrees = atan2(
+            Double(translation.height),
+            Double(translation.width)
+        ) * 180 / .pi
+        let degrees = rawDegrees < 0 ? rawDegrees + 360 : rawDegrees
+        if cancelSectorDegrees.contains(degrees) { return .cancel }
+        if convertToTextSectorDegrees.contains(degrees) { return .convertToText }
+        return .hold
+    }
+}
+
+struct VoiceHoldToTalkOverlay: View {
     let recorder: VoiceMessageRecorder
     let gestureIntent: VoiceRecordingGestureIntent
-    let transitionNamespace: Namespace.ID
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                Color.black.opacity(0.78)
+                    .ignoresSafeArea()
+
+                recordingPrompt(in: proxy.size)
+                    .position(x: proxy.size.width / 2, y: proxy.size.height * 0.5)
+
+                gestureTargets(in: proxy.size)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func recordingPrompt(in size: CGSize) -> some View {
+        VStack(spacing: 18) {
+            VoiceWaveform(
+                samples: recorder.waveformSamples,
+                progress: 1,
+                activeColor: KordiTheme.signalBlue
+            )
+                .frame(width: min(180, max(140, size.width * 0.46)))
+            Text(statusText)
+                .font(.headline)
+                .foregroundStyle(.white.opacity(0.9))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+    }
+
+    private var statusText: String {
+        switch gestureIntent {
+        case .hold: "Release to send voice"
+        case .cancel: "Release to cancel"
+        case .convertToText: "Release to convert to text"
+        }
+    }
+
+    private func gestureTargets(in size: CGSize) -> some View {
+        let center = CGPoint(x: size.width / 2, y: size.height + 42)
+        let innerRadius = VoiceHoldToTalkTargetLayout.activationDistance
+        let outerRadius = min(250, size.width * 0.54)
+        let labelRadius = (innerRadius + outerRadius) * 0.52
+        let cancelLabel = point(
+            from: center,
+            radius: labelRadius,
+            degrees: 237.5
+        )
+        let convertLabel = point(
+            from: center,
+            radius: labelRadius,
+            degrees: 302.5
+        )
+        return ZStack {
+            Canvas { context, _ in
+                let sectors: [(
+                    intent: VoiceRecordingGestureIntent,
+                    startDegrees: Double,
+                    endDegrees: Double
+                )] = [
+                    (
+                        .cancel,
+                        VoiceHoldToTalkTargetLayout.cancelSectorDegrees.lowerBound,
+                        VoiceHoldToTalkTargetLayout.cancelSectorDegrees.upperBound
+                    ),
+                    (
+                        .convertToText,
+                        VoiceHoldToTalkTargetLayout.convertToTextSectorDegrees.lowerBound,
+                        VoiceHoldToTalkTargetLayout.convertToTextSectorDegrees.upperBound
+                    ),
+                ]
+
+                for sector in sectors {
+                    let isSelected = gestureIntent == sector.intent
+                    let path = sectorPath(
+                        center: center,
+                        innerRadius: innerRadius,
+                        outerRadius: outerRadius,
+                        startDegrees: sector.startDegrees,
+                        endDegrees: sector.endDegrees
+                    )
+                    let opacity = isSelected ? 0.17 : 0.065
+                    context.drawLayer { layer in
+                        layer.addFilter(.blur(radius: 3.2))
+                        layer.fill(
+                            path,
+                            with: .radialGradient(
+                                Gradient(stops: [
+                                    .init(
+                                        color: .white.opacity(opacity),
+                                        location: 0
+                                    ),
+                                    .init(
+                                        color: .white.opacity(opacity * 0.72),
+                                        location: 0.72
+                                    ),
+                                    .init(color: .clear, location: 1),
+                                ]),
+                                center: center,
+                                startRadius: innerRadius,
+                                endRadius: outerRadius
+                            )
+                        )
+                    }
+                }
+            }
+
+            directionalLabel(
+                "Cancel",
+                isSelected: gestureIntent == .cancel
+            )
+            .position(cancelLabel)
+
+            directionalLabel(
+                "Convert to Text",
+                isSelected: gestureIntent == .convertToText
+            )
+            .position(convertLabel)
+        }
+        .clipped()
+    }
+
+    private func sectorPath(
+        center: CGPoint,
+        innerRadius: CGFloat,
+        outerRadius: CGFloat,
+        startDegrees: Double,
+        endDegrees: Double
+    ) -> Path {
+        var path = Path()
+        let outerStart = point(
+            from: center,
+            radius: outerRadius,
+            degrees: startDegrees
+        )
+        let innerEnd = point(
+            from: center,
+            radius: innerRadius,
+            degrees: endDegrees
+        )
+        let connectorRadius = (innerRadius + outerRadius) / 2
+        path.move(to: outerStart)
+        for degrees in stride(from: startDegrees, through: endDegrees, by: 3) {
+            path.addLine(to: point(from: center, radius: outerRadius, degrees: degrees))
+        }
+        path.addQuadCurve(
+            to: innerEnd,
+            control: point(
+                from: center,
+                radius: connectorRadius,
+                degrees: endDegrees + (endDegrees > 300 ? 14 : 0)
+            )
+        )
+        for degrees in stride(from: endDegrees, through: startDegrees, by: -3) {
+            path.addLine(to: point(from: center, radius: innerRadius, degrees: degrees))
+        }
+        path.addQuadCurve(
+            to: outerStart,
+            control: point(
+                from: center,
+                radius: connectorRadius,
+                degrees: startDegrees + (startDegrees < 250 ? -14 : 0)
+            )
+        )
+        path.closeSubpath()
+        return path
+    }
+
+    private func point(
+        from center: CGPoint,
+        radius: CGFloat,
+        degrees: Double
+    ) -> CGPoint {
+        let radians = degrees * .pi / 180
+        return CGPoint(
+            x: center.x + CGFloat(cos(radians)) * radius,
+            y: center.y + CGFloat(sin(radians)) * radius
+        )
+    }
+
+    private func directionalLabel(
+        _ title: String,
+        isSelected: Bool
+    ) -> some View {
+        Text(title)
+            .font(.callout.weight(isSelected ? .semibold : .regular))
+            .foregroundStyle(.white.opacity(isSelected ? 0.96 : 0.64))
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+    }
+}
+
+struct VoiceRecordingComposer: View {
+    let recorder: VoiceMessageRecorder
     let onCancel: () -> Void
     let onSend: () -> Void
 
@@ -86,7 +309,9 @@ struct VoiceRecordingComposer: View {
                 if recorder.isLocked {
                     lockedControls
                 } else {
-                    heldControls
+                    Color.clear
+                        .frame(height: 58)
+                        .accessibilityHidden(true)
                 }
             } else {
                 failedControls
@@ -96,87 +321,6 @@ struct VoiceRecordingComposer: View {
             }
         }
         .accessibilityElement(children: .contain)
-        .animation(recordingAnimation, value: gestureIntent)
-        .animation(recordingAnimation, value: recorder.isLocked)
-    }
-
-    private var heldControls: some View {
-        ZStack(alignment: .bottomTrailing) {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(.red)
-                    .frame(width: 8, height: 8)
-                    .accessibilityHidden(true)
-
-                Text(Self.duration(recorder.durationMs))
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.primary)
-
-                Spacer(minLength: 8)
-
-                Image(systemName: "chevron.left")
-                    .font(.caption.weight(.bold))
-                    .accessibilityHidden(true)
-
-                Text(gestureIntent == .cancel ? "Release to cancel" : "Slide to cancel")
-                    .font(.callout)
-                    .foregroundStyle(gestureIntent == .cancel ? .red : .secondary)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-            }
-            .padding(.leading, 18)
-            .padding(.trailing, 88)
-            .frame(maxWidth: .infinity, minHeight: 54)
-            .background(.ultraThinMaterial, in: Capsule())
-
-            if gestureIntent != .cancel {
-                VStack(spacing: 2) {
-                    Image(systemName: gestureIntent == .lock ? "lock.fill" : "lock.open.fill")
-                        .font(.body.weight(.semibold))
-                    Image(systemName: "chevron.up")
-                        .font(.caption2.weight(.bold))
-                }
-                .foregroundStyle(gestureIntent == .lock ? KordiTheme.signalBlue : .secondary)
-                .frame(width: 44, height: 64)
-                .background(.ultraThinMaterial, in: Capsule())
-                .offset(x: -17, y: -58)
-                .transition(
-                    .scale(scale: 0.9, anchor: .bottom)
-                        .combined(with: .opacity)
-                )
-                .accessibilityHidden(true)
-            }
-
-            Circle()
-                .fill(gestureIntent == .cancel ? Color.red : KordiTheme.signalBlue)
-                .frame(width: 78, height: 78)
-                .overlay {
-                    Image(systemName: gestureIntent == .cancel ? "xmark" : "mic.fill")
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(.white)
-                }
-                .shadow(
-                    color: (gestureIntent == .cancel ? Color.red : KordiTheme.signalBlue)
-                        .opacity(0.24),
-                    radius: 10,
-                    y: 4
-                )
-                .scaleEffect(gestureIntent == .lock ? 1.08 : 1)
-                .offset(y: gestureIntent == .lock ? -8 : 0)
-                .matchedGeometryEffect(
-                    id: "voice-recording-control",
-                    in: transitionNamespace
-                )
-                .accessibilityHidden(true)
-        }
-        .frame(height: 82)
-        .accessibilityLabel("Recording voice message")
-        .accessibilityValue(Self.duration(recorder.durationMs))
-        .accessibilityHint("Release to send, slide left to cancel, or slide up to lock")
-    }
-
-    private var recordingAnimation: Animation? {
-        reduceMotion ? nil : .smooth(duration: 0.24)
     }
 
     private var lockedControls: some View {
@@ -188,10 +332,13 @@ struct VoiceRecordingComposer: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Cancel voice recording")
 
-            VoiceWaveform(samples: recorder.waveformSamples, progress: 1)
+            VoiceWaveform(
+                samples: recorder.waveformSamples,
+                progress: 1
+            )
                 .frame(maxWidth: .infinity, minHeight: 24)
 
-            Text(Self.duration(recorder.durationMs))
+            Text(VoiceRecordingComposer.duration(recorder.durationMs))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
 
@@ -530,6 +677,7 @@ struct VoiceMessageBubbleContent: View {
 private struct VoiceWaveform: View {
     let samples: [Double]
     let progress: Double
+    var activeColor = KordiTheme.signalBlue
 
     var body: some View {
         HStack(spacing: 2) {
@@ -537,7 +685,7 @@ private struct VoiceWaveform: View {
                 Capsule()
                     .fill(
                         Double(index) / Double(max(1, values.count)) <= progress
-                            ? KordiTheme.signalBlue
+                            ? activeColor
                             : Color.secondary.opacity(0.35)
                     )
                     .frame(maxWidth: 3, minHeight: 3, maxHeight: max(3, 28 * sample))

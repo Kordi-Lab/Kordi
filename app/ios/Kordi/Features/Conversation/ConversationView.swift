@@ -64,6 +64,7 @@ struct ConversationView: View {
     @State private var selectedPhotoSubtype: ChatAttachmentSubtype?
     @State private var isPreparingAttachments = false
     @State private var voiceRecorder = VoiceMessageRecorder()
+    @State private var voiceGestureIntent = VoiceRecordingGestureIntent.hold
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
     @State private var shareItem: SharedFileItem?
@@ -512,6 +513,7 @@ struct ConversationView: View {
                                 }
                             ),
                             isAgentModelPickerPresented: $showAgentModel,
+                            voiceGestureIntent: $voiceGestureIntent,
                             conversation: conversation,
                             mentionTargets: mentionTargets,
                             isSending: isSending,
@@ -610,6 +612,19 @@ struct ConversationView: View {
                     .transition(.opacity)
                 }
             }
+            .overlay {
+                if voiceRecorder.phase == .recording, !voiceRecorder.isLocked {
+                    VoiceHoldToTalkOverlay(
+                        recorder: voiceRecorder,
+                        gestureIntent: voiceGestureIntent
+                    )
+                    .transition(.opacity)
+                }
+            }
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.16),
+                value: voiceRecorder.phase == .recording && !voiceRecorder.isLocked
+            )
             .sensoryFeedback(.selection, trigger: messageActionFeedback)
             .onChange(of: timeline.count) { oldCount, newCount in
                 visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(

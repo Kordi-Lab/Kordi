@@ -164,6 +164,7 @@ struct ComposerView: View {
     @Binding var isFocused: Bool
     @Binding var isExpressivePickerPresented: Bool
     @Binding var isAgentModelPickerPresented: Bool
+    @Binding var voiceGestureIntent: VoiceRecordingGestureIntent
     let conversation: ConversationSummary
     let mentionTargets: [ComposerMentionTarget]
     let isSending: Bool
@@ -184,10 +185,10 @@ struct ComposerView: View {
     @State private var messageEditorHeight: CGFloat = 44
     @State private var isDraftPanePresented = false
     @State private var keyboardFocusRequest = 0
-    @State private var voiceGestureIntent = VoiceRecordingGestureIntent.hold
+    @State private var isVoiceInputMode = false
     @State private var voiceGestureActive = false
     @State private var voiceGestureEnded = false
-    @Namespace private var voiceRecordingTransition
+    @State private var shortVoiceFeedback = 0
     @ScaledMetric(relativeTo: .body) private var composerControlHeight: CGFloat = 50
     @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 44
     @ScaledMetric(relativeTo: .body) private var draftPaneExpansionThreshold: CGFloat = 84
@@ -199,7 +200,8 @@ struct ComposerView: View {
         composerContainer
             .overlay(alignment: .bottomTrailing) {
                 VoiceRecordingGestureCapture(
-                    isEnabled: !canSend
+                    isEnabled: isVoiceInputMode
+                        && !canSend
                         && !isSending
                         && !isPreparingAttachments
                         && voiceRecorder.phase != .failed
@@ -209,8 +211,10 @@ struct ComposerView: View {
                     onEnded: endVoiceRecordingGesture,
                     onCancelled: cancelVoiceRecordingGesture
                 )
-                .frame(width: max(44, sendButtonDiameter), height: composerControlHeight)
-                .padding(.trailing, 10)
+                .frame(maxWidth: .infinity)
+                .frame(height: composerControlHeight)
+                .padding(.leading, composerControlHeight + 18)
+                .padding(.trailing, sendButtonDiameter + 18)
             }
             .overlay(alignment: .bottom) {
                 floatingPanelLayer
@@ -226,6 +230,7 @@ struct ComposerView: View {
             }
             .animation(.snappy(duration: 0.2), value: attachments.count)
             .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
+            .sensoryFeedback(.error, trigger: shortVoiceFeedback)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
                 rememberKeyboardSurfaceHeight(from: $0)
             }
@@ -307,7 +312,9 @@ struct ComposerView: View {
     private var inputSurfaceAssembly: some View {
         inputSurface
             .padding(.horizontal, 10)
-            .sensoryFeedback(.selection, trigger: voiceGestureIntent)
+            .sensoryFeedback(.selection, trigger: voiceGestureIntent) { _, newValue in
+                newValue != .hold
+            }
             .animation(voiceRecordingTransitionAnimation, value: voiceRecorder.isVisible)
     }
 
@@ -316,8 +323,6 @@ struct ComposerView: View {
         if voiceRecorder.isVisible {
             VoiceRecordingComposer(
                 recorder: voiceRecorder,
-                gestureIntent: voiceGestureIntent,
-                transitionNamespace: voiceRecordingTransition,
                 onCancel: voiceRecorder.cancel,
                 onSend: finishVoiceRecordingAndSend
             )
@@ -370,26 +375,53 @@ struct ComposerView: View {
         }
     }
 
+    @ViewBuilder
     private var messageFieldContent: some View {
-        messageEditor
-            .padding(.horizontal, 4)
-            .padding(.vertical, 3)
-            .animation(messageFieldAnimation) { content in
-                content.frame(height: messageFieldHeight, alignment: .bottom)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                HStack(spacing: 0) {
-                    expressivePickerButton
+        if isVoiceInputMode {
+            holdToTalkButton
+                .overlay(alignment: .bottomTrailing) {
                     sendButton
+                        .padding(.bottom, 3)
                 }
-                .padding(.bottom, 3)
-                .transaction { $0.disablesAnimations = true }
-            }
-            .overlay(alignment: .topTrailing) {
-                if showsDraftPaneButton {
-                    draftPaneButton
+        } else {
+            messageEditor
+                .padding(.horizontal, 4)
+                .padding(.vertical, 3)
+                .animation(messageFieldAnimation) { content in
+                    content.frame(height: messageFieldHeight, alignment: .bottom)
                 }
-            }
+                .overlay(alignment: .bottomTrailing) {
+                    HStack(spacing: 0) {
+                        expressivePickerButton
+                        sendButton
+                    }
+                    .padding(.bottom, 3)
+                    .transaction { $0.disablesAnimations = true }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if showsDraftPaneButton {
+                        draftPaneButton
+                    }
+                }
+        }
+    }
+
+    private var holdToTalkButton: some View {
+        Button {
+            guard UIAccessibility.isVoiceOverRunning else { return }
+            Task { await voiceRecorder.start() }
+        } label: {
+            Text("Hold to Talk")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(maxWidth: .infinity, minHeight: composerControlHeight)
+                .padding(.trailing, sendButtonDiameter + 8)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(isSending || isPreparingAttachments)
+        .accessibilityLabel("Hold to Talk")
+        .accessibilityHint("Hold to record. Recordings shorter than one second are discarded.")
     }
 
     private var messageEditor: some View {
@@ -617,37 +649,53 @@ struct ComposerView: View {
         Button {
             dismissExpressivePicker()
             dismissAgentModelPicker()
-            if canSend {
+            if isVoiceInputMode {
+                isVoiceInputMode = false
+                showKeyboard()
+            } else if canSend {
                 onSend()
             } else {
                 isFocused = false
-                Task { await voiceRecorder.start() }
+                isVoiceInputMode = true
             }
         } label: {
             ZStack {
                 Circle()
-                    .fill(canSend ? KordiTheme.signalBlue : Color(uiColor: .tertiarySystemFill))
+                    .fill(
+                        canSend && !isVoiceInputMode
+                            ? KordiTheme.signalBlue
+                            : Color(uiColor: .tertiarySystemFill)
+                    )
                 if isSending {
                     ProgressView().tint(.white).controlSize(.small)
                 } else {
-                    Image(systemName: canSend ? "arrow.up" : "mic.fill")
+                    Image(systemName: isVoiceInputMode ? "keyboard" : canSend ? "arrow.up" : "mic.fill")
                         .font(.body.weight(.bold))
-                        .foregroundStyle(canSend ? .white : KordiTheme.signalBlue)
+                        .foregroundStyle(
+                            canSend && !isVoiceInputMode
+                                ? .white
+                                : KordiTheme.signalBlue
+                        )
                 }
             }
             .frame(width: sendButtonDiameter, height: sendButtonDiameter)
             .frame(width: max(44, sendButtonDiameter), height: max(44, sendButtonDiameter))
             .contentShape(Circle())
-            .matchedGeometryEffect(id: "voice-recording-control", in: voiceRecordingTransition)
         }
         .buttonStyle(.plain)
         .disabled(isSending || isPreparingAttachments)
-        .accessibilityLabel(canSend ? "Send message" : "Record voice message")
+        .accessibilityLabel(
+            isVoiceInputMode
+                ? "Switch to text input"
+                : canSend ? "Send message" : "Switch to voice input"
+        )
         .accessibilityHint(
             memeValidationError
-                ?? (canSend
-                    ? "Sends the message"
-                    : "Hold to record, release to send, slide left to cancel, or slide up to lock")
+                ?? (isVoiceInputMode
+                    ? "Returns to the message field and opens the keyboard"
+                    : canSend
+                        ? "Sends the message"
+                        : "Replaces the message field with a Hold to Talk button")
         )
     }
 
@@ -668,18 +716,12 @@ struct ComposerView: View {
 
     private func updateVoiceRecordingGesture(_ translation: CGSize) {
         guard voiceGestureActive else { return }
-        voiceGestureIntent = Self.voiceGestureIntent(
-            horizontal: translation.width,
-            vertical: translation.height
-        )
+        voiceGestureIntent = VoiceHoldToTalkTargetLayout.intent(for: translation)
     }
 
     private func endVoiceRecordingGesture(_ translation: CGSize) {
         guard voiceGestureActive else { return }
-        voiceGestureIntent = Self.voiceGestureIntent(
-            horizontal: translation.width,
-            vertical: translation.height
-        )
+        voiceGestureIntent = VoiceHoldToTalkTargetLayout.intent(for: translation)
         voiceGestureActive = false
         voiceGestureEnded = true
         if voiceRecorder.phase == .recording || voiceRecorder.phase == .paused {
@@ -703,31 +745,48 @@ struct ComposerView: View {
         switch voiceGestureIntent {
         case .cancel:
             voiceRecorder.cancel()
-        case .lock:
-            voiceRecorder.lock()
+        case .convertToText:
+            convertVoiceRecordingToText()
         case .hold:
             finishVoiceRecordingAndSend()
         }
     }
 
     private func finishVoiceRecordingAndSend() {
-        voiceRecorder.stop(autoSend: true)
+        guard voiceRecorder.stop(autoSend: true) else {
+            rejectShortVoiceRecording()
+            return
+        }
         Task {
             guard await voiceRecorder.prepareForSend() != nil else { return }
             onSendVoice()
         }
     }
 
-    static func voiceGestureIntent(
-        horizontal: CGFloat,
-        vertical: CGFloat,
-        threshold: CGFloat = 64
-    ) -> VoiceRecordingGestureIntent {
-        if horizontal <= -threshold, abs(horizontal) >= abs(vertical) {
-            return .cancel
+    private func convertVoiceRecordingToText() {
+        guard voiceRecorder.stop() else {
+            rejectShortVoiceRecording()
+            return
         }
-        if vertical <= -threshold { return .lock }
-        return .hold
+        Task {
+            guard let transcript = await voiceRecorder.prepareTranscript() else {
+                voiceRecorder.cancel()
+                model.errorMessage = "No recognizable speech was found. Try again."
+                return
+            }
+            text = transcript
+            voiceRecorder.cancel()
+            isVoiceInputMode = false
+            showKeyboard()
+        }
+    }
+
+    private func rejectShortVoiceRecording() {
+        shortVoiceFeedback &+= 1
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: "Recording was shorter than one second and was discarded."
+        )
     }
 
     private var mentionPicker: some View {

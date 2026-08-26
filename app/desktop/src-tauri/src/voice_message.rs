@@ -21,11 +21,18 @@ pub struct NativeVoicePlaybackSample {
     playing: bool,
 }
 
+const MINIMUM_VOICE_MESSAGE_DURATION_MS: u64 = 1_000;
+const VOICE_RECORDING_TOO_SHORT_ERROR: &str = "Voice recording must be at least one second.";
+
 #[cfg(target_os = "macos")]
 mod macos;
 
 fn voice_audio_is_playable(frame_count: i64, size_bytes: u64) -> bool {
     frame_count > 0 && size_bytes >= 1_024
+}
+
+fn voice_recording_duration_is_sendable(duration_ms: u64) -> bool {
+    duration_ms >= MINIMUM_VOICE_MESSAGE_DURATION_MS
 }
 
 fn normalized_locale(locale: &str) -> &str {
@@ -219,7 +226,10 @@ pub async fn desktop_voice_stop(app: tauri::AppHandle, path: String) -> Result<(
 
 #[cfg(test)]
 mod tests {
-    use super::{normalized_locale, voice_audio_is_playable, voice_trim_range};
+    use super::{
+        normalized_locale, voice_audio_is_playable, voice_recording_duration_is_sendable,
+        voice_trim_range,
+    };
 
     #[test]
     fn voice_locale_is_trimmed_and_bounded() {
@@ -243,5 +253,11 @@ mod tests {
         assert!(voice_audio_is_playable(48_000, 8_000));
         assert!(!voice_audio_is_playable(0, 8_000));
         assert!(!voice_audio_is_playable(48_000, 557));
+    }
+
+    #[test]
+    fn voice_recording_requires_one_second() {
+        assert!(!voice_recording_duration_is_sendable(999));
+        assert!(voice_recording_duration_is_sendable(1_000));
     }
 }
