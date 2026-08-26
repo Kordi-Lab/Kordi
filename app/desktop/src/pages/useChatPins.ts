@@ -8,6 +8,8 @@ import {
 import type { Conversation, Message } from '@/kordi-app/types';
 import {
   chatMessageActionId,
+  type PinnedMessageItem,
+  type PinnedMessageScope,
   pinnedMessageCandidateIds,
   stableCloudPinMessageId,
 } from '@/pages/chatsPage.pinModel';
@@ -15,13 +17,29 @@ import {
 type PinDialog = {
   mode: 'pin' | 'unpin';
   message: Message;
+  scope?: PinnedMessageScope;
 };
+
+function pinActorLabel(
+  conversation: Conversation,
+  accountId: string | null,
+  currentAccountId?: string | null,
+) {
+  if (!accountId) return 'Someone';
+  if (accountId === currentAccountId) return 'You';
+  const participant = conversation.canonicalParticipants?.find((candidate) => (
+    [candidate.id, candidate.sourceIdentityId, candidate.humanId].includes(accountId)
+  ));
+  const label = participant?.publicName?.trim() || participant?.name?.trim();
+  return label?.toLowerCase() === 'me' ? 'You' : label || 'Someone';
+}
 
 type UseChatPinsInput = {
   conversation: Conversation;
   messages: readonly Message[];
   sessionId: string;
   isGroupSession: boolean;
+  currentAccountId?: string | null;
   cloudPin?: CloudSessionPin | null;
   onUpdateCloudPin?: (input: {
     sessionId: string;
@@ -36,11 +54,13 @@ export function useChatPins({
   messages,
   sessionId,
   isGroupSession,
+  currentAccountId,
   cloudPin,
   onUpdateCloudPin,
   onNavigateToMessage,
 }: UseChatPinsInput) {
   const [localPinIds, setLocalPinIds] = useState<Record<string, string | null>>({});
+  const [localPinActivity, setLocalPinActivity] = useState<Record<string, string>>({});
   const [optimisticCloudPins, setOptimisticCloudPins] = useState<Record<string, CloudSessionPin>>({});
   const [dialog, setDialog] = useState<PinDialog | null>(null);
   const [pinForEveryone, setPinForEveryone] = useState(false);
@@ -66,34 +86,47 @@ export function useChatPins({
         ? optimisticCloudPin
         : cloudPin ?? null
     : null;
-  const storedPinnedMessageId = usesCloudPins
-    ? activeCloudPin?.effectiveMessageId ?? null
-    : localPinIds[conversation.id] ?? null;
-  const pinnedMessage = useMemo(() => {
-    if (!storedPinnedMessageId) return null;
-    return messages.find((message) => (
-      usesCloudPins
-        ? pinnedMessageCandidateIds(message, conversation.id).includes(storedPinnedMessageId)
-        : chatMessageActionId(message) === storedPinnedMessageId
-    )) ?? null;
-  }, [conversation.id, messages, storedPinnedMessageId, usesCloudPins]);
-  const pinnedMessageId = usesCloudPins || pinnedMessage
-    ? storedPinnedMessageId
-    : null;
+  const pinnedMessages = useMemo<PinnedMessageItem[]>(() => {
+    const pins: Array<{ messageId: string | null | undefined; scope: PinnedMessageScope }> = usesCloudPins
+      ? [
+          { messageId: activeCloudPin?.privateMessageId, scope: 'private' },
+          { messageId: activeCloudPin?.sharedMessageId, scope: 'shared' },
+        ]
+      : [{ messageId: localPinIds[conversation.id], scope: 'private' }];
+    return pins.flatMap(({ messageId, scope }) => {
+      const normalizedId = messageId?.trim();
+      if (!normalizedId) return [];
+      const message = messages.find((candidate) => (
+        usesCloudPins
+          ? pinnedMessageCandidateIds(candidate, conversation.id).includes(normalizedId)
+          : chatMessageActionId(candidate) === normalizedId
+      ));
+      return message ? [{ message, scope }] : [];
+    });
+  }, [activeCloudPin, conversation.id, localPinIds, messages, usesCloudPins]);
+  const pinnedMessageIds = useMemo(
+    () => [...new Set(pinnedMessages.map(({ message }) => chatMessageActionId(message)).filter(Boolean))],
+    [pinnedMessages],
+  );
+  const pinActivityLabel = useMemo(() => {
+    const action = activeCloudPin?.lastAction;
+    if (!usesCloudPins || !action) return localPinActivity[conversation.id] ?? null;
+    const actor = action.actorLabel?.trim()
+      || pinActorLabel(conversation, action.updatedByAccountId, currentAccountId);
+    return `${actor} ${action.kind} a message`;
+  }, [activeCloudPin, conversation, currentAccountId, localPinActivity, usesCloudPins]);
 
   const requestPin = useCallback((message: Message) => {
     setPinForEveryone(false);
     setDialog({ mode: 'pin', message });
   }, []);
-  const requestUnpin = useCallback((message: Message) => {
-    setDialog({ mode: 'unpin', message });
+  const requestUnpin = useCallback((message: Message, scope?: PinnedMessageScope) => {
+    setDialog({ mode: 'unpin', message, scope });
   }, []);
-  const openPinnedMessage = useCallback(() => {
-    if (!pinnedMessageId) return;
-    onNavigateToMessage(
-      pinnedMessage ? chatMessageActionId(pinnedMessage) : pinnedMessageId,
-    );
-  }, [onNavigateToMessage, pinnedMessage, pinnedMessageId]);
+  const openPinnedMessage = useCallback((message: Message) => {
+    const messageId = chatMessageActionId(message);
+    if (messageId) onNavigateToMessage(messageId);
+  }, [onNavigateToMessage]);
 
   const confirmDialog = useCallback(() => {
     if (!dialog) return;
@@ -106,11 +139,15 @@ export function useChatPins({
 
     if (usesCloudPins && onUpdateCloudPin && sessionId) {
       const sharedMessageId = activeCloudPin?.sharedMessageId?.trim() ?? '';
+      const privateMessageId = activeCloudPin?.privateMessageId?.trim() ?? '';
       const scope = dialog.mode === 'pin'
         ? (pinForEveryone ? 'shared' : 'private')
-        : sharedMessageId && candidateIds.includes(sharedMessageId)
-          ? 'shared'
-          : 'private';
+        : dialog.scope
+          ?? (privateMessageId && candidateIds.includes(privateMessageId)
+            ? 'private'
+            : sharedMessageId && candidateIds.includes(sharedMessageId)
+              ? 'shared'
+              : 'private');
       const nextMessageId = dialog.mode === 'pin' ? messageId : null;
       const base: CloudSessionPin = activeCloudPin ?? {
         sessionId,
@@ -119,18 +156,28 @@ export function useChatPins({
         effectiveMessageId: null,
         updatedAt: null,
       };
+      const lastAction: NonNullable<CloudSessionPin['lastAction']> = {
+        kind: dialog.mode === 'pin' ? 'pinned' : 'unpinned',
+        scope,
+        messageId: nextMessageId,
+        updatedByAccountId: null,
+        actorLabel: 'You',
+        updatedAt: new Date().toISOString(),
+      };
       const optimistic: CloudSessionPin = scope === 'shared'
         ? {
             ...base,
             sharedMessageId: nextMessageId,
             effectiveMessageId: base.privateMessageId || nextMessageId,
-            updatedAt: new Date().toISOString(),
+            updatedAt: lastAction.updatedAt,
+            lastAction,
           }
         : {
             ...base,
             privateMessageId: nextMessageId,
             effectiveMessageId: nextMessageId || base.sharedMessageId,
-            updatedAt: new Date().toISOString(),
+            updatedAt: lastAction.updatedAt,
+            lastAction,
           };
       setOptimisticCloudPins((current) => ({ ...current, [sessionId]: optimistic }));
       void onUpdateCloudPin({
@@ -138,7 +185,10 @@ export function useChatPins({
         messageId: nextMessageId,
         scope,
       }).then((pin) => {
-        setOptimisticCloudPins((current) => ({ ...current, [pin.sessionId]: pin }));
+        setOptimisticCloudPins((current) => ({
+          ...current,
+          [pin.sessionId]: { ...pin, lastAction },
+        }));
       }).catch(() => {
         setOptimisticCloudPins((current) => {
           const next = { ...current };
@@ -153,6 +203,10 @@ export function useChatPins({
       ...current,
       [conversation.id]: dialog.mode === 'pin' ? messageId : null,
     }));
+    setLocalPinActivity((current) => ({
+      ...current,
+      [conversation.id]: `You ${dialog.mode === 'pin' ? 'pinned' : 'unpinned'} a message`,
+    }));
   }, [
     activeCloudPin,
     conversation.id,
@@ -164,8 +218,9 @@ export function useChatPins({
   ]);
 
   return {
-    pinnedMessageId,
-    pinnedMessage,
+    pinnedMessageIds,
+    pinnedMessages,
+    pinActivityLabel,
     requestPin,
     requestUnpin,
     openPinnedMessage,

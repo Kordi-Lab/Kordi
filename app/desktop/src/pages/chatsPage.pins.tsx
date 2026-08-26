@@ -1,6 +1,8 @@
-import { Pin, X } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronDown, Pin, X } from 'lucide-react';
 
 import type { Message } from '@/kordi-app/types';
+import type { PinnedMessageItem } from '@/pages/chatsPage.pinModel';
 
 function pinnedMessagePreview(message: Message) {
   const text =
@@ -27,53 +29,103 @@ function pinnedMessageSenderLabel(message: Message) {
 }
 
 export function PinnedMessageBar({
-  message,
+  items,
   onOpenMessage,
   onRequestUnpin,
 }: {
-  message: Message;
-  onOpenMessage?: () => void;
-  onRequestUnpin: () => void;
+  items: readonly PinnedMessageItem[];
+  onOpenMessage: (message: Message) => void;
+  onRequestUnpin: (item: PinnedMessageItem) => void;
 }) {
-  const sender = pinnedMessageSenderLabel(message);
-  const preview = pinnedMessagePreview(message);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const isCollapsible = items.length > 1;
+  const showsItems = !isCollapsible || isExpanded;
+  const heading = `${items.length} pinned ${items.length === 1 ? 'message' : 'messages'}`;
+  const header = (
+    <>
+      <Pin className="h-3.5 w-3.5" aria-hidden="true" />
+      <span className="flex-1">{heading}</span>
+      {isCollapsible ? (
+        <ChevronDown
+          className={`h-4 w-4 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        />
+      ) : null}
+    </>
+  );
   return (
     <div
       data-pinned-message-bar="true"
-      className="app-pinned-message-bar shrink-0 border-b border-[color:var(--app-divider)] px-4 py-2"
+      data-pinned-message-count={items.length}
+      data-pinned-message-expanded={showsItems}
+      className="app-pinned-message-bar shrink-0 border-b border-[color:var(--app-divider)]"
       style={{
         background:
           'color-mix(in srgb, var(--app-panel-bg) 94%, var(--app-text) 6%)',
       }}
     >
-      <div className="flex min-h-9 items-center gap-2.5">
-        <Pin
-          className="h-3.5 w-3.5 shrink-0 text-[color:var(--utility-muted-text)]"
-          aria-hidden="true"
-        />
-        <button
-          type="button"
-          onClick={onOpenMessage}
-          className="min-w-0 flex-1 text-left"
-          aria-label="Open pinned message"
-        >
-          <div className="text-[12px] font-medium leading-4 text-[color:var(--utility-muted-text)]">
-            pinged
-          </div>
-          <div className="truncate text-[13px] leading-4 text-[color:var(--app-text)]">
-            {sender ? `${sender}: ${preview}` : preview}
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={onRequestUnpin}
-          className="app-button-quiet inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full p-0"
-          aria-label="Unpin pinned message"
-          title="Unpin pinned message"
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
-      </div>
+      {items.length > 0 ? (
+        <div className="px-3 py-1.5">
+          {isCollapsible ? (
+            <button
+              type="button"
+              onClick={() => setIsExpanded((current) => !current)}
+              className="app-button-quiet flex h-8 w-full items-center gap-2 rounded-[8px] px-1 text-left text-[11px] font-semibold text-[color:var(--utility-muted-text)]"
+              aria-expanded={isExpanded}
+              aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${heading}`}
+            >
+              {header}
+            </button>
+          ) : (
+            <div className="flex h-6 items-center gap-2 px-1 text-[11px] font-semibold text-[color:var(--utility-muted-text)]">
+              {header}
+            </div>
+          )}
+          {showsItems ? <div className="divide-y divide-[color:var(--app-divider)]">
+            {items.map((item) => {
+              const sender = pinnedMessageSenderLabel(item.message);
+              const preview = pinnedMessagePreview(item.message);
+              const scopeDescription = item.scope === 'shared' ? 'for everyone' : 'only for you';
+              return (
+                <div
+                  key={`${item.scope}:${item.message.id}`}
+                  className="flex min-h-10 items-center gap-2"
+                >
+                  <button
+                    type="button"
+                    onClick={() => onOpenMessage(item.message)}
+                    className="min-w-0 flex-1 rounded-[8px] px-1 py-1 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+                    aria-label={`Open message pinned ${scopeDescription}`}
+                  >
+                    <span className="block truncate text-[13px] leading-4 text-[color:var(--app-text)]">
+                      {sender ? `${sender}: ${preview}` : preview}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRequestUnpin(item)}
+                    className="app-button-quiet inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full p-0"
+                    aria-label={`Unpin message pinned ${scopeDescription}`}
+                    title={`Unpin message pinned ${scopeDescription}`}
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                </div>
+              );
+            })}
+          </div> : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function PinActivityNotice({ label }: { label: string }) {
+  return (
+    <div className="flex justify-center px-2 py-2" data-pin-activity="true" role="status">
+      <span className="app-system-notice-text max-w-[min(100%,34rem)] truncate px-2.5 py-0.5 text-center text-[11px] leading-5 text-[color:var(--utility-muted-text)]">
+        {label}
+      </span>
     </div>
   );
 }

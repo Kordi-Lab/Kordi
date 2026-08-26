@@ -223,11 +223,26 @@ pub struct SyncResponse {
     pub server_time: DateTime<Utc>,
 }
 
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub struct CloudSessionPinSummary {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    #[serde(rename = "sharedMessageId")]
+    pub shared_message_id: Option<String>,
+    #[serde(rename = "privateMessageId")]
+    pub private_message_id: Option<String>,
+    #[serde(rename = "effectiveMessageId")]
+    pub effective_message_id: Option<String>,
+    #[serde(rename = "updatedAt")]
+    pub updated_at: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct BootstrapResponse {
     pub protocol_version: i32,
     pub conversations: Vec<ConversationSnapshot>,
     pub latest_messages: Vec<MessageSnapshot>,
+    pub session_pins: Vec<CloudSessionPinSummary>,
     pub next_cursor: String,
     pub last_stream_seq: i64,
     pub server_time: DateTime<Utc>,

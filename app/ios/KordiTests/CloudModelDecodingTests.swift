@@ -94,6 +94,8 @@ final class CloudModelDecodingTests: XCTestCase {
             to: [sessionId: initial]
         )
         XCTAssertEqual(privatePin[sessionId]?.effectiveMessageId, "msg_private")
+        XCTAssertEqual(privatePin[sessionId]?.lastAction?.kind, "pinned")
+        XCTAssertEqual(privatePin[sessionId]?.lastAction?.updatedByAccountId, "acct_alice")
 
         let sharedReplacement = AppModel.applyingSessionPinEvents(
             [sessionPinEvent(messageId: "msg_shared_new", scope: "shared", updatedAt: "2026-08-17T12:00:02Z")],
@@ -108,6 +110,7 @@ final class CloudModelDecodingTests: XCTestCase {
         )
         XCTAssertNil(privateUnpin[sessionId]?.privateMessageId)
         XCTAssertEqual(privateUnpin[sessionId]?.effectiveMessageId, "msg_shared_new")
+        XCTAssertEqual(privateUnpin[sessionId]?.lastAction?.kind, "unpinned")
 
         let duplicate = AppModel.applyingSessionPinEvents(
             [sessionPinEvent(messageId: nil, scope: "private", updatedAt: "2026-08-17T12:00:03Z")],
@@ -120,6 +123,25 @@ final class CloudModelDecodingTests: XCTestCase {
             to: duplicate
         )
         XCTAssertEqual(staleUpdate, privateUnpin)
+
+        let bootstrap = AppModel.applyingSessionPinEvents([
+            sessionPinEvent(
+                messageId: "msg_bootstrap_shared",
+                scope: "shared",
+                updatedAt: "2026-08-17T12:00:01Z",
+                eventId: "bootstrap:session-pin:\(sessionId):shared"
+            ),
+            sessionPinEvent(
+                messageId: nil,
+                scope: "private",
+                updatedAt: "2026-08-17T12:00:01Z",
+                eventId: "bootstrap:session-pin:\(sessionId):private"
+            ),
+        ], to: privateUnpin)
+        XCTAssertEqual(bootstrap[sessionId]?.sharedMessageId, "msg_bootstrap_shared")
+        XCTAssertNil(bootstrap[sessionId]?.privateMessageId)
+        XCTAssertEqual(bootstrap[sessionId]?.effectiveMessageId, "msg_bootstrap_shared")
+        XCTAssertNil(bootstrap[sessionId]?.lastAction)
     }
 
     @MainActor
@@ -135,6 +157,7 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertTrue(privatePinned)
         XCTAssertTrue(sharedPinned)
         XCTAssertEqual(model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId, privateMessage.id)
+        XCTAssertEqual(model.sessionPinsByID[conversation.sessionId]?.lastAction?.kind, "pinned")
 
         let privateUnpinned = await model.unpin(privateMessage, in: conversation)
         XCTAssertTrue(privateUnpinned)
@@ -142,15 +165,18 @@ final class CloudModelDecodingTests: XCTestCase {
         let sharedUnpinned = await model.unpin(sharedMessage, in: conversation)
         XCTAssertTrue(sharedUnpinned)
         XCTAssertNil(model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId)
+        XCTAssertEqual(model.sessionPinsByID[conversation.sessionId]?.lastAction?.kind, "unpinned")
     }
 
     private func sessionPinEvent(
         messageId: String?,
         scope: String,
-        updatedAt: String
+        updatedAt: String,
+        eventId: String? = nil,
+        updatedByAccountId: String? = "acct_alice"
     ) -> CloudSyncEvent {
         CloudSyncEvent(
-            eventId: "event:\(scope):\(updatedAt)",
+            eventId: eventId ?? "event:\(scope):\(updatedAt)",
             eventType: "session.pin.updated",
             peerAccountId: nil,
             messageId: messageId,
@@ -162,6 +188,7 @@ final class CloudModelDecodingTests: XCTestCase {
                 sessionId: "session:group",
                 scope: scope,
                 updatedAt: updatedAt,
+                updatedByAccountId: updatedByAccountId,
                 forkSessionId: nil,
                 parentSessionId: nil,
                 parentMessageId: nil,

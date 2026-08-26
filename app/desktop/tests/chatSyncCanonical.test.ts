@@ -7,7 +7,7 @@ import {
   type ChatSyncConversation,
   type ChatSyncMessage,
 } from '../src/features/cloud/authClient';
-import { applyCloudSyncEventsToSessionTitles } from '../src/features/cloud/cloudDiffSync';
+import { applyCloudSyncEventsToSessionPins, applyCloudSyncEventsToSessionTitles } from '../src/features/cloud/cloudDiffSync';
 import { cloudSyncCursorRequiresFallback } from '../src/features/cloud/cloudSyncCursorProgress';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/cloudSelfAgentCanonicalSync';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
@@ -27,6 +27,7 @@ const conversation: ChatSyncConversation = {
   ],
   preferences: { conversation_id: '019cb111-8ecc-7181-8266-8986d950169b', account_id: 'acct_b', personal_title: null, version: 1 },
 };
+const sessionId = conversation.legacy_session_id!;
 const message: ChatSyncMessage = {
   id: '019cb2c9-0a77-7d84-b81b-97042279ad3d',
   client_message_id: '019cb2c8-d133-7e52-b797-ad871be09d66',
@@ -55,6 +56,13 @@ test('bootstrap returns a durable canonical local-apply batch', async () => {
         protocol_version: 2,
         conversations: [conversation],
         latest_messages: [message],
+        session_pins: [{
+          sessionId,
+          sharedMessageId: message.id,
+          privateMessageId: null,
+          effectiveMessageId: message.id,
+          updatedAt: '2026-08-10T07:19:00Z',
+        }],
         next_cursor: 'opaque.signed.cursor',
         last_stream_seq: 44,
         server_time: '2026-08-10T07:20:00Z',
@@ -67,6 +75,23 @@ test('bootstrap returns a durable canonical local-apply batch', async () => {
   assert.equal(result.chat?.bootstrap, true);
   assert.equal(result.chat?.lastStreamSeq, 44);
   assert.equal(result.events.find((event) => event.eventType === 'message.upsert')?.messageId, message.id);
+  const pins = applyCloudSyncEventsToSessionPins({
+    [sessionId]: {
+      sessionId,
+      sharedMessageId: 'stale-shared',
+      privateMessageId: 'stale-private',
+      effectiveMessageId: 'stale-private',
+      updatedAt: '2026-08-10T07:18:00Z',
+    },
+  }, result.events);
+  assert.deepEqual(pins[sessionId], {
+    sessionId,
+    sharedMessageId: message.id,
+    privateMessageId: null,
+    effectiveMessageId: message.id,
+    updatedAt: '2026-08-10T07:19:00Z',
+    lastAction: null,
+  });
   assert.deepEqual(
     client.knownChatSessionIds('acct_b'),
     ['session:direct-person:acct_a:acct_b'],
@@ -125,6 +150,8 @@ test('ancillary snapshots reach the existing local projections through canonical
           sessionId: conversation.legacy_session_id,
           messageId: message.id,
           scope: 'shared',
+          updatedByAccountId: 'acct_a',
+          updatedAt: '2026-08-10T07:20:02Z',
         },
       }],
       next_cursor: 'opaque.pin.cursor',
@@ -137,6 +164,14 @@ test('ancillary snapshots reach the existing local projections through canonical
   assert.equal(result.events[0]?.eventType, 'session.pin.updated');
   assert.equal(result.events[0]?.payload.sessionId, conversation.legacy_session_id);
   assert.equal(result.chat?.events[0]?.type, 'session.pin.updated');
+  const pins = applyCloudSyncEventsToSessionPins({}, result.events);
+  assert.deepEqual(pins[sessionId]?.lastAction, {
+    kind: 'pinned',
+    scope: 'shared',
+    messageId: message.id,
+    updatedByAccountId: 'acct_a',
+    updatedAt: '2026-08-10T07:20:02Z',
+  });
 });
 
 test('history backfill uses conversation sequences and preserves canonical snapshots', async () => {

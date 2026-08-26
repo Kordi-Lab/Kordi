@@ -1683,7 +1683,13 @@ final class AppModel: ObservableObject {
                 messageId: message.id,
                 scope: shared ? "shared" : "private"
             )
-            sessionPinsByID[conversation.sessionId] = pin
+            sessionPinsByID[conversation.sessionId] = pin.recording(CloudSessionPinAction(
+                kind: "pinned",
+                scope: shared ? "shared" : "private",
+                messageId: message.id,
+                updatedByAccountId: account?.accountId,
+                updatedAt: pin.updatedAt
+            ))
             return true
         } catch {
             errorMessage = userFacing(error, fallback: "Could not pin this message.")
@@ -1691,9 +1697,14 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func unpin(_ message: ChatMessage, in conversation: ConversationSummary) async -> Bool {
+    func unpin(
+        _ message: ChatMessage,
+        in conversation: ConversationSummary,
+        scope requestedScope: String? = nil
+    ) async -> Bool {
         let current = sessionPinsByID[conversation.sessionId]
-        let scope = current?.privateMessageId == message.id ? "private" : "shared"
+        let scope = requestedScope
+            ?? (current?.privateMessageId == message.id ? "private" : "shared")
         if previewMode {
             updatePreviewPin(messageId: nil, sessionId: conversation.sessionId, scope: scope)
             return true
@@ -1706,7 +1717,13 @@ final class AppModel: ObservableObject {
                 messageId: nil,
                 scope: scope
             )
-            sessionPinsByID[conversation.sessionId] = pin
+            sessionPinsByID[conversation.sessionId] = pin.recording(CloudSessionPinAction(
+                kind: "unpinned",
+                scope: scope,
+                messageId: nil,
+                updatedByAccountId: account?.accountId,
+                updatedAt: pin.updatedAt
+            ))
             return true
         } catch {
             errorMessage = userFacing(error, fallback: "Could not unpin this message.")
@@ -1797,7 +1814,14 @@ final class AppModel: ObservableObject {
             sharedMessageId: sharedMessageId,
             privateMessageId: privateMessageId,
             effectiveMessageId: privateMessageId ?? sharedMessageId,
-            updatedAt: Date().ISO8601Format()
+            updatedAt: Date().ISO8601Format(),
+            lastAction: CloudSessionPinAction(
+                kind: messageId == nil ? "unpinned" : "pinned",
+                scope: scope,
+                messageId: messageId,
+                updatedByAccountId: account?.accountId,
+                updatedAt: Date().ISO8601Format()
+            )
         )
     }
 
@@ -4152,8 +4176,6 @@ final class AppModel: ObservableObject {
                     cloudSyncLastStreamSequence = response.lastStreamSequence
                     if response.hasMore { continue }
 
-                    cloudSyncCursor = nextCursor
-                    cloudSyncHasCurrentSequence = true
                     if !pendingEvents.isEmpty {
                         let hasProviderAuthenticationChanges = pendingEvents.contains {
                             $0.eventType == "provider-auth.updated"
@@ -4175,6 +4197,8 @@ final class AppModel: ObservableObject {
                         await refreshLoadedConversationProjections()
                         pendingEvents.removeAll(keepingCapacity: true)
                     }
+                    cloudSyncCursor = nextCursor
+                    cloudSyncHasCurrentSequence = true
                     hasHydratedWireSnapshot = true
                     if isForkLineageReplay { hasHydratedForkLineage = true }
                     if messageSyncState != .upToDate { messageSyncState = .upToDate }
@@ -4910,7 +4934,8 @@ final class AppModel: ObservableObject {
                   let scope = payload.scope?.nonEmpty?.lowercased(),
                   scope == "private" || scope == "shared" else { continue }
             let updatedAt = payload.updatedAt?.nonEmpty ?? event.occurredAt.nonEmpty
-            if let currentUpdatedAt = pins[sessionId]?.updatedAt?.nonEmpty,
+            if !event.eventId.hasPrefix("bootstrap:session-pin:"),
+               let currentUpdatedAt = pins[sessionId]?.updatedAt?.nonEmpty,
                let updatedAt,
                updatedAt <= currentUpdatedAt {
                 continue
@@ -4919,12 +4944,20 @@ final class AppModel: ObservableObject {
             let messageId = payload.messageId?.nonEmpty
             let sharedMessageId = scope == "shared" ? messageId : currentPin?.sharedMessageId
             let privateMessageId = scope == "private" ? messageId : currentPin?.privateMessageId
+            let isBootstrap = event.eventId.hasPrefix("bootstrap:session-pin:")
             pins[sessionId] = CloudSessionPin(
                 sessionId: sessionId,
                 sharedMessageId: sharedMessageId,
                 privateMessageId: privateMessageId,
                 effectiveMessageId: privateMessageId ?? sharedMessageId,
-                updatedAt: updatedAt
+                updatedAt: updatedAt,
+                lastAction: isBootstrap ? nil : CloudSessionPinAction(
+                    kind: messageId == nil ? "unpinned" : "pinned",
+                    scope: scope,
+                    messageId: messageId,
+                    updatedByAccountId: payload.updatedByAccountId?.nonEmpty,
+                    updatedAt: updatedAt
+                )
             )
         }
         return pins

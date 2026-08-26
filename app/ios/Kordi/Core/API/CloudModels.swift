@@ -207,12 +207,32 @@ struct CloudDeviceMutationResponse: Codable, Hashable {
     let affectedDeviceIds: [String]
 }
 
+struct CloudSessionPinAction: Codable, Hashable {
+    let kind: String
+    let scope: String
+    let messageId: String?
+    let updatedByAccountId: String?
+    let updatedAt: String?
+}
+
 struct CloudSessionPin: Codable, Hashable {
     let sessionId: String
     let sharedMessageId: String?
     let privateMessageId: String?
     let effectiveMessageId: String?
     let updatedAt: String?
+    var lastAction: CloudSessionPinAction? = nil
+
+    func recording(_ action: CloudSessionPinAction?) -> Self {
+        Self(
+            sessionId: sessionId,
+            sharedMessageId: sharedMessageId,
+            privateMessageId: privateMessageId,
+            effectiveMessageId: effectiveMessageId,
+            updatedAt: updatedAt,
+            lastAction: action
+        )
+    }
 }
 
 struct CloudAuthResponse: Codable, Hashable {
@@ -1033,11 +1053,12 @@ struct CloudChatEventPayload: Codable, Hashable {
     let messageId: String?
     let scope: String?
     let updatedAt: String?
+    let updatedByAccountId: String?
     let deviceId: String?
 
     enum CodingKeys: String, CodingKey {
         case conversation, message, preferences, cursor, call
-        case sessionId, messageId, scope, updatedAt
+        case sessionId, messageId, scope, updatedAt, updatedByAccountId
         case deviceId = "deviceId"
     }
 }
@@ -1238,6 +1259,7 @@ struct CloudChatBootstrapResponse: Codable, Hashable {
     let protocolVersion: Int
     let conversations: [CloudChatConversation]
     let latestMessages: [CloudChatMessage]
+    let sessionPins: [CloudSessionPin]?
     let nextCursor: String
     let lastStreamSequence: Int64
     let serverTime: String
@@ -1246,6 +1268,7 @@ struct CloudChatBootstrapResponse: Codable, Hashable {
         case protocolVersion = "protocol_version"
         case conversations
         case latestMessages = "latest_messages"
+        case sessionPins = "session_pins"
         case nextCursor = "next_cursor"
         case lastStreamSequence = "last_stream_seq"
         case serverTime = "server_time"
@@ -1302,6 +1325,7 @@ struct CloudSyncEventPayload: Codable, Hashable {
     let sessionId: String?
     let scope: String?
     let updatedAt: String?
+    var updatedByAccountId: String? = nil
     let forkSessionId: String?
     let parentSessionId: String?
     let parentMessageId: String?

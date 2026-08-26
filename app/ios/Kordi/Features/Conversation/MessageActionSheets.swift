@@ -263,42 +263,95 @@ struct ConversationSelectionBar: View {
     }
 }
 
-struct PinnedMessageBar: View {
+struct PinnedMessageItem: Identifiable, Equatable {
     let message: ChatMessage
-    let onOpen: () -> Void
-    let onUnpin: () -> Void
+    let scope: String
+
+    var id: String { "\(scope):\(message.id)" }
+    var scopeDescription: String { scope == "shared" ? "for everyone" : "only for you" }
+}
+
+struct PinnedMessageBar: View {
+    let items: [PinnedMessageItem]
+    let onOpen: (PinnedMessageItem) -> Void
+    let onUnpin: (PinnedMessageItem) -> Void
+    @State private var isExpanded = false
+
+    private var isCollapsible: Bool { items.count > 1 }
+    private var showsItems: Bool { !isCollapsible || isExpanded }
+    private var heading: String {
+        "\(items.count) pinned \(items.count == 1 ? "message" : "messages")"
+    }
+
+    private var header: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "pin.fill")
+                .font(.caption2.weight(.semibold))
+            Text(heading)
+                .font(.caption2.weight(.semibold))
+            Spacer(minLength: 0)
+            if isCollapsible {
+                Image(systemName: "chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+        }
+        .foregroundStyle(KordiTheme.signalBlue)
+        .padding(.horizontal, 14)
+        .frame(minHeight: isCollapsible ? 44 : 28)
+        .contentShape(Rectangle())
+    }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Button(action: onOpen) {
-                HStack(spacing: 9) {
-                    Image(systemName: "pin.fill")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(KordiTheme.signalBlue)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Pinned message")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(KordiTheme.signalBlue)
-                        Text(message.text.nonEmpty ?? "Attachment")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+        VStack(spacing: 0) {
+            if !items.isEmpty {
+                if isCollapsible {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            isExpanded.toggle()
+                        }
+                    } label: {
+                        header
                     }
-                    Spacer(minLength: 0)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(isExpanded ? "Collapse" : "Expand") \(heading)")
+                    .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+                } else {
+                    header
                 }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
 
-            Button(action: onUnpin) {
-                Image(systemName: "xmark")
-                    .font(.caption.weight(.semibold))
-                    .frame(width: 44, height: 44)
+                if showsItems {
+                    ForEach(items) { item in
+                        HStack(spacing: 8) {
+                            Button { onOpen(item) } label: {
+                                HStack(spacing: 8) {
+                                    Text(item.message.text.nonEmpty ?? "Attachment")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 0)
+                                }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Open message pinned \(item.scopeDescription)")
+
+                            Button { onUnpin(item) } label: {
+                                Image(systemName: "xmark")
+                                    .font(.caption.weight(.semibold))
+                                    .frame(width: 44, height: 44)
+                            }
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Unpin message pinned \(item.scopeDescription)")
+                        }
+                        .padding(.leading, 14)
+                        .overlay(alignment: .bottom) {
+                            if item.id != items.last?.id { Divider().padding(.leading, 14) }
+                        }
+                    }
+                }
             }
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("Unpin message")
         }
-        .padding(.leading, 14)
         .background(.bar)
         .overlay(alignment: .bottom) { Divider() }
     }

@@ -3,11 +3,11 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { PinMessageDialog, PinnedMessageBar } from '../src/pages/ChatsPage';
+import { PinActivityNotice, PinMessageDialog, PinnedMessageBar } from '../src/pages/ChatsPage';
 import { MessageBubble, MessageContextMenuContent, messageContextMenuPosition } from '../src/kordi-app/components/transcript';
 import type { Message } from '../src/kordi-app/types';
 
-test('pinned message bar renders sender preview and unpin affordance', () => {
+test('multi-pin shelf is folded by default and single pins keep their controls visible', () => {
   const message: Message = {
     id: 'msg:pinned-bar',
     role: 'person',
@@ -16,16 +16,42 @@ test('pinned message bar renders sender preview and unpin affordance', () => {
     text: 'Pinned message body',
     time: '10:42',
   };
-  const markup = renderToStaticMarkup(createElement(PinnedMessageBar, {
-    message,
+  const multiMarkup = renderToStaticMarkup(createElement(PinnedMessageBar, {
+    items: [
+      { message, scope: 'private' },
+      { message: { ...message, id: 'msg:shared', text: 'Shared pinned body' }, scope: 'shared' },
+    ],
     onOpenMessage: () => undefined,
     onRequestUnpin: () => undefined,
   }));
 
-  assert.match(markup, /data-pinned-message-bar="true"/);
-  assert.match(markup, /Pinned message/);
-  assert.match(markup, /Alice: Pinned message body/);
-  assert.match(markup, /aria-label="Unpin pinned message"/);
+  assert.match(multiMarkup, /data-pinned-message-bar="true"/);
+  assert.match(multiMarkup, /data-pinned-message-count="2"/);
+  assert.match(multiMarkup, /data-pinned-message-expanded="false"/);
+  assert.match(multiMarkup, /aria-expanded="false"/);
+  assert.match(multiMarkup, /2 pinned messages/);
+  assert.doesNotMatch(multiMarkup, /Only you|Everyone|Pinned message body|Shared pinned body/);
+
+  const singleMarkup = renderToStaticMarkup(createElement(PinnedMessageBar, {
+    items: [{ message, scope: 'private' }],
+    onOpenMessage: () => undefined,
+    onRequestUnpin: () => undefined,
+  }));
+  assert.match(singleMarkup, /data-pinned-message-expanded="true"/);
+  assert.doesNotMatch(singleMarkup, />Only you<|>Everyone</);
+  assert.match(singleMarkup, /Alice: Pinned message body/);
+  assert.match(singleMarkup, /aria-label="Unpin message pinned only for you"/);
+});
+
+test('pin activity uses the transcript system-notice treatment', () => {
+  const markup = renderToStaticMarkup(createElement(PinActivityNotice, {
+    label: 'Alice unpinned a message',
+  }));
+
+  assert.match(markup, /data-pin-activity="true"/);
+  assert.match(markup, /role="status"/);
+  assert.match(markup, /app-system-notice-text/);
+  assert.match(markup, /Alice unpinned a message/);
 });
 
 test('pin and unpin confirmation dialogs use compact clear copy', () => {

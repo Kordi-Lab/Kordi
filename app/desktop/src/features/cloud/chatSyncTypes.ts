@@ -79,6 +79,13 @@ export type ChatSyncBootstrapResponse = {
   protocol_version: 2;
   conversations: ChatSyncConversation[];
   latest_messages: ChatSyncMessage[];
+  session_pins?: Array<{
+    sessionId: string;
+    sharedMessageId: string | null;
+    privateMessageId: string | null;
+    effectiveMessageId: string | null;
+    updatedAt: string | null;
+  }>;
   next_cursor: string;
   last_stream_seq: number;
   server_time: string;

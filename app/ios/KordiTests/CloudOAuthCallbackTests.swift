@@ -96,6 +96,21 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         XCTAssertTrue(messages.isEmpty)
     }
 
+    func testReliableChatBootstrapProjectsSessionPins() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ChatBootstrapURLProtocol.self]
+        let client = CloudAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:17081")!,
+            session: URLSession(configuration: configuration)
+        )
+
+        let response = try await client.sync(token: "oauth-session", cursor: "0")
+        let pinEvents = response.events.filter { $0.eventType == "session.pin.updated" }
+
+        XCTAssertEqual(pinEvents.map(\.payload?.scope), ["shared", "private"])
+        XCTAssertEqual(pinEvents.map(\.payload?.messageId), ["message-shared", nil])
+    }
+
     func testConversationHistoryPageUsesOneBoundedCursorRequest() async throws {
         HistoryPageURLProtocol.historyRequest = nil
         let configuration = URLSessionConfiguration.ephemeral
@@ -183,6 +198,7 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         XCTAssertEqual(event.payload?.messageId, "message-1")
         XCTAssertEqual(event.payload?.scope, "shared")
         XCTAssertEqual(event.payload?.updatedAt, "2026-08-17T12:00:01Z")
+        XCTAssertEqual(event.payload?.updatedByAccountId, "acct_alice")
     }
 
     func testSessionPinPathEncodesTheSessionExactlyOnce() async throws {
@@ -354,7 +370,7 @@ private final class ChatBootstrapURLProtocol: URLProtocol {
 
     override func startLoading() {
         let payload = Data(
-            #"{"protocol_version":2,"conversations":[],"latest_messages":[],"next_cursor":"0","last_stream_seq":0,"server_time":"2026-08-15T00:00:00Z"}"#.utf8
+            #"{"protocol_version":2,"conversations":[],"latest_messages":[],"session_pins":[{"sessionId":"session:group","sharedMessageId":"message-shared","privateMessageId":null,"effectiveMessageId":"message-shared","updatedAt":"2026-08-15T00:00:00Z"}],"next_cursor":"0","last_stream_seq":0,"server_time":"2026-08-15T00:00:00Z"}"#.utf8
         )
         let response = HTTPURLResponse(
             url: request.url!,
@@ -469,7 +485,7 @@ private final class SessionPinSyncURLProtocol: URLProtocol {
 
     override func startLoading() {
         let payload = Data(
-            #"{"protocol_version":2,"events":[{"stream_seq":44,"event_id":"event_session_pin","protocol_version":2,"type":"session.pin.updated","critical":true,"conversation_id":"conversation-group","entity_id":null,"entity_version":null,"occurred_at":"2026-08-17T12:00:01Z","payload":{"sessionId":"session:group","messageId":"message-1","scope":"shared","updatedAt":"2026-08-17T12:00:01Z"}}],"next_cursor":"44","last_stream_seq":44,"has_more":false,"server_time":"2026-08-17T12:00:01Z"}"#.utf8
+            #"{"protocol_version":2,"events":[{"stream_seq":44,"event_id":"event_session_pin","protocol_version":2,"type":"session.pin.updated","critical":true,"conversation_id":"conversation-group","entity_id":null,"entity_version":null,"occurred_at":"2026-08-17T12:00:01Z","payload":{"sessionId":"session:group","messageId":"message-1","scope":"shared","updatedByAccountId":"acct_alice","updatedAt":"2026-08-17T12:00:01Z"}}],"next_cursor":"44","last_stream_seq":44,"has_more":false,"server_time":"2026-08-17T12:00:01Z"}"#.utf8
         )
         let response = HTTPURLResponse(
             url: request.url!,

@@ -1,6 +1,13 @@
 import { collaborationMessageSourceId } from '@/features/collaboration/legacyBridgeCompatibility';
 import type { Message } from '@/kordi-app/types';
 
+export type PinnedMessageScope = 'private' | 'shared';
+
+export type PinnedMessageItem = {
+  message: Message;
+  scope: PinnedMessageScope;
+};
+
 export function chatMessageActionId(message: Message) {
   return (
     message.id?.trim()

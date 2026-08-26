@@ -234,14 +234,13 @@ export function ChatMainWorkspace({
               />
             ) : null}
 
-            {models.pins.pinnedMessage ? (
+            {models.pins.pinnedMessages.length > 0 ? (
               <PinnedMessageBar
-                message={models.pins.pinnedMessage}
+                key={activeConv.id}
+                items={models.pins.pinnedMessages}
                 onOpenMessage={models.pins.openPinnedMessage}
-                onRequestUnpin={() => {
-                  if (models.pins.pinnedMessage) {
-                    models.pins.requestUnpin(models.pins.pinnedMessage);
-                  }
+                onRequestUnpin={({ message, scope }) => {
+                  models.pins.requestUnpin(message, scope);
                 }}
               />
             ) : null}
@@ -267,7 +266,8 @@ export function ChatMainWorkspace({
                 activeForkSourceSessionId: models.fork.sourceSessionId,
                 activeForkSourceTitle: models.fork.sourceTitle,
                 messageForksByEntryId: models.fork.forksByEntryId,
-                pinnedMessageId: models.pins.pinnedMessageId,
+                pinnedMessageIds: models.pins.pinnedMessageIds,
+                pinActivityLabel: models.pins.pinActivityLabel,
                 relatedAgentSessionStatusById: presentation.relatedAgentSessionStatusById,
               }}
               actions={{

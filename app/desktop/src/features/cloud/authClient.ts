@@ -256,6 +256,14 @@ export type CloudSessionPin = {
   privateMessageId: string | null;
   effectiveMessageId: string | null;
   updatedAt: string | null;
+  lastAction?: {
+    kind: 'pinned' | 'unpinned';
+    scope: 'private' | 'shared';
+    messageId: string | null;
+    updatedByAccountId: string | null;
+    actorLabel?: string | null;
+    updatedAt: string | null;
+  } | null;
 };
 
 export type CloudSessionTitle = {

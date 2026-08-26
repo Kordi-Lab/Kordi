@@ -159,8 +159,17 @@ struct ConversationView: View {
             selfAccountId: model.account?.accountId,
             participants: conversation.groupParticipants
         )
-        let pinnedMessage = model.sessionPinsByID[conversation.sessionId]?.effectiveMessageId
-            .flatMap { messagesById[$0] }
+        let sessionPin = model.sessionPinsByID[conversation.sessionId]
+        let pinnedMessages = [
+            (sessionPin?.privateMessageId, "private"),
+            (sessionPin?.sharedMessageId, "shared"),
+        ].compactMap { entry -> PinnedMessageItem? in
+            let (messageID, scope) = entry
+            guard let messageID, let message = messagesById[messageID] else { return nil }
+            return PinnedMessageItem(message: message, scope: scope)
+        }
+        let pinnedMessageIDs = Set(pinnedMessages.map(\.message.id))
+        let pinActivityText = sessionPin.flatMap { pinActivityText(for: $0) }
         let activeConversationCall = model.activeCall(for: conversation)
         let coordinatorOwnsConversationCall = callCoordinator.activeCall?.call.id
             == activeConversationCall?.id
@@ -194,14 +203,20 @@ struct ConversationView: View {
                         onJoin: { joinCall(activeCall) }
                     )
                 }
-                if let pinnedMessage {
+                if !pinnedMessages.isEmpty {
                     PinnedMessageBar(
-                        message: pinnedMessage,
-                        onOpen: {
-                            navigateToMessage(pinnedMessage.id, in: timeline, proxy: proxy)
+                        items: pinnedMessages,
+                        onOpen: { item in
+                            navigateToMessage(item.message.id, in: timeline, proxy: proxy)
                         },
-                        onUnpin: {
-                            Task { _ = await model.unpin(pinnedMessage, in: conversation) }
+                        onUnpin: { item in
+                            Task {
+                                _ = await model.unpin(
+                                    item.message,
+                                    in: conversation,
+                                    scope: item.scope
+                                )
+                            }
                         }
                     )
                 }
@@ -265,7 +280,7 @@ struct ConversationView: View {
                                                         replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
                                                         isHighlighted: highlightedMessageID == message.id,
                                                         isActionPresented: messageActionMessage?.id == message.id,
-                                                        isPinned: pinnedMessage?.id == message.id,
+                                                        isPinned: pinnedMessageIDs.contains(message.id),
                                                         selectionMode: !selectedMessageIDs.isEmpty,
                                                         isSelected: selectedMessageIDs.contains(message.id),
                                                         allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
@@ -371,6 +386,12 @@ struct ConversationView: View {
                                             .id(row.id)
                                         }
                                         }
+                                    }
+
+                                    if let pinActivityText {
+                                        SystemNoticeRow(text: pinActivityText)
+                                            .padding(.vertical, 8)
+                                            .id("pin-activity:\(sessionPin?.lastAction?.updatedAt ?? pinActivityText)")
                                     }
 
                                     Color.clear
@@ -565,7 +586,7 @@ struct ConversationView: View {
                             for: messageActionMessage,
                             isPreviewMode: model.isPreviewMode
                         ),
-                        isPinned: pinnedMessage?.id == messageActionMessage.id,
+                        isPinned: pinnedMessageIDs.contains(messageActionMessage.id),
                         onDismiss: dismissMessageActions,
                         onReact: { reaction in
                             dismissMessageActions()
@@ -584,7 +605,7 @@ struct ConversationView: View {
                             dismissMessageActions()
                         },
                         onPin: {
-                            if pinnedMessage?.id == messageActionMessage.id {
+                            if pinnedMessageIDs.contains(messageActionMessage.id) {
                                 Task { _ = await model.unpin(messageActionMessage, in: conversation) }
                             } else {
                                 pinTarget = messageActionMessage
@@ -997,6 +1018,26 @@ struct ConversationView: View {
     private func pinMessage(_ target: ChatMessage, shared: Bool) {
         pinTarget = nil
         Task { _ = await model.pin(target, in: conversation, shared: shared) }
+    }
+
+    private func pinActivityText(for pin: CloudSessionPin) -> String? {
+        guard let action = pin.lastAction else { return nil }
+        let actor: String
+        if action.updatedByAccountId == model.account?.accountId {
+            actor = "You"
+        } else if let accountID = action.updatedByAccountId,
+                  let participant = conversation.groupParticipants.first(where: {
+                      $0.accountId == accountID
+                  }) {
+            actor = participant.displayName
+        } else if action.updatedByAccountId == conversation.peerAccountId {
+            actor = conversation.displayName
+        } else if action.scope == "private" {
+            actor = "You"
+        } else {
+            actor = "Someone"
+        }
+        return "\(actor) \(action.kind) a message"
     }
 
     private func readReceiptParticipants(for message: ChatMessage) -> [CloudGroupParticipant] {
