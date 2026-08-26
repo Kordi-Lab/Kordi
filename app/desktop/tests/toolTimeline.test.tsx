@@ -108,18 +108,20 @@ test('summarizes foldable timeline state without raw tool activity wording', () 
   );
   assert.equal(
     toolTimelineSummary({ tools: [{ name: 'grep', status: 'failed', arguments: '{}', isError: true }], active: false, completed: true }),
-    '1 tool failed',
+    'Used 1 tool · completed',
   );
 });
 
-test('failed tool timeline copy says what happened instead of asking for attention', () => {
+test('failed tools remain diagnostic details without becoming the turn status', () => {
   const failedTools = [
     { name: 'grep', status: 'failed', arguments: '{}', isError: true },
     { name: 'task_operator', status: 'error', arguments: '{}' },
   ];
 
-  assert.equal(toolTimelineSummary({ tools: failedTools, active: false, completed: true }), '2 tools failed');
-  assert.equal(toolTimelineFoldedLabel({ tools: failedTools, active: false, completed: true }), '2 tools failed');
+  assert.equal(toolTimelineSummary({ tools: failedTools, active: false, completed: true }), 'Used 2 tools · completed');
+  assert.equal(toolTimelineFoldedLabel({ tools: failedTools, active: false, completed: true }), 'Used 2 tools · completed');
+  assert.equal(toolTimelineSummary({ tools: failedTools, active: true, completed: false }), 'Thinking and tool use · running…');
+  assert.equal(toolTimelineFoldedLabel({ tools: failedTools, active: true, completed: false }), 'Thinking');
 });
 
 test('running tool timeline styling uses muted amber tokens without glow', () => {

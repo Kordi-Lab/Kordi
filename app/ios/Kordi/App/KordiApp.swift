@@ -196,6 +196,7 @@ private struct RootView: View {
         } else if ProcessInfo.processInfo.arguments.contains("--preview-authentication-detail") {
             AccountAuthenticationDetailPreview(providerID: "openai")
         } else if (ProcessInfo.processInfo.arguments.contains("--preview-markdown")
+            || ProcessInfo.processInfo.arguments.contains("--preview-tool-failure")
             || ProcessInfo.processInfo.arguments.contains("--preview-agent-model")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-model")
             || ProcessInfo.processInfo.arguments.contains("--preview-contact-chat")

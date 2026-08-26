@@ -68,11 +68,74 @@ pub(super) async fn turn_snapshot_by_id(
     manager: &DesktopChatManager,
     turn_id: &str,
 ) -> Result<DesktopChatTurnSnapshot, String> {
-    let turns = manager.turns.lock().await;
-    let turn = turns
+    let turn = manager
+        .turns
+        .lock()
+        .await
         .get(turn_id)
+        .cloned()
         .ok_or_else(|| format!("Unknown chat turn: {turn_id}"))?;
+    let current = snapshot_turn(&turn.snapshot)?;
+    if current.completed
+        || (current.status != "cancelling" && !current.tools.iter().any(|tool| tool.is_error))
+    {
+        return Ok(current);
+    }
+
+    let session = manager
+        .sessions
+        .lock()
+        .await
+        .get(&current.session_id)
+        .cloned();
+    if let Some(session) = session {
+        if let Ok(detail) = session.lock().await.detail() {
+            update_turn(&turn.snapshot, |state| {
+                reconcile_persisted_cancelled_turn(state, &detail.messages);
+            });
+        }
+    }
     snapshot_turn(&turn.snapshot)
+}
+
+fn reconcile_persisted_cancelled_turn(
+    turn: &mut DesktopChatTurnSnapshot,
+    messages: &[kordi_cli::desktop_runtime::DesktopChatMessage],
+) -> bool {
+    if turn.completed {
+        return false;
+    }
+    let Some(message) = messages
+        .iter()
+        .rev()
+        .take_while(|message| !message.role.eq_ignore_ascii_case("user"))
+        .find(|message| {
+            message.role.eq_ignore_ascii_case("assistant")
+                && message.cancelled
+                && message.timestamp_ms >= turn.started_at_ms
+        })
+    else {
+        return false;
+    };
+
+    turn.status = "cancelled".to_string();
+    turn.message = "Response stopped".to_string();
+    if message.text.len() >= turn.assistant_text.len() {
+        turn.assistant_text = message.text.clone();
+    }
+    if let Some(thinking_text) = message
+        .thinking_text
+        .as_ref()
+        .filter(|text| text.len() >= turn.thinking_text.len())
+    {
+        turn.thinking_text = thinking_text.clone();
+    }
+    turn.completed = true;
+    turn.succeeded = false;
+    turn.completed_at_ms = Some(message.timestamp_ms);
+    turn.transcript_entry_id = message.entry_id.clone();
+    turn.error = None;
+    true
 }
 
 pub(super) async fn active_turn_snapshots(
@@ -368,3 +431,6 @@ fn tool_detail(details: &Option<serde_json::Value>) -> Option<String> {
     }
     (!parts.is_empty()).then(|| parts.join(" • "))
 }
+
+#[cfg(test)]
+mod tests;

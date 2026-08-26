@@ -924,14 +924,6 @@ private struct AgentExecutionTimeline: View {
                         )
                     }
 
-                    if presentation.failedToolCount > 0 {
-                        Label(
-                            "\(presentation.failedToolCount) \(presentation.failedToolCount == 1 ? "tool failed" : "tools failed")",
-                            systemImage: "exclamationmark.circle"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                    }
                 }
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }

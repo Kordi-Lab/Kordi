@@ -260,16 +260,8 @@ export function formatRunningElapsed(elapsedMs: number) {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 }
 
-export function toolTimelineFailureLabel(failedCount: number) {
-  return `${failedCount} ${failedCount === 1 ? 'tool' : 'tools'} failed`;
-}
-
-export function toolTimelineSummary({ tools, active, completed, thinkingText }: ToolTimelineSummaryInput) {
-  const failedCount = tools.filter(timelineToolFailed).length;
-  const runningCount = tools.filter((tool) => !timelineToolDone(tool) && !timelineToolFailed(tool)).length;
-
-  if (runningCount > 0 || (failedCount === 0 && (active || !completed))) return 'Thinking and tool use · running…';
-  if (failedCount > 0) return toolTimelineFailureLabel(failedCount);
+export function toolTimelineSummary({ tools, completed, thinkingText }: ToolTimelineSummaryInput) {
+  if (!completed) return 'Thinking and tool use · running…';
   if (tools.length > 0) return `Used ${tools.length} ${tools.length === 1 ? 'tool' : 'tools'} · completed`;
   if (thinkingText?.trim()) return 'Reasoning trace';
   return 'Assistant activity';
@@ -342,15 +334,12 @@ export function toolTimelineRunningPreviewLabel(tool: ToolTimelineInput, running
 }
 
 export function toolTimelineFoldedLabel({ tools, active, completed, thinkingText, runningElapsed }: ToolTimelineFoldedLabelInput) {
-  const failedCount = tools.filter(timelineToolFailed).length;
   const phrase = thinkingPhrase(thinkingText ?? '');
-  const runningTool = tools.find((tool) => !timelineToolDone(tool) && !timelineToolFailed(tool));
+  const runningTool = completed ? undefined : tools.find((tool) => !timelineToolDone(tool) && !timelineToolFailed(tool));
 
   if (runningTool) return toolTimelineRunningPreviewLabel(runningTool, runningElapsed);
 
-  if (failedCount > 0) return toolTimelineFailureLabel(failedCount);
-
-  if (active) {
+  if (active && !completed) {
     if (phrase) return `Thinking about ${lowerCaseFirstLetter(phrase)}`;
     return 'Thinking';
   }

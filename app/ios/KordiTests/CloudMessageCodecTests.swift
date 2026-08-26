@@ -282,7 +282,7 @@ final class CloudMessageCodecTests: XCTestCase {
 
         XCTAssertEqual(presentation.planningStep?.label, "Analyzing the request")
         XCTAssertEqual(presentation.toolSteps.count, 2)
-        XCTAssertEqual(presentation.failedToolCount, 1)
+        XCTAssertEqual(presentation.toolSteps.filter { $0.state == .failed }.count, 1)
         XCTAssertEqual(presentation.responseStep?.label, "Writing the response")
         XCTAssertEqual(presentation.completionLabel, "Worked for 5s")
     }

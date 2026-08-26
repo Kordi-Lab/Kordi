@@ -133,6 +133,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-group-management` | Group-management sheet |
 | `--preview-group-invite` | Group-management sheet opened to invitations |
 | `--preview-markdown` | Markdown-rich message transcript |
+| `--preview-tool-failure` | Completed My Kordi turn with one diagnostic tool failure |
 | `--preview-forward-message` | Forward-message destination picker |
 | `--preview-message-details` | Message delivery/read details |
 | `--preview-session-detail` | Info, Artifacts, and Tasks session sheet |

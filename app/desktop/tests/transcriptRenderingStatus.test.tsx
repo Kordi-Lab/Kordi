@@ -172,6 +172,52 @@ test('completed activity summary renders before the final assistant result', () 
   assert.match(timelineStyles, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.app-transcript-timeline-reveal/);
 });
 
+test('failed tool details never replace live or completed turn utility', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-failed-tool-complete',
+    sessionId: 'session-1',
+    prompt: 'check',
+    status: 'succeeded',
+    message: 'Response complete',
+    assistantText: 'Finished with a fallback.',
+    thinkingText: '',
+    tools: [{
+      id: 'tool-1',
+      name: 'read',
+      status: 'error',
+      arguments: '{}',
+      liveOutput: '',
+      resultText: 'unavailable',
+      detail: null,
+      isError: true,
+    }],
+    completed: true,
+    succeeded: true,
+    startedAtMs: 1_725_000_000_000,
+    completedAtMs: 1_725_000_010_000,
+  };
+
+  const markup = renderToStaticMarkup(createElement(LiveChatTurnCard, { turn, historical: true }));
+
+  assert.match(markup, /Worked for 10s/);
+  assert.doesNotMatch(markup, /tool failed|circle-alert/);
+
+  const activeMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn: {
+      ...turn,
+      status: 'tooling',
+      message: 'Working…',
+      assistantText: '',
+      completed: false,
+      succeeded: false,
+      completedAtMs: undefined,
+    },
+  }));
+
+  assert.match(activeMarkup, />Thinking</);
+  assert.doesNotMatch(activeMarkup, /tool failed|circle-alert/);
+});
+
 test('no-provider failed agent turn renders red inline text with authentication action', () => {
   const turn: DesktopChatTurnSnapshot = {
     id: 'turn-no-provider',
