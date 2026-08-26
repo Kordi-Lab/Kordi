@@ -50,6 +50,8 @@ import {
 } from './readModel/runtimeMessageMatching';
 import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
 
+const EMPTY_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map();
+
 export function mergeCanonicalHistoryIntoRuntime(
   canonicalMessages: Message[],
   runtimeMessages: Message[],
@@ -451,12 +453,15 @@ export function createCanonicalSessionReadModel(
   options: {
     summaries?: CanonicalSessionSummary[];
     cloudUnreadReady?: boolean;
+    legacyGroupSessionTitlesById?: ReadonlyMap<string, string>;
   } = {},
 ): CanonicalSessionReadModel | null {
   if (!canonicalState) return null;
 
   const indexes = buildCanonicalIndexes(canonicalState);
   const cloudUnreadReady = options.cloudUnreadReady ?? true;
+  const legacyGroupSessionTitlesById = options.legacyGroupSessionTitlesById
+    ?? EMPTY_LEGACY_GROUP_SESSION_TITLES;
   const summaryBySessionId = new Map((options.summaries ?? []).map((summary) => [summary.sessionId, summary]));
   const sessionActivityAtMs = (session: CanonicalSessionState['sessions'][number]) => (
     indexes.latestActivityMessageBySessionId.get(session.id)?.createdAtMs
@@ -535,7 +540,25 @@ export function createCanonicalSessionReadModel(
         : conversation.participants;
       const displayTitle = isSupportContact
         ? KORDI_SUPPORT_NAME
-        : sessionConversationDisplayTitle(session, canonicalParticipants, messages, session.title || conversation.name, { preferFallback: sessionPrefersPersistedTitle(session) });
+        : (() => {
+            const preferPersistedTitle = sessionPrefersPersistedTitle(session);
+            const legacyGroupTitle = session.kind === 'group'
+              && cloudUnreadReady
+              && !preferPersistedTitle
+              ? legacyGroupSessionTitlesById.get(sessionId)
+              : undefined;
+            return sessionConversationDisplayTitle(
+              session,
+              canonicalParticipants,
+              messages,
+              legacyGroupTitle || session.title || conversation.name,
+              {
+                preferFallback: preferPersistedTitle
+                  || Boolean(legacyGroupTitle)
+                  || (session.kind === 'group' && !cloudUnreadReady),
+              },
+            );
+          })();
       const latestTime = formatDesktopLastActiveLabel(sessionActivityAtMs(session));
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
       const directLegacyCollaborationTarget = conversation.collaborationTarget ?? syntheticCollaborationTarget(session, rawCanonicalParticipants);

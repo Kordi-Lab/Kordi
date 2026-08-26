@@ -11,6 +11,7 @@ import {
   isExplicitPlaceholderSessionTitle,
   isGenericSessionTitle,
   isRawSessionIdentifier,
+  legacySessionTitleFromMessageText,
   titleSourceFromMetadata,
 } from '@/features/chat/sessionTitlePolicy';
 import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
@@ -226,17 +227,9 @@ function firstMessageTitle(messages: Message[]) {
 }
 
 function legacyFirstMessageTitle(messages: Message[]) {
-  const text = messages
+  return legacySessionTitleFromMessageText(messages
     .find((message) => !message.isForkSnapshot && message.role !== 'system' && message.text.trim().length > 0)
-    ?.text
-    .trim()
-    .split(/\s+/u)
-    .filter(Boolean)
-    .slice(0, 8)
-    .join(' ')
-    .slice(0, 60)
-    .trim();
-  return text || null;
+    ?.text);
 }
 
 export function sessionHasManualTitle(session: CanonicalSessionState['sessions'][number]) {

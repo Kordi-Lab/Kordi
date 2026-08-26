@@ -108,6 +108,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
       cloudHiddenSessionIds,
       cloudDeletedSessionIds,
       initialMessagesSettled,
+      cloudLegacyGroupSessionTitlesById,
     },
   } = foundation;
 
@@ -179,6 +180,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     cloudAgentDefinitionsById,
     cloudPresence: cloudPresence.snapshot,
     cloudUnreadReady: initialMessagesSettled,
+    cloudLegacyGroupSessionTitlesById,
     transientChatConversations,
   });
   const activeConv = useMemo(

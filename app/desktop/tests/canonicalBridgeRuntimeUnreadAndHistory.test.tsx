@@ -54,7 +54,7 @@ test('canonical group unread honors persisted self read marker at latest message
   assert.equal(conversation?.canonicalCreatedAtMs, 1);
 });
 
-test('canonical Cloud unread remains masked until the account snapshot is ready', () => {
+test('canonical Cloud unread and legacy group titles remain masked until the account snapshot is ready', () => {
   const sessionId = 'session:group:startup-unread';
   const state = {
     storagePath: '/tmp/canonical.sqlite3',
@@ -74,7 +74,7 @@ test('canonical Cloud unread remains masked until the account snapshot is ready'
     sessions: [{
       id: sessionId,
       kind: 'group',
-      title: 'Startup room',
+      title: 'New chat',
       status: 'active',
       createdByIdentityId: 'human:me',
       primaryIdentityId: null,
@@ -89,19 +89,28 @@ test('canonical Cloud unread remains masked until the account snapshot is ready'
       { sessionId, identityId: 'human:bob', role: 'person', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
     ],
     messages: [
-      { id: 'msg:unread', sessionId, senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'cached unread', content: { sender: 'Bob', timeLabel: '13:11' }, status: 'sent', sequenceNum: 1, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-group:startup' },
+      { id: 'msg:unread', sessionId, senderIdentityId: 'human:bob', senderRole: 'person', messageKind: 'text', contentText: 'Latest chat message', content: { sender: 'Bob', timeLabel: '13:11' }, status: 'sent', sequenceNum: 1, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'cloud-group', sourceEventId: 'cloud-group:startup' },
     ],
     delegatedExchanges: [],
     presence: [],
     contextSnapshots: [],
   } as never;
 
-  const pendingModel = createCanonicalSessionReadModel(state, { cloudUnreadReady: false });
-  const readyModel = createCanonicalSessionReadModel(state, { cloudUnreadReady: true });
+  const legacyGroupSessionTitlesById = new Map([[sessionId, 'Announcement']]);
+  const pendingModel = createCanonicalSessionReadModel(state, {
+    cloudUnreadReady: false,
+    legacyGroupSessionTitlesById,
+  });
+  const readyModel = createCanonicalSessionReadModel(state, {
+    cloudUnreadReady: true,
+    legacyGroupSessionTitlesById,
+  });
   const subtitle = (messages: Message[], fallback?: string) => messages.at(-1)?.text ?? fallback ?? '';
 
   assert.equal(pendingModel?.buildChatConversations([], subtitle)[0]?.unread, 0);
   assert.equal(readyModel?.buildChatConversations([], subtitle)[0]?.unread, 99);
+  assert.equal(pendingModel?.buildChatConversations([], subtitle)[0]?.name, 'New chat');
+  assert.equal(readyModel?.buildChatConversations([], subtitle)[0]?.name, 'Announcement');
 });
 
 test('canonical group conversation title stays on first message when synced cloud group name changes', () => {

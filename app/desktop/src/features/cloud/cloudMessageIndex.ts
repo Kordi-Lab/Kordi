@@ -1,5 +1,6 @@
 import type { CanonicalMessageSourceRef } from '@/features/canonical/canonicalMessageSources';
 import type { CanonicalSessionState } from '@/kordi-app/types';
+import { legacySessionTitleFromMessageText } from '@/features/chat/sessionTitlePolicy';
 import {
   beginChatPerformanceSpan,
   chatPerformancePayloadBytes,
@@ -39,6 +40,7 @@ export type CloudMessageIndex = {
   replayRows: readonly IndexedCloudGroupRow[];
   groupRowsBySessionId: ReadonlyMap<string, readonly IndexedCloudGroupRow[]>;
   groupRowsBySpaceId: ReadonlyMap<string, readonly IndexedCloudGroupRow[]>;
+  legacyGroupSessionTitlesById: ReadonlyMap<string, string>;
   deliveryByMessageId: ReadonlyMap<string, CloudDeliverySummary>;
   peerRevisionByPeerId: ReadonlyMap<string, string>;
   sessionRevisionBySessionId: ReadonlyMap<string, string>;
@@ -252,6 +254,7 @@ export function buildCloudMessageIndex(
   const groupRowByWireMessageId = new Map<string, IndexedCloudGroupRow>();
   const mutableRowsBySessionId = new Map<string, IndexedCloudGroupRow[]>();
   const mutableRowsBySpaceId = new Map<string, IndexedCloudGroupRow[]>();
+  const legacyGroupSessionTitlesById = new Map<string, string>();
   const replayRowsByKey = new Map<string, IndexedCloudGroupRow>();
   const mutableDelivery = new Map<string, {
     state: CloudDeliverySummary['state'];
@@ -276,6 +279,12 @@ export function buildCloudMessageIndex(
     }
     const groupSpaceId = cleanText(envelope.groupSpaceId);
     if (groupSpaceId) pushMapValue(mutableRowsBySpaceId, groupSpaceId, row);
+    if (!legacyGroupSessionTitlesById.has(envelope.groupId)) {
+      const title = envelope.kind === 'group-message' && !envelope.message?.forkSnapshot
+        ? legacySessionTitleFromMessageText(envelope.message?.text)
+        : null;
+      if (title) legacyGroupSessionTitlesById.set(envelope.groupId, title);
+    }
     const replayKey = cloudGroupReplayKeyForRow(row);
     if (!replayRowsByKey.has(replayKey)) replayRowsByKey.set(replayKey, row);
 
@@ -347,6 +356,7 @@ export function buildCloudMessageIndex(
     replayRows: exposeArray([...replayRowsByKey.values()]),
     groupRowsBySessionId,
     groupRowsBySpaceId,
+    legacyGroupSessionTitlesById,
     deliveryByMessageId,
     peerRevisionByPeerId,
     sessionRevisionBySessionId,

@@ -1,6 +1,7 @@
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { projectRootFromCanonicalProjectGroupId } from '@/features/canonical/sessionResolver';
 import { deriveSessionTitle } from '@/features/chat/sessionTitlePolicy';
+import { safePreviewText } from '@/features/chat/participantConversationState';
 import { firstPersonPossessiveLabel, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type {
   CanonicalSessionState,
@@ -123,12 +124,12 @@ export function truncateInlineText(value: string, maxChars = 96) {
 }
 
 export function buildMessagePreview(message: Message) {
-  const text = message.text.trim();
+  const text = safePreviewText(message.text);
   if (text.length > 0) {
     return text;
   }
 
-  const agentResponseText = message.turn?.assistantText.trim() ?? '';
+  const agentResponseText = safePreviewText(message.turn?.assistantText);
   if (agentResponseText.length > 0) {
     return agentResponseText;
   }

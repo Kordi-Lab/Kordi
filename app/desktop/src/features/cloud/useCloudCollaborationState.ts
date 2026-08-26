@@ -679,5 +679,7 @@ export function useCloudCollaborationState({
     cloudHiddenSessionIds,
     cloudDeletedSessionIds,
     cloudSessionPinsById,
+    cloudLegacyGroupSessionTitlesById:
+      cloudMessageIndex.legacyGroupSessionTitlesById,
   };
 }
