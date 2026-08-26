@@ -441,7 +441,7 @@ test('chat companion pane does not expose focus handoff controls', () => {
 test('chat companion composer sends with Enter and keeps modified Enter for line breaks', () => {
   const source = readChatsPageImplementationSource();
 
-  assert.match(source, /onSendChatMessage\(\s*draft,\s*targetConversation\.id,\s*referenceMessage \? \[referenceMessage\] : \[\],\s*\)/);
+  assert.match(source, /onSendChatMessage\(\s*draft,\s*targetConversation\.id,\s*referenceMessage \? \[referenceMessage\] : \[\],\s*attachments,\s*\)/);
   assert.doesNotMatch(source, /User request:\\n\$\{draft\}/);
   assert.match(source, /event\.key === 'Enter' && !event\.metaKey && !event\.ctrlKey && !event\.shiftKey/);
   assert.match(source, /title=\{`Send to \$\{conversation\.name\}`\}/);

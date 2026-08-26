@@ -27,22 +27,22 @@ test('targeted sends check Cloud group routing before direct Cloud bridge routin
 
   assert.match(
     targetedHandler,
-    /prepareCanonicalUserMessage\([\s\S]*?text,\s*chatComposerAttachments,\s*sentAt,\s*'cloud-group-ui'/,
+    /prepareCanonicalUserMessage\([\s\S]*?text,\s*attachments,\s*sentAt,\s*'cloud-group-ui'/,
     'targeted group sends must preserve attachments in the canonical optimistic row',
   );
   assert.match(
     targetedHandler,
-    /kind:\s*'group-message',[\s\S]*?attachments:\s*chatComposerAttachments,/,
+    /kind:\s*'group-message',[\s\S]*?attachments,/,
     'targeted group sends must pass attachments to the durable group transport',
   );
   assert.match(
     targetedHandler,
-    /appendOptimisticCollaborationMessage\([\s\S]*?optimisticMessageId,\s*chatComposerAttachments,/,
+    /appendOptimisticCollaborationMessage\([\s\S]*?optimisticMessageId,\s*attachments,/,
     'targeted direct sends must preserve attachment previews while sending',
   );
   assert.match(
     targetedHandler,
-    /sendCloudCollaborationMessage\([\s\S]*?chatComposerAttachments,\s*\{ clientMessageId: optimisticMessageId \},/,
+    /sendCloudCollaborationMessage\([\s\S]*?attachments,\s*\{ clientMessageId: optimisticMessageId \},/,
     'targeted direct sends must use their optimistic id as the retry-safe client id',
   );
   assert.doesNotMatch(targetedHandler, /attachments:\s*\[\]/);

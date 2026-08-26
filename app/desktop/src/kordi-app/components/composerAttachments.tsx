@@ -186,28 +186,10 @@ export function ComposerAttachmentList({
                     editTriggerRef.current = event.currentTarget;
                     setEditingAttachmentId(attachment.id);
                   }}
-                  className="app-button-quiet inline-flex min-h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[10px] font-medium"
+                  className="app-button-quiet grid h-6 w-6 shrink-0 place-items-center rounded-full p-0"
                   aria-label={`Edit ${attachment.name} before sending`}
                 >
                   <Pencil className="h-3 w-3" aria-hidden="true" />
-                  <span>Edit</span>
-                </button>
-              ) : null}
-              {onUpdate && attachment.kind === 'image' ? (
-                <button
-                  type="button"
-                  onClick={() => onUpdate(attachment.id, {
-                    subtype: isMeme ? null : 'meme',
-                    altText: isMeme ? null : '',
-                    memeRightsConfirmed: false,
-                  })}
-                  className="app-button-quiet min-h-6 shrink-0 rounded-full px-2 text-[10px] font-medium"
-                  aria-pressed={isMeme}
-                  aria-label={isMeme
-                    ? `Treat ${attachment.name} as an ordinary image`
-                    : `Mark ${attachment.name} as a meme`}
-                >
-                  {isMeme ? 'Meme' : 'Mark as meme'}
                 </button>
               ) : null}
               <button

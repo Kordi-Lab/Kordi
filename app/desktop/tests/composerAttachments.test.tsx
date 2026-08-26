@@ -129,7 +129,7 @@ test('stored composer attachments round-trip meme accessibility and rights state
   });
 });
 
-test('meme attachment editor exposes alt text, rights confirmation, and ordinary-image fallback', () => {
+test('meme attachment editor exposes alt text and rights confirmation without an inline type toggle', () => {
   const markup = renderToStaticMarkup(createElement(ComposerAttachmentList, {
     attachments: [{
       id: 'meme-1',
@@ -145,9 +145,9 @@ test('meme attachment editor exposes alt text, rights confirmation, and ordinary
   }));
 
   assert.match(markup, /data-composer-meme-attachment="true"/);
-  assert.match(markup, /aria-label="Treat reaction\.png as an ordinary image"/);
   assert.match(markup, /placeholder="Describe the visible text and joke"/);
   assert.match(markup, /permission or another legal right to share this meme/);
+  assert.doesNotMatch(markup, /Mark as meme|Treat reaction\.png as an ordinary image/);
 });
 
 test('composer attachment tiles keep the filename and remove control on one compact line', () => {
@@ -191,6 +191,7 @@ test('image attachments expose rotate, crop, draw, and done before sending', () 
   }));
 
   assert.match(tileMarkup, /aria-label="Edit diagram\.webp before sending"/);
+  assert.doesNotMatch(tileMarkup, />Edit<\/span>/);
   assert.match(editorMarkup, /aria-label="Rotate image clockwise"/);
   assert.match(editorMarkup, /aria-label="Crop image"/);
   assert.match(editorMarkup, /aria-label="Draw on image"/);

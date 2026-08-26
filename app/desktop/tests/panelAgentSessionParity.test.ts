@@ -159,6 +159,28 @@ test('side-panel Agent composer exposes the same visible attachment trigger and 
   assert.doesNotMatch(side, /<span className="h-9 w-9 shrink-0" aria-hidden="true" \/>/, 'side-panel composer should not use a blank spacer instead of the real attachment controls');
 });
 
+test('main and side-panel composers keep attachment drafts isolated', () => {
+  const workspace = readFileSync(
+    new URL('../src/pages/chatsPage.companionWorkspace.tsx', import.meta.url),
+    'utf8',
+  );
+  const companionSession = readFileSync(
+    new URL('../src/pages/useChatCompanionSession.ts', import.meta.url),
+    'utf8',
+  );
+  const actions = chatMessagesSource();
+  const targetedStart = actions.indexOf('const sendTargetedChatMessage = useCallback');
+  const activeStart = actions.indexOf('const handleSendChatMessage = useCallback', targetedStart);
+  const targetedSend = actions.slice(targetedStart, activeStart);
+
+  assert.match(workspace, /useState<ChatAttachment\[\]>\(\[\]\)/, 'side-panel attachments should have independent React state');
+  assert.match(workspace, /chatComposerAttachments: companionAttachments/, 'side-panel composer should render only its own attachments');
+  assert.doesNotMatch(workspace, /chatComposerAttachments: composer\.chatComposerAttachments/, 'side-panel composer must not render the main attachment draft');
+  assert.match(companionSession, /onSendChatMessage\([\s\S]*referenceMessage \? \[referenceMessage\] : \[\],[\s\S]*attachments,/, 'side-panel send should pass its attachment draft explicitly');
+  assert.doesNotMatch(targetedSend, /chatComposerAttachments|setChatComposerAttachments/, 'targeted sends must not read or clear the main attachment draft');
+  assert.match(targetedSend, /preserveComposer: true/, 'targeted local sends should preserve the main composer');
+});
+
 test('side-panel Agent model controls use independent menu state and target the side session', () => {
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
@@ -363,7 +385,7 @@ test('sending from main or side-panel chat schedules a jump to the sent message'
   const mainSendBlock = mainWorkspace.slice(mainSendStart, splitStart);
   assert.match(mainSendBlock, /scheduleTranscriptScrollToBottom\(transcript\.chatTranscriptScrollRef\)/, 'main send should jump its own transcript to the new message');
 
-  const sideSendStart = companionSession.indexOf('const sendDraft = (targetConversation: Conversation) => {');
+  const sideSendStart = companionSession.indexOf('const sendDraft = (');
   const createSideStart = companionSession.indexOf('const setOpenComposerSelector', sideSendStart);
   assert.notEqual(sideSendStart, -1, 'side-panel send handler should exist');
   assert.notEqual(createSideStart, -1, 'side-panel send block should have an end boundary');
@@ -417,7 +439,7 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
   assert.notEqual(targetedStart, -1, 'targeted side-panel send path should exist');
   assert.notEqual(activeStart, -1, 'active send path should exist after targeted send path');
   const targetedSendBlock = actionsSource.slice(targetedStart, activeStart);
-  assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*queueLocalDraftForSession\(targetConversation\.id, text, chatComposerAttachments, contextMessages\)/, 'side-panel local sends should queue while the target session is running instead of showing the preparing error');
+  assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*queueLocalDraftForSession\(targetConversation\.id, text, attachments, contextMessages\)/, 'side-panel local sends should queue while the target session is running instead of showing the preparing error');
   assert.match(targetedSendBlock, /if \(delayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'side-panel duplicate sends should wait for the in-flight session without promoting normal preparation to an error');
   assert.doesNotMatch(targetedSendBlock, /Kordi is still preparing this session/, 'normal session preparation should not render through the sidebar-wide error channel');
   assert.match(actionsSource, /message\.runtimeRoute \?\? resolveChatRuntimeRoute\(message\.sessionId\)[\s\S]*message\.contextMessages \?\? \[\]/, 'flushing queued side messages should preserve the selected runtime route and reference context');

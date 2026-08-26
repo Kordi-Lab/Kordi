@@ -73,6 +73,7 @@ export type CompanionComposerProps = {
   conversation: Conversation;
   paneKind: 'human' | 'agent';
   draftText: string;
+  attachmentError: string | null;
   isNativeShell: boolean;
   attachmentInputRef: RefObject<HTMLInputElement | null>;
   composer: ChatsPageComposer;
@@ -92,6 +93,7 @@ export function CompanionComposer({
   conversation,
   paneKind,
   draftText,
+  attachmentError,
   isNativeShell,
   attachmentInputRef,
   composer,
@@ -151,6 +153,11 @@ export function CompanionComposer({
               onRemove={removeChatComposerAttachment}
               onReplace={updateChatComposerAttachment}
             />
+            {attachmentError ? (
+              <p className="px-0.5 pb-1 text-[10.5px] leading-4 text-amber-500" role="alert">
+                {attachmentError}
+              </p>
+            ) : null}
             <textarea
               rows={1}
               value={draftText}
