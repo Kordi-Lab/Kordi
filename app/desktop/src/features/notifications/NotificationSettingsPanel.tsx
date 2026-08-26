@@ -1,8 +1,4 @@
 import { invoke } from '@tauri-apps/api/core';
-import {
-  isPermissionGranted,
-  requestPermission,
-} from '@tauri-apps/plugin-notification';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -12,8 +8,12 @@ import {
   useNotificationPreferences,
   type NotificationPreferences,
 } from './notificationPreferences';
+import {
+  nativeNotificationPermissionState,
+  requestNativeNotificationPermission,
+} from './nativeNotifications';
 
-type NotificationPermissionState = NotificationPermission | 'unavailable';
+type NotificationPermissionState = NotificationPermission | 'checking' | 'unavailable';
 
 const preferenceRows: Array<{
   key: keyof NotificationPreferences;
@@ -85,19 +85,15 @@ function PreferenceToggle({
 
 export function NotificationSettingsPanel({ isNativeShell }: { isNativeShell: boolean }) {
   const preferences = useNotificationPreferences();
-  const [permission, setPermission] = useState<NotificationPermissionState>('default');
+  const [permission, setPermission] = useState<NotificationPermissionState>('checking');
+  const [isUpdatingPermission, setIsUpdatingPermission] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
       if (isNativeShell) {
-        const granted = await isPermissionGranted().catch(() => false);
-        const nativePermission = typeof Notification === 'undefined'
-          ? 'default'
-          : Notification.permission;
-        if (!cancelled) {
-          setPermission(granted ? 'granted' : nativePermission);
-        }
+        const nativePermission = await nativeNotificationPermissionState().catch(() => 'unavailable' as const);
+        if (!cancelled) setPermission(nativePermission);
         return;
       }
       if (typeof Notification === 'undefined') {
@@ -106,19 +102,29 @@ export function NotificationSettingsPanel({ isNativeShell }: { isNativeShell: bo
       }
       if (!cancelled) setPermission(Notification.permission);
     };
+    const refreshOnFocus = () => {
+      void refresh();
+    };
     void refresh();
+    window.addEventListener('focus', refreshOnFocus);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', refreshOnFocus);
     };
   }, [isNativeShell]);
 
   const enableNotifications = async () => {
-    if (isNativeShell) {
-      setPermission(await requestPermission().catch(() => 'denied'));
-      return;
-    }
-    if (typeof Notification !== 'undefined') {
-      setPermission(await Notification.requestPermission());
+    setIsUpdatingPermission(true);
+    try {
+      if (isNativeShell) {
+        setPermission(await requestNativeNotificationPermission());
+      } else if (typeof Notification !== 'undefined') {
+        setPermission(await Notification.requestPermission());
+      }
+    } catch {
+      setPermission('unavailable');
+    } finally {
+      setIsUpdatingPermission(false);
     }
   };
 
@@ -128,29 +134,49 @@ export function NotificationSettingsPanel({ isNativeShell }: { isNativeShell: bo
     });
   };
 
-  const permissionLabel = permission === 'granted'
-    ? isNativeShell ? 'Allowed by macOS' : 'Allowed by your browser'
+  const permissionTitle = permission === 'granted'
+    ? 'Notifications are allowed'
     : permission === 'denied'
-      ? isNativeShell ? 'Blocked by macOS' : 'Blocked by your browser'
-      : permission === 'unavailable'
-        ? 'Unavailable'
-        : 'Permission not requested';
+      ? 'Notifications are blocked'
+      : permission === 'checking'
+        ? 'Checking notification access'
+        : permission === 'unavailable'
+          ? 'Notification access unavailable'
+          : isNativeShell ? 'Allow notifications on this Mac' : 'Allow notifications in your browser';
+  const permissionDescription = permission === 'granted'
+    ? 'Kordi can alert you when new messages arrive while the app is in the background.'
+    : permission === 'denied'
+      ? isNativeShell
+        ? 'Open System Settings and allow notifications for Kordi.'
+        : 'Allow notifications for Kordi in your browser settings.'
+      : permission === 'checking'
+        ? 'Kordi is checking your notification setting.'
+        : permission === 'unavailable'
+          ? `Try again to check the ${isNativeShell ? 'macOS' : 'browser'} notification setting.`
+          : 'Allow banners and sounds so Kordi can alert you when new messages arrive in the background.';
 
   return (
     <div className="max-w-[620px]">
       <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 border-y border-[color:var(--app-divider)] px-2 py-3.5">
         <div className="min-w-0">
-          <div className="text-[13px] font-medium text-white">System permission</div>
-          <div className="mt-1 text-[12px] leading-5 text-slate-400">{permissionLabel}</div>
+          <div className="text-[13px] font-medium text-white">{permissionTitle}</div>
+          <div aria-live="polite" className="mt-1 text-[12px] leading-5 text-slate-400">{permissionDescription}</div>
         </div>
-        {permission !== 'granted' && permission !== 'unavailable' ? (
+        {permission !== 'granted' && permission !== 'checking' ? (
           <Button
             type="button"
-            variant="quiet"
-            className="h-8 shrink-0 rounded-full px-3 text-[12px]"
+            variant={permission === 'default' ? 'default' : 'quiet'}
+            className="h-9 shrink-0 rounded-full px-4 text-[12px]"
             onClick={permission === 'denied' && isNativeShell ? openSystemSettings : enableNotifications}
+            disabled={isUpdatingPermission}
           >
-            {permission === 'denied' && isNativeShell ? 'Open System Settings' : 'Enable'}
+            {isUpdatingPermission
+              ? 'Requesting…'
+              : permission === 'denied' && isNativeShell
+                ? 'Open System Settings'
+                : permission === 'unavailable'
+                  ? 'Check again'
+                  : 'Allow notifications'}
           </Button>
         ) : null}
       </div>

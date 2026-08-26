@@ -93,6 +93,8 @@ A packaged call-capable release is not accepted by build success alone. Test
 the installed app with two product accounts using the [required call acceptance
 test](../../docs/call-hosting.md#required-two-account-acceptance-test).
 
+Notification changes must pass the [packaged macOS notification QA](../../docs/development/macos-notification-qa.md).
+
 ## Package-local commands
 
 Use these only when you intentionally work inside `app/desktop`:

@@ -26,6 +26,7 @@ import {
   assertProductionSigningIdentity,
   verifyMacAppSignature,
 } from './macos-release-signing.mjs';
+import { assertMacOSNotificationBundleContract } from './macos-notification-release.mjs';
 import {
   PRODUCT_ORIGIN,
   releaseUrlsForOrigin,
@@ -35,9 +36,7 @@ import {
 } from './desktop-release-public.mjs';
 import { releaseNotesForPublication } from './desktop-release-notes.mjs';
 
-export {
-  PRODUCT_ORIGIN,
-} from './desktop-release-public.mjs';
+export { PRODUCT_ORIGIN } from './desktop-release-public.mjs';
 export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK';
 
 const REPO_ROOT = dirname(fileURLToPath(new URL('../../package.json', import.meta.url)));
@@ -993,6 +992,7 @@ export function assertAppBundleContract(run, appBundle, {
   if (forbidden?.status !== 1) {
     throw new Error('Unable to inspect application bundle updater-endpoint profile isolation');
   }
+  assertMacOSNotificationBundleContract(run, appBundle);
   return trust;
 }
 

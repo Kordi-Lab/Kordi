@@ -200,7 +200,6 @@ pub fn run() {
     system_proxy::install_native_proxy_environment();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(cloud_oauth_loopback::CloudOAuthLoopbackState::default())
         .manage(DesktopAuthManager::default())
@@ -228,6 +227,8 @@ pub fn run() {
             desktop_relaunch_after_update,
             desktop_open_media_preview_window,
             desktop_reveal_media_preview_window,
+            message_notification::desktop_notification_permission_state,
+            message_notification::desktop_request_notification_permission,
             message_notification::desktop_show_message_notification,
             project::desktop_project_settings,
             project::desktop_project_create_from_folder,
