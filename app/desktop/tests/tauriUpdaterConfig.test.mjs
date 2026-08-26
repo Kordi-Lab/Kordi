@@ -63,22 +63,22 @@ test('acceptance flavors are ad-hoc, updater-signed, and isolated from beta', ()
   assert.match(pkg.scripts['tauri:build:cloud:adhoc-bootstrap'], /--bundles app,dmg/);
 });
 
-test('desktop capability grants only the updater and relaunch plugin permissions needed by the UI', () => {
+test('desktop capability grants updater permission without generic process-plugin access', () => {
   const capability = readJson('src-tauri/capabilities/default.json');
 
   assert.ok(capability.permissions.includes('updater:default'));
-  assert.ok(capability.permissions.includes('process:allow-restart'));
+  assert.ok(!capability.permissions.some((permission) => permission.startsWith('process:')));
 });
 
-test('desktop JavaScript and Rust manifests use Tauri v2 updater and process plugins', () => {
+test('desktop manifests use Tauri updater without the generic process relaunch plugin', () => {
   const pkg = readJson('package.json');
   const cargo = readText('src-tauri/Cargo.toml');
   const lib = readText('src-tauri/src/lib.rs');
 
   assert.match(pkg.dependencies['@tauri-apps/plugin-updater'], /^\^?2\./);
-  assert.match(pkg.dependencies['@tauri-apps/plugin-process'], /^\^?2\./);
+  assert.equal(pkg.dependencies['@tauri-apps/plugin-process'], undefined);
   assert.match(cargo, /^tauri-plugin-updater\s*=\s*"2"/m);
-  assert.match(cargo, /^tauri-plugin-process\s*=\s*"2"/m);
+  assert.doesNotMatch(cargo, /^tauri-plugin-process\s*=/m);
   assert.match(lib, /tauri_plugin_updater::Builder::new\(\)\.build\(\)/);
-  assert.match(lib, /tauri_plugin_process::init\(\)/);
+  assert.doesNotMatch(lib, /tauri_plugin_process/);
 });

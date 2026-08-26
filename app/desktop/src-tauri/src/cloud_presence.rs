@@ -1,5 +1,5 @@
-pub(crate) fn should_publish_offline_on_exit() -> bool {
-    true
+pub(crate) fn should_publish_offline_on_exit(exit_code: Option<i32>) -> bool {
+    exit_code != Some(tauri::RESTART_EXIT_CODE)
 }
 
 pub(crate) fn offline_url(base_url: &str) -> String {
@@ -26,9 +26,6 @@ fn publish_offline(token: &str, base_url: &str) -> Result<(), String> {
 }
 
 pub(crate) fn publish_stored_offline_on_exit() {
-    if !should_publish_offline_on_exit() {
-        return;
-    }
     let session = match super::cloud_session::cloud_session_load() {
         Ok(Some(session)) => session,
         Ok(None) => return,
