@@ -88,6 +88,7 @@ import {
 } from './viewModels/helpers';
 
 const EMPTY_DESKTOP_SESSION_IDS: ReadonlySet<string> = new Set();
+const EMPTY_CLOUD_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map();
 
 export { findCollaborationProjectForWorkspace } from './viewModels/helpers';
 export {
@@ -147,6 +148,7 @@ type UseWorkspaceViewModelsArgs = {
   cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition>;
   cloudPresence?: CloudPresenceStore;
   cloudUnreadReady?: boolean;
+  cloudLegacyGroupSessionTitlesById?: ReadonlyMap<string, string>;
   transientChatConversations?: Conversation[];
 };
 
@@ -181,6 +183,7 @@ export function useWorkspaceViewModels({
   cloudAgentDefinitionsById = {},
   cloudPresence = {},
   cloudUnreadReady = true,
+  cloudLegacyGroupSessionTitlesById = EMPTY_CLOUD_LEGACY_GROUP_SESSION_TITLES,
   transientChatConversations = [],
 }: UseWorkspaceViewModelsArgs) {
   const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
@@ -188,8 +191,9 @@ export function useWorkspaceViewModels({
     () => createCanonicalSessionReadModel(canonicalSessionState, {
       summaries: canonicalSessionSummaries,
       cloudUnreadReady,
+      legacyGroupSessionTitlesById: cloudLegacyGroupSessionTitlesById,
     }),
-    [canonicalSessionState, canonicalSessionSummaries, cloudUnreadReady],
+    [canonicalSessionState, canonicalSessionSummaries, cloudLegacyGroupSessionTitlesById, cloudUnreadReady],
   );
   const desktopLiveTurnViewModelKey = liveTurnsViewModelSignature(desktopLiveTurnsBySession);
   const desktopLiveTurnsForViewModelRef = useRef({

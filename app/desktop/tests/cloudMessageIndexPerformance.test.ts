@@ -70,6 +70,10 @@ test('Cloud message index parses each unique wire row once and builds constant-t
   assert.equal(index.groupRows.length, index.allMessages.length);
   assert.equal(index.deliveryByMessageId.get(scaleMessageId(0, 100))?.state, 'read');
   assert.equal(index.deliveryByMessageId.get(scaleMessageId(0, 100))?.readers.length, 7);
+  assert.equal(
+    index.legacyGroupSessionTitlesById.get(index.groupRows[0]!.envelope.groupId),
+    'Scale Cloud message 100',
+  );
 });
 
 test('a less complete duplicate cannot erase a semantic message kind', () => {

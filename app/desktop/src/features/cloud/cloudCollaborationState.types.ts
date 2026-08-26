@@ -121,4 +121,5 @@ export type UseCloudCollaborationStateResult = {
   cloudHiddenSessionIds: Set<string>;
   cloudDeletedSessionIds: Set<string>;
   cloudSessionPinsById: CloudSessionPinsById;
+  cloudLegacyGroupSessionTitlesById: ReadonlyMap<string, string>;
 };

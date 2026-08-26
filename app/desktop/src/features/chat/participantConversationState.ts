@@ -1,5 +1,7 @@
 import type { Conversation, Message } from '@/kordi-app/types';
 
+const blobEmojiInlineTokenPattern = /:blob:[A-Za-z0-9_-]+:/gu;
+
 function cleanText(value?: string | null) {
   return value?.trim() ?? '';
 }
@@ -16,7 +18,7 @@ function metadataText(metadata: Record<string, unknown>, key: string) {
 }
 
 export function safePreviewText(value: string | undefined | null) {
-  const text = value?.trim() ?? '';
+  const text = value?.replace(blobEmojiInlineTokenPattern, 'Emoji').trim() ?? '';
   const rawId = text.startsWith('session:')
     || text.startsWith('bridge:')
     || text.startsWith('canonical:')

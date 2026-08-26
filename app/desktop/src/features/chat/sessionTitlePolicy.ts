@@ -188,6 +188,12 @@ export function deriveSessionTitle(value: string): string | null {
   return derived;
 }
 
+export function legacySessionTitleFromMessageText(value?: string | null) {
+  const text = value?.trim().split(/\s+/u).filter(Boolean).slice(0, 8).join(' ')
+    .slice(0, 60).trim();
+  return text || null;
+}
+
 export function attachmentSessionTitle(count: number, containsImage = false) {
   if (count <= 0) return null;
   if (count === 1) return containsImage ? 'Image attachment' : 'File attachment';

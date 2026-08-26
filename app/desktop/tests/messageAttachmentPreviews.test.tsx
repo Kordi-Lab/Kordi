@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { buildConversationPreview } from '../src/app/viewModels/helpers';
+import { safePreviewText } from '../src/features/chat/participantConversationState';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import type { Conversation, Message } from '../src/kordi-app/types';
 
@@ -16,6 +17,12 @@ const imageMessage: Message = {
 
 test('buildConversationPreview labels an image-only message as Photo instead of using the fallback name', () => {
   assert.equal(buildConversationPreview([imageMessage], 'Shu Yang'), 'Photo');
+});
+
+test('sidebar previews replace Blob Emoji transport tokens with a readable label', () => {
+  const message = { ...imageMessage, text: ':blob:ablobcaramelldansen:', attachments: [] };
+  assert.equal(safePreviewText('hi :blob:blobwave:'), 'hi Emoji');
+  assert.equal(buildConversationPreview([message]), 'Emoji');
 });
 
 test('buildParticipantSpaces presents an image-only self message as a photo', () => {
