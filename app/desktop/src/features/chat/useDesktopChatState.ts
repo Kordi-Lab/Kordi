@@ -380,13 +380,13 @@ export function useDesktopChatState({ isNativeShell, mapDesktopMessages, refresh
 
     if (isBackgroundSession && appendedToSessionCache) {
       incrementUnreadForSession(turn.sessionId);
-      notifyBackgroundSessionCompletion(turn);
+      notifyBackgroundSessionCompletion(turn, isNativeShell);
     } else if (!isBackgroundSession) {
       clearUnreadForSession(turn.sessionId);
     }
 
     removeLiveTurnSnapshot(turn.sessionId, turn.id);
-  }, [appendSessionSourceMessage, clearUnreadForSession, incrementUnreadForSession, removeLiveTurnSnapshot]);
+  }, [appendSessionSourceMessage, clearUnreadForSession, incrementUnreadForSession, isNativeShell, removeLiveTurnSnapshot]);
 
   const watchDesktopLiveTurn = useCallback(
     async (turnOrSnapshot: string | DesktopChatTurnSnapshot) => {

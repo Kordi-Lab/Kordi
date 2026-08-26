@@ -20,7 +20,7 @@ const STORAGE_KEY = 'kordi.notification-preferences.v1';
 const listeners = new Set<() => void>();
 let cachedPreferences: NotificationPreferences | null = null;
 
-function readPreferences() {
+export function readNotificationPreferences() {
   if (cachedPreferences) return cachedPreferences;
   if (typeof window === 'undefined') return DEFAULT_NOTIFICATION_PREFERENCES;
   try {
@@ -42,7 +42,7 @@ export function setNotificationPreference(
   key: keyof NotificationPreferences,
   enabled: boolean,
 ) {
-  cachedPreferences = { ...readPreferences(), [key]: enabled };
+  cachedPreferences = { ...readNotificationPreferences(), [key]: enabled };
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedPreferences));
   }
@@ -57,5 +57,5 @@ function subscribe(listener: () => void) {
 }
 
 export function useNotificationPreferences() {
-  return useSyncExternalStore(subscribe, readPreferences, () => DEFAULT_NOTIFICATION_PREFERENCES);
+  return useSyncExternalStore(subscribe, readNotificationPreferences, () => DEFAULT_NOTIFICATION_PREFERENCES);
 }

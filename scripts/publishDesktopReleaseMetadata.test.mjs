@@ -18,6 +18,7 @@ import {
   APP_CONTRACT_BUNDLE,
   ACCEPTANCE_ENDPOINT,
   PRODUCTION_ENDPOINT,
+  MACOS_NOTIFICATION_BUNDLE_MARKERS,
   contractRun,
   makeVerifierRepoFixture,
   artifactVerifierRun,
@@ -164,6 +165,10 @@ test('application bundle contract enforces the ad-hoc profile in exact command o
       'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
       PRODUCTION_ENDPOINT, APP_CONTRACT_BUNDLE,
     ].join(' '),
+    ...MACOS_NOTIFICATION_BUNDLE_MARKERS.map((marker) => [
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      marker, APP_CONTRACT_BUNDLE,
+    ].join(' ')),
   ]);
 });
 
@@ -213,6 +218,10 @@ test('application bundle contract preserves the production Gatekeeper and endpoi
       'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
       ACCEPTANCE_ENDPOINT, APP_CONTRACT_BUNDLE,
     ].join(' '),
+    ...MACOS_NOTIFICATION_BUNDLE_MARKERS.map((marker) => [
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      marker, APP_CONTRACT_BUNDLE,
+    ].join(' ')),
   ]);
 });
 
@@ -308,6 +317,16 @@ test('application bundle contract rejects every preview contract mismatch', () =
       }]]),
       /codesign verification failed/i,
     ],
+    [
+      'missing notification permission command',
+      new Map([[[
+        'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+        'desktop_request_notification_permission', APP_CONTRACT_BUNDLE,
+      ].join(' '), {
+        status: 1, stdout: '', stderr: '',
+      }]]),
+      /native notification integration/i,
+    ],
   ];
 
   for (const [name, overrides, expected] of rejectionCases) {
@@ -389,6 +408,9 @@ test('profile-aware verifiers apply one bundle contract to every artifact copy',
         : ACCEPTANCE_ENDPOINT;
       assert.equal(calls.filter((command) => command.includes(` -F ${expectedEndpoint} `)).length, 3);
       assert.equal(calls.filter((command) => command.includes(` -F ${forbiddenEndpoint} `)).length, 3);
+      for (const marker of MACOS_NOTIFICATION_BUNDLE_MARKERS) {
+        assert.equal(calls.filter((command) => command.includes(` -F ${marker} `)).length, 3);
+      }
       assert.equal(calls.filter((command) => command.startsWith('rg ') && command.includes(' -n ')).length, 4);
       assert.ok(calls.indexOf('[inspect updater archive]') > calls.findIndex((command) => command.startsWith('codesign ')));
       assert.ok(calls.indexOf('[mount dmg]') > calls.indexOf('[inspect updater archive]'));
