@@ -496,7 +496,7 @@ function MessageBubbleView({
   onRequestPinMessage,
   onRequestUnpinMessage,
   onReactMessage,
-  pinnedMessageId,
+  pinnedMessageIds,
   selectionMode = false,
   selectedMessageIds,
   isMessageSelectable,
@@ -531,7 +531,7 @@ function MessageBubbleView({
   onRequestPinMessage?: (message: Message) => void;
   onRequestUnpinMessage?: (message: Message) => void;
   onReactMessage?: (message: Message, reaction: string) => Promise<void> | void;
-  pinnedMessageId?: string | null;
+  pinnedMessageIds?: readonly string[];
   plainAgentResponse?: boolean;
   isGroupedWithPrevious?: boolean;
   isGroupedWithNext?: boolean;
@@ -541,7 +541,7 @@ function MessageBubbleView({
   const currentLocalProfileAvatarSeed = useLocalProfileAvatarSeed();
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const selectionId = messageSelectionId(msg);
-  const isPinned = Boolean(selectionId && pinnedMessageId === selectionId);
+  const isPinned = Boolean(selectionId && pinnedMessageIds?.includes(selectionId));
   const menuActionHandlers = { onReplyMessage, onForwardMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, onReactMessage, isPinned };
   const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
@@ -1205,7 +1205,7 @@ export const MessageBubble = memo(
     && previous.onRequestPinMessage === next.onRequestPinMessage
     && previous.onRequestUnpinMessage === next.onRequestUnpinMessage
     && previous.onReactMessage === next.onReactMessage
-    && previous.pinnedMessageId === next.pinnedMessageId
+    && previous.pinnedMessageIds === next.pinnedMessageIds
     && previous.selectionMode === next.selectionMode
     && previous.selectedMessageIds === next.selectedMessageIds
     && previous.isMessageSelectable === next.isMessageSelectable

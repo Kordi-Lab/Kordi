@@ -10,6 +10,7 @@ import { MessageBubble } from '@/kordi-app/components';
 import type { Message } from '@/kordi-app/types';
 import type { ChatSessionPaneProps } from '@/pages/chatsPage.types';
 import { QueuedMessageBubble } from '@/pages/chatsPage.queuedMessage';
+import { PinActivityNotice } from '@/pages/chatsPage.pins';
 
 type TranscriptEntry = {
   message: Message;
@@ -89,7 +90,8 @@ export function useChatTranscriptViewport({
     activeForkSourceSessionId = null,
     activeForkSourceTitle = null,
     messageForksByEntryId,
-    pinnedMessageId,
+    pinnedMessageIds,
+    pinActivityLabel,
     densityMode = 'default',
     relatedAgentSessionStatusById,
   } = presentation;
@@ -194,7 +196,7 @@ export function useChatTranscriptViewport({
             onSelectMessage={onSelectMessage}
             onRequestPinMessage={onRequestPinMessage}
             onRequestUnpinMessage={onRequestUnpinMessage}
-            pinnedMessageId={pinnedMessageId}
+            pinnedMessageIds={pinnedMessageIds}
             selectionMode={selectionMode}
             selectedMessageIds={selectedMessageIds}
             isMessageSelectable={isMessageSelectable}
@@ -226,9 +228,10 @@ export function useChatTranscriptViewport({
         </div>
       )}
       emptyState={transcriptMessages.length === 0 ? emptyState : null}
-      tailKey={transcriptTailKey}
+      tailKey={`${transcriptTailKey}:${pinActivityLabel ?? ''}`}
       tail={(
         <div className="space-y-1">
+          {pinActivityLabel ? <PinActivityNotice label={pinActivityLabel} /> : null}
           {queuedMessages.map((message) => (
             <QueuedMessageBubble
               key={message.id}
@@ -284,8 +287,9 @@ export function useChatTranscriptViewport({
     onStopCollaborationAgentRequest,
     onToggleSelectedMessage,
     onTranscriptScroll,
-    pinnedMessageId,
+    pinnedMessageIds,
     plainAgentResponse,
+    pinActivityLabel,
     queuedMessages,
     relatedAgentSessionStatusById,
     scrollClassName,

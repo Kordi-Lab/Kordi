@@ -3,18 +3,18 @@ use kordi_cloud_server::chat_sync::models::{
     CreateConversationRequest, SendMessageRequest, UpdateConversationTitleRequest,
     UpdatePersonalTitleRequest,
 };
-use kordi_cloud_server::chat_sync::retention;
 use kordi_cloud_server::chat_sync::store::{self, StoreError};
-use kordi_cloud_server::pg::init_pool;
+use kordi_cloud_server::{chat_sync::retention, pg::init_pool};
 use serde_json::json;
-use sqlx_core::query::query;
-use sqlx_core::query_as::query_as;
+use sqlx_core::{query::query, query_as::query_as};
 use sqlx_postgres::PgPool;
 use uuid::Uuid;
 #[path = "chat_sync_e2e/default_self_agent.rs"]
 mod default_self_agent;
 #[path = "chat_sync_e2e/reactions.rs"]
 mod reactions;
+#[path = "chat_sync_e2e/session_pins.rs"]
+mod session_pins;
 async fn try_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
     match init_pool(&url).await {

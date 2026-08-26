@@ -1,4 +1,5 @@
 use super::*;
+pub use crate::chat_sync::models::CloudSessionPinSummary;
 
 mod group_invitations;
 pub use group_invitations::*;
@@ -379,20 +380,6 @@ pub struct UpdateCloudSessionPinRequest {
     #[serde(rename = "messageId")]
     pub message_id: Option<String>,
     pub scope: String,
-}
-
-#[derive(Debug, Serialize, Clone)]
-pub struct CloudSessionPinSummary {
-    #[serde(rename = "sessionId")]
-    pub session_id: String,
-    #[serde(rename = "sharedMessageId")]
-    pub shared_message_id: Option<String>,
-    #[serde(rename = "privateMessageId")]
-    pub private_message_id: Option<String>,
-    #[serde(rename = "effectiveMessageId")]
-    pub effective_message_id: Option<String>,
-    #[serde(rename = "updatedAt")]
-    pub updated_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

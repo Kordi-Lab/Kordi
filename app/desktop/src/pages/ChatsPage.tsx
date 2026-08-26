@@ -37,6 +37,7 @@ export {
   shouldUseCompactModelRouteMenu,
 } from '@/pages/chatsPage.header';
 export {
+  PinActivityNotice,
   PinMessageDialog,
   PinnedMessageBar,
 } from '@/pages/chatsPage.pins';
@@ -276,6 +277,7 @@ export function ChatsPage({
     messages: attributedTranscriptMessages,
     sessionId: activeSessionId,
     isGroupSession: activeConversationIsGroupSession,
+    currentAccountId: cloudAccount?.accountId,
     cloudPin: cloudSessionPin,
     onUpdateCloudPin: onUpdateCloudSessionPin,
     onNavigateToMessage: transcriptNavigation.main.navigate,

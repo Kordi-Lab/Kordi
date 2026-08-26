@@ -262,7 +262,8 @@ export type ChatSessionPanePresentation = {
     string,
     Array<{ sessionId: string; title: string; updatedAtLabel?: string }>
   >;
-  pinnedMessageId?: string | null;
+  pinnedMessageIds?: readonly string[];
+  pinActivityLabel?: string | null;
   densityMode?: TranscriptDensityMode;
   relatedAgentSessionStatusById?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
 };

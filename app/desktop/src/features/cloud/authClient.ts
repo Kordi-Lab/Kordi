@@ -33,6 +33,7 @@ import type {
 } from './cloudIdentityTypes';
 import { ChatSyncClient } from './chatSyncClient';
 import { cloudApiBaseUrl } from './cloudApiEnvironment';
+import type { CloudSessionPin } from './cloudSessionPinTypes';
 import type {
   ChatSyncBootstrapResponse,
   ChatSyncConversation,
@@ -67,6 +68,7 @@ export type {
   ChatSyncSyncResponse,
 } from './chatSyncTypes';
 export type { CloudAuthErrorCode } from './cloudAuthError';
+export type { CloudSessionPin } from './cloudSessionPinTypes';
 export type {
   CloudAccount,
   CloudAppInvitation,
@@ -248,14 +250,6 @@ export type CloudSessionActivity = {
 export type CloudSessionVisibility = {
   hiddenSessionIds: string[];
   deletedSessionIds: string[];
-};
-
-export type CloudSessionPin = {
-  sessionId: string;
-  sharedMessageId: string | null;
-  privateMessageId: string | null;
-  effectiveMessageId: string | null;
-  updatedAt: string | null;
 };
 
 export type CloudSessionTitle = {

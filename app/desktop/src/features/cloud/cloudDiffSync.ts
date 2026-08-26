@@ -234,7 +234,22 @@ export function applyCloudSyncEventsToSessionPins(
     if (!sessionId) continue;
     const pin = normalizeCloudSessionPin({ ...payload, sessionId }, next[sessionId]);
     if (!pin) continue;
-    next = { ...next, [sessionId]: pin };
+    const messageId = cleanText(payload?.messageId) || null;
+    next = {
+      ...next,
+      [sessionId]: {
+        ...pin,
+        lastAction: event.eventId.startsWith('bootstrap:session-pin:')
+          ? null
+          : {
+              kind: messageId ? 'pinned' : 'unpinned',
+              scope: cleanText(payload?.scope) === 'shared' ? 'shared' : 'private',
+              messageId,
+              updatedByAccountId: cleanText(payload?.updatedByAccountId) || null,
+              updatedAt: cleanText(payload?.updatedAt) || event.occurredAt || null,
+            },
+      },
+    };
   }
   return next;
 }

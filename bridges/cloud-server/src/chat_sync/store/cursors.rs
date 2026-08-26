@@ -362,6 +362,13 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
         .iter()
         .map(|row| row.0)
         .collect::<Vec<_>>();
+    let session_ids = conversation_rows
+        .iter()
+        .map(|row| row.5.clone().unwrap_or_else(|| row.0.to_string()))
+        .collect::<Vec<_>>();
+    let session_pins =
+        super::pin_snapshots::bootstrap_session_pins(&mut transaction, &session_ids, account_id)
+            .await?;
     let member_rows: Vec<BootstrapMemberRow> = query_as(
         "SELECT member.conversation_id, member.account_id, account.display_name, \
                 account.avatar_url, member.role, member.membership_state, member.version, \
@@ -460,6 +467,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
     Ok(BootstrapSnapshot {
         conversations,
         latest_messages,
+        session_pins,
         stream_seq,
         server_time,
     })

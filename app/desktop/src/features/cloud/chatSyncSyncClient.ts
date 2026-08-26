@@ -219,7 +219,21 @@ export class ChatSyncSyncClient {
         occurredAt: message.created_at,
       } satisfies CloudSyncEvent];
     });
-    return [...conversationEvents, ...messageEvents];
+    const pinEvents = (bootstrap.session_pins ?? []).flatMap((pin) => (
+      (['shared', 'private'] as const).map((scope) => {
+        const messageId = scope === 'shared' ? pin.sharedMessageId : pin.privateMessageId;
+        const updatedAt = pin.updatedAt ?? bootstrap.server_time;
+        return {
+          eventId: `bootstrap:session-pin:${pin.sessionId}:${scope}`,
+          eventType: 'session.pin.updated',
+          peerAccountId: null,
+          messageId,
+          payload: { sessionId: pin.sessionId, messageId, scope, updatedAt },
+          occurredAt: updatedAt,
+        } satisfies CloudSyncEvent;
+      })
+    ));
+    return [...conversationEvents, ...messageEvents, ...pinEvents];
   }
 
   private cloudEventsFromChatEvent(event: ChatSyncEvent): CloudSyncEvent[] {

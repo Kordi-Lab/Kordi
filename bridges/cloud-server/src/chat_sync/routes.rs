@@ -351,6 +351,7 @@ async fn bootstrap(
             protocol_version: PROTOCOL_VERSION,
             conversations: snapshot.conversations,
             latest_messages: snapshot.latest_messages,
+            session_pins: snapshot.session_pins,
             next_cursor: codec.encode(&session.account_id, snapshot.stream_seq),
             last_stream_seq: snapshot.stream_seq,
             server_time: snapshot.server_time,

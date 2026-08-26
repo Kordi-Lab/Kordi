@@ -11,11 +11,11 @@ use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
 
 use crate::chat_sync::models::{
-    AddConversationMembersRequest, AdvanceConversationCursorRequest, ConversationCursorSnapshot,
-    ConversationKind, ConversationPreferencesSnapshot, ConversationSnapshot,
-    CreateConversationRequest, HistoryResponse, MemberSnapshot, MessageSnapshot, ReactionSnapshot,
-    SendMessageRequest, SyncEventSnapshot, UpdateConversationTitleRequest,
-    UpdatePersonalTitleRequest,
+    AddConversationMembersRequest, AdvanceConversationCursorRequest, CloudSessionPinSummary,
+    ConversationCursorSnapshot, ConversationKind, ConversationPreferencesSnapshot,
+    ConversationSnapshot, CreateConversationRequest, HistoryResponse, MemberSnapshot,
+    MessageSnapshot, ReactionSnapshot, SendMessageRequest, SyncEventSnapshot,
+    UpdateConversationTitleRequest, UpdatePersonalTitleRequest,
 };
 use crate::chat_sync::PROTOCOL_VERSION;
 
@@ -84,6 +84,7 @@ pub struct SyncBatch {
 pub struct BootstrapSnapshot {
     pub conversations: Vec<ConversationSnapshot>,
     pub latest_messages: Vec<MessageSnapshot>,
+    pub session_pins: Vec<CloudSessionPinSummary>,
     pub stream_seq: i64,
     pub server_time: DateTime<Utc>,
 }
@@ -194,6 +195,7 @@ mod cursors;
 mod members;
 mod meme_validation;
 mod message;
+mod pin_snapshots;
 mod reaction;
 mod support;
 mod sync_events;

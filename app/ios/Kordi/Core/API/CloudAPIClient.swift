@@ -1575,7 +1575,27 @@ actor CloudAPIClient {
                 occurredAt: message.createdAt
             )
         }
-        return titleEvents + messageEvents
+        let pinEvents = (bootstrap.sessionPins ?? []).flatMap { pin in
+            [("shared", pin.sharedMessageId), ("private", pin.privateMessageId)].map { entry in
+                let (scope, messageId) = entry
+                let updatedAt = pin.updatedAt ?? bootstrap.serverTime
+                return CloudSyncEvent(
+                    eventId: "bootstrap:session-pin:\(pin.sessionId):\(scope)",
+                    eventType: "session.pin.updated",
+                    peerAccountId: nil,
+                    messageId: messageId,
+                    payload: CloudSyncEventPayload(
+                        message: nil, messageIds: nil, messageId: messageId, readAt: nil,
+                        sessionId: pin.sessionId, scope: scope, updatedAt: updatedAt,
+                        forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
+                        createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
+                        deviceId: nil, call: nil
+                    ),
+                    occurredAt: updatedAt
+                )
+            }
+        }
+        return titleEvents + messageEvents + pinEvents
     }
 
     private func projectedEvents(from event: CloudChatEvent) throws -> [CloudSyncEvent] {
@@ -1681,10 +1701,11 @@ actor CloudAPIClient {
                 peerAccountId: nil,
                 messageId: event.payload.messageId,
                 payload: CloudSyncEventPayload(
-                    message: nil, messageIds: nil, messageId: event.payload.messageId,
-                    readAt: nil, sessionId: event.payload.sessionId,
-                    scope: event.payload.scope, updatedAt: event.payload.updatedAt,
-                    forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
+                        message: nil, messageIds: nil, messageId: event.payload.messageId,
+                        readAt: nil, sessionId: event.payload.sessionId,
+                        scope: event.payload.scope, updatedAt: event.payload.updatedAt,
+                        updatedByAccountId: event.payload.updatedByAccountId,
+                        forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
                     createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
                     deviceId: nil, call: nil
                 ),

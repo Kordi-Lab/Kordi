@@ -66,6 +66,15 @@ export type ChatSyncEvent = {
   payload: Record<string, unknown>;
 };
 
+export type CloudSessionPinAction = {
+  kind: 'pinned' | 'unpinned';
+  scope: 'private' | 'shared';
+  messageId: string | null;
+  updatedByAccountId: string | null;
+  actorLabel?: string | null;
+  updatedAt: string | null;
+};
+
 export type ChatSyncSyncResponse = {
   protocol_version: 2;
   events: ChatSyncEvent[];
@@ -79,6 +88,13 @@ export type ChatSyncBootstrapResponse = {
   protocol_version: 2;
   conversations: ChatSyncConversation[];
   latest_messages: ChatSyncMessage[];
+  session_pins?: Array<{
+    sessionId: string;
+    sharedMessageId: string | null;
+    privateMessageId: string | null;
+    effectiveMessageId: string | null;
+    updatedAt: string | null;
+  }>;
   next_cursor: string;
   last_stream_seq: number;
   server_time: string;
