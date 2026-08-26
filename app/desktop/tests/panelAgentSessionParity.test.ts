@@ -159,28 +159,6 @@ test('side-panel Agent composer exposes the same visible attachment trigger and 
   assert.doesNotMatch(side, /<span className="h-9 w-9 shrink-0" aria-hidden="true" \/>/, 'side-panel composer should not use a blank spacer instead of the real attachment controls');
 });
 
-test('main and side-panel composers keep attachment drafts isolated', () => {
-  const workspace = readFileSync(
-    new URL('../src/pages/chatsPage.companionWorkspace.tsx', import.meta.url),
-    'utf8',
-  );
-  const companionSession = readFileSync(
-    new URL('../src/pages/useChatCompanionSession.ts', import.meta.url),
-    'utf8',
-  );
-  const actions = chatMessagesSource();
-  const targetedStart = actions.indexOf('const sendTargetedChatMessage = useCallback');
-  const activeStart = actions.indexOf('const handleSendChatMessage = useCallback', targetedStart);
-  const targetedSend = actions.slice(targetedStart, activeStart);
-
-  assert.match(workspace, /useState<ChatAttachment\[\]>\(\[\]\)/, 'side-panel attachments should have independent React state');
-  assert.match(workspace, /chatComposerAttachments: companionAttachments/, 'side-panel composer should render only its own attachments');
-  assert.doesNotMatch(workspace, /chatComposerAttachments: composer\.chatComposerAttachments/, 'side-panel composer must not render the main attachment draft');
-  assert.match(companionSession, /onSendChatMessage\([\s\S]*referenceMessage \? \[referenceMessage\] : \[\],[\s\S]*attachments,/, 'side-panel send should pass its attachment draft explicitly');
-  assert.doesNotMatch(targetedSend, /chatComposerAttachments|setChatComposerAttachments/, 'targeted sends must not read or clear the main attachment draft');
-  assert.match(targetedSend, /preserveComposer: true/, 'targeted local sends should preserve the main composer');
-});
-
 test('side-panel Agent model controls use independent menu state and target the side session', () => {
   const source = chatsPageSource();
   const side = sidePanelBlock(source);

@@ -833,12 +833,7 @@ export function useChatMessageActions({
     resolveChatRuntimeRoute,
   ]);
 
-  const sendTargetedChatMessage = useCallback(async (
-    targetSessionId: string,
-    rawText: string,
-    contextMessages: DesktopChatContextMessage[] = [],
-    attachments: AttachmentItem[] = [],
-  ) => {
+  const sendTargetedChatMessage = useCallback(async (targetSessionId: string, rawText: string, contextMessages: DesktopChatContextMessage[] = [], attachments: AttachmentItem[] = []) => {
     if (!isNativeShell) return;
     const text = rawText.trim();
     if (!text && attachments.length === 0) return;
@@ -1037,12 +1032,7 @@ export function useChatMessageActions({
   ) => {
     if (!isNativeShell) return;
     if (sideTargetSessionId && sideTargetSessionId !== activeConvId) {
-      await sendTargetedChatMessage(
-        sideTargetSessionId,
-        draftOverride ?? '',
-        contextMessages,
-        attachmentOverride,
-      );
+      await sendTargetedChatMessage(sideTargetSessionId, draftOverride ?? '', contextMessages, attachmentOverride);
       return;
     }
     const retryAttachments = retryMessage ? retryAttachmentItemsFromMessage(retryMessage) : null;
