@@ -95,10 +95,7 @@ export function ChatsPage({
     onClearSourcePreview,
     desktopLiveTurn,
   } = transcript;
-  const {
-    chatComposerAttachments,
-    setChatComposerTextForSession,
-  } = composer;
+  const { setChatComposerTextForSession } = composer;
   const {
     composerSelection,
     openComposerSelector,
@@ -156,7 +153,6 @@ export function ChatsPage({
     conversations: chatConversations,
     directConversations: companionConversations,
     activePaneKind,
-    attachmentCount: chatComposerAttachments.length,
     setComposerTextForSession: setChatComposerTextForSession,
     onSendChatMessage,
     onCreateAgentSession,
@@ -313,6 +309,7 @@ export function ChatsPage({
   };
   const companionPane = companionConversation ? (
     <ChatCompanionWorkspace
+      key={companionConversation.id}
       session={companionSession}
       layoutModel={companionLayout}
       destinations={destinations.companion}

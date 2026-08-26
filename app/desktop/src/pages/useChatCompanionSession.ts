@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Conversation } from '@/kordi-app/types';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import type {
+  ChatAttachment,
   ChatsPageComposer,
   ChatsPageRuntime,
 } from '@/pages/chatsPage.types';
@@ -39,7 +40,6 @@ type UseChatCompanionSessionInput = {
   conversations: Conversation[];
   directConversations?: Conversation[];
   activePaneKind: 'human' | 'agent' | null;
-  attachmentCount: number;
   setComposerTextForSession: ChatsPageComposer['setChatComposerTextForSession'];
   onSendChatMessage: ChatsPageRuntime['onSendChatMessage'];
   onCreateAgentSession: ChatsPageRuntime['onCreateAgentSession'];
@@ -110,7 +110,6 @@ export function useChatCompanionSession({
   conversations,
   directConversations = conversations,
   activePaneKind,
-  attachmentCount,
   setComposerTextForSession,
   onSendChatMessage,
   onCreateAgentSession,
@@ -254,9 +253,12 @@ export function useChatCompanionSession({
     activate(suggested.id, initialPrompt);
     return true;
   };
-  const sendDraft = (targetConversation: Conversation) => {
+  const sendDraft = (
+    targetConversation: Conversation,
+    attachments: ChatAttachment[],
+  ) => {
     const draft = state.drafts[targetConversation.id] ?? '';
-    if (!draft.trim() && attachmentCount === 0) return;
+    if (!draft.trim() && attachments.length === 0) return false;
     const referenceMessage = state.referenceContext
       ? buildAskAgentSessionReferenceContextMessage(
           activeConversation,
@@ -267,6 +269,7 @@ export function useChatCompanionSession({
       draft,
       targetConversation.id,
       referenceMessage ? [referenceMessage] : [],
+      attachments,
     );
     scheduleTranscriptScrollToBottom(transcriptScrollRef);
     updateState((current) => {
@@ -274,6 +277,7 @@ export function useChatCompanionSession({
       delete drafts[targetConversation.id];
       return { ...current, drafts };
     });
+    return true;
   };
   const setOpenComposerSelector: Dispatch<
     SetStateAction<ComposerSelector | null>

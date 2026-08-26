@@ -1,6 +1,19 @@
+import { useEffect, useRef, useState } from 'react';
 import { GripVertical, RefreshCw } from 'lucide-react';
 
 import { localOwnedAgentSenderLabel } from '@/app/viewModels/helpers';
+import {
+  composerAttachmentItemFromFile,
+  composerAttachmentItemFromStoredPath,
+  composerAttachmentKindFromName,
+  composerAttachmentNameFromPath,
+  friendlyAttachmentName,
+  updatedComposerAttachment,
+} from '@/features/chat/composerAttachments';
+import type {
+  AttachmentItemUpdate,
+  SaveDesktopAttachmentOptions,
+} from '@/features/chat/composerController.types';
 import { shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '@/features/chat/replyAttribution';
 import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
 import { useCompanionComposerRuntime } from '@/features/chat/useCompanionComposerRuntime';
@@ -8,6 +21,8 @@ import type {
   DesktopChatTurnSnapshot,
   Message,
 } from '@/kordi-app/types';
+import { pickDesktopChatAttachmentPaths } from '@/lib/cloudAttachmentUpload';
+import { storeDesktopChatAttachmentPath } from '@/lib/desktop';
 import { CompanionComposer } from '@/pages/chatsPage.companionComposer';
 import { CompanionDestinationPage } from '@/pages/chatsPage.companionDestination';
 import { CompanionHeader } from '@/pages/chatsPage.companionHeader';
@@ -19,6 +34,7 @@ import {
 } from '@/pages/chatsPage.model';
 import { localAgentComposerConfigTargetSessionId } from '@/pages/chatsPage.header';
 import type {
+  ChatAttachment,
   ChatsPageComposer,
   ChatsPageLayout,
   ChatsPageRuntime,
@@ -83,6 +99,16 @@ export function ChatCompanionWorkspace({
   runtime,
 }: ChatCompanionWorkspaceProps) {
   const conversation = session.conversation;
+  const [companionAttachments, setCompanionAttachments] = useState<ChatAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const companionAttachmentsRef = useRef<ChatAttachment[]>([]);
+  useEffect(() => () => {
+    companionAttachmentsRef.current.forEach((attachment) => {
+      if (attachment.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(attachment.previewUrl);
+      }
+    });
+  }, []);
   const paneKind = conversation ? conversationPaneKind(conversation) : null;
   const localConfigTargetSessionId = conversation
     ? localAgentComposerConfigTargetSessionId(conversation)
@@ -96,6 +122,81 @@ export function ChatCompanionWorkspace({
     authOptions: runtime.composerAuthOptions,
   });
   if (!conversation) return null;
+
+  const updateCompanionAttachments = (
+    update: (current: ChatAttachment[]) => ChatAttachment[],
+  ) => {
+    setCompanionAttachments((current) => {
+      const next = update(current);
+      companionAttachmentsRef.current = next;
+      return next;
+    });
+  };
+  const appendAttachments = (saved: ChatAttachment[]) => {
+    updateCompanionAttachments((current) => {
+      const seen = new Set(current.map((attachment) => attachment.path));
+      return [...current, ...saved.filter((attachment) => !seen.has(attachment.path))];
+    });
+  };
+  const saveAttachments = async (
+    files: File[],
+    options: SaveDesktopAttachmentOptions = {},
+  ) => {
+    if (!shell.isNativeShell || files.length === 0) return [];
+    try {
+      setAttachmentError(null);
+      const saved = await Promise.all(
+        files.map((file) => composerAttachmentItemFromFile(file, options)),
+      );
+      appendAttachments(saved);
+      return saved;
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : 'Unable to attach file');
+      return [];
+    }
+  };
+  const saveAttachmentPaths = async (paths?: string[]) => {
+    if (!shell.isNativeShell) return [];
+    try {
+      setAttachmentError(null);
+      const selectedPaths = paths ?? await pickDesktopChatAttachmentPaths();
+      if (selectedPaths.length === 0) return [];
+      const saved = await Promise.all(selectedPaths.map(async (sourcePath) => {
+        const rawName = composerAttachmentNameFromPath(sourcePath);
+        const kind = composerAttachmentKindFromName(rawName);
+        const displayName = friendlyAttachmentName(rawName, kind);
+        const stored = await storeDesktopChatAttachmentPath(sourcePath, displayName);
+        return composerAttachmentItemFromStoredPath({ sourcePath, stored, displayName });
+      }));
+      appendAttachments(saved);
+      return saved;
+    } catch (error) {
+      setAttachmentError(error instanceof Error ? error.message : 'Unable to attach file');
+      return [];
+    }
+  };
+  const removeAttachment = (id: string) => {
+    updateCompanionAttachments((current) => {
+      const removed = current.find((attachment) => attachment.id === id);
+      if (removed?.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(removed.previewUrl);
+      }
+      return current.filter((attachment) => attachment.id !== id);
+    });
+  };
+  const updateAttachment = (id: string, update: AttachmentItemUpdate) => {
+    updateCompanionAttachments((current) => current.map((attachment) => (
+      attachment.id === id ? updatedComposerAttachment(attachment, update) : attachment
+    )));
+  };
+  const companionComposer: ChatsPageComposer = {
+    ...composer,
+    chatComposerAttachments: companionAttachments,
+    saveDesktopAttachments: saveAttachments,
+    saveDesktopAttachmentPaths: saveAttachmentPaths,
+    removeChatComposerAttachment: removeAttachment,
+    updateChatComposerAttachment: updateAttachment,
+  };
 
   const canonicalHistorySessionId =
     canonicalHistorySessionIdForConversation(conversation);
@@ -253,10 +354,10 @@ export function ChatCompanionWorkspace({
       }}
       composerShell={{
         className: 'pt-3',
-        chatComposerAttachments: composer.chatComposerAttachments,
-        saveDesktopAttachments: composer.saveDesktopAttachments,
-        saveDesktopAttachmentPaths: composer.saveDesktopAttachmentPaths,
-        removeChatComposerAttachment: composer.removeChatComposerAttachment,
+        chatComposerAttachments: companionAttachments,
+        saveDesktopAttachments: saveAttachments,
+        saveDesktopAttachmentPaths: saveAttachmentPaths,
+        removeChatComposerAttachment: removeAttachment,
         activeChatQuote: composer.activeChatQuote,
         onForwardMessage: composer.onForwardMessage,
         rightDetailRail: layout.rightDetailRail,
@@ -267,9 +368,10 @@ export function ChatCompanionWorkspace({
           conversation={conversation}
           paneKind={paneKind ?? 'agent'}
           draftText={session.draftText}
+          attachmentError={attachmentError}
           isNativeShell={shell.isNativeShell}
           attachmentInputRef={session.refs.attachmentInput}
-          composer={composer}
+          composer={companionComposer}
           runtime={runtime}
           localRouting={{
             enabled: presentation.showsLocalAgentControls,
@@ -302,7 +404,11 @@ export function ChatCompanionWorkspace({
             prefersReducedMotion: presentation.prefersReducedMotion,
           }}
           onDraftChange={session.actions.updateDraft}
-          onSend={session.actions.sendDraft}
+          onSend={(targetConversation) => {
+            if (!session.actions.sendDraft(targetConversation, companionAttachments)) return;
+            updateCompanionAttachments(() => []);
+            setAttachmentError(null);
+          }}
         />
       )}
     />

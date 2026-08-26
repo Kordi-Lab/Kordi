@@ -833,10 +833,10 @@ export function useChatMessageActions({
     resolveChatRuntimeRoute,
   ]);
 
-  const sendTargetedChatMessage = useCallback(async (targetSessionId: string, rawText: string, contextMessages: DesktopChatContextMessage[] = []) => {
+  const sendTargetedChatMessage = useCallback(async (targetSessionId: string, rawText: string, contextMessages: DesktopChatContextMessage[] = [], attachments: AttachmentItem[] = []) => {
     if (!isNativeShell) return;
     const text = rawText.trim();
-    if (!text && chatComposerAttachments.length === 0) return;
+    if (!text && attachments.length === 0) return;
 
     const targetConversation = chatConversations.find((conversation) => (
       conversation.id === targetSessionId || conversation.canonicalSessionId === targetSessionId
@@ -883,7 +883,7 @@ export function useChatMessageActions({
         canonicalSessionId,
         canonicalHumanIdentityId,
         text,
-        chatComposerAttachments,
+        attachments,
         sentAt,
         'cloud-group-ui',
         'sending',
@@ -899,7 +899,6 @@ export function useChatMessageActions({
         setDesktopChatError(null);
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
         clearTargetDraft();
-        setChatComposerAttachments([]);
         await persistCanonicalUserMessage(preparedCanonicalMessage);
         await sendCloudGroupControl({
           targetAccountIds: cloudGroupTargetIds,
@@ -914,7 +913,7 @@ export function useChatMessageActions({
             text,
             createdAtMs: Date.now(),
           },
-          attachments: chatComposerAttachments,
+          attachments,
         });
       } catch (error) {
         const failureDetail = collaborationSendFailureDetail(error, 'Unable to send group message');
@@ -952,15 +951,14 @@ export function useChatMessageActions({
           text,
           sentAt,
           optimisticMessageId,
-          chatComposerAttachments,
-          attachmentSummaryText(text),
+          attachments,
+          attachmentSummaryText(text, attachments),
         ));
         clearTargetDraft();
-        setChatComposerAttachments([]);
         const canonicalMessage = await sendCloudCollaborationMessage(
           targetCloudConversationId,
           text,
-          chatComposerAttachments,
+          attachments,
           { clientMessageId: optimisticMessageId },
         );
         setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(targetCloudConversationId, optimisticMessageId, canonicalMessage));
@@ -980,7 +978,7 @@ export function useChatMessageActions({
       desktopLiveTurn: null,
     });
     if (delayReason === 'same-session-running') {
-      queueLocalDraftForSession(targetConversation.id, text, chatComposerAttachments, contextMessages);
+      queueLocalDraftForSession(targetConversation.id, text, attachments, contextMessages);
       return;
     }
     if (delayReason === 'session-starting') {
@@ -992,12 +990,13 @@ export function useChatMessageActions({
       targetConversationId: targetConversation.id,
       canonicalSessionId: targetConversation.canonicalSessionId ?? targetConversation.id,
       text,
-      attachments: chatComposerAttachments,
+      attachments,
       sentAt,
       quote: activeChatQuote,
       contextMessages,
       clearDraftSessionIds: [targetConversation.id],
       materializeTarget: () => materializeLocalChatTarget(targetConversation.id),
+      preserveComposer: true,
       setSendingState: false,
     });
     clearTargetDraft();
@@ -1005,7 +1004,6 @@ export function useChatMessageActions({
     activeChatQuote,
     attachmentSummaryText,
     canonicalHumanIdentityId,
-    chatComposerAttachments,
     chatConversations,
     desktopCollaborationState,
     desktopChatState,
@@ -1017,7 +1015,6 @@ export function useChatMessageActions({
     sendCloudGroupControl,
     sendLocalAgentChatMessage,
     setCanonicalSessionState,
-    setChatComposerAttachments,
     setCloudCollaborationState,
     setComposerDrafts,
     setDesktopChatError,
@@ -1035,7 +1032,7 @@ export function useChatMessageActions({
   ) => {
     if (!isNativeShell) return;
     if (sideTargetSessionId && sideTargetSessionId !== activeConvId) {
-      await sendTargetedChatMessage(sideTargetSessionId, draftOverride ?? '', contextMessages);
+      await sendTargetedChatMessage(sideTargetSessionId, draftOverride ?? '', contextMessages, attachmentOverride);
       return;
     }
     const retryAttachments = retryMessage ? retryAttachmentItemsFromMessage(retryMessage) : null;
