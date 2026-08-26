@@ -195,6 +195,7 @@ mod cursors;
 mod members;
 mod meme_validation;
 mod message;
+mod pin_snapshots;
 mod reaction;
 mod support;
 mod sync_events;

@@ -66,6 +66,15 @@ export type ChatSyncEvent = {
   payload: Record<string, unknown>;
 };
 
+export type CloudSessionPinAction = {
+  kind: 'pinned' | 'unpinned';
+  scope: 'private' | 'shared';
+  messageId: string | null;
+  updatedByAccountId: string | null;
+  actorLabel?: string | null;
+  updatedAt: string | null;
+};
+
 export type ChatSyncSyncResponse = {
   protocol_version: 2;
   events: ChatSyncEvent[];

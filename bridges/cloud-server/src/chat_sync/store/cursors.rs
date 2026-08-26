@@ -366,33 +366,9 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
         .iter()
         .map(|row| row.5.clone().unwrap_or_else(|| row.0.to_string()))
         .collect::<Vec<_>>();
-    let pin_rows: Vec<(String, Option<String>, Option<String>, Option<String>)> = query_as(
-        "SELECT visible_session.session_id, shared_pin.message_id, private_pin.message_id, \
-                COALESCE(private_pin.updated_at, shared_pin.updated_at) \
-         FROM UNNEST($1::text[]) AS visible_session(session_id) \
-         LEFT JOIN cloud_session_shared_pins shared_pin ON shared_pin.session_id = visible_session.session_id \
-         LEFT JOIN cloud_account_session_pins private_pin \
-           ON private_pin.session_id = visible_session.session_id AND private_pin.account_id = $2 \
-         ORDER BY visible_session.session_id ASC",
-    )
-    .bind(&session_ids)
-    .bind(account_id)
-    .fetch_all(&mut *transaction)
-    .await?;
-    let session_pins = pin_rows
-        .into_iter()
-        .map(
-            |(session_id, shared_message_id, private_message_id, updated_at)| {
-                CloudSessionPinSummary {
-                    session_id,
-                    shared_message_id: shared_message_id.clone(),
-                    private_message_id: private_message_id.clone(),
-                    effective_message_id: private_message_id.or(shared_message_id),
-                    updated_at,
-                }
-            },
-        )
-        .collect();
+    let session_pins =
+        super::pin_snapshots::bootstrap_session_pins(&mut transaction, &session_ids, account_id)
+            .await?;
     let member_rows: Vec<BootstrapMemberRow> = query_as(
         "SELECT member.conversation_id, member.account_id, account.display_name, \
                 account.avatar_url, member.role, member.membership_state, member.version, \
