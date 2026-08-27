@@ -88,7 +88,7 @@ test('workspace active conversation resolves Cloud self-agent bridge session ids
   assert.equal(selected.messages[0]?.text, 'Please summarize the forecast.');
 });
 
-test('workspace active conversation keeps selected canonical Cloud session in loading state while hydration catches up', () => {
+test('workspace active conversation keeps selected canonical Cloud session empty while hydration catches up', () => {
   const localConversation = {
     id: 'local-newer',
     canonicalSessionId: 'local-newer',
@@ -113,13 +113,10 @@ test('workspace active conversation keeps selected canonical Cloud session in lo
   assert.equal(selected.canonicalSessionId, 'session:group:clicked-before-hydration');
   assert.equal(selected.unread, 0);
   assert.equal(selected.subtitle, '');
-  assert.equal(selected.messages.length, 1);
-  assert.equal(selected.messages[0]?.text, '');
-  assert.equal(selected.messages[0]?.detail, 'transcript-loading');
-  assert.notEqual(selected.messages[0]?.text, 'wrong local fallback');
+  assert.deepEqual(selected.messages, []);
 });
 
-test('workspace active conversation keeps an invisible loading marker for an empty selected canonical Cloud shell', () => {
+test('workspace active conversation keeps an empty selected canonical Cloud shell empty', () => {
   const emptyCloudShell = {
     id: 'session:group:main',
     canonicalSessionId: 'session:group:main',
@@ -143,9 +140,7 @@ test('workspace active conversation keeps an invisible loading marker for an emp
   assert.equal(selected.id, 'session:group:main');
   assert.equal(selected.name, 'main');
   assert.equal(selected.subtitle, '');
-  assert.equal(selected.messages.length, 1);
-  assert.equal(selected.messages[0]?.text, '');
-  assert.equal(selected.messages[0]?.detail, 'transcript-loading');
+  assert.deepEqual(selected.messages, []);
 });
 
 test('workspace active conversation keeps a catalog-confirmed empty group session blank while hydration runs', () => {
@@ -189,7 +184,7 @@ test('workspace active conversation keeps a catalog-confirmed empty group sessio
   assert.deepEqual(hydrated.messages, []);
 });
 
-test('canonical history loading keeps one invisible marker without replacing the header subtitle', () => {
+test('canonical history loading stays empty without replacing the header subtitle', () => {
   const selected = {
     id: 'session:group:history',
     canonicalSessionId: 'session:group:history',
@@ -208,11 +203,10 @@ test('canonical history loading keeps one invisible marker without replacing the
   const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
 
   assert.equal(loading.subtitle, 'Latest synced message');
-  assert.deepEqual(loading.messages.map((message) => message.text), ['']);
-  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
+  assert.deepEqual(loading.messages, []);
 });
 
-test('contact history loading uses the same invisible transcript marker', () => {
+test('contact history loading stays empty without a synthetic transcript row', () => {
   const selected = {
     id: 'session:direct-person:acct_me:acct_peer',
     canonicalSessionId: 'session:direct-person:acct_me:acct_peer',
@@ -231,8 +225,7 @@ test('contact history loading uses the same invisible transcript marker', () => 
   const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
 
   assert.equal(loading.subtitle, 'Latest synced contact message');
-  assert.deepEqual(loading.messages.map((message) => message.text), ['']);
-  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
+  assert.deepEqual(loading.messages, []);
 });
 
 test('workspace keeps a desktop runtime transcript visible while canonical hydration is loading', () => {

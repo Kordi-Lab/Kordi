@@ -192,7 +192,9 @@ export function useCloudAccountLifecycleState({
   }, [groupReplayCoordinator]);
 
   useEffect(() => {
-    messagesByPeerRef.current = messagesByPeer;
+    if (cloudMessagesUseBrowserCache()) {
+      messagesByPeerRef.current = messagesByPeer;
+    }
     if (
       account
       && cloudMessagesUseBrowserCache()

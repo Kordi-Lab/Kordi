@@ -57,6 +57,8 @@ import {
   loadRemoteRecoveryMessages,
 } from './cloudSelfAgentRecoveryMessages';
 
+const CLOUD_SELF_AGENT_RECONCILE_RETRY_MS = 30_000;
+
 export function useCloudSelfAgentForwardSync({
   account,
   canonicalState,
@@ -83,6 +85,10 @@ export function useCloudSelfAgentForwardSync({
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const syncFlightRef = useRef(createSingleFlightState());
+  const reconciliationFailureRef = useRef<{
+    accountId: string;
+    failedAtMs: number;
+  } | null>(null);
   const executionBySessionIdRef = useCloudSelfAgentExecutionStreaming({
     account,
     canonicalStateRef,
@@ -174,6 +180,12 @@ export function useCloudSelfAgentForwardSync({
     if (!account || !initialMessagesSettled) return;
 
     void requestSingleFlightRun(syncFlightRef.current, async () => {
+      const previousFailure = reconciliationFailureRef.current;
+      if (
+        previousFailure?.accountId === account.accountId
+        && Date.now() - previousFailure.failedAtMs
+          < CLOUD_SELF_AGENT_RECONCILE_RETRY_MS
+      ) return;
       try {
         const latestState =
           canonicalStateRef.current ?? canonicalState ?? null;
@@ -414,7 +426,12 @@ export function useCloudSelfAgentForwardSync({
           account.accountId,
           new Set(),
         );
+        reconciliationFailureRef.current = null;
       } catch (error) {
+        reconciliationFailureRef.current = {
+          accountId: account.accountId,
+          failedAtMs: Date.now(),
+        };
         reportWarning(
           '[cloud-self-agent-sync] failed to reconcile agent sessions',
           error,

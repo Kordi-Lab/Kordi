@@ -372,3 +372,42 @@ test('session title edits recover from a concurrent-device preference version', 
   assert.equal(JSON.parse(preferenceCalls[0].init?.body as string).expected_preferences_version, 1);
   assert.equal(JSON.parse(preferenceCalls[1].init?.body as string).expected_preferences_version, 2);
 });
+
+test('session title sync is a no-op when reliable preferences already match', async () => {
+  const initial = chatConversation({
+    preferences: {
+      ...chatConversation().preferences,
+      personal_title: 'Already synced',
+    },
+  });
+  const { calls, fetchImpl } = recordingFetch((call) => {
+    if (call.url.endsWith('/sync/bootstrap')) {
+      return jsonResponse(200, {
+        protocol_version: 2,
+        conversations: [initial],
+        latest_messages: [],
+        next_cursor: 'opaque-1',
+        last_stream_seq: 1,
+        server_time: '2026-05-12T00:00:00Z',
+      });
+    }
+    throw new Error(`Unexpected request: ${call.url}`);
+  });
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const title = await client.updateCloudSessionTitle(
+    'kordi_cs_xyz',
+    initial.legacy_session_id,
+    {
+      title: 'Already synced',
+      titleSource: 'auto',
+      titleRevision: 1,
+      titlePolicyVersion: 1,
+      titleGeneratedFromMessageId: 'message-1',
+      updatedAtMs: Date.parse('2026-05-12T00:01:00Z'),
+    },
+  );
+
+  assert.equal(title.title, 'Already synced');
+  assert.equal(calls.filter((call) => call.url.endsWith('/preferences')).length, 0);
+});

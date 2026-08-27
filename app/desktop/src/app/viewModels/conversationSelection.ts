@@ -1,4 +1,5 @@
 import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
+import { sessionHasActiveProcessing } from '@/features/canonical/readModel/conversationMapping';
 import { isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import { transcriptLoadingNotice } from '@/features/chat/transcriptLoadingNotice';
@@ -121,26 +122,14 @@ export function activeConversationForSelection(
   chatConversations: Conversation[],
   options: ActiveConversationSelectionOptions,
 ): Conversation {
+  if (options.isNativeShell && !activeConvId.trim()) {
+    return options.nativeChatPlaceholder;
+  }
   if (options.isNativeShell && isLocalDraftChatConversationId(activeConvId)) {
     return options.nativeChatPlaceholder;
   }
   const selectedConversation = matchingConversation(activeConvId, chatConversations);
-  if (selectedConversation) {
-    const selectedCanonicalId = selectedConversation.canonicalSessionId ?? selectedConversation.id;
-    if (
-      isCanonicalCloudSessionId(selectedCanonicalId)
-      && selectedConversation.messages.length === 0
-      && selectedConversation.canonicalMessageCount !== 0
-    ) {
-      const pending = pendingCanonicalCloudConversationForActiveId(selectedCanonicalId);
-      return pending ? {
-        ...selectedConversation,
-        subtitle: selectedConversation.subtitle || pending.subtitle,
-        messages: pending.messages,
-      } : selectedConversation;
-    }
-    return selectedConversation;
-  }
+  if (selectedConversation) return selectedConversation;
   const supportConversation = matchingSupportConversation(
     activeConvId,
     chatConversations,
@@ -164,11 +153,11 @@ export function applyCanonicalHydrationPlaceholder(
     selectedConversation.desktopRuntimeBacked
     && selectedConversation.desktopRuntimeTranscriptLoaded !== true
     && !isLocalDraftChatConversationId(selectedConversation.id)
-    && selectedConversation.messages.every((message) => message.role === 'system')
+    && !sessionHasActiveProcessing(selectedConversation.messages)
   ) {
     return {
       ...selectedConversation,
-      messages: [transcriptLoadingNotice()],
+      messages: [transcriptLoadingNotice(undefined, selectedConversation.messages)],
     };
   }
   const knownCanonicalMessageCount =
@@ -182,10 +171,9 @@ export function applyCanonicalHydrationPlaceholder(
   ) {
     return selectedConversation;
   }
-  return {
-    ...selectedConversation,
-    messages: [transcriptLoadingNotice(undefined, selectedConversation.messages)],
-  };
+  return selectedConversation.messages.length > 1
+    ? selectedConversation
+    : { ...selectedConversation, messages: [] };
 }
 
 export function pendingCanonicalCloudConversationForActiveId(
@@ -205,7 +193,7 @@ export function pendingCanonicalCloudConversationForActiveId(
     trust: 'Cloud',
     directness: isGroup ? 'Group chat' : 'Person chat',
     participants: ['Me'],
-    messages: [transcriptLoadingNotice()],
+    messages: [],
   };
 }
 

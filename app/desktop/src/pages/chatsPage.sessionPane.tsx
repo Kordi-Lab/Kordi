@@ -83,7 +83,7 @@ export function ChatSelectionEmptyState() {
           No chat selected
         </div>
         <p className="mt-1.5 text-[12px] leading-5 text-[color:var(--utility-muted-text)]">
-          Select a conversation, or use + to start an agent session.
+          Select a conversation, or use + to start a chat.
         </p>
       </div>
     </div>

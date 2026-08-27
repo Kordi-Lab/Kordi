@@ -8,8 +8,8 @@ import {
   defaultCloudAuthClient,
   type CloudAccount,
   type CloudMessage,
-  type CloudSessionTitle,
 } from './authClient';
+import { cloudGroupSessionTitlesForReadModel } from './cloudCollaborationStateHelpers';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
 } from './cloudAgentMessages';
@@ -75,6 +75,7 @@ import {
   useCloudCollaborationStores,
 } from './useCloudCollaborationStores';
 import { useCloudCollaborationMessageStore } from './useCloudCollaborationMessageStore';
+import { cloudRecoveryMessagesReady } from './cloudMessageSyncState';
 import {
   useCloudCollaborationTransport,
 } from './useCloudCollaborationTransport';
@@ -179,15 +180,11 @@ export {
   suppressCloudCollaborationUnreadCounts,
 } from './useCloudCollaborationReadModel';
 
-function reportCloudAgentAvailabilityWarning(message: string, error: unknown) {
-  console.warn(message, error);
-}
-
+function reportCloudAgentAvailabilityWarning(message: string, error: unknown) { console.warn(message, error); }
 function reportCloudAgentExecutionWarning(message: string, error: unknown) {
   const detail = error instanceof Error ? error.message : String(error);
   console.warn(`${message}: ${detail}`);
 }
-
 export function useCloudCollaborationState({
   account, activeConversationId, canMarkActiveConversationRead,
   canonicalSessionState,
@@ -214,7 +211,7 @@ export function useCloudCollaborationState({
       defaultCloudGroupOutboxPersistence(accountId),
     )
     : null, [accountId]);
-  const messageStore = useCloudCollaborationMessageStore(account);
+  const messageStore = useCloudCollaborationMessageStore(account, activeConversationId);
   const stores = useCloudCollaborationStores({
     account,
     canonicalState: canonicalSessionState,
@@ -324,6 +321,7 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
   const canonicalStateReady = Boolean(canonicalSessionState);
+  const recoveryMessagesReady = cloudRecoveryMessagesReady(initialMessagesSettled, messagesBelongToCurrentAccount, cloudMessageIndex.allMessages.length);
 
   const {
     catalog: {
@@ -436,13 +434,14 @@ export function useCloudCollaborationState({
     humanIdentityId: canonicalSessionState?.profile.humanIdentityId,
     canonicalStateRef: canonicalSessionStateRef,
     setCanonicalState: setCanonicalSessionState,
-    initialMessagesSettled,
+    initialMessagesSettled: recoveryMessagesReady,
     processedRequestIdsRef: processedCloudAgentMentionIdsRef,
     coordinator: cloudGroupReplayCoordinator,
     messageIndex: cloudMessageIndex,
     applyControl: cloudGroupControlApplication.apply,
     flushCanonicalState:
       cloudGroupControlApplication.flushCanonicalState,
+    onSettled: messageStore.onGroupRecoverySettled,
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
@@ -521,7 +520,7 @@ export function useCloudCollaborationState({
     account,
     canonicalState: canonicalSessionState,
     client,
-    initialMessagesSettled,
+    initialMessagesSettled: recoveryMessagesReady,
     messagesByPeer,
     setForksBySessionId: setCloudSessionForksById,
     titlesBySessionId: cloudSessionTitlesById,
@@ -537,7 +536,8 @@ export function useCloudCollaborationState({
     messageIndex: cloudMessageIndex,
     forksBySessionId: cloudSessionForksById,
     titlesBySessionId: cloudSessionTitlesById,
-    initialMessagesSettled,
+    initialMessagesSettled: recoveryMessagesReady,
+    onSettled: messageStore.onSelfAgentRecoverySettled,
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
@@ -642,6 +642,7 @@ export function useCloudCollaborationState({
       && message.toAccountId === account?.accountId
     ))
   ), [account?.accountId, cloudMessageIndex.allMessages]);
+  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudMessageIndex.legacyGroupSessionTitlesById, cloudSessionTitlesById), [cloudMessageIndex.legacyGroupSessionTitlesById, cloudSessionTitlesById]);
   return {
     cloudAgentRuntimeRouteMessages,
     cloudCollaborationState,
@@ -679,7 +680,6 @@ export function useCloudCollaborationState({
     cloudHiddenSessionIds,
     cloudDeletedSessionIds,
     cloudSessionPinsById,
-    cloudLegacyGroupSessionTitlesById:
-      cloudMessageIndex.legacyGroupSessionTitlesById,
+    cloudLegacyGroupSessionTitlesById: cloudGroupSessionTitles,
   };
 }

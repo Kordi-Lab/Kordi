@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { shouldUseCanonicalMessages } from '../src/features/canonical/readModel/conversationMapping';
+import { mergeCanonicalReadReceipts } from '../src/features/canonical/readModel/messageReactionMetadata';
 import { restoredSelfAgentContextMessages } from '../src/features/chat/messageActions/chatMessages';
 import { mergeCanonicalHistoryIntoRuntime } from '../src/features/canonical/sessionReadModel';
 import type { Message } from '../src/kordi-app/types';
@@ -15,6 +16,28 @@ test('canonical read model keeps existing local transcript when canonical has eq
   ];
 
   assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), false);
+});
+
+test('canonical read receipts enrich an equal-length runtime transcript', () => {
+  const runtime: Message = {
+    id: 'message-1',
+    role: 'user',
+    text: 'hello',
+    time: '11:41',
+    isOwnMessage: true,
+  };
+  const canonical: Message = {
+    ...runtime,
+    readReceiptSummary: {
+      count: 1,
+      participants: [{ id: 'human:reader', name: 'Reader' }],
+    },
+  };
+
+  const merged = mergeCanonicalReadReceipts([runtime], [canonical]);
+
+  assert.equal(merged[0]?.id, runtime.id);
+  assert.equal(merged[0]?.readReceiptSummary?.count, 1);
 });
 
 test('canonical read model prefers equal-count transcript with background session tools', () => {

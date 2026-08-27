@@ -57,6 +57,7 @@ import {
   retryAttachmentItemsFromMessage, voiceMessageSendFields,
   type PreparedCanonicalUserMessage,
 } from './optimistic';
+import { activeConversationMatchesSendScope } from './messageSendScope';
 import { reconcileOptimisticCollaborationMessageUpdater } from './optimisticReconciliation';
 import {
   markOptimisticCanonicalMessageSent,
@@ -340,7 +341,6 @@ export function collaborationConversationSendPlan({
     canAppendCollaborationOptimisticMessage: Boolean(targetConversationId),
   };
 }
-
 function cleanText(value?: string | null) {
   return value?.trim() || null;
 }
@@ -359,7 +359,6 @@ export function activeLocalTurnShouldDelayChatSend({
     && !isLocalDraftChatConversationId(activeConvId)
     && localChatTargetHasRunningTurn(desktopLiveTurn, activeConvId);
 }
-
 export function localChatTargetSessionIdForActiveConversation({
   activeConvId,
   activeConvCanonicalSessionId,
@@ -1045,6 +1044,7 @@ export function useChatMessageActions({
     const attachmentsToSend = retryAttachments ?? attachmentOverride ?? chatComposerAttachments; const voiceFields = voiceMessageSendFields(attachmentsToSend);
     const preserveComposer = attachmentOverride !== undefined;
     if (!text && attachmentsToSend.length === 0) return;
+    if (!activeConversationMatchesSendScope(activeConvId, activeConvMentionScope)) { setDesktopChatError('Chat is still loading. Try again in a moment.'); return; }
     const memeValidationError = memeAttachmentDraftError(attachmentsToSend, {
       requireRightsConfirmation: !retryMessage,
     });

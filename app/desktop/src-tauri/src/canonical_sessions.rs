@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 mod canonical_fork;
 pub(crate) mod chat_sync;
+mod chat_sync_schema;
 mod commands;
 mod core;
 mod desktop_runtime_status;

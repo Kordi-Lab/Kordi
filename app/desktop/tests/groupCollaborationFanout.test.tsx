@@ -11,6 +11,7 @@ import {
   isCollaborationGroupSession,
   shouldUseCollaborationConversationRouting,
 } from '../src/features/chat/messageActions/chatMessages';
+import { activeConversationMatchesSendScope } from '../src/features/chat/messageActions/messageSendScope';
 import type { Conversation, ConversationCollaborationTarget } from '../src/kordi-app/types';
 
 function groupConversation(): Conversation {
@@ -44,6 +45,14 @@ const activeTarget: ConversationCollaborationTarget = {
   runtime: 'person',
   humanId: 'kh_alice',
 };
+
+test('composer refuses a fallback group scope for a different selected chat', () => {
+  const group = groupConversation();
+  assert.equal(activeConversationMatchesSendScope('bridge:cloud:peer:person', group), false);
+  assert.equal(activeConversationMatchesSendScope(group.id, group), true);
+  assert.equal(activeConversationMatchesSendScope(group.canonicalSessionId!, group), true);
+  assert.equal(activeConversationMatchesSendScope('local-session', null), true);
+});
 
 test('detects bridge-backed group sessions even when active header type is person', () => {
   assert.equal(isCollaborationGroupSession(groupConversation()), true);

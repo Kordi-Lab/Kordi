@@ -54,6 +54,7 @@ test('sidebar traversal does not hydrate every session before selection', () => 
     assert.doesNotMatch(source, /onFocus=.*onPrefetchChatSession/);
     assert.match(source, /onClick=.*onSelectChatSession/);
   }
+  assert.doesNotMatch(canonicalStoreSource(), /requestIdleCallback|\.slice\(0, 8\)/);
 });
 
 test('chat session changes reset transcript auto-follow before message hydration', () => {

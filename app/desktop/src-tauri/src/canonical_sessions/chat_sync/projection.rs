@@ -72,13 +72,19 @@ pub(super) fn upsert_message(
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty());
+    let message_kind = message
+        .get("kind")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
     let encoded = serde_json::to_string(message).map_err(|error| error.to_string())?;
     tx.execute(
         "INSERT INTO chat_sync_messages
-         (account_id, message_id, client_message_id, conversation_id, conversation_sequence, version, snapshot_json, updated_at_ms)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+         (account_id, message_id, client_message_id, message_kind, conversation_id, conversation_sequence, version, snapshot_json, updated_at_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
          ON CONFLICT(account_id, message_id) DO UPDATE SET
              client_message_id = COALESCE(excluded.client_message_id, chat_sync_messages.client_message_id),
+             message_kind = COALESCE(excluded.message_kind, chat_sync_messages.message_kind),
              conversation_id = excluded.conversation_id,
              conversation_sequence = excluded.conversation_sequence,
              version = excluded.version,
@@ -89,6 +95,7 @@ pub(super) fn upsert_message(
             account_id,
             message_id,
             client_message_id,
+            message_kind,
             conversation_id,
             sequence,
             version,

@@ -177,6 +177,7 @@ pub(super) fn initialize_schema(conn: &Connection) -> Result<(), String> {
              account_id TEXT NOT NULL,
              message_id TEXT NOT NULL,
              client_message_id TEXT,
+             message_kind TEXT,
              conversation_id TEXT NOT NULL,
              conversation_sequence INTEGER NOT NULL CHECK(conversation_sequence >= 1),
              version INTEGER NOT NULL CHECK(version >= 1),
@@ -204,7 +205,12 @@ pub(super) fn initialize_schema(conn: &Connection) -> Result<(), String> {
              ON chat_sync_pending_operations(account_id, status, next_attempt_at_ms, created_at_ms);",
     )
     .map_err(|err| err.to_string())?;
-    ensure_chat_sync_message_client_ids(conn)?;
+    super::chat_sync_schema::ensure_chat_sync_message_projection_columns(conn)?;
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_chat_sync_message_kind
+         ON chat_sync_messages(account_id, message_kind, conversation_id, conversation_sequence DESC);",
+    )
+    .map_err(|error| error.to_string())?;
     migrate_versioned_chat_tables(conn)?;
     conn.execute(
         "INSERT INTO canonical_schema_meta(key, value) VALUES('version', ?1)
@@ -254,10 +260,11 @@ fn migrate_versioned_chat_tables(conn: &Connection) -> Result<(), String> {
         if current == "chat_sync_messages" {
             migration.push_str(&format!(
                 "INSERT OR IGNORE INTO {current}
-                 (account_id, message_id, client_message_id, conversation_id,
+                 (account_id, message_id, client_message_id, message_kind, conversation_id,
                   conversation_sequence, version, snapshot_json, updated_at_ms)
                  SELECT account_id, message_id,
-                        json_extract(snapshot_json, '$.client_message_id'), conversation_id,
+                        json_extract(snapshot_json, '$.client_message_id'),
+                        json_extract(snapshot_json, '$.kind'), conversation_id,
                         conversation_sequence, version, snapshot_json, updated_at_ms
                  FROM {previous};\n\
                  DROP TABLE {previous};\n"
@@ -272,32 +279,6 @@ fn migrate_versioned_chat_tables(conn: &Connection) -> Result<(), String> {
     migration.push_str("COMMIT;");
 
     if let Err(error) = conn.execute_batch(&migration) {
-        let _ = conn.execute_batch("ROLLBACK;");
-        return Err(error.to_string());
-    }
-    Ok(())
-}
-
-fn ensure_chat_sync_message_client_ids(conn: &Connection) -> Result<(), String> {
-    let mut statement = conn
-        .prepare("PRAGMA table_info(chat_sync_messages)")
-        .map_err(|error| error.to_string())?;
-    let columns = statement
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    if columns.iter().any(|column| column == "client_message_id") {
-        return Ok(());
-    }
-
-    let migration = "BEGIN IMMEDIATE;
-         ALTER TABLE chat_sync_messages ADD COLUMN client_message_id TEXT;
-         UPDATE chat_sync_messages
-         SET client_message_id = json_extract(snapshot_json, '$.client_message_id')
-         WHERE client_message_id IS NULL;
-         COMMIT;";
-    if let Err(error) = conn.execute_batch(migration) {
         let _ = conn.execute_batch("ROLLBACK;");
         return Err(error.to_string());
     }
@@ -441,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    fn current_chat_message_table_adds_and_backfills_client_message_id() {
+    fn current_chat_message_table_adds_and_backfills_projection_columns() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE chat_sync_messages (
@@ -453,7 +434,7 @@ mod tests {
              );
              INSERT INTO chat_sync_messages VALUES
                  ('acct', 'message', 'conversation', 1, 1,
-                  '{\"client_message_id\":\"client-message\"}', 1);",
+                  '{\"client_message_id\":\"client-message\",\"kind\":\"text\"}', 1);",
         )
         .unwrap();
 
@@ -467,6 +448,14 @@ mod tests {
             )
             .unwrap();
         assert_eq!(client_message_id, "client-message");
+        let message_kind: String = conn
+            .query_row(
+                "SELECT message_kind FROM chat_sync_messages WHERE message_id = 'message'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(message_kind, "text");
     }
 
     #[test]

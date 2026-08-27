@@ -66,6 +66,12 @@ export function resolveCanonicalPageSessionId(
   const id = candidate?.trim() ?? '';
   if (!id) return null;
   if (catalogSessionIds.has(id)) return id;
+  const explicitCloudSessionId = isCloudCollaborationConversationId(id)
+    ? cloudSessionIdFromConversationId(id)
+    : null;
+  if (explicitCloudSessionId && catalogSessionIds.has(explicitCloudSessionId)) {
+    return explicitCloudSessionId;
+  }
   const matchedConversation = conversations.find((conversation) => (
     conversation.id === id
     || conversation.canonicalSessionId === id
@@ -76,7 +82,7 @@ export function resolveCanonicalPageSessionId(
   }
   if (
     !isCloudCollaborationConversationId(id)
-    || cloudSessionIdFromConversationId(id)
+    || explicitCloudSessionId
   ) {
     return null;
   }
@@ -345,7 +351,6 @@ export function useKordiCanonicalPageHydration({
   activeProjectSessionId,
   collaborationState,
   hydrateSessionPage,
-  isNativeShell,
   store,
 }: {
   activeConversationId: string;
@@ -358,7 +363,6 @@ export function useKordiCanonicalPageHydration({
       force?: boolean;
     },
   ) => Promise<CanonicalMessagePage | null>;
-  isNativeShell: boolean;
   store: CanonicalStore;
 }) {
   const activePageSessionIds = useMemo(() => {
@@ -388,46 +392,4 @@ export function useKordiCanonicalPageHydration({
       void hydrateSessionPage(sessionId).catch(() => {});
     }
   }, [activePageSessionIds, hydrateSessionPage]);
-
-  useEffect(() => {
-    const sessionIds = (store.catalog?.sessions ?? [])
-      .slice(0, 8)
-      .map((session) => session.id);
-    if (!isNativeShell || sessionIds.length === 0) return undefined;
-    let cancelled = false;
-    const prefetch = () => {
-      void (async () => {
-        for (const sessionId of sessionIds) {
-          if (cancelled) return;
-          await hydrateSessionPage(sessionId).catch(() => null);
-        }
-      })();
-    };
-    const idleWindow = window as unknown as {
-      requestIdleCallback?(
-        callback: () => void,
-        options?: { timeout: number },
-      ): number;
-      cancelIdleCallback?(id: number): void;
-    };
-    if (typeof idleWindow.requestIdleCallback === 'function') {
-      const idleId = idleWindow.requestIdleCallback(
-        prefetch,
-        { timeout: 1_500 },
-      );
-      return () => {
-        cancelled = true;
-        idleWindow.cancelIdleCallback?.(idleId);
-      };
-    }
-    const timeoutId = globalThis.setTimeout(prefetch, 250);
-    return () => {
-      cancelled = true;
-      globalThis.clearTimeout(timeoutId);
-    };
-  }, [
-    hydrateSessionPage,
-    isNativeShell,
-    store.catalog?.sessions,
-  ]);
 }

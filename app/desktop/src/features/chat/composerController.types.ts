@@ -75,7 +75,7 @@ export type ComposerConversationContext = {
   activeConvMessages: Message[];
   activeConvCollaborationTarget?: ConversationCollaborationTarget | null;
   activeConvSupportTicketEnabled?: boolean;
-  activeConvMentionScope?: object & Partial<Pick<Conversation, 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness'>> | null;
+  activeConvMentionScope?: object & Partial<Pick<Conversation, 'id' | 'canonicalSessionId' | 'participantSpaceId' | 'canonicalParticipants' | 'participants' | 'directness'>> | null;
   sharedCloudAgents?: SharedCloudAgentSummary[];
   resolveSharedCloudAgentsForMention?: () => Promise<SharedCloudAgentSummary[]>;
 };

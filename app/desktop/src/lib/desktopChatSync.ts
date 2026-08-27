@@ -36,6 +36,18 @@ export type ChatSyncMessageRef = Pick<
   'id' | 'client_message_id' | 'conversation_id'
 >;
 
+export type ChatSyncMessagePage = {
+  conversationId: string;
+  messages: ChatSyncMessage[];
+  nextAfterSequence: number | null;
+  hasMore: boolean;
+};
+
+export type ChatSyncRecoveryMessageIds = {
+  conversationId: string;
+  messageIds: string[];
+};
+
 export type ApplyChatSyncRequest = {
   accountId: string;
   bootstrap: boolean;
@@ -87,6 +99,32 @@ export async function loadChatSyncMessageRefs(accountId: string, conversationIds
     accountId,
     conversationIds,
   });
+}
+
+export async function loadChatSyncMessagesPage(
+  accountId: string,
+  conversationId: string,
+  afterSequence: number | null = null,
+  limit = 100,
+) {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<ChatSyncMessagePage>('desktop_chat_sync_messages_page', {
+    accountId,
+    conversationId,
+    afterSequence,
+    limit,
+  });
+}
+
+export async function loadChatSyncRecoveryMessageIds(
+  accountId: string,
+  conversationId: string,
+) {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<ChatSyncRecoveryMessageIds>(
+    'desktop_chat_sync_recovery_message_ids',
+    { accountId, conversationId },
+  );
 }
 
 export async function applyChatSyncLocalBatch(request: ApplyChatSyncRequest) {

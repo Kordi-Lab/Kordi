@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   type MutableRefObject,
 } from 'react';
 import type {
@@ -24,6 +25,8 @@ import {
   cloudObjectContent,
 } from './cloudValue';
 
+const CLOUD_GROUP_TITLE_BACKFILL_RETRY_MS = 30_000;
+
 export function useCloudGroupSessionTitleSync({
   account,
   canonicalState,
@@ -43,6 +46,7 @@ export function useCloudGroupSessionTitleSync({
   ) => Promise<void>;
   reportWarning: (message: string, error: unknown) => void;
 }) {
+  const failedAtByBackfillKeyRef = useRef(new Map<string, number>());
   useEffect(() => {
     if (
       !account
@@ -93,6 +97,11 @@ export function useCloudGroupSessionTitleSync({
       if (targetAccountIds.length === 0) continue;
       const backfillKey = `${account.accountId}:${session.id}`;
       if (titleBackfillsRef.current.has(backfillKey)) continue;
+      const failedAtMs = failedAtByBackfillKeyRef.current.get(backfillKey);
+      if (
+        failedAtMs !== undefined
+        && Date.now() - failedAtMs < CLOUD_GROUP_TITLE_BACKFILL_RETRY_MS
+      ) continue;
 
       const creatorIdentityId = cleanCloudText(
         typeof metadata.groupCreatorIdentityId === 'string'
@@ -132,8 +141,11 @@ export function useCloudGroupSessionTitleSync({
         actor,
         participants: latestControl.participants,
         sessionTitleSyncOnly: true,
+      }).then(() => {
+        failedAtByBackfillKeyRef.current.delete(backfillKey);
       }).catch((error) => {
         titleBackfillsRef.current.delete(backfillKey);
+        failedAtByBackfillKeyRef.current.set(backfillKey, Date.now());
         reportWarning(
           '[cloud-group-session-title] failed to backfill title',
           error,

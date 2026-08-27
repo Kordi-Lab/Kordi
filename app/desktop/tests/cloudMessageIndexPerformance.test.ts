@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import { encodeCloudGroupControl, parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import {
   buildCloudMessageIndex,
   canonicalMessageSourceKey,
@@ -16,6 +16,7 @@ import {
   buildScaleCloudMessagesByPeer,
   scaleMessageId,
 } from './fixtures/chatScale';
+import { compactNativeCloudMessagesByPeer } from '../src/features/cloud/useCloudCollaborationMessageStore';
 
 test('scale Cloud fixture has deterministic full fanout and valid group envelopes', () => {
   const messagesByPeer = buildScaleCloudMessagesByPeer();
@@ -48,6 +49,17 @@ test('scale Cloud fixture has deterministic full fanout and valid group envelope
   assert.equal(messagesByPeer.acct_scale_0?.[0]?.readAt, '2026-01-01T00:00:02.000Z');
 });
 
+test('native renderer projection bounds the 20,000-row Cloud fixture', () => {
+  const compacted = compactNativeCloudMessagesByPeer(
+    buildScaleCloudMessagesByPeer(),
+  );
+  const rows = Object.values(compacted);
+
+  assert.equal(rows.length, CHAT_SCALE.cloudRecipients);
+  assert.ok(rows.every((messages) => messages.length === 64));
+  assert.equal(rows.reduce((count, messages) => count + messages.length, 0), 1_280);
+});
+
 test('Cloud message index parses each unique wire row once and builds constant-time delivery summaries', () => {
   const fixture = buildScaleCloudMessagesByPeer();
   const messagesByPeer = Object.fromEntries(Object.entries(fixture).map(([peerId, messages]) => (
@@ -74,6 +86,28 @@ test('Cloud message index parses each unique wire row once and builds constant-t
     index.legacyGroupSessionTitlesById.get(index.groupRows[0]!.envelope.groupId),
     'Scale Cloud message 100',
   );
+});
+
+test('a punctuation-only first group message cannot promote a later message into the channel title', () => {
+  const template = buildScaleCloudMessagesByPeer().acct_scale_0[0]!;
+  const envelope = parseCloudGroupControl(template.body)!;
+  const message = envelope.message!;
+  const first = {
+    ...template,
+    messageId: 'wire:first-punctuation',
+    body: encodeCloudGroupControl({ ...envelope, message: { ...message, text: '?' } }),
+  };
+  const second = {
+    ...template,
+    messageId: 'wire:later-title',
+    createdAt: '2026-01-01T00:00:01.000Z',
+    body: encodeCloudGroupControl({ ...envelope, message: { ...message, text: 'cool' } }),
+  };
+  const index = buildCloudMessageIndex(SCALE_ACCOUNT_ID, {
+    acct_scale_0: [first, second],
+  });
+
+  assert.equal(index.legacyGroupSessionTitlesById.has(envelope.groupId), false);
 });
 
 test('a less complete duplicate cannot erase a semantic message kind', () => {

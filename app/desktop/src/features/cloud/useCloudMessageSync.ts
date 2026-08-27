@@ -358,7 +358,6 @@ export function useCloudMessageSync({
     ]);
     if (!coordinator.isCurrentGeneration(generation)) return;
     const coverageByConversation = new Map(coverage.map((value) => [value.conversationId, value]));
-    let historyChanged = false;
     for (const conversation of conversations) {
       if (!coordinator.isCurrentGeneration(generation)) return;
       if (conversation.latest_message_sequence <= 0) continue;
@@ -388,7 +387,6 @@ export function useCloudMessageSync({
           bootstrap: false,
           messages: page.messages,
         });
-        historyChanged ||= page.messages.length > 0;
         if (!page.hasMore) break;
         const next = page.nextBeforeSequence;
         if (!next || (beforeSequence !== undefined && next >= beforeSequence)) {
@@ -397,8 +395,7 @@ export function useCloudMessageSync({
         beforeSequence = next;
       }
     }
-    if (historyChanged) await hydrateChatLocalState(generation);
-  }, [account, client, coordinator, hydrateChatLocalState]);
+  }, [account, client, coordinator]);
   const runCoordinatedSync = useCallback(async (generation: number) => {
     const request = pendingRequestRef.current;
     pendingRequestRef.current = null;

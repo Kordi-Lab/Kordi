@@ -1,4 +1,8 @@
+use super::compaction::{compact_agent_response_snapshots, compact_startup_snapshots};
 use super::*;
+use std::collections::HashSet;
+
+const STARTUP_TAIL_PER_CONVERSATION: i64 = 64;
 
 pub(super) fn load_cursor_state(
     conn: &Connection,
@@ -55,15 +59,51 @@ pub(super) fn load_state(
 ) -> Result<ChatSyncLocalState, String> {
     let cursor = load_cursor_state(conn, account_id)?;
     let conversations = load_conversations(conn, account_id)?;
+    let direct_conversation_ids = conversations
+        .iter()
+        .filter(|conversation| conversation.get("kind").and_then(Value::as_str) == Some("direct"))
+        .filter_map(|conversation| conversation.get("id").and_then(Value::as_str))
+        .map(str::to_string)
+        .collect::<HashSet<_>>();
     let mut message_statement = conn
         .prepare(
-            "SELECT snapshot_json FROM chat_sync_messages
-             WHERE account_id = ?1
+            "WITH tails AS (
+                 SELECT snapshot_json,
+                        conversation_id,
+                        conversation_sequence,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY conversation_id
+                            ORDER BY conversation_sequence DESC
+                        ) AS recency_rank
+                 FROM chat_sync_messages
+                 WHERE account_id = ?1
+             ),
+             routes AS (
+                 SELECT snapshot_json,
+                        conversation_id,
+                        conversation_sequence,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY conversation_id
+                            ORDER BY conversation_sequence DESC
+                        ) AS route_rank
+                 FROM chat_sync_messages
+                 WHERE account_id = ?1
+                   AND message_kind = 'agent-model-change'
+             )
+             SELECT snapshot_json FROM (
+                 SELECT snapshot_json, conversation_id, conversation_sequence
+                 FROM tails WHERE recency_rank <= ?2
+                 UNION
+                 SELECT snapshot_json, conversation_id, conversation_sequence
+                 FROM routes WHERE route_rank = 1
+             )
              ORDER BY conversation_id ASC, conversation_sequence ASC",
         )
         .map_err(|error| error.to_string())?;
     let messages = message_statement
-        .query_map([account_id], |row| row.get::<_, String>(0))
+        .query_map(params![account_id, STARTUP_TAIL_PER_CONVERSATION], |row| {
+            row.get::<_, String>(0)
+        })
         .map_err(|error| error.to_string())?
         .map(|row| {
             row.map_err(|error| error.to_string()).and_then(|encoded| {
@@ -71,6 +111,10 @@ pub(super) fn load_state(
             })
         })
         .collect::<Result<Vec<Value>, String>>()?;
+    let messages = compact_startup_snapshots(
+        compact_agent_response_snapshots(messages),
+        &direct_conversation_ids,
+    );
     Ok(ChatSyncLocalState {
         account_id: account_id.to_string(),
         cursor: cursor.cursor,
