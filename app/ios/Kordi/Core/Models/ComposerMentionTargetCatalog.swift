@@ -3,6 +3,17 @@ import Foundation
 struct ComposerMentionTextSegment: Equatable {
     let text: String
     let kind: ComposerMentionKind?
+    let profileAccountId: String?
+
+    init(
+        text: String,
+        kind: ComposerMentionKind?,
+        profileAccountId: String? = nil
+    ) {
+        self.text = text
+        self.kind = kind
+        self.profileAccountId = profileAccountId
+    }
 }
 
 enum ComposerMentionTargetCatalog {
@@ -211,7 +222,11 @@ enum ComposerMentionTargetCatalog {
                 continue
             }
 
-            var match: (range: Range<String.Index>, kind: ComposerMentionKind)?
+            var match: (
+                range: Range<String.Index>,
+                kind: ComposerMentionKind,
+                profileAccountId: String?
+            )?
             let cursorUtf16 = NSRange(cursor..<cursor, in: text).location
             if let mention = exactMentions.first(where: { $0.startUtf16 == cursorUtf16 }),
                let start = mention.startUtf16,
@@ -219,7 +234,12 @@ enum ComposerMentionTargetCatalog {
                let range = Range(NSRange(location: start, length: length), in: text),
                hasLeadingBoundary(in: text, at: range.lowerBound),
                hasTrailingBoundary(in: text, at: range.upperBound) {
-                match = (range, mention.kind ?? inferredKind(for: String(text[range])))
+                let kind = mention.kind ?? inferredKind(for: String(text[range]))
+                match = (
+                    range,
+                    kind,
+                    kind == .person ? personAccountID(for: mention) : nil
+                )
             }
             for target in exactTargets where match == nil && !target.displayName.isEmpty {
                 if let range = text.range(
@@ -228,7 +248,11 @@ enum ComposerMentionTargetCatalog {
                     range: cursor..<text.endIndex,
                     locale: .current
                 ), hasTrailingBoundary(in: text, at: range.upperBound) {
-                    match = (range, target.kind)
+                    match = (
+                        range,
+                        target.kind,
+                        target.kind == .person ? target.accountId.nonEmpty : nil
+                    )
                     break
                 }
             }
@@ -240,7 +264,7 @@ enum ComposerMentionTargetCatalog {
                 range: cursor..<text.endIndex,
                 locale: .current
                ), hasTrailingBoundary(in: text, at: range.upperBound) {
-                match = (range, .agent)
+                match = (range, .agent, nil)
             }
 
             if match == nil {
@@ -253,7 +277,7 @@ enum ComposerMentionTargetCatalog {
                         labelEnd = text.index(after: labelEnd)
                     }
                     let range = cursor..<labelEnd
-                    match = (range, inferredKind(for: String(text[range])))
+                    match = (range, inferredKind(for: String(text[range])), nil)
                 }
             }
 
@@ -269,7 +293,8 @@ enum ComposerMentionTargetCatalog {
             }
             segments.append(ComposerMentionTextSegment(
                 text: String(text[match.range]),
-                kind: match.kind
+                kind: match.kind,
+                profileAccountId: match.profileAccountId
             ))
             plainStart = match.range.upperBound
             cursor = match.range.upperBound
@@ -343,5 +368,13 @@ enum ComposerMentionTargetCatalog {
     private static func inferredKind(for label: String) -> ComposerMentionKind {
         let normalized = String(label.dropFirst()).lowercased()
         return normalized == "kordi" || normalized.hasSuffix("kordi") ? .agent : .person
+    }
+
+    private static func personAccountID(for mention: MessageMention) -> String? {
+        if let humanID = mention.humanId?.nonEmpty { return humanID }
+        guard mention.kind == .person,
+              let identityID = mention.targetIdentityId?.nonEmpty,
+              identityID.hasPrefix("human:") else { return nil }
+        return String(identityID.dropFirst("human:".count)).nonEmpty
     }
 }

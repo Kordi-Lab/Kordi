@@ -360,6 +360,7 @@ struct MarkdownMessageContent: View {
     let mentions: [MessageMention]
     let allowsTextSelection: Bool
     let onSelectedTextChange: (String?) -> Void
+    let onOpenPersonMention: (String) -> Void
     @State private var showsFullOversizedText = false
 
     // ponytail: Keep first layout bounded; paginate rich Markdown blocks if expanded formatting becomes necessary.
@@ -372,7 +373,8 @@ struct MarkdownMessageContent: View {
         mentionTargets: [ComposerMentionTarget] = [],
         mentions: [MessageMention] = [],
         allowsTextSelection: Bool = false,
-        onSelectedTextChange: @escaping (String?) -> Void = { _ in }
+        onSelectedTextChange: @escaping (String?) -> Void = { _ in },
+        onOpenPersonMention: @escaping (String) -> Void = { _ in }
     ) {
         self.text = text
         self.density = density
@@ -380,6 +382,7 @@ struct MarkdownMessageContent: View {
         self.mentions = mentions
         self.allowsTextSelection = allowsTextSelection
         self.onSelectedTextChange = onSelectedTextChange
+        self.onOpenPersonMention = onOpenPersonMention
     }
 
     private var blocks: [KordiMarkdownBlock] {
@@ -430,6 +433,13 @@ struct MarkdownMessageContent: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .environment(\.composerMentionTargets, mentionTargets)
                 .environment(\.messageMentions, mentions)
+                .environment(\.openURL, OpenURLAction { url in
+                    guard let accountID = MentionProfileLink.accountID(from: url) else {
+                        return .systemAction
+                    }
+                    onOpenPersonMention(accountID)
+                    return .handled
+                })
             }
         }
     }
@@ -559,12 +569,43 @@ private struct InlineMarkdownText: View {
                 fragment.foregroundColor = kind == .agent
                     ? KordiTheme.agentMention
                     : KordiTheme.personMention
+                if let accountID = segment.profileAccountId,
+                   let url = MentionProfileLink.url(for: accountID) {
+                    fragment.link = url
+                }
             } else if let baseFont {
                 fragment.font = baseFont
             }
             result.append(fragment)
         }
         return result
+    }
+}
+
+enum MentionProfileLink {
+    private static let scheme = "kordi-mention"
+
+    static func url(for accountID: String) -> URL? {
+        let accountID = accountID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard valid(accountID) else { return nil }
+        var components = URLComponents()
+        components.scheme = scheme
+        components.host = "person"
+        components.path = "/\(accountID)"
+        return components.url
+    }
+
+    static func accountID(from url: URL) -> String? {
+        guard url.scheme == scheme, url.host == "person" else { return nil }
+        let accountID = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return valid(accountID) ? accountID : nil
+    }
+
+    private static func valid(_ accountID: String) -> Bool {
+        !accountID.isEmpty
+            && accountID.count <= 256
+            && accountID.hasPrefix("acct_")
+            && accountID.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }
     }
 }
 

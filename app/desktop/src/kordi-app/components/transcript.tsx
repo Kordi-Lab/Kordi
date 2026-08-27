@@ -30,7 +30,7 @@ import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { ForwardedFromHeader } from './forwardedFromHeader';
 import { MarkdownContent } from './markdown';
-import { MessageInlineContent } from './messageInlineContent';
+import { MessageInlineContent, MessageMentionProfileContent } from './messageInlineContent';
 import { MessageReactionChips } from './messageReactions';
 import { MessageContextMenuHost } from './messageContextMenuHost';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
@@ -921,7 +921,7 @@ function MessageBubbleView({
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
               <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
-                {msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageInlineContent text={msg.text} mentions={msg.mentions} />}
+                {msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageMentionProfileContent message={msg} onOpenSenderProfile={onOpenSenderProfile} />}
               </span>
               {isOwnHumanMessage || footerDetail || msg.replySummary ? (
                 <span className={cn(
@@ -950,7 +950,7 @@ function MessageBubbleView({
                 ) : hasText ? (
                   msg.supportContactResponse
                     ? <SupportContactAnswer text={msg.text} />
-                    : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageInlineContent text={msg.text} mentions={msg.mentions} />}</div>
+                    : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageMentionProfileContent message={msg} onOpenSenderProfile={onOpenSenderProfile} />}</div>
                 ) : null}
               </div>
               {!hasOnlyImageAttachments && !hasVoice ? (

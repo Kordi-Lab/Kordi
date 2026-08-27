@@ -1,56 +1,16 @@
-import { memo, useEffect, type ReactNode } from 'react';
+import { memo, useContext, useEffect, type ReactNode } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
-import type { DesktopCollaborationIdentitySnapshot, DesktopCollaborationOutreachMetadata, DesktopChatTurnSnapshot, DetailTab, Message, OutreachThreadSummary, SessionArtifact, SessionTaskActivity } from '@/kordi-app/types';
+import type { Conversation, DesktopChatTurnSnapshot, DetailTab, SessionArtifact } from '@/kordi-app/types';
 import { ArtifactInspector } from '@/pages/ArtifactInspector';
 import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 import { useScheduledTasks } from '@/features/cloud/useScheduledTasks';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
+import { ChatSenderProfileContext } from '@/pages/useChatSenderProfiles';
 
-type ActiveConversation = {
-  id: string;
-  name: string;
-  canonicalSessionId?: string;
-  canonicalStoragePath?: string;
-  canonicalParticipantCount?: number;
-  canonicalMessageCount?: number;
-  canonicalDelegatedExchangeCount?: number;
-  canonicalContextSnapshotCount?: number;
-  canonicalPresenceSummary?: string;
-  localSessionCwd?: string | null;
-  canonicalParticipants?: Array<{
-    id: string;
-    name: string;
-    kind: 'human' | 'agent' | string;
-    role: string;
-    ownerIdentityId?: string | null;
-    ownerName?: string | null;
-    avatarKey?: string | null;
-    profileImageUrl?: string | null;
-    presenceStatus?: string | null;
-    presenceDetail?: string | null;
-    source?: string | null;
-    sourceHostId?: string | null;
-    sourceIdentityId?: string | null;
-    humanId?: string | null;
-    agentId?: string | null;
-  }>;
-  subtitle: string;
-  type: 'person' | 'owned-agent' | 'external-agent';
-  collaborationSources: string[];
-  trust: string;
-  directness: string;
-  participants: string[];
-  messages: Message[];
-  outreach?: DesktopCollaborationOutreachMetadata | null;
-  identity?: DesktopCollaborationIdentitySnapshot | null;
-  outreachThreads?: OutreachThreadSummary[];
-  taskActivities?: SessionTaskActivity[];
-  participantAvatarSeeds?: Record<string, string>;
-  participantProfileImageUrls?: Record<string, string | null>;
-};
+type ActiveConversation = Conversation;
 
 function participantProfileImageUrl(activeConv: ActiveConversation, participant: string) {
   const normalizedParticipant = participant.trim();
@@ -216,6 +176,7 @@ function ChatDetailPanelView({
     activeSessionWorkspaceRoot: activeConv.localSessionCwd,
   });
   const scheduledTasks = useScheduledTasks({ enabled: true });
+  const openSenderProfile = useContext(ChatSenderProfileContext);
 
   useEffect(() => {
     if (activeLiveTurn?.completed) void scheduledTasks.refresh();
@@ -247,20 +208,38 @@ function ChatDetailPanelView({
               const isSelfHuman = canonicalParticipantIsSelfHuman(participant);
               const displayName = canonicalParticipantDisplayName(activeConv, participant);
               const ownerLabel = canonicalParticipantOwnerLabel(activeConv, participant);
+              const canOpenProfile = Boolean(openSenderProfile && !isAgent && !isSelfHuman);
+              const avatar = (
+                <IdentityAvatar
+                  kind={isAgent ? 'agent' : 'human'}
+                  seed={canonicalParticipantAvatarSeed(participant)}
+                  isSelf={isSelfHuman}
+                  imageUrl={participant.profileImageUrl}
+                  name={displayName}
+                  className={`h-7 w-7 border border-white/10${canOpenProfile ? ' transition hover:ring-2 hover:ring-[color:var(--app-sidebar-accent)]/35' : ''}`}
+                  presenceStatus={identityAvatarPresenceStatus(participant.presenceStatus)}
+                  presenceLabel={identityAvatarPresenceLabel(participant.presenceStatus)}
+                />
+              );
 
               return (
                 <div key={participant.id} className="app-inspector-list-row">
                   <span className="flex min-w-0 items-center gap-2">
-                    <IdentityAvatar
-                      kind={isAgent ? 'agent' : 'human'}
-                      seed={canonicalParticipantAvatarSeed(participant)}
-                      isSelf={isSelfHuman}
-                      imageUrl={participant.profileImageUrl}
-                      name={displayName}
-                      className="h-7 w-7 border border-white/10"
-                      presenceStatus={identityAvatarPresenceStatus(participant.presenceStatus)}
-                      presenceLabel={identityAvatarPresenceLabel(participant.presenceStatus)}
-                    />
+                    {canOpenProfile ? (
+                      <button
+                        type="button"
+                        data-info-participant-profile="true"
+                        className="shrink-0 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--app-sidebar-accent)]"
+                        aria-label={`Open ${displayName} profile`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          openSenderProfile?.(activeConv, participant, event.currentTarget.getBoundingClientRect());
+                        }}
+                      >
+                        {avatar}
+                      </button>
+                    ) : avatar}
                     <span className="min-w-0">
                       <span className="block truncate text-[13px] text-[color:var(--utility-foreground)]">{displayName}</span>
                       {ownerLabel ? <span className="block truncate text-[11px] text-slate-500">Owner: {ownerLabel}</span> : participant.presenceDetail ? <span className="block truncate text-[11px] text-slate-500">{participant.presenceDetail}</span> : null}

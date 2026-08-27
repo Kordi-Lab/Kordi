@@ -160,6 +160,25 @@ enum ConversationAuthorProfileResolver {
                 && participant.displayName.localizedCaseInsensitiveCompare(message.authorName) == .orderedSame
         }
         guard matches.count == 1, let participant = matches.first else { return nil }
+        return destination(
+            currentConversation: currentConversation,
+            participant: participant,
+            selfAccountID: selfAccountID,
+            contacts: contacts,
+            conversations: conversations
+        )
+    }
+
+    static func destination(
+        currentConversation: ConversationSummary,
+        participant: CloudGroupParticipant,
+        selfAccountID: String?,
+        contacts: [CloudContact],
+        conversations: [ConversationSummary]
+    ) -> ConversationSummary? {
+        guard currentConversation.kind == .group,
+              participant.accountId.nonEmpty != nil,
+              participant.accountId != selfAccountID else { return nil }
         if let existing = conversations.first(where: { conversation in
             conversation.kind == .person && conversation.peerAccountId == participant.accountId
         }) {
@@ -170,7 +189,7 @@ enum ConversationAuthorProfileResolver {
         let contact = contacts.first { $0.accountId == participant.accountId }
         let displayName = contact?.preferredName.nonEmpty
             ?? participant.displayName.nonEmpty
-            ?? message.authorName
+            ?? "Kordi user"
         return ConversationSummary(
             id: "person:\(participant.accountId)",
             kind: .person,

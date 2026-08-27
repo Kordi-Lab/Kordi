@@ -28,6 +28,7 @@ struct MessageBubble: View, Equatable {
     let readByNames: [String]
     let backgroundSessions: [BackgroundAgentSessionPresentation]
     let onOpenAuthorProfile: () -> Void
+    let onOpenMentionProfile: (String) -> Void
     let onRetry: () async -> Void
     let onSelect: () -> Void
     let onOpenActions: (CGRect, ChatAttachment?) -> Void
@@ -366,7 +367,8 @@ struct MessageBubble: View, Equatable {
                     mentionTargets: mentionTargets,
                     mentions: message.mentions,
                     allowsTextSelection: isActionPresented,
-                    onSelectedTextChange: onSelectedTextChange
+                    onSelectedTextChange: onSelectedTextChange,
+                    onOpenPersonMention: onOpenMentionProfile
                 )
                     .foregroundStyle(bubbleTextColor)
             }

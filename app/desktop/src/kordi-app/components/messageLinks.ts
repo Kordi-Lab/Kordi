@@ -19,12 +19,12 @@ type ExternalMessageLinkOpener = (url: string) => unknown;
 export type MessageInlinePart =
   | { type: 'text'; value: string; start: number }
   | { type: 'blobEmoji'; emoji: BlobEmoji; start: number }
-  | { type: 'mention'; label: string; targetKind: 'agent' | 'person' | 'all'; targetIdentityId?: string | null; start: number }
+  | { type: 'mention'; label: string; targetKind: 'agent' | 'person' | 'all'; targetIdentityId?: string | null; humanId?: string | null; start: number }
   | { type: 'link'; label: string; href: string; start: number };
 
 type InlineRange =
   | { type: 'blobEmoji'; emoji: BlobEmoji; start: number; end: number }
-  | { type: 'mention'; label: string; targetKind: 'agent' | 'person' | 'all'; targetIdentityId?: string | null; start: number; end: number }
+  | { type: 'mention'; label: string; targetKind: 'agent' | 'person' | 'all'; targetIdentityId?: string | null; humanId?: string | null; start: number; end: number }
   | { type: 'link'; label: string; href: string; start: number; end: number };
 
 export type SiteIconDescriptor = {
@@ -219,6 +219,7 @@ function structuredMentionRanges(text: string, mentions: MessageMention[], reser
       label: text.slice(start, end),
       targetKind,
       targetIdentityId: mention.targetIdentityId,
+      humanId: mention.humanId,
       start,
       end,
     };
@@ -277,7 +278,14 @@ export function parseMessageInlineParts(text: string, mentions: MessageMention[]
     } else if (range.type === 'blobEmoji') {
       parts.push({ type: 'blobEmoji', emoji: range.emoji, start: range.start });
     } else {
-      parts.push({ type: 'mention', label: range.label, targetKind: range.targetKind, targetIdentityId: range.targetIdentityId, start: range.start });
+      parts.push({
+        type: 'mention',
+        label: range.label,
+        targetKind: range.targetKind,
+        targetIdentityId: range.targetIdentityId,
+        ...(range.humanId ? { humanId: range.humanId } : {}),
+        start: range.start,
+      });
     }
     cursor = range.end;
   }

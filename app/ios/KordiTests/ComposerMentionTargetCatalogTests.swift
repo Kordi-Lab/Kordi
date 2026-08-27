@@ -316,13 +316,18 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
                 secondPersonRange.location,
             ]
         )
+        let mentionSegments = ComposerMentionTargetCatalog.highlightedSegments(
+            in: text,
+            mentions: mentions,
+            targets: []
+        ).filter { $0.kind != nil }
         XCTAssertEqual(
-            ComposerMentionTargetCatalog.highlightedSegments(
-                in: text,
-                mentions: mentions,
-                targets: []
-            ).filter { $0.kind != nil }.map(\.text),
+            mentionSegments.map(\.text),
             [person.mentionText, agent.mentionText, person.mentionText]
+        )
+        XCTAssertEqual(
+            mentionSegments.map(\.profileAccountId),
+            ["acct_alex", nil, "acct_alex"]
         )
 
         let source = ChatMessage(
@@ -338,6 +343,14 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             mentions: mentions
         ).actionSource
         XCTAssertEqual(source.mentions?.map(\.targetIdentityId), ["human:acct_alex", agent.id, "human:acct_alex"])
+    }
+
+    func testPersonMentionProfileLinksRoundTripCanonicalAccountIdentity() throws {
+        let link = try XCTUnwrap(MentionProfileLink.url(for: "acct_alex"))
+
+        XCTAssertEqual(MentionProfileLink.accountID(from: link), "acct_alex")
+        XCTAssertNil(MentionProfileLink.url(for: "human:acct_alex"))
+        XCTAssertNil(MentionProfileLink.accountID(from: URL(string: "https://example.com/acct_alex")!))
     }
 
     func testPendingMentionAttentionUsesStablePersonIdentityAndReadCursor() {
