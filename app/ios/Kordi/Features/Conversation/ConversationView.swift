@@ -81,6 +81,8 @@ struct ConversationView: View {
     @State private var pinTarget: ChatMessage?
     @State private var messageActionMessage: ChatMessage?
     @State private var messageActionFrame = CGRect.zero
+    @State private var messageActionAttachment: ChatAttachment?
+    @State private var selectedMessageText: String?
     @State private var messageActionFeedback = 0
     @State private var forwardedDestination: ConversationSummary?
     @State private var selectedCompanionConversation: ConversationSummary?
@@ -307,9 +309,14 @@ struct ConversationView: View {
                                                             await model.retry(message, in: conversation)
                                                         },
                                                         onSelect: { toggleSelection(message.id) },
-                                                        onOpenActions: { frame in
-                                                            presentMessageActions(message, frame: frame)
+                                                        onOpenActions: { frame, attachment in
+                                                            presentMessageActions(
+                                                                message,
+                                                                attachment: attachment,
+                                                                frame: frame
+                                                            )
                                                         },
+                                                        onSelectedTextChange: { selectedMessageText = $0 },
                                                         onReact: { reaction in
                                                             Task {
                                                                 _ = await model.toggleReaction(
@@ -426,6 +433,7 @@ struct ConversationView: View {
                             }
                             .defaultScrollAnchor(.bottom)
                             .scrollPosition(id: $trackedMessageID, anchor: initialViewport.scrollAnchor)
+                            .scrollDisabled(messageActionMessage != nil)
                             .modifier(
                                 ConversationBottomTrackingModifier(
                                     isAtBottom: $isAtBottom,
@@ -579,58 +587,11 @@ struct ConversationView: View {
             )
             .overlay {
                 if let messageActionMessage, !messageActionFrame.isEmpty {
-                    MessageActionOverlay(
-                        message: messageActionMessage,
-                        sourceFrame: messageActionFrame,
-                        ownAccountId: model.account?.accountId,
-                        allowsReply: conversation.kind.supportsQuotedReplies,
-                        allowsReactions: MessageBubble.allowsReactions(
-                            for: messageActionMessage,
-                            isPreviewMode: model.isPreviewMode
-                        ),
-                        isPinned: pinnedMessageIDs.contains(messageActionMessage.id),
-                        onDismiss: dismissMessageActions,
-                        onReact: { reaction in
-                            dismissMessageActions()
-                            Task {
-                                _ = await model.toggleReaction(
-                                    reaction,
-                                    on: messageActionMessage,
-                                    in: conversation
-                                )
-                            }
-                        },
-                        onReply: {
-                            replySource = messageActionMessage.actionSource(
-                                sessionId: conversation.sessionId
-                            )
-                            dismissMessageActions()
-                        },
-                        onPin: {
-                            if pinnedMessageIDs.contains(messageActionMessage.id) {
-                                Task { _ = await model.unpin(messageActionMessage, in: conversation) }
-                            } else {
-                                pinTarget = messageActionMessage
-                            }
-                            dismissMessageActions()
-                        },
-                        onCopy: {
-                            UIPasteboard.general.string = messageActionMessage.text
-                            dismissMessageActions()
-                        },
-                        onForward: {
-                            forwardRequest = MessageForwardRequest(
-                                sourceConversation: conversation,
-                                messages: [messageActionMessage]
-                            )
-                            dismissMessageActions()
-                        },
-                        onSelect: {
-                            toggleSelection(messageActionMessage.id)
-                            dismissMessageActions()
-                        }
+                    messageActionsOverlay(
+                        for: messageActionMessage,
+                        pinnedMessageIDs: pinnedMessageIDs,
+                        timeline: timeline
                     )
-                    .transition(.opacity)
                 }
             }
             .overlay {
@@ -912,6 +873,80 @@ struct ConversationView: View {
         }
     }
 
+    private func messageActionsOverlay(
+        for message: ChatMessage,
+        pinnedMessageIDs: Set<String>,
+        timeline: [ChatMessage]
+    ) -> some View {
+        WindowOverlayPresenter(
+            passthroughFrame: messageActionAttachment == nil && !message.text.isEmpty
+                ? messageActionFrame
+                : nil
+        ) { usableFrame in
+            MessageActionOverlay(
+                message: message,
+                sourceFrame: messageActionFrame,
+                usableFrame: usableFrame,
+                ownAccountId: model.account?.accountId,
+                allowsReply: conversation.kind.supportsQuotedReplies,
+                allowsReactions: MessageBubble.allowsReactions(
+                    for: message,
+                    isPreviewMode: model.isPreviewMode
+                ),
+                isPinned: pinnedMessageIDs.contains(message.id),
+                mediaAttachment: messageActionAttachment,
+                onDismiss: dismissMessageActions,
+                onReviewAttachment: {
+                    guard let attachment = messageActionAttachment else { return }
+                    dismissMessageActions()
+                    openAttachment(attachment, from: message, in: timeline, previewImage: nil)
+                },
+                onShareAttachment: {
+                    guard let attachment = messageActionAttachment else { return }
+                    dismissMessageActions()
+                    prepare(attachment, forSharing: true)
+                },
+                onAddAttachmentToMediaLibrary: {
+                    guard let attachment = messageActionAttachment else { return }
+                    dismissMessageActions()
+                    Task { _ = await model.addAttachmentToExpressiveMediaLibrary(attachment) }
+                },
+                onReact: { reaction in
+                    dismissMessageActions()
+                    Task { _ = await model.toggleReaction(reaction, on: message, in: conversation) }
+                },
+                onReply: {
+                    replySource = message.actionSource(sessionId: conversation.sessionId)
+                    dismissMessageActions()
+                },
+                onPin: {
+                    if pinnedMessageIDs.contains(message.id) {
+                        Task { _ = await model.unpin(message, in: conversation) }
+                    } else {
+                        pinTarget = message
+                    }
+                    dismissMessageActions()
+                },
+                onCopy: {
+                    UIPasteboard.general.string = selectedMessageText?.nonEmpty ?? message.text
+                    dismissMessageActions()
+                },
+                onForward: {
+                    forwardRequest = MessageForwardRequest(
+                        sourceConversation: conversation,
+                        messages: [message]
+                    )
+                    dismissMessageActions()
+                },
+                onSelect: {
+                    toggleSelection(message.id)
+                    dismissMessageActions()
+                }
+            )
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private func joinCall(_ call: CloudCall) {
         callJoinTask?.cancel()
         callJoinTask = Task {
@@ -919,9 +954,16 @@ struct ConversationView: View {
         }
     }
 
-    private func presentMessageActions(_ message: ChatMessage, frame: CGRect) {
+    private func presentMessageActions(
+        _ message: ChatMessage,
+        attachment: ChatAttachment?,
+        frame: CGRect
+    ) {
         messageActionFrame = frame
         guard messageActionMessage?.id != message.id else { return }
+        messageActionAttachment = attachment
+            ?? message.attachments.first(where: { $0.kind == .image })
+        selectedMessageText = message.text
         isComposerFocused = false
         dismissComposerPickers()
         withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) {
@@ -935,6 +977,8 @@ struct ConversationView: View {
             messageActionMessage = nil
         }
         messageActionFrame = .zero
+        messageActionAttachment = nil
+        selectedMessageText = nil
     }
 
     private func navigateToMessage(

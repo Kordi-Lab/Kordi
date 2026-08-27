@@ -1,10 +1,70 @@
 import ImageIO
+import SwiftUI
 import XCTest
 @testable import Kordi
 
 final class ConversationReadPresentationTests: XCTestCase {
     func testReactionChipOverlapsTheBubbleWithoutShrinkingItsTouchTarget() {
         XCTAssertEqual(MessageBubble.reactionChipVerticalLift, 14)
+    }
+
+    func testMessageActionsRecognizeTheHoldBeforeRelease() {
+        typealias GestureValue = SequenceGesture<LongPressGesture, DragGesture>.Value
+
+        XCTAssertFalse(MessageBubble.hasRecognizedLongPress(GestureValue.first(false)))
+        XCTAssertFalse(MessageBubble.hasRecognizedLongPress(GestureValue.first(true)))
+        XCTAssertTrue(MessageBubble.hasRecognizedLongPress(GestureValue.second(true, nil)))
+        XCTAssertEqual(MessageBubble.actionLongPressDuration, 0.5)
+    }
+
+    func testMessageActionsImmediatelyExposeTextSelectionWithoutANativeMenu() throws {
+        let conversationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation")
+
+        let markdownSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MarkdownMessageContent.swift"),
+            encoding: .utf8
+        )
+        let bubbleSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageBubble.swift"),
+            encoding: .utf8
+        )
+        let overlaySource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageActionSheets.swift"),
+            encoding: .utf8
+        )
+        let conversationSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("ConversationView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(markdownSource.contains("SelectableMessageTextView("))
+        XCTAssertTrue(markdownSource.contains("textView.selectedRange = NSRange("))
+        XCTAssertTrue(markdownSource.contains("UIMenu(children: [])"))
+        XCTAssertTrue(bubbleSource.contains("allowsTextSelection: isActionPresented"))
+        XCTAssertTrue(bubbleSource.contains("onSelectedTextChange: onSelectedTextChange"))
+        XCTAssertTrue(overlaySource.contains("AnyShape(MessageActionBackdrop(cutout: cutout))"))
+        XCTAssertTrue(overlaySource.contains("eoFill: true"))
+        XCTAssertTrue(overlaySource.contains("Button(action: onDismiss)"))
+        XCTAssertTrue(overlaySource.contains("mediaAttachment == nil"))
+        XCTAssertTrue(overlaySource.contains("AnyShape(Rectangle())"))
+        XCTAssertTrue(overlaySource.contains("sourceFrame.offsetBy("))
+        XCTAssertTrue(overlaySource.contains(".ignoresSafeArea()"))
+        XCTAssertTrue(overlaySource.contains("MessageActionWindowOverlayView"))
+        XCTAssertTrue(overlaySource.contains("passthroughFrame.contains(point)"))
+        XCTAssertTrue(overlaySource.contains("withDuration: 0.18"))
+        XCTAssertTrue(overlaySource.contains("UIAccessibility.isReduceMotionEnabled"))
+        XCTAssertTrue(overlaySource.contains(".curveEaseOut"))
+        XCTAssertFalse(overlaySource.contains("acceptsInput"))
+        XCTAssertTrue(conversationSource.contains("selectedMessageText?.nonEmpty"))
+        XCTAssertFalse(conversationSource.contains("messageActionAcceptsInput"))
+        XCTAssertTrue(conversationSource.contains(".scrollDisabled(messageActionMessage != nil)"))
+        XCTAssertFalse(conversationSource.contains("proxy.scrollTo(row.id, anchor: .bottom)"))
+        XCTAssertTrue(conversationSource.contains(".toolbarBackground(.visible"))
+        XCTAssertTrue(conversationSource.contains("WindowOverlayPresenter("))
+        XCTAssertTrue(conversationSource.contains("passthroughFrame:"))
     }
 
     func testBlobEmojiCatalogAndRecentsAreSharedDeduplicatedAndBounded() throws {
@@ -71,12 +131,31 @@ final class ConversationReadPresentationTests: XCTestCase {
             reactionCount: 4,
             actionCount: 5
         )
+        let media = MessageActionOverlayLayout.make(
+            sourceFrame: CGRect(x: 190, y: 280, width: 180, height: 240),
+            containerSize: container,
+            showsReactions: true,
+            reactionCount: 4,
+            actionCount: 8
+        )
+        let visibleMedia = MessageActionOverlayLayout.make(
+            sourceFrame: CGRect(x: 150, y: 427, width: 228, height: 394),
+            containerSize: CGSize(width: 390, height: 874),
+            showsReactions: true,
+            reactionCount: 6,
+            actionCount: 7
+        )
 
-        for layout in [top, bottom] {
+        for layout in [top, bottom, media] {
             XCTAssertGreaterThanOrEqual(layout.menuCenter.x - layout.menuWidth / 2, 12)
             XCTAssertLessThanOrEqual(layout.menuCenter.x + layout.menuWidth / 2, container.width - 12)
             XCTAssertGreaterThan(layout.menuCenter.y, 12)
             XCTAssertLessThan(layout.menuCenter.y, container.height - 12)
+            XCTAssertGreaterThanOrEqual(layout.menuCenter.y - layout.menuHeight / 2, 12)
+            XCTAssertLessThanOrEqual(
+                layout.menuCenter.y + layout.menuHeight / 2,
+                container.height - 12
+            )
             XCTAssertGreaterThan(layout.reactionCenter.y, 12)
             XCTAssertLessThan(layout.reactionCenter.y, container.height - 12)
             XCTAssertGreaterThanOrEqual(layout.pickerCenter.x - layout.pickerWidth / 2, 12)
@@ -89,14 +168,58 @@ final class ConversationReadPresentationTests: XCTestCase {
                 layout.pickerCenter.y + layout.pickerHeight / 2,
                 container.height - 12
             )
-            XCTAssertEqual(
+            XCTAssertLessThanOrEqual(
                 layout.pickerCenter.y - layout.pickerHeight / 2,
-                layout.reactionCenter.y - 26,
-                accuracy: 0.001
+                layout.reactionCenter.y - 26 + 0.001
             )
         }
         XCTAssertGreaterThan(top.menuCenter.y, top.reactionCenter.y)
         XCTAssertLessThan(bottom.menuCenter.y, bottom.reactionCenter.y)
+        XCTAssertLessThanOrEqual(
+            media.menuCenter.y + media.menuHeight / 2 + 8,
+            media.reactionCenter.y - 26
+        )
+        XCTAssertEqual(visibleMedia.menuHeight, 318)
+        XCTAssertEqual(visibleMedia.pickerHeight, 520)
+    }
+
+    func testImageLongPressUsesTheFullMessageActionMenu() throws {
+        let conversationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation")
+        let bubbleSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageBubble.swift"),
+            encoding: .utf8
+        )
+        let overlaySource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageActionSheets.swift"),
+            encoding: .utf8
+        )
+        let imageSource = bubbleSource.components(separatedBy: "private struct MessageImageAttachment")[1]
+            .components(separatedBy: "private enum MessageImagePresentation")[0]
+        let gestureSource = bubbleSource.components(separatedBy: "private struct MessageImageGestureSurface")[1]
+            .components(separatedBy: "private struct MessageImageAttachment")[0]
+        let collectionSource = bubbleSource.components(separatedBy: "private struct MessageImageCollection")[1]
+            .components(separatedBy: "enum MessageImageStack")[0]
+
+        XCTAssertFalse(imageSource.contains(".contextMenu {"))
+        XCTAssertFalse(imageSource.contains(".simultaneousGesture("))
+        XCTAssertTrue(gestureSource.contains("UITapGestureRecognizer"))
+        XCTAssertTrue(gestureSource.contains("UILongPressGestureRecognizer"))
+        XCTAssertTrue(gestureSource.contains("tapRecognizer.require(toFail: holdRecognizer)"))
+        XCTAssertTrue(imageSource.contains("proxy.frame(in: .global)"))
+        XCTAssertTrue(imageSource.contains("onRequestActions(actionFrame)"))
+        XCTAssertTrue(collectionSource.contains("if presentation.isStackPreview"))
+        XCTAssertTrue(collectionSource.contains("onPrepareActions(nil)"))
+        XCTAssertTrue(collectionSource.contains("isExpanded = true"))
+        XCTAssertTrue(collectionSource.contains("collapsedInteractionSurface"))
+        XCTAssertTrue(bubbleSource.contains("!hasImageAttachments"))
+        XCTAssertFalse(bubbleSource.contains("suppressesNextActionPresentation"))
+        XCTAssertTrue(bubbleSource.contains("isActionPresented, actionAttachment == nil"))
+        XCTAssertTrue(overlaySource.contains("actionButton(\"Review\""))
+        XCTAssertTrue(overlaySource.contains("\"Download / Save to Files\""))
+        XCTAssertTrue(overlaySource.contains("\"Add to \\(mediaKind.libraryName)\""))
     }
 
     func testOnlyTerminalContentMessagesAllowReactions() {

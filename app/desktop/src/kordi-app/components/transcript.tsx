@@ -37,6 +37,7 @@ import {
   MessageContextMenuContent,
   type MessageContextMenuActionHandlers,
 } from './messageContextMenuContent';
+import { MessageContextMenuInteractionGuard } from './messageContextMenuInteraction';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
 import { AttachmentPreview } from './transcriptAttachments';
 import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
@@ -379,14 +380,11 @@ function MessageContextMenuHost({
     };
   }, [messageContextMenu]);
   const menuLayer = messageContextMenu ? (
-    <div
+    <MessageContextMenuInteractionGuard
       ref={menuRef}
       className="app-message-context-menu fixed z-[260]"
       style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
       role="menu"
-      onMouseDown={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
-      onContextMenu={(event) => event.preventDefault()}
     >
       <MessageContextMenuContent
         msg={msg}
@@ -399,7 +397,7 @@ function MessageContextMenuHost({
         onReactMessage={onReactMessage}
         isPinned={isPinned}
       />
-    </div>
+    </MessageContextMenuInteractionGuard>
   ) : null;
 
   return (

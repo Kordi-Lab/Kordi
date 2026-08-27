@@ -30,7 +30,8 @@ struct MessageBubble: View, Equatable {
     let onOpenAuthorProfile: () -> Void
     let onRetry: () async -> Void
     let onSelect: () -> Void
-    let onOpenActions: (CGRect) -> Void
+    let onOpenActions: (CGRect, ChatAttachment?) -> Void
+    let onSelectedTextChange: (String?) -> Void
     let onReact: (String) -> Void
     let onNavigateToReply: (String) -> Void
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
@@ -42,7 +43,10 @@ struct MessageBubble: View, Equatable {
     @State private var actionFrame = CGRect.zero
     @State private var didAutomaticallyPresentActions = false
     @State private var isRequestingActionFrame = false
+    @State private var actionAttachment: ChatAttachment?
     @GestureState private var isPressingActions = false
+
+    static let actionLongPressDuration = 0.5
 
     static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message
@@ -64,6 +68,13 @@ struct MessageBubble: View, Equatable {
             && lhs.automaticallyPresentsActions == rhs.automaticallyPresentsActions
             && lhs.readByNames == rhs.readByNames
             && lhs.backgroundSessions == rhs.backgroundSessions
+    }
+
+    static func hasRecognizedLongPress(
+        _ gesture: SequenceGesture<LongPressGesture, DragGesture>.Value
+    ) -> Bool {
+        guard case .second(true, _) = gesture else { return false }
+        return true
     }
 
     var body: some View {
@@ -173,37 +184,48 @@ struct MessageBubble: View, Equatable {
                             : .zero
                     } action: { frame in
                         if !frame.isEmpty, frame != actionFrame { actionFrame = frame }
-                        if isActionPresented, !frame.isEmpty { onOpenActions(frame) }
+                        if isActionPresented, actionAttachment == nil, !frame.isEmpty {
+                            onOpenActions(frame, actionAttachment)
+                        }
                         if isRequestingActionFrame, !frame.isEmpty {
                             isRequestingActionFrame = false
-                            onOpenActions(frame)
+                            onOpenActions(frame, nil)
                         }
                         if automaticallyPresentsActions,
+                           !hasImageAttachments,
                            !didAutomaticallyPresentActions,
                            !frame.isEmpty {
                             didAutomaticallyPresentActions = true
                             Task { @MainActor in
                                 try? await Task.sleep(for: .milliseconds(500))
-                                onOpenActions(actionFrame)
+                                onOpenActions(actionFrame, nil)
                             }
                         }
                     }
                     .simultaneousGesture(
-                        LongPressGesture(minimumDuration: 0.32)
-                            .updating($isPressingActions) { current, state, _ in
-                                state = current
+                        LongPressGesture(minimumDuration: Self.actionLongPressDuration)
+                            .sequenced(before: DragGesture(minimumDistance: 0))
+                            .updating($isPressingActions) { phase, state, _ in
+                                switch phase {
+                                case let .first(isPressing): state = isPressing
+                                case let .second(didLongPress, _): state = didLongPress
+                                }
                             }
-                            .onEnded { _ in
-                                guard !selectionMode else { return }
+                            .onChanged { phase in
+                                guard Self.hasRecognizedLongPress(phase),
+                                      !selectionMode,
+                                      !hasImageAttachments,
+                                      actionAttachment == nil else { return }
                                 Task { @MainActor in
                                     await Task.yield()
                                     guard !actionFrame.isEmpty else { return }
-                                    onOpenActions(actionFrame)
+                                    onOpenActions(actionFrame, nil)
                                 }
                             }
                     )
                     .accessibilityAction(named: "Show message actions") {
-                        guard !selectionMode else { return }
+                        guard !selectionMode, !hasImageAttachments else { return }
+                        actionAttachment = nil
                         isRequestingActionFrame = true
                     }
 
@@ -254,6 +276,11 @@ struct MessageBubble: View, Equatable {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
+        .onChange(of: isActionPresented) { wasPresented, isPresented in
+            if wasPresented, !isPresented {
+                actionAttachment = nil
+            }
+        }
     }
 
     static func allowsReactions(
@@ -278,7 +305,10 @@ struct MessageBubble: View, Equatable {
                 attachments: message.attachments,
                 author: message.author,
                 onOpen: onOpenAttachment,
-                onShare: onShareAttachment
+                onShare: onShareAttachment,
+                actionAttachmentID: actionAttachment?.id,
+                onPrepareActions: prepareImageActions,
+                onRequestActions: requestImageActions
             )
         } else {
             AdaptiveBubbleLayout(
@@ -353,7 +383,9 @@ struct MessageBubble: View, Equatable {
                 MarkdownMessageContent(
                     text: message.text,
                     mentionTargets: mentionTargets,
-                    mentions: message.mentions
+                    mentions: message.mentions,
+                    allowsTextSelection: isActionPresented,
+                    onSelectedTextChange: onSelectedTextChange
                 )
                     .foregroundStyle(bubbleTextColor)
             }
@@ -364,7 +396,10 @@ struct MessageBubble: View, Equatable {
                         attachments: message.attachments,
                         author: message.author,
                         onOpen: onOpenAttachment,
-                        onShare: onShareAttachment
+                        onShare: onShareAttachment,
+                        actionAttachmentID: actionAttachment?.id,
+                        onPrepareActions: prepareImageActions,
+                        onRequestActions: requestImageActions
                     )
                 } else {
                     VStack(spacing: 7) {
@@ -374,7 +409,12 @@ struct MessageBubble: View, Equatable {
                                 onOpen: { previewImage in
                                     onOpenAttachment(attachment, previewImage)
                                 },
-                                onShare: { onShareAttachment(attachment) }
+                                onShare: { onShareAttachment(attachment) },
+                                isActionTarget: actionAttachment?.id == attachment.id,
+                                onPrepareActions: { prepareImageActions(attachment) },
+                                onRequestActions: { frame in
+                                    requestImageActions(attachment, frame: frame)
+                                }
                             )
                         }
                     }
@@ -385,6 +425,19 @@ struct MessageBubble: View, Equatable {
 
     private var usesBorderlessImageSurface: Bool {
         MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
+    }
+
+    private var hasImageAttachments: Bool {
+        message.attachments.contains { $0.kind == .image }
+    }
+
+    private func prepareImageActions(_ attachment: ChatAttachment?) {
+        actionAttachment = attachment
+    }
+
+    private func requestImageActions(_ attachment: ChatAttachment, frame: CGRect) {
+        actionAttachment = attachment
+        onOpenActions(frame, attachment)
     }
 
     private var showsImageDeliveryStatus: Bool {
@@ -994,7 +1047,6 @@ private struct AgentExecutionTimeline: View {
                 Text(details)
                     .font(.caption2.monospaced())
                     .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
                     .lineLimit(8)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1246,6 +1298,9 @@ private struct MessageAttachmentCard: View {
     let attachment: ChatAttachment
     let onOpen: (UIImage?) -> Void
     let onShare: () -> Void
+    let isActionTarget: Bool
+    let onPrepareActions: () -> Void
+    let onRequestActions: (CGRect) -> Void
 
     @ViewBuilder
     var body: some View {
@@ -1254,7 +1309,10 @@ private struct MessageAttachmentCard: View {
                 attachment: attachment,
                 presentation: .natural,
                 onOpen: onOpen,
-                onShare: onShare
+                onShare: onShare,
+                isActionTarget: isActionTarget,
+                onPrepareActions: onPrepareActions,
+                onRequestActions: onRequestActions
             )
         } else {
             MessageFileAttachmentCard(
@@ -1273,6 +1331,9 @@ private struct MessageImageCollection: View {
     let author: MessageAuthor
     let onOpen: (ChatAttachment, UIImage?) -> Void
     let onShare: (ChatAttachment) -> Void
+    let actionAttachmentID: String?
+    let onPrepareActions: (ChatAttachment?) -> Void
+    let onRequestActions: (ChatAttachment, CGRect) -> Void
 
     @State private var isExpanded = ProcessInfo.processInfo.arguments.contains("--preview-media-expanded")
     @State private var selectedImageIndex = 0
@@ -1357,19 +1418,10 @@ private struct MessageImageCollection: View {
                             y: reduceMotion ? 2 : 2 + 3 * flipProgress
                         )
                         .opacity(1 - (reduceMotion ? 1 : 0.72) * Double(flipProgress))
-                        .simultaneousGesture(flipGesture)
-                        .accessibilityValue("Photo \(currentImageIndex + 1) of \(attachments.count)")
-                        .accessibilityHint("Swipe left or right to flip through grouped photos")
-                        .accessibilityAdjustableAction { direction in
-                            switch direction {
-                            case .increment:
-                                startFlip(direction: 1)
-                            case .decrement:
-                                startFlip(direction: -1)
-                            @unknown default:
-                                break
-                            }
-                        }
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+
+                    collapsedInteractionSurface
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 8)
@@ -1440,6 +1492,34 @@ private struct MessageImageCollection: View {
             }
     }
 
+    private var collapsedInteractionSurface: some View {
+        Button {
+            isExpanded = true
+        } label: {
+            Color.clear
+                .frame(
+                    width: MessageImageMetrics.stackSide,
+                    height: MessageImageMetrics.stackSide
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(flipGesture)
+        .accessibilityLabel("Expand \(attachments.count) grouped photos")
+        .accessibilityValue("Photo \(currentImageIndex + 1) of \(attachments.count)")
+        .accessibilityHint("Double tap to expand, or swipe left or right to flip photos")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                startFlip(direction: 1)
+            case .decrement:
+                startFlip(direction: -1)
+            @unknown default:
+                break
+            }
+        }
+    }
+
     private func startFlip(direction: Int) {
         guard attachments.count > 1, !isCompletingFlip else { return }
         flipDirection = direction
@@ -1497,9 +1577,26 @@ private struct MessageImageCollection: View {
             attachment: attachment,
             presentation: presentation,
             onOpen: { previewImage in
-                onOpen(attachment, previewImage)
+                if presentation.isStackPreview {
+                    isExpanded = true
+                } else {
+                    onOpen(attachment, previewImage)
+                }
             },
-            onShare: { onShare(attachment) }
+            onShare: { onShare(attachment) },
+            isActionTarget: actionAttachmentID == attachment.id,
+            onPrepareActions: {
+                if presentation.isStackPreview {
+                    onPrepareActions(nil)
+                    isExpanded = true
+                } else {
+                    onPrepareActions(attachment)
+                }
+            },
+            onRequestActions: { frame in
+                guard !presentation.isStackPreview else { return }
+                onRequestActions(attachment, frame)
+            }
         )
     }
 }
@@ -1582,12 +1679,79 @@ private struct MessageFileAttachmentCard: View {
     }
 }
 
+private struct MessageImageGestureSurface: UIViewRepresentable {
+    let minimumPressDuration: TimeInterval
+    let onTap: () -> Void
+    let onLongPress: () -> Void
+
+    func makeUIView(context: Context) -> GestureView {
+        GestureView(
+            minimumPressDuration: minimumPressDuration,
+            onTap: onTap,
+            onLongPress: onLongPress
+        )
+    }
+
+    func updateUIView(_ uiView: GestureView, context: Context) {
+        uiView.minimumPressDuration = minimumPressDuration
+        uiView.onTap = onTap
+        uiView.onLongPress = onLongPress
+    }
+
+    final class GestureView: UIView {
+        var onTap: () -> Void
+        var onLongPress: () -> Void
+        var minimumPressDuration: TimeInterval {
+            didSet { holdRecognizer.minimumPressDuration = minimumPressDuration }
+        }
+
+        private let tapRecognizer = UITapGestureRecognizer()
+        private let holdRecognizer = UILongPressGestureRecognizer()
+
+        init(
+            minimumPressDuration: TimeInterval,
+            onTap: @escaping () -> Void,
+            onLongPress: @escaping () -> Void
+        ) {
+            self.minimumPressDuration = minimumPressDuration
+            self.onTap = onTap
+            self.onLongPress = onLongPress
+            super.init(frame: .zero)
+            backgroundColor = .clear
+            isAccessibilityElement = false
+            tapRecognizer.addTarget(self, action: #selector(didTap))
+            holdRecognizer.addTarget(self, action: #selector(didHold(_:)))
+            holdRecognizer.minimumPressDuration = minimumPressDuration
+            tapRecognizer.require(toFail: holdRecognizer)
+            addGestureRecognizer(tapRecognizer)
+            addGestureRecognizer(holdRecognizer)
+        }
+
+        @available(*, unavailable)
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) is unavailable")
+        }
+
+        @objc private func didTap() {
+            onTap()
+        }
+
+        @objc private func didHold(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began else { return }
+            onLongPress()
+        }
+    }
+}
+
 private struct MessageImageAttachment: View {
     @EnvironmentObject private var model: AppModel
     let attachment: ChatAttachment
     let presentation: MessageImagePresentation
     let onOpen: (UIImage?) -> Void
     let onShare: () -> Void
+    let isActionTarget: Bool
+    let onPrepareActions: () -> Void
+    let onRequestActions: (CGRect) -> Void
 
     @State private var image: UIImage?
     @State private var isLoading = true
@@ -1595,43 +1759,17 @@ private struct MessageImageAttachment: View {
     @State private var reloadToken = 0
     @State private var addedMediaKind: ExpressiveMediaLibraryKind?
     @State private var isAddingToMediaLibrary = false
+    @State private var actionFrame = CGRect.zero
 
     var body: some View {
-        Button {
-            if loadFailed {
-                reloadToken += 1
-            } else if image != nil {
-                onOpen(image)
+        interactiveImage
+            .overlay {
+                MessageImageGestureSurface(
+                    minimumPressDuration: MessageBubble.actionLongPressDuration,
+                    onTap: activate,
+                    onLongPress: openActions
+                )
             }
-        } label: {
-            imageContent
-        }
-        .buttonStyle(.plain)
-        .contentShape(
-            .contextMenuPreview,
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-        )
-        .contextMenu {
-            Button {
-                onOpen(image)
-            } label: {
-                Label("Review", systemImage: "eye")
-            }
-            Button(action: onShare) {
-                Label("Download / Save to Files", systemImage: "arrow.down.circle")
-            }
-            if let mediaKind {
-                Button(action: addToMediaLibrary) {
-                    Label(
-                        addedMediaKind == mediaKind
-                            ? "Added to \(mediaKind.libraryName)"
-                            : "Add to \(mediaKind.libraryName)",
-                        systemImage: addedMediaKind == mediaKind ? "checkmark.circle" : "square.stack.3d.up"
-                    )
-                }
-                .disabled(isAddingToMediaLibrary || addedMediaKind == mediaKind)
-            }
-        }
         .task(id: "\(attachment.id):\(reloadToken)") {
             await loadImage()
         }
@@ -1640,10 +1778,14 @@ private struct MessageImageAttachment: View {
                 ?? (image == nil ? "Image attachment" : "Review image attachment")
         )
         .accessibilityHint(
-            loadFailed
+            presentation.isStackPreview
+                ? "Expands this image group."
+                : loadFailed
                 ? "Double tap to retry loading"
                 : "\(attachment.name). Touch and hold for image actions."
         )
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(.default) { activate() }
         .accessibilityAction(named: "Download or save to Files", onShare)
         .accessibilityActions {
             if mediaKind != nil {
@@ -1651,6 +1793,36 @@ private struct MessageImageAttachment: View {
             }
         }
         .sensoryFeedback(.success, trigger: addedMediaKind)
+    }
+
+    private var interactiveImage: some View {
+        imageContent
+            .contentShape(
+                .contextMenuPreview,
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .onGeometryChange(for: CGRect.self) { proxy in
+                proxy.frame(in: .global)
+            } action: { frame in
+                if !frame.isEmpty, frame != actionFrame { actionFrame = frame }
+                if isActionTarget, !frame.isEmpty { onRequestActions(frame) }
+            }
+    }
+
+    private func activate() {
+        if presentation.isStackPreview {
+            onOpen(image)
+        } else if loadFailed {
+            reloadToken += 1
+        } else if image != nil {
+            onOpen(image)
+        }
+    }
+
+    private func openActions() {
+        guard !actionFrame.isEmpty else { return }
+        onPrepareActions()
+        onRequestActions(actionFrame)
     }
 
     @ViewBuilder
@@ -1767,6 +1939,11 @@ private enum MessageImagePresentation {
     case natural
     case groupedNatural
     case stackPreview
+
+    var isStackPreview: Bool {
+        if case .stackPreview = self { return true }
+        return false
+    }
 
     var maximumWidth: CGFloat {
         switch self {

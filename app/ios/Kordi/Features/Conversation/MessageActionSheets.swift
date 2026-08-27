@@ -363,6 +363,7 @@ struct MessageActionOverlayLayout: Equatable {
     let pickerCenter: CGPoint
     let reactionWidth: CGFloat
     let menuWidth: CGFloat
+    let menuHeight: CGFloat
     let pickerWidth: CGFloat
     let pickerHeight: CGFloat
 
@@ -376,25 +377,47 @@ struct MessageActionOverlayLayout: Equatable {
         let margin: CGFloat = 12
         let reactionHeight: CGFloat = showsReactions ? 52 : 0
         let menuWidth = min(238, containerSize.width - margin * 2)
-        let menuHeight = CGFloat(actionCount) * 44 + 8
+        let preferredMenuHeight = CGFloat(actionCount) * 44 + 10
+        let availableMenuHeightBelow = max(
+            0,
+            containerSize.height - sourceFrame.maxY - 8 - margin
+        )
+        let availableMenuHeightAbove = max(
+            0,
+            sourceFrame.minY - margin - reactionHeight - (showsReactions ? 16 : 8)
+        )
+        let placeMenuBelow = availableMenuHeightBelow >= preferredMenuHeight
+            || (availableMenuHeightAbove < preferredMenuHeight
+                && availableMenuHeightBelow > availableMenuHeightAbove)
+        let availableMenuHeight = placeMenuBelow
+            ? availableMenuHeightBelow
+            : availableMenuHeightAbove
+        let menuHeight = min(preferredMenuHeight, max(44, availableMenuHeight))
         let reactionWidth = min(
             containerSize.width - margin * 2,
             CGFloat(max(1, reactionCount + 1)) * 46 + 12
         )
         let pickerWidth = min(360, containerSize.width - margin * 2)
-        let preferredPickerHeight = min(360, max(220, containerSize.height * 0.46))
-        let placeMenuBelow = containerSize.height - sourceFrame.maxY >= menuHeight + 16
+        let preferredPickerHeight = min(520, max(320, containerSize.height * 0.62))
         let reactionY = sourceFrame.minY - (showsReactions ? 8 : 0) - reactionHeight / 2
-        let reactionCenterY = clamped(
-            reactionY,
-            half: reactionHeight / 2,
-            extent: containerSize.height,
-            margin: margin
+        let reactionCenterY = placeMenuBelow
+            ? clamped(
+                reactionY,
+                half: reactionHeight / 2,
+                extent: containerSize.height,
+                margin: margin
+            )
+            : max(
+                margin + menuHeight + 8 + reactionHeight / 2,
+                reactionY
+            )
+        let pickerHeight = min(
+            preferredPickerHeight,
+            max(52, containerSize.height - margin * 2)
         )
-        let pickerTop = reactionCenterY - reactionHeight / 2
-        let pickerHeight = max(
-            52,
-            min(preferredPickerHeight, containerSize.height - margin - pickerTop)
+        let pickerTop = min(
+            max(margin, reactionCenterY - reactionHeight / 2),
+            max(margin, containerSize.height - margin - pickerHeight)
         )
         let menuY = placeMenuBelow
             ? sourceFrame.maxY + 8 + menuHeight / 2
@@ -429,6 +452,7 @@ struct MessageActionOverlayLayout: Equatable {
             ),
             reactionWidth: reactionWidth,
             menuWidth: menuWidth,
+            menuHeight: menuHeight,
             pickerWidth: pickerWidth,
             pickerHeight: pickerHeight
         )
@@ -463,11 +487,16 @@ struct MessageActionOverlay: View {
     @State private var didSchedulePreviewExpansion = false
     let message: ChatMessage
     let sourceFrame: CGRect
+    let usableFrame: CGRect
     let ownAccountId: String?
     let allowsReply: Bool
     let allowsReactions: Bool
     let isPinned: Bool
+    let mediaAttachment: ChatAttachment?
     let onDismiss: () -> Void
+    let onReviewAttachment: () -> Void
+    let onShareAttachment: () -> Void
+    let onAddAttachmentToMediaLibrary: () -> Void
     let onReact: (String) -> Void
     let onReply: () -> Void
     let onPin: () -> Void
@@ -483,7 +512,20 @@ struct MessageActionOverlay: View {
     }
 
     private var actionCount: Int {
-        (allowsReply ? 1 : 0) + (!message.text.isEmpty ? 1 : 0) + 3
+        (allowsReply ? 1 : 0) + (!message.text.isEmpty ? 1 : 0) + 3 + mediaActionCount
+    }
+
+    private var mediaKind: ExpressiveMediaLibraryKind? {
+        guard let mediaAttachment else { return nil }
+        return ExpressiveMediaLibraryKind.supportedKind(
+            name: mediaAttachment.name,
+            mimeType: mediaAttachment.mimeType
+        )
+    }
+
+    private var mediaActionCount: Int {
+        guard mediaAttachment != nil else { return 0 }
+        return mediaKind == nil ? 2 : 3
     }
 
     private var hasRecentReactions: Bool {
@@ -492,25 +534,29 @@ struct MessageActionOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
+            let containerFrame = geometry.frame(in: .global)
+            let layoutFrame = usableFrame.isEmpty ? containerFrame : usableFrame
+            let localSourceFrame = sourceFrame.offsetBy(
+                dx: -containerFrame.minX,
+                dy: -containerFrame.minY
+            )
+            let sourceFrameInLayout = sourceFrame.offsetBy(
+                dx: -layoutFrame.minX,
+                dy: -layoutFrame.minY
+            )
+            let layoutOffset = CGSize(
+                width: layoutFrame.minX - containerFrame.minX,
+                height: layoutFrame.minY - containerFrame.minY
+            )
             let layout = MessageActionOverlayLayout.make(
-                sourceFrame: sourceFrame,
-                containerSize: geometry.size,
+                sourceFrame: sourceFrameInLayout,
+                containerSize: layoutFrame.size,
                 showsReactions: allowsReactions,
                 reactionCount: allowsReactions ? quickReactions.count : 0,
                 actionCount: actionCount
             )
             ZStack {
-                Button(action: onDismiss) {
-                    ZStack {
-                        MessageActionBackdrop(cutout: sourceFrame)
-                            .fill(.ultraThinMaterial, style: FillStyle(eoFill: true))
-                        MessageActionBackdrop(cutout: sourceFrame)
-                            .fill(.black.opacity(0.08), style: FillStyle(eoFill: true))
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Close message actions")
+                dismissalBackdrop(cutout: localSourceFrame)
 
                 if allowsReactions {
                     reactionSurface
@@ -536,12 +582,18 @@ struct MessageActionOverlay: View {
                         .position(
                             showsAllReactions ? layout.pickerCenter : layout.reactionCenter
                         )
+                        .offset(layoutOffset)
                 }
 
                 if !showsAllReactions || !allowsReactions {
                     actionMenu
-                        .frame(width: layout.menuWidth)
+                        .frame(
+                            width: layout.menuWidth,
+                            height: layout.menuHeight,
+                            alignment: .top
+                        )
                         .position(layout.menuCenter)
+                        .offset(layoutOffset)
                         .transition(.scale(scale: 0.96).combined(with: .opacity))
                 }
             }
@@ -562,6 +614,26 @@ struct MessageActionOverlay: View {
                 }
             }
         }
+    }
+
+    private func dismissalBackdrop(cutout: CGRect) -> some View {
+        Button(action: onDismiss) {
+            ZStack {
+                MessageActionBackdrop(cutout: cutout)
+                    .fill(.ultraThinMaterial, style: FillStyle(eoFill: true))
+                MessageActionBackdrop(cutout: cutout)
+                    .fill(.black.opacity(0.08), style: FillStyle(eoFill: true))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(
+                mediaAttachment == nil
+                    ? AnyShape(MessageActionBackdrop(cutout: cutout))
+                    : AnyShape(Rectangle()),
+                eoFill: mediaAttachment == nil
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Close message actions")
     }
 
     private var reactionSurface: some View {
@@ -632,29 +704,48 @@ struct MessageActionOverlay: View {
     }
 
     private var actionMenu: some View {
-        VStack(spacing: 0) {
-            if allowsReply {
-                actionButton("Reply", systemImage: "arrowshape.turn.up.left", action: onReply)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 0) {
+                if mediaAttachment != nil {
+                    actionButton("Review", systemImage: "eye", action: onReviewAttachment)
+                    actionButton(
+                        "Download / Save to Files",
+                        systemImage: "arrow.down.circle",
+                        action: onShareAttachment
+                    )
+                    if let mediaKind {
+                        actionButton(
+                            "Add to \(mediaKind.libraryName)",
+                            systemImage: "square.stack.3d.up",
+                            action: onAddAttachmentToMediaLibrary
+                        )
+                    }
+                    Divider().padding(.horizontal, 14)
+                }
+                if allowsReply {
+                    actionButton("Reply", systemImage: "arrowshape.turn.up.left", action: onReply)
+                }
+                if !message.text.isEmpty {
+                    actionButton("Copy", systemImage: "doc.on.doc", action: onCopy)
+                }
+                actionButton(
+                    "Forward",
+                    systemImage: "arrowshape.turn.up.right",
+                    disabled: message.deliveryState == .sending || message.deliveryState == .failed,
+                    action: onForward
+                )
+                actionButton(
+                    isPinned ? "Unpin" : "Pin",
+                    systemImage: "pin",
+                    disabled: message.deliveryState == .sending || message.deliveryState == .failed,
+                    action: onPin
+                )
+                Divider().padding(.horizontal, 14)
+                actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
             }
-            if !message.text.isEmpty {
-                actionButton("Copy", systemImage: "doc.on.doc", action: onCopy)
-            }
-            actionButton(
-                "Forward",
-                systemImage: "arrowshape.turn.up.right",
-                disabled: message.deliveryState == .sending || message.deliveryState == .failed,
-                action: onForward
-            )
-            actionButton(
-                isPinned ? "Unpin" : "Pin",
-                systemImage: "pin",
-                disabled: message.deliveryState == .sending || message.deliveryState == .failed,
-                action: onPin
-            )
-            Divider().padding(.horizontal, 14)
-            actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
+            .padding(.vertical, 4)
         }
-        .padding(.vertical, 4)
+        .scrollBounceBehavior(.basedOnSize)
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: 26, style: .continuous)
@@ -663,6 +754,7 @@ struct MessageActionOverlay: View {
                     .fill(Color(uiColor: .systemBackground).opacity(0.72))
             }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .shadow(color: .black.opacity(0.12), radius: 18, y: 10)
     }
 
@@ -681,6 +773,127 @@ struct MessageActionOverlay: View {
         }
         .buttonStyle(.plain)
         .disabled(disabled)
+    }
+}
+
+struct WindowOverlayPresenter<Content: View>: UIViewRepresentable {
+    let passthroughFrame: CGRect?
+    private let content: (CGRect) -> Content
+
+    init(
+        passthroughFrame: CGRect?,
+        @ViewBuilder content: @escaping (CGRect) -> Content
+    ) {
+        self.passthroughFrame = passthroughFrame
+        self.content = content
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(rootView: content(.zero))
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        let passthroughFrame = self.passthroughFrame
+        let content = self.content
+        let coordinator = context.coordinator
+        let update = { [weak uiView, weak coordinator] in
+            guard let uiView, let coordinator else { return }
+            coordinator.install(
+                from: uiView,
+                passthroughFrame: passthroughFrame,
+                content: content
+            )
+        }
+        if uiView.window == nil {
+            DispatchQueue.main.async(execute: update)
+        } else {
+            update()
+        }
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        coordinator.remove(animated: !UIAccessibility.isReduceMotionEnabled)
+    }
+
+    @MainActor
+    final class Coordinator {
+        private let container = MessageActionWindowOverlayView()
+        private let hostingController: UIHostingController<Content>
+        private weak var window: UIWindow?
+
+        init(rootView: Content) {
+            hostingController = UIHostingController(rootView: rootView)
+            hostingController.view.backgroundColor = .clear
+        }
+
+        func install(
+            from anchor: UIView,
+            passthroughFrame: CGRect?,
+            content: (CGRect) -> Content
+        ) {
+            guard let window = anchor.window else { return }
+            let usableFrame = anchor.convert(anchor.bounds, to: window)
+            hostingController.rootView = content(usableFrame)
+            container.passthroughFrame = passthroughFrame
+
+            if container.superview === window {
+                container.frame = window.bounds
+                window.bringSubviewToFront(container)
+                return
+            }
+
+            remove(animated: false)
+            self.window = window
+            container.frame = window.bounds
+            container.alpha = 1
+            container.isUserInteractionEnabled = true
+            container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            hostingController.view.frame = container.bounds
+            hostingController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            container.addSubview(hostingController.view)
+            window.addSubview(container)
+        }
+
+        func remove(animated: Bool) {
+            guard animated, container.superview != nil else {
+                detach()
+                return
+            }
+            container.isUserInteractionEnabled = false
+            UIView.animate(
+                withDuration: 0.18,
+                delay: 0,
+                options: [.beginFromCurrentState, .curveEaseOut, .allowAnimatedContent]
+            ) {
+                self.container.alpha = 0
+            } completion: { _ in
+                self.detach()
+            }
+        }
+
+        private func detach() {
+            hostingController.view.removeFromSuperview()
+            container.removeFromSuperview()
+            window = nil
+        }
+    }
+}
+
+private final class MessageActionWindowOverlayView: UIView {
+    var passthroughFrame: CGRect?
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        if let passthroughFrame, passthroughFrame.contains(point) {
+            return false
+        }
+        return super.point(inside: point, with: event)
     }
 }
 
