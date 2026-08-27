@@ -15,6 +15,7 @@ import { canonicalAttachments } from './attachmentMapping';
 import { isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
 import { canonicalMentions } from './mentionMapping';
 import { canonicalMessageAction, canonicalMessageActionSourceReference } from './messageActionMapping';
+import { canonicalMessageReactionMetadata } from './messageReactionMetadata';
 
 export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
 export { canonicalAttachments } from './attachmentMapping';
@@ -352,6 +353,7 @@ export function mapCanonicalMessage(
 ): Message | null {
   if (isPlaceholderSessionTitleNotice(message) || isSynchronizationOnlyCloudGroupTitleNotice(message)) return null;
   const content = contentRecord(message.content);
+  const sourceTransport = message.sourceTransport?.trim() ?? '';
   if (stringValue(content.kind) === 'delegation-join-event') return null;
   const identity = identityById.get(message.senderIdentityId);
   const role = canonicalMessageRole(message, identity);
@@ -361,12 +363,10 @@ export function mapCanonicalMessage(
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
   const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail));
   const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;
-  const legacyCollaborationAgentFailure = isAgentTurn && failed && message.sourceTransport?.startsWith('desktop-bridge');
+  const legacyCollaborationAgentFailure = isAgentTurn && failed && sourceTransport.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();
   const sourceRequestId = stringValue(content.requestId)?.trim();
-  const desktopEntryId = message.sourceTransport?.startsWith('desktop-chat')
-    ? stringValue(content.desktopEntryId)?.trim()
-    : undefined;
+  const desktopEntryId = sourceTransport.startsWith('desktop-chat') ? stringValue(content.desktopEntryId)?.trim() : undefined;
   const parentMessageId = message.parentMessageId?.trim();
   const visibleParentMessageId = parentMessageId
     ? context.visibleReplyTargetByMessageId?.get(parentMessageId) ?? parentMessageId
@@ -401,7 +401,7 @@ export function mapCanonicalMessage(
     && Boolean(trimmedProfileIdentityId)
     && Boolean(initiatorIdentityId)
     && initiatorIdentityId === trimmedProfileIdentityId;
-  const cloudGroupAgentRequestConversationId = message.sourceTransport?.startsWith('cloud-group-agent')
+  const cloudGroupAgentRequestConversationId = sourceTransport.startsWith('cloud-group-agent')
     ? (sourceConversationId || cloudGroupAgentConversationId(message.sessionId))
     : null;
   const pendingCollaborationAgentRequest = isAgentTurn
@@ -409,7 +409,7 @@ export function mapCanonicalMessage(
     && (deliveryState === 'queued' || deliveryState === 'processing')
     && sourceRequestId
     && (viewerOwnsAgent || viewerIsInitiator)
-    ? message.sourceTransport?.startsWith('desktop-bridge') && sourceConversationId
+    ? sourceTransport.startsWith('desktop-bridge') && sourceConversationId
       ? { conversationId: sourceConversationId, requestId: sourceRequestId }
       : cloudGroupAgentRequestConversationId
         ? { conversationId: cloudGroupAgentRequestConversationId, requestId: sourceRequestId }
@@ -419,7 +419,7 @@ export function mapCanonicalMessage(
   const time = stringValue(content.timeLabel) ?? formatDesktopClockTime(message.createdAtMs);
   const scopedAgentSender = ownerScopedAgentName(identity, identityById, profileHumanIdentityId);
   const contentSender = stringValue(content.sender)?.trim();
-  const isHostedCloudAgentTurn = isAgentTurn && message.sourceTransport?.startsWith('cloud-group-agent');
+  const isHostedCloudAgentTurn = isAgentTurn && sourceTransport.startsWith('cloud-group-agent');
   const isOwnMessage = role === 'user' || message.senderIdentityId === profileHumanIdentityId;
   const sender = (() => {
     if (identity?.kind === 'agent') {
@@ -459,7 +459,7 @@ export function mapCanonicalMessage(
     : '';
   const rawErrorText = stringValue(content.error) ?? (noProviderFailure ? rawDisplayText : null) ?? 'Message failed';
   const agentTurnErrorText = failed
-    ? message.sourceTransport?.startsWith('cloud-') || rawErrorText.toLowerCase().includes('cloud fallback')
+    ? sourceTransport.startsWith('cloud-') || rawErrorText.toLowerCase().includes('cloud fallback')
       ? cloudAgentFallbackErrorNotice({ message: rawErrorText })
       : rawErrorText
     : null;
@@ -478,7 +478,6 @@ export function mapCanonicalMessage(
   const sourceMessage = canonicalMessageActionSourceReference(messageAction);
   if (role === 'system' && !displayText.trim()) return null;
   const voiceMessage = cloudVoiceMessageMetadataOnly(content.voiceMessage);
-
   return {
     id: message.id,
     // Desktop-backed canonical messages retain the exact runtime entry
@@ -487,7 +486,7 @@ export function mapCanonicalMessage(
     // visible text, while canonical-only and fork-snapshot messages
     // continue to target their stable canonical message id.
     entryId: desktopEntryId || message.id,
-    isForkSnapshot: (message.sourceTransport === 'canonical-fork-snapshot' || message.sourceTransport === 'cloud-group-fork-snapshot') || undefined,
+    isForkSnapshot: (sourceTransport === 'canonical-fork-snapshot' || sourceTransport === 'cloud-group-fork-snapshot') || undefined,
     role,
     sender,
     senderIdentityId: message.senderIdentityId,
@@ -510,6 +509,7 @@ export function mapCanonicalMessage(
     readReceiptSummary: isOwnMessage && role === 'user' ? canonicalReadReceiptSummary(content, identityById) : null,
     messageAction,
     sourceMessage,
+    ...canonicalMessageReactionMetadata(message, content, sourceTransport),
     statusChips: role === 'user' ? [canonicalUserStatusChip(message, content)] : undefined,
     turn: isAgentTurn
       ? {

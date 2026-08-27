@@ -1,5 +1,5 @@
 import ImageIO
-import SwiftUI
+import UIKit
 import XCTest
 @testable import Kordi
 
@@ -8,12 +8,13 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(MessageBubble.reactionChipVerticalLift, 14)
     }
 
-    func testMessageActionsRecognizeTheHoldBeforeRelease() {
-        typealias GestureValue = SequenceGesture<LongPressGesture, DragGesture>.Value
-
-        XCTAssertFalse(MessageBubble.hasRecognizedLongPress(GestureValue.first(false)))
-        XCTAssertFalse(MessageBubble.hasRecognizedLongPress(GestureValue.first(true)))
-        XCTAssertTrue(MessageBubble.hasRecognizedLongPress(GestureValue.second(true, nil)))
+    func testMessageActionsRecognizeAlongsideTheConversationScrollPan() {
+        XCTAssertTrue(MessageGestureArbitration.allowsSimultaneousRecognition(
+            with: UIPanGestureRecognizer()
+        ))
+        XCTAssertTrue(MessageGestureArbitration.allowsSimultaneousRecognition(
+            with: UITapGestureRecognizer()
+        ))
         XCTAssertEqual(MessageBubble.actionLongPressDuration, 0.5)
     }
 
@@ -198,18 +199,25 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
         let imageSource = bubbleSource.components(separatedBy: "private struct MessageImageAttachment")[1]
             .components(separatedBy: "private enum MessageImagePresentation")[0]
-        let gestureSource = bubbleSource.components(separatedBy: "private struct MessageImageGestureSurface")[1]
+        let gestureSource = bubbleSource.components(separatedBy: "enum MessageGestureArbitration")[1]
             .components(separatedBy: "private struct MessageImageAttachment")[0]
         let collectionSource = bubbleSource.components(separatedBy: "private struct MessageImageCollection")[1]
             .components(separatedBy: "enum MessageImageStack")[0]
 
         XCTAssertFalse(imageSource.contains(".contextMenu {"))
         XCTAssertFalse(imageSource.contains(".simultaneousGesture("))
-        XCTAssertTrue(gestureSource.contains("UITapGestureRecognizer"))
+        XCTAssertFalse(imageSource.contains("MessageImageGestureSurface"))
+        XCTAssertFalse(imageSource.contains("Button(action: activate)"))
+        XCTAssertTrue(imageSource.contains("MessageInteractionGestureBridge("))
+        XCTAssertTrue(imageSource.contains("onTap: activate"))
+        XCTAssertTrue(imageSource.contains("onLongPress: openActions"))
         XCTAssertTrue(gestureSource.contains("UILongPressGestureRecognizer"))
-        XCTAssertTrue(gestureSource.contains("tapRecognizer.require(toFail: holdRecognizer)"))
+        XCTAssertTrue(gestureSource.contains("UITapGestureRecognizer"))
+        XCTAssertTrue(gestureSource.contains("recognizer.require(toFail: longPressRecognizer)"))
+        XCTAssertTrue(gestureSource.contains("current as? UIScrollView"))
+        XCTAssertTrue(gestureSource.contains("recognizer.cancelsTouchesInView = false"))
         XCTAssertTrue(imageSource.contains("proxy.frame(in: .global)"))
-        XCTAssertTrue(imageSource.contains("onRequestActions(actionFrame)"))
+        XCTAssertTrue(imageSource.contains("onRequestActions(frame)"))
         XCTAssertTrue(collectionSource.contains("if presentation.isStackPreview"))
         XCTAssertTrue(collectionSource.contains("onPrepareActions(nil)"))
         XCTAssertTrue(collectionSource.contains("isExpanded = true"))

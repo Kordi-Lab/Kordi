@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Image } from 'lucide-react';
 import {
@@ -35,6 +35,7 @@ import {
   recoverAttachmentPreviewOnce,
 } from './transcriptAttachmentPreviewRecovery';
 import type { AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
+import { usePointerClickWithoutDrag } from './usePointerClickWithoutDrag';
 import type { Message, MessageAttachment } from '../types';
 
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
@@ -247,7 +248,6 @@ function AttachmentImageCard({
   totalCount,
   decorative = false,
   onOpenPreview,
-  onOpenContextMenu,
   onImageForegroundTone,
 }: {
   attachment: MessageAttachment;
@@ -261,7 +261,6 @@ function AttachmentImageCard({
     index: number,
     trigger: HTMLButtonElement,
   ) => void;
-  onOpenContextMenu: (attachment: MessageAttachment, event: MouseEvent) => void;
   onImageForegroundTone?: (
     attachmentIdentity: string,
     tone: AttachmentImageForegroundTone | null,
@@ -288,6 +287,13 @@ function AttachmentImageCard({
   const singleImage = totalCount <= 1;
   const intrinsicSingleImage = singleImage && showImage && imageLoaded;
   const showOriginalAction = !decorative && showImage && isLargeAttachment(attachment);
+  const activationProps = usePointerClickWithoutDrag((event) => onOpenPreview(
+    attachment,
+    previewUrl ?? '',
+    previewLeaseRef.current?.retain() ?? null,
+    index,
+    event.currentTarget,
+  ));
 
   useEffect(() => {
     if (usableRecoveredPreviewUrl || usableRemotePreviewUrl || usableDirectPreviewUrl || previewUnavailable || attachment.kind !== 'image' || !attachmentId) return;
@@ -364,7 +370,6 @@ function AttachmentImageCard({
       key={`${attachment.name}-${index}`}
       data-attachment-image-card="true"
       data-attachment-image-index={index}
-      data-attachment-image-context-target="true"
       aria-hidden={decorative || undefined}
       className={cn(
         'app-attachment-image-card app-attachment-image-tile relative overflow-hidden bg-transparent',
@@ -372,7 +377,6 @@ function AttachmentImageCard({
         intrinsicSingleImage ? 'w-fit max-w-full justify-self-start rounded-[16px]' : singleImage ? 'rounded-[16px]' : '',
         imageTileClass(index, totalCount, intrinsicSingleImage),
       )}
-      onContextMenu={(event) => onOpenContextMenu(attachment, event)}
     >
       {showImage && previewUrl ? (
         <button
@@ -380,14 +384,9 @@ function AttachmentImageCard({
           data-attachment-image-preview-trigger="true"
           data-attachment-image-index={index}
           tabIndex={decorative ? -1 : undefined}
-          title={`${displayName} · Right-click for image actions`}
-          onClick={(event) => onOpenPreview(
-            attachment,
-            previewUrl,
-            previewLeaseRef.current?.retain() ?? null,
-            index,
-            event.currentTarget,
-          )}
+          title={displayName}
+          {...activationProps}
+          onDragStart={(event) => event.preventDefault()}
           className={cn(
             'group relative overflow-hidden text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20',
             intrinsicSingleImage ? 'inline-flex h-auto w-auto max-w-full rounded-[16px]' : 'block h-full w-full',
@@ -400,6 +399,7 @@ function AttachmentImageCard({
           <img
             src={previewUrl}
             alt={attachment.altText?.trim() || attachment.name || 'Attached image'}
+            draggable={false}
             data-attachment-image-loaded={String(imageLoaded)}
             className={cn(
               'relative block transition-opacity duration-200 ease-out motion-reduce:transition-none',
@@ -460,7 +460,6 @@ export function AttachmentPreview({
   const mediaAttachments = imageGallery?.length ? imageGallery : previewImageAttachments;
   const imageGroupId = useId();
   const [isImageGroupExpanded, setIsImageGroupExpanded] = useState(false);
-  const [contextMenuState, setContextMenuState] = useState<AttachmentContextMenuState | null>(null);
   const [sampledForegroundTone, setSampledForegroundTone] = useState<{
     attachmentIdentity: string;
     tone: AttachmentImageForegroundTone | null;
@@ -530,23 +529,6 @@ export function AttachmentPreview({
       .finally(() => previewLease?.release());
   }
 
-  function openContextMenu(attachment: MessageAttachment, event: MouseEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-    setContextMenuState({ attachment, x: event.clientX, y: event.clientY });
-  }
-
-  useEffect(() => {
-    if (!contextMenuState) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setContextMenuState(null);
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [contextMenuState]);
-
   if (attachments.length === 0) {
     return null;
   }
@@ -584,8 +566,12 @@ export function AttachmentPreview({
                   index={index}
                   totalCount={1}
                   decorative={hasImageGroup && !isImageGroupExpanded && index > 0}
-                  onOpenPreview={openLightbox}
-                  onOpenContextMenu={openContextMenu}
+                  onOpenPreview={hasImageGroup && !isImageGroupExpanded
+                    ? (_attachment, _previewUrl, previewLease) => {
+                      previewLease?.release();
+                      setIsImageGroupExpanded(true);
+                    }
+                    : openLightbox}
                   onImageForegroundTone={attachmentPreviewIdentity(attachment) === deliveryImageIdentity
                     ? updateImageForegroundTone
                     : undefined}
@@ -606,9 +592,6 @@ export function AttachmentPreview({
           </div>
         ) : null}
       </div>
-      {contextMenuState ? (
-        <AttachmentContextMenu state={contextMenuState} onClose={() => setContextMenuState(null)} />
-      ) : null}
     </>
   );
 }

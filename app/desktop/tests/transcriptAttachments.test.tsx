@@ -240,11 +240,11 @@ test('image attachments render as clickable lightweight previews without heavy f
   assert.match(markup, /Screenshot 2026-05-20\.png/);
 });
 
-test('image attachment actions are available from context menu instead of sticky under-image buttons', () => {
+test('image attachment actions are not rendered as sticky under-image buttons', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
 
-  assert.match(markup, /data-attachment-image-context-target="true"/);
-  assert.match(markup, /Right-click for image actions/);
+  assert.doesNotMatch(markup, /data-attachment-image-context-target="true"/);
+  assert.doesNotMatch(markup, /Right-click for image actions/);
   assert.doesNotMatch(markup, /aria-label="Download Screenshot 2026-05-20\.png"/);
 });
 

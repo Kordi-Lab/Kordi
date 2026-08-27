@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MessageBubble, MessageContextMenuContent } from '../src/kordi-app/components/transcript';
+import {
+  MessageBubble,
+  MessageContextMenuContent,
+} from '../src/kordi-app/components/transcript';
 import type { Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
@@ -255,7 +258,7 @@ test('message context menu content lists read receipts when available', () => {
   assert.match(markup, /w-\[13\.5rem\]/);
   assert.doesNotMatch(markup, /data-message-context-menu-reactions="true"/);
   assert.match(markup, /Reply/);
-  assert.match(markup, /Copy Text/);
+  assert.match(markup, />Copy</);
   assert.match(markup, /Select/);
   assert.doesNotMatch(markup, />Edit</);
   assert.doesNotMatch(markup, />Delete</);
@@ -451,7 +454,7 @@ test('message context menu hides text copy when no text exists', () => {
   };
   const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
 
-  assert.doesNotMatch(markup, />Copy Text</);
+  assert.doesNotMatch(markup, />Copy</);
   assert.doesNotMatch(markup, /data-message-context-menu-action="copy-text"/);
 });
 
@@ -488,5 +491,5 @@ test('message context menu hides reply forward select and pin for live turns unt
   assert.doesNotMatch(markup, />Forward</);
   assert.doesNotMatch(markup, />Select</);
   assert.doesNotMatch(markup, />Pin</);
-  assert.match(markup, />Copy Text</);
+  assert.match(markup, />Copy</);
 });

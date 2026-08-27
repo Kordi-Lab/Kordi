@@ -44,7 +44,6 @@ struct MessageBubble: View, Equatable {
     @State private var didAutomaticallyPresentActions = false
     @State private var isRequestingActionFrame = false
     @State private var actionAttachment: ChatAttachment?
-    @GestureState private var isPressingActions = false
 
     static let actionLongPressDuration = 0.5
 
@@ -68,13 +67,6 @@ struct MessageBubble: View, Equatable {
             && lhs.automaticallyPresentsActions == rhs.automaticallyPresentsActions
             && lhs.readByNames == rhs.readByNames
             && lhs.backgroundSessions == rhs.backgroundSessions
-    }
-
-    static func hasRecognizedLongPress(
-        _ gesture: SequenceGesture<LongPressGesture, DragGesture>.Value
-    ) -> Bool {
-        guard case .second(true, _) = gesture else { return false }
-        return true
     }
 
     var body: some View {
@@ -172,14 +164,24 @@ struct MessageBubble: View, Equatable {
                         value: isActionPresented
                     )
                     .contentShape(.contextMenuPreview, bubbleShape)
+                    .background {
+                        MessageInteractionGestureBridge(
+                            minimumPressDuration: Self.actionLongPressDuration,
+                            isEnabled: !selectionMode
+                                && !hasImageAttachments
+                                && actionAttachment == nil,
+                            onTap: nil,
+                            onLongPress: { onOpenActions($0, nil) }
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
                     .onGeometryChange(for: CGRect.self) { [
                         automaticallyPresentsActions,
                         isActionPresented,
-                        isPressingActions,
                         isRequestingActionFrame
                     ] proxy in
                         automaticallyPresentsActions || isActionPresented
-                            || isPressingActions || isRequestingActionFrame
+                            || isRequestingActionFrame
                             ? proxy.frame(in: .global)
                             : .zero
                     } action: { frame in
@@ -202,27 +204,6 @@ struct MessageBubble: View, Equatable {
                             }
                         }
                     }
-                    .simultaneousGesture(
-                        LongPressGesture(minimumDuration: Self.actionLongPressDuration)
-                            .sequenced(before: DragGesture(minimumDistance: 0))
-                            .updating($isPressingActions) { phase, state, _ in
-                                switch phase {
-                                case let .first(isPressing): state = isPressing
-                                case let .second(didLongPress, _): state = didLongPress
-                                }
-                            }
-                            .onChanged { phase in
-                                guard Self.hasRecognizedLongPress(phase),
-                                      !selectionMode,
-                                      !hasImageAttachments,
-                                      actionAttachment == nil else { return }
-                                Task { @MainActor in
-                                    await Task.yield()
-                                    guard !actionFrame.isEmpty else { return }
-                                    onOpenActions(actionFrame, nil)
-                                }
-                            }
-                    )
                     .accessibilityAction(named: "Show message actions") {
                         guard !selectionMode, !hasImageAttachments else { return }
                         actionAttachment = nil
@@ -1679,66 +1660,149 @@ private struct MessageFileAttachmentCard: View {
     }
 }
 
-private struct MessageImageGestureSurface: UIViewRepresentable {
+enum MessageGestureArbitration {
+    static func allowsSimultaneousRecognition(with _: UIGestureRecognizer) -> Bool {
+        true
+    }
+}
+
+private struct MessageInteractionGestureBridge: UIViewRepresentable {
     let minimumPressDuration: TimeInterval
-    let onTap: () -> Void
-    let onLongPress: () -> Void
+    let isEnabled: Bool
+    let onTap: (() -> Void)?
+    let onLongPress: (CGRect) -> Void
 
-    func makeUIView(context: Context) -> GestureView {
-        GestureView(
-            minimumPressDuration: minimumPressDuration,
-            onTap: onTap,
-            onLongPress: onLongPress
-        )
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
     }
 
-    func updateUIView(_ uiView: GestureView, context: Context) {
-        uiView.minimumPressDuration = minimumPressDuration
-        uiView.onTap = onTap
-        uiView.onLongPress = onLongPress
+    func makeUIView(context: Context) -> AttachmentView {
+        let view = AttachmentView()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        context.coordinator.attachmentView = view
+        view.onSuperviewChange = { [weak coordinator = context.coordinator, weak view] in
+            if let view { coordinator?.attachToEnclosingScrollView(from: view) }
+        }
+        return view
     }
 
-    final class GestureView: UIView {
-        var onTap: () -> Void
-        var onLongPress: () -> Void
-        var minimumPressDuration: TimeInterval {
-            didSet { holdRecognizer.minimumPressDuration = minimumPressDuration }
+    func updateUIView(_ uiView: AttachmentView, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.updateMinimumPressDuration()
+        context.coordinator.attachToEnclosingScrollView(from: uiView)
+    }
+
+    static func dismantleUIView(_ uiView: AttachmentView, coordinator: Coordinator) {
+        coordinator.detach()
+    }
+
+    final class AttachmentView: UIView {
+        var onSuperviewChange: (() -> Void)?
+
+        override func didMoveToSuperview() {
+            super.didMoveToSuperview()
+            onSuperviewChange?()
         }
 
-        private let tapRecognizer = UITapGestureRecognizer()
-        private let holdRecognizer = UILongPressGestureRecognizer()
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            onSuperviewChange?()
+        }
+    }
 
-        init(
-            minimumPressDuration: TimeInterval,
-            onTap: @escaping () -> Void,
-            onLongPress: @escaping () -> Void
-        ) {
-            self.minimumPressDuration = minimumPressDuration
-            self.onTap = onTap
-            self.onLongPress = onLongPress
-            super.init(frame: .zero)
-            backgroundColor = .clear
-            isAccessibilityElement = false
-            tapRecognizer.addTarget(self, action: #selector(didTap))
-            holdRecognizer.addTarget(self, action: #selector(didHold(_:)))
-            holdRecognizer.minimumPressDuration = minimumPressDuration
-            tapRecognizer.require(toFail: holdRecognizer)
-            addGestureRecognizer(tapRecognizer)
-            addGestureRecognizer(holdRecognizer)
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: MessageInteractionGestureBridge
+        weak var attachmentView: UIView?
+        weak var targetView: UIView?
+
+        private lazy var longPressRecognizer: UILongPressGestureRecognizer = {
+            let recognizer = UILongPressGestureRecognizer(
+                target: self,
+                action: #selector(handleLongPress(_:))
+            )
+            recognizer.minimumPressDuration = parent.minimumPressDuration
+            recognizer.allowableMovement = 10
+            recognizer.cancelsTouchesInView = false
+            recognizer.delegate = self
+            return recognizer
+        }()
+
+        private lazy var tapRecognizer: UITapGestureRecognizer = {
+            let recognizer = UITapGestureRecognizer(
+                target: self,
+                action: #selector(handleTap(_:))
+            )
+            recognizer.cancelsTouchesInView = false
+            recognizer.delegate = self
+            recognizer.require(toFail: longPressRecognizer)
+            return recognizer
+        }()
+
+        init(parent: MessageInteractionGestureBridge) {
+            self.parent = parent
+            super.init()
         }
 
-        @available(*, unavailable)
-        required init?(coder: NSCoder) {
-            fatalError("init(coder:) is unavailable")
+        func updateMinimumPressDuration() {
+            longPressRecognizer.minimumPressDuration = parent.minimumPressDuration
         }
 
-        @objc private func didTap() {
-            onTap()
+        func attachToEnclosingScrollView(from view: UIView) {
+            var candidate = view.superview
+            while let current = candidate {
+                if let scrollView = current as? UIScrollView {
+                    attach(to: scrollView)
+                    return
+                }
+                candidate = current.superview
+            }
         }
 
-        @objc private func didHold(_ recognizer: UILongPressGestureRecognizer) {
-            guard recognizer.state == .began else { return }
-            onLongPress()
+        private func attach(to view: UIView) {
+            guard targetView !== view else { return }
+            detach()
+            targetView = view
+            view.addGestureRecognizer(longPressRecognizer)
+            view.addGestureRecognizer(tapRecognizer)
+        }
+
+        func detach() {
+            targetView?.removeGestureRecognizer(longPressRecognizer)
+            targetView?.removeGestureRecognizer(tapRecognizer)
+            targetView = nil
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard parent.isEnabled,
+                  let attachmentView,
+                  let targetView else { return false }
+            if gestureRecognizer === tapRecognizer, parent.onTap == nil { return false }
+            let frame = attachmentView.convert(attachmentView.bounds, to: targetView)
+            return frame.contains(gestureRecognizer.location(in: targetView))
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            MessageGestureArbitration.allowsSimultaneousRecognition(
+                with: otherGestureRecognizer
+            )
+        }
+
+        @objc private func handleLongPress(_ gestureRecognizer: UILongPressGestureRecognizer) {
+            guard gestureRecognizer.state == .began,
+                  let attachmentView,
+                  let window = attachmentView.window else { return }
+            let frame = attachmentView.convert(attachmentView.bounds, to: window)
+            guard !frame.isEmpty else { return }
+            parent.onLongPress(frame)
+        }
+
+        @objc private func handleTap(_ gestureRecognizer: UITapGestureRecognizer) {
+            guard gestureRecognizer.state == .ended else { return }
+            parent.onTap?()
         }
     }
 }
@@ -1763,13 +1827,15 @@ private struct MessageImageAttachment: View {
 
     var body: some View {
         interactiveImage
-            .overlay {
-                MessageImageGestureSurface(
-                    minimumPressDuration: MessageBubble.actionLongPressDuration,
-                    onTap: activate,
-                    onLongPress: openActions
-                )
-            }
+        .background {
+            MessageInteractionGestureBridge(
+                minimumPressDuration: MessageBubble.actionLongPressDuration,
+                isEnabled: !isActionTarget,
+                onTap: activate,
+                onLongPress: openActions
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
         .task(id: "\(attachment.id):\(reloadToken)") {
             await loadImage()
         }
@@ -1819,10 +1885,9 @@ private struct MessageImageAttachment: View {
         }
     }
 
-    private func openActions() {
-        guard !actionFrame.isEmpty else { return }
+    private func openActions(frame: CGRect) {
         onPrepareActions()
-        onRequestActions(actionFrame)
+        onRequestActions(frame)
     }
 
     @ViewBuilder

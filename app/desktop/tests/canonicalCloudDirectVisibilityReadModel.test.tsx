@@ -184,6 +184,8 @@ test('canonical materialization hydrates the runtime Cloud direct conversation w
     canonicalBacked[0]?.messages.map((message) => message.text),
     ['Cloud hello'],
   );
+  assert.equal(canonicalBacked[0]?.messages[0]?.reactionConversationId, directSessionId);
+  assert.equal(canonicalBacked[0]?.messages[0]?.reactionTargetMessageId, 'cloud:message:1');
 });
 
 test('canonical agent requests use one check until read and two after an agent reply starts', () => {

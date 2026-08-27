@@ -1,10 +1,17 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { CheckCheck, CheckCircle2, Copy, Forward, Pin, Reply } from 'lucide-react';
+import { CheckCheck, CheckCircle2, Copy, Eye, Forward, Pin, Reply } from 'lucide-react';
 
+import {
+  attachmentMediaGalleryIndex,
+  attachmentPreviewUrl,
+} from '@/features/chat/attachmentMediaGallery';
+import { openAttachmentMediaWindow } from '@/features/chat/attachmentMediaWindow';
 import { cn } from '@/lib/utils';
-import type { Message } from '../types';
+import type { Message, MessageAttachment } from '../types';
+import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibraryAction';
 import { IdentityAvatar } from './IdentityAvatar';
 import { MessageReactionSurface } from './messageReactions';
+import { AttachmentActions } from './transcriptAttachmentActions';
 
 const textStyle = {
   fontSize: '10px',
@@ -88,9 +95,13 @@ export function MessageContextMenuContent({
   onRequestUnpinMessage,
   onReactMessage,
   isPinned = false,
+  mediaAttachment,
+  mediaGallery,
 }: {
   msg: Message;
   onClose?: () => void;
+  mediaAttachment?: MessageAttachment | null;
+  mediaGallery?: readonly MessageAttachment[];
 } & MessageContextMenuActionHandlers) {
   const [showsAllReactions, setShowsAllReactions] = useState(false);
   const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
@@ -114,6 +125,17 @@ export function MessageContextMenuContent({
   const handleReaction = (reaction: string) => {
     void Promise.resolve(onReactMessage?.(msg, reaction)).finally(() => onClose?.());
   };
+  const reviewMediaAttachment = () => {
+    if (!mediaAttachment) return;
+    const attachments = mediaGallery?.length ? [...mediaGallery] : [mediaAttachment];
+    const galleryIndex = attachmentMediaGalleryIndex(attachments, mediaAttachment);
+    onClose?.();
+    void openAttachmentMediaWindow({
+      attachments,
+      selectedIndex: galleryIndex >= 0 ? galleryIndex : 0,
+      initialPreviewUrl: attachmentPreviewUrl(mediaAttachment),
+    }).catch(() => undefined);
+  };
 
   return (
     <div
@@ -132,14 +154,23 @@ export function MessageContextMenuContent({
         />
       ) : null}
       {!showsAllReactions ? <div className="app-transient-surface overflow-hidden rounded-[14px] w-[13.5rem] border p-1">
+        {mediaAttachment ? (
+          <>
+            <Action action="review-attachment" icon={<Eye className="h-4 w-4" />} label="Review" onClick={reviewMediaAttachment} />
+            <AttachmentActions attachment={mediaAttachment} variant="menu" />
+            <AddAttachmentToMediaLibraryAction attachment={mediaAttachment} onAdded={() => onClose?.()} />
+            <div className="app-transient-divider mx-3 my-1 border-t" role="separator" />
+          </>
+        ) : null}
         {actionEligible ? <Action action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={() => closeAfter(onReplyMessage)} /> : null}
+        {copyableText ? <Action action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy" onClick={() => void copyText()} /> : null}
+        {actionEligible ? <Action action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => closeAfter(onForwardMessage)} /> : null}
         {actionEligible && (onRequestPinMessage || onRequestUnpinMessage) ? (
           isPinned
             ? <Action action="unpin" icon={<Pin className="h-4 w-4" />} label="Unpin" onClick={() => closeAfter(onRequestUnpinMessage)} />
             : <Action action="pin" icon={<Pin className="h-4 w-4" />} label="Pin" onClick={() => closeAfter(onRequestPinMessage)} />
         ) : null}
-        {copyableText ? <Action action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy Text" onClick={() => void copyText()} /> : null}
-        {actionEligible ? <Action action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => closeAfter(onForwardMessage)} /> : null}
+        {actionEligible ? <div className="app-transient-divider mx-3 my-1 border-t" role="separator" /> : null}
         {actionEligible ? <Action action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={() => closeAfter(onSelectMessage)} /> : null}
         <SeenRow summary={msg.readReceiptSummary} />
       </div> : null}
