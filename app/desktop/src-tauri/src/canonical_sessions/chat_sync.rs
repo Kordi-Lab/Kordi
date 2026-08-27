@@ -70,6 +70,22 @@ pub struct ChatSyncConversationCoverage {
 }
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSyncMessagePage {
+    pub conversation_id: String,
+    pub messages: Vec<Value>,
+    pub next_after_sequence: Option<i64>,
+    pub has_more: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSyncRecoveryMessageIds {
+    pub conversation_id: String,
+    pub message_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ChatSyncMessageRef {
     pub id: String,
     pub client_message_id: String,
@@ -105,10 +121,13 @@ pub struct ChatSyncPendingOperation {
 }
 
 mod apply;
+mod compaction;
+mod message_reads;
 mod outbox;
 mod projection;
 
 use apply::*;
+use message_reads::*;
 use outbox::*;
 use projection::*;
 #[tauri::command]
@@ -176,6 +195,56 @@ pub async fn desktop_chat_sync_message_refs(
         }
         let conn = open_db()?;
         load_message_refs(&conn, &account_id, &conversation_ids)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn desktop_chat_sync_messages_page(
+    account_id: String,
+    conversation_id: String,
+    after_sequence: Option<i64>,
+    limit: Option<i64>,
+) -> Result<ChatSyncMessagePage, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let account_id = account_id.trim().to_string();
+        let conversation_id = conversation_id.trim().to_string();
+        if account_id.is_empty() {
+            return Err("Chat sync account id is required".to_string());
+        }
+        if conversation_id.is_empty() {
+            return Err("Chat sync conversation id is required".to_string());
+        }
+        let conn = open_db()?;
+        load_message_page(
+            &conn,
+            &account_id,
+            &conversation_id,
+            after_sequence,
+            limit.unwrap_or(100),
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn desktop_chat_sync_recovery_message_ids(
+    account_id: String,
+    conversation_id: String,
+) -> Result<ChatSyncRecoveryMessageIds, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let account_id = account_id.trim().to_string();
+        let conversation_id = conversation_id.trim().to_string();
+        if account_id.is_empty() {
+            return Err("Chat sync account id is required".to_string());
+        }
+        if conversation_id.is_empty() {
+            return Err("Chat sync conversation id is required".to_string());
+        }
+        let conn = open_db()?;
+        load_recovery_message_ids(&conn, &account_id, &conversation_id)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -262,7 +331,8 @@ mod tests {
                 PRIMARY KEY(account_id, conversation_id)
              );
              CREATE TABLE chat_sync_messages (
-                account_id TEXT, message_id TEXT, client_message_id TEXT, conversation_id TEXT,
+                account_id TEXT, message_id TEXT, client_message_id TEXT, message_kind TEXT,
+                conversation_id TEXT,
                 conversation_sequence INTEGER, version INTEGER,
                 snapshot_json TEXT, updated_at_ms INTEGER,
                 PRIMARY KEY(account_id, message_id),

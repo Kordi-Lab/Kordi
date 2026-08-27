@@ -5,6 +5,7 @@ import {
   deriveSessionTitle,
   incomingSessionTitleWins,
   isGenericSessionTitle,
+  legacySessionTitleFromMessageText,
   optimisticSessionTitle,
   titleSourceFromMetadata,
 } from '../src/features/chat/sessionTitlePolicy';
@@ -23,6 +24,12 @@ test('low-information prompts remain temporary until a topic appears', () => {
     { role: 'owned-agent', text: 'Hi! How can I help?', timeLabel: '10:00' },
     { role: 'user', text: 'plan the release validation', timeLabel: '10:01' },
   ], 'New chat'), 'Plan the release validation');
+});
+
+test('legacy group title fallback ignores punctuation-only messages', () => {
+  assert.equal(legacySessionTitleFromMessageText('?'), null);
+  assert.equal(legacySessionTitleFromMessageText('...'), null);
+  assert.equal(legacySessionTitleFromMessageText('Kordi bug report'), 'Kordi bug report');
 });
 
 test('local titles preserve Unicode and remove reply, command, mention, URL, and path noise', () => {

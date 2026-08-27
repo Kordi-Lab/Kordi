@@ -343,6 +343,9 @@ export class ChatSyncConversationClient {
       updatedByAccountId: this.state.activeAccountId ?? preferences.account_id,
       updatedAt: new Date(input.updatedAtMs).toISOString(),
     });
+    if (conversation.preferences.personal_title === desiredTitle) {
+      return resultFrom(conversation, conversation.preferences);
+    }
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const response = await this.state.send<{ preferences: ChatSyncPreferences }>(

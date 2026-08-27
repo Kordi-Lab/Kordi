@@ -49,7 +49,7 @@ import {
   sameAgentResponseText,
 } from './readModel/runtimeMessageMatching';
 import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
-import { mergedMessageReactionMetadata } from './readModel/messageReactionMetadata';
+import { mergeCanonicalReadReceipts, mergedMessageReactionMetadata } from './readModel/messageReactionMetadata';
 
 const EMPTY_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map();
 
@@ -530,7 +530,8 @@ export function createCanonicalSessionReadModel(
           ? canonicalMessages
           : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
-      const messages = dedupeRepeatedFailedAgentTurns(isSupportContact ? normalizeSupportContactMessages(hydratedMessages) : hydratedMessages);
+      const hydratedWithReceipts = mergeCanonicalReadReceipts(hydratedMessages, canonicalMessages);
+      const messages = dedupeRepeatedFailedAgentTurns(isSupportContact ? normalizeSupportContactMessages(hydratedWithReceipts) : hydratedWithReceipts);
       const rawCanonicalParticipants = this.participantDetails(sessionId);
       const canonicalParticipants = visibleParticipantsForSession(session, rawCanonicalParticipants);
       const participants = isSupportContact
@@ -572,9 +573,7 @@ export function createCanonicalSessionReadModel(
       const canonicalUnread = cloudUnreadReady ? unreadCountForSession(session) : 0;
       const unread = canonicalUnread === 0 && hasSelfReadLatestMessage(sessionId) ? 0 : Math.max(scopedUnread, canonicalUnread);
       const taskActivities = this.taskActivities(sessionId);
-      // Surface fork lineage stored in canonical metadata so cloned
-      // canonical fork sessions render the same Forked-from pill +
-      // sidebar nesting as native local forks.
+      // Surface canonical fork lineage in the transcript and sidebar.
       const canonicalMetadata = sessionViewMetadata(session);
       const canonicalForkMetadata =
         canonicalMetadata && typeof canonicalMetadata === 'object'

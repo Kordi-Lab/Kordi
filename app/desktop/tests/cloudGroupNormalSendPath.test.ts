@@ -11,6 +11,7 @@ const cloudGroupControlSenderSource = () => readFileSync(
   ),
   'utf8',
 );
+const reliableGroupTitleSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupReliableSessionTitle.ts', import.meta.url), 'utf8');
 const cloudGroupOutboxSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupOutbox.ts', import.meta.url), 'utf8');
 const cloudOutboxDeliverySource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupOutboxDelivery.ts', import.meta.url), 'utf8');
 
@@ -123,6 +124,15 @@ test('cloud group image sends persist local sources before starting upload', () 
   assert.ok(enqueue >= 0 && firstUpload > enqueue, 'attachment upload must not begin before the local source is durable');
   assert.match(groupSend, /prepareCloudGroupOutboxEntryAttachments\(/);
   assert.match(groupSend, /clientMessageId,/);
+});
+
+test('every successful group send persists its reliable session title', () => {
+  const source = cloudGroupControlSenderSource();
+  const titleSource = reliableGroupTitleSource();
+  assert.match(source, /reliableCloudGroupSessionTitle\(/);
+  assert.match(titleSource, /deriveSessionTitle\(input\.message\?\.text \?\? ''\)/);
+  assert.match(titleSource, /client\.updateCloudSessionTitle\(/);
+  assert.match(source, /if \(sent\.length > 0\) \{\s*await syncReliableSessionTitle\(\);/);
 });
 
 test('group send failures upsert a durable failed canonical row with retry recipients', () => {

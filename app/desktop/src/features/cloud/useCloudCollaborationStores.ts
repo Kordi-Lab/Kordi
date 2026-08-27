@@ -39,6 +39,8 @@ export type CloudCollaborationMessageStore = {
     SetStateAction<Record<string, CloudMessage[]>>
   >;
   valueRef: MutableRefObject<Record<string, CloudMessage[]>>;
+  onGroupRecoverySettled: () => void;
+  onSelfAgentRecoverySettled: () => void;
   currentAccountValue: Record<string, CloudMessage[]>;
   belongsToCurrentAccount: boolean;
   index: CloudMessageIndex;

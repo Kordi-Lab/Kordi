@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 
 use super::super::super::{open_db, CanonicalMessageSourceRef};
 
@@ -17,16 +17,8 @@ pub(in crate::canonical_sessions) fn existing_message_sources_from_db(
             "Canonical message source lookup is limited to {MAX_SOURCE_LOOKUPS} entries"
         ));
     }
-    let mut statement = conn
-        .prepare_cached(
-            "SELECT 1
-             FROM session_messages
-             WHERE source_transport = ?1 AND source_event_id = ?2
-             LIMIT 1",
-        )
-        .map_err(|err| err.to_string())?;
     let mut seen = HashSet::new();
-    let mut existing = Vec::new();
+    let mut normalized_sources = Vec::new();
     for source in sources {
         let source_transport = source.source_transport.trim();
         let source_event_id = source.source_event_id.trim();
@@ -40,22 +32,33 @@ pub(in crate::canonical_sessions) fn existing_message_sources_from_db(
         if !seen.insert(normalized.clone()) {
             continue;
         }
-        let found = statement
-            .query_row(
-                params![
-                    normalized.source_transport.as_str(),
-                    normalized.source_event_id.as_str()
-                ],
-                |_| Ok(()),
-            )
-            .optional()
-            .map_err(|err| err.to_string())?
-            .is_some();
-        if found {
-            existing.push(normalized);
-        }
+        normalized_sources.push(normalized);
     }
-    Ok(existing)
+    if normalized_sources.is_empty() {
+        return Ok(Vec::new());
+    }
+    let encoded = serde_json::to_string(&normalized_sources).map_err(|error| error.to_string())?;
+    let mut statement = conn
+        .prepare(
+            "SELECT json_extract(request.value, '$.sourceTransport'),
+                    json_extract(request.value, '$.sourceEventId')
+             FROM json_each(?1) AS request
+             JOIN session_messages AS message
+               ON message.source_transport = json_extract(request.value, '$.sourceTransport')
+              AND message.source_event_id = json_extract(request.value, '$.sourceEventId')
+             ORDER BY CAST(request.key AS INTEGER) ASC",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![encoded], |row| {
+            Ok(CanonicalMessageSourceRef {
+                source_transport: row.get(0)?,
+                source_event_id: row.get(1)?,
+            })
+        })
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 pub(in crate::canonical_sessions) fn desktop_canonical_existing_message_sources(

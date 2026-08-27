@@ -26,6 +26,7 @@ export function useRecoveredCloudGroupReplay({
   messageIndex,
   applyControl,
   flushCanonicalState,
+  onSettled,
   reportWarning,
 }: {
   account: CloudAccount | null;
@@ -41,6 +42,7 @@ export function useRecoveredCloudGroupReplay({
     envelope: CloudGroupControlEnvelope,
   ) => Promise<void>;
   flushCanonicalState: () => void;
+  onSettled?: () => void;
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const recoverySettled = useCloudAgentTurnRecovery({
@@ -72,12 +74,14 @@ export function useRecoveredCloudGroupReplay({
 
   useCloudGroupReplay({
     enabled: replayEnabled,
+    accountId: account?.accountId ?? null,
     contextKey,
     coordinator,
     messageIndex,
     canonicalStateRef,
     applyControl,
     flushCanonicalState,
+    onSettled,
     reportWarning,
   });
 }

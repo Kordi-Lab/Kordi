@@ -255,6 +255,7 @@ export function buildCloudMessageIndex(
   const mutableRowsBySessionId = new Map<string, IndexedCloudGroupRow[]>();
   const mutableRowsBySpaceId = new Map<string, IndexedCloudGroupRow[]>();
   const legacyGroupSessionTitlesById = new Map<string, string>();
+  const legacyGroupSessionTitleSeededIds = new Set<string>();
   const replayRowsByKey = new Map<string, IndexedCloudGroupRow>();
   const mutableDelivery = new Map<string, {
     state: CloudDeliverySummary['state'];
@@ -279,10 +280,13 @@ export function buildCloudMessageIndex(
     }
     const groupSpaceId = cleanText(envelope.groupSpaceId);
     if (groupSpaceId) pushMapValue(mutableRowsBySpaceId, groupSpaceId, row);
-    if (!legacyGroupSessionTitlesById.has(envelope.groupId)) {
-      const title = envelope.kind === 'group-message' && !envelope.message?.forkSnapshot
-        ? legacySessionTitleFromMessageText(envelope.message?.text)
-        : null;
+    if (
+      envelope.kind === 'group-message'
+      && !envelope.message?.forkSnapshot
+      && !legacyGroupSessionTitleSeededIds.has(envelope.groupId)
+    ) {
+      legacyGroupSessionTitleSeededIds.add(envelope.groupId);
+      const title = legacySessionTitleFromMessageText(envelope.message?.text);
       if (title) legacyGroupSessionTitlesById.set(envelope.groupId, title);
     }
     const replayKey = cloudGroupReplayKeyForRow(row);

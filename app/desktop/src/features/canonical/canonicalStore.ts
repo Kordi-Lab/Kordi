@@ -345,12 +345,15 @@ export function mergeCanonicalStateIntoStore(
     state.sessions.map((session) => {
       const incoming = messagesBySessionId[session.id] ?? [];
       const existing = catalogMerged.messagesBySessionId[session.id] ?? [];
-      const stable = existing.length === incoming.length
+      const merged = store.hydrationBySessionId[session.id] === 'ready'
+        ? mergeMessages(existing, incoming)
+        : incoming;
+      const stable = existing.length === merged.length
         && existing.every((message, index) => (
-          canonicalMessagesEqual(message, incoming[index])
+          canonicalMessagesEqual(message, merged[index])
         ))
         ? existing
-        : incoming;
+        : merged;
       return [session.id, stable];
     }),
   );

@@ -6,7 +6,12 @@ import {
 import {
   fetchExistingCanonicalMessageSources,
 } from '@/features/canonical/canonicalMessageSources';
+import {
+  loadChatSyncConversations,
+  loadChatSyncMessagesPage,
+} from '@/lib/desktopChatSync';
 import type { CloudGroupControlEnvelope } from './cloudGroupMessages';
+import { parseCloudGroupControl } from './cloudGroupMessages';
 import {
   cloudGroupReplayKeyForRow,
   canonicalMessageSourceKey,
@@ -16,6 +21,8 @@ import {
   type IndexedCloudGroupRow,
 } from './cloudMessageIndex';
 import type { CloudMessage } from './authClient';
+import { cloudMessageMetadataOnly } from './cloudMessageCache';
+import { cloudMessageFromChatSync } from './chatSyncMapping';
 import type { CanonicalSessionState } from '@/kordi-app/types';
 import {
   cloudGroupTerminalRepairReplayKey,
@@ -25,7 +32,73 @@ import type {
   CloudGroupReplayCoordinator,
 } from './cloudGroupReplayCoordinator';
 
+const NATIVE_GROUP_RECOVERY_PAGE_SIZE = 100;
+
+async function recoverNativeCloudGroupHistory({
+  accountId,
+  applyControl,
+  flushCanonicalState,
+  shouldContinue,
+}: {
+  accountId: string;
+  applyControl: (
+    wire: CloudMessage,
+    envelope: CloudGroupControlEnvelope,
+  ) => Promise<void>;
+  flushCanonicalState: () => void;
+  shouldContinue: () => boolean;
+}) {
+  const conversations = await loadChatSyncConversations(accountId);
+  for (const conversation of conversations) {
+    if (!shouldContinue()) return;
+    if (conversation.kind !== 'group') continue;
+    let afterSequence: number | null = null;
+    while (true) {
+      const page = await loadChatSyncMessagesPage(
+        accountId,
+        conversation.id,
+        afterSequence,
+        NATIVE_GROUP_RECOVERY_PAGE_SIZE,
+      );
+      if (!page || !shouldContinue()) return;
+      const rows = page.messages.flatMap((snapshot) => {
+        const wire = cloudMessageMetadataOnly(
+          cloudMessageFromChatSync(snapshot, conversation, accountId),
+        );
+        const envelope = parseCloudGroupControl(wire.body);
+        return envelope ? [{ wire, envelope, canonicalMessageId: envelope.message?.id?.trim() || null }] : [];
+      });
+      const sources = rows.flatMap((row) => {
+        const source = cloudGroupCanonicalMessageSource(row.wire, row.envelope);
+        return source ? [source] : [];
+      });
+      const existingKeys = new Set(
+        (sources.length > 0
+          ? await fetchExistingCanonicalMessageSources(sources)
+          : []
+        ).map(canonicalMessageSourceKey),
+      );
+      let applied = false;
+      for (const row of rows) {
+        if (!shouldContinue()) return;
+        const source = cloudGroupCanonicalMessageSource(row.wire, row.envelope);
+        if (source && existingKeys.has(canonicalMessageSourceKey(source))) continue;
+        await applyControl(row.wire, row.envelope);
+        applied = true;
+      }
+      if (applied) flushCanonicalState();
+      if (!page.hasMore) break;
+      const next = page.nextAfterSequence;
+      if (next === null || (afterSequence !== null && next <= afterSequence)) {
+        throw new Error('Native group history did not advance its sequence cursor.');
+      }
+      afterSequence = next;
+    }
+  }
+}
+
 export function useCloudGroupReplay({
+  accountId,
   enabled,
   contextKey,
   coordinator,
@@ -33,8 +106,10 @@ export function useCloudGroupReplay({
   canonicalStateRef,
   applyControl,
   flushCanonicalState,
+  onSettled,
   reportWarning,
 }: {
+  accountId: string | null;
   enabled: boolean;
   contextKey: string | null;
   coordinator: CloudGroupReplayCoordinator<IndexedCloudGroupRow>;
@@ -45,6 +120,7 @@ export function useCloudGroupReplay({
     envelope: CloudGroupControlEnvelope,
   ) => Promise<void>;
   flushCanonicalState: () => void;
+  onSettled?: () => void;
   reportWarning: (message: string, error: unknown) => void;
 }) {
   const durableSourceCacheRef = useRef<{
@@ -53,15 +129,20 @@ export function useCloudGroupReplay({
     existing: Set<string>;
     inFlightBySource: Map<string, Promise<void>>;
     lastReplaySignature: string | null;
+    nativeHistoryRecovered: boolean;
+    nativeHistoryRecovery: Promise<void> | null;
   }>({
     contextKey: null,
     checked: new Set(),
     existing: new Set(),
     inFlightBySource: new Map(),
     lastReplaySignature: null,
+    nativeHistoryRecovered: false,
+    nativeHistoryRecovery: null,
   });
   const applyControlRef = useRef(applyControl);
   const flushCanonicalStateRef = useRef(flushCanonicalState);
+  const onSettledRef = useRef(onSettled);
   const reportWarningRef = useRef(reportWarning);
   const mountedRef = useRef(false);
   const enabledRef = useRef(enabled);
@@ -79,8 +160,9 @@ export function useCloudGroupReplay({
   useEffect(() => {
     applyControlRef.current = applyControl;
     flushCanonicalStateRef.current = flushCanonicalState;
+    onSettledRef.current = onSettled;
     reportWarningRef.current = reportWarning;
-  }, [applyControl, flushCanonicalState, reportWarning]);
+  }, [applyControl, flushCanonicalState, onSettled, reportWarning]);
   useEffect(() => {
     if (!enabled) return;
     let active = true;
@@ -92,6 +174,8 @@ export function useCloudGroupReplay({
           existing: new Set<string>(),
           inFlightBySource: new Map<string, Promise<void>>(),
           lastReplaySignature: null,
+          nativeHistoryRecovered: false,
+          nativeHistoryRecovery: null,
         };
     durableSourceCacheRef.current = cache;
     const sourcesByKey = new Map(
@@ -101,6 +185,39 @@ export function useCloudGroupReplay({
       }),
     );
     const run = async () => {
+      const flushIfCurrent = () => {
+        if (
+          !mountedRef.current
+          || !enabledRef.current
+          || contextKeyRef.current !== cache.contextKey
+          || durableSourceCacheRef.current !== cache
+        ) return;
+        flushCanonicalStateRef.current();
+      };
+      if (accountId && !cache.nativeHistoryRecovered) {
+        cache.nativeHistoryRecovery ??= recoverNativeCloudGroupHistory({
+          accountId,
+          applyControl: (wire, envelope) => (
+            applyControlRef.current(wire, envelope)
+          ),
+          flushCanonicalState: flushIfCurrent,
+          shouldContinue: () => (
+            mountedRef.current
+            && enabledRef.current
+            && contextKeyRef.current === cache.contextKey
+            && durableSourceCacheRef.current === cache
+          ),
+        }).then(() => {
+          if (durableSourceCacheRef.current === cache) {
+            cache.nativeHistoryRecovered = true;
+          }
+        }).finally(() => {
+          if (durableSourceCacheRef.current === cache) {
+            cache.nativeHistoryRecovery = null;
+          }
+        });
+        await cache.nativeHistoryRecovery;
+      }
       const uncheckedEntries = [...sourcesByKey]
         .filter(([key]) => (
           !cache.checked.has(key)
@@ -172,20 +289,15 @@ export function useCloudGroupReplay({
         })),
       ];
       const replaySignature = entries.map(({ key }) => key).join('\n');
-      if (cache.lastReplaySignature === replaySignature) return;
-      if (entries.length === 0) {
-        cache.lastReplaySignature = replaySignature;
+      if (cache.lastReplaySignature === replaySignature) {
+        onSettledRef.current?.();
         return;
       }
-      const flushIfCurrent = () => {
-        if (
-          !mountedRef.current
-          || !enabledRef.current
-          || contextKeyRef.current !== cache.contextKey
-          || durableSourceCacheRef.current !== cache
-        ) return;
-        flushCanonicalStateRef.current();
-      };
+      if (entries.length === 0) {
+        cache.lastReplaySignature = '';
+        onSettledRef.current?.();
+        return;
+      }
       await coordinator.request({
         entries,
         apply: async (row) => {
@@ -211,15 +323,22 @@ export function useCloudGroupReplay({
         && durableSourceCacheRef.current === cache
       ) {
         cache.lastReplaySignature = replaySignature;
+        onSettledRef.current?.();
       }
     };
-    void run();
+    void run().catch((error) => {
+      reportWarningRef.current(
+        '[cloud-group] native history recovery failed',
+        error,
+      );
+    });
     return () => {
       active = false;
     };
   }, [
     coordinator,
     canonicalStateRef,
+    accountId,
     contextKey,
     enabled,
     messageIndex,

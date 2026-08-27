@@ -75,7 +75,11 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
   assert.match(
     source,
-    /useRecoveredCloudGroupReplay\(\{[\s\S]*canonicalSessionState\?\.profile\.humanIdentityId[\s\S]*setCanonicalSessionState[\s\S]*initialMessagesSettled/,
+    /useRecoveredCloudGroupReplay\(\{[\s\S]*canonicalSessionState\?\.profile\.humanIdentityId[\s\S]*setCanonicalSessionState[\s\S]*initialMessagesSettled: recoveryMessagesReady/,
+  );
+  assert.match(
+    source,
+    /useCloudSelfAgentCanonicalSync\(\{[\s\S]*initialMessagesSettled: recoveryMessagesReady/,
   );
   const recoveredReplay = recoveredReplaySource();
   assert.match(recoveredReplay, /useCloudAgentTurnRecovery\(\{[\s\S]*initialMessagesSettled/);
@@ -89,7 +93,7 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   );
   assert.match(
     recoveredReplay,
-    /useCloudGroupReplay\(\{[\s\S]*messageIndex,\s*canonicalStateRef,\s*applyControl,\s*flushCanonicalState,\s*reportWarning,\s*\}\);/,
+    /useCloudGroupReplay\(\{[\s\S]*messageIndex,\s*canonicalStateRef,\s*applyControl,\s*flushCanonicalState,\s*onSettled,\s*reportWarning,\s*\}\);/,
     'current group replay must receive stable callbacks after recovery settles',
   );
 });

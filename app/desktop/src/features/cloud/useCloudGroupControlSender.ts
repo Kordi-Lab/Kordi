@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  type MutableRefObject,
-} from 'react';
-import type {
-  CanonicalSessionState,
-} from '@/kordi-app/types';
+import { useCallback } from 'react';
 import {
   beginChatPerformanceSpan,
   chatPerformancePayloadBytes,
@@ -12,7 +6,6 @@ import {
 } from '@/features/performance/chatPerformance';
 import type {
   CloudAccount,
-  CloudAuthClient,
   CloudMessage,
   SendCloudMessageAttachmentInput,
 } from './authClient';
@@ -35,11 +28,7 @@ import {
   parseCloudGroupControl,
   requiredCloudGroupControlTargetAccountIds,
 } from './cloudGroupMessages';
-import type {
-  CloudMessageIndex,
-} from './cloudMessageIndex';
 import {
-  CloudGroupOutbox,
   type CloudGroupOutboxEntry,
 } from './cloudGroupOutbox';
 import {
@@ -58,33 +47,18 @@ import type {
 import {
   useCloudGroupSessionTitleSync,
 } from './useCloudGroupSessionTitleSync';
+import {
+  persistReliableCloudGroupSessionTitle,
+  reliableCloudGroupSessionTitle,
+} from './cloudGroupReliableSessionTitle';
+import type {
+  CloudGroupControlCanonicalContext,
+  CloudGroupControlTransport,
+} from './useCloudGroupControlSender.types';
 
 export type {
   SendCloudGroupControlInput,
 } from './cloudGroupControl.types';
-
-type CloudGroupControlTransport = {
-  client: CloudAuthClient;
-  messageIndex: CloudMessageIndex;
-  outbox: CloudGroupOutbox | null;
-  mergeMessage: (message: CloudMessage) => void;
-  persistOutboxDelivery: (
-    entry: CloudGroupOutboxEntry,
-  ) => Promise<void>;
-  claimFreshFallback: (
-    sentMessages: readonly CloudMessage[],
-    requestMessageId: string,
-    token: string,
-  ) => Promise<void>;
-  syncDiff: () => Promise<void>;
-};
-
-type CloudGroupControlCanonicalContext = {
-  state: CanonicalSessionState | null | undefined;
-  stateRef: MutableRefObject<CanonicalSessionState | null>;
-  titleBackfillsRef: MutableRefObject<Set<string>>;
-  initialMessagesSettled: boolean;
-};
 
 export function useCloudGroupControlSender({
   account,
@@ -194,6 +168,8 @@ export function useCloudGroupControlSender({
       ),
       identities: currentCanonicalState?.identities,
     });
+    const reliableSessionTitle = reliableCloudGroupSessionTitle({ input, messageIndex, manualTitle: sessionTitle, accountId: account.accountId });
+    const syncReliableSessionTitle = () => persistReliableCloudGroupSessionTitle({ client, token: session.token, input, title: reliableSessionTitle, reportWarning });
     const forkFromSessionMetadata = input.kind === 'group-message'
       ? cloudGroupForkPayloadFromSessionMetadata(
           canonicalStateRef.current?.sessions.find(
@@ -359,6 +335,7 @@ export function useCloudGroupControlSender({
         });
       }
       if (sentAny) {
+        await syncReliableSessionTitle();
         await Promise.all([
           claimFreshFallback(
             sentMessages,
@@ -426,6 +403,7 @@ export function useCloudGroupControlSender({
           ));
     }
     if (sent.length > 0) {
+      await syncReliableSessionTitle();
       if (input.kind === 'group-message' && canonicalMessageId) {
         await Promise.all([
           claimFreshFallback(

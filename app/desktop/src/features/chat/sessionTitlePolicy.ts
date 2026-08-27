@@ -189,9 +189,9 @@ export function deriveSessionTitle(value: string): string | null {
 }
 
 export function legacySessionTitleFromMessageText(value?: string | null) {
-  const text = value?.trim().split(/\s+/u).filter(Boolean).slice(0, 8).join(' ')
+  const text = (value ?? '').trim().split(/\s+/u).filter(Boolean).slice(0, 8).join(' ')
     .slice(0, 60).trim();
-  return text || null;
+  return /[\p{L}\p{N}\p{Extended_Pictographic}]/u.test(text) ? text : null;
 }
 
 export function attachmentSessionTitle(count: number, containsImage = false) {

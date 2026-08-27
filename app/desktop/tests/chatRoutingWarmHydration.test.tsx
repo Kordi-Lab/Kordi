@@ -7,9 +7,25 @@ import {
   applyCanonicalHydrationPlaceholder,
   useWorkspaceViewModels,
 } from '../src/app/useWorkspaceViewModels';
+import { resolveCanonicalPageSessionId } from '../src/app/useKordiCanonicalSessionStore';
+import { cloudCollaborationConversationId } from '../src/features/collaboration/conversationIds';
 import { mapDesktopMessagesForTranscript } from '../src/features/chat/useDesktopTranscriptAdapter';
 
-test('canonical history hydration hides an incomplete catalog preview', () => {
+test('warm group selection resolves its canonical page before collaboration hydration', () => {
+  const sessionId = 'session:group:warm-history';
+  const conversationId = cloudCollaborationConversationId(
+    'acct_peer',
+    'agent',
+    sessionId,
+  );
+
+  assert.equal(
+    resolveCanonicalPageSessionId(conversationId, new Set([sessionId])),
+    sessionId,
+  );
+});
+
+test('canonical history hydration never replaces cached rows with a placeholder', () => {
   const selected = {
     id: 'session:group:warm-history',
     canonicalSessionId: 'session:group:warm-history',
@@ -22,24 +38,41 @@ test('canonical history hydration hides an incomplete catalog preview', () => {
     trust: 'Bridge',
     directness: 'Group chat',
     participants: ['Me', 'Alice'],
-    messages: [{
-      role: 'user' as const,
-      isOwnMessage: true,
-      text: 'latest message stays visible',
-      time: '10:45',
-    }],
+    messages: [
+      { role: 'person' as const, text: 'older cached message', time: '10:44' },
+      { role: 'user' as const, isOwnMessage: true, text: 'latest message stays visible', time: '10:45' },
+    ],
   };
 
   const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
 
-  assert.deepEqual(loading.messages.map((message) => message.text), ['']);
-  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
-  assert.deepEqual(loading.messages[0]?.loadingPlaceholders, [{
-    kind: 'message',
-    side: 'own',
-    lines: 1,
-    width: 'medium',
-  }]);
+  assert.equal(loading, selected);
+  assert.deepEqual(loading.messages.map((message) => message.text), [
+    'older cached message',
+    'latest message stays visible',
+  ]);
+});
+
+test('canonical history omits a lone catalog preview instead of inventing a loading row', () => {
+  const selected = {
+    id: 'session:group:catalog-only',
+    canonicalSessionId: 'session:group:catalog-only',
+    canonicalMessageCount: 20,
+    name: 'main',
+    type: 'owned-agent' as const,
+    subtitle: 'Latest synced message',
+    unread: 0,
+    collaborationSources: ['Cloud'],
+    trust: 'Bridge',
+    directness: 'Group chat',
+    participants: ['Me', 'Alice'],
+    messages: [{ role: 'user' as const, text: 'catalog preview', time: '10:45' }],
+  };
+
+  assert.deepEqual(
+    applyCanonicalHydrationPlaceholder(selected, 'loading').messages,
+    [],
+  );
 });
 
 test('desktop runtime selection keeps an invisible loading marker until its transcript cache is ready', () => {
@@ -62,6 +95,33 @@ test('desktop runtime selection keeps an invisible loading marker until its tran
 
   assert.deepEqual(loading.messages.map((message) => message.text), ['']);
   assert.equal(loading.messages[0]?.detail, 'transcript-loading');
+});
+
+test('desktop runtime hides a partial canonical row until its native transcript cache is ready', () => {
+  const selected = {
+    id: 'local-runtime-session',
+    name: 'Agent session',
+    type: 'owned-agent' as const,
+    subtitle: 'Previous summary',
+    unread: 0,
+    collaborationSources: ['Local'],
+    trust: 'Owned',
+    directness: 'Agent chat',
+    participants: ['Me', 'My Kordi'],
+    messages: [{ role: 'user' as const, isOwnMessage: true, text: 'cached question', time: '10:00' }],
+    desktopRuntimeBacked: true,
+    desktopRuntimeTranscriptLoaded: false,
+  };
+
+  const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
+
+  assert.equal(loading.messages[0]?.detail, 'transcript-loading');
+  assert.deepEqual(loading.messages[0]?.loadingPlaceholders, [{
+    kind: 'message',
+    side: 'own',
+    lines: 1,
+    width: 'short',
+  }]);
 });
 
 test('desktop runtime hydration keeps a newly sent request ahead of its live response', () => {

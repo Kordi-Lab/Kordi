@@ -47,7 +47,7 @@ test('workspace active conversation resolves canonical Cloud direct session ids 
   assert.equal(selected.messages[0]?.text, 'hi');
 });
 
-test('startup fallback ignores a hidden blank shell but preserves it while an explicit first send materializes', () => {
+test('startup stays neutral until a session is explicitly selected', () => {
   const blankShell = {
     id: 'session:self-agent:blank',
     canonicalSessionId: 'session:self-agent:blank',
@@ -85,7 +85,7 @@ test('startup fallback ignores a hidden blank shell but preserves it while an ex
       nativeChatPlaceholder: emptyState,
       fallbackConversation: existingChat,
     },
-  ).id, existingChat.id);
+  ).id, EMPTY_CHAT_SELECTION_ID);
   assert.equal(activeConversationForSelection(
     blankShell.id,
     [blankShell, existingChat],

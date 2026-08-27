@@ -376,7 +376,6 @@ export function useKordiAppFoundation({
     activeProjectSessionId,
     collaborationState: desktopCollaborationState,
     hydrateSessionPage: hydrateCanonicalSessionPage,
-    isNativeShell,
     store: canonicalStore,
   });
 

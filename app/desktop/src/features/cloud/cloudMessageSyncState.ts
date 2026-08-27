@@ -30,6 +30,14 @@ export type CloudUnreadReadinessSnapshot = {
   contextKey: string | null;
 };
 
+export function cloudRecoveryMessagesReady(
+  authoritativeReady: boolean,
+  belongsToCurrentAccount: boolean,
+  messageCount: number,
+) {
+  return authoritativeReady || (belongsToCurrentAccount && messageCount > 0);
+}
+
 export function cloudBootstrapPeerIds(
   account: CloudAccount | null | undefined,
   contactPeerIds: string[],

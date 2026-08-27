@@ -104,6 +104,34 @@ test('message pages dedupe by id, preserve chronological order, and retain ready
   assert.deepEqual(store.messagesBySessionId['session:one']?.map((item) => item.id), ['m1', 'm2', 'm3']);
 });
 
+test('bounded state updates cannot shrink a ready transcript page', () => {
+  let store = mergeCanonicalCatalog(createCanonicalStore(), catalog());
+  store = mergeCanonicalMessagePage(store, {
+    sessionId: 'session:one',
+    messages: [
+      message('m1', 'session:one', 1),
+      message('m2', 'session:one', 2),
+      message('m3', 'session:one', 3),
+    ],
+    oldestSequenceNum: 1,
+    newestSequenceNum: 3,
+    hasOlder: false,
+  });
+  const current = canonicalStateFromStore(store);
+  assert.ok(current);
+
+  store = mergeCanonicalStateIntoStore(store, {
+    ...current,
+    messages: [message('m3', 'session:one', 3)],
+  });
+
+  assert.equal(store.hydrationBySessionId['session:one'], 'ready');
+  assert.deepEqual(
+    store.messagesBySessionId['session:one']?.map((item) => item.id),
+    ['m1', 'm2', 'm3'],
+  );
+});
+
 test('an older page prepends without replacing the existing ready tail', () => {
   let store = mergeCanonicalCatalog(createCanonicalStore(), catalog());
   store = mergeCanonicalMessagePage(store, {

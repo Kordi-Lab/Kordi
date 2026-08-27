@@ -82,6 +82,57 @@ test('cloud self-agent canonical sync never materializes a local draft session',
   assert.deepEqual(plan.messageRequests, []);
 });
 
+test('durable self-agent sources skip replay but still anchor a new terminal reply', () => {
+  const request = requestMessage(
+    'msg_durable_request',
+    'prepare the release',
+    '2026-08-16T11:00:00.000Z',
+  );
+  const processing: CloudMessage = {
+    ...request,
+    messageId: 'msg_durable_processing',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'processing...',
+      deliveryState: 'processing',
+    }),
+  };
+  const terminal: CloudMessage = {
+    ...request,
+    messageId: 'msg_new_terminal',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId,
+      text: 'The release is ready.',
+      deliveryState: 'complete',
+    }),
+  };
+  const durable = new Set([
+    request.messageId,
+    processing.messageId,
+  ]);
+  const plan = planCloudSelfAgentCanonicalSync({
+    account,
+    messages: [request, processing, terminal],
+    state: emptyState(),
+    durableSourceEventIds: durable,
+  });
+
+  assert.equal(plan.messageRequests.length, 1);
+  assert.equal(plan.messageRequests[0]?.contentText, 'The release is ready.');
+  assert.equal(
+    plan.messageRequests[0]?.parentMessageId,
+    'msg:cloud:self:msg_durable_request',
+  );
+
+  durable.add(terminal.messageId);
+  assert.equal(planCloudSelfAgentCanonicalSync({
+    account,
+    messages: [request, processing, terminal],
+    state: emptyState(),
+    durableSourceEventIds: durable,
+  }).messageRequests.length, 0);
+});
+
 test('a delayed reply stays anchored beside its request instead of jumping below newer turns', () => {
   const first = requestMessage('msg_first_request', 'first request', '2026-08-16T16:58:00.000Z');
   const second = requestMessage('msg_second_request', 'second request', '2026-08-16T16:58:01.000Z');
