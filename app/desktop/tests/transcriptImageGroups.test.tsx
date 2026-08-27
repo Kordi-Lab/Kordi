@@ -84,6 +84,10 @@ test('multiple image attachments render as a folded stack with a stable disclosu
   assert.match(markup, /data-attachment-image-count="3"/);
   assert.match(markup, /data-attachment-image-group-expanded="false"/);
   assert.match(markup, /data-attachment-image-group-disclosure="true"/);
+  assert.match(markup, /data-transcript-stable-disclosure="true"/);
+  assert.match(markup, /data-transcript-stable-disclosure-root="true"/);
+  assert.match(markup, /data-transcript-stable-disclosure-direction="down"/);
+  assert.doesNotMatch(markup, /data-transcript-stable-disclosure-body="true"/);
   assert.match(markup, /aria-expanded="false"/);
   assert.match(markup, />Expand 3</);
   assert.match(markup, /app-button-quiet app-attachment-image-group-disclosure/);
@@ -101,6 +105,9 @@ test('multiple image attachments render as a folded stack with a stable disclosu
   assert.match(stylesheet, /\.app-attachment-image-group-disclosure\s*{[^}]*width:\s*auto;[^}]*min-width:\s*4\.5rem;[^}]*height:\s*2rem;[^}]*margin-top:\s*4\.625rem;/s);
   assert.match(stylesheet, /\.app-attachment-image-group-media\s*{[^}]*width:\s*11\.25rem;[^}]*min-width:\s*0;[^}]*max-width:\s*calc\(100% - 5rem\);/s);
   assert.match(stylesheet, /\.app-attachment-image-group-collapsed\s*{[^}]*aspect-ratio:\s*1;[^}]*overflow:\s*hidden;/s);
+  assert.match(stylesheet, /@keyframes\s+app-attachment-image-group-reveal/);
+  assert.match(stylesheet, /app-attachment-image-group-reveal 180ms cubic-bezier\(0\.16, 1, 0\.3, 1\)/);
+  assert.match(stylesheet, /prefers-reduced-motion:\s*reduce[\s\S]*app-attachment-image-group-media[\s\S]*animation:\s*none/);
 });
 
 test('a remotely loaded standalone image escapes the temporary loading row', () => {
@@ -115,6 +122,12 @@ test('a remotely loaded standalone image escapes the temporary loading row', () 
 test('grouped image disclosure expands and collapses in place', async () => {
   const installedDom = installDom();
   let root: Root | null = null;
+  let previewOpenCount = 0;
+  const originalOpen = installedDom.dom.window.open;
+  installedDom.dom.window.open = (() => {
+    previewOpenCount += 1;
+    return { focus: () => undefined };
+  }) as typeof installedDom.dom.window.open;
 
   try {
     const host = document.createElement('div');
@@ -128,8 +141,10 @@ test('grouped image disclosure expands and collapses in place', async () => {
     assert.equal(disclosure.getAttribute('aria-expanded'), 'false');
     assert.equal(host.querySelectorAll('[data-attachment-image-card="true"]').length, 3);
 
+    const foldedImage = host.querySelector<HTMLButtonElement>('[data-attachment-image-preview-trigger="true"]');
+    assert.ok(foldedImage);
     await act(async () => {
-      disclosure.dispatchEvent(new installedDom.dom.window.MouseEvent('click', { bubbles: true }));
+      foldedImage.dispatchEvent(new installedDom.dom.window.MouseEvent('click', { bubbles: true }));
     });
     assert.equal(disclosure.textContent, 'Collapse');
     assert.equal(disclosure.getAttribute('aria-expanded'), 'true');
@@ -139,6 +154,42 @@ test('grouped image disclosure expands and collapses in place', async () => {
       'true',
     );
 
+    const expandedImage = host.querySelector<HTMLButtonElement>('[data-attachment-image-preview-trigger="true"]');
+    const expandedImageElement = expandedImage?.querySelector('img');
+    assert.ok(expandedImage);
+    assert.ok(expandedImageElement);
+    assert.equal(expandedImageElement.draggable, false);
+    assert.equal(expandedImageElement.dispatchEvent(new installedDom.dom.window.MouseEvent('dragstart', {
+      bubbles: true,
+      cancelable: true,
+    })), false);
+    await act(async () => {
+      expandedImage.dispatchEvent(new installedDom.dom.window.MouseEvent('pointerdown', {
+        bubbles: true,
+        button: 0,
+        clientX: 100,
+        clientY: 100,
+      }));
+      expandedImage.dispatchEvent(new installedDom.dom.window.MouseEvent('pointermove', {
+        bubbles: true,
+        button: 0,
+        clientX: 80,
+        clientY: 100,
+      }));
+      expandedImage.dispatchEvent(new installedDom.dom.window.MouseEvent('pointerup', {
+        bubbles: true,
+        button: 0,
+        clientX: 80,
+        clientY: 100,
+      }));
+      expandedImage.dispatchEvent(new installedDom.dom.window.MouseEvent('click', {
+        bubbles: true,
+        button: 0,
+        detail: 1,
+      }));
+    });
+    assert.equal(previewOpenCount, 0);
+
     await act(async () => {
       disclosure.dispatchEvent(new installedDom.dom.window.MouseEvent('click', { bubbles: true }));
     });
@@ -146,6 +197,7 @@ test('grouped image disclosure expands and collapses in place', async () => {
     assert.equal(disclosure.getAttribute('aria-expanded'), 'false');
     assert.equal(host.querySelectorAll('[data-attachment-image-card="true"]').length, 3);
   } finally {
+    installedDom.dom.window.open = originalOpen;
     if (root) await act(async () => root?.unmount());
     installedDom.restore();
   }

@@ -1,5 +1,4 @@
-import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { memo, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
   Bot,
@@ -33,11 +32,7 @@ import { ForwardedFromHeader } from './forwardedFromHeader';
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent } from './messageInlineContent';
 import { MessageReactionChips } from './messageReactions';
-import {
-  MessageContextMenuContent,
-  type MessageContextMenuActionHandlers,
-} from './messageContextMenuContent';
-import { MessageContextMenuInteractionGuard } from './messageContextMenuInteraction';
+import { MessageContextMenuHost } from './messageContextMenuHost';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
 import { AttachmentPreview } from './transcriptAttachments';
 import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
@@ -52,8 +47,9 @@ import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { ContactRequestTime, MessageHoverTime } from './transcriptMessageTime';
 import type { MessageForkSummary } from './transcriptMessageForks';
 export { LiveChatTurnCard, LiveChatTurnMessage };
-export { MessageContextMenuContent };
-export type { MessageContextMenuActionHandlers };
+export { MessageContextMenuContent } from './messageContextMenuContent';
+export type { MessageContextMenuActionHandlers } from './messageContextMenuContent';
+export { messageContextMenuPosition } from './messageContextMenuPosition';
 export { openInlineChangedFile } from './transcriptChangedFiles';
 import type {
   Contact,
@@ -245,183 +241,6 @@ function messageSelectionId(msg: Message) {
   return msg.id ?? msg.entryId ?? msg.turn?.id ?? '';
 }
 
-export function messageContextMenuPosition({
-  clientX,
-  clientY,
-  targetRect,
-  viewportWidth,
-  viewportHeight,
-  menuWidth = 216,
-  menuHeight = 312,
-}: {
-  clientX: number;
-  clientY: number;
-  targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>;
-  viewportWidth: number;
-  viewportHeight: number;
-  menuWidth?: number;
-  menuHeight?: number;
-}) {
-  const gap = 2;
-  const aboveOverlap = 24;
-  const anchorX = clientX <= (targetRect.left + targetRect.right) / 2
-    ? targetRect.left
-    : targetRect.right - menuWidth;
-  const belowY = targetRect.bottom + gap;
-  const aboveY = targetRect.top - menuHeight + aboveOverlap;
-  const y = belowY + menuHeight <= viewportHeight - 8 ? belowY : aboveY;
-
-  return {
-    x: Math.max(8, Math.min(anchorX, viewportWidth - menuWidth - 8)),
-    y: Math.max(8, Math.min(y, viewportHeight - menuHeight - 8)),
-  };
-}
-
-function MessageContextMenuHost({
-  msg,
-  id,
-  className,
-  children,
-  onPointerDown,
-  onPointerEnter,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
-  dragSelectHandleId,
-  dragSelectState,
-  dragSelectLabel,
-  onReplyMessage,
-  onForwardMessage,
-  onSelectMessage,
-  onRequestPinMessage,
-  onRequestUnpinMessage,
-  onReactMessage,
-  isPinned,
-}: {
-  msg: Message;
-  id?: string;
-  className?: string;
-  children: ReactNode;
-  onPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  onPointerEnter?: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  onPointerMove?: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  onPointerUp?: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  onPointerCancel?: (event: ReactPointerEvent<HTMLDivElement>) => void;
-  dragSelectHandleId?: string;
-  dragSelectState?: 'idle' | 'selected' | 'unselected';
-  dragSelectLabel?: string;
-} & MessageContextMenuActionHandlers) {
-  const [messageContextMenu, setMessageContextMenu] = useState<{ x: number; y: number; clientX: number; clientY: number; targetRect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'> } | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const openMessageContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const eventTarget = event.target instanceof Element ? event.target : null;
-    const anchorElement = eventTarget?.closest('[data-message-context-menu-anchor="true"]') ?? null;
-    const targetRect = (anchorElement ?? event.currentTarget).getBoundingClientRect();
-    setMessageContextMenu({
-      ...messageContextMenuPosition({
-        clientX: event.clientX,
-        clientY: event.clientY,
-        targetRect,
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
-      }),
-      clientX: event.clientX,
-      clientY: event.clientY,
-      targetRect,
-    });
-  };
-  useLayoutEffect(() => {
-    if (!messageContextMenu || !menuRef.current) return;
-    const menu = menuRef.current;
-    const positionMenu = () => {
-      const rect = menu.getBoundingClientRect();
-      setMessageContextMenu((current) => {
-        if (!current) return null;
-        const next = messageContextMenuPosition({
-          clientX: current.clientX,
-          clientY: current.clientY,
-          targetRect: current.targetRect,
-          viewportWidth: window.innerWidth,
-          viewportHeight: window.innerHeight,
-          menuWidth: rect.width,
-          menuHeight: rect.height,
-        });
-        return Math.abs(next.x - current.x) > 0.5 || Math.abs(next.y - current.y) > 0.5
-          ? { ...current, ...next }
-          : current;
-      });
-    };
-    positionMenu();
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(positionMenu);
-    observer?.observe(menu);
-    return () => observer?.disconnect();
-  }, [messageContextMenu]);
-  useLayoutEffect(() => {
-    if (!messageContextMenu || typeof document === 'undefined') return;
-
-    const closeIfOutsideMenu = (event: Event) => {
-      const target = event.target;
-      if (target instanceof Node && menuRef.current && menuRef.current.contains(target)) return;
-      setMessageContextMenu(null);
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMessageContextMenu(null);
-    };
-
-    document.addEventListener('pointerdown', closeIfOutsideMenu, true);
-    document.addEventListener('contextmenu', closeIfOutsideMenu, true);
-    document.addEventListener('keydown', closeOnEscape, true);
-    return () => {
-      document.removeEventListener('pointerdown', closeIfOutsideMenu, true);
-      document.removeEventListener('contextmenu', closeIfOutsideMenu, true);
-      document.removeEventListener('keydown', closeOnEscape, true);
-    };
-  }, [messageContextMenu]);
-  const menuLayer = messageContextMenu ? (
-    <MessageContextMenuInteractionGuard
-      ref={menuRef}
-      className="app-message-context-menu fixed z-[260]"
-      style={{ left: messageContextMenu.x, top: messageContextMenu.y }}
-      role="menu"
-    >
-      <MessageContextMenuContent
-        msg={msg}
-        onClose={() => setMessageContextMenu(null)}
-        onReplyMessage={onReplyMessage}
-        onForwardMessage={onForwardMessage}
-        onSelectMessage={onSelectMessage}
-        onRequestPinMessage={onRequestPinMessage}
-        onRequestUnpinMessage={onRequestUnpinMessage}
-        onReactMessage={onReactMessage}
-        isPinned={isPinned}
-      />
-    </MessageContextMenuInteractionGuard>
-  ) : null;
-
-  return (
-    <div
-      id={id}
-      data-transcript-message-root="true"
-      data-message-context-menu-target="true"
-      data-message-selection-drag-handle={dragSelectHandleId}
-      data-message-selection-drag-state={dragSelectState}
-      aria-label={dragSelectLabel}
-      onContextMenu={openMessageContextMenu}
-      onPointerDown={onPointerDown}
-      onPointerEnter={onPointerEnter}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-      className={className}
-    >
-      {children}
-      {menuLayer && typeof document !== 'undefined' ? createPortal(menuLayer, document.body) : menuLayer}
-    </div>
-  );
-}
-
 function CompactionSummaryMessage({ msg }: { msg: Message }) {
   const [expanded, setExpanded] = useState(false);
   const summary = useMemo(() => cleanCompactionSummary(msg.text), [msg.text]);
@@ -540,7 +359,7 @@ function MessageBubbleView({
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const selectionId = messageSelectionId(msg);
   const isPinned = Boolean(selectionId && pinnedMessageIds?.includes(selectionId));
-  const menuActionHandlers = { onReplyMessage, onForwardMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, onReactMessage, isPinned };
+  const menuActionHandlers = { onReplyMessage, onForwardMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, onReactMessage, isPinned, imageGallery };
   const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));

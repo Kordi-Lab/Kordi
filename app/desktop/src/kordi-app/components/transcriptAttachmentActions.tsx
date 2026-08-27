@@ -129,15 +129,15 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
   }
 
   if (variant === 'menu') {
-    const menuButtonClass = 'app-transient-row app-transient-action-row flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-55';
+    const menuButtonClass = 'app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left transition disabled:cursor-not-allowed disabled:opacity-55';
     return (
-      <div className="flex min-w-[170px] flex-col gap-1">
-        <button type="button" onClick={() => void handleDownload()} disabled={isDownloading} className={menuButtonClass} aria-label={`Download ${attachment.name}`}>
+      <div className="flex min-w-[170px] flex-col">
+        <button type="button" role="menuitem" onClick={() => void handleDownload()} disabled={isDownloading} className={menuButtonClass} aria-label={`Download ${attachment.name}`}>
           <Download className="app-transient-action-icon" />
           <span className="app-transient-action-label">{downloadedPath ? 'Download again' : 'Download'}</span>
         </button>
         {canOpen ? (
-          <button type="button" onClick={() => void handleOpen()} className={menuButtonClass} aria-label={`Open ${attachment.name} with local app`}>
+          <button type="button" role="menuitem" onClick={() => void handleOpen()} className={menuButtonClass} aria-label={`Open ${attachment.name} with local app`}>
             <ExternalLink className="app-transient-action-icon" />
             <span className="app-transient-action-label">Open with local app</span>
           </button>

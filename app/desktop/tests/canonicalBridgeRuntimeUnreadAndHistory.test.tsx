@@ -159,6 +159,8 @@ test('canonical group conversation title stays on first message when synced clou
   const conversation = conversations.find((candidate) => candidate.id === sessionId);
   assert.equal(conversation?.name, 'hi every');
   assert.equal((conversation?.metadata as { customName?: string } | undefined)?.customName, '1111');
+  assert.equal(conversation?.messages[0]?.reactionConversationId, sessionId);
+  assert.equal(conversation?.messages[0]?.reactionTargetMessageId, 'msg:1');
 });
 
 test('canonical group quote replies stay at their chronological position instead of moving beside old history', () => {

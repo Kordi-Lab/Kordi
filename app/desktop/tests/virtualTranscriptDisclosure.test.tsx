@@ -144,7 +144,7 @@ test.afterEach(async () => {
 
 async function renderMeasuredDisclosure(
   controlTop: number,
-  options: { expandedHeight?: number; bodyHeight?: number } = {},
+  options: { expandedHeight?: number; bodyHeight?: number; direction?: 'up' | 'down' } = {},
 ) {
   const expandedHeight = options.expandedHeight ?? 250;
   const bodyHeight = options.bodyHeight ?? 0;
@@ -161,6 +161,7 @@ async function renderMeasuredDisclosure(
             data-message-id={item.id}
             data-test-row-height={index === items.length - 1 && expanded ? expandedHeight : item.height}
             data-transcript-stable-disclosure-root={index === items.length - 1 ? 'true' : undefined}
+            data-transcript-stable-disclosure-direction={index === items.length - 1 ? options.direction : undefined}
           >
             {index === items.length - 1 ? (
               <>
@@ -268,6 +269,28 @@ test('a disclosure near the viewport bottom expands upward in the same measured 
   await notifyDisclosureResize(disclosureRoot, measuredRow);
 
   assert.equal(viewport.scrollTop, initialScrollTop, 'collapse should apply the inverse anchor compensation');
+  assert.equal(button.nextElementSibling, null);
+});
+
+test('a downward-only image disclosure never reverses the scroll offset when it collapses', async () => {
+  const {
+    viewport,
+    button,
+    measuredRow,
+    disclosureRoot,
+  } = await renderMeasuredDisclosure(560, { direction: 'down' });
+  const initialScrollTop = viewport.scrollTop;
+
+  await act(async () => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true })));
+  await notifyDisclosureResize(disclosureRoot, measuredRow);
+
+  assert.equal(disclosureRoot.dataset.transcriptDisclosureDirection, 'down');
+  assert.equal(viewport.scrollTop, initialScrollTop);
+
+  await act(async () => button.dispatchEvent(new window.MouseEvent('click', { bubbles: true })));
+  await notifyDisclosureResize(disclosureRoot, measuredRow);
+
+  assert.equal(viewport.scrollTop, initialScrollTop);
   assert.equal(button.nextElementSibling, null);
 });
 

@@ -72,12 +72,13 @@ export function AddAttachmentToMediaLibraryAction({
 
   const libraryName = mediaKind === 'gif' ? 'My GIFs' : 'My Stickers';
   return (
-    <div className="flex min-w-[170px] flex-col gap-1">
+    <div className="flex min-w-[170px] flex-col">
       <button
         type="button"
+        role="menuitem"
         onClick={() => void handleAddToLibrary(mediaKind)}
         disabled={isSaving}
-        className="app-transient-row app-transient-action-row flex w-full items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left transition disabled:cursor-wait disabled:opacity-55"
+        className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left transition disabled:cursor-wait disabled:opacity-55"
         aria-label={`Add ${attachment.name} to ${libraryName}`}
       >
         {isSaving ? <LoaderCircle className="app-transient-action-icon animate-spin" /> : <ImagePlus className="app-transient-action-icon" />}

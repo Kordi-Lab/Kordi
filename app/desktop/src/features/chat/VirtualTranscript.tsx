@@ -28,6 +28,14 @@ import {
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
 import { useTranscriptSelectionViewportProps, type TranscriptSelectionProps } from './transcriptSelection';
+import {
+  clearTranscriptDisclosureConstraint,
+  constrainTranscriptDisclosureBody,
+  forcedTranscriptDisclosureDirection,
+  transcriptDisclosureBody,
+  transcriptDisclosureDirection,
+  type TranscriptDisclosureDirection,
+} from './transcriptStableDisclosure';
 
 export type { VirtualTranscriptNavigationRequest } from '@/features/chat/useVirtualTranscriptNavigation';
 export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
@@ -55,7 +63,6 @@ const preserveMeasuredDisclosurePosition = () => false;
 const STABLE_DISCLOSURE_SETTLE_MS = 320;
 const TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP = 12;
 const TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT = 72;
-type TranscriptDisclosureDirection = 'up' | 'down';
 
 type StableDisclosureAnchor = {
   sessionKey: string;
@@ -66,37 +73,8 @@ type StableDisclosureAnchor = {
   availableBelow: number;
   opening: boolean;
   direction: TranscriptDisclosureDirection | null;
+  forcedDirection: TranscriptDisclosureDirection | null;
 };
-
-function disclosureDirection(
-  growth: number,
-  availableAbove: number,
-  availableBelow: number,
-): TranscriptDisclosureDirection {
-  if (growth <= availableBelow) return 'down';
-  if (growth <= availableAbove) return 'up';
-  return availableAbove > availableBelow ? 'up' : 'down';
-}
-
-function disclosureBody(root: HTMLElement | null) {
-  return root?.querySelector<HTMLElement>('[data-transcript-stable-disclosure-body="true"]') ?? null;
-}
-
-function clearDisclosureConstraint(body: HTMLElement | null) {
-  if (!body || !body.hasAttribute('data-transcript-disclosure-constrained')) return;
-  body.removeAttribute('data-transcript-disclosure-constrained');
-  body.style.removeProperty('--app-transcript-disclosure-max-height');
-}
-
-function constrainDisclosureBody(body: HTMLElement, maxHeight: number) {
-  const value = `${maxHeight}px`;
-  if (
-    body.dataset.transcriptDisclosureConstrained === 'true'
-    && body.style.getPropertyValue('--app-transcript-disclosure-max-height') === value
-  ) return;
-  body.dataset.transcriptDisclosureConstrained = 'true';
-  body.style.setProperty('--app-transcript-disclosure-max-height', value);
-}
 
 export function VirtualTranscript<Item>({
   items,
@@ -358,7 +336,8 @@ export function VirtualTranscript<Item>({
     const controlRect = control.getBoundingClientRect();
     const rootRect = root?.getBoundingClientRect();
     const opening = control.getAttribute('aria-expanded') !== 'true';
-    if (opening) clearDisclosureConstraint(disclosureBody(root));
+    const forcedDirection = forcedTranscriptDisclosureDirection(root);
+    if (opening) clearTranscriptDisclosureConstraint(transcriptDisclosureBody(root));
     const anchor: StableDisclosureAnchor = {
       sessionKey,
       initialScrollTop: element.scrollTop,
@@ -367,7 +346,8 @@ export function VirtualTranscript<Item>({
       availableAbove: Math.max(0, controlRect.top - viewportRect.top - TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP),
       availableBelow: Math.max(0, viewportRect.bottom - controlRect.bottom - TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP),
       opening,
-      direction: opening ? null : (stableDisclosureDirectionRef.current.get(control) ?? null),
+      direction: opening ? null : (forcedDirection ?? stableDisclosureDirectionRef.current.get(control) ?? null),
+      forcedDirection,
     };
     stableDisclosureAnchorRef.current = anchor;
 
@@ -376,14 +356,14 @@ export function VirtualTranscript<Item>({
         if (stableDisclosureAnchorRef.current !== anchor || !root.isConnected) return;
         const currentHeight = root.getBoundingClientRect().height || root.offsetHeight;
         const heightDelta = currentHeight - anchor.initialHeight;
-        const body = disclosureBody(root);
+        const body = transcriptDisclosureBody(root);
         const bodyHeight = body?.getBoundingClientRect().height ?? 0;
         const fullGrowth = anchor.opening
           ? Math.max(0, heightDelta, body?.scrollHeight ?? 0)
           : Math.abs(heightDelta);
         const direction = anchor.opening
-          ? disclosureDirection(fullGrowth, anchor.availableAbove, anchor.availableBelow)
-          : (anchor.direction ?? disclosureDirection(fullGrowth, anchor.availableAbove, anchor.availableBelow));
+          ? anchor.forcedDirection ?? transcriptDisclosureDirection(fullGrowth, anchor.availableAbove, anchor.availableBelow)
+          : (anchor.direction ?? transcriptDisclosureDirection(fullGrowth, anchor.availableAbove, anchor.availableBelow));
         anchor.direction = direction;
         stableDisclosureDirectionRef.current.set(control, direction);
         if (root.dataset.transcriptDisclosureDirection !== direction) {
@@ -398,9 +378,9 @@ export function VirtualTranscript<Item>({
               TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT,
               Math.floor(available - nonBodyGrowth),
             );
-            constrainDisclosureBody(body, maxBodyHeight);
+            constrainTranscriptDisclosureBody(body, maxBodyHeight);
           } else {
-            clearDisclosureConstraint(body);
+            clearTranscriptDisclosureConstraint(body);
           }
         }
 

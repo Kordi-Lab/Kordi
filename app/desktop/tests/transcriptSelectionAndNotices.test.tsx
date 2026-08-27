@@ -145,12 +145,12 @@ test('message bubble renders selected check control in selection mode', () => {
 });
 
 test('message context menu installs document-level outside dismissal listeners', () => {
-  const source = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/kordi-app/components/messageContextMenuHost.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /document\.addEventListener\('pointerdown'/);
   assert.match(source, /document\.addEventListener\('contextmenu'/);
   assert.match(source, /document\.addEventListener\('keydown'/);
-  assert.match(source, /menuRef\.current\.contains\(target\)/);
+  assert.match(source, /menuRef\.current\?\.contains\(target\)/);
 });
 
 test('message context menu position stays close to the clicked message rectangle', () => {
@@ -205,7 +205,7 @@ test('messages without read receipts still expose the Telegram-style message con
   assert.match(bubbleMarkup, /data-message-context-menu-target="true"/);
   assert.match(bubbleMarkup, /data-message-context-menu-anchor="true"/);
   assert.doesNotMatch(bubbleMarkup, /data-message-read-receipts-context-target/);
-  assert.match(menuMarkup, /Copy Text/);
+  assert.match(menuMarkup, />Copy</);
   assert.match(menuMarkup, /Reply/);
   assert.doesNotMatch(menuMarkup, /Seen/);
 });

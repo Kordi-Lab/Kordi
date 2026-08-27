@@ -49,6 +49,7 @@ import {
   sameAgentResponseText,
 } from './readModel/runtimeMessageMatching';
 import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
+import { mergedMessageReactionMetadata } from './readModel/messageReactionMetadata';
 
 const EMPTY_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map();
 
@@ -122,22 +123,21 @@ export function mergeCanonicalHistoryIntoRuntime(
     const canonicalIndex = runtimeAnchorIndexes[runtimeIndex];
     if (canonicalIndex === null) return message;
     const canonicalMessage = canonicalMessages[canonicalIndex];
-    const canonicalAliasIds = [
-      canonicalMessage.id,
-      canonicalMessage.entryId,
-      ...(canonicalMessage.replyAliasIds ?? []),
-    ].filter((value): value is string => Boolean(value?.trim()));
+    const canonicalAliasIds = [canonicalMessage.id, canonicalMessage.entryId, ...(canonicalMessage.replyAliasIds ?? [])]
+      .filter((value): value is string => Boolean(value?.trim()));
     const replyAliasIds = [...new Set([
       ...(message.replyAliasIds ?? []),
       ...canonicalAliasIds,
     ])];
-    if (!canonicalMessage.isForkSnapshot && replyAliasIds.length === (message.replyAliasIds?.length ?? 0)) {
+    const reactionMetadata = mergedMessageReactionMetadata(message, canonicalMessage);
+    if (!canonicalMessage.isForkSnapshot && replyAliasIds.length === (message.replyAliasIds?.length ?? 0) && !reactionMetadata.changed) {
       return message;
     }
     return {
       ...message,
       ...(canonicalMessage.isForkSnapshot ? { isForkSnapshot: true } : {}),
       ...(replyAliasIds.length > 0 ? { replyAliasIds } : {}),
+      ...reactionMetadata.values,
     };
   });
 

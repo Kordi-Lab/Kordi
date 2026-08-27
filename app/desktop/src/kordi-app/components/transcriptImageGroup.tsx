@@ -24,6 +24,7 @@ function ImageGroupDisclosure({
       type="button"
       className="app-button-quiet app-attachment-image-group-disclosure"
       data-attachment-image-group-disclosure="true"
+      data-transcript-stable-disclosure="true"
       aria-expanded={isExpanded}
       aria-controls={groupId}
       onClick={onToggle}
@@ -50,6 +51,8 @@ export function TranscriptImageGroup({
       data-attachment-image-collage="true"
       data-attachment-image-count={imageCount}
       data-attachment-image-group-expanded={isGroup ? String(isExpanded) : undefined}
+      data-transcript-stable-disclosure={isGroup && !isExpanded ? 'true' : undefined}
+      aria-expanded={isGroup ? isExpanded : undefined}
       className={cn(
         'app-attachment-image-collage relative rounded-[16px] p-0',
         isGroup
@@ -85,6 +88,8 @@ export function TranscriptImageGroup({
     <div
       className="app-attachment-image-group-shell"
       data-attachment-image-group-side={isOwnMessage ? 'own' : 'peer'}
+      data-transcript-stable-disclosure-root="true"
+      data-transcript-stable-disclosure-direction="down"
     >
       {isOwnMessage ? disclosure : null}
       {collage}
