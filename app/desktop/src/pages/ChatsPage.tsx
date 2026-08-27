@@ -22,7 +22,7 @@ import { useChatDestinations } from '@/pages/useChatDestinations';
 import { useChatForkModel } from '@/pages/useChatForkModel';
 import { useChatHeaderModel } from '@/pages/useChatHeaderModel';
 import { useChatPins } from '@/pages/useChatPins';
-import { useChatSenderProfiles } from '@/pages/useChatSenderProfiles';
+import { ChatSenderProfileContext, useChatSenderProfiles } from '@/pages/useChatSenderProfiles';
 import { useChatTranscriptNavigation } from '@/pages/useChatTranscriptNavigation';
 import {
   conversationPaneKind,
@@ -341,66 +341,68 @@ export function ChatsPage({
   ) : null;
   const splitDivider = <ChatCompanionSplitDivider layoutModel={companionLayout} />;
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-      <div
-        ref={splitContainerRef}
-        className={cn(
-          'app-chat-split-workspace relative min-h-0 flex-1 overflow-hidden',
-          chatSplitGridColumns && 'grid',
-          isDraggingCompanion && 'ring-1 ring-sky-300/25',
-          companionDropPreviewSide === 'left' && 'bg-gradient-to-r from-sky-400/10 via-transparent to-transparent',
-          companionDropPreviewSide === 'right' && 'bg-gradient-to-l from-sky-400/10 via-transparent to-transparent',
-        )}
-        style={chatSplitGridColumns ? { gridTemplateColumns: chatSplitGridColumns } : undefined}
-        data-chat-companion-side={showCompanionPane ? companionSide : 'folded'}
-        data-chat-split-workspace="true"
-        data-chat-companion-drop-preview={companionDropPreviewSide ?? undefined}
-        onDragOver={handleCompanionDragOver}
-        onDrop={handleCompanionDrop}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-            companionLayout.clearDropPreview();
-          }
-        }}
-      >
-        {showCompanionPane && companionSide === 'left' ? companionPane : null}
-        {showCompanionPane && companionSide === 'left' ? splitDivider : null}
-        <ChatMainWorkspace
-          layout={layout}
-          session={session}
-          transcript={transcript}
-          composer={composer}
-          runtime={runtime}
-          auth={auth}
-          models={{
-            header: chatHeader,
-            destinations: destinations.main,
-            fork: chatForkModel,
-            pins: chatPins,
-            navigation: transcriptNavigation.main,
-            routing: collaborationRouting.main,
-            senderProfiles,
+    <ChatSenderProfileContext.Provider value={senderProfiles.openParticipant}>
+      <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+        <div
+          ref={splitContainerRef}
+          className={cn(
+            'app-chat-split-workspace relative min-h-0 flex-1 overflow-hidden',
+            chatSplitGridColumns && 'grid',
+            isDraggingCompanion && 'ring-1 ring-sky-300/25',
+            companionDropPreviewSide === 'left' && 'bg-gradient-to-r from-sky-400/10 via-transparent to-transparent',
+            companionDropPreviewSide === 'right' && 'bg-gradient-to-l from-sky-400/10 via-transparent to-transparent',
+          )}
+          style={chatSplitGridColumns ? { gridTemplateColumns: chatSplitGridColumns } : undefined}
+          data-chat-companion-side={showCompanionPane ? companionSide : 'folded'}
+          data-chat-split-workspace="true"
+          data-chat-companion-drop-preview={companionDropPreviewSide ?? undefined}
+          onDragOver={handleCompanionDragOver}
+          onDrop={handleCompanionDrop}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              companionLayout.clearDropPreview();
+            }
           }}
-          presentation={{
-            messages: attributedTranscriptMessages,
-            liveTurn: activeTranscriptLiveTurn,
-            isCompressionActive,
-            activeLiveTurnIsRunning,
-            prefersReducedMotion,
-            relatedAgentSessionStatusById: backgroundSessionStatusById,
-            showCompanionPane,
-            activeSide: companionSide === 'left' ? 'right' : 'left',
-          }}
-          companion={{
-            canOpen: canOpenSideAgentPanel,
-            suggestedName: suggestedSideAgentConversation?.name,
-            open: openSideAgentPanel,
-            openSession: openRelatedAgentSession,
-          }}
-        />
-        {showCompanionPane && companionSide === 'right' ? splitDivider : null}
-        {showCompanionPane && companionSide === 'right' ? companionPane : null}
+        >
+          {showCompanionPane && companionSide === 'left' ? companionPane : null}
+          {showCompanionPane && companionSide === 'left' ? splitDivider : null}
+          <ChatMainWorkspace
+            layout={layout}
+            session={session}
+            transcript={transcript}
+            composer={composer}
+            runtime={runtime}
+            auth={auth}
+            models={{
+              header: chatHeader,
+              destinations: destinations.main,
+              fork: chatForkModel,
+              pins: chatPins,
+              navigation: transcriptNavigation.main,
+              routing: collaborationRouting.main,
+              senderProfiles,
+            }}
+            presentation={{
+              messages: attributedTranscriptMessages,
+              liveTurn: activeTranscriptLiveTurn,
+              isCompressionActive,
+              activeLiveTurnIsRunning,
+              prefersReducedMotion,
+              relatedAgentSessionStatusById: backgroundSessionStatusById,
+              showCompanionPane,
+              activeSide: companionSide === 'left' ? 'right' : 'left',
+            }}
+            companion={{
+              canOpen: canOpenSideAgentPanel,
+              suggestedName: suggestedSideAgentConversation?.name,
+              open: openSideAgentPanel,
+              openSession: openRelatedAgentSession,
+            }}
+          />
+          {showCompanionPane && companionSide === 'right' ? splitDivider : null}
+          {showCompanionPane && companionSide === 'right' ? companionPane : null}
+        </div>
       </div>
-    </div>
+    </ChatSenderProfileContext.Provider>
   );
 }

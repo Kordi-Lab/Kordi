@@ -85,10 +85,12 @@ export function MessageInlineContent({
   text,
   mentions,
   showSiteIcons = true,
+  onOpenMention,
 }: {
   text: string;
   mentions?: MessageMention[];
   showSiteIcons?: boolean;
+  onOpenMention?: (mention: MessageMention, anchorRect: DOMRect) => void;
 }) {
   const parts = useMemo(() => parseMessageInlineParts(text, mentions), [mentions, text]);
   return parts.map((part) => {
@@ -102,9 +104,13 @@ export function MessageInlineContent({
       );
     }
     if (part.type === 'mention') {
-      return (
+      const canOpenProfile = Boolean(
+        onOpenMention
+        && part.targetKind === 'person'
+        && (part.humanId?.trim() || part.targetIdentityId?.trim()),
+      );
+      const mention = (
         <span
-          key={`mention-${part.start}`}
           className={cn(
             'app-message-mention',
             `app-message-mention-${part.targetKind}`,
@@ -118,6 +124,31 @@ export function MessageInlineContent({
         >
           {part.label}
         </span>
+      );
+      if (canOpenProfile) {
+        return (
+          <button
+            key={`mention-${part.start}`}
+            type="button"
+            className="rounded-sm bg-transparent p-0 text-left font-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[color:var(--app-sidebar-accent)]"
+            aria-label={`Open ${part.label.replace(/^@/, '')} profile`}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onOpenMention?.({
+                label: part.label.replace(/^@/, ''),
+                targetKind: part.targetKind,
+                targetIdentityId: part.targetIdentityId,
+                humanId: part.humanId,
+              }, event.currentTarget.getBoundingClientRect());
+            }}
+          >
+            {mention}
+          </button>
+        );
+      }
+      return (
+        <Fragment key={`mention-${part.start}`}>{mention}</Fragment>
       );
     }
     if (part.type === 'link') {

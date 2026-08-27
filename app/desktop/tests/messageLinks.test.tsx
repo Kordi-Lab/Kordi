@@ -220,6 +220,33 @@ test('shared inline renderer gives human and agent mentions distinct semantic co
   assert.match(html, /app-message-mention-agent[^>]*data-mention-kind="agent"[^>]*>@EthanParksKordi<\/span>/);
 });
 
+test('structured person mentions expose the existing contact profile action', () => {
+  const mention = {
+    label: 'Ethan Park',
+    targetKind: 'person',
+    targetIdentityId: 'human:acct_ethan',
+    humanId: 'acct_ethan',
+    startUtf16: 0,
+    lengthUtf16: 11,
+    displayText: '@Ethan Park',
+  } as const;
+  const html = renderToStaticMarkup(createElement(MessageInlineContent, {
+    text: '@Ethan Park hello',
+    mentions: [mention],
+    onOpenMention: () => undefined,
+  }));
+  const bubbleHtml = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: message({ text: '@Ethan Park hello', mentions: [mention] }),
+    onOpenSenderProfile: () => undefined,
+  }));
+  const part = parseMessageInlineParts('@Ethan Park hello', [mention])[0];
+
+  assert.match(html, /<button[^>]*aria-label="Open Ethan Park profile"/);
+  assert.match(bubbleHtml, /<button[^>]*aria-label="Open Ethan Park profile"/);
+  assert.match(html, /data-mention-identity="human:acct_ethan"/);
+  assert.equal(part?.type === 'mention' ? part.humanId : null, 'acct_ethan');
+});
+
 test('shared inline renderer announces structured @all as a human group mention', () => {
   const html = renderToStaticMarkup(createElement(MessageInlineContent, {
     text: '@all please review',

@@ -174,6 +174,39 @@ final class AvatarIdentityTests: XCTestCase {
         XCTAssertEqual(destination, direct)
     }
 
+    func testGroupInfoParticipantAvatarOpensTheSelectedMemberProfile() throws {
+        let maya = CloudGroupParticipant(
+            accountId: "acct_maya",
+            displayName: "Maya",
+            avatarUrl: "https://example.com/maya.png",
+            role: "member"
+        )
+        let group = makeGroupConversation(participants: [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Me", avatarUrl: nil, role: "self"),
+            maya,
+            CloudGroupParticipant(accountId: "acct_maya_2", displayName: "Maya", avatarUrl: nil, role: "member")
+        ])
+
+        let destination = try XCTUnwrap(ConversationAuthorProfileResolver.destination(
+            currentConversation: group,
+            participant: maya,
+            selfAccountID: "acct_me",
+            contacts: [],
+            conversations: [group]
+        ))
+
+        XCTAssertEqual(destination.peerAccountId, "acct_maya")
+        XCTAssertEqual(destination.displayName, "Maya")
+        XCTAssertEqual(destination.avatarSource, "https://example.com/maya.png")
+        XCTAssertNil(ConversationAuthorProfileResolver.destination(
+            currentConversation: group,
+            participant: group.groupParticipants[0],
+            selfAccountID: "acct_me",
+            contacts: [],
+            conversations: [group]
+        ))
+    }
+
     func testGroupMemberMessageAvatarDoesNotGuessBetweenDuplicateNames() {
         let conversation = makeGroupConversation(participants: [
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "member"),

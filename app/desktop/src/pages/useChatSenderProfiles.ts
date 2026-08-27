@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { createContext, useCallback, useState } from 'react';
 
 import { useCloudContacts } from '@/features/cloud/useCloudContacts';
 import type { CloudPresenceStore } from '@/features/cloud/presence';
@@ -25,6 +25,14 @@ type SenderProfileTarget = {
   conversation: Conversation;
   anchorRect: DOMRect;
 };
+
+export type ChatSenderProfileOpener = (
+  conversation: Conversation,
+  participant: ConversationParticipant,
+  anchorRect: DOMRect,
+) => void;
+
+export const ChatSenderProfileContext = createContext<ChatSenderProfileOpener | null>(null);
 
 type SenderProfileState = {
   pageConversationId: string;
@@ -88,18 +96,25 @@ export function useChatSenderProfiles({
     setStoredState(state);
   }
 
+  const openParticipant = useCallback<ChatSenderProfileOpener>((
+    conversation,
+    participant,
+    anchorRect,
+  ) => {
+    if (participant.kind !== 'human' || participant.role === 'self') return;
+    setStoredState({
+      pageConversationId: activeConversation.id,
+      target: { participant, conversation, anchorRect },
+    });
+  }, [activeConversation.id]);
   const open = useCallback((
     conversation: Conversation,
     message: Message,
     anchorRect: DOMRect,
   ) => {
     const participant = transcriptHumanParticipant(conversation, message);
-    if (!participant || participant.role === 'self') return;
-    setStoredState({
-      pageConversationId: activeConversation.id,
-      target: { participant, conversation, anchorRect },
-    });
-  }, [activeConversation.id]);
+    if (participant) openParticipant(conversation, participant, anchorRect);
+  }, [openParticipant]);
   const openActive = useCallback(
     (message: Message, anchorRect: DOMRect) => {
       open(activeConversation, message, anchorRect);
@@ -175,6 +190,7 @@ export function useChatSenderProfiles({
       ? getSupportRequest
       : undefined,
     supportAccountId: normalizedCloudAccount?.accountId,
+    openParticipant,
     openActive,
     openCompanion,
     openCommonGroup: onSelectSession ? openCommonGroup : undefined,

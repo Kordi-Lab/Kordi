@@ -56,7 +56,7 @@ import type {
   ContactRequest,
   ConversationType,
   EditFilePreview,
-  Message, MessageAttachment,
+  Message, MessageAttachment, MessageMention,
   MessageSourceReference,
 } from '../types';
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
@@ -290,6 +290,24 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
   );
 }
 export type TranscriptDensityMode = 'default' | 'contact-compact' | 'group-compact' | 'agent-compact';
+
+function messageForMentionProfile(
+  message: Message,
+  mention: MessageMention,
+): Message | null {
+  if (mention.targetKind !== 'person') return null;
+  const humanId = mention.humanId?.trim()
+    || mention.targetIdentityId?.trim().replace(/^human:/, '');
+  if (!humanId) return null;
+  return {
+    ...message,
+    sender: mention.displayLabel?.trim() || mention.label.trim() || message.sender,
+    senderIdentityId: humanId,
+    senderType: 'human',
+    isOwnMessage: false,
+  };
+}
+
 function MessageBubbleView({
   msg,
   onOpenSource,
@@ -375,6 +393,12 @@ function MessageBubbleView({
   const selectionLabel = `${isSelectedForAction ? 'Deselect' : 'Select'} message from ${msg.sender || 'Unknown sender'} at ${msg.time || 'unknown time'}`;
   const dragSelectLabel = canDragSelectMessage ? `Drag to select message from ${msg.sender || 'Unknown sender'} at ${msg.time || 'unknown time'}` : undefined;
   const dragSelectState = canDragSelectMessage ? (selectionMode ? (isSelectedForAction ? 'selected' : 'unselected') : 'idle') : undefined;
+  const openMentionProfile = onOpenSenderProfile
+    ? (mention: MessageMention, anchorRect: DOMRect) => {
+        const target = messageForMentionProfile(msg, mention);
+        if (target) onOpenSenderProfile(target, anchorRect);
+      }
+    : undefined;
   const shouldIgnoreDragSelectTarget = (target: EventTarget | null) => {
     if (!(target instanceof Element)) return false;
     return Boolean(target.closest('[data-message-context-menu-anchor="true"], [data-message-selection-control], button, a, input, textarea, select, [role="button"]'));
@@ -921,7 +945,7 @@ function MessageBubbleView({
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
               <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
-                {msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageInlineContent text={msg.text} mentions={msg.mentions} />}
+                {msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageInlineContent text={msg.text} mentions={msg.mentions} onOpenMention={openMentionProfile} />}
               </span>
               {isOwnHumanMessage || footerDetail || msg.replySummary ? (
                 <span className={cn(
@@ -950,7 +974,7 @@ function MessageBubbleView({
                 ) : hasText ? (
                   msg.supportContactResponse
                     ? <SupportContactAnswer text={msg.text} />
-                    : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageInlineContent text={msg.text} mentions={msg.mentions} />}</div>
+                    : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageInlineContent text={msg.text} mentions={msg.mentions} onOpenMention={openMentionProfile} />}</div>
                 ) : null}
               </div>
               {!hasOnlyImageAttachments && !hasVoice ? (

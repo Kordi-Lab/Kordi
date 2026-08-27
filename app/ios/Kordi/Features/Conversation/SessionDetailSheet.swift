@@ -37,6 +37,7 @@ struct SessionDetailView: View {
     @State private var groupManagementPresentation: GroupManagementPresentation?
     @State private var groupInviteSpace: GroupSpaceSummary?
     @State private var relatedConversation: ConversationSummary?
+    @State private var participantProfileConversation: ConversationSummary?
     @State private var callStartTask: Task<Void, Never>?
 
     init(conversation: ConversationSummary) {
@@ -255,6 +256,9 @@ struct SessionDetailView: View {
         .navigationDestination(item: $relatedConversation) { destination in
             ConversationView(conversation: destination)
         }
+        .navigationDestination(item: $participantProfileConversation) { destination in
+            SessionDetailView(conversation: destination)
+        }
         .onDisappear {
             callStartTask?.cancel()
             callStartTask = nil
@@ -305,7 +309,8 @@ struct SessionDetailView: View {
         SessionParticipantsSection(
             participants: profileParticipants,
             selfAccountId: model.account?.accountId,
-            onAddMember: openAddMembers
+            onAddMember: openAddMembers,
+            onOpenParticipant: openParticipantProfile
         )
     }
 
@@ -433,6 +438,16 @@ struct SessionDetailView: View {
 
     private func showFeatureNotice(_ notice: SessionFeatureNotice) {
         featureNotice = notice
+    }
+
+    private func openParticipantProfile(_ participant: CloudGroupParticipant) {
+        participantProfileConversation = ConversationAuthorProfileResolver.destination(
+            currentConversation: currentConversation,
+            participant: participant,
+            selfAccountID: model.account?.accountId,
+            contacts: model.contacts,
+            conversations: model.conversations
+        )
     }
 
     private func startOrJoinCall(kind: CloudCallKind) {
@@ -844,6 +859,7 @@ private struct SessionParticipantsSection: View {
     let participants: [CloudGroupParticipant]
     let selfAccountId: String?
     let onAddMember: () -> Void
+    let onOpenParticipant: (CloudGroupParticipant) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -862,13 +878,15 @@ private struct SessionParticipantsSection: View {
 
             ForEach(Array(participants.enumerated()), id: \.element.id) { index, participant in
                 HStack(spacing: 12) {
-                    IdentityAvatar(
-                        name: participant.displayName,
-                        imageSource: participant.avatarUrl.nonEmpty,
-                        kind: .person,
-                        size: 40,
-                        seed: participant.accountId
-                    )
+                    if selfAccountId == nil || participant.accountId == selfAccountId {
+                        participantAvatar(participant)
+                    } else {
+                        Button { onOpenParticipant(participant) } label: {
+                            participantAvatar(participant)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open profile for \(participant.displayName)")
+                    }
                     Text(participant.displayName)
                         .font(.body)
                         .lineLimit(2)
@@ -878,8 +896,6 @@ private struct SessionParticipantsSection: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(minHeight: 56)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(participant.displayName), \(roleLabel(participant))")
 
                 if index < participants.count - 1 { Divider().padding(.leading, 52) }
             }
@@ -890,6 +906,17 @@ private struct SessionParticipantsSection: View {
             Color(uiColor: .secondarySystemGroupedBackground),
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
+    }
+
+    private func participantAvatar(_ participant: CloudGroupParticipant) -> some View {
+        IdentityAvatar(
+            name: participant.displayName,
+            imageSource: participant.avatarUrl.nonEmpty,
+            kind: .person,
+            size: 40,
+            seed: participant.accountId
+        )
+        .frame(width: 44, height: 44)
     }
 
     private func roleLabel(_ participant: CloudGroupParticipant) -> String {

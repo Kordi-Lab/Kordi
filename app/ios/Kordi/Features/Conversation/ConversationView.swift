@@ -305,6 +305,7 @@ struct ConversationView: View {
                                                                 conversations: model.conversations
                                                             )
                                                         },
+                                                        onOpenMentionProfile: openMentionProfile,
                                                         onRetry: {
                                                             await model.retry(message, in: conversation)
                                                         },
@@ -1097,6 +1098,23 @@ struct ConversationView: View {
             actor = "Someone"
         }
         return "\(actor) \(action.kind) a message"
+    }
+
+    private func openMentionProfile(accountID: String) {
+        if conversation.kind == .person, conversation.peerAccountId == accountID {
+            authorProfileConversation = conversation
+            return
+        }
+        guard let participant = conversation.groupParticipants.first(where: {
+            $0.accountId == accountID
+        }) else { return }
+        authorProfileConversation = ConversationAuthorProfileResolver.destination(
+            currentConversation: conversation,
+            participant: participant,
+            selfAccountID: model.account?.accountId,
+            contacts: model.contacts,
+            conversations: model.conversations
+        )
     }
 
     private func readReceiptParticipants(for message: ChatMessage) -> [CloudGroupParticipant] {
