@@ -22,7 +22,6 @@ kordi-tools = { path = "../../../agent/crates/tools" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
-tauri-plugin-process = "2"
 tauri-plugin-deep-link = "2.4.9"
 tauri-plugin-updater = "2"
 tokio = { workspace = true }
@@ -37,10 +36,10 @@ futures-util = "0.3"
 bytes = "1"
 hex = "0.4"
 keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
-tauri-plugin-notification = "2.3.3"
-notify-rust = "4.18.0"
+notify-rust = { version = "4.18.0", features = ["preview-macos-un"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+mac-usernotifications = "0.3.1"
 system-configuration = "0.7"
 block2 = "0.6"
 objc2 = "0.6"

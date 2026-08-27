@@ -243,8 +243,8 @@ export const tauriDesktopUpdaterAdapter: DesktopUpdaterAdapter = {
     return app.getVersion();
   },
   async relaunch() {
-    const processPlugin = await import('@tauri-apps/plugin-process');
-    await processPlugin.relaunch();
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('desktop_relaunch_after_update');
   },
 };
 

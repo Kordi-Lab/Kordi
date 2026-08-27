@@ -1,7 +1,4 @@
 import { getCurrentWindow, UserAttentionType } from '@tauri-apps/api/window';
-import {
-  isPermissionGranted,
-} from '@tauri-apps/plugin-notification';
 import { useEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
 
@@ -15,6 +12,7 @@ import {
   type MessageAttentionSnapshot,
 } from './messageAttentionPolicy';
 import { useNotificationPreferences } from './notificationPreferences';
+import { showNativeNotification } from './nativeNotifications';
 
 const PRESENTED_EVENT_STORAGE_KEY = 'kordi.presented-message-notification-ids.v1';
 const MAX_PRESENTED_EVENT_IDS = 200;
@@ -185,27 +183,14 @@ export function useDesktopMessageAttention({
           : Promise.resolve();
         if (requestDockAttention) lastBounceAtRef.current = now;
 
-        const permissionGranted = await isPermissionGranted().catch(() => false);
         const presentationPromises: Promise<unknown>[] = [dockAttentionPromise];
-        if (permissionGranted) {
-          try {
-            const { invoke } = await import('@tauri-apps/api/core');
-            presentationPromises.push(...qualifyingEvents.map((event) => invoke(
-              'desktop_show_message_notification',
-              {
-                request: {
-                  title: preferences.previews ? event.title : 'Kordi',
-                  body: preferences.previews ? event.previewText : 'New message',
-                  sound: preferences.sound,
-                  sessionId: event.sessionId,
-                  messageId: event.messageId,
-                },
-              },
-            )));
-          } catch {
-            // Native presentation is best-effort; badge and Dock attention must continue.
-          }
-        }
+        presentationPromises.push(...qualifyingEvents.map((event) => showNativeNotification({
+          title: preferences.previews ? event.title : 'Kordi',
+          body: preferences.previews ? event.previewText : 'New message',
+          sound: preferences.sound,
+          sessionId: event.sessionId,
+          messageId: event.messageId,
+        })));
         await Promise.allSettled(presentationPromises);
         return;
       }

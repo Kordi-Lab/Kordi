@@ -249,7 +249,7 @@ test('desktop update button is wired through the signed updater controller', () 
 
   assert.match(desktopSource, /desktopUpdaterController/);
   assert.match(tauriSource, /tauri_plugin_updater/);
-  assert.match(tauriSource, /tauri_plugin_process/);
+  assert.match(tauriSource, /desktop_relaunch_after_update/);
   assert.match(sidebarSource, /checkDesktopForUpdates/);
   assert.match(sidebarSource, /installDesktopUpdate/);
   assert.match(sidebarSource, /subscribeDesktopUpdater/);

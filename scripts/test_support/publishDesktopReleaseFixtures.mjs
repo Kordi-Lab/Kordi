@@ -20,6 +20,7 @@ import {
   rollbackDesktopBetaChannel,
   verifyTauriUpdaterSignature,
 } from '../lib/desktop-release.mjs';
+import { MACOS_NOTIFICATION_BUNDLE_MARKERS } from '../lib/macos-notification-release.mjs';
 import {
   createPublicHttpAdapter,
   createS3ReleaseStore,
@@ -46,6 +47,7 @@ export const ACCEPTANCE_ENDPOINT =
   'https://kordi.ai/updates/desktop/acceptance/{{target}}/{{arch}}/{{current_version}}';
 export const PRODUCTION_ENDPOINT =
   'https://kordi.ai/updates/desktop/{{target}}/{{arch}}/{{current_version}}';
+export { MACOS_NOTIFICATION_BUNDLE_MARKERS };
 
 export function contractRun(overrides = new Map(), calls = []) {
   const info = `${APP_CONTRACT_BUNDLE}/Contents/Info.plist`;
@@ -81,6 +83,14 @@ export function contractRun(overrides = new Map(), calls = []) {
       stdout: '',
       stderr: '',
     }],
+    ...MACOS_NOTIFICATION_BUNDLE_MARKERS.map((marker) => [[
+      'rg', '--text', '--hidden', '--no-ignore', '--no-messages', '-l', '-F',
+      marker, APP_CONTRACT_BUNDLE,
+    ].join(' '), {
+      status: 0,
+      stdout: `${APP_CONTRACT_BUNDLE}/Contents/MacOS/Kordi\n`,
+      stderr: '',
+    }]),
     ...overrides,
   ]);
   return (command, args = []) => {
@@ -163,7 +173,11 @@ export function artifactVerifierRun(releaseProfile, calls) {
     if (command === 'rg' && args.includes('-n')) return { status: 1, stdout: '', stderr: '' };
     if (command === 'rg' && args.includes('-F')) {
       return {
-        status: args.includes(expectedEndpoint) || args.includes(PRODUCT_ORIGIN) ? 0 : 1,
+        status: args.includes(expectedEndpoint)
+          || args.includes(PRODUCT_ORIGIN)
+          || MACOS_NOTIFICATION_BUNDLE_MARKERS.some((marker) => args.includes(marker))
+          ? 0
+          : 1,
         stdout: 'Kordi\n',
         stderr: '',
       };
