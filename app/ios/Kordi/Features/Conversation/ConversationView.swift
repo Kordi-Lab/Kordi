@@ -179,6 +179,10 @@ struct ConversationView: View {
             && (callCoordinator.isCallScreenPresented || callCoordinator.isAwaitingIncomingAnswer)
         let mentionTargets = model.mentionTargets(for: conversation)
         let pendingMentionCount = model.pendingMentionCount(for: conversation)
+        let groupParticipantsByID = Dictionary(
+            conversation.groupParticipants.map { ($0.accountId, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 if !coordinatorOwnsConversationCall,
@@ -241,7 +245,8 @@ struct ConversationView: View {
                                         LazyVStack(spacing: 0) {
                                             if visibleStartIndex > 0 || model.hasEarlierMessages(for: conversation) {
                                                 EarlierMessagesLoader(
-                                                    remainingCount: visibleStartIndex > 0 ? visibleStartIndex : nil
+                                                    remainingCount: visibleStartIndex > 0 ? visibleStartIndex : nil,
+                                                    isLoading: isLoadingEarlier
                                                 )
                                                     .id("earlier:\(firstVisibleTimelineIdentity ?? conversation.id)")
                                                     .onAppear {
@@ -258,7 +263,10 @@ struct ConversationView: View {
                                             let index = visibleStartIndex + row.offset
                                             let presentation = timelinePresentation[index - presentationStartIndex]
                                             let avatar = avatarIdentity(for: message)
-                                            let readers = readReceiptParticipants(for: message)
+                                            let readers = readReceiptParticipants(
+                                                for: message,
+                                                participantsByID: groupParticipantsByID
+                                            )
                                             let backgroundSessions = message.backgroundAgentSessions.map {
                                                 BackgroundAgentSessionPresentation(
                                                     session: $0,
@@ -344,6 +352,12 @@ struct ConversationView: View {
                                                         onPrepareVoiceMessage: { voiceMessage in
                                                             await model.prepareVoiceMessageForPresentation(voiceMessage)
                                                         },
+                                                        onPrepareAttachment: { attachment in
+                                                            await model.prepareAttachmentForPresentation(attachment)
+                                                        },
+                                                        onAddAttachmentToMediaLibrary: { attachment in
+                                                            await model.addAttachmentToExpressiveMediaLibrary(attachment)
+                                                        },
                                                         onOpenBackgroundSession: { session in
                                                             selectedBackgroundSession = session
                                                             backgroundConversation = session.destination(
@@ -363,31 +377,6 @@ struct ConversationView: View {
                                                         }
                                                     )
                                                     .equatable()
-                                                    .confirmationDialog(
-                                                        "Pin this message?",
-                                                        isPresented: Binding(
-                                                            get: { pinTarget?.id == message.id },
-                                                            set: {
-                                                                if !$0, pinTarget?.id == message.id {
-                                                                    pinTarget = nil
-                                                                }
-                                                            }
-                                                        ),
-                                                        titleVisibility: .visible,
-                                                        presenting: pinTarget
-                                                    ) { target in
-                                                        Button("Pin for me") {
-                                                            pinMessage(target, shared: false)
-                                                        }
-                                                        Button("Pin for everyone") {
-                                                            pinMessage(target, shared: true)
-                                                        }
-                                                        Button("Cancel", role: .cancel) {
-                                                            pinTarget = nil
-                                                        }
-                                                    } message: { _ in
-                                                        Text("Pinned messages stay visible above this session on synced Kordi devices.")
-                                                    }
                                                     .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
                                                     .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
                                                 }
@@ -609,6 +598,27 @@ struct ConversationView: View {
                 value: voiceRecorder.phase == .recording && !voiceRecorder.isLocked
             )
             .sensoryFeedback(.selection, trigger: messageActionFeedback)
+            .confirmationDialog(
+                "Pin this message?",
+                isPresented: Binding(
+                    get: { pinTarget != nil },
+                    set: { if !$0 { pinTarget = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pinTarget
+            ) { target in
+                Button("Pin for me") {
+                    pinMessage(target, shared: false)
+                }
+                Button("Pin for everyone") {
+                    pinMessage(target, shared: true)
+                }
+                Button("Cancel", role: .cancel) {
+                    pinTarget = nil
+                }
+            } message: { _ in
+                Text("Pinned messages stay visible above this session on synced Kordi devices.")
+            }
             .onChange(of: timeline.count) { oldCount, newCount in
                 visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(
                     currentLimit: visibleMessageLimit,
@@ -1117,12 +1127,11 @@ struct ConversationView: View {
         )
     }
 
-    private func readReceiptParticipants(for message: ChatMessage) -> [CloudGroupParticipant] {
+    private func readReceiptParticipants(
+        for message: ChatMessage,
+        participantsByID: [String: CloudGroupParticipant]
+    ) -> [CloudGroupParticipant] {
         guard conversation.kind == .group, message.author == .me else { return [] }
-        let participantsByID = Dictionary(
-            conversation.groupParticipants.map { ($0.accountId, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
         return message.readByAccountIds.map { accountID in
             participantsByID[accountID] ?? CloudGroupParticipant(
                 accountId: accountID,
@@ -1131,6 +1140,16 @@ struct ConversationView: View {
                 role: nil
             )
         }
+    }
+
+    private func readReceiptParticipants(for message: ChatMessage) -> [CloudGroupParticipant] {
+        readReceiptParticipants(
+            for: message,
+            participantsByID: Dictionary(
+                conversation.groupParticipants.map { ($0.accountId, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        )
     }
 
     private func loadEarlierMessages(
@@ -1144,15 +1163,15 @@ struct ConversationView: View {
         isLoadingEarlier = true
         Task { @MainActor in
             if visibleMessageLimit < totalCount {
-                visibleMessageLimit = min(
-                    totalCount,
-                    visibleMessageLimit + ConversationTimelineWindow.pageSize
+                visibleMessageLimit = ConversationTimelineWindow.limitAfterLoadingEarlier(
+                    currentLimit: visibleMessageLimit,
+                    totalCount: totalCount
                 )
             } else {
                 await model.loadEarlierMessages(for: conversation)
-                visibleMessageLimit = min(
-                    messages.count,
-                    visibleMessageLimit + max(0, messages.count - totalCount)
+                visibleMessageLimit = ConversationTimelineWindow.limitAfterLoadingEarlier(
+                    currentLimit: visibleMessageLimit,
+                    totalCount: messages.count
                 )
             }
             await Task.yield()
@@ -2043,7 +2062,7 @@ enum ConversationTimelineScrollBehavior {
 
 enum ConversationTimelineWindow {
     static let initialLimit = 64
-    static let pageSize = 64
+    static let pageSize = 44
 
     static func visibleMessages(in messages: [ChatMessage], limit: Int) -> [ChatMessage] {
         guard limit > 0, messages.count > limit else { return messages }
@@ -2058,6 +2077,10 @@ enum ConversationTimelineWindow {
     ) -> Int {
         guard isInitialViewportRevealed, newCount > oldCount else { return currentLimit }
         return min(newCount, currentLimit + (newCount - oldCount))
+    }
+
+    static func limitAfterLoadingEarlier(currentLimit: Int, totalCount: Int) -> Int {
+        min(totalCount, currentLimit + pageSize)
     }
 }
 
@@ -2124,18 +2147,37 @@ enum ConversationTimelinePresentation {
     }
 }
 
+@MainActor
 enum ConversationTimestampFormatter {
+    private static let formatterCache: NSCache<NSString, DateFormatter> = {
+        let cache = NSCache<NSString, DateFormatter>()
+        cache.countLimit = 12
+        return cache
+    }()
+
+    private static func formatter(
+        template: String,
+        calendar: Calendar,
+        locale: Locale
+    ) -> DateFormatter {
+        let key = "\(calendar.identifier):\(calendar.timeZone.identifier):\(locale.identifier):\(template)" as NSString
+        if let cached = formatterCache.object(forKey: key) { return cached }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = locale
+        formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        formatterCache.setObject(formatter, forKey: key)
+        return formatter
+    }
+
     static func label(
         for date: Date,
         now: Date = Date(),
         calendar: Calendar = .current,
         locale: Locale = .current
     ) -> String {
-        let timeFormatter = DateFormatter()
-        timeFormatter.calendar = calendar
-        timeFormatter.locale = locale
-        timeFormatter.timeZone = calendar.timeZone
-        timeFormatter.setLocalizedDateFormatFromTemplate("jm")
+        let timeFormatter = formatter(template: "jm", calendar: calendar, locale: locale)
         let time = timeFormatter.string(from: date)
 
         let dayDistance = calendar.dateComponents(
@@ -2150,19 +2192,19 @@ enum ConversationTimestampFormatter {
         case 1:
             dayLabel = "Yesterday"
         case 2...6:
-            let weekdayFormatter = DateFormatter()
-            weekdayFormatter.calendar = calendar
-            weekdayFormatter.locale = locale
-            weekdayFormatter.timeZone = calendar.timeZone
-            weekdayFormatter.setLocalizedDateFormatFromTemplate("EEEE")
+            let weekdayFormatter = formatter(
+                template: "EEEE",
+                calendar: calendar,
+                locale: locale
+            )
             dayLabel = weekdayFormatter.string(from: date)
         default:
-            let dateFormatter = DateFormatter()
-            dateFormatter.calendar = calendar
-            dateFormatter.locale = locale
-            dateFormatter.timeZone = calendar.timeZone
             let sameYear = calendar.component(.year, from: date) == calendar.component(.year, from: now)
-            dateFormatter.setLocalizedDateFormatFromTemplate(sameYear ? "MMMd" : "yMMMd")
+            let dateFormatter = formatter(
+                template: sameYear ? "MMMd" : "yMMMd",
+                calendar: calendar,
+                locale: locale
+            )
             dayLabel = dateFormatter.string(from: date)
         }
         return "\(dayLabel) \(time)"
@@ -2206,17 +2248,25 @@ private struct ConversationTimestampDivider: View {
 
 private struct EarlierMessagesLoader: View {
     let remainingCount: Int?
+    let isLoading: Bool
 
+    @ViewBuilder
     var body: some View {
-        HStack(spacing: 8) {
-            ProgressView()
-                .controlSize(.small)
-            Text(remainingCount.map { "Loading \($0) earlier messages…" } ?? "Loading earlier messages…")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        if isLoading {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(remainingCount.map { "Loading \($0) earlier messages…" } ?? "Loading earlier messages…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .accessibilityElement(children: .combine)
+        } else {
+            Color.clear
+                .frame(height: 1)
+                .accessibilityHidden(true)
         }
-        .frame(maxWidth: .infinity, minHeight: 44)
-        .accessibilityElement(children: .combine)
     }
 }
 

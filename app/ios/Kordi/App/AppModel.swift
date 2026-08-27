@@ -2627,6 +2627,10 @@ final class AppModel: ObservableObject {
             cloudConnectionState = .connected
             return url
         } catch {
+            guard CloudTransportErrorPolicy.shouldSurface(
+                error,
+                taskIsCancelled: Task.isCancelled
+            ) else { return nil }
             recordCloudConnectionFailure(error)
             if allowsPreviewFallback,
                let fallback = await storeInlinePreview(for: attachment, accountId: accountId) {

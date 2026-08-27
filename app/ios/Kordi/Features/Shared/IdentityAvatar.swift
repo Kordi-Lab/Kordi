@@ -245,7 +245,13 @@ private struct AvatarSourceImage: View {
 
 enum AvatarImageLoader {
     static let maximumBytes = 2 * 1_024 * 1_024
-    private static let cache = NSCache<NSString, UIImage>()
+    private static let maximumPixelSize: CGFloat = 1_024
+    private static let cache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 96
+        cache.totalCostLimit = 48 * 1_024 * 1_024
+        return cache
+    }()
 
     static func dataFromImageURL(_ value: String?) -> Data? {
         AttachmentPreviewDataURL.decode(value)
@@ -278,8 +284,16 @@ enum AvatarImageLoader {
             data = nil
         }
 
-        guard let data, data.count <= maximumBytes, let image = UIImage(data: data) else { return nil }
-        cache.setObject(image, forKey: normalized as NSString)
+        guard let data, data.count <= maximumBytes else { return nil }
+        let image = await Task.detached(priority: .utility) {
+            AttachmentImageDecoder.downsampledImage(
+                data: data,
+                maximumPixelSize: maximumPixelSize
+            )
+        }.value
+        guard let image else { return nil }
+        let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+        cache.setObject(image, forKey: normalized as NSString, cost: cost)
         return image
     }
 
