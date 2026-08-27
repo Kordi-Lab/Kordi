@@ -3,7 +3,7 @@ import { Globe2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { BlobEmojiImage } from '@/features/emoji/BlobEmojiImage';
-import type { MessageMention } from '../types';
+import type { Message, MessageMention } from '../types';
 import {
   openExternalMessageLink,
   parseMessageInlineParts,
@@ -164,4 +164,40 @@ export function MessageInlineContent({
     }
     return <Fragment key={`text-${part.start}`}>{part.value}</Fragment>;
   });
+}
+
+function messageForMentionProfile(message: Message, mention: MessageMention): Message | null {
+  if (mention.targetKind !== 'person') return null;
+  const humanId = mention.humanId?.trim()
+    || mention.targetIdentityId?.trim().replace(/^human:/, '');
+  if (!humanId) return null;
+  return {
+    ...message,
+    sender: mention.displayLabel?.trim() || mention.label.trim() || message.sender,
+    senderIdentityId: humanId,
+    senderType: 'human',
+    isOwnMessage: false,
+  };
+}
+
+export function MessageMentionProfileContent({
+  message,
+  onOpenSenderProfile,
+}: {
+  message: Message;
+  onOpenSenderProfile?: (message: Message, anchorRect: DOMRect) => void;
+}) {
+  const openMention = onOpenSenderProfile
+    ? (mention: MessageMention, anchorRect: DOMRect) => {
+        const target = messageForMentionProfile(message, mention);
+        if (target) onOpenSenderProfile(target, anchorRect);
+      }
+    : undefined;
+  return (
+    <MessageInlineContent
+      text={message.text}
+      mentions={message.mentions}
+      onOpenMention={openMention}
+    />
+  );
 }

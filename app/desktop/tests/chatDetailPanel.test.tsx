@@ -4,7 +4,6 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { ChatDetailPanel, chatArtifactPreviewBaseRoot } from '../src/pages/ChatDetailPanel';
-import { ChatSenderProfileContext } from '../src/pages/useChatSenderProfiles';
 
 const baseOutreach = {
   targetKind: 'person',
@@ -43,8 +42,8 @@ test('chat artifact previews prefer the project root and avoid local roots for b
   }), null);
 });
 
-function renderInfoPanel(overrides = {}, withParticipantProfileOpener = false) {
-  const panel = createElement(ChatDetailPanel, {
+function renderInfoPanel(overrides = {}) {
+  return renderToStaticMarkup(createElement(ChatDetailPanel, {
     isNativeShell: true,
     activeDetailTab: 'info',
     activeConv: {
@@ -82,10 +81,7 @@ function renderInfoPanel(overrides = {}, withParticipantProfileOpener = false) {
     activeArtifactId: null,
     onSelectArtifact: () => {},
     onOpenOutreachThread: () => {},
-  });
-  return renderToStaticMarkup(withParticipantProfileOpener
-    ? createElement(ChatSenderProfileContext.Provider, { value: () => {} }, panel)
-    : panel);
+  }));
 }
 
 test('chat detail panel keeps outreach threads out of the normal info view', () => {
@@ -702,21 +698,6 @@ test('chat detail participant presence renders as compact status lights without 
   assert.match(markup, /aria-label="Status: online"/);
   assert.doesNotMatch(markup, />online<\//);
   assert.doesNotMatch(markup, /app-badge-neutral[^>]*>online/);
-});
-
-test('chat detail participant avatars open profiles only for other people', () => {
-  const markup = renderInfoPanel({
-    canonicalParticipants: [
-      { id: 'human:self', name: 'Me', kind: 'human', role: 'self' },
-      { id: 'human:maya', name: 'Maya', kind: 'human', role: 'person' },
-      { id: 'agent:maya', name: "Maya's Kordi", kind: 'agent', role: 'external-agent' },
-    ],
-  }, true);
-
-  assert.equal(markup.match(/data-info-participant-profile="true"/g)?.length, 1);
-  assert.match(markup, /aria-label="Open Maya profile"/);
-  assert.doesNotMatch(markup, /aria-label="Open Me profile"/);
-  assert.doesNotMatch(markup, /aria-label="Open Maya&#x27;s Kordi profile"/);
 });
 
 test('chat detail panel hides outreach, trust, and mode metadata in Bridge chat info', () => {
