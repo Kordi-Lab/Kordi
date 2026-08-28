@@ -54,6 +54,8 @@ export function AddAttachmentToMediaLibraryAction({
         name: attachment.name,
         mimeType: attachment.mimeType ?? (kind === 'gif' ? 'image/gif' : ''),
         sizeBytes: attachment.sizeBytes ?? data.length,
+        widthPixels: attachment.widthPixels ?? null,
+        heightPixels: attachment.heightPixels ?? null,
         data,
         attachmentId: attachment.attachmentId,
       }, kind, { accountId: session.accountId });

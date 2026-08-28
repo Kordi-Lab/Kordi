@@ -25,6 +25,7 @@ use crate::server::ServerState;
 
 const MAX_MESSAGE_CONTENT_BYTES: usize = 256 * 1024;
 const MAX_ATTACHMENTS_PER_MESSAGE: usize = 32;
+const MAX_IMAGE_PIXEL_DIMENSION: u64 = 100_000;
 
 mod group_envelope;
 mod http;

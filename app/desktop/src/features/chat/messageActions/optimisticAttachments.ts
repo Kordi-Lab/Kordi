@@ -17,6 +17,10 @@ export function toOptimisticAttachments(attachments: AttachmentItem[]) {
     mimeType: attachment.mimeType,
     localPath: attachment.path,
     sizeBytes: attachment.sizeBytes,
+    ...(attachment.widthPixels && attachment.heightPixels ? {
+      widthPixels: attachment.widthPixels,
+      heightPixels: attachment.heightPixels,
+    } : {}),
   }));
 }
 

@@ -256,14 +256,20 @@ test('sendMessage round-trips meme subtype and alt text in canonical attachment 
       altText: 'A character celebrates when the build turns green.',
       mimeType: 'image/webp',
       sizeBytes: 1_024,
+      widthPixels: 512,
+      heightPixels: 384,
     }],
   });
 
   const metadata = (sentContent?.legacy_attachments as Array<Record<string, unknown>>)[0];
   assert.equal(metadata?.subtype, 'meme');
   assert.equal(metadata?.altText, 'A character celebrates when the build turns green.');
+  assert.equal(metadata?.widthPixels, 512);
+  assert.equal(metadata?.heightPixels, 384);
   assert.equal(sent.attachments?.[0]?.subtype, 'meme');
   assert.equal(sent.attachments?.[0]?.altText, 'A character celebrates when the build turns green.');
+  assert.equal(sent.attachments?.[0]?.widthPixels, 512);
+  assert.equal(sent.attachments?.[0]?.heightPixels, 384);
 });
 
 test('markMessagesRead advances the monotonic canonical conversation cursor', async () => {

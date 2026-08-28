@@ -24,6 +24,21 @@ enum PendingAttachmentLoader {
     static let maximumBatchBytes = 12 * 1_024 * 1_024
     static let maximumAttachmentCount = 8
     static let maximumExpressiveMediaSourceBytes = 32 * 1_024 * 1_024
+    static let maximumImagePixelDimension = 100_000
+
+    nonisolated static func imagePixelDimensions(data: Data) -> (width: Int, height: Int)? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              var width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              var height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+              (1...maximumImagePixelDimension).contains(width),
+              (1...maximumImagePixelDimension).contains(height) else { return nil }
+        if let orientation = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue,
+           (5...8).contains(orientation) {
+            swap(&width, &height)
+        }
+        return (width, height)
+    }
 
     nonisolated static func loadFiles(urls: [URL]) throws -> [PendingAttachment] {
         let attachments = try load(urls: urls)
@@ -61,13 +76,16 @@ enum PendingAttachmentLoader {
                 ?? .data
             let mimeType = type.preferredMIMEType
             let kind: ChatAttachmentKind = type.conforms(to: .image) ? .image : .file
+            let dimensions = kind == .image ? imagePixelDimensions(data: data) : nil
             return PendingAttachment(
                 id: UUID().uuidString.lowercased(),
                 name: url.lastPathComponent.nonEmpty ?? (kind == .image ? "image.jpg" : "attachment"),
                 kind: kind,
                 mimeType: mimeType,
                 data: data,
-                previewURL: kind == .image ? compressedPreviewDataURL(data: data) : nil
+                previewURL: kind == .image ? compressedPreviewDataURL(data: data) : nil,
+                widthPixels: dimensions?.width,
+                heightPixels: dimensions?.height
             )
         }
     }
@@ -77,13 +95,16 @@ enum PendingAttachmentLoader {
             throw AttachmentTransferError.invalidImage
         }
         let encoded = try encodedJPEG(image)
+        let dimensions = imagePixelDimensions(data: encoded)
         return PendingAttachment(
             id: UUID().uuidString.lowercased(),
             name: jpegName(suggestedName),
             kind: .image,
             mimeType: "image/jpeg",
             data: encoded,
-            previewURL: compressedPreviewDataURL(data: encoded)
+            previewURL: compressedPreviewDataURL(data: encoded),
+            widthPixels: dimensions?.width,
+            heightPixels: dimensions?.height
         )
     }
 
@@ -99,6 +120,7 @@ enum PendingAttachmentLoader {
             mimeType: mimeType,
             expectedKind: expectedKind
         )
+        let dimensions = imagePixelDimensions(data: prepared.data)
         return PendingAttachment(
             id: UUID().uuidString.lowercased(),
             name: prepared.name,
@@ -106,7 +128,9 @@ enum PendingAttachmentLoader {
             subtype: expectedKind == .sticker ? .sticker : nil,
             mimeType: prepared.mimeType,
             data: prepared.data,
-            previewURL: compressedPreviewDataURL(data: prepared.data)
+            previewURL: compressedPreviewDataURL(data: prepared.data),
+            widthPixels: dimensions?.width,
+            heightPixels: dimensions?.height
         )
     }
 
@@ -175,13 +199,16 @@ enum PendingAttachmentLoader {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         let encoded = try encodedJPEG(image)
+        let dimensions = imagePixelDimensions(data: encoded)
         return PendingAttachment(
             id: UUID().uuidString.lowercased(),
             name: "Camera-\(formatter.string(from: Date())).jpg",
             kind: .image,
             mimeType: "image/jpeg",
             data: encoded,
-            previewURL: compressedPreviewDataURL(data: encoded)
+            previewURL: compressedPreviewDataURL(data: encoded),
+            widthPixels: dimensions?.width,
+            heightPixels: dimensions?.height
         )
     }
 

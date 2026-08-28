@@ -160,6 +160,8 @@ export function useCloudConversation(
           kind: attachment.kind,
           mimeType: attachment.mimeType,
           sizeBytes: attachment.sizeBytes,
+          widthPixels: attachment.widthPixels,
+          heightPixels: attachment.heightPixels,
         }));
         const msg = await client.sendMessage(session.token, peerAccountId, trimmed, {
           attachments: sendAttachments,

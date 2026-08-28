@@ -105,6 +105,9 @@ final class AttachmentTransferTests: XCTestCase {
         XCTAssertEqual(attachment.name, "Library Photo.jpg")
         XCTAssertLessThanOrEqual(attachment.data.count, PendingAttachmentLoader.maximumAttachmentBytes)
         XCTAssertNotNil(attachment.previewURL)
+        let dimensions = try XCTUnwrap(PendingAttachmentLoader.imagePixelDimensions(data: attachment.data))
+        XCTAssertEqual(attachment.widthPixels, dimensions.width)
+        XCTAssertEqual(attachment.heightPixels, dimensions.height)
     }
 
     func testTransparentStickerPreviewPreservesAlphaInsteadOfAddingWhite() throws {
@@ -127,6 +130,9 @@ final class AttachmentTransferTests: XCTestCase {
         )
 
         XCTAssertEqual(attachment.subtype, .sticker)
+        let dimensions = try XCTUnwrap(PendingAttachmentLoader.imagePixelDimensions(data: attachment.data))
+        XCTAssertEqual(attachment.widthPixels, dimensions.width)
+        XCTAssertEqual(attachment.heightPixels, dimensions.height)
         XCTAssertTrue(try XCTUnwrap(attachment.previewURL).hasPrefix("data:image/png;base64,"))
     }
 

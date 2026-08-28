@@ -7,6 +7,8 @@ export type CloudMessageAttachment = {
   altText?: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
+  widthPixels?: number | null;
+  heightPixels?: number | null;
   downloadUrl?: string | null;
   previewUrl?: string | null;
   localPath?: string | null;
@@ -20,6 +22,8 @@ export type SendCloudMessageAttachmentInput = {
   altText?: string | null;
   mimeType?: string | null;
   sizeBytes?: number | null;
+  widthPixels?: number | null;
+  heightPixels?: number | null;
   previewUrl?: string | null;
 };
 

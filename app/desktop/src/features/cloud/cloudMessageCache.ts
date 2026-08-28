@@ -3,7 +3,7 @@ import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
 import { normalizeCloudReaderAccountIds } from './cloudMessageMerge';
 import { IndexedDbCloudMessageCacheStore } from './indexedDbCloudMessageCacheStore';
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
-
+import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 export {
   CLOUD_MESSAGES_INDEXED_DB_NAME,
   IndexedDbCloudMessageCacheStore,
@@ -82,6 +82,7 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
         : {}),
     mimeType,
     sizeBytes,
+    ...(normalizedImagePixelDimensions(record.widthPixels, record.heightPixels) ?? {}),
     ...(previewAttachmentId ? { previewAttachmentId } : {}),
     ...(previewUrl ? { previewUrl } : {}),
   };

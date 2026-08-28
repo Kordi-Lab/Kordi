@@ -86,6 +86,10 @@ export async function uploadComposerAttachments({
       } : {}),
       mimeType,
       sizeBytes: attachment.sizeBytes ?? summary.sizeBytes,
+      ...(attachment.widthPixels && attachment.heightPixels ? {
+        widthPixels: attachment.widthPixels,
+        heightPixels: attachment.heightPixels,
+      } : {}),
     });
   }
   return uploaded;

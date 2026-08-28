@@ -1,4 +1,5 @@
 import type { SendCloudMessageAttachmentInput } from './authClient';
+import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 
 export type CloudGroupOutboxAttachmentSource = {
   id: string;
@@ -11,6 +12,8 @@ export type CloudGroupOutboxAttachmentSource = {
   formatLabel?: string | null;
   mimeType?: string | null;
   sizeBytes?: number | null;
+  widthPixels?: number | null;
+  heightPixels?: number | null;
 };
 
 function cleanText(value: unknown) {
@@ -26,6 +29,7 @@ export function normalizedCloudGroupOutboxAttachments(value: unknown): SendCloud
     const name = cleanText(record.name);
     const kind = record.kind === 'image' || record.kind === 'file' ? record.kind : null;
     const previewUrl = cleanText(record.previewUrl);
+    const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
     if (!attachmentId || !name || !kind) return [];
     return [{
       attachmentId,
@@ -39,6 +43,7 @@ export function normalizedCloudGroupOutboxAttachments(value: unknown): SendCloud
           } : {}),
       mimeType: cleanText(record.mimeType) || null,
       sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null,
+      ...(dimensions ?? {}),
       ...(previewUrl ? { previewUrl } : {}),
     }];
   });
@@ -55,6 +60,7 @@ export function normalizedCloudGroupOutboxPendingAttachments(value: unknown): Cl
     const kind = record.kind === 'image' || record.kind === 'file' ? record.kind : null;
     if (!path || !name || !kind) return [];
     const id = cleanText(record.id) || `pending-attachment:${index}:${path}`;
+    const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
     return [{
       id,
       path,
@@ -70,6 +76,7 @@ export function normalizedCloudGroupOutboxPendingAttachments(value: unknown): Cl
       formatLabel: cleanText(record.formatLabel) || null,
       mimeType: cleanText(record.mimeType) || null,
       sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null,
+      ...(dimensions ?? {}),
     }];
   });
   return attachments.length > 0 ? attachments : undefined;

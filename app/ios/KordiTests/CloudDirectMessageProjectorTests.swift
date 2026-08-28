@@ -95,6 +95,8 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
                 altText: "A reviewer approves the final change.",
                 mimeType: "image/png",
                 sizeBytes: 2_048,
+                widthPixels: 1_200,
+                heightPixels: 900,
                 downloadUrl: nil,
                 previewUrl: nil
             )]
@@ -108,6 +110,8 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
 
         XCTAssertEqual(projected.first?.attachments.first?.name, "review.png")
         XCTAssertEqual(projected.first?.attachments.first?.subtype, .meme)
+        XCTAssertEqual(projected.first?.attachments.first?.widthPixels, 1_200)
+        XCTAssertEqual(projected.first?.attachments.first?.heightPixels, 900)
         XCTAssertEqual(projected.first?.attachments.first?.altText, "A reviewer approves the final change.")
         XCTAssertEqual(projected.first?.replyToMessageId, "msg_source")
         XCTAssertEqual(projected.first?.messageAction?.source.senderLabel, "Maya")

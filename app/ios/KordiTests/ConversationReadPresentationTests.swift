@@ -261,6 +261,21 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains("\"Add to \\(mediaKind.libraryName)\""))
     }
 
+    func testMixedMessageImagesCenterInsideTheirBubble() throws {
+        let conversationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation")
+        let source = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageBubble.swift"),
+            encoding: .utf8
+        )
+        let bubbleContents = source.components(separatedBy: "private var bubbleContents")[1]
+            .components(separatedBy: "private var usesBorderlessImageSurface")[0]
+
+        XCTAssertTrue(bubbleContents.contains(".frame(maxWidth: .infinity, alignment: .center)"))
+    }
+
     func testOnlyTerminalContentMessagesAllowReactions() {
         let message = ChatMessage(
             id: "message",

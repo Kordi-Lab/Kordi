@@ -12,6 +12,10 @@ import { groupMentionTargetIdentityId, normalizedMessageMentions } from '@/featu
 import type { MessageActionMetadata, MessageMention, MessageVoiceDraft } from '@/kordi-app/types/message';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
+import {
+  cloudGroupAttachmentReferences,
+  type CloudGroupAttachmentReferenceInput,
+} from './cloudGroupAttachmentReferences';
 import { cloudGroupMessageRuntimeFields, cloudVoiceAttachmentReference, integerMilliseconds } from './cloudGroupDecoding';
 import { cloudMessageActionFromRecord } from './cloudMessageActionCodec';
 import { cloudMessageAttachmentsFromRecord } from './cloudGroupAttachmentCodec';
@@ -93,27 +97,7 @@ export type CloudGroupControlEnvelope = {
     agentRuntimeRoute?: DesktopChatMessageRoute | null; voiceMessage?: (MessageVoiceDraft & { mediaId?: string | null }) | null;
   } & ReturnType<typeof cloudGroupMessageRuntimeFields>) | null;
 };
-type CloudGroupAttachmentReferenceInput = Pick<
-  CloudMessageAttachment,
-  'attachmentId' | 'name' | 'kind' | 'subtype' | 'altText'
-> & {
-  mimeType?: string | null;
-  sizeBytes?: number | null;
-};
-
-export function cloudGroupAttachmentReferences(
-  attachments: readonly CloudGroupAttachmentReferenceInput[],
-): CloudMessageAttachment[] {
-  return attachments.map((attachment) => ({
-    attachmentId: attachment.attachmentId,
-    name: attachment.name,
-    kind: attachment.kind,
-    ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const }
-      : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
-    mimeType: attachment.mimeType ?? null,
-    sizeBytes: attachment.sizeBytes ?? null,
-  }));
-}
+export { cloudGroupAttachmentReferences } from './cloudGroupAttachmentReferences';
 
 export function cloudGroupControlWithAttachmentReferences(
   body: string,

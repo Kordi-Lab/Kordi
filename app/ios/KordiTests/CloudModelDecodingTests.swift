@@ -382,7 +382,7 @@ final class CloudModelDecodingTests: XCTestCase {
 
     func testCloudMessageAttachmentDecodesMemeMetadataAndLegacyFallback() throws {
         let decoder = JSONDecoder()
-        let memePayload = Data(#"{"attachmentId":"att_meme","name":"reaction.webp","kind":"image","subtype":"meme","altText":"A character celebrates a successful deployment.","mimeType":"image/webp","sizeBytes":42,"downloadUrl":null,"previewUrl":null}"#.utf8)
+        let memePayload = Data(#"{"attachmentId":"att_meme","name":"reaction.webp","kind":"image","subtype":"meme","altText":"A character celebrates a successful deployment.","mimeType":"image/webp","sizeBytes":42,"widthPixels":512,"heightPixels":384,"downloadUrl":null,"previewUrl":null}"#.utf8)
         let legacyPayload = Data(#"{"attachmentId":"att_legacy","name":"photo.jpg","kind":"image","mimeType":"image/jpeg","sizeBytes":42,"downloadUrl":null,"previewUrl":null}"#.utf8)
 
         let meme = try decoder.decode(CloudMessageAttachment.self, from: memePayload)
@@ -391,6 +391,8 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertEqual(meme.subtype, .meme)
         XCTAssertEqual(meme.altText, "A character celebrates a successful deployment.")
         XCTAssertEqual(meme.chatAttachment.kind, .image)
+        XCTAssertEqual(meme.chatAttachment.widthPixels, 512)
+        XCTAssertEqual(meme.chatAttachment.heightPixels, 384)
         XCTAssertNil(legacy.subtype)
         XCTAssertNil(legacy.altText)
         XCTAssertEqual(legacy.chatAttachment.kind, .image)
@@ -407,6 +409,8 @@ final class CloudModelDecodingTests: XCTestCase {
                 altText: "A developer celebrates after the final test passes.",
                 mimeType: "image/gif",
                 sizeBytes: 1_024,
+                widthPixels: 640,
+                heightPixels: 360,
                 downloadUrl: nil,
                 previewUrl: nil
             )]
@@ -420,6 +424,8 @@ final class CloudModelDecodingTests: XCTestCase {
             attachments.first?["altText"] as? String,
             "A developer celebrates after the final test passes."
         )
+        XCTAssertEqual(attachments.first?["widthPixels"] as? Int, 640)
+        XCTAssertEqual(attachments.first?["heightPixels"] as? Int, 360)
     }
 
     func testCloudCallActivityMessageKeepsItsWireKind() throws {

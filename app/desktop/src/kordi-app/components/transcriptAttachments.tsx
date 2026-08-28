@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
-import { Image } from 'lucide-react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import {
   attachmentMediaGalleryIndex,
+  attachmentImageDisplaySize,
   attachmentPreviewIdentity,
   attachmentPreviewUrl,
   isAnimatedGifAttachment,
@@ -32,6 +32,7 @@ import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
 import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
 import { TranscriptImageGroup } from './transcriptImageGroup';
+import { AttachmentImageLoadingSurface, AttachmentImageUnavailableSurface } from './transcriptAttachmentImageSurfaces';
 import {
   recoverableAttachmentId,
   recoveredAttachmentPreviewUrl,
@@ -61,43 +62,6 @@ function isAttachmentSending(msg: Message) {
     return normalized === 'sending' || normalized === 'pending';
   });
 }
-
-
-function AttachmentImageLoadingSurface({ className }: { className?: string }) {
-  return (
-    <div
-      data-attachment-image-loading="true"
-      aria-label="Loading attached image"
-      className={cn('relative flex h-full min-h-28 aspect-[4/3] overflow-hidden bg-black/[0.035]', className)}
-    >
-      <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_0%,rgba(255,255,255,0.10)_42%,transparent_74%)] opacity-70 motion-safe:animate-[app-attachment-shimmer_1.45s_ease-in-out_infinite]" aria-hidden="true" />
-      <span className="sr-only">Loading attached image</span>
-    </div>
-  );
-}
-
-function AttachmentImageUnavailableSurface({ attachment, className }: {
-  attachment: MessageAttachment;
-  className?: string;
-}) {
-  return (
-    <div
-      data-attachment-image-unavailable="true"
-      className={cn('app-attachment-image-fallback flex h-full min-h-28 aspect-[4/3] items-center gap-3 bg-black/[0.045] px-3 py-2.5', className)}
-      role="status"
-    >
-      <div className="app-attachment-image-fallback-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-black/[0.06]">
-        <Image className="h-4 w-4" aria-hidden="true" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="app-attachment-image-fallback-title truncate text-[12px] font-medium">{displayAttachmentName(attachment.name, attachment.kind)}</div>
-        <div className="app-attachment-image-fallback-name mt-0.5 text-[10px] font-medium">Preview unavailable</div>
-      </div>
-      <AttachmentActions attachment={attachment} />
-    </div>
-  );
-}
-
 function imageTileClass(index: number, totalCount: number, intrinsicSingleImage = false) {
   if (totalCount <= 1) return intrinsicSingleImage ? 'col-span-6' : 'col-span-6 row-span-3';
   if (totalCount === 2) return 'col-span-3 row-span-3';
@@ -162,10 +126,18 @@ function AttachmentImageCard({
   const isExpressiveMedia = isSticker || isAnimatedGif;
   const showImage = Boolean(previewUrl);
   const singleImage = totalCount <= 1;
-  const intrinsicSingleImage = singleImage && ((showImage && imageLoaded) || isExpressiveMedia);
-  const expressiveSurfaceClassName = isExpressiveMedia && singleImage
-    ? 'h-[180px] w-[180px] min-h-0 aspect-auto rounded-[16px]'
-    : singleImage ? 'rounded-[16px]' : '';
+  const reservedSize = singleImage ? attachmentImageDisplaySize(attachment) : null;
+  const reservedStyle: CSSProperties | undefined = reservedSize ? {
+    width: reservedSize.width,
+    aspectRatio: `${reservedSize.width} / ${reservedSize.height}`,
+    maxWidth: '100%',
+  } : undefined;
+  const intrinsicSingleImage = singleImage && (Boolean(reservedSize) || (showImage && imageLoaded) || isExpressiveMedia);
+  const loadingSurfaceClassName = reservedSize
+    ? 'min-h-0 aspect-auto rounded-[16px]'
+    : isExpressiveMedia && singleImage
+      ? 'h-[180px] w-[180px] min-h-0 aspect-auto rounded-[16px]'
+      : singleImage ? 'rounded-[16px]' : '';
   const showOriginalAction = !decorative && showImage && isLargeAttachment(attachment);
   const activationProps = usePointerClickWithoutDrag((event) => onOpenPreview(
     attachment,
@@ -262,7 +234,9 @@ function AttachmentImageCard({
     'group relative overflow-hidden text-left outline-none',
     !isSticker && 'transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20',
     intrinsicSingleImage
-      ? isExpressiveMedia
+      ? reservedSize
+        ? 'inline-flex h-auto max-w-full rounded-[16px]'
+        : isExpressiveMedia
         ? 'inline-flex h-[180px] w-[180px] max-w-full rounded-[16px]'
         : 'inline-flex h-auto w-auto max-w-full rounded-[16px]'
       : 'block h-full w-full',
@@ -270,7 +244,10 @@ function AttachmentImageCard({
   const imageContent = previewUrl ? (
     <>
       {!imageLoaded ? (
-        <AttachmentImageLoadingSurface className={cn('absolute inset-0', expressiveSurfaceClassName)} />
+        <AttachmentImageLoadingSurface
+          className={cn('absolute inset-0', loadingSurfaceClassName)}
+          transparent={isSticker}
+        />
       ) : null}
       <img
         src={previewUrl}
@@ -280,11 +257,13 @@ function AttachmentImageCard({
         className={cn(
           'relative block transition-opacity duration-200 ease-out motion-reduce:transition-none',
           imageLoaded ? 'opacity-100' : 'opacity-0',
-          intrinsicSingleImage
-            ? isExpressiveMedia
-              ? 'h-[180px] w-[180px] max-w-full rounded-[16px] object-contain'
-              : 'h-auto w-auto max-h-[320px] max-w-full rounded-[16px] object-contain'
-            : 'h-full w-full object-cover',
+          reservedSize
+            ? 'h-full w-full max-w-full rounded-[16px] object-contain'
+            : intrinsicSingleImage
+              ? isExpressiveMedia
+                ? 'h-[180px] w-[180px] max-w-full rounded-[16px] object-contain'
+                : 'h-auto w-auto max-h-[320px] max-w-full rounded-[16px] object-contain'
+              : 'h-full w-full object-cover',
         )}
         onLoad={(event) => {
           setLoadedPreviewUrl(previewUrl);
@@ -311,6 +290,7 @@ function AttachmentImageCard({
     <div
       key={`${attachment.name}-${index}`}
       data-attachment-image-card="true"
+      data-attachment-image-dimensions={reservedSize ? 'true' : undefined}
       data-attachment-image-index={index}
       aria-hidden={decorative || undefined}
       className={cn(
@@ -326,6 +306,7 @@ function AttachmentImageCard({
             data-attachment-sticker="true"
             data-attachment-image-index={index}
             className={previewSurfaceClassName}
+            style={reservedStyle}
             role="img"
             aria-label={`Sticker ${attachment.name}`}
             title={`${displayName} · Right-click for message actions`}
@@ -342,15 +323,20 @@ function AttachmentImageCard({
             {...activationProps}
             onDragStart={(event) => event.preventDefault()}
             className={previewSurfaceClassName}
+            style={reservedStyle}
             aria-label={`Preview ${attachment.name || 'attached image'}`}
           >
             {imageContent}
           </button>
         )
       ) : previewUnavailable ? (
-        <AttachmentImageUnavailableSurface attachment={attachment} className={expressiveSurfaceClassName} />
+        <AttachmentImageUnavailableSurface attachment={attachment} className={loadingSurfaceClassName} style={reservedStyle} />
       ) : (
-        <AttachmentImageLoadingSurface className={expressiveSurfaceClassName} />
+        <AttachmentImageLoadingSurface
+          className={loadingSurfaceClassName}
+          style={reservedStyle}
+          transparent={isSticker}
+        />
       )}
       {showOriginalAction ? (
         <div className="absolute bottom-2 right-2 z-10">
@@ -402,6 +388,7 @@ export function AttachmentPreview({
     && !(visibleImageAttachments.length === 1 && (
       visibleImageAttachments[0] === stickerAttachment
       || isAnimatedGifAttachment(visibleImageAttachments[0])
+      || attachmentImageDisplaySize(visibleImageAttachments[0]) !== null
     ));
   const deliveryImageAttachment = hasImageGroup && !isImageGroupExpanded
     ? visibleImageAttachments[0]
@@ -495,7 +482,9 @@ export function AttachmentPreview({
                   key={`${attachment.name}-${attachment.sizeBytes ?? ''}-${index}`}
                   attachment={attachment}
                   index={index}
-                  totalCount={1}
+                  totalCount={hasImageGroup && !isImageGroupExpanded
+                    ? visibleImageAttachments.length
+                    : 1}
                   decorative={hasImageGroup && !isImageGroupExpanded && index > 0}
                   onOpenPreview={hasImageGroup && !isImageGroupExpanded
                     ? (_attachment, _previewUrl, previewLease) => {

@@ -48,6 +48,20 @@ test('GIF loading geometry matches its final compact media surface', () => {
   assert.match(markup, /h-\[180px\] w-\[180px\] min-h-0 aspect-auto/);
 });
 
+test('sticker metadata reserves a transparent non-square loading frame', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: { ...imageMessage, attachments: [{
+      kind: 'image', name: 'sticker.png', subtype: 'sticker', sizeBytes: 80 * 1024,
+      attachmentId: 'att_sticker_loading', previewUrl: null, widthPixels: 343, heightPixels: 361,
+    }] },
+  }));
+  assert.match(markup, /data-attachment-image-dimensions="true"/);
+  assert.match(markup, /width:171px/);
+  assert.match(markup, /aspect-ratio:171 \/ 180/);
+  assert.match(markup, /bg-transparent/);
+  assert.doesNotMatch(markup, /h-\[180px\] w-\[180px\]/);
+});
+
 test('upload failures override stale pending delivery status', () => {
   assert.deepEqual(attachmentImageDeliveryVisual('pending_send', 'Upload request failed'), {
     kind: 'failed', label: 'Upload request failed',

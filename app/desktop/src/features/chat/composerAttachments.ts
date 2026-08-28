@@ -6,6 +6,10 @@ import {
   storeDesktopChatAttachment,
   type DesktopStoredChatAttachment,
 } from '@/lib/desktop';
+import {
+  imagePixelDimensionsFromUrl,
+  normalizedImagePixelDimensions,
+} from '@/lib/imageDimensions';
 import { isSupportedMemeImage } from './memeAttachments';
 
 export const CHAT_COMPOSER_ATTACHMENTS_STORAGE_KEY = 'kordi.chatComposerAttachments.v1';
@@ -26,6 +30,8 @@ type StoredComposerAttachment = {
   formatLabel?: string | null;
   mimeType?: string | null;
   sizeBytes?: number | null;
+  widthPixels?: number | null;
+  heightPixels?: number | null;
   subtype?: AttachmentItem['subtype'];
   altText?: string | null;
   memeRightsConfirmed?: boolean;
@@ -220,6 +226,9 @@ export async function composerAttachmentItemFromStoredPath({
     && (metadata.sizeBytes ?? 0) <= MAX_EAGER_IMAGE_PREVIEW_BYTES
     ? await createPreviewUrl(stored.path, metadata)
     : null;
+  const dimensions = kind === 'image'
+    ? await imagePixelDimensionsFromUrl(previewUrl)
+    : null;
   return {
     id: `${displayName}-${stored.path}`,
     name: displayName,
@@ -228,6 +237,7 @@ export async function composerAttachmentItemFromStoredPath({
     mimeType: stored.mimeType ?? undefined,
     formatLabel: stored.formatLabel ?? attachmentFormatLabel(displayName, stored.mimeType ?? undefined),
     sizeBytes: stored.sizeBytes ?? undefined,
+    ...(dimensions ?? {}),
     ...(previewUrl ? { previewUrl } : {}),
   };
 }
@@ -250,6 +260,10 @@ export async function composerAttachmentItemFromFile(
     throw new Error('Memes must be PNG, JPEG, GIF, or WebP images.');
   }
   const path = await storeDesktopChatAttachment(name, Array.from(new Uint8Array(await file.arrayBuffer())));
+  const previewUrl = kind === 'image' ? URL.createObjectURL(file) : undefined;
+  const dimensions = kind === 'image'
+    ? await imagePixelDimensionsFromUrl(previewUrl)
+    : null;
   return {
     id: `${name}-${path}`,
     name,
@@ -257,8 +271,9 @@ export async function composerAttachmentItemFromFile(
     kind,
     mimeType,
     formatLabel: attachmentFormatLabel(name, mimeType),
-    previewUrl: kind === 'image' ? URL.createObjectURL(file) : undefined,
+    previewUrl,
     sizeBytes: file.size,
+    ...(dimensions ?? {}),
     ...(subtype ? { subtype, altText: '', memeRightsConfirmed: false } : {}),
   };
 }
@@ -295,6 +310,7 @@ function storedAttachmentFromRecord(record: Record<string, unknown>): Attachment
   const formatLabel = typeof record.formatLabel === 'string' ? record.formatLabel : null;
   const mimeType = typeof record.mimeType === 'string' ? record.mimeType : null;
   const sizeBytes = typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null;
+  const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
   const subtype = kind === 'image' && (record.subtype === 'meme' || record.subtype === 'sticker')
     ? record.subtype
     : null;
@@ -310,6 +326,7 @@ function storedAttachmentFromRecord(record: Record<string, unknown>): Attachment
     localPath: path,
     previewUrl: null,
     sizeBytes,
+    ...(dimensions ?? {}),
     ...(subtype === 'sticker'
       ? { subtype }
       : subtype === 'meme' ? {
@@ -344,6 +361,8 @@ export function serializeStoredComposerAttachments(attachments: AttachmentItem[]
     formatLabel: attachment.formatLabel ?? null,
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
+    widthPixels: attachment.widthPixels ?? null,
+    heightPixels: attachment.heightPixels ?? null,
     subtype: attachment.subtype ?? null,
     altText: attachment.altText ?? null,
     memeRightsConfirmed: attachment.memeRightsConfirmed === true,

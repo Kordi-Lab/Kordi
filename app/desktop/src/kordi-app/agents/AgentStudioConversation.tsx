@@ -6,6 +6,7 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { composerAttachmentItemFromFile } from '@/features/chat/composerAttachments';
 import { composerAttachmentItemFromStoredPath } from '@/features/chat/useComposerInputActions';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
+import { toOptimisticAttachments } from '@/features/chat/messageActions/optimisticAttachments';
 import { mapDesktopMessagesForTranscript } from '@/features/chat/useDesktopTranscriptAdapter';
 import { pickDesktopChatAttachmentPaths } from '@/lib/cloudAttachmentUpload';
 import {
@@ -83,15 +84,7 @@ function optimisticMessage(text: string, attachments: AttachmentItem[], avatar: 
     sourceSenderLabel: avatar.displayName?.trim() || 'Me',
     isOwnMessage: true,
     text,
-    attachments: attachments.map((attachment) => ({
-      kind: attachment.kind,
-      name: attachment.name,
-      formatLabel: attachment.formatLabel,
-      previewUrl: attachment.previewUrl,
-      mimeType: attachment.mimeType,
-      localPath: attachment.path,
-      sizeBytes: attachment.sizeBytes,
-    })),
+    attachments: toOptimisticAttachments(attachments),
     time: formatDesktopClockTime(timestampMs),
     timestampMs,
   };

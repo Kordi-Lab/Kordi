@@ -7,6 +7,7 @@ import {
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
 import { parseCloudAgentResponse } from './cloudAgentMessages';
+import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 
 function decodeBase64UrlJson<T>(value: string): T | null {
   try {
@@ -251,6 +252,7 @@ function attachmentsFromChatContent(content: unknown): CloudMessageAttachment[] 
     const name = typeof record.name === 'string' ? record.name : '';
     const kind = record.kind === 'image' ? 'image' : record.kind === 'file' ? 'file' : null;
     if (!attachmentId || !kind) return [];
+    const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
     return [{
       attachmentId,
       name,
@@ -263,6 +265,7 @@ function attachmentsFromChatContent(content: unknown): CloudMessageAttachment[] 
           } : {}),
       mimeType: typeof record.mimeType === 'string' ? record.mimeType : null,
       sizeBytes: typeof record.sizeBytes === 'number' ? record.sizeBytes : null,
+      ...(dimensions ?? {}),
       previewUrl: typeof record.previewUrl === 'string' ? record.previewUrl : null,
     } satisfies CloudMessageAttachment];
   });

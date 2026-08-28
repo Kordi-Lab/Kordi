@@ -4,6 +4,10 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import type { CloudAuthClient, CloudExpressiveMediaItem } from '@/features/cloud/authClient';
 import { readDesktopChatAttachment, storeDesktopChatAttachment } from '@/lib/desktop';
 import {
+  imagePixelDimensionsFromBlob,
+  normalizedImagePixelDimensions,
+} from '@/lib/imageDimensions';
+import {
   EXPRESSIVE_MEDIA_MAX_BYTES, GIF_MIME_TYPES, STICKER_MIME_TYPES, compressStickerFile,
   expressiveMediaFileError, expressiveMediaKindForFile, fileExtension,
   type CompressStickerFile, type ExpressiveMediaKind,
@@ -31,6 +35,8 @@ export type ExpressiveMediaLibraryItem = {
   path: string;
   mimeType: string;
   sizeBytes: number;
+  widthPixels?: number;
+  heightPixels?: number;
   createdAtMs: number;
   cloudItemId?: string;
   attachmentId?: string;
@@ -48,6 +54,8 @@ type ExpressiveMediaSource = {
   mimeType: string;
   sizeBytes: number;
   data: number[];
+  widthPixels?: number | null;
+  heightPixels?: number | null;
   attachmentId?: string | null;
 };
 
@@ -131,6 +139,7 @@ function parsedLibraryItem(value: unknown): ExpressiveMediaLibraryItem | null {
     : 0;
   const cloudItemId = typeof record.cloudItemId === 'string' ? record.cloudItemId.trim() : '';
   const attachmentId = typeof record.attachmentId === 'string' ? record.attachmentId.trim() : '';
+  const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
   if (!kind || !id || !name || !path || !mimeType) return null;
   return {
     id,
@@ -140,6 +149,7 @@ function parsedLibraryItem(value: unknown): ExpressiveMediaLibraryItem | null {
     mimeType,
     sizeBytes,
     createdAtMs,
+    ...(dimensions ?? {}),
     ...(cloudItemId ? { cloudItemId } : {}),
     ...(attachmentId ? { attachmentId } : {}),
   };
@@ -201,6 +211,8 @@ export async function addMediaToExpressiveMediaLibrary(
   if (validationError) throw new Error(validationError);
   const storage = options.storage === undefined ? browserStorage() : options.storage;
   const path = await (options.storeFile ?? storeDesktopChatAttachment)(media.name, media.data);
+  const dimensions = normalizedImagePixelDimensions(media.widthPixels, media.heightPixels)
+    ?? await imagePixelDimensionsFromBlob(new Blob([new Uint8Array(media.data)], { type: media.mimeType }));
   const addition: ExpressiveMediaLibraryItem = {
     id: `${kind}:${path}`,
     kind,
@@ -209,6 +221,7 @@ export async function addMediaToExpressiveMediaLibrary(
     mimeType: media.mimeType,
     sizeBytes: media.sizeBytes,
     createdAtMs: (options.now ?? Date.now)(),
+    ...(dimensions ?? {}),
     ...(media.attachmentId?.trim() ? { attachmentId: media.attachmentId.trim() } : {}),
   };
   const existing = readExpressiveMediaLibrary(storage, options.accountId);
@@ -354,6 +367,7 @@ async function performExpressiveMediaLibrarySync(
         cloudItem.attachmentId,
       );
       const data = Array.from(new Uint8Array(await blob.arrayBuffer()));
+      const dimensions = await imagePixelDimensionsFromBlob(blob);
       const path = await (options.storeFile ?? storeDesktopChatAttachment)(cloudItem.name, data);
       localItems = readExpressiveMediaLibrary(storage, options.accountId);
       if (localItems.some((item) => item.attachmentId === cloudItem.attachmentId)) {
@@ -370,6 +384,7 @@ async function performExpressiveMediaLibrarySync(
         path,
         mimeType: cloudItem.mimeType,
         sizeBytes: data.length,
+        ...(dimensions ?? {}),
         createdAtMs: Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
       });
       localAttachmentIds.add(cloudItem.attachmentId);
@@ -401,6 +416,8 @@ export function expressiveMediaAttachment(item: ExpressiveMediaLibraryItem): Att
     formatLabel: formatLabel(item.name, item.mimeType),
     previewUrl: expressiveMediaPreviewUrl(item),
     sizeBytes: item.sizeBytes,
+    widthPixels: item.widthPixels ?? null,
+    heightPixels: item.heightPixels ?? null,
   };
 }
 
@@ -453,6 +470,7 @@ export async function providerMediaAttachment(
     path,
     mimeType,
     sizeBytes: blob.size,
+    ...((await imagePixelDimensionsFromBlob(blob)) ?? {}),
     createdAtMs: Date.now(),
   };
   return expressiveMediaAttachment(item);

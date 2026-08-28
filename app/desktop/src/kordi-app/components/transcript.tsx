@@ -763,7 +763,7 @@ function MessageBubbleView({
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
   const hasVoice = Boolean(msg.voiceMessage); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0);
-  const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image');
+  const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
   const hasGroupedImageAttachments = hasOnlyImageAttachments && (msg.attachments?.length ?? 0) > 1;
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage);
   const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
@@ -862,7 +862,7 @@ function MessageBubbleView({
           <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
         ) : null}
         <div data-message-context-menu-anchor="true"
-          data-message-media-side={hasOnlyImageAttachments ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined}
+          data-message-media-side={hasOnlyImageAttachments ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
           data-transcript-density={compactDensity}
           onClick={(event) => {
             if (!selectableInSelectionMode) return;
@@ -881,19 +881,19 @@ function MessageBubbleView({
             ? hasOnlyImageAttachments
               ? 'w-fit max-w-[31rem] p-0'
               : useHumanCompactDensity
-                ? cn('app-message-bubble-contact-compact w-fit max-w-[52rem] rounded-[8px] px-3 py-1.5', humanMessageBubbleShapeClass('own'))
-                : cn('w-fit max-w-[52rem] px-4 py-2.5', humanMessageBubbleShapeClass('own'))
+                ? cn('app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
+                : cn('w-fit px-4 py-2.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
               ? hasOnlyImageAttachments
                 ? 'w-fit max-w-[31rem] p-0'
                 : useHumanCompactDensity
                   ? cn(
-                    'app-message-bubble-contact-compact w-fit max-w-[52rem] rounded-[8px] px-3 py-1.5',
+                    'app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]',
                     msg.supportContactTyping ? 'min-w-[3.25rem]' : undefined,
                     humanMessageBubbleShapeClass('peer'),
                   )
                   : cn(
-                    'w-fit max-w-[52rem] px-4 py-2.5',
+                    'w-fit px-4 py-2.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]',
                     msg.supportContactTyping ? 'min-w-[4rem]' : undefined,
                     humanMessageBubbleShapeClass('peer'),
                   )

@@ -335,6 +335,8 @@ struct ChatAttachment: Identifiable, Codable, Hashable {
     let altText: String?
     let mimeType: String?
     let sizeBytes: Int64?
+    let widthPixels: Int?
+    let heightPixels: Int?
     let previewURL: String?
 
     var id: String { attachmentId }
@@ -347,6 +349,8 @@ struct ChatAttachment: Identifiable, Codable, Hashable {
         altText: String? = nil,
         mimeType: String?,
         sizeBytes: Int64?,
+        widthPixels: Int? = nil,
+        heightPixels: Int? = nil,
         previewURL: String?
     ) {
         self.attachmentId = attachmentId
@@ -356,6 +360,8 @@ struct ChatAttachment: Identifiable, Codable, Hashable {
         self.altText = altText
         self.mimeType = mimeType
         self.sizeBytes = sizeBytes
+        self.widthPixels = widthPixels
+        self.heightPixels = heightPixels
         self.previewURL = previewURL
     }
 
@@ -465,6 +471,8 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
     let mimeType: String?
     let data: Data
     let previewURL: String?
+    let widthPixels: Int?
+    let heightPixels: Int?
 
     init(
         id: String,
@@ -475,7 +483,9 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
         memeRightsConfirmed: Bool = false,
         mimeType: String?,
         data: Data,
-        previewURL: String?
+        previewURL: String?,
+        widthPixels: Int? = nil,
+        heightPixels: Int? = nil
     ) {
         self.id = id
         self.name = name
@@ -486,6 +496,8 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
         self.mimeType = mimeType
         self.data = data
         self.previewURL = previewURL
+        self.widthPixels = widthPixels
+        self.heightPixels = heightPixels
     }
 
     var sizeBytes: Int64 { Int64(data.count) }
@@ -499,6 +511,8 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
             altText: altText,
             mimeType: mimeType,
             sizeBytes: sizeBytes,
+            widthPixels: widthPixels,
+            heightPixels: heightPixels,
             previewURL: previewURL
         )
     }
