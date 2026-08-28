@@ -217,7 +217,7 @@ test('provider auth snapshot sync gate confirms a signature only after successfu
   assert.equal(await nextAccountTask?.promise, 'complete');
 });
 
-test('provider auth snapshot reconciliation publishes the active Mac profile without revoking aliases', async () => {
+test('provider auth snapshot reconciliation replaces a stale route profile with the active Mac profile', async () => {
   const { calls, fetchImpl } = recordingFetch((call) => {
     if (call.url.endsWith('/v1/cloud/agent-provider-auth/snapshots')) {
       return jsonResponse(201, {
@@ -238,7 +238,7 @@ test('provider auth snapshot reconciliation publishes the active Mac profile wit
     client,
     route: {
       authProvider: 'openai-codex',
-      authChoice: 'profile:openai',
+      authChoice: 'profile:old-device',
       model: 'openai/gpt-5.6-sol',
     },
     desktopAuthState: {
@@ -256,7 +256,7 @@ test('provider auth snapshot reconciliation publishes the active Mac profile wit
         configured: true,
         preferredModel: 'openai/gpt-5.6-sol',
         options: [{
-          value: 'profile:openai',
+          value: 'profile:current-device',
           method: 'oauth',
           source: 'kordi auth.json',
           label: 'ChatGPT account',
@@ -283,7 +283,7 @@ test('provider auth snapshot reconciliation publishes the active Mac profile wit
   assert.equal(outcome, 'complete');
   assert.deepEqual(payloadInputs, [{
     provider: 'openai',
-    authChoice: 'profile:openai',
+    authChoice: 'profile:current-device',
     model: 'openai/gpt-5.6-sol',
   }]);
   assert.equal(calls.filter((call) => call.init?.method === 'POST').length, 1);

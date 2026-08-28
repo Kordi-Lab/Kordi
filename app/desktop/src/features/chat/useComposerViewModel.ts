@@ -203,6 +203,7 @@ export function useComposerViewModel({
     };
 
     return displayProviders
+      .filter((provider) => provider.configured)
       .flatMap<ComposerProviderOption>((provider) => {
         let oauthIndex = 0;
         let apiIndex = 0;

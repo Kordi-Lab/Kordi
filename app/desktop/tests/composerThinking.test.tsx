@@ -73,3 +73,32 @@ test('composer model controls display default for no-effort models', () => {
   assert.match(markup, />Default</);
   assert.doesNotMatch(markup, />Off</);
 });
+
+test('composer model controls show the explicit no-provider state after removal', () => {
+  const markup = renderToStaticMarkup(createElement(ComposerModelControls, {
+    scope: 'chat',
+    selection: { mode: 'My agent', model: 'openai/gpt-5.6-sol', thinking: 'medium' },
+    openSelector: { scope: 'chat', type: 'model' },
+    onToggleSelector: () => undefined,
+    onSelectValue: () => undefined,
+    authLabel: 'No auth',
+    authOptions: [],
+    onSelectAuthChoice: () => undefined,
+    onSelectProviderChoice: () => undefined,
+    providerOptions: [],
+    modelOptions: [{
+      value: 'openai/gpt-5.6-sol',
+      label: 'gpt-5.6-sol',
+      provider: 'openai',
+      providerLabel: 'OpenAI',
+      thinkingLevels: ['medium'],
+    }],
+  }));
+
+  assert.match(markup, />No Provider</);
+  assert.equal((markup.match(/>-<\/span>/g) ?? []).length, 2);
+  assert.equal((markup.match(/disabled=""/g) ?? []).length, 2);
+  assert.equal((markup.match(/lucide-chevron-down/g) ?? []).length, 1);
+  assert.doesNotMatch(markup, /app-composer-model-menu-layer/);
+  assert.doesNotMatch(markup, />OpenAI</);
+});

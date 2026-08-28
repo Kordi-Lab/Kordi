@@ -35,6 +35,23 @@ function cleanText(value?: string | null): string | null {
   return trimmed ? trimmed : null;
 }
 
+function authChoiceIsAvailableOnDevice(
+  choice: string | null,
+  provider: DesktopAuthState['providers'][number],
+) {
+  const hasMethod = (method: string) => provider.options.some(
+    (option) => option.method.trim().toLowerCase() === method,
+  );
+  return Boolean(
+    choice
+    && (
+      (choice === 'local-active-oauth' && hasMethod('oauth'))
+      || ((choice === 'local-active-api-key' || choice === 'ios-api-key') && hasMethod('api key'))
+      || provider.options.some((option) => option.value === choice)
+    ),
+  );
+}
+
 export function canonicalCloudProviderId(value?: string | null): string | null {
   const normalized = cleanText(value)?.toLowerCase() ?? null;
   if (normalized === 'openai-codex' || normalized === 'codex') return 'openai';
@@ -63,12 +80,13 @@ export function cloudProviderAuthReconciliationTargets(
       ?? provider.options[0]
       ?? null;
     const routeOwnsProvider = routeProvider === providerId;
+    const routeAuthChoice = cleanText(route?.authChoice);
     return [{
       provider: providerId,
       queryProviderIds: cloudProviderAuthQueryProviderIds(providerId),
       configured: provider.configured,
-      authChoice: routeOwnsProvider
-        ? cleanText(route?.authChoice) ?? cleanText(activeOption?.value)
+      authChoice: routeOwnsProvider && authChoiceIsAvailableOnDevice(routeAuthChoice, provider)
+        ? routeAuthChoice
         : cleanText(activeOption?.value),
       model: routeOwnsProvider
         ? cleanText(route?.model) ?? cleanText(provider.preferredModel)

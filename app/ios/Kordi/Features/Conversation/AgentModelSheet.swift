@@ -75,6 +75,7 @@ struct AgentModelPicker: View {
                     title: "Model",
                     options: routes,
                     selection: $selectedModel,
+                    isEnabled: canEdit && !selectedProvider.isEmpty && !routes.isEmpty,
                     optionLabel: modelLabel
                 )
 
@@ -82,8 +83,9 @@ struct AgentModelPicker: View {
 
                 AgentModelMenuRow(
                     title: "Thinking level",
-                    options: thinkingLevels,
+                    options: selectedProvider.isEmpty ? [] : thinkingLevels,
                     selection: $selectedThinking,
+                    isEnabled: canEdit && !selectedProvider.isEmpty,
                     optionLabel: thinkingLabel
                 )
             }
@@ -148,20 +150,17 @@ struct AgentModelPicker: View {
     }
 
     private var routes: [String] {
-        let provider = selectedProvider.nonEmpty
-            ?? routing.defaultAuthProvider?.nonEmpty
-            ?? providers.first
-        let canonicalProvider = provider.map(ProviderAuthenticationDefinition.canonicalID)
-        let names = canonicalProvider.flatMap { modelNamesByProvider[$0] }
+        guard let provider = selectedProvider.nonEmpty else { return [] }
+        let canonicalProvider = ProviderAuthenticationDefinition.canonicalID(provider)
+        let names = modelNamesByProvider[canonicalProvider]
             ?? ProviderAuthenticationDefinition.all
                 .first(where: { $0.id == canonicalProvider })?
                 .defaultModel.map { [$0] }
             ?? []
         let suggested = names.map { name in
-            provider.map { "\($0)/\(name)" } ?? name
+            "\(provider)/\(name)"
         }
         let current = routing.defaultModel?.nonEmpty.flatMap { currentModel in
-            guard let provider else { return currentModel }
             let currentProvider = currentModel.split(separator: "/", maxSplits: 1)
                 .first.map(String.init)
             return ProviderAuthenticationDefinition.canonicalID(currentProvider ?? "")
@@ -176,6 +175,7 @@ struct AgentModelPicker: View {
     }
 
     private func providerLabel(_ providerID: String) -> String {
+        guard let providerID = providerID.nonEmpty else { return "No Provider" }
         let canonicalID = ProviderAuthenticationDefinition.canonicalID(providerID)
         let provider = ProviderAuthenticationDefinition.all
             .first(where: { $0.id == canonicalID })?
@@ -210,7 +210,9 @@ struct AgentModelPicker: View {
             ? routeModel ?? ""
             : routes.first ?? ""
         selectCompatibleModel(for: selectedProvider)
-        selectedThinking = routing.thinking?.nonEmpty ?? "medium"
+        selectedThinking = selectedProvider.isEmpty
+            ? ""
+            : routing.thinking?.nonEmpty ?? "medium"
     }
 
     private func selectCompatibleModel(for provider: String) {
@@ -238,12 +240,14 @@ struct AgentModelPicker: View {
     }
 
     private func modelLabel(_ value: String) -> String {
+        guard !value.isEmpty else { return "-" }
         guard let separator = value.firstIndex(of: "/") else { return value }
         return String(value[value.index(after: separator)...])
     }
 
     private func thinkingLabel(_ value: String) -> String {
-        value == "xhigh" ? "Extra High" : value.capitalized
+        guard !value.isEmpty else { return "-" }
+        return value == "xhigh" ? "Extra High" : value.capitalized
     }
 }
 
@@ -274,10 +278,12 @@ private struct AgentModelMenuRow: View {
                         .truncationMode(.tail)
                         .foregroundStyle(.primary)
 
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(KordiTheme.signalBlue)
-                        .accessibilityHidden(true)
+                    if isEnabled && !options.isEmpty {
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(KordiTheme.signalBlue)
+                            .accessibilityHidden(true)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .contentShape(Rectangle())

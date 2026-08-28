@@ -95,6 +95,9 @@ export function encodeCloudAgentRuntimeRouteChange(
   if (!compactRoute?.model) {
     throw new Error('A session runtime route change requires a model.');
   }
+  if (compactRoute.authChoice?.startsWith('profile:')) {
+    throw new Error('A synchronized session route cannot contain a local auth profile id.');
+  }
   return encodeCloudDirectMessageEnvelope({
     schemaVersion: 1,
     kind: 'message',
@@ -192,12 +195,19 @@ export function cloudAgentRuntimeRouteAfterModelChange(
   const currentProvider = routeProvider(current);
   const localProvider = routeProvider(localExecutionRoute);
   const normalizedProvider = cleanText(provider)?.toLowerCase() ?? null;
-  const authChoice = cleanText(changeRoute.authChoice)
+  const synchronizedAuthChoice = cleanText(changeRoute.authChoice)
     ?? (normalizedProvider && currentProvider === normalizedProvider
       ? cleanText(current?.authChoice)
       : normalizedProvider && localProvider === normalizedProvider
         ? cleanText(localExecutionRoute?.authChoice)
         : null);
+  const localAuthChoice = cleanText(localExecutionRoute?.authChoice);
+  const authChoice = synchronizedAuthChoice?.startsWith('profile:')
+    && normalizedProvider
+    && localProvider === normalizedProvider
+    && localAuthChoice
+    ? localAuthChoice
+    : synchronizedAuthChoice;
   return compactCloudAgentRuntimeRoute({
     ...current,
     model: nextModel,

@@ -76,8 +76,13 @@ export function resolveComposerModelSelection({
     )
     || modelOptions.some((option) => option.provider === fallbackProviderValue)
   );
-  const selectedProviderValue = selectedModelOption?.provider
+  const modelProviderValue = selectedModelOption?.provider
     ?? (fallbackProviderKnown ? fallbackProviderValue : '');
+  const selectedProviderValue = modelProviderValue && providerOptions.some(
+    (option) => normalizeComposerProviderId(option.providerId) === modelProviderValue,
+  )
+    ? modelProviderValue
+    : '';
   const selectedAuthProviderOption = selection.authProvider
     ? providerOptions.find((option) => (
         option.providerId === selection.authProvider

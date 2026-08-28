@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { resolveDefaultCloudAgentRuntimeRoute } from '../src/app/useKordiDefaultCloudAgentRuntimeRoute';
+import {
+  portableCloudAgentAuthChoice,
+  resolveDefaultCloudAgentRuntimeRoute,
+} from '../src/app/useKordiDefaultCloudAgentRuntimeRoute';
 import type { DesktopAuthProvider, DesktopAuthState } from '../src/kordi-app/types';
 
 function openAiProvider(): DesktopAuthProvider {
@@ -46,6 +49,11 @@ const activeOpenAiAuthOption = {
   active: true,
 };
 
+test('portable cloud routes use credential-method aliases instead of local profile ids', () => {
+  assert.equal(portableCloudAgentAuthChoice('profile:chatgpt', 'OAuth'), 'local-active-oauth');
+  assert.equal(portableCloudAgentAuthChoice('profile:api-key', 'OpenAI API key'), 'local-active-api-key');
+});
+
 test('default cloud agent route stays disabled outside the native shell', () => {
   assert.equal(resolveDefaultCloudAgentRuntimeRoute({
     activeLoginProviderId: 'openai',
@@ -74,7 +82,7 @@ test('default cloud agent route preserves a configured selected model and auth c
   }), {
     model: 'openai/gpt-5.6-sol',
     authProvider: 'openai',
-    authChoice: 'profile-1',
+    authChoice: 'local-active-api-key',
     thinking: 'medium',
   });
 });
@@ -95,7 +103,7 @@ test('default cloud agent route falls back to the active configured provider', (
   }), {
     model: 'openai/gpt-5.6-sol',
     authProvider: 'openai',
-    authChoice: 'profile-1',
+    authChoice: 'local-active-api-key',
     thinking: '',
   });
 });
