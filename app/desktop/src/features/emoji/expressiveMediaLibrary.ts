@@ -12,9 +12,10 @@ import {
 
 export const EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY = 'kordi.expressiveMediaLibrary.v1';
 const EXPRESSIVE_MEDIA_LIBRARY_MIGRATION_KEY = 'kordi.expressiveMediaLibrary.migratedAccount.v1';
-export const STICKER_FILE_ACCEPT = 'image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp';
+export const STICKER_FILE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif';
 export const GIF_FILE_ACCEPT = 'image/gif,.gif';
 export const EXPRESSIVE_MEDIA_MAX_BYTES = 2 * 1024 * 1024;
+const EXPRESSIVE_MEDIA_MAX_SOURCE_BYTES = 32 * 1024 * 1024;
 
 export type ExpressiveMediaKind = 'sticker' | 'gif';
 
@@ -52,6 +53,8 @@ type ExpressiveMediaSource = {
   attachmentId?: string | null;
 };
 
+type CompressStickerFile = (file: File) => Promise<File>;
+
 type ExpressiveMediaCloudClient = Pick<
   CloudAuthClient,
   'downloadAttachmentContent' | 'listExpressiveMedia' | 'saveExpressiveMedia' | 'uploadAttachment'
@@ -66,11 +69,22 @@ type ExpressiveMediaSyncOptions = {
   storeFile?: StoreMediaFile;
 };
 
-const STICKER_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const STICKER_EXTENSIONS = new Set(['jpeg', 'jpg', 'png', 'webp']);
+const STICKER_MIME_TYPES = new Set(['image/gif', 'image/jpeg', 'image/png', 'image/webp']);
+const STICKER_EXTENSIONS = new Set(['gif', 'jpeg', 'jpg', 'png', 'webp']);
 const GIF_MIME_TYPES = new Set(['image/gif']);
 const GIF_EXTENSIONS = new Set(['gif']);
 const expressiveMediaSyncs = new Map<string, Promise<ExpressiveMediaLibraryItem[]>>();
+const expressiveMediaLibraryListeners = new Set<() => void>();
+let expressiveMediaLibraryRevision = 0;
+
+export function subscribeExpressiveMediaLibrary(listener: () => void) {
+  expressiveMediaLibraryListeners.add(listener);
+  return () => expressiveMediaLibraryListeners.delete(listener);
+}
+
+export function expressiveMediaLibrarySnapshot() {
+  return expressiveMediaLibraryRevision;
+}
 
 function browserStorage(): ExpressiveMediaStorage | null {
   try {
@@ -105,6 +119,52 @@ function migrateLegacyLibrary(
 
 function fileExtension(name: string) {
   return name.trim().split('.').pop()?.toLocaleLowerCase() ?? '';
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number) {
+  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+async function compressStickerFile(file: File): Promise<File> {
+  if (file.size > EXPRESSIVE_MEDIA_MAX_SOURCE_BYTES) {
+    throw new Error('Choose a sticker image smaller than 32 MB.');
+  }
+  if (typeof document === 'undefined' || typeof Image === 'undefined' || typeof URL === 'undefined') {
+    throw new Error('This sticker is larger than 2 MB and could not be compressed on this device.');
+  }
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement | null>((resolve) => {
+      const nextImage = new Image();
+      nextImage.onload = () => resolve(nextImage);
+      nextImage.onerror = () => resolve(null);
+      nextImage.src = objectUrl;
+    });
+    if (!image?.naturalWidth || !image.naturalHeight) {
+      throw new Error('This sticker image could not be read. Choose another file.');
+    }
+    if (Math.max(image.naturalWidth, image.naturalHeight) <= 512 && file.size <= EXPRESSIVE_MEDIA_MAX_BYTES) {
+      return file;
+    }
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('This sticker could not be compressed on this device.');
+    for (const [maxDimension, quality] of [[512, 0.82], [448, 0.74], [384, 0.66], [320, 0.58], [256, 0.5]] as const) {
+      const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const blob = await canvasToBlob(canvas, 'image/webp', quality);
+      if (blob?.type === 'image/webp' && blob.size <= EXPRESSIVE_MEDIA_MAX_BYTES) {
+        const stem = file.name.replace(/\.[^.]+$/, '').trim() || 'sticker';
+        return new File([blob], `${stem}.webp`, { type: 'image/webp' });
+      }
+    }
+    throw new Error('This sticker could not be compressed below the 2 MB upload limit.');
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function formatLabel(name: string, mimeType: string) {
@@ -172,6 +232,8 @@ export function writeExpressiveMediaLibrary(
 ) {
   if (!storage) return;
   storage.setItem(expressiveMediaLibraryStorageKey(accountId), JSON.stringify(items));
+  expressiveMediaLibraryRevision += 1;
+  expressiveMediaLibraryListeners.forEach((listener) => listener());
 }
 
 export function expressiveMediaFileError(file: Pick<File, 'name' | 'type'>, kind: ExpressiveMediaKind) {
@@ -183,13 +245,46 @@ export function expressiveMediaFileError(file: Pick<File, 'name' | 'type'>, kind
   const extensionMatches = !extension || allowedExtensions.has(extension);
   if ((mimeType || extension) && mimeTypeMatches && extensionMatches) return null;
   return kind === 'sticker'
-    ? 'Choose a PNG, JPEG, or WebP image for My Stickers.'
+    ? 'Choose a PNG, JPEG, WebP, or GIF image for My Stickers.'
     : 'Choose a GIF file for My GIFs.';
 }
 
 export function expressiveMediaKindForFile(file: Pick<File, 'name' | 'type'>): ExpressiveMediaKind | null {
   if (!expressiveMediaFileError(file, 'gif')) return 'gif';
   if (!expressiveMediaFileError(file, 'sticker')) return 'sticker';
+  return null;
+}
+
+export function expressiveMediaLibraryKindForAttachment(
+  attachment: { name: string; mimeType?: string | null; sizeBytes?: number | null },
+  storage: ExpressiveMediaStorage | null = browserStorage(),
+): ExpressiveMediaKind | null {
+  if (!storage || !Number.isFinite(attachment.sizeBytes)) return null;
+  const scannable = storage as ExpressiveMediaStorage & Partial<Pick<Storage, 'key' | 'length'>>;
+  const keys = new Set([EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY]);
+  if (typeof scannable.key === 'function' && typeof scannable.length === 'number') {
+    for (let index = 0; index < scannable.length; index += 1) {
+      const key = scannable.key(index);
+      if (key?.startsWith(`${EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY}.`)) keys.add(key);
+    }
+  }
+  const name = attachment.name.trim().toLocaleLowerCase();
+  const mimeType = attachment.mimeType?.trim().toLocaleLowerCase() ?? '';
+  for (const key of keys) {
+    try {
+      const values: unknown = JSON.parse(storage.getItem(key) ?? '[]');
+      if (!Array.isArray(values)) continue;
+      const match = values
+        .map(parsedLibraryItem)
+        .find((item) => item
+          && item.name.trim().toLocaleLowerCase() === name
+          && item.mimeType.trim().toLocaleLowerCase() === mimeType
+          && item.sizeBytes === attachment.sizeBytes);
+      if (match) return match.kind;
+    } catch {
+      // Ignore one damaged library key and keep checking the remaining accounts.
+    }
+  }
   return null;
 }
 
@@ -204,6 +299,9 @@ export async function addMediaToExpressiveMediaLibrary(
   } = {},
 ) {
   if (media.sizeBytes > EXPRESSIVE_MEDIA_MAX_BYTES) {
+    if (media.mimeType === 'image/gif' || fileExtension(media.name) === 'gif') {
+      throw new Error('Choose an animated GIF smaller than 2 MB so its animation can be preserved.');
+    }
     throw new Error('Choose media smaller than 2 MB.');
   }
   const validationError = expressiveMediaFileError(
@@ -237,6 +335,7 @@ export async function addFilesToExpressiveMediaLibrary(
     storeFile?: StoreMediaFile;
     now?: () => number;
     accountId?: string | null;
+    compressSticker?: CompressStickerFile;
   } = {},
 ) {
   const storage = options.storage === undefined ? browserStorage() : options.storage;
@@ -246,13 +345,23 @@ export async function addFilesToExpressiveMediaLibrary(
   const additions: ExpressiveMediaLibraryItem[] = [];
 
   for (const file of files) {
-    const mimeType = file.type.trim().toLocaleLowerCase()
-      || (kind === 'gif' ? 'image/gif' : `image/${fileExtension(file.name)}`);
-    const data = Array.from(new Uint8Array(await file.arrayBuffer()));
+    const validationError = expressiveMediaFileError(file, kind);
+    if (validationError) throw new Error(validationError);
+    const sourceKind = expressiveMediaKindForFile(file);
+    if (sourceKind === 'gif' && file.size > EXPRESSIVE_MEDIA_MAX_BYTES) {
+      throw new Error('Choose an animated GIF smaller than 2 MB so its animation can be preserved.');
+    }
+    const prepared = kind === 'sticker'
+      && sourceKind !== 'gif'
+      ? await (options.compressSticker ?? compressStickerFile)(file)
+      : file;
+    const mimeType = prepared.type.trim().toLocaleLowerCase()
+      || (kind === 'gif' ? 'image/gif' : `image/${fileExtension(prepared.name)}`);
+    const data = Array.from(new Uint8Array(await prepared.arrayBuffer()));
     additions.push(await addMediaToExpressiveMediaLibrary({
-      name: file.name,
+      name: prepared.name,
       mimeType,
-      sizeBytes: file.size,
+      sizeBytes: prepared.size,
       data,
     }, kind, { storage: null, storeFile, now }));
   }
@@ -396,6 +505,8 @@ export function expressiveMediaAttachment(item: ExpressiveMediaLibraryItem): Att
     name: item.name,
     path: item.path,
     kind: 'image',
+    ...(item.kind === 'sticker' ? { subtype: 'sticker' as const } : {}),
+    expressiveMedia: true,
     mimeType: item.mimeType,
     formatLabel: formatLabel(item.name, item.mimeType),
     previewUrl: expressiveMediaPreviewUrl(item),

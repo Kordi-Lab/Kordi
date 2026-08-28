@@ -127,7 +127,11 @@ enum CloudDirectMessageProjector {
             deliveryState: state,
             errorMessage: nil,
             requestMessageId: responseRequestId,
-            attachments: message.voiceMessage == nil ? message.attachments.map(\.chatAttachment) : [],
+            attachments: message.voiceMessage == nil
+                ? message.attachments.map {
+                    $0.chatAttachment(messageKind: CloudMessageCodec.canonicalMessageKind(message))
+                }
+                : [],
             replyToMessageId: messageAction?.replyToMessageId ?? responseRequestId,
             reactionTargetMessageId: message.messageId,
             messageAction: messageAction,
@@ -146,11 +150,15 @@ enum CloudDirectMessageProjector {
 
 extension CloudMessageAttachment {
     var chatAttachment: ChatAttachment {
+        chatAttachment(messageKind: nil)
+    }
+
+    func chatAttachment(messageKind: String?) -> ChatAttachment {
         ChatAttachment(
             attachmentId: attachmentId,
             name: name,
             kind: inferredChatAttachmentKind,
-            subtype: subtype,
+            subtype: messageKind == "sticker" ? .sticker : subtype,
             altText: altText,
             mimeType: mimeType,
             sizeBytes: sizeBytes,

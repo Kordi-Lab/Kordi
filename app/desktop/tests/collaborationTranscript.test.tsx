@@ -52,6 +52,25 @@ function conversation(overrides: Partial<DesktopCollaborationConversation> = {})
   };
 }
 
+test('collaboration transcript retains the optimistic client message identity', () => {
+  const view = mapCollaborationConversationToViewModel(conversation({
+    messages: [{
+      id: 'server-message-id',
+      clientMessageId: '77777777-7777-4777-8777-777777777777',
+      direction: 'outbound',
+      sender: 'Me',
+      text: '',
+      timeLabel: '09:57',
+      timestampMs: 2,
+    }],
+  }), host(), 'My Kordi');
+
+  assert.equal(
+    view.messages[0]?.clientMessageId,
+    '77777777-7777-4777-8777-777777777777',
+  );
+});
+
 test('cloud self-agent bridge conversations render as My agent, not external agent', () => {
   const view = mapCollaborationConversationToViewModel(conversation({
     id: 'bridge:cloud:acct_me',

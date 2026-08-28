@@ -65,6 +65,26 @@ test('image right-click resolves the selected attachment from the shared message
   }, target), second);
 });
 
+test('sticker right-click defers media actions to the standard message menu', () => {
+  const sticker = {
+    kind: 'image' as const,
+    subtype: 'sticker' as const,
+    name: 'wave.png',
+    previewUrl: 'data:image/png;base64,sticker',
+  };
+  const card = { getAttribute: () => '0' };
+  const target = { closest: () => card } as unknown as Element;
+
+  assert.equal(messageContextMenuMediaAttachment({
+    id: 'msg:sticker',
+    role: 'person',
+    text: '',
+    time: '10:42',
+    messageKind: 'sticker',
+    attachments: [sticker],
+  }, target), null);
+});
+
 test('message snapshot invalidates when reaction capability or reaction state changes', () => {
   const message: Message = {
     id: 'msg:reaction-snapshot',

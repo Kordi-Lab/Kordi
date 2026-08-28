@@ -19,6 +19,26 @@ test('buildConversationPreview labels an image-only message as Photo instead of 
   assert.equal(buildConversationPreview([imageMessage], 'Shu Yang'), 'Photo');
 });
 
+test('conversation previews distinguish stickers and GIFs from photos', () => {
+  const sticker: Message = {
+    ...imageMessage,
+    messageKind: 'sticker',
+    attachments: [{
+      kind: 'image',
+      subtype: 'sticker',
+      name: 'kirby.png',
+      mimeType: 'image/png',
+    }],
+  };
+  const gif: Message = {
+    ...imageMessage,
+    attachments: [{ kind: 'image', name: 'dance.gif', mimeType: 'image/gif' }],
+  };
+
+  assert.equal(buildConversationPreview([sticker]), 'Sticker');
+  assert.equal(buildConversationPreview([gif]), 'GIF');
+});
+
 test('sidebar previews replace Blob Emoji transport tokens with a readable label', () => {
   const message = { ...imageMessage, text: ':blob:ablobcaramelldansen:', attachments: [] };
   assert.equal(safePreviewText('hi :blob:blobwave:'), 'hi Emoji');

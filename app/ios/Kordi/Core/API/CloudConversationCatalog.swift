@@ -137,7 +137,8 @@ enum CloudConversationCatalog {
                 agentId: nil,
                 ownerDisplayName: contact.preferredName,
                 displayName: contact.preferredName,
-                lastMessage: latest.map { CloudMessageCodec.displayText($0.body) } ?? "Start a conversation",
+                lastMessage: latest.map { CloudMessageCodec.previewText($0) } ?? "Start a conversation",
+                lastAttachment: previewAttachment(latest),
                 lastActivityAt: latest.map { parseCloudDate($0.createdAt) } ?? parseCloudDate(contact.createdAt),
                 unreadCount: Set(unreadMessages.map(\.messageId)).count,
                 avatarSource: contact.avatarUrl.nonEmpty,
@@ -222,13 +223,16 @@ enum CloudConversationCatalog {
             let latestCallDate = latestCallMessage.map { parseCloudDate($0.createdAt) }
             let latestVisibleText: String?
             let latestVisibleDate: Date?
+            let latestVisibleAttachment: ChatAttachment?
             if let latestCallMessage, let latestCallDate,
                latestCallDate >= (latestGroupDate ?? .distantPast) {
                 latestVisibleText = latestCallMessage.body.nonEmpty
                 latestVisibleDate = latestCallDate
+                latestVisibleAttachment = nil
             } else {
-                latestVisibleText = latestMessage?.text.nonEmpty
+                latestVisibleText = latestMessage.flatMap { CloudMessageCodec.previewText($0).nonEmpty }
                 latestVisibleDate = latestGroupDate
+                latestVisibleAttachment = previewAttachment(latestMessage)
             }
             let sessionTitle = sorted.reversed().compactMap { row -> String? in
                 row.1.kind == "session-title-update" ? nonGenericTitle(row.1.groupTitle) : nil
@@ -309,6 +313,7 @@ enum CloudConversationCatalog {
                 ownerDisplayName: groupTitle,
                 displayName: title,
                 lastMessage: latestVisibleText ?? "Group conversation",
+                lastAttachment: latestVisibleAttachment,
                 lastActivityAt: latestVisibleDate
                     ?? sorted.last.map(rowDate)
                     ?? canonical.map { parseCloudDate($0.updatedAt) }
@@ -449,7 +454,8 @@ enum CloudConversationCatalog {
                 agentId: targetId,
                 ownerDisplayName: ownerName,
                 displayName: sessionTitle(firstPrompt) ?? agentName,
-                lastMessage: latest.map { CloudMessageCodec.displayText($0.body) } ?? definition?.description?.nonEmpty ?? "No messages yet",
+                lastMessage: latest.map { CloudMessageCodec.previewText($0) } ?? definition?.description?.nonEmpty ?? "No messages yet",
+                lastAttachment: previewAttachment(latest),
                 lastActivityAt: latest.map { parseCloudDate($0.createdAt) } ?? definition.map { parseCloudDate($0.updatedAt) } ?? .distantPast,
                 unreadCount: unreadAgentResponseCount(
                     conversationalRows,
@@ -582,9 +588,10 @@ enum CloudConversationCatalog {
                 agentId: targetId,
                 ownerDisplayName: ownerName,
                 displayName: title,
-                lastMessage: latest.map { CloudMessageCodec.displayText($0.body) }
+                lastMessage: latest.map { CloudMessageCodec.previewText($0) }
                     ?? definition?.description?.nonEmpty
                     ?? "No messages yet",
+                lastAttachment: previewAttachment(latest),
                 lastActivityAt: max(
                     latest.map { parseCloudDate($0.createdAt) } ?? .distantPast,
                     parseCloudDate(conversation.updatedAt)
@@ -767,6 +774,20 @@ enum CloudConversationCatalog {
             if let message = envelope.message { byId[message.id] = message }
         }
         return Array(byId.values)
+    }
+
+    private static func previewAttachment(_ message: CloudMessageDTO?) -> ChatAttachment? {
+        guard let message else { return nil }
+        return message.attachments
+            .first(where: { $0.inferredChatAttachmentKind == .image })?
+            .chatAttachment(messageKind: CloudMessageCodec.canonicalMessageKind(message))
+    }
+
+    private static func previewAttachment(_ message: CloudGroupMessagePayload?) -> ChatAttachment? {
+        guard let message else { return nil }
+        return message.attachments?
+            .first(where: { $0.inferredChatAttachmentKind == .image })?
+            .chatAttachment(messageKind: message.messageKind)
     }
 
     private static func rowDate(_ row: (CloudMessageDTO, CloudGroupControlEnvelope)) -> Date {

@@ -26,6 +26,13 @@ test('measured transcript virtualization uses a bounded overscan and conservativ
 
 test('transcript message identity prefers stable persisted and runtime ids', () => {
   assert.equal(transcriptWindowMessageIdentity(message({ id: 'message:1', entryId: 'entry:1' }), 4), 'message:1');
+  assert.equal(
+    transcriptWindowMessageIdentity(message({
+      id: 'message:1',
+      clientMessageId: 'client:1',
+    }), 4),
+    'client:1',
+  );
   assert.equal(transcriptWindowMessageIdentity(message({ entryId: 'entry:1' }), 4), 'entry:1');
   assert.equal(transcriptWindowMessageIdentity(message({ turn: { id: 'turn:1' } as Message['turn'] }), 4), 'turn:1');
   assert.equal(transcriptWindowMessageIdentity(message({ sender: 'Me' }), 4), '4:user:Me:10:00');

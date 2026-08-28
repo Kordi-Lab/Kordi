@@ -5,7 +5,7 @@ export type CloudGroupOutboxAttachmentSource = {
   path: string;
   name: string;
   kind: 'image' | 'file';
-  subtype?: 'meme' | null;
+  subtype?: 'meme' | 'sticker' | null;
   altText?: string | null;
   memeRightsConfirmed?: boolean;
   formatLabel?: string | null;
@@ -31,10 +31,12 @@ export function normalizedCloudGroupOutboxAttachments(value: unknown): SendCloud
       attachmentId,
       name,
       kind,
-      ...(record.subtype === 'meme' && kind === 'image' ? {
-        subtype: 'meme' as const,
-        altText: typeof record.altText === 'string' ? record.altText : null,
-      } : {}),
+      ...(record.subtype === 'sticker' && kind === 'image'
+        ? { subtype: 'sticker' as const }
+        : record.subtype === 'meme' && kind === 'image' ? {
+            subtype: 'meme' as const,
+            altText: typeof record.altText === 'string' ? record.altText : null,
+          } : {}),
       mimeType: cleanText(record.mimeType) || null,
       sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null,
       ...(previewUrl ? { previewUrl } : {}),
@@ -58,11 +60,13 @@ export function normalizedCloudGroupOutboxPendingAttachments(value: unknown): Cl
       path,
       name,
       kind,
-      ...(record.subtype === 'meme' && kind === 'image' ? {
-        subtype: 'meme' as const,
-        altText: typeof record.altText === 'string' ? record.altText : null,
-        memeRightsConfirmed: record.memeRightsConfirmed === true,
-      } : {}),
+      ...(record.subtype === 'sticker' && kind === 'image'
+        ? { subtype: 'sticker' as const }
+        : record.subtype === 'meme' && kind === 'image' ? {
+            subtype: 'meme' as const,
+            altText: typeof record.altText === 'string' ? record.altText : null,
+            memeRightsConfirmed: record.memeRightsConfirmed === true,
+          } : {}),
       formatLabel: cleanText(record.formatLabel) || null,
       mimeType: cleanText(record.mimeType) || null,
       sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null,

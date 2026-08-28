@@ -1,7 +1,7 @@
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { projectRootFromCanonicalProjectGroupId } from '@/features/canonical/sessionResolver';
 import { deriveSessionTitle } from '@/features/chat/sessionTitlePolicy';
-import { safePreviewText } from '@/features/chat/participantConversationState';
+import { attachmentOnlyMessagePreview, safePreviewText } from '@/features/chat/participantConversationState';
 import { firstPersonPossessiveLabel, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type {
   CanonicalSessionState,
@@ -134,16 +134,7 @@ export function buildMessagePreview(message: Message) {
     return agentResponseText;
   }
 
-  const attachments = message.attachments ?? [];
-  if (attachments.length === 0) return '';
-  if (attachments.length === 1) {
-    const attachment = attachments[0];
-    return attachment.kind === 'image' || attachment.mimeType?.toLowerCase().startsWith('image/')
-      ? 'Photo'
-      : `Attached ${attachment.name}`;
-  }
-
-  return `${attachments.length} attachments`;
+  return attachmentOnlyMessagePreview(message)?.label ?? '';
 }
 
 export function inlineRequestPreview(text: string) {

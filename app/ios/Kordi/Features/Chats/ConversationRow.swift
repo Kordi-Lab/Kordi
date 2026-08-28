@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum ConversationRowPresentation: Equatable {
     case standard
@@ -112,7 +113,10 @@ struct ConversationRow: View {
                                 .lineLimit(1)
                             Text("·")
                                 .foregroundStyle(.tertiary)
-                            Text(conversation.lastMessage)
+                            if let attachment = conversation.lastAttachment {
+                                ConversationAttachmentThumbnail(attachment: attachment)
+                            }
+                            Text(conversation.previewText)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                         }
@@ -124,7 +128,12 @@ struct ConversationRow: View {
                     }
                 }
             } else {
-                Text(conversation.lastMessage)
+                HStack(spacing: 5) {
+                    if let attachment = conversation.lastAttachment {
+                        ConversationAttachmentThumbnail(attachment: attachment)
+                    }
+                    Text(conversation.previewText)
+                }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
@@ -178,6 +187,33 @@ struct ConversationRow: View {
 
     private func shortOwnerName(_ name: String) -> String {
         name.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? name
+    }
+}
+
+private struct ConversationAttachmentThumbnail: View {
+    let attachment: ChatAttachment
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: attachment.kind == .image ? "photo" : "paperclip")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(width: 18, height: 18)
+        .clipShape(.rect(cornerRadius: 4))
+        .accessibilityHidden(true)
+        .task(id: attachment.previewURL ?? attachment.id) {
+            image = nil
+            guard let source = attachment.previewURL else { return }
+            image = await AvatarImageLoader.image(from: source)
+        }
     }
 }
 

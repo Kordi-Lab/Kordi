@@ -1,4 +1,5 @@
 import type { MessageAttachment } from '@/kordi-app/types';
+import { cachedCloudAttachmentLocalPath } from '@/features/cloud/cloudAttachmentLocalPathCache';
 
 function contentRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -21,21 +22,24 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
     if (!name || (rawKind !== 'image' && rawKind !== 'file')) return [];
 
     const kind: MessageAttachment['kind'] = rawKind;
+    const attachmentId = stringValue(record.attachmentId);
     const attachment: MessageAttachment = {
       kind,
-      ...(record.subtype === 'meme' && kind === 'image' ? {
-        subtype: 'meme' as const,
-        altText: stringValue(record.altText) ?? null,
-      } : {}),
+      ...(record.subtype === 'sticker' && kind === 'image'
+        ? { subtype: 'sticker' as const }
+        : record.subtype === 'meme' && kind === 'image' ? {
+            subtype: 'meme' as const,
+            altText: stringValue(record.altText) ?? null,
+          } : {}),
       name,
       formatLabel: stringValue(record.formatLabel) ?? null,
       previewUrl: stringValue(record.previewUrl) ?? null,
       mimeType: stringValue(record.mimeType) ?? null,
-      localPath: stringValue(record.localPath) ?? null,
+      localPath: stringValue(record.localPath)
+        ?? (attachmentId ? cachedCloudAttachmentLocalPath(attachmentId) : null),
       sizeBytes: numberValue(record.sizeBytes) ?? null,
     };
     const downloadUrl = stringValue(record.downloadUrl);
-    const attachmentId = stringValue(record.attachmentId);
     if (downloadUrl) attachment.downloadUrl = downloadUrl;
     if (attachmentId) attachment.attachmentId = attachmentId;
     return [attachment];

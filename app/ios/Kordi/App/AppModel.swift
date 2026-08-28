@@ -39,6 +39,20 @@ enum AgentPromptContext {
     }
 }
 
+enum AttachmentDownloadPolicy {
+    static func usesImagePreview(
+        for attachment: ChatAttachment,
+        prefersOriginal: Bool
+    ) -> Bool {
+        !prefersOriginal
+            && attachment.kind == .image
+            && ExpressiveMediaLibraryKind.supportedKind(
+                name: attachment.name,
+                mimeType: attachment.mimeType
+            ) != .gif
+    }
+}
+
 enum CloudConnectionState: Equatable {
     case connecting
     case connected
@@ -197,6 +211,7 @@ final class AppModel: ObservableObject {
     private var cloudRealtimeSyncWakeTask: Task<Void, Never>?
     private var expressiveMediaSyncTask: Task<Void, Never>?
     private var expressiveMediaSyncTaskID: UUID?
+    private var knownStickerAttachmentSignatures = Set<String>()
     private var cloudSyncCursor = "0"
     private var cloudSyncLastStreamSequence: Int64 = 0
     private var cloudSyncHasCurrentSequence = false
@@ -323,7 +338,7 @@ final class AppModel: ObservableObject {
             let restoredAccount = try await api.me(token: savedToken)
             token = savedToken
             account = restoredAccount
-            conversations = cache?.loadConversations(accountId: restoredAccount.accountId) ?? []
+            conversations = restoredConversations(accountId: restoredAccount.accountId)
             if let snapshot = await wireCache.load(accountId: restoredAccount.accountId) {
                 cloudMessagesByPeer = snapshot.messagesByPeer
                 sessionForksById = snapshot.sessionForksById ?? [:]
@@ -441,6 +456,7 @@ final class AppModel: ObservableObject {
         expressiveMediaSyncTask?.cancel()
         expressiveMediaSyncTask = nil
         expressiveMediaSyncTaskID = nil
+        knownStickerAttachmentSignatures.removeAll()
         cloudSyncCursor = "0"
         cloudSyncLastStreamSequence = 0
         cloudSyncHasCurrentSequence = false
@@ -1023,7 +1039,10 @@ final class AppModel: ObservableObject {
             limit: ConversationTimelineWindow.initialLimit
         ) ?? LocalMessagePage(messages: [], hasMore: false)
         if !page.messages.isEmpty {
-            messagesByConversation[conversation.id] = page.messages
+            messagesByConversation[conversation.id] = MessageImageInteraction.markingKnownStickers(
+                in: page.messages,
+                matching: knownStickerAttachmentSignatures
+            )
         }
         if page.hasMore {
             conversationsWithEarlierCachedHistory.insert(conversation.id)
@@ -1349,7 +1368,11 @@ final class AppModel: ObservableObject {
             replyToMessageId: messageAction?.replyToMessageId,
             messageAction: messageAction,
             mentions: mentions,
-            messageKind: voiceMessage == nil ? nil : "voice",
+            messageKind: voiceMessage != nil
+                ? "voice"
+                : outgoingAttachments.count == 1 && outgoingAttachments.first?.subtype == .sticker
+                    ? "sticker"
+                    : nil,
             voiceMessage: voiceMessage?.voiceMessage(mediaId: "pending:\(voiceMessage?.attachment.id ?? localId)")
         )
         if !outgoingAttachments.isEmpty { pendingAttachmentDraftsByMessageId[localId] = outgoingAttachments }
@@ -1378,7 +1401,8 @@ final class AppModel: ObservableObject {
         cacheCurrentMessages(conversation.id)
         updateConversationPreview(
             conversation.id,
-            text: voiceMessage == nil ? text.nonEmpty ?? attachmentSummary(outgoingAttachments.count) : "Voice message",
+            text: voiceMessage == nil ? text.nonEmpty ?? attachmentSummary(outgoingAttachments) : "Voice message",
+            attachment: voiceMessage == nil ? outgoingAttachments.first?.optimisticAttachment : nil,
             date: optimistic.createdAt
         )
 
@@ -1412,6 +1436,11 @@ final class AppModel: ObservableObject {
                 )
             }
             if conversation.kind == .group {
+                let outgoingMessageKind = uploadedVoiceMessage != nil
+                    ? "voice"
+                    : outgoingAttachments.count == 1 && outgoingAttachments.first?.subtype == .sticker
+                        ? "sticker"
+                        : "text"
                 let sentRows = try await sendGroupMessage(
                     text: text,
                     localMessageId: localId,
@@ -1420,6 +1449,7 @@ final class AppModel: ObservableObject {
                     account: account,
                     attachments: uploadedAttachments,
                     voiceMessage: uploadedVoiceMessage,
+                    messageKind: outgoingMessageKind,
                     messageAction: messageAction,
                     mentionTarget: mentionTarget,
                     mentions: mentions
@@ -1441,7 +1471,7 @@ final class AppModel: ObservableObject {
                     replyToMessageId: messageAction?.replyToMessageId,
                     messageAction: messageAction,
                     mentions: mentions,
-                    messageKind: uploadedVoiceMessage == nil ? nil : "voice",
+                    messageKind: outgoingMessageKind,
                     voiceMessage: uploadedVoiceMessage
                 ))
                 clearPendingSendMetadata(localId)
@@ -1487,7 +1517,11 @@ final class AppModel: ObservableObject {
                 sessionId: conversation.sessionId,
                 clientMessageId: clientMessageId,
                 attachments: uploadedAttachments,
-                messageKind: uploadedVoiceMessage == nil ? "text" : "voice",
+                messageKind: uploadedVoiceMessage != nil
+                    ? "voice"
+                    : outgoingAttachments.count == 1 && outgoingAttachments.first?.subtype == .sticker
+                        ? "sticker"
+                        : "text",
                 voiceMessage: uploadedVoiceMessage,
                 sharedTitle: initialAgentSessionTitle
             )
@@ -1592,7 +1626,7 @@ final class AppModel: ObservableObject {
                 }
                 continue
             }
-            let fallback = message.text.nonEmpty ?? attachmentSummary(message.attachments.count)
+            let fallback = message.text.nonEmpty ?? Self.attachmentSummary(message.attachments)
             let text = sourceMessages.count == 1 && index == 0
                 ? cleanCaption.nonEmpty ?? fallback
                 : fallback
@@ -2045,6 +2079,10 @@ final class AppModel: ObservableObject {
            let presentationId = requestPresentationIds[message.id] {
             return "request:\(message.conversationId):\(presentationId)"
         }
+        if message.author != .agent,
+           let clientMessageId = message.clientMessageId?.nonEmpty {
+            return "client-message:\(message.conversationId):\(clientMessageId)"
+        }
         guard message.author == .agent,
               let requestMessageId = message.requestMessageId?.nonEmpty else { return message.id }
         let presentationId = requestPresentationIds[requestMessageId] ?? requestMessageId
@@ -2374,7 +2412,11 @@ final class AppModel: ObservableObject {
     }
 
     func prepareAttachmentForPresentation(_ attachment: ChatAttachment) async -> URL? {
-        await prepareAttachment(attachment, allowsPreviewFallback: false)
+        await prepareAttachment(
+            attachment,
+            allowsPreviewFallback: false,
+            prefersOriginal: false
+        )
     }
 
     func prepareVoiceMessageForPresentation(_ voiceMessage: VoiceMessage) async -> URL? {
@@ -2389,7 +2431,11 @@ final class AppModel: ObservableObject {
     }
 
     func prepareAttachmentForSharing(_ attachment: ChatAttachment) async -> URL? {
-        await prepareAttachment(attachment, allowsPreviewFallback: true)
+        await prepareAttachment(
+            attachment,
+            allowsPreviewFallback: true,
+            prefersOriginal: true
+        )
     }
 
     func addAttachmentToExpressiveMediaLibrary(
@@ -2407,7 +2453,7 @@ final class AppModel: ObservableObject {
             errorMessage = ExpressiveMediaLibraryError.unsupportedFile.localizedDescription
             return nil
         }
-        guard let sourceURL = await prepareAttachmentForPresentation(attachment) else { return nil }
+        guard let sourceURL = await prepareAttachmentForSharing(attachment) else { return nil }
         do {
             _ = try await expressiveMediaLibrary.add(
                 accountId: accountId,
@@ -2512,6 +2558,7 @@ final class AppModel: ObservableObject {
     }
 
     private func performExpressiveMediaLibrarySync(token: String, accountId: String) async {
+        await refreshLoadedConversationProjections()
         let remoteItems: [CloudExpressiveMediaItem]
         do {
             remoteItems = try await api.listExpressiveMedia(token: token)
@@ -2588,17 +2635,25 @@ final class AppModel: ObservableObject {
                 if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
             }
         }
+        await refreshLoadedConversationProjections()
     }
 
     private func prepareAttachment(
         _ attachment: ChatAttachment,
-        allowsPreviewFallback: Bool
+        allowsPreviewFallback: Bool,
+        prefersOriginal: Bool
     ) async -> URL? {
         guard let accountId = account?.accountId else {
             errorMessage = AttachmentTransferError.missingSession.localizedDescription
             return nil
         }
-        if let cached = await attachmentFileStore.cachedURL(for: attachment, accountId: accountId) {
+        let usesImagePreview = AttachmentDownloadPolicy.usesImagePreview(
+            for: attachment,
+            prefersOriginal: prefersOriginal
+        )
+        if let cached = await attachmentFileStore.cachedURL(for: attachment, accountId: accountId),
+           usesImagePreview || (MessageImageInteraction.isAnimatedGIF(attachment)
+            && AnimatedImageDecoder.isAnimated(at: cached)) {
             return cached
         }
         guard let token else {
@@ -2610,7 +2665,7 @@ final class AppModel: ObservableObject {
             return nil
         }
         do {
-            let data = if attachment.kind == .image,
+            let data = if usesImagePreview,
                           let preview = try? await api.downloadAttachmentPreviewContent(
                             token: token,
                             attachmentId: attachment.attachmentId
@@ -3591,8 +3646,57 @@ final class AppModel: ObservableObject {
         return "New session"
     }
 
-    private func attachmentSummary(_ count: Int) -> String {
-        count == 1 ? "1 attachment" : "\(count) attachments"
+    private func attachmentSummary(_ attachments: [PendingAttachment]) -> String {
+        Self.attachmentSummary(attachments.map(\.optimisticAttachment))
+    }
+
+    nonisolated static func attachmentSummary(
+        _ attachments: [ChatAttachment],
+        messageKind: String? = nil
+    ) -> String {
+        guard attachments.count == 1, let attachment = attachments.first else {
+            return "\(attachments.count) attachments"
+        }
+        if messageKind == "sticker" || attachment.subtype == .sticker { return "Sticker" }
+        if MessageImageInteraction.isAnimatedGIF(attachment) { return "GIF" }
+        return attachment.kind == .image ? "Photo" : attachment.name
+    }
+
+    private func restoredConversations(accountId: String) -> [ConversationSummary] {
+        guard let cache else { return [] }
+        let restored = cache.loadConversations(accountId: accountId)
+        let repaired = restored.map { conversation in
+            let latest = cache.loadMessagePage(
+                accountId: accountId,
+                conversationId: conversation.id,
+                limit: 1
+            ).messages.last
+            return Self.restoringConversationPreview(conversation, latest: latest)
+        }
+        if repaired != restored {
+            cache.saveConversations(repaired, accountId: accountId)
+        }
+        return repaired
+    }
+
+    nonisolated static func restoringConversationPreview(
+        _ conversation: ConversationSummary,
+        latest: ChatMessage?
+    ) -> ConversationSummary {
+        guard conversation.previewText.isEmpty, let latest else { return conversation }
+        let preview = latest.text.nonEmpty
+            ?? (latest.voiceMessage == nil ? nil : "Voice message")
+            ?? (latest.attachments.isEmpty
+                ? nil
+                : attachmentSummary(
+                    latest.attachments,
+                    messageKind: latest.messageKind
+                ))
+        guard let preview else { return conversation }
+        var copy = conversation
+        copy.lastMessage = preview
+        copy.lastAttachment = latest.attachments.first(where: { $0.kind == .image })
+        return copy
     }
 
     private func clearPendingSendMetadata(_ messageId: String) {
@@ -3700,11 +3804,19 @@ final class AppModel: ObservableObject {
                 in: cloudMessagesByPeer.values.flatMap { $0 }
             )
             : Self.directWireMessages(for: conversation, in: cloudMessagesByPeer)
+        let stickerSignatures = await expressiveMediaLibrary.attachmentSignatures(
+            accountId: account.accountId,
+            kind: .sticker
+        )
+        knownStickerAttachmentSignatures = stickerSignatures
         let projection = await Task.detached(priority: .userInitiated) {
-            Self.projectHistoryMessages(
+            MessageImageInteraction.markingKnownStickers(
+                in: Self.projectHistoryMessages(
                 accumulatedWireMessages,
                 conversation: conversation,
                 ownAccountId: account.accountId
+                ),
+                matching: stickerSignatures
             )
         }.value
         let merged = Self.mergePartialProjection(projection, preserving: existing)
@@ -3819,6 +3931,7 @@ final class AppModel: ObservableObject {
         account: CloudAccount,
         attachments: [CloudMessageAttachment],
         voiceMessage: VoiceMessage?,
+        messageKind: String,
         messageAction: MessageActionMetadata?,
         mentionTarget: ComposerMentionTarget?,
         mentions: [MessageMention]
@@ -3855,7 +3968,7 @@ final class AppModel: ObservableObject {
                 targetCloudAgentOwnerAccountId: mentionTarget?.kind == .agent ? mentionTarget?.accountId : nil,
                 targetCloudAgentOwnerName: mentionTarget?.kind == .agent ? mentionTarget?.ownerName : nil,
                 agentRuntimeRoute: requestedRuntimeRoute(for: conversation),
-                messageKind: voiceMessage == nil ? "text" : "voice",
+                messageKind: messageKind,
                 voiceMessage: voiceMessage
             )
         )
@@ -3867,7 +3980,7 @@ final class AppModel: ObservableObject {
             sessionId: conversation.sessionId,
             clientMessageId: localMessageId,
             attachments: attachments,
-            messageKind: voiceMessage == nil ? "text" : "voice",
+            messageKind: messageKind,
             voiceMessage: voiceMessage,
             conversationKind: "group",
             memberAccountIds: participants.map(\.accountId)
@@ -3969,7 +4082,9 @@ final class AppModel: ObservableObject {
             deliveryState: state,
             errorMessage: nil,
             requestMessageId: responseRequestId,
-            attachments: message.attachments.map(\.chatAttachment),
+            attachments: message.attachments.map {
+                $0.chatAttachment(messageKind: CloudMessageCodec.canonicalMessageKind(message))
+            },
             replyToMessageId: CloudMessageCodec.directEnvelope(message.body)?.messageAction?.replyToMessageId
                 ?? responseRequestId,
             reactionTargetMessageId: message.messageId,
@@ -4076,7 +4191,9 @@ final class AppModel: ObservableObject {
                 readByCount: delivery?.readByAccountIds.count,
                 readByAccountIds: delivery?.readByAccountIds ?? [],
                 attachments: payload.voiceMessage == nil
-                    ? (payload.attachments ?? wire.attachments).map(\.chatAttachment)
+                    ? (payload.attachments ?? wire.attachments).map {
+                        $0.chatAttachment(messageKind: payload.messageKind)
+                    }
                     : [],
                 replyToMessageId: payload.replyToMessageId ?? payload.messageAction?.replyToMessageId,
                 reactionTargetMessageId: wire.messageId,
@@ -4330,6 +4447,12 @@ final class AppModel: ObservableObject {
 
     private func refreshLoadedConversationProjections() async {
         guard let account else { return }
+        let stickerSignatures = await expressiveMediaLibrary.attachmentSignatures(
+            accountId: account.accountId,
+            kind: .sticker
+        )
+        guard self.account?.accountId == account.accountId else { return }
+        knownStickerAttachmentSignatures = stickerSignatures
         let loadedConversationIds = Set(messagesByConversation.keys)
         let loadedConversations = conversations.filter { loadedConversationIds.contains($0.id) }
         let wireSnapshot = cloudMessagesByPeer
@@ -4354,7 +4477,13 @@ final class AppModel: ObservableObject {
                         ownAccountId: account.accountId
                     )
                 }
-                return (conversation.id, projected)
+                return (
+                    conversation.id,
+                    MessageImageInteraction.markingKnownStickers(
+                        in: projected,
+                        matching: stickerSignatures
+                    )
+                )
             })
         }.value
         for (conversationId, projected) in projections {
@@ -5078,9 +5207,15 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func updateConversationPreview(_ conversationId: String, text: String, date: Date) {
+    private func updateConversationPreview(
+        _ conversationId: String,
+        text: String,
+        attachment: ChatAttachment?,
+        date: Date
+    ) {
         if let index = conversations.firstIndex(where: { $0.id == conversationId }) {
             conversations[index].lastMessage = text
+            conversations[index].lastAttachment = attachment
             conversations[index].lastActivityAt = date
         }
     }
@@ -5179,6 +5314,7 @@ final class AppModel: ObservableObject {
             )
             if let conversationIndex = conversations.firstIndex(where: { $0.id == conversation.id }) {
                 conversations[conversationIndex].lastMessage = text
+                conversations[conversationIndex].lastAttachment = nil
                 conversations[conversationIndex].lastActivityAt = createdAt
             }
             return
@@ -5201,6 +5337,7 @@ final class AppModel: ObservableObject {
         }
         if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
             conversations[index].lastMessage = text
+            conversations[index].lastAttachment = nil
             conversations[index].lastActivityAt = createdAt
         }
     }

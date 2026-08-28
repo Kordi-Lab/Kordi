@@ -107,6 +107,29 @@ final class AttachmentTransferTests: XCTestCase {
         XCTAssertNotNil(attachment.previewURL)
     }
 
+    func testTransparentStickerPreviewPreservesAlphaInsteadOfAddingWhite() throws {
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        let image = UIGraphicsImageRenderer(
+            size: CGSize(width: 256, height: 256),
+            format: format
+        ).image { context in
+            UIColor.systemPink.setFill()
+            context.fill(CGRect(x: 64, y: 64, width: 128, height: 128))
+        }
+        let source = try XCTUnwrap(image.pngData())
+
+        let attachment = try PendingAttachmentLoader.loadExpressiveMedia(
+            data: source,
+            suggestedName: "transparent-sticker.png",
+            mimeType: "image/png",
+            expectedKind: .sticker
+        )
+
+        XCTAssertEqual(attachment.subtype, .sticker)
+        XCTAssertTrue(try XCTUnwrap(attachment.previewURL).hasPrefix("data:image/png;base64,"))
+    }
+
     func testFilesLoaderRejectsImagesSoTheAttachmentSourcesStaySeparate() throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("kordi-attachment-source-test.png")
@@ -238,19 +261,76 @@ final class AttachmentTransferTests: XCTestCase {
         XCTAssertEqual(pendingGIF.mimeType, "image/gif")
         XCTAssertEqual(pendingGIF.data, gifData)
 
-        do {
-            _ = try await store.add(
-                accountId: accountId,
-                fileAt: gifURL,
-                expectedKind: .sticker
-            )
-            XCTFail("A GIF must not be added to My Stickers.")
-        } catch {
-            XCTAssertEqual(
-                error.localizedDescription,
-                ExpressiveMediaLibraryError.unsupportedFile.localizedDescription
-            )
+        let savedGIFSticker = try await store.add(
+            accountId: accountId,
+            fileAt: gifURL,
+            expectedKind: .sticker
+        )
+        XCTAssertEqual(savedGIFSticker.kind, .sticker)
+        XCTAssertEqual(savedGIFSticker.mimeType, "image/gif")
+        XCTAssertEqual(
+            try Data(contentsOf: accountDirectory.appendingPathComponent(savedGIFSticker.relativeFileName)),
+            gifData
+        )
+    }
+
+    func testExpressiveMediaLibraryNormalizesOversizedStaticStickerBeforeSync() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-expressive-compression-\(UUID().uuidString)", isDirectory: true)
+        let sourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("oversized-sticker-\(UUID().uuidString).png")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            try? FileManager.default.removeItem(at: sourceURL)
         }
+
+        let side = 1_024
+        var pixels = [UInt8](repeating: 0, count: side * side * 4)
+        var randomState: UInt32 = 0x5eed
+        for offset in stride(from: 0, to: pixels.count, by: 4) {
+            randomState = randomState &* 1_664_525 &+ 1_013_904_223
+            pixels[offset] = UInt8(truncatingIfNeeded: randomState >> 24)
+            randomState = randomState &* 1_664_525 &+ 1_013_904_223
+            pixels[offset + 1] = UInt8(truncatingIfNeeded: randomState >> 24)
+            randomState = randomState &* 1_664_525 &+ 1_013_904_223
+            pixels[offset + 2] = UInt8(truncatingIfNeeded: randomState >> 24)
+            pixels[offset + 3] = 255
+        }
+        let image = try pixels.withUnsafeMutableBytes { bytes -> UIImage in
+            let context = try XCTUnwrap(CGContext(
+                data: bytes.baseAddress,
+                width: side,
+                height: side,
+                bitsPerComponent: 8,
+                bytesPerRow: side * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            return UIImage(cgImage: try XCTUnwrap(context.makeImage()))
+        }
+        let sourceData = try XCTUnwrap(image.pngData())
+        XCTAssertGreaterThan(sourceData.count, PendingAttachmentLoader.maximumAttachmentBytes)
+        try sourceData.write(to: sourceURL, options: .atomic)
+
+        let store = ExpressiveMediaLibraryStore(directory: directory)
+        let saved = try await store.add(
+            accountId: "acct-compressed-sticker",
+            fileAt: sourceURL,
+            expectedKind: .sticker
+        )
+        let savedEntries = await store.entries(accountId: "acct-compressed-sticker", kind: .sticker)
+        let savedURL = try XCTUnwrap(savedEntries.first?.fileURL)
+        let savedData = try Data(contentsOf: savedURL)
+        let savedImage = try XCTUnwrap(UIImage(data: savedData)?.cgImage)
+        let pending = try await store.pendingAttachment(
+            accountId: "acct-compressed-sticker",
+            for: saved
+        )
+
+        XCTAssertEqual(saved.name, sourceURL.lastPathComponent)
+        XCTAssertLessThanOrEqual(saved.sizeBytes, Int64(PendingAttachmentLoader.maximumAttachmentBytes))
+        XCTAssertLessThanOrEqual(max(savedImage.width, savedImage.height), 512)
+        XCTAssertEqual(savedData, pending.data)
     }
 
     func testExpressiveMediaLibraryScopesItemsByAccountAndImportsCloudMedia() async throws {

@@ -1,4 +1,5 @@
 import Foundation
+import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
@@ -308,6 +309,10 @@ private enum ExpressiveMediaCatalogError: LocalizedError {
     }
 }
 
+struct ExpressiveMediaImportRequest {
+    let completion: ([PhotosPickerItem]) -> Void
+}
+
 struct ExpressiveMediaPicker: View {
     @State private var selectedTab = ExpressivePickerTab.emoji
     let model: AppModel
@@ -316,6 +321,7 @@ struct ExpressiveMediaPicker: View {
     let onInsertEmoji: (String) -> Void
     let onSendMedia: (PendingAttachment) async -> Void
     let allowsSearch: Bool
+    var onRequestImport: ((ExpressiveMediaImportRequest) -> Void)? = nil
 
     var body: some View {
         pickerContent
@@ -342,7 +348,8 @@ struct ExpressiveMediaPicker: View {
                         model: model,
                         kind: .sticker,
                         isSending: isSending,
-                        onSendMedia: onSendMedia
+                        onSendMedia: onSendMedia,
+                        onRequestImport: onRequestImport
                     )
                     .id(ExpressivePickerTab.stickers)
                 case .gifs:
@@ -350,7 +357,8 @@ struct ExpressiveMediaPicker: View {
                         model: model,
                         kind: .gif,
                         isSending: isSending,
-                        onSendMedia: onSendMedia
+                        onSendMedia: onSendMedia,
+                        onRequestImport: onRequestImport
                     )
                     .id(ExpressivePickerTab.gifs)
                 }
@@ -521,12 +529,14 @@ struct BlobEmojiSelectionBoard: View {
 
 private struct ExpressiveMediaLibraryPanel: View {
     @State private var libraryEntries: [ExpressiveMediaLibraryEntry] = []
-    @State private var isShowingImporter = false
+    @State private var isShowingPhotoPicker = false
+    @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var activeMediaID: String?
     let model: AppModel
     let kind: ExpressiveMediaLibraryKind
     let isSending: Bool
     let onSendMedia: (PendingAttachment) async -> Void
+    let onRequestImport: ((ExpressiveMediaImportRequest) -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -537,12 +547,18 @@ private struct ExpressiveMediaLibraryPanel: View {
             }
             .scrollDismissesKeyboard(.never)
         }
-        .fileImporter(
-            isPresented: $isShowingImporter,
-            allowedContentTypes: allowedContentTypes,
-            allowsMultipleSelection: true,
-            onCompletion: importMedia
+        .photosPicker(
+            isPresented: $isShowingPhotoPicker,
+            selection: $selectedPhotos,
+            maxSelectionCount: PendingAttachmentLoader.maximumAttachmentCount,
+            matching: .images,
+            preferredItemEncoding: .current
         )
+        .onChange(of: selectedPhotos) { _, items in
+            guard !items.isEmpty else { return }
+            selectedPhotos = []
+            importMedia(items)
+        }
         .task {
             await refreshLibrary()
         }
@@ -555,7 +571,13 @@ private struct ExpressiveMediaLibraryPanel: View {
                     .font(.subheadline.weight(.semibold))
                 Spacer()
                 Button {
-                    isShowingImporter = true
+                    if let onRequestImport {
+                        onRequestImport(ExpressiveMediaImportRequest(
+                            completion: importMedia
+                        ))
+                    } else {
+                        isShowingPhotoPicker = true
+                    }
                 } label: {
                     Label("Add", systemImage: "plus")
                         .font(.subheadline.weight(.semibold))
@@ -569,8 +591,8 @@ private struct ExpressiveMediaLibraryPanel: View {
 
             if libraryEntries.isEmpty {
                 Text(kind == .sticker
-                     ? "Add a PNG, JPEG, or WebP file."
-                     : "Add a GIF file.")
+                     ? "Add an image from Photos."
+                     : "Add an animated GIF from Photos.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 54, alignment: .center)
@@ -582,7 +604,6 @@ private struct ExpressiveMediaLibraryPanel: View {
                                 send(entry)
                             } label: {
                                 LocalExpressiveMediaThumbnail(url: entry.fileURL)
-                                    .frame(width: 64, height: 64)
                                     .overlay {
                                         if activeMediaID == entry.id {
                                             ProgressView()
@@ -603,38 +624,79 @@ private struct ExpressiveMediaLibraryPanel: View {
         }
     }
 
-    private var allowedContentTypes: [UTType] {
-        switch kind {
-        case .sticker:
-            var types: [UTType] = [.png, .jpeg]
-            if let webP = UTType(filenameExtension: "webp") { types.append(webP) }
-            return types
-        case .gif:
-            return [.gif]
-        }
-    }
-
     private var importerHint: String {
         kind == .sticker
-            ? "Adds PNG, JPEG, or WebP files directly to My Stickers"
-            : "Adds GIF files directly to My GIFs"
+            ? "Opens Photos to add an image directly to My Stickers"
+            : "Opens Photos to add an animated GIF directly to My GIFs"
     }
 
-    private func importMedia(_ result: Result<[URL], Error>) {
+    private func importMedia(_ items: [PhotosPickerItem]) {
         Task {
             do {
-                let urls = try result.get()
-                guard !urls.isEmpty else { return }
+                guard !items.isEmpty else { return }
                 activeMediaID = "import"
-                _ = await model.addExpressiveMediaFiles(urls, kind: kind)
+                for (index, item) in items.enumerated() {
+                    let attachment = try await loadPhoto(item, index: index)
+                    guard await model.addExpressiveMediaAttachment(attachment, kind: kind) else {
+                        activeMediaID = nil
+                        return
+                    }
+                }
                 await refreshLibrary()
                 activeMediaID = nil
             } catch {
-                let nsError = error as NSError
-                guard nsError.domain != NSCocoaErrorDomain || nsError.code != NSUserCancelledError else { return }
+                activeMediaID = nil
                 model.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func loadPhoto(_ item: PhotosPickerItem, index: Int) async throws -> PendingAttachment {
+        guard let data = try await item.loadTransferable(type: Data.self) else {
+            throw AttachmentTransferError.invalidImage
+        }
+        let isGIF = item.supportedContentTypes.contains { $0.conforms(to: .gif) }
+        let expectedKind = kind
+        if kind == .gif, !isGIF {
+            throw ExpressiveMediaLibraryError.unsupportedFile
+        }
+        if isGIF {
+            return try await Task.detached(priority: .userInitiated) {
+                try PendingAttachmentLoader.loadExpressiveMedia(
+                    data: data,
+                    suggestedName: "GIF-\(index + 1).gif",
+                    mimeType: "image/gif",
+                    expectedKind: expectedKind
+                )
+            }.value
+        }
+        guard kind == .sticker else {
+            throw ExpressiveMediaLibraryError.unsupportedFile
+        }
+        if let type = item.supportedContentTypes.first(where: {
+            guard let fileExtension = $0.preferredFilenameExtension else { return false }
+            return ExpressiveMediaLibraryKind.supportedKind(
+                name: "Sticker.\(fileExtension)",
+                mimeType: $0.preferredMIMEType
+            ) == .sticker
+        }), let fileExtension = type.preferredFilenameExtension {
+            return try await Task.detached(priority: .userInitiated) {
+                try PendingAttachmentLoader.loadExpressiveMedia(
+                    data: data,
+                    suggestedName: "Sticker-\(index + 1).\(fileExtension)",
+                    mimeType: type.preferredMIMEType,
+                    expectedKind: .sticker
+                )
+            }.value
+        }
+        var attachment = try await Task.detached(priority: .userInitiated) {
+            try PendingAttachmentLoader.loadImage(
+                data: data,
+                suggestedName: "Sticker-\(index + 1).jpg"
+            )
+        }.value
+        attachment.subtype = .sticker
+        return attachment
     }
 
     private func send(_ entry: ExpressiveMediaLibraryEntry) {
@@ -665,12 +727,12 @@ private struct LocalExpressiveMediaThumbnail: View {
             if let image {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
             } else {
                 ProgressView().controlSize(.small)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: 64, height: 64)
         .background(Color(uiColor: .tertiarySystemFill))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .clipped()

@@ -41,6 +41,7 @@ export type ComposerSelectorState = { scope: ComposerScope; type: ComposerSelect
 export type AttachmentItem = MessageAttachment & {
   id: string;
   path: string;
+  expressiveMedia?: boolean;
   memeRightsConfirmed?: boolean;
   voiceMessage?: MessageVoiceDraft;
 };

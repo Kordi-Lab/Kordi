@@ -78,7 +78,18 @@ async function runNativeCloudAttachmentUpload({
       if (!eventPath) return;
       publish(eventPath, payload);
     });
-    return await uploadDesktopCloudAttachment(id, path, contentType);
+    const result = await uploadDesktopCloudAttachment(id, path, contentType);
+    const totalBytes = Math.max(
+      states.get(path)?.totalBytes ?? 0,
+      result.sizeBytes ?? 0,
+    );
+    publish(path, {
+      requestId: id,
+      phase: 'complete',
+      uploadedBytes: totalBytes,
+      totalBytes,
+    });
+    return result;
   } catch (error) {
     const message = error instanceof Error
       ? error.message

@@ -5,10 +5,12 @@ import type { AttachmentItem } from '../composerController.types';
 export function toOptimisticAttachments(attachments: AttachmentItem[]) {
   return attachments.map((attachment) => ({
     kind: attachment.kind,
-    ...(attachment.subtype === 'meme' ? {
-      subtype: 'meme' as const,
-      altText: attachment.altText ?? null,
-    } : {}),
+    ...(attachment.subtype === 'sticker'
+      ? { subtype: 'sticker' as const }
+      : attachment.subtype === 'meme' ? {
+          subtype: 'meme' as const,
+          altText: attachment.altText ?? null,
+        } : {}),
     name: attachment.name,
     formatLabel: attachment.formatLabel,
     previewUrl: attachment.previewUrl,
@@ -27,7 +29,10 @@ export function voiceMessageDraftFromAttachments(attachments: readonly Attachmen
 
 export function voiceMessageSendFields(attachments: readonly AttachmentItem[]) {
   const voiceMessage = voiceMessageDraftFromAttachments(attachments);
-  return { messageKind: voiceMessage ? 'voice' : 'text', voiceMessage };
+  const sticker = !voiceMessage
+    && attachments.length === 1
+    && attachments[0]?.subtype === 'sticker';
+  return { messageKind: voiceMessage ? 'voice' : sticker ? 'sticker' : 'text', voiceMessage };
 }
 
 function optimisticVoiceMessage(attachments: readonly AttachmentItem[]) {

@@ -21,6 +21,7 @@ final class CachedConversationRecord {
     var ownerDisplayName: String?
     var displayName: String
     var lastMessage: String
+    var lastAttachmentJSON: String?
     var lastActivityAt: Date
     var unreadCount: Int
     var unreadMentionCount: Int = 0
@@ -44,6 +45,10 @@ final class CachedConversationRecord {
         ownerDisplayName = conversation.ownerDisplayName
         displayName = conversation.displayName
         lastMessage = conversation.lastMessage
+        lastAttachmentJSON = try? String(
+            data: JSONEncoder().encode(conversation.lastAttachment),
+            encoding: .utf8
+        )
         lastActivityAt = conversation.lastActivityAt
         unreadCount = conversation.unreadCount
         unreadMentionCount = conversation.unreadMentionCount
@@ -67,6 +72,9 @@ final class CachedConversationRecord {
             .flatMap { $0.data(using: .utf8) }
             .flatMap { try? JSONDecoder().decode([CloudGroupParticipant].self, from: $0) }
             ?? []
+        let lastAttachment = lastAttachmentJSON
+            .flatMap { $0.data(using: .utf8) }
+            .flatMap { try? JSONDecoder().decode(ChatAttachment.self, from: $0) }
         return ConversationSummary(
             id: conversationId,
             kind: kind,
@@ -75,6 +83,7 @@ final class CachedConversationRecord {
             ownerDisplayName: ownerDisplayName,
             displayName: displayName,
             lastMessage: lastMessage,
+            lastAttachment: lastAttachment,
             lastActivityAt: lastActivityAt,
             unreadCount: unreadCount,
             avatarSource: avatarURL,

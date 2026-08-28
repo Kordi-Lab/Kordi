@@ -84,6 +84,10 @@ struct ConversationView: View {
     @State private var messageActionAttachment: ChatAttachment?
     @State private var selectedMessageText: String?
     @State private var messageActionFeedback = 0
+
+    private var navigationBarVisibility: Visibility {
+        showsNavigationChrome && messageActionMessage == nil ? .visible : .hidden
+    }
     @State private var forwardedDestination: ConversationSummary?
     @State private var selectedCompanionConversation: ConversationSummary?
     @State private var showsCompanionPanel = false
@@ -683,7 +687,7 @@ struct ConversationView: View {
         .navigationBarTitleDisplayMode(.inline)
         .tint(chatTheme.accent)
         .toolbarBackground(.regularMaterial, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar(navigationBarVisibility, for: .navigationBar)
         .toolbar {
             if showsNavigationChrome, messageActionMessage == nil {
                 if canOpenCompanionPanel {
@@ -949,6 +953,10 @@ struct ConversationView: View {
                     )
                     dismissMessageActions()
                 },
+                onSaveSticker: { attachment in
+                    dismissMessageActions()
+                    Task { _ = await model.addAttachmentToExpressiveMediaLibrary(attachment) }
+                },
                 onSelect: {
                     toggleSelection(message.id)
                     dismissMessageActions()
@@ -972,8 +980,12 @@ struct ConversationView: View {
     ) {
         messageActionFrame = frame
         guard messageActionMessage?.id != message.id else { return }
-        messageActionAttachment = attachment
+        let selectedAttachment = attachment
             ?? message.attachments.first(where: { $0.kind == .image })
+        let stickerAttachment = MessageImageInteraction.stickerAttachment(in: message)
+        messageActionAttachment = selectedAttachment?.id == stickerAttachment?.id
+            ? nil
+            : selectedAttachment
         selectedMessageText = nil
         isComposerFocused = false
         dismissComposerPickers()

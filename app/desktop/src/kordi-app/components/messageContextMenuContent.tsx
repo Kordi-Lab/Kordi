@@ -12,6 +12,7 @@ import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibrary
 import { IdentityAvatar } from './IdentityAvatar';
 import { MessageReactionSurface } from './messageReactions';
 import { AttachmentActions } from './transcriptAttachmentActions';
+import { messageStickerAttachment } from './messageStickerPresentation';
 
 const textStyle = {
   fontSize: '10px',
@@ -105,6 +106,7 @@ export function MessageContextMenuContent({
 } & MessageContextMenuActionHandlers) {
   const [showsAllReactions, setShowsAllReactions] = useState(false);
   const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
+  const stickerAttachment = messageStickerAttachment(msg);
   const actionEligible = isActionEligible(msg);
   const canReact = actionEligible
     && Boolean(msg.reactionConversationId && msg.reactionTargetMessageId && onReactMessage);
@@ -165,6 +167,7 @@ export function MessageContextMenuContent({
         {actionEligible ? <Action action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={() => closeAfter(onReplyMessage)} /> : null}
         {copyableText ? <Action action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy" onClick={() => void copyText()} /> : null}
         {actionEligible ? <Action action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => closeAfter(onForwardMessage)} /> : null}
+        {stickerAttachment ? <AddAttachmentToMediaLibraryAction attachment={{ ...stickerAttachment, subtype: 'sticker' }} onAdded={() => onClose?.()} /> : null}
         {actionEligible && (onRequestPinMessage || onRequestUnpinMessage) ? (
           isPinned
             ? <Action action="unpin" icon={<Pin className="h-4 w-4" />} label="Unpin" onClick={() => closeAfter(onRequestUnpinMessage)} />

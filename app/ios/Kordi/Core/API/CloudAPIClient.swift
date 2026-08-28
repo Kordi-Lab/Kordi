@@ -1167,7 +1167,7 @@ actor CloudAPIClient {
                 attachmentId: uploaded.attachmentId,
                 name: attachment.name,
                 kind: attachment.kind.rawValue,
-                subtype: attachment.subtype,
+                subtype: attachment.subtype == .sticker ? nil : attachment.subtype,
                 altText: attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty,
                 mimeType: uploaded.contentType?.nonEmpty ?? attachment.mimeType,
                 sizeBytes: uploaded.sizeBytes ?? attachment.sizeBytes,

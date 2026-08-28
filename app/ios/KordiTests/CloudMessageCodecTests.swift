@@ -131,6 +131,54 @@ final class CloudMessageCodecTests: XCTestCase {
         XCTAssertFalse(CloudMessageCodec.isAgentResponse("Hello Maya"))
     }
 
+    func testAttachmentOnlyMessagesExposeReadableSidebarPreviews() {
+        let sticker = CloudMessageDTO(
+            messageId: "sticker",
+            fromAccountId: "acct_me",
+            toAccountId: "acct_peer",
+            body: "",
+            createdAt: "2026-08-28T10:00:00Z",
+            deliveredAt: nil,
+            readAt: nil,
+            direction: "outgoing",
+            sessionId: "session",
+            attachments: [CloudMessageAttachment(
+                attachmentId: "att-sticker",
+                name: "kirby.png",
+                kind: "image",
+                subtype: .sticker,
+                mimeType: "image/png",
+                sizeBytes: 1_024,
+                downloadUrl: nil,
+                previewUrl: "data:image/png;base64,preview"
+            )],
+            messageKind: "sticker"
+        )
+        let gif = CloudMessageDTO(
+            messageId: "gif",
+            fromAccountId: "acct_me",
+            toAccountId: "acct_peer",
+            body: "",
+            createdAt: "2026-08-28T10:01:00Z",
+            deliveredAt: nil,
+            readAt: nil,
+            direction: "outgoing",
+            sessionId: "session",
+            attachments: [CloudMessageAttachment(
+                attachmentId: "att-gif",
+                name: "dance.gif",
+                kind: "image",
+                mimeType: "image/gif",
+                sizeBytes: 1_024,
+                downloadUrl: nil,
+                previewUrl: "data:image/png;base64,preview"
+            )]
+        )
+
+        XCTAssertEqual(CloudMessageCodec.previewText(sticker), "Sticker")
+        XCTAssertEqual(CloudMessageCodec.previewText(gif), "GIF")
+    }
+
     func testAgentResponseExposesLinkedRequestId() throws {
         let payload = try XCTUnwrap(#"{"text":"Done","requestId":"msg_request","deliveryState":"complete"}"#.data(using: .utf8))
         let encoded = payload.base64EncodedString()
@@ -471,6 +519,42 @@ final class CloudMessageCodecTests: XCTestCase {
         XCTAssertEqual(
             AppModel.timelineIdentity(for: local, requestPresentationIds: presentationIds),
             AppModel.timelineIdentity(for: server, requestPresentationIds: presentationIds)
+        )
+    }
+
+    @MainActor
+    func testOptimisticMediaSendKeepsItsTimelineIdentityAfterServerPromotion() {
+        let clientMessageId = CloudAPIClient.stableOperationUUID("ios-media-send")
+        let local = ChatMessage(
+            id: "ios-local-media",
+            clientMessageId: clientMessageId,
+            conversationId: "person-session",
+            author: .me,
+            authorName: "You",
+            text: "",
+            createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .sending,
+            errorMessage: nil,
+            requestMessageId: nil,
+            attachments: []
+        )
+        let server = ChatMessage(
+            id: "server-media",
+            clientMessageId: clientMessageId,
+            conversationId: "person-session",
+            author: .me,
+            authorName: "You",
+            text: "",
+            createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            attachments: []
+        )
+
+        XCTAssertEqual(
+            AppModel.timelineIdentity(for: local, requestPresentationIds: [:]),
+            AppModel.timelineIdentity(for: server, requestPresentationIds: [:])
         )
     }
 

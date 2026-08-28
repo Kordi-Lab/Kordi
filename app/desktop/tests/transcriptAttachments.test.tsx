@@ -7,13 +7,21 @@ import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import * as transcriptAttachmentsModule from '../src/kordi-app/components/transcriptAttachments';
-import { attachmentPreviewIdentity } from '../src/features/chat/attachmentMediaGallery';
+import {
+  attachmentPreviewIdentity,
+  attachmentPreviewUrl,
+} from '../src/features/chat/attachmentMediaGallery';
+import {
+  cacheCloudAttachmentLocalPath,
+  clearCloudAttachmentLocalPathCache,
+} from '../src/features/cloud/cloudAttachmentLocalPathCache';
 import {
   resetCloudAttachmentPreviewLoader,
 } from '../src/features/cloud/cloudAttachments';
 import { __setSessionBackendForTests, type SessionStorageBackend } from '../src/features/cloud/session';
 import {
   AttachmentPreview,
+  AttachmentContextMenu,
   attachmentImageForegroundToneFromRgba,
   attachmentImageDeliveryVisual,
   shouldCloseAttachmentContextMenuForTarget,
@@ -240,12 +248,75 @@ test('image attachments render as clickable lightweight previews without heavy f
   assert.match(markup, /Screenshot 2026-05-20\.png/);
 });
 
+test('single-image geometry is final before the image load event', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
+
+  assert.match(markup, /inline-flex h-auto w-auto max-w-full rounded-\[16px\]/);
+  assert.match(markup, /max-h-\[320px\] max-w-full rounded-\[16px\] object-contain/);
+  assert.doesNotMatch(markup, /row-span-3/);
+});
+
 test('image attachment actions are not rendered as sticky under-image buttons', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: imageMessage }));
 
   assert.doesNotMatch(markup, /data-attachment-image-context-target="true"/);
   assert.doesNotMatch(markup, /Right-click for image actions/);
   assert.doesNotMatch(markup, /aria-label="Download Screenshot 2026-05-20\.png"/);
+});
+
+test('stickers defer to message actions without opening the image preview', () => {
+  const sticker = {
+    ...imageMessage.attachments[0],
+    subtype: 'sticker' as const,
+    previewUrl: 'data:image/png;base64,sticker-preview',
+  };
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: { ...imageMessage, attachments: [sticker] },
+  }));
+  assert.match(markup, /data-attachment-sticker="true"/);
+  assert.doesNotMatch(markup, /data-attachment-image-preview-trigger="true"/);
+  assert.match(markup, /Right-click for message actions/);
+});
+
+test('GIF messages ignore static server previews and use compact media sizing', () => {
+  const remoteGif: MessageAttachment = {
+    kind: 'image',
+    name: 'dance.gif',
+    mimeType: 'image/gif',
+    sizeBytes: 80 * 1024,
+    attachmentId: 'att_gif',
+    previewUrl: 'data:image/png;base64,static-preview',
+  };
+  assert.equal(attachmentPreviewUrl(remoteGif), 'data:image/png;base64,static-preview');
+
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: {
+      ...imageMessage,
+      attachments: [{ ...remoteGif, attachmentId: null, previewUrl: 'data:image/gif;base64,animated' }],
+    },
+  }));
+  assert.match(markup, /h-\[180px\] w-\[180px\] max-w-full rounded-\[16px\] object-contain/);
+  assert.doesNotMatch(markup, /max-h-\[320px\]/);
+});
+
+test('GIF loading geometry matches its final compact media surface', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: {
+      ...imageMessage,
+      attachments: [{
+        kind: 'image',
+        name: 'dance.gif',
+        mimeType: 'image/gif',
+        sizeBytes: 80 * 1024,
+        attachmentId: 'att_gif_loading',
+        previewUrl: null,
+      }],
+    },
+  }));
+
+  assert.match(markup, /data-attachment-image-loading="true"/);
+  assert.match(markup, /h-\[180px\] w-\[180px\] min-h-0 aspect-auto/);
+  assert.doesNotMatch(markup, /w-\[min\(100%,20rem\)\]/);
 });
 
 test('sending image attachments show a centered adaptive media ring without chrome', () => {
@@ -370,6 +441,10 @@ test('image delivery status mapping preserves upload, partial, and terminal sema
     kind: 'failed',
     label: 'Sending failed',
   });
+  assert.deepEqual(attachmentImageDeliveryVisual('pending_send', 'Upload request failed'), {
+    kind: 'failed',
+    label: 'Upload request failed',
+  });
   assert.equal(attachmentImageDeliveryVisual('unknown'), null);
 });
 
@@ -435,6 +510,68 @@ test('remote images without a completed local preview render a quiet loading til
   assert.doesNotMatch(markup, /Preview unavailable/);
   assert.doesNotMatch(markup, /app-attachment-image-fallback/);
   assert.doesNotMatch(markup, />Screenshot 2026-05-20\.png</);
+});
+
+test('a completed upload resolves its original attachment cache key', async () => {
+  const installedDom = installDom();
+  let root: Root | null = null;
+  try {
+    Object.defineProperty(installedDom.dom.window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: {
+        convertFileSrc: (path: string) => `asset://localhost/${encodeURIComponent(path)}`,
+      },
+    });
+    clearCloudAttachmentLocalPathCache();
+    cacheCloudAttachmentLocalPath('att_completed_upload', '/cache/completed-upload.png');
+    const host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root?.render(createElement(AttachmentPreview, {
+      msg: {
+        ...imageMessage,
+        statusChips: ['sent'],
+        attachments: [{
+          ...imageMessage.attachments[0],
+          attachmentId: 'att_completed_upload',
+          localPath: null,
+          previewUrl: null,
+        }],
+      },
+    })));
+    await flushReactUpdates();
+
+    const completedImage = host.querySelector<HTMLImageElement>('[data-attachment-image-card="true"] img');
+    assert.match(
+      completedImage?.src ?? '',
+      /completed-upload\.png/,
+    );
+    await act(async () => completedImage?.dispatchEvent(new installedDom.dom.window.Event('load')));
+    await flushReactUpdates();
+    assert.equal(host.querySelector('[data-attachment-image-loading="true"]'), null);
+    const originalImageNode = host.querySelector<HTMLImageElement>('[data-attachment-image-card="true"] img');
+    await act(async () => root?.render(createElement(AttachmentPreview, {
+      msg: {
+        ...imageMessage,
+        statusChips: ['sent'],
+        attachments: [{
+          ...imageMessage.attachments[0],
+          attachmentId: 'att_completed_upload',
+          localPath: '/cache/completed-upload.png',
+          previewUrl: null,
+        }],
+      },
+    })));
+    await flushReactUpdates();
+    assert.equal(
+      host.querySelector<HTMLImageElement>('[data-attachment-image-card="true"] img'),
+      originalImageNode,
+    );
+  } finally {
+    if (root) await act(async () => root?.unmount());
+    clearCloudAttachmentLocalPathCache();
+    installedDom.restore();
+  }
 });
 
 test('a stale persisted preview path falls back to the Cloud attachment bytes', async () => {

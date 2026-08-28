@@ -285,7 +285,7 @@ function ParticipantSpaceRow({
                   alt=""
                   aria-hidden="true"
                   data-sidebar-image-thumbnail="true"
-                  className="h-3.5 w-3.5 shrink-0 rounded-[2px] object-cover"
+                  className="h-3.5 w-3.5 shrink-0 rounded-[2px] object-contain"
                 />
               ) : previewAttachment?.kind === 'file' ? (
                 <Paperclip className="h-3 w-3 shrink-0" aria-hidden="true" />

@@ -72,7 +72,8 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(conversationSource.contains("messageActionAcceptsInput"))
         XCTAssertTrue(conversationSource.contains(".scrollDisabled(messageActionMessage != nil)"))
         XCTAssertFalse(conversationSource.contains("proxy.scrollTo(row.id, anchor: .bottom)"))
-        XCTAssertTrue(conversationSource.contains(".toolbarBackground(.visible"))
+        XCTAssertFalse(conversationSource.contains(".toolbarBackground(.visible"))
+        XCTAssertTrue(conversationSource.contains(".toolbar(navigationBarVisibility, for: .navigationBar)"))
         XCTAssertTrue(conversationSource.contains("WindowOverlayPresenter("))
         XCTAssertTrue(conversationSource.contains("passthroughFrame:"))
     }
@@ -96,6 +97,12 @@ final class ConversationReadPresentationTests: XCTestCase {
         let animatedURL = try XCTUnwrap(BlobEmojiCatalog.assetURL(for: animated))
         let animatedSource = try XCTUnwrap(CGImageSourceCreateWithURL(animatedURL as CFURL, nil))
         XCTAssertGreaterThan(CGImageSourceGetCount(animatedSource), 1)
+        let decoded = try XCTUnwrap(AnimatedImageDecoder.image(
+            at: animatedURL,
+            animated: true,
+            maximumPixelSize: 64
+        ))
+        XCTAssertGreaterThan(decoded.images?.count ?? 1, 1)
     }
 
     func testReactionMutationAddsTogglesAndRemovesWithoutDuplicates() {
@@ -218,7 +225,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(imageSource.contains("MessageImageGestureSurface"))
         XCTAssertFalse(imageSource.contains("Button(action: activate)"))
         XCTAssertTrue(imageSource.contains("MessageInteractionGestureBridge("))
-        XCTAssertTrue(imageSource.contains("onTap: activate"))
+        XCTAssertTrue(imageSource.contains("onTap: opensPreview ? activate : nil"))
         XCTAssertTrue(imageSource.contains("onLongPress: openActions"))
         XCTAssertTrue(gestureSource.contains("UILongPressGestureRecognizer"))
         XCTAssertTrue(gestureSource.contains("UITapGestureRecognizer"))

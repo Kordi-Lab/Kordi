@@ -31,7 +31,7 @@ export type ComposerAttachmentPresentation = {
   name: string;
   kind: 'image' | 'file';
   mimeType?: string | null;
-  subtype?: 'meme' | null;
+  subtype?: 'meme' | 'sticker' | null;
   altText?: string | null;
   memeRightsConfirmed?: boolean;
   path?: string;

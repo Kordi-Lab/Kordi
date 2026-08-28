@@ -1,4 +1,5 @@
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import { isAnimatedGifAttachment } from '@/features/chat/attachmentMediaGallery';
 import type { MessageAttachment } from '@/kordi-app/types';
 import { isNativeDesktopShell, storeDesktopChatAttachment } from '@/lib/desktop';
 import type {
@@ -45,6 +46,10 @@ export type CloudAttachmentPreviewLease = {
 };
 
 type PreviewDownloadClient = Pick<CloudAuthClient, 'downloadAttachmentContent'> & Partial<Pick<CloudAuthClient, 'downloadAttachmentPreviewContent'>>;
+type CloudAttachmentPreviewTarget = Pick<
+  CloudMessageAttachment,
+  'attachmentId' | 'previewAttachmentId' | 'name' | 'kind'
+> & Partial<Pick<CloudMessageAttachment, 'mimeType'>>;
 const cloudAttachmentPreviewUrlCache = new Map<string, CloudAttachmentPreviewResource>();
 let cloudAttachmentPreviewLoaderEpoch = 0;
 
@@ -233,10 +238,12 @@ export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessa
   const localPath = attachment.localPath ?? cachedCloudAttachmentLocalPath(attachment.attachmentId);
   return {
     kind: attachment.kind,
-    ...(attachment.subtype === 'meme' ? {
-      subtype: 'meme' as const,
-      altText: attachment.altText ?? null,
-    } : {}),
+    ...(attachment.subtype === 'sticker'
+      ? { subtype: 'sticker' as const }
+      : attachment.subtype === 'meme' ? {
+          subtype: 'meme' as const,
+          altText: attachment.altText ?? null,
+        } : {}),
     name: attachment.name,
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
@@ -264,14 +271,17 @@ export async function loadCloudAttachmentPreview({
 }: {
   token: string;
   client: PreviewDownloadClient;
-  attachment: Pick<CloudMessageAttachment, 'attachmentId' | 'previewAttachmentId' | 'name' | 'kind'>;
+  attachment: CloudAttachmentPreviewTarget;
   signal?: AbortSignal;
   createObjectUrl?: (blob: Blob) => string;
 }) {
   if (attachment.kind !== 'image') return null;
-  const contentAttachmentId = attachment.previewAttachmentId?.trim() || attachment.attachmentId?.trim();
+  const isAnimatedGif = isAnimatedGifAttachment(attachment);
+  const contentAttachmentId = isAnimatedGif
+    ? attachment.attachmentId?.trim()
+    : attachment.previewAttachmentId?.trim() || attachment.attachmentId?.trim();
   if (!contentAttachmentId) return null;
-  const previewBlob = client.downloadAttachmentPreviewContent
+  const previewBlob = !isAnimatedGif && client.downloadAttachmentPreviewContent
     ? await client.downloadAttachmentPreviewContent(token, contentAttachmentId, signal).catch(() => null)
     : null;
   const blob = previewBlob
@@ -286,10 +296,12 @@ export async function loadCloudAttachmentPreview({
 export async function loadVisibleCloudAttachmentPreview(input: {
   token: string;
   client: PreviewDownloadClient;
-  attachment: Pick<CloudMessageAttachment, 'attachmentId' | 'previewAttachmentId' | 'name' | 'kind'>;
+  attachment: CloudAttachmentPreviewTarget;
   signal?: AbortSignal;
 }) {
-  const cacheId = input.attachment.previewAttachmentId?.trim() || input.attachment.attachmentId?.trim();
+  const cacheId = isAnimatedGifAttachment(input.attachment)
+    ? input.attachment.attachmentId?.trim()
+    : input.attachment.previewAttachmentId?.trim() || input.attachment.attachmentId?.trim();
   if (!cacheId) return null;
   const loaderEpoch = cloudAttachmentPreviewLoaderEpoch;
   const cached = cachedCloudAttachmentPreviewResource(cacheId);
@@ -395,10 +407,12 @@ export async function resolveForwardAttachmentItems({
       previewAttachmentId: attachment.previewAttachmentId ?? null,
       name: attachment.name,
       kind: attachment.kind,
-      ...(attachment.subtype === 'meme' ? {
-        subtype: 'meme' as const,
-        altText: attachment.altText ?? null,
-      } : {}),
+      ...(attachment.subtype === 'sticker'
+        ? { subtype: 'sticker' as const }
+        : attachment.subtype === 'meme' ? {
+            subtype: 'meme' as const,
+            altText: attachment.altText ?? null,
+          } : {}),
       mimeType: attachment.mimeType ?? null,
       sizeBytes: attachment.sizeBytes ?? null,
       downloadUrl: attachment.downloadUrl ?? null,

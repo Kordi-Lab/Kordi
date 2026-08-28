@@ -78,7 +78,10 @@ function collaborationMessageAttachments(message: DesktopCollaborationConversati
   if (!message.attachments || message.attachments.length === 0) return undefined;
   return message.attachments.map((attachment) => {
     const previewUrl = collaborationAttachmentPreviewUrl(attachment);
-    return previewUrl ? { ...attachment, previewUrl } : attachment;
+    const mapped = message.messageKind === 'sticker' && attachment.kind === 'image'
+      ? { ...attachment, subtype: 'sticker' as const }
+      : attachment;
+    return previewUrl ? { ...mapped, previewUrl } : mapped;
   });
 }
 
@@ -402,6 +405,7 @@ export function mapCollaborationConversationToViewModel(
     }
     const mappedMessage: Message = {
       id: messageId,
+      clientMessageId: message.clientMessageId ?? null,
       role: isAgent
         ? (isOutboundHuman
             ? 'user'
