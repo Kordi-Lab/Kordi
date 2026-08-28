@@ -27,15 +27,21 @@ test('self-agent reconciliation reads only scoped references', () => {
 });
 
 test('native group and self-agent recovery consume bounded message pages', () => {
-  const group = source('../src/features/cloud/useCloudGroupReplay.ts');
-  assert.match(group, /NATIVE_GROUP_RECOVERY_PAGE_SIZE = 100/);
+  const group = source('../src/features/cloud/cloudGroupNativeRecovery.ts');
+  assert.match(group, /PAGE_SIZE = 100/);
+  assert.match(group, /waitForCompleteChatSyncHistory\(/);
   assert.match(group, /loadChatSyncMessagesPage\(/);
   assert.match(group, /if \(!page\.hasMore\) break/);
   assert.match(group, /next <= afterSequence/);
   assert.doesNotMatch(group, /messages\.push\(\.\.\.page\.messages/);
+  assert.ok(
+    group.indexOf('conversation.latest_message_sequence - PAGE_SIZE')
+      < group.indexOf('for (const history of histories)'),
+  );
 
   const selfAgent = source('../src/features/cloud/useCloudSelfAgentCanonicalSync.ts');
   assert.match(selfAgent, /NATIVE_SELF_AGENT_RECOVERY_PAGE_SIZE = 200/);
+  assert.match(selfAgent, /waitForCompleteChatSyncHistory\(/);
   assert.match(selfAgent, /loadChatSyncRecoveryMessageIds\(/);
   assert.match(selfAgent, /loadChatSyncMessagesPage\(/);
   assert.ok(
@@ -45,6 +51,10 @@ test('native group and self-agent recovery consume bounded message pages', () =>
   assert.match(selfAgent, /if \(!page\.hasMore\) break/);
   assert.match(selfAgent, /for \(const conversation of conversations\)/);
   assert.doesNotMatch(selfAgent, /Promise\.all\(\[\.\.\.conversations/);
+  assert.ok(
+    selfAgent.indexOf('- NATIVE_SELF_AGENT_RECOVERY_PAGE_SIZE')
+      < selfAgent.indexOf('for (const history of histories)'),
+  );
 });
 
 test('failed Cloud title and self-agent migrations back off before retrying', () => {

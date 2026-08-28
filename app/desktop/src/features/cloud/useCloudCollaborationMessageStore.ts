@@ -12,6 +12,7 @@ import { compareCloudMessages } from './cloudMessageMerge';
 import type { CloudCollaborationMessageStore } from './useCloudCollaborationStores';
 
 const EMPTY_CLOUD_MESSAGES_BY_PEER: Record<string, CloudMessage[]> = {};
+const EMPTY_SESSION_IDS: ReadonlySet<string> = new Set();
 export const NATIVE_RENDERER_MESSAGE_LIMIT_PER_PEER = 64;
 
 export function compactNativeCloudMessagesByPeer(
@@ -90,6 +91,11 @@ export function useCloudCollaborationMessageStore(
     group: false,
     selfAgent: false,
   });
+  const [settledGroupProjection, setSettledGroupProjection] = useState<{
+    accountId: string | null;
+    complete: boolean;
+    sessionIds: ReadonlySet<string>;
+  }>({ accountId: null, complete: false, sessionIds: EMPTY_SESSION_IDS });
   const messagesByPeer = messageState.messagesByPeer;
   const setMessagesByPeer = useCallback<
     CloudCollaborationMessageStore['setValue']
@@ -154,6 +160,36 @@ export function useCloudCollaborationMessageStore(
     recoveryBarrierRef.current = next;
     if (next.group && next.selfAgent) compactRendererValue();
   }, [account?.accountId, compactRendererValue]);
+  const onGroupSessionRecoverySettled = useCallback((sessionId: string) => {
+    const accountId = account?.accountId ?? null;
+    const normalizedSessionId = sessionId.trim();
+    if (!accountId || !normalizedSessionId) return;
+    setSettledGroupProjection((current) => {
+      const sessionIds = current.accountId === accountId
+        ? current.sessionIds
+        : EMPTY_SESSION_IDS;
+      if (sessionIds.has(normalizedSessionId)) return current;
+      return {
+        accountId,
+        complete: current.accountId === accountId && current.complete,
+        sessionIds: new Set([...sessionIds, normalizedSessionId]),
+      };
+    });
+  }, [account?.accountId]);
+  const onNativeGroupRecoverySettled = useCallback(() => {
+    const accountId = account?.accountId ?? null;
+    if (!accountId) return;
+    setSettledGroupProjection((current) => {
+      if (current.accountId === accountId && current.complete) return current;
+      return {
+        accountId,
+        complete: true,
+        sessionIds: current.accountId === accountId
+          ? current.sessionIds
+          : EMPTY_SESSION_IDS,
+      };
+    });
+  }, [account?.accountId]);
   const onGroupRecoverySettled = useCallback(
     () => markRecoverySettled('group'),
     [markRecoverySettled],
@@ -201,12 +237,29 @@ export function useCloudCollaborationMessageStore(
   useEffect(() => {
     indexRef.current = index;
   }, [index]);
+  const settledGroupSessionIds = settledGroupProjection.accountId === account?.accountId
+    ? settledGroupProjection.sessionIds
+    : EMPTY_SESSION_IDS;
+  const groupProjectionRecoveryComplete =
+    settledGroupProjection.accountId === account?.accountId
+    && settledGroupProjection.complete;
+  const pendingGroupProjectionSessionIds = useMemo(() => {
+    if (!nativeShell || groupProjectionRecoveryComplete) return EMPTY_SESSION_IDS;
+    const pending = new Set<string>();
+    for (const sessionId of index.groupRowsBySessionId.keys()) {
+      if (!settledGroupSessionIds.has(sessionId)) pending.add(sessionId);
+    }
+    return pending.size > 0 ? pending : EMPTY_SESSION_IDS;
+  }, [groupProjectionRecoveryComplete, index, nativeShell, settledGroupSessionIds]);
   return {
     value: messagesByPeer,
     setValue: setMessagesByPeer,
     valueRef: fullMessagesByPeerRef,
     onGroupRecoverySettled,
+    onNativeGroupRecoverySettled,
+    onGroupSessionRecoverySettled,
     onSelfAgentRecoverySettled,
+    pendingGroupProjectionSessionIds,
     currentAccountValue: currentAccountMessagesByPeer,
     belongsToCurrentAccount,
     index,

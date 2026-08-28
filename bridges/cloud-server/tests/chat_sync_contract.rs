@@ -195,6 +195,15 @@ fn migration_embeds_canonical_ordering_idempotency_and_title_state() {
 }
 
 #[test]
+fn bootstrap_reads_titles_only_from_canonical_state() {
+    let root = repository_root();
+    let cursors = read(root.join("bridges/cloud-server/src/chat_sync/store/cursors.rs"));
+
+    assert!(cursors.contains("conversation.updated_at, viewer.personal_title"));
+    assert!(!cursors.contains("cloud_session_titles"));
+}
+
+#[test]
 fn canonical_routes_are_exclusive_for_chat_and_require_signed_cursors() {
     let root = repository_root();
     let routes = format!(

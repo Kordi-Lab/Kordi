@@ -34,6 +34,22 @@ const recoveredReplaySource = () => readFileSync(
   'utf8',
 );
 
+const messageStoreSource = () => readFileSync(
+  new URL(
+    '../src/features/cloud/useCloudCollaborationMessageStore.ts',
+    import.meta.url,
+  ),
+  'utf8',
+);
+
+const selfAgentSyncSource = () => readFileSync(
+  new URL(
+    '../src/features/cloud/useCloudSelfAgentCanonicalSync.ts',
+    import.meta.url,
+  ),
+  'utf8',
+);
+
 test('Cloud cache stays interactive without becoming authoritative', () => {
   const source = `${collaborationSource()}\n${readModelSource()}`;
   const lifecycleSource = accountLifecycleSource();
@@ -80,6 +96,7 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   assert.match(
     source,
     /useCloudSelfAgentCanonicalSync\(\{[\s\S]*initialMessagesSettled: recoveryMessagesReady/,
+    'agent shells may use the compact cache before native history recovery',
   );
   const recoveredReplay = recoveredReplaySource();
   assert.match(recoveredReplay, /useCloudAgentTurnRecovery\(\{[\s\S]*initialMessagesSettled/);
@@ -93,8 +110,30 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   );
   assert.match(
     recoveredReplay,
-    /useCloudGroupReplay\(\{[\s\S]*messageIndex,\s*canonicalStateRef,\s*applyControl,\s*flushCanonicalState,\s*onSettled,\s*reportWarning,\s*\}\);/,
+    /useCloudGroupReplay\(\{[\s\S]*messageIndex,\s*canonicalStateRef,\s*applyControl,\s*flushCanonicalState,\s*onNativeHistorySettled,\s*onSessionSettled,\s*onSettled,\s*reportWarning,\s*\}\);/,
     'current group replay must receive stable callbacks after recovery settles',
+  );
+  const messageStore = messageStoreSource();
+  assert.match(
+    messageStore,
+    /onNativeGroupRecoverySettled[\s\S]*complete: true/,
+    'only the complete native scan may end initial projection tracking',
+  );
+  assert.match(
+    messageStore,
+    /if \(!nativeShell \|\| groupProjectionRecoveryComplete\) return EMPTY_SESSION_IDS/,
+    'realtime groups after initial recovery must not re-enter cold loading',
+  );
+  assert.match(
+    messageStore,
+    /for \(const sessionId of index\.groupRowsBySessionId\.keys\(\)\)[\s\S]*!settledGroupSessionIds\.has\(sessionId\)/,
+    'initial projection readiness must settle independently per group session',
+  );
+  const selfAgentSync = selfAgentSyncSource();
+  assert.ok(
+    selfAgentSync.indexOf('const headPlan =')
+      < selfAgentSync.indexOf('if (!nativeHistory.recovered)'),
+    'compact agent session heads must materialize before full native recovery',
   );
 });
 

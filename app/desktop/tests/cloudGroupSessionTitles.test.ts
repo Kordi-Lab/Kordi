@@ -2,14 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { cloudGroupSessionTitlesForReadModel } from '../src/features/cloud/cloudCollaborationStateHelpers';
+import { cloudGroupSessionTitlesForReadModel, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from '../src/features/cloud/cloudCollaborationStateHelpers';
 
 test('reliable group preferences override legacy message-derived titles', () => {
   const titles = cloudGroupSessionTitlesForReadModel(
-    new Map([
-      ['session:group:austin', 'Legacy first message'],
-      ['session:group:other', 'Other legacy title'],
-    ]),
     {
       'session:group:austin': { title: 'Austin life' },
       'session:direct-person:peer': { title: 'Ignored direct title' },
@@ -21,7 +17,21 @@ test('reliable group preferences override legacy message-derived titles', () => 
   );
 
   assert.equal(titles.get('session:group:austin'), 'Austin life');
-  assert.equal(titles.get('session:group:other'), 'Other legacy title');
+  assert.equal(titles.has('session:group:other'), false);
   assert.equal(titles.has('session:direct-person:peer'), false);
+  assert.deepEqual(
+    [...reliableCloudGroupSessionTitleIds({
+      'session:group:austin': { title: 'Austin life' },
+      'session:group:blank': { title: ' ' },
+      'session:direct-person:peer': { title: 'Ignored direct title' },
+    })],
+    ['session:group:austin'],
+  );
   assert.match(source, /const cloudGroupSessionTitles = useMemo\(\(\) => cloudGroupSessionTitlesForReadModel/);
+  assert.equal(reliableCloudGroupSessionActivityAtMs(new Map([
+    ['session:group:austin', [
+      { wire: { createdAt: '2026-08-28T07:00:00Z' } },
+      { wire: { createdAt: '2026-08-28T08:00:00Z' } },
+    ]],
+  ]) as never).get('session:group:austin'), Date.parse('2026-08-28T08:00:00Z'));
 });

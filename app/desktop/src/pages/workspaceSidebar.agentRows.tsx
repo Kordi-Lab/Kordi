@@ -6,8 +6,6 @@ import { primaryAgentForConversation } from '@/features/chat/participantSpaces';
 import { cn } from '@/lib/utils';
 import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
 import {
-  participantSpaceSessionMessageCount,
-  participantSpaceSessionPreviewLine,
   participantSpaceSessionPreviewText,
   participantSpaceSessionRowTitle,
   sessionContextMenuTargetForConversation,
@@ -41,11 +39,6 @@ export function AgentSidebarRow({
   const sessionPreview =
     participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
   const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
-  const sessionMessageCount = participantSpaceSessionMessageCount(session);
-  const sessionPreviewLine = participantSpaceSessionPreviewLine(
-    sessionPreview,
-    sessionMessageCount,
-  );
   const agentIdentity = primaryAgentForConversation(conversation);
   const isSavedMessages = space.kind === 'self' && !agentIdentity;
   const latestMessage = conversation.messages[conversation.messages.length - 1];
@@ -66,8 +59,8 @@ export function AgentSidebarRow({
   const subtitleLine = isSavedMessages
     ? sessionPreview
     : agentIdentity?.name
-      ? `${agentIdentity.name} · ${sessionPreviewLine}`
-      : sessionPreviewLine;
+      ? `${agentIdentity.name} · ${sessionPreview}`
+      : sessionPreview;
   const forks =
     model.agentForkLineage.forksByParentSessionId.get(session.id) ?? [];
   const hasForks = forks.length > 0;
@@ -96,8 +89,7 @@ export function AgentSidebarRow({
         data-testid="agent-session-row"
         data-agent-session-row={session.id}
         data-session-preview={sessionPreview}
-        data-session-preview-line={sessionPreviewLine}
-        data-session-message-count={sessionMessageCount}
+        data-session-preview-line={sessionPreview}
         data-session-updated-at={rowTimeLabel}
         data-saved-messages-row={isSavedMessages ? 'true' : undefined}
         data-session-fork-of={

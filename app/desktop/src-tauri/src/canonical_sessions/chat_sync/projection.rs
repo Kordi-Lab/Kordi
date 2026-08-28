@@ -104,6 +104,14 @@ pub(super) fn upsert_message(
         ],
     )
     .map_err(|error| error.to_string())?;
+    if let Some(client_message_id) = client_message_id {
+        tx.execute(
+            "DELETE FROM chat_sync_pending_operations
+             WHERE account_id = ?1 AND operation_id = ?2",
+            params![account_id, client_message_id],
+        )
+        .map_err(|error| error.to_string())?;
+    }
     Ok(())
 }
 

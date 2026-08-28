@@ -9,7 +9,7 @@ import {
   type CloudAccount,
   type CloudMessage,
 } from './authClient';
-import { cloudGroupSessionTitlesForReadModel } from './cloudCollaborationStateHelpers';
+import { cloudGroupSessionTitlesForReadModel, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from './cloudCollaborationStateHelpers';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
 } from './cloudAgentMessages';
@@ -430,7 +430,7 @@ export function useCloudCollaborationState({
   });
 
   useRecoveredCloudGroupReplay({
-    account,
+    account, activeConversationId, client,
     humanIdentityId: canonicalSessionState?.profile.humanIdentityId,
     canonicalStateRef: canonicalSessionStateRef,
     setCanonicalState: setCanonicalSessionState,
@@ -439,8 +439,8 @@ export function useCloudCollaborationState({
     coordinator: cloudGroupReplayCoordinator,
     messageIndex: cloudMessageIndex,
     applyControl: cloudGroupControlApplication.apply,
-    flushCanonicalState:
-      cloudGroupControlApplication.flushCanonicalState,
+    flushCanonicalState: cloudGroupControlApplication.flushCanonicalState,
+    onNativeHistorySettled: messageStore.onNativeGroupRecoverySettled, onSessionSettled: messageStore.onGroupSessionRecoverySettled,
     onSettled: messageStore.onGroupRecoverySettled,
     reportWarning: reportCloudAgentExecutionWarning,
   });
@@ -520,7 +520,7 @@ export function useCloudCollaborationState({
     account,
     canonicalState: canonicalSessionState,
     client,
-    initialMessagesSettled: recoveryMessagesReady,
+    initialMessagesSettled,
     messagesByPeer,
     setForksBySessionId: setCloudSessionForksById,
     titlesBySessionId: cloudSessionTitlesById,
@@ -642,7 +642,7 @@ export function useCloudCollaborationState({
       && message.toAccountId === account?.accountId
     ))
   ), [account?.accountId, cloudMessageIndex.allMessages]);
-  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudMessageIndex.legacyGroupSessionTitlesById, cloudSessionTitlesById), [cloudMessageIndex.legacyGroupSessionTitlesById, cloudSessionTitlesById]);
+  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]);
   return {
     cloudAgentRuntimeRouteMessages,
     cloudCollaborationState,
@@ -676,10 +676,10 @@ export function useCloudCollaborationState({
     initialContactsSettled,
     initialMessagesSettled,
     cloudUnreadReadinessStatus,
-    cachedMessagesReady: messagesBelongToCurrentAccount && cloudMessageIndex.allMessages.length > 0,
+    cachedMessagesReady: messagesBelongToCurrentAccount && cloudMessageIndex.allMessages.length > 0, pendingGroupProjectionSessionIds: messageStore.pendingGroupProjectionSessionIds,
     cloudHiddenSessionIds,
     cloudDeletedSessionIds,
     cloudSessionPinsById,
-    cloudLegacyGroupSessionTitlesById: cloudGroupSessionTitles,
+    cloudLegacyGroupSessionTitlesById: cloudGroupSessionTitles, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs: cloudReliableGroupActivity,
   };
 }

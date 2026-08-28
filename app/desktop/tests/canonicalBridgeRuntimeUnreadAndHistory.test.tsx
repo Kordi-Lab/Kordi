@@ -105,12 +105,35 @@ test('canonical Cloud unread and legacy group titles remain masked until the acc
     cloudUnreadReady: true,
     legacyGroupSessionTitlesById,
   });
+  const reliablePendingModel = createCanonicalSessionReadModel(state, {
+    cloudUnreadReady: false,
+    legacyGroupSessionTitlesById,
+    reliableGroupSessionTitleIds: new Set([sessionId]),
+    reliableGroupSessionActivityAtMs: new Map([[sessionId, 888]]),
+  });
   const subtitle = (messages: Message[], fallback?: string) => messages.at(-1)?.text ?? fallback ?? '';
 
   assert.equal(pendingModel?.buildChatConversations([], subtitle)[0]?.unread, 0);
   assert.equal(readyModel?.buildChatConversations([], subtitle)[0]?.unread, 99);
   assert.equal(pendingModel?.buildChatConversations([], subtitle)[0]?.name, 'New chat');
   assert.equal(readyModel?.buildChatConversations([], subtitle)[0]?.name, 'Announcement');
+  assert.equal(reliablePendingModel?.buildChatConversations([], subtitle)[0]?.name, 'Announcement');
+  const recovered = reliablePendingModel?.applyConversation({
+    id: sessionId,
+    canonicalSessionId: sessionId,
+    _updatedAtMs: 999,
+    name: 'Recovered group',
+    type: 'owned-agent',
+    subtitle: '',
+    unread: 0,
+    collaborationSources: ['Cloud'],
+    trust: 'Cloud',
+    directness: 'Group chat',
+    participants: ['Me', 'Bob'],
+    messages: [],
+  }, subtitle);
+  assert.equal(recovered?._updatedAtMs, 888);
+  assert.equal(recovered?.canonicalMessageCount, 1);
 });
 
 test('canonical group conversation title stays on first message when synced cloud group name changes', () => {

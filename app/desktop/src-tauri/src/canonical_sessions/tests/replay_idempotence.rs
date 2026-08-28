@@ -99,6 +99,28 @@ fn delayed_processing_fallback_request() -> AppendCanonicalMessageRequest {
     }
 }
 
+fn seed_chat_sync_message(conn: &rusqlite::Connection, message_id: &str, sequence: i64) {
+    conn.execute(
+        "INSERT OR IGNORE INTO chat_sync_conversations(
+             account_id, conversation_id, client_session_id, version,
+             snapshot_json, updated_at_ms
+         ) VALUES (
+             'acct-replay', 'conversation-replay', 'session:group:replay', 1,
+             '{\"legacy_session_id\":\"session:group:replay\"}', 1
+         )",
+        [],
+    )
+    .expect("seed reliable conversation");
+    conn.execute(
+        "INSERT INTO chat_sync_messages(
+             account_id, message_id, conversation_id, conversation_sequence,
+             version, snapshot_json, updated_at_ms
+         ) VALUES ('acct-replay', ?1, 'conversation-replay', ?2, 1, '{}', ?2)",
+        rusqlite::params![message_id, sequence],
+    )
+    .expect("seed reliable message sequence");
+}
+
 #[test]
 fn identical_identity_replay_preserves_updated_timestamp() {
     let conn = test_conn();
@@ -159,6 +181,31 @@ fn identical_message_replay_preserves_message_and_session_timestamps() {
 
     assert_eq!(replayed.updated_at_ms, 303);
     assert_eq!(session_updated_at_ms, 404);
+}
+
+#[test]
+fn cloud_replay_preserves_reliable_sequence_when_newest_page_arrives_first() {
+    let conn = test_conn();
+    upsert_identity_in_db(&conn, identity_request()).expect("insert identity");
+    open_or_create_session_in_db(&conn, session_request()).expect("insert session");
+    seed_chat_sync_message(&conn, "wire-latest", 20);
+    seed_chat_sync_message(&conn, "wire-older", 5);
+
+    let mut latest = message_request();
+    latest.id = Some("msg:cloud:latest".to_string());
+    latest.source_event_id = Some("cloud-group:wire-latest".to_string());
+    latest.created_at_ms = Some(20_000);
+    let mut older = message_request();
+    older.id = Some("msg:cloud:older".to_string());
+    older.source_transport = Some("cloud-self-agent".to_string());
+    older.source_event_id = Some("wire-older".to_string());
+    older.created_at_ms = Some(5_000);
+
+    let latest = upsert_message_in_db(&conn, latest).expect("insert latest page");
+    let older = upsert_message_in_db(&conn, older).expect("backfill older page");
+
+    assert_eq!(latest.sequence_num, 20);
+    assert_eq!(older.sequence_num, 5);
 }
 
 #[test]

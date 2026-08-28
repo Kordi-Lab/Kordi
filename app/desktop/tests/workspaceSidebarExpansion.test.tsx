@@ -17,6 +17,38 @@ test('an active participant space can be explicitly collapsed', () => {
   assert.equal(participantSpaceExpanded(space, null, space.id, new Set()), true);
 });
 
+test('contact and group spaces share one latest-activity order', () => {
+  const person = conversation({
+    id: 'session:direct-person:alice',
+    canonicalSessionId: 'session:direct-person:alice',
+    name: 'Alice',
+    type: 'person',
+    participants: ['Me', 'Alice'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'cloud', avatarKey: 'alice' },
+    ],
+    _updatedAtMs: 20,
+  });
+  const group = conversation({
+    id: 'session:group:older',
+    canonicalSessionId: 'session:group:older',
+    name: 'Older group',
+    participants: ['Me', 'Bob', 'Carol'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'cloud', avatarKey: 'bob' },
+      { id: 'human:carol', name: 'Carol', kind: 'human', role: 'person', source: 'cloud', avatarKey: 'carol' },
+    ],
+    _updatedAtMs: 10,
+  });
+
+  assert.deepEqual(
+    buildParticipantSpaces([group, person]).map((space) => space.kind),
+    ['direct-human', 'group'],
+  );
+});
+
 test('WorkspaceSidebar auto-expands an active space without replacing its other sessions', () => {
   const chatConversations = [
     conversation({

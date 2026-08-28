@@ -54,28 +54,6 @@ export function participantSpaceSessionPreviewText(preview: string) {
   return formatted;
 }
 
-export function participantSpaceSessionMessageCount(
-  session: ParticipantSpaceItem['sessions'][number],
-) {
-  const canonicalCount = session.conversation.canonicalMessageCount;
-  if (typeof canonicalCount === 'number' && Number.isFinite(canonicalCount)) {
-    return Math.max(0, canonicalCount);
-  }
-  const visibleMessages = session.conversation.messages.filter(
-    (message) => message.role !== 'system' && (
-      message.text.trim().length > 0
-      || (message.attachments?.length ?? 0) > 0
-      || Boolean(message.turn?.assistantText.trim())
-    ),
-  ).length;
-  return visibleMessages + (session.conversation.queuedMessages?.length ?? 0);
-}
-
-export function participantSpaceSessionPreviewLine(preview: string, messageCount: number) {
-  const text = preview.trim() || 'No messages yet';
-  return `${text} · ${messageCount} message${messageCount === 1 ? '' : 's'}`;
-}
-
 function sessionActionIdForConversation(conversation: ConversationItem) {
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
   if (!sessionId || sessionId === 'draft:local-chat' || sessionId.startsWith('draft:')) {
@@ -120,30 +98,11 @@ export function participantSpaceCanRenameSessions(space: ParticipantSpaceItem) {
   return [...selfIdentityIds].some((identityId) => adminIdentityIds.has(identityId));
 }
 
-function pluralize(count: number, singular: string, plural = `${singular}s`) {
-  return `${count} ${count === 1 ? singular : plural}`;
-}
-
 export function participantSpaceKindText(space: ParticipantSpaceItem) {
   if (space.kind === 'self') return 'Personal';
   if (space.kind === 'direct-human') return 'Person';
   if (space.kind === 'direct-agent') return 'Agent';
   return 'Group';
-}
-
-export function participantSpaceDetailText(space: ParticipantSpaceItem) {
-  const sessionText = pluralize(space.sessionCount, 'session');
-  if (space.kind === 'self') return `Personal • ${sessionText}`;
-  if (space.kind === 'direct-human') return null;
-  if (space.kind === 'group') {
-    const humanCount = space.participants.filter(
-      (participant) => participant.kind === 'human',
-    ).length;
-    const peopleText =
-      humanCount > 0 ? `${pluralize(humanCount, 'person', 'people')} • ` : '';
-    return `Group • ${peopleText}${sessionText}`;
-  }
-  return `Agent • ${sessionText}`;
 }
 
 export function participantSpacePreviewAttachment(

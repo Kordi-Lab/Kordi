@@ -3,8 +3,10 @@ import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
 import {
   encodeCloudGroupControl,
   isCloudGroupSessionId,
+  parseCloudGroupControl,
   type CloudGroupParticipant,
 } from './cloudGroupMessages';
+import { parseCloudAgentResponse } from './cloudAgentMessages';
 
 function decodeBase64UrlJson<T>(value: string): T | null {
   try {
@@ -167,21 +169,27 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function groupCallActivityBody(
+function groupMessageBody(
   message: ChatSyncMessage,
   conversation: ChatSyncConversation,
   text: string,
 ): string | null {
   if (conversation.kind !== 'group') return null;
-  const kindMatch = /^call\.(started|ended)\.(.+)$/.exec(message.kind.trim());
-  const content = recordValue(message.content);
-  const activity = recordValue(content?.callActivity);
-  if (
-    !kindMatch?.[2]
-    || activity?.schema !== 1
-    || activity.callId !== kindMatch[2]
-    || activity.event !== kindMatch[1]
-  ) return null;
+  if (text.trim().startsWith('kordi-cloud-group:')) {
+    const envelope = parseCloudGroupControl(text);
+    const createdAtMs = Date.parse(message.created_at);
+    const groupId = conversation.legacy_session_id?.trim() || conversation.id.trim();
+    return envelope?.kind === 'group-message'
+      && envelope.message
+      && isCloudGroupSessionId(groupId)
+      && Number.isFinite(createdAtMs)
+      ? encodeCloudGroupControl({
+          ...envelope,
+          groupId,
+          message: { ...envelope.message, createdAtMs },
+        })
+      : null;
+  }
 
   const participants: CloudGroupParticipant[] = conversation.members
     .filter((member) => member.membership_state === 'active')
@@ -202,6 +210,7 @@ function groupCallActivityBody(
   };
   const groupId = conversation.legacy_session_id?.trim() || conversation.id.trim();
   if (!isCloudGroupSessionId(groupId) || participants.length === 0) return null;
+  const agentResponse = parseCloudAgentResponse(text);
 
   return encodeCloudGroupControl({
     kind: 'group-message',
@@ -214,12 +223,19 @@ function groupCallActivityBody(
     message: {
       id: message.id,
       senderAccountId: message.sender_account_id,
-      text,
+      text: agentResponse?.text ?? text,
       createdAtMs: Date.parse(message.created_at) || Date.now(),
-      senderKind: 'human',
-      senderDisplayName: actor.displayName,
+      senderKind: agentResponse ? 'agent' : 'human',
+      senderDisplayName: agentResponse
+        ? `${actor.displayName}'s Kordi`
+        : actor.displayName,
       messageKind: message.kind,
-      structuredContent: content,
+      structuredContent: recordValue(message.content),
+      ...(agentResponse ? {
+        deliveryState: agentResponse.deliveryState,
+        replyToMessageId: agentResponse.requestId,
+        requestId: agentResponse.requestId,
+      } : {}),
     },
   });
 }
@@ -320,7 +336,7 @@ export function cloudMessageFromChatSync(
   const createdAt = canonicalHistory?.originalCreatedAt
     ?? message.created_at;
   const text = textFromChatContent(message.content);
-  const body = groupCallActivityBody(message, conversation, text) ?? text;
+  const body = groupMessageBody(message, conversation, text) ?? text;
   return {
     messageId: message.id,
     fromAccountId: message.sender_account_id,

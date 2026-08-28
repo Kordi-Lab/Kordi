@@ -7,6 +7,7 @@ const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/featur
 const cloudGroupSessionControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupSessionControl.ts', import.meta.url), 'utf8');
 const cloudGroupControlApplicationSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlApplication.ts', import.meta.url), 'utf8');
 const cloudGroupReplaySource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupReplay.ts', import.meta.url), 'utf8');
+const cloudGroupNativeRecoverySource = () => readFileSync(new URL('../src/features/cloud/cloudGroupNativeRecovery.ts', import.meta.url), 'utf8');
 const legacyGroupTitleRecoverySource = () => readFileSync(new URL('../src/features/cloud/useLegacyCloudGroupTitleNoticeRecovery.ts', import.meta.url), 'utf8');
 const groupMemberRolesSource = () => readFileSync(
   new URL('../src/app/useKordiGroupMemberRoles.ts', import.meta.url),
@@ -34,9 +35,10 @@ test('cloud group replay prepares identities and sessions with compact canonical
   assert.doesNotMatch(replaySetupBlock, /await openOrCreateCanonicalSession\(/, 'group replay must not reload full canonical state when opening existing group sessions');
 });
 
-test('cloud group replay publishes one coherent React snapshot after each drain', () => {
+test('cloud group replay publishes one coherent React snapshot after each conversation', () => {
   const applicationSource = cloudGroupControlApplicationSource();
   const replaySource = cloudGroupReplaySource();
+  const nativeRecoverySource = cloudGroupNativeRecoverySource();
 
   assert.match(
     applicationSource,
@@ -52,6 +54,26 @@ test('cloud group replay publishes one coherent React snapshot after each drain'
     replaySource,
     /cache\.lastReplaySignature = replaySignature;[\s\S]{0,120}await coordinator\.request/,
     'a replay must not be acknowledged before its coordinator request runs',
+  );
+  assert.match(
+    nativeRecoverySource,
+    /waitForCompleteChatSyncHistory/,
+    'cold native recovery must wait for authoritative local history coverage',
+  );
+  assert.match(
+    replaySource,
+    /await coordinator\.request\([\s\S]*if \(await recoverNativeHistory\(\)\) onSettledRef\.current\?\.\(\)/,
+    'compact group heads must publish session shells before full history recovery',
+  );
+  assert.match(
+    replaySource,
+    /if \(recovered && durableSourceCacheRef\.current === cache\)[\s\S]*onNativeHistorySettledRef\.current\?\.\(\)/,
+    'only a complete native scan may clear the cold projection barrier',
+  );
+  assert.doesNotMatch(
+    replaySource,
+    /settleIndexedSessions/,
+    'coordinator drains may still have retries pending and cannot settle cold history',
   );
 });
 

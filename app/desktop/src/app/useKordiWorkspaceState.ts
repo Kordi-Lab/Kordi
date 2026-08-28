@@ -108,7 +108,10 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
       cloudHiddenSessionIds,
       cloudDeletedSessionIds,
       initialMessagesSettled,
+      pendingGroupProjectionSessionIds,
       cloudLegacyGroupSessionTitlesById,
+      cloudReliableGroupSessionTitleIds,
+      cloudReliableGroupSessionActivityAtMs,
     },
   } = foundation;
 
@@ -180,7 +183,10 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     cloudAgentDefinitionsById,
     cloudPresence: cloudPresence.snapshot,
     cloudUnreadReady: initialMessagesSettled,
+    pendingGroupProjectionSessionIds,
     cloudLegacyGroupSessionTitlesById,
+    cloudReliableGroupSessionTitleIds,
+    cloudReliableGroupSessionActivityAtMs,
     transientChatConversations,
   });
   const activeConv = useMemo(

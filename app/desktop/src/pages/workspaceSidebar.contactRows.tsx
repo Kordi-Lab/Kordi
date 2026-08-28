@@ -6,12 +6,9 @@ import { cn } from '@/lib/utils';
 import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
 import {
   participantSpaceCanRenameSessions,
-  participantSpaceDetailText,
   participantSpaceKindText,
   participantSpacePreviewAttachment,
   participantSpaceSessionIdLabel,
-  participantSpaceSessionMessageCount,
-  participantSpaceSessionPreviewLine,
   participantSpaceSessionPreviewText,
   participantSpaceSessionRowTitle,
   sessionContextMenuTargetForConversation,
@@ -59,11 +56,6 @@ function ParticipantSpaceSessionRow({
   const sessionPreview =
     participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
   const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
-  const sessionMessageCount = participantSpaceSessionMessageCount(session);
-  const sessionPreviewLine = participantSpaceSessionPreviewLine(
-    sessionPreview,
-    sessionMessageCount,
-  );
   const sessionIdLabel = participantSpaceSessionIdLabel(session);
   const isFork = depth > 0;
   const childForks =
@@ -87,9 +79,8 @@ function ParticipantSpaceSessionRow({
       data-testid="participant-space-session-row"
       data-agent-session-row={session.id}
       data-session-preview={sessionPreview}
-      data-session-preview-line={sessionPreviewLine}
+      data-session-preview-line={sessionPreview}
       data-session-id-label={sessionIdLabel}
-      data-session-message-count={sessionMessageCount}
       data-session-updated-at={sessionRowTimeLabel}
       data-session-fork-depth={visualDepth || undefined}
       onClick={() => actions.onSelectChatSession(session.id)}
@@ -126,7 +117,7 @@ function ParticipantSpaceSessionRow({
               && 'app-participant-space-session-preview-live',
           )}
         >
-          {sessionPreviewLine}
+          {sessionPreview}
         </div>
       </div>
       <div className="app-participant-space-session-side">
@@ -221,7 +212,6 @@ function ParticipantSpaceRow({
     (sum, session) => sum + (session.unread > 0 ? session.conversation.unreadMentions ?? 0 : 0),
     0,
   );
-  const participantSpaceDetail = participantSpaceDetailText(space);
   const previewAttachment = participantSpacePreviewAttachment(space);
   const previewThumbnailUrl = previewAttachment?.kind === 'image'
     ? attachmentPreviewUrl(previewAttachment.attachment)
@@ -294,11 +284,6 @@ function ParticipantSpaceRow({
                 {space.preview || `${participantSpaceKindText(space)} space`}
               </span>
             </div>
-            {participantSpaceDetail ? (
-              <div className="app-participant-space-row-detail mt-px truncate text-[10px] leading-[0.88rem]">
-                {participantSpaceDetail}
-              </div>
-            ) : null}
           </div>
         </button>
         <div className="app-participant-space-row-side">

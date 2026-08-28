@@ -118,8 +118,11 @@ export type UseCloudCollaborationStateResult = {
   initialMessagesSettled: boolean;
   cloudUnreadReadinessStatus: CloudUnreadReadinessStatus;
   cachedMessagesReady: boolean;
+  pendingGroupProjectionSessionIds: ReadonlySet<string>;
   cloudHiddenSessionIds: Set<string>;
   cloudDeletedSessionIds: Set<string>;
   cloudSessionPinsById: CloudSessionPinsById;
   cloudLegacyGroupSessionTitlesById: ReadonlyMap<string, string>;
+  cloudReliableGroupSessionTitleIds: ReadonlySet<string>;
+  cloudReliableGroupSessionActivityAtMs: ReadonlyMap<string, number>;
 };

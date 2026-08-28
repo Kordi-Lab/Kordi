@@ -3,8 +3,45 @@ use serde_json::json;
 
 use super::{
     apply_on_connection, load_coverage, load_message_page, load_message_refs,
-    load_recovery_message_ids, load_state, ChatSyncApplyRequest,
+    load_recovery_message_ids, load_state, upsert_message, ChatSyncApplyRequest,
 };
+
+#[test]
+fn authoritative_message_resolves_its_pending_outbox_operation() {
+    let mut conn = super::tests::test_connection();
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chat_sync_pending_operations (
+            account_id TEXT, operation_id TEXT,
+            PRIMARY KEY(account_id, operation_id)
+         );
+         INSERT INTO chat_sync_pending_operations (account_id, operation_id)
+         VALUES ('acct_test', 'client-1');",
+    )
+    .unwrap();
+    let tx = conn.transaction().unwrap();
+    upsert_message(
+        &tx,
+        "acct_test",
+        &json!({
+            "id": "message-1",
+            "client_message_id": "client-1",
+            "conversation_id": "conversation-1",
+            "conversation_sequence": 1,
+            "version": 1
+        }),
+    )
+    .unwrap();
+    tx.commit().unwrap();
+
+    let pending: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chat_sync_pending_operations",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(pending, 0);
+}
 
 #[test]
 fn apply_result_stays_bounded_as_unrelated_history_grows() {
