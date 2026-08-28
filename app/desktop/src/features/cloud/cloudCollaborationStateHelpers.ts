@@ -38,18 +38,3 @@ export function reliableCloudGroupSessionActivityAtMs(
   }
   return activity;
 }
-
-export function reliableCloudGroupSessionMessageCounts(
-  rowsBySessionId: ReadonlyMap<string, readonly IndexedCloudGroupRow[]>,
-) {
-  const counts = new Map<string, number>();
-  for (const [sessionId, rows] of rowsBySessionId) {
-    for (const row of rows) {
-      const sequence = row.wire.conversationSequence;
-      if (Number.isSafeInteger(sequence) && Number(sequence) > 0) {
-        counts.set(sessionId, Math.max(counts.get(sessionId) ?? 0, Number(sequence)));
-      }
-    }
-  }
-  return counts;
-}

@@ -148,7 +148,7 @@ type UseWorkspaceViewModelsArgs = {
   cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition>;
   cloudPresence?: CloudPresenceStore;
   cloudUnreadReady?: boolean; pendingGroupProjectionSessionIds?: ReadonlySet<string>;
-  cloudLegacyGroupSessionTitlesById?: ReadonlyMap<string, string>; cloudReliableGroupSessionTitleIds?: ReadonlySet<string>; cloudReliableGroupSessionActivityAtMs?: ReadonlyMap<string, number>; cloudReliableGroupSessionMessageCounts?: ReadonlyMap<string, number>;
+  cloudLegacyGroupSessionTitlesById?: ReadonlyMap<string, string>; cloudReliableGroupSessionTitleIds?: ReadonlySet<string>; cloudReliableGroupSessionActivityAtMs?: ReadonlyMap<string, number>;
   transientChatConversations?: Conversation[];
 };
 
@@ -183,7 +183,7 @@ export function useWorkspaceViewModels({
   cloudAgentDefinitionsById = {},
   cloudPresence = {},
   cloudUnreadReady = true, pendingGroupProjectionSessionIds = EMPTY_DESKTOP_SESSION_IDS,
-  cloudLegacyGroupSessionTitlesById = EMPTY_CLOUD_LEGACY_GROUP_SESSION_TITLES, cloudReliableGroupSessionTitleIds = EMPTY_DESKTOP_SESSION_IDS, cloudReliableGroupSessionActivityAtMs = EMPTY_CLOUD_GROUP_NUMBERS, cloudReliableGroupSessionMessageCounts = EMPTY_CLOUD_GROUP_NUMBERS,
+  cloudLegacyGroupSessionTitlesById = EMPTY_CLOUD_LEGACY_GROUP_SESSION_TITLES, cloudReliableGroupSessionTitleIds = EMPTY_DESKTOP_SESSION_IDS, cloudReliableGroupSessionActivityAtMs = EMPTY_CLOUD_GROUP_NUMBERS,
   transientChatConversations = [],
 }: UseWorkspaceViewModelsArgs) {
   const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
@@ -191,9 +191,9 @@ export function useWorkspaceViewModels({
     () => createCanonicalSessionReadModel(canonicalSessionState, {
       summaries: canonicalSessionSummaries,
       cloudUnreadReady, pendingGroupProjectionSessionIds,
-      legacyGroupSessionTitlesById: cloudLegacyGroupSessionTitlesById, reliableGroupSessionTitleIds: cloudReliableGroupSessionTitleIds, reliableGroupSessionActivityAtMs: cloudReliableGroupSessionActivityAtMs, reliableGroupSessionMessageCounts: cloudReliableGroupSessionMessageCounts,
+      legacyGroupSessionTitlesById: cloudLegacyGroupSessionTitlesById, reliableGroupSessionTitleIds: cloudReliableGroupSessionTitleIds, reliableGroupSessionActivityAtMs: cloudReliableGroupSessionActivityAtMs,
     }),
-    [canonicalSessionState, canonicalSessionSummaries, cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionActivityAtMs, cloudReliableGroupSessionMessageCounts, cloudReliableGroupSessionTitleIds, cloudUnreadReady, pendingGroupProjectionSessionIds],
+    [canonicalSessionState, canonicalSessionSummaries, cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionActivityAtMs, cloudReliableGroupSessionTitleIds, cloudUnreadReady, pendingGroupProjectionSessionIds],
   );
   const desktopLiveTurnViewModelKey = liveTurnsViewModelSignature(desktopLiveTurnsBySession);
   const desktopLiveTurnsForViewModelRef = useRef({

@@ -337,7 +337,8 @@ mod tests {
                 snapshot_json TEXT, updated_at_ms INTEGER,
                 PRIMARY KEY(account_id, message_id),
                 UNIQUE(account_id, conversation_id, conversation_sequence)
-             );",
+             );
+             CREATE TABLE chat_sync_pending_operations (account_id TEXT, operation_id TEXT, PRIMARY KEY(account_id, operation_id));",
         )
         .unwrap();
         conn

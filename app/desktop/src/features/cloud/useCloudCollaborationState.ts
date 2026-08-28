@@ -9,7 +9,7 @@ import {
   type CloudAccount,
   type CloudMessage,
 } from './authClient';
-import { cloudGroupSessionTitlesForReadModel, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionMessageCounts, reliableCloudGroupSessionTitleIds } from './cloudCollaborationStateHelpers';
+import { cloudGroupSessionTitlesForReadModel, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from './cloudCollaborationStateHelpers';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
 } from './cloudAgentMessages';
@@ -642,7 +642,7 @@ export function useCloudCollaborationState({
       && message.toAccountId === account?.accountId
     ))
   ), [account?.accountId, cloudMessageIndex.allMessages]);
-  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudReliableGroupMessageCounts = useMemo(() => reliableCloudGroupSessionMessageCounts(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]);
+  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]);
   return {
     cloudAgentRuntimeRouteMessages,
     cloudCollaborationState,
@@ -680,6 +680,6 @@ export function useCloudCollaborationState({
     cloudHiddenSessionIds,
     cloudDeletedSessionIds,
     cloudSessionPinsById,
-    cloudLegacyGroupSessionTitlesById: cloudGroupSessionTitles, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs: cloudReliableGroupActivity, cloudReliableGroupSessionMessageCounts: cloudReliableGroupMessageCounts,
+    cloudLegacyGroupSessionTitlesById: cloudGroupSessionTitles, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs: cloudReliableGroupActivity,
   };
 }

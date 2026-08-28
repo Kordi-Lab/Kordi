@@ -112,7 +112,6 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
       cloudLegacyGroupSessionTitlesById,
       cloudReliableGroupSessionTitleIds,
       cloudReliableGroupSessionActivityAtMs,
-      cloudReliableGroupSessionMessageCounts,
     },
   } = foundation;
 
@@ -188,7 +187,6 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     cloudLegacyGroupSessionTitlesById,
     cloudReliableGroupSessionTitleIds,
     cloudReliableGroupSessionActivityAtMs,
-    cloudReliableGroupSessionMessageCounts,
     transientChatConversations,
   });
   const activeConv = useMemo(

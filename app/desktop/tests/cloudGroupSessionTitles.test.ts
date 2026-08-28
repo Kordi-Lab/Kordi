@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { cloudGroupSessionTitlesForReadModel, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionMessageCounts, reliableCloudGroupSessionTitleIds } from '../src/features/cloud/cloudCollaborationStateHelpers';
+import { cloudGroupSessionTitlesForReadModel, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from '../src/features/cloud/cloudCollaborationStateHelpers';
 
 test('reliable group preferences override legacy message-derived titles', () => {
   const titles = cloudGroupSessionTitlesForReadModel(
@@ -34,10 +34,4 @@ test('reliable group preferences override legacy message-derived titles', () => 
       { wire: { createdAt: '2026-08-28T08:00:00Z' } },
     ]],
   ]) as never).get('session:group:austin'), Date.parse('2026-08-28T08:00:00Z'));
-  assert.equal(reliableCloudGroupSessionMessageCounts(new Map([
-    ['session:group:austin', [
-      { wire: { conversationSequence: 7 } },
-      { wire: { conversationSequence: 42 } },
-    ]],
-  ]) as never).get('session:group:austin'), 42);
 });

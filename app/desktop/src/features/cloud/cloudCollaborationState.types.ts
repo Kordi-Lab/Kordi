@@ -125,5 +125,4 @@ export type UseCloudCollaborationStateResult = {
   cloudLegacyGroupSessionTitlesById: ReadonlyMap<string, string>;
   cloudReliableGroupSessionTitleIds: ReadonlySet<string>;
   cloudReliableGroupSessionActivityAtMs: ReadonlyMap<string, number>;
-  cloudReliableGroupSessionMessageCounts: ReadonlyMap<string, number>;
 };

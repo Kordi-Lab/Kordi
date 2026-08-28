@@ -10,7 +10,7 @@ use super::{
 fn authoritative_message_resolves_its_pending_outbox_operation() {
     let mut conn = super::tests::test_connection();
     conn.execute_batch(
-        "CREATE TABLE chat_sync_pending_operations (
+        "CREATE TABLE IF NOT EXISTS chat_sync_pending_operations (
             account_id TEXT, operation_id TEXT,
             PRIMARY KEY(account_id, operation_id)
          );

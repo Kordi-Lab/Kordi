@@ -110,7 +110,6 @@ test('canonical Cloud unread and legacy group titles remain masked until the acc
     legacyGroupSessionTitlesById,
     reliableGroupSessionTitleIds: new Set([sessionId]),
     reliableGroupSessionActivityAtMs: new Map([[sessionId, 888]]),
-    reliableGroupSessionMessageCounts: new Map([[sessionId, 42]]),
   });
   const subtitle = (messages: Message[], fallback?: string) => messages.at(-1)?.text ?? fallback ?? '';
 
@@ -134,7 +133,7 @@ test('canonical Cloud unread and legacy group titles remain masked until the acc
     messages: [],
   }, subtitle);
   assert.equal(recovered?._updatedAtMs, 888);
-  assert.equal(recovered?.canonicalMessageCount, 42);
+  assert.equal(recovered?.canonicalMessageCount, 1);
 });
 
 test('canonical group conversation title stays on first message when synced cloud group name changes', () => {

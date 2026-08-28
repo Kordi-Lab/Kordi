@@ -453,14 +453,14 @@ export function createCanonicalSessionReadModel(
   options: {
     summaries?: CanonicalSessionSummary[];
     cloudUnreadReady?: boolean; pendingGroupProjectionSessionIds?: ReadonlySet<string>;
-    legacyGroupSessionTitlesById?: ReadonlyMap<string, string>; reliableGroupSessionTitleIds?: ReadonlySet<string>; reliableGroupSessionActivityAtMs?: ReadonlyMap<string, number>; reliableGroupSessionMessageCounts?: ReadonlyMap<string, number>;
+    legacyGroupSessionTitlesById?: ReadonlyMap<string, string>; reliableGroupSessionTitleIds?: ReadonlySet<string>; reliableGroupSessionActivityAtMs?: ReadonlyMap<string, number>;
   } = {},
 ): CanonicalSessionReadModel | null {
   if (!canonicalState) return null;
 
   const indexes = buildCanonicalIndexes(canonicalState);
   const cloudUnreadReady = options.cloudUnreadReady ?? true; const pendingGroupProjectionSessionIds = options.pendingGroupProjectionSessionIds ?? EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS;
-  const legacyGroupSessionTitlesById = options.legacyGroupSessionTitlesById ?? EMPTY_LEGACY_GROUP_SESSION_TITLES; const reliableGroupSessionTitleIds = options.reliableGroupSessionTitleIds ?? EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS; const reliableGroupSessionActivityAtMs = options.reliableGroupSessionActivityAtMs ?? EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY; const reliableGroupSessionMessageCounts = options.reliableGroupSessionMessageCounts ?? EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY;
+  const legacyGroupSessionTitlesById = options.legacyGroupSessionTitlesById ?? EMPTY_LEGACY_GROUP_SESSION_TITLES; const reliableGroupSessionTitleIds = options.reliableGroupSessionTitleIds ?? EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS; const reliableGroupSessionActivityAtMs = options.reliableGroupSessionActivityAtMs ?? EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY;
   const summaryBySessionId = new Map((options.summaries ?? []).map((summary) => [summary.sessionId, summary]));
   const sessionActivityAtMs = (session: CanonicalSessionState['sessions'][number]) => (
     indexes.latestActivityMessageBySessionId.get(session.id)?.createdAtMs
@@ -619,7 +619,7 @@ export function createCanonicalSessionReadModel(
         canonicalParticipantCount: isSupportContact
           ? participants.length
           : canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
-        canonicalMessageCount: reliableGroupSessionMessageCounts.get(sessionId) ?? summaryBySessionId.get(sessionId)?.messageCount
+        canonicalMessageCount: summaryBySessionId.get(sessionId)?.messageCount
           ?? indexes.readableMessageCountBySessionId.get(sessionId)
           ?? 0,
         canonicalProjectionPending: pendingGroupProjectionSessionIds.has(sessionId),
