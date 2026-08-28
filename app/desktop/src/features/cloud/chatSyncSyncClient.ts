@@ -324,6 +324,9 @@ export class ChatSyncSyncClient {
       'device.revoked',
       'device.renamed',
     ].includes(event.type)) {
+      if (event.type === 'session.deleted' && typeof event.payload.sessionId === 'string') {
+        this.state.forgetSession(event.payload.sessionId);
+      }
       return [{
         ...base,
         eventType: event.type,

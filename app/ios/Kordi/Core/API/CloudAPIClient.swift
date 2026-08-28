@@ -1507,6 +1507,11 @@ actor CloudAPIClient {
 
     private func remember(_ conversation: CloudChatConversation) {
         activateAccount(conversation.preferences.accountId)
+        let previousSessionId = chatConversationsById[conversation.id]?.legacySessionId?.nonEmpty
+        if previousSessionId != conversation.legacySessionId?.nonEmpty,
+           let previousSessionId {
+            chatConversationsBySessionId.removeValue(forKey: previousSessionId)
+        }
         chatConversationsById[conversation.id] = conversation
         chatConversationsBySessionId[conversation.id] = conversation
         if let sessionId = conversation.legacySessionId?.nonEmpty {
@@ -1716,9 +1721,31 @@ actor CloudAPIClient {
                 occurredAt: event.occurredAt
             )]
         }
+        if event.eventType == "session.deleted",
+           let sessionId = event.payload.sessionId?.nonEmpty {
+            if let conversation = chatConversationsBySessionId.removeValue(forKey: sessionId),
+               conversation.legacySessionId?.nonEmpty == sessionId {
+                chatConversationsById.removeValue(forKey: conversation.id)
+                chatConversationsBySessionId.removeValue(forKey: conversation.id)
+            }
+            return [CloudSyncEvent(
+                eventId: event.eventId,
+                eventType: event.eventType,
+                peerAccountId: nil,
+                messageId: nil,
+                payload: CloudSyncEventPayload(
+                    message: nil, messageIds: nil, messageId: nil, readAt: nil,
+                    sessionId: sessionId, scope: nil, updatedAt: event.payload.updatedAt,
+                    forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
+                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
+                    deviceId: nil, call: nil
+                ),
+                occurredAt: event.occurredAt
+            )]
+        }
         let knownNonChatEvents: Set<String> = [
             "task.upsert", "artifact.upsert", "artifact.archived",
-            "session.hidden", "session.unhidden", "session.deleted", "session-forked"
+            "session.hidden", "session.unhidden", "session-forked"
         ]
         if ["device.added", "device.confirmed", "device.revoked", "device.renamed"]
             .contains(event.eventType) {

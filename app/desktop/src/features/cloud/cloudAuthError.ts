@@ -54,7 +54,11 @@ export function isRetryableCloudDeliveryError(error: unknown): boolean {
     || status >= 500;
 }
 
-type ServerErrorBody = { errorCode?: string; message?: string };
+type ServerErrorBody = {
+  errorCode?: string;
+  message?: string;
+  error?: { code?: string; message?: string };
+};
 
 const SERVER_ERROR_CODES = new Set<CloudAuthErrorCode>([
   'invalid_email', 'weak_password', 'email_in_use', 'invalid_credentials',
@@ -79,9 +83,11 @@ export function buildCloudAuthError(
   fallbackMessage: string,
 ): CloudAuthError {
   const data = (body as ServerErrorBody) ?? {};
-  const code = isErrorCode(data.errorCode) ? data.errorCode : 'unknown';
-  const message = typeof data.message === 'string' && data.message.length > 0
-    ? data.message
+  const codeValue = data.errorCode ?? data.error?.code;
+  const messageValue = data.message ?? data.error?.message;
+  const code = isErrorCode(codeValue) ? codeValue : 'unknown';
+  const message = typeof messageValue === 'string' && messageValue.length > 0
+    ? messageValue
     : fallbackMessage;
   return new CloudAuthError(code, message, status);
 }

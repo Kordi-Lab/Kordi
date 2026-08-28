@@ -37,11 +37,25 @@ export class ChatSyncState {
   }
 
   rememberConversation(conversation: ChatSyncConversation): void {
-    this.conversationById.set(conversation.id, conversation);
+    const previous = this.conversationById.get(conversation.id);
+    const previousSessionId = previous?.legacy_session_id?.trim();
     const sessionId = conversation.legacy_session_id?.trim();
+    if (previousSessionId && previousSessionId !== sessionId) {
+      this.conversationBySessionId.delete(previousSessionId);
+    }
+    this.conversationById.set(conversation.id, conversation);
     if (sessionId) this.conversationBySessionId.set(sessionId, conversation);
     const viewerAccountId = conversation.preferences.account_id?.trim();
     if (viewerAccountId) this.setAccountId(viewerAccountId);
+  }
+
+  forgetSession(sessionId: string): void {
+    const normalized = sessionId.trim();
+    const conversation = this.conversationBySessionId.get(normalized);
+    this.conversationBySessionId.delete(normalized);
+    if (conversation?.legacy_session_id?.trim() === normalized) {
+      this.conversationById.delete(conversation.id);
+    }
   }
 
   rememberBootstrap(response: ChatSyncBootstrapResponse): void {

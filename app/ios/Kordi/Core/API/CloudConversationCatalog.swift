@@ -109,7 +109,7 @@ enum CloudConversationCatalog {
             let isSupport = KordiSupportIdentity.matches(name: contact.displayName, seed: contact.accountId)
             let sessionId = isSupport
                 ? supportCanonicalConversation.flatMap { $0.legacySessionId?.nonEmpty ?? $0.id.nonEmpty }
-                    ?? directPersonSessionId(account.accountId, contact.accountId)
+                    ?? KordiSupportIdentity.sessionId(for: account.accountId)
                 : directPersonSessionId(account.accountId, contact.accountId)
             let candidates = isSupport
                 ? allMessages

@@ -54,6 +54,26 @@ test('composer refuses a fallback group scope for a different selected chat', ()
   assert.equal(activeConversationMatchesSendScope('local-session', null), true);
 });
 
+test('composer accepts hydrated aliases for the one built-in Support chat', () => {
+  const supportScope = {
+    ...groupConversation(),
+    id: 'cloud:conversation:acct_real_support_owner:agent:session:session%3Adirect-system-agent%3Aacct_me%3Acloud_agent_kordi_support',
+    canonicalSessionId: 'session:direct-system-agent:acct_me:cloud_agent_kordi_support',
+    supportTicketEnabled: true,
+    directness: 'Person chat',
+    participantSpaceId: undefined,
+  };
+
+  assert.equal(activeConversationMatchesSendScope(
+    'cloud:conversation:acct_kordi_support:agent',
+    supportScope,
+  ), true);
+  assert.equal(activeConversationMatchesSendScope(
+    'cloud:conversation:acct_kordi_support:agent',
+    groupConversation(),
+  ), false);
+});
+
 test('detects bridge-backed group sessions even when active header type is person', () => {
   assert.equal(isCollaborationGroupSession(groupConversation()), true);
   assert.equal(isCollaborationGroupSession({

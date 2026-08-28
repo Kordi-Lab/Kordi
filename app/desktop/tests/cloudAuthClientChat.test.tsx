@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { CloudAuthClient } from '../src/features/cloud/authClient';
+import { ChatSyncState } from '../src/features/cloud/chatSyncState';
 
 type FetchCall = { url: string; init: RequestInit | undefined };
 
@@ -42,6 +43,33 @@ function chatConversation(overrides: Record<string, unknown> = {}) {
     ...overrides,
   };
 }
+
+test('rekeyed and deleted sessions release stale local routing identities', () => {
+  const state = new ChatSyncState(
+    async () => { throw new Error('unused'); },
+    () => 'acct_me',
+    () => undefined,
+    () => null,
+  );
+  const legacy = chatConversation({
+    kind: 'ai',
+    legacy_session_id: 'session:direct-system-agent:acct_me:cloud_agent_kordi_support',
+    members: [chatConversation().members[0]],
+  });
+  state.rememberConversation(legacy);
+  state.rememberConversation({
+    ...legacy,
+    version: 2,
+    legacy_session_id: `session:quarantined-support:${legacy.id}`,
+  });
+
+  assert.deepEqual(state.knownSessionIds('acct_me'), [
+    `session:quarantined-support:${legacy.id}`,
+  ]);
+
+  state.forgetSession(`session:quarantined-support:${legacy.id}`);
+  assert.deepEqual(state.knownSessionIds('acct_me'), []);
+});
 
 test('expressive media client lists and saves account-owned library items', async () => {
   const mediaItem = {

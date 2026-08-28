@@ -711,6 +711,10 @@ final class CloudConversationCatalogTests: XCTestCase {
 
         XCTAssertEqual(catalog.filter { $0.kind == .person && $0.representsKordiSupport }.count, 1)
         XCTAssertFalse(catalog.contains { $0.kind == .agent && $0.representsKordiSupport })
+        XCTAssertEqual(
+            catalog.first { $0.representsKordiSupport }?.sessionId,
+            "session:direct-system-agent:acct_me:cloud_agent_kordi_support"
+        )
     }
 
     func testMigratedSupportSystemSessionIsPresentedAsTheSupportContactNotAGroup() throws {

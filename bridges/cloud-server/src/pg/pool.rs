@@ -312,6 +312,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "repair resumable attachment uploads",
         sql: include_str!("../../migrations/0065_repair_resumable_attachment_uploads.sql"),
     },
+    EmbeddedMigration {
+        version: 66,
+        description: "quarantine legacy support conversations",
+        sql: include_str!("../../migrations/0066_quarantine_legacy_support_conversations.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
