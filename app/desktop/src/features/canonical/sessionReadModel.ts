@@ -520,9 +520,8 @@ export function createCanonicalSessionReadModel(
       const isLegacyCollaborationSessionThread = sessionMetadata(session).source === 'bridge-session-thread';
       const isChatCreatedDirectAgent = isChatCreatedDirectAgentSession(session);
       const canonicalMessages = this.messages(sessionId);
-      const hydratedMessages = conversation.desktopRuntimeBacked && conversation.desktopRuntimeTranscriptLoaded
-        ? mergeCanonicalHistoryIntoRuntime(canonicalMessages, conversation.messages)
-        : isCanonicalCloudDirectPersonSession && canonicalMessages.length > 0
+      const hydratedMessages = (conversation.desktopRuntimeBacked && conversation.desktopRuntimeTranscriptLoaded
+        || isSupportContact || isCanonicalCloudDirectPersonSession) && canonicalMessages.length > 0
         ? mergeCanonicalHistoryIntoRuntime(canonicalMessages, conversation.messages)
         : (isLegacyCollaborationPersonSession || isLegacyCollaborationSessionThread || isChatCreatedDirectAgent) && canonicalMessages.length > 0
         ? isChatCreatedDirectAgent
