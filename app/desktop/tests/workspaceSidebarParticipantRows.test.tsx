@@ -308,7 +308,7 @@ test('WorkspaceSidebar labels human-centered and self spaces clearly', () => {
   assert.match(markup, /taylor/);
   assert.doesNotMatch(markup, /Person • 1 chat/);
   assert.match(markup, /Saved Messages/);
-  assert.match(markup, /Personal • 2 sessions/);
+  assert.doesNotMatch(markup, /Personal • 2 sessions/);
   assert.doesNotMatch(markup, /Person \+ 1 agent/);
   assert.doesNotMatch(markup, /Myself \+ 2 agents/);
   assert.doesNotMatch(markup, /Group • 1 session/);

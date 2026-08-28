@@ -67,7 +67,7 @@ test('WorkspaceSidebar hides old fork rows for canonical group sessions', () => 
   assert.doesNotMatch(markup, /data-unread-count="7"/);
 });
 
-test('WorkspaceSidebar aligns child session hashtags and keeps last-message metadata visible', () => {
+test('WorkspaceSidebar aligns child session hashtags and shows only the latest-message preview', () => {
   const chatConversations = [
     conversation({
       id: 'session:group-duplicate-preview',
@@ -112,8 +112,10 @@ test('WorkspaceSidebar aligns child session hashtags and keeps last-message meta
 
   assert.doesNotMatch(markup, /pl-\[3\.25rem\]/);
   assert.match(markup, /# Dinner plans/);
-  assert.match(markup, /data-session-message-count="1"/);
-  assert.match(markup, /data-session-preview-line="Dinner plans · 1 message"/);
+  assert.match(markup, /data-session-preview-line="Dinner plans"/);
+  assert.doesNotMatch(markup, /data-session-message-count/);
+  assert.doesNotMatch(markup, /Dinner plans · 1 message/);
+  assert.doesNotMatch(markup, /Group •/);
   assert.match(markup, /data-session-id-label="Group chat"/);
   assert.doesNotMatch(markup, /Session ID: session:group-duplicate-preview/);
   assert.match(markup, /app-participant-space-session-preview/);
@@ -157,7 +159,7 @@ test('WorkspaceSidebar names group spaces from people and hides agents from the 
   assert.match(markup, /member1, member2/);
   assert.match(markup, /aria-label="Collapse member1, member2"/);
   assert.match(markup, /aria-label="Create session in member1, member2"/);
-  assert.match(markup, /Group • 3 people • 1 session/);
+  assert.doesNotMatch(markup, /Group • 3 people • 1 session/);
   assert.doesNotMatch(markup, /Helper Kordi/);
   assert.doesNotMatch(markup, /session:bridge:humans/);
 });
