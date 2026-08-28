@@ -85,16 +85,10 @@ struct GroupSessionRow: View {
                     .font(.body.weight(.semibold))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
-                HStack(spacing: 5) {
-                    Text(session.lastMessage.nonEmpty ?? "No messages yet")
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    Text("·")
-                        .foregroundStyle(.tertiary)
-                    Text(messageCountText)
-                        .fixedSize()
-                }
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                Text(session.lastMessage.nonEmpty ?? "No messages yet")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             }
 
             Spacer(minLength: 8)
@@ -122,11 +116,6 @@ struct GroupSessionRow: View {
         let title = session.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         if title.isEmpty { return "# Untitled session" }
         return title.hasPrefix("#") ? title : "# \(title)"
-    }
-
-    private var messageCountText: String {
-        let count = session.messageCount ?? 0
-        return count == 1 ? "1 message" : "\(count) messages"
     }
 }
 
