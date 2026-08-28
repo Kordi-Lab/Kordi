@@ -17,6 +17,10 @@ enum CloudTransportErrorPolicy {
             || ((error as NSError).domain == NSURLErrorDomain
                 && (error as NSError).code == NSURLErrorCancelled)
     }
+
+    static func shouldSurface(_ error: Error, taskIsCancelled: Bool) -> Bool {
+        !taskIsCancelled && !isCancellation(error)
+    }
 }
 
 struct CloudConversationMessagePage {

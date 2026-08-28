@@ -56,6 +56,20 @@ enum ComposerFocusReconciliation {
     }
 }
 
+enum ComposerTextReconciliation {
+    static func shouldApplyBindingText(
+        bindingChanged: Bool,
+        bindingMatchesLatestEditorText: Bool,
+        hasMarkedText: Bool,
+        isComposingText: Bool
+    ) -> Bool {
+        bindingChanged
+            && !bindingMatchesLatestEditorText
+            && !hasMarkedText
+            && !isComposingText
+    }
+}
+
 enum ComposerInputSurfaceMotion {
     static let duration = Duration.milliseconds(280)
     static let animation = Animation.smooth(duration: 0.28)
@@ -1200,7 +1214,8 @@ struct ComposerTextView: UIViewRepresentable {
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
-        context.coordinator.parent = self
+        let coordinator = context.coordinator
+        coordinator.parent = self
         textView.accessibilityLabel = accessibilityLabel
         updateExclusionPaths(of: textView, height: measuredHeight)
 
@@ -1224,11 +1239,32 @@ struct ComposerTextView: UIViewRepresentable {
             }
         }
 
-        if textView.markedTextRange == nil, textView.text != text {
+        let hasMarkedText = textView.markedTextRange != nil
+        let bindingChanged = coordinator.lastObservedBindingText != text
+        let bindingMatchesLatestEditorText = coordinator.latestEditorText == text
+        coordinator.lastObservedBindingText = text
+
+        if !hasMarkedText, coordinator.isComposingText {
+            DispatchQueue.main.async { [weak textView] in
+                guard let textView,
+                      textView.markedTextRange == nil,
+                      coordinator.isComposingText else { return }
+                coordinator.finishComposition(in: textView)
+            }
+        }
+        if ComposerTextReconciliation.shouldApplyBindingText(
+            bindingChanged: bindingChanged,
+            bindingMatchesLatestEditorText: bindingMatchesLatestEditorText,
+            hasMarkedText: hasMarkedText,
+            isComposingText: coordinator.isComposingText
+        ), textView.text != text {
             textView.text = text
             textView.invalidateIntrinsicContentSize()
+            coordinator.latestEditorText = text
         }
-        if textView.markedTextRange == nil {
+        if !hasMarkedText,
+           !coordinator.isComposingText,
+           textView.text == text {
             let utf16Count = (textView.text as NSString).length
             let location = min(max(selection.location, 0), utf16Count)
             let length = min(max(selection.length, 0), utf16Count - location)
@@ -1294,6 +1330,9 @@ struct ComposerTextView: UIViewRepresentable {
         var parent: ComposerTextView
         var lastHandledKeyboardFocusRequest = 0
         var isEndingEditing = false
+        var isComposingText = false
+        var lastObservedBindingText: String?
+        var latestEditorText: String?
         private var hostedExpressiveInputView: ComposerExpressiveInputView?
 
         init(parent: ComposerTextView) {
@@ -1354,33 +1393,52 @@ struct ComposerTextView: UIViewRepresentable {
         }
 
         func textViewDidChange(_ textView: UITextView) {
-            guard textView.markedTextRange == nil else { return }
-            parent.updateHeight(of: textView)
-            let updatedText = textView.text ?? ""
-            let updatedSelection = ComposerTextSelection(
-                location: textView.selectedRange.location,
-                length: textView.selectedRange.length
-            )
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                if self.parent.text != updatedText {
-                    self.parent.text = updatedText
-                }
-                if self.parent.selection != updatedSelection {
-                    self.parent.selection = updatedSelection
-                }
+            latestEditorText = textView.text ?? ""
+            if textView.markedTextRange != nil {
+                isComposingText = true
+                return
             }
+            isComposingText = false
+            parent.updateHeight(of: textView)
+            commitEditorState(textView)
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
-            guard textView.markedTextRange == nil else { return }
+            if textView.markedTextRange != nil {
+                isComposingText = true
+                return
+            }
+            if isComposingText {
+                finishComposition(in: textView)
+                return
+            }
             let updatedSelection = ComposerTextSelection(
                 location: textView.selectedRange.location,
                 length: textView.selectedRange.length
             )
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.parent.selection != updatedSelection else { return }
-                self.parent.selection = updatedSelection
+            if parent.selection != updatedSelection {
+                parent.selection = updatedSelection
+            }
+        }
+
+        func finishComposition(in textView: UITextView) {
+            isComposingText = false
+            parent.updateHeight(of: textView)
+            commitEditorState(textView)
+        }
+
+        private func commitEditorState(_ textView: UITextView) {
+            let updatedText = textView.text ?? ""
+            latestEditorText = updatedText
+            let updatedSelection = ComposerTextSelection(
+                location: textView.selectedRange.location,
+                length: textView.selectedRange.length
+            )
+            if parent.text != updatedText {
+                parent.text = updatedText
+            }
+            if parent.selection != updatedSelection {
+                parent.selection = updatedSelection
             }
         }
     }

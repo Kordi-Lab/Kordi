@@ -43,6 +43,18 @@ final class CloudModelDecodingTests: XCTestCase {
         XCTAssertTrue(CloudTransportErrorPolicy.isCancellation(CancellationError()))
         XCTAssertTrue(CloudTransportErrorPolicy.isCancellation(URLError(.cancelled)))
         XCTAssertFalse(CloudTransportErrorPolicy.isCancellation(URLError(.timedOut)))
+        XCTAssertFalse(CloudTransportErrorPolicy.shouldSurface(
+            CancellationError(),
+            taskIsCancelled: false
+        ))
+        XCTAssertFalse(CloudTransportErrorPolicy.shouldSurface(
+            URLError(.timedOut),
+            taskIsCancelled: true
+        ))
+        XCTAssertTrue(CloudTransportErrorPolicy.shouldSurface(
+            URLError(.timedOut),
+            taskIsCancelled: false
+        ))
     }
 
     func testDefaultClientUsesConfiguredOriginAndWaitsForConnectivity() {

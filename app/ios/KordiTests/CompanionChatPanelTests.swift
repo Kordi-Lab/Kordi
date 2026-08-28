@@ -310,6 +310,95 @@ final class CompanionChatPanelTests: XCTestCase {
         window.isHidden = true
     }
 
+    func testUnchangedBindingNeverOverwritesNewKeyboardText() {
+        XCTAssertFalse(ComposerTextReconciliation.shouldApplyBindingText(
+            bindingChanged: false,
+            bindingMatchesLatestEditorText: false,
+            hasMarkedText: false,
+            isComposingText: false
+        ))
+        XCTAssertFalse(ComposerTextReconciliation.shouldApplyBindingText(
+            bindingChanged: true,
+            bindingMatchesLatestEditorText: true,
+            hasMarkedText: false,
+            isComposingText: false
+        ))
+        XCTAssertFalse(ComposerTextReconciliation.shouldApplyBindingText(
+            bindingChanged: true,
+            bindingMatchesLatestEditorText: false,
+            hasMarkedText: true,
+            isComposingText: true
+        ))
+        XCTAssertTrue(ComposerTextReconciliation.shouldApplyBindingText(
+            bindingChanged: true,
+            bindingMatchesLatestEditorText: false,
+            hasMarkedText: false,
+            isComposingText: false
+        ))
+    }
+
+    @MainActor
+    func testUIKitEditorCommitsTextBeforeAnUnrelatedViewRefresh() async throws {
+        let model = ComposerTextViewInputSurfaceModel()
+        model.isExpressivePickerPresented = false
+        let controller = UIHostingController(
+            rootView: ComposerTextViewInputSurfaceHarness(
+                model: model,
+                appModel: AppModel(previewMode: true)
+            )
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 100))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+
+        let textView = try XCTUnwrap(firstTextView(in: controller.view))
+        textView.text = "This draft must survive"
+        textView.selectedRange = NSRange(location: textView.text.utf16.count, length: 0)
+        textView.delegate?.textViewDidChange?(textView)
+
+        XCTAssertEqual(model.text, "This draft must survive")
+        model.objectWillChange.send()
+        controller.view.layoutIfNeeded()
+        XCTAssertEqual(textView.text, "This draft must survive")
+        window.isHidden = true
+    }
+
+    @MainActor
+    func testUIKitEditorKeepsASelectedKeyboardCandidate() async throws {
+        let model = ComposerTextViewInputSurfaceModel()
+        model.isExpressivePickerPresented = false
+        let controller = UIHostingController(
+            rootView: ComposerTextViewInputSurfaceHarness(
+                model: model,
+                appModel: AppModel(previewMode: true)
+            )
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 100))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+
+        let textView = try XCTUnwrap(firstTextView(in: controller.view))
+        textView.setMarkedText("pin", selectedRange: NSRange(location: 3, length: 0))
+        textView.delegate?.textViewDidChange?(textView)
+        XCTAssertEqual(model.text, "")
+
+        textView.setMarkedText("candidate", selectedRange: NSRange(location: 9, length: 0))
+        textView.unmarkText()
+        textView.delegate?.textViewDidChangeSelection?(textView)
+        XCTAssertEqual(model.text, "candidate")
+
+        model.objectWillChange.send()
+        controller.view.layoutIfNeeded()
+        XCTAssertEqual(textView.text, "candidate")
+        window.isHidden = true
+    }
+
     @MainActor
     func testNativeKeyboardDismissalCompletesBeforeSwiftUIFocusReconciles() async throws {
         let model = ComposerTextViewInputSurfaceModel()
@@ -760,19 +849,19 @@ private struct ComposerTextViewFocusHarness: View {
 private final class ComposerTextViewInputSurfaceModel: ObservableObject {
     @Published var isExpressivePickerPresented = true
     @Published var isFocused = true
+    @Published var text = ""
 }
 
 private struct ComposerTextViewInputSurfaceHarness: View {
     @ObservedObject var model: ComposerTextViewInputSurfaceModel
     let appModel: AppModel
-    @State private var text = ""
     @State private var selection = ComposerTextSelection(location: 0, length: 0)
     @State private var measuredHeight: CGFloat = 44
 
     var body: some View {
         ComposerTextView(
             model: appModel,
-            text: $text,
+            text: $model.text,
             selection: $selection,
             isFocused: $model.isFocused,
             isExpressivePickerPresented: $model.isExpressivePickerPresented,

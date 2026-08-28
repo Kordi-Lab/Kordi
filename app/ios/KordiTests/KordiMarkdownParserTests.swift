@@ -175,6 +175,24 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertEqual(limitAfterReveal, ConversationTimelineWindow.initialLimit + 1)
     }
 
+    func testEarlierHistoryExpandsByOneBoundedPage() {
+        XCTAssertEqual(ConversationTimelineWindow.pageSize, 44)
+        XCTAssertEqual(
+            ConversationTimelineWindow.limitAfterLoadingEarlier(
+                currentLimit: ConversationTimelineWindow.initialLimit,
+                totalCount: 341
+            ),
+            108
+        )
+        XCTAssertEqual(
+            ConversationTimelineWindow.limitAfterLoadingEarlier(
+                currentLimit: 320,
+                totalCount: 341
+            ),
+            341
+        )
+    }
+
     @MainActor
     func testOpeningEveryPreviewSessionKindClearsUnreadImmediately() throws {
         let model = AppModel(previewMode: true)
@@ -563,6 +581,7 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertFalse(presentation[2].groupedWithPrevious)
     }
 
+    @MainActor
     func testTimelineTimestampUsesAWeekdayForRecentHistoricalMessages() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0)!

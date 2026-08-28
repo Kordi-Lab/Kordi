@@ -38,6 +38,8 @@ struct MessageBubble: View, Equatable {
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
     let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
+    let onPrepareAttachment: (ChatAttachment) async -> URL?
+    let onAddAttachmentToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
     @State private var isRetrying = false
@@ -288,6 +290,8 @@ struct MessageBubble: View, Equatable {
                 author: message.author,
                 onOpen: onOpenAttachment,
                 onShare: onShareAttachment,
+                onPrepare: onPrepareAttachment,
+                onAddToMediaLibrary: onAddAttachmentToMediaLibrary,
                 actionAttachmentID: actionAttachment?.id,
                 onPrepareActions: prepareImageActions,
                 onRequestActions: requestImageActions
@@ -310,7 +314,6 @@ struct MessageBubble: View, Equatable {
             .environment(\.colorScheme, bubbleContentColorScheme)
             .foregroundStyle(bubbleTextColor)
             .background(bubbleColor, in: bubbleShape)
-            .compositingGroup()
             .clipShape(bubbleShape)
         }
     }
@@ -380,6 +383,8 @@ struct MessageBubble: View, Equatable {
                         author: message.author,
                         onOpen: onOpenAttachment,
                         onShare: onShareAttachment,
+                        onPrepare: onPrepareAttachment,
+                        onAddToMediaLibrary: onAddAttachmentToMediaLibrary,
                         actionAttachmentID: actionAttachment?.id,
                         onPrepareActions: prepareImageActions,
                         onRequestActions: requestImageActions
@@ -393,6 +398,8 @@ struct MessageBubble: View, Equatable {
                                     onOpenAttachment(attachment, previewImage)
                                 },
                                 onShare: { onShareAttachment(attachment) },
+                                onPrepare: onPrepareAttachment,
+                                onAddToMediaLibrary: onAddAttachmentToMediaLibrary,
                                 isActionTarget: actionAttachment?.id == attachment.id,
                                 onPrepareActions: { prepareImageActions(attachment) },
                                 onRequestActions: { frame in
@@ -1281,6 +1288,8 @@ private struct MessageAttachmentCard: View {
     let attachment: ChatAttachment
     let onOpen: (UIImage?) -> Void
     let onShare: () -> Void
+    let onPrepare: (ChatAttachment) async -> URL?
+    let onAddToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let isActionTarget: Bool
     let onPrepareActions: () -> Void
     let onRequestActions: (CGRect) -> Void
@@ -1293,6 +1302,8 @@ private struct MessageAttachmentCard: View {
                 presentation: .natural,
                 onOpen: onOpen,
                 onShare: onShare,
+                onPrepare: onPrepare,
+                onAddToMediaLibrary: onAddToMediaLibrary,
                 isActionTarget: isActionTarget,
                 onPrepareActions: onPrepareActions,
                 onRequestActions: onRequestActions
@@ -1314,6 +1325,8 @@ private struct MessageImageCollection: View {
     let author: MessageAuthor
     let onOpen: (ChatAttachment, UIImage?) -> Void
     let onShare: (ChatAttachment) -> Void
+    let onPrepare: (ChatAttachment) async -> URL?
+    let onAddToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let actionAttachmentID: String?
     let onPrepareActions: (ChatAttachment?) -> Void
     let onRequestActions: (ChatAttachment, CGRect) -> Void
@@ -1567,6 +1580,8 @@ private struct MessageImageCollection: View {
                 }
             },
             onShare: { onShare(attachment) },
+            onPrepare: onPrepare,
+            onAddToMediaLibrary: onAddToMediaLibrary,
             isActionTarget: actionAttachmentID == attachment.id,
             onPrepareActions: {
                 if presentation.isStackPreview {
@@ -1810,11 +1825,12 @@ private struct MessageInteractionGestureBridge: UIViewRepresentable {
 }
 
 private struct MessageImageAttachment: View {
-    @EnvironmentObject private var model: AppModel
     let attachment: ChatAttachment
     let presentation: MessageImagePresentation
     let onOpen: (UIImage?) -> Void
     let onShare: () -> Void
+    let onPrepare: (ChatAttachment) async -> URL?
+    let onAddToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let isActionTarget: Bool
     let onPrepareActions: () -> Void
     let onRequestActions: (CGRect) -> Void
@@ -1825,7 +1841,6 @@ private struct MessageImageAttachment: View {
     @State private var reloadToken = 0
     @State private var addedMediaKind: ExpressiveMediaLibraryKind?
     @State private var isAddingToMediaLibrary = false
-    @State private var actionFrame = CGRect.zero
 
     var body: some View {
         interactiveImage
@@ -1869,12 +1884,6 @@ private struct MessageImageAttachment: View {
                 .contextMenuPreview,
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
-            .onGeometryChange(for: CGRect.self) { proxy in
-                proxy.frame(in: .global)
-            } action: { frame in
-                if !frame.isEmpty, frame != actionFrame { actionFrame = frame }
-                if isActionTarget, !frame.isEmpty { onRequestActions(frame) }
-            }
     }
 
     private func activate() {
@@ -1900,7 +1909,6 @@ private struct MessageImageAttachment: View {
                     .resizable()
                     .scaledToFill()
                     .frame(width: MessageImageMetrics.stackSide, height: MessageImageMetrics.stackSide)
-                    .compositingGroup()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .transition(.opacity)
             } else {
@@ -1910,7 +1918,6 @@ private struct MessageImageAttachment: View {
                     .scaledToFit()
                     .frame(width: size.width, height: size.height)
                     .background(Color(uiColor: .secondarySystemBackground))
-                    .compositingGroup()
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .transition(.opacity)
             }
@@ -1951,7 +1958,7 @@ private struct MessageImageAttachment: View {
         }
 
         guard !attachment.attachmentId.hasPrefix("pending:"),
-              let url = await model.prepareAttachmentForPresentation(attachment) else {
+              let url = await onPrepare(attachment) else {
             guard !Task.isCancelled else { return }
             isLoading = false
             loadFailed = true
@@ -1996,7 +2003,7 @@ private struct MessageImageAttachment: View {
         guard mediaKind != nil, !isAddingToMediaLibrary, addedMediaKind == nil else { return }
         isAddingToMediaLibrary = true
         Task {
-            addedMediaKind = await model.addAttachmentToExpressiveMediaLibrary(attachment)
+            addedMediaKind = await onAddToMediaLibrary(attachment)
             isAddingToMediaLibrary = false
         }
     }
