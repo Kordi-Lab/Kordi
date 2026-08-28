@@ -721,7 +721,6 @@ private struct SelectableMessageTextView: UIViewRepresentable {
         textView.textContainer.lineFragmentPadding = 0
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         configure(textView)
-        selectAll(in: textView)
         return textView
     }
 
@@ -729,7 +728,6 @@ private struct SelectableMessageTextView: UIViewRepresentable {
         context.coordinator.parent = self
         guard textView.text != text else { return }
         configure(textView)
-        selectAll(in: textView)
     }
 
     func sizeThatFits(
@@ -748,16 +746,6 @@ private struct SelectableMessageTextView: UIViewRepresentable {
         textView.text = text
         textView.font = .preferredFont(forTextStyle: density == .compact ? .caption1 : .body)
         textView.textColor = .label
-    }
-
-    private func selectAll(in textView: UITextView) {
-        DispatchQueue.main.async {
-            textView.selectedRange = NSRange(
-                location: 0,
-                length: (textView.text as NSString).length
-            )
-            textView.becomeFirstResponder()
-        }
     }
 }
 

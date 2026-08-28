@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 
 import {
   handleDocumentCopySurfaceKeyDown,
+  installCopySurfaceSelectionTracking,
   isEditableSelectionTarget,
   isSelectAllShortcut,
   syncCopySurfaceSelection,
@@ -75,6 +76,61 @@ test('selection helpers preserve editor shortcuts and recognize both platform mo
     assert.equal(isSelectAllShortcut({ key: 'a', metaKey: false, ctrlKey: false }), false);
   } finally {
     globalThis.Element = previousElement;
+  }
+});
+
+test('primary click outside copy surfaces clears native text selection', () => {
+  const dom = new JSDOM(`
+    <div data-kordi-copy-surface="message" id="surface">Keep me selected</div>
+    <button id="outside">Outside</button>
+    <textarea id="editor"></textarea>
+  `);
+  const surface = dom.window.document.querySelector<HTMLElement>('#surface');
+  const outside = dom.window.document.querySelector<HTMLButtonElement>('#outside');
+  const editor = dom.window.document.querySelector<HTMLTextAreaElement>('#editor');
+  assert.ok(surface);
+  assert.ok(outside);
+  assert.ok(editor);
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousElement = globalThis.Element;
+  Object.assign(globalThis, {
+    window: dom.window,
+    document: dom.window.document,
+    Element: dom.window.Element,
+  });
+  const selection = dom.window.getSelection();
+  assert.ok(selection);
+  const selectSurface = () => {
+    const range = dom.window.document.createRange();
+    range.selectNodeContents(surface);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+  const stopTracking = installCopySurfaceSelectionTracking(dom.window.document);
+
+  try {
+    selectSurface();
+    outside.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    assert.equal(selection.rangeCount, 0);
+
+    selectSurface();
+    surface.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    assert.equal(selection.toString(), 'Keep me selected');
+
+    outside.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, button: 2 }));
+    assert.equal(selection.toString(), 'Keep me selected');
+
+    editor.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true, button: 0 }));
+    assert.equal(selection.toString(), 'Keep me selected');
+  } finally {
+    stopTracking();
+    Object.assign(globalThis, {
+      window: previousWindow,
+      document: previousDocument,
+      Element: previousElement,
+    });
+    dom.window.close();
   }
 });
 

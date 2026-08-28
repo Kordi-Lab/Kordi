@@ -153,6 +153,13 @@ test('message context menu installs document-level outside dismissal listeners',
   assert.match(source, /menuRef\.current\?\.contains\(target\)/);
 });
 
+test('right-click opening gesture cannot start native message text selection', () => {
+  const source = readFileSync(new URL('../src/kordi-app/components/messageContextMenuHost.tsx', import.meta.url), 'utf8');
+
+  assert.match(source, /onMouseDownCapture=\{\(event\) => \{\s*if \(event\.button === 2\) event\.preventDefault\(\);\s*\}\}/);
+  assert.match(source, /const openMenu = [\s\S]*?event\.preventDefault\(\);[\s\S]*?clearNativeTextSelection\(\);/);
+});
+
 test('message context menu position stays close to the clicked message rectangle', () => {
   const below = messageContextMenuPosition({
     clientX: 340,

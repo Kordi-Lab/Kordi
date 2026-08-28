@@ -126,11 +126,19 @@ export function syncCopySurfaceSelection(
 
 export function installCopySurfaceSelectionTracking(root: Document) {
   const syncSelection = () => syncCopySurfaceSelection(root);
+  const clearSelectionFromOutsidePointer = (event: PointerEvent) => {
+    if (event.button !== 0 || isEditableSelectionTarget(event.target)) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(COPY_SURFACE_SELECTOR)) return;
+    clearNativeTextSelection();
+  };
   root.addEventListener('selectionchange', syncSelection);
+  root.addEventListener('pointerdown', clearSelectionFromOutsidePointer, true);
   root.defaultView?.addEventListener('resize', syncSelection);
   syncSelection();
   return () => {
     root.removeEventListener('selectionchange', syncSelection);
+    root.removeEventListener('pointerdown', clearSelectionFromOutsidePointer, true);
     root.defaultView?.removeEventListener('resize', syncSelection);
     clearUnifiedCopySelection(root);
   };

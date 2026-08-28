@@ -50,6 +50,10 @@ struct MessageBubble: View, Equatable {
 
     static let actionLongPressDuration = 0.5
 
+    private var showsSelectionHighlight: Bool {
+        isHighlighted || isSelected
+    }
+
     static func == (lhs: MessageBubble, rhs: MessageBubble) -> Bool {
         lhs.message == rhs.message
             && lhs.mentionTargets == rhs.mentionTargets
@@ -142,22 +146,27 @@ struct MessageBubble: View, Equatable {
                         }
                     }
                     .overlay {
-                        if isHighlighted {
+                        if showsSelectionHighlight {
                             bubbleShape
                                 .fill(chatTheme.accent.opacity(0.10))
                                 .allowsHitTesting(false)
                         }
                         bubbleShape
                             .stroke(
-                                isHighlighted ? chatTheme.accent : Color.clear,
-                                lineWidth: isHighlighted ? 2 : 0
+                                showsSelectionHighlight ? chatTheme.accent : Color.clear,
+                                lineWidth: showsSelectionHighlight ? 2 : 0
                             )
                             .allowsHitTesting(false)
                     }
                     .scaleEffect(
-                        reduceMotion ? 1 : isActionPresented ? 1.016 : isHighlighted ? 1.018 : 1
+                        reduceMotion
+                            ? 1
+                            : isActionPresented ? 1.016 : showsSelectionHighlight ? 1.018 : 1
                     )
-                    .animation(reduceMotion ? nil : .snappy(duration: 0.24), value: isHighlighted)
+                    .animation(
+                        reduceMotion ? nil : .snappy(duration: 0.24),
+                        value: showsSelectionHighlight
+                    )
                     .animation(
                         reduceMotion
                             ? nil
@@ -260,6 +269,7 @@ struct MessageBubble: View, Equatable {
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .onChange(of: isActionPresented) { wasPresented, isPresented in
             if wasPresented, !isPresented {
                 actionAttachment = nil
@@ -1678,8 +1688,8 @@ private struct MessageFileAttachmentCard: View {
 }
 
 enum MessageGestureArbitration {
-    static func allowsSimultaneousRecognition(with _: UIGestureRecognizer) -> Bool {
-        true
+    static func allowsSimultaneousRecognition(with recognizer: UIGestureRecognizer) -> Bool {
+        !(recognizer is UIPanGestureRecognizer)
     }
 }
 

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 
+import { clearNativeTextSelection } from '@/features/contentSelection';
 import { MessageContextMenuContent, type MessageContextMenuActionHandlers } from './messageContextMenuContent';
 import { MessageContextMenuInteractionGuard } from './messageContextMenuInteraction';
 import { messageContextMenuPosition } from './messageContextMenuPosition';
@@ -41,6 +42,7 @@ export function MessageContextMenuHost({
   const openMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    clearNativeTextSelection();
     const eventTarget = event.target instanceof Element ? event.target : null;
     const anchorElement = eventTarget?.closest('[data-message-context-menu-anchor="true"]') ?? null;
     const targetRect = (anchorElement ?? event.currentTarget).getBoundingClientRect();
@@ -137,6 +139,9 @@ export function MessageContextMenuHost({
       data-message-selection-drag-handle={dragSelectHandleId}
       data-message-selection-drag-state={dragSelectState}
       aria-label={dragSelectLabel}
+      onMouseDownCapture={(event) => {
+        if (event.button === 2) event.preventDefault();
+      }}
       onContextMenu={openMenu}
       onPointerDown={onPointerDown}
       onPointerEnter={onPointerEnter}
