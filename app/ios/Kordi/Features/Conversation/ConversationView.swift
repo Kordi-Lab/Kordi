@@ -974,7 +974,7 @@ struct ConversationView: View {
         guard messageActionMessage?.id != message.id else { return }
         messageActionAttachment = attachment
             ?? message.attachments.first(where: { $0.kind == .image })
-        selectedMessageText = message.text
+        selectedMessageText = nil
         isComposerFocused = false
         dismissComposerPickers()
         withAnimation(reduceMotion ? nil : .snappy(duration: 0.2)) {

@@ -8,8 +8,8 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(MessageBubble.reactionChipVerticalLift, 14)
     }
 
-    func testMessageActionsRecognizeAlongsideTheConversationScrollPan() {
-        XCTAssertTrue(MessageGestureArbitration.allowsSimultaneousRecognition(
+    func testMessageActionsStopConversationPanningAfterTheHoldWins() {
+        XCTAssertFalse(MessageGestureArbitration.allowsSimultaneousRecognition(
             with: UIPanGestureRecognizer()
         ))
         XCTAssertTrue(MessageGestureArbitration.allowsSimultaneousRecognition(
@@ -18,7 +18,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(MessageBubble.actionLongPressDuration, 0.5)
     }
 
-    func testMessageActionsImmediatelyExposeTextSelectionWithoutANativeMenu() throws {
+    func testMessageActionsAllowManualTextSelectionOnlyAfterOpening() throws {
         let conversationDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -42,10 +42,15 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
 
         XCTAssertTrue(markdownSource.contains("SelectableMessageTextView("))
-        XCTAssertTrue(markdownSource.contains("textView.selectedRange = NSRange("))
-        XCTAssertTrue(markdownSource.contains("UIMenu(children: [])"))
+        XCTAssertTrue(markdownSource.contains("textView.isSelectable = true"))
+        XCTAssertTrue(markdownSource.contains("textView.isScrollEnabled = false"))
+        XCTAssertFalse(markdownSource.contains("textView.selectedRange = NSRange("))
+        XCTAssertFalse(markdownSource.contains("textView.becomeFirstResponder()"))
         XCTAssertTrue(bubbleSource.contains("allowsTextSelection: isActionPresented"))
         XCTAssertTrue(bubbleSource.contains("onSelectedTextChange: onSelectedTextChange"))
+        XCTAssertTrue(bubbleSource.contains("isHighlighted || isSelected"))
+        XCTAssertTrue(bubbleSource.contains("value: showsSelectionHighlight"))
+        XCTAssertTrue(bubbleSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
         XCTAssertTrue(overlaySource.contains("AnyShape(MessageActionBackdrop(cutout: cutout))"))
         XCTAssertTrue(overlaySource.contains("eoFill: true"))
         XCTAssertTrue(overlaySource.contains("Button(action: onDismiss)"))
@@ -59,7 +64,11 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains("UIAccessibility.isReduceMotionEnabled"))
         XCTAssertTrue(overlaySource.contains(".curveEaseOut"))
         XCTAssertFalse(overlaySource.contains("acceptsInput"))
-        XCTAssertTrue(conversationSource.contains("selectedMessageText?.nonEmpty"))
+        XCTAssertTrue(overlaySource.contains("actionButton(\"Select\""))
+        XCTAssertTrue(conversationSource.contains("@State private var selectedMessageText: String?"))
+        XCTAssertTrue(conversationSource.contains("selectedMessageText?.nonEmpty ?? message.text"))
+        XCTAssertTrue(conversationSource.contains("selectedMessageText = nil"))
+        XCTAssertTrue(conversationSource.contains("toggleSelection(message.id)"))
         XCTAssertFalse(conversationSource.contains("messageActionAcceptsInput"))
         XCTAssertTrue(conversationSource.contains(".scrollDisabled(messageActionMessage != nil)"))
         XCTAssertFalse(conversationSource.contains("proxy.scrollTo(row.id, anchor: .bottom)"))
