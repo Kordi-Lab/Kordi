@@ -195,13 +195,12 @@ fn migration_embeds_canonical_ordering_idempotency_and_title_state() {
 }
 
 #[test]
-fn bootstrap_restores_durable_session_titles_without_message_inference() {
+fn bootstrap_reads_titles_only_from_canonical_state() {
     let root = repository_root();
     let cursors = read(root.join("bridges/cloud-server/src/chat_sync/store/cursors.rs"));
 
-    assert!(cursors.contains("COALESCE(viewer.personal_title, NULLIF(session_title.title, ''))",));
-    assert!(cursors.contains("LEFT JOIN cloud_session_titles session_title",));
-    assert!(cursors.contains("session_title.session_id = conversation.legacy_session_id",));
+    assert!(cursors.contains("conversation.updated_at, viewer.personal_title"));
+    assert!(!cursors.contains("cloud_session_titles"));
 }
 
 #[test]
