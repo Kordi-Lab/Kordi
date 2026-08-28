@@ -96,7 +96,7 @@ test('representative popup families opt into the shared transient contract', () 
     ['features/cloud/CloudContactsPanel.tsx', /app-transient-surface w-full/],
     ['features/cloud/CloudPeerChatPanel.tsx', /app-transient-surface app-frosted-popover/],
     ['pages/ArtifactInspector.tsx', /app-transient-surface app-artifact-preview-window-panel/],
-    ['kordi-app/components/transcriptAttachments.tsx', /app-transient-surface fixed z-\[230\]/],
+    ['kordi-app/components/transcriptAttachmentContextMenu.tsx', /app-transient-surface fixed z-\[230\]/],
   ];
 
   for (const [path, contract] of surfaceInventory) {

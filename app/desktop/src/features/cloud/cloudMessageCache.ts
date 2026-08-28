@@ -76,12 +76,10 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
     attachmentId,
     name,
     kind,
-    ...(record.subtype === 'sticker' && kind === 'image'
-      ? { subtype: 'sticker' as const }
-      : record.subtype === 'meme' && kind === 'image' ? {
-          subtype: 'meme' as const,
-          altText: typeof record.altText === 'string' ? record.altText : null,
-        } : {}),
+    ...(record.subtype === 'sticker' && kind === 'image' ? { subtype: 'sticker' as const }
+      : record.subtype === 'meme' && kind === 'image'
+        ? { subtype: 'meme' as const, altText: typeof record.altText === 'string' ? record.altText : null }
+        : {}),
     mimeType,
     sizeBytes,
     ...(previewAttachmentId ? { previewAttachmentId } : {}),

@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { Image } from 'lucide-react';
 import {
   attachmentMediaGalleryIndex,
@@ -33,7 +32,6 @@ import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
 import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
 import { TranscriptImageGroup } from './transcriptImageGroup';
-import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibraryAction';
 import {
   recoverableAttachmentId,
   recoveredAttachmentPreviewUrl,
@@ -42,6 +40,7 @@ import {
 import type { AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
 import { usePointerClickWithoutDrag } from './usePointerClickWithoutDrag';
 import { messageStickerAttachment } from './messageStickerPresentation';
+import { sampleAttachmentImageForegroundTone } from './transcriptAttachmentForegroundTone';
 import type { Message, MessageAttachment } from '../types';
 
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
@@ -50,56 +49,11 @@ export {
   recoverAttachmentPreviewOnce,
 } from './transcriptAttachmentPreviewRecovery';
 export { attachmentImageDeliveryVisual };
+export { AttachmentContextMenu } from './transcriptAttachmentContextMenu';
+export { shouldCloseAttachmentContextMenuForTarget } from './transcriptAttachmentContextMenuState';
+export type { AttachmentContextMenuState } from './transcriptAttachmentContextMenuState';
+export { attachmentImageForegroundToneFromRgba } from './transcriptAttachmentForegroundTone';
 export type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
-
-function PortalLayer({ children }: { children: ReactNode }) {
-  if (typeof document === 'undefined' || !document.body) return <>{children}</>;
-  return createPortal(children, document.body);
-}
-
-export type AttachmentContextMenuState = {
-  attachment: MessageAttachment;
-  x: number;
-  y: number;
-};
-
-type AttachmentContextMenuHost = {
-  contains: (target: Node | null) => boolean;
-} | null;
-
-export function shouldCloseAttachmentContextMenuForTarget(menuElement: AttachmentContextMenuHost, target: EventTarget | null) {
-  if (!menuElement || !target) return true;
-  if (typeof Node !== 'undefined' && !(target instanceof Node)) return true;
-  return !menuElement.contains(target as Node);
-}
-
-export function AttachmentContextMenu({ state, onClose }: { state: AttachmentContextMenuState; onClose: () => void }) {
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      if (shouldCloseAttachmentContextMenuForTarget(menuRef.current, event.target)) onClose();
-    }
-
-    window.addEventListener('pointerdown', handlePointerDown, true);
-    return () => window.removeEventListener('pointerdown', handlePointerDown, true);
-  }, [onClose]);
-
-  return (
-    <PortalLayer>
-      <div
-        ref={menuRef}
-        data-attachment-image-context-menu="true"
-        className="app-transient-surface fixed z-[230] rounded-[14px] border p-1.5"
-        style={{ left: state.x, top: state.y }}
-        onContextMenu={(event) => event.preventDefault()}
-      >
-        <AddAttachmentToMediaLibraryAction attachment={state.attachment} onAdded={onClose} />
-        <AttachmentActions attachment={state.attachment} variant="menu" />
-      </div>
-    </PortalLayer>
-  );
-}
 
 function isAttachmentSending(msg: Message) {
   return (msg.statusChips ?? []).some((chip) => {
@@ -108,100 +62,6 @@ function isAttachmentSending(msg: Message) {
   });
 }
 
-function linearSrgbChannel(channel: number) {
-  const value = Math.min(255, Math.max(0, channel)) / 255;
-  return value <= 0.04045
-    ? value / 12.92
-    : ((value + 0.055) / 1.055) ** 2.4;
-}
-
-export function attachmentImageForegroundToneFromRgba(
-  pixels: ArrayLike<number>,
-): AttachmentImageForegroundTone | null {
-  let weightedLuminance = 0;
-  let alphaWeight = 0;
-
-  for (let index = 0; index + 3 < pixels.length; index += 4) {
-    const alpha = Math.min(255, Math.max(0, pixels[index + 3] ?? 0)) / 255;
-    if (alpha <= 0.02) continue;
-    const luminance = (
-      (0.2126 * linearSrgbChannel(pixels[index] ?? 0))
-      + (0.7152 * linearSrgbChannel(pixels[index + 1] ?? 0))
-      + (0.0722 * linearSrgbChannel(pixels[index + 2] ?? 0))
-    );
-    weightedLuminance += luminance * alpha;
-    alphaWeight += alpha;
-  }
-
-  if (alphaWeight === 0) return null;
-  return (weightedLuminance / alphaWeight) >= 0.179 ? 'dark' : 'light';
-}
-
-function sampleAttachmentImageForegroundTone(
-  image: HTMLImageElement,
-): AttachmentImageForegroundTone | null {
-  const naturalWidth = image.naturalWidth;
-  const naturalHeight = image.naturalHeight;
-  if (!naturalWidth || !naturalHeight || typeof document === 'undefined') return null;
-
-  const renderedWidth = image.clientWidth || naturalWidth;
-  const renderedHeight = image.clientHeight || naturalHeight;
-  if (!renderedWidth || !renderedHeight) return null;
-
-  try {
-    const objectFit = window.getComputedStyle(image).objectFit;
-    const scale = objectFit === 'cover'
-      ? Math.max(renderedWidth / naturalWidth, renderedHeight / naturalHeight)
-      : Math.min(renderedWidth / naturalWidth, renderedHeight / naturalHeight);
-    const objectWidth = naturalWidth * scale;
-    const objectHeight = naturalHeight * scale;
-    const objectLeft = (renderedWidth - objectWidth) / 2;
-    const objectTop = (renderedHeight - objectHeight) / 2;
-    const targetWidth = Math.min(renderedWidth, Math.max(64, renderedWidth * 0.4));
-    const targetHeight = Math.min(renderedHeight, Math.max(28, renderedHeight * 0.18));
-    const targetLeft = renderedWidth - targetWidth;
-    const targetTop = renderedHeight - targetHeight;
-    const sampleLeft = Math.max(targetLeft, objectLeft);
-    const sampleTop = Math.max(targetTop, objectTop);
-    const sampleRight = Math.min(renderedWidth, objectLeft + objectWidth);
-    const sampleBottom = Math.min(renderedHeight, objectTop + objectHeight);
-    const sampleDisplayWidth = sampleRight - sampleLeft;
-    const sampleDisplayHeight = sampleBottom - sampleTop;
-    if (
-      sampleDisplayWidth <= 0
-      || sampleDisplayHeight <= 0
-      || (sampleDisplayWidth * sampleDisplayHeight) < (targetWidth * targetHeight * 0.5)
-    ) {
-      return null;
-    }
-
-    const sourceX = (sampleLeft - objectLeft) / scale;
-    const sourceY = (sampleTop - objectTop) / scale;
-    const sourceWidth = sampleDisplayWidth / scale;
-    const sourceHeight = sampleDisplayHeight / scale;
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.min(48, Math.round(sampleDisplayWidth)));
-    canvas.height = Math.max(1, Math.min(24, Math.round(sampleDisplayHeight)));
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return null;
-    context.drawImage(
-      image,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
-      0,
-      0,
-      canvas.width,
-      canvas.height,
-    );
-    return attachmentImageForegroundToneFromRgba(
-      context.getImageData(0, 0, canvas.width, canvas.height).data,
-    );
-  } catch {
-    return null;
-  }
-}
 
 function AttachmentImageLoadingSurface({ className }: { className?: string }) {
   return (
@@ -302,7 +162,7 @@ function AttachmentImageCard({
   const isExpressiveMedia = isSticker || isAnimatedGif;
   const showImage = Boolean(previewUrl);
   const singleImage = totalCount <= 1;
-  const intrinsicSingleImage = singleImage && (showImage || isExpressiveMedia);
+  const intrinsicSingleImage = singleImage && ((showImage && imageLoaded) || isExpressiveMedia);
   const expressiveSurfaceClassName = isExpressiveMedia && singleImage
     ? 'h-[180px] w-[180px] min-h-0 aspect-auto rounded-[16px]'
     : singleImage ? 'rounded-[16px]' : '';
@@ -415,6 +275,7 @@ function AttachmentImageCard({
       <img
         src={previewUrl}
         alt={attachment.altText?.trim() || attachment.name || (isSticker ? 'Sticker' : 'Attached image')}
+        draggable={false}
         data-attachment-image-loaded={String(imageLoaded)}
         className={cn(
           'relative block transition-opacity duration-200 ease-out motion-reduce:transition-none',

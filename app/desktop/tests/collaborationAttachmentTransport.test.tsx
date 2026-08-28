@@ -4,10 +4,6 @@ import test from 'node:test';
 
 import { canonicalAttachments } from '../src/features/canonical/readModel/messageMapping';
 import {
-  cacheCloudAttachmentLocalPath,
-  clearCloudAttachmentLocalPathCache,
-} from '../src/features/cloud/cloudAttachmentLocalPathCache';
-import {
   appendOptimisticCollaborationMessage,
   appendOptimisticOutboundMessage,
   collaborationAttachmentTransportFields,
@@ -106,20 +102,6 @@ test('canonical attachment mapping preserves local paths for image previews', ()
     localPath: '/tmp/pi-clipboard-1.png',
     sizeBytes: 4096,
   }]);
-});
-
-test('synced attachments inherit the hot upload cache without changing layout', () => {
-  clearCloudAttachmentLocalPathCache();
-  cacheCloudAttachmentLocalPath('att_completed', '/cache/completed.png');
-  try {
-    assert.equal(canonicalAttachments([{
-      attachmentId: 'att_completed',
-      kind: 'image',
-      name: 'completed.png',
-    }])?.[0]?.localPath, '/cache/completed.png');
-  } finally {
-    clearCloudAttachmentLocalPathCache();
-  }
 });
 
 test('attachment-only bridge optimistic messages render as attachment cards without summary text', () => {

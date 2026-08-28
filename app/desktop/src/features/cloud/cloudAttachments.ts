@@ -46,10 +46,7 @@ export type CloudAttachmentPreviewLease = {
 };
 
 type PreviewDownloadClient = Pick<CloudAuthClient, 'downloadAttachmentContent'> & Partial<Pick<CloudAuthClient, 'downloadAttachmentPreviewContent'>>;
-type CloudAttachmentPreviewTarget = Pick<
-  CloudMessageAttachment,
-  'attachmentId' | 'previewAttachmentId' | 'name' | 'kind'
-> & Partial<Pick<CloudMessageAttachment, 'mimeType'>>;
+type CloudAttachmentPreviewTarget = Pick<CloudMessageAttachment, 'attachmentId' | 'previewAttachmentId' | 'name' | 'kind' | 'mimeType'>;
 const cloudAttachmentPreviewUrlCache = new Map<string, CloudAttachmentPreviewResource>();
 let cloudAttachmentPreviewLoaderEpoch = 0;
 
@@ -238,12 +235,8 @@ export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessa
   const localPath = attachment.localPath ?? cachedCloudAttachmentLocalPath(attachment.attachmentId);
   return {
     kind: attachment.kind,
-    ...(attachment.subtype === 'sticker'
-      ? { subtype: 'sticker' as const }
-      : attachment.subtype === 'meme' ? {
-          subtype: 'meme' as const,
-          altText: attachment.altText ?? null,
-        } : {}),
+    ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const }
+      : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
     name: attachment.name,
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
@@ -277,9 +270,7 @@ export async function loadCloudAttachmentPreview({
 }) {
   if (attachment.kind !== 'image') return null;
   const isAnimatedGif = isAnimatedGifAttachment(attachment);
-  const contentAttachmentId = isAnimatedGif
-    ? attachment.attachmentId?.trim()
-    : attachment.previewAttachmentId?.trim() || attachment.attachmentId?.trim();
+  const contentAttachmentId = isAnimatedGif ? attachment.attachmentId?.trim() : attachment.previewAttachmentId?.trim() || attachment.attachmentId?.trim();
   if (!contentAttachmentId) return null;
   const previewBlob = !isAnimatedGif && client.downloadAttachmentPreviewContent
     ? await client.downloadAttachmentPreviewContent(token, contentAttachmentId, signal).catch(() => null)
@@ -299,9 +290,7 @@ export async function loadVisibleCloudAttachmentPreview(input: {
   attachment: CloudAttachmentPreviewTarget;
   signal?: AbortSignal;
 }) {
-  const cacheId = isAnimatedGifAttachment(input.attachment)
-    ? input.attachment.attachmentId?.trim()
-    : input.attachment.previewAttachmentId?.trim() || input.attachment.attachmentId?.trim();
+  const cacheId = isAnimatedGifAttachment(input.attachment) ? input.attachment.attachmentId?.trim() : input.attachment.previewAttachmentId?.trim() || input.attachment.attachmentId?.trim();
   if (!cacheId) return null;
   const loaderEpoch = cloudAttachmentPreviewLoaderEpoch;
   const cached = cachedCloudAttachmentPreviewResource(cacheId);
@@ -407,12 +396,8 @@ export async function resolveForwardAttachmentItems({
       previewAttachmentId: attachment.previewAttachmentId ?? null,
       name: attachment.name,
       kind: attachment.kind,
-      ...(attachment.subtype === 'sticker'
-        ? { subtype: 'sticker' as const }
-        : attachment.subtype === 'meme' ? {
-            subtype: 'meme' as const,
-            altText: attachment.altText ?? null,
-          } : {}),
+      ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const }
+        : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
       mimeType: attachment.mimeType ?? null,
       sizeBytes: attachment.sizeBytes ?? null,
       downloadUrl: attachment.downloadUrl ?? null,

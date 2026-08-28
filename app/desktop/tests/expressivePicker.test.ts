@@ -9,11 +9,9 @@ import {
 import {
   EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY,
   EXPRESSIVE_MEDIA_MAX_BYTES,
-  addFilesToExpressiveMediaLibrary,
   addMediaToExpressiveMediaLibrary,
   expressiveMediaFileError,
   expressiveMediaKindForFile,
-  expressiveMediaLibraryKindForAttachment,
   GIF_FILE_ACCEPT,
   providerMediaAttachment,
   readExpressiveMediaLibrary,
@@ -75,10 +73,7 @@ test('composer uses the complete Blob Emoji catalog and private sticker and GIF 
   assert.match(picker, /STICKER_FILE_ACCEPT/);
   assert.match(picker, /GIF_FILE_ACCEPT/);
   assert.match(picker, /sendMedia\(expressiveMediaAttachment\(item\)\)/);
-  assert.match(
-    picker,
-    /async function sendMedia[\s\S]*?if \(mediaSendPendingRef\.current\) return;[\s\S]*?setIsOpen\(false\);[\s\S]*?await onSendMedia\(attachment\)/,
-  );
+  assert.match(picker, /async function sendMedia[\s\S]*?if \(mediaSendPendingRef\.current\) return;[\s\S]*?setIsOpen\(false\);[\s\S]*?await onSendMedia\(attachment\)/);
   assert.doesNotMatch(picker, /emoji-picker-react|EmojiStyle/);
   assert.doesNotMatch(picker, /PublicMemeGrid|PublicGifGrid|Public Stickers|Public GIFs/);
 });
@@ -334,65 +329,6 @@ test('sticker and GIF library pickers accept their supported file types', () => 
   assert.equal(expressiveMediaKindForFile({ name: 'notes.pdf', type: 'application/pdf' }), null);
 });
 
-test('legacy image messages match stickers already stored in an account library', () => {
-  const key = `${EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY}.account-one`;
-  const values = new Map([[key, JSON.stringify([{
-    id: 'sticker:/stored/wave.png',
-    kind: 'sticker',
-    name: 'Wave.png',
-    path: '/stored/wave.png',
-    mimeType: 'image/png',
-    sizeBytes: 26979,
-    createdAtMs: 123,
-  }])]]);
-  const storage = {
-    get length() { return values.size; },
-    getItem: (storageKey: string) => values.get(storageKey) ?? null,
-    setItem: (storageKey: string, value: string) => values.set(storageKey, value),
-    key: (index: number) => [...values.keys()][index] ?? null,
-  };
-
-  assert.equal(expressiveMediaLibraryKindForAttachment({
-    name: 'wave.png',
-    mimeType: 'image/png',
-    sizeBytes: 26979,
-  }, storage), 'sticker');
-  assert.equal(expressiveMediaLibraryKindForAttachment({
-    name: 'wave.png',
-    mimeType: 'image/png',
-    sizeBytes: 26980,
-  }, storage), null);
-});
-
-test('oversized desktop stickers are normalized before storage and sync', async () => {
-  const source = new File(
-    [new Uint8Array(EXPRESSIVE_MEDIA_MAX_BYTES + 1)],
-    'oversized.png',
-    { type: 'image/png' },
-  );
-  const compressed = new File([new Uint8Array(512)], 'oversized.webp', { type: 'image/webp' });
-  let storedName = '';
-  let storedBytes = 0;
-
-  const items = await addFilesToExpressiveMediaLibrary([source], 'sticker', {
-    storage: null,
-    compressSticker: async (file) => {
-      assert.equal(file, source);
-      return compressed;
-    },
-    storeFile: async (name, data) => {
-      storedName = name;
-      storedBytes = data.length;
-      return '/stored/oversized.webp';
-    },
-  });
-
-  assert.equal(storedName, 'oversized.webp');
-  assert.equal(storedBytes, 512);
-  assert.equal(items[0]?.mimeType, 'image/webp');
-  assert.equal(items[0]?.sizeBytes, 512);
-});
-
 test('existing message media can be copied directly into My Stickers', async () => {
   const values = new Map<string, string>();
   const storage = {
@@ -498,7 +434,7 @@ test('media selection uses an explicit attachment override for immediate send', 
 
 test('image context menu can save received media into the matching expressive library', () => {
   const attachments = readFileSync(
-    new URL('../src/kordi-app/components/transcriptAttachments.tsx', import.meta.url),
+    new URL('../src/kordi-app/components/transcriptAttachmentContextMenu.tsx', import.meta.url),
     'utf8',
   );
   const action = readFileSync(

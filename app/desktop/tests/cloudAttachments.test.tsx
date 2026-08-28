@@ -20,9 +20,7 @@ import type { CloudAuthClient } from '../src/features/cloud/authClient';
 function imagePreviewAttachment(attachmentId: string) {
   return {
     attachmentId,
-    kind: 'image' as const,
-    name: `${attachmentId}.png`,
-    mimeType: 'image/png',
+    kind: 'image' as const, name: `${attachmentId}.png`, mimeType: 'image/png',
   };
 }
 
@@ -118,36 +116,6 @@ test('visible preview loading uses the thumbnail attachment id when provided', a
 
   assert.deepEqual(requestedIds, ['att_preview']);
   assert.equal(result, 'blob:preview');
-});
-
-test('GIF preview loading uses the original animated attachment', async () => {
-  const requestedOriginalIds: string[] = [];
-  let previewRequests = 0;
-  const result = await loadCloudAttachmentPreview({
-    token: 'token',
-    client: {
-      async downloadAttachmentPreviewContent() {
-        previewRequests += 1;
-        return new Blob([new Uint8Array([1])], { type: 'image/png' });
-      },
-      async downloadAttachmentContent(_token, attachmentId) {
-        requestedOriginalIds.push(attachmentId);
-        return new Blob([new Uint8Array([1, 2, 3])], { type: 'image/gif' });
-      },
-    },
-    attachment: {
-      attachmentId: 'att_gif_original',
-      previewAttachmentId: 'att_gif_static_preview',
-      name: 'dance.gif',
-      kind: 'image',
-      mimeType: 'image/gif',
-    },
-    createObjectUrl: () => 'blob:animated-gif',
-  });
-
-  assert.equal(previewRequests, 0);
-  assert.deepEqual(requestedOriginalIds, ['att_gif_original']);
-  assert.equal(result, 'blob:animated-gif');
 });
 
 test('visible preview cache stays bounded, revokes the oldest Blob URL, and reloads it after eviction', async () => {

@@ -108,12 +108,8 @@ export function cloudGroupAttachmentReferences(
     attachmentId: attachment.attachmentId,
     name: attachment.name,
     kind: attachment.kind,
-    ...(attachment.subtype === 'sticker'
-      ? { subtype: 'sticker' as const }
-      : attachment.subtype === 'meme' ? {
-          subtype: 'meme' as const,
-          altText: attachment.altText ?? null,
-        } : {}),
+    ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const }
+      : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
   }));

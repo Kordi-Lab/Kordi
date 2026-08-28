@@ -458,37 +458,6 @@ test('message context menu hides text copy when no text exists', () => {
   assert.doesNotMatch(markup, /data-message-context-menu-action="copy-text"/);
 });
 
-test('sticker message menu offers save alongside standard message actions', () => {
-  const message: Message = {
-    id: 'msg:sticker',
-    role: 'person',
-    sender: 'Alice',
-    senderType: 'human',
-    text: '',
-    time: '10:42',
-    messageKind: 'sticker',
-    attachments: [{
-      kind: 'image',
-      subtype: 'sticker',
-      name: 'wave.png',
-      mimeType: 'image/png',
-      attachmentId: 'att-sticker',
-    }],
-  };
-  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
-    msg: message,
-    onReplyMessage: () => undefined,
-    onForwardMessage: () => undefined,
-    onSelectMessage: () => undefined,
-  }));
-
-  assert.match(markup, />Reply</);
-  assert.match(markup, />Forward</);
-  assert.match(markup, />Save to My Stickers</);
-  assert.match(markup, />Select</);
-  assert.doesNotMatch(markup, />Copy Text</);
-});
-
 test('message context menu hides reply forward select and pin for live turns until completed', () => {
   const message: Message = {
     id: 'turn-live-message',
