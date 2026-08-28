@@ -9,6 +9,7 @@ import {
   encodeCloudDirectMessageEnvelope,
 } from './cloudDirectMessages';
 import { compareCloudMessages } from './cloudMessageMerge';
+import { cloudOperationUuid } from './chatSyncMapping';
 
 type IdentityLedger = Record<string, {
   cloudMessageId: string | null;
@@ -108,20 +109,41 @@ export async function publishCloudAgentIdentityMarkers({
   client,
   ledger,
   plans,
+  remoteMessages = [],
   token,
 }: {
   accountId: string;
   client: Pick<CloudAuthClient, 'sendMessage'>;
   ledger: IdentityLedger;
   plans: readonly IdentityPlan[];
+  remoteMessages?: readonly {
+    id: string;
+    client_message_id: string;
+  }[];
   token: string;
 }) {
   const nextLedger = { ...ledger };
+  const remoteByClientMessageId = new Map(remoteMessages.map((message) => [
+    message.client_message_id,
+    message,
+  ]));
   let changed = false;
   for (const plan of plans) {
     if (!plan.targetAgentId || !plan.targetAgentName) continue;
     const ledgerKey = cloudSelfAgentIdentityLedgerKey(plan.sessionId);
     if (nextLedger[ledgerKey]) continue;
+    const clientMessageId = `self-agent:${plan.sessionId}:agent-identity`;
+    const remote = remoteByClientMessageId.get(
+      cloudOperationUuid(clientMessageId),
+    );
+    if (remote) {
+      nextLedger[ledgerKey] = {
+        cloudMessageId: remote.id,
+        syncedAtMs: Date.now(),
+      };
+      changed = true;
+      continue;
+    }
     const marker = await client.sendMessage(token, accountId, encodeCloudDirectMessageEnvelope({
       schemaVersion: 1,
       kind: 'message',
@@ -131,7 +153,7 @@ export async function publishCloudAgentIdentityMarkers({
       targetCloudAgentOwnerAccountId: accountId,
     }), {
       sessionId: plan.sessionId,
-      clientMessageId: `self-agent:${plan.sessionId}:agent-identity`,
+      clientMessageId,
       messageKind: CLOUD_AGENT_SESSION_IDENTITY_MESSAGE_KIND,
     });
     nextLedger[ledgerKey] = { cloudMessageId: marker.messageId, syncedAtMs: Date.now() };

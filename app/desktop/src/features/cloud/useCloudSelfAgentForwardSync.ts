@@ -238,19 +238,13 @@ export function useCloudSelfAgentForwardSync({
         );
         if (cancelledRef.current) return;
 
-        const identityResult = await publishCloudAgentIdentityMarkers({
-          accountId: account.accountId,
-          client,
-          ledger: initialLedger,
-          plans: reconciliation,
-          token: session.token,
-        });
-        if (identityResult.changed) {
-          saveCloudSelfAgentSyncLedger(account.accountId, identityResult.ledger);
-        }
-        const identityLedger = identityResult.ledger;
-
         const recoverySessionIds = new Set(pendingRecoverySessionIds);
+        const remoteHistorySessionIds = new Set([
+          ...recoverySessionIds,
+          ...reconciliation.flatMap((plan) => (
+            plan.targetAgentId ? [plan.sessionId] : []
+          )),
+        ]);
         const [canonicalRecoveryMessages, remoteRecoveryMessages] =
           await Promise.all([
             loadCanonicalRecoveryMessages(
@@ -264,11 +258,23 @@ export function useCloudSelfAgentForwardSync({
                 ...localConversations,
                 ...createdConversations,
               ],
-              recoverySessionIds,
+              remoteHistorySessionIds,
               () => !cancelledRef.current,
             ),
           ]);
         if (cancelledRef.current) return;
+        const identityResult = await publishCloudAgentIdentityMarkers({
+          accountId: account.accountId,
+          client,
+          ledger: initialLedger,
+          plans: reconciliation,
+          remoteMessages: remoteRecoveryMessages,
+          token: session.token,
+        });
+        if (identityResult.changed) {
+          saveCloudSelfAgentSyncLedger(account.accountId, identityResult.ledger);
+        }
+        const identityLedger = identityResult.ledger;
         const remoteRecoveryMessageIds = new Set(
           remoteRecoveryMessages.map((message) => message.id),
         );

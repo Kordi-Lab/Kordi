@@ -8,6 +8,7 @@ import {
   cloudSelfAgentIdentityLedgerKey,
   publishCloudAgentIdentityMarkers,
 } from '../src/features/cloud/cloudSelfAgentSessionIdentity';
+import { cloudOperationUuid } from '../src/features/cloud/chatSyncMapping';
 
 test('plain requests inherit the custom agent identity marker for their session', () => {
   const sessionId = 'session:direct-agent:stock';
@@ -98,4 +99,38 @@ test('custom agent identity marker is idempotent and carries the selected name',
     targetCloudAgentName: 'US Stock Paper Trader',
     targetCloudAgentOwnerAccountId: 'acct_me',
   });
+});
+
+test('remote agent identity marker seeds a fresh device without republishing', async () => {
+  let sends = 0;
+  const sessionId = 'session:direct-agent:stock';
+  const result = await publishCloudAgentIdentityMarkers({
+    accountId: 'acct_me',
+    client: {
+      async sendMessage() {
+        sends += 1;
+        throw new Error('remote marker should prevent send');
+      },
+    },
+    ledger: {},
+    plans: [{
+      sessionId,
+      targetAgentId: 'cloud_agent_stock',
+      targetAgentName: 'US Stock Paper Trader',
+    }],
+    remoteMessages: [{
+      id: 'existing-identity-marker',
+      client_message_id: cloudOperationUuid(
+        `self-agent:${sessionId}:agent-identity`,
+      ),
+    }],
+    token: 'token',
+  });
+
+  assert.equal(sends, 0);
+  assert.equal(result.changed, true);
+  assert.equal(
+    result.ledger[cloudSelfAgentIdentityLedgerKey(sessionId)]?.cloudMessageId,
+    'existing-identity-marker',
+  );
 });
