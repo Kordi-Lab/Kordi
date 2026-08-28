@@ -162,6 +162,8 @@ extension CloudMessageAttachment {
             altText: altText,
             mimeType: mimeType,
             sizeBytes: sizeBytes,
+            widthPixels: widthPixels,
+            heightPixels: heightPixels,
             previewURL: previewUrl
         )
     }

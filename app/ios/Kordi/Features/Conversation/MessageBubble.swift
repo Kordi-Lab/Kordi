@@ -399,6 +399,7 @@ struct MessageBubble: View, Equatable {
                         onPrepareActions: prepareImageActions,
                         onRequestActions: requestImageActions
                     )
+                    .frame(maxWidth: .infinity, alignment: .center)
                 } else {
                     VStack(spacing: 7) {
                         ForEach(message.attachments) { attachment in
@@ -1908,6 +1909,10 @@ private struct MessageImageAttachment: View {
                 .contextMenuPreview,
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
             )
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.2),
+                value: loadedContentIdentity
+            )
     }
 
     private var opensPreview: Bool {
@@ -1969,8 +1974,11 @@ private struct MessageImageAttachment: View {
                 }
             }
         } else {
+            let size = presentation.displaySize(for: attachment)
             ZStack {
-                Color(uiColor: .secondarySystemBackground)
+                if attachment.subtype != .sticker || !isLoading {
+                    Color(uiColor: .secondarySystemBackground)
+                }
                 if isLoading {
                     ProgressView()
                 } else {
@@ -1983,10 +1991,7 @@ private struct MessageImageAttachment: View {
                     .foregroundStyle(.secondary)
                 }
             }
-            .frame(
-                width: presentation.placeholderSize(for: attachment).width,
-                height: presentation.placeholderSize(for: attachment).height
-            )
+            .frame(width: size.width, height: size.height)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
@@ -2039,18 +2044,13 @@ private struct MessageImageAttachment: View {
     }
 
     private func displaySize(for image: UIImage) -> CGSize {
-        guard image.size.width > 0, image.size.height > 0 else {
-            return presentation.placeholderSize(for: attachment)
-        }
-        let ratio = min(2.4, max(0.42, image.size.width / image.size.height))
-        let expressiveMaximum = MessageImageInteraction.maximumDisplayDimension(for: attachment)
-        let maximumWidth = expressiveMaximum ?? presentation.maximumWidth
-        let maximumHeight = expressiveMaximum ?? presentation.maximumHeight
-        if ratio >= 1 {
-            return CGSize(width: maximumWidth, height: maximumWidth / ratio)
-        }
-        let height = min(maximumHeight, maximumWidth / ratio)
-        return CGSize(width: height * ratio, height: height)
+        MessageImageInteraction.displaySize(
+            for: attachment,
+            decodedSize: image.size,
+            defaultSize: presentation.placeholderSize,
+            maximumWidth: presentation.maximumWidth,
+            maximumHeight: presentation.maximumHeight
+        )
     }
 
     private var mediaKind: ExpressiveMediaLibraryKind? {
@@ -2080,6 +2080,8 @@ private struct MessageImageAttachment: View {
 }
 
 enum MessageImageInteraction {
+    static let maximumPixelDimension = 100_000
+
     static func isAnimatedGIF(_ attachment: ChatAttachment) -> Bool {
         attachment.mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             == "image/gif"
@@ -2096,6 +2098,36 @@ enum MessageImageInteraction {
     ) -> CGSize {
         guard let maximum = maximumDisplayDimension(for: attachment) else { return defaultSize }
         return CGSize(width: maximum, height: maximum)
+    }
+
+    static func declaredPixelSize(for attachment: ChatAttachment) -> CGSize? {
+        guard let width = attachment.widthPixels,
+              let height = attachment.heightPixels,
+              (1...maximumPixelDimension).contains(width),
+              (1...maximumPixelDimension).contains(height) else { return nil }
+        return CGSize(width: width, height: height)
+    }
+
+    static func displaySize(
+        for attachment: ChatAttachment,
+        decodedSize: CGSize?,
+        defaultSize: CGSize,
+        maximumWidth: CGFloat,
+        maximumHeight: CGFloat
+    ) -> CGSize {
+        let source = declaredPixelSize(for: attachment) ?? decodedSize
+        guard let source, source.width > 0, source.height > 0 else {
+            return placeholderSize(for: attachment, defaultSize: defaultSize)
+        }
+        let ratio = min(2.4, max(0.42, source.width / source.height))
+        let expressiveMaximum = maximumDisplayDimension(for: attachment)
+        let boundedWidth = expressiveMaximum ?? maximumWidth
+        let boundedHeight = expressiveMaximum ?? maximumHeight
+        if ratio >= 1 {
+            return CGSize(width: boundedWidth, height: boundedWidth / ratio)
+        }
+        let height = min(boundedHeight, boundedWidth / ratio)
+        return CGSize(width: height * ratio, height: height)
     }
 
     static func usesInlinePreview(for attachment: ChatAttachment) -> Bool {
@@ -2145,6 +2177,8 @@ enum MessageImageInteraction {
                     altText: attachment.altText,
                     mimeType: attachment.mimeType,
                     sizeBytes: attachment.sizeBytes,
+                    widthPixels: attachment.widthPixels,
+                    heightPixels: attachment.heightPixels,
                     previewURL: attachment.previewURL
                 )
             }
@@ -2208,10 +2242,18 @@ private enum MessageImagePresentation {
     }
 
     func placeholderSize(for attachment: ChatAttachment) -> CGSize {
-        MessageImageInteraction.placeholderSize(
+        if isStackPreview { return placeholderSize }
+        return MessageImageInteraction.displaySize(
             for: attachment,
-            defaultSize: placeholderSize
+            decodedSize: nil,
+            defaultSize: placeholderSize,
+            maximumWidth: maximumWidth,
+            maximumHeight: maximumHeight
         )
+    }
+
+    func displaySize(for attachment: ChatAttachment) -> CGSize {
+        placeholderSize(for: attachment)
     }
 }
 
@@ -2229,6 +2271,8 @@ enum AttachmentImageDecoder {
             attachment.name,
             attachment.mimeType ?? "",
             attachment.sizeBytes.map(String.init) ?? "",
+            attachment.widthPixels.map(String.init) ?? "",
+            attachment.heightPixels.map(String.init) ?? "",
         ].joined(separator: "\u{0}")
     }
 

@@ -158,6 +158,10 @@ export function mapDesktopMessagesForTranscript(
           mimeType: attachment.mimeType,
           localPath: attachment.localPath,
           sizeBytes: attachment.sizeBytes,
+          ...(attachment.widthPixels && attachment.heightPixels ? {
+            widthPixels: attachment.widthPixels,
+            heightPixels: attachment.heightPixels,
+          } : {}),
         };
         if (attachment.downloadUrl) Object.assign(mapped, { downloadUrl: attachment.downloadUrl });
         if (attachment.attachmentId) Object.assign(mapped, { attachmentId: attachment.attachmentId });

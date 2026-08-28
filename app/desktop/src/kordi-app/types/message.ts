@@ -71,6 +71,8 @@ export type MessageAttachment = {
   mimeType?: string | null;
   localPath?: string | null;
   sizeBytes?: number | null;
+  widthPixels?: number | null;
+  heightPixels?: number | null;
   attachmentId?: string | null;
   previewAttachmentId?: string | null;
 };
@@ -86,6 +88,8 @@ export type DesktopChatAttachment = {
   mimeType?: string | null;
   localPath?: string | null;
   sizeBytes?: number | null;
+  widthPixels?: number | null;
+  heightPixels?: number | null;
   attachmentId?: string | null;
 };
 

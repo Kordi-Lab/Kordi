@@ -319,6 +319,37 @@ final class MediaPreviewTests: XCTestCase {
         )
     }
 
+    func testDeclaredImageDimensionsReserveTheLoadedFrame() {
+        let portrait = ChatAttachment(
+            attachmentId: "att-portrait",
+            name: "portrait.png",
+            kind: .image,
+            mimeType: "image/png",
+            sizeBytes: 1_024,
+            widthPixels: 900,
+            heightPixels: 1_200,
+            previewURL: nil
+        )
+        let loading = MessageImageInteraction.displaySize(
+            for: portrait,
+            decodedSize: nil,
+            defaultSize: CGSize(width: 244, height: 154),
+            maximumWidth: 244,
+            maximumHeight: 320
+        )
+        let loaded = MessageImageInteraction.displaySize(
+            for: portrait,
+            decodedSize: CGSize(width: 400, height: 400),
+            defaultSize: CGSize(width: 244, height: 154),
+            maximumWidth: 244,
+            maximumHeight: 320
+        )
+
+        XCTAssertEqual(loading.width, 240, accuracy: 0.001)
+        XCTAssertEqual(loading.height, 320, accuracy: 0.001)
+        XCTAssertEqual(loaded, loading)
+    }
+
     func testGIFsUseOriginalBytesAndCompactExpressiveMediaSizing() {
         let gif = ChatAttachment(
             attachmentId: "att-gif",

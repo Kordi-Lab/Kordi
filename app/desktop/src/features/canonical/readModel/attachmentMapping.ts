@@ -1,5 +1,6 @@
 import type { MessageAttachment } from '@/kordi-app/types';
 import { cachedCloudAttachmentLocalPath } from '@/features/cloud/cloudAttachmentLocalPathCache';
+import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 
 function contentRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -23,6 +24,7 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
 
     const kind: MessageAttachment['kind'] = rawKind;
     const attachmentId = stringValue(record.attachmentId);
+    const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
     const attachment: MessageAttachment = {
       kind,
       ...(record.subtype === 'sticker' && kind === 'image'
@@ -38,6 +40,7 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
       localPath: stringValue(record.localPath)
         ?? (attachmentId ? cachedCloudAttachmentLocalPath(attachmentId) : null),
       sizeBytes: numberValue(record.sizeBytes) ?? null,
+      ...(dimensions ?? {}),
     };
     const downloadUrl = stringValue(record.downloadUrl);
     if (downloadUrl) attachment.downloadUrl = downloadUrl;

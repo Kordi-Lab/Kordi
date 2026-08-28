@@ -173,7 +173,7 @@ pub(super) fn validate_message_request(
     if message_kind == "voice" {
         validate_voice_message(content, &request.attachment_ids)?;
     }
-    validate_meme_attachments(content, &request.attachment_ids)?;
+    validate_attachment_metadata(content, &request.attachment_ids)?;
     Ok(())
 }
 
@@ -244,7 +244,7 @@ fn validate_voice_message(
     })
 }
 
-fn validate_meme_attachments(
+fn validate_attachment_metadata(
     content: &serde_json::Map<String, serde_json::Value>,
     attachment_ids: &[String],
 ) -> Result<(), MessageValidationError> {
@@ -266,6 +266,28 @@ fn validate_meme_attachments(
                 message: "Attachment metadata must contain structured objects.",
             });
         };
+        let width = attachment.get("widthPixels");
+        let height = attachment.get("heightPixels");
+        let dimensions_valid = match (width, height) {
+            (None, None) => true,
+            (Some(width), Some(height)) if width.is_null() && height.is_null() => true,
+            (Some(width), Some(height)) => {
+                width
+                    .as_u64()
+                    .is_some_and(|value| (1..=MAX_IMAGE_PIXEL_DIMENSION).contains(&value))
+                    && height
+                        .as_u64()
+                        .is_some_and(|value| (1..=MAX_IMAGE_PIXEL_DIMENSION).contains(&value))
+            }
+            _ => false,
+        };
+        if !dimensions_valid {
+            return Err(MessageValidationError {
+                status: StatusCode::BAD_REQUEST,
+                code: "INVALID_IMAGE_DIMENSIONS",
+                message: "Image dimensions must be a bounded positive pixel pair.",
+            });
+        }
         let Some(subtype) = attachment.get("subtype") else {
             continue;
         };
@@ -375,5 +397,38 @@ mod tests {
         let mut wrong_media = valid;
         wrong_media["mediaId"] = json!("att_other");
         assert!(validate_message_request(&request(wrong_media)).is_err());
+    }
+
+    #[test]
+    fn image_dimensions_must_be_bounded_pairs() {
+        let request = |attachment: serde_json::Value| SendMessageRequest {
+            client_message_id: Uuid::now_v7(),
+            kind: "text".to_string(),
+            content: json!({
+                "schema": 1,
+                "blocks": [{ "type": "text", "text": "Image" }],
+                "legacy_attachments": [attachment]
+            }),
+            reply_to_message_id: None,
+            attachment_ids: vec!["att_image".to_string()],
+        };
+        let attachment = json!({
+            "attachmentId": "att_image",
+            "kind": "image",
+            "widthPixels": 1600,
+            "heightPixels": 900
+        });
+        assert!(validate_message_request(&request(attachment.clone())).is_ok());
+
+        let mut missing_height = attachment.clone();
+        missing_height
+            .as_object_mut()
+            .unwrap()
+            .remove("heightPixels");
+        assert!(validate_message_request(&request(missing_height)).is_err());
+
+        let mut too_large = attachment;
+        too_large["widthPixels"] = json!(100_001);
+        assert!(validate_message_request(&request(too_large)).is_err());
     }
 }

@@ -1171,6 +1171,8 @@ actor CloudAPIClient {
                 altText: attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty,
                 mimeType: uploaded.contentType?.nonEmpty ?? attachment.mimeType,
                 sizeBytes: uploaded.sizeBytes ?? attachment.sizeBytes,
+                widthPixels: attachment.widthPixels,
+                heightPixels: attachment.heightPixels,
                 downloadUrl: nil,
                 previewUrl: nil // Uploaded bytes are referenced by ID; never embed local data URLs in message JSON.
             )

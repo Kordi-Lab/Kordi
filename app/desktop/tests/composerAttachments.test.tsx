@@ -86,6 +86,8 @@ test('stored composer attachments persist durable local paths but drop stale blo
     mimeType: 'image/png',
     previewUrl: 'blob:http://127.0.0.1:1484/stale',
     sizeBytes: 276000,
+    widthPixels: 1_600,
+    heightPixels: 900,
   }]);
 
   assert.deepEqual(parseStoredComposerAttachments(serialized), [{
@@ -98,6 +100,8 @@ test('stored composer attachments persist durable local paths but drop stale blo
     localPath: '/Users/example/Library/Application Support/Kordi/tmp/attachments/Screenshot-uuid.png',
     previewUrl: null,
     sizeBytes: 276000,
+    widthPixels: 1_600,
+    heightPixels: 900,
   }]);
 });
 

@@ -99,6 +99,8 @@ type CloudGroupAttachmentReferenceInput = Pick<
 > & {
   mimeType?: string | null;
   sizeBytes?: number | null;
+  widthPixels?: number | null;
+  heightPixels?: number | null;
 };
 
 export function cloudGroupAttachmentReferences(
@@ -112,6 +114,10 @@ export function cloudGroupAttachmentReferences(
       : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
+    ...(attachment.widthPixels && attachment.heightPixels ? {
+      widthPixels: attachment.widthPixels,
+      heightPixels: attachment.heightPixels,
+    } : {}),
   }));
 }
 

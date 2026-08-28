@@ -2,6 +2,10 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { isAnimatedGifAttachment } from '@/features/chat/attachmentMediaGallery';
 import type { MessageAttachment } from '@/kordi-app/types';
 import { isNativeDesktopShell, storeDesktopChatAttachment } from '@/lib/desktop';
+import {
+  imagePixelDimensionsFromBlob,
+  normalizedImagePixelDimensions,
+} from '@/lib/imageDimensions';
 import type {
   CloudAuthClient,
   CloudMessageAttachment,
@@ -233,6 +237,7 @@ export function clearCloudAttachmentLocalPathCacheForTests() {
 
 export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessageAttachment) {
   const localPath = attachment.localPath ?? cachedCloudAttachmentLocalPath(attachment.attachmentId);
+  const dimensions = normalizedImagePixelDimensions(attachment.widthPixels, attachment.heightPixels);
   return {
     kind: attachment.kind,
     ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const }
@@ -240,6 +245,7 @@ export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessa
     name: attachment.name,
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
+    ...(dimensions ?? {}),
     previewUrl: safeCloudAttachmentPreviewUrl(attachment.previewUrl),
     downloadUrl: null,
     localPath,
@@ -400,6 +406,8 @@ export async function resolveForwardAttachmentItems({
         : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
       mimeType: attachment.mimeType ?? null,
       sizeBytes: attachment.sizeBytes ?? null,
+      widthPixels: attachment.widthPixels ?? null,
+      heightPixels: attachment.heightPixels ?? null,
       downloadUrl: attachment.downloadUrl ?? null,
       previewUrl: attachment.previewUrl ?? null,
       localPath: null,
@@ -465,6 +473,7 @@ export async function uploadCloudFiles({
     const mimeType = file.type?.trim() || null;
     const kind = mimeType?.startsWith('image/') ? 'image' : 'file';
     const previewUrl = kind === 'image' ? await createPreviewDataUrl(file, { name: file.name || 'attachment', kind, mimeType, sizeBytes: file.size }) : null;
+    const dimensions = kind === 'image' ? await imagePixelDimensionsFromBlob(file) : null;
     const summary = await client.uploadAttachment(token, file);
     let localPath: string | null = null;
     try {
@@ -480,6 +489,7 @@ export async function uploadCloudFiles({
       kind,
       mimeType,
       sizeBytes: file.size,
+      ...(dimensions ?? {}),
       downloadUrl: null,
       previewUrl: safeCloudAttachmentPreviewUrl(previewUrl),
       localPath,

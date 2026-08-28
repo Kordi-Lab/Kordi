@@ -28,6 +28,8 @@ export function cloudMessageAttachmentsEqual(
       && attachment.kind === other.kind
       && (attachment.mimeType ?? null) === (other.mimeType ?? null)
       && (attachment.sizeBytes ?? null) === (other.sizeBytes ?? null)
+      && (attachment.widthPixels ?? null) === (other.widthPixels ?? null)
+      && (attachment.heightPixels ?? null) === (other.heightPixels ?? null)
       && (attachment.downloadUrl ?? null) === (other.downloadUrl ?? null)
       && (attachment.previewUrl ?? null) === (other.previewUrl ?? null)
       && (attachment.localPath ?? null) === (other.localPath ?? null);

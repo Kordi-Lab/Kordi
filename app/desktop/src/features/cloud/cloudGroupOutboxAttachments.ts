@@ -31,6 +31,8 @@ export function cloudGroupOutboxAttachmentSources(
     formatLabel: attachment.formatLabel ?? null,
     mimeType: attachment.mimeType ?? null,
     sizeBytes: attachment.sizeBytes ?? null,
+    widthPixels: attachment.widthPixels ?? null,
+    heightPixels: attachment.heightPixels ?? null,
   }));
 }
 

@@ -91,6 +91,8 @@ function optimisticMessage(text: string, attachments: AttachmentItem[], avatar: 
       mimeType: attachment.mimeType,
       localPath: attachment.path,
       sizeBytes: attachment.sizeBytes,
+      widthPixels: attachment.widthPixels,
+      heightPixels: attachment.heightPixels,
     })),
     time: formatDesktopClockTime(timestampMs),
     timestampMs,

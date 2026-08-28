@@ -3,6 +3,7 @@ import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
 import { normalizeCloudReaderAccountIds } from './cloudMessageMerge';
 import { IndexedDbCloudMessageCacheStore } from './indexedDbCloudMessageCacheStore';
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
+import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 
 export {
   CLOUD_MESSAGES_INDEXED_DB_NAME,
@@ -69,6 +70,7 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
     ? record.sizeBytes
     : null;
   const previewAttachmentId = cleanText(record.previewAttachmentId);
+  const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
   const previewUrl = safeCloudAttachmentPreviewUrl(
     typeof record.previewUrl === 'string' ? record.previewUrl : null,
   );
@@ -82,6 +84,7 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
         : {}),
     mimeType,
     sizeBytes,
+    ...(dimensions ?? {}),
     ...(previewAttachmentId ? { previewAttachmentId } : {}),
     ...(previewUrl ? { previewUrl } : {}),
   };

@@ -709,6 +709,8 @@ struct CloudMessageAttachment: Codable, Hashable, Identifiable {
     let altText: String?
     let mimeType: String?
     let sizeBytes: Int64?
+    let widthPixels: Int?
+    let heightPixels: Int?
     let downloadUrl: String?
     let previewUrl: String?
 
@@ -722,6 +724,8 @@ struct CloudMessageAttachment: Codable, Hashable, Identifiable {
         altText: String? = nil,
         mimeType: String?,
         sizeBytes: Int64?,
+        widthPixels: Int? = nil,
+        heightPixels: Int? = nil,
         downloadUrl: String?,
         previewUrl: String?
     ) {
@@ -732,6 +736,8 @@ struct CloudMessageAttachment: Codable, Hashable, Identifiable {
         self.altText = altText
         self.mimeType = mimeType
         self.sizeBytes = sizeBytes
+        self.widthPixels = widthPixels
+        self.heightPixels = heightPixels
         self.downloadUrl = downloadUrl
         self.previewUrl = previewUrl
     }

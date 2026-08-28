@@ -1,4 +1,5 @@
 import type { CloudMessageAttachment } from './authClient';
+import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -16,6 +17,7 @@ function cloudMessageAttachmentFromRecord(value: unknown): CloudMessageAttachmen
   const sizeBytes = typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) && record.sizeBytes >= 0 ? record.sizeBytes : null;
   const downloadUrl = typeof record.downloadUrl === 'string' && record.downloadUrl.trim() ? record.downloadUrl.trim() : null;
   const previewUrl = typeof record.previewUrl === 'string' && record.previewUrl.trim() ? record.previewUrl.trim() : null;
+  const dimensions = normalizedImagePixelDimensions(record.widthPixels, record.heightPixels);
   return {
     attachmentId,
     name,
@@ -28,6 +30,7 @@ function cloudMessageAttachmentFromRecord(value: unknown): CloudMessageAttachmen
         } : {}),
     mimeType,
     sizeBytes,
+    ...(dimensions ?? {}),
     downloadUrl,
     previewUrl,
   };

@@ -1,6 +1,10 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 import type { Message, MessageAttachment } from '@/kordi-app/types';
+import {
+  fittedImageDisplaySize,
+  normalizedImagePixelDimensions,
+} from '@/lib/imageDimensions';
 
 const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
@@ -46,6 +50,16 @@ export function isAnimatedGifAttachment(
 ) {
   return attachment.mimeType?.trim().toLowerCase() === 'image/gif'
     || attachment.name.trim().toLowerCase().endsWith('.gif');
+}
+
+export function attachmentImageDisplaySize(attachment: MessageAttachment) {
+  const dimensions = normalizedImagePixelDimensions(
+    attachment.widthPixels,
+    attachment.heightPixels,
+  );
+  if (!dimensions) return null;
+  const expressive = attachment.subtype === 'sticker' || isAnimatedGifAttachment(attachment);
+  return fittedImageDisplaySize(dimensions, expressive ? 180 : 464, expressive ? 180 : 320);
 }
 
 function isArchiveAttachment(attachment: MessageAttachment) {

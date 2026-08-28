@@ -119,6 +119,22 @@ test('a remotely loaded standalone image escapes the temporary loading row', () 
   );
 });
 
+test('folded image groups keep their fixed stack geometry when metadata is available', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: {
+      ...multiImageMessage,
+      attachments: multiImageMessage.attachments.map((attachment) => ({
+        ...attachment,
+        widthPixels: 1_600,
+        heightPixels: 900,
+      })),
+    },
+  }));
+
+  assert.doesNotMatch(markup, /data-attachment-image-dimensions="true"/);
+  assert.doesNotMatch(markup, /width:464px/);
+});
+
 test('grouped image disclosure expands and collapses in place', async () => {
   const installedDom = installDom();
   let root: Root | null = null;

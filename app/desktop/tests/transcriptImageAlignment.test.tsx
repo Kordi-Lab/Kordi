@@ -62,3 +62,34 @@ test('pending and remote image placeholders reserve a stable media frame', () =>
   assert.match(pendingMarkup, /w-\[min\(100%,20rem\)\]/);
   assert.match(pendingMarkup, /aspect-\[4\/3\]/);
 });
+
+test('image metadata reserves the final frame before the preview loads', () => {
+  const attachment = {
+    ...ownImageMessage.attachments![0]!,
+    widthPixels: 1_600,
+    heightPixels: 900,
+  };
+  const remoteMarkup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: { ...ownImageMessage, attachments: [attachment] },
+  }));
+  const pendingMarkup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: { ...ownImageMessage, attachments: [{ ...attachment, previewUrl: null }] },
+  }));
+
+  for (const markup of [remoteMarkup, pendingMarkup]) {
+    assert.match(markup, /data-attachment-image-dimensions="true"/);
+    assert.match(markup, /width:464px/);
+    assert.match(markup, /aspect-ratio:464 \/ 261/);
+    assert.doesNotMatch(markup, /col-span-6 row-span-3/);
+  }
+});
+
+test('mixed text and image messages use the media-width bubble cap', () => {
+  const markup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: { ...ownImageMessage, text: 'The screenshot shows the issue.' },
+  }));
+
+  assert.match(markup, /data-message-mixed-images="true"/);
+  assert.match(markup, /max-w-\[31rem\]/);
+  assert.doesNotMatch(markup, /max-w-\[52rem\]/);
+});
