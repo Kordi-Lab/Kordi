@@ -4,6 +4,20 @@ import XCTest
 @testable import Kordi
 
 final class ConversationReadPresentationTests: XCTestCase {
+    func testGroupSessionRowsShowOnlyTheLatestMessagePreview() throws {
+        let chatsDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Chats")
+        let source = try String(
+            contentsOf: chatsDirectory.appendingPathComponent("GroupSpaceRow.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("Text(session.lastMessage.nonEmpty ?? \"No messages yet\")"))
+        XCTAssertFalse(source.contains("messageCountText"))
+    }
+
     func testReactionChipOverlapsTheBubbleWithoutShrinkingItsTouchTarget() {
         XCTAssertEqual(MessageBubble.reactionChipVerticalLift, 14)
     }
