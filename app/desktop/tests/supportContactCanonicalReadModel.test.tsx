@@ -186,6 +186,8 @@ test('canonical hydration preserves the fixed Kordi Support contact identity', (
     messages: [
       { id: 'runtime:report-request', role: 'user', sender: 'Me', text: 'Create a report for a test case', time: '15:28' },
       { id: 'runtime:report-response', role: 'owned-agent', sender: 'My Kordi', text: 'Test Case Report', time: '15:29' },
+      { id: 'runtime:latest-request', role: 'user', sender: 'Me', text: 'Can you still hear me?', time: '15:30' },
+      { id: 'runtime:latest-response', role: 'person', sender: KORDI_SUPPORT_NAME, text: 'Yes, I can.', time: '15:30' },
     ],
   };
 
@@ -199,7 +201,7 @@ test('canonical hydration preserves the fixed Kordi Support contact identity', (
   assert.equal(conversation?.directness, 'Person chat');
   assert.deepEqual(conversation?.participants, ['Me', KORDI_SUPPORT_NAME]);
   assert.equal(conversation?.canonicalParticipants, undefined);
-  assert.equal(conversation?.messages.length, 6);
+  assert.equal(conversation?.messages.length, 8);
   assert.deepEqual(
     conversation?.messages.map((message) => message.turn?.assistantText || message.text),
     [
@@ -209,6 +211,8 @@ test('canonical hydration preserves the fixed Kordi Support contact identity', (
       'Hi! Kordi Support is ready. How can I help?',
       'Create a report for a test case',
       'Test Case Report',
+      'Can you still hear me?',
+      'Yes, I can.',
     ],
   );
   assert.equal(conversation?.messages[1]?.sender, KORDI_SUPPORT_NAME);
@@ -242,7 +246,7 @@ test('canonical hydration preserves the fixed Kordi Support contact identity', (
 
   assert.equal(collapsed.length, 1);
   assert.equal(collapsed[0]?.name, KORDI_SUPPORT_NAME);
-  assert.equal(collapsed[0]?.messages.length, 6);
+  assert.equal(collapsed[0]?.messages.length, 8);
   assert.notEqual(collapsed[0]?.id, scopedDraft.id);
 });
 
