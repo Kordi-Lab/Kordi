@@ -268,6 +268,7 @@ export function useCloudGroupControlApplication({
   const apply = useCallback(async (
     cloudMessage: CloudMessage,
     envelope: CloudGroupControlEnvelope,
+    options: { deferPublish?: boolean; historyReplay?: boolean } = {},
   ) => {
     const currentAccountId = account?.accountId ?? null;
     if (sessionPreparationCacheRef.current.accountId !== currentAccountId) {
@@ -326,10 +327,13 @@ export function useCloudGroupControlApplication({
       },
     });
     if (!messageContext) return;
+    if (options.historyReplay) return;
 
     await applyCloudGroupAgentControl({
       context: messageContext,
-      setCanonicalState: publishCanonicalStateImmediately,
+      setCanonicalState: options.deferPublish
+        ? publishCanonicalState
+        : publishCanonicalStateImmediately,
       runtime: {
         client,
         turnCoordinator,

@@ -45,6 +45,7 @@ export function AgentSidebarRow({
   const sessionPreviewLine = participantSpaceSessionPreviewLine(
     sessionPreview,
     sessionMessageCount,
+    Boolean(conversation.canonicalProjectionPending && sessionMessageCount <= 1),
   );
   const agentIdentity = primaryAgentForConversation(conversation);
   const isSavedMessages = space.kind === 'self' && !agentIdentity;

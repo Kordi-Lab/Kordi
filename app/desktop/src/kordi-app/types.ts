@@ -149,7 +149,7 @@ export type Conversation = {
   canonicalCreatedAtMs?: number;
   canonicalStoragePath?: string;
   canonicalParticipantCount?: number;
-  canonicalMessageCount?: number;
+  canonicalMessageCount?: number; canonicalProjectionPending?: boolean;
   canonicalDelegatedExchangeCount?: number;
   taskActivities?: SessionTaskActivity[];
   canonicalContextSnapshotCount?: number;

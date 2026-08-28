@@ -71,8 +71,13 @@ export function participantSpaceSessionMessageCount(
   return visibleMessages + (session.conversation.queuedMessages?.length ?? 0);
 }
 
-export function participantSpaceSessionPreviewLine(preview: string, messageCount: number) {
+export function participantSpaceSessionPreviewLine(
+  preview: string,
+  messageCount: number,
+  projectionPending = false,
+) {
   const text = preview.trim() || 'No messages yet';
+  if (projectionPending) return `${text} · Syncing history…`;
   return `${text} · ${messageCount} message${messageCount === 1 ? '' : 's'}`;
 }
 

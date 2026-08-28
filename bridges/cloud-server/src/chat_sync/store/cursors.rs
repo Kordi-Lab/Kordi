@@ -346,10 +346,14 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 conversation.created_by_account_id, conversation.legacy_session_id, \
                 fork.parent_session_id, fork.parent_message_id, \
                 conversation.latest_message_sequence, conversation.created_at, \
-                conversation.updated_at, viewer.personal_title, viewer.preferences_version \
+                conversation.updated_at, \
+                COALESCE(viewer.personal_title, NULLIF(session_title.title, '')), \
+                viewer.preferences_version \
          FROM cloud_chat_conversation_members viewer \
          JOIN cloud_chat_conversations conversation \
            ON conversation.conversation_id = viewer.conversation_id \
+         LEFT JOIN cloud_session_titles session_title \
+           ON session_title.session_id = conversation.legacy_session_id \
          LEFT JOIN cloud_session_forks fork \
            ON fork.fork_session_id = conversation.legacy_session_id \
          WHERE viewer.account_id = $1 AND viewer.membership_state = 'active' \

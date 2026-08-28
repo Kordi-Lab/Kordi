@@ -6,8 +6,9 @@ import {
   type ChatSyncConversation,
   type ChatSyncMessage,
 } from '../src/features/cloud/authClient';
-import { parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import { encodeCloudGroupControl, parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudGroupCanonicalMessageSource } from '../src/features/cloud/cloudMessageIndex';
+import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 
 const conversation: ChatSyncConversation = {
   id: '019cb111-8ecc-7181-8266-8986d950169b',
@@ -43,6 +44,70 @@ const message: ChatSyncMessage = {
   edited_at: null,
   deleted_at: null,
 };
+
+test('plain reliable group messages enter the canonical group projection', () => {
+  const mapped = cloudMessageFromChatSync(message, conversation, 'acct_b');
+  const envelope = parseCloudGroupControl(mapped.body);
+
+  assert.equal(envelope?.groupId, conversation.legacy_session_id);
+  assert.equal(envelope?.message?.text, 'hello');
+  assert.equal(envelope?.message?.senderKind, 'human');
+  assert.equal(envelope?.message?.id, message.id);
+});
+
+test('reliable transport time replaces stale legacy group-envelope activity', () => {
+  const legacyBody = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:stale-embedded-route',
+    groupSpaceId: null,
+    groupTitle: conversation.shared_title,
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alex', avatarUrl: null, role: 'person' },
+    participants: [
+      { accountId: 'acct_a', displayName: 'Alex', avatarUrl: null, role: 'person' },
+      { accountId: 'acct_b', displayName: 'Taylor', avatarUrl: null, role: 'person' },
+    ],
+    message: {
+      id: message.id,
+      senderAccountId: 'acct_a',
+      senderKind: 'human',
+      senderDisplayName: 'Alex',
+      text: 'hello',
+      createdAtMs: 1,
+    },
+  });
+  const mapped = cloudMessageFromChatSync({
+    ...message,
+    content: { schema: 1, blocks: [{ type: 'text', text: legacyBody }] },
+  }, conversation, 'acct_b');
+
+  assert.equal(
+    parseCloudGroupControl(mapped.body)?.message?.createdAtMs,
+    Date.parse(message.created_at),
+  );
+  assert.equal(
+    parseCloudGroupControl(mapped.body)?.groupId,
+    conversation.legacy_session_id,
+  );
+});
+
+test('plain reliable group agent responses retain their request lifecycle', () => {
+  const body = encodeCloudAgentResponse({
+    requestId: 'request-1',
+    text: 'Finished',
+    deliveryState: 'complete',
+  });
+  const mapped = cloudMessageFromChatSync({
+    ...message,
+    content: { schema: 1, blocks: [{ type: 'text', text: body }] },
+  }, conversation, 'acct_b');
+  const envelope = parseCloudGroupControl(mapped.body);
+
+  assert.equal(envelope?.message?.senderKind, 'agent');
+  assert.equal(envelope?.message?.text, 'Finished');
+  assert.equal(envelope?.message?.requestId, 'request-1');
+  assert.equal(envelope?.message?.deliveryState, 'complete');
+});
 
 test('group call activity snapshots enter the canonical group envelope', () => {
   const callId = message.client_message_id;

@@ -87,6 +87,52 @@ fn can_apply_cloud_agent_turn_transition(
         && incoming_state == CloudAgentTurnLifecycleState::Queued)
 }
 
+fn chat_sync_sequence_num(
+    conn: &Connection,
+    request: &AppendCanonicalMessageRequest,
+) -> Result<Option<i64>, String> {
+    let Some(source_transport) = request.source_transport.as_deref() else {
+        return Ok(None);
+    };
+    let Some(source_event_id) = request.source_event_id.as_deref() else {
+        return Ok(None);
+    };
+    let message_id = if source_transport.starts_with("cloud-group") {
+        source_event_id
+            .strip_prefix(&format!("{source_transport}:"))
+            .and_then(|value| value.split(':').next())
+    } else if matches!(
+        source_transport,
+        "cloud-self-agent" | "canonical-fork-snapshot"
+    ) {
+        Some(source_event_id)
+    } else {
+        None
+    };
+    let Some(message_id) = message_id.filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+    conn.query_row(
+        "SELECT message.conversation_sequence
+         FROM chat_sync_messages AS message
+         JOIN chat_sync_conversations AS conversation
+           ON conversation.account_id = message.account_id
+          AND conversation.conversation_id = message.conversation_id
+         WHERE message.message_id = ?1
+           AND (
+             conversation.client_session_id = ?2
+             OR conversation.conversation_id = ?2
+             OR json_extract(conversation.snapshot_json, '$.legacy_session_id') = ?2
+           )
+         ORDER BY message.updated_at_ms DESC
+         LIMIT 1",
+        params![message_id, request.session_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
 /// Trust boundary: this helper does not authorize the (session_id, message_id)
 /// tuple against any caller identity. It trusts whatever id and content the
 /// renderer supplies via the canonical-sessions Tauri surface. The renderer is
@@ -114,13 +160,16 @@ pub(crate) fn append_message_in_db(
         .unwrap_or_else(|| format!("msg:{}", Uuid::new_v4().simple()));
     let now = now_ms();
     let created_at_ms = request.created_at_ms.unwrap_or(now);
-    let sequence_num: i64 = conn
-        .query_row(
-            "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM session_messages WHERE session_id = ?1",
-            params![request.session_id],
-            |row| row.get(0),
-        )
-        .map_err(|err| err.to_string())?;
+    let sequence_num = match chat_sync_sequence_num(conn, &request)? {
+        Some(sequence_num) => sequence_num,
+        None => conn
+            .query_row(
+                "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM session_messages WHERE session_id = ?1",
+                params![request.session_id],
+                |row| row.get(0),
+            )
+            .map_err(|err| err.to_string())?,
+    };
     let content = json_to_db(&request.content)?;
     let content_hash = hash_hex(
         &format!(
@@ -280,6 +329,8 @@ fn upsert_message_in_transaction(
     let created_at_ms = request
         .created_at_ms
         .unwrap_or(existing_message.created_at_ms);
+    let sequence_num =
+        chat_sync_sequence_num(conn, &request)?.unwrap_or(existing_message.sequence_num);
     let content_value = request.content;
     let content = json_to_db(&content_value)?;
     let content_hash = hash_hex(
@@ -309,6 +360,7 @@ fn upsert_message_in_transaction(
         && existing_message.content_text == request.content_text
         && existing_message.content == content_value
         && existing_message.status == status
+        && existing_message.sequence_num == sequence_num
         && existing_message.created_at_ms == created_at_ms
         && existing_message.parent_message_id == parent_message_id
         && existing_message.delegated_exchange_id == delegated_exchange_id
@@ -331,14 +383,15 @@ fn upsert_message_in_transaction(
              content_text = ?4,
              content_json = ?5,
              status = ?6,
-             created_at_ms = ?7,
-             updated_at_ms = ?8,
-             content_hash = ?9,
-             parent_message_id = ?10,
-             delegated_exchange_id = ?11,
-             source_transport = ?12,
-             source_event_id = ?13
-         WHERE id = ?14",
+             sequence_num = ?7,
+             created_at_ms = ?8,
+             updated_at_ms = ?9,
+             content_hash = ?10,
+             parent_message_id = ?11,
+             delegated_exchange_id = ?12,
+             source_transport = ?13,
+             source_event_id = ?14
+         WHERE id = ?15",
         params![
             request.sender_identity_id.as_str(),
             request.sender_role.as_str(),
@@ -346,6 +399,7 @@ fn upsert_message_in_transaction(
             request.content_text.as_str(),
             content,
             status,
+            sequence_num,
             created_at_ms,
             now,
             content_hash,

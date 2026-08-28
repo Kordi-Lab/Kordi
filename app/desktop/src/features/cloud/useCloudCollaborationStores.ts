@@ -40,7 +40,10 @@ export type CloudCollaborationMessageStore = {
   >;
   valueRef: MutableRefObject<Record<string, CloudMessage[]>>;
   onGroupRecoverySettled: () => void;
+  onNativeGroupRecoverySettled: () => void;
+  onGroupSessionRecoverySettled: (sessionId: string) => void;
   onSelfAgentRecoverySettled: () => void;
+  pendingGroupProjectionSessionIds: ReadonlySet<string>;
   currentAccountValue: Record<string, CloudMessage[]>;
   belongsToCurrentAccount: boolean;
   index: CloudMessageIndex;

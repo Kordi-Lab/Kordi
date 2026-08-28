@@ -661,7 +661,7 @@ export function buildCloudCollaborationConversation({
         : cloudAgentDisplayName(contact);
   const pendingAgentRequest = [...pendingAgentRequests].reverse()[0] ?? null;
   const last = latestVisibleConversationMessage(collaborationMessages);
-  const updatedAtMs = last?.timestampMs ?? Date.now();
+  const updatedAtMs = last?.timestampMs ?? 0;
   const conversationId = cloudCollaborationConversationId(peerAccountId, runtime, normalizedCloudSessionId);
   const pendingAgentTargetsLocalAgent = pendingAgentRequest
     ? requestTargetAccountIds.get(pendingAgentRequest.messageId) === account.accountId
@@ -736,7 +736,7 @@ export function buildCloudCollaborationConversation({
           && !cloudMessageIsAtOrBeforeReadCursor(message, readCursorSessionId ? readCursorsBySessionId[readCursorSessionId] : null)
         )).length,
     updatedAtMs,
-    updatedAtLabel: formatDesktopLastActiveLabel(updatedAtMs),
+    updatedAtLabel: last ? formatDesktopLastActiveLabel(updatedAtMs) : '',
     awaitingReply: Boolean(pendingAgentOutreach),
     peerTyping: false,
     peerLastHeartbeatLabel: null,
@@ -856,9 +856,6 @@ export function buildCloudDesktopCollaborationState({
   const host = buildCloudCollaborationHost(account, directContacts, localAgentRuntimeRoute);
   const systemAgentIds = systemAgentIdsByPeer(directContacts);
   const activePeerId = activeConversationId ? cloudPeerAccountIdFromConversationId(activeConversationId) : null;
-  const activeConversationKind = activeConversationId
-    ? cloudConversationKindFromConversationId(activeConversationId)
-    : null;
   const conversationContacts = [cloudSelfContact(account), ...directContacts]
     .filter((contact, index, list) => {
       const contactKey = cloudConversationContactKey(contact);
@@ -882,8 +879,7 @@ export function buildCloudDesktopCollaborationState({
       const directPersonMessages = isSelfPeer || isSystemAgent
         ? []
         : cloudDirectPersonMessagesForPeer(account, peerId, messages);
-      const hasDirectPersonMessages = directPersonMessages.length > 0;
-      const personConversation = !isSelfPeer && !isSystemAgent && (hasDirectPersonMessages || (isActivePeer && activeConversationKind === 'person'))
+      const personConversation = !isSelfPeer && !isSystemAgent
         ? [reuseConversation(
             cloudCollaborationConversationId(peerId, CLOUD_PERSON_RUNTIME),
             conversationRevision({

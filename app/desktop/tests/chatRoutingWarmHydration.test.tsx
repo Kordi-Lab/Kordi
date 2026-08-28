@@ -30,6 +30,7 @@ test('canonical history hydration never replaces cached rows with a placeholder'
     id: 'session:group:warm-history',
     canonicalSessionId: 'session:group:warm-history',
     canonicalMessageCount: 239,
+    canonicalProjectionPending: true,
     name: 'main',
     type: 'owned-agent' as const,
     subtitle: 'Latest synced message',
@@ -73,6 +74,29 @@ test('canonical history omits a lone catalog preview instead of inventing a load
     applyCanonicalHydrationPlaceholder(selected, 'loading').messages,
     [],
   );
+});
+
+test('cold group projection keeps its durable head visible while history syncs', () => {
+  const selected = {
+    id: 'session:group:cold-history',
+    canonicalSessionId: 'session:group:cold-history',
+    canonicalMessageCount: 1,
+    canonicalProjectionPending: true,
+    name: 'main',
+    type: 'owned-agent' as const,
+    subtitle: 'Latest synced message',
+    unread: 0,
+    collaborationSources: ['Cloud'],
+    trust: 'Bridge',
+    directness: 'Group chat',
+    participants: ['Me', 'Alice'],
+    messages: [{ role: 'user' as const, text: 'bootstrap head', time: '10:45' }],
+  };
+
+  const loading = applyCanonicalHydrationPlaceholder(selected, 'ready');
+
+  assert.equal(loading, selected);
+  assert.equal(loading.messages[0]?.text, 'bootstrap head');
 });
 
 test('desktop runtime selection keeps an invisible loading marker until its transcript cache is ready', () => {

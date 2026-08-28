@@ -63,6 +63,7 @@ function ParticipantSpaceSessionRow({
   const sessionPreviewLine = participantSpaceSessionPreviewLine(
     sessionPreview,
     sessionMessageCount,
+    Boolean(conversation.canonicalProjectionPending && sessionMessageCount <= 1),
   );
   const sessionIdLabel = participantSpaceSessionIdLabel(session);
   const isFork = depth > 0;

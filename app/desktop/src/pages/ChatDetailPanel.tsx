@@ -170,6 +170,13 @@ function ChatDetailPanelView({
 }: ChatDetailPanelProps) {
   const activeSessionSubtitle = formatSessionIdSubtitle(activeConv.subtitle);
   const activeSessionId = activeConv.canonicalSessionId ?? activeConv.id;
+  const canonicalProjectionPending = Boolean(
+    activeConv.canonicalProjectionPending
+    && (activeConv.canonicalMessageCount ?? activeConv.messages.length) <= 1,
+  );
+  const canonicalMessageSummary = canonicalProjectionPending
+    ? 'Syncing history…'
+    : `${activeConv.canonicalMessageCount ?? 0} message${activeConv.canonicalMessageCount === 1 ? '' : 's'}`;
   const artifactPreviewBaseRoot = chatArtifactPreviewBaseRoot({
     activeConversationUsesCollaboration,
     activeSessionProjectRoot: activeSessionProject?.root,
@@ -192,7 +199,7 @@ function ChatDetailPanelView({
               <div className="app-inspector-heading">{activeConv.name}</div>
             </div>
             <div className="app-inspector-meta-list">
-              {activeConv.canonicalParticipantCount !== undefined ? <MetaRow label="Canonical graph" value={`${activeConv.canonicalParticipantCount} participant${activeConv.canonicalParticipantCount === 1 ? '' : 's'} • ${activeConv.canonicalMessageCount ?? 0} message${activeConv.canonicalMessageCount === 1 ? '' : 's'} • ${activeConv.canonicalDelegatedExchangeCount ?? 0} delegation${activeConv.canonicalDelegatedExchangeCount === 1 ? '' : 's'}`} /> : null}
+              {activeConv.canonicalParticipantCount !== undefined ? <MetaRow label="Canonical graph" value={`${activeConv.canonicalParticipantCount} participant${activeConv.canonicalParticipantCount === 1 ? '' : 's'} • ${canonicalMessageSummary} • ${activeConv.canonicalDelegatedExchangeCount ?? 0} delegation${activeConv.canonicalDelegatedExchangeCount === 1 ? '' : 's'}`} /> : null}
               {activeConv.canonicalContextSnapshotCount !== undefined ? <MetaRow label="Context cache" value={`${activeConv.canonicalContextSnapshotCount} snapshot${activeConv.canonicalContextSnapshotCount === 1 ? '' : 's'}`} /> : null}
               {activeConv.canonicalPresenceSummary ? <MetaRow label="Presence" value={activeConv.canonicalPresenceSummary} /> : null}
               <MetaRow label="Last active" value={activeLastMessage?.time} />

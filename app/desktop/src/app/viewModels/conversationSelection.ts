@@ -160,6 +160,20 @@ export function applyCanonicalHydrationPlaceholder(
       messages: [transcriptLoadingNotice(undefined, selectedConversation.messages)],
     };
   }
+  if (
+    selectedConversation.canonicalProjectionPending
+    && (selectedConversation.canonicalMessageCount
+      ?? selectedConversation.messages.length) <= 1
+  ) {
+    if (selectedConversation.messages.length > 0) return selectedConversation;
+    return {
+      ...selectedConversation,
+      messages: [transcriptLoadingNotice(
+        'Syncing message history',
+        selectedConversation.messages,
+      )],
+    };
+  }
   const knownCanonicalMessageCount =
     selectedConversation.canonicalMessageCount;
   if (

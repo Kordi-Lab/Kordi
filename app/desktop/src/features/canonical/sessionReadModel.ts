@@ -51,7 +51,7 @@ import {
 import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
 import { mergeCanonicalReadReceipts, mergedMessageReactionMetadata } from './readModel/messageReactionMetadata';
 
-const EMPTY_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map();
+const EMPTY_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map(); const EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS: ReadonlySet<string> = new Set(); const EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY: ReadonlyMap<string, number> = new Map();
 
 export function mergeCanonicalHistoryIntoRuntime(
   canonicalMessages: Message[],
@@ -452,16 +452,15 @@ export function createCanonicalSessionReadModel(
   canonicalState: CanonicalSessionState | null,
   options: {
     summaries?: CanonicalSessionSummary[];
-    cloudUnreadReady?: boolean;
-    legacyGroupSessionTitlesById?: ReadonlyMap<string, string>;
+    cloudUnreadReady?: boolean; pendingGroupProjectionSessionIds?: ReadonlySet<string>;
+    legacyGroupSessionTitlesById?: ReadonlyMap<string, string>; reliableGroupSessionTitleIds?: ReadonlySet<string>; reliableGroupSessionActivityAtMs?: ReadonlyMap<string, number>; reliableGroupSessionMessageCounts?: ReadonlyMap<string, number>;
   } = {},
 ): CanonicalSessionReadModel | null {
   if (!canonicalState) return null;
 
   const indexes = buildCanonicalIndexes(canonicalState);
-  const cloudUnreadReady = options.cloudUnreadReady ?? true;
-  const legacyGroupSessionTitlesById = options.legacyGroupSessionTitlesById
-    ?? EMPTY_LEGACY_GROUP_SESSION_TITLES;
+  const cloudUnreadReady = options.cloudUnreadReady ?? true; const pendingGroupProjectionSessionIds = options.pendingGroupProjectionSessionIds ?? EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS;
+  const legacyGroupSessionTitlesById = options.legacyGroupSessionTitlesById ?? EMPTY_LEGACY_GROUP_SESSION_TITLES; const reliableGroupSessionTitleIds = options.reliableGroupSessionTitleIds ?? EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS; const reliableGroupSessionActivityAtMs = options.reliableGroupSessionActivityAtMs ?? EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY; const reliableGroupSessionMessageCounts = options.reliableGroupSessionMessageCounts ?? EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY;
   const summaryBySessionId = new Map((options.summaries ?? []).map((summary) => [summary.sessionId, summary]));
   const sessionActivityAtMs = (session: CanonicalSessionState['sessions'][number]) => (
     indexes.latestActivityMessageBySessionId.get(session.id)?.createdAtMs
@@ -544,8 +543,8 @@ export function createCanonicalSessionReadModel(
         : (() => {
             const preferPersistedTitle = sessionPrefersPersistedTitle(session);
             const legacyGroupTitle = session.kind === 'group'
-              && cloudUnreadReady
               && !preferPersistedTitle
+              && (cloudUnreadReady || reliableGroupSessionTitleIds.has(sessionId))
               ? legacyGroupSessionTitlesById.get(sessionId)
               : undefined;
             return sessionConversationDisplayTitle(
@@ -560,7 +559,7 @@ export function createCanonicalSessionReadModel(
               },
             );
           })();
-      const latestTime = formatDesktopLastActiveLabel(sessionActivityAtMs(session));
+      const activityAtMs = session.kind === 'group' ? reliableGroupSessionActivityAtMs.get(sessionId) ?? sessionActivityAtMs(session) : sessionActivityAtMs(session); const latestTime = formatDesktopLastActiveLabel(activityAtMs);
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
       const directLegacyCollaborationTarget = conversation.collaborationTarget ?? syntheticCollaborationTarget(session, rawCanonicalParticipants);
       const collaborationTarget = directLegacyCollaborationTarget ?? legacyCollaborationTargetForSession(session, rawCanonicalParticipants, indexes);
@@ -591,7 +590,7 @@ export function createCanonicalSessionReadModel(
         : null;
       return {
         ...conversation,
-        _updatedAtMs: Math.max(conversation._updatedAtMs ?? 0, sessionActivityAtMs(session)),
+        _updatedAtMs: session.kind === 'group' ? activityAtMs : Math.max(conversation._updatedAtMs ?? 0, activityAtMs),
         canonicalSessionId: sessionId,
         canonicalCreatedByIdentityId: session.createdByIdentityId,
         canonicalCreatedAtMs: session.createdAtMs,
@@ -620,9 +619,10 @@ export function createCanonicalSessionReadModel(
         canonicalParticipantCount: isSupportContact
           ? participants.length
           : canonicalParticipants.length || (indexes.participantsBySessionId.get(sessionId) ?? []).length,
-        canonicalMessageCount: summaryBySessionId.get(sessionId)?.messageCount
+        canonicalMessageCount: reliableGroupSessionMessageCounts.get(sessionId) ?? summaryBySessionId.get(sessionId)?.messageCount
           ?? indexes.readableMessageCountBySessionId.get(sessionId)
           ?? 0,
+        canonicalProjectionPending: pendingGroupProjectionSessionIds.has(sessionId),
         canonicalDelegatedExchangeCount: taskActivities.length,
         canonicalContextSnapshotCount: summaryBySessionId.get(sessionId)?.contextSnapshotCount
           ?? indexes.contextSnapshotCountBySessionId.get(sessionId)

@@ -88,6 +88,40 @@ export async function loadChatSyncCoverage(accountId: string) {
   return invokeDesktop<ChatSyncConversationCoverage[]>('desktop_chat_sync_coverage', { accountId });
 }
 
+export function chatSyncHistoryIsComplete(
+  conversations: readonly ChatSyncConversation[],
+  coverage: readonly ChatSyncConversationCoverage[],
+) {
+  const byConversationId = new Map(
+    coverage.map((row) => [row.conversationId, row]),
+  );
+  return conversations.every((conversation) => {
+    const target = conversation.latest_message_sequence;
+    if (target <= 0) return true;
+    const row = byConversationId.get(conversation.id);
+    return row?.earliestSequence === 1
+      && row.latestSequence === target
+      && row.messageCount === target;
+  });
+}
+
+export async function waitForCompleteChatSyncHistory(
+  accountId: string,
+  shouldContinue: () => boolean,
+) {
+  while (shouldContinue()) {
+    const [conversations, coverage] = await Promise.all([
+      loadChatSyncConversations(accountId),
+      loadChatSyncCoverage(accountId),
+    ]);
+    if (chatSyncHistoryIsComplete(conversations, coverage)) {
+      return conversations;
+    }
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 1_000));
+  }
+  return null;
+}
+
 export async function loadChatSyncConversations(accountId: string) {
   if (!isNativeDesktopShell()) return [];
   return invokeDesktop<ChatSyncConversation[]>('desktop_chat_sync_conversations', { accountId });
