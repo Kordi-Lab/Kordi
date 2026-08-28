@@ -2,10 +2,7 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { isAnimatedGifAttachment } from '@/features/chat/attachmentMediaGallery';
 import type { MessageAttachment } from '@/kordi-app/types';
 import { isNativeDesktopShell, storeDesktopChatAttachment } from '@/lib/desktop';
-import {
-  imagePixelDimensionsFromBlob,
-  normalizedImagePixelDimensions,
-} from '@/lib/imageDimensions';
+import { imagePixelDimensionsFromBlob, normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 import type {
   CloudAuthClient,
   CloudMessageAttachment,
