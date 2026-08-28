@@ -20,6 +20,21 @@ type DefaultCloudAgentRuntimeRouteArgs = {
   selectedThinking?: string | null;
 };
 
+export function portableCloudAgentAuthChoice(
+  choice?: string | null,
+  methodLabel?: string | null,
+) {
+  const value = choice?.trim();
+  if (!value) return null;
+  if (value === 'local-active-oauth' || value === 'local-active-api-key' || value === 'ios-api-key') {
+    return value;
+  }
+  const method = methodLabel?.trim().toLowerCase() ?? '';
+  if (method.includes('oauth')) return 'local-active-oauth';
+  if (method.includes('api key')) return 'local-active-api-key';
+  return null;
+}
+
 export function resolveDefaultCloudAgentRuntimeRoute({
   activeLoginProviderId,
   authOptions,
@@ -80,7 +95,10 @@ export function resolveDefaultCloudAgentRuntimeRoute({
   return {
     model: routeModel,
     authProvider: authOption?.providerId ?? routeProviderId,
-    authChoice: authOption?.value ?? null,
+    authChoice: portableCloudAgentAuthChoice(
+      authOption?.value,
+      authOption?.methodLabel,
+    ),
     thinking: selectedThinking ?? null,
   };
 }

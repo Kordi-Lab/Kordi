@@ -96,6 +96,28 @@ test('compact composer model menu renders lowercase popout with foldable section
   assert.doesNotMatch(markup, />Save</);
 });
 
+test('compact composer shows the no-provider state after removal', () => {
+  const markup = renderToStaticMarkup(createElement(CompactComposerModelMenu, {
+    scope: 'chat',
+    selection: { mode: 'chat', model: 'openai/gpt-5.6-sol', thinking: 'medium' },
+    providerOptions: [],
+    modelOptions: [{
+      value: 'openai/gpt-5.6-sol',
+      label: 'gpt-5.6-sol',
+      provider: 'openai',
+      providerLabel: 'OpenAI',
+    }],
+    defaultOpen: true,
+    onSave: () => {},
+  }));
+
+  assert.match(markup, />no provider</);
+  assert.equal((markup.match(/<details/g) ?? []).length, 3);
+  assert.equal((markup.match(/<details hidden=""/g) ?? []).length, 2);
+  assert.match(markup, /disabled=""[^>]*>save</);
+  assert.doesNotMatch(markup, />OpenAI</);
+});
+
 test('the composer preserves an authoritative session thinking level when capabilities are stale', () => {
   const markup = renderToStaticMarkup(createElement(CompactComposerModelMenu, {
     scope: 'chat',

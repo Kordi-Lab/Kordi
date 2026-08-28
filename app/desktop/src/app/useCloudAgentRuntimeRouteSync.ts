@@ -5,7 +5,10 @@ import {
   type SetStateAction,
 } from 'react';
 
-import { resolveDefaultCloudAgentRuntimeRoute } from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
+import {
+  portableCloudAgentAuthChoice,
+  resolveDefaultCloudAgentRuntimeRoute,
+} from '@/app/useKordiDefaultCloudAgentRuntimeRoute';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import {
   applySynchronizedCloudAgentRuntimeRoutes,
@@ -197,13 +200,22 @@ export function useCloudAgentRuntimeRouteSync({
       && canonicalCloudProviderId(requestedProvider)
         === canonicalCloudProviderId(resolvedProvider),
     );
+    const requestedAuthOption = composerAuthByScope.optionsByScope.chat.find(
+      (option) => option.value === input.authChoice
+        && canonicalCloudProviderId(option.providerId)
+          === canonicalCloudProviderId(requestedProvider),
+    );
+    const requestedAuthChoice = portableCloudAgentAuthChoice(
+      input.authChoice,
+      requestedAuthOption?.methodLabel,
+    );
     const nextRoute = compactCloudAgentRuntimeRoute({
       model: requestedProvider && !model.includes('/')
         ? `${requestedProvider}/${model}`
         : model,
       thinking: input.thinking ?? resolvedLocalRoute?.thinking ?? null,
       authProvider: requestedProvider,
-      authChoice: input.authChoice
+      authChoice: requestedAuthChoice
         ?? (providersMatch ? resolvedLocalRoute?.authChoice : null),
     });
     const runtimeSessionId = cloudAgentRuntimeSessionId(

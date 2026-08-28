@@ -355,15 +355,15 @@ export function CompactComposerModelMenu({
     stagedThinking,
   );
   const stagedThinkingValue = fallbackComposerThinkingValue(stagedThinkingLevels, stagedThinking);
-  const providerSummary = lowerComposerLabel(
-    stagedProviderOption?.selectionLabel
+  const hasStagedProvider = Boolean(stagedProviderId);
+  const providerSummary = hasStagedProvider
+    ? lowerComposerLabel(stagedProviderOption?.selectionLabel
       ?? (stagedProviderOption ? [stagedProviderOption.label, stagedProviderOption.detail].filter(Boolean).join(' · ') : null)
       ?? stagedModelOption?.providerLabel
-      ?? (stagedProviderId ? providerDisplayLabel(stagedProviderId) : 'provider'),
-  );
+      ?? providerDisplayLabel(stagedProviderId))
+    : 'no provider';
   const modelSummary = lowerComposerLabel(stagedModelOption?.label ?? stagedModel);
   const thinkingSummary = lowerComposerLabel(composerThinkingLabel(stagedThinkingValue));
-
   const updateMenuPosition = useCallback(() => {
     if (typeof window === 'undefined') return;
     const trigger = triggerRef.current;
@@ -508,7 +508,7 @@ export function CompactComposerModelMenu({
             })}
           </div>
         </details>
-        <details className="app-compact-model-menu-section">
+        <details hidden={!hasStagedProvider} className="app-compact-model-menu-section">
           <summary className="app-transient-action-row flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">model</span>
             <span className="flex min-w-0 items-center gap-1.5">
@@ -539,7 +539,7 @@ export function CompactComposerModelMenu({
             })}
           </div>
         </details>
-        <details className="app-compact-model-menu-section">
+        <details hidden={!hasStagedProvider} className="app-compact-model-menu-section">
           <summary className="app-transient-action-row flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 rounded-[10px] px-2.5 marker:hidden transition [&::-webkit-details-marker]:hidden">
             <span className="font-medium">thinking level</span>
             <span className="flex min-w-0 items-center gap-1.5">
@@ -571,7 +571,7 @@ export function CompactComposerModelMenu({
       <div className="mt-2 flex items-center justify-end gap-1">
         <span className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={cancel} className="app-button-quiet app-transient-action-row rounded-[10px] px-3 py-1.5">cancel</button>
-          <button type="button" onClick={save} className="app-button-primary app-transient-action-row rounded-[10px] px-3 py-1.5 font-semibold transition">save</button>
+          <button type="button" onClick={save} disabled={!hasStagedProvider} className="app-button-primary app-transient-action-row rounded-[10px] px-3 py-1.5 font-semibold transition">save</button>
         </span>
       </div>
     </div>
@@ -626,7 +626,7 @@ export function ComposerModelControls({
   modelOptions?: ComposerModelOption[];
   compact?: boolean;
 }) {
-  const activeSelector = openSelector?.scope === scope ? openSelector.type : null;
+  const requestedSelector = openSelector?.scope === scope ? openSelector.type : null;
   const selectorTriggerRefs = useRef<Partial<Record<ComposerSelectorType, HTMLButtonElement | null>>>({});
   const selectorMenuRef = useRef<HTMLDivElement | null>(null);
   const [selectorMenuStyle, setSelectorMenuStyle] = useState<CSSProperties>({});
@@ -637,10 +637,10 @@ export function ComposerModelControls({
     selectedProviderOption,
     selectedProviderValue,
   } = resolveComposerModelSelection({ selection, providerOptions, modelOptions });
+  const activeSelector = requestedSelector === 'provider' || selectedProviderValue ? requestedSelector : null;
   const selectedProviderLabel = selectedProviderOption?.selectionLabel
     ?? (selectedProviderOption ? [selectedProviderOption.label, selectedProviderOption.detail].filter(Boolean).join(' · ') : null)
-    ?? selectedModelOption?.providerLabel
-    ?? (selectedProviderValue ? providerDisplayLabel(selectedProviderValue) : 'Provider');
+    ?? (selectedProviderValue ? selectedModelOption?.providerLabel ?? providerDisplayLabel(selectedProviderValue) : 'No Provider');
   const filteredModelOptions = selectedProviderValue
     ? modelOptions.filter((option) => (option.provider ?? selectedProviderValue) === selectedProviderValue)
     : modelOptions;
@@ -660,9 +660,9 @@ export function ComposerModelControls({
     : activeSelector === 'model'
       ? filteredModelOptions
       : thinkingOptions;
-  const selectedModel = selectedModelOption?.label ?? fallbackModelLabel;
+  const selectedModel = selectedProviderValue ? selectedModelOption?.label ?? fallbackModelLabel : '-';
   const selectedThinkingValue = fallbackComposerThinkingValue(selectedThinkingLevels, selection.thinking);
-  const selectedThinkingLabel = composerThinkingLabel(selectedThinkingValue);
+  const selectedThinkingLabel = selectedProviderValue ? composerThinkingLabel(selectedThinkingValue) : '-';
 
   const updateSelectorMenuPosition = useCallback((selectorType: ComposerSelectorType | null = activeSelector) => {
     if (typeof window === 'undefined' || !selectorType || selectorType === 'mode') return;
@@ -846,7 +846,7 @@ export function ComposerModelControls({
       </button>
       <button
         ref={(node) => { selectorTriggerRefs.current.model = node; }}
-        type="button"
+        type="button" disabled={!selectedProviderValue}
         onClick={() => {
           updateSelectorMenuPosition('model');
           onToggleSelector(scope, 'model');
@@ -854,11 +854,11 @@ export function ComposerModelControls({
         className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[5.75rem]' : 'w-[8.5rem]')} aria-expanded={activeSelector === 'model'}
       >
         <span className="truncate text-left">{selectedModel}</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'model' ? 'rotate-180 text-slate-300' : '')} />
+        {selectedProviderValue ? <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'model' ? 'rotate-180 text-slate-300' : '')} /> : null}
       </button>
       <button
         ref={(node) => { selectorTriggerRefs.current.thinking = node; }}
-        type="button"
+        type="button" disabled={!selectedProviderValue}
         onClick={() => {
           updateSelectorMenuPosition('thinking');
           onToggleSelector(scope, 'thinking');
@@ -866,7 +866,7 @@ export function ComposerModelControls({
         className={cn('app-button-quiet inline-flex min-w-0 items-center gap-1.5 rounded-full px-1.5 py-0.5 text-[12px] font-medium', compact ? 'w-[4.75rem]' : 'w-[6.5rem]')} aria-expanded={activeSelector === 'thinking'}
       >
         <span className="truncate text-left">{selectedThinkingLabel}</span>
-        <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'thinking' ? 'rotate-180 text-slate-300' : '')} />
+        {selectedProviderValue ? <ChevronDown className={cn('h-3.5 w-3.5 shrink-0 text-slate-500 transition-transform', activeSelector === 'thinking' ? 'rotate-180 text-slate-300' : '')} /> : null}
       </button>
       {activeSelector && activeSelector !== 'mode'
         ? (typeof document !== 'undefined' ? createPortal(renderSelectorMenu(), document.body) : renderSelectorMenu())

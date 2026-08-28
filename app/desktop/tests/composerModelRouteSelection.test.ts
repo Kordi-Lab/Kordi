@@ -94,6 +94,18 @@ test('unknown model prefixes are not treated as providers', () => {
   assert.equal(resolved.fallbackModelLabel, 'model');
 });
 
+test('a removed provider model cannot keep the stale provider label selected', () => {
+  const resolved = resolveComposerModelSelection({
+    selection: { model: 'openai/gpt-5.6' },
+    providerOptions: [],
+    modelOptions,
+  });
+
+  assert.equal(resolved.selectedModelOption?.label, 'GPT-5.6');
+  assert.equal(resolved.selectedProviderValue, '');
+  assert.equal(resolved.selectedProviderOption, null);
+});
+
 test('OpenAI Codex provider aliases normalize to the OpenAI route', () => {
   assert.equal(normalizeComposerProviderId(' OpenAI-Codex '), 'openai');
 

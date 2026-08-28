@@ -65,6 +65,25 @@ test('OpenAI provider aliases preserve the executing auth profile across route u
   });
 });
 
+test("legacy profile ids rebind to the executing Mac's portable auth choice", () => {
+  assert.deepEqual(cloudAgentRuntimeRouteAfterModelChange(
+    { model: 'openai/gpt-5.6-luna', authProvider: 'openai', authChoice: 'profile:old-device', thinking: 'high' },
+    { model: 'openai/gpt-5.6-sol', authProvider: 'openai-codex', authChoice: 'profile:old-device', thinking: 'max' },
+    { model: 'openai/gpt-5.6-sol', authProvider: 'openai', authChoice: 'local-active-oauth', thinking: 'max' },
+  ), {
+    model: 'openai/gpt-5.6-sol', authProvider: 'openai',
+    authChoice: 'local-active-oauth', thinking: 'max',
+  });
+});
+
+test('synchronized session routes reject device-local profile ids', () => {
+  assert.throws(() => encodeCloudAgentRuntimeRouteChange({
+    model: 'openai/gpt-5.6-sol',
+    authProvider: 'openai',
+    authChoice: 'profile:local-device',
+  }), /cannot contain a local auth profile id/);
+});
+
 test('ordered Cloud route changes win over a lagging canonical mirror atomically', () => {
   const sessionId = 'session:self-agent:route-race';
   const runtimeSessionId = cloudAgentRuntimeSessionId('acct_me', sessionId) ?? '';
