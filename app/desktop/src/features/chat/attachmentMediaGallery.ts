@@ -41,6 +41,13 @@ function attachmentExtension(attachment: MessageAttachment) {
   return match?.[1]?.toLowerCase() ?? '';
 }
 
+export function isAnimatedGifAttachment(
+  attachment: Pick<MessageAttachment, 'name' | 'mimeType'>,
+) {
+  return attachment.mimeType?.trim().toLowerCase() === 'image/gif'
+    || attachment.name.trim().toLowerCase().endsWith('.gif');
+}
+
 function isArchiveAttachment(attachment: MessageAttachment) {
   return ARCHIVE_ATTACHMENT_EXTENSIONS.has(attachmentExtension(attachment));
 }
@@ -61,6 +68,15 @@ export function shouldPreviewAttachmentInline(attachment: MessageAttachment) {
 
 export function attachmentPreviewUrl(attachment: MessageAttachment) {
   if (!shouldPreviewAttachmentInline(attachment)) return undefined;
+  if (isAnimatedGifAttachment(attachment)) {
+    if (attachment.localPath && isNativeShell()) {
+      try {
+        return convertFileSrc(attachment.localPath);
+      } catch {
+        return undefined;
+      }
+    }
+  }
   const previewUrl = safeAttachmentPreviewUrl(attachment.previewUrl);
   if (previewUrl) return previewUrl;
   if (attachment.localPath && isNativeShell() && !isLargeAttachment(attachment)) {

@@ -92,7 +92,7 @@ struct BlobEmojiView: View {
         Group {
             if let image {
                 if emoji.animated, !reduceMotion {
-                    AnimatedBlobEmojiImage(image: image)
+                    AnimatedUIImage(image: image)
                 } else {
                     Image(uiImage: image)
                         .resizable()
@@ -114,24 +114,102 @@ struct BlobEmojiView: View {
     }
 }
 
-private struct AnimatedBlobEmojiImage: UIViewRepresentable {
+struct AnimatedUIImage: UIViewRepresentable {
     let image: UIImage
 
-    func makeUIView(context: Context) -> AnimatedBlobUIImageView {
-        let view = AnimatedBlobUIImageView()
+    func makeUIView(context: Context) -> AnimatedUIImageView {
+        let view = AnimatedUIImageView()
         view.contentMode = .scaleAspectFit
         view.clipsToBounds = true
         view.image = image
         return view
     }
 
-    func updateUIView(_ uiView: AnimatedBlobUIImageView, context: Context) {
+    func updateUIView(_ uiView: AnimatedUIImageView, context: Context) {
         uiView.image = image
     }
 }
 
-private final class AnimatedBlobUIImageView: UIImageView {
+final class AnimatedUIImageView: UIImageView {
     override var intrinsicContentSize: CGSize { .zero }
+}
+
+enum AnimatedImageDecoder {
+    static func isAnimated(at url: URL) -> Bool {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return false }
+        return CGImageSourceGetCount(source) > 1
+    }
+
+    static func image(
+        at url: URL,
+        animated: Bool,
+        maximumPixelSize: CGFloat? = nil
+    ) -> UIImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return image(from: source, animated: animated, maximumPixelSize: maximumPixelSize)
+    }
+
+    static func image(
+        from source: CGImageSource,
+        animated: Bool,
+        maximumPixelSize: CGFloat? = nil
+    ) -> UIImage? {
+        let count = CGImageSourceGetCount(source)
+        guard count > 0 else { return nil }
+        if !animated || count == 1 {
+            return frame(from: source, index: 0, maximumPixelSize: maximumPixelSize)
+        }
+        var frames: [UIImage] = []
+        var duration = 0.0
+        for index in 0..<count {
+            guard let frame = frame(
+                from: source,
+                index: index,
+                maximumPixelSize: maximumPixelSize
+            ) else { continue }
+            frames.append(frame)
+            duration += frameDuration(source: source, index: index)
+        }
+        guard !frames.isEmpty else { return nil }
+        return frames.count == 1
+            ? frames[0]
+            : UIImage.animatedImage(with: frames, duration: max(duration, 0.1))
+    }
+
+    private static func frame(
+        from source: CGImageSource,
+        index: Int,
+        maximumPixelSize: CGFloat?
+    ) -> UIImage? {
+        if let maximumPixelSize {
+            let options: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+            ]
+            return CGImageSourceCreateThumbnailAtIndex(
+                source,
+                index,
+                options as CFDictionary
+            ).map(UIImage.init(cgImage:))
+        }
+        return CGImageSourceCreateImageAtIndex(source, index, nil).map(UIImage.init(cgImage:))
+    }
+
+    private static func frameDuration(source: CGImageSource, index: Int) -> TimeInterval {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+              let animation = properties[kCGImagePropertyWebPDictionary] as? [CFString: Any]
+                ?? properties[kCGImagePropertyGIFDictionary] as? [CFString: Any] else {
+            return 0.1
+        }
+        let duration = animation[kCGImagePropertyWebPUnclampedDelayTime] as? TimeInterval
+            ?? animation[kCGImagePropertyWebPDelayTime] as? TimeInterval
+            ?? animation[kCGImagePropertyGIFUnclampedDelayTime] as? TimeInterval
+            ?? animation[kCGImagePropertyGIFDelayTime] as? TimeInterval
+            ?? 0.1
+        return max(duration, 0.02)
+    }
 }
 
 private actor BlobEmojiImageLoader {
@@ -146,12 +224,8 @@ private actor BlobEmojiImageLoader {
     func image(for emoji: BlobEmoji, animated: Bool) -> UIImage? {
         let key = "\(emoji.id):\(animated)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
-        guard let url = BlobEmojiCatalog.assetURL(for: emoji),
-              let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              CGImageSourceGetCount(source) > 0 else { return nil }
-        let image = animated
-            ? animatedImage(from: source)
-            : CGImageSourceCreateImageAtIndex(source, 0, nil).map(UIImage.init(cgImage:))
+        guard let url = BlobEmojiCatalog.assetURL(for: emoji) else { return nil }
+        let image = AnimatedImageDecoder.image(at: url, animated: animated)
         if let image {
             let cost = (image.images ?? [image]).reduce(0) { total, frame in
                 total + (frame.cgImage.map { $0.bytesPerRow * $0.height } ?? 0)
@@ -161,31 +235,4 @@ private actor BlobEmojiImageLoader {
         return image
     }
 
-    private func animatedImage(from source: CGImageSource) -> UIImage? {
-        var frames: [UIImage] = []
-        var duration = 0.0
-        for index in 0..<CGImageSourceGetCount(source) {
-            guard let cgImage = CGImageSourceCreateImageAtIndex(source, index, nil) else { continue }
-            frames.append(UIImage(cgImage: cgImage))
-            duration += frameDuration(source: source, index: index)
-        }
-        guard !frames.isEmpty else { return nil }
-        return frames.count == 1
-            ? frames[0]
-            : UIImage.animatedImage(with: frames, duration: max(duration, 0.1))
-    }
-
-    private func frameDuration(source: CGImageSource, index: Int) -> TimeInterval {
-        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
-              let animation = properties[kCGImagePropertyWebPDictionary] as? [CFString: Any]
-                ?? properties[kCGImagePropertyGIFDictionary] as? [CFString: Any] else {
-            return 0.1
-        }
-        let duration = animation[kCGImagePropertyWebPUnclampedDelayTime] as? TimeInterval
-            ?? animation[kCGImagePropertyWebPDelayTime] as? TimeInterval
-            ?? animation[kCGImagePropertyGIFUnclampedDelayTime] as? TimeInterval
-            ?? animation[kCGImagePropertyGIFDelayTime] as? TimeInterval
-            ?? 0.1
-        return max(duration, 0.02)
-    }
 }

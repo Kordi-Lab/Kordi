@@ -295,7 +295,9 @@ function storedAttachmentFromRecord(record: Record<string, unknown>): Attachment
   const formatLabel = typeof record.formatLabel === 'string' ? record.formatLabel : null;
   const mimeType = typeof record.mimeType === 'string' ? record.mimeType : null;
   const sizeBytes = typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null;
-  const subtype = record.subtype === 'meme' && kind === 'image' ? 'meme' : null;
+  const subtype = kind === 'image' && (record.subtype === 'meme' || record.subtype === 'sticker')
+    ? record.subtype
+    : null;
   const altText = typeof record.altText === 'string' ? record.altText : null;
 
   return {
@@ -308,11 +310,13 @@ function storedAttachmentFromRecord(record: Record<string, unknown>): Attachment
     localPath: path,
     previewUrl: null,
     sizeBytes,
-    ...(subtype ? {
-      subtype,
-      altText,
-      memeRightsConfirmed: record.memeRightsConfirmed === true,
-    } : {}),
+    ...(subtype === 'sticker'
+      ? { subtype }
+      : subtype === 'meme' ? {
+          subtype,
+          altText,
+          memeRightsConfirmed: record.memeRightsConfirmed === true,
+        } : {}),
   };
 }
 

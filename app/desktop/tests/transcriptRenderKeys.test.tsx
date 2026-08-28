@@ -41,3 +41,14 @@ test('transcript message fallback render key avoids volatile time and status fie
 
   assert.equal(transcriptMessageRenderKey(sending, 2), transcriptMessageRenderKey(read, 2));
 });
+
+test('optimistic and canonical Cloud rows keep one render key', () => {
+  const clientMessageId = '77777777-7777-4777-8777-777777777777';
+  const optimistic = message({ id: clientMessageId, clientMessageId });
+  const canonical = message({ id: 'server-message-id', clientMessageId });
+
+  assert.equal(
+    transcriptMessageRenderKey(optimistic, 2),
+    transcriptMessageRenderKey(canonical, 2),
+  );
+});

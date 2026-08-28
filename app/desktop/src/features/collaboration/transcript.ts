@@ -78,7 +78,7 @@ function collaborationMessageAttachments(message: DesktopCollaborationConversati
   if (!message.attachments || message.attachments.length === 0) return undefined;
   return message.attachments.map((attachment) => {
     const previewUrl = collaborationAttachmentPreviewUrl(attachment);
-    return previewUrl ? { ...attachment, previewUrl } : attachment;
+    return { ...attachment, ...(message.messageKind === 'sticker' && attachment.kind === 'image' ? { subtype: 'sticker' as const } : {}), ...(previewUrl ? { previewUrl } : {}) };
   });
 }
 
@@ -290,7 +290,7 @@ export function mapCollaborationConversationToViewModel(
   const messages: Message[] = conversation.messages.flatMap((message) => {
     if (isPersonChat && isGroupScopedCollaborationMessage(message)) return [];
     if (staleProcessingPlaceholderIds.has(message.id)) return [];
-    const messageId = collaborationViewMessageId(message);
+    const direction = message.direction, messageId = collaborationViewMessageId(message);
     const replyToMessageId = message.requestId?.trim()
       ? requestMessageIdByRequestId.get(message.requestId.trim()) ?? null
       : null;
@@ -310,17 +310,17 @@ export function mapCollaborationConversationToViewModel(
     const isProcessingAgentPlaceholder = normalizedDeliveryState === 'processing'
       && isProcessingPlaceholderText(rawDisplayText)
       && isCollaborationAgentResponseDirection(message);
-    const isOutboundHuman = message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND;
+    const isOutboundHuman = direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND;
     const displayText = isProcessingAgentPlaceholder
       ? ''
       : !isOutboundHuman
         ? rewriteLeadingFirstPersonAgentMention(rawDisplayText, message.sender || remoteHumanLabel, isPersonChat ? 'Kordi' : remoteAgentLabel)
         : rawDisplayText;
-    const isInboundHuman = isAgent && message.direction === COLLABORATION_MESSAGE_DIRECTION_INBOUND;
-    const isLocalAgentResponse = message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
-    const isRemoteAgentResponse = message.direction === COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE;
-    const actionOwnerIsLocal = message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND
-      || message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
+    const isInboundHuman = isAgent && direction === COLLABORATION_MESSAGE_DIRECTION_INBOUND;
+    const isLocalAgentResponse = direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
+    const isRemoteAgentResponse = direction === COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE;
+    const actionOwnerIsLocal = direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND
+      || direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
     const messageAction = collaborationMessageActionWithRealSourceLabel(
       message.messageAction ?? null,
       actionOwnerIsLocal ? localHumanSourceLabel : remoteHumanSourceLabel,
@@ -335,7 +335,7 @@ export function mapCollaborationConversationToViewModel(
           : isLocalAgentResponse
             ? localCollaborationAgentLabel
             : remoteAgentLabel
-      : (message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND ? localHumanLabel : remoteHumanLabel);
+      : (direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND ? localHumanLabel : remoteHumanLabel);
     const senderType = (isOutboundHuman || isInboundHuman || !isAgent) ? 'human' : 'agent';
     const senderAvatarSeed = isAgent
       ? isOutboundHuman
@@ -345,7 +345,7 @@ export function mapCollaborationConversationToViewModel(
           : isLocalAgentResponse
             ? localAgentAvatarSeed
             : remoteAgentAvatarSeed
-      : message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND
+      : direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND
         ? localHumanAvatarSeed
         : remoteHumanAvatarSeed;
     const senderProfileImageUrl = senderType === 'human'
@@ -401,7 +401,7 @@ export function mapCollaborationConversationToViewModel(
       }];
     }
     const mappedMessage: Message = {
-      id: messageId,
+      id: messageId, clientMessageId: message.clientMessageId ?? null,
       role: isAgent
         ? (isOutboundHuman
             ? 'user'
@@ -410,7 +410,7 @@ export function mapCollaborationConversationToViewModel(
               : isLocalAgentResponse
                 ? 'owned-agent'
                 : 'external-agent')
-        : ((message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND ? 'user' : 'person') as Message['role']),
+        : ((direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND ? 'user' : 'person') as Message['role']),
       sender,
       sourceSenderLabel: isOutboundHuman
         ? localHumanSourceLabel

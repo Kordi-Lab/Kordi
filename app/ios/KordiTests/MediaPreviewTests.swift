@@ -182,6 +182,201 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessImageSurface(for: captionedMessage))
     }
 
+    func testTransparentImageKeepsBorderlessSurfaceClear() throws {
+        let transparentFormat = UIGraphicsImageRendererFormat()
+        transparentFormat.opaque = false
+        let transparent = UIGraphicsImageRenderer(
+            size: CGSize(width: 20, height: 20),
+            format: transparentFormat
+        ).image { context in
+            UIColor.systemPink.setFill()
+            context.fill(CGRect(x: 5, y: 5, width: 10, height: 10))
+        }
+
+        let opaqueFormat = UIGraphicsImageRendererFormat()
+        opaqueFormat.opaque = true
+        let opaque = UIGraphicsImageRenderer(
+            size: CGSize(width: 20, height: 20),
+            format: opaqueFormat
+        ).image { context in
+            UIColor.systemPink.setFill()
+            context.fill(CGRect(origin: .zero, size: CGSize(width: 20, height: 20)))
+        }
+
+        XCTAssertTrue(AttachmentImageDecoder.hasTransparency(transparent))
+        XCTAssertFalse(AttachmentImageDecoder.hasTransparency(opaque))
+    }
+
+    func testPromotedAttachmentKeepsTheSameRenderedContentIdentity() {
+        let pending = ChatAttachment(
+            attachmentId: "pending:sticker",
+            name: "sticker.png",
+            kind: .image,
+            mimeType: "image/png",
+            sizeBytes: 26_979,
+            previewURL: "data:image/png;base64,pending"
+        )
+        let canonical = ChatAttachment(
+            attachmentId: "att_sticker",
+            name: pending.name,
+            kind: pending.kind,
+            mimeType: pending.mimeType,
+            sizeBytes: pending.sizeBytes,
+            previewURL: nil
+        )
+
+        XCTAssertEqual(
+            AttachmentImageDecoder.contentIdentity(pending),
+            AttachmentImageDecoder.contentIdentity(canonical)
+        )
+    }
+
+    func testStickerUsesLongPressActionsWithoutOpeningImagePreview() {
+        let sticker = ChatAttachment(
+            attachmentId: "att-sticker",
+            name: "wave.png",
+            kind: .image,
+            subtype: .sticker,
+            mimeType: "image/png",
+            sizeBytes: 120,
+            previewURL: nil
+        )
+        let photo = ChatAttachment(
+            attachmentId: "att-photo",
+            name: "photo.png",
+            kind: .image,
+            mimeType: "image/png",
+            sizeBytes: 120,
+            previewURL: nil
+        )
+
+        XCTAssertFalse(MessageImageInteraction.opensPreview(for: sticker))
+        XCTAssertTrue(MessageImageInteraction.opensPreview(for: photo))
+        let stickerMessage = ChatMessage(
+            id: "sticker-message",
+            conversationId: "conversation",
+            author: .person,
+            authorName: "Alice",
+            text: "",
+            createdAt: Date(),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            attachments: [sticker],
+            messageKind: "sticker"
+        )
+        XCTAssertEqual(
+            MessageImageInteraction.stickerAttachment(in: stickerMessage),
+            sticker
+        )
+        let legacySticker = ChatAttachment(
+            attachmentId: "att-legacy-sticker",
+            name: "wave.png",
+            kind: .image,
+            mimeType: "image/png",
+            sizeBytes: 120,
+            previewURL: nil
+        )
+        let legacyMessage = ChatMessage(
+            id: "legacy-sticker-message",
+            conversationId: "conversation",
+            author: .person,
+            authorName: "Alice",
+            text: "",
+            createdAt: Date(),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            attachments: [legacySticker],
+            messageKind: "text"
+        )
+        let signature = try? XCTUnwrap(ExpressiveMediaAttachmentSignature.value(
+            name: legacySticker.name,
+            mimeType: legacySticker.mimeType,
+            sizeBytes: legacySticker.sizeBytes
+        ))
+        let marked = MessageImageInteraction.markingKnownStickers(
+            in: [legacyMessage],
+            matching: Set(signature.map { [$0] } ?? [])
+        )
+        XCTAssertEqual(marked.first?.messageKind, "sticker")
+        XCTAssertEqual(marked.first?.attachments.first?.subtype, .sticker)
+        XCTAssertEqual(
+            MessageImageInteraction.mediaLibraryActionLabel(
+                for: sticker,
+                libraryName: "My Stickers",
+                isSaved: false
+            ),
+            "Save to My Stickers"
+        )
+    }
+
+    func testSingleImageActionFrameUsesTheRenderedImageWidth() {
+        XCTAssertNil(MessageImageCollectionLayout.fixedWidth(attachmentCount: 1))
+        XCTAssertEqual(
+            MessageImageCollectionLayout.fixedWidth(attachmentCount: 2),
+            192
+        )
+    }
+
+    func testGIFsUseOriginalBytesAndCompactExpressiveMediaSizing() {
+        let gif = ChatAttachment(
+            attachmentId: "att-gif",
+            name: "dance.gif",
+            kind: .image,
+            mimeType: "image/gif",
+            sizeBytes: 1_024,
+            previewURL: "data:image/png;base64,static-preview"
+        )
+        let photo = ChatAttachment(
+            attachmentId: "att-photo",
+            name: "photo.png",
+            kind: .image,
+            mimeType: "image/png",
+            sizeBytes: 1_024,
+            previewURL: nil
+        )
+
+        XCTAssertTrue(MessageImageInteraction.isAnimatedGIF(gif))
+        XCTAssertEqual(MessageImageInteraction.maximumDisplayDimension(for: gif), 180)
+        XCTAssertEqual(
+            MessageImageInteraction.placeholderSize(
+                for: gif,
+                defaultSize: CGSize(width: 244, height: 154)
+            ),
+            CGSize(width: 180, height: 180)
+        )
+        XCTAssertEqual(
+            MessageImageInteraction.placeholderSize(
+                for: photo,
+                defaultSize: CGSize(width: 244, height: 154)
+            ),
+            CGSize(width: 244, height: 154)
+        )
+        XCTAssertNil(MessageImageInteraction.maximumDisplayDimension(for: photo))
+        XCTAssertFalse(MessageImageInteraction.usesInlinePreview(for: gif))
+        XCTAssertTrue(MessageImageInteraction.usesInlinePreview(for: ChatAttachment(
+            attachmentId: "pending:gif",
+            name: gif.name,
+            kind: gif.kind,
+            mimeType: gif.mimeType,
+            sizeBytes: gif.sizeBytes,
+            previewURL: gif.previewURL
+        )))
+        XCTAssertFalse(AttachmentDownloadPolicy.usesImagePreview(
+            for: gif,
+            prefersOriginal: false
+        ))
+        XCTAssertTrue(AttachmentDownloadPolicy.usesImagePreview(
+            for: photo,
+            prefersOriginal: false
+        ))
+        XCTAssertFalse(AttachmentDownloadPolicy.usesImagePreview(
+            for: photo,
+            prefersOriginal: true
+        ))
+    }
+
     func testEverySingleAndGroupedImageDeliveryStatePlacesReceiptOverMedia() {
         for attachmentCount in [1, 2] {
             for state in [

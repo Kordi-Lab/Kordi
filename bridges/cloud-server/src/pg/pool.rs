@@ -307,6 +307,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "reference-backed uploaded avatar assets",
         sql: include_str!("../../migrations/0064_avatar_assets.sql"),
     },
+    EmbeddedMigration {
+        version: 65,
+        description: "repair resumable attachment uploads",
+        sql: include_str!("../../migrations/0065_repair_resumable_attachment_uploads.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

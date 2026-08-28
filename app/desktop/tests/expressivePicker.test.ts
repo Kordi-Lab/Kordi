@@ -73,6 +73,7 @@ test('composer uses the complete Blob Emoji catalog and private sticker and GIF 
   assert.match(picker, /STICKER_FILE_ACCEPT/);
   assert.match(picker, /GIF_FILE_ACCEPT/);
   assert.match(picker, /sendMedia\(expressiveMediaAttachment\(item\)\)/);
+  assert.match(picker, /async function sendMedia[\s\S]*?if \(mediaSendPendingRef\.current\) return;[\s\S]*?setIsOpen\(false\);[\s\S]*?await onSendMedia\(attachment\)/);
   assert.doesNotMatch(picker, /emoji-picker-react|EmojiStyle/);
   assert.doesNotMatch(picker, /PublicMemeGrid|PublicGifGrid|Public Stickers|Public GIFs/);
 });
@@ -305,14 +306,11 @@ test('expressive picker trigger sits in the left action row beside the attachmen
   assert.doesNotMatch(composer, /data-composer-input-adjacent-actions/);
 });
 
-test('sticker and GIF library pickers accept only their matching file types', () => {
-  assert.equal(STICKER_FILE_ACCEPT, 'image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp');
+test('sticker and GIF library pickers accept their supported file types', () => {
+  assert.equal(STICKER_FILE_ACCEPT, 'image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif');
   assert.equal(GIF_FILE_ACCEPT, 'image/gif,.gif');
   assert.equal(expressiveMediaFileError({ name: 'wave.webp', type: 'image/webp' }, 'sticker'), null);
-  assert.match(
-    expressiveMediaFileError({ name: 'wave.gif', type: 'image/gif' }, 'sticker') ?? '',
-    /PNG, JPEG, or WebP/,
-  );
+  assert.equal(expressiveMediaFileError({ name: 'wave.gif', type: 'image/gif' }, 'sticker'), null);
   assert.equal(expressiveMediaFileError({ name: 'party.gif', type: 'image/gif' }, 'gif'), null);
   assert.match(
     expressiveMediaFileError({ name: 'party.png', type: 'image/png' }, 'gif') ?? '',
@@ -320,7 +318,7 @@ test('sticker and GIF library pickers accept only their matching file types', ()
   );
   assert.match(
     expressiveMediaFileError({ name: 'renamed.png', type: 'application/pdf' }, 'sticker') ?? '',
-    /PNG, JPEG, or WebP/,
+    /PNG, JPEG, WebP, or GIF/,
   );
   assert.match(
     expressiveMediaFileError({ name: 'renamed.gif', type: 'image/png' }, 'gif') ?? '',
@@ -436,7 +434,7 @@ test('media selection uses an explicit attachment override for immediate send', 
 
 test('image context menu can save received media into the matching expressive library', () => {
   const attachments = readFileSync(
-    new URL('../src/kordi-app/components/transcriptAttachments.tsx', import.meta.url),
+    new URL('../src/kordi-app/components/transcriptAttachmentContextMenu.tsx', import.meta.url),
     'utf8',
   );
   const action = readFileSync(
@@ -445,6 +443,6 @@ test('image context menu can save received media into the matching expressive li
   );
 
   assert.match(attachments, /AddAttachmentToMediaLibraryAction/);
-  assert.match(action, /Add to \{libraryName\}/);
+  assert.match(action, /attachment\.subtype === 'sticker'[\s\S]*Save to \$\{libraryName\}/);
   assert.match(action, /addMediaToExpressiveMediaLibrary/);
 });

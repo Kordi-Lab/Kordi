@@ -1,6 +1,7 @@
 import type { Message } from '@/kordi-app/types';
 
 export function transcriptMessageRenderKey(message: Message, index: number) {
+  if (message.clientMessageId?.trim()) return `client-message:${message.clientMessageId}`;
   if (message.id?.trim()) return `message:${message.id}`;
   return [
     'message:fallback',

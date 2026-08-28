@@ -32,7 +32,7 @@ export type AttachmentOnlyMessagePreview = {
 };
 
 export function attachmentOnlyMessagePreview(
-  message: Pick<Message, 'text' | 'turn' | 'attachments'> | undefined,
+  message: Pick<Message, 'text' | 'turn' | 'attachments' | 'messageKind'> | undefined,
 ): AttachmentOnlyMessagePreview | null {
   if (!message) return null;
   if (safePreviewText(message.text) || safePreviewText(message.turn?.assistantText)) {
@@ -48,9 +48,18 @@ export function attachmentOnlyMessagePreview(
       || attachment.mimeType?.toLowerCase().startsWith('image/'),
   ).length;
   if (imageCount === attachments.length) {
+    const attachment = attachments[0];
+    const isSticker = attachments.length === 1 && (
+      message.messageKind === 'sticker'
+      || attachment?.subtype === 'sticker'
+    );
+    const isGif = attachments.length === 1 && (
+      attachment?.mimeType?.trim().toLowerCase() === 'image/gif'
+      || attachment?.name.trim().toLowerCase().endsWith('.gif')
+    );
     return {
       kind: 'image',
-      label: attachments.length === 1 ? 'Photo' : `${attachments.length} photos`,
+      label: isSticker ? 'Sticker' : isGif ? 'GIF' : attachments.length === 1 ? 'Photo' : `${attachments.length} photos`,
     };
   }
   if (attachments.length === 1) {

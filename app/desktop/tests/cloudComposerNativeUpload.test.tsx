@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { uploadComposerAttachments } from '../src/features/cloud/cloudComposerAttachments';
 import type { CloudAuthClient } from '../src/features/cloud/authClient';
+import { voiceMessageSendFields } from '../src/features/chat/messageActions/optimisticAttachments';
+import {
+  cacheCloudAttachmentLocalPath,
+  cachedCloudAttachmentLocalPath,
+  clearCloudAttachmentLocalPathCache,
+} from '../src/features/cloud/cloudAttachmentLocalPathCache';
 
 test('composer uploads keep native file bytes out of JavaScript', async () => {
   let nativePath = '';
@@ -43,4 +50,62 @@ test('composer uploads keep native file bytes out of JavaScript', async () => {
   assert.equal(nativePath, '/staged/Kordi.app.zip');
   assert.equal(result[0]?.attachmentId, 'att_native');
   assert.equal(result[0]?.sizeBytes, 250 * 1024 * 1024);
+});
+
+test('native upload completion wins the race with the final progress event', () => {
+  const source = readFileSync(
+    new URL('../src/features/cloud/cloudAttachmentUpload.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /const result = await uploadDesktopCloudAttachment/);
+  assert.match(source, /phase: 'complete',[\s\S]*uploadedBytes: totalBytes,[\s\S]*return result;/);
+});
+
+test('sticker sends use the durable sticker message kind', () => {
+  assert.equal(voiceMessageSendFields([{
+    id: 'sticker:/library/sticker.png',
+    path: '/library/sticker.png',
+    name: 'sticker.png',
+    kind: 'image',
+    subtype: 'sticker',
+  }]).messageKind, 'sticker');
+});
+
+test('expressive media keeps one preview source after durable caching', async () => {
+  clearCloudAttachmentLocalPathCache();
+  try {
+    const uploaded = await uploadComposerAttachments({
+      token: 'kordi_cs_xyz',
+      client: {} as Pick<CloudAuthClient, 'uploadAttachment'>,
+      attachments: [{
+        id: 'sticker:/library/sticker.png',
+        path: '/library/sticker.png',
+        name: 'sticker.png',
+        kind: 'image',
+        subtype: 'sticker',
+        expressiveMedia: true,
+        mimeType: 'image/png',
+        sizeBytes: 3,
+      }],
+      useNativeUpload: true,
+      nativeUpload: async () => ({
+        attachmentId: 'att_sticker',
+        objectKey: 'attachments/acct/att_sticker',
+        sizeBytes: 3,
+        contentType: 'image/png',
+        sha256Hex: 'a'.repeat(64),
+        finalizedAt: '2026-08-26T00:00:00Z',
+      }),
+      persistAttachmentPath: async (attachmentId) => {
+        cacheCloudAttachmentLocalPath(attachmentId, '/cache/copied-sticker.png');
+        return '/cache/copied-sticker.png';
+      },
+    });
+
+    assert.equal(cachedCloudAttachmentLocalPath('att_sticker'), '/library/sticker.png');
+    assert.equal(uploaded[0]?.subtype, undefined);
+  } finally {
+    clearCloudAttachmentLocalPathCache();
+  }
 });

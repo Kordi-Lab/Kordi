@@ -3,6 +3,58 @@ import XCTest
 
 @MainActor
 final class LocalMessageStoreTests: XCTestCase {
+    func testConversationCacheKeepsLatestStickerPreview() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        var source = conversation(id: "person:sticker", displayName: "Sticker chat")
+        source.lastMessage = "Sticker"
+        source.lastAttachment = ChatAttachment(
+            attachmentId: "att-sticker",
+            name: "kirby.png",
+            kind: .image,
+            subtype: .sticker,
+            mimeType: "image/png",
+            sizeBytes: 1_024,
+            previewURL: "data:image/png;base64,preview"
+        )
+
+        store.saveConversations([source], accountId: "account-a")
+
+        let restored = try XCTUnwrap(store.loadConversations(accountId: "account-a").first)
+        XCTAssertEqual(restored.lastMessage, "Sticker")
+        XCTAssertEqual(restored.lastAttachment, source.lastAttachment)
+    }
+
+    func testBlankLegacyConversationPreviewIsRepairedFromCachedStickerMessage() {
+        let source = conversation(id: "person:sticker", displayName: "Sticker chat")
+        let sticker = ChatAttachment(
+            attachmentId: "att-sticker",
+            name: "kirby.png",
+            kind: .image,
+            subtype: .sticker,
+            mimeType: "image/png",
+            sizeBytes: 1_024,
+            previewURL: "data:image/png;base64,preview"
+        )
+        let latest = ChatMessage(
+            id: "sticker-message",
+            conversationId: source.id,
+            author: .me,
+            authorName: "You",
+            text: "",
+            createdAt: Date(timeIntervalSince1970: 2),
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil,
+            attachments: [sticker],
+            messageKind: "sticker"
+        )
+
+        let repaired = AppModel.restoringConversationPreview(source, latest: latest)
+
+        XCTAssertEqual(repaired.previewText, "Sticker")
+        XCTAssertEqual(repaired.lastAttachment, sticker)
+    }
+
     func testCacheIsAccountScopedWhenConversationAndMessageIDsOverlap() throws {
         let store = try LocalMessageStore(inMemory: true)
         let conversationID = "person:shared-contact"

@@ -6,7 +6,8 @@ export const TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT = 74;
 
 export function transcriptWindowMessageIdentity(message: Message | undefined, fallbackIndex: number) {
   if (!message) return 'none';
-  return message.id
+  return message.clientMessageId
+    ?? message.id
     ?? message.entryId
     ?? message.turn?.id
     ?? `${fallbackIndex}:${message.role}:${message.sender}:${message.time}`;

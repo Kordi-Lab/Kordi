@@ -3,7 +3,7 @@ export type CloudMessageAttachment = {
   previewAttachmentId?: string | null;
   name: string;
   kind: 'image' | 'file';
-  subtype?: 'meme' | null;
+  subtype?: 'meme' | 'sticker' | null;
   altText?: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
@@ -16,7 +16,7 @@ export type SendCloudMessageAttachmentInput = {
   attachmentId: string;
   name: string;
   kind: 'image' | 'file';
-  subtype?: 'meme' | null;
+  subtype?: 'meme' | 'sticker' | null;
   altText?: string | null;
   mimeType?: string | null;
   sizeBytes?: number | null;

@@ -15,6 +15,7 @@ import { loadSession } from '@/features/cloud/session';
 import {
   attachmentPreviewIdentity,
   attachmentPreviewUrl,
+  isAnimatedGifAttachment,
 } from '@/features/chat/attachmentMediaGallery';
 import {
   AttachmentContextMenu,
@@ -156,7 +157,7 @@ export default function AttachmentMediaWindow() {
 
     const controller = new AbortController();
     void (async () => {
-      if (!attachment.previewAttachmentId) {
+      if (!isAnimatedGifAttachment(attachment) && !attachment.previewAttachmentId) {
         const recoveredUrl = await recoverAttachmentPreviewOnce(attachment);
         if (controller.signal.aborted) return;
         if (recoveredUrl && recoveredUrl !== directPreviewUrl) {
@@ -183,6 +184,7 @@ export default function AttachmentMediaWindow() {
           previewAttachmentId: attachment.previewAttachmentId ?? null,
           name: attachment.name,
           kind: 'image',
+          mimeType: attachment.mimeType ?? null,
         },
         signal: controller.signal,
       });

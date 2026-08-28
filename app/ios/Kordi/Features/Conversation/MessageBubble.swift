@@ -1436,7 +1436,9 @@ private struct MessageImageCollection: View {
             }
         }
         .frame(
-            width: MessageImageMetrics.collectionWidth,
+            width: MessageImageCollectionLayout.fixedWidth(
+                attachmentCount: attachments.count
+            ),
             alignment: author == .me ? .trailing : .leading
         )
     }
@@ -1618,6 +1620,12 @@ enum MessageImageStack {
     static func targetIndex(count: Int, selectedIndex: Int, direction: Int) -> Int {
         guard count > 0 else { return 0 }
         return (selectedIndex + (direction < 0 ? count - 1 : 1)) % count
+    }
+}
+
+enum MessageImageCollectionLayout {
+    static func fixedWidth(attachmentCount: Int) -> CGFloat? {
+        attachmentCount > 1 ? MessageImageMetrics.collectionWidth : nil
     }
 }
 
@@ -1835,6 +1843,7 @@ private struct MessageInteractionGestureBridge: UIViewRepresentable {
 }
 
 private struct MessageImageAttachment: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let attachment: ChatAttachment
     let presentation: MessageImagePresentation
     let onOpen: (UIImage?) -> Void
@@ -1846,6 +1855,7 @@ private struct MessageImageAttachment: View {
     let onRequestActions: (CGRect) -> Void
 
     @State private var image: UIImage?
+    @State private var loadedContentIdentity: String?
     @State private var isLoading = true
     @State private var loadFailed = false
     @State private var reloadToken = 0
@@ -1858,26 +1868,30 @@ private struct MessageImageAttachment: View {
             MessageInteractionGestureBridge(
                 minimumPressDuration: MessageBubble.actionLongPressDuration,
                 isEnabled: !isActionTarget,
-                onTap: activate,
+                onTap: opensPreview ? activate : nil,
                 onLongPress: openActions
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .task(id: "\(attachment.id):\(reloadToken)") {
+        .task(id: "\(attachment.id):\(reloadToken):\(reduceMotion)") {
             await loadImage()
         }
         .accessibilityLabel(
-            attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                ?? (image == nil ? "Image attachment" : "Review image attachment")
+            attachment.subtype == .sticker
+                ? "Sticker \(attachment.name)"
+                : attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                    ?? (image == nil ? "Image attachment" : "Review image attachment")
         )
         .accessibilityHint(
             presentation.isStackPreview
                 ? "Expands this image group."
                 : loadFailed
                 ? "Double tap to retry loading"
-                : "\(attachment.name). Touch and hold for image actions."
+                : attachment.subtype == .sticker
+                    ? "Touch and hold for sticker actions."
+                    : "\(attachment.name). Touch and hold for image actions."
         )
-        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(opensPreview ? .isButton : [])
         .accessibilityAction(.default) { activate() }
         .accessibilityAction(named: "Download or save to Files", onShare)
         .accessibilityActions {
@@ -1896,7 +1910,12 @@ private struct MessageImageAttachment: View {
             )
     }
 
+    private var opensPreview: Bool {
+        presentation.isStackPreview || MessageImageInteraction.opensPreview(for: attachment)
+    }
+
     private func activate() {
+        guard opensPreview else { return }
         if presentation.isStackPreview {
             onOpen(image)
         } else if loadFailed {
@@ -1923,13 +1942,31 @@ private struct MessageImageAttachment: View {
                     .transition(.opacity)
             } else {
                 let size = displaySize(for: image)
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: size.width, height: size.height)
-                    .background(Color(uiColor: .secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .transition(.opacity)
+                if image.images?.count ?? 0 > 1, !reduceMotion {
+                    AnimatedUIImage(image: image)
+                        .frame(width: size.width, height: size.height)
+                        .background(
+                            AttachmentImageDecoder.hasTransparency(image)
+                                ? Color.clear
+                                : Color(uiColor: .secondarySystemBackground)
+                        )
+                        .compositingGroup()
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .transition(.opacity)
+                } else {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: size.width, height: size.height)
+                        .background(
+                            AttachmentImageDecoder.hasTransparency(image)
+                                ? Color.clear
+                                : Color(uiColor: .secondarySystemBackground)
+                        )
+                        .compositingGroup()
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .transition(.opacity)
+                }
             }
         } else {
             ZStack {
@@ -1947,22 +1984,29 @@ private struct MessageImageAttachment: View {
                 }
             }
             .frame(
-                width: presentation.placeholderSize.width,
-                height: presentation.placeholderSize.height
+                width: presentation.placeholderSize(for: attachment).width,
+                height: presentation.placeholderSize(for: attachment).height
             )
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
     }
 
     private func loadImage() async {
-        image = nil
-        isLoading = true
+        let contentIdentity = AttachmentImageDecoder.contentIdentity(attachment)
+        if loadedContentIdentity != contentIdentity {
+            image = nil
+            loadedContentIdentity = nil
+        }
+        isLoading = image == nil
         loadFailed = false
 
-        if let source = attachment.previewURL,
+        let isAnimatedGIF = MessageImageInteraction.isAnimatedGIF(attachment)
+        if MessageImageInteraction.usesInlinePreview(for: attachment),
+           let source = attachment.previewURL,
            let preview = await AvatarImageLoader.image(from: source) {
             guard !Task.isCancelled else { return }
             image = preview
+            loadedContentIdentity = contentIdentity
             isLoading = false
             return
         }
@@ -1971,29 +2015,41 @@ private struct MessageImageAttachment: View {
               let url = await onPrepare(attachment) else {
             guard !Task.isCancelled else { return }
             isLoading = false
-            loadFailed = true
+            loadFailed = image == nil
             return
         }
 
+        let shouldAnimateGIF = !reduceMotion
         let loaded = await Task.detached(priority: .utility) {
-            AttachmentImageDecoder.downsampledImage(at: url, maximumPixelSize: 1_200)
+            isAnimatedGIF
+                ? AnimatedImageDecoder.image(
+                    at: url,
+                    animated: shouldAnimateGIF,
+                    maximumPixelSize: 512
+                )
+                : AttachmentImageDecoder.downsampledImage(at: url, maximumPixelSize: 1_200)
         }.value
         guard !Task.isCancelled else { return }
-        image = loaded
+        if let loaded {
+            image = loaded
+            loadedContentIdentity = contentIdentity
+        }
         isLoading = false
-        loadFailed = loaded == nil
+        loadFailed = image == nil
     }
 
     private func displaySize(for image: UIImage) -> CGSize {
         guard image.size.width > 0, image.size.height > 0 else {
-            return presentation.placeholderSize
+            return presentation.placeholderSize(for: attachment)
         }
         let ratio = min(2.4, max(0.42, image.size.width / image.size.height))
-        let maximumWidth = presentation.maximumWidth
+        let expressiveMaximum = MessageImageInteraction.maximumDisplayDimension(for: attachment)
+        let maximumWidth = expressiveMaximum ?? presentation.maximumWidth
+        let maximumHeight = expressiveMaximum ?? presentation.maximumHeight
         if ratio >= 1 {
             return CGSize(width: maximumWidth, height: maximumWidth / ratio)
         }
-        let height = min(presentation.maximumHeight, maximumWidth / ratio)
+        let height = min(maximumHeight, maximumWidth / ratio)
         return CGSize(width: height * ratio, height: height)
     }
 
@@ -2006,7 +2062,11 @@ private struct MessageImageAttachment: View {
 
     private var mediaLibraryActionLabel: String {
         guard let mediaKind else { return "Add to media library" }
-        return "Add to \(mediaKind.libraryName)"
+        return MessageImageInteraction.mediaLibraryActionLabel(
+            for: attachment,
+            libraryName: mediaKind.libraryName,
+            isSaved: addedMediaKind == mediaKind
+        )
     }
 
     private func addToMediaLibrary() {
@@ -2016,6 +2076,95 @@ private struct MessageImageAttachment: View {
             addedMediaKind = await onAddToMediaLibrary(attachment)
             isAddingToMediaLibrary = false
         }
+    }
+}
+
+enum MessageImageInteraction {
+    static func isAnimatedGIF(_ attachment: ChatAttachment) -> Bool {
+        attachment.mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            == "image/gif"
+            || URL(fileURLWithPath: attachment.name).pathExtension.lowercased() == "gif"
+    }
+
+    static func maximumDisplayDimension(for attachment: ChatAttachment) -> CGFloat? {
+        attachment.subtype == .sticker || isAnimatedGIF(attachment) ? 180 : nil
+    }
+
+    static func placeholderSize(
+        for attachment: ChatAttachment,
+        defaultSize: CGSize
+    ) -> CGSize {
+        guard let maximum = maximumDisplayDimension(for: attachment) else { return defaultSize }
+        return CGSize(width: maximum, height: maximum)
+    }
+
+    static func usesInlinePreview(for attachment: ChatAttachment) -> Bool {
+        !isAnimatedGIF(attachment) || attachment.attachmentId.hasPrefix("pending:")
+    }
+
+    static func stickerAttachment(
+        in message: ChatMessage,
+        matching knownStickerSignatures: Set<String> = []
+    ) -> ChatAttachment? {
+        if let explicit = message.attachments.first(where: { $0.subtype == .sticker }) {
+            return explicit
+        }
+        if message.messageKind == "sticker" {
+            return message.attachments.first(where: { $0.kind == .image })
+        }
+        guard message.attachments.count == 1,
+              let attachment = message.attachments.first,
+              attachment.kind == .image,
+              let signature = ExpressiveMediaAttachmentSignature.value(
+                name: attachment.name,
+                mimeType: attachment.mimeType,
+                sizeBytes: attachment.sizeBytes
+              ),
+              knownStickerSignatures.contains(signature) else { return nil }
+        return attachment
+    }
+
+    static func markingKnownStickers(
+        in messages: [ChatMessage],
+        matching knownStickerSignatures: Set<String>
+    ) -> [ChatMessage] {
+        messages.map { message in
+            guard let sticker = stickerAttachment(
+                in: message,
+                matching: knownStickerSignatures
+            ), sticker.subtype != .sticker else { return message }
+            var marked = message
+            marked.messageKind = "sticker"
+            marked.attachments = message.attachments.map { attachment in
+                guard attachment.id == sticker.id else { return attachment }
+                return ChatAttachment(
+                    attachmentId: attachment.attachmentId,
+                    name: attachment.name,
+                    kind: attachment.kind,
+                    subtype: .sticker,
+                    altText: attachment.altText,
+                    mimeType: attachment.mimeType,
+                    sizeBytes: attachment.sizeBytes,
+                    previewURL: attachment.previewURL
+                )
+            }
+            return marked
+        }
+    }
+
+    static func opensPreview(for attachment: ChatAttachment) -> Bool {
+        attachment.subtype != .sticker
+    }
+
+    static func mediaLibraryActionLabel(
+        for attachment: ChatAttachment,
+        libraryName: String,
+        isSaved: Bool
+    ) -> String {
+        if isSaved { return "Saved to \(libraryName)" }
+        return attachment.subtype == .sticker
+            ? "Save to \(libraryName)"
+            : "Add to \(libraryName)"
     }
 }
 
@@ -2057,6 +2206,13 @@ private enum MessageImagePresentation {
             CGSize(width: MessageImageMetrics.stackSide, height: MessageImageMetrics.stackSide)
         }
     }
+
+    func placeholderSize(for attachment: ChatAttachment) -> CGSize {
+        MessageImageInteraction.placeholderSize(
+            for: attachment,
+            defaultSize: placeholderSize
+        )
+    }
 }
 
 private enum MessageImageMetrics {
@@ -2068,6 +2224,26 @@ private enum MessageImageMetrics {
 }
 
 enum AttachmentImageDecoder {
+    static func contentIdentity(_ attachment: ChatAttachment) -> String {
+        [
+            attachment.name,
+            attachment.mimeType ?? "",
+            attachment.sizeBytes.map(String.init) ?? "",
+        ].joined(separator: "\u{0}")
+    }
+
+    static func hasTransparency(_ image: UIImage) -> Bool {
+        guard let alphaInfo = (image.cgImage ?? image.images?.first?.cgImage)?.alphaInfo else {
+            return false
+        }
+        switch alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast:
+            return false
+        default:
+            return true
+        }
+    }
+
     static func downsampledImage(data: Data, maximumPixelSize: CGFloat) -> UIImage? {
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else { return nil }

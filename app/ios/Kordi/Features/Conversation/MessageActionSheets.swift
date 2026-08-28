@@ -502,6 +502,7 @@ struct MessageActionOverlay: View {
     let onPin: () -> Void
     let onCopy: () -> Void
     let onForward: () -> Void
+    let onSaveSticker: (ChatAttachment) -> Void
     let onSelect: () -> Void
 
     private var quickReactions: [BlobEmoji] {
@@ -512,7 +513,11 @@ struct MessageActionOverlay: View {
     }
 
     private var actionCount: Int {
-        (allowsReply ? 1 : 0) + (!message.text.isEmpty ? 1 : 0) + 3 + mediaActionCount
+        (allowsReply ? 1 : 0)
+            + (!message.text.isEmpty ? 1 : 0)
+            + 3
+            + mediaActionCount
+            + (stickerAttachment == nil ? 0 : 1)
     }
 
     private var mediaKind: ExpressiveMediaLibraryKind? {
@@ -526,6 +531,10 @@ struct MessageActionOverlay: View {
     private var mediaActionCount: Int {
         guard mediaAttachment != nil else { return 0 }
         return mediaKind == nil ? 2 : 3
+    }
+
+    private var stickerAttachment: ChatAttachment? {
+        MessageImageInteraction.stickerAttachment(in: message)
     }
 
     private var hasRecentReactions: Bool {
@@ -734,6 +743,13 @@ struct MessageActionOverlay: View {
                     disabled: message.deliveryState == .sending || message.deliveryState == .failed,
                     action: onForward
                 )
+                if let stickerAttachment {
+                    actionButton(
+                        "Save to My Stickers",
+                        systemImage: "square.stack.3d.up",
+                        action: { onSaveSticker(stickerAttachment) }
+                    )
+                }
                 actionButton(
                     isPinned ? "Unpin" : "Pin",
                     systemImage: "pin",

@@ -20,7 +20,7 @@ import type { CloudAuthClient } from '../src/features/cloud/authClient';
 function imagePreviewAttachment(attachmentId: string) {
   return {
     attachmentId,
-    kind: 'image' as const,
+    kind: 'image' as const, name: `${attachmentId}.png`, mimeType: 'image/png',
   };
 }
 

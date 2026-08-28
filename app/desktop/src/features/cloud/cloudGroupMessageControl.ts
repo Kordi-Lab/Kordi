@@ -161,7 +161,12 @@ export async function applyCloudGroupMessageControl({
   const cloudAttachments = cloudMessage.attachments?.length
     ? cloudMessage.attachments
     : message.attachments ?? [];
-  const mappedAttachments = cloudAttachments.map(cloudMessageAttachmentToMessageAttachment);
+  const mappedAttachments = cloudAttachments.map((attachment) => {
+    const mapped = cloudMessageAttachmentToMessageAttachment(attachment);
+    return message.messageKind === 'sticker' && mapped.kind === 'image'
+      ? { ...mapped, subtype: 'sticker' as const }
+      : mapped;
+  });
 
   if (
     messageAlreadyExists

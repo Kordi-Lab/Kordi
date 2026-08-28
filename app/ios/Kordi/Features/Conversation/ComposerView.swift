@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -203,6 +204,9 @@ struct ComposerView: View {
     @State private var voiceGestureActive = false
     @State private var voiceGestureEnded = false
     @State private var shortVoiceFeedback = 0
+    @State private var expressiveMediaImportRequest: ExpressiveMediaImportRequest?
+    @State private var isShowingExpressiveMediaPhotoPicker = false
+    @State private var selectedExpressiveMediaPhotos: [PhotosPickerItem] = []
     @ScaledMetric(relativeTo: .body) private var composerControlHeight: CGFloat = 50
     @ScaledMetric(relativeTo: .body) private var sendButtonDiameter: CGFloat = 44
     @ScaledMetric(relativeTo: .body) private var draftPaneExpansionThreshold: CGFloat = 84
@@ -262,6 +266,18 @@ struct ComposerView: View {
                 )
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
+            }
+            .photosPicker(
+                isPresented: $isShowingExpressiveMediaPhotoPicker,
+                selection: $selectedExpressiveMediaPhotos,
+                maxSelectionCount: PendingAttachmentLoader.maximumAttachmentCount,
+                matching: .images,
+                preferredItemEncoding: .current
+            )
+            .onChange(of: selectedExpressiveMediaPhotos) { _, items in
+                guard !items.isEmpty else { return }
+                selectedExpressiveMediaPhotos = []
+                finishExpressiveMediaImport(items)
             }
     }
 
@@ -450,6 +466,7 @@ struct ComposerView: View {
             isSending: isSending,
             onInsertEmoji: insertEmoji,
             onSendExpressiveMedia: onSendExpressiveMedia,
+            onRequestExpressiveMediaImport: requestExpressiveMediaImport,
             measuredHeight: $messageEditorHeight,
             draftButtonThreshold: draftPaneExpansionThreshold,
             accessibilityLabel: "Message \(destinationName)"
@@ -547,6 +564,17 @@ struct ComposerView: View {
         )
         text = replacement.text
         textSelection = replacement.selection
+    }
+
+    private func requestExpressiveMediaImport(_ request: ExpressiveMediaImportRequest) {
+        expressiveMediaImportRequest = request
+        isShowingExpressiveMediaPhotoPicker = true
+    }
+
+    private func finishExpressiveMediaImport(_ items: [PhotosPickerItem]) {
+        let completion = expressiveMediaImportRequest?.completion
+        expressiveMediaImportRequest = nil
+        completion?(items)
     }
 
     private func dismissExpressivePicker() {
@@ -1189,6 +1217,7 @@ struct ComposerTextView: UIViewRepresentable {
     let isSending: Bool
     let onInsertEmoji: (String) -> Void
     let onSendExpressiveMedia: (PendingAttachment) async -> Void
+    let onRequestExpressiveMediaImport: (ExpressiveMediaImportRequest) -> Void
     @Binding var measuredHeight: CGFloat
     let draftButtonThreshold: CGFloat
     let accessibilityLabel: String
@@ -1346,7 +1375,8 @@ struct ComposerTextView: UIViewRepresentable {
                 isSending: parent.isSending,
                 onInsertEmoji: parent.onInsertEmoji,
                 onSendMedia: parent.onSendExpressiveMedia,
-                allowsSearch: false
+                allowsSearch: false,
+                onRequestImport: parent.onRequestExpressiveMediaImport
             )
             if let hostedExpressiveInputView {
                 hostedExpressiveInputView.update(

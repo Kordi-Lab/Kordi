@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -56,6 +57,28 @@ export function ComposerExpressivePicker({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const libraryInputRef = useRef<HTMLInputElement | null>(null);
+  const mediaSendPendingRef = useRef(false);
+
+  const synchronizeLibrary = useCallback(async () => {
+    const normalizedAccountId = accountId?.trim();
+    if (!normalizedAccountId) return;
+    try {
+      const session = await loadSession();
+      if (!session?.token || session.accountId !== normalizedAccountId) return;
+      setLibrary(await synchronizeExpressiveMediaLibrary({
+        accountId: normalizedAccountId,
+        token: session.token,
+        client: defaultCloudAuthClient(),
+      }));
+    } catch {
+      // The account-scoped local library remains available while offline.
+    }
+  }, [accountId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void synchronizeLibrary(), 0);
+    return () => window.clearTimeout(timer);
+  }, [accountId, synchronizeLibrary]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -109,31 +132,19 @@ export function ComposerExpressivePicker({
     }
   }
 
-  async function synchronizeLibrary() {
-    const normalizedAccountId = accountId?.trim();
-    if (!normalizedAccountId) return;
-    try {
-      const session = await loadSession();
-      if (!session?.token || session.accountId !== normalizedAccountId) return;
-      setLibrary(await synchronizeExpressiveMediaLibrary({
-        accountId: normalizedAccountId,
-        token: session.token,
-        client: defaultCloudAuthClient(),
-      }));
-    } catch {
-      // The account-scoped local library remains available while offline.
-    }
-  }
-
   async function sendMedia(attachment: AttachmentItem) {
+    if (mediaSendPendingRef.current) return;
+    mediaSendPendingRef.current = true;
     setIsMediaBusy(true);
     setMediaError(null);
+    setIsOpen(false);
     try {
       await onSendMedia(attachment);
-      setIsOpen(false);
     } catch (error) {
       setMediaError(error instanceof Error ? error.message : 'Unable to send that media.');
+      setIsOpen(true);
     } finally {
+      mediaSendPendingRef.current = false;
       setIsMediaBusy(false);
     }
   }
@@ -278,7 +289,7 @@ export function ComposerExpressivePicker({
                   {normalizedQuery
                     ? `No saved ${tab} match your search.`
                     : tab === 'stickers'
-                      ? 'Add a PNG, JPEG, or WebP image.'
+                      ? 'Add a PNG, JPEG, WebP, or GIF image.'
                       : 'Add a GIF file.'}
                 </div>
               )}

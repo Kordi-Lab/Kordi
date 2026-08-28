@@ -20,10 +20,12 @@ function cloudMessageAttachmentFromRecord(value: unknown): CloudMessageAttachmen
     attachmentId,
     name,
     kind,
-    ...(record.subtype === 'meme' && kind === 'image' ? {
-      subtype: 'meme' as const,
-      altText: typeof record.altText === 'string' ? record.altText : null,
-    } : {}),
+    ...(record.subtype === 'sticker' && kind === 'image'
+      ? { subtype: 'sticker' as const }
+      : record.subtype === 'meme' && kind === 'image' ? {
+          subtype: 'meme' as const,
+          altText: typeof record.altText === 'string' ? record.altText : null,
+        } : {}),
     mimeType,
     sizeBytes,
     downloadUrl,

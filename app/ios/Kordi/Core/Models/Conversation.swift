@@ -46,6 +46,7 @@ struct ConversationSummary: Identifiable, Hashable {
     let ownerDisplayName: String?
     var displayName: String
     var lastMessage: String
+    var lastAttachment: ChatAttachment?
     var lastActivityAt: Date
     var unreadCount: Int
     var unreadMentionCount: Int
@@ -67,6 +68,7 @@ struct ConversationSummary: Identifiable, Hashable {
         ownerDisplayName: String?,
         displayName: String,
         lastMessage: String,
+        lastAttachment: ChatAttachment? = nil,
         lastActivityAt: Date,
         unreadCount: Int,
         avatarSource: String?,
@@ -89,6 +91,7 @@ struct ConversationSummary: Identifiable, Hashable {
         self.ownerDisplayName = ownerDisplayName
         self.displayName = displayName
         self.lastMessage = lastMessage
+        self.lastAttachment = lastAttachment
         self.lastActivityAt = lastActivityAt
         self.unreadCount = unreadCount
         self.unreadMentionCount = unreadMentionCount
@@ -124,7 +127,21 @@ struct ConversationSummary: Identifiable, Hashable {
             ? ", \(unreadMentionCount) unread mention\(unreadMentionCount == 1 ? "" : "s")"
             : ""
         let state = agentActivity.map { ", \($0.label)" } ?? ""
-        return "\(displayName)\(state)\(unread)\(mentions). \(lastMessage)"
+        return "\(displayName)\(state)\(unread)\(mentions). \(previewText)"
+    }
+
+    var previewText: String {
+        if let text = lastMessage.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            return text
+        }
+        guard let attachment = lastAttachment else { return "" }
+        if attachment.subtype == .sticker { return "Sticker" }
+        let mimeType = attachment.mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if mimeType == "image/gif"
+            || URL(fileURLWithPath: attachment.name).pathExtension.lowercased() == "gif" {
+            return "GIF"
+        }
+        return attachment.kind == .image ? "Photo" : attachment.name
     }
 
     var hasUnreadAttention: Bool {

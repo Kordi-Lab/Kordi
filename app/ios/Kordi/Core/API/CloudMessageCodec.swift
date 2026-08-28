@@ -91,6 +91,53 @@ enum CloudMessageCodec {
         return body
     }
 
+    static func previewText(_ message: CloudMessageDTO) -> String {
+        attachmentPreviewText(
+            text: displayText(message.body),
+            attachments: message.attachments,
+            messageKind: canonicalMessageKind(message),
+            hasVoiceMessage: message.voiceMessage != nil
+        )
+    }
+
+    static func previewText(_ message: CloudGroupMessagePayload) -> String {
+        attachmentPreviewText(
+            text: message.text,
+            attachments: message.attachments ?? [],
+            messageKind: message.messageKind,
+            hasVoiceMessage: message.voiceMessage != nil
+        )
+    }
+
+    private static func attachmentPreviewText(
+        text: String,
+        attachments: [CloudMessageAttachment],
+        messageKind: String?,
+        hasVoiceMessage: Bool
+    ) -> String {
+        if let text = text.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            return text
+        }
+        if hasVoiceMessage { return "Voice message" }
+        guard !attachments.isEmpty else { return "" }
+        let images = attachments.filter { $0.inferredChatAttachmentKind == .image }
+        guard images.count == attachments.count else {
+            return attachments.count == 1 ? attachments[0].name : "\(attachments.count) attachments"
+        }
+        guard attachments.count == 1, let attachment = attachments.first else {
+            return "\(attachments.count) photos"
+        }
+        if messageKind == "sticker" || attachment.subtype == .sticker {
+            return "Sticker"
+        }
+        let mimeType = attachment.mimeType?.lowercased()
+        if mimeType == "image/gif"
+            || URL(fileURLWithPath: attachment.name).pathExtension.lowercased() == "gif" {
+            return "GIF"
+        }
+        return "Photo"
+    }
+
     static func mentions(in message: CloudMessageDTO) -> [MessageMention] {
         if let payload = CloudGroupMessageCodec.parse(message.body)?.message {
             return payload.messageAction?.kind == "forward" ? [] : payload.mentions ?? []

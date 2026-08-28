@@ -548,9 +548,6 @@
     }
   },
   "src/kordi-app/components/transcriptAttachments.tsx": {
-    "react-hooks/set-state-in-effect": {
-      "count": 1
-    },
     "react-refresh/only-export-components": {
       "count": 5
     }

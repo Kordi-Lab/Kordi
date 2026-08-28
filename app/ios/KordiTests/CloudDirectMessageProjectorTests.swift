@@ -139,6 +139,40 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         XCTAssertEqual(projected.first?.messageKind, "call")
     }
 
+    func testStickerMessageKindProjectsNonPreviewableStickerAttachment() throws {
+        let message = CloudMessageDTO(
+            messageId: "msg_sticker",
+            fromAccountId: "acct_me",
+            toAccountId: "acct_peer",
+            body: "",
+            createdAt: "2026-08-14T10:00:00Z",
+            deliveredAt: "2026-08-14T10:00:01Z",
+            readAt: nil,
+            direction: "outgoing",
+            sessionId: conversation.sessionId,
+            attachments: [CloudMessageAttachment(
+                attachmentId: "att_sticker",
+                name: "wave.png",
+                kind: "image",
+                mimeType: "image/png",
+                sizeBytes: 120,
+                downloadUrl: nil,
+                previewUrl: nil
+            )],
+            messageKind: "sticker"
+        )
+
+        let projected = try XCTUnwrap(CloudDirectMessageProjector.project(
+            [message],
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        ).first)
+
+        XCTAssertEqual(projected.messageKind, "sticker")
+        XCTAssertEqual(projected.attachments.first?.subtype, .sticker)
+        XCTAssertFalse(MessageImageInteraction.opensPreview(for: try XCTUnwrap(projected.attachments.first)))
+    }
+
     func testRuntimeRouteChangeWithLegacyTextKindProjectsAsSessionNotice() throws {
         var route = CloudModelRouting.empty
         route.defaultModel = "anthropic/claude-fable-5"

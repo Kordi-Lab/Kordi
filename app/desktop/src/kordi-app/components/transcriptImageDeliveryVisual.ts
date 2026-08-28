@@ -1,6 +1,10 @@
 import type { AttachmentImageDeliveryVisual } from './transcriptAttachmentTypes';
 
-export function attachmentImageDeliveryVisual(status?: string | null): AttachmentImageDeliveryVisual | null {
+export function attachmentImageDeliveryVisual(
+  status?: string | null,
+  uploadFailure?: string | null,
+): AttachmentImageDeliveryVisual | null {
+  if (uploadFailure?.trim()) return { kind: 'failed', label: uploadFailure.trim() };
   const normalized = status?.trim().toLowerCase().replace(/[\s-]+/g, '_');
   if (!normalized) return null;
   if (normalized === 'sending' || normalized === 'pending' || normalized === 'pending_send') {

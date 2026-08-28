@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import UniformTypeIdentifiers
 import UIKit
 
@@ -22,6 +23,7 @@ enum PendingAttachmentLoader {
     static let maximumAttachmentBytes = 2 * 1_024 * 1_024
     static let maximumBatchBytes = 12 * 1_024 * 1_024
     static let maximumAttachmentCount = 8
+    static let maximumExpressiveMediaSourceBytes = 32 * 1_024 * 1_024
 
     nonisolated static func loadFiles(urls: [URL]) throws -> [PendingAttachment] {
         let attachments = try load(urls: urls)
@@ -91,23 +93,82 @@ enum PendingAttachmentLoader {
         mimeType: String?,
         expectedKind: ExpressiveMediaLibraryKind
     ) throws -> PendingAttachment {
-        guard data.count <= maximumAttachmentBytes else {
-            throw AttachmentTransferError.fileTooLarge(suggestedName)
-        }
-        guard ExpressiveMediaLibraryKind.supportedKind(
-            name: suggestedName,
-            mimeType: mimeType
-        ) == expectedKind else {
-            throw ExpressiveMediaLibraryError.unsupportedFile
-        }
+        let prepared = try prepareExpressiveMedia(
+            data: data,
+            suggestedName: suggestedName,
+            mimeType: mimeType,
+            expectedKind: expectedKind
+        )
         return PendingAttachment(
             id: UUID().uuidString.lowercased(),
-            name: suggestedName,
+            name: prepared.name,
             kind: .image,
-            mimeType: mimeType,
-            data: data,
-            previewURL: compressedPreviewDataURL(data: data)
+            subtype: expectedKind == .sticker ? .sticker : nil,
+            mimeType: prepared.mimeType,
+            data: prepared.data,
+            previewURL: compressedPreviewDataURL(data: prepared.data)
         )
+    }
+
+    nonisolated static func prepareExpressiveMedia(
+        data: Data,
+        suggestedName: String,
+        mimeType: String?,
+        expectedKind: ExpressiveMediaLibraryKind
+    ) throws -> (data: Data, name: String, mimeType: String?) {
+        guard ExpressiveMediaLibraryKind.accepts(
+            name: suggestedName,
+            mimeType: mimeType,
+            as: expectedKind
+        ) else {
+            throw ExpressiveMediaLibraryError.unsupportedFile
+        }
+        let actualKind = ExpressiveMediaLibraryKind.supportedKind(
+            name: suggestedName,
+            mimeType: mimeType
+        )
+        if actualKind == .gif {
+            guard data.count <= maximumAttachmentBytes else {
+                throw AttachmentTransferError.animatedMediaTooLarge(suggestedName)
+            }
+            return (data, suggestedName, mimeType)
+        }
+        let source = CGImageSourceCreateWithData(data as CFData, nil)
+        let properties = source.flatMap {
+            CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any]
+        }
+        let maximumPixelDimension = max(
+            (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue ?? 0,
+            (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue ?? 0
+        )
+        if maximumPixelDimension <= 512, data.count <= maximumAttachmentBytes {
+            return (data, suggestedName, mimeType)
+        }
+        guard actualKind == .sticker else {
+            throw ExpressiveMediaLibraryError.unsupportedFile
+        }
+        guard data.count <= maximumExpressiveMediaSourceBytes else {
+            throw AttachmentTransferError.expressiveMediaSourceTooLarge(suggestedName)
+        }
+        guard let source,
+              let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 512,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceShouldCacheImmediately: true,
+              ] as CFDictionary) else {
+            throw AttachmentTransferError.invalidImage
+        }
+        let image = UIImage(cgImage: thumbnail)
+        if imageHasAlpha(image) {
+            let encoded = try encodedPNG(image)
+            return (encoded, replacingExtension(of: suggestedName, with: "png"), "image/png")
+        }
+        let encoded = try encodedJPEG(
+            image,
+            attempts: [(512.0, 0.82), (448.0, 0.74), (384.0, 0.66), (320.0, 0.58)]
+        )
+        return (encoded, replacingExtension(of: suggestedName, with: "jpg"), "image/jpeg")
     }
 
     nonisolated static func loadCameraImage(_ image: UIImage) throws -> PendingAttachment {
@@ -124,8 +185,17 @@ enum PendingAttachmentLoader {
         )
     }
 
-    private nonisolated static func encodedJPEG(_ image: UIImage) throws -> Data {
-        for (edge, quality) in [(2048.0, 0.84), (1800.0, 0.78), (1536.0, 0.72), (1280.0, 0.66), (960.0, 0.6)] {
+    private nonisolated static func encodedJPEG(
+        _ image: UIImage,
+        attempts: [(Double, Double)] = [
+            (2048.0, 0.84),
+            (1800.0, 0.78),
+            (1536.0, 0.72),
+            (1280.0, 0.66),
+            (960.0, 0.6),
+        ]
+    ) throws -> Data {
+        for (edge, quality) in attempts {
             let scale = min(1, edge / max(image.size.width, image.size.height))
             let size = CGSize(
                 width: max(1, image.size.width * scale),
@@ -147,6 +217,41 @@ enum PendingAttachmentLoader {
         throw AttachmentTransferError.fileTooLarge("This image")
     }
 
+    private nonisolated static func encodedPNG(_ image: UIImage) throws -> Data {
+        for edge in [512.0, 448.0, 384.0, 320.0, 256.0] {
+            let scale = min(1, edge / max(image.size.width, image.size.height))
+            let size = CGSize(
+                width: max(1, image.size.width * scale),
+                height: max(1, image.size.height * scale)
+            )
+            let format = UIGraphicsImageRendererFormat()
+            format.opaque = false
+            format.scale = 1
+            let rendered = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                image.draw(in: CGRect(origin: .zero, size: size))
+            }
+            if let data = rendered.pngData(), data.count <= maximumAttachmentBytes {
+                return data
+            }
+        }
+        throw AttachmentTransferError.fileTooLarge("This sticker")
+    }
+
+    private nonisolated static func imageHasAlpha(_ image: UIImage) -> Bool {
+        guard let alphaInfo = image.cgImage?.alphaInfo else { return true }
+        switch alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast:
+            return false
+        default:
+            return true
+        }
+    }
+
+    private nonisolated static func replacingExtension(of name: String, with fileExtension: String) -> String {
+        let stem = URL(fileURLWithPath: name).deletingPathExtension().lastPathComponent.nonEmpty ?? "sticker"
+        return "\(stem).\(fileExtension)"
+    }
+
     private nonisolated static func jpegName(_ value: String) -> String {
         let stem = URL(fileURLWithPath: value).deletingPathExtension().lastPathComponent.nonEmpty ?? "Photo"
         return "\(stem).jpg"
@@ -154,6 +259,7 @@ enum PendingAttachmentLoader {
 
     private nonisolated static func compressedPreviewDataURL(data: Data) -> String? {
         guard let image = UIImage(data: data) else { return nil }
+        let preservesAlpha = imageHasAlpha(image)
         for (edge, quality) in [(480.0, 0.66), (360.0, 0.58), (280.0, 0.5)] {
             let scale = min(1, edge / max(image.size.width, image.size.height))
             let size = CGSize(
@@ -161,16 +267,22 @@ enum PendingAttachmentLoader {
                 height: max(1, image.size.height * scale)
             )
             let format = UIGraphicsImageRendererFormat()
-            format.opaque = true
+            format.opaque = !preservesAlpha
             format.scale = 1
             let rendered = UIGraphicsImageRenderer(size: size, format: format).image { context in
-                UIColor.systemBackground.setFill()
-                context.cgContext.fill(CGRect(origin: .zero, size: size))
+                if !preservesAlpha {
+                    UIColor.systemBackground.setFill()
+                    context.cgContext.fill(CGRect(origin: .zero, size: size))
+                }
                 image.draw(in: CGRect(origin: .zero, size: size))
             }
-            guard let preview = rendered.jpegData(compressionQuality: quality),
+            let preview = preservesAlpha
+                ? rendered.pngData()
+                : rendered.jpegData(compressionQuality: quality)
+            guard let preview,
                   preview.count <= 255 * 1_024 else { continue }
-            return "data:image/jpeg;base64,\(preview.base64EncodedString())"
+            let previewMIMEType = preservesAlpha ? "image/png" : "image/jpeg"
+            return "data:\(previewMIMEType);base64,\(preview.base64EncodedString())"
         }
         return nil
     }
@@ -183,6 +295,8 @@ enum AttachmentTransferError: LocalizedError {
     case missingSession
     case invalidImage
     case imagesUsePhotoPicker
+    case animatedMediaTooLarge(String)
+    case expressiveMediaSourceTooLarge(String)
 
     var errorDescription: String? {
         switch self {
@@ -198,6 +312,10 @@ enum AttachmentTransferError: LocalizedError {
             "This image could not be read. Choose another photo."
         case .imagesUsePhotoPicker:
             "Add images with Camera or Photo Library. Files is for documents and other files."
+        case let .animatedMediaTooLarge(name):
+            "Choose an animated GIF smaller than 2 MB for \(name) so its animation can be preserved."
+        case let .expressiveMediaSourceTooLarge(name):
+            "Choose a sticker image smaller than 32 MB for \(name)."
         }
     }
 }
@@ -229,6 +347,11 @@ enum ExpressiveMediaLibraryKind: String, Codable, Hashable {
         return nil
     }
 
+    nonisolated static func accepts(name: String, mimeType: String?, as expectedKind: Self) -> Bool {
+        guard let actualKind = supportedKind(name: name, mimeType: mimeType) else { return false }
+        return actualKind == expectedKind || (expectedKind == .sticker && actualKind == .gif)
+    }
+
     var libraryName: String {
         switch self {
         case .sticker: "My Stickers"
@@ -257,6 +380,21 @@ struct ExpressiveMediaLibraryEntry: Identifiable, Hashable {
     var kind: ExpressiveMediaLibraryKind { item.kind }
 }
 
+enum ExpressiveMediaAttachmentSignature {
+    nonisolated static func value(
+        name: String,
+        mimeType: String?,
+        sizeBytes: Int64?
+    ) -> String? {
+        guard let sizeBytes, sizeBytes >= 0 else { return nil }
+        return [
+            name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+            mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "",
+            String(sizeBytes),
+        ].joined(separator: "\u{0}")
+    }
+}
+
 enum ExpressiveMediaLibraryError: LocalizedError {
     case unsupportedFile
     case unavailableStorage
@@ -264,7 +402,7 @@ enum ExpressiveMediaLibraryError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unsupportedFile:
-            "Only PNG, JPEG, and WebP files can be stickers. GIF files are saved to My GIFs."
+            "Only PNG, JPEG, WebP, and GIF files can be stickers."
         case .unavailableStorage:
             "Kordi could not access the media library on this device."
         }
@@ -314,12 +452,19 @@ actor ExpressiveMediaLibraryStore {
         defer { if accessed { sourceURL.stopAccessingSecurityScopedResource() } }
 
         let values = try? sourceURL.resourceValues(forKeys: [.contentTypeKey, .fileSizeKey])
-        if let fileSize = values?.fileSize,
-           fileSize > PendingAttachmentLoader.maximumAttachmentBytes {
-            throw AttachmentTransferError.fileTooLarge(sourceURL.lastPathComponent)
-        }
         let mimeType = values?.contentType?.preferredMIMEType
             ?? UTType(filenameExtension: sourceURL.pathExtension)?.preferredMIMEType
+        if let fileSize = values?.fileSize {
+            if ExpressiveMediaLibraryKind.supportedKind(
+                name: sourceURL.lastPathComponent,
+                mimeType: mimeType
+            ) == .gif, fileSize > PendingAttachmentLoader.maximumAttachmentBytes {
+                throw AttachmentTransferError.animatedMediaTooLarge(sourceURL.lastPathComponent)
+            }
+            if fileSize > PendingAttachmentLoader.maximumExpressiveMediaSourceBytes {
+                throw AttachmentTransferError.expressiveMediaSourceTooLarge(sourceURL.lastPathComponent)
+            }
+        }
         let data = try Data(contentsOf: sourceURL, options: [.mappedIfSafe])
         return try add(
             accountId: accountId,
@@ -366,6 +511,20 @@ actor ExpressiveMediaLibraryStore {
             guard FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
             return ExpressiveMediaLibraryEntry(item: item, fileURL: fileURL)
         }
+    }
+
+    func attachmentSignatures(
+        accountId: String,
+        kind: ExpressiveMediaLibraryKind
+    ) -> Set<String> {
+        Set(items(accountId: accountId).compactMap { item in
+            guard item.kind == kind else { return nil }
+            return ExpressiveMediaAttachmentSignature.value(
+                name: item.name,
+                mimeType: item.mimeType,
+                sizeBytes: item.sizeBytes
+            )
+        })
     }
 
     func pendingAttachment(
@@ -435,10 +594,11 @@ actor ExpressiveMediaLibraryStore {
         guard data.count <= PendingAttachmentLoader.maximumAttachmentBytes else {
             throw AttachmentTransferError.fileTooLarge(cloudItem.name)
         }
-        guard ExpressiveMediaLibraryKind.supportedKind(
+        guard ExpressiveMediaLibraryKind.accepts(
             name: cloudItem.name,
-            mimeType: cloudItem.mimeType
-        ) == cloudItem.kind else {
+            mimeType: cloudItem.mimeType,
+            as: cloudItem.kind
+        ) else {
             throw ExpressiveMediaLibraryError.unsupportedFile
         }
         let directory = try scopedDirectory(accountId: accountId)
@@ -479,32 +639,29 @@ actor ExpressiveMediaLibraryStore {
         expectedKind: ExpressiveMediaLibraryKind,
         attachmentId: String?
     ) throws -> ExpressiveMediaLibraryItem {
-        guard data.count <= PendingAttachmentLoader.maximumAttachmentBytes else {
-            throw AttachmentTransferError.fileTooLarge(name)
-        }
-        guard ExpressiveMediaLibraryKind.supportedKind(
-            name: name,
-            mimeType: mimeType
-        ) == expectedKind else {
-            throw ExpressiveMediaLibraryError.unsupportedFile
-        }
+        let prepared = try PendingAttachmentLoader.prepareExpressiveMedia(
+            data: data,
+            suggestedName: name,
+            mimeType: mimeType,
+            expectedKind: expectedKind
+        )
         let directory = try scopedDirectory(accountId: accountId)
         if let attachmentId,
            let existing = allItems(in: directory).first(where: { $0.attachmentId == attachmentId }) {
             return existing
         }
         let id = UUID().uuidString.lowercased()
-        let relativeFileName = "\(id)-\(sanitized(name))"
+        let relativeFileName = "\(id)-\(sanitized(prepared.name))"
         let destinationURL = directory.appendingPathComponent(relativeFileName, isDirectory: false)
 
         do {
-            try data.write(to: destinationURL, options: .atomic)
+            try prepared.data.write(to: destinationURL, options: .atomic)
             let item = ExpressiveMediaLibraryItem(
                 id: id,
                 kind: expectedKind,
-                name: name,
-                mimeType: mimeType,
-                sizeBytes: Int64(data.count),
+                name: prepared.name,
+                mimeType: prepared.mimeType,
+                sizeBytes: Int64(prepared.data.count),
                 relativeFileName: relativeFileName,
                 createdAt: Date(),
                 cloudItemId: nil,

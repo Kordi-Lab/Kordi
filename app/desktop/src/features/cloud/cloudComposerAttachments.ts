@@ -33,6 +33,7 @@ export async function uploadComposerAttachments({
   createPreviewDataUrl = createCompressedImagePreviewDataUrl,
   nativeUpload = uploadNativeCloudAttachment,
   useNativeUpload = isNativeAttachmentUploadAvailable(),
+  persistAttachmentPath = persistCloudAttachmentPath,
 }: {
   token: string;
   client: Pick<CloudAuthClient, 'uploadAttachment'>
@@ -42,6 +43,7 @@ export async function uploadComposerAttachments({
   createPreviewDataUrl?: PreviewGenerator;
   nativeUpload?: typeof uploadNativeCloudAttachment;
   useNativeUpload?: boolean;
+  persistAttachmentPath?: typeof persistCloudAttachmentPath;
 }): Promise<SendCloudMessageAttachmentInput[]> {
   const uploaded: SendCloudMessageAttachmentInput[] = [];
   for (const attachment of attachments) {
@@ -67,7 +69,10 @@ export async function uploadComposerAttachments({
       summary = await client.uploadAttachment(token, blob);
     }
     cacheCloudAttachmentLocalPath(summary.attachmentId, attachment.path);
-    await persistCloudAttachmentPath(summary.attachmentId, attachment.name, attachment.path);
+    await persistAttachmentPath(summary.attachmentId, attachment.name, attachment.path);
+    if (attachment.expressiveMedia) {
+      cacheCloudAttachmentLocalPath(summary.attachmentId, attachment.path);
+    }
     if (previewUrl && client.updateAttachmentPreview) {
       await client.updateAttachmentPreview(token, summary.attachmentId, previewUrl).catch(() => undefined);
     }

@@ -208,6 +208,58 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertTrue(source.contains(".scrollDismissesKeyboard(.never)"))
     }
 
+    func testKeyboardHostedPickerRoutesMediaImportThroughTheConversationPhotoPicker() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ComposerView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("onRequestImport: parent.onRequestExpressiveMediaImport"))
+        XCTAssertTrue(source.contains("isPresented: $isShowingExpressiveMediaPhotoPicker"))
+        XCTAssertTrue(source.contains("preferredItemEncoding: .current"))
+        XCTAssertFalse(source.contains("isShowingExpressiveMediaImporter"))
+    }
+
+    func testExpressiveLibraryAddUsesPhotosInsteadOfFiles() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ExpressiveMediaPicker.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains(".photosPicker("))
+        XCTAssertTrue(source.contains("preferredItemEncoding: .current"))
+        XCTAssertFalse(source.contains(".fileImporter("))
+    }
+
+    func testExpressiveMediaThumbnailsKeepMixedAspectRatiosInsideFixedSlots() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ExpressiveMediaPicker.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private struct LocalExpressiveMediaThumbnail"))
+        let thumbnail = source[start.lowerBound...]
+
+        XCTAssertTrue(thumbnail.contains(".scaledToFit()"))
+        XCTAssertTrue(thumbnail.contains(".frame(width: 64, height: 64)"))
+        XCTAssertTrue(thumbnail.contains(".clipped()"))
+    }
+
+    func testConversationRowsRenderTheLatestStickerPreview() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Chats/ConversationRow.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("conversation.lastAttachment"))
+        XCTAssertTrue(source.contains("conversation.previewText"))
+        XCTAssertTrue(source.contains("ConversationAttachmentThumbnail"))
+        XCTAssertTrue(source.contains(".scaledToFit()"))
+    }
+
     func testStaleEndEditingCallbackCannotCancelRestoredKeyboardFocus() {
         XCTAssertFalse(ComposerFocusReconciliation.shouldApply(
             focused: false,
@@ -837,6 +889,7 @@ private struct ComposerTextViewFocusHarness: View {
             isSending: false,
             onInsertEmoji: { _ in },
             onSendExpressiveMedia: { _ in },
+            onRequestExpressiveMediaImport: { _ in },
             measuredHeight: $measuredHeight,
             draftButtonThreshold: 84,
             accessibilityLabel: "Message"
@@ -870,6 +923,7 @@ private struct ComposerTextViewInputSurfaceHarness: View {
             isSending: false,
             onInsertEmoji: { _ in },
             onSendExpressiveMedia: { _ in },
+            onRequestExpressiveMediaImport: { _ in },
             measuredHeight: $measuredHeight,
             draftButtonThreshold: 84,
             accessibilityLabel: "Message"

@@ -355,6 +355,7 @@ test('WorkspaceSidebar gives Saved Messages a bookmark identity and photo previe
   assert.match(markup, /lucide-bookmark/);
   assert.match(markup, /data-participant-space-preview-kind="image"/);
   assert.match(markup, /data-sidebar-image-thumbnail="true"/);
+  assert.match(markup, /object-contain/);
   assert.match(markup, />Photo</);
   assert.doesNotMatch(markup, /app-participant-space-row-preview[^>]*>[^<]*Shu Yang/);
 });

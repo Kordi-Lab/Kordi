@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { Image } from 'lucide-react';
 import {
   attachmentMediaGalleryIndex,
   attachmentPreviewIdentity,
   attachmentPreviewUrl,
+  isAnimatedGifAttachment,
   isLargeAttachment,
   shouldPreviewAttachmentInline,
 } from '@/features/chat/attachmentMediaGallery';
@@ -22,13 +22,16 @@ import {
   loadCachedCloudAttachmentLocalPath,
 } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
+import {
+  expressiveMediaLibrarySnapshot,
+  subscribeExpressiveMediaLibrary,
+} from '@/features/emoji/expressiveMediaLibrary';
 import { cn } from '@/lib/utils';
 import { AttachmentActions } from './transcriptAttachmentActions';
 import { TranscriptFileAttachmentLink } from './transcriptFileAttachmentLink';
 import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
 import { TranscriptImageGroup } from './transcriptImageGroup';
-import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibraryAction';
 import {
   recoverableAttachmentId,
   recoveredAttachmentPreviewUrl,
@@ -36,6 +39,8 @@ import {
 } from './transcriptAttachmentPreviewRecovery';
 import type { AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
 import { usePointerClickWithoutDrag } from './usePointerClickWithoutDrag';
+import { messageStickerAttachment } from './messageStickerPresentation';
+import { sampleAttachmentImageForegroundTone } from './transcriptAttachmentForegroundTone';
 import type { Message, MessageAttachment } from '../types';
 
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
@@ -44,56 +49,11 @@ export {
   recoverAttachmentPreviewOnce,
 } from './transcriptAttachmentPreviewRecovery';
 export { attachmentImageDeliveryVisual };
+export { AttachmentContextMenu } from './transcriptAttachmentContextMenu';
+export { shouldCloseAttachmentContextMenuForTarget } from './transcriptAttachmentContextMenuState';
+export type { AttachmentContextMenuState } from './transcriptAttachmentContextMenuState';
+export { attachmentImageForegroundToneFromRgba } from './transcriptAttachmentForegroundTone';
 export type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
-
-function PortalLayer({ children }: { children: ReactNode }) {
-  if (typeof document === 'undefined' || !document.body) return <>{children}</>;
-  return createPortal(children, document.body);
-}
-
-export type AttachmentContextMenuState = {
-  attachment: MessageAttachment;
-  x: number;
-  y: number;
-};
-
-type AttachmentContextMenuHost = {
-  contains: (target: Node | null) => boolean;
-} | null;
-
-export function shouldCloseAttachmentContextMenuForTarget(menuElement: AttachmentContextMenuHost, target: EventTarget | null) {
-  if (!menuElement || !target) return true;
-  if (typeof Node !== 'undefined' && !(target instanceof Node)) return true;
-  return !menuElement.contains(target as Node);
-}
-
-export function AttachmentContextMenu({ state, onClose }: { state: AttachmentContextMenuState; onClose: () => void }) {
-  const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    function handlePointerDown(event: PointerEvent) {
-      if (shouldCloseAttachmentContextMenuForTarget(menuRef.current, event.target)) onClose();
-    }
-
-    window.addEventListener('pointerdown', handlePointerDown, true);
-    return () => window.removeEventListener('pointerdown', handlePointerDown, true);
-  }, [onClose]);
-
-  return (
-    <PortalLayer>
-      <div
-        ref={menuRef}
-        data-attachment-image-context-menu="true"
-        className="app-transient-surface fixed z-[230] rounded-[14px] border p-1.5"
-        style={{ left: state.x, top: state.y }}
-        onContextMenu={(event) => event.preventDefault()}
-      >
-        <AddAttachmentToMediaLibraryAction attachment={state.attachment} onAdded={onClose} />
-        <AttachmentActions attachment={state.attachment} variant="menu" />
-      </div>
-    </PortalLayer>
-  );
-}
 
 function isAttachmentSending(msg: Message) {
   return (msg.statusChips ?? []).some((chip) => {
@@ -102,100 +62,6 @@ function isAttachmentSending(msg: Message) {
   });
 }
 
-function linearSrgbChannel(channel: number) {
-  const value = Math.min(255, Math.max(0, channel)) / 255;
-  return value <= 0.04045
-    ? value / 12.92
-    : ((value + 0.055) / 1.055) ** 2.4;
-}
-
-export function attachmentImageForegroundToneFromRgba(
-  pixels: ArrayLike<number>,
-): AttachmentImageForegroundTone | null {
-  let weightedLuminance = 0;
-  let alphaWeight = 0;
-
-  for (let index = 0; index + 3 < pixels.length; index += 4) {
-    const alpha = Math.min(255, Math.max(0, pixels[index + 3] ?? 0)) / 255;
-    if (alpha <= 0.02) continue;
-    const luminance = (
-      (0.2126 * linearSrgbChannel(pixels[index] ?? 0))
-      + (0.7152 * linearSrgbChannel(pixels[index + 1] ?? 0))
-      + (0.0722 * linearSrgbChannel(pixels[index + 2] ?? 0))
-    );
-    weightedLuminance += luminance * alpha;
-    alphaWeight += alpha;
-  }
-
-  if (alphaWeight === 0) return null;
-  return (weightedLuminance / alphaWeight) >= 0.179 ? 'dark' : 'light';
-}
-
-function sampleAttachmentImageForegroundTone(
-  image: HTMLImageElement,
-): AttachmentImageForegroundTone | null {
-  const naturalWidth = image.naturalWidth;
-  const naturalHeight = image.naturalHeight;
-  if (!naturalWidth || !naturalHeight || typeof document === 'undefined') return null;
-
-  const renderedWidth = image.clientWidth || naturalWidth;
-  const renderedHeight = image.clientHeight || naturalHeight;
-  if (!renderedWidth || !renderedHeight) return null;
-
-  try {
-    const objectFit = window.getComputedStyle(image).objectFit;
-    const scale = objectFit === 'cover'
-      ? Math.max(renderedWidth / naturalWidth, renderedHeight / naturalHeight)
-      : Math.min(renderedWidth / naturalWidth, renderedHeight / naturalHeight);
-    const objectWidth = naturalWidth * scale;
-    const objectHeight = naturalHeight * scale;
-    const objectLeft = (renderedWidth - objectWidth) / 2;
-    const objectTop = (renderedHeight - objectHeight) / 2;
-    const targetWidth = Math.min(renderedWidth, Math.max(64, renderedWidth * 0.4));
-    const targetHeight = Math.min(renderedHeight, Math.max(28, renderedHeight * 0.18));
-    const targetLeft = renderedWidth - targetWidth;
-    const targetTop = renderedHeight - targetHeight;
-    const sampleLeft = Math.max(targetLeft, objectLeft);
-    const sampleTop = Math.max(targetTop, objectTop);
-    const sampleRight = Math.min(renderedWidth, objectLeft + objectWidth);
-    const sampleBottom = Math.min(renderedHeight, objectTop + objectHeight);
-    const sampleDisplayWidth = sampleRight - sampleLeft;
-    const sampleDisplayHeight = sampleBottom - sampleTop;
-    if (
-      sampleDisplayWidth <= 0
-      || sampleDisplayHeight <= 0
-      || (sampleDisplayWidth * sampleDisplayHeight) < (targetWidth * targetHeight * 0.5)
-    ) {
-      return null;
-    }
-
-    const sourceX = (sampleLeft - objectLeft) / scale;
-    const sourceY = (sampleTop - objectTop) / scale;
-    const sourceWidth = sampleDisplayWidth / scale;
-    const sourceHeight = sampleDisplayHeight / scale;
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.min(48, Math.round(sampleDisplayWidth)));
-    canvas.height = Math.max(1, Math.min(24, Math.round(sampleDisplayHeight)));
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) return null;
-    context.drawImage(
-      image,
-      sourceX,
-      sourceY,
-      sourceWidth,
-      sourceHeight,
-      0,
-      0,
-      canvas.width,
-      canvas.height,
-    );
-    return attachmentImageForegroundToneFromRgba(
-      context.getImageData(0, 0, canvas.width, canvas.height).data,
-    );
-  } catch {
-    return null;
-  }
-}
 
 function AttachmentImageLoadingSurface({ className }: { className?: string }) {
   return (
@@ -249,6 +115,7 @@ function AttachmentImageCard({
   decorative = false,
   onOpenPreview,
   onImageForegroundTone,
+  stickerMessage = false,
 }: {
   attachment: MessageAttachment;
   index: number;
@@ -261,14 +128,19 @@ function AttachmentImageCard({
     index: number,
     trigger: HTMLButtonElement,
   ) => void;
+  stickerMessage?: boolean;
   onImageForegroundTone?: (
     attachmentIdentity: string,
     tone: AttachmentImageForegroundTone | null,
   ) => void;
 }) {
   const attachmentId = recoverableAttachmentId(attachment);
+  const isAnimatedGif = isAnimatedGifAttachment(attachment);
   const previewCacheId = attachmentId
-    ? cloudAttachmentPreviewCacheId(attachmentId, attachment.previewAttachmentId)
+    ? cloudAttachmentPreviewCacheId(
+        attachmentId,
+        isAnimatedGif ? null : attachment.previewAttachmentId,
+      )
     : null;
   const [cachedLocalPath, setCachedLocalPath] = useState<string | null>(null);
   const [recoveredPreviewUrl, setRecoveredPreviewUrl] = useState(() => recoveredAttachmentPreviewUrl(attachmentId));
@@ -281,11 +153,19 @@ function AttachmentImageCard({
   const usableRemotePreviewUrl = remotePreviewUrl && !failedPreviewUrls.includes(remotePreviewUrl) ? remotePreviewUrl : null;
   const usableDirectPreviewUrl = directPreviewUrl && !failedPreviewUrls.includes(directPreviewUrl) ? directPreviewUrl : null;
   const previewUrl = usableRecoveredPreviewUrl ?? usableRemotePreviewUrl ?? usableDirectPreviewUrl;
-  const [imageLoaded, setImageLoaded] = useState(() => Boolean(previewUrl?.startsWith('data:image/')));
+  const [loadedPreviewUrl, setLoadedPreviewUrl] = useState<string | null>(() => (
+    previewUrl?.startsWith('data:image/') ? previewUrl : null
+  ));
+  const imageLoaded = Boolean(previewUrl && loadedPreviewUrl === previewUrl);
   const displayName = displayAttachmentName(attachment.name, attachment.kind);
+  const isSticker = stickerMessage || attachment.subtype === 'sticker';
+  const isExpressiveMedia = isSticker || isAnimatedGif;
   const showImage = Boolean(previewUrl);
   const singleImage = totalCount <= 1;
-  const intrinsicSingleImage = singleImage && showImage && imageLoaded;
+  const intrinsicSingleImage = singleImage && ((showImage && imageLoaded) || isExpressiveMedia);
+  const expressiveSurfaceClassName = isExpressiveMedia && singleImage
+    ? 'h-[180px] w-[180px] min-h-0 aspect-auto rounded-[16px]'
+    : singleImage ? 'rounded-[16px]' : '';
   const showOriginalAction = !decorative && showImage && isLargeAttachment(attachment);
   const activationProps = usePointerClickWithoutDrag((event) => onOpenPreview(
     attachment,
@@ -296,10 +176,26 @@ function AttachmentImageCard({
   ));
 
   useEffect(() => {
-    if (usableRecoveredPreviewUrl || usableRemotePreviewUrl || usableDirectPreviewUrl || previewUnavailable || attachment.kind !== 'image' || !attachmentId) return;
+    if (
+      usableRecoveredPreviewUrl
+      || usableRemotePreviewUrl
+      || (!isAnimatedGif && usableDirectPreviewUrl)
+      || previewUnavailable
+      || attachment.kind !== 'image'
+      || !attachmentId
+    ) return;
     const controller = new AbortController();
     void (async () => {
-      if (previewCacheId) {
+      if (isAnimatedGif || !attachment.previewAttachmentId) {
+        const original = await loadCachedCloudAttachmentLocalPath(attachmentId, attachment.name);
+        if (controller.signal.aborted) return;
+        if (original) {
+          setCachedLocalPath(original);
+          setPreviewUnavailable(false);
+          return;
+        }
+      }
+      if (!isAnimatedGif && previewCacheId) {
         const cached = await loadCachedCloudAttachmentLocalPath(previewCacheId, attachment.name);
         if (controller.signal.aborted) return;
         if (cached) {
@@ -313,7 +209,7 @@ function AttachmentImageCard({
         if (!controller.signal.aborted) setPreviewUnavailable(true);
         return;
       }
-      if (!attachment.previewAttachmentId) {
+      if (!isAnimatedGif && !attachment.previewAttachmentId) {
         const recoveredPreview = await recoverAttachmentPreviewOnce(attachment);
         if (controller.signal.aborted) return;
         if (recoveredPreview) {
@@ -330,6 +226,7 @@ function AttachmentImageCard({
           previewAttachmentId: attachment.previewAttachmentId ?? null,
           name: attachment.name,
           kind: 'image',
+          mimeType: attachment.mimeType ?? null,
         },
         signal: controller.signal,
       });
@@ -352,7 +249,7 @@ function AttachmentImageCard({
         }
       });
     return () => controller.abort();
-  }, [attachment, attachmentId, previewCacheId, previewUnavailable, usableDirectPreviewUrl, usableRecoveredPreviewUrl, usableRemotePreviewUrl]);
+  }, [attachment, attachmentId, isAnimatedGif, previewCacheId, previewUnavailable, usableDirectPreviewUrl, usableRecoveredPreviewUrl, usableRemotePreviewUrl]);
 
   useEffect(() => {
     return () => {
@@ -361,9 +258,54 @@ function AttachmentImageCard({
     };
   }, []);
 
-  useEffect(() => {
-    setImageLoaded(Boolean(previewUrl?.startsWith('data:image/')));
-  }, [previewUrl]);
+  const previewSurfaceClassName = cn(
+    'group relative overflow-hidden text-left outline-none',
+    !isSticker && 'transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20',
+    intrinsicSingleImage
+      ? isExpressiveMedia
+        ? 'inline-flex h-[180px] w-[180px] max-w-full rounded-[16px]'
+        : 'inline-flex h-auto w-auto max-w-full rounded-[16px]'
+      : 'block h-full w-full',
+  );
+  const imageContent = previewUrl ? (
+    <>
+      {!imageLoaded ? (
+        <AttachmentImageLoadingSurface className={cn('absolute inset-0', expressiveSurfaceClassName)} />
+      ) : null}
+      <img
+        src={previewUrl}
+        alt={attachment.altText?.trim() || attachment.name || (isSticker ? 'Sticker' : 'Attached image')}
+        draggable={false}
+        data-attachment-image-loaded={String(imageLoaded)}
+        className={cn(
+          'relative block transition-opacity duration-200 ease-out motion-reduce:transition-none',
+          imageLoaded ? 'opacity-100' : 'opacity-0',
+          intrinsicSingleImage
+            ? isExpressiveMedia
+              ? 'h-[180px] w-[180px] max-w-full rounded-[16px] object-contain'
+              : 'h-auto w-auto max-h-[320px] max-w-full rounded-[16px] object-contain'
+            : 'h-full w-full object-cover',
+        )}
+        onLoad={(event) => {
+          setLoadedPreviewUrl(previewUrl);
+          onImageForegroundTone?.(
+            attachmentPreviewIdentity(attachment),
+            sampleAttachmentImageForegroundTone(event.currentTarget),
+          );
+        }}
+        onError={() => {
+          setFailedPreviewUrls((current) => current.includes(previewUrl) ? current : [...current, previewUrl]);
+          setLoadedPreviewUrl(null);
+          previewLeaseRef.current?.release();
+          previewLeaseRef.current = null;
+          setRemotePreviewUrl(null);
+          if (!attachmentId || (previewUrl !== directPreviewUrl && previewUrl !== recoveredPreviewUrl)) {
+            setPreviewUnavailable(true);
+          }
+        }}
+      />
+    </>
+  ) : null;
 
   return (
     <div
@@ -379,60 +321,36 @@ function AttachmentImageCard({
       )}
     >
       {showImage && previewUrl ? (
-        <button
-          type="button"
-          data-attachment-image-preview-trigger="true"
-          data-attachment-image-index={index}
-          tabIndex={decorative ? -1 : undefined}
-          title={displayName}
-          {...activationProps}
-          onDragStart={(event) => event.preventDefault()}
-          className={cn(
-            'group relative overflow-hidden text-left outline-none transition focus-visible:ring-2 focus-visible:ring-sky-400/70 focus-visible:ring-offset-1 focus-visible:ring-offset-black/20',
-            intrinsicSingleImage ? 'inline-flex h-auto w-auto max-w-full rounded-[16px]' : 'block h-full w-full',
-          )}
-          aria-label={`Preview ${attachment.name || 'attached image'}`}
-        >
-          {!imageLoaded ? (
-            <AttachmentImageLoadingSurface className={cn('absolute inset-0', singleImage ? 'rounded-[16px]' : '')} />
-          ) : null}
-          <img
-            src={previewUrl}
-            alt={attachment.altText?.trim() || attachment.name || 'Attached image'}
-            draggable={false}
-            data-attachment-image-loaded={String(imageLoaded)}
-            className={cn(
-              'relative block transition-opacity duration-200 ease-out motion-reduce:transition-none',
-              imageLoaded ? 'opacity-100' : 'opacity-0',
-              intrinsicSingleImage
-                ? 'h-auto w-auto max-h-[320px] max-w-full rounded-[16px] object-contain'
-                : 'h-full w-full object-cover',
-            )}
-            onLoad={(event) => {
-              setImageLoaded(true);
-              onImageForegroundTone?.(
-                attachmentPreviewIdentity(attachment),
-                sampleAttachmentImageForegroundTone(event.currentTarget),
-              );
-            }}
-            onError={() => {
-              if (previewUrl) {
-                setFailedPreviewUrls((current) => current.includes(previewUrl) ? current : [...current, previewUrl]);
-              }
-              setImageLoaded(false);
-              previewLeaseRef.current?.release();
-              previewLeaseRef.current = null;
-              setRemotePreviewUrl(null);
-              if (!attachmentId || (previewUrl !== directPreviewUrl && previewUrl !== recoveredPreviewUrl)) {
-                setPreviewUnavailable(true);
-              }
-            }}
-          />
-        </button>
+        isSticker ? (
+          <div
+            data-attachment-sticker="true"
+            data-attachment-image-index={index}
+            className={previewSurfaceClassName}
+            role="img"
+            aria-label={`Sticker ${attachment.name}`}
+            title={`${displayName} · Right-click for message actions`}
+          >
+            {imageContent}
+          </div>
+        ) : (
+          <button
+            type="button"
+            data-attachment-image-preview-trigger="true"
+            data-attachment-image-index={index}
+            tabIndex={decorative ? -1 : undefined}
+            title={displayName}
+            {...activationProps}
+            onDragStart={(event) => event.preventDefault()}
+            className={previewSurfaceClassName}
+            aria-label={`Preview ${attachment.name || 'attached image'}`}
+          >
+            {imageContent}
+          </button>
+        )
       ) : previewUnavailable ? (
-        <AttachmentImageUnavailableSurface attachment={attachment} className={singleImage ? 'rounded-[16px]' : ''} />
+        <AttachmentImageUnavailableSurface attachment={attachment} className={expressiveSurfaceClassName} />
       ) : (
-        <AttachmentImageLoadingSurface className={singleImage ? 'rounded-[16px]' : ''} />
+        <AttachmentImageLoadingSurface className={expressiveSurfaceClassName} />
       )}
       {showOriginalAction ? (
         <div className="absolute bottom-2 right-2 z-10">
@@ -454,7 +372,13 @@ export function AttachmentPreview({
   imageDeliveryStatus?: string | null;
   onRetryImage?: () => void;
 }) {
+  useSyncExternalStore(
+    subscribeExpressiveMediaLibrary,
+    expressiveMediaLibrarySnapshot,
+    expressiveMediaLibrarySnapshot,
+  );
   const attachments = msg.attachments ?? [];
+  const stickerAttachment = messageStickerAttachment(msg);
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
   const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
   const mediaAttachments = imageGallery?.length ? imageGallery : previewImageAttachments;
@@ -474,7 +398,11 @@ export function AttachmentPreview({
     : previewImageAttachments;
   const isOwnImageGroup = msg.isOwnMessage ?? msg.role === 'user';
   const loadingOnlyImageCollage = visibleImageAttachments.length > 0
-    && visibleImageAttachments.every((attachment) => !attachmentPreviewUrl(attachment));
+    && visibleImageAttachments.every((attachment) => !attachmentPreviewUrl(attachment))
+    && !(visibleImageAttachments.length === 1 && (
+      visibleImageAttachments[0] === stickerAttachment
+      || isAnimatedGifAttachment(visibleImageAttachments[0])
+    ));
   const deliveryImageAttachment = hasImageGroup && !isImageGroupExpanded
     ? visibleImageAttachments[0]
     : visibleImageAttachments[visibleImageAttachments.length - 1];
@@ -489,6 +417,9 @@ export function AttachmentPreview({
     : null;
   const deliveryUploadIsActive = deliveryUpload
     && ['preparing', 'uploading'].includes(deliveryUpload.phase);
+  const deliveryUploadFailure = deliveryUpload?.phase === 'failed'
+    ? deliveryUpload.error ?? 'Sending failed'
+    : deliveryUpload?.phase === 'cancelled' ? 'Sending cancelled' : null;
   const deliveryImageIdentity = deliveryImageAttachment
     ? attachmentPreviewIdentity(deliveryImageAttachment)
     : null;
@@ -546,7 +477,7 @@ export function AttachmentPreview({
             onToggle={() => setIsImageGroupExpanded((current) => !current)}
             deliveryOverlay={(
               <TranscriptImageDeliveryOverlay
-                visual={attachmentImageDeliveryVisual(resolvedImageDeliveryStatus)}
+                visual={attachmentImageDeliveryVisual(resolvedImageDeliveryStatus, deliveryUploadFailure)}
                 time={msg.time}
                 foregroundTone={deliveryForegroundTone}
                 onRetry={onRetryImage}
@@ -561,7 +492,7 @@ export function AttachmentPreview({
               const index = previewImageAttachments.indexOf(attachment);
               return (
                 <AttachmentImageCard
-                  key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}
+                  key={`${attachment.name}-${attachment.sizeBytes ?? ''}-${index}`}
                   attachment={attachment}
                   index={index}
                   totalCount={1}
@@ -572,6 +503,7 @@ export function AttachmentPreview({
                       setIsImageGroupExpanded(true);
                     }
                     : openLightbox}
+                  stickerMessage={attachment === stickerAttachment}
                   onImageForegroundTone={attachmentPreviewIdentity(attachment) === deliveryImageIdentity
                     ? updateImageForegroundTone
                     : undefined}

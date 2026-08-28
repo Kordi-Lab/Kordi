@@ -2,6 +2,41 @@ import XCTest
 @testable import Kordi
 
 final class CloudConversationCatalogTests: XCTestCase {
+    func testDirectStickerKeepsSidebarLabelAndThumbnail() throws {
+        let sessionId = directPersonSessionId("acct_me", "acct_maya")
+        let attachment = CloudMessageAttachment(
+            attachmentId: "att-sticker",
+            name: "kirby.png",
+            kind: "image",
+            subtype: .sticker,
+            mimeType: "image/png",
+            sizeBytes: 1_024,
+            downloadUrl: nil,
+            previewUrl: "data:image/png;base64,preview"
+        )
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [contact],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_maya": [wire(
+                id: "sticker",
+                body: "",
+                sessionId: sessionId,
+                createdAt: "2026-08-28T10:00:00Z",
+                from: "acct_maya",
+                to: "acct_me",
+                attachments: [attachment],
+                messageKind: "sticker"
+            )]]
+        )
+
+        let conversation = try XCTUnwrap(catalog.first { $0.kind == .person })
+        XCTAssertEqual(conversation.lastMessage, "Sticker")
+        XCTAssertEqual(conversation.lastAttachment?.attachmentId, attachment.attachmentId)
+        XCTAssertEqual(conversation.lastAttachment?.subtype, .sticker)
+    }
+
     func testDirectUnreadMentionCountRequiresVerifiedPersonIdentity() throws {
         let sessionId = directPersonSessionId("acct_me", "acct_maya")
         let canonicalId = "conversation-direct-mentions"
@@ -1549,6 +1584,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         createdAt: String,
         from: String = "acct_me",
         to: String = "acct_me",
+        attachments: [CloudMessageAttachment] = [],
         messageKind: String? = nil,
         conversationId: String? = nil,
         conversationSequence: Int64? = nil
@@ -1563,6 +1599,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             readAt: nil,
             direction: from == "acct_me" ? "outgoing" : "incoming",
             sessionId: sessionId,
+            attachments: attachments,
             messageKind: messageKind,
             conversationId: conversationId,
             conversationSequence: conversationSequence

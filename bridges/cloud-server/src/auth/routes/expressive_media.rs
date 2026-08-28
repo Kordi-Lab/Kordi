@@ -51,6 +51,14 @@ fn kind_for_content_type(value: &str) -> Option<&'static str> {
     }
 }
 
+fn kind_matches_content_type(kind: &str, content_type: &str) -> bool {
+    match kind_for_content_type(content_type) {
+        Some("gif") => matches!(kind, "gif" | "sticker"),
+        Some("sticker") => kind == "sticker",
+        _ => false,
+    }
+}
+
 fn clean_media_name(value: &str) -> Option<String> {
     let name = value.trim();
     if name.is_empty() || name.chars().count() > 255 || name.contains(['\0', '\r', '\n']) {
@@ -162,14 +170,14 @@ pub(super) async fn save_expressive_media(
             StatusCode::BAD_REQUEST,
         );
     };
-    let Some(actual_kind) = kind_for_content_type(&content_type) else {
+    if kind_for_content_type(&content_type).is_none() {
         return err(
             "unsupported_media",
             "The attachment is not a supported sticker or GIF.",
             StatusCode::BAD_REQUEST,
         );
-    };
-    if actual_kind != requested_kind {
+    }
+    if !kind_matches_content_type(requested_kind, &content_type) {
         return err(
             "media_kind_mismatch",
             "The saved media kind does not match the uploaded file.",
@@ -192,7 +200,7 @@ pub(super) async fn save_expressive_media(
         .bind(&item_id)
         .bind(&session.account_id)
         .bind(attachment_id)
-        .bind(actual_kind)
+        .bind(requested_kind)
         .bind(&name)
         .bind(content_type.trim().to_ascii_lowercase())
         .bind(size_bytes)
@@ -226,6 +234,9 @@ mod tests {
         assert_eq!(normalized_kind("video"), None);
         assert_eq!(kind_for_content_type("image/gif"), Some("gif"));
         assert_eq!(kind_for_content_type("image/webp"), Some("sticker"));
+        assert!(kind_matches_content_type("sticker", "image/gif"));
+        assert!(kind_matches_content_type("gif", "image/gif"));
+        assert!(!kind_matches_content_type("gif", "image/png"));
         assert_eq!(kind_for_content_type("text/html"), None);
     }
 

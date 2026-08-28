@@ -324,6 +324,7 @@ enum ChatAttachmentKind: String, Codable, Hashable {
 
 enum ChatAttachmentSubtype: String, Codable, Hashable {
     case meme
+    case sticker
 }
 
 struct ChatAttachment: Identifiable, Codable, Hashable {

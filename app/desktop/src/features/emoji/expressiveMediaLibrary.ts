@@ -1,22 +1,21 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 import type { AttachmentItem } from '@/features/chat/composerController.types';
-import type {
-  CloudAuthClient,
-  CloudExpressiveMediaItem,
-} from '@/features/cloud/authClient';
+import type { CloudAuthClient, CloudExpressiveMediaItem } from '@/features/cloud/authClient';
+import { readDesktopChatAttachment, storeDesktopChatAttachment } from '@/lib/desktop';
 import {
-  readDesktopChatAttachment,
-  storeDesktopChatAttachment,
-} from '@/lib/desktop';
+  EXPRESSIVE_MEDIA_MAX_BYTES, GIF_MIME_TYPES, STICKER_MIME_TYPES, compressStickerFile,
+  expressiveMediaFileError, expressiveMediaKindForFile, fileExtension,
+  type CompressStickerFile, type ExpressiveMediaKind,
+} from './expressiveMediaFile';
+import { EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY } from './expressiveMediaAttachmentKind';
 
-export const EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY = 'kordi.expressiveMediaLibrary.v1';
 const EXPRESSIVE_MEDIA_LIBRARY_MIGRATION_KEY = 'kordi.expressiveMediaLibrary.migratedAccount.v1';
-export const STICKER_FILE_ACCEPT = 'image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp';
-export const GIF_FILE_ACCEPT = 'image/gif,.gif';
-export const EXPRESSIVE_MEDIA_MAX_BYTES = 2 * 1024 * 1024;
-
-export type ExpressiveMediaKind = 'sticker' | 'gif';
+export { EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY, expressiveMediaLibraryKindForAttachment } from './expressiveMediaAttachmentKind';
+export {
+  EXPRESSIVE_MEDIA_MAX_BYTES, GIF_FILE_ACCEPT, STICKER_FILE_ACCEPT,
+  expressiveMediaFileError, expressiveMediaKindForFile, type ExpressiveMediaKind,
+} from './expressiveMediaFile';
 
 export type ProviderMediaSelection = {
   providerMediaId: string;
@@ -66,11 +65,18 @@ type ExpressiveMediaSyncOptions = {
   storeFile?: StoreMediaFile;
 };
 
-const STICKER_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const STICKER_EXTENSIONS = new Set(['jpeg', 'jpg', 'png', 'webp']);
-const GIF_MIME_TYPES = new Set(['image/gif']);
-const GIF_EXTENSIONS = new Set(['gif']);
 const expressiveMediaSyncs = new Map<string, Promise<ExpressiveMediaLibraryItem[]>>();
+const expressiveMediaLibraryListeners = new Set<() => void>();
+let expressiveMediaLibraryRevision = 0;
+
+export function subscribeExpressiveMediaLibrary(listener: () => void) {
+  expressiveMediaLibraryListeners.add(listener);
+  return () => expressiveMediaLibraryListeners.delete(listener);
+}
+
+export function expressiveMediaLibrarySnapshot() {
+  return expressiveMediaLibraryRevision;
+}
 
 function browserStorage(): ExpressiveMediaStorage | null {
   try {
@@ -101,10 +107,6 @@ function migrateLegacyLibrary(
     storage.setItem(scopedKey, legacyValue);
   }
   storage.setItem(EXPRESSIVE_MEDIA_LIBRARY_MIGRATION_KEY, normalizedAccountId);
-}
-
-function fileExtension(name: string) {
-  return name.trim().split('.').pop()?.toLocaleLowerCase() ?? '';
 }
 
 function formatLabel(name: string, mimeType: string) {
@@ -172,25 +174,8 @@ export function writeExpressiveMediaLibrary(
 ) {
   if (!storage) return;
   storage.setItem(expressiveMediaLibraryStorageKey(accountId), JSON.stringify(items));
-}
-
-export function expressiveMediaFileError(file: Pick<File, 'name' | 'type'>, kind: ExpressiveMediaKind) {
-  const mimeType = file.type.trim().toLocaleLowerCase();
-  const extension = fileExtension(file.name);
-  const allowedMimeTypes = kind === 'sticker' ? STICKER_MIME_TYPES : GIF_MIME_TYPES;
-  const allowedExtensions = kind === 'sticker' ? STICKER_EXTENSIONS : GIF_EXTENSIONS;
-  const mimeTypeMatches = !mimeType || allowedMimeTypes.has(mimeType);
-  const extensionMatches = !extension || allowedExtensions.has(extension);
-  if ((mimeType || extension) && mimeTypeMatches && extensionMatches) return null;
-  return kind === 'sticker'
-    ? 'Choose a PNG, JPEG, or WebP image for My Stickers.'
-    : 'Choose a GIF file for My GIFs.';
-}
-
-export function expressiveMediaKindForFile(file: Pick<File, 'name' | 'type'>): ExpressiveMediaKind | null {
-  if (!expressiveMediaFileError(file, 'gif')) return 'gif';
-  if (!expressiveMediaFileError(file, 'sticker')) return 'sticker';
-  return null;
+  expressiveMediaLibraryRevision += 1;
+  expressiveMediaLibraryListeners.forEach((listener) => listener());
 }
 
 export async function addMediaToExpressiveMediaLibrary(
@@ -204,6 +189,9 @@ export async function addMediaToExpressiveMediaLibrary(
   } = {},
 ) {
   if (media.sizeBytes > EXPRESSIVE_MEDIA_MAX_BYTES) {
+    if (media.mimeType === 'image/gif' || fileExtension(media.name) === 'gif') {
+      throw new Error('Choose an animated GIF smaller than 2 MB so its animation can be preserved.');
+    }
     throw new Error('Choose media smaller than 2 MB.');
   }
   const validationError = expressiveMediaFileError(
@@ -237,6 +225,7 @@ export async function addFilesToExpressiveMediaLibrary(
     storeFile?: StoreMediaFile;
     now?: () => number;
     accountId?: string | null;
+    compressSticker?: CompressStickerFile;
   } = {},
 ) {
   const storage = options.storage === undefined ? browserStorage() : options.storage;
@@ -246,13 +235,23 @@ export async function addFilesToExpressiveMediaLibrary(
   const additions: ExpressiveMediaLibraryItem[] = [];
 
   for (const file of files) {
-    const mimeType = file.type.trim().toLocaleLowerCase()
-      || (kind === 'gif' ? 'image/gif' : `image/${fileExtension(file.name)}`);
-    const data = Array.from(new Uint8Array(await file.arrayBuffer()));
+    const validationError = expressiveMediaFileError(file, kind);
+    if (validationError) throw new Error(validationError);
+    const sourceKind = expressiveMediaKindForFile(file);
+    if (sourceKind === 'gif' && file.size > EXPRESSIVE_MEDIA_MAX_BYTES) {
+      throw new Error('Choose an animated GIF smaller than 2 MB so its animation can be preserved.');
+    }
+    const prepared = kind === 'sticker'
+      && sourceKind !== 'gif'
+      ? await (options.compressSticker ?? compressStickerFile)(file)
+      : file;
+    const mimeType = prepared.type.trim().toLocaleLowerCase()
+      || (kind === 'gif' ? 'image/gif' : `image/${fileExtension(prepared.name)}`);
+    const data = Array.from(new Uint8Array(await prepared.arrayBuffer()));
     additions.push(await addMediaToExpressiveMediaLibrary({
-      name: file.name,
+      name: prepared.name,
       mimeType,
-      sizeBytes: file.size,
+      sizeBytes: prepared.size,
       data,
     }, kind, { storage: null, storeFile, now }));
   }
@@ -396,6 +395,8 @@ export function expressiveMediaAttachment(item: ExpressiveMediaLibraryItem): Att
     name: item.name,
     path: item.path,
     kind: 'image',
+    ...(item.kind === 'sticker' ? { subtype: 'sticker' as const } : {}),
+    expressiveMedia: true,
     mimeType: item.mimeType,
     formatLabel: formatLabel(item.name, item.mimeType),
     previewUrl: expressiveMediaPreviewUrl(item),

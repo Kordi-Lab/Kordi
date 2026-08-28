@@ -62,7 +62,7 @@ export type EditFilePreview = {
 
 export type MessageAttachment = {
   kind: 'image' | 'file';
-  subtype?: 'meme' | null;
+  subtype?: 'meme' | 'sticker' | null;
   altText?: string | null;
   name: string;
   formatLabel?: string | null;
@@ -77,7 +77,7 @@ export type MessageAttachment = {
 
 export type DesktopChatAttachment = {
   kind: 'image' | 'file';
-  subtype?: 'meme' | null;
+  subtype?: 'meme' | 'sticker' | null;
   altText?: string | null;
   name: string;
   formatLabel?: string | null;
@@ -188,6 +188,9 @@ export type ComposerQuoteState = {
 
 export type Message = {
   id?: string;
+  /** Stable idempotency identity retained while an optimistic Cloud row is
+   * replaced by its server-assigned message id. */
+  clientMessageId?: string | null;
   /** Stable id of the canonical session entry rendered by this row,
    * including aggregated assistant turns. Required for actions like fork. */
   entryId?: string | null;
