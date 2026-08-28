@@ -47,11 +47,11 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Kordi uses the camera when you choose to share video in a call or attach a new photo to a message.</string>
+	<string>Kordi uses the camera when you record a video message, attach a photo, or join a video call.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Kordi uses the local network to establish audio and video calls when required.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Kordi uses the microphone when you record a voice message or join a call.</string>
+	<string>Kordi uses the microphone when you record a voice or video message or join a call.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Kordi transcribes voice messages on this iPhone so people and agents can read them.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

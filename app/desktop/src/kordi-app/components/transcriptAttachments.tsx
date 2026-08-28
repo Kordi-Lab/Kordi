@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
+import { LoaderCircle, Play, RotateCcw } from 'lucide-react';
 import {
   attachmentMediaGalleryIndex,
   attachmentImageDisplaySize,
   attachmentPreviewIdentity,
   attachmentPreviewUrl,
   isAnimatedGifAttachment,
+  attachmentVideoUrl,
+  isMp4VideoAttachment,
   isLargeAttachment,
   shouldPreviewAttachmentInline,
 } from '@/features/chat/attachmentMediaGallery';
@@ -61,6 +64,139 @@ function isAttachmentSending(msg: Message) {
     const normalized = chip.trim().toLowerCase();
     return normalized === 'sending' || normalized === 'pending';
   });
+}
+function AttachmentVideoCard({ attachment }: { attachment: MessageAttachment }) {
+  const [localPath, setLocalPath] = useState<string | null>(attachment.localPath?.trim() || null);
+  const [phase, setPhase] = useState<'idle' | 'loading' | 'ready' | 'error'>(() => (
+    attachmentVideoUrl(attachment) ? 'ready' : 'idle'
+  ));
+  const [playbackUrl, setPlaybackUrl] = useState<string | null>(null);
+  const directPosterUrl = (
+    attachment.previewUrl?.startsWith('data:image/') ? attachment.previewUrl : null
+  );
+  const [remotePosterUrl, setRemotePosterUrl] = useState<string | null>(null);
+  const posterUrl = directPosterUrl ?? remotePosterUrl;
+  const [failedSource, setFailedSource] = useState<string | null>(null);
+  const localSource = attachmentVideoUrl(localPath ? { ...attachment, localPath } : attachment);
+  const rawSource = localSource ?? playbackUrl ?? undefined;
+  const source = rawSource === failedSource ? undefined : rawSource;
+  const attachmentId = attachment.attachmentId?.trim() ?? '';
+
+  useEffect(() => {
+    if (source || !attachmentId) return;
+    let cancelled = false;
+    void loadCachedCloudAttachmentLocalPath(attachmentId, attachment.name).then((cached) => {
+      if (!cancelled && cached) {
+        setLocalPath(cached);
+        setPhase('ready');
+      }
+    });
+    return () => { cancelled = true; };
+  }, [attachment.name, attachmentId, source]);
+
+  useEffect(() => {
+    if (directPosterUrl || !attachmentId) return;
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+    void loadSession().then(async (session) => {
+      if (!session?.token || controller.signal.aborted) return;
+      const blob = await defaultCloudAuthClient()
+        .downloadAttachmentPreviewContent(session.token, attachmentId, controller.signal)
+        .catch(() => null);
+      if (!blob || controller.signal.aborted) return;
+      objectUrl = URL.createObjectURL(blob);
+      setRemotePosterUrl(objectUrl);
+    });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachmentId, directPosterUrl]);
+
+  const loadVideo = useCallback(async () => {
+    if (source || !attachmentId || phase === 'loading') return;
+    setPhase('loading');
+    setFailedSource(null);
+    try {
+      const session = await loadSession();
+      if (!session?.token) throw new Error('Sign in to play this video.');
+      const url = await defaultCloudAuthClient().attachmentPlaybackUrl(
+        session.token,
+        attachmentId,
+      );
+      setPlaybackUrl(url);
+      setPhase('ready');
+    } catch {
+      setPhase('error');
+    }
+  }, [attachmentId, phase, source]);
+
+  return (
+    <div
+      data-attachment-video-card="true"
+      className="w-full max-w-[520px] overflow-hidden rounded-[16px] bg-black/[0.92] text-white"
+    >
+      {source ? (
+        <video
+          src={source}
+          controls
+          playsInline
+          preload="metadata"
+          poster={posterUrl ?? undefined}
+          className="block max-h-[360px] w-full bg-black object-contain"
+          aria-label={`Play ${displayAttachmentName(attachment.name, attachment.kind)}`}
+          onError={() => {
+            setFailedSource(source);
+            setPhase('error');
+          }}
+        />
+      ) : (
+        <div className="relative flex min-h-44 flex-col items-center justify-center gap-3 overflow-hidden px-5 py-6 text-center">
+          {posterUrl ? (
+            <img
+              src={posterUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover opacity-65"
+              aria-hidden="true"
+            />
+          ) : null}
+          <div className="absolute inset-0 bg-black/45" aria-hidden="true" />
+          {phase === 'loading' ? (
+            <LoaderCircle className="relative h-7 w-7 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          ) : phase === 'error' ? (
+            <RotateCcw className="relative h-7 w-7" aria-hidden="true" />
+          ) : (
+            <Play className="relative h-8 w-8 fill-current" aria-hidden="true" />
+          )}
+          <div className="relative">
+            <p className="text-[12px] font-semibold">
+              {phase === 'loading' ? 'Loading video…' : phase === 'error' ? 'Video unavailable' : 'Video message'}
+            </p>
+            <p className="mt-1 max-w-[34ch] text-[10.5px] leading-4 text-white/70">
+              {phase === 'error'
+                ? 'Check your connection and try again, or download the original.'
+                : 'Stream the video without waiting for the full download.'}
+            </p>
+          </div>
+          {phase !== 'loading' && attachmentId ? (
+            <button
+              type="button"
+              onClick={() => { void loadVideo(); }}
+              className="relative rounded-full bg-white px-3.5 py-1.5 text-[11px] font-semibold text-black outline-none transition hover:bg-white/90 focus-visible:ring-2 focus-visible:ring-sky-400"
+            >
+              {phase === 'error' ? 'Try again' : 'Play video'}
+            </button>
+          ) : null}
+        </div>
+      )}
+      <div className="flex min-w-0 items-center gap-2 border-t border-white/10 px-3 py-2">
+        <span className="min-w-0 flex-1 truncate text-[10.5px] font-medium text-white/75">
+          {displayAttachmentName(attachment.name, attachment.kind)}
+        </span>
+        <AttachmentActions attachment={attachment} />
+      </div>
+    </div>
+  );
 }
 function imageTileClass(index: number, totalCount: number, intrinsicSingleImage = false) {
   if (totalCount <= 1) return intrinsicSingleImage ? 'col-span-6' : 'col-span-6 row-span-3';
@@ -366,7 +502,10 @@ export function AttachmentPreview({
   const attachments = msg.attachments ?? [];
   const stickerAttachment = messageStickerAttachment(msg);
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
-  const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
+  const videoAttachments = attachments.filter(isMp4VideoAttachment);
+  const downloadableAttachments = attachments.filter((attachment) => (
+    !shouldPreviewAttachmentInline(attachment) && !isMp4VideoAttachment(attachment)
+  ));
   const mediaAttachments = imageGallery?.length ? imageGallery : previewImageAttachments;
   const imageGroupId = useId();
   const [isImageGroupExpanded, setIsImageGroupExpanded] = useState(false);
@@ -501,6 +640,12 @@ export function AttachmentPreview({
             })}
           </TranscriptImageGroup>
         ) : null}
+        {videoAttachments.map((attachment, index) => (
+          <AttachmentVideoCard
+            key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}
+            attachment={attachment}
+          />
+        ))}
         {downloadableAttachments.length > 0 ? (
           <div className="flex flex-col items-start gap-1.5">
             {downloadableAttachments.map((attachment, index) => (

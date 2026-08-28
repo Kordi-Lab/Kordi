@@ -60,6 +60,7 @@ struct ConversationView: View {
     @State private var showPhotoPicker = false
     @State private var showMemePhotoPicker = false
     @State private var showCamera = false
+    @State private var showVideoCamera = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var selectedPhotoSubtype: ChatAttachmentSubtype?
     @State private var isPreparingAttachments = false
@@ -359,6 +360,9 @@ struct ConversationView: View {
                                                         onPrepareAttachment: { attachment in
                                                             await model.prepareAttachmentForPresentation(attachment)
                                                         },
+                                                        onPrepareAttachmentPreview: { attachment in
+                                                            await model.prepareAttachmentPreviewImage(attachment)
+                                                        },
                                                         onAddAttachmentToMediaLibrary: { attachment in
                                                             await model.addAttachmentToExpressiveMediaLibrary(attachment)
                                                         },
@@ -545,6 +549,23 @@ struct ConversationView: View {
                             destinationName: conversation.displayName,
                             cameraAvailable: UIImagePickerController.isSourceTypeAvailable(.camera),
                             onTakePhoto: { showCamera = true },
+                            onRecordVideo: {
+                                guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                                    model.errorMessage = "Kordi could not find an available camera on this iPhone."
+                                    return
+                                }
+                                guard callCoordinator.activeCall == nil else {
+                                    model.errorMessage = "Finish the current call before recording a video message."
+                                    return
+                                }
+                                Task {
+                                    if let error = await VideoCaptureAuthorization.requestError() {
+                                        model.errorMessage = error
+                                    } else {
+                                        showVideoCamera = true
+                                    }
+                                }
+                            },
                             onChoosePhotos: {
                                 guard canPresentPhotoPicker() else { return }
                                 selectedPhotoSubtype = nil
@@ -734,6 +755,8 @@ struct ConversationView: View {
         }
         .onDisappear {
             voiceRecorder.cancel()
+            attachments.forEach { $0.discardOwnedFile() }
+            attachments = []
             callJoinTask?.cancel()
             callJoinTask = nil
             callCoordinator.cancelUnadmittedStart()
@@ -806,6 +829,7 @@ struct ConversationView: View {
         }
         .onChange(of: conversation.id) { _, _ in
             voiceRecorder.cancel()
+            showVideoCamera = false
             synchronizeReadPresentation()
         }
         .fileImporter(
@@ -839,6 +863,16 @@ struct ConversationView: View {
                     importCameraImage(image)
                 },
                 onCancel: { showCamera = false }
+            )
+            .ignoresSafeArea()
+        }
+        .fullScreenCover(isPresented: $showVideoCamera) {
+            CameraVideoPicker(
+                onVideo: { url in
+                    showVideoCamera = false
+                    importCameraVideo(url)
+                },
+                onCancel: { showVideoCamera = false }
             )
             .ignoresSafeArea()
         }
@@ -1775,6 +1809,25 @@ struct ConversationView: View {
                 guard attachments.count < PendingAttachmentLoader.maximumAttachmentCount else {
                     throw AttachmentTransferError.tooManyFiles(PendingAttachmentLoader.maximumAttachmentCount)
                 }
+                attachments.append(attachment)
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func importCameraVideo(_ url: URL) {
+        guard !isPreparingAttachments else { return }
+        isPreparingAttachments = true
+        Task {
+            defer { isPreparingAttachments = false }
+            do {
+                guard attachments.count < PendingAttachmentLoader.maximumAttachmentCount else {
+                    throw AttachmentTransferError.tooManyFiles(
+                        PendingAttachmentLoader.maximumAttachmentCount
+                    )
+                }
+                let attachment = try await PendingAttachmentLoader.loadCameraVideo(url)
                 attachments.append(attachment)
             } catch {
                 model.errorMessage = error.localizedDescription

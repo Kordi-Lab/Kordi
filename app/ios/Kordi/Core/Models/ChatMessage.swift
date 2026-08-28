@@ -380,6 +380,20 @@ struct ChatAttachment: Identifiable, Codable, Hashable {
         guard let sizeBytes, sizeBytes >= 0 else { return nil }
         return ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
     }
+
+    var isMP4Video: Bool {
+        VideoAttachmentPolicy.isMP4(name: name, mimeType: mimeType)
+    }
+
+}
+
+enum VideoAttachmentPolicy {
+    nonisolated static func isMP4(name: String, mimeType: String?) -> Bool {
+        let normalizedMIMEType = mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalizedMIMEType == "video/mp4"
+            || ((normalizedMIMEType == nil || normalizedMIMEType == "application/octet-stream")
+                && URL(fileURLWithPath: name).pathExtension.lowercased() == "mp4")
+    }
 }
 
 struct VoiceMessage: Codable, Hashable {
@@ -470,6 +484,7 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
     var memeRightsConfirmed: Bool
     let mimeType: String?
     let data: Data
+    let fileURL: URL?
     let previewURL: String?
     let widthPixels: Int?
     let heightPixels: Int?
@@ -483,6 +498,7 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
         memeRightsConfirmed: Bool = false,
         mimeType: String?,
         data: Data,
+        fileURL: URL? = nil,
         previewURL: String?,
         widthPixels: Int? = nil,
         heightPixels: Int? = nil
@@ -495,12 +511,33 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
         self.memeRightsConfirmed = memeRightsConfirmed
         self.mimeType = mimeType
         self.data = data
+        self.fileURL = fileURL
         self.previewURL = previewURL
         self.widthPixels = widthPixels
         self.heightPixels = heightPixels
     }
 
-    var sizeBytes: Int64 { Int64(data.count) }
+    var sizeBytes: Int64 {
+        if let fileURL,
+           let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+            return Int64(size)
+        }
+        return Int64(data.count)
+    }
+
+    var isMP4Video: Bool {
+        VideoAttachmentPolicy.isMP4(name: name, mimeType: mimeType)
+    }
+
+    func discardOwnedFile() {
+        guard let fileURL,
+              fileURL.lastPathComponent.hasPrefix("kordi-video-"),
+              fileURL.deletingLastPathComponent().standardizedFileURL
+                == FileManager.default.temporaryDirectory.standardizedFileURL else {
+            return
+        }
+        try? FileManager.default.removeItem(at: fileURL)
+    }
 
     var optimisticAttachment: ChatAttachment {
         ChatAttachment(

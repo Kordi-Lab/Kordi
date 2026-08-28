@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 enum AppPhase: Equatable {
     case launching
@@ -513,6 +514,9 @@ final class AppModel: ObservableObject {
         pendingProviderAuthBindingsBySessionID = [:]
         providerAuthenticationSyncTask?.cancel()
         providerAuthenticationSyncTask = nil
+        for drafts in pendingAttachmentDraftsByMessageId.values {
+            drafts.forEach { $0.discardOwnedFile() }
+        }
         pendingAttachmentDraftsByMessageId = [:]
         pendingReplyByMessageId = [:]
         pendingMessageActionByMessageId = [:]
@@ -1551,6 +1555,7 @@ final class AppModel: ObservableObject {
                 await rebuildConversationCatalog()
             }
             cloudConnectionState = .connected
+            outgoingAttachments.forEach { $0.discardOwnedFile() }
             clearPendingSendMetadata(localId)
 
             if conversation.kind == .agent || routedAgent != nil || routesToSupportAgent {
@@ -2438,6 +2443,21 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func prepareAttachmentPreviewImage(_ attachment: ChatAttachment) async -> UIImage? {
+        if let data = AttachmentPreviewDataURL.decode(attachment.previewURL) {
+            return UIImage(data: data)
+        }
+        guard let token,
+              !attachment.attachmentId.hasPrefix("pending:"),
+              let data = try? await api.downloadAttachmentPreviewContent(
+                token: token,
+                attachmentId: attachment.attachmentId
+              ) else {
+            return nil
+        }
+        return UIImage(data: data)
+    }
+
     func addAttachmentToExpressiveMediaLibrary(
         _ attachment: ChatAttachment
     ) async -> ExpressiveMediaLibraryKind? {
@@ -2647,12 +2667,29 @@ final class AppModel: ObservableObject {
             errorMessage = AttachmentTransferError.missingSession.localizedDescription
             return nil
         }
+        if attachment.attachmentId.hasPrefix("pending:") {
+            let pendingId = String(attachment.attachmentId.dropFirst("pending:".count))
+            // ponytail: active send drafts are bounded; add an index if concurrent
+            // attachment uploads ever make this scan measurable.
+            for drafts in pendingAttachmentDraftsByMessageId.values {
+                if let pending = drafts.first(where: { $0.id == pendingId }) {
+                    if let fileURL = pending.fileURL {
+                        return fileURL
+                    }
+                    return try? await attachmentFileStore.store(
+                        pending.data,
+                        attachment: attachment,
+                        accountId: accountId
+                    )
+                }
+            }
+        }
         let usesImagePreview = AttachmentDownloadPolicy.usesImagePreview(
             for: attachment,
             prefersOriginal: prefersOriginal
         )
         if let cached = await attachmentFileStore.cachedURL(for: attachment, accountId: accountId),
-           usesImagePreview || (MessageImageInteraction.isAnimatedGIF(attachment)
+           attachment.isMP4Video || usesImagePreview || (MessageImageInteraction.isAnimatedGIF(attachment)
             && AnimatedImageDecoder.isAnimated(at: cached)) {
             return cached
         }
@@ -2665,6 +2702,14 @@ final class AppModel: ObservableObject {
             return nil
         }
         do {
+            if attachment.isMP4Video, !prefersOriginal {
+                let url = try await api.attachmentPlaybackURL(
+                    token: token,
+                    attachmentId: attachment.attachmentId
+                )
+                cloudConnectionState = .connected
+                return url
+            }
             let data = if usesImagePreview,
                           let preview = try? await api.downloadAttachmentPreviewContent(
                             token: token,

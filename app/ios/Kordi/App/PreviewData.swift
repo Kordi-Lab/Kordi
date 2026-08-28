@@ -624,6 +624,31 @@ enum PreviewData {
     }
 
     private static func previewMediaMessages(now: Date) -> [ChatMessage] {
+        if ProcessInfo.processInfo.arguments.contains("--preview-video-message") {
+            return [
+                ChatMessage(
+                    id: "preview-video-message",
+                    conversationId: "person:acct_maya",
+                    author: .person,
+                    authorName: "Maya Chen",
+                    text: "",
+                    createdAt: now.addingTimeInterval(-30),
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    attachments: [
+                        ChatAttachment(
+                            attachmentId: "att_preview_video",
+                            name: "Launch-review.mp4",
+                            kind: .file,
+                            mimeType: "video/mp4",
+                            sizeBytes: 148_200_000,
+                            previewURL: previewBarsImageDataURL()
+                        )
+                    ]
+                )
+            ]
+        }
         let attachments = previewChatAttachments()
         if ProcessInfo.processInfo.arguments.contains("--preview-media-separated") {
             return attachments.enumerated().map { index, attachment in

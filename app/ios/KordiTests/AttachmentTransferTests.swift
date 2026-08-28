@@ -155,6 +155,67 @@ final class AttachmentTransferTests: XCTestCase {
         }
     }
 
+    func testMP4AttachmentsUseVideoPresentationWithoutASeparateMessageType() {
+        let verified = ChatAttachment(
+            attachmentId: "video-1",
+            name: "clip.bin",
+            kind: .file,
+            mimeType: "video/mp4",
+            sizeBytes: 12,
+            previewURL: nil
+        )
+        let legacy = ChatAttachment(
+            attachmentId: "video-2",
+            name: "clip.mp4",
+            kind: .file,
+            mimeType: nil,
+            sizeBytes: 12,
+            previewURL: nil
+        )
+        let mismatch = ChatAttachment(
+            attachmentId: "video-3",
+            name: "clip.mp4",
+            kind: .file,
+            mimeType: "application/pdf",
+            sizeBytes: 12,
+            previewURL: nil
+        )
+
+        XCTAssertTrue(verified.isMP4Video)
+        XCTAssertTrue(legacy.isMP4Video)
+        XCTAssertFalse(mismatch.isMP4Video)
+    }
+
+    func testLargeMP4DraftsStayFileBacked() throws {
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("source-\(UUID().uuidString).mp4")
+        try Data(repeating: 7, count: 3 * 1_024 * 1_024).write(to: source)
+        defer { try? FileManager.default.removeItem(at: source) }
+
+        let attachment = try XCTUnwrap(PendingAttachmentLoader.loadFiles(urls: [source]).first)
+        let storedURL = try XCTUnwrap(attachment.fileURL)
+        defer { attachment.discardOwnedFile() }
+
+        XCTAssertTrue(attachment.data.isEmpty)
+        XCTAssertNotEqual(storedURL, source)
+        XCTAssertEqual(attachment.sizeBytes, 3 * 1_024 * 1_024)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: storedURL.path))
+    }
+
+    func testMultipartUploadRangesCoverEveryByteOnce() {
+        XCTAssertEqual(
+            AttachmentUploadChunking.ranges(totalBytes: 17, chunkSizeBytes: 8),
+            [0..<8, 8..<16, 16..<17]
+        )
+        XCTAssertTrue(
+            AttachmentUploadChunking.ranges(totalBytes: 0, chunkSizeBytes: 8).isEmpty
+        )
+        XCTAssertTrue(
+            AttachmentUploadChunking.ranges(totalBytes: 17, chunkSizeBytes: 0).isEmpty
+        )
+        XCTAssertEqual(AttachmentUploadChunking.parallelParts, 3)
+    }
+
     func testMemePolicyRequiresAccessibleSupportedImageAndRightsConfirmation() {
         let valid = PendingAttachment(
             id: "meme-1",

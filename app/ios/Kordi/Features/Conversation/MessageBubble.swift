@@ -1,3 +1,4 @@
+import AVKit
 import ImageIO
 import SwiftUI
 import UIKit
@@ -39,6 +40,7 @@ struct MessageBubble: View, Equatable {
     let onShareAttachment: (ChatAttachment) -> Void
     let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
     let onPrepareAttachment: (ChatAttachment) async -> URL?
+    let onPrepareAttachmentPreview: (ChatAttachment) async -> UIImage?
     let onAddAttachmentToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
@@ -410,6 +412,7 @@ struct MessageBubble: View, Equatable {
                                 },
                                 onShare: { onShareAttachment(attachment) },
                                 onPrepare: onPrepareAttachment,
+                                onPreparePreview: onPrepareAttachmentPreview,
                                 onAddToMediaLibrary: onAddAttachmentToMediaLibrary,
                                 isActionTarget: actionAttachment?.id == attachment.id,
                                 onPrepareActions: { prepareImageActions(attachment) },
@@ -662,7 +665,9 @@ struct MessageBubble: View, Equatable {
         }
         let attachmentLabel = message.voiceMessage != nil
             ? ", voice message"
-            : message.attachments.isEmpty ? "" : ", \(attachmentCountText(message.attachments.count))"
+            : message.attachments.contains(where: { $0.isMP4Video })
+                ? ", video message"
+                : message.attachments.isEmpty ? "" : ", \(attachmentCountText(message.attachments.count))"
         let messageText = ComposerMentionTargetCatalog.accessibilityText(
             in: message.text,
             mentions: message.mentions,
@@ -1300,6 +1305,7 @@ private struct MessageAttachmentCard: View {
     let onOpen: (UIImage?) -> Void
     let onShare: () -> Void
     let onPrepare: (ChatAttachment) async -> URL?
+    let onPreparePreview: (ChatAttachment) async -> UIImage?
     let onAddToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let isActionTarget: Bool
     let onPrepareActions: () -> Void
@@ -1318,6 +1324,13 @@ private struct MessageAttachmentCard: View {
                 isActionTarget: isActionTarget,
                 onPrepareActions: onPrepareActions,
                 onRequestActions: onRequestActions
+            )
+        } else if attachment.isMP4Video {
+            MessageVideoAttachment(
+                attachment: attachment,
+                onPrepare: onPrepare,
+                onPreparePreview: onPreparePreview,
+                onShare: onShare
             )
         } else {
             MessageFileAttachmentCard(
@@ -1693,6 +1706,134 @@ private struct MessageFileAttachmentCard: View {
 
     private var subtitle: String {
         [attachment.formatLabel, attachment.sizeLabel].compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+private struct MessageVideoAttachment: View {
+    let attachment: ChatAttachment
+    let onPrepare: (ChatAttachment) async -> URL?
+    let onPreparePreview: (ChatAttachment) async -> UIImage?
+    let onShare: () -> Void
+
+    @State private var player: AVPlayer?
+    @State private var poster: UIImage?
+    @State private var isLoading = false
+    @State private var loadFailed = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let player {
+                VideoPlayer(player: player)
+                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .background(.black)
+                    .accessibilityLabel("Play \(attachment.name)")
+            } else {
+                Button(action: loadAndPlay) {
+                    ZStack {
+                        if let poster {
+                            Image(uiImage: poster)
+                                .resizable()
+                                .scaledToFill()
+                                .accessibilityHidden(true)
+                        }
+                        Color.black.opacity(poster == nil ? 1 : 0.45)
+                        VStack(spacing: 9) {
+                            if isLoading {
+                                ProgressView()
+                                    .tint(.white)
+                                    .accessibilityHidden(true)
+                            } else {
+                                Image(systemName: loadFailed ? "arrow.clockwise" : "play.fill")
+                                    .font(.title2.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .accessibilityHidden(true)
+                            }
+                            Text(isLoading
+                                 ? "Preparing video…"
+                                 : loadFailed ? "Try loading again" : "Play video")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 174)
+                    .clipped()
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .disabled(isLoading)
+                .accessibilityLabel(
+                    isLoading
+                        ? "Loading \(attachment.name)"
+                        : loadFailed ? "Retry loading \(attachment.name)" : "Play \(attachment.name)"
+                )
+            }
+
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(attachment.name)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Text([attachment.formatLabel, attachment.sizeLabel]
+                        .compactMap { $0 }
+                        .joined(separator: " · "))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Menu {
+                    if player == nil {
+                        Button("Play", systemImage: "play", action: loadAndPlay)
+                    }
+                    Button("Download / Save to Files", systemImage: "arrow.down.circle", action: onShare)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 36, height: 44)
+                }
+                .accessibilityLabel("More actions for \(attachment.name)")
+            }
+            .padding(.leading, 12)
+            .padding(.trailing, 4)
+        }
+        .frame(maxWidth: 310)
+        .background(Color(uiColor: .systemBackground).opacity(0.82))
+        .compositingGroup()
+        .clipShape(.rect(cornerRadius: 13))
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(Color(uiColor: .separator).opacity(0.22), lineWidth: 0.5)
+        }
+        .task(id: attachment.id) {
+            let image = await onPreparePreview(attachment)
+            if !Task.isCancelled {
+                poster = image
+            }
+        }
+        .onDisappear { player?.pause() }
+    }
+
+    private func loadAndPlay() {
+        guard !isLoading else { return }
+        if let player {
+            player.play()
+            return
+        }
+        isLoading = true
+        loadFailed = false
+        Task {
+            guard let url = await onPrepare(attachment) else {
+                isLoading = false
+                loadFailed = true
+                return
+            }
+            let preparedPlayer = AVPlayer(url: url)
+            player = preparedPlayer
+            isLoading = false
+            preparedPlayer.play()
+        }
     }
 }
 

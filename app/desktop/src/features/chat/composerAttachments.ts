@@ -3,7 +3,7 @@ import type { SaveDesktopAttachmentOptions } from './composerController.types';
 import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
 import {
   readDesktopChatAttachment,
-  storeDesktopChatAttachment,
+  storeDesktopChatAttachmentFile,
   type DesktopStoredChatAttachment,
 } from '@/lib/desktop';
 import {
@@ -259,8 +259,11 @@ export async function composerAttachmentItemFromFile(
   if (subtype && !isSupportedMemeImage({ kind, mimeType, name })) {
     throw new Error('Memes must be PNG, JPEG, GIF, or WebP images.');
   }
-  const path = await storeDesktopChatAttachment(name, Array.from(new Uint8Array(await file.arrayBuffer())));
-  const previewUrl = kind === 'image' ? URL.createObjectURL(file) : undefined;
+  const stored = await storeDesktopChatAttachmentFile(file, name);
+  const path = stored.path;
+  const previewUrl = kind === 'image' || mimeType === 'video/mp4'
+    ? URL.createObjectURL(file)
+    : undefined;
   const dimensions = kind === 'image'
     ? await imagePixelDimensionsFromUrl(previewUrl)
     : null;
@@ -268,6 +271,7 @@ export async function composerAttachmentItemFromFile(
     id: `${name}-${path}`,
     name,
     path,
+    localPath: path,
     kind,
     mimeType,
     formatLabel: attachmentFormatLabel(name, mimeType),

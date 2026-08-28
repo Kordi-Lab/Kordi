@@ -15,7 +15,7 @@ use sqlx_core::query_as::query_as;
 
 use crate::attachments::access::attachment_access_row;
 use crate::attachments::content_type::{
-    detected_raster_content_type, normalized_supported_raster_content_type,
+    detected_supported_content_type, normalized_verified_content_type,
 };
 use crate::attachments::preview::{normalize_preview_url, preview_content_response};
 use crate::attachments::response::{boxed_err, err};
@@ -217,15 +217,15 @@ pub async fn upload(
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
-    let detected_content_type = detected_raster_content_type(&bytes);
+    let detected_content_type = detected_supported_content_type(&bytes);
     if let Some(declared) = content_type
         .as_deref()
-        .and_then(normalized_supported_raster_content_type)
+        .and_then(normalized_verified_content_type)
     {
         if detected_content_type != Some(declared) {
             return err(
                 "invalid_attachment_content",
-                "The attachment bytes do not match the declared image type.",
+                "The attachment bytes do not match the declared media type.",
                 StatusCode::BAD_REQUEST,
             );
         }
@@ -475,14 +475,24 @@ pub async fn content(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Path(attachment_id): Path<String>,
+    request_headers: HeaderMap,
 ) -> Response {
-    let s3 = match s3_or_503(&state) {
+    stream_attachment_content(&state, &session, &attachment_id, &request_headers).await
+}
+
+pub(super) async fn stream_attachment_content(
+    state: &ServerState,
+    session: &CloudSession,
+    attachment_id: &str,
+    request_headers: &HeaderMap,
+) -> Response {
+    let s3 = match s3_or_503(state) {
         Ok(value) => value,
         Err(resp) => return *resp,
     };
 
     let (object_key, _, _, content_type, detected_content_type, size_bytes, _) =
-        match attachment_access_row(&state, &session, &attachment_id).await {
+        match attachment_access_row(state, session, attachment_id).await {
             Ok(value) => value,
             Err(resp) => return *resp,
         };
@@ -499,8 +509,20 @@ pub async fn content(
         }
     };
 
-    let object_response = match reqwest::Client::new().get(url.to_string()).send().await {
-        Ok(resp) if resp.status().is_success() => resp,
+    let mut object_request = reqwest::Client::new().get(url.to_string());
+    if let Some(value) = request_headers
+        .get(header::RANGE)
+        .and_then(|value| value.to_str().ok())
+    {
+        object_request = object_request.header(reqwest::header::RANGE, value);
+    }
+    let object_response = match object_request.send().await {
+        Ok(resp)
+            if resp.status().is_success()
+                || resp.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE =>
+        {
+            resp
+        }
         Ok(resp) => {
             eprintln!("[attachments] content fetch failed: {}", resp.status());
             return err(
@@ -525,6 +547,7 @@ pub async fn content(
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
     let object_content_length = object_response.content_length();
+    let object_status = object_response.status();
 
     let mut headers = HeaderMap::new();
     if let Some(value) = detected_content_type
@@ -543,7 +566,16 @@ pub async fn content(
             headers.insert(header::CONTENT_LENGTH, header_value);
         }
     }
+    for name in [header::ACCEPT_RANGES, header::CONTENT_RANGE] {
+        if let Some(value) = object_response.headers().get(name.as_str()) {
+            if let Ok(value) = HeaderValue::from_bytes(value.as_bytes()) {
+                headers.insert(name, value);
+            }
+        }
+    }
     let mut response = Response::new(Body::from_stream(object_response.bytes_stream()));
+    *response.status_mut() =
+        StatusCode::from_u16(object_status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
     *response.headers_mut() = headers;
     response
 }

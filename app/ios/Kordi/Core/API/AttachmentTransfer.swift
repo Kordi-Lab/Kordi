@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
@@ -17,11 +18,9 @@ enum AttachmentPreviewDataURL {
 }
 
 enum PendingAttachmentLoader {
-    // The authenticated Cloud proxy currently accepts 2 MB request bodies.
-    // Keep mobile validation at that contract so uploads fail before leaving
-    // the device with a clear, actionable message.
     static let maximumAttachmentBytes = 2 * 1_024 * 1_024
-    static let maximumBatchBytes = 12 * 1_024 * 1_024
+    static let maximumVideoBytes = 2 * 1_024 * 1_024 * 1_024
+    static let maximumBatchBytes = maximumVideoBytes
     static let maximumAttachmentCount = 8
     static let maximumExpressiveMediaSourceBytes = 32 * 1_024 * 1_024
     static let maximumImagePixelDimension = 100_000
@@ -59,11 +58,37 @@ enum PendingAttachmentLoader {
             defer { if accessed { url.stopAccessingSecurityScopedResource() } }
 
             let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
-            if let fileSize = values?.fileSize, fileSize > maximumAttachmentBytes {
+            let type = values?.contentType
+                ?? UTType(filenameExtension: url.pathExtension)
+                ?? .data
+            let maximumBytes = type.conforms(to: .movie)
+                ? maximumVideoBytes
+                : maximumAttachmentBytes
+            if let fileSize = values?.fileSize, fileSize > maximumBytes {
                 throw AttachmentTransferError.fileTooLarge(url.lastPathComponent)
             }
+            if type.conforms(to: .movie) {
+                let fileSize = values?.fileSize ?? 0
+                totalBytes += fileSize
+                guard totalBytes <= maximumBatchBytes else {
+                    throw AttachmentTransferError.batchTooLarge
+                }
+                let fileURL = temporaryVideoURL(
+                    fileExtension: url.pathExtension.nonEmpty ?? "mp4"
+                )
+                try FileManager.default.copyItem(at: url, to: fileURL)
+                return PendingAttachment(
+                    id: UUID().uuidString.lowercased(),
+                    name: url.lastPathComponent.nonEmpty ?? "video.mp4",
+                    kind: .file,
+                    mimeType: type.preferredMIMEType,
+                    data: Data(),
+                    fileURL: fileURL,
+                    previewURL: nil
+                )
+            }
             let data = try Data(contentsOf: url, options: [.mappedIfSafe])
-            guard data.count <= maximumAttachmentBytes else {
+            guard data.count <= maximumBytes else {
                 throw AttachmentTransferError.fileTooLarge(url.lastPathComponent)
             }
             totalBytes += data.count
@@ -71,9 +96,6 @@ enum PendingAttachmentLoader {
                 throw AttachmentTransferError.batchTooLarge
             }
 
-            let type = values?.contentType
-                ?? UTType(filenameExtension: url.pathExtension)
-                ?? .data
             let mimeType = type.preferredMIMEType
             let kind: ChatAttachmentKind = type.conforms(to: .image) ? .image : .file
             let dimensions = kind == .image ? imagePixelDimensions(data: data) : nil
@@ -212,6 +234,58 @@ enum PendingAttachmentLoader {
         )
     }
 
+    nonisolated static func loadCameraVideo(_ sourceURL: URL) async throws -> PendingAttachment {
+        let outputURL = temporaryVideoURL(fileExtension: "mp4")
+        let asset = AVURLAsset(url: sourceURL)
+        guard let exporter = AVAssetExportSession(
+            asset: asset,
+            presetName: AVAssetExportPresetMediumQuality
+        ), exporter.supportedFileTypes.contains(.mp4) else {
+            throw AttachmentTransferError.invalidVideo
+        }
+        do {
+            exporter.shouldOptimizeForNetworkUse = true
+            try await exporter.export(to: outputURL, as: .mp4)
+            let size = try outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size > 0 else { throw AttachmentTransferError.invalidVideo }
+            guard size <= maximumVideoBytes else {
+                throw AttachmentTransferError.fileTooLarge("This video")
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: outputURL)
+            throw error
+        }
+        let previewURL = await videoPreviewDataURL(asset: AVURLAsset(url: outputURL))
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd-HHmmss"
+        return PendingAttachment(
+            id: UUID().uuidString.lowercased(),
+            name: "Video-\(formatter.string(from: Date())).mp4",
+            kind: .file,
+            mimeType: "video/mp4",
+            data: Data(),
+            fileURL: outputURL,
+            previewURL: previewURL
+        )
+    }
+
+    private nonisolated static func temporaryVideoURL(fileExtension: String) -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent(
+            "kordi-video-\(UUID().uuidString.lowercased()).\(fileExtension.lowercased())"
+        )
+    }
+
+    private nonisolated static func videoPreviewDataURL(asset: AVAsset) async -> String? {
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 480, height: 480)
+        guard let (image, _) = try? await generator.image(at: .zero),
+              let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.68) else {
+            return nil
+        }
+        return compressedPreviewDataURL(data: data)
+    }
+
     private nonisolated static func encodedJPEG(
         _ image: UIImage,
         attempts: [(Double, Double)] = [
@@ -321,6 +395,7 @@ enum AttachmentTransferError: LocalizedError {
     case batchTooLarge
     case missingSession
     case invalidImage
+    case invalidVideo
     case imagesUsePhotoPicker
     case animatedMediaTooLarge(String)
     case expressiveMediaSourceTooLarge(String)
@@ -330,13 +405,15 @@ enum AttachmentTransferError: LocalizedError {
         case let .tooManyFiles(limit):
             "Choose up to \(limit) files at a time."
         case let .fileTooLarge(name):
-            "\(name) is larger than the current 2 MB Cloud upload limit."
+            "\(name) is larger than the current mobile upload limit."
         case .batchTooLarge:
-            "The selected files are larger than the 12 MB mobile upload limit."
+            "The selected files are larger than the 2 GB mobile upload limit."
         case .missingSession:
             "Sign in again to download this attachment."
         case .invalidImage:
             "This image could not be read. Choose another photo."
+        case .invalidVideo:
+            "This video could not be prepared as MP4. Record it again or choose another video."
         case .imagesUsePhotoPicker:
             "Add images with Camera or Photo Library. Files is for documents and other files."
         case let .animatedMediaTooLarge(name):

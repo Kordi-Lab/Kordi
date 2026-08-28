@@ -62,6 +62,12 @@ export function attachmentImageDisplaySize(attachment: MessageAttachment) {
   return fittedImageDisplaySize(dimensions, expressive ? 180 : 464, expressive ? 180 : 320);
 }
 
+export function isMp4VideoAttachment(attachment: MessageAttachment) {
+  const mimeType = attachment.mimeType?.trim().toLowerCase();
+  return mimeType === 'video/mp4'
+    || ((!mimeType || mimeType === 'application/octet-stream') && attachmentExtension(attachment) === 'mp4');
+}
+
 function isArchiveAttachment(attachment: MessageAttachment) {
   return ARCHIVE_ATTACHMENT_EXTENSIONS.has(attachmentExtension(attachment));
 }
@@ -100,6 +106,20 @@ export function attachmentPreviewUrl(attachment: MessageAttachment) {
       return undefined;
     }
   }
+  return undefined;
+}
+
+export function attachmentVideoUrl(attachment: MessageAttachment) {
+  if (!isMp4VideoAttachment(attachment)) return undefined;
+  if (attachment.localPath && isNativeShell()) {
+    try {
+      return convertFileSrc(attachment.localPath);
+    } catch {
+      return undefined;
+    }
+  }
+  const previewUrl = safeAttachmentPreviewUrl(attachment.previewUrl);
+  if (previewUrl && !previewUrl.startsWith('data:image/')) return previewUrl;
   return undefined;
 }
 

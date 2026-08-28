@@ -37,6 +37,8 @@ import type {
 } from '@/pages/chatsPage.types';
 import { useVoiceComposer } from './chatsPage.voiceComposer';
 import { VoiceComposerControls, VoiceRecordingSurface } from './chatsPage.voiceControls';
+import { useVideoMessageRecorder } from '@/features/chat/useVideoMessageRecorder';
+import { VideoRecordingSurface } from './chatsPage.videoComposer';
 
 type MainComposerLocalRouting = {
   paneKind: 'human' | 'agent' | null;
@@ -140,6 +142,12 @@ export function MainComposer({
     focusComposer: () => textareaRef.current?.focus(),
   });
   const voiceSurfaceActive = voice.surfaceActive;
+  const video = useVideoMessageRecorder({
+    conversationId: conversation.id,
+    onSend,
+    focusComposer: () => textareaRef.current?.focus(),
+  });
+  const mediaSurfaceActive = voiceSurfaceActive || video.surfaceActive;
 
   function openPastedImageEditor(pendingAttachments: Promise<AttachmentItem[]>) {
     void pendingAttachments.then((saved) => {
@@ -222,7 +230,9 @@ export function MainComposer({
                 {memeValidationError}
               </p>
             ) : null}
-            {voiceSurfaceActive ? (
+            {video.surfaceActive ? (
+              <VideoRecordingSurface video={video} />
+            ) : voiceSurfaceActive ? (
               <VoiceRecordingSurface voice={voice} />
             ) : <div className="flex min-w-0">
               <textarea
@@ -347,7 +357,7 @@ export function MainComposer({
           ref={composerControlsRef}
           className={cn(
             'app-composer-meta mt-2 items-center justify-between gap-4 pt-2.5',
-            voiceSurfaceActive ? 'hidden' : 'flex',
+            mediaSurfaceActive ? 'hidden' : 'flex',
           )}
         >
           <div
@@ -375,7 +385,8 @@ export function MainComposer({
               onChooseFiles={display.isNativeShell
                 ? () => { void saveDesktopAttachmentPaths(); }
                 : undefined}
-              disabled={false}
+              onRecordVideo={() => { void video.start(); }}
+              disabled={voice.recording}
             /> : null}
             {!voiceSurfaceActive ? <ComposerExpressivePicker
               key={cloudAccountId?.trim() || 'local'}

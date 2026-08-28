@@ -1,4 +1,5 @@
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
 import { readDesktopChatAttachment } from '@/lib/desktop';
 import type {
   CloudAuthClient,
@@ -49,7 +50,8 @@ export async function uploadComposerAttachments({
   for (const attachment of attachments) {
     const mimeType = attachment.mimeType?.trim() || null;
     const kind = attachment.kind === 'image' ? 'image' : 'file';
-    let previewUrl = kind === 'image'
+    const supportsPreview = kind === 'image' || isMp4VideoAttachment(attachment);
+    let previewUrl = supportsPreview
       ? safeCloudAttachmentPreviewUrl(attachment.previewUrl)
       : null;
     let summary: Awaited<ReturnType<typeof uploadNativeCloudAttachment>>;
