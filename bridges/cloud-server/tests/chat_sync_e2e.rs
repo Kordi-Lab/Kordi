@@ -15,6 +15,8 @@ mod default_self_agent;
 mod reactions;
 #[path = "chat_sync_e2e/session_pins.rs"]
 mod session_pins;
+#[path = "chat_sync_e2e/support_migration.rs"]
+mod support_migration;
 async fn try_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
     match init_pool(&url).await {

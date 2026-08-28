@@ -138,6 +138,10 @@ enum KordiSupportIdentity {
     static let displayName = "Kordi Support"
     private static let systemAgentSessionPrefix = "session:direct-system-agent:"
 
+    static func sessionId(for accountId: String) -> String {
+        "\(systemAgentSessionPrefix)\(accountId):\(agentId)"
+    }
+
     static func matches(name: String?, seed: String?) -> Bool {
         let normalizedName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedSeed = seed?.trimmingCharacters(in: .whitespacesAndNewlines)

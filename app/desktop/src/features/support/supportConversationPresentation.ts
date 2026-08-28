@@ -28,17 +28,34 @@ function supportContactResponseText(message: Message): string {
   return candidates.find((value) => value?.trim()) ?? '';
 }
 
-function isPendingSupportContactResponse(message: Message): boolean {
-  return Boolean(message.turn && !message.turn.completed && !message.turn.error?.trim());
+function isPendingSupportContactResponse(
+  message: Message,
+  userMessageIds: ReadonlySet<string>,
+): boolean {
+  const requestIds = [
+    message.replyToMessageId,
+    message.turn?.replyToMessageId,
+    ...(message.replyAliasIds ?? []),
+  ];
+  return Boolean(
+    message.turn
+    && !message.turn.completed
+    && !message.turn.error?.trim()
+    && requestIds.some((id) => id && userMessageIds.has(id)),
+  );
 }
 
 export function normalizeSupportContactMessages(messages: Message[]) {
+  const userMessageIds = new Set(messages.flatMap((message) => (
+    message.role === 'user' && message.id ? [message.id] : []
+  )));
   return messages.flatMap((message) => {
     if (isStaleLocalProviderFailure(message)) return [];
     if (message.role !== 'owned-agent' && message.role !== 'external-agent') return [message];
 
     const text = supportContactResponseText(message);
-    const supportContactTyping = !text.trim() && isPendingSupportContactResponse(message);
+    const supportContactTyping = !text.trim()
+      && isPendingSupportContactResponse(message, userMessageIds);
     if (!text.trim() && !supportContactTyping) return [];
 
     return [{

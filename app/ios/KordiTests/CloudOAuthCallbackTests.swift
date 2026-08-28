@@ -201,6 +201,27 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         XCTAssertEqual(event.payload?.updatedByAccountId, "acct_alice")
     }
 
+    func testDeletedLegacySupportSessionReleasesItsCachedRoute() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [LegacySupportDeletionURLProtocol.self]
+        let client = CloudAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:17081")!,
+            session: URLSession(configuration: configuration)
+        )
+        await client.activateAccount("acct_me")
+
+        _ = try await client.bootstrapChatLatestMessages(token: "oauth-session")
+        let cachedBeforeDeletion = await client.cachedChatConversations()
+        XCTAssertEqual(cachedBeforeDeletion.count, 1)
+
+        let response = try await client.sync(token: "oauth-session", cursor: "1")
+
+        XCTAssertEqual(response.events.map(\.eventType), ["session.deleted"])
+        XCTAssertEqual(response.events.first?.payload?.sessionId, LegacySupportDeletionURLProtocol.sessionId)
+        let cachedAfterDeletion = await client.cachedChatConversations()
+        XCTAssertTrue(cachedAfterDeletion.isEmpty)
+    }
+
     func testSessionPinPathEncodesTheSessionExactlyOnce() async throws {
         SessionPinMutationURLProtocol.request = nil
         let configuration = URLSessionConfiguration.ephemeral
@@ -487,6 +508,41 @@ private final class SessionPinSyncURLProtocol: URLProtocol {
         let payload = Data(
             #"{"protocol_version":2,"events":[{"stream_seq":44,"event_id":"event_session_pin","protocol_version":2,"type":"session.pin.updated","critical":true,"conversation_id":"conversation-group","entity_id":null,"entity_version":null,"occurred_at":"2026-08-17T12:00:01Z","payload":{"sessionId":"session:group","messageId":"message-1","scope":"shared","updatedByAccountId":"acct_alice","updatedAt":"2026-08-17T12:00:01Z"}}],"next_cursor":"44","last_stream_seq":44,"has_more":false,"server_time":"2026-08-17T12:00:01Z"}"#.utf8
         )
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: payload)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+private final class LegacySupportDeletionURLProtocol: URLProtocol {
+    static let sessionId = "session:direct-system-agent:acct_me:cloud_agent_kordi_support"
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let payload: Data
+        if request.url?.path.hasSuffix("/sync/bootstrap") == true {
+            payload = Data(
+                """
+                {"protocol_version":2,"conversations":[{"id":"conversation-support","kind":"ai","shared_title":null,"version":1,"created_by_account_id":"acct_me","legacy_session_id":"\(Self.sessionId)","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":0,"created_at":"2026-08-27T00:00:00Z","updated_at":"2026-08-27T00:00:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":0,"last_read_sequence":0,"joined_at":"2026-08-27T00:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-support","account_id":"acct_me","personal_title":null,"version":1}}],"latest_messages":[],"next_cursor":"1","last_stream_seq":1,"server_time":"2026-08-27T00:00:00Z"}
+                """.utf8
+            )
+        } else {
+            payload = Data(
+                """
+                {"protocol_version":2,"events":[{"stream_seq":2,"event_id":"event-support-quarantine","protocol_version":2,"type":"session.deleted","critical":true,"conversation_id":null,"entity_id":null,"entity_version":null,"occurred_at":"2026-08-28T00:00:00Z","payload":{"sessionId":"\(Self.sessionId)","deletedAt":"2026-08-28T00:00:00Z"}}],"next_cursor":"2","last_stream_seq":2,"has_more":false,"server_time":"2026-08-28T00:00:00Z"}
+                """.utf8
+            )
+        }
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,

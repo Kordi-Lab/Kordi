@@ -434,3 +434,28 @@ test('unknown server error codes degrade to "unknown"', async () => {
     },
   );
 });
+
+test('Chat v2 nested errors preserve the server message', async () => {
+  const { fetchImpl } = recordingFetch(() =>
+    jsonResponse(409, {
+      error: {
+        code: 'IDEMPOTENCY_KEY_REUSED',
+        message: 'The Support session has an incompatible legacy shape.',
+      },
+    }),
+  );
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await assert.rejects(
+    () => client.bootstrapChatSync('kordi_cs_abc'),
+    (caught: unknown) => {
+      assert.ok(caught instanceof CloudAuthError);
+      assert.equal((caught as CloudAuthError).code, 'unknown');
+      assert.equal(
+        (caught as CloudAuthError).message,
+        'The Support session has an incompatible legacy shape.',
+      );
+      return true;
+    },
+  );
+});

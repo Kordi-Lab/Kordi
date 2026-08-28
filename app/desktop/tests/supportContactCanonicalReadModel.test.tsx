@@ -62,6 +62,7 @@ test('support presentation hides stale local provider failures only', () => {
         tools: [],
         completed: false,
         succeeded: false,
+        replyToMessageId: 'user-question',
       },
     },
     {
@@ -90,6 +91,30 @@ test('support presentation hides stale local provider failures only', () => {
   assert.equal(messages[1]?.replyToMessageId, undefined);
   assert.equal(messages[1]?.supportContactResponse, true);
   assert.equal(messages[1]?.supportContactTyping, true);
+});
+
+test('support presentation drops orphaned processing without a user request', () => {
+  const messages = normalizeSupportContactMessages([{
+    id: 'orphaned-support-processing',
+    role: 'owned-agent',
+    sender: 'My Kordi',
+    text: '',
+    time: '16:40',
+    turn: {
+      id: 'turn:orphaned-support-processing',
+      sessionId,
+      prompt: '',
+      status: 'processing',
+      message: 'Processing…',
+      assistantText: '',
+      thinkingText: '',
+      tools: [],
+      completed: false,
+      succeeded: false,
+    },
+  }]);
+
+  assert.deepEqual(messages, []);
 });
 
 test('canonical hydration preserves the fixed Kordi Support contact identity', () => {
