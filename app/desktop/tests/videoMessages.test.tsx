@@ -52,6 +52,7 @@ test('MP4 attachments stay poster-backed until explicit playback instead of rend
 
   assert.match(markup, /data-attachment-video-card="true"/);
   assert.match(markup, /aria-label="Play Video 2026-08-28\.mp4"/);
+  assert.match(markup, /w-\[min\(520px,70vw\)\]/);
   assert.match(markup, /lucide-play/);
   assert.match(markup, /<img/);
   assert.doesNotMatch(markup, /Stream the video/);

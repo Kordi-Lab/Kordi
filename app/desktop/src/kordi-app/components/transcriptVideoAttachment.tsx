@@ -149,7 +149,7 @@ export function AttachmentVideoCard({
   return (
     <div
       data-attachment-video-card="true"
-      className="w-full max-w-[520px] overflow-hidden rounded-[16px] bg-black/[0.92] text-white"
+      className="w-[min(520px,70vw)] max-w-full overflow-hidden rounded-[16px] bg-black/[0.92] text-white"
     >
       <div className="relative aspect-video max-h-[360px] w-full overflow-hidden bg-black">
         {source && playbackRequested && !transferPending ? (
