@@ -551,7 +551,29 @@ function selfAgentMirrorDuplicateIds(
           profileHumanIdentityId,
           true,
         );
-        if (relation && localTerminalRelations.has(relation)) duplicateIds.add(message.id);
+        if (relation && localTerminalRelations.has(relation)) {
+          duplicateIds.add(message.id);
+          continue;
+        }
+        const partialText = normalizedDuplicateText(message.contentText);
+        const sender = selfAgentLogicalSenderKey(
+          message,
+          identityById,
+          profileHumanIdentityId,
+          true,
+        );
+        const localTerminal = partialText && localTerminalMessages.find((candidate) => (
+          candidate.sessionId === message.sessionId
+          && normalizedDuplicateText(candidate.contentText).startsWith(partialText)
+          && selfAgentLogicalSenderKey(
+            candidate,
+            identityById,
+            profileHumanIdentityId,
+            true,
+          ) === sender
+          && Math.abs(candidate.createdAtMs - message.createdAtMs) <= legacyMirrorWindowMs
+        ));
+        if (localTerminal) duplicateIds.add(message.id);
         continue;
       }
       if (!isTerminalOwnedAgentMessage(message)) continue;
