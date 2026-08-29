@@ -9,6 +9,7 @@ import {
   isMp4VideoAttachment,
 } from '../src/features/chat/attachmentMediaGallery';
 import { AttachmentPreview } from '../src/kordi-app/components/transcriptAttachments';
+import { captureVideoPosterDataUrl } from '../src/features/chat/composerAttachments';
 import {
   formatVideoRecordingDuration,
   preferredMp4RecordingMimeType,
@@ -108,6 +109,34 @@ test('video recording selects MP4 only and keeps duration copy stable', () => {
   );
   assert.equal(preferredMp4RecordingMimeType(() => false), null);
   assert.equal(formatVideoRecordingDuration(61_000), '1:01');
+});
+
+test('video posters downsample a single frame instead of retaining video bytes', () => {
+  const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  let drewFrame = false;
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: () => ({ drawImage: () => { drewFrame = true; } }),
+    toDataURL: () => 'data:image/jpeg;base64,cG9zdGVy',
+  };
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { createElement: () => canvas },
+  });
+  try {
+    const poster = captureVideoPosterDataUrl({
+      videoWidth: 1_920,
+      videoHeight: 1_080,
+    } as HTMLVideoElement);
+    assert.equal(poster, 'data:image/jpeg;base64,cG9zdGVy');
+    assert.equal(canvas.width, 480);
+    assert.equal(canvas.height, 270);
+    assert.equal(drewFrame, true);
+  } finally {
+    if (documentDescriptor) Object.defineProperty(globalThis, 'document', documentDescriptor);
+    else Reflect.deleteProperty(globalThis, 'document');
+  }
 });
 
 test('large video paths stay chunked and file-backed', () => {

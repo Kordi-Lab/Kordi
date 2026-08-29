@@ -7,21 +7,7 @@ import {
   formatVideoRecordingDuration,
   type VideoMessageRecorderController,
 } from '@/features/chat/useVideoMessageRecorder';
-
-function videoPosterDataUrl(video: HTMLVideoElement | null) {
-  if (!video?.videoWidth || !video.videoHeight) return null;
-  try {
-    const width = Math.min(480, video.videoWidth);
-    const height = Math.max(1, Math.round(width * video.videoHeight / video.videoWidth));
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    canvas.getContext('2d')?.drawImage(video, 0, 0, width, height);
-    return canvas.toDataURL('image/jpeg', 0.68);
-  } catch {
-    return null;
-  }
-}
+import { captureVideoPosterDataUrl } from '@/features/chat/composerAttachments';
 
 export function VideoRecordingSurface({ video }: { video: VideoMessageRecorderController }) {
   const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -52,7 +38,7 @@ export function VideoRecordingSurface({ video }: { video: VideoMessageRecorderCo
           <Button
             type="button"
             size="sm"
-            onClick={() => video.stop(videoPosterDataUrl(previewRef.current))}
+            onClick={() => video.stop(captureVideoPosterDataUrl(previewRef.current))}
           >
             <CircleStop className="mr-1.5 h-4 w-4" aria-hidden="true" />Stop
           </Button>

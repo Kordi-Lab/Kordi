@@ -1,5 +1,6 @@
 import type { AttachmentItem, AttachmentItemUpdate } from './composerController.types';
 import type { SaveDesktopAttachmentOptions } from './composerController.types';
+import { attachmentVideoUrl, isMp4VideoAttachment } from './attachmentMediaGallery';
 import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
 import {
   readDesktopChatAttachment,
@@ -19,6 +20,8 @@ const GENERIC_IMAGE_NAMES = new Set(['image', 'img', 'clipboard', 'pasted-image'
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg']);
 const MAX_EAGER_IMAGE_PREVIEW_BYTES = 25 * 1024 * 1024;
 const MAX_IN_MEMORY_ATTACHMENT_BYTES = 64 * 1024 * 1024;
+const VIDEO_POSTER_MAX_WIDTH = 480;
+const VIDEO_POSTER_TIMEOUT_MS = 5_000;
 
 type ComposerAttachmentStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
@@ -36,6 +39,78 @@ type StoredComposerAttachment = {
   altText?: string | null;
   memeRightsConfirmed?: boolean;
 };
+
+export function captureVideoPosterDataUrl(video: HTMLVideoElement | null) {
+  if (!video?.videoWidth || !video.videoHeight) return null;
+  try {
+    const width = Math.min(VIDEO_POSTER_MAX_WIDTH, video.videoWidth);
+    const height = Math.max(1, Math.round(width * video.videoHeight / video.videoWidth));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) return null;
+    context.drawImage(video, 0, 0, width, height);
+    return canvas.toDataURL('image/jpeg', 0.68);
+  } catch {
+    return null;
+  }
+}
+
+function waitForVideoEvent(video: HTMLVideoElement, eventName: 'loadeddata' | 'loadedmetadata' | 'seeked') {
+  return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => finish(new Error('Video poster timed out.')), VIDEO_POSTER_TIMEOUT_MS);
+    const finish = (error?: Error) => {
+      window.clearTimeout(timer);
+      video.removeEventListener(eventName, handleSuccess);
+      video.removeEventListener('error', handleError);
+      if (error) reject(error);
+      else resolve();
+    };
+    const handleSuccess = () => finish();
+    const handleError = () => finish(new Error('Video poster could not load.'));
+    video.addEventListener(eventName, handleSuccess, { once: true });
+    video.addEventListener('error', handleError, { once: true });
+  });
+}
+
+export async function videoPosterDataUrlFromSource(source: string) {
+  if (typeof document === 'undefined') return null;
+  const video = document.createElement('video');
+  video.preload = 'metadata';
+  video.muted = true;
+  video.playsInline = true;
+  try {
+    const metadataReady = waitForVideoEvent(video, 'loadedmetadata');
+    video.src = source;
+    await metadataReady;
+    const seekTime = Number.isFinite(video.duration) && video.duration > 0.1
+      ? Math.min(0.5, video.duration / 2)
+      : 0;
+    if (seekTime > 0) {
+      const frameReady = waitForVideoEvent(video, 'seeked');
+      video.currentTime = seekTime;
+      await frameReady;
+    } else if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      await waitForVideoEvent(video, 'loadeddata');
+    }
+    return captureVideoPosterDataUrl(video);
+  } catch {
+    return null;
+  } finally {
+    video.removeAttribute('src');
+    video.load();
+  }
+}
+
+export async function videoPosterDataUrlFromBlob(blob: Blob) {
+  const source = URL.createObjectURL(blob);
+  try {
+    return await videoPosterDataUrlFromSource(source);
+  } finally {
+    URL.revokeObjectURL(source);
+  }
+}
 
 function extensionFromName(name: string) {
   const match = name.trim().match(/\.([A-Za-z0-9]+)$/);
@@ -222,10 +297,13 @@ export async function composerAttachmentItemFromStoredPath({
   const displayName = preferredDisplayName?.trim() || stored.name?.trim() || friendlyAttachmentName(rawName, kindFromName);
   const kind = stored.kind === 'image' ? ('image' as const) : ('file' as const);
   const metadata = { name: displayName, kind, mimeType: stored.mimeType ?? undefined, sizeBytes: stored.sizeBytes ?? undefined };
+  const videoSource = isMp4VideoAttachment(metadata)
+    ? attachmentVideoUrl({ ...metadata, localPath: stored.path })
+    : null;
   const previewUrl = kind === 'image'
     && (metadata.sizeBytes ?? 0) <= MAX_EAGER_IMAGE_PREVIEW_BYTES
     ? await createPreviewUrl(stored.path, metadata)
-    : null;
+    : videoSource ? await videoPosterDataUrlFromSource(videoSource) : null;
   const dimensions = kind === 'image'
     ? await imagePixelDimensionsFromUrl(previewUrl)
     : null;
@@ -261,9 +339,11 @@ export async function composerAttachmentItemFromFile(
   }
   const stored = await storeDesktopChatAttachmentFile(file, name);
   const path = stored.path;
-  const previewUrl = kind === 'image' || mimeType === 'video/mp4'
+  const previewUrl = kind === 'image'
     ? URL.createObjectURL(file)
-    : undefined;
+    : isMp4VideoAttachment({ kind, name, mimeType })
+      ? await videoPosterDataUrlFromBlob(file)
+      : undefined;
   const dimensions = kind === 'image'
     ? await imagePixelDimensionsFromUrl(previewUrl)
     : null;

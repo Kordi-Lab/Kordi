@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { LoaderCircle, Play, RotateCcw } from 'lucide-react';
 
 import { attachmentVideoUrl } from '@/features/chat/attachmentMediaGallery';
-import { displayAttachmentName } from '@/features/chat/composerAttachments';
+import {
+  displayAttachmentName,
+  videoPosterDataUrlFromSource,
+} from '@/features/chat/composerAttachments';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { cloudAttachmentPlaybackUrl } from '@/features/cloud/cloudAttachmentPlayback';
 import {
@@ -36,12 +39,13 @@ export function AttachmentVideoCard({
     ? attachment.previewUrl
     : null;
   const [remotePosterUrl, setRemotePosterUrl] = useState<string | null>(null);
-  const posterUrl = directPosterUrl ?? remotePosterUrl;
+  const [localPosterUrl, setLocalPosterUrl] = useState<string | null>(null);
   const [failedSource, setFailedSource] = useState<string | null>(null);
   const [playbackRequested, setPlaybackRequested] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsTimer = useRef<number | null>(null);
   const localSource = attachmentVideoUrl(localPath ? { ...attachment, localPath } : attachment);
+  const posterUrl = directPosterUrl ?? remotePosterUrl ?? localPosterUrl;
   const rawSource = localSource ?? playbackUrl ?? undefined;
   const source = rawSource === failedSource ? undefined : rawSource;
   const attachmentId = attachment.attachmentId?.trim() ?? '';
@@ -120,6 +124,15 @@ export function AttachmentVideoCard({
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [attachmentId, directPosterUrl]);
+
+  useEffect(() => {
+    if (directPosterUrl || remotePosterUrl || localPosterUrl || !localSource) return;
+    let cancelled = false;
+    void videoPosterDataUrlFromSource(localSource).then((generatedPosterUrl) => {
+      if (!cancelled && generatedPosterUrl) setLocalPosterUrl(generatedPosterUrl);
+    });
+    return () => { cancelled = true; };
+  }, [directPosterUrl, localPosterUrl, localSource, remotePosterUrl]);
 
   const loadVideo = useCallback(async () => {
     if (phase === 'loading') return;

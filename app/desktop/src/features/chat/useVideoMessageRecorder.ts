@@ -216,7 +216,7 @@ export function useVideoMessageRecorder({
               attachment: {
                 ...attachment,
                 localPath: attachment.path,
-                previewUrl: posterRef.current,
+                previewUrl: attachment.previewUrl ?? posterRef.current,
               },
               error: null,
             });
