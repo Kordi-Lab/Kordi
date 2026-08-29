@@ -1,3 +1,4 @@
+import AVFoundation
 import UIKit
 import XCTest
 @testable import Kordi
@@ -214,6 +215,36 @@ final class AttachmentTransferTests: XCTestCase {
             AttachmentUploadChunking.ranges(totalBytes: 17, chunkSizeBytes: 0).isEmpty
         )
         XCTAssertEqual(AttachmentUploadChunking.parallelParts, 3)
+    }
+
+    func testCameraVideoAvoidsASecondEncodeWhenMP4PassthroughIsAvailable() {
+        XCTAssertEqual(
+            PendingAttachmentLoader.cameraVideoExportPresets,
+            [AVAssetExportPresetPassthrough, AVAssetExportPresetMediumQuality]
+        )
+    }
+
+    func testAttachmentUploadProgressStaysTransient() throws {
+        let message = ChatMessage(
+            id: "uploading-video",
+            conversationId: "person:test",
+            author: .me,
+            authorName: "You",
+            text: "",
+            createdAt: Date(timeIntervalSince1970: 1),
+            deliveryState: .sending,
+            errorMessage: nil,
+            requestMessageId: nil,
+            attachmentUploadProgress: 0.42
+        )
+
+        let restored = try JSONDecoder().decode(
+            ChatMessage.self,
+            from: JSONEncoder().encode(message)
+        )
+
+        XCTAssertEqual(message.attachmentUploadProgress, 0.42)
+        XCTAssertNil(restored.attachmentUploadProgress)
     }
 
     func testMemePolicyRequiresAccessibleSupportedImageAndRightsConfirmation() {

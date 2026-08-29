@@ -1148,13 +1148,21 @@ actor CloudAPIClient {
         )
     }
 
-    func uploadAttachment(token: String, attachment: PendingAttachment) async throws -> CloudMessageAttachment {
+    func uploadAttachment(
+        token: String,
+        attachment: PendingAttachment,
+        progress: (@Sendable (Double) async -> Void)? = nil
+    ) async throws -> CloudMessageAttachment {
         let uploaded: AttachmentUploadResponse
         if attachment.fileURL == nil,
            attachment.data.count <= AttachmentUploadChunking.directUploadLimitBytes {
             uploaded = try await uploadDirectAttachment(token: token, attachment: attachment)
         } else {
-            uploaded = try await uploadMultipartAttachment(token: token, attachment: attachment)
+            uploaded = try await uploadMultipartAttachment(
+                token: token,
+                attachment: attachment,
+                progress: progress
+            )
         }
         if let previewURL = attachment.previewURL {
             try? await updateAttachmentPreview(
@@ -1214,7 +1222,8 @@ actor CloudAPIClient {
 
     private func uploadMultipartAttachment(
         token: String,
-        attachment: PendingAttachment
+        attachment: PendingAttachment,
+        progress: (@Sendable (Double) async -> Void)?
     ) async throws -> AttachmentUploadResponse {
         let initiated: AttachmentMultipartInitiateResponse = try await send(
             path: "/v1/cloud/attachments/multipart/initiate",
@@ -1252,6 +1261,8 @@ actor CloudAPIClient {
             defer { try? file?.close() }
             var hasher = SHA256()
             var pendingParts: [(number: Int, data: Data)] = []
+            var uploadedBytes = 0
+            await progress?(0)
             for (index, range) in ranges.enumerated() {
                 let partData: Data
                 if let file {
@@ -1276,6 +1287,8 @@ actor CloudAPIClient {
                         attachmentName: attachment.name,
                         token: token
                     )
+                    uploadedBytes += pendingParts.reduce(0) { $0 + $1.data.count }
+                    await progress?(min(0.98, Double(uploadedBytes) / Double(totalBytes)))
                     pendingParts.removeAll(keepingCapacity: true)
                 }
             }
@@ -1286,17 +1299,21 @@ actor CloudAPIClient {
                     attachmentName: attachment.name,
                     token: token
                 )
+                uploadedBytes += pendingParts.reduce(0) { $0 + $1.data.count }
+                await progress?(min(0.98, Double(uploadedBytes) / Double(totalBytes)))
             }
             let sha256Hex = hasher.finalize()
                 .map { String(format: "%02x", $0) }
                 .joined()
-            return try await send(
+            let uploaded: AttachmentUploadResponse = try await send(
                 path: "/v1/cloud/attachments/\(encodedId)/multipart",
                 method: "POST",
                 token: token,
                 body: AttachmentMultipartCompleteRequest(sha256Hex: sha256Hex),
                 fallback: "Could not finish the attachment upload."
             )
+            await progress?(1)
+            return uploaded
         } catch {
             try? await sendWithoutResponse(
                 path: "/v1/cloud/attachments/\(encodedId)/multipart",

@@ -1411,7 +1411,26 @@ final class AppModel: ObservableObject {
         )
 
         do {
-            async let attachmentUpload = uploadAttachments(outgoingAttachments, token: token)
+            let conversationId = conversation.id
+            let tracksVideoUpload = outgoingAttachments.count == 1
+                && outgoingAttachments[0].isMP4Video
+            let uploadProgress: (@Sendable (Double) async -> Void)?
+            if tracksVideoUpload {
+                uploadProgress = { [weak self] progress in
+                    await self?.updateAttachmentUploadProgress(
+                        progress,
+                        messageId: localId,
+                        conversationId: conversationId
+                    )
+                }
+            } else {
+                uploadProgress = nil
+            }
+            async let attachmentUpload = uploadAttachments(
+                outgoingAttachments,
+                token: token,
+                progress: uploadProgress
+            )
             let resolvedVoiceMessage = await resolvedVoiceMessage?.value ?? voiceMessage
             if let resolvedVoiceMessage {
                 pendingVoiceDraftsByMessageId[localId] = resolvedVoiceMessage
@@ -3558,19 +3577,40 @@ final class AppModel: ObservableObject {
 
     private func uploadAttachments(
         _ attachments: [PendingAttachment],
-        token: String
+        token: String,
+        progress: (@Sendable (Double) async -> Void)? = nil
     ) async throws -> [CloudMessageAttachment] {
         guard !attachments.isEmpty else { return [] }
+        let reportsProgress = attachments.count == 1
         return try await withThrowingTaskGroup(of: (Int, CloudMessageAttachment).self) { group in
             for (index, attachment) in attachments.enumerated() {
                 group.addTask { [api] in
-                    (index, try await api.uploadAttachment(token: token, attachment: attachment))
+                    (index, try await api.uploadAttachment(
+                        token: token,
+                        attachment: attachment,
+                        progress: reportsProgress ? progress : nil
+                    ))
                 }
             }
             var uploaded: [(Int, CloudMessageAttachment)] = []
             for try await item in group { uploaded.append(item) }
             return uploaded.sorted { $0.0 < $1.0 }.map(\.1)
         }
+    }
+
+    private func updateAttachmentUploadProgress(
+        _ progress: Double,
+        messageId: String,
+        conversationId: String
+    ) {
+        guard let index = messagesByConversation[conversationId]?.firstIndex(where: {
+            $0.id == messageId
+        }) else { return }
+        let value = min(1, max(0, progress))
+        if messagesByConversation[conversationId]?[index].attachmentUploadProgress == value {
+            return
+        }
+        messagesByConversation[conversationId]?[index].attachmentUploadProgress = value
     }
 
     private func startAgentRun(

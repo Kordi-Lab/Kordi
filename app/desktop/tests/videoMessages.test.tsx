@@ -32,7 +32,7 @@ test('MP4 classification prefers MIME metadata and only falls back for untyped f
   }), false);
 });
 
-test('MP4 attachments render as controlled inline video instead of file links', () => {
+test('MP4 attachments stay poster-backed until explicit playback instead of rendering file links', () => {
   const message: Message = {
     role: 'user',
     text: '',
@@ -49,9 +49,32 @@ test('MP4 attachments render as controlled inline video instead of file links', 
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: message }));
 
   assert.match(markup, /data-attachment-video-card="true"/);
-  assert.match(markup, /<video[^>]*controls=""[^>]*playsInline=""/);
-  assert.doesNotMatch(markup, /autoplay/);
+  assert.match(markup, />Play video</);
+  assert.doesNotMatch(markup, /<video/);
   assert.doesNotMatch(markup, /data-attachment-file-link="true"/);
+});
+
+test('sending videos keep the final card geometry and move progress into the media', () => {
+  const message: Message = {
+    role: 'user',
+    text: '',
+    time: '12:30',
+    statusChips: ['sending'],
+    attachments: [{
+      kind: 'file',
+      name: 'Video 2026-08-28.mp4',
+      mimeType: 'video/mp4',
+      previewUrl: 'data:image/jpeg;base64,cG9zdGVy',
+      sizeBytes: 1_024,
+    }],
+  };
+
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: message }));
+
+  assert.match(markup, /data-attachment-video-card="true"/);
+  assert.match(markup, /aspect-video/);
+  assert.match(markup, /aria-label="Sending video"/);
+  assert.doesNotMatch(markup, /<video/);
 });
 
 test('video recording selects MP4 only and keeps duration copy stable', () => {
@@ -79,4 +102,8 @@ test('large video paths stay chunked and file-backed', () => {
   assert.doesNotMatch(attachments, /file\.arrayBuffer\(\)/);
   assert.match(desktop, /file\.slice\(offset, offset \+ chunkSize\)/);
   assert.match(recorder, /appendDesktopChatAttachmentStream/);
+  assert.match(recorder, /videoBitsPerSecond: VIDEO_BITS_PER_SECOND/);
+  assert.match(recorder, /frameRate: \{ ideal: 30, max: 30 \}/);
+  assert.doesNotMatch(recorder, /phase: 'sending'/);
+  assert.ok(recorder.indexOf("clear(false)") > recorder.indexOf("onSend('', [attachment])"));
 });

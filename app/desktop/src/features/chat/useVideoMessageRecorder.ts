@@ -11,13 +11,15 @@ import { composerAttachmentItemFromStoredPath } from './composerAttachments';
 import type { AttachmentItem } from './composerController.types';
 
 const MAX_VIDEO_RECORDING_MS = 60_000;
+const VIDEO_BITS_PER_SECOND = 1_600_000;
+const AUDIO_BITS_PER_SECOND = 64_000;
 const MP4_RECORDING_TYPES = [
   'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
   'video/mp4',
 ];
 
 type VideoComposerState = {
-  phase: 'idle' | 'requesting' | 'recording' | 'processing' | 'review' | 'sending' | 'error';
+  phase: 'idle' | 'requesting' | 'recording' | 'processing' | 'review' | 'error';
   durationMs: number;
   stream: MediaStream | null;
   attachment: AttachmentItem | null;
@@ -101,6 +103,8 @@ export function useVideoMessageRecorder({
     const recorder = recorderRef.current;
     recorderRef.current = null;
     if (recorder && recorder.state !== 'inactive') {
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
       recorder.onstop = null;
       recorder.stop();
     }
@@ -134,7 +138,11 @@ export function useVideoMessageRecorder({
         throw new Error('This Mac cannot record MP4 video in Kordi. Attach an MP4 file instead.');
       }
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30, max: 30 },
+        },
         audio: true,
       });
       if (generation !== generationRef.current) {
@@ -146,14 +154,21 @@ export function useVideoMessageRecorder({
       const attachmentStreamId = await startDesktopChatAttachmentStream(fileName);
       attachmentStreamRef.current = attachmentStreamId;
       let appendPromise = Promise.resolve();
-      const recorder = new MediaRecorder(stream, { mimeType });
+      let appendError: unknown = null;
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: VIDEO_BITS_PER_SECOND,
+        audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
+      });
       recorderRef.current = recorder;
       const startedAt = Date.now();
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           appendPromise = appendPromise.then(() => (
             appendDesktopChatAttachmentStream(attachmentStreamId, event.data)
-          ));
+          )).catch((error: unknown) => {
+            appendError = error;
+          });
         }
       };
       recorder.onerror = () => {
@@ -181,6 +196,7 @@ export function useVideoMessageRecorder({
         void (async () => {
           try {
             await appendPromise;
+            if (appendError) throw new Error(videoRecordingErrorMessage(appendError));
             const stored = await finishDesktopChatAttachmentStream(attachmentStreamId);
             attachmentStreamRef.current = null;
             if (!stored.sizeBytes) throw new Error('The camera stopped before the video could be saved.');
@@ -226,7 +242,7 @@ export function useVideoMessageRecorder({
         const durationMs = Date.now() - startedAt;
         commit({ ...stateRef.current, durationMs });
         if (durationMs >= MAX_VIDEO_RECORDING_MS) recorder.stop();
-      }, 250);
+      }, 1_000);
     } catch (error) {
       if (generation === generationRef.current) {
         const attachmentStreamId = attachmentStreamRef.current;
@@ -249,14 +265,14 @@ export function useVideoMessageRecorder({
     recorder.stop();
   }, [commit]);
 
-  const send = useCallback(async () => {
+  const send = useCallback(() => {
     const attachment = stateRef.current.attachment;
     if (!attachment || stateRef.current.phase !== 'review') return;
-    commit({ ...stateRef.current, phase: 'sending', error: null });
     try {
-      await onSend('', [attachment]);
+      const result = onSend('', [attachment]);
       clear(false);
       window.requestAnimationFrame(focusComposer);
+      void Promise.resolve(result).catch(() => undefined);
     } catch (error) {
       commit({
         ...stateRef.current,

@@ -951,6 +951,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var readByCount: Int?
     var readByAccountIds: [String]
     var attachments: [ChatAttachment]
+    var attachmentUploadProgress: Double?
     var replyToMessageId: String?
     var reactionTargetMessageId: String?
     var messageAction: MessageActionMetadata?
@@ -1004,6 +1005,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         readByCount: Int? = nil,
         readByAccountIds: [String] = [],
         attachments: [ChatAttachment] = [],
+        attachmentUploadProgress: Double? = nil,
         replyToMessageId: String? = nil,
         reactionTargetMessageId: String? = nil,
         messageAction: MessageActionMetadata? = nil,
@@ -1028,6 +1030,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.readByCount = readByCount
         self.readByAccountIds = readByAccountIds
         self.attachments = attachments
+        self.attachmentUploadProgress = attachmentUploadProgress
         self.replyToMessageId = replyToMessageId
         self.reactionTargetMessageId = reactionTargetMessageId
         self.messageAction = messageAction
@@ -1097,6 +1100,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         readByCount = try container.decodeIfPresent(Int.self, forKey: .readByCount)
         readByAccountIds = try container.decodeIfPresent([String].self, forKey: .readByAccountIds) ?? []
         attachments = try container.decodeIfPresent([ChatAttachment].self, forKey: .attachments) ?? []
+        attachmentUploadProgress = nil
         replyToMessageId = try container.decodeIfPresent(String.self, forKey: .replyToMessageId)
         reactionTargetMessageId = try container.decodeIfPresent(
             String.self,

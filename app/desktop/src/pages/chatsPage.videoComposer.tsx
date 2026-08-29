@@ -61,32 +61,37 @@ export function VideoRecordingSurface({ video }: { video: VideoMessageRecorderCo
     );
   }
 
-  if (state.phase === 'review' || state.phase === 'sending') {
+  if (state.phase === 'review') {
     const source = state.attachment ? attachmentVideoUrl(state.attachment) : undefined;
     return (
       <div className="flex min-w-0 flex-1 flex-col gap-2 py-1" data-video-recording-surface="review">
-        <video
-          src={source}
-          poster={state.attachment?.previewUrl ?? undefined}
-          controls
-          playsInline
-          preload="metadata"
-          className="block max-h-[260px] w-full rounded-[14px] bg-black object-contain"
-          aria-label="Review recorded video"
-        />
+        <div className="mx-auto w-full max-w-[520px] overflow-hidden rounded-[16px] bg-black/[0.92] text-white">
+          <video
+            src={source}
+            poster={state.attachment?.previewUrl ?? undefined}
+            controls
+            playsInline
+            preload="metadata"
+            className="block aspect-video max-h-[360px] w-full bg-black object-contain"
+            aria-label="Review recorded video"
+          />
+          <div className="flex h-10 min-w-0 items-center border-t border-white/10 px-3">
+            <span className="truncate text-[10.5px] font-medium text-white/75">
+              {state.attachment?.name}
+            </span>
+          </div>
+        </div>
         {state.error ? <p className="text-[11px] text-red-500" role="alert">{state.error}</p> : null}
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="quiet" size="sm" onClick={video.reset} disabled={state.phase === 'sending'}>
+          <Button type="button" variant="quiet" size="sm" onClick={video.reset}>
             <X className="mr-1.5 h-4 w-4" aria-hidden="true" />Cancel
           </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => { void video.retake(); }} disabled={state.phase === 'sending'}>
+          <Button type="button" variant="outline" size="sm" onClick={() => { void video.retake(); }}>
             <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />Retake
           </Button>
-          <Button type="button" size="sm" onClick={() => { void video.send(); }} disabled={state.phase === 'sending'}>
-            {state.phase === 'sending'
-              ? <LoaderCircle className="mr-1.5 h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-              : <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />}
-            {state.phase === 'sending' ? 'Sending…' : 'Send video'}
+          <Button type="button" size="sm" onClick={video.send}>
+            <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
+            Send video
           </Button>
         </div>
       </div>

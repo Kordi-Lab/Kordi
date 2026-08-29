@@ -10,6 +10,7 @@ type TranscriptImageDeliveryOverlayProps = {
   onRetry?: () => void;
   uploadProgress?: number | null;
   onCancelUpload?: () => void;
+  mediaLabel?: string;
 };
 
 function adaptiveDeliveryOverlayClassName(foregroundTone: 'light' | 'dark' | null) {
@@ -28,6 +29,7 @@ export function TranscriptImageDeliveryOverlay({
   onRetry,
   uploadProgress = null,
   onCancelUpload,
+  mediaLabel = 'image',
 }: TranscriptImageDeliveryOverlayProps) {
   if (!visual) return null;
 
@@ -70,7 +72,7 @@ export function TranscriptImageDeliveryOverlay({
                 event.stopPropagation();
                 onCancelUpload();
               }}
-              aria-label="Cancel image upload"
+              aria-label={`Cancel ${mediaLabel} upload`}
             >
               {ring}
             </button>
@@ -117,7 +119,7 @@ export function TranscriptImageDeliveryOverlay({
                 event.stopPropagation();
                 onRetry();
               }}
-              aria-label="Retry sending image"
+              aria-label={`Retry sending ${mediaLabel}`}
             >
               <span>{visual.kind === 'partial' ? 'Partial' : 'Failed'}</span>
               <span aria-hidden="true">·</span>

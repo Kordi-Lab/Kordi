@@ -407,6 +407,8 @@ struct MessageBubble: View, Equatable {
                         ForEach(message.attachments) { attachment in
                             MessageAttachmentCard(
                                 attachment: attachment,
+                                deliveryState: message.deliveryState,
+                                uploadProgress: message.attachmentUploadProgress,
                                 onOpen: { previewImage in
                                     onOpenAttachment(attachment, previewImage)
                                 },
@@ -1302,6 +1304,8 @@ private struct AdaptiveBubbleLayout: Layout {
 
 private struct MessageAttachmentCard: View {
     let attachment: ChatAttachment
+    let deliveryState: MessageDeliveryState
+    let uploadProgress: Double?
     let onOpen: (UIImage?) -> Void
     let onShare: () -> Void
     let onPrepare: (ChatAttachment) async -> URL?
@@ -1328,6 +1332,8 @@ private struct MessageAttachmentCard: View {
         } else if attachment.isMP4Video {
             MessageVideoAttachment(
                 attachment: attachment,
+                deliveryState: deliveryState,
+                uploadProgress: uploadProgress,
                 onPrepare: onPrepare,
                 onPreparePreview: onPreparePreview,
                 onShare: onShare
@@ -1711,6 +1717,8 @@ private struct MessageFileAttachmentCard: View {
 
 private struct MessageVideoAttachment: View {
     let attachment: ChatAttachment
+    let deliveryState: MessageDeliveryState
+    let uploadProgress: Double?
     let onPrepare: (ChatAttachment) async -> URL?
     let onPreparePreview: (ChatAttachment) async -> UIImage?
     let onShare: () -> Void
@@ -1722,7 +1730,9 @@ private struct MessageVideoAttachment: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let player {
+            if deliveryState == .sending {
+                sendingSurface
+            } else if let player {
                 VideoPlayer(player: player)
                     .aspectRatio(16 / 9, contentMode: .fit)
                     .frame(maxWidth: .infinity)
@@ -1756,7 +1766,8 @@ private struct MessageVideoAttachment: View {
                                 .foregroundStyle(.white)
                         }
                     }
-                    .frame(maxWidth: .infinity, minHeight: 174)
+                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
                     .clipped()
                     .contentShape(.rect)
                 }
@@ -1813,6 +1824,44 @@ private struct MessageVideoAttachment: View {
             }
         }
         .onDisappear { player?.pause() }
+    }
+
+    private var sendingSurface: some View {
+        ZStack {
+            if let poster {
+                Image(uiImage: poster)
+                    .resizable()
+                    .scaledToFill()
+                    .accessibilityHidden(true)
+            }
+            Color.black.opacity(poster == nil ? 1 : 0.5)
+            VStack(spacing: 8) {
+                if let uploadProgress {
+                    ProgressView(value: uploadProgress)
+                        .progressViewStyle(.circular)
+                        .controlSize(.large)
+                        .tint(.white)
+                    Text("\(Int((uploadProgress * 100).rounded()))%")
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                        .foregroundStyle(.white)
+                } else {
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(.white)
+                    Text("Sending…")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .aspectRatio(16 / 9, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Sending \(attachment.name)")
+        .accessibilityValue(uploadProgress.map {
+            "\(Int(($0 * 100).rounded())) percent"
+        } ?? "In progress")
     }
 
     private func loadAndPlay() {

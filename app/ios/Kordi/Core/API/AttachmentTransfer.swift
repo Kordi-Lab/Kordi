@@ -24,6 +24,10 @@ enum PendingAttachmentLoader {
     static let maximumAttachmentCount = 8
     static let maximumExpressiveMediaSourceBytes = 32 * 1_024 * 1_024
     static let maximumImagePixelDimension = 100_000
+    static let cameraVideoExportPresets = [
+        AVAssetExportPresetPassthrough,
+        AVAssetExportPresetMediumQuality,
+    ]
 
     nonisolated static func imagePixelDimensions(data: Data) -> (width: Int, height: Int)? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
@@ -237,24 +241,27 @@ enum PendingAttachmentLoader {
     nonisolated static func loadCameraVideo(_ sourceURL: URL) async throws -> PendingAttachment {
         let outputURL = temporaryVideoURL(fileExtension: "mp4")
         let asset = AVURLAsset(url: sourceURL)
-        guard let exporter = AVAssetExportSession(
-            asset: asset,
-            presetName: AVAssetExportPresetMediumQuality
-        ), exporter.supportedFileTypes.contains(.mp4) else {
-            throw AttachmentTransferError.invalidVideo
-        }
-        do {
-            exporter.shouldOptimizeForNetworkUse = true
-            try await exporter.export(to: outputURL, as: .mp4)
-            let size = try outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            guard size > 0 else { throw AttachmentTransferError.invalidVideo }
-            guard size <= maximumVideoBytes else {
-                throw AttachmentTransferError.fileTooLarge("This video")
+        var exportError: Error = AttachmentTransferError.invalidVideo
+        var didExport = false
+        for preset in cameraVideoExportPresets {
+            guard let exporter = AVAssetExportSession(asset: asset, presetName: preset),
+                  exporter.supportedFileTypes.contains(.mp4) else { continue }
+            do {
+                exporter.shouldOptimizeForNetworkUse = true
+                try await exporter.export(to: outputURL, as: .mp4)
+                let size = try outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size > 0 else { throw AttachmentTransferError.invalidVideo }
+                guard size <= maximumVideoBytes else {
+                    throw AttachmentTransferError.fileTooLarge("This video")
+                }
+                didExport = true
+                break
+            } catch {
+                exportError = error
+                try? FileManager.default.removeItem(at: outputURL)
             }
-        } catch {
-            try? FileManager.default.removeItem(at: outputURL)
-            throw error
         }
+        guard didExport else { throw exportError }
         let previewURL = await videoPreviewDataURL(asset: AVURLAsset(url: outputURL))
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
