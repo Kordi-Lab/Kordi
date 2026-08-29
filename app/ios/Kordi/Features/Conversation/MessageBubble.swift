@@ -2,6 +2,18 @@ import ImageIO
 import SwiftUI
 import UIKit
 
+enum MessageBubbleGeometry {
+    static func shape(for author: MessageAuthor) -> UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 12,
+            bottomLeadingRadius: author == .me ? 12 : 4,
+            bottomTrailingRadius: author == .me ? 4 : 12,
+            topTrailingRadius: 12,
+            style: .continuous
+        )
+    }
+}
+
 struct MessageBubble: View, Equatable {
     static let reactionChipVerticalLift: CGFloat = 14
 
@@ -25,7 +37,6 @@ struct MessageBubble: View, Equatable {
     let authorAvatarSeed: String?
     let ownAccountId: String?
     let automaticallyPresentsActions: Bool
-    let readByNames: [String]
     let backgroundSessions: [BackgroundAgentSessionPresentation]
     let onOpenAuthorProfile: () -> Void
     let onOpenMentionProfile: (String) -> Void
@@ -72,7 +83,6 @@ struct MessageBubble: View, Equatable {
             && lhs.authorAvatarSeed == rhs.authorAvatarSeed
             && lhs.ownAccountId == rhs.ownAccountId
             && lhs.automaticallyPresentsActions == rhs.automaticallyPresentsActions
-            && lhs.readByNames == rhs.readByNames
             && lhs.backgroundSessions == rhs.backgroundSessions
     }
 
@@ -572,23 +582,7 @@ struct MessageBubble: View, Equatable {
     }
 
     private var bubbleShape: UnevenRoundedRectangle {
-        if message.author == .me {
-            UnevenRoundedRectangle(
-                topLeadingRadius: 12,
-                bottomLeadingRadius: 12,
-                bottomTrailingRadius: 4,
-                topTrailingRadius: 12,
-                style: .continuous
-            )
-        } else {
-            UnevenRoundedRectangle(
-                topLeadingRadius: 12,
-                bottomLeadingRadius: 4,
-                bottomTrailingRadius: 12,
-                topTrailingRadius: 12,
-                style: .continuous
-            )
-        }
+        MessageBubbleGeometry.shape(for: message.author)
     }
 
     private func replyPreview(_ source: MessageActionSource) -> some View {
@@ -656,7 +650,7 @@ struct MessageBubble: View, Equatable {
 
     private var accessibilityLabel: String {
         let receipt = if message.deliveryState == .read, let count = message.readByCount, count > 0 {
-            "Read by \(count)"
+            "Seen by \(count)"
         } else {
             message.deliveryState.label
         }
@@ -675,15 +669,6 @@ struct MessageBubble: View, Equatable {
         count == 1 ? "1 attachment" : "\(count) attachments"
     }
 
-    private var readReceiptMenuLabel: String {
-        guard !readByNames.isEmpty else {
-            return "Read by \(message.readByCount ?? 0) people"
-        }
-        if readByNames.count <= 2 {
-            return "Read by \(readByNames.joined(separator: ", "))"
-        }
-        return "Read by \(readByNames[0]) and \(readByNames.count - 1) others"
-    }
 }
 
 private struct MessageReactionChips: View {
@@ -2317,7 +2302,7 @@ enum AttachmentImageDecoder {
     }
 }
 
-private struct MessageDeliveryGlyph: View {
+struct MessageDeliveryGlyph: View {
     let state: MessageDeliveryState
     let readByCount: Int?
 
@@ -2348,7 +2333,7 @@ private struct MessageDeliveryGlyph: View {
 
     private var accessibilityLabel: String {
         if state == .read, let readByCount, readByCount > 0 {
-            return "Read by \(readByCount)"
+            return "Seen by \(readByCount)"
         }
         return state.label
     }

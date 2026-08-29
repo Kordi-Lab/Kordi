@@ -65,7 +65,12 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(bubbleSource.contains("isHighlighted || isSelected"))
         XCTAssertTrue(bubbleSource.contains("value: showsSelectionHighlight"))
         XCTAssertTrue(bubbleSource.contains(".accessibilityAddTraits(isSelected ? .isSelected : [])"))
-        XCTAssertTrue(overlaySource.contains("AnyShape(MessageActionBackdrop(cutout: cutout))"))
+        XCTAssertTrue(overlaySource.contains("MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author)"))
+        XCTAssertTrue(overlaySource.contains("readers: readReceiptReaders"))
+        XCTAssertTrue(overlaySource.contains("readers.prefix(4)"))
+        XCTAssertTrue(overlaySource.contains("size: avatarSize"))
+        XCTAssertTrue(overlaySource.contains("MessageDeliveryGlyph(state: .read"))
+        XCTAssertFalse(overlaySource.contains("cornerSize: CGSize(width: 18, height: 18)"))
         XCTAssertTrue(overlaySource.contains("eoFill: true"))
         XCTAssertTrue(overlaySource.contains("Button(action: onDismiss)"))
         XCTAssertTrue(overlaySource.contains("mediaAttachment == nil"))
@@ -88,8 +93,55 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(conversationSource.contains("proxy.scrollTo(row.id, anchor: .bottom)"))
         XCTAssertFalse(conversationSource.contains(".toolbarBackground(.visible"))
         XCTAssertTrue(conversationSource.contains(".toolbar(navigationBarVisibility, for: .navigationBar)"))
+        XCTAssertTrue(conversationSource.contains("showsNavigationChrome ? .visible : .hidden"))
+        XCTAssertFalse(conversationSource.contains("showsNavigationChrome && messageActionMessage == nil ? .visible : .hidden"))
         XCTAssertTrue(conversationSource.contains("WindowOverlayPresenter("))
         XCTAssertTrue(conversationSource.contains("passthroughFrame:"))
+        XCTAssertTrue(conversationSource.contains("MessageReadReceiptPresentation.label("))
+    }
+
+    func testDirectReadReceiptProjectsAndNamesThePeer() throws {
+        let directConversation = conversation(id: "direct", kind: .person, unread: 0)
+        let projected = CloudDirectMessageProjector.project(
+            [CloudMessageDTO(
+                messageId: "msg_read",
+                fromAccountId: "acct_me",
+                toAccountId: "acct_peer",
+                body: "Seen message",
+                createdAt: "2026-08-29T10:00:00Z",
+                deliveredAt: "2026-08-29T10:00:01Z",
+                readAt: "2026-08-29T10:00:02Z",
+                readByAccountIds: [],
+                direction: "outgoing",
+                sessionId: directConversation.sessionId
+            )],
+            conversation: directConversation,
+            ownAccountId: "acct_me"
+        )
+        let message = try XCTUnwrap(projected.first)
+        let readers = MessageReadReceiptPresentation.readers(
+            for: message,
+            in: directConversation
+        )
+
+        XCTAssertEqual(message.readByAccountIds, ["acct_peer"])
+        XCTAssertEqual(message.readByCount, 1)
+        XCTAssertEqual(message.deliveryState.label, "Seen")
+        XCTAssertEqual(readers.map(\.displayName), ["Conversation"])
+        XCTAssertEqual(
+            MessageReadReceiptPresentation.label(for: message, readers: readers),
+            "1 Seen"
+        )
+    }
+
+    func testMessageActionsDoNotMoveTimelineDuringViewportChange() {
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
+            hasRevealedInitialViewport: true,
+            wasAtLatest: true,
+            isMessageActionPresented: true,
+            previousViewportSize: CGSize(width: 390, height: 700),
+            currentViewportSize: CGSize(width: 390, height: 744)
+        ))
     }
 
     func testBlobEmojiCatalogAndRecentsAreSharedDeduplicatedAndBounded() throws {

@@ -100,6 +100,11 @@ enum CloudDirectMessageProjector {
         let responseRequestId = isAgentResponse ? CloudMessageCodec.agentResponseRequestId(message.body) : nil
         let author: MessageAuthor = isAgentResponse ? .agent : (message.fromAccountId == ownAccountId ? .me : .person)
         let state = CloudMessageStateProjector.deliveryState(for: message, ownAccountId: ownAccountId)
+        let readerIds = message.readByAccountIds.flatMap { $0.isEmpty ? nil : $0 }
+            ?? [message.toAccountId]
+        let readByAccountIds = author == .me && state == .read
+            ? readerIds.compactMap(\.nonEmpty).filter { $0 != ownAccountId }
+            : []
         let authorName: String
         switch author {
         case .me:
@@ -127,6 +132,8 @@ enum CloudDirectMessageProjector {
             deliveryState: state,
             errorMessage: nil,
             requestMessageId: responseRequestId,
+            readByCount: readByAccountIds.isEmpty ? nil : readByAccountIds.count,
+            readByAccountIds: readByAccountIds,
             attachments: message.voiceMessage == nil
                 ? message.attachments.map {
                     $0.chatAttachment(messageKind: CloudMessageCodec.canonicalMessageKind(message))

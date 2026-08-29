@@ -209,3 +209,19 @@ test('Cloud unread reconciliation waits for authoritative sync', () => {
     /setPublishedContextKey\([\s\S]*unreadContextKey/,
   );
 });
+
+test('Cloud receipt reconciliation follows paged canonical history', () => {
+  const source = readFileSync(
+    new URL(
+      '../src/features/cloud/useCloudCanonicalReconciliation.ts',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  const receiptEffect = source.slice(
+    source.indexOf('patchCanonicalDeliverySummaries('),
+    source.indexOf('const activeConversationIds = ['),
+  );
+
+  assert.match(receiptEffect, /canonicalState\?\.messages\.length/);
+});

@@ -395,6 +395,34 @@ function deliveryReadersEqual(existing: unknown, readers: readonly CloudDelivery
   });
 }
 
+function monotonicDeliveryReaders(existing: unknown, incoming: readonly CloudDeliveryReader[]) {
+  const participants = contentRecord(existing).participants;
+  const readersByAccountId = new Map<string, CloudDeliveryReader>();
+  if (Array.isArray(participants)) {
+    for (const value of participants) {
+      const participant = contentRecord(value);
+      const identityId = typeof participant.identityId === 'string' ? participant.identityId.trim() : '';
+      const accountId = typeof participant.accountId === 'string'
+        ? participant.accountId.trim()
+        : identityId.startsWith('human:') ? identityId.slice(6) : '';
+      if (!accountId) continue;
+      readersByAccountId.set(accountId, {
+        accountId,
+        identityId: identityId || `human:${accountId}`,
+        readAt: typeof participant.readAt === 'string' ? participant.readAt : null,
+      });
+    }
+  }
+  for (const reader of incoming) {
+    const previous = readersByAccountId.get(reader.accountId);
+    if (!previous || cleanText(previous.readAt) < cleanText(reader.readAt)) {
+      readersByAccountId.set(reader.accountId, reader);
+    }
+  }
+  return [...readersByAccountId.values()]
+    .sort((left, right) => left.accountId.localeCompare(right.accountId));
+}
+
 export function patchCanonicalDeliverySummaries(
   current: CanonicalSessionState | null,
   deliveryByMessageId: ReadonlyMap<string, CloudDeliverySummary>,
@@ -406,22 +434,28 @@ export function patchCanonicalDeliverySummaries(
     const summary = deliveryByMessageId.get(message.id);
     if (!summary) return message;
     const content = contentRecord(message.content);
-    const readersMatch = deliveryReadersEqual(content.readReceiptSummary, summary.readers);
-    if (
-      message.status === 'sent'
-      && content.deliveryState === summary.state
-      && readersMatch
-    ) return message;
+    const readers = monotonicDeliveryReaders(content.readReceiptSummary, summary.readers);
+    const existingReceipt = contentRecord(content.readReceiptSummary);
+    const existingReceiptCount = typeof existingReceipt.count === 'number' && Number.isFinite(existingReceipt.count)
+      ? Math.max(0, Math.floor(existingReceipt.count))
+      : 0;
+    const deliveryState = content.deliveryState === 'read' || summary.state === 'read' || readers.length > 0
+      ? 'read'
+      : 'delivered';
+    const readReceiptSummary = readers.length > 0
+      ? { count: readers.length, participants: readers }
+      : existingReceiptCount > 0 ? content.readReceiptSummary : null;
+    const readersMatch = readReceiptSummary === content.readReceiptSummary
+      || deliveryReadersEqual(content.readReceiptSummary, readers);
+    if (message.status === 'sent' && content.deliveryState === deliveryState && readersMatch) return message;
     changed = true;
     return {
       ...message,
       status: 'sent',
       content: {
         ...content,
-        deliveryState: summary.state,
-        readReceiptSummary: summary.readers.length > 0
-          ? { count: summary.readers.length, participants: summary.readers }
-          : null,
+        deliveryState,
+        readReceiptSummary,
       },
     };
   });
