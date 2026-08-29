@@ -89,8 +89,8 @@ export function attachmentVideoDisplaySize(
     attachment.widthPixels,
     attachment.heightPixels,
   );
-  if (!dimensions) return { width: 520, height: 293 };
-  return fittedImageDisplaySize(dimensions, 520, 520);
+  if (!dimensions) return { width: 464, height: 261 };
+  return fittedImageDisplaySize(dimensions, 464, 320);
 }
 
 function isArchiveAttachment(attachment: MessageAttachment) {

@@ -88,11 +88,11 @@ test('legacy videos resolve dimensions before revealing the media card', () => {
 test('video message layout preserves portrait and landscape aspect ratios', () => {
   assert.deepEqual(
     attachmentVideoDisplaySize({ widthPixels: 1_080, heightPixels: 1_920 }),
-    { width: 293, height: 520 },
+    { width: 180, height: 320 },
   );
   assert.deepEqual(
     attachmentVideoDisplaySize({ widthPixels: 1_920, heightPixels: 1_080 }),
-    { width: 520, height: 293 },
+    { width: 464, height: 261 },
   );
 });
 
@@ -140,7 +140,7 @@ test('sending videos keep the final card geometry and move progress into the med
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: message }));
 
   assert.match(markup, /data-attachment-video-card="true"/);
-  assert.match(markup, /aspect-ratio:520 \/ 293/);
+  assert.match(markup, /aspect-ratio:464 \/ 261/);
   assert.match(markup, /aria-label="Sending video"/);
   assert.doesNotMatch(markup, /<video/);
 });

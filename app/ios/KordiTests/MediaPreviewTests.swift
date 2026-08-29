@@ -216,6 +216,16 @@ final class MediaPreviewTests: XCTestCase {
             1.7778,
             accuracy: 0.0001
         )
+        let portrait = attachment(id: "portrait-video", kind: .file, width: 1_080, height: 1_920)
+        let size = MessageImageInteraction.displaySize(
+            for: portrait,
+            decodedSize: nil,
+            defaultSize: CGSize(width: 244, height: 154),
+            maximumWidth: 244,
+            maximumHeight: 320
+        )
+        XCTAssertEqual(size.width, 180, accuracy: 0.1)
+        XCTAssertEqual(size.height, 320, accuracy: 0.1)
     }
 
     func testTransparentImageKeepsBorderlessSurfaceClear() throws {
@@ -496,13 +506,20 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertEqual(MessageImageStack.targetIndex(count: 3, selectedIndex: 0, direction: -1), 2)
     }
 
-    private func attachment(id: String, kind: ChatAttachmentKind) -> ChatAttachment {
+    private func attachment(
+        id: String,
+        kind: ChatAttachmentKind,
+        width: Int? = nil,
+        height: Int? = nil
+    ) -> ChatAttachment {
         ChatAttachment(
             attachmentId: id,
             name: "\(id).png",
             kind: kind,
             mimeType: kind == .image ? "image/png" : "application/octet-stream",
             sizeBytes: 1_024,
+            widthPixels: width,
+            heightPixels: height,
             previewURL: nil
         )
     }

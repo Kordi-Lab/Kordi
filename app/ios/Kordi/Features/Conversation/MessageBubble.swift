@@ -1822,7 +1822,10 @@ private struct MessageVideoAttachment: View {
                 )
             }
         }
-        .frame(maxWidth: 310)
+        .frame(
+            width: resolvedVideoAspectRatio == nil ? nil : videoDisplaySize.width,
+            height: resolvedVideoAspectRatio == nil ? nil : videoDisplaySize.height
+        )
         .background(poster == nil ? Color(uiColor: .secondarySystemBackground) : .black)
         .compositingGroup()
         .clipShape(.rect(cornerRadius: 13))
@@ -1937,6 +1940,16 @@ private struct MessageVideoAttachment: View {
 
     private var videoAspectRatio: CGFloat {
         resolvedVideoAspectRatio ?? 16 / 9
+    }
+
+    private var videoDisplaySize: CGSize {
+        MessageImageInteraction.displaySize(
+            for: attachment,
+            decodedSize: poster?.size,
+            defaultSize: CGSize(width: 244, height: 154),
+            maximumWidth: 244,
+            maximumHeight: 320
+        )
     }
 
     private var resolvedVideoAspectRatio: CGFloat? {
