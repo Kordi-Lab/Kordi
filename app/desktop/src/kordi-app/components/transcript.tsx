@@ -61,7 +61,6 @@ import type {
   MessageSourceReference,
 } from '../types';
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
-
 function isCompactionSummaryMessage(msg: Message) {
   return msg.role === 'system' && msg.detail?.startsWith(COMPACTION_DETAIL_PREFIX);
 }

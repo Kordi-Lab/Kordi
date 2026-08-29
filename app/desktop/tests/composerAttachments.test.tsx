@@ -232,8 +232,8 @@ test('main composer opens pasted images directly in the editor', () => {
     new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url),
     'utf8',
   );
-  assert.match(source, /openPastedImageEditor\(saveDesktopAttachments\(files\)\)/);
-  assert.match(source, /openPastedImageEditor\(saveDesktopAttachmentPaths\(pastedPaths\)\)/);
+  assert.match(source, /openPastedImageEditor\(videoReviews\.stage\(saveDesktopAttachments\(files\)\)\)/);
+  assert.match(source, /openPastedImageEditor\(videoReviews\.stage\(saveDesktopAttachmentPaths\(pastedPaths\)\)\)/);
   assert.match(source, /requestedEditAttachmentId=\{pastedImageEditId\}/);
 });
 

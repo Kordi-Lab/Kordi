@@ -12,7 +12,7 @@ import {
   playableVideoSource,
 } from '../src/features/chat/attachmentMediaGallery';
 import { AttachmentPreview } from '../src/kordi-app/components/transcriptAttachments';
-import { captureVideoPreview } from '../src/features/chat/composerAttachments';
+import { captureVideoPreview } from '../src/features/chat/composerVideoPreview';
 import {
   formatVideoRecordingDuration,
   preferredMp4RecordingMimeType,
@@ -209,8 +209,8 @@ test('large video paths stay chunked and file-backed', () => {
     new URL('../src/lib/desktopAttachmentStream.ts', import.meta.url),
     'utf8',
   );
-  const composer = readFileSync(
-    new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url),
+  const reviewQueue = readFileSync(
+    new URL('../src/pages/chatsPage.videoAttachmentReviews.ts', import.meta.url),
     'utf8',
   );
 
@@ -224,12 +224,12 @@ test('large video paths stay chunked and file-backed', () => {
   assert.doesNotMatch(recorder, /phase: 'sending'/);
   assert.ok(recorder.indexOf("clear(false)") > recorder.indexOf("onSend('', [attachment])"));
   assert.ok(
-    composer.indexOf('attachedVideoReviewQueueRef.current = remainingReviews')
-      < composer.indexOf('void uploadNativeCloudAttachment({'),
+    reviewQueue.indexOf('replaceQueue(queueRef.current.filter')
+      < reviewQueue.indexOf('void uploadNativeCloudAttachment({'),
   );
   assert.ok(
-    composer.indexOf('void uploadNativeCloudAttachment({')
-      < composer.indexOf("const result = onSend('', [preparedAttachment])"),
+    reviewQueue.indexOf('void uploadNativeCloudAttachment({')
+      < reviewQueue.indexOf("const result = onSend('', [preparedAttachment])"),
   );
   const videoCard = readFileSync(
     new URL('../src/kordi-app/components/transcriptVideoAttachment.tsx', import.meta.url),

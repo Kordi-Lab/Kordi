@@ -6,10 +6,8 @@ import {
   attachmentVideoUrl,
   playableVideoSource,
 } from '@/features/chat/attachmentMediaGallery';
-import {
-  displayAttachmentName,
-  videoPreviewFromSource,
-} from '@/features/chat/composerAttachments';
+import { displayAttachmentName } from '@/features/chat/composerAttachments';
+import { videoPreviewFromSource } from '@/features/chat/composerVideoPreview';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { cloudAttachmentPlaybackUrl } from '@/features/cloud/cloudAttachmentPlayback';
 import { loadVisibleCloudAttachmentPreview } from '@/features/cloud/cloudAttachments';

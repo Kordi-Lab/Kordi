@@ -1,36 +1,31 @@
-import { convertFileSrc } from '@tauri-apps/api/core';
-
 import type { AttachmentItem } from '@/features/chat/composerController.types';
-import {
-  isAnimatedGifAttachment,
-  isMp4VideoAttachment,
-} from '@/features/chat/attachmentMediaGallery';
+import { isAnimatedGifAttachment } from '@/features/chat/attachmentMediaGallery';
 import type { MessageAttachment } from '@/kordi-app/types';
 import { isNativeDesktopShell, storeDesktopChatAttachment } from '@/lib/desktop';
 import { imagePixelDimensionsFromBlob, normalizedImagePixelDimensions } from '@/lib/imageDimensions';
-import type {
-  CloudAuthClient,
-  CloudMessageAttachment,
-  CloudVoiceMessage,
-} from './authClient';
+import type { CloudAuthClient, CloudMessageAttachment, CloudVoiceMessage } from './authClient';
 import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
 import type { CloudAttachmentPreviewGenerator } from './cloudAttachmentPreviewRecovery';
 import {
   cacheCloudAttachmentLocalPath,
   cachedCloudAttachmentLocalPath as cachedLocalPath,
   clearCloudAttachmentLocalPathCache,
-  cloudAttachmentPreviewCacheId,
   downloadCloudAttachmentToLocalPath,
   loadCachedCloudAttachmentLocalPath,
   persistCloudAttachmentBlob,
-  persistCloudAttachmentBytes,
 } from './cloudAttachmentLocalPathCache';
+import {
+  loadCloudAttachmentPreview,
+  type CloudAttachmentPreviewTarget,
+  type PreviewDownloadClient,
+} from './cloudAttachmentPreviewDownload';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
 
 export { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
 export { recoverCloudAttachmentPreview } from './cloudAttachmentPreviewRecovery';
 export { CLOUD_ATTACHMENT_PREVIEW_MAX_DATA_URL_LENGTH, safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
 export { uploadComposerAttachments } from './cloudComposerAttachments';
+export { loadCloudAttachmentPreview } from './cloudAttachmentPreviewDownload';
 
 export const CLOUD_ATTACHMENT_AUTO_DOWNLOAD_MAX_BYTES = 10 * 1024 * 1024;
 // Transcript virtualization mounts a viewport plus 12 rows of overscan on each side.
@@ -51,8 +46,6 @@ export type CloudAttachmentPreviewLease = {
   release(): void;
 };
 
-type PreviewDownloadClient = Pick<CloudAuthClient, 'downloadAttachmentContent'> & Partial<Pick<CloudAuthClient, 'downloadAttachmentPreviewContent'>>;
-type CloudAttachmentPreviewTarget = Pick<CloudMessageAttachment, 'attachmentId' | 'previewAttachmentId' | 'name' | 'kind' | 'mimeType'>;
 const cloudAttachmentPreviewUrlCache = new Map<string, CloudAttachmentPreviewResource>();
 let cloudAttachmentPreviewLoaderEpoch = 0;
 
@@ -261,54 +254,6 @@ export function cloudVoiceMessageToMessageVoice(voice: CloudVoiceMessage) {
     ...voice,
     localPath: voice.localPath ?? cachedCloudAttachmentLocalPath(voice.mediaId),
   };
-}
-
-export async function loadCloudAttachmentPreview({
-  token,
-  client,
-  attachment,
-  signal,
-  createObjectUrl = (blob) => URL.createObjectURL(blob),
-}: {
-  token: string;
-  client: PreviewDownloadClient;
-  attachment: CloudAttachmentPreviewTarget;
-  signal?: AbortSignal;
-  createObjectUrl?: (blob: Blob) => string;
-}) {
-  const isVideo = isMp4VideoAttachment(attachment);
-  if (attachment.kind !== 'image' && !isVideo) return null;
-  const previewCacheId = cloudAttachmentPreviewCacheId(
-    attachment.attachmentId,
-    attachment.previewAttachmentId,
-  );
-  const previewCacheName = isVideo ? `${attachment.name}.preview.jpg` : attachment.name;
-  if (isNativeDesktopShell()) {
-    const cachedPath = await loadCachedCloudAttachmentLocalPath(
-      previewCacheId,
-      previewCacheName,
-    );
-    if (cachedPath) return convertFileSrc(cachedPath);
-  }
-  const isAnimatedGif = isAnimatedGifAttachment(attachment);
-  const contentAttachmentId = isVideo || isAnimatedGif
-    ? attachment.attachmentId?.trim()
-    : attachment.previewAttachmentId?.trim() || attachment.attachmentId?.trim();
-  if (!contentAttachmentId) return null;
-  const previewBlob = !isAnimatedGif && client.downloadAttachmentPreviewContent
-    ? await client.downloadAttachmentPreviewContent(token, contentAttachmentId, signal).catch(() => null)
-    : null;
-  const blob = previewBlob
-    ?? await client.downloadAttachmentContent(token, contentAttachmentId, signal);
-  if (signal?.aborted) throw abortError();
-  if (isNativeDesktopShell()) {
-    await persistCloudAttachmentBytes(
-      previewCacheId,
-      previewCacheName,
-      blob,
-    );
-  }
-  return createObjectUrl(blob);
 }
 
 export async function loadVisibleCloudAttachmentPreview(input: {

@@ -118,36 +118,6 @@ test('visible preview loading uses the thumbnail attachment id when provided', a
   assert.equal(result, 'blob:preview');
 });
 
-test('video posters use the shared preview loader without downloading video bytes', async () => {
-  let previewDownloads = 0;
-  let requestedAttachmentId = '';
-  const result = await loadCloudAttachmentPreview({
-    token: 'token',
-    client: {
-      async downloadAttachmentContent() {
-        throw new Error('Video preview loading must not download the MP4.');
-      },
-      async downloadAttachmentPreviewContent(_token, attachmentId) {
-        previewDownloads += 1;
-        requestedAttachmentId = attachmentId;
-        return new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' });
-      },
-    },
-    attachment: {
-      attachmentId: 'att_video',
-      previewAttachmentId: 'att_video_preview',
-      name: 'video.mp4',
-      kind: 'file',
-      mimeType: 'video/mp4',
-    },
-    createObjectUrl: () => 'blob:video-poster',
-  });
-
-  assert.equal(result, 'blob:video-poster');
-  assert.equal(previewDownloads, 1);
-  assert.equal(requestedAttachmentId, 'att_video');
-});
-
 test('visible preview cache stays bounded, revokes the oldest Blob URL, and reloads it after eviction', async () => {
   const objectUrls = installObjectUrlSpies();
   const downloadCounts = new Map<string, number>();

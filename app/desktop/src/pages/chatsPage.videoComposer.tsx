@@ -15,7 +15,7 @@ import {
 import {
   captureVideoPosterDataUrl,
   captureVideoPreview,
-} from '@/features/chat/composerAttachments';
+} from '@/features/chat/composerVideoPreview';
 
 export function VideoRecordingSurface({ video }: { video: VideoMessageRecorderController }) {
   const previewRef = useRef<HTMLVideoElement | null>(null);

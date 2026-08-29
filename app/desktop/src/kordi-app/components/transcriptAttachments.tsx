@@ -47,7 +47,6 @@ import { sampleAttachmentImageForegroundTone } from './transcriptAttachmentForeg
 import { imageTileClass, isAttachmentSending } from './transcriptAttachmentPresentation';
 import { AttachmentVideoCard } from './transcriptVideoAttachment';
 import type { Message, MessageAttachment } from '../types';
-
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
 export {
   clearAttachmentPreviewRecoveryStateForTests,
@@ -59,7 +58,6 @@ export { shouldCloseAttachmentContextMenuForTarget } from './transcriptAttachmen
 export type { AttachmentContextMenuState } from './transcriptAttachmentContextMenuState';
 export { attachmentImageForegroundToneFromRgba } from './transcriptAttachmentForegroundTone';
 export type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
-
 function AttachmentImageCard({
   attachment,
   index,
@@ -134,7 +132,6 @@ function AttachmentImageCard({
     index,
     event.currentTarget,
   ));
-
   useEffect(() => {
     if (
       usableRecoveredPreviewUrl

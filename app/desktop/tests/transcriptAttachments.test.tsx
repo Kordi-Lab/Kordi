@@ -254,7 +254,7 @@ test('sending image attachments show a centered adaptive media ring without chro
   }));
 
   assert.match(markup, /data-attachment-image-delivery-status="uploading"/);
-  assert.match(markup, /aria-label="Sending image"/);
+  assert.match(markup, /aria-label="Sending image, 0%, 0 B \/ 138 KB"/);
   assert.match(markup, /app-attachment-image-media-ring/);
   assert.match(markup, /app-attachment-image-delivery-adaptive/);
   assert.doesNotMatch(markup, /data-attachment-sending-indicator="true"/);
