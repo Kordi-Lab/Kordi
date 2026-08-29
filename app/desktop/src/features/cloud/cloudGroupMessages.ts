@@ -509,8 +509,7 @@ export function groupMemberJoinNoticeText(memberDisplayName: string, invitedByDi
 export function cloudGroupMemberJoinNoticeRequests(input: {
   envelope: CloudGroupControlEnvelope;
   actorIdentityId: string;
-  identityIdByAccount: ReadonlyMap<string, string>;
-  existingMessageIds?: ReadonlySet<string>;
+  identityIdByAccount: ReadonlyMap<string, string>; existingMessageIds?: ReadonlySet<string>;
 }): AppendCanonicalMessageRequest[] {
   if (input.envelope.kind !== 'group-invite') return [];
   const actorIdentityId = cleanText(input.actorIdentityId);
@@ -518,9 +517,8 @@ export function cloudGroupMemberJoinNoticeRequests(input: {
   const invitedByDisplayName = cleanText(input.envelope.actor.displayName) || 'Someone';
   return (input.envelope.memberJoins ?? []).flatMap((join) => {
     const memberIdentityId = cleanText(input.identityIdByAccount.get(join.accountId));
-    if (!memberIdentityId) return [];
     const messageId = `msg:group-member-join:${join.eventId}:${input.envelope.groupId}`;
-    if (input.existingMessageIds?.has(messageId)) return [];
+    if (!memberIdentityId || input.existingMessageIds?.has(messageId)) return [];
     return [{
       id: messageId,
       sessionId: input.envelope.groupId,

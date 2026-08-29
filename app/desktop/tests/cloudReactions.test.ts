@@ -19,6 +19,7 @@ import {
   updateCloudMessageReaction,
 } from '../src/features/cloud/cloudReactionMutations';
 import type { CloudMessage } from '../src/features/cloud/authClient';
+import { messageBubblePinnedIdsEqual } from '../src/kordi-app/components/messageBubbleMemo';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 
 const message: CloudMessage = {
@@ -304,4 +305,23 @@ test('canonical reactions are a derived read-only workspace projection', () => {
   assert.doesNotMatch(reconciliation, /patchCanonicalCloudReactions/);
   assert.match(cloudState, /cloudCanonicalReactionState = useMemo\(\(\) => patchCanonicalCloudReactions/);
   assert.match(workspace, /canonicalSessionState: cloudCanonicalReactionState \?\? canonicalSessionState/);
+});
+
+test('message reaction selection dismisses the action menu immediately', () => {
+  const source = readFileSync(
+    new URL('../src/kordi-app/components/messageContextMenuContent.tsx', import.meta.url),
+    'utf8',
+  );
+  const handler = source.slice(
+    source.indexOf('const handleReaction'),
+    source.indexOf('const reviewMediaAttachment'),
+  );
+
+  assert.ok(handler.indexOf('onClose?.()') < handler.indexOf('onReactMessage?.(msg, reaction)'));
+});
+
+test('reaction-only updates keep equivalent pin ids memoized', () => {
+  assert.equal(messageBubblePinnedIdsEqual([], []), true);
+  assert.equal(messageBubblePinnedIdsEqual(['message'], ['message']), true);
+  assert.equal(messageBubblePinnedIdsEqual(['message'], ['other']), false);
 });

@@ -17,6 +17,7 @@ import {
   TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
+import { preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP } from '@/features/chat/virtualTranscriptLayout';
 import {
   TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS,
   useVirtualTranscriptNavigation,
@@ -59,18 +60,6 @@ export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
   estimateSize?: (item: Item, index: number) => number;
   gap?: number;
 };
-const preserveMeasuredDisclosurePosition = () => false;
-const preserveRowsBelowPosition = (
-  item: { start: number },
-  _delta: number,
-  instance: {
-    scrollOffset: number | null;
-    scrollRect: { height: number } | null;
-  },
-) => item.start < (instance.scrollOffset ?? 0) + (instance.scrollRect?.height ?? 0);
-const STABLE_DISCLOSURE_SETTLE_MS = 320;
-const TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP = 12;
-const TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT = 72;
 
 type StableDisclosureAnchor = {
   sessionKey: string;
@@ -160,17 +149,9 @@ export function VirtualTranscript<Item>({
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = stableDisclosureActive
     ? preserveMeasuredDisclosurePosition
     : (virtualizer.scrollRect?.height ?? 0) > 0
-      ? (item, delta, instance) => {
-          const shouldPreserve = preserveRowsBelowPosition(item, delta, instance);
-          if (
-            shouldPreserve
-            && tailAlignmentActiveRef.current
-            && tailAlignmentTargetRef.current !== null
-          ) {
-            tailAlignmentTargetRef.current += delta;
-          }
-          return shouldPreserve;
-        }
+      ? (item, delta, instance) => preserveMeasuredTranscriptRow(
+          item, delta, instance, tailAlignmentActiveRef, tailAlignmentTargetRef,
+        )
       : undefined;
 
   const pagingEnabled = hasOlder && Boolean(onLoadOlder);

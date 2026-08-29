@@ -105,10 +105,7 @@ test('incremental reaction sync preserves its cursor and confirms reaction state
   assert.equal(result.chat?.bootstrap, false);
   assert.equal(result.chat?.lastStreamSeq, 45);
   assert.equal(result.events[0].eventType, 'message.upsert');
-  assert.equal(
-    (result.events[0].payload as { reactionStateConfirmed?: boolean }).reactionStateConfirmed,
-    true,
-  );
+  assert.equal((result.events[0].payload as { reactionStateConfirmed?: boolean }).reactionStateConfirmed, true);
 });
 test('ancillary snapshots reach the existing local projections through canonical sync', async () => {
   const client = new CloudAuthClient({
@@ -159,7 +156,6 @@ test('history backfill uses conversation sequences and preserves canonical snaps
   });
 
   const result = await client.listChatConversationHistoryPage('token', conversation.id, 8, 500);
-
   assert.equal(
     calls[0],
     `http://srv/v2/chat/conversations/${conversation.id}/messages?limit=200&before_sequence=8`,

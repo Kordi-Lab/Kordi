@@ -40,9 +40,11 @@ import {
 } from './cloudGroupMessageControl';
 import {
   applyCloudGroupSessionControl,
+} from './cloudGroupSessionControl';
+import {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
   resolveCloudGroupAdminSnapshot,
-} from './cloudGroupSessionControl';
+} from './cloudGroupSessionPolicy';
 import type {
   CloudGroupControlEnvelope,
 } from './cloudGroupMessages';

@@ -1,5 +1,9 @@
 import { groupParticipantStableKey } from './groupTitle';
-import type { ConversationParticipant, ParticipantSpaceKind } from '@/kordi-app/types';
+import type {
+  ConversationParticipant,
+  ParticipantSpaceKind,
+  ParticipantSpaceSessionViewModel,
+} from '@/kordi-app/types';
 
 function isSelf(participant: ConversationParticipant) {
   return participant.role === 'self'
@@ -26,4 +30,17 @@ export function participantSpaceAvatarParticipants(
       groupParticipantStableKey(left).localeCompare(groupParticipantStableKey(right))
     ))
     .slice(0, 3);
+}
+
+export function earliestParticipantSpaceSession(
+  sessions: ParticipantSpaceSessionViewModel[],
+) {
+  return [...sessions].sort((left, right) => {
+    const leftCreatedAtMs = left.conversation.canonicalCreatedAtMs ?? Number.POSITIVE_INFINITY;
+    const rightCreatedAtMs = right.conversation.canonicalCreatedAtMs ?? Number.POSITIVE_INFINITY;
+    return leftCreatedAtMs - rightCreatedAtMs
+      || (left.canonicalSessionId?.trim() || left.id).localeCompare(
+        right.canonicalSessionId?.trim() || right.id,
+      );
+  })[0];
 }

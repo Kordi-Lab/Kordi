@@ -129,14 +129,13 @@ export function mergeCanonicalHistoryIntoRuntime(
       ...(message.replyAliasIds ?? []),
       ...canonicalAliasIds,
     ])];
-    const isForkSnapshot = canonicalMessage.isForkSnapshot;
     const reactionMetadata = mergedMessageReactionMetadata(message, canonicalMessage);
-    if (!isForkSnapshot && replyAliasIds.length === (message.replyAliasIds?.length ?? 0) && !reactionMetadata.changed) {
+    if (!canonicalMessage.isForkSnapshot && replyAliasIds.length === (message.replyAliasIds?.length ?? 0) && !reactionMetadata.changed) {
       return message;
     }
     return {
       ...message,
-      ...(isForkSnapshot ? { isForkSnapshot: true } : {}),
+      ...(canonicalMessage.isForkSnapshot ? { isForkSnapshot: true } : {}),
       ...(replyAliasIds.length > 0 ? { replyAliasIds } : {}),
       ...reactionMetadata.values,
     };

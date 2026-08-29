@@ -85,11 +85,15 @@ function monotonicReadReceiptSummary(
 export function mergedMessageReactionMetadata(message: Message, canonicalMessage: Message) {
   const reactionConversationId = message.reactionConversationId ?? canonicalMessage.reactionConversationId;
   const reactionTargetMessageId = message.reactionTargetMessageId ?? canonicalMessage.reactionTargetMessageId;
-  const reactions = canonicalMessage.reactions ?? message.reactions;
+  const messageReactions = 'reactions' in message ? message.reactions : undefined;
+  const reactions = 'reactions' in canonicalMessage
+    ? canonicalMessage.reactions
+    : messageReactions;
   return {
     changed: reactionConversationId !== message.reactionConversationId
       || reactionTargetMessageId !== message.reactionTargetMessageId
-      || !cloudReactionsEqual(message.reactions, reactions),
+      || ((messageReactions !== undefined || reactions !== undefined)
+        && !cloudReactionsEqual(messageReactions, reactions)),
     values: {
       ...(reactionConversationId ? { reactionConversationId } : {}),
       ...(reactionTargetMessageId ? { reactionTargetMessageId } : {}),

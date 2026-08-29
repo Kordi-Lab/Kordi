@@ -2,7 +2,7 @@ import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { cloudGroupSessionPreparationSignature } from '../src/features/cloud/cloudGroupSessionControl';
+import { cloudGroupSessionPreparationSignature } from '../src/features/cloud/cloudGroupSessionPolicy';
 import type { CloudAccount } from '../src/features/cloud/authClient';
 import type { CloudGroupControlEnvelope } from '../src/features/cloud/cloudGroupMessages';
 

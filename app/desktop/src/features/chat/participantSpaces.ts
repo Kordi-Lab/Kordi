@@ -22,7 +22,10 @@ import {
 import {
   filterParticipantSpacesByChannel,
 } from './participantSpaceFilters';
-import { participantSpaceAvatarParticipants } from './participantSpaceAvatars';
+import {
+  earliestParticipantSpaceSession,
+  participantSpaceAvatarParticipants,
+} from './participantSpaceAvatars';
 
 export {
   isBlankConversation,
@@ -500,14 +503,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
       const groupRootSession = group.kind === 'group'
         ? sortedSessions.find((session) => (
           (cleanOptionalText(session.canonicalSessionId) || cleanOptionalText(session.id)) === groupSpaceId
-        )) ?? [...sortedSessions].sort((left, right) => {
-          const leftCreatedAtMs = left.conversation.canonicalCreatedAtMs ?? Number.POSITIVE_INFINITY;
-          const rightCreatedAtMs = right.conversation.canonicalCreatedAtMs ?? Number.POSITIVE_INFINITY;
-          if (leftCreatedAtMs !== rightCreatedAtMs) return leftCreatedAtMs - rightCreatedAtMs;
-          const leftId = cleanOptionalText(left.canonicalSessionId) || cleanOptionalText(left.id);
-          const rightId = cleanOptionalText(right.canonicalSessionId) || cleanOptionalText(right.id);
-          return leftId.localeCompare(rightId);
-        })[0]
+        )) ?? earliestParticipantSpaceSession(sortedSessions)
         : undefined;
       const groupCreatorIdentityId = group.kind === 'group'
         ? (() => {

@@ -1,4 +1,10 @@
-import type { CloudMessage, CloudReactionIntent } from './authClient';
+import type { CloudMessage } from './authClient';
+
+export type CloudReactionIntent = {
+  value: string;
+  accountId: string;
+  active: boolean;
+};
 
 export function latestCloudReceiptAt(
   current: string | null,
