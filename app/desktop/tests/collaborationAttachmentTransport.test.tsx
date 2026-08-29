@@ -85,6 +85,17 @@ test('failed message attachments can be rebuilt for a retry only while local fil
   }), null);
 });
 
+test('direct video retry restarts native transfer and surfaces terminal failure', () => {
+  const source = readFileSync(
+    new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(source, /retryAttachments\.filter\(isMp4VideoAttachment\)/);
+  assert.match(source, /uploadNativeCloudAttachment\(\{[\s\S]*path: attachment\.path/);
+  assert.match(source, /Unable to retry message[\s\S]*markOptimisticCollaborationMessageFailed/);
+});
+
 test('canonical attachment mapping preserves local paths for image previews', () => {
   assert.deepEqual(canonicalAttachments([{
     kind: 'image',

@@ -49,6 +49,7 @@ import {
   appendOptimisticOutboundMessage,
   failedPreparedCanonicalUserMessage,
   optimisticSessionTitleFromMessage,
+  markOptimisticCollaborationMessageFailed,
   markOptimisticCollaborationMessageSending,
   markOptimisticCanonicalMessageFailed,
   markOptimisticCanonicalMessageSending,
@@ -82,6 +83,11 @@ import type {
 } from './types';
 import { quoteMessageAction } from '../messageActionMetadata';
 import { memeAttachmentDraftError } from '../memeAttachments';
+import { isMp4VideoAttachment } from '../attachmentMediaGallery';
+import {
+  isNativeAttachmentUploadAvailable,
+  uploadNativeCloudAttachment,
+} from '@/features/cloud/cloudAttachmentUpload';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
 import {
   collaborationDirectSessionParticipants,
@@ -1112,6 +1118,14 @@ export function useChatMessageActions({
         setDesktopChatError('This message cannot be retried.');
         return;
       }
+      if (isNativeAttachmentUploadAvailable()) {
+        for (const attachment of retryAttachments.filter(isMp4VideoAttachment)) {
+          void uploadNativeCloudAttachment({
+            path: attachment.path,
+            contentType: attachment.mimeType,
+          }).catch(() => undefined);
+        }
+      }
 
       if (
         activeConversationUsesCollaborationRouting
@@ -1220,11 +1234,14 @@ export function useChatMessageActions({
           );
           setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, retryMessageId, canonicalMessage));
         } catch (error) {
-          const failure = terminalCollaborationSendFailure({ error, fallback: 'Unable to retry message', conversationId: activeCloudConversationId, messageId: retryMessageId });
-          if (failure) {
-            setCloudCollaborationState(failure.updateOptimisticState);
-            setDesktopChatError(failure.detail);
-          }
+          const failureDetail = collaborationSendFailureDetail(error, 'Unable to retry message');
+          setCloudCollaborationState((current) => markOptimisticCollaborationMessageFailed(
+            current,
+            activeCloudConversationId,
+            retryMessageId,
+            failureDetail,
+          ));
+          setDesktopChatError(failureDetail);
         } finally {
           setIsDesktopChatSending(false);
         }
