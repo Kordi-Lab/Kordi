@@ -25,6 +25,7 @@ import {
   normalizedImagePixelDimensions,
 } from '@/lib/imageDimensions';
 import type { MessageAttachment } from '../types';
+import { AttachmentImageLoadingSurface } from './transcriptAttachmentImageSurfaces';
 import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
 
@@ -204,22 +205,31 @@ export function AttachmentVideoCard({
       <div
         data-attachment-video-card="true"
         data-attachment-video-sizing="resolving"
-        className="grid h-14 w-14 place-items-center rounded-full bg-[color:var(--app-control-bg)]"
+        className="relative max-w-full overflow-hidden rounded-[16px]"
+        style={{ width: 244, maxWidth: '70vw', aspectRatio: '244 / 154' }}
       >
-        {phase === 'loading' ? (
-          <LoaderCircle className="h-5 w-5 animate-spin text-[color:var(--utility-muted-text)] motion-reduce:animate-none" aria-label="Preparing video preview" />
-        ) : (
-          <button
-            type="button"
-            onClick={() => { void loadVideo(); }}
-            className="grid h-11 w-11 place-items-center rounded-full bg-black/60 text-white outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--app-sidebar-accent)]"
-            aria-label={phase === 'error' ? `Retry loading ${attachment.name}` : `Play ${attachment.name}`}
-          >
-            {phase === 'error'
-              ? <RotateCcw className="h-5 w-5" aria-hidden="true" />
-              : <Play className="h-5 w-5 translate-x-px fill-current" aria-hidden="true" />}
-          </button>
-        )}
+        <AttachmentImageLoadingSurface
+          className="absolute inset-0 w-full"
+          style={{ width: '100%', height: '100%' }}
+        />
+        <div className="absolute inset-0 grid place-items-center">
+          {phase === 'loading' ? (
+            <span className="grid h-12 w-12 place-items-center rounded-full bg-white/80 shadow-sm" role="status" aria-label="Preparing video preview">
+              <LoaderCircle className="h-5 w-5 animate-spin text-[color:var(--utility-muted-text)] motion-reduce:animate-none" aria-hidden="true" />
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => { void loadVideo(); }}
+              className="grid h-12 w-12 place-items-center rounded-full bg-black/55 text-white shadow-sm outline-none transition hover:bg-black/65 focus-visible:ring-2 focus-visible:ring-[color:var(--app-sidebar-accent)]"
+              aria-label={phase === 'error' ? `Retry loading ${attachment.name}` : `Play ${attachment.name}`}
+            >
+              {phase === 'error'
+                ? <RotateCcw className="h-5 w-5" aria-hidden="true" />
+                : <Play className="h-5 w-5 translate-x-px fill-current" aria-hidden="true" />}
+            </button>
+          )}
+        </div>
       </div>
     );
   }

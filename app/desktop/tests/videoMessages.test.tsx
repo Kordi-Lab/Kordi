@@ -82,7 +82,8 @@ test('legacy videos resolve dimensions before revealing the media card', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: message }));
 
   assert.match(markup, /data-attachment-video-sizing="resolving"/);
-  assert.doesNotMatch(markup, /aspect-ratio:/);
+  assert.match(markup, /data-attachment-image-loading="true"/);
+  assert.doesNotMatch(markup, /aspect-ratio:464 \/ 261/);
 });
 
 test('video message layout preserves portrait and landscape aspect ratios', () => {

@@ -1882,19 +1882,28 @@ private struct MessageVideoAttachment: View {
 
     private var resolvingSurface: some View {
         Button(action: loadAndPlay) {
-            Group {
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.large)
-                        .tint(.secondary)
-                } else {
-                    Image(systemName: loadFailed ? "arrow.clockwise" : "play.fill")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
+            ZStack {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemBackground))
+                Circle()
+                    .fill(Color(uiColor: .systemBackground).opacity(0.9))
+                    .frame(width: 56, height: 56)
+                    .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
+                    .overlay {
+                        if isLoading {
+                            ProgressView()
+                                .controlSize(.large)
+                                .tint(.secondary)
+                        } else {
+                            Image(systemName: loadFailed ? "arrow.clockwise" : "play.fill")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.primary)
+                        }
+                    }
             }
-            .frame(width: 56, height: 56)
-            .background(Color(uiColor: .secondarySystemBackground), in: Circle())
+            .frame(width: 244, height: 154)
+            .compositingGroup()
+            .clipShape(.rect(cornerRadius: 13))
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
