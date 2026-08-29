@@ -525,6 +525,11 @@ function selfAgentMirrorDuplicateIds(
     }
   }
   if (normalizeOwnedAgentIdentity) {
+    const terminalCloudRequestIds = new Set(messages.flatMap((message) => {
+      if (message.sourceTransport !== 'cloud-self-agent' || !isTerminalOwnedAgentMessage(message)) return [];
+      const requestId = stringValue(contentRecord(message.content).cloudRequestMessageId)?.trim();
+      return requestId ? [requestId] : [];
+    }));
     const localTerminalMessages = messages.filter((message) => (
       message.sourceTransport === 'desktop-chat'
       && isTerminalOwnedAgentMessage(message)
@@ -543,6 +548,11 @@ function selfAgentMirrorDuplicateIds(
     for (const message of messages) {
       if (message.sourceTransport !== 'cloud-self-agent') continue;
       if (isActiveProcessingStatus(message)) {
+        const cloudRequestId = stringValue(contentRecord(message.content).cloudRequestMessageId)?.trim();
+        if (cloudRequestId && terminalCloudRequestIds.has(cloudRequestId)) {
+          duplicateIds.add(message.id);
+          continue;
+        }
         const relation = selfAgentMirrorMessageRelationKey(
           message,
           messageById,
