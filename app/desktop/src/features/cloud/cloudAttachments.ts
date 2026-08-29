@@ -291,7 +291,9 @@ export async function loadCloudAttachmentPreview({
     if (cachedPath) return convertFileSrc(cachedPath);
   }
   const isAnimatedGif = isAnimatedGifAttachment(attachment);
-  const contentAttachmentId = isAnimatedGif ? attachment.attachmentId?.trim() : attachment.previewAttachmentId?.trim() || attachment.attachmentId?.trim();
+  const contentAttachmentId = isVideo || isAnimatedGif
+    ? attachment.attachmentId?.trim()
+    : attachment.previewAttachmentId?.trim() || attachment.attachmentId?.trim();
   if (!contentAttachmentId) return null;
   const previewBlob = !isAnimatedGif && client.downloadAttachmentPreviewContent
     ? await client.downloadAttachmentPreviewContent(token, contentAttachmentId, signal).catch(() => null)

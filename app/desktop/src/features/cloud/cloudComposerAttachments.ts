@@ -8,6 +8,7 @@ import type {
 import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
 import {
   cacheCloudAttachmentLocalPath,
+  persistCloudAttachmentPreviewDataUrl,
   persistCloudAttachmentPath,
 } from './cloudAttachmentLocalPathCache';
 import {
@@ -81,6 +82,11 @@ export async function uploadComposerAttachments({
     if (previewUrl && client.updateAttachmentPreview) {
       if (isMp4VideoAttachment(attachment)) {
         await client.updateAttachmentPreview(token, summary.attachmentId, previewUrl);
+        await persistCloudAttachmentPreviewDataUrl(
+          summary.attachmentId,
+          attachment.name,
+          previewUrl,
+        );
       } else {
         await client.updateAttachmentPreview(token, summary.attachmentId, previewUrl).catch(() => undefined);
       }
