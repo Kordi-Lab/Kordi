@@ -14,6 +14,7 @@ The phone is a collaboration client, not an agent runtime. Agent requests execut
 - Agent-session timelines, forks, Cloud-or-Mac routing, and model selection
 - Message history, unread counts, delivery/read state, Markdown, replies, forwarding, pinning, and message details
 - Camera, photo-library, and file attachments with inline image rendering
+- Native URL/text sharing into conversations and system sharing from messages
 - Profile, appearance, and provider-authentication settings synchronized through Kordi Cloud
 - Offline history cache, ordered foreground sync, optimistic sends, and retryable failures
 

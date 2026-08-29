@@ -16,6 +16,7 @@ const requestedSurface = params.get('surface');
 const surface = requestedSurface === 'transcript'
     || requestedSurface === 'remote-transcript'
     || requestedSurface === 'retry-transcript'
+    || requestedSurface === 'link-preview'
   ? requestedSurface
   : 'lightbox';
 
@@ -192,6 +193,38 @@ function RetryTranscriptGallery() {
   );
 }
 
+function LinkPreviewGallery() {
+  const longUrl = 'https://www.xiaohongshu.com/discovery/item/6a90259d000000001f003421?app_platform=ios&xsec_token=redacted&share_id=redacted';
+  const messages: Message[] = [
+    {
+      role: 'user',
+      sender: 'Me',
+      senderType: 'human',
+      isOwnMessage: true,
+      text: longUrl,
+      time: '15:06',
+    },
+    {
+      role: 'owned-agent',
+      sender: 'My Kordi',
+      senderType: 'agent',
+      isOwnMessage: false,
+      text: '[UI design reference](https://refero.design/)',
+      time: '15:07',
+    },
+  ];
+
+  return (
+    <main className={`kordi-app theme-${theme} transcript-image-visual-shell`}>
+      {messages.map((message, index) => (
+        <section key={message.time} aria-label={`Link preview message ${index + 1}`}>
+          <MessageBubble msg={message} />
+        </section>
+      ))}
+    </main>
+  );
+}
+
 document.body.classList.add(`theme-${theme}`);
 if (surface === 'lightbox') {
   document.body.classList.add('app-attachment-media-window-root');
@@ -206,6 +239,8 @@ createRoot(document.querySelector('#root')!).render(
       ? <RemoteTranscriptGallery />
       : surface === 'retry-transcript'
         ? <RetryTranscriptGallery />
+        : surface === 'link-preview'
+          ? <LinkPreviewGallery />
         : <MediaLightboxGallery />,
 );
 document.body.dataset.visualReady = 'true';

@@ -70,6 +70,7 @@ struct ConversationView: View {
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
     @State private var shareItem: SharedFileItem?
+    @State private var messageShareItem: SharedMessageItem?
     @State private var showSessionDetails = false
     @State private var authorProfileConversation: ConversationSummary?
     @State private var selectedBackgroundSession: BackgroundAgentSession?
@@ -863,6 +864,9 @@ struct ConversationView: View {
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.url])
         }
+        .sheet(item: $messageShareItem) { item in
+            ActivityShareSheet(items: [item.item])
+        }
         .navigationDestination(isPresented: $showSessionDetails) {
             SessionDetailView(conversation: conversation)
         }
@@ -970,6 +974,15 @@ struct ConversationView: View {
                 },
                 onCopy: {
                     UIPasteboard.general.string = selectedMessageText?.nonEmpty ?? message.text
+                    dismissMessageActions()
+                },
+                onShareMessage: {
+                    let text = (selectedMessageText?.nonEmpty ?? message.text)
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return }
+                    messageShareItem = SharedMessageItem(
+                        item: KordiMarkdownParser.safeExternalURL(text) ?? text
+                    )
                     dismissMessageActions()
                 },
                 onForward: {

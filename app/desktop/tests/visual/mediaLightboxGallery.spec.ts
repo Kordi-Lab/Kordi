@@ -1,5 +1,34 @@
 import { expect, test } from '@playwright/test';
 
+test('link previews stay compact with long tracking URLs', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 760, height: 720 });
+  await page.goto('/tests/visual/mediaLightboxGallery.html?theme=light&surface=link-preview');
+  await expect(page.locator('body[data-visual-ready="true"]')).toBeVisible();
+
+  const cards = page.locator('.app-message-link-preview');
+  await expect(cards).toHaveCount(2);
+  await expect(cards.first()).toHaveAccessibleName(/xiaohongshu\.com/);
+  await expect(cards.first()).not.toContainText('xsec_token');
+  const wideBox = await cards.first().boundingBox();
+  const bubbleBox = await page.getByLabel('Link preview message 1')
+    .locator('[data-message-context-menu-anchor="true"]')
+    .boundingBox();
+  expect(wideBox).not.toBeNull();
+  expect(bubbleBox).not.toBeNull();
+  expect(wideBox!.height).toBeGreaterThanOrEqual(88);
+  expect(wideBox!.height).toBeLessThanOrEqual(96);
+  expect(bubbleBox!.width - wideBox!.width).toBeLessThanOrEqual(34);
+  await page.screenshot({ path: testInfo.outputPath('link-previews-wide-light.png') });
+
+  await page.setViewportSize({ width: 320, height: 720 });
+  const narrowCard = cards.first();
+  const box = await narrowCard.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: testInfo.outputPath('link-previews-narrow-light.png') });
+});
+
 test('a synced standalone image keeps its natural aspect ratio after remote preview loading', async ({ page }) => {
   await page.route('**/v1/cloud/attachments/visual-remote-preview/content', async (route) => {
     await route.fulfill({

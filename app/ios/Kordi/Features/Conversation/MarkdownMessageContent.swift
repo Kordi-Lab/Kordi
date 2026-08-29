@@ -148,13 +148,14 @@ enum KordiMarkdownParser {
 
         while !remainder.isEmpty {
             let value = String(remainder)
+            if let link = markdownLinkPrefix(value) {
+                parts.append(.link(label: link.label, url: link.url))
+                remainder = remainder.dropFirst(link.length)
+                continue
+            }
             let patterns: [(String, ([String]) -> (part: KordiMarkdownInlinePart, suffix: String)?)] = [
                 ("^:blob:([A-Za-z0-9_-]+):", { captures in
                     BlobEmojiCatalog.byID[captures[1]].map { (.blobEmoji($0), "") }
-                }),
-                ("^\\[([^\\]]+)\\]\\((https?://[^\\s)]+)\\)", { captures in
-                    guard let url = URL(string: captures[2]) else { return nil }
-                    return (.link(label: captures[1], url: url), "")
                 }),
                 ("^(https?://[^\\s<>\"']+)", { captures in
                     var rawURL = captures[1]
@@ -163,7 +164,7 @@ enum KordiMarkdownParser {
                         suffix.insert(last, at: suffix.startIndex)
                         rawURL.removeLast()
                     }
-                    guard let url = URL(string: rawURL) else { return nil }
+                    guard let url = safeExternalURL(rawURL) else { return nil }
                     return (.link(label: rawURL, url: url), suffix)
                 }),
                 ("^`([^`]+)`", { (.code($0[1]), "") }),
@@ -203,6 +204,133 @@ enum KordiMarkdownParser {
         }
 
         return parts
+    }
+
+    private static func markdownLinkPrefix(_ text: String) -> (label: String, url: URL, length: Int)? {
+        guard text.first == "[" else { return nil }
+        let labelStart = text.index(after: text.startIndex)
+        var labelEnd = labelStart
+        var escaped = false
+
+        while labelEnd < text.endIndex {
+            let character = text[labelEnd]
+            if escaped {
+                escaped = false
+                labelEnd = text.index(after: labelEnd)
+                continue
+            }
+            if character == "\\" {
+                escaped = true
+                labelEnd = text.index(after: labelEnd)
+                continue
+            }
+            guard character == "]" else {
+                labelEnd = text.index(after: labelEnd)
+                continue
+            }
+
+            var destinationStart = text.index(after: labelEnd)
+            while destinationStart < text.endIndex, text[destinationStart].isWhitespace {
+                destinationStart = text.index(after: destinationStart)
+            }
+            guard destinationStart < text.endIndex, text[destinationStart] == "(" else {
+                labelEnd = text.index(after: labelEnd)
+                continue
+            }
+            destinationStart = text.index(after: destinationStart)
+            var destinationEnd = destinationStart
+            var parenthesisDepth = 0
+            escaped = false
+
+            while destinationEnd < text.endIndex {
+                let destinationCharacter = text[destinationEnd]
+                if escaped {
+                    escaped = false
+                    destinationEnd = text.index(after: destinationEnd)
+                    continue
+                }
+                if destinationCharacter == "\\" {
+                    escaped = true
+                    destinationEnd = text.index(after: destinationEnd)
+                    continue
+                }
+                if destinationCharacter.isWhitespace { break }
+                if destinationCharacter == "(" {
+                    parenthesisDepth += 1
+                    destinationEnd = text.index(after: destinationEnd)
+                    continue
+                }
+                if destinationCharacter == ")" {
+                    if parenthesisDepth > 0 {
+                        parenthesisDepth -= 1
+                        destinationEnd = text.index(after: destinationEnd)
+                        continue
+                    }
+                    let rawURL = String(text[destinationStart..<destinationEnd])
+                        .replacingOccurrences(of: "\\(", with: "(")
+                        .replacingOccurrences(of: "\\)", with: ")")
+                    guard let url = safeExternalURL(rawURL) else { return nil }
+                    let label = String(text[labelStart..<labelEnd])
+                        .replacingOccurrences(of: "\\]", with: "]")
+                        .replacingOccurrences(of: "\\[", with: "[")
+                    return (
+                        label,
+                        url,
+                        text.distance(from: text.startIndex, to: text.index(after: destinationEnd))
+                    )
+                }
+                destinationEnd = text.index(after: destinationEnd)
+            }
+            return nil
+        }
+
+        return nil
+    }
+
+    static func safeExternalURL(_ value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              components.host?.isEmpty == false,
+              components.user == nil,
+              components.password == nil else { return nil }
+        return URL(string: trimmed)
+    }
+
+    static func compactLinkLabel(_ label: String, url: URL, maximumLength: Int = 48) -> String {
+        guard label == url.absoluteString, label.count > maximumLength else { return label }
+        let host = url.host?.replacingOccurrences(of: "^www\\.", with: "", options: .regularExpression) ?? label
+        let path = url.path.removingPercentEncoding ?? url.path
+        if let leaf = path.split(separator: "/").last,
+           leaf.range(of: "^[a-zA-Z0-9]{20,}$", options: .regularExpression) != nil {
+            return host
+        }
+        let compact = host + (path == "/" ? "" : path)
+        guard compact.count > maximumLength else { return compact }
+        return String(compact.prefix(max(1, maximumLength - 1))) + "…"
+    }
+
+    static func firstExternalURL(in text: String) -> URL? {
+        for block in parse(text) {
+            let values: [String]
+            switch block {
+            case let .heading(_, text), let .paragraph(text), let .blockquote(text):
+                values = [text]
+            case let .list(items):
+                values = items.map(\.text)
+            case let .table(headers, rows):
+                values = headers + rows.flatMap { $0 }
+            case .code:
+                continue
+            }
+            for value in values {
+                for part in parseInline(value) {
+                    if case let .link(_, url) = part { return url }
+                }
+            }
+        }
+        return nil
     }
 
     private static func parseList(
@@ -496,10 +624,7 @@ private struct InlineMarkdownText: View {
 
     var body: some View {
         let parts = KordiMarkdownParser.parseInline(text)
-        if parts.contains(where: { part in
-            if case .blobEmoji = part { return true }
-            return false
-        }) {
+        if requiresInlineFlow(parts) {
             BlobEmojiInlineFlowLayout(spacing: 2) {
                 ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
                     inlineView(part)
@@ -518,11 +643,77 @@ private struct InlineMarkdownText: View {
         case let .blobEmoji(emoji):
             BlobEmojiView(emoji: emoji, size: 22)
                 .accessibilityLabel(emoji.accessibilityName)
+        case let .link(label, url):
+            let labelParts = KordiMarkdownParser.parseInline(label)
+            if containsBlobEmoji(labelParts) {
+                Link(destination: url) {
+                    BlobEmojiInlineFlowLayout(spacing: 2) {
+                        ForEach(Array(labelParts.enumerated()), id: \.offset) { _, labelPart in
+                            linkLabelView(labelPart)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(KordiTheme.signalBlue)
+                .accessibilityLabel(linkLabelAccessibilityText(labelParts))
+            } else {
+                Text(attributedText([part]))
+                    .font(font)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         default:
             Text(attributedText([part]))
                 .font(font)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    @ViewBuilder
+    private func linkLabelView(_ part: KordiMarkdownInlinePart) -> some View {
+        switch part {
+        case let .blobEmoji(emoji):
+            BlobEmojiView(emoji: emoji, size: 22)
+                .accessibilityHidden(true)
+        case let .link(label, url):
+            Text(KordiMarkdownParser.compactLinkLabel(label, url: url))
+                .font(font)
+        default:
+            Text(attributedText([part]))
+                .font(font)
+        }
+    }
+
+    private func requiresInlineFlow(_ parts: [KordiMarkdownInlinePart]) -> Bool {
+        parts.contains { part in
+            switch part {
+            case .blobEmoji:
+                return true
+            case let .link(label, _):
+                return containsBlobEmoji(KordiMarkdownParser.parseInline(label))
+            default:
+                return false
+            }
+        }
+    }
+
+    private func containsBlobEmoji(_ parts: [KordiMarkdownInlinePart]) -> Bool {
+        parts.contains { part in
+            if case .blobEmoji = part { return true }
+            return false
+        }
+    }
+
+    private func linkLabelAccessibilityText(_ parts: [KordiMarkdownInlinePart]) -> String {
+        parts.map { part in
+            switch part {
+            case let .text(value), let .code(value), let .strong(value), let .emphasis(value):
+                value
+            case let .link(label, url):
+                KordiMarkdownParser.compactLinkLabel(label, url: url)
+            case let .blobEmoji(emoji):
+                emoji.accessibilityName
+            }
+        }.joined()
     }
 
     private func attributedText(_ parts: [KordiMarkdownInlinePart]) -> AttributedString {
@@ -541,7 +732,7 @@ private struct InlineMarkdownText: View {
             case let .emphasis(value):
                 fragment = styledText(value, baseFont: font.italic())
             case let .link(label, url):
-                fragment = AttributedString(label)
+                fragment = AttributedString(KordiMarkdownParser.compactLinkLabel(label, url: url))
                 fragment.link = url
                 fragment.foregroundColor = KordiTheme.signalBlue
                 fragment.underlineStyle = .single

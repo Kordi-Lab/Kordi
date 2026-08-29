@@ -42,6 +42,8 @@ targets:
       path: Kordi/Supporting/Kordi.entitlements
       properties:
         aps-environment: $(APNS_ENVIRONMENT)
+        com.apple.security.application-groups:
+          - $(KORDI_SHARE_APP_GROUP)
     info:
       path: Kordi/Supporting/Info.plist
       properties:
@@ -62,6 +64,9 @@ targets:
         KordiCloudBaseURL: $(KORDI_CLOUD_BASE_URL)
         KordiDistributionChannel: $(KORDI_DISTRIBUTION_CHANNEL)
         KordiOAuthCallbackScheme: $(KORDI_OAUTH_CALLBACK_SCHEME)
+        KordiHostAppURLScheme: $(KORDI_OAUTH_CALLBACK_SCHEME)
+        KordiShareAppGroup: $(KORDI_SHARE_APP_GROUP)
+        KordiShareCredentialService: $(KORDI_SHARE_CREDENTIAL_SERVICE)
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UILaunchScreen:
@@ -89,6 +94,8 @@ targets:
           KORDI_CLOUD_BASE_URL: http://127.0.0.1:17081
           KORDI_DISTRIBUTION_CHANNEL: beta
           KORDI_OAUTH_CALLBACK_SCHEME: kordi-beta
+          KORDI_SHARE_APP_GROUP: group.ai.kordi.beta.share
+          KORDI_SHARE_CREDENTIAL_SERVICE: ai.kordi.beta.share-session
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIconBeta
           APNS_ENVIRONMENT: development
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG BETA
@@ -99,6 +106,8 @@ targets:
           KORDI_CLOUD_BASE_URL: https://kordi.ai
           KORDI_DISTRIBUTION_CHANNEL: production
           KORDI_OAUTH_CALLBACK_SCHEME: kordi
+          KORDI_SHARE_APP_GROUP: group.ai.kordi.share
+          KORDI_SHARE_CREDENTIAL_SERVICE: ai.kordi.share-session
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
           APNS_ENVIRONMENT: development
         Release:
@@ -108,10 +117,78 @@ targets:
           KORDI_CLOUD_BASE_URL: https://kordi.ai
           KORDI_DISTRIBUTION_CHANNEL: production
           KORDI_OAUTH_CALLBACK_SCHEME: kordi
+          KORDI_SHARE_APP_GROUP: group.ai.kordi.share
+          KORDI_SHARE_CREDENTIAL_SERVICE: ai.kordi.share-session
           ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
           APNS_ENVIRONMENT: production
     dependencies:
       - package: LiveKit
+      - target: KordiShareExtension
+        embed: true
+  KordiShareExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: KordiShareExtension
+      - path: Kordi/Core/Share/ShareExtensionSupport.swift
+    entitlements:
+      path: KordiShareExtension/Supporting/KordiShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - $(KORDI_SHARE_APP_GROUP)
+    info:
+      path: KordiShareExtension/Supporting/Info.plist
+      properties:
+        CFBundleDisplayName: $(KORDI_SHARE_EXTENSION_DISPLAY_NAME)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
+        KordiCloudBaseURL: $(KORDI_CLOUD_BASE_URL)
+        KordiDistributionChannel: $(KORDI_DISTRIBUTION_CHANNEL)
+        KordiHostAppURLScheme: $(KORDI_OAUTH_CALLBACK_SCHEME)
+        KordiShareAppGroup: $(KORDI_SHARE_APP_GROUP)
+        KordiShareCredentialService: $(KORDI_SHARE_CREDENTIAL_SERVICE)
+        NSExtension:
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+    settings:
+      base:
+        APPLICATION_EXTENSION_API_ONLY: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: KordiShareExtension/Supporting/Info.plist
+        PRODUCT_NAME: KordiShareExtension
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: 1
+      configs:
+        Beta:
+          PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.beta.share
+          KORDI_CLOUD_BASE_URL: http://127.0.0.1:17081
+          KORDI_DISTRIBUTION_CHANNEL: beta
+          KORDI_OAUTH_CALLBACK_SCHEME: kordi-beta
+          KORDI_SHARE_APP_GROUP: group.ai.kordi.beta.share
+          KORDI_SHARE_CREDENTIAL_SERVICE: ai.kordi.beta.share-session
+          KORDI_SHARE_EXTENSION_DISPLAY_NAME: Kordi Beta
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) DEBUG BETA
+        Debug:
+          PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.share
+          KORDI_CLOUD_BASE_URL: https://kordi.ai
+          KORDI_DISTRIBUTION_CHANNEL: production
+          KORDI_OAUTH_CALLBACK_SCHEME: kordi
+          KORDI_SHARE_APP_GROUP: group.ai.kordi.share
+          KORDI_SHARE_CREDENTIAL_SERVICE: ai.kordi.share-session
+          KORDI_SHARE_EXTENSION_DISPLAY_NAME: Kordi
+        Release:
+          PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.share
+          KORDI_CLOUD_BASE_URL: https://kordi.ai
+          KORDI_DISTRIBUTION_CHANNEL: production
+          KORDI_OAUTH_CALLBACK_SCHEME: kordi
+          KORDI_SHARE_APP_GROUP: group.ai.kordi.share
+          KORDI_SHARE_CREDENTIAL_SERVICE: ai.kordi.share-session
+          KORDI_SHARE_EXTENSION_DISPLAY_NAME: Kordi
   KordiTests:
     type: bundle.unit-test
     platform: iOS

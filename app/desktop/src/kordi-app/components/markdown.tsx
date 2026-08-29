@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { ExternalMessageLink, MessageInlineContent } from './messageInlineContent';
 import { MarkdownTable } from './markdownTable';
 import {
-  bareHttpUrlStartPattern,
+  bareHttpUrlStartPattern, compactExternalLinkLabel, markdownHttpLinkPrefix,
   safeExternalHttpHref,
   splitBareHttpUrl,
 } from './messageLinks';
@@ -51,8 +51,12 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
 
   while (index < text.length) {
     const slice = text.slice(index);
+    const markdownLink = markdownHttpLinkPrefix(slice);
+    if (markdownLink) {
+      parts.push({ type: 'link', label: markdownLink.label, href: markdownLink.href });
+      index += markdownLink.matchedLength; continue;
+    }
     const patterns = [
-      { type: 'link' as const, match: slice.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/i) },
       { type: 'bareLink' as const, match: slice.match(/^https?:\/\/[^\s<>"']+/i) },
       { type: 'code' as const, match: slice.match(/^`([^`]+)`/) },
       { type: 'strong' as const, match: slice.match(/^\*\*([^*]+)\*\*/) },
@@ -77,13 +81,8 @@ function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
       continue;
     }
 
-    const [matched, first, second] = hit.match;
-    if (hit.type === 'link') {
-      const href = safeExternalHttpHref(second ?? '');
-      parts.push(href
-        ? { type: 'link', label: first, href }
-        : { type: 'text', value: matched });
-    } else if (hit.type === 'bareLink') {
+    const [matched, first] = hit.match;
+    if (hit.type === 'bareLink') {
       const { href, suffix } = splitBareHttpUrl(matched);
       const safeHref = safeExternalHttpHref(href);
       parts.push(safeHref
@@ -139,6 +138,7 @@ function renderInlineMarkdown(
       );
     }
     if (part.type === 'link') {
+      const label = compactExternalLinkLabel(part.label, part.href);
       return (
         <ExternalMessageLink
           key={`link-${index}`}
@@ -146,7 +146,7 @@ function renderInlineMarkdown(
           tone={tone}
           showSiteIcon={showLinkIcons}
         >
-          {part.label}
+          <MessageInlineContent text={label} linksInteractive={false} showSiteIcons={false} />
         </ExternalMessageLink>
       );
     }

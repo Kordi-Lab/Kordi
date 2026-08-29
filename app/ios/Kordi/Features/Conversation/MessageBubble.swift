@@ -408,6 +408,10 @@ struct MessageBubble: View, Equatable {
                     onOpenPersonMention: onOpenMentionProfile
                 )
                     .foregroundStyle(bubbleTextColor)
+
+                if let url = KordiMarkdownParser.firstExternalURL(in: message.text) {
+                    MessageLinkPreview(url: url)
+                }
             }
 
             if !message.attachments.isEmpty {

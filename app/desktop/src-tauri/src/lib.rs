@@ -8,6 +8,7 @@ use cloud_api_endpoint::cloud_api_base_url_from_env;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
+mod link_preview;
 mod media_preview_window;
 mod message_notification;
 mod project;
@@ -384,6 +385,7 @@ pub fn run() {
             cloud_session::cloud_device_identity_load,
             cloud_session::cloud_device_system_metadata,
             remote_image::desktop_fetch_remote_image_data_url,
+            link_preview::desktop_fetch_link_preview_metadata,
             voice_message::desktop_voice_transcribe,
             voice_message::desktop_voice_trim,
             voice_message::desktop_voice_record_start,

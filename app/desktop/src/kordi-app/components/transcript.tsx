@@ -32,6 +32,8 @@ import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, typ
 import { ForwardedFromHeader } from './forwardedFromHeader';
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent, MessageMentionProfileContent } from './messageInlineContent';
+import { MessageLinkPreview } from './messageLinkPreview';
+import { firstExternalMessageLink } from './messageLinks';
 import { MessageReactionChips } from './messageReactions';
 import { MessageContextMenuHost } from './messageContextMenuHost';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
@@ -64,7 +66,6 @@ const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
 function isCompactionSummaryMessage(msg: Message) {
   return msg.role === 'system' && msg.detail?.startsWith(COMPACTION_DETAIL_PREFIX);
 }
-
 function cleanCompactionSummary(text: string) {
   const withoutResourceBlocks = text
     .replace(/\n?\s*<read-files>[\s\S]*?<\/read-files>\s*/gi, '\n')
@@ -762,12 +763,11 @@ function MessageBubbleView({
   const deliveryStatus = primaryMessageStatus(msg);
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
-  const hasVoice = Boolean(msg.voiceMessage); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0);
+  const hasVoice = Boolean(msg.voiceMessage); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0); const hasLinkPreview = hasText && !msg.callActivity && Boolean(firstExternalMessageLink(msg.text));
   const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasOnlyBorderlessMediaAttachments = hasOnlyImageAttachments || (!hasText && !hasVoice && attachmentsAreOnlyMp4Videos(msg.attachments)); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
   const hasGroupedImageAttachments = hasOnlyImageAttachments && (msg.attachments?.length ?? 0) > 1;
-  const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage);
-  const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
-  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse;
+  const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
+  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse && !hasLinkPreview;
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
   const avatarSeed = isOwnHumanMessage
@@ -950,7 +950,7 @@ function MessageBubbleView({
                 ) : hasText ? (
                   msg.supportContactResponse
                     ? <SupportContactAnswer text={msg.text} />
-                    : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageMentionProfileContent message={msg} onOpenSenderProfile={onOpenSenderProfile} />}</div>
+                    : <><div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageMentionProfileContent message={msg} onOpenSenderProfile={onOpenSenderProfile} />}</div>{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>
                 ) : null}
               </div>
               {!hasOnlyBorderlessMediaAttachments && !hasVoice ? (
@@ -968,7 +968,7 @@ function MessageBubbleView({
           <>
             <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
               {hasAttachments ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}
-              {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MarkdownContent text={msg.text} showLinkIcons copySurface="message" />) : null}
+              {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <><MarkdownContent text={msg.text} showLinkIcons copySurface="message" />{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>) : null}
             </div>
             {(msg.statusChips?.length || footerDetail) ? (
               <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>
