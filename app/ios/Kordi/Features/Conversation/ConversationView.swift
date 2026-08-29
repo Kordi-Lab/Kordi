@@ -285,7 +285,10 @@ struct ConversationView: View {
                                                     MessageBubble(
                                                         message: message,
                                                         mentionTargets: mentionTargets,
-                                                        showAuthor: message.author == .agent,
+                                                        showAuthor: message.author == .agent
+                                                            || (conversation.kind == .group
+                                                                && message.author == .person
+                                                                && !presentation.groupedWithPrevious),
                                                         showAvatar: presentation.showsAvatar,
                                                         replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
                                                         isHighlighted: highlightedMessageID == message.id,

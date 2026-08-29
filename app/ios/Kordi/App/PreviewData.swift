@@ -421,7 +421,8 @@ enum PreviewData {
                     displayText: "@all",
                     displayLabel: "All"
                 )]
-            )
+            ),
+            ChatMessage(id: "gm3b", conversationId: conversationId, author: .person, authorName: "Ethan Park", text: "The accessibility notes are in the same folder.", createdAt: now.addingTimeInterval(-90), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
         ])
         if includesMentionAttention {
             let mention = MessageMention(
