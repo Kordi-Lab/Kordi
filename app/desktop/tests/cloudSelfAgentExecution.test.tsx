@@ -18,7 +18,7 @@ import {
   cloudSelfAgentTerminalResponseRequestIds,
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
-  terminalLocalSelfAgentRequestClientMessageIds,
+  localSelfAgentRequestClientMessageIds,
 } from '../src/features/cloud/useCloudSelfAgentExecution';
 import type {
   CanonicalSessionState,
@@ -143,7 +143,7 @@ test('self-agent desktop execution ignores cancelled and stale requests', () => 
   );
 });
 
-test('a terminal local answer blocks its mirrored Cloud request from executing again', () => {
+test('a local request blocks its mirrored Cloud request before a second execution starts', () => {
   const sessionId = 'session:self-agent:local-complete';
   const canonicalState = {
     sessions: [{ id: sessionId, kind: 'self-agent', title: 'Local', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 3 }],
@@ -151,11 +151,10 @@ test('a terminal local answer blocks its mirrored Cloud request from executing a
     profile: { id: 'profile', humanIdentityId: 'human:me', createdAtMs: 1, updatedAtMs: 1 },
     messages: [
       { id: 'local-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Check this image', status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, sourceTransport: 'desktop-chat-ui' },
-      { id: 'local-answer', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'The image shows a menu.', parentMessageId: 'local-request', status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 3, sourceTransport: 'desktop-chat' },
     ],
     delegatedExchanges: [], presence: [], contextSnapshots: [],
   } as CanonicalSessionState;
-  const ignoredClientMessageIds = terminalLocalSelfAgentRequestClientMessageIds(canonicalState);
+  const ignoredClientMessageIds = localSelfAgentRequestClientMessageIds(canonicalState);
   const mirroredRequest = {
     ...message('cloud-request', 'Check this image'),
     sessionId,

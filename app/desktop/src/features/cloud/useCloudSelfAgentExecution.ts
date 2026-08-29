@@ -64,7 +64,7 @@ import {
   cloudSelfAgentTerminalResponseRequestIds,
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
-  terminalLocalSelfAgentRequestClientMessageIds,
+  localSelfAgentRequestClientMessageIds,
 } from './cloudSelfAgentExecutionState';
 import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
 
@@ -74,7 +74,7 @@ export {
   cloudSelfAgentTerminalResponseRequestIds,
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
-  terminalLocalSelfAgentRequestClientMessageIds,
+  localSelfAgentRequestClientMessageIds,
 } from './cloudSelfAgentExecutionState';
 
 function preparingExecutionSnapshot(nowMs = Date.now()): CloudAgentExecutionSnapshot {
@@ -140,13 +140,13 @@ export function useCloudSelfAgentExecution({
   useEffect(() => {
     if (!account) return;
     const selfMessages = messageIndex.byPeerId.get(account.accountId) ?? [];
-    const terminalLocalRequestClientMessageIds =
-      terminalLocalSelfAgentRequestClientMessageIds(canonicalState);
+    const localRequestClientMessageIds =
+      localSelfAgentRequestClientMessageIds(canonicalState);
     const terminalRequestIds = new Set([
       ...cloudSelfAgentTerminalResponseRequestIds(selfMessages),
       ...selfMessages.flatMap((message) => (
         message.clientMessageId
-          && terminalLocalRequestClientMessageIds.has(message.clientMessageId)
+          && localRequestClientMessageIds.has(message.clientMessageId)
           ? [message.messageId]
           : []
       )),
@@ -190,7 +190,7 @@ export function useCloudSelfAgentExecution({
       account,
       messageIndex,
       ignoredClientMessageIds:
-        terminalLocalSelfAgentRequestClientMessageIds(canonicalState),
+        localSelfAgentRequestClientMessageIds(canonicalState),
     });
     const selfMessages =
       messageIndex.byPeerId.get(account.accountId) ?? [];

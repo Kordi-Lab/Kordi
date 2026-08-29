@@ -473,6 +473,9 @@ function selfAgentMirrorDuplicateIds(
   profileHumanIdentityId?: string | null,
   normalizeOwnedAgentIdentity = false,
 ) {
+  // ponytail: text/time fallback only repairs legacy mirrors without stable
+  // relation aliases; remove it once every deployed client writes those IDs.
+  const legacyMirrorWindowMs = 10 * 60_000;
   const duplicateIds = new Set<string>();
   const messageById = new Map(messages.map((message) => [message.id, message]));
   const messageBySourceEventId = new Map(
@@ -522,8 +525,11 @@ function selfAgentMirrorDuplicateIds(
     }
   }
   if (normalizeOwnedAgentIdentity) {
-    const localTerminalRelations = new Set(messages.flatMap((message) => {
-      if (message.sourceTransport !== 'desktop-chat' || !isTerminalOwnedAgentMessage(message)) return [];
+    const localTerminalMessages = messages.filter((message) => (
+      message.sourceTransport === 'desktop-chat'
+      && isTerminalOwnedAgentMessage(message)
+    ));
+    const localTerminalRelations = new Set(localTerminalMessages.flatMap((message) => {
       const relation = selfAgentMirrorMessageRelationKey(
         message,
         messageById,
@@ -535,16 +541,40 @@ function selfAgentMirrorDuplicateIds(
       return relation ? [relation] : [];
     }));
     for (const message of messages) {
-      if (message.sourceTransport !== 'cloud-self-agent' || !isActiveProcessingStatus(message)) continue;
-      const relation = selfAgentMirrorMessageRelationKey(
+      if (message.sourceTransport !== 'cloud-self-agent') continue;
+      if (isActiveProcessingStatus(message)) {
+        const relation = selfAgentMirrorMessageRelationKey(
+          message,
+          messageById,
+          messageBySourceEventId,
+          identityById,
+          profileHumanIdentityId,
+          true,
+        );
+        if (relation && localTerminalRelations.has(relation)) duplicateIds.add(message.id);
+        continue;
+      }
+      if (!isTerminalOwnedAgentMessage(message)) continue;
+      const text = normalizedDuplicateText(message.contentText);
+      if (!text) continue;
+      const sender = selfAgentLogicalSenderKey(
         message,
-        messageById,
-        messageBySourceEventId,
         identityById,
         profileHumanIdentityId,
         true,
       );
-      if (relation && localTerminalRelations.has(relation)) duplicateIds.add(message.id);
+      const localMirror = localTerminalMessages.find((candidate) => (
+        candidate.sessionId === message.sessionId
+        && normalizedDuplicateText(candidate.contentText) === text
+        && selfAgentLogicalSenderKey(
+          candidate,
+          identityById,
+          profileHumanIdentityId,
+          true,
+        ) === sender
+        && Math.abs(candidate.createdAtMs - message.createdAtMs) <= legacyMirrorWindowMs
+      ));
+      if (localMirror) duplicateIds.add(message.id);
     }
   }
   return duplicateIds;

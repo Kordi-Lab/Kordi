@@ -51,59 +51,18 @@ export function omitTerminalCloudSelfAgentLocalTurns(
   return next ?? localTurns;
 }
 
-function contentRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {};
-}
-
-function terminalLocalAgentMessage(message: CanonicalSessionState['messages'][number]) {
-  if (message.sourceTransport?.startsWith('cloud-')) return false;
-  if (message.messageKind !== 'agent-turn' && !message.senderRole.includes('agent')) return false;
-  const content = contentRecord(message.content);
-  const deliveryState = typeof content.deliveryState === 'string'
-    ? content.deliveryState.trim().toLowerCase()
-    : '';
-  const status = message.status.trim().toLowerCase();
-  const terminal = ['complete', 'completed', 'succeeded', 'responded', 'failed', 'cancelled', 'canceled'];
-  return terminal.includes(deliveryState) || terminal.includes(status);
-}
-
-export function terminalLocalSelfAgentRequestClientMessageIds(
+export function localSelfAgentRequestClientMessageIds(
   state: CanonicalSessionState | null | undefined,
 ): Set<string> {
   if (!state) return new Set();
   const sessionIds = cloudSyncedLocalAgentSessionIds(state);
-  const clientMessageIds = new Set<string>();
-  for (const sessionId of sessionIds) {
-    const messages = state.messages
-      .filter((message) => message.sessionId === sessionId)
-      .sort((left, right) => left.sequenceNum - right.sequenceNum || left.createdAtMs - right.createdAtMs);
-    const localUsersById = new Map(messages.flatMap((message) => (
-      message.senderRole === 'user' && !message.sourceTransport?.startsWith('cloud-')
-        ? [[message.id, message] as const]
-        : []
-    )));
-    let latestLocalUserId: string | null = null;
-    for (const message of messages) {
-      if (localUsersById.has(message.id)) {
-        latestLocalUserId = message.id;
-        continue;
-      }
-      if (!terminalLocalAgentMessage(message)) continue;
-      const content = contentRecord(message.content);
-      const explicitRequestId = [
-        message.parentMessageId,
-        typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null,
-        typeof content.requestId === 'string' ? content.requestId : null,
-      ].find((value) => value?.trim() && localUsersById.has(value.trim()))?.trim();
-      const requestId = explicitRequestId || latestLocalUserId;
-      if (requestId) {
-        clientMessageIds.add(cloudSelfAgentRequestClientMessageId(sessionId, requestId));
-      }
-    }
-  }
-  return clientMessageIds;
+  return new Set(state.messages.flatMap((message) => (
+    sessionIds.has(message.sessionId)
+    && message.senderRole === 'user'
+    && !message.sourceTransport?.startsWith('cloud-')
+      ? [cloudSelfAgentRequestClientMessageId(message.sessionId, message.id)]
+      : []
+  )));
 }
 
 export function pendingCloudSelfAgentExecutionRequests({
