@@ -54,6 +54,9 @@ export async function uploadComposerAttachments({
     let previewUrl = supportsPreview
       ? safeCloudAttachmentPreviewUrl(attachment.previewUrl)
       : null;
+    if (isMp4VideoAttachment(attachment) && !previewUrl) {
+      throw new Error('This video could not prepare a poster. Choose another MP4 file.');
+    }
     let summary: Awaited<ReturnType<typeof uploadNativeCloudAttachment>>;
     if (useNativeUpload) {
       summary = await nativeUpload({ path: attachment.path, contentType: mimeType });
@@ -76,7 +79,13 @@ export async function uploadComposerAttachments({
       cacheCloudAttachmentLocalPath(summary.attachmentId, attachment.path);
     }
     if (previewUrl && client.updateAttachmentPreview) {
-      await client.updateAttachmentPreview(token, summary.attachmentId, previewUrl).catch(() => undefined);
+      if (isMp4VideoAttachment(attachment)) {
+        await client.updateAttachmentPreview(token, summary.attachmentId, previewUrl);
+      } else {
+        await client.updateAttachmentPreview(token, summary.attachmentId, previewUrl).catch(() => undefined);
+      }
+    } else if (previewUrl && isMp4VideoAttachment(attachment)) {
+      throw new Error('This video poster could not be stored. Try again.');
     }
     uploaded.push({
       attachmentId: summary.attachmentId,

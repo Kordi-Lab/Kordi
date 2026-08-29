@@ -483,17 +483,16 @@ struct VideoSendReviewSheet: View {
 
     private var videoSurface: some View {
         ZStack {
-            Color.black
-            if let preview = AttachmentPreviewDataURL.decode(attachment.previewURL),
-               let image = UIImage(data: preview) {
-                Image(uiImage: image)
+            Color(uiColor: .secondarySystemBackground)
+            if let previewImage {
+                Image(uiImage: previewImage)
                     .resizable()
                     .scaledToFit()
                     .accessibilityHidden(true)
             }
             if let player {
                 VideoPlayer(player: player)
-            } else if playbackFailed {
+            } else if playbackFailed || previewImage == nil {
                 ContentUnavailableView(
                     "Video unavailable",
                     systemImage: "exclamationmark.triangle",
@@ -538,12 +537,14 @@ struct VideoSendReviewSheet: View {
                 .frame(minWidth: 116, minHeight: 44)
                 .foregroundStyle(.white)
                 .background(
-                    player == nil ? Color(uiColor: .tertiarySystemFill) : KordiTheme.signalBlue,
+                    player == nil || previewImage == nil
+                        ? Color(uiColor: .tertiarySystemFill)
+                        : KordiTheme.signalBlue,
                     in: RoundedRectangle(cornerRadius: 12, style: .continuous)
                 )
             }
             .buttonStyle(.plain)
-            .disabled(player == nil || isSending)
+            .disabled(player == nil || previewImage == nil || isSending)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
@@ -555,5 +556,9 @@ struct VideoSendReviewSheet: View {
             widthPixels: attachment.widthPixels,
             heightPixels: attachment.heightPixels
         )
+    }
+
+    private var previewImage: UIImage? {
+        AttachmentPreviewDataURL.decode(attachment.previewURL).flatMap(UIImage.init(data:))
     }
 }

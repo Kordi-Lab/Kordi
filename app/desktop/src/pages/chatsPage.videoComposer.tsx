@@ -121,6 +121,7 @@ function VideoReviewSurface({
 }) {
   const source = attachmentVideoUrl(attachment);
   const displaySize = attachmentVideoDisplaySize(attachment);
+  const posterReady = attachment.previewUrl?.startsWith('data:image/') === true;
   const [playbackState, setPlaybackState] = useState<'loading' | 'ready' | 'error'>(
     source ? 'loading' : 'error',
   );
@@ -149,9 +150,11 @@ function VideoReviewSurface({
           </span>
         ) : null}
       </div>
-      {playbackState === 'error' || error ? (
+      {playbackState === 'error' || !posterReady || error ? (
         <p className="text-[11px] text-red-500" role="alert">
-          {error ?? 'This video could not be played. Choose another MP4 file.'}
+          {error ?? (!posterReady
+            ? 'This video could not prepare a poster. Choose another MP4 file.'
+            : 'This video could not be played. Choose another MP4 file.')}
         </p>
       ) : null}
       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -163,7 +166,12 @@ function VideoReviewSurface({
             <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />Retake
           </Button>
         ) : null}
-        <Button type="button" size="sm" onClick={onSend} disabled={playbackState !== 'ready'}>
+        <Button
+          type="button"
+          size="sm"
+          onClick={onSend}
+          disabled={playbackState !== 'ready' || !posterReady}
+        >
           <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
           Send video
         </Button>

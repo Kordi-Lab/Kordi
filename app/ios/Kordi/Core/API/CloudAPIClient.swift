@@ -1165,10 +1165,24 @@ actor CloudAPIClient {
             )
         }
         if let previewURL = attachment.previewURL {
-            try? await updateAttachmentPreview(
-                token: token,
-                attachmentId: uploaded.attachmentId,
-                previewURL: previewURL
+            if attachment.isMP4Video {
+                try await updateAttachmentPreview(
+                    token: token,
+                    attachmentId: uploaded.attachmentId,
+                    previewURL: previewURL
+                )
+            } else {
+                try? await updateAttachmentPreview(
+                    token: token,
+                    attachmentId: uploaded.attachmentId,
+                    previewURL: previewURL
+                )
+            }
+        } else if attachment.isMP4Video {
+            throw CloudAPIError(
+                code: "VIDEO_POSTER_REQUIRED",
+                message: "This video could not prepare a poster. Choose another MP4 file.",
+                statusCode: 422
             )
         }
         return CloudMessageAttachment(

@@ -173,11 +173,11 @@ export function AttachmentVideoCard({
   return (
     <div
       data-attachment-video-card="true"
-      className="max-w-full overflow-hidden rounded-[16px] bg-black/[0.92] text-white"
+      className="max-w-full overflow-hidden rounded-[16px] bg-[color:var(--app-control-bg)] text-white"
       style={{ width: displaySize.width, maxWidth: 'min(100%, 70vw)' }}
     >
       <div
-        className="relative w-full overflow-hidden bg-black"
+        className="relative w-full overflow-hidden bg-[color:var(--app-control-bg)]"
         style={{ aspectRatio: `${displaySize.width} / ${displaySize.height}` }}
       >
         {source && playbackRequested && !transferPending ? (
@@ -226,7 +226,7 @@ export function AttachmentVideoCard({
                 }}
               />
             ) : null}
-            <div className="absolute inset-0 bg-black/30" aria-hidden="true" />
+            <div className={`absolute inset-0 ${posterUrl ? 'bg-black/30' : 'bg-transparent'}`} aria-hidden="true" />
             {!transferPending && phase === 'loading' ? (
               <span
                 className="relative grid h-14 w-14 place-items-center rounded-full bg-white/20 text-white"

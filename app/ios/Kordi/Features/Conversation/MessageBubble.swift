@@ -1777,13 +1777,14 @@ private struct MessageVideoAttachment: View {
             } else {
                 Button(action: loadAndPlay) {
                     ZStack {
+                        Color(uiColor: .secondarySystemBackground)
                         if let poster {
                             Image(uiImage: poster)
                                 .resizable()
                                 .scaledToFill()
                                 .accessibilityHidden(true)
                         }
-                        Color.black.opacity(poster == nil ? 1 : 0.18)
+                        Color.black.opacity(poster == nil ? 0 : 0.18)
                         Group {
                             if isLoading {
                                 ProgressView()
@@ -1819,7 +1820,7 @@ private struct MessageVideoAttachment: View {
             }
         }
         .frame(maxWidth: 310)
-        .background(.black)
+        .background(poster == nil ? Color(uiColor: .secondarySystemBackground) : .black)
         .compositingGroup()
         .clipShape(.rect(cornerRadius: 13))
         .task(id: attachment.id) {
@@ -1833,29 +1834,30 @@ private struct MessageVideoAttachment: View {
 
     private var sendingSurface: some View {
         ZStack {
+            Color(uiColor: .secondarySystemBackground)
             if let poster {
                 Image(uiImage: poster)
                     .resizable()
                     .scaledToFill()
                     .accessibilityHidden(true)
             }
-            Color.black.opacity(poster == nil ? 1 : 0.5)
+            Color.black.opacity(poster == nil ? 0 : 0.5)
             VStack(spacing: 8) {
                 if let uploadProgress {
                     ProgressView(value: uploadProgress)
                         .progressViewStyle(.circular)
                         .controlSize(.large)
-                        .tint(.white)
+                        .tint(poster == nil ? Color.secondary : .white)
                     Text("\(Int((uploadProgress * 100).rounded()))%")
                         .font(.caption.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(poster == nil ? Color.primary : .white)
                 } else {
                     ProgressView()
                         .controlSize(.large)
-                        .tint(.white)
+                        .tint(poster == nil ? Color.secondary : .white)
                     Text("Sending…")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(poster == nil ? Color.primary : .white)
                 }
             }
         }
