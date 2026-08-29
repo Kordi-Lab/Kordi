@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { CloudAuthClient } from '../src/features/cloud/authClient';
+import { cloudAttachmentPlaybackUrl } from '../src/features/cloud/cloudAttachmentPlayback';
 
 test('attachment preview fetches authenticated canonical thumbnail bytes', async () => {
   let request: { url: string; init?: RequestInit } | null = null;
@@ -37,7 +38,7 @@ test('attachment playback mints a range-capable URL without exposing the session
     },
   });
 
-  const url = await client.attachmentPlaybackUrl('kordi_cs_private', 'att_1');
+  const url = await cloudAttachmentPlaybackUrl(client, 'kordi_cs_private', 'att_1', 'http://srv');
 
   assert.equal(url, 'http://srv/v1/cloud/public/attachments/att_1/content?token=p1.signed');
   assert.equal(request?.url, 'http://srv/v1/cloud/attachments/att_1/playback');

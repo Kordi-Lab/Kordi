@@ -3,9 +3,9 @@ import type { SaveDesktopAttachmentOptions } from './composerController.types';
 import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
 import {
   readDesktopChatAttachment,
-  storeDesktopChatAttachmentFile,
   type DesktopStoredChatAttachment,
 } from '@/lib/desktop';
+import { storeDesktopChatAttachmentFile } from '@/lib/desktopAttachmentStream';
 import {
   imagePixelDimensionsFromUrl,
   normalizedImagePixelDimensions,

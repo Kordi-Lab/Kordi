@@ -6,7 +6,7 @@ import {
   discardDesktopChatAttachment,
   finishDesktopChatAttachmentStream,
   startDesktopChatAttachmentStream,
-} from '@/lib/desktop';
+} from '@/lib/desktopAttachmentStream';
 import { composerAttachmentItemFromStoredPath } from './composerAttachments';
 import type { AttachmentItem } from './composerController.types';
 

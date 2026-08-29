@@ -96,12 +96,15 @@ test('large video paths stay chunked and file-backed', () => {
     new URL('../src/features/chat/composerAttachments.ts', import.meta.url),
     'utf8',
   );
-  const desktop = readFileSync(new URL('../src/lib/desktop.ts', import.meta.url), 'utf8');
+  const desktopStream = readFileSync(
+    new URL('../src/lib/desktopAttachmentStream.ts', import.meta.url),
+    'utf8',
+  );
 
   assert.doesNotMatch(recorder, /new Blob\(chunks/);
   assert.doesNotMatch(attachments, /file\.arrayBuffer\(\)/);
   assert.match(attachments, /file\.size > MAX_IN_MEMORY_ATTACHMENT_BYTES && file\.type\?\.startsWith\('image\/'\)/);
-  assert.match(desktop, /file\.slice\(offset, offset \+ chunkSize\)/);
+  assert.match(desktopStream, /file\.slice\(offset, offset \+ chunkSize\)/);
   assert.match(recorder, /appendDesktopChatAttachmentStream/);
   assert.match(recorder, /videoBitsPerSecond: VIDEO_BITS_PER_SECOND/);
   assert.match(recorder, /frameRate: \{ ideal: 30, max: 30 \}/);

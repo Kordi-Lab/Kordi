@@ -198,7 +198,7 @@ pub async fn content(
         account_id: payload.account_id,
         device_id: payload.device_id,
     };
-    super::routes::stream_attachment_content(&state, &session, &attachment_id, &request_headers)
+    super::content::stream_attachment_content(&state, &session, &attachment_id, &request_headers)
         .await
 }
 

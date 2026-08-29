@@ -8,7 +8,7 @@
 import type { CloudMessageSnapshotResponse } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
 import type { CloudPresenceAccount, CloudPresenceContactsResponse } from './presence';
-import type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPlaybackResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
+import type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
 import { downloadCloudAttachmentBlob } from './cloudAttachmentDownloadClient';
 import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
 import type { CloudAuthErrorCode } from './cloudAuthError';
@@ -47,7 +47,7 @@ import {
 } from './deviceIdentity';
 export type { CloudContactSummary } from './cloudContactTypes';
 export type { CloudPresenceAccount, CloudPresenceContactsResponse, CloudPresenceStatus } from './presence';
-export type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPlaybackResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput, SendCloudVoiceMessageInput } from './cloudAttachmentTypes';
+export type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput, SendCloudVoiceMessageInput } from './cloudAttachmentTypes';
 export type {
   CloudDeviceAuthorization,
   CloudDeviceAuthorizationState,
@@ -797,18 +797,6 @@ export class CloudAuthClient {
       },
       'Could not download attachment.',
     );
-  }
-
-  async attachmentPlaybackUrl(token: string, attachmentId: string): Promise<string> {
-    const result = await this.send<CloudAttachmentPlaybackResult>(
-      `/v1/cloud/attachments/${encodeURIComponent(attachmentId)}/playback`,
-      {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not prepare video playback.',
-    );
-    return new URL(result.playbackPath, this.baseUrl).toString();
   }
 
   async updateAttachmentPreview(token: string, attachmentId: string, previewUrl: string): Promise<CloudAttachmentPreviewUpdateResult> {
