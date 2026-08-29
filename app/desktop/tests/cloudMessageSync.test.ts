@@ -349,6 +349,7 @@ test('cloud message snapshot merges cannot clear established read receipts', () 
     ...message,
     deliveredAt: '2026-05-11T10:01:00Z',
     readAt: '2026-05-11T10:02:00Z',
+    readByAccountIds: ['acct_reader'],
   };
   const merged = mergeCloudMessagesByPeerSnapshot(
     { acct_peer: [authoritative] },
@@ -357,12 +358,14 @@ test('cloud message snapshot merges cannot clear established read receipts', () 
         ...authoritative,
         deliveredAt: null,
         readAt: null,
+        readByAccountIds: [],
       }],
     },
   );
 
   assert.equal(merged.acct_peer?.[0]?.deliveredAt, authoritative.deliveredAt);
   assert.equal(merged.acct_peer?.[0]?.readAt, authoritative.readAt);
+  assert.deepEqual(merged.acct_peer?.[0]?.readByAccountIds, ['acct_reader']);
 });
 
 test('cloud message snapshot merges preserve unchanged peer and message identities', () => {

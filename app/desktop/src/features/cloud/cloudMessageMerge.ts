@@ -49,6 +49,11 @@ function cloudReaderAccountIdsEqual(left?: string[], right?: string[]): boolean 
     && left.every((accountId, index) => accountId === right[index]);
 }
 
+function mergeCloudReaderAccountIds(current?: string[], incoming?: string[]): string[] | undefined {
+  if (current === undefined && incoming === undefined) return undefined;
+  return normalizeCloudReaderAccountIds([...(current ?? []), ...(incoming ?? [])]);
+}
+
 function cloudReactionsEqual(left: CloudMessage['reactions'] = [], right: CloudMessage['reactions'] = []) {
   if (left.length !== right.length) return false;
   return left.every((reaction, index) => {
@@ -133,9 +138,10 @@ export function mergeCloudMessageMonotonicState(
       : incoming.voiceMessage ?? current.voiceMessage,
     deliveredAt: latestCloudReceiptAt(current.deliveredAt, incoming.deliveredAt),
     readAt: latestCloudReceiptAt(current.readAt, incoming.readAt),
-    readByAccountIds: incomingIsOlder
-      ? current.readByAccountIds
-      : incoming.readByAccountIds ?? current.readByAccountIds,
+    readByAccountIds: mergeCloudReaderAccountIds(
+      current.readByAccountIds,
+      incoming.readByAccountIds,
+    ),
     reactions: incomingIsOlder
       ? current.reactions
       : incoming.reactions ?? current.reactions,

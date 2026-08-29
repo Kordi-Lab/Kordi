@@ -39,6 +39,7 @@ import {
   cloudTurnRevision,
 } from './cloudCollaborationMemo';
 import { cloudMessageAttachmentToMessageAttachment, cloudVoiceMessageToMessageVoice } from './cloudAttachments';
+import { cloudMessageDeliveryPresentation } from './cloudMessageDeliveryPresentation';
 import { cloudAvatarImageUrl } from './avatar';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
 import {
@@ -222,15 +223,12 @@ export function cloudMessageToCollaborationMessage(
     timeLabel: formatDesktopClockTime(timestampMs),
     timestampMs,
     requestId: agentResponse?.requestId ?? agentRequestId,
-    deliveryState: agentResponse?.deliveryState === 'failed'
-      ? 'failed'
-      : options.cancelledRequestIds?.has(message.messageId)
-        ? 'cancelled'
-        : message.direction === 'outgoing'
-          ? (message.readAt ? 'read' : 'delivered')
-          : agentResponse?.deliveryState === 'complete'
-            ? 'complete'
-            : null,
+    ...cloudMessageDeliveryPresentation(
+      message,
+      contact,
+      agentResponse?.deliveryState,
+      options.cancelledRequestIds?.has(message.messageId) === true,
+    ),
     detail: undefined,
     attachments: (message.attachments ?? []).map(cloudMessageAttachmentToMessageAttachment),
     mentions: agentResponse ? undefined : cloudDirectMessageMentions(message.body),

@@ -434,7 +434,7 @@ export function mapCollaborationConversationToViewModel(
           : [],
       mentions,
       attachments,
-      messageAction, reactionConversationId: message.reactionConversationId, reactionTargetMessageId: message.reactionTargetMessageId, reactions: message.reactions,
+      messageAction, readReceiptSummary: message.readReceiptSummary, reactionConversationId: message.reactionConversationId, reactionTargetMessageId: message.reactionTargetMessageId, reactions: message.reactions,
       sourceMessage,
       replyToMessageId: message.messageAction?.kind === 'quote' ? sourceMessage?.messageId ?? null : undefined,
       detail: message.detail ?? undefined,

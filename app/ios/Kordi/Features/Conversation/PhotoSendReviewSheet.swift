@@ -168,6 +168,7 @@ struct PhotoLibrarySendPicker: View {
                             .stroke(KordiTheme.signalBlue, lineWidth: 3)
                     }
                 }
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Photo")

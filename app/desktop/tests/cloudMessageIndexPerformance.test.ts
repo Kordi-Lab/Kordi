@@ -238,4 +238,8 @@ test('canonical delivery patch preserves state identity after summaries are appl
   assert.equal(content?.deliveryState, 'read');
   assert.equal(readReceiptSummary?.count, 7);
   assert.equal(patchCanonicalDeliverySummaries(patched, index.deliveryByMessageId), patched);
+  assert.equal(patchCanonicalDeliverySummaries(patched, new Map([[
+    scaleMessageId(0, 100),
+    { state: 'delivered', readers: [] },
+  ]])), patched, 'a stale delivery snapshot must not remove Seen');
 });

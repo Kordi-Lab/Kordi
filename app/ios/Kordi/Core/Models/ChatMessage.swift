@@ -19,7 +19,7 @@ enum MessageDeliveryState: String, Codable, Hashable {
         case .sending: "Sending"
         case .sent: "Sent"
         case .delivered: "Delivered"
-        case .read: "Read"
+        case .read: "Seen"
         case .failed: "Failed to send"
         case .cancelled: "Canceled"
         }

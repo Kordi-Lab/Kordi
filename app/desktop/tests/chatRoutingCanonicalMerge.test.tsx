@@ -40,6 +40,39 @@ test('canonical read receipts enrich an equal-length runtime transcript', () => 
   assert.equal(merged[0]?.readReceiptSummary?.count, 1);
 });
 
+test('stale canonical aliases cannot remove a richer Seen summary', () => {
+  const runtime: Message = {
+    id: 'wire-message-1', role: 'user', text: 'hello', time: '11:41',
+    readReceiptSummary: {
+      count: 2,
+      participants: [
+        { id: 'reader-1', name: 'Maya' },
+        { id: 'reader-2', name: 'Alex' },
+      ],
+    },
+  };
+  const canonical: Message = {
+    ...runtime,
+    id: 'canonical-message-1',
+    entryId: runtime.id,
+    readReceiptSummary: {
+      count: 1,
+      participants: [{ id: 'reader-1', name: 'Maya' }],
+    },
+  };
+
+  const merged = mergeCanonicalReadReceipts([runtime], [canonical, {
+    ...canonical,
+    id: 'stale-alias',
+    readReceiptSummary: null,
+  }]);
+
+  assert.equal(merged[0]?.readReceiptSummary?.count, 2);
+  assert.deepEqual(merged[0]?.readReceiptSummary?.participants.map(({ id }) => id), [
+    'reader-1', 'reader-2',
+  ]);
+});
+
 test('canonical read model prefers equal-count transcript with background session tools', () => {
   const response = (tools: NonNullable<Message['turn']>['tools']): Message => ({
     id: tools.length ? 'canonical-agent' : 'cloud-agent',
