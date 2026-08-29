@@ -235,6 +235,6 @@ test('large video paths stay chunked and file-backed', () => {
     new URL('../src/kordi-app/components/transcriptVideoAttachment.tsx', import.meta.url),
     'utf8',
   );
-  assert.match(videoCard, /deliveryVisual\?\.kind === 'uploading' && uploadComplete/);
+  assert.match(videoCard, /deliveryVisual\?\.kind === 'uploading' && uploadComplete\s*\? null/);
   assert.match(videoCard, /const transferPending = !uploadComplete/);
 });

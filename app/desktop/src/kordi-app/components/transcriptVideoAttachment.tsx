@@ -119,7 +119,7 @@ export function AttachmentVideoCard({
   const deliveryVisual = attachmentImageDeliveryVisual(deliveryStatus, uploadFailure);
   const uploadComplete = upload?.phase === 'complete';
   const videoDeliveryVisual = deliveryVisual?.kind === 'uploading' && uploadComplete
-    ? { kind: 'delivering' as const, label: 'Delivering video' }
+    ? null
     : deliveryVisual ? {
         ...deliveryVisual,
         label: deliveryVisual.label.replace('image', 'video'),
