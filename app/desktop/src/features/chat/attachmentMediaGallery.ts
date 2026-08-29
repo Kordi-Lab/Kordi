@@ -68,6 +68,10 @@ export function isMp4VideoAttachment(attachment: MessageAttachment) {
     || ((!mimeType || mimeType === 'application/octet-stream') && attachmentExtension(attachment) === 'mp4');
 }
 
+export function attachmentsAreOnlyMp4Videos(attachments?: readonly MessageAttachment[] | null) {
+  return attachments?.length ? attachments.every(isMp4VideoAttachment) : false;
+}
+
 function isArchiveAttachment(attachment: MessageAttachment) {
   return ARCHIVE_ATTACHMENT_EXTENSIONS.has(attachmentExtension(attachment));
 }

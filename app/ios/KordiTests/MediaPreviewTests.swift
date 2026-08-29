@@ -182,6 +182,29 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessImageSurface(for: captionedMessage))
     }
 
+    func testVideoOnlyMessageUsesBorderlessMediaSurface() {
+        let video = ChatAttachment(
+            attachmentId: "video",
+            name: "video.mp4",
+            kind: .file,
+            mimeType: "video/mp4",
+            sizeBytes: 148_200_000,
+            previewURL: nil
+        )
+        let videoMessage = message(
+            id: "video-message",
+            author: .me,
+            attachments: [video]
+        )
+        var captionedMessage = videoMessage
+        captionedMessage.text = "Caption"
+
+        XCTAssertTrue(MessageAttachmentPresentation.usesBorderlessVideoSurface(for: videoMessage))
+        XCTAssertTrue(MessageAttachmentPresentation.usesBorderlessMediaSurface(for: videoMessage))
+        XCTAssertTrue(MessageMediaStatusPresentation.showsOverlay(for: videoMessage))
+        XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessVideoSurface(for: captionedMessage))
+    }
+
     func testTransparentImageKeepsBorderlessSurfaceClear() throws {
         let transparentFormat = UIGraphicsImageRendererFormat()
         transparentFormat.opaque = false
@@ -426,7 +449,7 @@ final class MediaPreviewTests: XCTestCase {
                 )
                 imageMessage.deliveryState = state
 
-                XCTAssertTrue(MessageImageStatusPresentation.showsOverlay(for: imageMessage))
+                XCTAssertTrue(MessageMediaStatusPresentation.showsOverlay(for: imageMessage))
             }
         }
 
@@ -436,7 +459,7 @@ final class MediaPreviewTests: XCTestCase {
             attachments: [attachment(id: "image", kind: .image)]
         )
         failedImage.deliveryState = .failed
-        XCTAssertTrue(MessageImageStatusPresentation.showsOverlay(for: failedImage))
+        XCTAssertTrue(MessageMediaStatusPresentation.showsOverlay(for: failedImage))
     }
 
     func testFailedImageRetryUsesTheSharedImageStatusSlot() {
@@ -446,10 +469,10 @@ final class MediaPreviewTests: XCTestCase {
             attachments: [attachment(id: "image", kind: .image)]
         )
         imageMessage.deliveryState = .failed
-        XCTAssertTrue(MessageImageStatusPresentation.showsOverlay(for: imageMessage))
+        XCTAssertTrue(MessageMediaStatusPresentation.showsOverlay(for: imageMessage))
 
         imageMessage.text = "Caption"
-        XCTAssertFalse(MessageImageStatusPresentation.showsOverlay(for: imageMessage))
+        XCTAssertFalse(MessageMediaStatusPresentation.showsOverlay(for: imageMessage))
     }
 
     func testGroupedImageStackKeepsTheNextPhotosBehindTheSelection() {

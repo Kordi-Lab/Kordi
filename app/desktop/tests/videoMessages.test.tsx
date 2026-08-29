@@ -5,6 +5,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
+  attachmentsAreOnlyMp4Videos,
   isMp4VideoAttachment,
 } from '../src/features/chat/attachmentMediaGallery';
 import { AttachmentPreview } from '../src/kordi-app/components/transcriptAttachments';
@@ -57,6 +58,22 @@ test('MP4 attachments stay poster-backed until explicit playback instead of rend
   assert.doesNotMatch(markup, />Play video</);
   assert.doesNotMatch(markup, /<video/);
   assert.doesNotMatch(markup, /data-attachment-file-link="true"/);
+});
+
+test('video-only messages use the borderless media surface', () => {
+  const videoMessage: Message = {
+    role: 'user',
+    text: '',
+    time: '12:30',
+    attachments: [{
+      kind: 'file',
+      name: 'Video 2026-08-28.mp4',
+      mimeType: 'video/mp4',
+    }],
+  };
+
+  assert.equal(attachmentsAreOnlyMp4Videos(videoMessage.attachments), true);
+  assert.equal(attachmentsAreOnlyMp4Videos([{ kind: 'file', name: 'notes.txt' }]), false);
 });
 
 test('sending videos keep the final card geometry and move progress into the media', () => {

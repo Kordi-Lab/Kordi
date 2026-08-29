@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { LoaderCircle, Play, RotateCcw } from 'lucide-react';
 
 import { attachmentVideoUrl } from '@/features/chat/attachmentMediaGallery';
@@ -13,7 +13,6 @@ import {
 import { loadCachedCloudAttachmentLocalPath } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { loadSession } from '@/features/cloud/session';
 import type { MessageAttachment } from '../types';
-import { AttachmentActions } from './transcriptAttachmentActions';
 import { TranscriptImageDeliveryOverlay } from './transcriptImageDeliveryOverlay';
 import { attachmentImageDeliveryVisual } from './transcriptImageDeliveryVisual';
 
@@ -40,6 +39,8 @@ export function AttachmentVideoCard({
   const posterUrl = directPosterUrl ?? remotePosterUrl;
   const [failedSource, setFailedSource] = useState<string | null>(null);
   const [playbackRequested, setPlaybackRequested] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const controlsTimer = useRef<number | null>(null);
   const localSource = attachmentVideoUrl(localPath ? { ...attachment, localPath } : attachment);
   const rawSource = localSource ?? playbackUrl ?? undefined;
   const source = rawSource === failedSource ? undefined : rawSource;
@@ -65,6 +66,29 @@ export function AttachmentVideoCard({
   } : null;
   const transferPending = deliveryVisual?.kind === 'uploading'
     || deliveryVisual?.kind === 'delivering';
+
+  const clearControlsTimer = useCallback(() => {
+    if (controlsTimer.current !== null) {
+      window.clearTimeout(controlsTimer.current);
+      controlsTimer.current = null;
+    }
+  }, []);
+
+  const showControlsBriefly = useCallback(() => {
+    clearControlsTimer();
+    setControlsVisible(true);
+    controlsTimer.current = window.setTimeout(() => {
+      controlsTimer.current = null;
+      setControlsVisible(false);
+    }, 1_000);
+  }, [clearControlsTimer]);
+
+  const keepControlsVisible = useCallback(() => {
+    clearControlsTimer();
+    setControlsVisible(true);
+  }, [clearControlsTimer]);
+
+  useEffect(() => clearControlsTimer, [clearControlsTimer]);
 
   useEffect(() => {
     if (source || !attachmentId) return;
@@ -131,13 +155,17 @@ export function AttachmentVideoCard({
         {source && playbackRequested && !transferPending ? (
           <video
             src={source}
-            controls
+            controls={controlsVisible}
             autoPlay
             playsInline
             preload="metadata"
             poster={posterUrl ?? undefined}
             className="block h-full w-full object-contain"
             aria-label={`Play ${displayAttachmentName(attachment.name, attachment.kind)}`}
+            onClick={showControlsBriefly}
+            onPlay={showControlsBriefly}
+            onPause={keepControlsVisible}
+            onEnded={keepControlsVisible}
             onError={() => {
               setPlaybackRequested(false);
               setFailedSource(source);
@@ -188,12 +216,6 @@ export function AttachmentVideoCard({
             : undefined}
           mediaLabel="video"
         />
-      </div>
-      <div className="flex h-10 min-w-0 items-center gap-2 border-t border-white/10 px-3">
-        <span className="min-w-0 flex-1 truncate text-[10.5px] font-medium text-white/75">
-          {displayAttachmentName(attachment.name, attachment.kind)}
-        </span>
-        <AttachmentActions attachment={attachment} />
       </div>
     </div>
   );

@@ -79,7 +79,7 @@ struct MessageBubble: View, Equatable {
     }
 
     var body: some View {
-        HStack(alignment: usesBorderlessImageSurface ? .top : .bottom, spacing: 8) {
+        HStack(alignment: usesBorderlessMediaSurface ? .top : .bottom, spacing: 8) {
             if selectionMode {
                 Button(action: onSelect) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -96,7 +96,7 @@ struct MessageBubble: View, Equatable {
                     Button(action: onOpenAuthorProfile) {
                         Color.clear
                             .frame(width: 44, height: 44)
-                            .overlay(alignment: usesBorderlessImageSurface ? .top : .bottom) {
+                            .overlay(alignment: usesBorderlessMediaSurface ? .top : .bottom) {
                                 IdentityAvatar(
                                     name: authorAvatarName,
                                     imageSource: authorAvatarSource,
@@ -132,8 +132,8 @@ struct MessageBubble: View, Equatable {
                 messageSurface
                     .overlay(alignment: .bottomTrailing) {
                         if message.author == .me, !isCallActivity {
-                            if showsImageDeliveryStatus {
-                                imageDeliveryStatusOverlay
+                            if showsMediaDeliveryStatus {
+                                mediaDeliveryStatusOverlay
                             } else {
                                 MessageDeliveryGlyph(
                                     state: message.deliveryState,
@@ -243,7 +243,7 @@ struct MessageBubble: View, Equatable {
                     )
                 }
 
-                if message.deliveryState == .failed, !usesBorderlessImageSurface {
+                if message.deliveryState == .failed, !usesBorderlessMediaSurface {
                     messageRetryControl
                 }
 
@@ -308,6 +308,18 @@ struct MessageBubble: View, Equatable {
                 onPrepareActions: prepareImageActions,
                 onRequestActions: requestImageActions
             )
+        } else if usesBorderlessVideoSurface {
+            VStack(spacing: 7) {
+                ForEach(message.attachments) { attachment in
+                    MessageVideoAttachment(
+                        attachment: attachment,
+                        deliveryState: message.deliveryState,
+                        uploadProgress: message.attachmentUploadProgress,
+                        onPrepare: onPrepareAttachment,
+                        onPreparePreview: onPrepareAttachmentPreview
+                    )
+                }
+            }
         } else {
             AdaptiveBubbleLayout(
                 maximumWidth: 360,
@@ -433,6 +445,14 @@ struct MessageBubble: View, Equatable {
         MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
     }
 
+    private var usesBorderlessVideoSurface: Bool {
+        MessageAttachmentPresentation.usesBorderlessVideoSurface(for: message)
+    }
+
+    private var usesBorderlessMediaSurface: Bool {
+        usesBorderlessImageSurface || usesBorderlessVideoSurface
+    }
+
     private var hasImageAttachments: Bool {
         message.attachments.contains { $0.kind == .image }
     }
@@ -446,14 +466,14 @@ struct MessageBubble: View, Equatable {
         onOpenActions(frame, attachment)
     }
 
-    private var showsImageDeliveryStatus: Bool {
-        MessageImageStatusPresentation.showsOverlay(
+    private var showsMediaDeliveryStatus: Bool {
+        MessageMediaStatusPresentation.showsOverlay(
             for: message
         )
     }
 
     @ViewBuilder
-    private var imageDeliveryStatusOverlay: some View {
+    private var mediaDeliveryStatusOverlay: some View {
         if message.deliveryState == .failed || isRetrying {
             Button(action: startRetry) {
                 if isRetrying {
@@ -490,6 +510,12 @@ struct MessageBubble: View, Equatable {
             .monospacedDigit()
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.72), radius: 2, y: 1)
+            .padding(.horizontal, usesBorderlessVideoSurface ? 8 : 0)
+            .padding(.vertical, usesBorderlessVideoSurface ? 5 : 0)
+            .background(
+                usesBorderlessVideoSurface ? Color.black.opacity(0.58) : Color.clear,
+                in: Capsule()
+            )
             .padding(.trailing, 8)
             .padding(.bottom, 8)
             .allowsHitTesting(false)
@@ -1259,12 +1285,24 @@ enum MessageAttachmentPresentation {
             && message.replyToMessageId == nil
             && message.messageAction == nil
     }
+
+    static func usesBorderlessVideoSurface(for message: ChatMessage) -> Bool {
+        !message.attachments.isEmpty
+            && message.attachments.allSatisfy(\.isMP4Video)
+            && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && message.replyToMessageId == nil
+            && message.messageAction == nil
+    }
+
+    static func usesBorderlessMediaSurface(for message: ChatMessage) -> Bool {
+        usesBorderlessImageSurface(for: message) || usesBorderlessVideoSurface(for: message)
+    }
 }
 
-enum MessageImageStatusPresentation {
+enum MessageMediaStatusPresentation {
     static func showsOverlay(for message: ChatMessage) -> Bool {
         message.author == .me
-            && MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
+            && MessageAttachmentPresentation.usesBorderlessMediaSurface(for: message)
     }
 }
 
@@ -1335,8 +1373,7 @@ private struct MessageAttachmentCard: View {
                 deliveryState: deliveryState,
                 uploadProgress: uploadProgress,
                 onPrepare: onPrepare,
-                onPreparePreview: onPreparePreview,
-                onShare: onShare
+                onPreparePreview: onPreparePreview
             )
         } else {
             MessageFileAttachmentCard(
@@ -1721,7 +1758,6 @@ private struct MessageVideoAttachment: View {
     let uploadProgress: Double?
     let onPrepare: (ChatAttachment) async -> URL?
     let onPreparePreview: (ChatAttachment) async -> UIImage?
-    let onShare: () -> Void
 
     @State private var player: AVPlayer?
     @State private var poster: UIImage?
@@ -1729,7 +1765,7 @@ private struct MessageVideoAttachment: View {
     @State private var loadFailed = false
 
     var body: some View {
-        VStack(spacing: 0) {
+        Group {
             if deliveryState == .sending {
                 sendingSurface
             } else if let player {
@@ -1747,7 +1783,7 @@ private struct MessageVideoAttachment: View {
                                 .scaledToFill()
                                 .accessibilityHidden(true)
                         }
-                        Color.black.opacity(poster == nil ? 1 : 0.45)
+                        Color.black.opacity(poster == nil ? 1 : 0.18)
                         Group {
                             if isLoading {
                                 ProgressView()
@@ -1781,44 +1817,11 @@ private struct MessageVideoAttachment: View {
                         : loadFailed ? "Retry loading \(attachment.name)" : "Play \(attachment.name)"
                 )
             }
-
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(attachment.name)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-                    Text([attachment.formatLabel, attachment.sizeLabel]
-                        .compactMap { $0 }
-                        .joined(separator: " · "))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Menu {
-                    if player == nil {
-                        Button("Play", systemImage: "play", action: loadAndPlay)
-                    }
-                    Button("Download / Save to Files", systemImage: "arrow.down.circle", action: onShare)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.body.weight(.semibold))
-                        .frame(width: 36, height: 44)
-                }
-                .accessibilityLabel("More actions for \(attachment.name)")
-            }
-            .padding(.leading, 12)
-            .padding(.trailing, 4)
         }
         .frame(maxWidth: 310)
-        .background(Color(uiColor: .systemBackground).opacity(0.82))
+        .background(.black)
         .compositingGroup()
         .clipShape(.rect(cornerRadius: 13))
-        .overlay {
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(Color(uiColor: .separator).opacity(0.22), lineWidth: 0.5)
-        }
         .task(id: attachment.id) {
             let image = await onPreparePreview(attachment)
             if !Task.isCancelled {
