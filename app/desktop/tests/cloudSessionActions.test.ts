@@ -382,6 +382,13 @@ test('fresh group sends claim fallback before waiting for a background Cloud syn
   assert.match(directSendBlock, /await Promise\.all\(\[[\s\S]*claimFreshFallback\(\s*sent,\s*canonicalMessageId,\s*session\.token,?\s*\),[\s\S]*syncDiff/);
 });
 
+test('direct agent fallback retries until the owner Mac answers or goes offline', () => {
+  const source = cloudAgentAvailabilitySource();
+  assert.match(source, /claim\.idempotencyKey\.startsWith\('cloud-agent-fallback:'\)/);
+  assert.match(source, /result === 'retryable-failure' \|\| result === 'in-flight'/);
+  assert.match(source, /window\.setTimeout\(\s*checkDirectFallback,\s*CLOUD_GROUP_AGENT_STATUS_RECHECK_MS/);
+});
+
 test('adding existing group members publishes Cloud authorization before the local batch commit', () => {
   const handler = readFileSync(
     new URL('../src/app/useKordiGroupMemberInvites.ts', import.meta.url),
