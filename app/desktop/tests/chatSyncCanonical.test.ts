@@ -73,7 +73,7 @@ test('bootstrap returns a durable canonical local-apply batch', async () => {
   );
   assert.deepEqual(client.knownChatSessionIds('acct_a'), []);
 });
-test('incremental sync preserves its opaque cursor and stream sequence', async () => {
+test('incremental reaction sync preserves its cursor and confirms reaction state', async () => {
   const calls: string[] = [];
   const client = new CloudAuthClient({
     baseUrl: 'http://srv',
@@ -85,7 +85,7 @@ test('incremental sync preserves its opaque cursor and stream sequence', async (
           stream_seq: 45,
           event_id: '019cb2ca-0a77-7d84-b81b-97042279ad3d',
           protocol_version: 2,
-          type: 'message.created',
+          type: 'reaction.updated',
           critical: true,
           conversation_id: conversation.id,
           entity_id: message.id,
@@ -105,6 +105,10 @@ test('incremental sync preserves its opaque cursor and stream sequence', async (
   assert.equal(result.chat?.bootstrap, false);
   assert.equal(result.chat?.lastStreamSeq, 45);
   assert.equal(result.events[0].eventType, 'message.upsert');
+  assert.equal(
+    (result.events[0].payload as { reactionStateConfirmed?: boolean }).reactionStateConfirmed,
+    true,
+  );
 });
 test('ancillary snapshots reach the existing local projections through canonical sync', async () => {
   const client = new CloudAuthClient({

@@ -177,7 +177,7 @@ test('workspace active conversation keeps a catalog-confirmed empty group sessio
     [localConversation, emptyGroupSession],
     { isNativeShell: true, nativeChatPlaceholder: localConversation },
   );
-  const hydrated = applyCanonicalHydrationPlaceholder(selected, 'loading');
+  const hydrated = applyCanonicalHydrationPlaceholder(selected);
 
   assert.equal(hydrated.id, emptyGroupSession.id);
   assert.equal(hydrated.subtitle, '');
@@ -200,7 +200,7 @@ test('canonical history loading stays empty without replacing the header subtitl
     messages: [],
   };
 
-  const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
+  const loading = applyCanonicalHydrationPlaceholder(selected);
 
   assert.equal(loading.subtitle, 'Latest synced message');
   assert.deepEqual(loading.messages, []);
@@ -222,7 +222,7 @@ test('contact history loading stays empty without a synthetic transcript row', (
     messages: [],
   };
 
-  const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
+  const loading = applyCanonicalHydrationPlaceholder(selected);
 
   assert.equal(loading.subtitle, 'Latest synced contact message');
   assert.deepEqual(loading.messages, []);
@@ -432,7 +432,6 @@ test('workspace keeps a desktop runtime transcript visible while canonical hydra
         presence: [],
         contextSnapshots: [],
       } as never,
-      canonicalHydrationBySessionId: { 'local-runtime-session': 'loading' },
       hiddenSessionIds: new Set(),
       projectWorkspaces: [],
       projectSelectedSessionIds: {},

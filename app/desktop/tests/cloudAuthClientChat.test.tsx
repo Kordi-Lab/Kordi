@@ -167,7 +167,7 @@ test('sendMessage uses canonical conversation identity and canonical idempotent 
   assert.equal(sent.attachments?.[0]?.attachmentId, 'att_1');
 });
 
-test('setReaction restores a missing conversation cache before mutating', async () => {
+test('setReaction restores a missing session-routed conversation before mutating', async () => {
   const conversation = chatConversation();
   const message = {
     id: '019cb2c9-0a77-7d84-b81b-97042279ad3d',
@@ -203,7 +203,7 @@ test('setReaction restores a missing conversation cache before mutating', async 
 
   const updated = await client.setReaction(
     'kordi_cs_xyz',
-    conversation.id,
+    conversation.legacy_session_id,
     message.id,
     'blob:blobwave',
     true,

@@ -59,7 +59,7 @@ test('split chat panes share one header, tab, and content geometry contract', ()
     assert.match(workspace, /app-chat-pane-transcript-scroll/);
   }
   const transcriptGeometry = cssBlock(css, '.app-chat-pane-transcript-scroll');
-  assert.match(transcriptGeometry, /padding:\s*var\(--app-chat-pane-transcript-block\) var\(--app-chat-pane-transcript-inline\)/);
+  assert.match(transcriptGeometry, /padding:\s*var\(--app-chat-pane-transcript-block\) var\(--app-chat-pane-transcript-inline\) 0\.25rem/);
 
   const detailGeometry = cssBlock(css, '.app-right-detail-page-content');
   assert.match(detailGeometry, /padding:\s*var\(--app-chat-pane-detail-top\) var\(--app-chat-pane-detail-inline\) 2\.5rem/);

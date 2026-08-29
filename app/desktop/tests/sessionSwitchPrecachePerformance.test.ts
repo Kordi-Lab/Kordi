@@ -39,13 +39,13 @@ test('canonical Cloud chat selection does not invoke native desktop chat reload'
   );
 });
 
-test('canonical Cloud chat selection begins page hydration on the click path', () => {
+test('canonical Cloud chat selection hydrates before exposing the new transcript', () => {
   const source = readFileSync(new URL('../src/features/chat/useDesktopSessionController.ts', import.meta.url), 'utf8');
   const handlerStart = source.indexOf('const handleSelectChatSession = useCallback(async (sessionId: string) => {');
   const handlerEnd = source.indexOf('  const handleCreateChatSession = useCallback', handlerStart);
   const handler = source.slice(handlerStart, handlerEnd);
 
-  assert.match(handler, /setActiveConvId\(sessionId\);[\s\S]*hydrateCanonicalSessionPage\(sessionId\)/);
+  assert.match(handler, /await hydrateCanonicalSessionPage\(sessionId\);[\s\S]*setActiveConvId\(sessionId\)/);
 });
 
 test('sidebar traversal does not hydrate every session before selection', () => {

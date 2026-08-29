@@ -16,6 +16,7 @@ import {
   isBlankSessionLabel,
   isPersistedBlankGroupContinuationConversation,
   latestParticipantSpaceMessageText,
+  latestParticipantSpacePreviewMessage,
   safePreviewText,
 } from './participantConversationState';
 import {
@@ -499,7 +500,14 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
       const groupRootSession = group.kind === 'group'
         ? sortedSessions.find((session) => (
           (cleanOptionalText(session.canonicalSessionId) || cleanOptionalText(session.id)) === groupSpaceId
-        )) ?? sortedSessions[sortedSessions.length - 1]
+        )) ?? [...sortedSessions].sort((left, right) => {
+          const leftCreatedAtMs = left.conversation.canonicalCreatedAtMs ?? Number.POSITIVE_INFINITY;
+          const rightCreatedAtMs = right.conversation.canonicalCreatedAtMs ?? Number.POSITIVE_INFINITY;
+          if (leftCreatedAtMs !== rightCreatedAtMs) return leftCreatedAtMs - rightCreatedAtMs;
+          const leftId = cleanOptionalText(left.canonicalSessionId) || cleanOptionalText(left.id);
+          const rightId = cleanOptionalText(right.canonicalSessionId) || cleanOptionalText(right.id);
+          return leftId.localeCompare(rightId);
+        })[0]
         : undefined;
       const groupCreatorIdentityId = group.kind === 'group'
         ? (() => {
@@ -557,12 +565,6 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
           ].map((identityId) => cleanOptionalText(identityId)).filter(Boolean))];
         })()
         : undefined;
-      const avatarAccountIds = group.kind === 'group'
-        ? metadataStringArrayValue(
-          metadataRecord(groupRootSession?.conversation.metadata),
-          'avatarAccountIds',
-        )
-        : [];
       const sessions = collapseDuplicateBlankSessions(
         group.kind === 'group'
           ? sortedSessions.filter((session) => !isPersistedBlankGroupContinuation(session))
@@ -570,6 +572,9 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
       );
       const reusableBlankSession = sortedSessions.find(isBlankParticipantSpaceSession);
       const latest = sessions[0];
+      const latestPreview = sessions.find((session) => (
+        latestParticipantSpacePreviewMessage(session.conversation) !== null
+      )) ?? latest;
       return {
         id,
         kind: group.kind,
@@ -581,11 +586,10 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
         updatedAtLabel: latest?.updatedAtLabel,
         updatedAtMs: latest?.updatedAtMs ?? 0,
         createdAtMs: groupCreatedAtMs,
-        preview: latest?.preview ?? '',
+        preview: latestPreview?.preview ?? '',
         avatarStack: participantSpaceAvatarParticipants(
           group.kind,
           group.participants,
-          avatarAccountIds,
         ).map(avatarForParticipant),
         sessions,
         groupCreatorIdentityId,

@@ -139,6 +139,12 @@ export type CloudContactAcceptResult = {
 
 export type CloudMessageDirection = 'incoming' | 'outgoing';
 
+export type CloudReactionIntent = {
+  value: string;
+  accountId: string;
+  active: boolean;
+};
+
 export type SendCloudMessageOptions = {
   sessionId?: string | null;
   attachments?: SendCloudMessageAttachmentInput[];
@@ -171,6 +177,7 @@ export type CloudMessage = {
   canonicalHistoryLocalMessageId?: string | null;
   version?: number | null;
   reactions?: Array<{ value: string; accountIds: string[] }>;
+  pendingReactionIntents?: CloudReactionIntent[];
 };
 export type CloudSyncEventType = string;
 

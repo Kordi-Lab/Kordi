@@ -7,6 +7,7 @@ import {
   MessageBubble,
   MessageContextMenuContent,
 } from '../src/kordi-app/components/transcript';
+import { messageBubblePinnedIdsEqual } from '../src/kordi-app/components/messageBubbleMemo';
 import type { Message } from '../src/kordi-app/types';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
@@ -362,6 +363,19 @@ test('message reaction retry clears a previous error before sending', () => {
   assert.match(handler, /setDesktopChatError\(null\);\s*try \{\s*await setCloudMessageReaction/);
 });
 
+test('message reaction selection dismisses the action menu immediately', () => {
+  const source = readFileSync(
+    new URL('../src/kordi-app/components/messageContextMenuContent.tsx', import.meta.url),
+    'utf8',
+  );
+  const handler = source.slice(
+    source.indexOf('const handleReaction'),
+    source.indexOf('const reviewMediaAttachment'),
+  );
+
+  assert.ok(handler.indexOf('onClose?.()') < handler.indexOf('onReactMessage?.(msg, reaction)'));
+});
+
 test('message reactions tuck under the bubble and clear the avatar', () => {
   const peer: Message = {
     id: 'peer-reaction',
@@ -388,6 +402,12 @@ test('message reactions tuck under the bubble and clear the avatar', () => {
   assert.match(css, /\.app-message-reaction-chips \{[\s\S]*?margin-top:\s*-0\.625rem;/);
   assert.match(css, /\.app-message-reaction-chips-peer \{[\s\S]*?margin-left:\s*2\.25rem;/);
   assert.match(css, /\.app-message-reaction-chips-own \{[\s\S]*?margin-right:\s*2\.25rem;/);
+});
+
+test('reaction-only updates keep equivalent pin ids memoized', () => {
+  assert.equal(messageBubblePinnedIdsEqual([], []), true);
+  assert.equal(messageBubblePinnedIdsEqual(['message'], ['message']), true);
+  assert.equal(messageBubblePinnedIdsEqual(['message'], ['other']), false);
 });
 
 test('message context menu exposes only wired actions for eligible messages', () => {

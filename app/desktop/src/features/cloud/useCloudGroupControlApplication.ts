@@ -282,6 +282,7 @@ export function useCloudGroupControlApplication({
     const sessionContext = await applyCloudGroupSessionControl({
       cloudMessage,
       envelope,
+      historyReplay: options.historyReplay,
       runtime: {
         account,
         client,

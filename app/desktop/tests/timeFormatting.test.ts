@@ -30,7 +30,7 @@ test('formatDesktopTranscriptTimeLabel uses compact messaging labels in the view
   );
 });
 
-test('formatDesktopLastActiveLabel uses 24h time today and a compact day/month within the current year', () => {
+test('formatDesktopLastActiveLabel uses time, Yesterday, and compact calendar dates', () => {
   const now = new Date('2026-05-14T06:30:00.000Z');
 
   assert.equal(
@@ -39,7 +39,11 @@ test('formatDesktopLastActiveLabel uses 24h time today and a compact day/month w
   );
   assert.equal(
     formatDesktopLastActiveLabel(new Date('2026-05-13T23:30:00.000Z'), { now, timeZone: 'UTC' }),
-    '13/05',
+    'Yesterday',
+  );
+  assert.equal(
+    formatDesktopLastActiveLabel(new Date('2026-05-10T23:30:00.000Z'), { now, timeZone: 'UTC' }),
+    '10/05',
   );
   assert.equal(
     formatDesktopLastActiveLabel(new Date('2025-07-23T23:30:00.000Z'), { now, timeZone: 'UTC' }),
@@ -56,7 +60,7 @@ test('formatDesktopLastActiveLabel compares calendar days in the viewer timezone
   );
   assert.equal(
     formatDesktopLastActiveLabel(new Date('2026-05-13T06:30:00.000Z'), { now, timeZone: 'America/Los_Angeles' }),
-    '12/05',
+    'Yesterday',
   );
 });
 
@@ -65,11 +69,15 @@ test('formatDesktopLastActiveLabel decides whether to show the year in the viewe
 
   assert.equal(
     formatDesktopLastActiveLabel(new Date('2025-12-31T23:30:00.000Z'), { now, timeZone: 'UTC' }),
-    '31/12/2025',
+    'Yesterday',
   );
   assert.equal(
     formatDesktopLastActiveLabel(new Date('2025-12-30T23:30:00.000Z'), { now, timeZone: 'America/Los_Angeles' }),
-    '30/12',
+    'Yesterday',
+  );
+  assert.equal(
+    formatDesktopLastActiveLabel(new Date('2017-07-17T23:30:00.000Z'), { now, timeZone: 'UTC' }),
+    '17/07/2017',
   );
 });
 

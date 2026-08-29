@@ -60,6 +60,14 @@ export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
   gap?: number;
 };
 const preserveMeasuredDisclosurePosition = () => false;
+const preserveRowsBelowPosition = (
+  item: { start: number },
+  _delta: number,
+  instance: {
+    scrollOffset: number | null;
+    scrollRect: { height: number } | null;
+  },
+) => item.start < (instance.scrollOffset ?? 0) + (instance.scrollRect?.height ?? 0);
 const STABLE_DISCLOSURE_SETTLE_MS = 320;
 const TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP = 12;
 const TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT = 72;
@@ -121,7 +129,6 @@ export function VirtualTranscript<Item>({
   const stableDisclosureReleaseFrameRef = useRef<number | null>(null);
   const stableDisclosureResizeObserverRef = useRef<ResizeObserver | null>(null);
   const stableDisclosureDirectionRef = useRef(new WeakMap<HTMLElement, TranscriptDisclosureDirection>());
-
   const setScrollElement = useCallback((node: HTMLDivElement | null) => {
     internalScrollRef.current = node;
     if (scrollRef) scrollRef.current = node;
@@ -152,7 +159,19 @@ export function VirtualTranscript<Item>({
   });
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = stableDisclosureActive
     ? preserveMeasuredDisclosurePosition
-    : undefined;
+    : (virtualizer.scrollRect?.height ?? 0) > 0
+      ? (item, delta, instance) => {
+          const shouldPreserve = preserveRowsBelowPosition(item, delta, instance);
+          if (
+            shouldPreserve
+            && tailAlignmentActiveRef.current
+            && tailAlignmentTargetRef.current !== null
+          ) {
+            tailAlignmentTargetRef.current += delta;
+          }
+          return shouldPreserve;
+        }
+      : undefined;
 
   const pagingEnabled = hasOlder && Boolean(onLoadOlder);
   const olderLoadScopeRef = useRef({ sessionKey, pagingEnabled });

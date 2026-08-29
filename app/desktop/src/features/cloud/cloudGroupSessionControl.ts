@@ -70,10 +70,18 @@ type CloudGroupSessionStateOps = {
 export type ApplyCloudGroupSessionControlInput = {
   cloudMessage: CloudGroupControlContext['cloudMessage'];
   envelope: CloudGroupControlEnvelope;
+  historyReplay?: boolean;
   runtime: CloudGroupSessionRuntime;
   canonical: CloudGroupCanonicalRuntime;
   stateOps: CloudGroupSessionStateOps;
 };
+
+export function cloudGroupHistoryReplayPreservesSessionShell(
+  historyReplay: boolean | undefined,
+  hasExistingSession: boolean,
+) {
+  return historyReplay === true && hasExistingSession;
+}
 
 export function cloudGroupSessionPreparationSignature(
   envelope: CloudGroupControlEnvelope,
@@ -166,6 +174,7 @@ export function resolveAuthorizedCloudGroupSessionTitleSnapshot(input: {
 export async function applyCloudGroupSessionControl({
   cloudMessage,
   envelope,
+  historyReplay,
   runtime,
   canonical,
   stateOps,
@@ -248,9 +257,37 @@ export async function applyCloudGroupSessionControl({
     const identity = await upsertCanonicalIdentityFast(request);
     nextState = stateOps.upsertIdentity(nextState, identity);
   }
+  if (!nextState) return null;
 
   const groupSpaceId = envelope.groupSpaceId?.trim() || envelope.groupId;
   const envelopeSession = canonicalState.sessions.find((session) => session.id === envelope.groupId) ?? null;
+  if (cloudGroupHistoryReplayPreservesSessionShell(historyReplay, Boolean(envelopeSession))) {
+    const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId)
+      ?? envelopeSession!.createdByIdentityId;
+    for (const noticeRequest of cloudGroupMemberJoinNoticeRequests({
+      envelope,
+      actorIdentityId,
+      identityIdByAccount,
+      existingMessageIds: new Set(nextState.messages.map((message) => message.id)),
+    })) {
+      await upsertCanonicalMessageFast(noticeRequest);
+    }
+    if (envelope.kind !== 'group-message' || !envelope.message) {
+      canonical.setState(nextState);
+      return null;
+    }
+    return {
+      account,
+      cloudMessage,
+      envelope,
+      canonicalState,
+      nextState,
+      localHumanIdentityId,
+      groupSpaceId,
+      participantByAccount,
+      identityIdByAccount,
+    };
+  }
   const groupRootSession = canonicalState.sessions.find((session) => session.id === groupSpaceId) ?? null;
   const envelopeSessionMetadata = stateOps.objectContent(envelopeSession?.metadata);
   const groupRootMetadata = stateOps.objectContent(groupRootSession?.metadata);
@@ -417,6 +454,7 @@ export async function applyCloudGroupSessionControl({
     envelope,
     actorIdentityId,
     identityIdByAccount,
+    existingMessageIds: new Set(nextState.messages.map((message) => message.id)),
   })) {
     const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
     nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;

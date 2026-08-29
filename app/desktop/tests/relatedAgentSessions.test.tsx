@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { relatedAgentSessionsFromTools, relatedAgentSessionStatusById } from '../src/features/chat/relatedAgentSessions';
+import {
+  relatedAgentSessionsFromTools,
+  relatedAgentSessionStatusById,
+  relatedAgentSessionStatusMapsEqual,
+} from '../src/features/chat/relatedAgentSessions';
 import type { Conversation, DesktopChatToolSnapshot } from '../src/kordi-app/types';
 
 function spawnTool(
@@ -103,4 +107,9 @@ test('derives live and terminal background session states from child conversatio
     stopped: 'stopped',
     interrupted: 'failed',
   });
+  assert.equal(relatedAgentSessionStatusMapsEqual(statuses, new Map(statuses)), true);
+  assert.equal(
+    relatedAgentSessionStatusMapsEqual(statuses, new Map([...statuses, ['running', 'done']])),
+    false,
+  );
 });

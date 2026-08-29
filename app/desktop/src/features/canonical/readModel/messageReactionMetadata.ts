@@ -1,24 +1,47 @@
 import type { CanonicalSessionMessage, Message } from '@/kordi-app/types';
+import {
+  cloudReactionsEqual,
+  normalizeCloudMessageReactions,
+} from '@/features/cloud/cloudMessageMerge';
 
 export function canonicalMessageReactionMetadata(
   message: CanonicalSessionMessage,
   content: Record<string, unknown>,
   sourceTransport: string,
-): Pick<Message, 'reactionConversationId' | 'reactionTargetMessageId'> {
+): Pick<Message, 'reactionConversationId' | 'reactionTargetMessageId' | 'reactions'> {
   if (!sourceTransport.startsWith('cloud')) {
     return { reactionConversationId: null, reactionTargetMessageId: null };
   }
   const contentMessageId = typeof content.cloudGroupMessageId === 'string'
     ? content.cloudGroupMessageId.trim()
     : '';
-  const targetMessageId = contentMessageId || (
+  const reactionConversationId = typeof content.cloudReactionConversationId === 'string'
+    ? content.cloudReactionConversationId.trim()
+    : '';
+  const reactionTargetMessageId = typeof content.cloudReactionTargetMessageId === 'string'
+    ? content.cloudReactionTargetMessageId.trim()
+    : '';
+  const sourceEventPrefix = `${sourceTransport}:`;
+  const sourceEventMessageId = sourceTransport.startsWith('cloud-group')
+    && message.sourceEventId?.startsWith(sourceEventPrefix)
+    ? message.sourceEventId.slice(sourceEventPrefix.length).split(':', 1)[0]?.trim() ?? ''
+    : '';
+  const sourceMessageId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(sourceEventMessageId)
+    ? sourceEventMessageId
+    : '';
+  const targetMessageId = reactionTargetMessageId || sourceMessageId || contentMessageId || (
     sourceTransport.startsWith('cloud-group')
       ? message.id
       : message.sourceEventId?.trim() || message.id
   );
+  const reactions = normalizeCloudMessageReactions(content.reactions);
   return {
-    reactionConversationId: targetMessageId ? message.sessionId : null,
+    reactionConversationId: targetMessageId
+      ? reactionConversationId || message.sessionId
+      : null,
     reactionTargetMessageId: targetMessageId || null,
+    ...(reactions ? { reactions } : {}),
   };
 }
 
@@ -62,12 +85,15 @@ function monotonicReadReceiptSummary(
 export function mergedMessageReactionMetadata(message: Message, canonicalMessage: Message) {
   const reactionConversationId = message.reactionConversationId ?? canonicalMessage.reactionConversationId;
   const reactionTargetMessageId = message.reactionTargetMessageId ?? canonicalMessage.reactionTargetMessageId;
+  const reactions = canonicalMessage.reactions ?? message.reactions;
   return {
     changed: reactionConversationId !== message.reactionConversationId
-      || reactionTargetMessageId !== message.reactionTargetMessageId,
+      || reactionTargetMessageId !== message.reactionTargetMessageId
+      || !cloudReactionsEqual(message.reactions, reactions),
     values: {
       ...(reactionConversationId ? { reactionConversationId } : {}),
       ...(reactionTargetMessageId ? { reactionTargetMessageId } : {}),
+      ...(reactions !== undefined ? { reactions } : {}),
     },
   };
 }

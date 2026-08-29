@@ -17,6 +17,7 @@ import {
   nextAttachmentMediaZoom,
 } from '../src/features/chat/attachmentMediaZoom';
 import {
+  attachmentMediaGalleriesEqual,
   attachmentMediaGalleryIndex,
   collectConversationImageAttachments,
 } from '../src/features/chat/attachmentMediaGallery';
@@ -240,6 +241,8 @@ test('conversation gallery preserves transcript image order across separate mess
 
   assert.deepEqual(gallery.map((attachment) => attachment.name), ['First.png', 'Second.png', 'Third.png']);
   assert.equal(attachmentMediaGalleryIndex(gallery, secondMessage.attachments![0]!), 1);
+  assert.equal(attachmentMediaGalleriesEqual(gallery, [...gallery]), true);
+  assert.equal(attachmentMediaGalleriesEqual(gallery, gallery.slice(0, 1)), false);
 });
 
 test('thumbnail click launches a separate resizable browser window with the full conversation gallery', async () => {

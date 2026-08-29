@@ -97,6 +97,9 @@ export function formatDesktopLastActiveLabel(value: Date | number, options: Desk
   const dateLabel = formatDesktopDate(date, { timeZone });
   const nowLabel = formatDesktopDate(now, { timeZone });
   if (dateLabel === nowLabel) return formatDesktopClockTime(date, { timeZone });
+  if (calendarDayNumber(now, timeZone) - calendarDayNumber(date, timeZone) === 1) {
+    return 'Yesterday';
+  }
 
   const [year, month, day] = dateLabel.split('-');
   const [currentYear] = nowLabel.split('-');

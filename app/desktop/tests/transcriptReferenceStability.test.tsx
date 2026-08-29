@@ -141,10 +141,24 @@ test('only uses transcript references from a render that React committed', () =>
   ]);
   assert.equal(abandonedRender.conversations[0].messages[0], abandonedRow);
 
-  stabilizer.commit(firstRender.cache);
+  stabilizer.commit(firstRender);
   const nextRender = stabilizer.prepare([
     conversation('session-a', [structuredClone(committedRow)]),
   ]);
 
   assert.equal(nextRender.conversations[0].messages[0], committedRow);
+});
+
+test('keeps the committed conversation and list when background projections clone equivalent values', () => {
+  const stabilizer = createTranscriptReferenceStabilizer();
+  const initialConversation = conversation('session-a', [message()]);
+  const firstRender = stabilizer.prepare([initialConversation]);
+  stabilizer.commit(firstRender);
+
+  const nextRender = stabilizer.prepare([
+    structuredClone(initialConversation),
+  ]);
+
+  assert.equal(nextRender.conversations, firstRender.conversations);
+  assert.equal(nextRender.conversations[0], initialConversation);
 });

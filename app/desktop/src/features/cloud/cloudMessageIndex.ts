@@ -9,7 +9,12 @@ import {
 
 import type { CloudMessage } from './authClient';
 import { parseCloudGroupControl, type CloudGroupControlEnvelope } from './cloudGroupMessages';
-import { compareCloudMessages } from './cloudMessageMerge';
+import {
+  applyCloudReactionIntents,
+  cloudReactionsEqual,
+  compareCloudMessages,
+  normalizeCloudMessageReactions,
+} from './cloudMessageMerge';
 
 export type CloudDeliveryReader = {
   accountId: string;
@@ -127,6 +132,10 @@ function revisionForMessages(messages: readonly CloudMessage[]): string {
     addFingerprintValue(message.messageKind ?? '');
     addFingerprintValue(String(message.version ?? ''));
     addFingerprintValue(String(message.body.length));
+    for (const reaction of message.reactions ?? []) {
+      addFingerprintValue(reaction.value);
+      for (const accountId of reaction.accountIds) addFingerprintValue(accountId);
+    }
     for (const attachment of message.attachments ?? []) {
       addFingerprintValue(attachment.attachmentId);
       addFingerprintValue(attachment.downloadUrl ?? '');
@@ -378,6 +387,73 @@ export function buildCloudMessageIndex(
     ),
   }));
   return index;
+}
+
+export function patchCanonicalCloudReactions(
+  current: CanonicalSessionState | null,
+  groupRows: readonly IndexedCloudGroupRow[],
+): CanonicalSessionState | null {
+  if (!current || groupRows.length === 0) return current;
+  const projections = new Map<string, {
+    conversationId: string;
+    targetMessageId: string;
+    reactions: NonNullable<CloudMessage['reactions']>;
+    pendingReactionIntents: NonNullable<CloudMessage['pendingReactionIntents']>;
+  }>();
+  for (const row of groupRows) {
+    const messageId = cleanText(row.envelope.message?.id);
+    const conversationId = cleanText(row.wire.conversationId);
+    const targetMessageId = cleanText(row.wire.messageId);
+    if (!messageId || !conversationId || !targetMessageId) continue;
+    const key = `${row.envelope.groupId}\u0000${messageId}`;
+    const previous = projections.get(key);
+    const pendingReactionIntents = [
+      ...(previous?.pendingReactionIntents ?? []),
+      ...(row.wire.pendingReactionIntents ?? []),
+    ];
+    projections.set(key, {
+      conversationId,
+      targetMessageId,
+      reactions: applyCloudReactionIntents(
+        normalizeCloudMessageReactions([
+          ...(previous?.reactions ?? []),
+          ...(row.wire.reactions ?? []),
+        ]),
+        pendingReactionIntents,
+      ),
+      pendingReactionIntents,
+    });
+  }
+  if (projections.size === 0) return current;
+  let changed = false;
+  const messages = current.messages.map((message) => {
+    const content = contentRecord(message.content);
+    const cloudGroupMessageId = cleanText(
+      typeof content.cloudGroupMessageId === 'string'
+        ? content.cloudGroupMessageId
+        : null,
+    );
+    const projection = projections.get(`${message.sessionId}\u0000${message.id}`)
+      ?? projections.get(`${message.sessionId}\u0000${cloudGroupMessageId}`);
+    if (!projection) return message;
+    const reactions = normalizeCloudMessageReactions(content.reactions) ?? [];
+    if (
+      content.cloudReactionConversationId === projection.conversationId
+      && content.cloudReactionTargetMessageId === projection.targetMessageId
+      && cloudReactionsEqual(reactions, projection.reactions)
+    ) return message;
+    changed = true;
+    return {
+      ...message,
+      content: {
+        ...content,
+        cloudReactionConversationId: projection.conversationId,
+        cloudReactionTargetMessageId: projection.targetMessageId,
+        reactions: projection.reactions,
+      },
+    };
+  });
+  return changed ? { ...current, messages } : current;
 }
 
 function deliveryReadersEqual(existing: unknown, readers: readonly CloudDeliveryReader[]) {

@@ -45,7 +45,7 @@ test('canonical history hydration never replaces cached rows with a placeholder'
     ],
   };
 
-  const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
+  const loading = applyCanonicalHydrationPlaceholder(selected);
 
   assert.equal(loading, selected);
   assert.deepEqual(loading.messages.map((message) => message.text), [
@@ -54,7 +54,7 @@ test('canonical history hydration never replaces cached rows with a placeholder'
   ]);
 });
 
-test('canonical history omits a lone catalog preview instead of inventing a loading row', () => {
+test('canonical history keeps its catalog tail visible while the full page hydrates', () => {
   const selected = {
     id: 'session:group:catalog-only',
     canonicalSessionId: 'session:group:catalog-only',
@@ -70,10 +70,12 @@ test('canonical history omits a lone catalog preview instead of inventing a load
     messages: [{ role: 'user' as const, text: 'catalog preview', time: '10:45' }],
   };
 
-  assert.deepEqual(
-    applyCanonicalHydrationPlaceholder(selected, 'loading').messages,
-    [],
-  );
+  const loading = applyCanonicalHydrationPlaceholder(selected);
+
+  assert.equal(loading, selected);
+  assert.deepEqual(loading.messages.map((message) => message.text), [
+    'catalog preview',
+  ]);
 });
 
 test('cold group projection keeps its durable head visible while history syncs', () => {
@@ -93,7 +95,7 @@ test('cold group projection keeps its durable head visible while history syncs',
     messages: [{ role: 'user' as const, text: 'bootstrap head', time: '10:45' }],
   };
 
-  const loading = applyCanonicalHydrationPlaceholder(selected, 'ready');
+  const loading = applyCanonicalHydrationPlaceholder(selected);
 
   assert.equal(loading, selected);
   assert.equal(loading.messages[0]?.text, 'bootstrap head');
@@ -115,7 +117,7 @@ test('desktop runtime selection keeps an invisible loading marker until its tran
     desktopRuntimeTranscriptLoaded: false,
   };
 
-  const loading = applyCanonicalHydrationPlaceholder(selected, undefined);
+  const loading = applyCanonicalHydrationPlaceholder(selected);
 
   assert.deepEqual(loading.messages.map((message) => message.text), ['']);
   assert.equal(loading.messages[0]?.detail, 'transcript-loading');
@@ -137,7 +139,7 @@ test('desktop runtime hides a partial canonical row until its native transcript 
     desktopRuntimeTranscriptLoaded: false,
   };
 
-  const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
+  const loading = applyCanonicalHydrationPlaceholder(selected);
 
   assert.equal(loading.messages[0]?.detail, 'transcript-loading');
   assert.deepEqual(loading.messages[0]?.loadingPlaceholders, [{
@@ -167,7 +169,7 @@ test('desktop runtime hydration keeps a newly sent request ahead of its live res
     desktopRuntimeTranscriptLoaded: false,
   };
 
-  const loading = applyCanonicalHydrationPlaceholder(selected, 'loading');
+  const loading = applyCanonicalHydrationPlaceholder(selected);
 
   assert.equal(loading, selected);
   assert.deepEqual(loading.messages.map((message) => message.text), [
