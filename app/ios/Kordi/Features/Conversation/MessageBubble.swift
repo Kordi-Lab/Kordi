@@ -1838,13 +1838,24 @@ private struct MessageVideoAttachment: View {
             Color.black.opacity(poster == nil ? 0 : 0.5)
             VStack(spacing: 8) {
                 if let uploadProgress {
-                    ProgressView(value: uploadProgress)
-                        .progressViewStyle(.circular)
-                        .controlSize(.large)
-                        .tint(poster == nil ? Color.secondary : .white)
-                    Text("\(Int((uploadProgress * 100).rounded()))%")
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                        .foregroundStyle(poster == nil ? Color.primary : .white)
+                    ZStack {
+                        Circle()
+                            .stroke(
+                                poster == nil ? Color.secondary.opacity(0.25) : Color.white.opacity(0.25),
+                                lineWidth: 3
+                            )
+                        Circle()
+                            .trim(from: 0, to: min(1, max(0, uploadProgress)))
+                            .stroke(
+                                poster == nil ? Color.secondary : Color.white,
+                                style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                        Text("\(Int((uploadProgress * 100).rounded()))%")
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(poster == nil ? Color.primary : .white)
+                    }
+                    .frame(width: 56, height: 56)
                     if let sizeLabel = uploadSizeProgressLabel {
                         Text(sizeLabel)
                             .font(.caption2.monospacedDigit().weight(.semibold))
