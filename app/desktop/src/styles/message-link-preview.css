@@ -1,0 +1,98 @@
+.app-message-link-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(64px, 25%, 88px);
+  width: 28rem;
+  max-width: 100%;
+  min-height: 88px;
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+  border-radius: 12px;
+  background: color-mix(in oklab, currentColor 4%, transparent);
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 100ms ease-out, border-color 100ms ease-out;
+}
+
+.app-message-link-preview:hover {
+  border-color: color-mix(in oklab, currentColor 22%, transparent);
+  background: color-mix(in oklab, currentColor 7%, transparent);
+}
+
+.app-message-link-preview:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--app-sidebar-accent) 76%, transparent);
+  outline-offset: 2px;
+}
+
+.app-message-link-preview-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 10px 12px;
+}
+
+.app-message-link-preview-site {
+  overflow: hidden;
+  color: color-mix(in oklab, currentColor 66%, transparent);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-message-link-preview-title,
+.app-message-link-preview-description {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+}
+
+.app-message-link-preview-title {
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  -webkit-line-clamp: 2;
+}
+
+.app-message-link-preview-description {
+  color: color-mix(in oklab, currentColor 68%, transparent);
+  font-size: 11px;
+  line-height: 1.35;
+  -webkit-line-clamp: 2;
+}
+
+.app-message-link-preview-artwork {
+  display: grid;
+  min-height: 88px;
+  overflow: hidden;
+  place-items: center;
+  background: color-mix(in oklab, currentColor 6%, transparent);
+}
+
+.app-message-link-preview-artwork > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.app-message-link-preview-artwork .app-message-link-site-icon {
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border-radius: 7px;
+}
+
+.app-message-link-preview-artwork .app-message-link-site-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (forced-colors: active) {
+  .app-message-link-preview {
+    border-color: ButtonText;
+  }
+}

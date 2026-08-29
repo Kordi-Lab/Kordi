@@ -1,4 +1,5 @@
 import CallKit
+import LinkPresentation
 import XCTest
 @testable import Kordi
 
@@ -66,6 +67,80 @@ final class KordiMarkdownParserTests: XCTestCase {
             KordiMarkdownParser.parseInline(":blob:not-in-the-catalog:")
                 .contains(where: { if case .blobEmoji = $0 { true } else { false } })
         )
+    }
+
+    func testLongEmojiMarkdownLinkRendersOneDestinationAndCompactsItsLabel() throws {
+        let url = "https://www.xiaohongshu.com/discovery/item/redacted?app_platform=ios&xsec_token=redacted&share_id=redacted"
+        let markdown = "[:blob:blobwave: \(url)]\n(\(url))"
+        let blocks = KordiMarkdownParser.parse(markdown)
+        guard case let .paragraph(paragraph) = try XCTUnwrap(blocks.first) else {
+            return XCTFail("Expected a paragraph")
+        }
+        let parts = KordiMarkdownParser.parseInline(paragraph)
+        let links = parts.compactMap { part -> (String, URL)? in
+            if case let .link(label, destination) = part { return (label, destination) }
+            return nil
+        }
+
+        XCTAssertEqual(links.count, 1)
+        XCTAssertEqual(links.first?.1.absoluteString, url)
+        XCTAssertFalse(parts.contains { part in
+            if case let .text(value) = part { return value.contains("](") }
+            return false
+        })
+        XCTAssertFalse(
+            KordiMarkdownParser.compactLinkLabel(url, url: try XCTUnwrap(URL(string: url)))
+                .contains("xsec_token")
+        )
+    }
+
+    func testFirstExternalURLSkipsCodeBlocks() throws {
+        let text = """
+        ```text
+        https://ignored.example/private
+        ```
+
+        [Open report](https://example.com/report?token=redacted)
+        """
+
+        XCTAssertEqual(
+            KordiMarkdownParser.firstExternalURL(in: text)?.absoluteString,
+            "https://example.com/report?token=redacted"
+        )
+    }
+
+    @MainActor
+    func testLinkPreviewMetadataCacheDeduplicatesAndCachesFailures() async throws {
+        let metadata = LPLinkMetadata()
+        metadata.title = "Example"
+        var calls = 0
+        let cache = LinkPreviewMetadataCache(
+            countLimit: 2,
+            successTTL: 60,
+            failureTTL: 10
+        ) { url in
+            calls += 1
+            try? await Task.sleep(for: .milliseconds(10))
+            return LinkPreviewMetadataValue(
+                metadata: url.host == "example.com" ? metadata : nil
+            )
+        }
+        let successURL = try XCTUnwrap(URL(string: "https://example.com/page"))
+        async let first = cache.metadata(for: successURL)
+        async let second = cache.metadata(for: successURL)
+
+        _ = await (first, second)
+        XCTAssertEqual(calls, 1)
+        _ = await cache.metadata(for: successURL)
+        XCTAssertEqual(calls, 1)
+
+        let failedURL = try XCTUnwrap(URL(string: "https://invalid.example/page"))
+        let now = Date()
+        _ = await cache.metadata(for: failedURL, now: now)
+        _ = await cache.metadata(for: failedURL, now: now.addingTimeInterval(5))
+        XCTAssertEqual(calls, 2)
+        _ = await cache.metadata(for: failedURL, now: now.addingTimeInterval(11))
+        XCTAssertEqual(calls, 3)
     }
 
     func testMarkdownParserPerformance() {

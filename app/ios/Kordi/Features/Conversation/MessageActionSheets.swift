@@ -543,6 +543,7 @@ struct MessageActionOverlay: View {
     let onReply: () -> Void
     let onPin: () -> Void
     let onCopy: () -> Void
+    let onShareMessage: () -> Void
     let onForward: () -> Void
     let onSaveSticker: (ChatAttachment) -> Void
     let onSelect: () -> Void
@@ -556,7 +557,7 @@ struct MessageActionOverlay: View {
 
     private var actionCount: Int {
         (allowsReply ? 1 : 0)
-            + (!message.text.isEmpty ? 1 : 0)
+            + (!message.text.isEmpty ? 2 : 0)
             + 3
             + mediaActionCount
             + (stickerAttachment == nil ? 0 : 1)
@@ -779,6 +780,11 @@ struct MessageActionOverlay: View {
                 }
                 if !message.text.isEmpty {
                     actionButton("Copy", systemImage: "doc.on.doc", action: onCopy)
+                    actionButton(
+                        "Share",
+                        systemImage: "square.and.arrow.up",
+                        action: onShareMessage
+                    )
                 }
                 actionButton(
                     "Forward",

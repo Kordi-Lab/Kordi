@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { BlobEmojiImage } from '@/features/emoji/BlobEmojiImage';
 import type { Message, MessageMention } from '../types';
 import {
+  compactExternalLinkLabel,
   openExternalMessageLink,
   parseMessageInlineParts,
   safeExternalHttpHref,
@@ -15,7 +16,7 @@ import {
   useRemoteAvatarImage,
 } from './remoteAvatarImage';
 
-const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
+export const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
   const descriptor = siteIconDescriptorForHref(href);
   const requestUrl = descriptor?.requestUrl ?? null;
   const shouldLoad = shouldLoadAvatarThroughNativeProxy(requestUrl);
@@ -84,11 +85,13 @@ export function ExternalMessageLink({
 export function MessageInlineContent({
   text,
   mentions,
+  linksInteractive = true,
   showSiteIcons = true,
   onOpenMention,
 }: {
   text: string;
   mentions?: MessageMention[];
+  linksInteractive?: boolean;
   showSiteIcons?: boolean;
   onOpenMention?: (mention: MessageMention, anchorRect: DOMRect) => void;
 }) {
@@ -152,13 +155,17 @@ export function MessageInlineContent({
       );
     }
     if (part.type === 'link') {
+      const label = compactExternalLinkLabel(part.label, part.href);
+      if (!linksInteractive) {
+        return <Fragment key={`link-${part.start}`}>{label}</Fragment>;
+      }
       return (
         <ExternalMessageLink
           key={`link-${part.start}`}
           href={part.href}
           showSiteIcon={showSiteIcons}
         >
-          {part.label}
+          {label}
         </ExternalMessageLink>
       );
     }

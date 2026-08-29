@@ -95,7 +95,7 @@ fn is_public_remote_ip(address: IpAddr) -> bool {
     }
 }
 
-fn validated_remote_image_url(value: &str) -> Result<Url, String> {
+pub(crate) fn validated_remote_image_url(value: &str) -> Result<Url, String> {
     let url = Url::parse(value.trim()).map_err(|_| "Avatar image URL is invalid.".to_string())?;
     if url.scheme() != "https" {
         return Err("Avatar image URL must use HTTPS.".to_string());
@@ -397,7 +397,7 @@ fn remote_image_client(url: &Url, addresses: &[SocketAddr]) -> Result<reqwest::C
         .map_err(|error| format!("Unable to prepare avatar image request: {error}"))
 }
 
-async fn request_public_remote_image(mut url: Url) -> Result<Response, String> {
+pub(crate) async fn request_public_remote_image(mut url: Url) -> Result<Response, String> {
     for redirect_count in 0..=MAX_REMOTE_IMAGE_REDIRECTS {
         let addresses = resolve_public_remote_image_addrs(&url).await?;
         let client = remote_image_client(&url, &addresses)?;

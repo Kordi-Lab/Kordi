@@ -15,6 +15,20 @@ test('renders bare http or https links as external markdown links', () => {
   assert.match(html, /target="_blank"/);
 });
 
+test('renders a long emoji markdown link once without exposing its destination syntax', () => {
+  const url = 'https://www.xiaohongshu.com/discovery/item/redacted?app_platform=ios&xsec_token=redacted&share_id=redacted';
+  const html = renderToStaticMarkup(createElement(MarkdownContent, {
+    text: `[:blob:blobwave: ${url}]\n(${url})`,
+    showLinkIcons: true,
+  }));
+  const anchor = html.match(/<a[^>]+data-external-message-link="true"[\s\S]*?<\/a>/)?.[0] ?? '';
+
+  assert.equal((html.match(/data-external-message-link="true"/g) ?? []).length, 1);
+  assert.match(anchor, /blobwave\.webp/);
+  assert.match(anchor, /xiaohongshu\.com\/discovery\/item\/redacted/);
+  assert.doesNotMatch(anchor.replace(/href="[^"]+"|title="[^"]+"/g, ''), /app_platform|xsec_token|\]\s*\(/);
+});
+
 test('emphasizes mentions in agent markdown regardless of markdown weight', () => {
   const html = renderToStaticMarkup(createElement(MarkdownContent, {
     text: '@AlexMorgansKordi, please ask **@EthanParksKordi** to reply.',

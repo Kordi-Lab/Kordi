@@ -204,6 +204,7 @@ final class AppModel: ObservableObject {
     private let api: CloudAPIClient
     private let oauth: CloudOAuthSession
     private let keychain: KeychainSessionStore
+    private let shareCredentialStore: ShareExtensionCredentialStore
     private let cache: LocalMessageStore?
     private let wireCache: CloudWireCache
     private let sessionRuntimeRouteStore: SessionRuntimeRouteStore
@@ -267,6 +268,7 @@ final class AppModel: ObservableObject {
     init(
         api: CloudAPIClient = CloudAPIClient(),
         keychain: KeychainSessionStore = KeychainSessionStore(),
+        shareCredentialStore: ShareExtensionCredentialStore = ShareExtensionCredentialStore(),
         cache: LocalMessageStore? = nil,
         wireCache: CloudWireCache = CloudWireCache(),
         sessionRuntimeRouteStore: SessionRuntimeRouteStore = SessionRuntimeRouteStore(),
@@ -303,6 +305,7 @@ final class AppModel: ObservableObject {
         self.api = api
         self.oauth = CloudOAuthSession(api: api)
         self.keychain = keychain
+        self.shareCredentialStore = shareCredentialStore
         self.cache = cache ?? (try? LocalMessageStore())
         self.wireCache = wireCache
         self.sessionRuntimeRouteStore = sessionRuntimeRouteStore
@@ -344,6 +347,15 @@ final class AppModel: ObservableObject {
                 return
             }
             let restoredAccount = try await api.me(token: savedToken)
+            let existingShareCredential = try? shareCredentialStore.load()
+            try? shareCredentialStore.save(ShareExtensionCredential(
+                token: savedToken,
+                accountID: restoredAccount.accountId,
+                expiresAt: existingShareCredential?.token == savedToken
+                    && existingShareCredential?.isExpired == false
+                    ? existingShareCredential?.expiresAt
+                    : nil
+            ))
             token = savedToken
             account = restoredAccount
             conversations = restoredConversations(accountId: restoredAccount.accountId)
@@ -370,6 +382,7 @@ final class AppModel: ObservableObject {
             if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
             presencePublisher.stop()
             try? keychain.deleteToken()
+            try? shareCredentialStore.delete()
             token = nil
             currentDeviceId = nil
             account = nil
@@ -533,6 +546,7 @@ final class AppModel: ObservableObject {
         if let oldAccountId { cache?.clear(accountId: oldAccountId) }
         if let oldAccountId { await wireCache.clear(accountId: oldAccountId) }
         try? keychain.deleteToken()
+        if !previewMode { try? shareCredentialStore.delete() }
         phase = .signedOut
         if let oldToken { try? await api.logout(token: oldToken) }
     }
@@ -5592,6 +5606,11 @@ final class AppModel: ObservableObject {
 
     private func completeAuthentication(_ response: CloudAuthResponse) async throws {
         try keychain.saveToken(response.session.token)
+        try? shareCredentialStore.save(ShareExtensionCredential(
+            token: response.session.token,
+            accountID: response.account.accountId,
+            expiresAt: response.session.expiresAt
+        ))
         await api.activateAccount(response.account.accountId)
         token = response.session.token
         currentDeviceId = response.session.deviceId

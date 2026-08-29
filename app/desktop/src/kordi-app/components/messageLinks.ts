@@ -32,6 +32,12 @@ export type SiteIconDescriptor = {
   requestUrl: string;
 };
 
+export type MessageLinkMatch = {
+  href: string;
+  label: string;
+  matchedLength: number;
+};
+
 export const bareHttpUrlStartPattern = /https?:\/\//i;
 const bareHttpUrlPattern = /https?:\/\/[^\s<>"']+/giu;
 const trailingBareUrlPunctuationPattern = /[.,!?;:，。！？；：]+$/u;
@@ -89,6 +95,104 @@ export function safeExternalHttpHref(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+export function compactExternalLinkLabel(label: string, href: string, maxLength = 48) {
+  if (label !== href || label.length <= maxLength) return label;
+  const url = new URL(href);
+  const hostname = url.hostname.replace(/^www\./i, '');
+  let path = url.pathname;
+  try {
+    path = decodeURIComponent(path);
+  } catch {
+    // Keep the encoded path when a sender supplied malformed percent escapes.
+  }
+  const leaf = path.split('/').filter(Boolean).pop() ?? '';
+  if (/^[a-z\d]{20,}$/i.test(leaf)) return hostname;
+  const compact = `${hostname}${path === '/' ? '' : path}`;
+  return compact.length <= maxLength
+    ? compact
+    : `${compact.slice(0, Math.max(1, maxLength - 1))}…`;
+}
+
+export function markdownHttpLinkPrefix(value: string): MessageLinkMatch | null {
+  if (!value.startsWith('[')) return null;
+
+  let escaped = false;
+  for (let labelEnd = 1; labelEnd < value.length; labelEnd += 1) {
+    const character = value[labelEnd];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (character !== ']') continue;
+
+    let destinationStart = labelEnd + 1;
+    while (/\s/.test(value[destinationStart] ?? '')) destinationStart += 1;
+    if (value[destinationStart] !== '(') continue;
+    destinationStart += 1;
+
+    let parenthesisDepth = 0;
+    escaped = false;
+    for (let cursor = destinationStart; cursor < value.length; cursor += 1) {
+      const destinationCharacter = value[cursor];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (destinationCharacter === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (/\s/.test(destinationCharacter)) break;
+      if (destinationCharacter === '(') {
+        parenthesisDepth += 1;
+        continue;
+      }
+      if (destinationCharacter !== ')') continue;
+      if (parenthesisDepth > 0) {
+        parenthesisDepth -= 1;
+        continue;
+      }
+
+      const href = safeExternalHttpHref(
+        value.slice(destinationStart, cursor).replace(/\\([\\()])/g, '$1'),
+      );
+      if (!href) return null;
+      return {
+        href,
+        label: value.slice(1, labelEnd).replace(/\\([\\[\]])/g, '$1'),
+        matchedLength: cursor + 1,
+      };
+    }
+  }
+
+  return null;
+}
+
+export function firstExternalMessageLink(text: string): Omit<MessageLinkMatch, 'matchedLength'> | null {
+  const visibleText = text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ');
+
+  for (const candidate of visibleText.matchAll(/\[|https?:\/\//gi)) {
+    const slice = visibleText.slice(candidate.index);
+    const markdownLink = markdownHttpLinkPrefix(slice);
+    if (markdownLink) {
+      return { href: markdownLink.href, label: markdownLink.label };
+    }
+    const bare = slice.match(/^https?:\/\/[^\s<>"']+/i)?.[0];
+    if (!bare) continue;
+    const { href } = splitBareHttpUrl(bare);
+    const safeHref = safeExternalHttpHref(href);
+    if (safeHref) return { href: safeHref, label: href };
+  }
+
+  return null;
 }
 
 function rememberSiteIconDescriptor(hostname: string, descriptor: SiteIconDescriptor) {

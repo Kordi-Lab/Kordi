@@ -7,6 +7,11 @@ struct SharedFileItem: Identifiable {
     let url: URL
 }
 
+struct SharedMessageItem: Identifiable {
+    let id = UUID()
+    let item: Any
+}
+
 struct ActivityShareSheet: UIViewControllerRepresentable {
     let items: [Any]
 

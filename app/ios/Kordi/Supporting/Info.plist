@@ -39,8 +39,14 @@
 	<string>$(KORDI_CLOUD_BASE_URL)</string>
 	<key>KordiDistributionChannel</key>
 	<string>$(KORDI_DISTRIBUTION_CHANNEL)</string>
+	<key>KordiHostAppURLScheme</key>
+	<string>$(KORDI_OAUTH_CALLBACK_SCHEME)</string>
 	<key>KordiOAuthCallbackScheme</key>
 	<string>$(KORDI_OAUTH_CALLBACK_SCHEME)</string>
+	<key>KordiShareAppGroup</key>
+	<string>$(KORDI_SHARE_APP_GROUP)</string>
+	<key>KordiShareCredentialService</key>
+	<string>$(KORDI_SHARE_CREDENTIAL_SERVICE)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -52,10 +58,10 @@
 	<string>Kordi uses the local network to establish audio and video calls when required.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Kordi uses the microphone when you record a voice or video message or join a call.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Kordi transcribes voice messages on this iPhone so people and agents can read them.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Kordi shows your photo library when you choose images to send in a conversation.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Kordi transcribes voice messages on this iPhone so people and agents can read them.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

@@ -859,7 +859,7 @@ function LiveChatTurnCardView({
             <FoldableAssistantAnswer
               key="answer"
               text={visibleTurn.assistantText}
-              foldable={!plainAgentResponse}
+              foldable={!plainAgentResponse} showLinkPreview={historical || visibleTurn.completed}
               tone={visibleTurn.status === 'cancelled' ? 'cancelled' : 'default'}
             />
           ) : null}

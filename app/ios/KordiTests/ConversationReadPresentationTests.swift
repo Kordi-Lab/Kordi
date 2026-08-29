@@ -311,6 +311,9 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains("actionButton(\"Review\""))
         XCTAssertTrue(overlaySource.contains("\"Download / Save to Files\""))
         XCTAssertTrue(overlaySource.contains("\"Add to \\(mediaKind.libraryName)\""))
+        XCTAssertTrue(overlaySource.contains("\"Share\","))
+        XCTAssertTrue(overlaySource.contains("systemImage: \"square.and.arrow.up\""))
+        XCTAssertTrue(overlaySource.contains("action: onShareMessage"))
     }
 
     func testMixedMessageImagesCenterInsideTheirBubble() throws {

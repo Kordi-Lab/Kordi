@@ -9,6 +9,7 @@ import {
 import { useSupportReportSubmission } from '@/features/support/supportReportSubmission';
 import { cn } from '@/lib/utils';
 import { MarkdownContent } from './markdown';
+import { MessageLinkPreview } from './messageLinkPreview';
 
 const ASSISTANT_ANSWER_FOLDED_VISIBLE_LINES = 6;
 
@@ -44,6 +45,7 @@ export function SupportContactAnswer({ text }: { text: string }) {
   return (
     <>
       <MarkdownContent text={visibleText} showLinkIcons copySurface="message" />
+      <MessageLinkPreview text={visibleText} />
       {reportProposal ? (
         <SupportReportPermissionCard proposal={reportProposal} />
       ) : null}
@@ -70,10 +72,12 @@ export function SupportContactTypingIndicator() {
 export function FoldableAssistantAnswer({
   text,
   foldable = true,
+  showLinkPreview = false,
   tone = 'default',
 }: {
   text: string;
   foldable?: boolean;
+  showLinkPreview?: boolean;
   tone?: 'default' | 'cancelled';
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -98,6 +102,7 @@ export function FoldableAssistantAnswer({
             cancelled && '[&_p]:!text-rose-300 [&_li]:!text-rose-300 [&_blockquote]:!text-rose-300',
           )}
         />
+        {showLinkPreview ? <MessageLinkPreview text={visibleText} /> : null}
       </div>
       {shouldFold ? (
         <div className="app-fold-reveal-row app-live-assistant-answer-reveal-row">
