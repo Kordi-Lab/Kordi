@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { memo, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   ArrowRightLeft,
   Bot,
@@ -125,16 +125,6 @@ export function StatusPill({ children, className }: { children: ReactNode; class
 
 function primaryMessageStatus(msg: Message) {
   return msg.statusChips?.[0]?.trim().toLowerCase() ?? null;
-}
-
-function senderAccentStyle(label?: string | null): CSSProperties {
-  const text = label?.trim() || 'sender';
-  let hash = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    hash = Math.imul(hash ^ text.charCodeAt(index), 16777619);
-  }
-  const hue = Math.abs(hash) % 360;
-  return { '--app-message-sender-accent': `oklch(0.72 0.15 ${hue})` } as CSSProperties;
 }
 
 function contactRequestFailureCanBeRetried(detail?: string | null) {
@@ -753,7 +743,7 @@ function MessageBubbleView({
   const isAgentMessage = !isOwnHumanMessage && !isPeerHumanMessage;
   const compactDensity = densityMode !== 'default' && !isAgentMessage ? densityMode : undefined;
   const useHumanCompactDensity = Boolean(compactDensity);
-  const hideHumanSenderForCompactDensity = useHumanCompactDensity;
+  const hideHumanSenderForCompactDensity = useHumanCompactDensity && compactDensity !== 'group-compact';
   const align = isOwnHumanMessage ? 'items-end' : 'items-start';
   const bubble = isOwnHumanMessage
     ? 'app-chat-bubble-user'
@@ -906,7 +896,6 @@ function MessageBubbleView({
         {showInlineHumanSender ? (
           <div
             className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
-            style={senderAccentStyle(msg.sender)}
           >
             {msg.sender}
           </div>

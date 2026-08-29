@@ -162,7 +162,7 @@ test('renders peer human sender names inside the bubble with colorful bold styli
   assert.match(markup, /<div class="app-message-inline-sender/);
   assert.doesNotMatch(markup, /<button[^>]*app-message-inline-sender/);
   assert.match(markup, /app-message-inline-sender[^>]*font-semibold/);
-  assert.match(markup, /--app-message-sender-accent/);
+  assert.match(readDesktopShellCss(), /\.app-message-inline-sender\s*\{[^}]*color:\s*var\(--app-chat-accent\)/);
   assert.match(markup, />xin hai Mouse</);
   assert.doesNotMatch(markup, /app-message-meta px-1[\s\S]*xin hai Mouse/);
 });
@@ -323,7 +323,7 @@ test('default human bubbles still render inline sender names', () => {
   assert.doesNotMatch(markup, /data-transcript-density="contact-compact"/);
 });
 
-test('compact group density hides sender labels inside message bubbles', () => {
+test('compact group density shows the sender only in the first grouped bubble', () => {
   const first: Message = {
     id: 'msg:first-group-compact',
     role: 'person',
@@ -351,8 +351,8 @@ test('compact group density hides sender labels inside message bubbles', () => {
   assert.match(markup, /app-message-bubble-contact-compact/);
   assert.match(markup, /px-3 py-1\.5/);
   assert.match(markup, /rounded-\[8px\]/);
-  assert.doesNotMatch(markup, /app-message-inline-sender/);
-  assert.doesNotMatch(markup, />xin hai Mouse<\/div>/);
+  assert.equal((markup.match(/app-message-inline-sender/g) ?? []).length, 1);
+  assert.equal((markup.match(/>xin hai Mouse<\/div>/g) ?? []).length, 1);
   assert.equal((markup.match(/data-avatar-kind="human"/g) ?? []).length, 1);
 });
 

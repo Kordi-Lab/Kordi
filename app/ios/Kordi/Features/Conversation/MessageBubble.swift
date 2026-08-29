@@ -132,10 +132,10 @@ struct MessageBubble: View, Equatable {
             if message.author == .me { Spacer(minLength: 34) }
 
             VStack(alignment: message.author == .me ? .trailing : .leading, spacing: 4) {
-                if showAuthor && message.author != .me {
+                if showAuthor && message.author == .agent {
                     Text(message.authorName)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(message.author == .agent ? KordiTheme.agentViolet : .secondary)
+                        .foregroundStyle(KordiTheme.agentViolet)
                         .padding(.horizontal, 4)
                 }
 
@@ -364,6 +364,13 @@ struct MessageBubble: View, Equatable {
     @ViewBuilder
     private var bubbleContents: some View {
         VStack(alignment: .leading, spacing: 7) {
+            if showAuthor && message.author == .person {
+                Text(message.authorName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(chatTheme.accent)
+                    .lineLimit(1)
+            }
+
             if let source = visibleForwardSource {
                 HStack(spacing: 5) {
                     Image(systemName: "arrowshape.turn.up.right.fill")

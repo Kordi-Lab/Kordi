@@ -1,5 +1,5 @@
 .app-message-inline-sender {
-  color: var(--app-sidebar-title-text);
+  color: var(--app-chat-accent);
 }
 
 .app-message-reaction-surface {
