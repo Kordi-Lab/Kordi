@@ -17,7 +17,7 @@ pub(super) fn prompt_context(task_path: &str, task_name: &str, write_scope: &[St
         write_scope.join(", ")
     };
     format!(
-        "You are a scoped child task agent. Task path: {task_path}. Task name: {task_name}. Write scope: {write_scope}. Stay within this scope and return a concise final report. If a required tool is unavailable, stop and report that limitation; never replace a missing session-observation tool with a broad filesystem search."
+        "You are a scoped child task agent. Task path: {task_path}. Task name: {task_name}. Write scope: {write_scope}. Stay within this scope and return a concise final report. Keep orchestration policy out of the visible response. When the request references a source session, use read_session or search_sessions to retrieve only the participants and messages needed for the task. If a required tool is unavailable, stop and report that limitation; never replace a missing session-observation tool with a broad filesystem search."
     )
 }
 

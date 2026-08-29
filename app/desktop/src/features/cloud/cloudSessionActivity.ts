@@ -224,6 +224,7 @@ export function cloudTaskToSessionTaskActivity(task: CloudTaskActivity): Session
     id: `cloud-task:${task.sessionId}:${task.taskId}`,
     sessionId: task.sessionId,
     status: taskStatus(task.status),
+    summary: task.summary,
     initiator,
     target: {
       id: `task:${task.taskId}`,
@@ -394,6 +395,7 @@ export function deriveCloudActivityFromTurn(input: {
     const title = taskTitleFromArgs(args) ?? taskTitleFromResultText(tool.resultText);
     const taskId = taskIdFromArgs(args, tool.resultText) ?? (title ? slugify(title) : null);
     const action = cleanText(args.action).toLowerCase();
+    if (action !== 'create' && action !== 'close') continue;
     if (!title || !taskId) continue;
     const status = action === 'close' ? 'closed' : 'active';
     tasks.push({

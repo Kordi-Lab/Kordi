@@ -10,6 +10,7 @@ import {
 } from '@/lib/desktop';
 import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
 import type {
+  CanonicalSessionState,
   Contact,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
@@ -58,8 +59,29 @@ import {
 import { cloudSessionIdForCollaborationSend } from './cloudCollaborationState';
 import { loadSession } from './session';
 
+export function canonicalDirectAgentSourceIsReady(
+  state: CanonicalSessionState | null | undefined,
+  sessionId: string | null | undefined,
+  sourceMessageId: string,
+) {
+  const normalizedSessionId = sessionId?.trim() ?? '';
+  if (!state || !normalizedSessionId || !sourceMessageId.trim()) return false;
+  if (!state.sessions.some((session) => session.id === normalizedSessionId)) {
+    return false;
+  }
+  return state.messages.some((message) => (
+    message.sessionId === normalizedSessionId
+    && (
+      message.id === sourceMessageId
+      || message.sourceEventId === sourceMessageId
+      || message.sourceEventId === `cloud-direct:${sourceMessageId}`
+    )
+  ));
+}
+
 export function useCloudDirectAgentExecution({
   account,
+  canonicalState,
   client,
   cloudAgentDefinitionsById,
   cloudAgentRuntimeRoutesBySessionId,
@@ -77,6 +99,7 @@ export function useCloudDirectAgentExecution({
   reportWarning,
 }: {
   account: CloudAccount | null;
+  canonicalState: CanonicalSessionState | null | undefined;
   client: CloudAuthClient;
   cloudAgentDefinitionsById: Record<string, CloudAgentDefinition>;
   cloudAgentRuntimeRoutesBySessionId?: Record<string, DesktopChatMessageRoute>;
@@ -110,7 +133,6 @@ export function useCloudDirectAgentExecution({
         })) continue;
         if (processedRequestIdsRef.current.has(message.messageId)) continue;
 
-        processedRequestIdsRef.current.add(message.messageId);
         const contact = cloudLookupContacts.find((candidate) => (
           candidate.sourceParticipantId
           || candidate.id.replace(/^cloud:/, '')
@@ -124,6 +146,12 @@ export function useCloudDirectAgentExecution({
             peerId,
             `cloud:${peerId}`,
           );
+        if (!canonicalDirectAgentSourceIsReady(
+          canonicalState,
+          activitySessionId,
+          message.messageId,
+        )) continue;
+        processedRequestIdsRef.current.add(message.messageId);
         const targetCloudAgentId =
           cloudDirectMessageTargetCloudAgentId(message.body);
         const directDisplayMessage = {
@@ -363,6 +391,7 @@ export function useCloudDirectAgentExecution({
     cloudAgentRuntimeRoutesBySessionId,
     cloudLookupContacts,
     cloudMessageIndex,
+    canonicalState,
     defaultCloudAgentRuntimeRoute,
     initialMessagesSettled,
     mergeMessage,

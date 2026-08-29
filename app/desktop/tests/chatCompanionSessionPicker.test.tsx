@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import { companionConversationList } from '../src/app/viewModels/backgroundSessions';
 import type { Conversation } from '../src/kordi-app/types';
 import { chatCompanionSessionOptions } from '../src/pages/chatsPage.model';
 
@@ -95,6 +96,19 @@ test('side chat session options keep the main Agent hierarchy and renamed title'
   );
 });
 
+test('companion catalog includes linked background sessions from direct chats', () => {
+  const parent = conversation({ id: 'direct-parent', type: 'person' });
+  const child = conversation({
+    id: 'background-child',
+    forkedFromSessionId: 'direct-parent',
+  });
+
+  assert.deepEqual(
+    companionConversationList([parent], [parent, child]).map(({ id }) => id),
+    ['direct-parent', 'background-child'],
+  );
+});
+
 test('side chat picker exposes hierarchy, panel states, and flat inactive rows', () => {
   const headerSource = readFileSync(
     new URL('../src/pages/chatsPage.companionHeader.tsx', import.meta.url),
@@ -159,7 +173,8 @@ test('related agent sessions open in the companion panel instead of replacing ma
   assert.match(sessionSource, /candidateIds\.has\(state\.requestedConversationId\)/);
   assert.match(controllerSource, /loaded && !isKnownSession[\s\S]*refreshDesktopChat\(\)/);
   assert.match(workspaceSource, /companionConversationList\(chatConversations/);
-  assert.match(backgroundSessionSource, /isGroupForkSession\(conversation\)/);
+  assert.match(workspaceSource, /:\s*preferLatestMessages\(\s*cachedMessages/);
+  assert.match(backgroundSessionSource, /conversation\.forkedFromSessionId\?\.trim\(\)/);
   assert.match(mainSource, /onOpenForkSession: companion\.openSession/);
   assert.match(companionSource, /onOpenForkSession: session\.actions\.switchConversation/);
   assert.doesNotMatch(mainSource, /onOpenForkSession: runtime\.onSelectSession/);

@@ -9,6 +9,7 @@ import { mapCollaborationConversationToViewModel } from '../src/features/collabo
 import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { cloudAgentFailedTurnSnapshot } from '../src/features/cloud/useCloudCollaborationState';
+import { canonicalDirectAgentSourceIsReady } from '../src/features/cloud/useCloudDirectAgentExecution';
 import type { DesktopChatTurnSnapshot } from '../src/kordi-app/types';
 
 const account: CloudAccount = {
@@ -39,6 +40,23 @@ const message: CloudMessage = {
   readAt: null,
   direction: 'incoming',
 };
+
+test('direct agent execution waits for the canonical session and exact source message', () => {
+  const sessionId = 'session:direct-person:acct_me:acct_peer';
+  const state = {
+    sessions: [{ id: sessionId }],
+    messages: [{
+      id: 'canonical:request',
+      sessionId,
+      sourceEventId: 'cloud-direct:msg_request',
+    }],
+  } as never;
+
+  assert.equal(canonicalDirectAgentSourceIsReady(null, sessionId, 'msg_request'), false);
+  assert.equal(canonicalDirectAgentSourceIsReady(state, 'session:missing', 'msg_request'), false);
+  assert.equal(canonicalDirectAgentSourceIsReady(state, sessionId, 'msg_missing'), false);
+  assert.equal(canonicalDirectAgentSourceIsReady(state, sessionId, 'msg_request'), true);
+});
 
 test('cloud cloud-agent mention requests and responses use bridge agent directions', () => {
   const request = cloudMessageToCollaborationMessage(account, {
@@ -202,12 +220,16 @@ test('cloud direct local-agent execution does not wait for remote response guard
   const effectEnd = source.indexOf('\n  }, [', effectStart);
   assert.ok(effectStart >= 0 && effectEnd > effectStart, 'expected direct Cloud agent effect');
   const effect = source.slice(effectStart, effectEnd);
+  const canonicalGateIndex = effect.indexOf('canonicalDirectAgentSourceIsReady(');
+  const processedIndex = effect.indexOf('processedRequestIdsRef.current.add(message.messageId)');
   const startTurnIndex = effect.indexOf('const startedTurn = await startDesktopSharedChatMessage');
   const awaitGuardIndex = effect.indexOf('await Promise.all([', startTurnIndex);
   const finalGuardIndex = effect.indexOf('cloudAgentResponsePublicationIsBlocked({', awaitGuardIndex);
   const activityPublishIndex = effect.indexOf('await publishDerivedCloudSessionActivity', startTurnIndex);
 
   assert.ok(startTurnIndex >= 0, 'expected local agent execution');
+  assert.ok(canonicalGateIndex >= 0 && canonicalGateIndex < processedIndex, 'canonical source readiness must precede request admission');
+  assert.ok(processedIndex < startTurnIndex, 'the canonical request may be claimed only before execution starts');
   assert.ok(awaitGuardIndex > startTurnIndex, 'remote guards must only block response publication');
   assert.ok(finalGuardIndex > awaitGuardIndex, 'expected a fresh response guard after local execution');
   assert.ok(activityPublishIndex > finalGuardIndex, 'ownership must be checked before publishing derived activity');

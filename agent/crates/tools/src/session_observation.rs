@@ -113,6 +113,12 @@ impl Tool for SearchSessionsTool {
                     if !session.reason.trim().is_empty() {
                         line.push_str(&format!("; {}", session.reason));
                     }
+                    if !session.participants.is_empty() {
+                        line.push_str(&format!(
+                            "; participants: {}",
+                            session.participants.join(", ")
+                        ));
+                    }
                     for snippet in &session.snippets {
                         line.push_str(&format!(
                             "\n  - `{}` {}: {}",
@@ -241,6 +247,15 @@ impl Tool for ReadSessionTool {
             "Session `{}` — {} ({})",
             response.session.session_id, response.session.title, response.session.kind
         );
+        if !response.session.participants.is_empty() {
+            text.push_str("\nParticipants:");
+            for participant in &response.session.participants {
+                text.push_str(&format!(
+                    "\n- {} ({}, {})",
+                    participant.name, participant.kind, participant.role
+                ));
+            }
+        }
         for message in &response.messages {
             if let Some(message_text) = message.text.as_deref() {
                 text.push_str(&format!(
@@ -380,6 +395,12 @@ mod tests {
                 .iter()
                 .any(|block| format!("{block:?}").contains("Launch"))
         );
+        assert!(
+            result
+                .content
+                .iter()
+                .any(|block| format!("{block:?}").contains("participants: Alice"))
+        );
         assert_eq!(captured.lock().expect("captured")[0].query, "launch");
         assert_eq!(
             captured.lock().expect("captured")[0].limit,
@@ -401,7 +422,11 @@ mod tests {
                             session_id: "session:launch".to_string(),
                             title: "Launch".to_string(),
                             kind: "group".to_string(),
-                            participants: Vec::new(),
+                            participants: vec![crate::SessionObservationParticipant {
+                                name: "Alice".to_string(),
+                                kind: "human".to_string(),
+                                role: "member".to_string(),
+                            }],
                         },
                         window: crate::SessionObservationWindow {
                             around_message_id: None,
@@ -421,7 +446,7 @@ mod tests {
             }),
         };
 
-        ReadSessionTool
+        let result = ReadSessionTool
             .execute(
                 json!({
                     "sessionId":" session:launch ",
@@ -434,6 +459,13 @@ mod tests {
             )
             .await
             .expect("read session result");
+
+        assert!(
+            result
+                .content
+                .iter()
+                .any(|block| format!("{block:?}").contains("Participants:"))
+        );
 
         let request = &captured.lock().expect("captured")[0];
         assert_eq!(request.session_id, "session:launch");

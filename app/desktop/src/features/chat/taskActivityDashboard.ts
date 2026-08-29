@@ -71,6 +71,7 @@ type MutableParentTask = Omit<TaskDashboardItem, 'subtasks' | 'subtaskCount' | '
   completed: boolean;
   succeeded: boolean;
   lifecycleStatus: TaskDashboardStatus | null;
+  generatedSummary: string | null;
   message: string;
   assistantText: string;
   responseMessageId?: string | null;
@@ -287,6 +288,17 @@ function titleFromToolArguments(tools: DesktopChatToolSnapshot[]) {
     }
   }
 
+  return null;
+}
+
+function summaryFromToolArguments(tools: DesktopChatToolSnapshot[]) {
+  for (const tool of tools) {
+    const toolName = tool.name.trim().toLowerCase();
+    if (toolName !== 'task_operator' && toolName !== 'update_plan') continue;
+    const args = safeParseToolArguments(tool.arguments);
+    const summary = stringValue(args?.summary) ?? stringValue(args?.taskSummary);
+    if (summary) return compact(summary);
+  }
   return null;
 }
 
@@ -679,6 +691,7 @@ function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }
   const status: TaskDashboardStatus = live && !turn.completed ? 'active' : turn.completed && turn.succeeded ? 'completed' : 'failed';
   const artifactIds = generatedArtifactIdsFromTurn(turn);
   const explicitTitle = titleFromToolArguments(turn.tools);
+  const explicitSummary = summaryFromToolArguments(turn.tools);
   const explicitTarget = targetFromToolArguments(turn.tools);
   const involvedParticipantNames = involvedParticipantsFromToolArguments(turn.tools);
   const lifecycleStatus = taskLifecycleStatusFromToolArguments(turn.tools);
@@ -706,6 +719,7 @@ function createParentTask({ turn, live, sequence, responseMessageId, timeLabel }
     completed: turn.completed,
     succeeded: turn.succeeded,
     lifecycleStatus,
+    generatedSummary: explicitSummary,
     message: turn.message,
     assistantText: turn.assistantText,
     responseMessageId,
@@ -735,6 +749,7 @@ function mergeParentTask(existing: MutableParentTask, incoming: MutableParentTas
   existing.involvedParticipantNames = Array.from(new Set([...existing.involvedParticipantNames, ...incoming.involvedParticipantNames]));
   existing.writeScope = Array.from(new Set([...existing.writeScope, ...incoming.writeScope]));
   existing.lifecycleStatus = incoming.lifecycleStatus ?? existing.lifecycleStatus;
+  existing.generatedSummary = incoming.generatedSummary ?? existing.generatedSummary;
   existing.target = incoming.target ?? existing.target;
   if (!existing.responseMessageId) {
     existing.responseMessageId = incoming.responseMessageId;
@@ -787,6 +802,7 @@ function deriveParentStatus(parent: MutableParentTask, subtasks: TaskDashboardSu
 }
 
 function parentSummary(parent: MutableParentTask, subtasks: TaskDashboardSubtask[]) {
+  if (parent.generatedSummary) return parent.generatedSummary;
   if (subtasks.length === 0) return compact(parent.message || parent.assistantText || 'Task is running.');
   const active = subtasks.filter((subtask) => subtask.status === 'active').length;
   const planned = subtasks.filter((subtask) => subtask.status === 'planned').length;
@@ -818,7 +834,7 @@ function finalizeParent(parent: MutableParentTask, confirmationSequences: number
   return {
     id: parent.id,
     title: parent.title,
-    summary: status === 'waiting' ? 'Awaiting human input.' : parentSummary(parent, subtasks),
+    summary: status === 'waiting' && !parent.generatedSummary ? 'Awaiting human input.' : parentSummary(parent, subtasks),
     status,
     ...meta,
     target: parent.target,

@@ -698,7 +698,7 @@ fn strip_tagged_prompt_context(prompt: &str, start_tag: &str, end_tag: &str) -> 
         .to_string()
 }
 
-fn strip_session_prompt_context(prompt: &str) -> String {
+pub fn strip_session_prompt_context(prompt: &str) -> String {
     let without_current = strip_tagged_prompt_context(
         prompt,
         DESKTOP_SESSION_CONTEXT_START,

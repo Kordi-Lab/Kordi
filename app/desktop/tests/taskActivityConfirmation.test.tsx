@@ -50,6 +50,44 @@ test('task dashboard keeps completed plan tasks open until human confirmation', 
   assert.equal(dashboard.tasks[0].subtasks[0].status, 'completed');
 });
 
+test('task dashboard keeps agent-generated background task copy', () => {
+  const routedTurn: DesktopChatTurnSnapshot = {
+    id: 'turn-generated-background-copy',
+    sessionId: 'session-1',
+    prompt: '',
+    status: 'succeeded',
+    message: 'Inspect task lifecycle synchronization and identify why completed work remains active.',
+    assistantText: 'I moved the task lifecycle investigation into a linked background session and will keep its findings there.',
+    thinkingText: '',
+    completed: true,
+    succeeded: true,
+    tools: [{
+      id: 'background-session:child-session',
+      name: 'task_operator',
+      status: 'completed',
+      arguments: JSON.stringify({
+        taskTitle: 'Investigate task lifecycle synchronization',
+        summary: 'Inspect task lifecycle synchronization and identify why completed work remains active.',
+      }),
+      liveOutput: '',
+      resultText: 'Background session: {"sessionId":"child-session","title":"Investigate task lifecycle synchronization","status":"running"}',
+      detail: 'Inspect task lifecycle synchronization and identify why completed work remains active.',
+      artifactPath: null,
+      toolLayer: 'operator',
+      isError: false,
+    }],
+  };
+
+  const dashboard = buildTaskActivityDashboard({ messages: [assistantTurnMessage(routedTurn)] });
+
+  assert.equal(dashboard.tasks[0]?.title, 'Investigate task lifecycle synchronization');
+  assert.equal(
+    dashboard.tasks[0]?.summary,
+    'Inspect task lifecycle synchronization and identify why completed work remains active.',
+  );
+  assert.equal(dashboard.tasks[0]?.statusLabel, 'Needs input');
+});
+
 test('task dashboard marks the parent done only after human confirmation', () => {
   const completedTurn: DesktopChatTurnSnapshot = {
     id: 'turn-human-confirmed',
