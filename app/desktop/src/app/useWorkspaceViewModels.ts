@@ -187,13 +187,15 @@ export function useWorkspaceViewModels({
   transientChatConversations = [],
 }: UseWorkspaceViewModelsArgs) {
   const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
+  const localAgentDisplayName = desktopChatState?.localAgent.label ?? null;
   const canonicalReadModel = useMemo(
     () => createCanonicalSessionReadModel(canonicalSessionState, {
       summaries: canonicalSessionSummaries,
+      localAgentDisplayName,
       cloudUnreadReady, pendingGroupProjectionSessionIds,
       legacyGroupSessionTitlesById: cloudLegacyGroupSessionTitlesById, reliableGroupSessionTitleIds: cloudReliableGroupSessionTitleIds, reliableGroupSessionActivityAtMs: cloudReliableGroupSessionActivityAtMs,
     }),
-    [canonicalSessionState, canonicalSessionSummaries, cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionActivityAtMs, cloudReliableGroupSessionTitleIds, cloudUnreadReady, pendingGroupProjectionSessionIds],
+    [canonicalSessionState, canonicalSessionSummaries, cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionActivityAtMs, cloudReliableGroupSessionTitleIds, cloudUnreadReady, localAgentDisplayName, pendingGroupProjectionSessionIds],
   );
   const desktopLiveTurnViewModelKey = liveTurnsViewModelSignature(desktopLiveTurnsBySession);
   const desktopLiveTurnsForViewModelRef = useRef({

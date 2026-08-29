@@ -52,6 +52,37 @@ import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
 import { mergeCanonicalReadReceipts, mergedMessageReactionMetadata } from './readModel/messageReactionMetadata';
 
 const EMPTY_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map(); const EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS: ReadonlySet<string> = new Set(); const EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY: ReadonlyMap<string, number> = new Map();
+const LEGACY_DEFAULT_AGENT_LABEL = /^(?:my\s+)?kordi$/iu;
+
+function currentDefaultAgentLabel(value: string | undefined, localAgentDisplayName?: string | null) {
+  const preferred = localAgentDisplayName?.trim();
+  return preferred && LEGACY_DEFAULT_AGENT_LABEL.test(value?.trim() ?? '') ? preferred : value;
+}
+
+function presentCanonicalParticipants(
+  participants: ConversationParticipant[],
+  profileHumanIdentityId: string | null | undefined,
+  localAgentDisplayName?: string | null,
+) {
+  return participants.map((participant) => {
+    const name = participant.kind === 'agent'
+      && (participant.role === 'owned-agent' || participant.ownerIdentityId === profileHumanIdentityId)
+      ? currentDefaultAgentLabel(participant.name, localAgentDisplayName)
+      : participant.name;
+    return name === participant.name ? participant : { ...participant, name: name ?? participant.name };
+  });
+}
+
+function presentCanonicalMessages(messages: Message[], localAgentDisplayName?: string | null) {
+  return messages.map((message) => {
+    if (message.role !== 'owned-agent') return message;
+    const sender = currentDefaultAgentLabel(message.sender, localAgentDisplayName);
+    const senderOwnerName = message.senderOwnerName?.trim() || 'You';
+    return sender === message.sender && senderOwnerName === message.senderOwnerName
+      ? message
+      : { ...message, sender, senderOwnerName };
+  });
+}
 
 export function mergeCanonicalHistoryIntoRuntime(
   canonicalMessages: Message[],
@@ -454,6 +485,7 @@ export function createCanonicalSessionReadModel(
   canonicalState: CanonicalSessionState | null,
   options: {
     summaries?: CanonicalSessionSummary[];
+    localAgentDisplayName?: string | null;
     cloudUnreadReady?: boolean; pendingGroupProjectionSessionIds?: ReadonlySet<string>;
     legacyGroupSessionTitlesById?: ReadonlyMap<string, string>; reliableGroupSessionTitleIds?: ReadonlySet<string>; reliableGroupSessionActivityAtMs?: ReadonlyMap<string, number>;
   } = {},
@@ -495,20 +527,27 @@ export function createCanonicalSessionReadModel(
       return indexes.sessionById.get(sessionId)?.title || fallback;
     },
     participantNames(sessionId, fallback) {
-      const names = (indexes.canonicalParticipantsBySessionId.get(sessionId) ?? []).map((participant) => participant.name);
+      const names = this.participantDetails(sessionId).map((participant) => participant.name);
       return names.length > 0 ? names : fallback;
     },
     participantDetails(sessionId) {
-      return indexes.canonicalParticipantsBySessionId.get(sessionId) ?? [];
+      return presentCanonicalParticipants(
+        indexes.canonicalParticipantsBySessionId.get(sessionId) ?? [],
+        indexes.profileHumanIdentityId,
+        options.localAgentDisplayName,
+      );
     },
     taskActivities(sessionId) {
       return indexes.taskActivitiesBySessionId.get(sessionId) ?? [];
     },
     messages(sessionId) {
-      return indexes.canonicalMessagesBySessionId.get(sessionId) ?? [];
+      return presentCanonicalMessages(
+        indexes.canonicalMessagesBySessionId.get(sessionId) ?? [],
+        options.localAgentDisplayName,
+      );
     },
     preferMessages(sessionId, existingMessages) {
-      const canonicalMessages = indexes.canonicalMessagesBySessionId.get(sessionId) ?? [];
+      const canonicalMessages = this.messages(sessionId);
       return shouldUseCanonicalMessages(existingMessages, canonicalMessages) ? canonicalMessages : existingMessages;
     },
     applyConversation(conversation, buildSubtitle) {
