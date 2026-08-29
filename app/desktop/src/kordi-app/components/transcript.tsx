@@ -32,7 +32,8 @@ import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, typ
 import { ForwardedFromHeader } from './forwardedFromHeader';
 import { MarkdownContent } from './markdown';
 import { MessageInlineContent, MessageMentionProfileContent } from './messageInlineContent';
-import { firstExternalMessageLink, MessageLinkPreview } from './messageLinkPreview';
+import { MessageLinkPreview } from './messageLinkPreview';
+import { firstExternalMessageLink } from './messageLinks';
 import { MessageReactionChips } from './messageReactions';
 import { MessageContextMenuHost } from './messageContextMenuHost';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
@@ -65,7 +66,6 @@ const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
 function isCompactionSummaryMessage(msg: Message) {
   return msg.role === 'system' && msg.detail?.startsWith(COMPACTION_DETAIL_PREFIX);
 }
-
 function cleanCompactionSummary(text: string) {
   const withoutResourceBlocks = text
     .replace(/\n?\s*<read-files>[\s\S]*?<\/read-files>\s*/gi, '\n')

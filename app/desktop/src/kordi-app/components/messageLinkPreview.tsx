@@ -17,8 +17,6 @@ import {
   type LinkPreviewMetadata,
 } from './linkPreviewMetadata';
 
-export { firstExternalMessageLink };
-
 function cleanLinkLabel(label: string, href: string): string | null {
   const text = label
     .replace(/:blob:[A-Za-z0-9_-]+:/g, '')
