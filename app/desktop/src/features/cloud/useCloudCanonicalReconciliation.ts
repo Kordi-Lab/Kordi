@@ -69,7 +69,7 @@ export function useCloudCanonicalReconciliation({
         messageIndex.deliveryByMessageId,
       )
     );
-  }, [account, messageIndex, setCanonicalState]);
+  }, [account, canonicalState?.messages, messageIndex, setCanonicalState]);
 
   useEffect(() => {
     if (
