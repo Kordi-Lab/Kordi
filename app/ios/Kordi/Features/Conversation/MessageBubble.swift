@@ -1820,8 +1820,6 @@ private struct MessageVideoAttachment: View {
                 .stroke(Color(uiColor: .separator).opacity(0.22), lineWidth: 0.5)
         }
         .task(id: attachment.id) {
-            let hasInlinePoster = attachment.previewURL?.lowercased().hasPrefix("data:image/") == true
-            guard hasInlinePoster || !VideoAttachmentPolicy.requiresExplicitPlayback(attachment) else { return }
             let image = await onPreparePreview(attachment)
             if !Task.isCancelled {
                 poster = image

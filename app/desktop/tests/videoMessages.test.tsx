@@ -6,7 +6,6 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
   isMp4VideoAttachment,
-  requiresExplicitVideoPlayback,
 } from '../src/features/chat/attachmentMediaGallery';
 import { AttachmentPreview } from '../src/kordi-app/components/transcriptAttachments';
 import {
@@ -33,37 +32,18 @@ test('MP4 classification prefers MIME metadata and only falls back for untyped f
   }), false);
 });
 
-test('videos over 20 MiB require explicit playback before any remote preview load', () => {
-  assert.equal(requiresExplicitVideoPlayback({
-    kind: 'file',
-    name: 'small.mp4',
-    mimeType: 'video/mp4',
-    sizeBytes: 20 * 1024 * 1024,
-  }), false);
-  assert.equal(requiresExplicitVideoPlayback({
-    kind: 'file',
-    name: 'large.mp4',
-    mimeType: 'video/mp4',
-    sizeBytes: 20 * 1024 * 1024 + 1,
-  }), true);
-  assert.equal(requiresExplicitVideoPlayback({
-    kind: 'file',
-    name: 'unknown.mp4',
-    mimeType: 'video/mp4',
-  }), true);
-});
-
 test('MP4 attachments stay poster-backed until explicit playback instead of rendering file links', () => {
   const message: Message = {
     role: 'user',
     text: '',
     time: '12:30',
     attachments: [{
+      attachmentId: 'att-large-video',
       kind: 'file',
       name: 'Video 2026-08-28.mp4',
       mimeType: 'video/mp4',
-      previewUrl: 'blob:kordi-video-preview',
-      sizeBytes: 1_024,
+      previewUrl: 'data:image/jpeg;base64,cG9zdGVy',
+      sizeBytes: 148 * 1024 * 1024,
     }],
   };
 
@@ -72,6 +52,7 @@ test('MP4 attachments stay poster-backed until explicit playback instead of rend
   assert.match(markup, /data-attachment-video-card="true"/);
   assert.match(markup, /aria-label="Play Video 2026-08-28\.mp4"/);
   assert.match(markup, /lucide-play/);
+  assert.match(markup, /<img/);
   assert.doesNotMatch(markup, /Stream the video/);
   assert.doesNotMatch(markup, />Play video</);
   assert.doesNotMatch(markup, /<video/);

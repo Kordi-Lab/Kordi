@@ -7,7 +7,6 @@ import {
 } from '@/lib/imageDimensions';
 
 const INLINE_ATTACHMENT_PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
-const AUTOMATIC_VIDEO_LOAD_MAX_BYTES = 20 * 1024 * 1024;
 const ARCHIVE_ATTACHMENT_EXTENSIONS = new Set(['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']);
 
 function isNativeShell() {
@@ -67,11 +66,6 @@ export function isMp4VideoAttachment(attachment: MessageAttachment) {
   const mimeType = attachment.mimeType?.trim().toLowerCase();
   return mimeType === 'video/mp4'
     || ((!mimeType || mimeType === 'application/octet-stream') && attachmentExtension(attachment) === 'mp4');
-}
-
-export function requiresExplicitVideoPlayback(attachment: MessageAttachment) {
-  if (!isMp4VideoAttachment(attachment)) return false;
-  return attachment.sizeBytes == null || attachment.sizeBytes > AUTOMATIC_VIDEO_LOAD_MAX_BYTES;
 }
 
 function isArchiveAttachment(attachment: MessageAttachment) {

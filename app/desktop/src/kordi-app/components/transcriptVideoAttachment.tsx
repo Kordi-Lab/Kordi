@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { LoaderCircle, Play, RotateCcw } from 'lucide-react';
 
-import {
-  attachmentVideoUrl,
-  requiresExplicitVideoPlayback,
-} from '@/features/chat/attachmentMediaGallery';
+import { attachmentVideoUrl } from '@/features/chat/attachmentMediaGallery';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { cloudAttachmentPlaybackUrl } from '@/features/cloud/cloudAttachmentPlayback';
@@ -47,7 +44,6 @@ export function AttachmentVideoCard({
   const rawSource = localSource ?? playbackUrl ?? undefined;
   const source = rawSource === failedSource ? undefined : rawSource;
   const attachmentId = attachment.attachmentId?.trim() ?? '';
-  const explicitPlaybackRequired = requiresExplicitVideoPlayback(attachment);
   const uploadPath = attachment.localPath?.trim() ?? '';
   const upload = useSyncExternalStore(
     (listener) => subscribeCloudAttachmentUpload(uploadPath, listener),
@@ -83,7 +79,7 @@ export function AttachmentVideoCard({
   }, [attachment.name, attachmentId, source]);
 
   useEffect(() => {
-    if (directPosterUrl || !attachmentId || explicitPlaybackRequired) return;
+    if (directPosterUrl || !attachmentId) return;
     const controller = new AbortController();
     let objectUrl: string | null = null;
     void loadSession().then(async (session) => {
@@ -99,7 +95,7 @@ export function AttachmentVideoCard({
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attachmentId, directPosterUrl, explicitPlaybackRequired]);
+  }, [attachmentId, directPosterUrl]);
 
   const loadVideo = useCallback(async () => {
     if (phase === 'loading') return;
