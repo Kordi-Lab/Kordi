@@ -32,6 +32,35 @@ final class AttachmentTransferTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: XCTUnwrap(restored)), Data([1, 2, 3, 4]))
     }
 
+    func testAttachmentCacheCopiesDownloadedFilesWithoutLoadingThemIntoMemory() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-attachment-file-cache-\(UUID().uuidString)")
+        let sourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-downloaded-video-\(UUID().uuidString).mp4")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            try? FileManager.default.removeItem(at: sourceURL)
+        }
+        try Data([1, 2, 3, 4]).write(to: sourceURL)
+        let attachment = ChatAttachment(
+            attachmentId: "att-video",
+            name: "video.mp4",
+            kind: .file,
+            mimeType: "video/mp4",
+            sizeBytes: 4,
+            previewURL: nil
+        )
+
+        let stored = try await AttachmentFileStore(directory: directory).store(
+            fileAt: sourceURL,
+            attachment: attachment,
+            accountId: "acct_a"
+        )
+
+        XCTAssertEqual(try Data(contentsOf: stored), Data([1, 2, 3, 4]))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
+    }
+
     func testAttachmentCacheIsAccountScoped() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("kordi-attachment-account-cache-\(UUID().uuidString)")

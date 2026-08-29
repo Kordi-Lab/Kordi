@@ -2740,10 +2740,23 @@ final class AppModel: ObservableObject {
         }
         do {
             if attachment.isMP4Video, !prefersOriginal {
-                let url = try await api.attachmentPlaybackURL(
-                    token: token,
-                    attachmentId: attachment.attachmentId
-                )
+                let url: URL
+                do {
+                    url = try await api.attachmentPlaybackURL(
+                        token: token,
+                        attachmentId: attachment.attachmentId
+                    )
+                } catch let error as CloudAPIError where error.statusCode == 404 {
+                    let temporaryURL = try await api.downloadAttachmentContentFile(
+                        token: token,
+                        attachmentId: attachment.attachmentId
+                    )
+                    url = try await attachmentFileStore.store(
+                        fileAt: temporaryURL,
+                        attachment: attachment,
+                        accountId: accountId
+                    )
+                }
                 cloudConnectionState = .connected
                 return url
             }

@@ -1432,6 +1432,39 @@ actor CloudAPIClient {
         }
     }
 
+    func downloadAttachmentContentFile(token: String, attachmentId: String) async throws -> URL {
+        let encodedId = attachmentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? attachmentId
+        var request = try makeRequest(
+            path: "/v1/cloud/attachments/\(encodedId)/content",
+            method: "GET",
+            token: token,
+            query: [],
+            body: nil
+        )
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 90
+        do {
+            let (url, response) = try await session.download(for: request)
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                return url
+            }
+            try validate(
+                response: response,
+                data: (try? Data(contentsOf: url, options: .mappedIfSafe)) ?? Data(),
+                fallback: "Could not download this attachment."
+            )
+            return url
+        } catch let error as CloudAPIError {
+            throw error
+        } catch {
+            throw CloudAPIError(
+                code: "network_error",
+                message: "Could not download this attachment. Check your connection and try again.",
+                statusCode: 0
+            )
+        }
+    }
+
     func attachmentPlaybackURL(token: String, attachmentId: String) async throws -> URL {
         let encodedId = attachmentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
             ?? attachmentId
