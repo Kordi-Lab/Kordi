@@ -19,6 +19,7 @@ const MAX_SKILL_BYTES: u64 = 96 * 1024;
 const MAX_SKILL_SUPPORT_FILE_BYTES: u64 = 512 * 1024;
 const MAX_SKILL_BUNDLE_FILES: usize = 64;
 const MAX_SKILLS: usize = 24;
+const MAX_AGENT_NAME_CHARS: usize = 120;
 const MAX_TOOLS: usize = 48;
 const MAX_PLUGINS: usize = 24;
 const MAX_FINGERPRINT_FILES: usize = 128;
@@ -94,11 +95,7 @@ fn status_from_metadata(
     let workspace = workspace_for_draft(&metadata.draft_id)?;
     let (draft, validation) = validate_workspace(&workspace);
     let test_report = read_test_report(&container);
-    let publish_ready = metadata.status == "draft"
-        && validation.valid
-        && test_report
-            .as_ref()
-            .is_some_and(|report| report.passed && report.fingerprint == validation.fingerprint);
+    let publish_ready = validated_draft_is_publish_ready(&metadata.status, validation.valid);
     Ok(DesktopAgentBuilderStatus {
         draft_id: metadata.draft_id.clone(),
         target_key: metadata.target_key.clone(),
@@ -110,6 +107,10 @@ fn status_from_metadata(
         test_report,
         publish_ready,
     })
+}
+
+fn validated_draft_is_publish_ready(status: &str, validation_valid: bool) -> bool {
+    status == "draft" && validation_valid
 }
 
 #[tauri::command]

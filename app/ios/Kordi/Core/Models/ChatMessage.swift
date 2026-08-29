@@ -184,7 +184,7 @@ struct BackgroundAgentSession: Identifiable, Codable, Hashable {
             avatarSource: source.kind == .agent ? source.avatarSource : nil,
             agentActivity: state.agentActivity,
             sessionId: sessionId,
-            agentDisplayName: source.agentDisplayName ?? "My Kordi",
+            agentDisplayName: source.agentDisplayName ?? "Kordi",
             forkedFromSessionId: source.sessionId
         )
     }

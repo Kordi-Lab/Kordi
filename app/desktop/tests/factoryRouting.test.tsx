@@ -18,6 +18,7 @@ import {
   factoryArtifactIdentityFromTarget,
   factoryArtifactTargetKey,
   factoryBuildIdentityFromTarget,
+  publishableLocalAgentConfigChanges,
   type FactoryLibraryArtifact,
 } from '../src/kordi-app/agents/model';
 import type { Agent } from '../src/kordi-app/types';
@@ -69,7 +70,7 @@ const creationBuilderStatus: DesktopAgentBuilderStatus = {
   },
   validation: { valid: true, fingerprint: 'fingerprint-1', errors: [], files: [] },
   testReport: null,
-  publishReady: false,
+  publishReady: true,
 };
 
 test('new agent builds inherit the active configured route and expose Cloud tools', () => {
@@ -107,20 +108,30 @@ test('new agent creation sends its avatar through the canonical Cloud mutation',
   assert.match(random?.mutation.seed ?? '', /^[A-Za-z0-9_-]+$/);
 });
 
-test('publishing tests an untested draft once and continues only when it passes', async () => {
-  let tests = 0;
-  const tested = { ...creationBuilderStatus, publishReady: true };
-  assert.equal(await readyFactoryBuildForPublish(creationBuilderStatus, async () => {
-    tests += 1;
-    return tested;
-  }), tested);
-  assert.equal(tests, 1);
-  assert.equal(await readyFactoryBuildForPublish(tested, async () => {
-    throw new Error('already tested');
-  }), tested);
-  await assert.rejects(
-    () => readyFactoryBuildForPublish(creationBuilderStatus, async () => null),
-    /agent test did not pass/i,
+test('publishing requires deterministic validation without running a model test', () => {
+  const shellSource = readFileSync(new URL('../src/app/assembleMainContentSlot.tsx', import.meta.url), 'utf8');
+  assert.equal(readyFactoryBuildForPublish(creationBuilderStatus), creationBuilderStatus);
+  assert.match(shellSource, /setDesktopSkillLibraryEnabled\(skill, enabled\)/);
+  assert.match(shellSource, /await renameDesktopAgent\(name\);[\s\S]*await args\.refreshDesktopChat\(\)/);
+  assert.doesNotMatch(shellSource, /runDesktopChatSkillCommand/);
+  assert.throws(
+    () => readyFactoryBuildForPublish({
+      ...creationBuilderStatus,
+      validation: { valid: false, fingerprint: '', errors: ['Agent name is required.'], files: [] },
+      publishReady: false,
+    }),
+    /Agent name is required/,
+  );
+});
+
+test('local Kordi publication ignores stale file-only changes without blocking identity updates', () => {
+  const changes = [
+    { key: 'prompt' as const, label: 'System prompt updated', detail: 'prompt' },
+    { key: 'skills' as const, label: 'Skill selection updated', detail: '24 loaded' },
+  ];
+  assert.deepEqual(
+    publishableLocalAgentConfigChanges(changes, false, true),
+    [changes[1]],
   );
 });
 
@@ -237,8 +248,14 @@ test('Agent inspection exposes published configuration and routes every change t
   assert.equal(edits, 0);
 });
 
-test('every owned agent exposes the same access control in Build', () => {
-  const localAgent = { ...agent, id: 'desktop:local-agent', cloudAgentId: undefined };
+test('the collaboration-backed default Kordi exposes identity controls in Build', () => {
+  const localAgent = {
+    ...agent,
+    id: 'cloud-local-agent',
+    cloudAgentId: undefined,
+    isOwned: true,
+    isCollaborationDefault: true,
+  };
   const html = renderToStaticMarkup(
     <AgentStudioWorkspace
       agent={localAgent}
@@ -259,7 +276,11 @@ test('every owned agent exposes the same access control in Build', () => {
       allowCapabilityCreation={false}
       canEditPrompt={false}
       onPromptChange={() => undefined}
+      onNameChange={() => undefined}
       onCreationDraftChange={() => undefined}
+      creationAvatarUrl="data:image/png;base64,avatar"
+      onCreationAvatarUpload={() => undefined}
+      onCreationAvatarRandomize={() => undefined}
       onToggleCapability={() => undefined}
       onAddCapability={() => undefined}
       onRenameCapability={() => undefined}
@@ -282,10 +303,16 @@ test('every owned agent exposes the same access control in Build', () => {
       onCancelFileEditing={() => undefined}
       onSaveFile={() => undefined}
       onFileDraftChange={() => undefined}
+      builderStatus={creationBuilderStatus}
     />,
   );
 
   assert.match(html, /Only me/);
+  assert.match(html, /aria-label="Edit name"/);
+  assert.match(html, /aria-label="Upload agent avatar"/);
+  assert.match(html, /aria-label="Generate random agent avatar"/);
+  assert.ok(html.indexOf('>Name<') < html.indexOf('>Avatar<'));
+  assert.ok(html.indexOf('>Avatar<') < html.indexOf('>Prompt<'));
   assert.match(html, /aria-label="Edit access"/);
   assert.doesNotMatch(html, /Local runtime/);
 });

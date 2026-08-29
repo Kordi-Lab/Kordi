@@ -75,13 +75,28 @@ enum ComposerMentionTargetCatalog {
         }
 
         if conversation.kind != .agent {
+            var seenDefaultAgentOwners = Set<String>()
             targets.append(defaultAgentTarget(
                 ownerAccountID: account.accountId,
                 ownerName: account.preferredName,
-                isCurrentAccount: true
+                agentID: account.defaultAgent?.agentId,
+                agentName: account.defaultAgent?.displayName,
+                agentAvatarSource: account.defaultAgent?.avatar.imageSource
             ))
+            seenDefaultAgentOwners.insert(account.accountId)
+            for participant in conversation.groupParticipants
+                where seenDefaultAgentOwners.insert(participant.accountId).inserted {
+                targets.append(defaultAgentTarget(
+                    ownerAccountID: participant.accountId,
+                    ownerName: participant.displayName,
+                    agentID: participant.agentId,
+                    agentName: participant.agentDisplayName,
+                    agentAvatarSource: participant.agentAvatarUrl
+                ))
+            }
             for contact in contacts
                 where ownerAccountIDs.contains(contact.accountId)
+                    && seenDefaultAgentOwners.insert(contact.accountId).inserted
                     && !KordiSupportIdentity.matches(
                         name: contact.preferredName,
                         seed: contact.accountId
@@ -89,7 +104,9 @@ enum ComposerMentionTargetCatalog {
                 targets.append(defaultAgentTarget(
                     ownerAccountID: contact.accountId,
                     ownerName: contact.preferredName,
-                    isCurrentAccount: false
+                    agentID: contact.defaultAgent?.agentId,
+                    agentName: contact.defaultAgent?.displayName,
+                    agentAvatarSource: contact.defaultAgent?.avatar.imageSource
                 ))
             }
         }
@@ -118,19 +135,19 @@ enum ComposerMentionTargetCatalog {
     private static func defaultAgentTarget(
         ownerAccountID: String,
         ownerName: String,
-        isCurrentAccount: Bool
+        agentID: String?,
+        agentName: String?,
+        agentAvatarSource: String?
     ) -> ComposerMentionTarget {
-        let agentID = isCurrentAccount
-            ? CanonicalAvatarSystem.defaultAgentId
-            : "cloud-agent:\(ownerAccountID)"
+        let agentID = agentID?.nonEmpty ?? "cloud-agent:\(ownerAccountID)"
         return ComposerMentionTarget(
             id: "agent:\(agentID)",
-            displayName: isCurrentAccount ? "My Kordi" : "\(ownerName)’s Kordi",
+            displayName: agentName?.nonEmpty ?? "Kordi",
             kind: .agent,
             accountId: ownerAccountID,
             agentId: agentID,
             ownerName: ownerName,
-            avatarSource: nil
+            avatarSource: agentAvatarSource?.nonEmpty
         )
     }
 

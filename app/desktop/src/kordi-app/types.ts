@@ -91,6 +91,10 @@ export type ConversationParticipant = {
   agentId?: string | null;
   avatarKey?: string | null;
   profileImageUrl?: string | null;
+  defaultAgentId?: string | null;
+  defaultAgentDisplayName?: string | null;
+  defaultAgentAvatarUrl?: string | null;
+  defaultAgentAvatarSeed?: string | null;
   presenceStatus?: string | null;
   presenceDetail?: string | null;
 };

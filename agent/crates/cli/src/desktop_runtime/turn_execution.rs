@@ -74,6 +74,7 @@ impl DesktopRuntimeSession {
         attachment_paths: Vec<String>,
         cancel: tokio_util::sync::CancellationToken,
     ) -> Result<DesktopRuntimeTurn> {
+        self.refresh_saved_agent_persona();
         let prompt = prompt.trim().to_string();
         if prompt.is_empty() && attachment_paths.is_empty() {
             bail!("Message cannot be empty");

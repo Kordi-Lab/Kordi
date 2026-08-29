@@ -62,6 +62,10 @@ pub use turn_execution::{DesktopRuntimeTurn, DesktopRuntimeTurnResult};
 
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
 const CLOUD_AGENT_CONTEXT_CUSTOM_TYPE: &str = "cloud_agent_context_message";
+const DESKTOP_DYNAMIC_SYSTEM_CONTEXT_START: &str = "<desktop_dynamic_system_context>";
+const DESKTOP_DYNAMIC_SYSTEM_CONTEXT_END: &str = "</desktop_dynamic_system_context>";
+const DESKTOP_OWNER_PERSONA_START: &str = "<desktop_owner_agent_persona>";
+const DESKTOP_OWNER_PERSONA_END: &str = "</desktop_owner_agent_persona>";
 const DESKTOP_SESSION_CONTEXT_START: &str = "\n\n<desktop_session_context>";
 const DESKTOP_SESSION_CONTEXT_END: &str = "</desktop_session_context>";
 const LEGACY_DESKTOP_BRIDGE_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
@@ -76,6 +80,7 @@ fn visible_task_record_status_for_store(status: &str) -> String {
 }
 pub struct DesktopRuntimeSession {
     setup: SessionRuntimeSetup,
+    owner_persona_enabled: bool,
 }
 
 /// A constrained runtime profile for purpose-built desktop sessions.
@@ -97,11 +102,20 @@ pub struct DesktopRuntimeProfile {
 }
 
 impl DesktopRuntimeSession {
+    fn from_setup(setup: SessionRuntimeSetup, owner_persona_enabled: bool) -> Self {
+        let mut session = Self {
+            setup,
+            owner_persona_enabled,
+        };
+        session.refresh_saved_agent_persona();
+        session
+    }
+
     pub async fn create_new(cwd: std::path::PathBuf) -> Result<Self> {
         let (_runtime_host, _ui, mut setup) =
             prepare_session_runtime_for_cwd(cwd, SessionBootstrapOptions::default()).await?;
         normalize_setup_thinking(&mut setup);
-        Ok(Self { setup })
+        Ok(Self::from_setup(setup, true))
     }
 
     pub async fn create_with_id(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
@@ -109,7 +123,7 @@ impl DesktopRuntimeSession {
             prepare_session_runtime_for_cwd(cwd, SessionBootstrapOptions::default()).await?;
         retarget_runtime_setup_session(&mut setup, session_id)?;
         normalize_setup_thinking(&mut setup);
-        Ok(Self { setup })
+        Ok(Self::from_setup(setup, true))
     }
 
     pub async fn resume(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
@@ -121,7 +135,7 @@ impl DesktopRuntimeSession {
         let (_runtime_host, _ui, mut setup) =
             prepare_session_runtime_for_cwd(runtime_cwd, entry).await?;
         normalize_setup_thinking(&mut setup);
-        Ok(Self { setup })
+        Ok(Self::from_setup(setup, true))
     }
 
     pub async fn create_profiled_with_id(
@@ -134,7 +148,7 @@ impl DesktopRuntimeSession {
         retarget_runtime_setup_session(&mut setup, session_id)?;
         apply_runtime_profile(&mut setup, &profile);
         normalize_setup_thinking(&mut setup);
-        Ok(Self { setup })
+        Ok(Self::from_setup(setup, false))
     }
 
     pub async fn resume_profiled(
@@ -146,7 +160,7 @@ impl DesktopRuntimeSession {
         let (_runtime_host, _ui, mut setup) = prepare_session_runtime_for_cwd(cwd, options).await?;
         apply_runtime_profile(&mut setup, &profile);
         normalize_setup_thinking(&mut setup);
-        Ok(Self { setup })
+        Ok(Self::from_setup(setup, false))
     }
 
     pub fn session_id(&self) -> &str {
@@ -174,7 +188,31 @@ impl DesktopRuntimeSession {
         };
         let (_runtime_host, _ui, setup) = prepare_session_runtime_for_cwd(cwd, entry).await?;
         self.setup = setup;
+        self.refresh_saved_agent_persona();
         Ok(())
+    }
+
+    pub fn refresh_saved_agent_persona(&mut self) {
+        let base_prompt = strip_tagged_prompt_context(
+            &self.setup.system_prompt,
+            DESKTOP_OWNER_PERSONA_START,
+            DESKTOP_OWNER_PERSONA_END,
+        );
+        if !self.owner_persona_enabled || base_prompt.contains(DESKTOP_DYNAMIC_SYSTEM_CONTEXT_START)
+        {
+            self.setup.system_prompt = base_prompt;
+            return;
+        }
+        let settings = Settings::load_merged(&self.setup.tool_ctx.cwd);
+        let name = settings
+            .agent_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("Kordi");
+        self.setup.system_prompt = format!(
+            "{DESKTOP_OWNER_PERSONA_START}\nYou are {name}, the user's local Kordi agent. Use {name} as your name in chats, mentions, and replies.\n{DESKTOP_OWNER_PERSONA_END}\n\n{base_prompt}"
+        );
     }
 
     pub async fn run_skill_command(&mut self, text: &str) -> Result<Option<String>> {
@@ -478,6 +516,25 @@ impl DesktopRuntimeSession {
         &mut self,
         messages: &[DesktopChatContextMessage],
     ) -> Result<usize> {
+        let system_context = messages
+            .iter()
+            .filter(|message| {
+                message
+                    .context_role
+                    .as_deref()
+                    .is_some_and(|role| role.eq_ignore_ascii_case("system"))
+            })
+            .map(|message| message.text.trim())
+            .filter(|text| !text.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        self.set_dynamic_system_context((!system_context.is_empty()).then_some(system_context));
+        let history_messages = messages.iter().filter(|message| {
+            !message
+                .context_role
+                .as_deref()
+                .is_some_and(|role| role.eq_ignore_ascii_case("system"))
+        });
         if messages.is_empty() {
             return Ok(0);
         }
@@ -508,7 +565,7 @@ impl DesktopRuntimeSession {
         }
 
         let mut count = 0;
-        for message in messages {
+        for message in history_messages {
             let id = message.id.trim();
             let author_name = message.author_name.trim();
             let text = message.text.trim();
@@ -599,6 +656,32 @@ impl DesktopRuntimeSession {
         self.setup.system_prompt = format!(
             "{base_prompt}{DESKTOP_SESSION_CONTEXT_START}\n{context}\n{DESKTOP_SESSION_CONTEXT_END}"
         );
+    }
+
+    fn set_dynamic_system_context(&mut self, context: Option<String>) {
+        let prompt_without_dynamic = strip_tagged_prompt_context(
+            &self.setup.system_prompt,
+            DESKTOP_DYNAMIC_SYSTEM_CONTEXT_START,
+            DESKTOP_DYNAMIC_SYSTEM_CONTEXT_END,
+        );
+        let base_prompt = strip_tagged_prompt_context(
+            &prompt_without_dynamic,
+            DESKTOP_OWNER_PERSONA_START,
+            DESKTOP_OWNER_PERSONA_END,
+        );
+        self.setup.system_prompt = context
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|context| {
+                format!(
+                    "{DESKTOP_DYNAMIC_SYSTEM_CONTEXT_START}\n{context}\n{DESKTOP_DYNAMIC_SYSTEM_CONTEXT_END}\n\n{base_prompt}"
+                )
+            })
+            .unwrap_or(base_prompt);
+        if context.is_none() {
+            self.refresh_saved_agent_persona();
+        }
     }
 
     pub fn set_name(&mut self, requested_name: &str) -> Result<()> {

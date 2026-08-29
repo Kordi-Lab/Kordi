@@ -1,4 +1,5 @@
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -42,6 +43,9 @@ import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import type { ComposerScope } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
+import { getAvatarOverride } from '@/kordi-app/components/avatarOverrides';
+import { legacyDefaultAgentProfileUpdate } from '@/features/cloud/cloudAgentIdentity';
+import { renameDesktopAgent } from '@/lib/desktop';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useRefreshCompletedCanonicalSession } from '@/app/useRefreshCompletedCanonicalSession';
 export function useKordiAppFoundation({
@@ -65,6 +69,7 @@ export function useKordiAppFoundation({
   const chatTranscriptScrollRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoFollowChatRef = useRef(true);
   const lastSeenArtifactByContextRef = useRef<Record<string, string | null>>({});
+  const defaultAgentProfileSyncRef = useRef<string | null>(null);
   const {
     store: canonicalStore,
     state: canonicalSessionState,
@@ -156,6 +161,39 @@ export function useKordiAppFoundation({
     mapDesktopMessages,
     refreshCanonicalSession: refreshCompletedCanonicalSession,
   });
+  useEffect(() => {
+    const account = cloudSession.account;
+    const remote = account?.defaultAgent;
+    const localName = desktopChatState?.localAgent.label?.trim();
+    if (!account || !remote || !localName) return;
+    const localAvatar = getAvatarOverride('agent:cloud-local-agent');
+    const migration = legacyDefaultAgentProfileUpdate({
+      localName,
+      localAvatar,
+      remoteDisplayName: remote.displayName,
+      remoteAvatarVersion: remote.avatar.version,
+    });
+    const syncKey = [account.accountId, localName, remote.displayName, remote.avatar.version, Boolean(migration)].join(':');
+    if (defaultAgentProfileSyncRef.current === syncKey) return;
+    defaultAgentProfileSyncRef.current = syncKey;
+    if (migration) {
+      void cloudSession.updateProfile(migration).catch(() => {
+        if (defaultAgentProfileSyncRef.current === syncKey) {
+          defaultAgentProfileSyncRef.current = null;
+        }
+      });
+      return;
+    }
+    if (remote.displayName !== localName) {
+      void renameDesktopAgent(remote.displayName)
+        .then(() => refreshDesktopChat())
+        .catch(() => {
+          if (defaultAgentProfileSyncRef.current === syncKey) {
+            defaultAgentProfileSyncRef.current = null;
+          }
+        });
+    }
+  }, [cloudSession, desktopChatState?.localAgent.label, refreshDesktopChat]);
   const projectRoutingGroups = useMemo(
     () => buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState),
     [canonicalSessionState, desktopChatState?.projects],
@@ -314,6 +352,7 @@ export function useKordiAppFoundation({
     localTurnsBySessionId: desktopLiveTurnsBySession,
     cloudAgentRuntimeRoutesBySessionId,
     defaultCloudAgentRuntimeRoute,
+    localAgentLabel: desktopChatState?.localAgent.label,
     defaultCloudAgentRuntimeReady:
       !isDesktopAuthLoading && Boolean(defaultCloudAgentRuntimeRoute),
     desktopAuthState,

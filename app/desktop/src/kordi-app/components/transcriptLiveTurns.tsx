@@ -940,7 +940,7 @@ export const LiveChatTurnCard = memo(
 
 function LiveChatTurnMessageView({
   turn,
-  sender = 'My Kordi',
+  sender = 'Kordi',
   plainAgentResponse = false,
   onStopCollaborationAgentRequest,
   onStopActiveTurn,

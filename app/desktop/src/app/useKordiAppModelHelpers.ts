@@ -283,6 +283,7 @@ export function canonicalGroupParticipantsForSession(state: CanonicalSessionStat
         : participant.role === 'self'
           ? 'person'
           : participant.role;
+      const metadata = canonicalMetadataRecord(identity.metadata);
       return [{
         id: identity.id,
         name: identity.displayName,
@@ -296,6 +297,10 @@ export function canonicalGroupParticipantsForSession(state: CanonicalSessionStat
         agentId: identity.agentId,
         avatarKey: identity.avatarKey,
         profileImageUrl: identity.profileImageUrl,
+        defaultAgentId: metadataString(metadata, 'defaultAgentId'),
+        defaultAgentDisplayName: metadataString(metadata, 'defaultAgentDisplayName'),
+        defaultAgentAvatarUrl: metadataString(metadata, 'defaultAgentAvatarUrl'),
+        defaultAgentAvatarSeed: metadataString(metadata, 'defaultAgentAvatarSeed'),
       } satisfies ConversationParticipant];
     });
 }

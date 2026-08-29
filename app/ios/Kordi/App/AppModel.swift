@@ -1423,7 +1423,7 @@ final class AppModel: ObservableObject {
                 startedAt: optimistic.createdAt,
                 agentDisplayName: routedAgent?.displayName
                     ?? conversation.agentDisplayName?.nonEmpty
-                    ?? "My Kordi"
+                    ?? "Kordi"
             )
         }
         cacheCurrentMessages(conversation.id)
@@ -1925,7 +1925,7 @@ final class AppModel: ObservableObject {
             id: "local-agent-progress:\(conversation.id)",
             conversationId: conversation.id,
             author: .agent,
-            authorName: pendingAgentDisplayNames[conversation.id] ?? "My Kordi",
+            authorName: pendingAgentDisplayNames[conversation.id] ?? "Kordi",
             text: "processing...",
             createdAt: placeholderCreatedAt,
             deliveryState: .delivered,
@@ -2971,6 +2971,9 @@ final class AppModel: ObservableObject {
                 accountId: contact.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl,
+                agentId: contact.defaultAgent?.agentId,
+                agentDisplayName: contact.defaultAgent?.displayName,
+                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource,
                 role: "person"
             )
         }
@@ -3059,6 +3062,9 @@ final class AppModel: ObservableObject {
                 accountId: account.accountId,
                 displayName: account.preferredName,
                 avatarUrl: account.avatar.imageSource,
+                agentId: account.defaultAgent?.agentId,
+                agentDisplayName: account.defaultAgent?.displayName,
+                agentAvatarUrl: account.defaultAgent?.avatar.imageSource,
                 role: "self"
             )
         ] + contacts.map { contact in
@@ -3066,6 +3072,9 @@ final class AppModel: ObservableObject {
                 accountId: contact.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl,
+                agentId: contact.defaultAgent?.agentId,
+                agentDisplayName: contact.defaultAgent?.displayName,
+                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource,
                 role: "person"
             )
         }
@@ -3528,7 +3537,7 @@ final class AppModel: ObservableObject {
             id: messageID,
             conversationId: conversation.id,
             author: .agent,
-            authorName: ownedAgent(for: conversation)?.name ?? "My Kordi",
+            authorName: ownedAgent(for: conversation)?.name ?? "Kordi",
             text: noticeText,
             createdAt: revisionDate == .distantPast ? Date() : revisionDate,
             deliveryState: .delivered,
@@ -3672,7 +3681,7 @@ final class AppModel: ObservableObject {
                 conversationId: conversation.id,
                 requestMessageId: requestMessageId,
                 startedAt: Date(),
-                agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "My Kordi"
+                agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "Kordi"
             )
         }
         if ownerAccountId == account.accountId {
@@ -4136,6 +4145,9 @@ final class AppModel: ObservableObject {
                 accountId: participant.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl?.nonEmpty ?? participant.avatarUrl,
+                agentId: contact.defaultAgent?.agentId ?? participant.agentId,
+                agentDisplayName: contact.defaultAgent?.displayName ?? participant.agentDisplayName,
+                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource ?? participant.agentAvatarUrl,
                 role: participant.role,
                 joinedAt: participant.joinedAt
             )
@@ -4144,6 +4156,9 @@ final class AppModel: ObservableObject {
             accountId: account.accountId,
             displayName: account.preferredName,
             avatarUrl: account.avatar.imageSource,
+            agentId: account.defaultAgent?.agentId,
+            agentDisplayName: account.defaultAgent?.displayName,
+            agentAvatarUrl: account.defaultAgent?.avatar.imageSource,
             role: byAccountID[account.accountId]?.role.nonEmpty ?? "self",
             joinedAt: byAccountID[account.accountId]?.joinedAt
         )

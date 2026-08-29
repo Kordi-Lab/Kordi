@@ -324,6 +324,7 @@ export type CloudAgentNativeContextMessage = {
   id: string;
   authorName: string;
   authorKind: 'human' | 'agent';
+  contextRole?: 'history' | 'system';
   text: string;
   createdAtMs: number;
 };
@@ -334,8 +335,8 @@ export function cloudAgentNativeContextMessagesFromDirectCloudSession({
   localAccountId,
   localHumanName = 'Me',
   peerHumanName = 'Peer',
-  localAgentName = 'My Kordi',
-  peerAgentName = "Peer's Kordi",
+  localAgentName = 'Kordi',
+  peerAgentName = 'Kordi',
 }: {
   messages: readonly CloudMessage[];
   requestMessage: CloudMessage;

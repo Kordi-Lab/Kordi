@@ -142,6 +142,7 @@ pub fn support_contact(config: &SupportConfig) -> ContactSummary {
         display_name: Some(config.name.clone()),
         subtitle: Some(config.subtitle.clone()),
         avatar_url: None,
+        default_agent: None,
         node_id: None,
         created_at: config.contact_created_at.clone(),
         locked: true,

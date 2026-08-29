@@ -291,8 +291,8 @@ export function useCloudSelfAgentExecution({
             localAccountId: account.accountId,
             localHumanName: ownerName,
             peerHumanName: ownerName,
-            localAgentName: 'My Kordi',
-            peerAgentName: 'My Kordi',
+            localAgentName: account.defaultAgent?.displayName || 'Kordi',
+            peerAgentName: account.defaultAgent?.displayName || 'Kordi',
           }),
         ];
 

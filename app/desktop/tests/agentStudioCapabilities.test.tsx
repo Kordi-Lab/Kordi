@@ -35,7 +35,10 @@ test('Factory loads on demand in a dedicated production bundle', () => {
   assert.match(viteSource, /name: 'agent-factory'/);
 });
 
-function factoryWorkspace(onAccessScopeChange: (scope: CloudAgentAccessScope) => void = () => undefined) {
+function factoryWorkspace(
+  onAccessScopeChange: (scope: CloudAgentAccessScope) => void = () => undefined,
+  onNameChange: (name: string) => void = () => undefined,
+) {
   return (
     <AgentStudioWorkspace
       creating
@@ -63,6 +66,7 @@ function factoryWorkspace(onAccessScopeChange: (scope: CloudAgentAccessScope) =>
       allowCapabilityCreation
       canEditPrompt
       onPromptChange={() => undefined}
+      onNameChange={onNameChange}
       onCreationDraftChange={() => undefined}
       onToggleCapability={() => undefined}
       onAddCapability={() => undefined}
@@ -113,6 +117,8 @@ test('Factory keeps its publish action only in the bottom-right workspace footer
   assert.match(html, /app-agent-studio-icon-button is-inline-edit/);
   assert.match(html, /app-agent-studio-access-edit/);
   assert.match(html, /aria-label="Edit access"/);
+  assert.match(html, /aria-label="Edit name"/);
+  assert.match(html, />Research agent</);
   assert.match(html, /aria-haspopup="menu"/);
   assert.doesNotMatch(html, /<select/);
   assert.doesNotMatch(html, /app-agent-studio-access-picker/);
@@ -120,6 +126,32 @@ test('Factory keeps its publish action only in the bottom-right workspace footer
   assert.doesNotMatch(agentsPageSource, /Open full conversation/);
   assert.doesNotMatch(agentsPageSource, /<h2>Kordi Factory<\/h2>/);
   assert.doesNotMatch(agentsPageSource, /<span className="app-agent-studio-factory-mark"/);
+});
+
+test('Factory keeps an owner-edited Kordi name in the draft', async () => {
+  const installed = installDom();
+  const host = document.createElement('div');
+  document.body.append(host);
+  let root: Root | null = createRoot(host);
+  let renamed = '';
+
+  try {
+    await act(async () => root?.render(factoryWorkspace(() => undefined, (name) => { renamed = name; })));
+    const trigger = host.querySelector<HTMLButtonElement>('[aria-label="Edit name"]');
+    await act(async () => trigger?.dispatchEvent(new installed.dom.window.MouseEvent('click', { bubbles: true })));
+    const input = host.querySelector<HTMLInputElement>('[role="dialog"][aria-label="Edit agent name"] input');
+    assert.ok(input);
+    input.value = 'Release Scout';
+    const keep = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find((button) => button.textContent === 'Keep in draft');
+    await act(async () => keep?.dispatchEvent(new installed.dom.window.MouseEvent('click', { bubbles: true })));
+    assert.equal(renamed, 'Release Scout');
+    assert.equal(host.querySelector('[role="dialog"][aria-label="Edit agent name"]'), null);
+  } finally {
+    await act(async () => root?.unmount());
+    root = null;
+    host.remove();
+    installed.restore();
+  }
 });
 
 function installDom() {

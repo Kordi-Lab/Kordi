@@ -220,6 +220,7 @@ export function useCloudAgentAvailability({
           sessionId: candidate.requestMessage.sessionId,
           requestMessageId: candidate.requestMessage.id,
           targetAccountId: candidate.targetAccountId,
+          targetAgentId: candidate.targetCloudAgentId,
           targetAgentDisplayName: candidate.targetAgentDisplayName,
           createdAtMs: Date.now(),
         });
@@ -364,6 +365,7 @@ export function useCloudAgentAvailability({
         sessionId: candidate.requestMessage.sessionId,
         requestMessageId: candidate.requestMessage.id,
         targetAccountId: candidate.targetAccountId,
+        targetAgentId: candidate.targetCloudAgentId,
         targetAgentDisplayName: candidate.targetAgentDisplayName,
         createdAtMs: Date.now(),
       });

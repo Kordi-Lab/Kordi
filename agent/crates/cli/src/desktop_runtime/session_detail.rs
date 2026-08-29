@@ -102,17 +102,20 @@ fn reflection_lesson_artifacts_for_session(
     artifacts
 }
 
-fn infer_agent_label(cwd: &std::path::Path) -> String {
+fn infer_agent_label(cwd: &std::path::Path, settings: &Settings) -> String {
     if cwd
         .components()
         .any(|component| component.as_os_str() == "agent-drafts")
     {
         return "Kordi Factory".to_string();
     }
-    // The desktop runtime's built-in local agent has a stable product identity.
-    // Project names describe workspace grouping, not the agent itself; bridge
-    // agents can still provide custom labels through bridge configuration.
-    "Kordi".to_string()
+    settings
+        .agent_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or("Kordi")
+        .to_string()
 }
 
 fn collect_agent_identity_files(cwd: &std::path::Path) -> Vec<String> {
@@ -192,7 +195,7 @@ pub(super) fn build_agent_profile_from_setup(
     );
 
     DesktopChatAgentProfile {
-        label: infer_agent_label(&setup.tool_ctx.cwd),
+        label: infer_agent_label(&setup.tool_ctx.cwd, &settings),
         system_prompt: setup.system_prompt.clone(),
         loaded_skills,
         loaded_tools,
@@ -468,15 +471,36 @@ mod tests {
     #[test]
     fn local_desktop_agent_label_is_not_inferred_from_project_name() {
         assert_eq!(
-            infer_agent_label(std::path::Path::new("/tmp/any-project")),
+            infer_agent_label(
+                std::path::Path::new("/tmp/any-project"),
+                &Settings::default()
+            ),
             "Kordi"
+        );
+    }
+
+    #[test]
+    fn local_desktop_agent_uses_the_saved_owner_name() {
+        let settings = Settings {
+            agent_name: Some("Scout".to_string()),
+            ..Settings::default()
+        };
+        assert_eq!(
+            infer_agent_label(std::path::Path::new("/tmp/any-project"), &settings),
+            "Scout"
         );
     }
 
     #[test]
     fn factory_workspace_uses_specialist_label() {
         assert_eq!(
-            infer_agent_label(std::path::Path::new("/tmp/.kordi/agent-drafts/draft-id")),
+            infer_agent_label(
+                std::path::Path::new("/tmp/.kordi/agent-drafts/draft-id"),
+                &Settings {
+                    agent_name: Some("Scout".to_string()),
+                    ..Settings::default()
+                },
+            ),
             "Kordi Factory"
         );
     }

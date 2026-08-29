@@ -125,6 +125,7 @@ fn run() -> CloudAgentRun {
         run_id: "run_test".to_string(),
         status: "running".to_string(),
         prompt: "Write a tiny status file".to_string(),
+        system_prompt: String::new(),
         owner_account_id: "acct_owner".to_string(),
         requester_account_id: "acct_requester".to_string(),
         session_id: "session:direct-person:requester:owner".to_string(),
@@ -210,10 +211,12 @@ async fn model_loop_completes_text_response() {
         "Cloud fallback answer".to_string(),
     )]);
 
+    let mut claimed_run = run();
+    claimed_run.system_prompt = "You are Scout, the responding agent.".to_string();
     let text = run_model_loop(
         &client,
         &provider,
-        &run(),
+        &claimed_run,
         &sandbox_handle(),
         provider_auth(),
     )
@@ -222,6 +225,10 @@ async fn model_loop_completes_text_response() {
 
     assert_eq!(text, "Cloud fallback answer");
     let first_messages = provider.seen_messages.lock().unwrap().remove(0);
+    assert!(first_messages[0]["content"]
+        .as_str()
+        .unwrap()
+        .starts_with("You are Scout, the responding agent."));
     assert!(first_messages[0]["content"]
         .as_str()
         .unwrap()

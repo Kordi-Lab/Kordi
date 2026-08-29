@@ -148,3 +148,37 @@ async fn login_with_wrong_password_returns_401() {
     let body = read_json(bad).await;
     assert_eq!(body["errorCode"], "invalid_credentials");
 }
+
+#[tokio::test]
+async fn default_agent_name_persists_in_the_account_profile() {
+    let Some(pool) = try_pool().await else { return };
+    let state = Arc::new(ServerState::new(pool, EventBus::noop()));
+    let router = fast_router(state);
+    let (token, account_id) = signup_account(&router, "default-agent-name").await;
+
+    let updated = router
+        .clone()
+        .oneshot(patch_json_with_token(
+            "/v1/cloud/auth/me",
+            &token,
+            json!({ "agentDisplayName": "BabyTREE" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(updated.status(), StatusCode::OK);
+    let updated = read_json(updated).await;
+    assert_eq!(
+        updated["defaultAgent"]["agentId"],
+        format!("cloud-agent:{account_id}")
+    );
+    assert_eq!(updated["defaultAgent"]["displayName"], "BabyTREE");
+
+    let current = read_json(
+        router
+            .oneshot(get_with_token("/v1/cloud/auth/me", &token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(current["defaultAgent"]["displayName"], "BabyTREE");
+}

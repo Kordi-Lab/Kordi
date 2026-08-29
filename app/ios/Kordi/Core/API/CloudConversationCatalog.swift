@@ -438,10 +438,15 @@ enum CloudConversationCatalog {
                 ?? definition?.ownerAccountId
                 ?? otherAccountId(in: sorted, accountId: account.accountId)
                 ?? account.accountId
+            let defaultAgent = peerAccountId == account.accountId
+                ? account.defaultAgent
+                : contactsById[peerAccountId]?.defaultAgent
+            let resolvedTargetId = targetId ?? defaultAgent?.agentId
             let agentName = requests.compactMap { $0.1.targetCloudAgentName?.nonEmpty }.last
                 ?? definition?.name
-                ?? "My Kordi"
-            guard !KordiSupportIdentity.matches(name: agentName, seed: targetId) else { return nil }
+                ?? defaultAgent?.displayName
+                ?? "Kordi"
+            guard !KordiSupportIdentity.matches(name: agentName, seed: resolvedTargetId) else { return nil }
             let ownerName = requests.compactMap { $0.1.targetCloudAgentOwnerName?.nonEmpty }.last
                 ?? (peerAccountId == account.accountId ? account.preferredName : contactsById[peerAccountId]?.preferredName)
             let firstPrompt = conversationalRows.first(where: { !CloudMessageCodec.isAgentResponse($0.body) })
@@ -451,7 +456,7 @@ enum CloudConversationCatalog {
                 id: "agent-session:\(sessionId)",
                 kind: .agent,
                 peerAccountId: peerAccountId,
-                agentId: targetId,
+                agentId: resolvedTargetId,
                 ownerDisplayName: ownerName,
                 displayName: sessionTitle(firstPrompt) ?? agentName,
                 lastMessage: latest.map { CloudMessageCodec.previewText($0) } ?? definition?.description?.nonEmpty ?? "No messages yet",
@@ -462,7 +467,7 @@ enum CloudConversationCatalog {
                     conversation: canonicalConversationsBySessionId[sessionId],
                     accountId: account.accountId
                 ),
-                avatarSource: definition?.avatar.imageSource,
+                avatarSource: definition?.avatar.imageSource ?? defaultAgent?.avatar.imageSource,
                 agentActivity: CloudAgentLifecycleProjector.activity(in: conversationalRows),
                 sessionId: sessionId,
                 agentDisplayName: agentName,
@@ -566,10 +571,18 @@ enum CloudConversationCatalog {
                 ?? definition?.ownerAccountId
                 ?? otherMember?.accountId
                 ?? account.accountId
+            let defaultAgent = peerAccountId == account.accountId
+                ? account.defaultAgent
+                : contactsById[peerAccountId]?.defaultAgent
+            let memberAgentName = otherMember?.defaultAgentDisplayName?.nonEmpty
+            let memberAgentId = otherMember?.defaultAgentId?.nonEmpty
+            let resolvedTargetId = targetId ?? defaultAgent?.agentId ?? memberAgentId
             let agentName = requests.compactMap { $0.targetCloudAgentName?.nonEmpty }.last
                 ?? definition?.name
-                ?? "My Kordi"
-            guard !KordiSupportIdentity.matches(name: agentName, seed: targetId) else { return nil }
+                ?? defaultAgent?.displayName
+                ?? memberAgentName
+                ?? "Kordi"
+            guard !KordiSupportIdentity.matches(name: agentName, seed: resolvedTargetId) else { return nil }
             let ownerName = requests.compactMap { $0.targetCloudAgentOwnerName?.nonEmpty }.last
                 ?? (peerAccountId == account.accountId
                     ? account.preferredName
@@ -585,7 +598,7 @@ enum CloudConversationCatalog {
                 id: "agent-session:\(sessionId)",
                 kind: .agent,
                 peerAccountId: peerAccountId,
-                agentId: targetId,
+                agentId: resolvedTargetId,
                 ownerDisplayName: ownerName,
                 displayName: title,
                 lastMessage: latest.map { CloudMessageCodec.previewText($0) }
@@ -601,7 +614,9 @@ enum CloudConversationCatalog {
                     conversation: conversation,
                     accountId: account.accountId
                 ),
-                avatarSource: definition?.avatar.imageSource,
+                avatarSource: definition?.avatar.imageSource
+                    ?? defaultAgent?.avatar.imageSource
+                    ?? otherMember?.defaultAgentAvatarUrl?.nonEmpty,
                 agentActivity: CloudAgentLifecycleProjector.activity(in: conversationalRows),
                 sessionId: sessionId,
                 agentDisplayName: agentName,
@@ -669,20 +684,21 @@ enum CloudConversationCatalog {
 
     private static func defaultAgentConversation(account: CloudAccount, now: Date) -> ConversationSummary {
         let sessionId = defaultSelfAgentSessionId(account.accountId)
+        let agentName = account.defaultAgent?.displayName.nonEmpty ?? "Kordi"
         return ConversationSummary(
             id: "agent-template:\(sessionId)",
             kind: .agent,
             peerAccountId: account.accountId,
-            agentId: CanonicalAvatarSystem.defaultAgentId,
+            agentId: account.defaultAgent?.agentId.nonEmpty ?? "cloud-agent:\(account.accountId)",
             ownerDisplayName: account.preferredName,
-            displayName: "My Kordi",
+            displayName: agentName,
             lastMessage: "Your private cloud agent",
             lastActivityAt: now,
             unreadCount: 0,
-            avatarSource: nil,
+            avatarSource: account.defaultAgent?.avatar.imageSource,
             agentActivity: .ready,
             sessionId: sessionId,
-            agentDisplayName: "My Kordi"
+            agentDisplayName: agentName
         )
     }
 
@@ -715,6 +731,9 @@ enum CloudConversationCatalog {
                 accountId: accountId,
                 displayName: participant.displayName.nonEmpty ?? previous?.displayName ?? "Kordi user",
                 avatarUrl: participant.avatarUrl?.nonEmpty ?? previous?.avatarUrl,
+                agentId: participant.agentId?.nonEmpty ?? previous?.agentId,
+                agentDisplayName: participant.agentDisplayName?.nonEmpty ?? previous?.agentDisplayName,
+                agentAvatarUrl: participant.agentAvatarUrl?.nonEmpty ?? previous?.agentAvatarUrl,
                 role: participant.role?.nonEmpty ?? previous?.role,
                 joinedAt: participant.joinedAt?.nonEmpty ?? previous?.joinedAt
             )
@@ -733,6 +752,9 @@ enum CloudConversationCatalog {
                     accountId: participant.accountId,
                     displayName: account.preferredName,
                     avatarUrl: account.avatar.imageSource,
+                    agentId: account.defaultAgent?.agentId,
+                    agentDisplayName: account.defaultAgent?.displayName,
+                    agentAvatarUrl: account.defaultAgent?.avatar.imageSource,
                     role: participant.role,
                     joinedAt: participant.joinedAt
                 )
@@ -742,6 +764,9 @@ enum CloudConversationCatalog {
                 accountId: participant.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl?.nonEmpty ?? participant.avatarUrl,
+                agentId: contact.defaultAgent?.agentId ?? participant.agentId,
+                agentDisplayName: contact.defaultAgent?.displayName ?? participant.agentDisplayName,
+                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource ?? participant.agentAvatarUrl,
                 role: participant.role,
                 joinedAt: participant.joinedAt
             )
@@ -759,6 +784,9 @@ enum CloudConversationCatalog {
                 accountId: participant.accountId,
                 displayName: participant.displayName.nonEmpty ?? previous?.displayName ?? "Kordi user",
                 avatarUrl: participant.avatarUrl?.nonEmpty ?? previous?.avatarUrl,
+                agentId: participant.agentId?.nonEmpty ?? previous?.agentId,
+                agentDisplayName: participant.agentDisplayName?.nonEmpty ?? previous?.agentDisplayName,
+                agentAvatarUrl: participant.agentAvatarUrl?.nonEmpty ?? previous?.agentAvatarUrl,
                 role: participant.role?.nonEmpty ?? previous?.role,
                 joinedAt: participant.joinedAt?.nonEmpty ?? previous?.joinedAt
             )

@@ -256,6 +256,7 @@ pub(super) fn account_to_summary(account: AccountResponse) -> ContactSummary {
         display_name: account.display_name,
         subtitle: None,
         avatar_url: account.avatar_url,
+        default_agent: Some(account.default_agent),
         node_id: account.node_id,
         created_at: String::new(),
         locked: false,

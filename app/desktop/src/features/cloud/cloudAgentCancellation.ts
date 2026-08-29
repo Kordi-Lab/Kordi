@@ -184,10 +184,17 @@ export function cloudGroupAgentCancelRoleForRequest({
     requestSenderAccountId
     && requestSenderAccountId === trimmedCancelledByAccountId
   ) return 'sender';
-  const agentOwnerAccountId =
+  const processingContent = objectContent(processingMessage.content);
+  const agentOwnerAccountId = cleanText(
+    typeof processingContent.senderOwnerAccountId === 'string'
+      ? processingContent.senderOwnerAccountId
+      : null,
+  ) || (
     processingMessage.senderIdentityId.startsWith('agent:cloud:')
+    && !processingMessage.senderIdentityId.startsWith('agent:cloud-agent:')
       ? processingMessage.senderIdentityId.slice('agent:cloud:'.length)
-      : null;
+      : null
+  );
   if (
     agentOwnerAccountId
     && agentOwnerAccountId === trimmedCancelledByAccountId

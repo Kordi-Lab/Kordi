@@ -129,6 +129,16 @@ fn get_with_token(uri: &str, token: &str) -> Request<Body> {
         .unwrap()
 }
 
+fn patch_json_with_token(uri: &str, token: &str, body: serde_json::Value) -> Request<Body> {
+    Request::builder()
+        .method("PATCH")
+        .uri(uri)
+        .header("authorization", format!("Bearer {token}"))
+        .header("content-type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap()
+}
+
 fn post_with_token(uri: &str, token: &str) -> Request<Body> {
     Request::builder()
         .method("POST")

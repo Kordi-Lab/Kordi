@@ -125,10 +125,11 @@ test('renders human messages with a larger reading width than before', () => {
   assert.doesNotMatch(markup, /max-w-\[26rem\]/);
 });
 
-test('renders plain My Kordi replies on a subtle assistant surface', () => {
+test('renders an agent name with a separate owner tag', () => {
   const message: Message = {
     role: 'owned-agent',
-    sender: 'My Kordi',
+    sender: 'Scout',
+    senderOwnerName: 'Alex',
     senderType: 'agent',
     text: 'Hey! I am doing well, thanks for asking.',
     time: '14:30',
@@ -137,6 +138,10 @@ test('renders plain My Kordi replies on a subtle assistant surface', () => {
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
 
   assert.match(markup, /app-chat-bubble-agent/);
+  assert.match(markup, />Scout</);
+  assert.match(markup, /Owner · Alex/);
+  assert.match(markup, /aria-label="Owner: Alex"/);
+  assert.doesNotMatch(markup, /Alex['’]s Scout|My Scout/);
   assert.match(markup, />Hey! I am doing well, thanks for asking\.</);
   assert.doesNotMatch(markup, /app-message-bubble-own|app-message-bubble-peer/);
 });

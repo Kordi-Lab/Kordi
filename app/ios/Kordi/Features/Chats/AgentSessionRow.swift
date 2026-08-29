@@ -109,7 +109,7 @@ struct AgentSessionRow: View {
 
     private var preview: some View {
         (
-            Text(conversation.agentDisplayName?.nonEmpty ?? "My Kordi")
+            Text(conversation.agentDisplayName?.nonEmpty ?? "Kordi")
                 .foregroundColor(KordiTheme.agentViolet)
             + Text(" · ")
                 .foregroundColor(.secondary)

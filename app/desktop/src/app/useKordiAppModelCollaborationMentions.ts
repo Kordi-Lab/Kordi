@@ -12,7 +12,6 @@ import {
 import { cloudAgentDefinitionToSharedCloudAgentSummary, type CloudAgentDefinition, type SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import type { Conversation, DesktopCollaborationState, DesktopChatState } from '@/kordi-app/types';
-import { possessiveScopedLabel } from '@/lib/identityLabels';
 import { ALL_GROUP_MENTION_LABEL, groupMentionTargetIdentityId } from '@/features/chat/messageMentions';
 
 import { normalizeMentionSearch } from '@/app/useKordiAppModelHelpers';
@@ -173,11 +172,9 @@ export function buildCollaborationMentionTargetsByScope({
     );
     if (includeLocalAgent && (desktopChatState?.localAgent || activeAgent)) {
       const runtimeAgentLabel = desktopChatState?.localAgent?.label?.trim();
-      const collaborationAgentLabel = activeAgent?.label?.trim() || runtimeAgentLabel || localAgentBaseLabel;
+      const collaborationAgentLabel = runtimeAgentLabel || activeAgent?.label?.trim() || localAgentBaseLabel;
       const hostDisplayName = activeHost?.displayName?.trim();
-      const localAgentLabel = ownerName
-        ? (possessiveScopedLabel(ownerName, collaborationAgentLabel, true) ?? collaborationAgentLabel)
-        : (collaborationAgentLabel || hostDisplayName || localAgentBaseLabel);
+      const localAgentLabel = collaborationAgentLabel || hostDisplayName || localAgentBaseLabel;
       const localAgentHandle = mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
       pushOption({
         value: localAgentHandle,

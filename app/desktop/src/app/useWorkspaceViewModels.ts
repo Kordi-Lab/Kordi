@@ -336,7 +336,7 @@ export function useWorkspaceViewModels({
         collaborationSources: ['Local'],
         trust: 'Owned',
         directness: session.draft ? 'Draft' : 'Agent chat',
-        participants: ['Me', 'My Kordi'],
+        participants: ['Me', localAgentLabel],
         participantAvatarSeeds: {
           Me: localHumanAvatarSeed,
           You: localHumanAvatarSeed,
@@ -724,7 +724,7 @@ export function useWorkspaceViewModels({
           ...(agent.nodeId ? localAgentCollaborationReachoutsByAgentId.get(agent.nodeId) ?? [] : []),
         ].filter((reachout, index, list) => list.findIndex((candidate) => candidate.sessionId === reachout.sessionId) === index);
         items.push({
-          name: agent.label,
+          name: runtimeAgent?.label ?? agent.label,
           id: agent.id,
           role: 'My agent',
           messaging: 'Direct local chat',
@@ -955,7 +955,7 @@ export function useWorkspaceViewModels({
           const canonicalParticipants = canonicalReadModel?.participantDetails(sessionId) ?? [];
           const participants = canonicalParticipants.length > 0
             ? canonicalParticipants.map((participant) => participant.name)
-            : ['Me', 'My Kordi'];
+            : ['Me', desktopChatState?.localAgent.label?.trim() || 'Kordi'];
 
           const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[sessionId] ?? 0);
           const taskActivities = sessionTaskActivitiesById.get(sessionId) ?? [];
@@ -1029,7 +1029,7 @@ export function useWorkspaceViewModels({
       summary: 'Write below or create a session to persist work under this project.',
       lastActive: '--:--',
       status: 'Draft',
-      participants: ['Me', 'My Kordi'],
+      participants: ['Me', desktopChatState?.localAgent.label?.trim() || 'Kordi'],
       artifacts: 0,
       tasks: 0,
       unread: 0,
@@ -1053,7 +1053,7 @@ export function useWorkspaceViewModels({
     summary: 'Blank project drafts stay local until the first real send.',
     lastActive: 'Draft',
     status: 'Draft',
-    participants: ['Me', 'My Kordi'],
+    participants: ['Me', desktopChatState?.localAgent.label?.trim() || 'Kordi'],
     artifacts: activeProject.artifacts,
     tasks: activeProject.tasks,
     taskActivities: [],

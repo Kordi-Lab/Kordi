@@ -253,6 +253,7 @@ export function cloudAgentContextMessagesFromDefinition(definition: (Pick<CloudA
     id: `cloud-agent-definition:${cloudAgentId}`,
     authorName: `${name} definition`,
     authorKind: 'agent' as const,
+    contextRole: 'system' as const,
     text,
     createdAtMs: null,
   }];

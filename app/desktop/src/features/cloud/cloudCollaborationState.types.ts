@@ -48,6 +48,7 @@ export type UseCloudCollaborationStateArgs = {
     DesktopChatMessageRoute
   >;
   defaultCloudAgentRuntimeRoute?: DesktopChatMessageRoute | null;
+  localAgentLabel?: string | null;
   defaultCloudAgentRuntimeReady?: boolean;
   desktopAuthState?: DesktopAuthState | null;
 };

@@ -29,6 +29,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseText,
   responseDeliveryState,
   responseTools,
+  agentId,
   agentDisplayName,
   agentHandoff,
   signal,
@@ -43,6 +44,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   responseText: string;
   responseDeliveryState: 'complete' | 'failed';
   responseTools: CloudAgentExecutionTool[];
+  agentId: string;
   agentDisplayName: string;
   agentHandoff: CloudGroupAgentHandoff | null;
   signal: AbortSignal;
@@ -100,6 +102,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
         message: {
           id: responseMessageId,
           senderAccountId: account.accountId,
+          senderAgentId: agentId,
           text: responseText,
           createdAtMs: responseCreatedAtMs,
           senderKind: 'agent',

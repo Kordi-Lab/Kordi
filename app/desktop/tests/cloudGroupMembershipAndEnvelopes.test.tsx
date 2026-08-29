@@ -263,6 +263,7 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
       text: 'hello group',
       createdAtMs: 123,
       senderKind: 'agent',
+      senderAgentId: 'cloud_agent_project',
       senderDisplayName: 'Agent',
       deliveryState: 'processing',
       replyToMessageId: 'msg_request',
@@ -281,6 +282,7 @@ test('cloud group control envelopes round trip and stay identifiable', () => {
   assert.equal(parsed?.participants[1]?.avatarUrl, null);
   assert.equal(parsed?.message?.text, 'hello group');
   assert.equal(parsed?.message?.senderKind, 'agent');
+  assert.equal(parsed?.message?.senderAgentId, 'cloud_agent_project');
   assert.equal(parsed?.message?.senderDisplayName, 'Agent');
   assert.equal(parsed?.message?.deliveryState, 'processing');
   assert.equal(parsed?.message?.replyToMessageId, 'msg_request');

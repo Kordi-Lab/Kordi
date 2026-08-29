@@ -8,7 +8,7 @@ use super::envelopes::{
     cloud_agent_response_text, cloud_group_request_envelope_with_created_at_for_run,
     direct_message_envelope, parse_cloud_group_envelope,
 };
-use super::group_mentions::mention_instruction;
+use super::group_mentions::{mention_instruction, persona_instruction};
 use super::{ClaimRunRequest, RunResult};
 
 const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES: i64 = 12;
@@ -72,14 +72,14 @@ fn fallback_prompt_history_line(
     message: &CloudFallbackHistoryMessage,
 ) -> Option<String> {
     let (label, text, suffix) = if let Some(text) = cloud_agent_response_text(&message.body) {
-        ("Owner's Kordi", text, String::new())
+        ("Owner agent", text, String::new())
     } else if let Some(envelope) = parse_cloud_group_envelope(&message.body) {
         let group_message = envelope.message?;
         let label = if group_message.sender_account_id == requester_account_id {
             "Requester"
         } else if group_message.sender_account_id == owner_account_id {
             if group_message.sender_kind.as_deref() == Some("agent") {
-                "Owner's Kordi"
+                "Owner agent"
             } else {
                 "Owner"
             }
@@ -214,10 +214,15 @@ async fn shared_cloud_agent_prompt_prefix(
     Ok(Some(sections.join("\n\n")))
 }
 
+pub(super) struct CloudFallbackPrompt {
+    pub(super) system_prompt: String,
+    pub(super) user_prompt: String,
+}
+
 pub(super) async fn fallback_prompt_for_claim(
     pool: &PgPool,
     input: &ClaimRunRequest,
-) -> RunResult<String> {
+) -> RunResult<CloudFallbackPrompt> {
     let group_request = cloud_group_request_envelope_with_created_at_for_run(
         pool,
         &input.session_id,
@@ -238,7 +243,7 @@ pub(super) async fn fallback_prompt_for_claim(
     .bind(&input.session_id)
     .fetch_all(pool)
     .await?;
-    if !chat_rows.is_empty() {
+    let prompt = if !chat_rows.is_empty() {
         chat_rows.reverse();
         let request_index = chat_rows.iter().position(|(message_id, _, body)| {
             message_id == &input.request_message_id
@@ -256,32 +261,40 @@ pub(super) async fn fallback_prompt_for_claim(
                 body: body.clone(),
             })
             .collect::<Vec<_>>();
-        let prompt = fallback_prompt_with_history(
+        fallback_prompt_with_history(
             &input.requester_account_id,
             &input.owner_account_id,
             &input.prompt,
             &history,
-        );
-        let group_mention_instruction = group_request
-            .as_ref()
-            .and_then(|(envelope, _)| mention_instruction(envelope, &input.owner_account_id));
-        let prompt = group_mention_instruction
-            .map(|instruction| format!("{instruction}\n\n{prompt}"))
-            .unwrap_or(prompt);
-        if let Some(prefix) = shared_cloud_agent_prompt_prefix(pool, input).await? {
-            return Ok(format!("{prefix}\n\nConversation request:\n{prompt}"));
-        }
-        return Ok(prompt);
-    }
-    let prompt = input.prompt.trim().to_string();
-    let group_mention_instruction = group_request
+        )
+    } else {
+        input.prompt.trim().to_string()
+    };
+    let responding_agent_id = group_request
         .as_ref()
-        .and_then(|(envelope, _)| mention_instruction(envelope, &input.owner_account_id));
-    let prompt = group_mention_instruction
+        .and_then(|(envelope, _)| envelope.message.as_ref())
+        .and_then(|message| message.target_cloud_agent_id.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("cloud-agent:{}", input.owner_account_id.trim()));
+    let group_mention_instruction = group_request.as_ref().and_then(|(envelope, _)| {
+        mention_instruction(envelope, &input.owner_account_id, &responding_agent_id)
+    });
+    let user_prompt = group_mention_instruction
         .map(|instruction| format!("{instruction}\n\n{prompt}"))
         .unwrap_or(prompt);
+    let mut system_sections = Vec::new();
     if let Some(prefix) = shared_cloud_agent_prompt_prefix(pool, input).await? {
-        return Ok(format!("{prefix}\n\nConversation request:\n{prompt}"));
+        system_sections.push(prefix);
     }
-    Ok(prompt)
+    if let Some(persona) = group_request.as_ref().and_then(|(envelope, _)| {
+        persona_instruction(envelope, &input.owner_account_id, &responding_agent_id)
+    }) {
+        system_sections.push(persona);
+    }
+    Ok(CloudFallbackPrompt {
+        system_prompt: system_sections.join("\n\n"),
+        user_prompt,
+    })
 }

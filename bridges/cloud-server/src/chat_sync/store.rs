@@ -152,6 +152,8 @@ type MemberRow = (
     Option<String>,
     Option<String>,
     String,
+    Option<String>,
+    String,
     String,
     i32,
     i64,

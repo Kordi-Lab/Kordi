@@ -1,6 +1,7 @@
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
-import { possessiveScopedLabel, publicScopedAgentMentionHandle, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
+import { possessiveScopedLabel, publicScopedAgentMentionHandle, rewriteLeadingFirstPersonAgentMention, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
+import { defaultCloudAgentId } from '@/features/cloud/cloudAgentIdentity';
 import type {
   Conversation,
   ConversationCollaborationTarget,
@@ -223,7 +224,7 @@ export function sharedCloudAgentMentionCandidatesForConversation(
         handle,
         normalizedHandle: normalizeMentionLabel(handle),
         displayLabel,
-        detailLabel: `${owner}'s Agent`,
+        detailLabel: `Owner · ${owner}`,
         targetKind: 'cloud-shared-agent' as const,
         targetAgentId: agent.agentId,
         targetOwnerAccountId: agent.ownerAccountId,
@@ -338,7 +339,13 @@ function uniqueHandle(baseHandle: string, suffix: string) {
 }
 
 function candidateWithBaseMentionHandle(candidate: CollaborationMentionCandidate) {
-  const handle = mentionHandleForLabel(candidate.displayLabel, candidate.peer.nodeId);
+  const handle = candidate.targetKind === 'agent'
+    && candidate.peer.displayName?.trim() !== candidate.displayLabel
+    ? publicScopedAgentMentionHandle(
+      candidate.peer.ownerName,
+      candidate.displayLabel,
+    )
+    : mentionHandleForLabel(candidate.displayLabel, candidate.peer.nodeId);
   return { ...candidate, handle, normalizedHandle: normalizeMentionLabel(handle) };
 }
 
@@ -410,7 +417,10 @@ export function buildCollaborationMentionCandidates(collaborationState: DesktopC
       const agentIsReachable = !isAgent || agentCanBeMentionedDirectly(peer);
       const seenForPeer = new Set<string>();
       const pushLabel = (value: string | null | undefined, targetKind: CollaborationMentionCandidate['targetKind']) => {
-        const displayLabel = value?.trim();
+        const rawLabel = value?.trim();
+        const displayLabel = targetKind === 'agent'
+          ? stripSelfPossessivePrefix(rawLabel, peer.ownerName) || rawLabel
+          : rawLabel;
         if (!displayLabel) return;
         const handle = mentionHandleForLabel(displayLabel, peer.nodeId);
         const dedupeKey = `${targetKind}:${normalizeMentionLabel(handle)}:${normalizeMentionLabel(displayLabel)}`;
@@ -450,7 +460,11 @@ export function buildCollaborationMentionCandidates(collaborationState: DesktopC
 export function collaborationMentionCandidateOptionText(candidate: CollaborationMentionCandidate) {
   return {
     label: candidate.displayLabel,
-    detail: candidate.targetKind === 'person' ? 'Person' : 'Agent',
+    detail: candidate.targetKind === 'person'
+      ? 'Person'
+      : candidate.peer.ownerName?.trim()
+        ? `Owner · ${candidate.peer.ownerName.trim()}`
+        : 'Agent',
   };
 }
 
@@ -518,6 +532,36 @@ export function localAgentMentionLabels(state: DesktopChatState | null, collabor
 export function mentionsLocalAgent(text: string, state: DesktopChatState | null, collaborationState: DesktopCollaborationState | null) {
   const afterAt = text.replace(/^\s*@/, '');
   return localAgentMentionLabels(state, collaborationState).some((label) => mentionTextStartsWithLabel(afterAt, label));
+}
+
+export function resolveMentionedLocalAgentTarget(
+  text: string,
+  state: DesktopChatState | null,
+  collaborationState: DesktopCollaborationState | null,
+) {
+  if (!mentionsLocalAgent(text, state, collaborationState)) return null;
+  const { activeHost, activeAgent } = activeCollaborationHostAndAgent(collaborationState);
+  const ownerAccountId = activeHost?.humanId?.trim() || activeHost?.nodeId?.trim();
+  if (!activeHost || !activeAgent || !ownerAccountId) return null;
+  const displayLabel = state?.localAgent?.label?.trim() || activeAgent.label?.trim() || 'Kordi';
+  const label = mentionHandleForLabel(displayLabel, activeAgent.id || ownerAccountId);
+  const peer = {
+    endpoint: activeHost.endpoint,
+    nodeId: activeAgent.nodeId?.trim() || ownerAccountId,
+    displayName: displayLabel,
+    ownerName: activeHost.ownerName,
+    runtime: activeAgent.runtime,
+    humanId: ownerAccountId,
+    agentId: defaultCloudAgentId(ownerAccountId),
+  } as DesktopCollaborationState['hosts'][number]['visiblePeers'][number];
+  return {
+    host: activeHost,
+    peer,
+    label,
+    displayLabel,
+    targetKind: 'agent' as const,
+    requestText: stripLeadingAddressMentions(text, [displayLabel, label, 'Kordi', 'My Kordi']).trim(),
+  };
 }
 
 function publicLocalAgentMentionLabel(collaborationState: DesktopCollaborationState | null) {
@@ -680,15 +724,49 @@ export function resolveMentionedCollaborationTarget(
       .filter((candidate) => mentionTextStartsWithLabel(afterAt, candidate.handle))
       .sort((left, right) => right.normalizedHandle.length - left.normalizedHandle.length);
 
-    const legacyMatches = safeMatches.length > 0
+    const legacyHandleMatches = safeMatches.length > 0
       ? []
-      : candidates.filter((candidate) => mentionTextStartsWithLabel(afterAt, candidate.displayLabel));
+      : candidates.filter((candidate) => {
+        if (candidate.targetKind !== 'agent') return false;
+        const legacyLabel = candidate.peer.displayName?.trim();
+        return Boolean(
+          legacyLabel
+          && mentionTextStartsWithLabel(
+            afterAt,
+            mentionHandleForLabel(legacyLabel, candidate.peer.nodeId),
+          ),
+        );
+      });
+    const legacyMatches = safeMatches.length > 0 || legacyHandleMatches.length > 0
+      ? []
+      : candidates.filter((candidate) => (
+        mentionTextStartsWithLabel(afterAt, candidate.displayLabel)
+        || Boolean(
+          candidate.targetKind === 'agent'
+          &&
+          candidate.peer.displayName?.trim()
+          && mentionTextStartsWithLabel(afterAt, candidate.peer.displayName),
+        )
+      ));
 
-    const legacyNormalizedKeys = new Set(legacyMatches.map((candidate) => `${candidate.targetKind}:${candidate.host.id}:${candidate.peer.nodeId}`));
-    const match = safeMatches[0] ?? (legacyNormalizedKeys.size === 1 ? legacyMatches[0] : null);
+    const fallbackMatches = legacyHandleMatches.length > 0
+      ? legacyHandleMatches
+      : legacyMatches;
+    const legacyNormalizedKeys = new Set(fallbackMatches.map((candidate) => `${candidate.targetKind}:${candidate.host.id}:${candidate.peer.nodeId}`));
+    const match = safeMatches[0]
+      ?? (legacyNormalizedKeys.size === 1 ? fallbackMatches[0] : null);
     if (!match) continue;
 
-    const matchedLabel = safeMatches.length > 0 ? match.handle : match.displayLabel;
+    const matchedLabel = safeMatches.length > 0
+      ? match.handle
+      : legacyHandleMatches.length > 0
+        ? mentionHandleForLabel(
+          match.peer.displayName || match.displayLabel,
+          match.peer.nodeId,
+        )
+        : mentionTextStartsWithLabel(afterAt, match.displayLabel)
+          ? match.displayLabel
+          : match.peer.displayName || match.displayLabel;
     let mentionEnd = mentionStart + 1 + leadingWhitespace + matchedLabel.length;
     if (/[:;,.!?—-]/.test(text[mentionEnd] ?? '')) {
       mentionEnd += 1;

@@ -36,7 +36,7 @@ enum AgentSessionPresentationCatalog {
             let sessions = candidates.filter {
                 !$0.isAgentLaunchTemplate && !isEmptyAgentSessionPlaceholder($0)
             }
-            let agentName = template.agentDisplayName?.nonEmpty ?? "My Kordi"
+            let agentName = template.agentDisplayName?.nonEmpty ?? "Kordi"
             let agentMatches = !query.isEmpty && agentName.localizedCaseInsensitiveContains(query)
             let visibleSessions = query.isEmpty || agentMatches
                 ? sessions
@@ -183,14 +183,14 @@ enum AgentSessionFactory {
                 peerAccountId: ownAccountId,
                 agentId: CanonicalAvatarSystem.defaultAgentId,
                 ownerDisplayName: nil,
-                displayName: "My Kordi",
+                displayName: "Kordi",
                 lastMessage: "Your private cloud agent",
                 lastActivityAt: now,
                 unreadCount: 0,
                 avatarSource: nil,
                 agentActivity: .ready,
                 sessionId: sessionId,
-                agentDisplayName: "My Kordi"
+                agentDisplayName: "Kordi"
             ),
             ownAccountId: ownAccountId,
             randomId: randomId,
@@ -209,7 +209,7 @@ enum AgentSessionFactory {
         let stableId = randomId.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
             ?? UUID().uuidString.lowercased()
         let sessionId = "session:\(sessionKind):\(stableId)"
-        let agentName = template.agentDisplayName?.nonEmpty ?? "My Kordi"
+        let agentName = template.agentDisplayName?.nonEmpty ?? "Kordi"
 
         return ConversationSummary(
             id: "agent-session:\(sessionId)",

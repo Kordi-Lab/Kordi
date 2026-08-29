@@ -122,6 +122,7 @@ export async function respondToCloudGroupAgentMention(
     contentText: 'processing...',
     content: {
       sender: presentation.displayName,
+      senderOwnerAccountId: account.accountId,
       timestampMs: processingCreatedAtMs,
       deliveryState: 'processing',
       sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
@@ -160,6 +161,7 @@ export async function respondToCloudGroupAgentMention(
       message: {
         id: processingMessageId,
         senderAccountId: account.accountId,
+        senderAgentId: presentation.agentId,
         text: 'processing...',
         createdAtMs: processingCreatedAtMs,
         senderKind: 'agent',
@@ -185,6 +187,7 @@ export async function respondToCloudGroupAgentMention(
       requestMessageId: message.id,
       requestCreatedAtMs: message.createdAtMs,
       respondingAccountId: account.accountId,
+      respondingAgentId: presentation.agentId,
     }),
   ];
   const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
@@ -273,6 +276,8 @@ export async function respondToCloudGroupAgentMention(
     contentText: responseText,
     content: {
       sender: presentation.displayName,
+      senderOwnerAccountId: account.accountId,
+      senderOwnerName: presentation.ownerDisplayName,
       timestampMs: responseCreatedAtMs,
       deliveryState: responseDeliveryState,
       cloudGroupMessageId: responseMessageId,
@@ -313,6 +318,7 @@ export async function respondToCloudGroupAgentMention(
       responseText,
       participants: envelope.participants,
       respondingAccountId: account.accountId,
+      respondingAgentId: presentation.agentId,
       requestMessage: message,
     })
     : null;
@@ -360,6 +366,7 @@ export async function respondToCloudGroupAgentMention(
       : (failureMessage ?? ''),
     responseDeliveryState,
     responseTools: cloudAgentPublicBackgroundToolsFromTurn(finalTurn),
+    agentId: presentation.agentId,
     agentDisplayName: presentation.displayName,
     agentHandoff,
     signal,

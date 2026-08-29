@@ -89,16 +89,22 @@ export function cloudGroupAgentProcessingSlotForResponse(
     || !trimmedRequestId
     || !trimmedSenderAccountId
   ) return null;
-  const senderIdentityId = `agent:cloud:${trimmedSenderAccountId}`;
   return messages.find((message) => {
-    if (
-      message.sessionId !== trimmedGroupId
-      || message.senderIdentityId !== senderIdentityId
-    ) return false;
+    if (message.sessionId !== trimmedGroupId) return false;
     if (!message.sourceTransport?.startsWith('cloud-group-agent')) {
       return false;
     }
     const content = cloudObjectContent(message.content);
+    const ownerAccountId = cleanCloudText(
+      typeof content.senderOwnerAccountId === 'string'
+        ? content.senderOwnerAccountId
+        : null,
+    );
+    if (
+      ownerAccountId
+        ? ownerAccountId !== trimmedSenderAccountId
+        : message.senderIdentityId !== `agent:cloud:${trimmedSenderAccountId}`
+    ) return false;
     const linkedRequestId =
       cleanCloudText(message.parentMessageId)
       || cleanCloudText(

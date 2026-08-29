@@ -132,6 +132,7 @@ test('cloud agent runtime route is reflected on the synthetic local cloud agent 
   assert.equal(agent?.defaultAuthChoice, 'work');
   assert.equal(agent?.thinking, 'high');
   assert.equal(buildCloudCollaborationHost(account, []).agents[0]?.defaultModel, null);
+  assert.equal(buildCloudCollaborationHost(account, [], null, 'Release Scout').agents[0]?.label, 'Release Scout');
 });
 
 test('group hosted Cloud Agent runtime route prefers the canonical session route', () => {

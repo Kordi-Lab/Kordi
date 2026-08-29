@@ -8,6 +8,9 @@ struct CloudGroupParticipant: Codable, Hashable, Identifiable {
     let accountId: String
     let displayName: String
     let avatarUrl: String?
+    let agentId: String?
+    let agentDisplayName: String?
+    let agentAvatarUrl: String?
     let role: String?
     let joinedAt: String?
 
@@ -17,12 +20,18 @@ struct CloudGroupParticipant: Codable, Hashable, Identifiable {
         accountId: String,
         displayName: String,
         avatarUrl: String?,
+        agentId: String? = nil,
+        agentDisplayName: String? = nil,
+        agentAvatarUrl: String? = nil,
         role: String?,
         joinedAt: String? = nil
     ) {
         self.accountId = accountId
         self.displayName = displayName
         self.avatarUrl = avatarUrl
+        self.agentId = agentId
+        self.agentDisplayName = agentDisplayName
+        self.agentAvatarUrl = agentAvatarUrl
         self.role = role
         self.joinedAt = joinedAt
     }
@@ -249,6 +258,9 @@ enum CloudGroupMessageCodec {
             accountId: participant.accountId,
             displayName: participant.displayName,
             avatarUrl: nil,
+            agentId: participant.agentId,
+            agentDisplayName: participant.agentDisplayName,
+            agentAvatarUrl: nil,
             role: participant.role,
             joinedAt: participant.joinedAt
         )

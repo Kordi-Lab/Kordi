@@ -454,7 +454,7 @@ test('canonical read model keeps canonical parent transcript when bridge source 
 
   assert.deepEqual(
     conversations[0]?.messages.map((message) => message.text || message.turn?.assistantText),
-    ['@EthansKordi show me the diskusage', 'I tried to check disk usage with `df -h`.'],
+    ['@KordiEthan show me the diskusage', 'I tried to check disk usage with `df -h`.'],
   );
 });
 
@@ -519,7 +519,7 @@ test('canonical read model keeps chat-created bridge agent sessions scoped to th
     conversation?.messages.map((message) => message.text || message.turn?.assistantText),
     ['fresh private question', 'fresh private answer'],
   );
-  assert.deepEqual(conversation?.participants, ['Me', "Owner's Kordi"]);
+  assert.deepEqual(conversation?.participants, ['Me', 'Kordi']);
   assert.equal(conversation?.directness, 'Agent chat');
 });
 
@@ -718,7 +718,7 @@ test('canonical read model rewrites remote first-person agent mention labels', (
   const readModel = createCanonicalSessionReadModel(canonicalState as never);
   const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
 
-  assert.equal(conversations[0]?.messages[0]?.text, '@EthansKordi show me the diskusage');
+  assert.equal(conversations[0]?.messages[0]?.text, '@KordiEthan show me the diskusage');
 });
 
 test('canonical read model suppresses local agent runtime user echo after bridge UI mention', () => {

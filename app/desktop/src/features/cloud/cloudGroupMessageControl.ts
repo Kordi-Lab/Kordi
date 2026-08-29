@@ -10,6 +10,11 @@ import type {
 } from '@/kordi-app/types';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { cloudMessageAttachmentToMessageAttachment } from './cloudAttachments';
+import {
+  cloudAgentCanonicalIdentityId,
+  cloudAgentDisplayName,
+  cloudAgentId,
+} from './cloudAgentIdentity';
 import { cloudGroupAgentConversationId } from './cloudGroupMessages';
 import { cloudGroupCanonicalMessageSource } from './cloudMessageIndex';
 import type {
@@ -99,8 +104,11 @@ export async function applyCloudGroupMessageControl({
     && message.senderAccountId === account.accountId
     && Boolean((message.replyToMessageId || message.requestId)?.trim());
   const senderIsAgent = message.senderKind === 'agent';
+  const senderAgentId = senderIsAgent
+    ? cloudAgentId(message.senderAgentId, message.senderAccountId)
+    : null;
   const senderIdentityId = senderIsAgent
-    ? `agent:cloud:${message.senderAccountId}`
+    ? cloudAgentCanonicalIdentityId(senderAgentId, message.senderAccountId)
     : senderHumanIdentityId;
   const messageReplyToId = message.replyToMessageId?.trim()
     || message.requestId?.trim()
@@ -141,18 +149,17 @@ export async function applyCloudGroupMessageControl({
       message.messageKind,
     );
   if (senderIsAgent) {
-    const owner = participantByAccount.get(message.senderAccountId);
     const senderIdentity = await upsertCanonicalIdentityFast({
       id: senderIdentityId,
       kind: 'agent',
-      displayName: message.senderDisplayName?.trim() || `${owner?.displayName || 'Cloud user'}'s Kordi`,
+      displayName: cloudAgentDisplayName(message.senderDisplayName),
       ownerIdentityId: senderHumanIdentityId,
       source: 'cloud',
       sourceHostId: 'cloud',
-      sourceIdentityId: `cloud-agent:${message.senderAccountId}`,
+      sourceIdentityId: senderAgentId,
       humanId: message.senderAccountId,
-      agentId: `cloud-agent:${message.senderAccountId}`,
-      avatarKey: `cloud-agent:${message.senderAccountId}`,
+      agentId: senderAgentId,
+      avatarKey: senderAgentId,
       profileImageUrl: null,
       metadata: { accountId: message.senderAccountId, cloudGroupAgent: true },
     });
@@ -298,7 +305,9 @@ export async function applyCloudGroupMessageControl({
       content: senderIsAgent ? {
         ...structuredContent,
         ...(message.mentions?.length ? { mentions: message.mentions } : {}),
-        sender: message.senderDisplayName?.trim() || 'Kordi',
+        sender: cloudAgentDisplayName(message.senderDisplayName),
+        senderOwnerAccountId: message.senderAccountId,
+        senderOwnerName: participantByAccount.get(message.senderAccountId)?.displayName ?? null,
         timestampMs: message.createdAtMs,
         deliveryState: agentDeliveryState,
         cloudGroupMessageId: message.id,

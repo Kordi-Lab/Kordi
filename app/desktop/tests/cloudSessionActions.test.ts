@@ -9,6 +9,7 @@ import {
   canonicalNoProviderFailedAgentMessageRequest,
 } from '../src/features/chat/messageActions/chatMessages';
 import { shouldUseNoProviderSelfAgentShortcut } from '../src/features/chat/messageActions/localAgentSessionTarget';
+import { legacyDefaultAgentProfileUpdate } from '../src/features/cloud/cloudAgentIdentity';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
@@ -21,6 +22,28 @@ const cloudGroupAgentPublicationSource = () => readFileSync(new URL('../src/feat
 const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
 const cloudGroupControlSenderSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlSender.ts', import.meta.url), 'utf8');
+
+test('legacy local default-agent identity migrates once into the cloud profile', () => {
+  assert.deepEqual(legacyDefaultAgentProfileUpdate({
+    localName: 'BabyTREE',
+    localAvatar: 'https://kordi.test/v1/avatars/preview/thumbs/baby_tree.png',
+    remoteDisplayName: 'Kordi',
+    remoteAvatarVersion: 1,
+  }), {
+    agentDisplayName: 'BabyTREE',
+    agentAvatarMutation: {
+      action: 'regenerate',
+      seed: 'baby_tree',
+      expectedVersion: 1,
+    },
+  });
+  assert.equal(legacyDefaultAgentProfileUpdate({
+    localName: 'BabyTREE',
+    localAvatar: 'https://kordi.test/v1/avatars/preview/thumbs/old.png',
+    remoteDisplayName: 'BabyTREE',
+    remoteAvatarVersion: 2,
+  }), null);
+});
 
 test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {
   assert.equal(shouldUseCloudSessionAction('session:direct-person:acct_a:acct_b'), true);
@@ -421,8 +444,8 @@ test('cloud group hosted-agent metadata targets the owner runtime even when text
   assert.match(stateSource, /export function cloudGroupMessageTargetsLocalAgent/);
   assert.match(stateSource, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
   assert.match(stateSource, /cleanCloudText\(message\.targetCloudAgentOwnerAccountId\)[\s\S]*?=== account\.accountId/);
-  assert.match(stateSource, /cleanCloudText\(message\.targetCloudAgentId\)[\s\S]*?\.startsWith\('cloud_agent_'\)/);
-  assert.match(stateSource, /targetsOwnedHostedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
+  assert.match(stateSource, /targetCloudAgentId\.startsWith\('cloud_agent_'\)/);
+  assert.match(stateSource, /targetsOwnedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
   assert.match(agentSource, /policy\.messageTargetsLocalAgent\([\s\S]*message,[\s\S]*account,[\s\S]*envelope\.participants/);
   assert.doesNotMatch(cloudGroupAgentControlSource(), /\|\|\s*senderIsAgent/);
   assert.match(agentSource, /targetCloudAgentId: message\.targetCloudAgentId/);

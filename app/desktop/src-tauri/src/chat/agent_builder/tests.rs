@@ -20,6 +20,13 @@ fn factory_prompt_covers_multiple_kordi_resource_types() {
 }
 
 #[test]
+fn valid_drafts_can_publish_without_model_credentials() {
+    assert!(validated_draft_is_publish_ready("draft", true));
+    assert!(!validated_draft_is_publish_ready("draft", false));
+    assert!(!validated_draft_is_publish_ready("published", true));
+}
+
+#[test]
 fn agent_creator_preserves_runtime_configuration_instead_of_inventing_it() {
     assert!(!AGENT_CREATOR_SKILL.contains("gpt-5.2"));
     assert!(AGENT_CREATOR_SKILL.contains("Preserve the configured model route"));
@@ -174,6 +181,26 @@ fn validates_materialized_workspace_and_invalidates_changed_fingerprint() {
     let (_, changed_validation) = validate_workspace(&workspace);
     assert!(changed_validation.valid);
     assert_ne!(changed_validation.fingerprint, original_fingerprint);
+    let _ = fs::remove_dir_all(workspace);
+}
+
+#[test]
+fn rejects_agent_names_longer_than_the_publish_contract() {
+    let workspace =
+        std::env::temp_dir().join(format!("kordi-agent-builder-test-{}", uuid::Uuid::new_v4()));
+    let seed = DesktopAgentBuilderSeed {
+        name: "a".repeat(MAX_AGENT_NAME_CHARS + 1),
+        role: "Test agent".to_string(),
+        access: "only-me".to_string(),
+        ..DesktopAgentBuilderSeed::default()
+    };
+    materialize_seed(&workspace, Some(&seed)).expect("materialize builder workspace");
+    let (_, validation) = validate_workspace(&workspace);
+    assert!(!validation.valid);
+    assert!(validation
+        .errors
+        .iter()
+        .any(|error| error.contains("name may contain at most")));
     let _ = fs::remove_dir_all(workspace);
 }
 

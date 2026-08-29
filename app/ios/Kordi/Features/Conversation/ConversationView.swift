@@ -2572,7 +2572,7 @@ private struct EmptyConversation: View {
             return conversation.displayName
         }
         if conversation.kind == .agent {
-            return conversation.agentDisplayName?.nonEmpty ?? "My Kordi"
+            return conversation.agentDisplayName?.nonEmpty ?? "Kordi"
         }
         return conversation.displayName
     }

@@ -263,7 +263,8 @@ test('created-agent sessions keep their selected identity while hiding My Kordi 
     'who are you',
     'I am US Stock Paper Trader.',
   ]);
-  assert.equal(messages[1]?.sender, 'My US Stock Paper Trader');
+  assert.equal(messages[1]?.sender, 'US Stock Paper Trader');
+  assert.equal(messages[1]?.senderOwnerName, 'You');
   assert.notEqual(messages[1]?.sender, 'My Kordi');
 });
 

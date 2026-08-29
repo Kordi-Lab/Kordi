@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { defaultCloudAgentId } from '@/features/cloud/cloudAgentIdentity';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
@@ -40,6 +41,7 @@ import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from
 import { messageMentionsForSend } from '../messageMentions';
 import {
   mentionsLocalAgent,
+  resolveMentionedLocalAgentTarget,
   resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh,
 } from './mentions';
 import {
@@ -80,6 +82,7 @@ import type {
   UseChatMessageActionsArgs,
 } from './types';
 import { quoteMessageAction } from '../messageActionMetadata';
+import { stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import { memeAttachmentDraftError } from '../memeAttachments';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
 import { prefetchNativeVideoRetry, terminalCollaborationRetryFailure } from './collaborationRetry';
@@ -426,7 +429,7 @@ export function restoredSelfAgentContextMessages(messages: readonly Message[]): 
     const authorKind = messageAuthorKind(message);
     return [{
       id,
-      authorName: message.sender?.trim() || (authorKind === 'agent' ? 'My Kordi' : 'Me'),
+      authorName: message.sender?.trim() || (authorKind === 'agent' ? 'Kordi' : 'Me'),
       authorKind,
       text,
       createdAtMs: null,
@@ -1052,28 +1055,47 @@ export function useChatMessageActions({
       setDesktopChatError(memeValidationError);
       return;
     }
-    const mentionedTarget = await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
-      text, desktopCollaborationState, activeConvMentionScope,
-      sharedCloudAgents, resolveSharedCloudAgentsForMention,
-    );
-    const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);
-    const targetCloudAgentId = mentionedTarget?.peer.agentId?.startsWith('cloud_agent_') ? mentionedTarget.peer.agentId : null;
-    const mentionedCloudSharedAgentOwnerAccountId = targetCloudAgentId
-      ? cleanText(mentionedTarget?.peer.humanId) || cleanText(mentionedTarget?.peer.nodeId)
-      : null;
     const activeGroupSessionScope = {
       canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
       participantSpaceId: activeConvMentionScope?.participantSpaceId,
       directness: activeConvMentionScope?.directness,
       canonicalParticipants: activeConvMentionScope?.canonicalParticipants,
     };
+    const activeGroupSessionIsGroup = isCollaborationGroupSession(activeGroupSessionScope);
+    const localAgentMentioned = mentionsLocalAgent(text, desktopChatState, desktopCollaborationState);
+    const resolvedMentionedTarget = await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
+      text, desktopCollaborationState, activeConvMentionScope,
+      sharedCloudAgents, resolveSharedCloudAgentsForMention,
+    );
+    const mentionedTarget = resolvedMentionedTarget
+      ?? (activeGroupSessionIsGroup
+        ? resolveMentionedLocalAgentTarget(text, desktopChatState, desktopCollaborationState)
+        : null);
+    const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);
+    const mentionedAgentOwnerAccountId = cleanText(mentionedTarget?.peer.humanId)
+      || cleanText(mentionedTarget?.peer.nodeId)
+      || '';
+    const mentionedAgentId = cleanText(mentionedTarget?.peer.agentId) || '';
+    const targetCloudAgentId = mentionedTarget
+      ? mentionedAgentId.startsWith('cloud_agent_')
+        || mentionedAgentId.startsWith('cloud-agent:')
+        ? mentionedAgentId
+        : defaultCloudAgentId(mentionedAgentOwnerAccountId)
+      : null;
+    const targetCloudAgentName = targetCloudAgentId
+      ? stripSelfPossessivePrefix(
+        mentionedTarget?.displayLabel,
+        mentionedTarget?.peer.ownerName,
+      ) || 'Kordi'
+      : null;
+    const mentionedCloudSharedAgentOwnerAccountId = targetCloudAgentId
+      ? mentionedAgentOwnerAccountId
+      : null;
     const localCollaborationNodeIds = new Set(
       (desktopCollaborationState?.hosts ?? [])
         .map((host) => host.nodeId?.trim())
         .filter((value): value is string => Boolean(value)),
     );
-    const activeGroupSessionIsGroup = isCollaborationGroupSession(activeGroupSessionScope);
-    const localAgentMentioned = mentionsLocalAgent(text, desktopChatState, desktopCollaborationState);
     const activeConversationUsesCollaborationRouting = shouldUseCollaborationConversationRouting({
       activeConversationUsesCollaboration,
       activeConvCollaborationTarget,
@@ -1098,7 +1120,12 @@ export function useChatMessageActions({
     const directCloudSharedAgentTargetIds = !activeGroupSessionIsGroup && mentionedCloudSharedAgentOwnerAccountId
       ? [mentionedCloudSharedAgentOwnerAccountId]
       : [];
-    const cloudAgentMentionTargetIds = activeGroupSessionIsGroup ? cloudGroupTargetIds : directCloudSharedAgentTargetIds;
+    const cloudAgentMentionTargetIds = activeGroupSessionIsGroup
+      ? [...new Set([
+        ...cloudGroupTargetIds,
+        ...(mentionedCloudSharedAgentOwnerAccountId ? [mentionedCloudSharedAgentOwnerAccountId] : []),
+      ])]
+      : directCloudSharedAgentTargetIds;
     const cloudAgentMentionParticipants = activeGroupSessionIsGroup
       ? activeGroupSessionParticipants
       : collaborationDirectSessionParticipants(activeGroupSessionScope, activeCollaborationHost, activeConvCollaborationTarget, { selfPublicName: selfPublicCollaborationName });
@@ -1304,7 +1331,7 @@ export function useChatMessageActions({
             createdAtMs: Date.now(),
             messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null,
             targetCloudAgentId,
-            targetCloudAgentName: targetCloudAgentId ? mentionedTarget?.displayLabel ?? null : null,
+            targetCloudAgentName,
             targetCloudAgentOwnerAccountId: targetCloudAgentId ? mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null : null,
             targetCloudAgentOwnerName: targetCloudAgentId ? mentionedTarget?.peer.ownerName ?? null : null,
             agentRuntimeRoute: resolveChatRuntimeRoute(cloudAgentMentionSessionId), ...voiceFields,

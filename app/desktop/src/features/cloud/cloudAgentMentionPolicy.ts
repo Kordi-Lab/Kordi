@@ -25,6 +25,7 @@ import {
   type CloudAgentRequestCandidate,
 } from './cloudAgentRequestState';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
+import { defaultCloudAgentId } from './cloudAgentIdentity';
 
 export const CLOUD_AGENT_MENTION_WINDOW_MS = 10 * 60_000;
 
@@ -123,7 +124,7 @@ export function cloudAgentMentionCandidates(
           )
           || 'Shared Agent'
         : cleanText(agentIdentity?.displayName)
-          || `${targetHumanDisplayName}'s Kordi`;
+          || 'Kordi';
       return [{
         requestMessage: message,
         targetAccountId,
@@ -182,8 +183,10 @@ export function shouldRunLocalCloudAgentForCloudMessage({
     );
   const directEnvelope = parseCloudDirectMessageEnvelope(message.body);
   const targetsLocalAgent =
-    directEnvelope?.targetCloudAgentId?.trim() === 'cloud-local-agent'
-    && directEnvelope.targetCloudAgentOwnerAccountId?.trim()
+    [defaultCloudAgentId(account.accountId), 'cloud-local-agent'].includes(
+      directEnvelope?.targetCloudAgentId?.trim() ?? '',
+    )
+    && directEnvelope?.targetCloudAgentOwnerAccountId?.trim()
       === account.accountId;
   if (
     !targetsHostedCloudAgent

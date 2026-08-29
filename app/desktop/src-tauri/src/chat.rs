@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use kordi_core::settings::Settings;
 use tauri::State;
 
 #[cfg(test)]
@@ -139,7 +140,10 @@ impl DesktopChatManager {
         let mut errors = Vec::new();
         for session in sessions {
             if let Err(error) = session.lock().await.reload_resources().await {
-                errors.push(error.to_string());
+                let message = error.to_string();
+                if !is_missing_session_error(&message) {
+                    errors.push(message);
+                }
             }
         }
         if errors.is_empty() {
@@ -153,6 +157,10 @@ impl DesktopChatManager {
             ))
         }
     }
+}
+
+fn is_missing_session_error(message: &str) -> bool {
+    message.starts_with("No session matching '")
 }
 
 fn chat_cwd() -> Result<PathBuf, String> {
@@ -203,6 +211,42 @@ pub async fn desktop_chat_session_detail(
     };
     let session = session.lock().await;
     session.detail().map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+pub async fn desktop_chat_rename_agent(
+    manager: State<'_, DesktopChatManager>,
+    name: String,
+) -> Result<String, String> {
+    let name = normalized_agent_name(&name)?;
+    let mut settings = Settings::load_global();
+    settings.agent_name = Some(name.clone());
+    settings.save_global().map_err(|error| error.to_string())?;
+    let sessions = manager
+        .sessions
+        .lock()
+        .await
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+    for session in sessions {
+        session.lock().await.refresh_saved_agent_persona();
+    }
+    Ok(name)
+}
+
+fn normalized_agent_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Agent name is required.".to_string());
+    }
+    if name.chars().count() > 120 {
+        return Err("Agent name must be 120 characters or fewer.".to_string());
+    }
+    if name.chars().any(char::is_control) {
+        return Err("Agent name cannot contain control characters.".to_string());
+    }
+    Ok(name.to_string())
 }
 
 #[tauri::command]

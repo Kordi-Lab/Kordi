@@ -144,6 +144,13 @@ struct CloudOAuthStartResponse: Codable, Hashable {
     let authUrl: String
 }
 
+struct CloudDefaultAgentProfile: Codable, Hashable {
+    let agentId: String
+    let displayName: String
+    let avatarUrl: String?
+    let avatar: CanonicalAvatarDescriptor
+}
+
 struct CloudAccount: Codable, Hashable {
     let accountId: String
     let kordiId: String?
@@ -151,6 +158,7 @@ struct CloudAccount: Codable, Hashable {
     let primaryEmail: String?
     let avatarUrl: String?
     var avatar: CanonicalAvatarDescriptor
+    var defaultAgent: CloudDefaultAgentProfile? = nil
     let nodeId: String?
     let passwordSet: Bool
 
@@ -246,6 +254,7 @@ struct CloudContact: Codable, Hashable, Identifiable {
     let kordiId: String?
     let displayName: String?
     let avatarUrl: String?
+    var defaultAgent: CloudDefaultAgentProfile? = nil
     let nodeId: String?
     let createdAt: String
 
@@ -269,6 +278,7 @@ struct CloudPublicProfile: Codable, Hashable {
     let kordiId: String
     let displayName: String?
     let avatarUrl: String?
+    var defaultAgent: CloudDefaultAgentProfile? = nil
     let nodeId: String?
     let isContact: Bool
     let isSelf: Bool
@@ -858,6 +868,9 @@ struct CloudChatMember: Codable, Hashable {
     let accountId: String
     let displayName: String?
     let avatarUrl: String?
+    let defaultAgentId: String?
+    let defaultAgentDisplayName: String?
+    let defaultAgentAvatarUrl: String?
     let role: String
     let membershipState: String
     let version: Int
@@ -870,6 +883,9 @@ struct CloudChatMember: Codable, Hashable {
         case accountId = "account_id"
         case displayName = "display_name"
         case avatarUrl = "avatar_url"
+        case defaultAgentId = "default_agent_id"
+        case defaultAgentDisplayName = "default_agent_display_name"
+        case defaultAgentAvatarUrl = "default_agent_avatar_url"
         case role
         case membershipState = "membership_state"
         case version

@@ -19,16 +19,19 @@ pub(super) fn parse_kind(value: &str) -> Result<ConversationKind, StoreError> {
 
 pub(super) fn member_from_row(row: MemberRow) -> MemberSnapshot {
     MemberSnapshot {
+        default_agent_id: format!("cloud-agent:{}", row.0),
         account_id: row.0,
         display_name: row.1,
         avatar_url: row.2,
-        role: row.3,
-        membership_state: row.4,
-        version: row.5,
-        last_delivered_sequence: row.6,
-        last_read_sequence: row.7,
-        joined_at: row.8,
-        left_at: row.9,
+        default_agent_display_name: row.3,
+        default_agent_avatar_url: row.4,
+        role: row.5,
+        membership_state: row.6,
+        version: row.7,
+        last_delivered_sequence: row.8,
+        last_read_sequence: row.9,
+        joined_at: row.10,
+        left_at: row.11,
     }
 }
 
@@ -95,11 +98,13 @@ pub(super) async fn member_rows(
 ) -> Result<Vec<MemberSnapshot>, StoreError> {
     let rows: Vec<MemberRow> = query_as(
         "SELECT member.account_id, account.display_name, account.avatar_url, \
+                agent.display_name, agent.avatar_url, \
                 member.role, member.membership_state, member.version, \
                 member.last_delivered_sequence, member.last_read_sequence, \
                 member.joined_at, member.left_at \
          FROM cloud_chat_conversation_members member \
          JOIN cloud_accounts account ON account.account_id = member.account_id \
+         JOIN cloud_default_agent_profiles agent ON agent.owner_account_id = member.account_id \
          WHERE member.conversation_id = $1 \
          ORDER BY member.joined_at ASC, member.account_id ASC",
     )

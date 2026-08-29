@@ -165,8 +165,8 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
     let row: (String, String, Option<String>, String, String) = query_as(
         "INSERT INTO cloud_agent_fallback_runs (
             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
-            requester_account_id, status, prompt, sandbox_id, runtime_route_json, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8, $9, $10, $10)
+            requester_account_id, status, prompt, system_prompt, sandbox_id, runtime_route_json, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8, $9, $10, $11, $11)
          ON CONFLICT (idempotency_key) DO UPDATE SET idempotency_key = cloud_agent_fallback_runs.idempotency_key
          RETURNING run_id, status, sandbox_id, created_at, updated_at",
     )
@@ -176,7 +176,8 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
     .bind(&input.session_id)
     .bind(&input.owner_account_id)
     .bind(&input.requester_account_id)
-    .bind(&prompt)
+    .bind(&prompt.user_prompt)
+    .bind(&prompt.system_prompt)
     .bind(&sandbox.sandbox_id)
     .bind(runtime_route)
     .bind(&now)

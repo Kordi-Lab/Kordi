@@ -140,7 +140,7 @@ test('completed desktop assistant messages fall back to error text and failed st
   const completed = buildCompletedDesktopAssistantMessage(failedTurn, 1_725_000_020_000);
 
   assert.equal(completed.role, 'assistant');
-  assert.equal(completed.sender, 'My Kordi');
+  assert.equal(completed.sender, 'Kordi');
   assert.equal(completed.text, 'request failed');
   assert.equal(completed.failed, true);
   assert.equal(completed.thinkingText, 'thoughts');

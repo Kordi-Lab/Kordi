@@ -68,6 +68,9 @@ mod tests {
                 account_id: "acct_requester".to_string(),
                 display_name: "Requester".to_string(),
                 avatar_url: None,
+                agent_id: None,
+                agent_display_name: None,
+                agent_avatar_url: None,
                 role: Some("admin".to_string()),
             },
             participants: vec![
@@ -75,12 +78,18 @@ mod tests {
                     account_id: "acct_requester".to_string(),
                     display_name: "Requester".to_string(),
                     avatar_url: None,
+                    agent_id: None,
+                    agent_display_name: None,
+                    agent_avatar_url: None,
                     role: Some("admin".to_string()),
                 },
                 super::CloudGroupParticipant {
                     account_id: "acct_owner".to_string(),
                     display_name: "Owner".to_string(),
                     avatar_url: None,
+                    agent_id: None,
+                    agent_display_name: None,
+                    agent_avatar_url: None,
                     role: Some("person".to_string()),
                 },
             ],
@@ -90,6 +99,7 @@ mod tests {
                 text: "@OwnerKordi hello".to_string(),
                 created_at_ms: 1,
                 sender_kind: Some("human".to_string()),
+                sender_agent_id: None,
                 sender_display_name: None,
                 delivery_state: None,
                 reply_to_message_id: None,
@@ -108,7 +118,7 @@ mod tests {
             "acct_owner",
             "msg:ui:request",
             "cloudrunmsg_response",
-            "@RequestersKordi Hello everyone!",
+            "@KordiRequester Hello everyone!",
             "complete",
             2,
         );
@@ -118,13 +128,18 @@ mod tests {
         assert_eq!(response.kind, "group-message");
         assert_eq!(message.sender_account_id, "acct_owner");
         assert_eq!(message.sender_kind.as_deref(), Some("agent"));
+        assert_eq!(message.sender_display_name.as_deref(), Some("Kordi"));
         assert_eq!(
-            message.sender_display_name.as_deref(),
-            Some("Owner's Kordi")
+            message.sender_agent_id.as_deref(),
+            Some("cloud-agent:acct_owner")
         );
         assert_eq!(message.request_id.as_deref(), Some("msg:ui:request"));
         assert_eq!(message.delivery_state.as_deref(), Some("complete"));
-        assert_eq!(message.text, "@RequestersKordi Hello everyone!");
+        assert_eq!(message.text, "@KordiRequester Hello everyone!");
+        assert_eq!(
+            message.target_cloud_agent_id.as_deref(),
+            Some("cloud-agent:acct_requester")
+        );
         assert_eq!(
             message.target_cloud_agent_owner_account_id.as_deref(),
             Some("acct_requester")
@@ -145,7 +160,7 @@ mod tests {
             "acct_owner",
             "msg:ui:request",
             "cloudrunmsg_chained_response",
-            "@RequestersKordi ask again",
+            "@KordiRequester ask again",
             "complete",
             3,
         );
@@ -168,6 +183,9 @@ mod tests {
                 account_id: "acct_requester".to_string(),
                 display_name: "Requester".to_string(),
                 avatar_url: None,
+                agent_id: None,
+                agent_display_name: None,
+                agent_avatar_url: None,
                 role: Some("admin".to_string()),
             },
             participants: vec![
@@ -175,12 +193,18 @@ mod tests {
                     account_id: "acct_requester".to_string(),
                     display_name: "Requester".to_string(),
                     avatar_url: None,
+                    agent_id: None,
+                    agent_display_name: None,
+                    agent_avatar_url: None,
                     role: Some("admin".to_string()),
                 },
                 super::CloudGroupParticipant {
                     account_id: "acct_owner".to_string(),
                     display_name: "Alex".to_string(),
                     avatar_url: None,
+                    agent_id: None,
+                    agent_display_name: None,
+                    agent_avatar_url: None,
                     role: Some("person".to_string()),
                 },
             ],
@@ -190,6 +214,7 @@ mod tests {
                 text: "@ProjectDriver help".to_string(),
                 created_at_ms: 1,
                 sender_kind: Some("human".to_string()),
+                sender_agent_id: None,
                 sender_display_name: None,
                 delivery_state: None,
                 reply_to_message_id: None,
@@ -208,7 +233,7 @@ mod tests {
             "acct_owner",
             "msg:ui:request",
             "cloudrunmsg_response",
-            "@RequestersKordi please investigate.",
+            "@KordiRequester please investigate.",
             "complete",
             2,
         );
@@ -217,7 +242,11 @@ mod tests {
 
         assert_eq!(
             message.sender_display_name.as_deref(),
-            Some("Project Driver · Alex's Agent")
+            Some("Project Driver")
+        );
+        assert_eq!(
+            message.sender_agent_id.as_deref(),
+            Some("cloud_agent_project")
         );
         assert_eq!(
             message.target_cloud_agent_owner_account_id.as_deref(),
@@ -227,8 +256,11 @@ mod tests {
             message.target_cloud_agent_owner_name.as_deref(),
             Some("Requester")
         );
-        assert_eq!(message.target_cloud_agent_id, None);
-        assert_eq!(message.target_cloud_agent_name, None);
+        assert_eq!(
+            message.target_cloud_agent_id.as_deref(),
+            Some("cloud-agent:acct_requester")
+        );
+        assert_eq!(message.target_cloud_agent_name.as_deref(), Some("Kordi"));
         assert_eq!(message.agent_mention_depth, Some(1));
     }
 
@@ -254,7 +286,7 @@ mod tests {
         );
 
         assert!(prompt.contains("Conversation history:\nRequester: what is xuzhu city weather"));
-        assert!(prompt.contains("Owner's Kordi: I think you mean Xuzhou city, China."));
+        assert!(prompt.contains("Owner agent: I think you mean Xuzhou city, China."));
         assert!(prompt.ends_with("Current request:\ncheck ahain"));
     }
 
@@ -294,6 +326,9 @@ mod tests {
                 account_id: "acct_peer".to_string(),
                 display_name: "Peer".to_string(),
                 avatar_url: None,
+                agent_id: None,
+                agent_display_name: None,
+                agent_avatar_url: None,
                 role: Some("admin".to_string()),
             },
             participants: vec![
@@ -301,12 +336,18 @@ mod tests {
                     account_id: "acct_owner".to_string(),
                     display_name: "Owner".to_string(),
                     avatar_url: None,
+                    agent_id: None,
+                    agent_display_name: None,
+                    agent_avatar_url: None,
                     role: Some("person".to_string()),
                 },
                 super::CloudGroupParticipant {
                     account_id: "acct_peer".to_string(),
                     display_name: "Peer".to_string(),
                     avatar_url: None,
+                    agent_id: None,
+                    agent_display_name: None,
+                    agent_avatar_url: None,
                     role: Some("admin".to_string()),
                 },
             ],

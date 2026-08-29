@@ -62,7 +62,7 @@ export function desktopTurnWorkDurationLabel(
 
 export function buildDesktopLiveTurnTranscriptMessage(
   turn: DesktopChatTurnSnapshot,
-  sender = 'My Kordi',
+  sender = 'Kordi',
   fallbackTimestampMs = Date.now(),
 ): Message {
   const timestampMs = desktopTurnDisplayTimestampMs(turn, fallbackTimestampMs);
@@ -90,7 +90,7 @@ export function buildCompletedDesktopAssistantMessage(
   return {
     role: 'assistant',
     entryId: turn.transcriptEntryId?.trim() || null,
-    sender: 'My Kordi',
+    sender: 'Kordi',
     text: assistantText.length > 0 ? assistantText : turn.status === 'cancelled' ? '' : fallbackText,
     detail: undefined,
     timeLabel: formatDesktopClockTime(new Date(timestampMs)),

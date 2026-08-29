@@ -112,7 +112,7 @@ test('cloud remote-agent responses render with the remote owner agent identity',
   });
   const view = mapCollaborationConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
   const agentMessage = view.messages.find((candidate) => candidate.role === 'external-agent');
-  assert.equal(agentMessage?.sender, "Peer Person's Kordi");
+  assert.equal(agentMessage?.sender, 'Kordi');
 });
 
 test('active cloud agent bridge placeholders are not materialized as duplicate sessions', () => {
@@ -216,7 +216,7 @@ test('cloud incoming local-agent mentions expose synced processing UI', () => {
   assert.equal(state.conversations[0].awaitingReply, true);
   assert.equal(state.conversations[0].outreach?.targetKind, 'agent');
   assert.equal(state.conversations[0].outreach?.sourceRequestId, 'msg_local_agent_request');
-  assert.equal(state.conversations[0].outreach?.targetAgentId, 'cloud-local-agent');
+  assert.equal(state.conversations[0].outreach?.targetAgentId, 'cloud-agent:acct_me');
 });
 
 test('cloud local agent runner ignores same-account self-agent sync messages', () => {
@@ -300,7 +300,7 @@ test('cloud outgoing self-agent mentions expose localhost-style local processing
   assert.equal(pendingState.conversations[0].awaitingReply, true);
   assert.equal(pendingState.conversations[0].outreach?.targetKind, 'agent');
   assert.equal(pendingState.conversations[0].outreach?.sourceRequestId, 'msg_self_agent_request');
-  assert.equal(pendingState.conversations[0].outreach?.targetAgentId, 'cloud-local-agent');
+  assert.equal(pendingState.conversations[0].outreach?.targetAgentId, 'cloud-agent:acct_me');
   assert.equal(pendingState.conversations[0].outreach?.targetNodeId, 'acct_me');
 
   const answeredState = buildCloudDesktopCollaborationState({

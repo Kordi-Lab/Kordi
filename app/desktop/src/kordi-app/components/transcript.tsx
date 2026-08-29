@@ -123,6 +123,20 @@ export function StatusPill({ children, className }: { children: ReactNode; class
   );
 }
 
+function AgentOwnerTag({ name }: { name?: string | null }) {
+  const owner = name?.trim();
+  if (!owner) return null;
+  return (
+    <span
+      className="inline-flex max-w-48 items-center truncate text-[9px] font-medium leading-none opacity-75"
+      aria-label={`Owner: ${owner}`}
+      title={`Owner: ${owner}`}
+    >
+      Owner · {owner}
+    </span>
+  );
+}
+
 function primaryMessageStatus(msg: Message) {
   return msg.statusChips?.[0]?.trim().toLowerCase() ?? null;
 }
@@ -240,7 +254,7 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
 
   return (
     <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-1.5">
-      <div className="app-message-meta">My Kordi • {msg.time}</div>
+      <div className="app-message-meta">{msg.sender?.trim() || 'Kordi'} • {msg.time}</div>
       <div className="app-detail-sheet w-full">
         <div className="flex items-start gap-3 px-3.5 py-3">
           <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-400/10 text-emerald-200">
@@ -713,6 +727,7 @@ function MessageBubbleView({
               <div className="app-message-meta">
                 {msg.sender}
               </div>
+              <AgentOwnerTag name={msg.senderOwnerName} />
               {forkButton}
               {forkChip}
             </div>
@@ -804,7 +819,12 @@ function MessageBubbleView({
       )}
       data-transcript-density={compactDensity}
     >
-      {showHeaderMeta ? <div className="app-message-meta px-1">{msg.sender}</div> : null}
+      {showHeaderMeta ? (
+        <div className="app-message-meta flex items-center gap-1.5 px-1">
+          <span>{msg.sender}</span>
+          <AgentOwnerTag name={msg.senderOwnerName} />
+        </div>
+      ) : null}
       <div className={cn(
         'flex w-full max-w-full',
         hasOnlyBorderlessMediaAttachments ? 'items-start' : 'items-end',

@@ -101,7 +101,7 @@ function cloudFallbackHistoryLine({
     ownerAccountId,
   );
   const label = agentResponse
-    ? `${peerName}'s Kordi`
+    ? `Kordi (owner: ${peerName})`
     : message.fromAccountId === account.accountId
       ? 'Me'
       : peerName;
@@ -167,7 +167,7 @@ function cloudGroupFallbackHistoryLine(
   const label = message.senderDisplayName?.trim()
     || (
       message.senderKind === 'agent' && participantName
-        ? `${participantName}'s Kordi`
+        ? `Kordi (owner: ${participantName})`
         : participantName
     )
     || 'Cloud participant';
@@ -372,7 +372,15 @@ export function cloudFallbackRunClaimsForMessages({
           )
         ) continue;
         const groupRequestMessage = { ...message, body: groupMessage.text };
-        if (!cloudMessageMentionsContactAgent(groupRequestMessage, contact)) {
+        const targetsOwnerById = Boolean(
+          cleanText(groupMessage.targetCloudAgentId)
+          && cleanText(groupMessage.targetCloudAgentOwnerAccountId)
+            === ownerAccountId,
+        );
+        if (
+          !targetsOwnerById
+          && !cloudMessageMentionsContactAgent(groupRequestMessage, contact)
+        ) {
           continue;
         }
         const alreadyTerminal = terminalGroupResponseKeys.has(

@@ -154,7 +154,7 @@ test('desktop transcript uses an explicit local agent display name as the visibl
   assert.equal(mapped.senderAvatarSeed, 'agent-builder');
 });
 
-test('generic persisted Kordi identity keeps the live My Kordi sender label', () => {
+test('generic persisted Kordi identity uses the editable agent name without a possessive alias', () => {
   const [mapped] = mapDesktopMessagesForTranscript('session-local', [{
     role: 'assistant',
     sender: 'Kordi',
@@ -166,8 +166,17 @@ test('generic persisted Kordi identity keeps the live My Kordi sender label', ()
     agentDisplayName: 'Kordi',
   });
 
-  assert.equal(mapped.sender, 'My Kordi');
-  assert.equal(mapped.sourceSenderLabel, 'My Kordi');
+  assert.equal(mapped.sender, 'Kordi');
+  assert.equal(mapped.sourceSenderLabel, 'Kordi');
+});
+
+test('renamed local agent identity is used as the visible sender', () => {
+  const [mapped] = mapDesktopMessagesForTranscript('session-local', [{
+    role: 'assistant', sender: 'My Kordi', text: 'Ready.', timeLabel: '20:45', timestampMs: 1,
+  }], { agent: 'agent-local', agentDisplayName: 'BabyTREE' });
+
+  assert.equal(mapped.sender, 'BabyTREE');
+  assert.equal(mapped.sourceSenderLabel, 'BabyTREE');
 });
 
 test('desktop transcript keeps an empty cancelled assistant turn as visible history', () => {

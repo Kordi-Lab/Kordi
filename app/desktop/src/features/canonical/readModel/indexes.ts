@@ -985,6 +985,10 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         agentId: identity.agentId,
         avatarKey: canonicalIdentityAvatarSeed(identity) ?? identity.avatarKey,
         profileImageUrl: identity.profileImageUrl,
+        defaultAgentId: stringValue(contentRecord(identity.metadata).defaultAgentId)?.trim() || null,
+        defaultAgentDisplayName: stringValue(contentRecord(identity.metadata).defaultAgentDisplayName)?.trim() || null,
+        defaultAgentAvatarUrl: stringValue(contentRecord(identity.metadata).defaultAgentAvatarUrl)?.trim() || null,
+        defaultAgentAvatarSeed: stringValue(contentRecord(identity.metadata).defaultAgentAvatarSeed)?.trim() || null,
         presenceStatus: presence?.status ?? null,
         presenceDetail: presence?.detail ?? null,
       }];

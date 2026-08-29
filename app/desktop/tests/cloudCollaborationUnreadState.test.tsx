@@ -87,7 +87,7 @@ test('unchanged Cloud agent routing preserves collaboration state identity', () 
 });
 
 
-test('stored self messages restore a private My Kordi cloud agent conversation', () => {
+test('stored self messages restore a private Kordi cloud agent conversation', () => {
   const selfRequest: CloudMessage = {
     messageId: 'msg_self_request',
     fromAccountId: 'acct_me',
@@ -118,9 +118,9 @@ test('stored self messages restore a private My Kordi cloud agent conversation',
 
   assert.equal(state.conversations.length, 1);
   assert.equal(state.conversations[0].id, 'cloud:conversation:acct_me:agent');
-  assert.equal(state.conversations[0].title, 'My Kordi');
+  assert.equal(state.conversations[0].title, 'Kordi');
   assert.equal(state.conversations[0].peerRuntime, 'kordi-desktop');
-  assert.equal(state.conversations[0].identity.remoteAgentId, 'cloud-local-agent');
+  assert.equal(state.conversations[0].identity.remoteAgentId, 'cloud-agent:acct_me');
   assert.deepEqual(state.conversations[0].messages.map((item) => item.text), [
     '@Kordi remember this private note',
     'I will remember it.',

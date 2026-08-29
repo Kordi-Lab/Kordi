@@ -330,6 +330,7 @@ mod tests {
             run_id: run_id.to_string(),
             status: "leased".to_string(),
             prompt: "hello".to_string(),
+            system_prompt: String::new(),
             owner_account_id: "acct_owner".to_string(),
             requester_account_id: "acct_requester".to_string(),
             session_id: "session:direct-person:a:b".to_string(),

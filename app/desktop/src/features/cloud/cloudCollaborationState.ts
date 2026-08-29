@@ -392,6 +392,7 @@ export function buildCloudCollaborationHost(
   account: CloudAccount,
   contacts: Contact[],
   localAgentRuntimeRoute: DesktopChatMessageRoute | null = null,
+  localAgentLabel = 'Kordi',
 ): DesktopCollaborationHost {
   const displayName = account.displayName?.trim() || account.primaryEmail?.trim() || 'Cloud user';
   const peers = contacts.filter(isDirectCloudContact).flatMap((contact) => (
@@ -399,6 +400,11 @@ export function buildCloudCollaborationHost(
       ? [cloudContactToAgentPeer(contact)]
       : [cloudContactToPersonPeer(contact), cloudContactToAgentPeer(contact)]
   ));
+  const defaultAgentId = account.defaultAgent?.agentId?.trim() || `cloud-agent:${account.accountId}`;
+  const defaultAgentName = localAgentLabel.trim() || account.defaultAgent?.displayName?.trim() || 'Kordi';
+  const defaultAgentAvatarUrl = account.defaultAgent
+    ? cloudAvatarImageUrl(canonicalAvatarImageSource(account.defaultAgent.avatar))
+    : null;
   return {
     id: CLOUD_HOST_SENTINEL,
     registered: true,
@@ -414,10 +420,10 @@ export function buildCloudCollaborationHost(
     humanVisibilityPolicy: 'server-approval',
     contactApprovalPolicy: 'approval-required',
     profileImageUrl: cloudAvatarImageUrl(canonicalAvatarImageSource(account.avatar)),
-    activeAgentId: 'cloud-local-agent',
+    activeAgentId: defaultAgentId,
     agents: [{
-      id: 'cloud-local-agent',
-      label: 'Kordi',
+      id: defaultAgentId,
+      label: defaultAgentName,
       nodeId: account.nodeId || account.accountId,
       runtime: CLOUD_AGENT_RUNTIME,
       isDefault: true,
@@ -431,7 +437,7 @@ export function buildCloudCollaborationHost(
       fallbackAuthChoice: null,
       thinking: localAgentRuntimeRoute?.thinking ?? null,
       reachabilityPolicy: 'contacts',
-      profileImageUrl: null,
+      profileImageUrl: defaultAgentAvatarUrl,
     }],
     visiblePeers: peers,
     visiblePeerCount: peers.length,
@@ -445,6 +451,12 @@ function metadataAccountId(value: unknown): string {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
   const accountId = (value as Record<string, unknown>).accountId;
   return typeof accountId === 'string' ? accountId.trim() : '';
+}
+
+function metadataText(value: unknown, key: string): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const text = (value as Record<string, unknown>)[key];
+  return typeof text === 'string' && text.trim() ? text.trim() : null;
 }
 
 export function cloudGroupParticipantContacts(input: {
@@ -490,6 +502,12 @@ export function cloudGroupParticipantContacts(input: {
       contactRequestDirection: null,
       avatarSeed: identity.avatarKey || accountId,
       profileImageUrl: identity.profileImageUrl ?? null,
+      targetCloudAgentId: metadataText(identity.metadata, 'defaultAgentId') ?? `cloud-agent:${accountId}`,
+      targetCloudAgentName: metadataText(identity.metadata, 'defaultAgentDisplayName') ?? 'Kordi',
+      targetCloudAgentOwnerAccountId: accountId,
+      targetCloudAgentOwnerName: identity.displayName || accountId,
+      targetCloudAgentAvatarUrl: metadataText(identity.metadata, 'defaultAgentAvatarUrl'),
+      targetCloudAgentAvatarSeed: metadataText(identity.metadata, 'defaultAgentAvatarSeed') ?? `cloud-agent:${accountId}`,
     });
   }
 
@@ -538,8 +556,10 @@ export function buildCloudCollaborationConversation({
   }
   const cancelledRequestIds = new Set(cancelMessageByRequestId.keys());
   const sessionAgentTarget = isSelfPeer ? cloudAgentSessionTargetFromMessages(messages, account.accountId) : null;
-  const selfAgentId = sessionAgentTarget?.targetCloudAgentId || 'cloud-local-agent';
-  const selfAgentName = sessionAgentTarget?.targetCloudAgentName || 'My Kordi';
+  const defaultAgentId = account.defaultAgent?.agentId ?? `cloud-agent:${account.accountId}`;
+  const defaultAgentName = account.defaultAgent?.displayName ?? 'Kordi';
+  const selfAgentId = sessionAgentTarget?.targetCloudAgentId || defaultAgentId;
+  const selfAgentName = sessionAgentTarget?.targetCloudAgentName || defaultAgentName;
   const requestTargetAccountIds = new Map<string, string>();
   const requestTargetAgentNames = new Map<string, string>();
   const explicitResponseAgentNames = new Map<string, string>();
@@ -556,7 +576,7 @@ export function buildCloudCollaborationConversation({
     if (directTargetOwnerAccountId) {
       requestTargetAccountIds.set(message.messageId, directTargetOwnerAccountId);
       const directTargetAgentName = cloudDirectMessageTargetCloudAgentName(message.body)
-        || (directTargetOwnerAccountId === account.accountId ? 'My Kordi' : cloudAgentDisplayName(contact));
+        || (directTargetOwnerAccountId === account.accountId ? defaultAgentName : cloudAgentDisplayName(contact));
       requestTargetAgentNames.set(message.messageId, directTargetAgentName);
       explicitResponseAgentNames.set(message.messageId, directTargetAgentName);
     } else if (isSelfPeer && cloudMessageIsSelfAgentRequest({ ...message, body: displayBody }, account)) {
@@ -564,13 +584,13 @@ export function buildCloudCollaborationConversation({
       requestTargetAgentNames.set(message.messageId, selfAgentName);
     } else if (cloudMessageMentionsFirstPersonAgent(displayBody)) {
       requestTargetAccountIds.set(message.messageId, message.fromAccountId);
-      requestTargetAgentNames.set(message.messageId, message.fromAccountId === account.accountId ? 'My Kordi' : cloudAgentDisplayName(contact));
+      requestTargetAgentNames.set(message.messageId, message.fromAccountId === account.accountId ? defaultAgentName : cloudAgentDisplayName(contact));
     } else if (cloudMessageMentionsContactAgent({ ...message, body: displayBody }, contact)) {
       requestTargetAccountIds.set(message.messageId, peerAccountId);
       requestTargetAgentNames.set(message.messageId, cloudAgentDisplayName(contact));
     } else if (cloudMessageMentionsLocalAgent(displayBody, account, { allowFirstPerson: false })) {
       requestTargetAccountIds.set(message.messageId, account.accountId);
-      requestTargetAgentNames.set(message.messageId, 'My Kordi');
+      requestTargetAgentNames.set(message.messageId, defaultAgentName);
     }
   }
   const {
@@ -632,7 +652,7 @@ export function buildCloudCollaborationConversation({
         ? (account.displayName || account.primaryEmail || 'Me')
         : cloudPeerDisplayName(contact);
       const targetAgentName = requestTargetAgentNames.get(message.messageId)
-        || (targetAccountId === account.accountId ? 'My Kordi' : cloudAgentDisplayName(contact));
+        || (targetAccountId === account.accountId ? defaultAgentName : cloudAgentDisplayName(contact));
       return [mapped, cloudAgentOfflineCollaborationMessage({
         account,
         request: message,
@@ -653,9 +673,9 @@ export function buildCloudCollaborationConversation({
   const title = isPerson
     ? cloudPeerDisplayName(contact)
     : isSelfPeer && normalizedCloudSessionId
-      ? cleanCloudConversationTitle(cloudSessionTitle) ?? cloudSelfAgentTitleFromMessages(visibleCloudMessages, groupControlMessageIds) ?? 'My Kordi'
+      ? cleanCloudConversationTitle(cloudSessionTitle) ?? cloudSelfAgentTitleFromMessages(visibleCloudMessages, groupControlMessageIds) ?? defaultAgentName
       : isSelfPeer
-        ? 'My Kordi'
+        ? defaultAgentName
         : cloudAgentDisplayName(contact);
   const pendingAgentRequest = [...pendingAgentRequests].reverse()[0] ?? null;
   const last = latestVisibleConversationMessage(collaborationMessages);
@@ -669,12 +689,12 @@ export function buildCloudCollaborationConversation({
     : cloudPeerDisplayName(contact);
   const pendingAgentDisplayName = pendingAgentRequest
     ? requestTargetAgentNames.get(pendingAgentRequest.messageId)
-      || (pendingAgentTargetsLocalAgent ? 'My Kordi' : cloudAgentDisplayName(contact))
+      || (pendingAgentTargetsLocalAgent ? defaultAgentName : cloudAgentDisplayName(contact))
     : pendingAgentTargetsLocalAgent
-      ? 'My Kordi'
+      ? defaultAgentName
       : cloudAgentDisplayName(contact);
   const pendingAgentId = pendingAgentTargetsLocalAgent
-    ? 'cloud-local-agent'
+    ? defaultAgentId
     : contact.sourceAgentId?.trim() || `cloud-agent:${peerAccountId}`;
   const pendingAgentOutreach: DesktopCollaborationOutreachMetadata | null = pendingAgentRequest ? {
     targetKind: 'agent',
@@ -743,8 +763,8 @@ export function buildCloudCollaborationConversation({
       sourceHostId: CLOUD_HOST_SENTINEL,
       localHumanId: account.accountId,
       localHumanName: account.displayName || account.primaryEmail || 'Me',
-      localAgentId: isSelfPeer ? selfAgentId : 'cloud-local-agent',
-      localAgentName: isSelfPeer ? selfAgentName : 'My Kordi',
+      localAgentId: isSelfPeer ? selfAgentId : contact.sourceAgentId?.trim() || `cloud-agent:${peerAccountId}`,
+      localAgentName: isSelfPeer ? selfAgentName : cloudAgentDisplayName(contact),
       localAgentNodeId: account.nodeId || account.accountId,
       remoteHumanId: peerAccountId,
       remoteHumanName: isSelfPeer
@@ -771,6 +791,7 @@ export function buildCloudDesktopCollaborationState({
   activeConversationId,
   localAgentTurnsByRequestId = {},
   localAgentRuntimeRoute = null,
+  localAgentLabel = 'Kordi',
   cloudSessionTitlesById = {},
   hiddenCloudSessionIds = new Set<string>(),
   suppressUnscopedSelfAgentConversation = false,
@@ -785,6 +806,7 @@ export function buildCloudDesktopCollaborationState({
   activeConversationId?: string | null;
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
   localAgentRuntimeRoute?: DesktopChatMessageRoute | null;
+  localAgentLabel?: string | null;
   cloudSessionTitlesById?: Record<string, string | null | undefined>;
   hiddenCloudSessionIds?: ReadonlySet<string>;
   suppressUnscopedSelfAgentConversation?: boolean;
@@ -851,7 +873,7 @@ export function buildCloudDesktopCollaborationState({
     ].join('\u0000');
   };
   const directContacts = contacts.filter(isDirectCloudContact);
-  const host = buildCloudCollaborationHost(account, directContacts, localAgentRuntimeRoute);
+  const host = buildCloudCollaborationHost(account, directContacts, localAgentRuntimeRoute, localAgentLabel ?? 'Kordi');
   const systemAgentIds = systemAgentIdsByPeer(directContacts);
   const activePeerId = activeConversationId ? cloudPeerAccountIdFromConversationId(activeConversationId) : null;
   const conversationContacts = [cloudSelfContact(account), ...directContacts]

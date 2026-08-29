@@ -397,7 +397,7 @@ test('direct person bridge transcript rewrites remote first-person agent mention
     }],
   }), host(), 'My Kordi');
 
-  assert.equal(view.messages[0]?.text, '@EthansKordi show me the diskusage');
+  assert.equal(view.messages[0]?.text, '@KordiEthan show me the diskusage');
 });
 
 test('direct person bridge transcript renders local agent responses as agent turns', () => {

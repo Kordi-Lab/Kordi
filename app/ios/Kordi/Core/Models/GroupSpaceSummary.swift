@@ -139,6 +139,9 @@ enum GroupSpaceCatalog {
                 accountId: participant.accountId,
                 displayName: existing.displayName.nonEmpty ?? participant.displayName,
                 avatarUrl: existing.avatarUrl?.nonEmpty ?? participant.avatarUrl,
+                agentId: existing.agentId?.nonEmpty ?? participant.agentId,
+                agentDisplayName: existing.agentDisplayName?.nonEmpty ?? participant.agentDisplayName,
+                agentAvatarUrl: existing.agentAvatarUrl?.nonEmpty ?? participant.agentAvatarUrl,
                 role: existing.role?.nonEmpty ?? participant.role,
                 joinedAt: existing.joinedAt?.nonEmpty ?? participant.joinedAt
             )

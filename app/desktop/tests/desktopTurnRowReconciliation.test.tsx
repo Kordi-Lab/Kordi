@@ -134,7 +134,7 @@ test('real assistant row keeps its sender, time, and fork control DOM through ca
   assert.ok(liveTime?.parentElement?.classList.contains('max-w-full'));
   assert.equal(liveTime?.parentElement?.classList.contains('w-full'), false);
   assert.equal(liveForkButton.disabled, true);
-  assert.equal(host.querySelector('.app-message-meta')?.textContent?.trim(), 'My Kordi');
+  assert.equal(host.querySelector('.app-message-meta')?.textContent?.trim(), 'Kordi');
   assert.equal(liveTime?.textContent, live.time);
 
   await act(async () => root?.render(<MessageBubble msg={canonical} onForkMessage={onForkMessage} />));
@@ -146,6 +146,6 @@ test('real assistant row keeps its sender, time, and fork control DOM through ca
   assert.equal(canonicalForkButton, liveForkButton);
   assert.equal(canonicalTime, liveTime);
   assert.equal(canonicalForkButton?.disabled, false);
-  assert.equal(host.querySelector('.app-message-meta')?.textContent?.trim(), 'My Kordi');
+  assert.equal(host.querySelector('.app-message-meta')?.textContent?.trim(), 'Kordi');
   assert.equal(canonicalTime?.textContent, live.time);
 });

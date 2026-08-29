@@ -432,6 +432,11 @@ export async function fetchDesktopChatSessionDetail(sessionId: string) {
   return invokeDesktop<DesktopChatSessionDetail>('desktop_chat_session_detail', { sessionId });
 }
 
+export async function renameDesktopAgent(name: string) {
+  if (!isNativeDesktopShell()) return null;
+  return invokeDesktop<string>('desktop_chat_rename_agent', { name });
+}
+
 export type DesktopAgentBuilderSkillSeed = {
   name: string;
   description?: string;
@@ -937,6 +942,7 @@ export type DesktopChatContextMessage = {
   id: string;
   authorName: string;
   authorKind: 'human' | 'agent';
+  contextRole?: 'history' | 'system';
   text: string;
   createdAtMs?: number | null;
 };

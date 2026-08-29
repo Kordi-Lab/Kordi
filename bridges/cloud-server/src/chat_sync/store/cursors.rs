@@ -24,6 +24,8 @@ type BootstrapMemberRow = (
     Option<String>,
     Option<String>,
     String,
+    Option<String>,
+    String,
     String,
     i32,
     i64,
@@ -371,11 +373,13 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             .await?;
     let member_rows: Vec<BootstrapMemberRow> = query_as(
         "SELECT member.conversation_id, member.account_id, account.display_name, \
-                account.avatar_url, member.role, member.membership_state, member.version, \
+                account.avatar_url, agent.display_name, agent.avatar_url, \
+                member.role, member.membership_state, member.version, \
                 member.last_delivered_sequence, member.last_read_sequence, \
                 member.joined_at, member.left_at \
          FROM cloud_chat_conversation_members member \
          JOIN cloud_accounts account ON account.account_id = member.account_id \
+         JOIN cloud_default_agent_profiles agent ON agent.owner_account_id = member.account_id \
          WHERE member.conversation_id = ANY($1) \
          ORDER BY member.conversation_id ASC, member.account_id ASC",
     )
@@ -388,7 +392,8 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             .entry(row.0)
             .or_default()
             .push(member_from_row((
-                row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9, row.10,
+                row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9, row.10, row.11,
+                row.12,
             )));
     }
     let conversations = conversation_rows

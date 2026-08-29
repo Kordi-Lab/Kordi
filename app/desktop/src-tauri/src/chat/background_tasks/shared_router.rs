@@ -70,11 +70,15 @@ fn shared_task_router_prompt(
         String::new(),
         request.trim().to_string(),
     ];
-    if !context_messages.is_empty() {
+    let history = context_messages
+        .iter()
+        .filter(|message| message.context_role.as_deref() != Some("system"))
+        .collect::<Vec<_>>();
+    if !history.is_empty() {
         lines.push(String::new());
         lines.push("Recent conversation context:".to_string());
         lines.extend(
-            context_messages.iter().rev().take(8).rev().map(|message| {
+            history.into_iter().rev().take(8).rev().map(|message| {
                 format!("- {}: {}", message.author_name.trim(), message.text.trim())
             }),
         );
@@ -160,11 +164,15 @@ fn delegated_message(request: &str, context_messages: &[DesktopChatContextMessag
         "Original request:".to_string(),
         request.trim().to_string(),
     ];
-    if !context_messages.is_empty() {
+    let history = context_messages
+        .iter()
+        .filter(|message| message.context_role.as_deref() != Some("system"))
+        .collect::<Vec<_>>();
+    if !history.is_empty() {
         lines.push(String::new());
         lines.push("Relevant shared-chat context:".to_string());
         lines.extend(
-            context_messages.iter().rev().take(8).rev().map(|message| {
+            history.into_iter().rev().take(8).rev().map(|message| {
                 format!("- {}: {}", message.author_name.trim(), message.text.trim())
             }),
         );

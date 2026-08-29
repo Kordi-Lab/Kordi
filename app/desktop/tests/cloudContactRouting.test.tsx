@@ -9,6 +9,8 @@ import {
 } from '../src/features/cloud/useCloudContacts';
 import type { Contact } from '../src/kordi-app/types';
 import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
+import { cloudContactToAgentPeer } from '../src/features/cloud/cloudContactPeers';
+import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 
 function localBridgeContact(overrides: Partial<Contact> = {}): Contact {
   return {
@@ -68,6 +70,34 @@ test('cloud contacts carry bridge-compatible routing metadata', () => {
   assert.equal(cloud.avatarSeed, 'acct_peer');
   assert.equal(cloud.profileImageUrl, 'data:image/jpeg;base64,shared');
   assert.equal(isCloudContact(localBridgeContact()), false);
+});
+
+test('remote default agent presentation comes from the owner Cloud profile', () => {
+  const cloud = cloudContactToContact({
+    accountId: 'acct_peer',
+    displayName: 'Cloud Peer',
+    avatarUrl: null,
+    defaultAgent: {
+      agentId: 'cloud-agent:acct_peer',
+      displayName: 'BabyTREE',
+      avatarUrl: 'kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef',
+      avatar: {
+        ...cloudAccountAvatarFixture,
+        entityType: 'agent',
+        entityId: 'cloud-agent:acct_peer',
+        style: 'thumbs',
+        seed: 'baby-tree',
+      },
+    },
+    nodeId: null,
+    createdAt: '2026-08-29T00:00:00Z',
+  });
+  const agent = cloudContactToAgentPeer(cloud);
+
+  assert.equal(agent.agentId, 'cloud-agent:acct_peer');
+  assert.equal(agent.displayName, 'BabyTREE');
+  assert.equal(agent.profileImageUrl, 'kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef');
+  assert.equal(agent.avatarSeed, 'baby-tree');
 });
 
 test('the built-in support contact maps to one locked hosted-agent identity', () => {
