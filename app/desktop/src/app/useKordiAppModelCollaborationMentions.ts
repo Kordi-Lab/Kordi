@@ -179,7 +179,7 @@ export function buildCollaborationMentionTargetsByScope({
       pushOption({
         value: localAgentHandle,
         label: localAgentLabel,
-        detail: 'Your agent',
+        detail: 'Owner · You',
         targetKind: 'agent',
         sourceHostId: activeHost?.id ?? 'local',
         nodeId: activeAgent?.nodeId?.trim() || activeHost?.nodeId?.trim() || `local-agent:${localAgentHandle}`,

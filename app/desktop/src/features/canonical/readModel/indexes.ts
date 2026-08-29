@@ -458,6 +458,15 @@ function selfAgentMirrorTransportPriority(message: CanonicalSessionMessage) {
   return Number.MAX_SAFE_INTEGER;
 }
 
+function isTerminalOwnedAgentMessage(message: CanonicalSessionMessage) {
+  if (message.senderRole !== 'owned-agent' || message.messageKind !== 'agent-turn') return false;
+  const content = contentRecord(message.content);
+  const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+  const status = message.status.trim().toLowerCase();
+  const terminal = ['complete', 'completed', 'succeeded', 'responded', 'failed', 'cancelled', 'canceled'];
+  return terminal.includes(deliveryState ?? '') || terminal.includes(status);
+}
+
 function selfAgentMirrorDuplicateIds(
   messages: CanonicalSessionMessage[],
   identityById: ReadonlyMap<string, CanonicalIdentity>,
@@ -510,6 +519,32 @@ function selfAgentMirrorDuplicateIds(
     ))[0];
     for (const candidate of candidates) {
       if (candidate.id !== preferred.id) duplicateIds.add(candidate.id);
+    }
+  }
+  if (normalizeOwnedAgentIdentity) {
+    const localTerminalRelations = new Set(messages.flatMap((message) => {
+      if (message.sourceTransport !== 'desktop-chat' || !isTerminalOwnedAgentMessage(message)) return [];
+      const relation = selfAgentMirrorMessageRelationKey(
+        message,
+        messageById,
+        messageBySourceEventId,
+        identityById,
+        profileHumanIdentityId,
+        true,
+      );
+      return relation ? [relation] : [];
+    }));
+    for (const message of messages) {
+      if (message.sourceTransport !== 'cloud-self-agent' || !isActiveProcessingStatus(message)) continue;
+      const relation = selfAgentMirrorMessageRelationKey(
+        message,
+        messageById,
+        messageBySourceEventId,
+        identityById,
+        profileHumanIdentityId,
+        true,
+      );
+      if (relation && localTerminalRelations.has(relation)) duplicateIds.add(message.id);
     }
   }
   return duplicateIds;

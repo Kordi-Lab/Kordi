@@ -18,7 +18,7 @@ const options: ComposerMentionOption[] = [
   {
     value: 'EthansKordi',
     label: 'EthansKordi',
-    detail: 'Agent owned by Ethan',
+    detail: 'Owner · Ethan',
     targetKind: 'agent',
     sourceHostId: 'host-1',
     nodeId: 'node-agent',
@@ -108,12 +108,12 @@ test('mention participant menu uses product-facing copy and correct avatars', ()
   assert.doesNotMatch(html, /Bridge agent/);
   assert.doesNotMatch(html, /kordi-desktop/);
   assert.doesNotMatch(html, /Owner:/);
-  assert.doesNotMatch(html, /app-composer-mention-menu-detail/);
-  assert.doesNotMatch(html, />Agent owned by Ethan</);
+  assert.match(html, /app-composer-mention-menu-detail/);
+  assert.match(html, />Owner · Ethan</);
   assert.doesNotMatch(html, />Person</);
 });
 
-test('mention participant menu uses polished card sizing without secondary detail text', () => {
+test('mention participant menu keeps owner metadata subordinate to the agent name', () => {
   const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
   const start = source.indexOf('export function ComposerMentionMenu');
   const end = source.indexOf('export function composerThinkingLabel', start);
@@ -127,7 +127,7 @@ test('mention participant menu uses polished card sizing without secondary detai
   assert.match(block, /app-composer-mention-menu-label[^']*text-\[13px\][^']*font-semibold/);
   assert.match(block, /Math\.min\(\s*Math\.max\(240, rect\.width\),/);
   assert.doesNotMatch(block, /Math\.min\(\s*480,/);
-  assert.doesNotMatch(block, /app-composer-mention-menu-detail/);
+  assert.match(block, /app-composer-mention-menu-detail[^']*text-\[10\.5px\][^']*leading-4/);
   assert.doesNotMatch(block, /<AtSign/);
   assert.doesNotMatch(block, /h-5 w-5/);
   assert.doesNotMatch(block, /px-2 py-1/);

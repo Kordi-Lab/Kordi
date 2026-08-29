@@ -109,7 +109,7 @@ test('buildCollaborationMentionTargetsByScope exposes product-facing mention det
   const person = targets.chat.find((target) => target.label === 'Bob' && target.targetKind === 'person');
   const agent = targets.chat.find((target) => target.label === 'Kordi' && target.targetKind === 'agent');
 
-  assert.equal(localAgent?.detail, 'Your agent');
+  assert.equal(localAgent?.detail, 'Owner · You');
   assert.equal(localAgent?.avatarImageUrl, 'https://images.test/alice.png');
   assert.equal(person?.detail, 'Person');
   assert.equal(person?.avatarImageUrl, 'https://images.test/bob.png');

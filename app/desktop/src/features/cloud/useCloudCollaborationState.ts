@@ -466,7 +466,7 @@ export function useCloudCollaborationState({
   });
 
   useCloudSelfAgentExecution({
-    account,
+    account, canonicalState: canonicalSessionState,
     client,
     messageIndex: cloudMessageIndex,
     initialMessagesSettled,

@@ -267,6 +267,11 @@ export function ComposerMentionMenu({
                       {kindLabel}
                     </span>
                   </div>
+                  {item.targetKind === 'agent' && item.detail ? (
+                    <div className="app-composer-mention-menu-detail truncate text-[10.5px] leading-4">
+                      {item.detail}
+                    </div>
+                  ) : null}
                 </div>
               </button>
             );

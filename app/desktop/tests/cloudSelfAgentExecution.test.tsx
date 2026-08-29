@@ -18,8 +18,12 @@ import {
   cloudSelfAgentTerminalResponseRequestIds,
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
+  terminalLocalSelfAgentRequestClientMessageIds,
 } from '../src/features/cloud/useCloudSelfAgentExecution';
-import type { DesktopChatTurnSnapshot } from '../src/kordi-app/types';
+import type {
+  CanonicalSessionState,
+  DesktopChatTurnSnapshot,
+} from '../src/kordi-app/types';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -137,6 +141,36 @@ test('self-agent desktop execution ignores cancelled and stale requests', () => 
     }).length,
     0,
   );
+});
+
+test('a terminal local answer blocks its mirrored Cloud request from executing again', () => {
+  const sessionId = 'session:self-agent:local-complete';
+  const canonicalState = {
+    sessions: [{ id: sessionId, kind: 'self-agent', title: 'Local', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', createdAtMs: 1, updatedAtMs: 3 }],
+    identities: [], participants: [],
+    profile: { id: 'profile', humanIdentityId: 'human:me', createdAtMs: 1, updatedAtMs: 1 },
+    messages: [
+      { id: 'local-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'Check this image', status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, sourceTransport: 'desktop-chat-ui' },
+      { id: 'local-answer', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'The image shows a menu.', parentMessageId: 'local-request', status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 3, sourceTransport: 'desktop-chat' },
+    ],
+    delegatedExchanges: [], presence: [], contextSnapshots: [],
+  } as CanonicalSessionState;
+  const ignoredClientMessageIds = terminalLocalSelfAgentRequestClientMessageIds(canonicalState);
+  const mirroredRequest = {
+    ...message('cloud-request', 'Check this image'),
+    sessionId,
+    clientMessageId: [...ignoredClientMessageIds][0],
+  };
+
+  assert.equal(ignoredClientMessageIds.size, 1);
+  assert.equal(pendingCloudSelfAgentExecutionRequests({
+    account,
+    messageIndex: buildCloudMessageIndex(account.accountId, {
+      [account.accountId]: [mirroredRequest],
+    }),
+    ignoredClientMessageIds,
+    nowMs: Date.parse(mirroredRequest.createdAt) + 1_000,
+  }).length, 0);
 });
 
 test('cross-device requests wait until desktop authentication finishes loading', () => {
