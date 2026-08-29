@@ -71,6 +71,7 @@ export function buildDesktopLiveTurnTranscriptMessage(
     entryId: null,
     role: 'owned-agent',
     sender,
+    senderOwnerName: 'You',
     sourceSenderLabel: sender,
     text: turn.assistantText,
     time: formatDesktopClockTime(new Date(timestampMs)),

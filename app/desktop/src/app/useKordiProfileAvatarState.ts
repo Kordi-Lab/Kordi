@@ -76,7 +76,8 @@ export function resolveKordiProfileAvatarState({
       )?.trim()
       || host?.ownerName?.trim()
       || null,
-    localAgentDisplayName: agent?.label?.trim()
+    localAgentDisplayName: account?.defaultAgent?.displayName?.trim()
+      || agent?.label?.trim()
       || localAgentIdentity?.displayName?.trim()
       || host?.displayName?.trim()
       || null,

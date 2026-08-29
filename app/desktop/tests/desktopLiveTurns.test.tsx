@@ -196,6 +196,7 @@ test('live, synthetic completion, and canonical hydration keep one render identi
   );
 
   assert.equal(liveMessage.id, completedTurn.id);
+  assert.equal(liveMessage.senderOwnerName, 'You');
   assert.equal(synthetic.transcriptRenderId, liveMessage.id);
   assert.equal(synthetic.entryId, completedTurn.transcriptEntryId);
   assert.equal(canonical.transcriptRenderId, liveMessage.id);

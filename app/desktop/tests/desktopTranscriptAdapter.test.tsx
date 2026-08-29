@@ -45,6 +45,7 @@ test('desktop transcript assigns stable ids before reply attribution so task jum
   assert.equal(mapped[0].timestampMs, 10);
   assert.equal(mapped[1].timestampMs, 20);
   assert.equal(attributed[1].id, mapped[1].id);
+  assert.equal(mapped[1].senderOwnerName, 'You');
 });
 
 test('desktop transcript prefers persisted entry ids and completion render aliases over mutable timestamps', () => {

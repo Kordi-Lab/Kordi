@@ -131,6 +131,7 @@ export function mapDesktopMessagesForTranscript(
         : message.role === 'user'
           ? (avatarSeeds?.humanDisplayName?.trim() || selfDisplayName(message.sender ?? 'Me', true))
           : message.sender ?? null,
+      senderOwnerName: message.role === 'assistant' ? 'You' : null,
       text: message.text,
       time: message.timeLabel,
       timestampMs: message.timestampMs,
