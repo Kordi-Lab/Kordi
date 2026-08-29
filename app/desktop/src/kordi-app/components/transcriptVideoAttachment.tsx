@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { LoaderCircle, Play, RotateCcw } from 'lucide-react';
 
-import { attachmentVideoUrl } from '@/features/chat/attachmentMediaGallery';
+import {
+  attachmentVideoDisplaySize,
+  attachmentVideoUrl,
+  playableVideoSource,
+} from '@/features/chat/attachmentMediaGallery';
 import {
   displayAttachmentName,
   videoPosterDataUrlFromSource,
@@ -40,14 +44,18 @@ export function AttachmentVideoCard({
     : null;
   const [remotePosterUrl, setRemotePosterUrl] = useState<string | null>(null);
   const [localPosterUrl, setLocalPosterUrl] = useState<string | null>(null);
+  const [localVideoDimensions, setLocalVideoDimensions] = useState<{
+    widthPixels: number;
+    heightPixels: number;
+  } | null>(null);
   const [failedSource, setFailedSource] = useState<string | null>(null);
   const [playbackRequested, setPlaybackRequested] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsTimer = useRef<number | null>(null);
   const localSource = attachmentVideoUrl(localPath ? { ...attachment, localPath } : attachment);
   const posterUrl = directPosterUrl ?? remotePosterUrl ?? localPosterUrl;
-  const rawSource = localSource ?? playbackUrl ?? undefined;
-  const source = rawSource === failedSource ? undefined : rawSource;
+  const displaySize = attachmentVideoDisplaySize(localVideoDimensions ?? attachment);
+  const source = playableVideoSource(localSource, playbackUrl, failedSource);
   const attachmentId = attachment.attachmentId?.trim() ?? '';
   const uploadPath = attachment.localPath?.trim() ?? '';
   const upload = useSyncExternalStore(
@@ -134,15 +142,9 @@ export function AttachmentVideoCard({
     return () => { cancelled = true; };
   }, [directPosterUrl, localPosterUrl, localSource, remotePosterUrl]);
 
-  const loadVideo = useCallback(async () => {
-    if (phase === 'loading') return;
-    if (source) {
-      setPlaybackRequested(true);
-      return;
-    }
+  const requestCloudPlayback = useCallback(async () => {
     if (!attachmentId) return;
     setPhase('loading');
-    setFailedSource(null);
     try {
       const session = await loadSession();
       if (!session?.token) throw new Error('Sign in to play this video.');
@@ -157,14 +159,27 @@ export function AttachmentVideoCard({
     } catch {
       setPhase('error');
     }
-  }, [attachmentId, phase, source]);
+  }, [attachmentId]);
+
+  const loadVideo = useCallback(async () => {
+    if (phase === 'loading') return;
+    if (source) {
+      setPlaybackRequested(true);
+      return;
+    }
+    await requestCloudPlayback();
+  }, [phase, requestCloudPlayback, source]);
 
   return (
     <div
       data-attachment-video-card="true"
-      className="w-[min(520px,70vw)] max-w-full overflow-hidden rounded-[16px] bg-black/[0.92] text-white"
+      className="max-w-full overflow-hidden rounded-[16px] bg-black/[0.92] text-white"
+      style={{ width: displaySize.width, maxWidth: 'min(100%, 70vw)' }}
     >
-      <div className="relative aspect-video max-h-[360px] w-full overflow-hidden bg-black">
+      <div
+        className="relative w-full overflow-hidden bg-black"
+        style={{ aspectRatio: `${displaySize.width} / ${displaySize.height}` }}
+      >
         {source && playbackRequested && !transferPending ? (
           <video
             src={source}
@@ -175,6 +190,12 @@ export function AttachmentVideoCard({
             poster={posterUrl ?? undefined}
             className="block h-full w-full object-contain"
             aria-label={`Play ${displayAttachmentName(attachment.name, attachment.kind)}`}
+            onLoadedMetadata={(event) => {
+              const { videoWidth, videoHeight } = event.currentTarget;
+              if (videoWidth > 0 && videoHeight > 0) {
+                setLocalVideoDimensions({ widthPixels: videoWidth, heightPixels: videoHeight });
+              }
+            }}
             onClick={showControlsBriefly}
             onPlay={showControlsBriefly}
             onPause={keepControlsVisible}
@@ -182,7 +203,11 @@ export function AttachmentVideoCard({
             onError={() => {
               setPlaybackRequested(false);
               setFailedSource(source);
-              setPhase('error');
+              if (source === localSource && attachmentId) {
+                void requestCloudPlayback();
+              } else {
+                setPhase('error');
+              }
             }}
           />
         ) : (
@@ -193,6 +218,12 @@ export function AttachmentVideoCard({
                 alt=""
                 className="absolute inset-0 h-full w-full object-cover"
                 aria-hidden="true"
+                onLoad={(event) => {
+                  const { naturalWidth, naturalHeight } = event.currentTarget;
+                  if (naturalWidth > 0 && naturalHeight > 0) {
+                    setLocalVideoDimensions({ widthPixels: naturalWidth, heightPixels: naturalHeight });
+                  }
+                }}
               />
             ) : null}
             <div className="absolute inset-0 bg-black/30" aria-hidden="true" />

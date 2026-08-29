@@ -40,7 +40,13 @@ type StoredComposerAttachment = {
   memeRightsConfirmed?: boolean;
 };
 
-export function captureVideoPosterDataUrl(video: HTMLVideoElement | null) {
+type VideoPreview = {
+  previewUrl: string;
+  widthPixels: number;
+  heightPixels: number;
+};
+
+export function captureVideoPreview(video: HTMLVideoElement | null): VideoPreview | null {
   if (!video?.videoWidth || !video.videoHeight) return null;
   try {
     const width = Math.min(VIDEO_POSTER_MAX_WIDTH, video.videoWidth);
@@ -51,10 +57,18 @@ export function captureVideoPosterDataUrl(video: HTMLVideoElement | null) {
     const context = canvas.getContext('2d');
     if (!context) return null;
     context.drawImage(video, 0, 0, width, height);
-    return canvas.toDataURL('image/jpeg', 0.68);
+    return {
+      previewUrl: canvas.toDataURL('image/jpeg', 0.68),
+      widthPixels: video.videoWidth,
+      heightPixels: video.videoHeight,
+    };
   } catch {
     return null;
   }
+}
+
+export function captureVideoPosterDataUrl(video: HTMLVideoElement | null) {
+  return captureVideoPreview(video)?.previewUrl ?? null;
 }
 
 function waitForVideoEvent(video: HTMLVideoElement, eventName: 'loadeddata' | 'loadedmetadata' | 'seeked') {
@@ -74,7 +88,7 @@ function waitForVideoEvent(video: HTMLVideoElement, eventName: 'loadeddata' | 'l
   });
 }
 
-export async function videoPosterDataUrlFromSource(source: string) {
+export async function videoPreviewFromSource(source: string) {
   if (typeof document === 'undefined') return null;
   const video = document.createElement('video');
   video.preload = 'metadata';
@@ -94,7 +108,7 @@ export async function videoPosterDataUrlFromSource(source: string) {
     } else if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
       await waitForVideoEvent(video, 'loadeddata');
     }
-    return captureVideoPosterDataUrl(video);
+    return captureVideoPreview(video);
   } catch {
     return null;
   } finally {
@@ -103,10 +117,14 @@ export async function videoPosterDataUrlFromSource(source: string) {
   }
 }
 
-export async function videoPosterDataUrlFromBlob(blob: Blob) {
+export async function videoPosterDataUrlFromSource(source: string) {
+  return (await videoPreviewFromSource(source))?.previewUrl ?? null;
+}
+
+export async function videoPreviewFromBlob(blob: Blob) {
   const source = URL.createObjectURL(blob);
   try {
-    return await videoPosterDataUrlFromSource(source);
+    return await videoPreviewFromSource(source);
   } finally {
     URL.revokeObjectURL(source);
   }
@@ -300,13 +318,17 @@ export async function composerAttachmentItemFromStoredPath({
   const videoSource = isMp4VideoAttachment(metadata)
     ? attachmentVideoUrl({ ...metadata, localPath: stored.path })
     : null;
+  const videoPreview = videoSource ? await videoPreviewFromSource(videoSource) : null;
   const previewUrl = kind === 'image'
     && (metadata.sizeBytes ?? 0) <= MAX_EAGER_IMAGE_PREVIEW_BYTES
     ? await createPreviewUrl(stored.path, metadata)
-    : videoSource ? await videoPosterDataUrlFromSource(videoSource) : null;
+    : videoPreview?.previewUrl ?? null;
   const dimensions = kind === 'image'
     ? await imagePixelDimensionsFromUrl(previewUrl)
-    : null;
+    : videoPreview ? {
+        widthPixels: videoPreview.widthPixels,
+        heightPixels: videoPreview.heightPixels,
+      } : null;
   return {
     id: `${displayName}-${stored.path}`,
     name: displayName,
@@ -339,14 +361,18 @@ export async function composerAttachmentItemFromFile(
   }
   const stored = await storeDesktopChatAttachmentFile(file, name);
   const path = stored.path;
+  const videoPreview = isMp4VideoAttachment({ kind, name, mimeType })
+    ? await videoPreviewFromBlob(file)
+    : null;
   const previewUrl = kind === 'image'
     ? URL.createObjectURL(file)
-    : isMp4VideoAttachment({ kind, name, mimeType })
-      ? await videoPosterDataUrlFromBlob(file)
-      : undefined;
+    : videoPreview?.previewUrl;
   const dimensions = kind === 'image'
     ? await imagePixelDimensionsFromUrl(previewUrl)
-    : null;
+    : videoPreview ? {
+        widthPixels: videoPreview.widthPixels,
+        heightPixels: videoPreview.heightPixels,
+      } : null;
   return {
     id: `${name}-${path}`,
     name,

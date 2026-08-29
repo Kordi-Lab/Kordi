@@ -38,7 +38,12 @@ import type {
 import { useVoiceComposer } from './chatsPage.voiceComposer';
 import { VoiceComposerControls, VoiceRecordingSurface } from './chatsPage.voiceControls';
 import { useVideoMessageRecorder } from '@/features/chat/useVideoMessageRecorder';
-import { VideoRecordingSurface } from './chatsPage.videoComposer';
+import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
+import { discardDesktopChatAttachment } from '@/lib/desktopAttachmentStream';
+import {
+  VideoAttachmentReviewSurface,
+  VideoRecordingSurface,
+} from './chatsPage.videoComposer';
 
 type MainComposerLocalRouting = {
   paneKind: 'human' | 'agent' | null;
@@ -129,6 +134,7 @@ export function MainComposer({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const memeAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const [pastedImageEditId, setPastedImageEditId] = useState<string | null>(null);
+  const [attachedVideoReviewQueue, setAttachedVideoReviewQueue] = useState<AttachmentItem[]>([]);
   const memeValidationMessageId = useId();
   const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
   const hasSendableDraft = Boolean(chatComposerText.trim() || chatComposerAttachments.length > 0);
@@ -147,7 +153,39 @@ export function MainComposer({
     onSend,
     focusComposer: () => textareaRef.current?.focus(),
   });
-  const mediaSurfaceActive = voiceSurfaceActive || video.surfaceActive;
+  const attachedVideoReview = attachedVideoReviewQueue[0] ?? null;
+  const mediaSurfaceActive = voiceSurfaceActive || video.surfaceActive || Boolean(attachedVideoReview);
+
+  function stageVideoReviews(pendingAttachments: Promise<AttachmentItem[]>) {
+    void pendingAttachments.then((saved) => {
+      const videos = saved.filter(isMp4VideoAttachment);
+      for (const attachment of videos) removeChatComposerAttachment(attachment.id);
+      if (videos.length > 0) {
+        setAttachedVideoReviewQueue((current) => {
+          const paths = new Set(current.map((attachment) => attachment.path));
+          return [...current, ...videos.filter((attachment) => !paths.has(attachment.path))];
+        });
+      }
+    });
+    return pendingAttachments;
+  }
+
+  function cancelAttachedVideoReview() {
+    if (!attachedVideoReview) return;
+    setAttachedVideoReviewQueue((current) => current.slice(1));
+    void discardDesktopChatAttachment(attachedVideoReview.path).catch(() => undefined);
+  }
+
+  function sendAttachedVideoReview() {
+    if (!attachedVideoReview) return;
+    try {
+      const result = onSend('', [attachedVideoReview]);
+      setAttachedVideoReviewQueue((current) => current.slice(1));
+      void Promise.resolve(result).catch(() => undefined);
+    } catch {
+      // Keep the review open when sending could not start.
+    }
+  }
 
   function openPastedImageEditor(pendingAttachments: Promise<AttachmentItem[]>) {
     void pendingAttachments.then((saved) => {
@@ -166,7 +204,9 @@ export function MainComposer({
           onForward={onForwardSelectedMessages}
         />
       ) : null}
-      <ComposerDropSurface saveDesktopAttachments={saveDesktopAttachments}>
+      <ComposerDropSurface saveDesktopAttachments={(files) => (
+        stageVideoReviews(saveDesktopAttachments(files))
+      )}>
         <div className="relative">
           {filteredChatSlashCommands.length > 0 ? (
             <ComposerSlashMenu
@@ -194,7 +234,7 @@ export function MainComposer({
               className="hidden"
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
-                if (files.length > 0) void saveDesktopAttachments(files);
+                if (files.length > 0) void stageVideoReviews(saveDesktopAttachments(files));
                 event.currentTarget.value = '';
               }}
             />
@@ -230,7 +270,13 @@ export function MainComposer({
                 {memeValidationError}
               </p>
             ) : null}
-            {video.surfaceActive ? (
+            {attachedVideoReview ? (
+              <VideoAttachmentReviewSurface
+                attachment={attachedVideoReview}
+                onCancel={cancelAttachedVideoReview}
+                onSend={sendAttachedVideoReview}
+              />
+            ) : video.surfaceActive ? (
               <VideoRecordingSurface video={video} />
             ) : voiceSurfaceActive ? (
               <VoiceRecordingSurface voice={voice} />
@@ -256,7 +302,7 @@ export function MainComposer({
                   const files = extractClipboardFiles(event.clipboardData);
                   if (files.length > 0) {
                     event.preventDefault();
-                    openPastedImageEditor(saveDesktopAttachments(files));
+                    openPastedImageEditor(stageVideoReviews(saveDesktopAttachments(files)));
                     return;
                   }
                   const pastedPaths = extractPastedLocalFilePaths(
@@ -265,7 +311,7 @@ export function MainComposer({
                   );
                   if (pastedPaths.length > 0) {
                     event.preventDefault();
-                    openPastedImageEditor(saveDesktopAttachmentPaths(pastedPaths));
+                    openPastedImageEditor(stageVideoReviews(saveDesktopAttachmentPaths(pastedPaths)));
                   }
                 }}
                 onCompositionStart={imeCompositionGuard.onCompositionStart}
@@ -383,7 +429,7 @@ export function MainComposer({
               inputRef={chatAttachmentInputRef}
               memeInputRef={memeAttachmentInputRef}
               onChooseFiles={display.isNativeShell
-                ? () => { void saveDesktopAttachmentPaths(); }
+                ? () => { void stageVideoReviews(saveDesktopAttachmentPaths()); }
                 : undefined}
               onRecordVideo={() => { void video.start(); }}
               disabled={voice.recording}

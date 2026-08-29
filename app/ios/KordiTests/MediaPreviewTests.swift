@@ -205,6 +205,19 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessVideoSurface(for: captionedMessage))
     }
 
+    func testVideoMessageLayoutPreservesSourceAspectRatio() {
+        XCTAssertEqual(
+            VideoAttachmentLayout.aspectRatio(widthPixels: 1_080, heightPixels: 1_920),
+            0.5625,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            VideoAttachmentLayout.aspectRatio(widthPixels: 1_920, heightPixels: 1_080),
+            1.7778,
+            accuracy: 0.0001
+        )
+    }
+
     func testTransparentImageKeepsBorderlessSurfaceClear() throws {
         let transparentFormat = UIGraphicsImageRendererFormat()
         transparentFormat.opaque = false

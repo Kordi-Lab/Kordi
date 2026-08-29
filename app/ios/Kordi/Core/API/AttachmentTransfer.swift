@@ -262,7 +262,7 @@ enum PendingAttachmentLoader {
             }
         }
         guard didExport else { throw exportError }
-        let previewURL = await videoPreviewDataURL(asset: AVURLAsset(url: outputURL))
+        let preview = await videoPreview(asset: AVURLAsset(url: outputURL))
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd-HHmmss"
         return PendingAttachment(
@@ -272,7 +272,30 @@ enum PendingAttachmentLoader {
             mimeType: "video/mp4",
             data: Data(),
             fileURL: outputURL,
-            previewURL: previewURL
+            previewURL: preview?.url,
+            widthPixels: preview?.width,
+            heightPixels: preview?.height
+        )
+    }
+
+    nonisolated static func addingVideoPreview(to attachment: PendingAttachment) async -> PendingAttachment {
+        guard attachment.isMP4Video,
+              attachment.previewURL == nil,
+              let fileURL = attachment.fileURL else { return attachment }
+        let preview = await videoPreview(asset: AVURLAsset(url: fileURL))
+        return PendingAttachment(
+            id: attachment.id,
+            name: attachment.name,
+            kind: attachment.kind,
+            subtype: attachment.subtype,
+            altText: attachment.altText,
+            memeRightsConfirmed: attachment.memeRightsConfirmed,
+            mimeType: attachment.mimeType,
+            data: attachment.data,
+            fileURL: attachment.fileURL,
+            previewURL: preview?.url,
+            widthPixels: preview?.width ?? attachment.widthPixels,
+            heightPixels: preview?.height ?? attachment.heightPixels
         )
     }
 
@@ -282,15 +305,23 @@ enum PendingAttachmentLoader {
         )
     }
 
-    private nonisolated static func videoPreviewDataURL(asset: AVAsset) async -> String? {
+    private nonisolated static func videoPreview(
+        asset: AVAsset
+    ) async -> (url: String, width: Int, height: Int)? {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 480, height: 480)
-        guard let (image, _) = try? await generator.image(at: .zero),
-              let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.68) else {
+        let duration = (try? await asset.load(.duration)).map(CMTimeGetSeconds) ?? 0
+        let previewSeconds = duration.isFinite && duration > 0.1
+            ? min(0.5, duration / 2)
+            : 0
+        let previewTime = CMTime(seconds: previewSeconds, preferredTimescale: 600)
+        guard let (image, _) = try? await generator.image(at: previewTime),
+              let data = UIImage(cgImage: image).jpegData(compressionQuality: 0.68),
+              let url = compressedPreviewDataURL(data: data) else {
             return nil
         }
-        return compressedPreviewDataURL(data: data)
+        return (url, image.width, image.height)
     }
 
     private nonisolated static func encodedJPEG(

@@ -5,11 +5,13 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
+  attachmentVideoDisplaySize,
   attachmentsAreOnlyMp4Videos,
   isMp4VideoAttachment,
+  playableVideoSource,
 } from '../src/features/chat/attachmentMediaGallery';
 import { AttachmentPreview } from '../src/kordi-app/components/transcriptAttachments';
-import { captureVideoPosterDataUrl } from '../src/features/chat/composerAttachments';
+import { captureVideoPreview } from '../src/features/chat/composerAttachments';
 import {
   formatVideoRecordingDuration,
   preferredMp4RecordingMimeType,
@@ -53,13 +55,23 @@ test('MP4 attachments stay poster-backed until explicit playback instead of rend
 
   assert.match(markup, /data-attachment-video-card="true"/);
   assert.match(markup, /aria-label="Play Video 2026-08-28\.mp4"/);
-  assert.match(markup, /w-\[min\(520px,70vw\)\]/);
   assert.match(markup, /lucide-play/);
   assert.match(markup, /<img/);
   assert.doesNotMatch(markup, /Stream the video/);
   assert.doesNotMatch(markup, />Play video</);
   assert.doesNotMatch(markup, /<video/);
   assert.doesNotMatch(markup, /data-attachment-file-link="true"/);
+});
+
+test('video message layout preserves portrait and landscape aspect ratios', () => {
+  assert.deepEqual(
+    attachmentVideoDisplaySize({ widthPixels: 1_080, heightPixels: 1_920 }),
+    { width: 293, height: 520 },
+  );
+  assert.deepEqual(
+    attachmentVideoDisplaySize({ widthPixels: 1_920, heightPixels: 1_080 }),
+    { width: 520, height: 293 },
+  );
 });
 
 test('video-only messages use the borderless media surface', () => {
@@ -76,6 +88,14 @@ test('video-only messages use the borderless media surface', () => {
 
   assert.equal(attachmentsAreOnlyMp4Videos(videoMessage.attachments), true);
   assert.equal(attachmentsAreOnlyMp4Videos([{ kind: 'file', name: 'notes.txt' }]), false);
+});
+
+test('video playback falls back to the signed stream after a local source fails', () => {
+  assert.equal(playableVideoSource('asset://local.mp4', null, null), 'asset://local.mp4');
+  assert.equal(
+    playableVideoSource('asset://local.mp4', 'https://kordi.ai/playback', 'asset://local.mp4'),
+    'https://kordi.ai/playback',
+  );
 });
 
 test('sending videos keep the final card geometry and move progress into the media', () => {
@@ -96,7 +116,7 @@ test('sending videos keep the final card geometry and move progress into the med
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: message }));
 
   assert.match(markup, /data-attachment-video-card="true"/);
-  assert.match(markup, /aspect-video/);
+  assert.match(markup, /aspect-ratio:520 \/ 293/);
   assert.match(markup, /aria-label="Sending video"/);
   assert.doesNotMatch(markup, /<video/);
 });
@@ -125,11 +145,13 @@ test('video posters downsample a single frame instead of retaining video bytes',
     value: { createElement: () => canvas },
   });
   try {
-    const poster = captureVideoPosterDataUrl({
+    const preview = captureVideoPreview({
       videoWidth: 1_920,
       videoHeight: 1_080,
     } as HTMLVideoElement);
-    assert.equal(poster, 'data:image/jpeg;base64,cG9zdGVy');
+    assert.equal(preview?.previewUrl, 'data:image/jpeg;base64,cG9zdGVy');
+    assert.equal(preview?.widthPixels, 1_920);
+    assert.equal(preview?.heightPixels, 1_080);
     assert.equal(canvas.width, 480);
     assert.equal(canvas.height, 270);
     assert.equal(drewFrame, true);

@@ -1,3 +1,4 @@
+import AVKit
 import Foundation
 import Photos
 import SwiftUI
@@ -419,5 +420,140 @@ enum OutgoingAttachmentGroupingPlan {
             batches[0].append(contentsOf: otherAttachments)
         }
         return batches
+    }
+}
+
+struct VideoSendReviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let attachment: PendingAttachment
+    let onCancel: () -> Void
+    let onSend: () async -> Bool
+
+    @State private var player: AVPlayer?
+    @State private var playbackFailed = false
+    @State private var isSending = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            videoSurface
+                .frame(maxHeight: .infinity)
+            sendBar
+        }
+        .background(Color(uiColor: .systemBackground))
+        .interactiveDismissDisabled()
+        .task(id: attachment.id) {
+            guard let fileURL = attachment.fileURL else {
+                playbackFailed = true
+                return
+            }
+            let asset = AVURLAsset(url: fileURL)
+            guard (try? await asset.load(.isPlayable)) == true else {
+                playbackFailed = true
+                return
+            }
+            player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+        }
+        .onDisappear { player?.pause() }
+    }
+
+    private var header: some View {
+        ZStack {
+            Text("Review video")
+                .font(.headline)
+            HStack {
+                Button("Close", systemImage: "xmark") {
+                    onCancel()
+                    dismiss()
+                }
+                .labelStyle(.iconOnly)
+                .font(.title3)
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                .disabled(isSending)
+                Spacer()
+            }
+        }
+        .frame(height: 54)
+        .padding(.horizontal, 8)
+        .background(.bar)
+    }
+
+    private var videoSurface: some View {
+        ZStack {
+            Color.black
+            if let preview = AttachmentPreviewDataURL.decode(attachment.previewURL),
+               let image = UIImage(data: preview) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .accessibilityHidden(true)
+            }
+            if let player {
+                VideoPlayer(player: player)
+            } else if playbackFailed {
+                ContentUnavailableView(
+                    "Video unavailable",
+                    systemImage: "exclamationmark.triangle",
+                    description: Text("Choose another MP4 file.")
+                )
+                .foregroundStyle(.white)
+            } else {
+                ProgressView("Preparing video")
+                    .tint(.white)
+                    .foregroundStyle(.white)
+            }
+        }
+        .aspectRatio(videoAspectRatio, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var sendBar: some View {
+        HStack(spacing: 12) {
+            Text(attachment.sizeBytes, format: .byteCount(style: .file))
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Button {
+                isSending = true
+                Task {
+                    if await onSend() {
+                        dismiss()
+                    } else {
+                        isSending = false
+                    }
+                }
+            } label: {
+                Group {
+                    if isSending {
+                        ProgressView().tint(.white)
+                    } else {
+                        Text("Send video").fontWeight(.semibold)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .frame(minWidth: 116, minHeight: 44)
+                .foregroundStyle(.white)
+                .background(
+                    player == nil ? Color(uiColor: .tertiarySystemFill) : KordiTheme.signalBlue,
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(player == nil || isSending)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+        .background(.bar)
+    }
+
+    private var videoAspectRatio: CGFloat {
+        VideoAttachmentLayout.aspectRatio(
+            widthPixels: attachment.widthPixels,
+            heightPixels: attachment.heightPixels
+        )
     }
 }

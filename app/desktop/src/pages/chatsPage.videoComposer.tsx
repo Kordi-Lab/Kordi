@@ -1,8 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Camera, CircleStop, LoaderCircle, RotateCcw, Send, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { attachmentVideoUrl } from '@/features/chat/attachmentMediaGallery';
+import {
+  attachmentVideoDisplaySize,
+  attachmentVideoUrl,
+} from '@/features/chat/attachmentMediaGallery';
+import type { AttachmentItem } from '@/features/chat/composerController.types';
 import {
   formatVideoRecordingDuration,
   type VideoMessageRecorderController,
@@ -48,39 +52,16 @@ export function VideoRecordingSurface({ video }: { video: VideoMessageRecorderCo
   }
 
   if (state.phase === 'review') {
-    const source = state.attachment ? attachmentVideoUrl(state.attachment) : undefined;
+    if (!state.attachment) return null;
     return (
-      <div className="flex min-w-0 flex-1 flex-col gap-2 py-1" data-video-recording-surface="review">
-        <div className="mx-auto w-full max-w-[520px] overflow-hidden rounded-[16px] bg-black/[0.92] text-white">
-          <video
-            src={source}
-            poster={state.attachment?.previewUrl ?? undefined}
-            controls
-            playsInline
-            preload="metadata"
-            className="block aspect-video max-h-[360px] w-full bg-black object-contain"
-            aria-label="Review recorded video"
-          />
-          <div className="flex h-10 min-w-0 items-center border-t border-white/10 px-3">
-            <span className="truncate text-[10.5px] font-medium text-white/75">
-              {state.attachment?.name}
-            </span>
-          </div>
-        </div>
-        {state.error ? <p className="text-[11px] text-red-500" role="alert">{state.error}</p> : null}
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button type="button" variant="quiet" size="sm" onClick={video.reset}>
-            <X className="mr-1.5 h-4 w-4" aria-hidden="true" />Cancel
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={() => { void video.retake(); }}>
-            <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />Retake
-          </Button>
-          <Button type="button" size="sm" onClick={video.send}>
-            <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
-            Send video
-          </Button>
-        </div>
-      </div>
+      <VideoReviewSurface
+        attachment={state.attachment}
+        error={state.error}
+        onCancel={video.reset}
+        onRetake={() => { void video.retake(); }}
+        onSend={video.send}
+        dataAttribute="recording"
+      />
     );
   }
 
@@ -100,6 +81,93 @@ export function VideoRecordingSurface({ video }: { video: VideoMessageRecorderCo
       <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
       {state.phase === 'requesting' ? 'Starting camera…' : 'Preparing video…'}
       <Button type="button" variant="quiet" size="sm" onClick={video.reset}>Cancel</Button>
+    </div>
+  );
+}
+
+export function VideoAttachmentReviewSurface({
+  attachment,
+  onCancel,
+  onSend,
+}: {
+  attachment: AttachmentItem;
+  onCancel: () => void;
+  onSend: () => void;
+}) {
+  return (
+    <VideoReviewSurface
+      attachment={attachment}
+      onCancel={onCancel}
+      onSend={onSend}
+      dataAttribute="attachment"
+    />
+  );
+}
+
+function VideoReviewSurface({
+  attachment,
+  error,
+  onCancel,
+  onRetake,
+  onSend,
+  dataAttribute,
+}: {
+  attachment: AttachmentItem;
+  error?: string | null;
+  onCancel: () => void;
+  onRetake?: () => void;
+  onSend: () => void;
+  dataAttribute: 'attachment' | 'recording';
+}) {
+  const source = attachmentVideoUrl(attachment);
+  const displaySize = attachmentVideoDisplaySize(attachment);
+  const [playbackState, setPlaybackState] = useState<'loading' | 'ready' | 'error'>(
+    source ? 'loading' : 'error',
+  );
+
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-2 py-1" data-video-review-surface={dataAttribute}>
+      <div
+        className="relative mx-auto max-w-full overflow-hidden rounded-[16px] bg-black"
+        style={{ width: displaySize.width, maxWidth: 'min(100%, 70vw)' }}
+      >
+        <video
+          src={source}
+          poster={attachment.previewUrl ?? undefined}
+          controls
+          playsInline
+          preload="metadata"
+          className="block w-full bg-black object-contain"
+          style={{ aspectRatio: `${displaySize.width} / ${displaySize.height}` }}
+          aria-label={`Review ${attachment.name}`}
+          onLoadedMetadata={() => setPlaybackState('ready')}
+          onError={() => setPlaybackState('error')}
+        />
+        {playbackState === 'loading' ? (
+          <span className="pointer-events-none absolute inset-0 grid place-items-center" role="status" aria-label="Preparing video preview">
+            <LoaderCircle className="h-7 w-7 animate-spin text-white motion-reduce:animate-none" aria-hidden="true" />
+          </span>
+        ) : null}
+      </div>
+      {playbackState === 'error' || error ? (
+        <p className="text-[11px] text-red-500" role="alert">
+          {error ?? 'This video could not be played. Choose another MP4 file.'}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button type="button" variant="quiet" size="sm" onClick={onCancel}>
+          <X className="mr-1.5 h-4 w-4" aria-hidden="true" />Cancel
+        </Button>
+        {onRetake ? (
+          <Button type="button" variant="outline" size="sm" onClick={onRetake}>
+            <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />Retake
+          </Button>
+        ) : null}
+        <Button type="button" size="sm" onClick={onSend} disabled={playbackState !== 'ready'}>
+          <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />
+          Send video
+        </Button>
+      </div>
     </div>
   );
 }

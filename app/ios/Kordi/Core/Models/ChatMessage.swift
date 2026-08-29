@@ -397,6 +397,16 @@ enum VideoAttachmentPolicy {
 
 }
 
+enum VideoAttachmentLayout {
+    nonisolated static func aspectRatio(widthPixels: Int?, heightPixels: Int?) -> CGFloat {
+        guard let widthPixels,
+              let heightPixels,
+              widthPixels > 0,
+              heightPixels > 0 else { return 16 / 9 }
+        return CGFloat(widthPixels) / CGFloat(heightPixels)
+    }
+}
+
 struct VoiceMessage: Codable, Hashable {
     let mediaId: String
     let mimeType: String

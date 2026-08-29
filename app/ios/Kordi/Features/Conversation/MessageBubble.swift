@@ -1770,7 +1770,7 @@ private struct MessageVideoAttachment: View {
                 sendingSurface
             } else if let player {
                 VideoPlayer(player: player)
-                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .aspectRatio(videoAspectRatio, contentMode: .fit)
                     .frame(maxWidth: .infinity)
                     .background(.black)
                     .accessibilityLabel("Play \(attachment.name)")
@@ -1804,7 +1804,7 @@ private struct MessageVideoAttachment: View {
                         }
                         .accessibilityHidden(true)
                     }
-                    .aspectRatio(16 / 9, contentMode: .fit)
+                    .aspectRatio(videoAspectRatio, contentMode: .fit)
                     .frame(maxWidth: .infinity)
                     .clipped()
                     .contentShape(.rect)
@@ -1859,7 +1859,7 @@ private struct MessageVideoAttachment: View {
                 }
             }
         }
-        .aspectRatio(16 / 9, contentMode: .fit)
+        .aspectRatio(videoAspectRatio, contentMode: .fit)
         .frame(maxWidth: .infinity)
         .clipped()
         .accessibilityElement(children: .ignore)
@@ -1888,6 +1888,13 @@ private struct MessageVideoAttachment: View {
             isLoading = false
             preparedPlayer.play()
         }
+    }
+
+    private var videoAspectRatio: CGFloat {
+        VideoAttachmentLayout.aspectRatio(
+            widthPixels: attachment.widthPixels,
+            heightPixels: attachment.heightPixels
+        )
     }
 }
 

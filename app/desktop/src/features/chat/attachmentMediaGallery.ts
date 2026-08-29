@@ -72,6 +72,27 @@ export function attachmentsAreOnlyMp4Videos(attachments?: readonly MessageAttach
   return attachments?.length ? attachments.every(isMp4VideoAttachment) : false;
 }
 
+export function playableVideoSource(
+  localSource?: string | null,
+  remoteSource?: string | null,
+  failedSource?: string | null,
+) {
+  return (localSource !== failedSource ? localSource : null)
+    ?? (remoteSource !== failedSource ? remoteSource : null)
+    ?? undefined;
+}
+
+export function attachmentVideoDisplaySize(
+  attachment: Pick<MessageAttachment, 'widthPixels' | 'heightPixels'>,
+) {
+  const dimensions = normalizedImagePixelDimensions(
+    attachment.widthPixels,
+    attachment.heightPixels,
+  );
+  if (!dimensions) return { width: 520, height: 293 };
+  return fittedImageDisplaySize(dimensions, 520, 520);
+}
+
 function isArchiveAttachment(attachment: MessageAttachment) {
   return ARCHIVE_ATTACHMENT_EXTENSIONS.has(attachmentExtension(attachment));
 }

@@ -643,7 +643,9 @@ enum PreviewData {
                             kind: .file,
                             mimeType: "video/mp4",
                             sizeBytes: 148_200_000,
-                            previewURL: previewBarsImageDataURL()
+                            widthPixels: 1_080,
+                            heightPixels: 1_920,
+                            previewURL: previewPortraitImageDataURL()
                         )
                     ],
                     attachmentUploadProgress: 0.42
@@ -665,7 +667,9 @@ enum PreviewData {
                             kind: .file,
                             mimeType: "video/mp4",
                             sizeBytes: 148_200_000,
-                            previewURL: previewBarsImageDataURL()
+                            widthPixels: 1_080,
+                            heightPixels: 1_920,
+                            previewURL: previewPortraitImageDataURL()
                         )
                     ]
                 )
