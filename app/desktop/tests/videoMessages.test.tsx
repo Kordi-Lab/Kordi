@@ -48,6 +48,8 @@ test('MP4 attachments stay poster-backed until explicit playback instead of rend
       mimeType: 'video/mp4',
       previewUrl: 'data:image/jpeg;base64,cG9zdGVy',
       sizeBytes: 148 * 1024 * 1024,
+      widthPixels: 1_080,
+      heightPixels: 1_920,
     }],
   };
 
@@ -61,6 +63,26 @@ test('MP4 attachments stay poster-backed until explicit playback instead of rend
   assert.doesNotMatch(markup, />Play video</);
   assert.doesNotMatch(markup, /<video/);
   assert.doesNotMatch(markup, /data-attachment-file-link="true"/);
+});
+
+test('legacy videos resolve dimensions before revealing the media card', () => {
+  const message: Message = {
+    role: 'user',
+    text: '',
+    time: '12:30',
+    attachments: [{
+      attachmentId: 'att-legacy-video',
+      kind: 'file',
+      name: 'legacy.mp4',
+      mimeType: 'video/mp4',
+      previewUrl: 'data:image/jpeg;base64,cG9zdGVy',
+    }],
+  };
+
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, { msg: message }));
+
+  assert.match(markup, /data-attachment-video-sizing="resolving"/);
+  assert.doesNotMatch(markup, /aspect-ratio:/);
 });
 
 test('video message layout preserves portrait and landscape aspect ratios', () => {
@@ -110,6 +132,8 @@ test('sending videos keep the final card geometry and move progress into the med
       mimeType: 'video/mp4',
       previewUrl: 'data:image/jpeg;base64,cG9zdGVy',
       sizeBytes: 1_024,
+      widthPixels: 1_920,
+      heightPixels: 1_080,
     }],
   };
 

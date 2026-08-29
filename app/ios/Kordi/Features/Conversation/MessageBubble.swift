@@ -1761,12 +1761,15 @@ private struct MessageVideoAttachment: View {
 
     @State private var player: AVPlayer?
     @State private var poster: UIImage?
+    @State private var posterAspectRatio: CGFloat?
     @State private var isLoading = false
     @State private var loadFailed = false
 
     var body: some View {
         Group {
-            if deliveryState == .sending {
+            if resolvedVideoAspectRatio == nil {
+                resolvingSurface
+            } else if deliveryState == .sending {
                 sendingSurface
             } else if let player {
                 VideoPlayer(player: player)
@@ -1827,6 +1830,9 @@ private struct MessageVideoAttachment: View {
             let image = await onPreparePreview(attachment)
             if !Task.isCancelled {
                 poster = image
+                if let image, image.size.width > 0, image.size.height > 0 {
+                    posterAspectRatio = image.size.width / image.size.height
+                }
             }
         }
         .onDisappear { player?.pause() }
@@ -1871,6 +1877,31 @@ private struct MessageVideoAttachment: View {
         } ?? "In progress")
     }
 
+    private var resolvingSurface: some View {
+        Button(action: loadAndPlay) {
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(.secondary)
+                } else {
+                    Image(systemName: loadFailed ? "arrow.clockwise" : "play.fill")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+            }
+            .frame(width: 56, height: 56)
+            .background(Color(uiColor: .secondarySystemBackground), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel(
+            isLoading
+                ? "Loading \(attachment.name)"
+                : loadFailed ? "Retry loading \(attachment.name)" : "Play \(attachment.name)"
+        )
+    }
+
     private func loadAndPlay() {
         guard !isLoading else { return }
         if let player {
@@ -1885,7 +1916,19 @@ private struct MessageVideoAttachment: View {
                 loadFailed = true
                 return
             }
-            let preparedPlayer = AVPlayer(url: url)
+            let asset = AVURLAsset(url: url)
+            if let tracks = try? await asset.loadTracks(withMediaType: .video),
+               let track = tracks.first,
+               let naturalSize = try? await track.load(.naturalSize),
+               let transform = try? await track.load(.preferredTransform) {
+                let transformedSize = naturalSize.applying(transform)
+                let width = abs(transformedSize.width)
+                let height = abs(transformedSize.height)
+                if width > 0, height > 0 {
+                    posterAspectRatio = width / height
+                }
+            }
+            let preparedPlayer = AVPlayer(playerItem: AVPlayerItem(asset: asset))
             player = preparedPlayer
             isLoading = false
             preparedPlayer.play()
@@ -1893,9 +1936,17 @@ private struct MessageVideoAttachment: View {
     }
 
     private var videoAspectRatio: CGFloat {
-        VideoAttachmentLayout.aspectRatio(
-            widthPixels: attachment.widthPixels,
-            heightPixels: attachment.heightPixels
+        resolvedVideoAspectRatio ?? 16 / 9
+    }
+
+    private var resolvedVideoAspectRatio: CGFloat? {
+        guard let width = attachment.widthPixels,
+              let height = attachment.heightPixels,
+              width > 0,
+              height > 0 else { return posterAspectRatio }
+        return VideoAttachmentLayout.aspectRatio(
+            widthPixels: width,
+            heightPixels: height
         )
     }
 }
