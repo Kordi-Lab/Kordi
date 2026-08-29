@@ -117,12 +117,16 @@ export function AttachmentVideoCard({
     ? upload.error ?? 'Sending failed'
     : upload?.phase === 'cancelled' ? 'Sending cancelled' : null;
   const deliveryVisual = attachmentImageDeliveryVisual(deliveryStatus, uploadFailure);
-  const videoDeliveryVisual = deliveryVisual ? {
-    ...deliveryVisual,
-    label: deliveryVisual.label.replace('image', 'video'),
-  } : null;
-  const transferPending = deliveryVisual?.kind === 'uploading'
-    || deliveryVisual?.kind === 'delivering';
+  const uploadComplete = upload?.phase === 'complete';
+  const videoDeliveryVisual = deliveryVisual?.kind === 'uploading' && uploadComplete
+    ? { kind: 'delivering' as const, label: 'Delivering video' }
+    : deliveryVisual ? {
+        ...deliveryVisual,
+        label: deliveryVisual.label.replace('image', 'video'),
+      } : null;
+  const transferPending = !uploadComplete && (
+    deliveryVisual?.kind === 'uploading' || deliveryVisual?.kind === 'delivering'
+  );
 
   const rememberPresentation = useCallback((
     nextPosterUrl: string,

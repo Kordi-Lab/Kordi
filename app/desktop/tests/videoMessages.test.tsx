@@ -231,4 +231,10 @@ test('large video paths stay chunked and file-backed', () => {
     composer.indexOf('void uploadNativeCloudAttachment({')
       < composer.indexOf("const result = onSend('', [preparedAttachment])"),
   );
+  const videoCard = readFileSync(
+    new URL('../src/kordi-app/components/transcriptVideoAttachment.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(videoCard, /deliveryVisual\?\.kind === 'uploading' && uploadComplete/);
+  assert.match(videoCard, /const transferPending = !uploadComplete/);
 });

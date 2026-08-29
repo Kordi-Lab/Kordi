@@ -1754,7 +1754,7 @@ private struct MessageVideoAttachment: View {
         Group {
             if resolvedVideoAspectRatio == nil {
                 resolvingSurface
-            } else if deliveryState == .sending {
+            } else if deliveryState == .sending && (uploadProgress ?? 0) < 1 {
                 sendingSurface
             } else if let player {
                 VideoPlayer(player: player)
