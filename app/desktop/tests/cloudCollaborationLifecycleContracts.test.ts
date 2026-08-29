@@ -223,5 +223,5 @@ test('Cloud receipt reconciliation follows paged canonical history', () => {
     source.indexOf('const activeConversationIds = ['),
   );
 
-  assert.match(receiptEffect, /canonicalState\?\.messages/);
+  assert.match(receiptEffect, /canonicalState\?\.messages\.length/);
 });
