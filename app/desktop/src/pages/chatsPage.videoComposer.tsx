@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, CircleStop, LoaderCircle, RotateCcw, Send, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
+import { AppDialog, AppDialogTitle } from '@/components/ui/dialog';
 import {
   attachmentVideoDisplaySize,
   attachmentVideoUrl,
@@ -11,7 +12,10 @@ import {
   formatVideoRecordingDuration,
   type VideoMessageRecorderController,
 } from '@/features/chat/useVideoMessageRecorder';
-import { captureVideoPosterDataUrl } from '@/features/chat/composerAttachments';
+import {
+  captureVideoPosterDataUrl,
+  captureVideoPreview,
+} from '@/features/chat/composerAttachments';
 
 export function VideoRecordingSurface({ video }: { video: VideoMessageRecorderController }) {
   const previewRef = useRef<HTMLVideoElement | null>(null);
@@ -59,7 +63,7 @@ export function VideoRecordingSurface({ video }: { video: VideoMessageRecorderCo
         error={state.error}
         onCancel={video.reset}
         onRetake={() => { void video.retake(); }}
-        onSend={video.send}
+        onSend={() => video.send()}
         dataAttribute="recording"
       />
     );
@@ -92,15 +96,36 @@ export function VideoAttachmentReviewSurface({
 }: {
   attachment: AttachmentItem;
   onCancel: () => void;
-  onSend: () => void;
+  onSend: (attachment: AttachmentItem, caption: string) => void;
 }) {
+  const [caption, setCaption] = useState('');
+  const titleId = 'video-attachment-review-title';
   return (
-    <VideoReviewSurface
-      attachment={attachment}
-      onCancel={onCancel}
-      onSend={onSend}
-      dataAttribute="attachment"
-    />
+    <AppDialog
+      titleId={titleId}
+      onDismiss={onCancel}
+      className="w-[min(680px,calc(100vw-2rem))] max-w-none overflow-hidden rounded-[24px] p-0"
+    >
+      <header className="app-transient-divider flex items-center justify-between border-b px-5 py-4">
+        <AppDialogTitle id={titleId}>Send a video file</AppDialogTitle>
+        <button
+          type="button"
+          className="app-button-quiet grid h-8 w-8 place-items-center rounded-full"
+          onClick={onCancel}
+          aria-label="Close video review"
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </header>
+      <VideoReviewSurface
+        attachment={attachment}
+        onCancel={onCancel}
+        onSend={onSend}
+        dataAttribute="attachment"
+        caption={caption}
+        onCaptionChange={setCaption}
+      />
+    </AppDialog>
   );
 }
 
@@ -111,30 +136,40 @@ function VideoReviewSurface({
   onRetake,
   onSend,
   dataAttribute,
+  caption = '',
+  onCaptionChange,
 }: {
   attachment: AttachmentItem;
   error?: string | null;
   onCancel: () => void;
   onRetake?: () => void;
-  onSend: () => void;
+  onSend: (attachment: AttachmentItem, caption: string) => void;
   dataAttribute: 'attachment' | 'recording';
+  caption?: string;
+  onCaptionChange?: (value: string) => void;
 }) {
-  const source = attachmentVideoUrl(attachment);
-  const displaySize = attachmentVideoDisplaySize(attachment);
-  const posterReady = attachment.previewUrl?.startsWith('data:image/') === true;
+  const [preparedAttachment, setPreparedAttachment] = useState(attachment);
+  const source = attachmentVideoUrl(preparedAttachment);
+  const displaySize = attachmentVideoDisplaySize(preparedAttachment);
+  const posterReady = preparedAttachment.previewUrl?.startsWith('data:image/') === true;
   const [playbackState, setPlaybackState] = useState<'loading' | 'ready' | 'error'>(
     source ? 'loading' : 'error',
   );
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-2 py-1" data-video-review-surface={dataAttribute}>
+    <div
+      className={dataAttribute === 'attachment'
+        ? 'flex min-w-0 flex-1 flex-col gap-3 p-5'
+        : 'flex min-w-0 flex-1 flex-col gap-2 py-1'}
+      data-video-review-surface={dataAttribute}
+    >
       <div
         className="relative mx-auto max-w-full overflow-hidden rounded-[16px] bg-black"
         style={{ width: displaySize.width, maxWidth: 'min(100%, 70vw)' }}
       >
         <video
           src={source}
-          poster={attachment.previewUrl ?? undefined}
+          poster={preparedAttachment.previewUrl ?? undefined}
           controls
           playsInline
           preload="metadata"
@@ -142,6 +177,17 @@ function VideoReviewSurface({
           style={{ aspectRatio: `${displaySize.width} / ${displaySize.height}` }}
           aria-label={`Review ${attachment.name}`}
           onLoadedMetadata={() => setPlaybackState('ready')}
+          onLoadedData={(event) => {
+            if (posterReady) return;
+            const preview = captureVideoPreview(event.currentTarget);
+            if (!preview) return;
+            setPreparedAttachment((current) => ({
+              ...current,
+              previewUrl: preview.previewUrl,
+              widthPixels: preview.widthPixels,
+              heightPixels: preview.heightPixels,
+            }));
+          }}
           onError={() => setPlaybackState('error')}
         />
         {playbackState === 'loading' ? (
@@ -150,12 +196,26 @@ function VideoReviewSurface({
           </span>
         ) : null}
       </div>
-      {playbackState === 'error' || !posterReady || error ? (
+      {playbackState === 'error' || error ? (
         <p className="text-[11px] text-red-500" role="alert">
-          {error ?? (!posterReady
-            ? 'This video could not prepare a poster. Choose another MP4 file.'
-            : 'This video could not be played. Choose another MP4 file.')}
+          {error ?? 'This video could not be played. Choose another MP4 file.'}
         </p>
+      ) : !posterReady ? (
+        <p className="text-[11px] text-[color:var(--utility-muted-text)]" role="status">
+          Preparing video poster…
+        </p>
+      ) : null}
+      {onCaptionChange ? (
+        <label className="grid gap-1.5">
+          <span className="text-[11px] font-medium text-[color:var(--utility-muted-text)]">Caption</span>
+          <textarea
+            value={caption}
+            onChange={(event) => onCaptionChange(event.target.value)}
+            rows={2}
+            className="min-h-[56px] resize-none rounded-[12px] border border-[color:var(--app-transient-border)] bg-[color:var(--app-transient-raised-bg)] px-3 py-2 text-[13px] text-[color:var(--utility-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--app-sidebar-accent)]"
+            placeholder="Add a caption…"
+          />
+        </label>
       ) : null}
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button type="button" variant="quiet" size="sm" onClick={onCancel}>
@@ -169,7 +229,7 @@ function VideoReviewSurface({
         <Button
           type="button"
           size="sm"
-          onClick={onSend}
+          onClick={() => onSend(preparedAttachment, caption)}
           disabled={playbackState !== 'ready' || !posterReady}
         >
           <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />

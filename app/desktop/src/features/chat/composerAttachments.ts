@@ -91,24 +91,31 @@ function waitForVideoEvent(video: HTMLVideoElement, eventName: 'loadeddata' | 'l
 export async function videoPreviewFromSource(source: string) {
   if (typeof document === 'undefined') return null;
   const video = document.createElement('video');
-  video.preload = 'metadata';
+  video.preload = 'auto';
   video.muted = true;
   video.playsInline = true;
   try {
     const metadataReady = waitForVideoEvent(video, 'loadedmetadata');
     video.src = source;
     await metadataReady;
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      await waitForVideoEvent(video, 'loadeddata');
+    }
+    const firstFrame = captureVideoPreview(video);
     const seekTime = Number.isFinite(video.duration) && video.duration > 0.1
       ? Math.min(0.5, video.duration / 2)
       : 0;
     if (seekTime > 0) {
-      const frameReady = waitForVideoEvent(video, 'seeked');
-      video.currentTime = seekTime;
-      await frameReady;
-    } else if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-      await waitForVideoEvent(video, 'loadeddata');
+      try {
+        const frameReady = waitForVideoEvent(video, 'seeked');
+        video.currentTime = seekTime;
+        await frameReady;
+        return captureVideoPreview(video) ?? firstFrame;
+      } catch {
+        return firstFrame;
+      }
     }
-    return captureVideoPreview(video);
+    return firstFrame;
   } catch {
     return null;
   } finally {

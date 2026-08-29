@@ -176,10 +176,10 @@ export function MainComposer({
     void discardDesktopChatAttachment(attachedVideoReview.path).catch(() => undefined);
   }
 
-  function sendAttachedVideoReview() {
+  function sendAttachedVideoReview(preparedAttachment: AttachmentItem, caption: string) {
     if (!attachedVideoReview) return;
     try {
-      const result = onSend('', [attachedVideoReview]);
+      const result = onSend(caption, [preparedAttachment]);
       setAttachedVideoReviewQueue((current) => current.slice(1));
       void Promise.resolve(result).catch(() => undefined);
     } catch {
