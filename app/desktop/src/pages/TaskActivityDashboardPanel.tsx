@@ -407,7 +407,7 @@ function taskActivityToDashboardItem(activity: SessionTaskActivity, targetPartic
   return {
     id: activity.id,
     title,
-    summary: activity.error ?? `Synced Cloud task${initiator?.name ? ` by ${initiator.name}` : ''}.`,
+    summary: activity.error ?? activity.summary ?? `Synced Cloud task${initiator?.name ? ` by ${initiator.name}` : ''}.`,
     status,
     statusLabel: dashboardStatusLabel(status),
     tone: dashboardToneFromStatus(status),

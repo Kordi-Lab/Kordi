@@ -279,11 +279,13 @@ test('linked background sessions round trip and render as task operator tools on
       sessionId: 'session-background',
       turnId: 'turn-background',
       title: 'Review runtime',
+      summary: 'Inspect runtime behavior and report the findings.',
       status: 'running',
     }],
   });
   const parsed = parseCloudAgentResponse(encoded);
   assert.equal(parsed?.backgroundSessions?.[0]?.sessionId, 'session-background');
+  assert.equal(parsed?.backgroundSessions?.[0]?.summary, 'Inspect runtime behavior and report the findings.');
 
   const mapped = cloudMessageToCollaborationMessage(account, {
     messageId: 'msg_background_response',
@@ -299,6 +301,10 @@ test('linked background sessions round trip and render as task operator tools on
 
   assert.equal(mapped.localTurn?.completed, true);
   assert.equal(mapped.localTurn?.tools[0]?.name, 'task_operator');
+  assert.deepEqual(JSON.parse(mapped.localTurn?.tools[0]?.arguments ?? '{}'), {
+    taskTitle: 'Review runtime',
+    summary: 'Inspect runtime behavior and report the findings.',
+  });
   assert.match(mapped.localTurn?.tools[0]?.resultText ?? '', /Background session:/);
 });
 

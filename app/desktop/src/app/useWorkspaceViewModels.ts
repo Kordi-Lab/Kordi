@@ -307,7 +307,11 @@ export function useWorkspaceViewModels({
             Boolean(desktopLiveTurnsForViewModel[session.id]),
             desktopLiveTurnsForViewModel[session.id],
           )
-        : cachedMessages ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }];
+        : preferLatestMessages(
+            cachedMessages ?? [{ role: 'system' as const, text: session.draft ? 'Draft session' : 'Session ready', time: session.updatedAtLabel }],
+            undefined,
+            false,
+          );
       const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[session.id] ?? 0);
       const statusIndicator = buildSessionStatusIndicator({
         unreadCount,

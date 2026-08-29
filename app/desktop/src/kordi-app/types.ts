@@ -124,6 +124,7 @@ export type SessionTaskActivity = {
   id: string;
   sessionId: string;
   status: string;
+  summary?: string | null;
   initiator: SessionTaskParticipant | null;
   target: SessionTaskParticipant | null;
   participants: SessionTaskParticipant[];

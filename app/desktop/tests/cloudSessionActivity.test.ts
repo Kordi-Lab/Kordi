@@ -46,7 +46,7 @@ test('mergeCloudSessionActivity preserves identity for the same diff snapshot', 
 
 test('cloud task rows adapt to SessionTaskActivity and artifact rows adapt to SessionArtifact', () => {
   const task = normalizeCloudSessionActivitySnapshot({
-    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:1', taskId: 'task-1', title: 'Review plan', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [{ accountId: 'acct_a', displayName: 'Alice' }], artifactIds: ['docs/plan.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:02:00Z', archivedAt: null }],
+    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:1', taskId: 'task-1', title: 'Review plan', summary: 'Inspect the launch plan and report risks.', status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [{ accountId: 'acct_a', displayName: 'Alice' }], artifactIds: ['docs/plan.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:02:00Z', archivedAt: null }],
     artifacts: [],
   }).tasksBySessionId['session:group:1']![0];
   const artifact = normalizeCloudSessionActivitySnapshot({
@@ -55,6 +55,7 @@ test('cloud task rows adapt to SessionTaskActivity and artifact rows adapt to Se
   }).artifactsBySessionId['session:group:1']![0];
 
   assert.equal(cloudTaskToSessionTaskActivity(task).target?.name, 'Review plan');
+  assert.equal(cloudTaskToSessionTaskActivity(task).summary, 'Inspect the launch plan and report risks.');
   assert.equal(cloudArtifactToSessionArtifact(artifact).id, 'docs/plan.md');
   assert.equal(cloudActivityStorageKey('acct_a'), 'kordi.cloud.sessionActivity.v1:acct_a');
 });
@@ -116,6 +117,31 @@ test('deriveCloudActivityFromTurn extracts task_operator tasks and generated art
   assert.equal(derived.tasks[0]?.taskId, 'launch_plan');
   assert.equal(derived.tasks[0]?.status, 'active');
   assert.equal(derived.artifacts[0]?.artifactId, 'docs/launch-plan.md');
+});
+
+test('deriveCloudActivityFromTurn does not publish linked background sessions as durable tasks', () => {
+  const derived = deriveCloudActivityFromTurn({
+    sessionId: 'session:group:cloud',
+    localAccountId: 'acct_me',
+    participantAccountIds: ['acct_me', 'acct_peer'],
+    turn: {
+      id: 'turn_background', sessionId: 'session:group:cloud', prompt: 'inspect task status', status: 'complete', message: 'Routed', assistantText: 'I moved the task status investigation to a linked session.', thinkingText: '', completed: true, succeeded: true, error: null, transcriptRefreshRequired: false, startedAtMs: 1, completedAtMs: 2,
+      tools: [{
+        id: 'tool_background',
+        name: 'task_operator',
+        status: 'done',
+        arguments: JSON.stringify({ action: 'spawn', taskTitle: 'Investigate task status', summary: 'Inspect why completed work remains active.' }),
+        liveOutput: '',
+        resultText: 'Background session: {"sessionId":"child-session","title":"Investigate task status","status":"running"}',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'operator',
+        isError: false,
+      }],
+    },
+  });
+
+  assert.equal(derived.tasks.length, 0);
 });
 
 test('deriveCloudActivityFromTurn ignores context-wrapper task_operator rows without explicit task identity', () => {

@@ -3,8 +3,8 @@
 use std::sync::{Arc, Mutex};
 
 use kordi_cli::desktop_runtime::{
-    DesktopChatContextMessage, DesktopChatMessage, DesktopChatSessionDetail, DesktopRuntimeProfile,
-    DesktopVisibleTaskRecord,
+    strip_session_prompt_context, DesktopChatContextMessage, DesktopChatMessage,
+    DesktopChatSessionDetail, DesktopRuntimeProfile, DesktopVisibleTaskRecord,
 };
 
 use super::{
@@ -38,11 +38,19 @@ pub(super) async fn start_shared_message(
         return start_message(manager, input).await;
     }
     let cwd = chat_cwd()?;
+    let source_session_id = input
+        .scheduled_task_session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&input.session_id)
+        .to_string();
     let decision = match super::background_tasks::classify_shared_task(
         &cwd,
         &input.text,
         input.route.as_ref(),
-        input.context_messages.as_deref().unwrap_or_default(),
+        &source_session_id,
+        &request_id,
     )
     .await
     {
@@ -80,17 +88,14 @@ pub(super) async fn start_shared_message(
             provider: Some(detail.provider),
             model: Some(detail.model),
             thinking: Some(detail.thinking),
-            system_prompt: Some(agent.system_prompt),
+            system_prompt: Some(strip_session_prompt_context(&agent.system_prompt)),
             skill_names: Some(agent.loaded_skills),
             ..DesktopRuntimeProfile::default()
         }
     };
     let background_session = super::background_tasks::existing_or_spawn_background_session(
         manager,
-        input
-            .scheduled_task_session_id
-            .as_deref()
-            .unwrap_or(&target_session_id),
+        &source_session_id,
         &request_id,
         &cwd,
         base_profile,
@@ -99,14 +104,22 @@ pub(super) async fn start_shared_message(
     )
     .await
     .map_err(|error| error.to_string())?;
+    let background_session_payload = serde_json::json!({
+        "sessionId": &background_session.session_id,
+        "turnId": &background_session.turn_id,
+        "title": &background_session.title,
+        "summary": &decision.task_summary,
+        "status": &background_session.status,
+    });
     let result_text = format!(
         "Task agent running\n\nBackground session: {}",
-        serde_json::to_string(&background_session).map_err(|error| error.to_string())?,
+        serde_json::to_string(&background_session_payload).map_err(|error| error.to_string())?,
     );
     let arguments = serde_json::json!({
         "action": "spawn",
         "task_name": background_session.title,
         "taskTitle": background_session.title,
+        "summary": decision.task_summary,
         "message": input.text,
         "forkTurns": "none",
         "writeScope": decision.write_scope,
@@ -118,10 +131,8 @@ pub(super) async fn start_shared_message(
         session_id: target_session_id,
         prompt: input.text.trim().to_string(),
         status: "succeeded".to_string(),
-        message: "Background session started".to_string(),
-        assistant_text:
-            "I started this in a linked background session so this chat stays available."
-                .to_string(),
+        message: decision.task_summary.clone(),
+        assistant_text: decision.acknowledgement.clone(),
         thinking_text: String::new(),
         tools: vec![DesktopChatToolSnapshot {
             id: format!("shared-task-route:{request_id}"),
@@ -130,7 +141,7 @@ pub(super) async fn start_shared_message(
             arguments,
             live_output: String::new(),
             result_text: Some(result_text),
-            detail: Some("Started linked background session".to_string()),
+            detail: Some(decision.task_summary),
             artifact_path: None,
             tool_layer: Some("operator".to_string()),
             is_error: false,

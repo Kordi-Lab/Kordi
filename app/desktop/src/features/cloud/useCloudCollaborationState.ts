@@ -484,6 +484,7 @@ export function useCloudCollaborationState({
 
   useCloudDirectAgentExecution({
     account,
+    canonicalState: canonicalSessionState,
     client,
     cloudAgentDefinitionsById,
     cloudAgentRuntimeRoutesBySessionId,
