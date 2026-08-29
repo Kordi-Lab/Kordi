@@ -13,7 +13,7 @@ use sqlx_core::query_as::query_as;
 
 use super::s3_or_503;
 use crate::attachments::content_type::{
-    detected_raster_content_type, normalized_supported_raster_content_type,
+    detected_supported_content_type, normalized_verified_content_type,
 };
 use crate::attachments::presign_upload_part_url;
 use crate::attachments::response::{boxed_err, err};
@@ -248,18 +248,14 @@ pub async fn upload_multipart_part(
     }
 
     let detected_content_type = (part_number == 1)
-        .then(|| detected_raster_content_type(&bytes))
+        .then(|| detected_supported_content_type(&bytes))
         .flatten();
     if part_number == 1 {
-        if let Some(declared) = row
-            .5
-            .as_deref()
-            .and_then(normalized_supported_raster_content_type)
-        {
+        if let Some(declared) = row.5.as_deref().and_then(normalized_verified_content_type) {
             if detected_content_type != Some(declared) {
                 return err(
                     "invalid_attachment_content",
-                    "The attachment bytes do not match the declared image type.",
+                    "The attachment bytes do not match the declared media type.",
                     StatusCode::BAD_REQUEST,
                 );
             }

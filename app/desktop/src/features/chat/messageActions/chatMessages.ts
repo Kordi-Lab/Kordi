@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
@@ -83,6 +82,7 @@ import type {
 import { quoteMessageAction } from '../messageActionMetadata';
 import { memeAttachmentDraftError } from '../memeAttachments';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
+import { prefetchNativeVideoRetry, terminalCollaborationRetryFailure } from './collaborationRetry';
 import {
   collaborationDirectSessionParticipants,
   collaborationGroupSessionParticipants,
@@ -1105,14 +1105,13 @@ export function useChatMessageActions({
     const cloudAgentMentionSessionId = activeGroupSessionIsGroup
       ? cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId })
       : (activeConvCanonicalSessionId ?? activeConvId);
-
     if (retryMessage) {
       const retryMessageId = retryMessage.id?.trim();
       if (!retryMessageId || !retryAttachments) {
         setDesktopChatError('This message cannot be retried.');
         return;
       }
-
+      prefetchNativeVideoRetry(retryAttachments);
       if (
         activeConversationUsesCollaborationRouting
         && activeGroupSessionIsGroup
@@ -1220,11 +1219,13 @@ export function useChatMessageActions({
           );
           setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, retryMessageId, canonicalMessage));
         } catch (error) {
-          const failure = terminalCollaborationSendFailure({ error, fallback: 'Unable to retry message', conversationId: activeCloudConversationId, messageId: retryMessageId });
-          if (failure) {
-            setCloudCollaborationState(failure.updateOptimisticState);
-            setDesktopChatError(failure.detail);
-          }
+          const failure = terminalCollaborationRetryFailure({
+            error,
+            conversationId: activeCloudConversationId,
+            messageId: retryMessageId,
+          });
+          setCloudCollaborationState(failure.update);
+          setDesktopChatError(failure.detail);
         } finally {
           setIsDesktopChatSending(false);
         }
@@ -1234,7 +1235,6 @@ export function useChatMessageActions({
       setDesktopChatError('Retry is unavailable for this conversation.');
       return;
     }
-
     if (activeLocalTurnShouldDelayChatSend({ activeConversationUsesCollaborationRouting, activeConvId, desktopLiveTurn })) {
       const leadingCommand = text.split(/\s+/, 1)[0] ?? text;
       if (attachmentsToSend.length === 0 && isSharedLocalSlashCommand(leadingCommand)) {

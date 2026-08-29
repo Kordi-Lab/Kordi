@@ -44,6 +44,24 @@ actor AttachmentFileStore {
         return url
     }
 
+    func store(fileAt sourceURL: URL, attachment: ChatAttachment, accountId: String) throws -> URL {
+        guard let directory = accountDirectory(accountId) else { throw URLError(.cannotCreateFile) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        guard let url = cacheURL(for: attachment, accountId: accountId) else {
+            throw URLError(.cannotCreateFile)
+        }
+        let temporaryURL = directory.appendingPathComponent(".\(UUID().uuidString).download")
+        defer { try? FileManager.default.removeItem(at: temporaryURL) }
+        try FileManager.default.copyItem(at: sourceURL, to: temporaryURL)
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+        try FileManager.default.moveItem(at: temporaryURL, to: url)
+        remember(url, for: "\(accountId):\(attachment.attachmentId)")
+        pruneDiskCache(protecting: url)
+        return url
+    }
+
     private func remember(_ url: URL, for key: String) {
         recentCacheKeys.removeAll { $0 == key }
         recentCacheKeys.append(key)

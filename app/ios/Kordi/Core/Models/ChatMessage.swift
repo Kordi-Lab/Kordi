@@ -380,6 +380,31 @@ struct ChatAttachment: Identifiable, Codable, Hashable {
         guard let sizeBytes, sizeBytes >= 0 else { return nil }
         return ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
     }
+
+    var isMP4Video: Bool {
+        VideoAttachmentPolicy.isMP4(name: name, mimeType: mimeType)
+    }
+
+}
+
+enum VideoAttachmentPolicy {
+    nonisolated static func isMP4(name: String, mimeType: String?) -> Bool {
+        let normalizedMIMEType = mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalizedMIMEType == "video/mp4"
+            || ((normalizedMIMEType == nil || normalizedMIMEType == "application/octet-stream")
+                && URL(fileURLWithPath: name).pathExtension.lowercased() == "mp4")
+    }
+
+}
+
+enum VideoAttachmentLayout {
+    nonisolated static func aspectRatio(widthPixels: Int?, heightPixels: Int?) -> CGFloat {
+        guard let widthPixels,
+              let heightPixels,
+              widthPixels > 0,
+              heightPixels > 0 else { return 16 / 9 }
+        return CGFloat(widthPixels) / CGFloat(heightPixels)
+    }
 }
 
 struct VoiceMessage: Codable, Hashable {
@@ -470,6 +495,7 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
     var memeRightsConfirmed: Bool
     let mimeType: String?
     let data: Data
+    let fileURL: URL?
     let previewURL: String?
     let widthPixels: Int?
     let heightPixels: Int?
@@ -483,6 +509,7 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
         memeRightsConfirmed: Bool = false,
         mimeType: String?,
         data: Data,
+        fileURL: URL? = nil,
         previewURL: String?,
         widthPixels: Int? = nil,
         heightPixels: Int? = nil
@@ -495,12 +522,33 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
         self.memeRightsConfirmed = memeRightsConfirmed
         self.mimeType = mimeType
         self.data = data
+        self.fileURL = fileURL
         self.previewURL = previewURL
         self.widthPixels = widthPixels
         self.heightPixels = heightPixels
     }
 
-    var sizeBytes: Int64 { Int64(data.count) }
+    var sizeBytes: Int64 {
+        if let fileURL,
+           let size = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+            return Int64(size)
+        }
+        return Int64(data.count)
+    }
+
+    var isMP4Video: Bool {
+        VideoAttachmentPolicy.isMP4(name: name, mimeType: mimeType)
+    }
+
+    func discardOwnedFile() {
+        guard let fileURL,
+              fileURL.lastPathComponent.hasPrefix("kordi-video-"),
+              fileURL.deletingLastPathComponent().standardizedFileURL
+                == FileManager.default.temporaryDirectory.standardizedFileURL else {
+            return
+        }
+        try? FileManager.default.removeItem(at: fileURL)
+    }
 
     var optimisticAttachment: ChatAttachment {
         ChatAttachment(
@@ -914,6 +962,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var readByCount: Int?
     var readByAccountIds: [String]
     var attachments: [ChatAttachment]
+    var attachmentUploadProgress: Double?
     var replyToMessageId: String?
     var reactionTargetMessageId: String?
     var messageAction: MessageActionMetadata?
@@ -967,6 +1016,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         readByCount: Int? = nil,
         readByAccountIds: [String] = [],
         attachments: [ChatAttachment] = [],
+        attachmentUploadProgress: Double? = nil,
         replyToMessageId: String? = nil,
         reactionTargetMessageId: String? = nil,
         messageAction: MessageActionMetadata? = nil,
@@ -991,6 +1041,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.readByCount = readByCount
         self.readByAccountIds = readByAccountIds
         self.attachments = attachments
+        self.attachmentUploadProgress = attachmentUploadProgress
         self.replyToMessageId = replyToMessageId
         self.reactionTargetMessageId = reactionTargetMessageId
         self.messageAction = messageAction
@@ -1060,6 +1111,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         readByCount = try container.decodeIfPresent(Int.self, forKey: .readByCount)
         readByAccountIds = try container.decodeIfPresent([String].self, forKey: .readByAccountIds) ?? []
         attachments = try container.decodeIfPresent([ChatAttachment].self, forKey: .attachments) ?? []
+        attachmentUploadProgress = nil
         replyToMessageId = try container.decodeIfPresent(String.self, forKey: .replyToMessageId)
         reactionTargetMessageId = try container.decodeIfPresent(
             String.self,

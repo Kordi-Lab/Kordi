@@ -60,6 +60,8 @@ struct ConversationView: View {
     @State private var showPhotoPicker = false
     @State private var showMemePhotoPicker = false
     @State private var showCamera = false
+    @State private var videoReview: PendingAttachment?
+    @State private var queuedVideoReviews: [PendingAttachment] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var selectedPhotoSubtype: ChatAttachmentSubtype?
     @State private var isPreparingAttachments = false
@@ -349,6 +351,9 @@ struct ConversationView: View {
                                                         },
                                                         onPrepareAttachment: { attachment in
                                                             await model.prepareAttachmentForPresentation(attachment)
+                                                        },
+                                                        onPrepareAttachmentPreview: { attachment in
+                                                            await model.prepareAttachmentPreviewImage(attachment)
                                                         },
                                                         onAddAttachmentToMediaLibrary: { attachment in
                                                             await model.addAttachmentToExpressiveMediaLibrary(attachment)
@@ -726,6 +731,8 @@ struct ConversationView: View {
         }
         .onDisappear {
             voiceRecorder.cancel()
+            attachments.forEach { $0.discardOwnedFile() }
+            attachments = []
             callJoinTask?.cancel()
             callJoinTask = nil
             callCoordinator.cancelUnadmittedStart()
@@ -798,6 +805,10 @@ struct ConversationView: View {
         }
         .onChange(of: conversation.id) { _, _ in
             voiceRecorder.cancel()
+            videoReview?.discardOwnedFile()
+            queuedVideoReviews.forEach { $0.discardOwnedFile() }
+            videoReview = nil
+            queuedVideoReviews = []
             synchronizeReadPresentation()
         }
         .fileImporter(
@@ -825,14 +836,25 @@ struct ConversationView: View {
             )
         }
         .fullScreenCover(isPresented: $showCamera) {
-            CameraImagePicker(
+            CameraCapturePicker(
                 onImage: { image in
                     showCamera = false
                     importCameraImage(image)
                 },
+                onVideo: { url in
+                    showCamera = false
+                    importCameraVideo(url)
+                },
                 onCancel: { showCamera = false }
             )
             .ignoresSafeArea()
+        }
+        .fullScreenCover(item: $videoReview, onDismiss: presentNextVideoReview) { attachment in
+            VideoSendReviewSheet(
+                attachment: attachment,
+                onCancel: cancelVideoReview,
+                onSend: { await sendVideoReview(attachment) }
+            )
         }
         .quickLookPreview($previewURL)
         .fullScreenCover(item: $mediaPreview) { presentation in
@@ -1696,7 +1718,13 @@ struct ConversationView: View {
                 guard loaded.count <= remaining else {
                     throw AttachmentTransferError.tooManyFiles(PendingAttachmentLoader.maximumAttachmentCount)
                 }
-                attachments.append(contentsOf: loaded)
+                var prepared: [PendingAttachment] = []
+                prepared.reserveCapacity(loaded.count)
+                for attachment in loaded {
+                    prepared.append(await PendingAttachmentLoader.addingVideoPreview(to: attachment))
+                }
+                attachments.append(contentsOf: prepared.filter { !$0.isMP4Video })
+                enqueueVideoReviews(prepared.filter(\.isMP4Video))
             } catch {
                 model.errorMessage = error.localizedDescription
             }
@@ -1759,6 +1787,51 @@ struct ConversationView: View {
                 model.errorMessage = error.localizedDescription
             }
         }
+    }
+
+    private func importCameraVideo(_ url: URL) {
+        guard !isPreparingAttachments else { return }
+        isPreparingAttachments = true
+        Task {
+            defer { isPreparingAttachments = false }
+            do {
+                guard attachments.count < PendingAttachmentLoader.maximumAttachmentCount else {
+                    throw AttachmentTransferError.tooManyFiles(
+                        PendingAttachmentLoader.maximumAttachmentCount
+                    )
+                }
+                let attachment = try await PendingAttachmentLoader.loadCameraVideo(url)
+                enqueueVideoReviews([attachment])
+            } catch {
+                model.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func enqueueVideoReviews(_ videos: [PendingAttachment]) {
+        guard !videos.isEmpty else { return }
+        if videoReview == nil {
+            videoReview = videos[0]
+            queuedVideoReviews.append(contentsOf: videos.dropFirst())
+        } else {
+            queuedVideoReviews.append(contentsOf: videos)
+        }
+    }
+
+    private func presentNextVideoReview() {
+        guard videoReview == nil, !queuedVideoReviews.isEmpty else { return }
+        videoReview = queuedVideoReviews.removeFirst()
+    }
+
+    private func cancelVideoReview() {
+        videoReview?.discardOwnedFile()
+        videoReview = nil
+    }
+
+    private func sendVideoReview(_ attachment: PendingAttachment) async -> Bool {
+        let sent = await sendPhotoSelection([attachment], grouping: .combined)
+        if sent { videoReview = nil }
+        return sent
     }
 
     private func prepare(_ attachment: ChatAttachment, forSharing: Bool) {

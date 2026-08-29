@@ -624,6 +624,57 @@ enum PreviewData {
     }
 
     private static func previewMediaMessages(now: Date) -> [ChatMessage] {
+        if ProcessInfo.processInfo.arguments.contains("--preview-video-message") {
+            return [
+                ChatMessage(
+                    id: "preview-video-message-sending",
+                    conversationId: "person:acct_maya",
+                    author: .me,
+                    authorName: "You",
+                    text: "",
+                    createdAt: now.addingTimeInterval(-32),
+                    deliveryState: .sending,
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    attachments: [
+                        ChatAttachment(
+                            attachmentId: "att_preview_video_sending",
+                            name: "Launch-review.mp4",
+                            kind: .file,
+                            mimeType: "video/mp4",
+                            sizeBytes: 148_200_000,
+                            widthPixels: 1_080,
+                            heightPixels: 1_920,
+                            previewURL: previewPortraitImageDataURL()
+                        )
+                    ],
+                    attachmentUploadProgress: 0.42
+                ),
+                ChatMessage(
+                    id: "preview-video-message",
+                    conversationId: "person:acct_maya",
+                    author: .me,
+                    authorName: "You",
+                    text: "",
+                    createdAt: now.addingTimeInterval(-30),
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    attachments: [
+                        ChatAttachment(
+                            attachmentId: "att_preview_video",
+                            name: "Launch-review.mp4",
+                            kind: .file,
+                            mimeType: "video/mp4",
+                            sizeBytes: 148_200_000,
+                            widthPixels: 1_080,
+                            heightPixels: 1_920,
+                            previewURL: previewPortraitImageDataURL()
+                        )
+                    ]
+                )
+            ]
+        }
         let attachments = previewChatAttachments()
         if ProcessInfo.processInfo.arguments.contains("--preview-media-separated") {
             return attachments.enumerated().map { index, attachment in

@@ -60,6 +60,11 @@ export type CloudAttachmentDownloadUrlResult = {
   expiresAt: string;
 };
 
+export type CloudAttachmentPlaybackResult = {
+  playbackPath: string;
+  expiresAt: string;
+};
+
 export type CloudAttachmentPreviewUpdateResult = {
   attachmentId: string;
   previewUrl: string;

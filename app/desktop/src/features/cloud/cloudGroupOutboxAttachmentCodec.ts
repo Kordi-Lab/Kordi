@@ -11,6 +11,7 @@ export type CloudGroupOutboxAttachmentSource = {
   memeRightsConfirmed?: boolean;
   formatLabel?: string | null;
   mimeType?: string | null;
+  previewUrl?: string | null;
   sizeBytes?: number | null;
   widthPixels?: number | null;
   heightPixels?: number | null;
@@ -57,6 +58,7 @@ export function normalizedCloudGroupOutboxPendingAttachments(value: unknown): Cl
     const record = candidate as Record<string, unknown>;
     const path = cleanText(record.path);
     const name = cleanText(record.name);
+    const previewUrl = cleanText(record.previewUrl);
     const kind = record.kind === 'image' || record.kind === 'file' ? record.kind : null;
     if (!path || !name || !kind) return [];
     const id = cleanText(record.id) || `pending-attachment:${index}:${path}`;
@@ -75,6 +77,7 @@ export function normalizedCloudGroupOutboxPendingAttachments(value: unknown): Cl
           } : {}),
       formatLabel: cleanText(record.formatLabel) || null,
       mimeType: cleanText(record.mimeType) || null,
+      ...(previewUrl ? { previewUrl } : {}),
       sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null,
       ...(dimensions ?? {}),
     }];

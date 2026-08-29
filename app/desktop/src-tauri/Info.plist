@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
   <key>NSCameraUsageDescription</key>
-  <string>Kordi uses your camera when you join a video call or meeting.</string>
+  <string>Kordi uses your camera when you record a video message or join a video call.</string>
   <key>NSMicrophoneUsageDescription</key>
-  <string>Kordi uses your microphone when you record a voice message or join a call.</string>
+  <string>Kordi uses your microphone when you record a voice or video message or join a call.</string>
   <key>NSSpeechRecognitionUsageDescription</key>
   <string>Kordi transcribes voice messages on this Mac so people and agents can read them.</string>
 </dict>

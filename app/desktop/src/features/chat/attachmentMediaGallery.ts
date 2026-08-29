@@ -62,6 +62,37 @@ export function attachmentImageDisplaySize(attachment: MessageAttachment) {
   return fittedImageDisplaySize(dimensions, expressive ? 180 : 464, expressive ? 180 : 320);
 }
 
+export function isMp4VideoAttachment(attachment: MessageAttachment) {
+  const mimeType = attachment.mimeType?.trim().toLowerCase();
+  return mimeType === 'video/mp4'
+    || ((!mimeType || mimeType === 'application/octet-stream') && attachmentExtension(attachment) === 'mp4');
+}
+
+export function attachmentsAreOnlyMp4Videos(attachments?: readonly MessageAttachment[] | null) {
+  return attachments?.length ? attachments.every(isMp4VideoAttachment) : false;
+}
+
+export function playableVideoSource(
+  localSource?: string | null,
+  remoteSource?: string | null,
+  failedSource?: string | null,
+) {
+  return (localSource !== failedSource ? localSource : null)
+    ?? (remoteSource !== failedSource ? remoteSource : null)
+    ?? undefined;
+}
+
+export function attachmentVideoDisplaySize(
+  attachment: Pick<MessageAttachment, 'widthPixels' | 'heightPixels'>,
+) {
+  const dimensions = normalizedImagePixelDimensions(
+    attachment.widthPixels,
+    attachment.heightPixels,
+  );
+  if (!dimensions) return { width: 464, height: 261 };
+  return fittedImageDisplaySize(dimensions, 464, 320);
+}
+
 function isArchiveAttachment(attachment: MessageAttachment) {
   return ARCHIVE_ATTACHMENT_EXTENSIONS.has(attachmentExtension(attachment));
 }
@@ -100,6 +131,21 @@ export function attachmentPreviewUrl(attachment: MessageAttachment) {
       return undefined;
     }
   }
+  return undefined;
+}
+
+export function attachmentVideoUrl(attachment: MessageAttachment & { playbackUrl?: string | null }) {
+  if (!isMp4VideoAttachment(attachment)) return undefined;
+  if (attachment.playbackUrl?.startsWith('blob:')) return attachment.playbackUrl;
+  if (attachment.localPath && isNativeShell()) {
+    try {
+      return convertFileSrc(attachment.localPath);
+    } catch {
+      return undefined;
+    }
+  }
+  const previewUrl = safeAttachmentPreviewUrl(attachment.previewUrl);
+  if (previewUrl && !previewUrl.startsWith('data:image/')) return previewUrl;
   return undefined;
 }
 

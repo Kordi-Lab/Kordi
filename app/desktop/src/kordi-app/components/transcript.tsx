@@ -18,6 +18,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual, shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
+import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGallery';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import {
@@ -60,7 +61,6 @@ import type {
   MessageSourceReference,
 } from '../types';
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
-
 function isCompactionSummaryMessage(msg: Message) {
   return msg.role === 'system' && msg.detail?.startsWith(COMPACTION_DETAIL_PREFIX);
 }
@@ -763,7 +763,7 @@ function MessageBubbleView({
   const deliveryVisual = deliveryStatus ? messageDeliveryVisual(deliveryStatus) : null;
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
   const hasVoice = Boolean(msg.voiceMessage); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0);
-  const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
+  const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasOnlyBorderlessMediaAttachments = hasOnlyImageAttachments || (!hasText && !hasVoice && attachmentsAreOnlyMp4Videos(msg.attachments)); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
   const hasGroupedImageAttachments = hasOnlyImageAttachments && (msg.attachments?.length ?? 0) > 1;
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage);
   const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
@@ -817,7 +817,7 @@ function MessageBubbleView({
       {showHeaderMeta ? <div className="app-message-meta px-1">{msg.sender}</div> : null}
       <div className={cn(
         'flex w-full max-w-full',
-        hasOnlyImageAttachments ? 'items-start' : 'items-end',
+        hasOnlyBorderlessMediaAttachments ? 'items-start' : 'items-end',
         isAgentMessage ? 'w-fit max-w-full gap-2' : showAvatarSlot || selectionControl ? (useHumanCompactDensity ? 'gap-1.5' : 'gap-2') : 'gap-0',
         isOwnHumanMessage ? 'flex-row-reverse' : 'flex-row',
       )}>
@@ -862,7 +862,7 @@ function MessageBubbleView({
           <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
         ) : null}
         <div data-message-context-menu-anchor="true"
-          data-message-media-side={hasOnlyImageAttachments ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
+          data-message-media-side={hasOnlyBorderlessMediaAttachments ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
           data-transcript-density={compactDensity}
           onClick={(event) => {
             if (!selectableInSelectionMode) return;
@@ -875,16 +875,16 @@ function MessageBubbleView({
           className={cn(
           'app-message-hover-time-trigger min-w-0',
           hasGroupedImageAttachments ? (isOwnHumanMessage ? 'mr-4' : isPeerHumanMessage ? 'ml-4' : '') : '',
-          hasOnlyImageAttachments ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
+          hasOnlyBorderlessMediaAttachments ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
-            ? hasOnlyImageAttachments
+            ? hasOnlyBorderlessMediaAttachments
               ? 'w-fit max-w-[31rem] p-0'
               : useHumanCompactDensity
                 ? cn('app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
                 : cn('w-fit px-4 py-2.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
-              ? hasOnlyImageAttachments
+              ? hasOnlyBorderlessMediaAttachments
                 ? 'w-fit max-w-[31rem] p-0'
                 : useHumanCompactDensity
                   ? cn(
@@ -897,12 +897,12 @@ function MessageBubbleView({
                     msg.supportContactTyping ? 'min-w-[4rem]' : undefined,
                     humanMessageBubbleShapeClass('peer'),
                   )
-               : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyImageAttachments ? 'px-2.5 py-1.5' : '',
-          !hasOnlyImageAttachments && bubble,
+               : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'px-2.5 py-1.5' : '',
+          !hasOnlyBorderlessMediaAttachments && bubble,
         )}
         >
-        {isOwnHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="own" /> : null}
-        {isPeerHumanMessage && !hasOnlyImageAttachments ? <MessageBubbleShapeBackdrop side="peer" /> : null}
+        {isOwnHumanMessage && !hasOnlyBorderlessMediaAttachments ? <MessageBubbleShapeBackdrop side="own" /> : null}
+        {isPeerHumanMessage && !hasOnlyBorderlessMediaAttachments ? <MessageBubbleShapeBackdrop side="peer" /> : null}
         {showInlineHumanSender ? (
           <div
             className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
@@ -942,7 +942,7 @@ function MessageBubbleView({
                   <AttachmentPreview
                     msg={msg}
                     imageGallery={imageGallery}
-                    imageDeliveryStatus={hasOnlyImageAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null}
+                    imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null}
                   />
                 ) : null}
                 {msg.supportContactTyping ? (
@@ -953,7 +953,7 @@ function MessageBubbleView({
                     : <div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageMentionProfileContent message={msg} onOpenSenderProfile={onOpenSenderProfile} />}</div>
                 ) : null}
               </div>
-              {!hasOnlyImageAttachments && !hasVoice ? (
+              {!hasOnlyBorderlessMediaAttachments && !hasVoice ? (
                 <MessageFooter
                   status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined}
                   detail={footerDetail}

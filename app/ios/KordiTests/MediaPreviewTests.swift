@@ -182,6 +182,52 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessImageSurface(for: captionedMessage))
     }
 
+    func testVideoOnlyMessageUsesBorderlessMediaSurface() {
+        let video = ChatAttachment(
+            attachmentId: "video",
+            name: "video.mp4",
+            kind: .file,
+            mimeType: "video/mp4",
+            sizeBytes: 148_200_000,
+            previewURL: nil
+        )
+        let videoMessage = message(
+            id: "video-message",
+            author: .me,
+            attachments: [video]
+        )
+        var captionedMessage = videoMessage
+        captionedMessage.text = "Caption"
+
+        XCTAssertTrue(MessageAttachmentPresentation.usesBorderlessVideoSurface(for: videoMessage))
+        XCTAssertTrue(MessageAttachmentPresentation.usesBorderlessMediaSurface(for: videoMessage))
+        XCTAssertTrue(MessageMediaStatusPresentation.showsOverlay(for: videoMessage))
+        XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessVideoSurface(for: captionedMessage))
+    }
+
+    func testVideoMessageLayoutPreservesSourceAspectRatio() {
+        XCTAssertEqual(
+            VideoAttachmentLayout.aspectRatio(widthPixels: 1_080, heightPixels: 1_920),
+            0.5625,
+            accuracy: 0.0001
+        )
+        XCTAssertEqual(
+            VideoAttachmentLayout.aspectRatio(widthPixels: 1_920, heightPixels: 1_080),
+            1.7778,
+            accuracy: 0.0001
+        )
+        let portrait = attachment(id: "portrait-video", kind: .file, width: 1_080, height: 1_920)
+        let size = MessageImageInteraction.displaySize(
+            for: portrait,
+            decodedSize: nil,
+            defaultSize: CGSize(width: 244, height: 154),
+            maximumWidth: 244,
+            maximumHeight: 320
+        )
+        XCTAssertEqual(size.width, 180, accuracy: 0.1)
+        XCTAssertEqual(size.height, 320, accuracy: 0.1)
+    }
+
     func testTransparentImageKeepsBorderlessSurfaceClear() throws {
         let transparentFormat = UIGraphicsImageRendererFormat()
         transparentFormat.opaque = false
@@ -426,7 +472,7 @@ final class MediaPreviewTests: XCTestCase {
                 )
                 imageMessage.deliveryState = state
 
-                XCTAssertTrue(MessageImageStatusPresentation.showsOverlay(for: imageMessage))
+                XCTAssertTrue(MessageMediaStatusPresentation.showsOverlay(for: imageMessage))
             }
         }
 
@@ -436,7 +482,7 @@ final class MediaPreviewTests: XCTestCase {
             attachments: [attachment(id: "image", kind: .image)]
         )
         failedImage.deliveryState = .failed
-        XCTAssertTrue(MessageImageStatusPresentation.showsOverlay(for: failedImage))
+        XCTAssertTrue(MessageMediaStatusPresentation.showsOverlay(for: failedImage))
     }
 
     func testFailedImageRetryUsesTheSharedImageStatusSlot() {
@@ -446,10 +492,10 @@ final class MediaPreviewTests: XCTestCase {
             attachments: [attachment(id: "image", kind: .image)]
         )
         imageMessage.deliveryState = .failed
-        XCTAssertTrue(MessageImageStatusPresentation.showsOverlay(for: imageMessage))
+        XCTAssertTrue(MessageMediaStatusPresentation.showsOverlay(for: imageMessage))
 
         imageMessage.text = "Caption"
-        XCTAssertFalse(MessageImageStatusPresentation.showsOverlay(for: imageMessage))
+        XCTAssertFalse(MessageMediaStatusPresentation.showsOverlay(for: imageMessage))
     }
 
     func testGroupedImageStackKeepsTheNextPhotosBehindTheSelection() {
@@ -460,13 +506,20 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertEqual(MessageImageStack.targetIndex(count: 3, selectedIndex: 0, direction: -1), 2)
     }
 
-    private func attachment(id: String, kind: ChatAttachmentKind) -> ChatAttachment {
+    private func attachment(
+        id: String,
+        kind: ChatAttachmentKind,
+        width: Int? = nil,
+        height: Int? = nil
+    ) -> ChatAttachment {
         ChatAttachment(
             attachmentId: id,
             name: "\(id).png",
             kind: kind,
             mimeType: kind == .image ? "image/png" : "application/octet-stream",
             sizeBytes: 1_024,
+            widthPixels: width,
+            heightPixels: height,
             previewURL: nil
         )
     }

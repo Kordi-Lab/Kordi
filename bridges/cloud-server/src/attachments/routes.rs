@@ -3,9 +3,9 @@ pub(crate) mod multipart;
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use axum::body::{Body, Bytes};
+use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json};
 use chrono::Utc;
@@ -15,7 +15,7 @@ use sqlx_core::query_as::query_as;
 
 use crate::attachments::access::attachment_access_row;
 use crate::attachments::content_type::{
-    detected_raster_content_type, normalized_supported_raster_content_type,
+    detected_supported_content_type, normalized_verified_content_type,
 };
 use crate::attachments::preview::{normalize_preview_url, preview_content_response};
 use crate::attachments::response::{boxed_err, err};
@@ -217,15 +217,15 @@ pub async fn upload(
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_string);
-    let detected_content_type = detected_raster_content_type(&bytes);
+    let detected_content_type = detected_supported_content_type(&bytes);
     if let Some(declared) = content_type
         .as_deref()
-        .and_then(normalized_supported_raster_content_type)
+        .and_then(normalized_verified_content_type)
     {
         if detected_content_type != Some(declared) {
             return err(
                 "invalid_attachment_content",
-                "The attachment bytes do not match the declared image type.",
+                "The attachment bytes do not match the declared media type.",
                 StatusCode::BAD_REQUEST,
             );
         }
@@ -464,88 +464,6 @@ pub async fn update_preview(
         updated_links: result.rows_affected(),
     })
     .into_response()
-}
-
-/// `GET /v1/cloud/attachments/:attachment_id/content`
-///
-/// Streams attachment bytes through the authenticated Cloud API. This keeps
-/// S3/MinIO private and lets desktop clients auto-fetch small previews using
-/// their Bearer token rather than exposing session tokens in image URLs.
-pub async fn content(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Path(attachment_id): Path<String>,
-) -> Response {
-    let s3 = match s3_or_503(&state) {
-        Ok(value) => value,
-        Err(resp) => return *resp,
-    };
-
-    let (object_key, _, _, content_type, detected_content_type, size_bytes, _) =
-        match attachment_access_row(&state, &session, &attachment_id).await {
-            Ok(value) => value,
-            Err(resp) => return *resp,
-        };
-
-    let url = match presign_download_url(s3, &object_key) {
-        Ok(value) => value,
-        Err(error) => {
-            eprintln!("[attachments] presign content download: {error}");
-            return err(
-                "server_error",
-                "Could not sign download URL.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
-
-    let object_response = match reqwest::Client::new().get(url.to_string()).send().await {
-        Ok(resp) if resp.status().is_success() => resp,
-        Ok(resp) => {
-            eprintln!("[attachments] content fetch failed: {}", resp.status());
-            return err(
-                "server_error",
-                "Could not download attachment.",
-                StatusCode::BAD_GATEWAY,
-            );
-        }
-        Err(error) => {
-            eprintln!("[attachments] content fetch request failed: {error}");
-            return err(
-                "server_error",
-                "Could not download attachment.",
-                StatusCode::BAD_GATEWAY,
-            );
-        }
-    };
-
-    let object_content_type = object_response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .map(str::to_string);
-    let object_content_length = object_response.content_length();
-
-    let mut headers = HeaderMap::new();
-    if let Some(value) = detected_content_type
-        .as_deref()
-        .or(object_content_type.as_deref())
-        .or(content_type.as_deref())
-    {
-        if let Ok(header_value) = HeaderValue::from_str(value) {
-            headers.insert(header::CONTENT_TYPE, header_value);
-        }
-    }
-    let length =
-        object_content_length.or_else(|| size_bytes.and_then(|value| u64::try_from(value).ok()));
-    if let Some(length) = length {
-        if let Ok(header_value) = HeaderValue::from_str(&length.to_string()) {
-            headers.insert(header::CONTENT_LENGTH, header_value);
-        }
-    }
-    let mut response = Response::new(Body::from_stream(object_response.bytes_stream()));
-    *response.headers_mut() = headers;
-    response
 }
 
 /// `GET /v1/cloud/attachments/:attachment_id/preview-content`

@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react';
-import type { AttachmentItem, ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
+import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
@@ -12,17 +12,11 @@ import {
   ComposerModelControls,
   ComposerRuntimeStatus,
   ComposerSlashMenu,
-  type CompactComposerModelMenuSaveInput,
 } from '@/kordi-app/components';
 import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
-import type { Conversation, DesktopChatContextWindowStatus } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import { ComposerDropSurface } from './chatsPage.composerDropSurface';
-import {
-  CollaborationRoutingControls,
-  type CollaborationRoutingControlsModel,
-  type CollaborationRoutingPatch,
-} from '@/pages/chatsPage.collaborationRoutingControls';
+import { CollaborationRoutingControls } from '@/pages/chatsPage.collaborationRoutingControls';
 import {
   ComposerQuotePreview,
   MessageSelectionBar,
@@ -31,50 +25,17 @@ import {
   canConfigureConversationModelRoute,
   shouldUseCompactModelRouteMenu,
 } from '@/pages/chatsPage.header';
-import type {
-  ChatsPageComposer,
-  ChatsPageRuntime,
-} from '@/pages/chatsPage.types';
 import { useVoiceComposer } from './chatsPage.voiceComposer';
 import { VoiceComposerControls, VoiceRecordingSurface } from './chatsPage.voiceControls';
+import { useVideoMessageRecorder } from '@/features/chat/useVideoMessageRecorder';
+import {
+  VideoAttachmentReviewSurface,
+  VideoRecordingSurface,
+} from './chatsPage.videoComposer';
+import { useAttachedVideoReviews } from './chatsPage.videoAttachmentReviews';
+import type { MainComposerProps } from './chatsPage.mainComposer.types';
 
-type MainComposerLocalRouting = {
-  paneKind: 'human' | 'agent' | null;
-  configTarget: ComposerConfigTargetOverride;
-  contextStatus: DesktopChatContextWindowStatus | null | undefined;
-  cacheText: string | null | undefined;
-};
-
-type MainComposerCollaborationRouting = {
-  enabled: boolean;
-  notice: string | null;
-  model: CollaborationRoutingControlsModel | null;
-  agentSelectorOpen: boolean;
-  onSelectAgent: (agentId: string) => void;
-  onUpdate: (patch: CollaborationRoutingPatch) => void;
-  onSaveCompact: (input: CompactComposerModelMenuSaveInput) => void;
-  defaultThinkingForModel: (
-    modelValue: string | null | undefined,
-    currentThinking: string | null | undefined,
-  ) => string;
-};
-
-export type MainComposerProps = {
-  conversation: Conversation;
-  composer: ChatsPageComposer;
-  runtime: ChatsPageRuntime;
-  localRouting: MainComposerLocalRouting;
-  collaborationRouting: MainComposerCollaborationRouting;
-  display: {
-    isNativeShell: boolean;
-    showCompanionPane: boolean;
-    activeLiveTurnIsRunning: boolean;
-    prefersReducedMotion: boolean | null;
-    placeholder: string;
-  };
-  onSend: (draftOverride?: string, attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
-  cloudAccountId?: string | null;
-};
+export type { MainComposerProps } from './chatsPage.mainComposer.types';
 
 export function MainComposer({
   conversation,
@@ -140,6 +101,17 @@ export function MainComposer({
     focusComposer: () => textareaRef.current?.focus(),
   });
   const voiceSurfaceActive = voice.surfaceActive;
+  const video = useVideoMessageRecorder({
+    conversationId: conversation.id,
+    onSend,
+    focusComposer: () => textareaRef.current?.focus(),
+  });
+  const videoReviews = useAttachedVideoReviews({
+    onSend,
+    onRemoveAttachment: removeChatComposerAttachment,
+  });
+  const attachedVideoReview = videoReviews.current;
+  const mediaSurfaceActive = voiceSurfaceActive || video.surfaceActive || Boolean(attachedVideoReview);
 
   function openPastedImageEditor(pendingAttachments: Promise<AttachmentItem[]>) {
     void pendingAttachments.then((saved) => {
@@ -158,7 +130,9 @@ export function MainComposer({
           onForward={onForwardSelectedMessages}
         />
       ) : null}
-      <ComposerDropSurface saveDesktopAttachments={saveDesktopAttachments}>
+      <ComposerDropSurface saveDesktopAttachments={(files) => (
+        videoReviews.stage(saveDesktopAttachments(files))
+      )}>
         <div className="relative">
           {filteredChatSlashCommands.length > 0 ? (
             <ComposerSlashMenu
@@ -186,7 +160,7 @@ export function MainComposer({
               className="hidden"
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
-                if (files.length > 0) void saveDesktopAttachments(files);
+                if (files.length > 0) void videoReviews.stage(saveDesktopAttachments(files));
                 event.currentTarget.value = '';
               }}
             />
@@ -222,7 +196,15 @@ export function MainComposer({
                 {memeValidationError}
               </p>
             ) : null}
-            {voiceSurfaceActive ? (
+            {attachedVideoReview ? (
+              <VideoAttachmentReviewSurface
+                attachment={attachedVideoReview}
+                onCancel={videoReviews.cancel}
+                onSend={videoReviews.send}
+              />
+            ) : video.surfaceActive ? (
+              <VideoRecordingSurface video={video} />
+            ) : voiceSurfaceActive ? (
               <VoiceRecordingSurface voice={voice} />
             ) : <div className="flex min-w-0">
               <textarea
@@ -246,7 +228,7 @@ export function MainComposer({
                   const files = extractClipboardFiles(event.clipboardData);
                   if (files.length > 0) {
                     event.preventDefault();
-                    openPastedImageEditor(saveDesktopAttachments(files));
+                    openPastedImageEditor(videoReviews.stage(saveDesktopAttachments(files)));
                     return;
                   }
                   const pastedPaths = extractPastedLocalFilePaths(
@@ -255,7 +237,7 @@ export function MainComposer({
                   );
                   if (pastedPaths.length > 0) {
                     event.preventDefault();
-                    openPastedImageEditor(saveDesktopAttachmentPaths(pastedPaths));
+                    openPastedImageEditor(videoReviews.stage(saveDesktopAttachmentPaths(pastedPaths)));
                   }
                 }}
                 onCompositionStart={imeCompositionGuard.onCompositionStart}
@@ -347,7 +329,7 @@ export function MainComposer({
           ref={composerControlsRef}
           className={cn(
             'app-composer-meta mt-2 items-center justify-between gap-4 pt-2.5',
-            voiceSurfaceActive ? 'hidden' : 'flex',
+            mediaSurfaceActive ? 'hidden' : 'flex',
           )}
         >
           <div
@@ -372,10 +354,8 @@ export function MainComposer({
             {!voiceSurfaceActive ? <ComposerAttachmentAddMenu
               inputRef={chatAttachmentInputRef}
               memeInputRef={memeAttachmentInputRef}
-              onChooseFiles={display.isNativeShell
-                ? () => { void saveDesktopAttachmentPaths(); }
-                : undefined}
-              disabled={false}
+              onRecordVideo={() => { void video.start(); }}
+              disabled={voice.recording}
             /> : null}
             {!voiceSurfaceActive ? <ComposerExpressivePicker
               key={cloudAccountId?.trim() || 'local'}

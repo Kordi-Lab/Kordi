@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 enum AppPhase: Equatable {
     case launching
@@ -159,6 +160,13 @@ final class CloudPresencePublisher {
 
 @MainActor
 final class AppModel: ObservableObject {
+    private static let attachmentPreviewImageCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 256
+        cache.totalCostLimit = 32 * 1_024 * 1_024
+        return cache
+    }()
+
     private static let cloudUnavailableMessage = "Kordi Cloud is unavailable. Check your connection and try again."
     private static let cloudSyncRepairInterval: Duration = .seconds(2)
     private static let cachedConversationPageLimit = 8
@@ -457,6 +465,7 @@ final class AppModel: ObservableObject {
         expressiveMediaSyncTask = nil
         expressiveMediaSyncTaskID = nil
         knownStickerAttachmentSignatures.removeAll()
+        Self.attachmentPreviewImageCache.removeAllObjects()
         cloudSyncCursor = "0"
         cloudSyncLastStreamSequence = 0
         cloudSyncHasCurrentSequence = false
@@ -513,6 +522,9 @@ final class AppModel: ObservableObject {
         pendingProviderAuthBindingsBySessionID = [:]
         providerAuthenticationSyncTask?.cancel()
         providerAuthenticationSyncTask = nil
+        for drafts in pendingAttachmentDraftsByMessageId.values {
+            drafts.forEach { $0.discardOwnedFile() }
+        }
         pendingAttachmentDraftsByMessageId = [:]
         pendingReplyByMessageId = [:]
         pendingMessageActionByMessageId = [:]
@@ -1365,6 +1377,8 @@ final class AppModel: ObservableObject {
             errorMessage: nil,
             requestMessageId: nil,
             attachments: voiceMessage == nil ? outgoingAttachments.map(\.optimisticAttachment) : [],
+            attachmentUploadProgress: outgoingAttachments.count == 1
+                && outgoingAttachments[0].isMP4Video ? 0 : nil,
             replyToMessageId: messageAction?.replyToMessageId,
             messageAction: messageAction,
             mentions: mentions,
@@ -1407,7 +1421,26 @@ final class AppModel: ObservableObject {
         )
 
         do {
-            async let attachmentUpload = uploadAttachments(outgoingAttachments, token: token)
+            let conversationId = conversation.id
+            let tracksVideoUpload = outgoingAttachments.count == 1
+                && outgoingAttachments[0].isMP4Video
+            let uploadProgress: (@Sendable (Double) async -> Void)?
+            if tracksVideoUpload {
+                uploadProgress = { [weak self] progress in
+                    await self?.updateAttachmentUploadProgress(
+                        progress,
+                        messageId: localId,
+                        conversationId: conversationId
+                    )
+                }
+            } else {
+                uploadProgress = nil
+            }
+            async let attachmentUpload = uploadAttachments(
+                outgoingAttachments,
+                token: token,
+                progress: uploadProgress
+            )
             let resolvedVoiceMessage = await resolvedVoiceMessage?.value ?? voiceMessage
             if let resolvedVoiceMessage {
                 pendingVoiceDraftsByMessageId[localId] = resolvedVoiceMessage
@@ -1551,6 +1584,7 @@ final class AppModel: ObservableObject {
                 await rebuildConversationCatalog()
             }
             cloudConnectionState = .connected
+            outgoingAttachments.forEach { $0.discardOwnedFile() }
             clearPendingSendMetadata(localId)
 
             if conversation.kind == .agent || routedAgent != nil || routesToSupportAgent {
@@ -2438,6 +2472,29 @@ final class AppModel: ObservableObject {
         )
     }
 
+    func prepareAttachmentPreviewImage(_ attachment: ChatAttachment) async -> UIImage? {
+        let cacheKey = attachment.attachmentId as NSString
+        if let cached = Self.attachmentPreviewImageCache.object(forKey: cacheKey) {
+            return cached
+        }
+        if let data = AttachmentPreviewDataURL.decode(attachment.previewURL) {
+            guard let image = UIImage(data: data) else { return nil }
+            Self.attachmentPreviewImageCache.setObject(image, forKey: cacheKey, cost: data.count)
+            return image
+        }
+        guard let token,
+              !attachment.attachmentId.hasPrefix("pending:"),
+              let data = try? await api.downloadAttachmentPreviewContent(
+                token: token,
+                attachmentId: attachment.attachmentId
+              ) else {
+            return nil
+        }
+        guard let image = UIImage(data: data) else { return nil }
+        Self.attachmentPreviewImageCache.setObject(image, forKey: cacheKey, cost: data.count)
+        return image
+    }
+
     func addAttachmentToExpressiveMediaLibrary(
         _ attachment: ChatAttachment
     ) async -> ExpressiveMediaLibraryKind? {
@@ -2647,12 +2704,29 @@ final class AppModel: ObservableObject {
             errorMessage = AttachmentTransferError.missingSession.localizedDescription
             return nil
         }
+        if attachment.attachmentId.hasPrefix("pending:") {
+            let pendingId = String(attachment.attachmentId.dropFirst("pending:".count))
+            // ponytail: active send drafts are bounded; add an index if concurrent
+            // attachment uploads ever make this scan measurable.
+            for drafts in pendingAttachmentDraftsByMessageId.values {
+                if let pending = drafts.first(where: { $0.id == pendingId }) {
+                    if let fileURL = pending.fileURL {
+                        return fileURL
+                    }
+                    return try? await attachmentFileStore.store(
+                        pending.data,
+                        attachment: attachment,
+                        accountId: accountId
+                    )
+                }
+            }
+        }
         let usesImagePreview = AttachmentDownloadPolicy.usesImagePreview(
             for: attachment,
             prefersOriginal: prefersOriginal
         )
         if let cached = await attachmentFileStore.cachedURL(for: attachment, accountId: accountId),
-           usesImagePreview || (MessageImageInteraction.isAnimatedGIF(attachment)
+           attachment.isMP4Video || usesImagePreview || (MessageImageInteraction.isAnimatedGIF(attachment)
             && AnimatedImageDecoder.isAnimated(at: cached)) {
             return cached
         }
@@ -2665,6 +2739,27 @@ final class AppModel: ObservableObject {
             return nil
         }
         do {
+            if attachment.isMP4Video, !prefersOriginal {
+                let url: URL
+                do {
+                    url = try await api.attachmentPlaybackURL(
+                        token: token,
+                        attachmentId: attachment.attachmentId
+                    )
+                } catch let error as CloudAPIError where error.statusCode == 404 {
+                    let temporaryURL = try await api.downloadAttachmentContentFile(
+                        token: token,
+                        attachmentId: attachment.attachmentId
+                    )
+                    url = try await attachmentFileStore.store(
+                        fileAt: temporaryURL,
+                        attachment: attachment,
+                        accountId: accountId
+                    )
+                }
+                cloudConnectionState = .connected
+                return url
+            }
             let data = if usesImagePreview,
                           let preview = try? await api.downloadAttachmentPreviewContent(
                             token: token,
@@ -3513,19 +3608,40 @@ final class AppModel: ObservableObject {
 
     private func uploadAttachments(
         _ attachments: [PendingAttachment],
-        token: String
+        token: String,
+        progress: (@Sendable (Double) async -> Void)? = nil
     ) async throws -> [CloudMessageAttachment] {
         guard !attachments.isEmpty else { return [] }
+        let reportsProgress = attachments.count == 1
         return try await withThrowingTaskGroup(of: (Int, CloudMessageAttachment).self) { group in
             for (index, attachment) in attachments.enumerated() {
                 group.addTask { [api] in
-                    (index, try await api.uploadAttachment(token: token, attachment: attachment))
+                    (index, try await api.uploadAttachment(
+                        token: token,
+                        attachment: attachment,
+                        progress: reportsProgress ? progress : nil
+                    ))
                 }
             }
             var uploaded: [(Int, CloudMessageAttachment)] = []
             for try await item in group { uploaded.append(item) }
             return uploaded.sorted { $0.0 < $1.0 }.map(\.1)
         }
+    }
+
+    private func updateAttachmentUploadProgress(
+        _ progress: Double,
+        messageId: String,
+        conversationId: String
+    ) {
+        guard let index = messagesByConversation[conversationId]?.firstIndex(where: {
+            $0.id == messageId
+        }) else { return }
+        let value = min(1, max(0, progress))
+        if messagesByConversation[conversationId]?[index].attachmentUploadProgress == value {
+            return
+        }
+        messagesByConversation[conversationId]?[index].attachmentUploadProgress = value
     }
 
     private func startAgentRun(

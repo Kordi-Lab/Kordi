@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { CloudGroupOutbox, CLOUD_GROUP_CANONICAL_RECONCILE_DELAY_MS, cloudGroupOutboxNextWakeAtMs, defaultCloudGroupOutboxPersistence } from '../src/features/cloud/cloudGroupOutbox';
 import { encodeCloudGroupControl, parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
-import { prepareCloudGroupOutboxEntryAttachments } from '../src/features/cloud/cloudGroupOutboxAttachments';
+import { cloudGroupOutboxAttachmentSources, prepareCloudGroupOutboxEntryAttachments } from '../src/features/cloud/cloudGroupOutboxAttachments';
 
 import { MemoryPersistence, MemoryStorage, ControllableIndexedDb, withBrowserPersistenceGlobals, entry, awaitingEntry } from './helpers/cloudGroupOutboxFixtures';
 
@@ -40,6 +40,27 @@ test('outbox keeps image previews in attachment metadata for recipient delivery'
 
   assert.equal(outbox.entries()[0]?.attachments?.[0]?.previewUrl, previewUrl);
   assert.equal(persistence.value?.entries[0]?.attachments?.[0]?.previewUrl, previewUrl);
+});
+
+test('pending group videos retain their poster until upload preparation', async () => {
+  const previewUrl = 'data:image/jpeg;base64,cG9zdGVy';
+  const [source] = cloudGroupOutboxAttachmentSources([{
+    id: 'local_video',
+    path: '/tmp/kordi/video.mp4',
+    localPath: '/tmp/kordi/video.mp4',
+    name: 'video.mp4',
+    kind: 'file',
+    mimeType: 'video/mp4',
+    previewUrl,
+  }]);
+  const persistence = new MemoryPersistence();
+  const first = new CloudGroupOutbox('acct_me', persistence);
+  await first.restore();
+  await first.enqueue({ ...entry(), pendingAttachments: [source!] });
+
+  const restarted = new CloudGroupOutbox('acct_me', persistence);
+  const [restored] = await restarted.restore();
+  assert.equal(restored?.pendingAttachments?.[0]?.previewUrl, previewUrl);
 });
 
 test('outbox durably retains local attachment sources until upload completes', async () => {

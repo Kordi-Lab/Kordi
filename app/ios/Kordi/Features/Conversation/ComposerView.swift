@@ -684,7 +684,7 @@ struct ComposerView: View {
             }
         )
         .disabled(isSending || isPreparingAttachments)
-        .accessibilityLabel("Add photo or file")
+        .accessibilityLabel("Add photo, video, or file")
     }
 
     private var sendButton: some View {
@@ -962,8 +962,14 @@ struct ComposerView: View {
                 HStack(spacing: 8) {
                     ForEach(attachments) { attachment in
                         HStack(spacing: 8) {
-                            Image(systemName: attachment.kind == .image ? "photo.fill" : "doc.fill")
-                                .foregroundStyle(attachment.kind == .image ? KordiTheme.signalBlue : .secondary)
+                            Image(systemName: attachment.kind == .image
+                                  ? "photo.fill"
+                                  : attachment.isMP4Video ? "play.rectangle.fill" : "doc.fill")
+                                .foregroundStyle(
+                                    attachment.kind == .image || attachment.isMP4Video
+                                        ? KordiTheme.signalBlue
+                                        : .secondary
+                                )
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(attachment.name)
                                     .font(.caption.weight(.semibold))
@@ -996,6 +1002,7 @@ struct ComposerView: View {
                                 )
                             }
                             Button {
+                                attachment.discardOwnedFile()
                                 attachments.removeAll { $0.id == attachment.id }
                                 if photoAttachmentCount < 2 {
                                     photoGrouping = .combined

@@ -52,6 +52,30 @@ test('composer uploads keep native file bytes out of JavaScript', async () => {
   assert.equal(result[0]?.sizeBytes, 250 * 1024 * 1024);
 });
 
+test('video uploads require a prepared poster before bytes are sent', async () => {
+  let uploaded = false;
+  await assert.rejects(
+    uploadComposerAttachments({
+      token: 'kordi_cs_xyz',
+      client: {} as Pick<CloudAuthClient, 'uploadAttachment'>,
+      attachments: [{
+        id: 'video-without-poster',
+        path: '/staged/video.mp4',
+        name: 'video.mp4',
+        kind: 'file',
+        mimeType: 'video/mp4',
+      }],
+      useNativeUpload: true,
+      nativeUpload: async () => {
+        uploaded = true;
+        throw new Error('Video bytes must not upload without a poster.');
+      },
+    }),
+    /could not prepare a poster/,
+  );
+  assert.equal(uploaded, false);
+});
+
 test('native upload completion wins the race with the final progress event', () => {
   const source = readFileSync(
     new URL('../src/features/cloud/cloudAttachmentUpload.ts', import.meta.url),

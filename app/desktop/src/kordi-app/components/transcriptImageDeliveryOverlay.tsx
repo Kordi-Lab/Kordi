@@ -1,7 +1,10 @@
-import { Check, CheckCheck, LoaderCircle } from 'lucide-react';
+import { Check, CheckCheck, LoaderCircle, X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import type { AttachmentImageDeliveryVisual } from './transcriptAttachmentTypes';
+import {
+  formatAttachmentSize,
+  type AttachmentImageDeliveryVisual,
+} from './transcriptAttachmentTypes';
 
 type TranscriptImageDeliveryOverlayProps = {
   visual: AttachmentImageDeliveryVisual | null;
@@ -9,7 +12,10 @@ type TranscriptImageDeliveryOverlayProps = {
   foregroundTone: 'light' | 'dark' | null;
   onRetry?: () => void;
   uploadProgress?: number | null;
+  uploadedBytes?: number | null;
+  totalBytes?: number | null;
   onCancelUpload?: () => void;
+  mediaLabel?: string;
 };
 
 function adaptiveDeliveryOverlayClassName(foregroundTone: 'light' | 'dark' | null) {
@@ -27,7 +33,10 @@ export function TranscriptImageDeliveryOverlay({
   foregroundTone,
   onRetry,
   uploadProgress = null,
+  uploadedBytes = null,
+  totalBytes = null,
   onCancelUpload,
+  mediaLabel = 'image',
 }: TranscriptImageDeliveryOverlayProps) {
   if (!visual) return null;
 
@@ -35,6 +44,9 @@ export function TranscriptImageDeliveryOverlay({
     const progress = uploadProgress === null
       ? null
       : Math.max(0, Math.min(100, Math.floor(uploadProgress)));
+    const uploadedSize = formatAttachmentSize(uploadedBytes);
+    const totalSize = formatAttachmentSize(totalBytes);
+    const sizeProgress = uploadedSize && totalSize ? `${uploadedSize} / ${totalSize}` : null;
     const ring = (
       <div className="app-attachment-image-media-ring-spinner" data-determinate={progress !== null}>
         <svg viewBox="0 0 32 32" focusable="false" aria-hidden="true">
@@ -50,7 +62,11 @@ export function TranscriptImageDeliveryOverlay({
             }}
           />
         </svg>
-        {progress === null ? null : <span className="app-attachment-image-media-ring-label">{progress}%</span>}
+        {onCancelUpload ? (
+          <X className="app-attachment-image-media-ring-cancel-icon" aria-hidden="true" />
+        ) : progress === null ? null : (
+          <span className="app-attachment-image-media-ring-label">{progress}%</span>
+        )}
       </div>
     );
     return (
@@ -58,8 +74,9 @@ export function TranscriptImageDeliveryOverlay({
         data-attachment-image-delivery-status="uploading"
         className={adaptiveDeliveryOverlayClassName(foregroundTone)}
         role="status"
-        aria-label={progress === null ? visual.label : `${visual.label}, ${progress}%`}
+        aria-label={progress === null ? visual.label : `${visual.label}, ${progress}%, ${sizeProgress ?? ''}`.replace(/, $/, '')}
       >
+        {sizeProgress ? <span className="app-attachment-media-upload-size">{sizeProgress}</span> : null}
         <div className="app-attachment-image-media-ring">
           {onCancelUpload ? (
             <button
@@ -70,7 +87,7 @@ export function TranscriptImageDeliveryOverlay({
                 event.stopPropagation();
                 onCancelUpload();
               }}
-              aria-label="Cancel image upload"
+              aria-label={`Cancel ${mediaLabel} upload`}
             >
               {ring}
             </button>
@@ -117,7 +134,7 @@ export function TranscriptImageDeliveryOverlay({
                 event.stopPropagation();
                 onRetry();
               }}
-              aria-label="Retry sending image"
+              aria-label={`Retry sending ${mediaLabel}`}
             >
               <span>{visual.kind === 'partial' ? 'Partial' : 'Failed'}</span>
               <span aria-hidden="true">·</span>

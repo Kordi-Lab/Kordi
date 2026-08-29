@@ -1,3 +1,4 @@
+import AVKit
 import ImageIO
 import SwiftUI
 import UIKit
@@ -50,6 +51,7 @@ struct MessageBubble: View, Equatable {
     let onShareAttachment: (ChatAttachment) -> Void
     let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
     let onPrepareAttachment: (ChatAttachment) async -> URL?
+    let onPrepareAttachmentPreview: (ChatAttachment) async -> UIImage?
     let onAddAttachmentToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
@@ -87,7 +89,7 @@ struct MessageBubble: View, Equatable {
     }
 
     var body: some View {
-        HStack(alignment: usesBorderlessImageSurface ? .top : .bottom, spacing: 8) {
+        HStack(alignment: usesBorderlessMediaSurface ? .top : .bottom, spacing: 8) {
             if selectionMode {
                 Button(action: onSelect) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
@@ -104,7 +106,7 @@ struct MessageBubble: View, Equatable {
                     Button(action: onOpenAuthorProfile) {
                         Color.clear
                             .frame(width: 44, height: 44)
-                            .overlay(alignment: usesBorderlessImageSurface ? .top : .bottom) {
+                            .overlay(alignment: usesBorderlessMediaSurface ? .top : .bottom) {
                                 IdentityAvatar(
                                     name: authorAvatarName,
                                     imageSource: authorAvatarSource,
@@ -140,8 +142,8 @@ struct MessageBubble: View, Equatable {
                 messageSurface
                     .overlay(alignment: .bottomTrailing) {
                         if message.author == .me, !isCallActivity {
-                            if showsImageDeliveryStatus {
-                                imageDeliveryStatusOverlay
+                            if showsMediaDeliveryStatus {
+                                mediaDeliveryStatusOverlay
                             } else {
                                 MessageDeliveryGlyph(
                                     state: message.deliveryState,
@@ -251,7 +253,7 @@ struct MessageBubble: View, Equatable {
                     )
                 }
 
-                if message.deliveryState == .failed, !usesBorderlessImageSurface {
+                if message.deliveryState == .failed, !usesBorderlessMediaSurface {
                     messageRetryControl
                 }
 
@@ -316,6 +318,18 @@ struct MessageBubble: View, Equatable {
                 onPrepareActions: prepareImageActions,
                 onRequestActions: requestImageActions
             )
+        } else if usesBorderlessVideoSurface {
+            VStack(spacing: 7) {
+                ForEach(message.attachments) { attachment in
+                    MessageVideoAttachment(
+                        attachment: attachment,
+                        deliveryState: message.deliveryState,
+                        uploadProgress: message.attachmentUploadProgress,
+                        onPrepare: onPrepareAttachment,
+                        onPreparePreview: onPrepareAttachmentPreview
+                    )
+                }
+            }
         } else {
             AdaptiveBubbleLayout(
                 maximumWidth: 360,
@@ -415,11 +429,14 @@ struct MessageBubble: View, Equatable {
                         ForEach(message.attachments) { attachment in
                             MessageAttachmentCard(
                                 attachment: attachment,
+                                deliveryState: message.deliveryState,
+                                uploadProgress: message.attachmentUploadProgress,
                                 onOpen: { previewImage in
                                     onOpenAttachment(attachment, previewImage)
                                 },
                                 onShare: { onShareAttachment(attachment) },
                                 onPrepare: onPrepareAttachment,
+                                onPreparePreview: onPrepareAttachmentPreview,
                                 onAddToMediaLibrary: onAddAttachmentToMediaLibrary,
                                 isActionTarget: actionAttachment?.id == attachment.id,
                                 onPrepareActions: { prepareImageActions(attachment) },
@@ -438,6 +455,14 @@ struct MessageBubble: View, Equatable {
         MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
     }
 
+    private var usesBorderlessVideoSurface: Bool {
+        MessageAttachmentPresentation.usesBorderlessVideoSurface(for: message)
+    }
+
+    private var usesBorderlessMediaSurface: Bool {
+        usesBorderlessImageSurface || usesBorderlessVideoSurface
+    }
+
     private var hasImageAttachments: Bool {
         message.attachments.contains { $0.kind == .image }
     }
@@ -451,14 +476,14 @@ struct MessageBubble: View, Equatable {
         onOpenActions(frame, attachment)
     }
 
-    private var showsImageDeliveryStatus: Bool {
-        MessageImageStatusPresentation.showsOverlay(
+    private var showsMediaDeliveryStatus: Bool {
+        MessageMediaStatusPresentation.showsOverlay(
             for: message
         )
     }
 
     @ViewBuilder
-    private var imageDeliveryStatusOverlay: some View {
+    private var mediaDeliveryStatusOverlay: some View {
         if message.deliveryState == .failed || isRetrying {
             Button(action: startRetry) {
                 if isRetrying {
@@ -495,6 +520,12 @@ struct MessageBubble: View, Equatable {
             .monospacedDigit()
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.72), radius: 2, y: 1)
+            .padding(.horizontal, usesBorderlessVideoSurface ? 8 : 0)
+            .padding(.vertical, usesBorderlessVideoSurface ? 5 : 0)
+            .background(
+                usesBorderlessVideoSurface ? Color.black.opacity(0.58) : Color.clear,
+                in: Capsule()
+            )
             .padding(.trailing, 8)
             .padding(.bottom, 8)
             .allowsHitTesting(false)
@@ -656,7 +687,9 @@ struct MessageBubble: View, Equatable {
         }
         let attachmentLabel = message.voiceMessage != nil
             ? ", voice message"
-            : message.attachments.isEmpty ? "" : ", \(attachmentCountText(message.attachments.count))"
+            : message.attachments.contains(where: { $0.isMP4Video })
+                ? ", video message"
+                : message.attachments.isEmpty ? "" : ", \(attachmentCountText(message.attachments.count))"
         let messageText = ComposerMentionTargetCatalog.accessibilityText(
             in: message.text,
             mentions: message.mentions,
@@ -1237,12 +1270,24 @@ enum MessageAttachmentPresentation {
             && message.replyToMessageId == nil
             && message.messageAction == nil
     }
+
+    static func usesBorderlessVideoSurface(for message: ChatMessage) -> Bool {
+        !message.attachments.isEmpty
+            && message.attachments.allSatisfy(\.isMP4Video)
+            && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && message.replyToMessageId == nil
+            && message.messageAction == nil
+    }
+
+    static func usesBorderlessMediaSurface(for message: ChatMessage) -> Bool {
+        usesBorderlessImageSurface(for: message) || usesBorderlessVideoSurface(for: message)
+    }
 }
 
-enum MessageImageStatusPresentation {
+enum MessageMediaStatusPresentation {
     static func showsOverlay(for message: ChatMessage) -> Bool {
         message.author == .me
-            && MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
+            && MessageAttachmentPresentation.usesBorderlessMediaSurface(for: message)
     }
 }
 
@@ -1282,9 +1327,12 @@ private struct AdaptiveBubbleLayout: Layout {
 
 private struct MessageAttachmentCard: View {
     let attachment: ChatAttachment
+    let deliveryState: MessageDeliveryState
+    let uploadProgress: Double?
     let onOpen: (UIImage?) -> Void
     let onShare: () -> Void
     let onPrepare: (ChatAttachment) async -> URL?
+    let onPreparePreview: (ChatAttachment) async -> UIImage?
     let onAddToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let isActionTarget: Bool
     let onPrepareActions: () -> Void
@@ -1303,6 +1351,14 @@ private struct MessageAttachmentCard: View {
                 isActionTarget: isActionTarget,
                 onPrepareActions: onPrepareActions,
                 onRequestActions: onRequestActions
+            )
+        } else if attachment.isMP4Video {
+            MessageVideoAttachment(
+                attachment: attachment,
+                deliveryState: deliveryState,
+                uploadProgress: uploadProgress,
+                onPrepare: onPrepare,
+                onPreparePreview: onPreparePreview
             )
         } else {
             MessageFileAttachmentCard(
@@ -1678,6 +1734,302 @@ private struct MessageFileAttachmentCard: View {
 
     private var subtitle: String {
         [attachment.formatLabel, attachment.sizeLabel].compactMap { $0 }.joined(separator: " · ")
+    }
+}
+
+private struct MessageVideoAttachment: View {
+    let attachment: ChatAttachment
+    let deliveryState: MessageDeliveryState
+    let uploadProgress: Double?
+    let onPrepare: (ChatAttachment) async -> URL?
+    let onPreparePreview: (ChatAttachment) async -> UIImage?
+
+    @State private var player: AVPlayer?
+    @State private var poster: UIImage?
+    @State private var posterAspectRatio: CGFloat?
+    @State private var isLoading = false
+    @State private var loadFailed = false
+    @State private var isFullscreenPresented = false
+
+    var body: some View {
+        Group {
+            if resolvedVideoAspectRatio == nil {
+                resolvingSurface
+            } else if deliveryState == .sending && (uploadProgress ?? 0) < 1 {
+                sendingSurface
+            } else if let player {
+                ZStack(alignment: .topTrailing) {
+                    VideoPlayer(player: player)
+                        .aspectRatio(videoAspectRatio, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .background(.black)
+                        .accessibilityLabel("Play \(attachment.name)")
+                    Button {
+                        isFullscreenPresented = true
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 40, height: 40)
+                            .foregroundStyle(.white)
+                            .background(Color.black.opacity(0.58), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 54)
+                    .padding(.trailing, 8)
+                    .accessibilityLabel("Play \(attachment.name) in full screen")
+                }
+            } else {
+                Button(action: loadAndPlay) {
+                    ZStack {
+                        Color(uiColor: .secondarySystemBackground)
+                        if let poster {
+                            Image(uiImage: poster)
+                                .resizable()
+                                .scaledToFill()
+                                .accessibilityHidden(true)
+                        }
+                        Color.black.opacity(poster == nil ? 0 : 0.18)
+                        Group {
+                            if isLoading {
+                                ProgressView()
+                                    .controlSize(.large)
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: loadFailed ? "arrow.clockwise" : "play.fill")
+                                    .font(.title2.weight(.semibold))
+                                    .offset(x: loadFailed ? 0 : 1)
+                            }
+                        }
+                        .frame(width: 56, height: 56)
+                        .foregroundStyle(.white)
+                        .background(Color.black.opacity(0.58), in: Circle())
+                        .overlay {
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                        }
+                        .accessibilityHidden(true)
+                    }
+                    .aspectRatio(videoAspectRatio, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .disabled(isLoading)
+                .accessibilityLabel(
+                    isLoading
+                        ? "Loading \(attachment.name)"
+                        : loadFailed ? "Retry loading \(attachment.name)" : "Play \(attachment.name)"
+                )
+            }
+        }
+        .frame(
+            width: resolvedVideoAspectRatio == nil ? nil : videoDisplaySize.width,
+            height: resolvedVideoAspectRatio == nil ? nil : videoDisplaySize.height
+        )
+        .background(poster == nil ? Color(uiColor: .secondarySystemBackground) : .black)
+        .compositingGroup()
+        .clipShape(.rect(cornerRadius: 13))
+        .task(id: attachment.id) {
+            let image = await onPreparePreview(attachment)
+            if !Task.isCancelled {
+                poster = image
+                if let image, image.size.width > 0, image.size.height > 0 {
+                    posterAspectRatio = image.size.width / image.size.height
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $isFullscreenPresented) {
+            if let player {
+                FullScreenMessageVideo(player: player, name: attachment.name)
+            }
+        }
+        .onDisappear {
+            if !isFullscreenPresented { player?.pause() }
+        }
+    }
+
+    private var sendingSurface: some View {
+        ZStack {
+            Color(uiColor: .secondarySystemBackground)
+            if let poster {
+                Image(uiImage: poster)
+                    .resizable()
+                    .scaledToFill()
+                    .accessibilityHidden(true)
+            }
+            Color.black.opacity(poster == nil ? 0 : 0.5)
+            VStack(spacing: 8) {
+                if let uploadProgress {
+                    ZStack {
+                        Circle()
+                            .stroke(
+                                poster == nil ? Color.secondary.opacity(0.25) : Color.white.opacity(0.25),
+                                lineWidth: 3
+                            )
+                        Circle()
+                            .trim(from: 0, to: min(1, max(0, uploadProgress)))
+                            .stroke(
+                                poster == nil ? Color.secondary : Color.white,
+                                style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                        Text("\(Int((uploadProgress * 100).rounded()))%")
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(poster == nil ? Color.primary : .white)
+                    }
+                    .frame(width: 56, height: 56)
+                    if let sizeLabel = uploadSizeProgressLabel {
+                        Text(sizeLabel)
+                            .font(.caption2.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(poster == nil ? Color.secondary : .white.opacity(0.9))
+                    }
+                } else {
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(poster == nil ? Color.secondary : .white)
+                    Text("Sending…")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(poster == nil ? Color.primary : .white)
+                }
+            }
+        }
+        .aspectRatio(videoAspectRatio, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .clipped()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Sending \(attachment.name)")
+        .accessibilityValue(uploadProgress.map {
+            "\(Int(($0 * 100).rounded())) percent"
+        } ?? "In progress")
+    }
+
+    private var uploadSizeProgressLabel: String? {
+        guard let uploadProgress, let totalBytes = attachment.sizeBytes, totalBytes > 0 else {
+            return nil
+        }
+        let uploadedBytes = Int64((Double(totalBytes) * min(1, max(0, uploadProgress))).rounded())
+        return "\(ByteCountFormatter.string(fromByteCount: uploadedBytes, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
+    }
+
+    private var resolvingSurface: some View {
+        Button(action: loadAndPlay) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemBackground))
+                Circle()
+                    .fill(Color(uiColor: .systemBackground).opacity(0.9))
+                    .frame(width: 56, height: 56)
+                    .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
+                    .overlay {
+                        if isLoading {
+                            ProgressView()
+                                .controlSize(.large)
+                                .tint(.secondary)
+                        } else {
+                            Image(systemName: loadFailed ? "arrow.clockwise" : "play.fill")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.primary)
+                        }
+                    }
+            }
+            .frame(width: 244, height: 154)
+            .compositingGroup()
+            .clipShape(.rect(cornerRadius: 13))
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel(
+            isLoading
+                ? "Loading \(attachment.name)"
+                : loadFailed ? "Retry loading \(attachment.name)" : "Play \(attachment.name)"
+        )
+    }
+
+    private func loadAndPlay() {
+        guard !isLoading else { return }
+        if let player {
+            player.play()
+            return
+        }
+        isLoading = true
+        loadFailed = false
+        Task {
+            guard let url = await onPrepare(attachment) else {
+                isLoading = false
+                loadFailed = true
+                return
+            }
+            let asset = AVURLAsset(url: url)
+            if let tracks = try? await asset.loadTracks(withMediaType: .video),
+               let track = tracks.first,
+               let naturalSize = try? await track.load(.naturalSize),
+               let transform = try? await track.load(.preferredTransform) {
+                let transformedSize = naturalSize.applying(transform)
+                let width = abs(transformedSize.width)
+                let height = abs(transformedSize.height)
+                if width > 0, height > 0 {
+                    posterAspectRatio = width / height
+                }
+            }
+            let preparedPlayer = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+            player = preparedPlayer
+            isLoading = false
+            preparedPlayer.play()
+        }
+    }
+
+    private var videoAspectRatio: CGFloat {
+        resolvedVideoAspectRatio ?? 16 / 9
+    }
+
+    private var videoDisplaySize: CGSize {
+        MessageImageInteraction.displaySize(
+            for: attachment,
+            decodedSize: poster?.size,
+            defaultSize: CGSize(width: 244, height: 154),
+            maximumWidth: 244,
+            maximumHeight: 320
+        )
+    }
+
+    private var resolvedVideoAspectRatio: CGFloat? {
+        guard let width = attachment.widthPixels,
+              let height = attachment.heightPixels,
+              width > 0,
+              height > 0 else { return posterAspectRatio }
+        return VideoAttachmentLayout.aspectRatio(
+            widthPixels: width,
+            heightPixels: height
+        )
+    }
+}
+
+private struct FullScreenMessageVideo: View {
+    @Environment(\.dismiss) private var dismiss
+    let player: AVPlayer
+    let name: String
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            VideoPlayer(player: player)
+                .ignoresSafeArea()
+                .accessibilityLabel("Play \(name)")
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(.white)
+                    .background(.black.opacity(0.62), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(16)
+            .accessibilityLabel("Exit full screen video")
+        }
+        .onAppear { player.play() }
     }
 }
 

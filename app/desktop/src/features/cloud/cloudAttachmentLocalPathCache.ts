@@ -81,6 +81,25 @@ export async function persistCloudAttachmentBytes(
   }
 }
 
+export async function persistCloudAttachmentPreviewDataUrl(
+  attachmentId: string,
+  name: string,
+  previewUrl: string,
+) {
+  try {
+    const response = await fetch(previewUrl);
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    return await persistCloudAttachmentBytes(
+      cloudAttachmentPreviewCacheId(attachmentId),
+      `${name}.preview.jpg`,
+      blob,
+    );
+  } catch {
+    return null;
+  }
+}
+
 export async function persistCloudAttachmentBlob(
   attachmentId: string,
   name: string,

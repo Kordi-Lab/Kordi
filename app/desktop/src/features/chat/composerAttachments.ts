@@ -1,11 +1,13 @@
 import type { AttachmentItem, AttachmentItemUpdate } from './composerController.types';
 import type { SaveDesktopAttachmentOptions } from './composerController.types';
+import { attachmentVideoUrl, isMp4VideoAttachment } from './attachmentMediaGallery';
+import { videoPreviewFromSource } from './composerVideoPreview';
 import { createCompressedImagePreviewDataUrl } from '@/features/cloud/cloudAttachments';
 import {
   readDesktopChatAttachment,
-  storeDesktopChatAttachment,
   type DesktopStoredChatAttachment,
 } from '@/lib/desktop';
+import { storeDesktopChatAttachmentFile } from '@/lib/desktopAttachmentStream';
 import {
   imagePixelDimensionsFromUrl,
   normalizedImagePixelDimensions,
@@ -222,13 +224,20 @@ export async function composerAttachmentItemFromStoredPath({
   const displayName = preferredDisplayName?.trim() || stored.name?.trim() || friendlyAttachmentName(rawName, kindFromName);
   const kind = stored.kind === 'image' ? ('image' as const) : ('file' as const);
   const metadata = { name: displayName, kind, mimeType: stored.mimeType ?? undefined, sizeBytes: stored.sizeBytes ?? undefined };
+  const videoSource = isMp4VideoAttachment(metadata)
+    ? attachmentVideoUrl({ ...metadata, localPath: stored.path })
+    : null;
+  const videoPreview = videoSource ? await videoPreviewFromSource(videoSource) : null;
   const previewUrl = kind === 'image'
     && (metadata.sizeBytes ?? 0) <= MAX_EAGER_IMAGE_PREVIEW_BYTES
     ? await createPreviewUrl(stored.path, metadata)
-    : null;
+    : videoPreview?.previewUrl ?? null;
   const dimensions = kind === 'image'
     ? await imagePixelDimensionsFromUrl(previewUrl)
-    : null;
+    : videoPreview ? {
+        widthPixels: videoPreview.widthPixels,
+        heightPixels: videoPreview.heightPixels,
+      } : null;
   return {
     id: `${displayName}-${stored.path}`,
     name: displayName,
@@ -249,8 +258,8 @@ export async function composerAttachmentItemFromFile(
   if (file.size > MAX_CHAT_ATTACHMENT_SIZE_BYTES) {
     throw new Error('Attachments must be 2 GiB or smaller.');
   }
-  if (file.size > MAX_IN_MEMORY_ATTACHMENT_BYTES) {
-    throw new Error('Use Files and folders to attach files larger than 64 MiB.');
+  if (file.size > MAX_IN_MEMORY_ATTACHMENT_BYTES && file.type?.startsWith('image/')) {
+    throw new Error('Use Files and folders to attach images larger than 64 MiB.');
   }
   const mimeType = file.type || undefined;
   const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
@@ -259,19 +268,30 @@ export async function composerAttachmentItemFromFile(
   if (subtype && !isSupportedMemeImage({ kind, mimeType, name })) {
     throw new Error('Memes must be PNG, JPEG, GIF, or WebP images.');
   }
-  const path = await storeDesktopChatAttachment(name, Array.from(new Uint8Array(await file.arrayBuffer())));
-  const previewUrl = kind === 'image' ? URL.createObjectURL(file) : undefined;
+  const stored = await storeDesktopChatAttachmentFile(file, name);
+  const path = stored.path;
+  const isVideo = isMp4VideoAttachment({ kind, name, mimeType });
+  const playbackUrl = isVideo ? URL.createObjectURL(file) : undefined;
+  const videoPreview = playbackUrl ? await videoPreviewFromSource(playbackUrl) : null;
+  const previewUrl = kind === 'image'
+    ? URL.createObjectURL(file)
+    : videoPreview?.previewUrl;
   const dimensions = kind === 'image'
     ? await imagePixelDimensionsFromUrl(previewUrl)
-    : null;
+    : videoPreview ? {
+        widthPixels: videoPreview.widthPixels,
+        heightPixels: videoPreview.heightPixels,
+      } : null;
   return {
     id: `${name}-${path}`,
     name,
     path,
+    localPath: path,
     kind,
     mimeType,
     formatLabel: attachmentFormatLabel(name, mimeType),
     previewUrl,
+    playbackUrl,
     sizeBytes: file.size,
     ...(dimensions ?? {}),
     ...(subtype ? { subtype, altText: '', memeRightsConfirmed: false } : {}),
@@ -285,6 +305,9 @@ export function updatedComposerAttachment(
   if ('path' in update) {
     if (attachment.previewUrl?.startsWith('blob:') && attachment.previewUrl !== update.previewUrl) {
       URL.revokeObjectURL(attachment.previewUrl);
+    }
+    if (attachment.playbackUrl?.startsWith('blob:') && attachment.playbackUrl !== update.playbackUrl) {
+      URL.revokeObjectURL(attachment.playbackUrl);
     }
     return update;
   }

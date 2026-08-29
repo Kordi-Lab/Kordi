@@ -1,4 +1,5 @@
 import type { AttachmentItem } from '@/features/chat/composerController.types';
+import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
 import { readDesktopChatAttachment } from '@/lib/desktop';
 import type {
   CloudAuthClient,
@@ -7,6 +8,7 @@ import type {
 import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
 import {
   cacheCloudAttachmentLocalPath,
+  persistCloudAttachmentPreviewDataUrl,
   persistCloudAttachmentPath,
 } from './cloudAttachmentLocalPathCache';
 import {
@@ -49,9 +51,13 @@ export async function uploadComposerAttachments({
   for (const attachment of attachments) {
     const mimeType = attachment.mimeType?.trim() || null;
     const kind = attachment.kind === 'image' ? 'image' : 'file';
-    let previewUrl = kind === 'image'
+    const supportsPreview = kind === 'image' || isMp4VideoAttachment(attachment);
+    let previewUrl = supportsPreview
       ? safeCloudAttachmentPreviewUrl(attachment.previewUrl)
       : null;
+    if (isMp4VideoAttachment(attachment) && !previewUrl) {
+      throw new Error('This video could not prepare a poster. Choose another MP4 file.');
+    }
     let summary: Awaited<ReturnType<typeof uploadNativeCloudAttachment>>;
     if (useNativeUpload) {
       summary = await nativeUpload({ path: attachment.path, contentType: mimeType });
@@ -74,7 +80,18 @@ export async function uploadComposerAttachments({
       cacheCloudAttachmentLocalPath(summary.attachmentId, attachment.path);
     }
     if (previewUrl && client.updateAttachmentPreview) {
-      await client.updateAttachmentPreview(token, summary.attachmentId, previewUrl).catch(() => undefined);
+      if (isMp4VideoAttachment(attachment)) {
+        await client.updateAttachmentPreview(token, summary.attachmentId, previewUrl);
+        await persistCloudAttachmentPreviewDataUrl(
+          summary.attachmentId,
+          attachment.name,
+          previewUrl,
+        );
+      } else {
+        await client.updateAttachmentPreview(token, summary.attachmentId, previewUrl).catch(() => undefined);
+      }
+    } else if (previewUrl && isMp4VideoAttachment(attachment)) {
+      throw new Error('This video poster could not be stored. Try again.');
     }
     uploaded.push({
       attachmentId: summary.attachmentId,

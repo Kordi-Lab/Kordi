@@ -8,6 +8,7 @@ use super::DesktopStoredChatAttachment;
 
 mod cloud_cache;
 pub(crate) mod cloud_upload;
+pub(crate) mod stream;
 
 use cloud_cache::download as download_cloud_attachment;
 use cloud_cache::write as write_cloud_attachment_cache;
@@ -67,6 +68,7 @@ fn stored_attachment_mime_type(path: &Path) -> Option<String> {
         Some("txt") => Some("text/plain".to_string()),
         Some("json") => Some("application/json".to_string()),
         Some("pdf") => Some("application/pdf".to_string()),
+        Some("mp4") => Some("video/mp4".to_string()),
         _ => None,
     }
 }
@@ -348,6 +350,10 @@ mod tests {
             Some("image/png")
         );
         assert_eq!(stored_attachment_format_label(path).as_deref(), Some("PNG"));
+        assert_eq!(
+            stored_attachment_mime_type(Path::new("recording.mp4")).as_deref(),
+            Some("video/mp4")
+        );
     }
 
     #[test]

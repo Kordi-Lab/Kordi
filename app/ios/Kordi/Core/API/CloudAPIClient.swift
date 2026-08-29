@@ -23,6 +23,18 @@ enum CloudTransportErrorPolicy {
     }
 }
 
+enum AttachmentUploadChunking {
+    static let directUploadLimitBytes = 2 * 1_024 * 1_024
+    static let parallelParts = 3
+
+    nonisolated static func ranges(totalBytes: Int, chunkSizeBytes: Int) -> [Range<Int>] {
+        guard totalBytes > 0, chunkSizeBytes > 0 else { return [] }
+        return stride(from: 0, to: totalBytes, by: chunkSizeBytes).map { start in
+            start..<min(totalBytes, start + chunkSizeBytes)
+        }
+    }
+}
+
 struct CloudConversationMessagePage {
     let messages: [CloudMessageDTO]
     let nextBeforeSequence: Int64?
@@ -1136,7 +1148,62 @@ actor CloudAPIClient {
         )
     }
 
-    func uploadAttachment(token: String, attachment: PendingAttachment) async throws -> CloudMessageAttachment {
+    func uploadAttachment(
+        token: String,
+        attachment: PendingAttachment,
+        progress: (@Sendable (Double) async -> Void)? = nil
+    ) async throws -> CloudMessageAttachment {
+        let uploaded: AttachmentUploadResponse
+        if attachment.fileURL == nil,
+           attachment.data.count <= AttachmentUploadChunking.directUploadLimitBytes {
+            uploaded = try await uploadDirectAttachment(token: token, attachment: attachment)
+        } else {
+            uploaded = try await uploadMultipartAttachment(
+                token: token,
+                attachment: attachment,
+                progress: progress
+            )
+        }
+        if let previewURL = attachment.previewURL {
+            if attachment.isMP4Video {
+                try await updateAttachmentPreview(
+                    token: token,
+                    attachmentId: uploaded.attachmentId,
+                    previewURL: previewURL
+                )
+            } else {
+                try? await updateAttachmentPreview(
+                    token: token,
+                    attachmentId: uploaded.attachmentId,
+                    previewURL: previewURL
+                )
+            }
+        } else if attachment.isMP4Video {
+            throw CloudAPIError(
+                code: "VIDEO_POSTER_REQUIRED",
+                message: "This video could not prepare a poster. Choose another MP4 file.",
+                statusCode: 422
+            )
+        }
+        return CloudMessageAttachment(
+            attachmentId: uploaded.attachmentId,
+            name: attachment.name,
+            kind: attachment.kind.rawValue,
+            subtype: attachment.subtype == .sticker ? nil : attachment.subtype,
+            altText: attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty,
+            mimeType: uploaded.contentType?.nonEmpty ?? attachment.mimeType,
+            sizeBytes: uploaded.sizeBytes ?? attachment.sizeBytes,
+            widthPixels: attachment.widthPixels,
+            heightPixels: attachment.heightPixels,
+            downloadUrl: nil,
+            previewUrl: nil // Uploaded bytes are referenced by ID; never embed local data URLs in message JSON.
+        )
+    }
+
+    private func uploadDirectAttachment(
+        token: String,
+        attachment: PendingAttachment
+    ) async throws -> AttachmentUploadResponse {
         let initiated: AttachmentInitiateResponse = try await send(
             path: "/v1/cloud/attachments/initiate",
             method: "POST",
@@ -1155,27 +1222,7 @@ actor CloudAPIClient {
         do {
             let (data, response) = try await session.data(for: request)
             try validate(response: response, data: data, fallback: "Could not upload \(attachment.name).")
-            let uploaded = try decoder.decode(AttachmentUploadResponse.self, from: data)
-            if let previewURL = attachment.previewURL {
-                try? await updateAttachmentPreview(
-                    token: token,
-                    attachmentId: uploaded.attachmentId,
-                    previewURL: previewURL
-                )
-            }
-            return CloudMessageAttachment(
-                attachmentId: uploaded.attachmentId,
-                name: attachment.name,
-                kind: attachment.kind.rawValue,
-                subtype: attachment.subtype == .sticker ? nil : attachment.subtype,
-                altText: attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty,
-                mimeType: uploaded.contentType?.nonEmpty ?? attachment.mimeType,
-                sizeBytes: uploaded.sizeBytes ?? attachment.sizeBytes,
-                widthPixels: attachment.widthPixels,
-                heightPixels: attachment.heightPixels,
-                downloadUrl: nil,
-                previewUrl: nil // Uploaded bytes are referenced by ID; never embed local data URLs in message JSON.
-            )
+            return try decoder.decode(AttachmentUploadResponse.self, from: data)
         } catch let error as CloudAPIError {
             throw error
         } catch {
@@ -1185,6 +1232,178 @@ actor CloudAPIClient {
                 statusCode: 0
             )
         }
+    }
+
+    private func uploadMultipartAttachment(
+        token: String,
+        attachment: PendingAttachment,
+        progress: (@Sendable (Double) async -> Void)?
+    ) async throws -> AttachmentUploadResponse {
+        let initiated: AttachmentMultipartInitiateResponse = try await send(
+            path: "/v1/cloud/attachments/multipart/initiate",
+            method: "POST",
+            token: token,
+            body: AttachmentMultipartInitiateRequest(
+                sizeBytes: attachment.sizeBytes,
+                contentType: attachment.mimeType
+            ),
+            fallback: "Could not start the attachment upload."
+        )
+        let encodedId = initiated.attachmentId
+            .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? initiated.attachmentId
+        do {
+            guard let totalBytes = Int(exactly: attachment.sizeBytes) else {
+                throw CloudAPIError(
+                    code: "attachment_too_large",
+                    message: "This attachment is too large to upload.",
+                    statusCode: 0
+                )
+            }
+            let ranges = AttachmentUploadChunking.ranges(
+                totalBytes: totalBytes,
+                chunkSizeBytes: initiated.chunkSizeBytes
+            )
+            guard !ranges.isEmpty else {
+                throw CloudAPIError(
+                    code: "invalid_response",
+                    message: "Kordi Cloud returned an invalid attachment chunk size.",
+                    statusCode: 0
+                )
+            }
+            let file = try attachment.fileURL.map { try FileHandle(forReadingFrom: $0) }
+            defer { try? file?.close() }
+            var hasher = SHA256()
+            var pendingParts: [(number: Int, data: Data)] = []
+            var uploadedBytes = 0
+            await progress?(0)
+            for (index, range) in ranges.enumerated() {
+                let partData: Data
+                if let file {
+                    try file.seek(toOffset: UInt64(range.lowerBound))
+                    partData = try file.read(upToCount: range.count) ?? Data()
+                } else {
+                    partData = Data(attachment.data[range])
+                }
+                guard partData.count == range.count else {
+                    throw CloudAPIError(
+                        code: "attachment_read_failed",
+                        message: "Could not read \(attachment.name) for upload.",
+                        statusCode: 0
+                    )
+                }
+                hasher.update(data: partData)
+                pendingParts.append((index + 1, partData))
+                if pendingParts.count == AttachmentUploadChunking.parallelParts {
+                    try await uploadMultipartParts(
+                        pendingParts,
+                        attachmentId: encodedId,
+                        attachmentName: attachment.name,
+                        token: token
+                    )
+                    uploadedBytes += pendingParts.reduce(0) { $0 + $1.data.count }
+                    await progress?(min(0.98, Double(uploadedBytes) / Double(totalBytes)))
+                    pendingParts.removeAll(keepingCapacity: true)
+                }
+            }
+            if !pendingParts.isEmpty {
+                try await uploadMultipartParts(
+                    pendingParts,
+                    attachmentId: encodedId,
+                    attachmentName: attachment.name,
+                    token: token
+                )
+                uploadedBytes += pendingParts.reduce(0) { $0 + $1.data.count }
+                await progress?(min(0.98, Double(uploadedBytes) / Double(totalBytes)))
+            }
+            let sha256Hex = hasher.finalize()
+                .map { String(format: "%02x", $0) }
+                .joined()
+            let uploaded: AttachmentUploadResponse = try await send(
+                path: "/v1/cloud/attachments/\(encodedId)/multipart",
+                method: "POST",
+                token: token,
+                body: AttachmentMultipartCompleteRequest(sha256Hex: sha256Hex),
+                fallback: "Could not finish the attachment upload."
+            )
+            await progress?(1)
+            return uploaded
+        } catch {
+            try? await sendWithoutResponse(
+                path: "/v1/cloud/attachments/\(encodedId)/multipart",
+                method: "DELETE",
+                token: token,
+                fallback: "Could not cancel the attachment upload."
+            )
+            throw error
+        }
+    }
+
+    private func uploadMultipartParts(
+        _ parts: [(number: Int, data: Data)],
+        attachmentId: String,
+        attachmentName: String,
+        token: String
+    ) async throws {
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for part in parts {
+                group.addTask {
+                    try await self.uploadMultipartPart(
+                        part,
+                        attachmentId: attachmentId,
+                        attachmentName: attachmentName,
+                        token: token
+                    )
+                }
+            }
+            try await group.waitForAll()
+        }
+    }
+
+    private func uploadMultipartPart(
+        _ part: (number: Int, data: Data),
+        attachmentId: String,
+        attachmentName: String,
+        token: String
+    ) async throws {
+        var lastError: Error?
+        for attempt in 0..<3 {
+            do {
+                var request = try makeRequest(
+                    path: "/v1/cloud/attachments/\(attachmentId)/parts/\(part.number)",
+                    method: "PUT",
+                    token: token,
+                    query: [],
+                    body: part.data
+                )
+                request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+                request.timeoutInterval = 90
+                let (data, response) = try await session.data(for: request)
+                try validate(
+                    response: response,
+                    data: data,
+                    fallback: "Could not upload \(attachmentName)."
+                )
+                return
+            } catch {
+                if let cloudError = error as? CloudAPIError,
+                   (400..<500).contains(cloudError.statusCode) {
+                    throw cloudError
+                }
+                if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled {
+                    throw CancellationError()
+                }
+                lastError = error
+                if attempt < 2 {
+                    try await Task.sleep(for: .seconds(1 << attempt))
+                }
+            }
+        }
+        throw lastError ?? CloudAPIError(
+            code: "network_error",
+            message: "Could not upload \(attachmentName).",
+            statusCode: 0
+        )
     }
 
     func downloadAttachmentContent(token: String, attachmentId: String) async throws -> Data {
@@ -1211,6 +1430,58 @@ actor CloudAPIClient {
                 statusCode: 0
             )
         }
+    }
+
+    func downloadAttachmentContentFile(token: String, attachmentId: String) async throws -> URL {
+        let encodedId = attachmentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? attachmentId
+        var request = try makeRequest(
+            path: "/v1/cloud/attachments/\(encodedId)/content",
+            method: "GET",
+            token: token,
+            query: [],
+            body: nil
+        )
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 90
+        do {
+            let (url, response) = try await session.download(for: request)
+            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
+                return url
+            }
+            try validate(
+                response: response,
+                data: (try? Data(contentsOf: url, options: .mappedIfSafe)) ?? Data(),
+                fallback: "Could not download this attachment."
+            )
+            return url
+        } catch let error as CloudAPIError {
+            throw error
+        } catch {
+            throw CloudAPIError(
+                code: "network_error",
+                message: "Could not download this attachment. Check your connection and try again.",
+                statusCode: 0
+            )
+        }
+    }
+
+    func attachmentPlaybackURL(token: String, attachmentId: String) async throws -> URL {
+        let encodedId = attachmentId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? attachmentId
+        let response: AttachmentPlaybackResponse = try await send(
+            path: "/v1/cloud/attachments/\(encodedId)/playback",
+            method: "POST",
+            token: token,
+            fallback: "Could not prepare video playback."
+        )
+        guard let url = URL(string: response.playbackPath, relativeTo: baseURL)?.absoluteURL else {
+            throw CloudAPIError(
+                code: "invalid_response",
+                message: "Kordi Cloud returned an invalid video URL.",
+                statusCode: 0
+            )
+        }
+        return url
     }
 
     func downloadAttachmentPreviewContent(token: String, attachmentId: String) async throws -> Data {
@@ -2243,6 +2514,25 @@ private struct ChatUpdatePersonalTitleRequest: Encodable {
 
 private struct AttachmentInitiateResponse: Decodable {
     let attachmentId: String
+}
+
+private struct AttachmentMultipartInitiateRequest: Encodable {
+    let sizeBytes: Int64
+    let contentType: String?
+}
+
+private struct AttachmentMultipartInitiateResponse: Decodable {
+    let attachmentId: String
+    let chunkSizeBytes: Int
+}
+
+private struct AttachmentMultipartCompleteRequest: Encodable {
+    let sha256Hex: String
+}
+
+private struct AttachmentPlaybackResponse: Decodable {
+    let playbackPath: String
+    let expiresAt: String
 }
 
 private struct AttachmentUploadResponse: Decodable {

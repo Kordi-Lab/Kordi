@@ -1,18 +1,23 @@
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
-struct CameraImagePicker: UIViewControllerRepresentable {
+struct CameraCapturePicker: UIViewControllerRepresentable {
     let onImage: (UIImage) -> Void
+    let onVideo: (URL) -> Void
     let onCancel: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onImage: onImage, onCancel: onCancel)
+        Coordinator(onImage: onImage, onVideo: onVideo, onCancel: onCancel)
     }
 
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let controller = UIImagePickerController()
         controller.sourceType = .camera
+        controller.mediaTypes = [UTType.image.identifier, UTType.movie.identifier]
         controller.cameraCaptureMode = .photo
+        controller.videoQuality = .typeMedium
+        controller.videoMaximumDuration = 60
         controller.delegate = context.coordinator
         return controller
     }
@@ -21,10 +26,16 @@ struct CameraImagePicker: UIViewControllerRepresentable {
 
     final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
         let onImage: (UIImage) -> Void
+        let onVideo: (URL) -> Void
         let onCancel: () -> Void
 
-        init(onImage: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
+        init(
+            onImage: @escaping (UIImage) -> Void,
+            onVideo: @escaping (URL) -> Void,
+            onCancel: @escaping () -> Void
+        ) {
             self.onImage = onImage
+            self.onVideo = onVideo
             self.onCancel = onCancel
         }
 
@@ -32,11 +43,15 @@ struct CameraImagePicker: UIViewControllerRepresentable {
             _ picker: UIImagePickerController,
             didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
         ) {
-            guard let image = info[.originalImage] as? UIImage else {
-                onCancel()
+            if let image = info[.originalImage] as? UIImage {
+                onImage(image)
                 return
             }
-            onImage(image)
+            if let url = info[.mediaURL] as? URL {
+                onVideo(url)
+                return
+            }
+            onCancel()
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {

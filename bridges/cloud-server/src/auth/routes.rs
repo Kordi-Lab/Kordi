@@ -268,8 +268,12 @@ pub fn routes_with_config(
             post(crate::attachments::routes::update_preview),
         )
         .route(
+            "/v1/cloud/attachments/:attachment_id/playback",
+            post(crate::attachments::playback::create),
+        )
+        .route(
             "/v1/cloud/attachments/:attachment_id/content",
-            get(crate::attachments::routes::content),
+            get(crate::attachments::content::content),
         )
         .route(
             "/v1/cloud/attachments/:attachment_id/preview-content",

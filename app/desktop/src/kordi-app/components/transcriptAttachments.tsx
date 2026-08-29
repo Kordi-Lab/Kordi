@@ -5,6 +5,7 @@ import {
   attachmentPreviewIdentity,
   attachmentPreviewUrl,
   isAnimatedGifAttachment,
+  isMp4VideoAttachment,
   isLargeAttachment,
   shouldPreviewAttachmentInline,
 } from '@/features/chat/attachmentMediaGallery';
@@ -14,6 +15,7 @@ import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import {
   cancelCloudAttachmentUpload,
   cloudAttachmentUploadSnapshot,
+  resolveCloudAttachmentUploadProgress,
   subscribeCloudAttachmentUpload,
 } from '@/features/cloud/cloudAttachmentUpload';
 import { loadVisibleCloudAttachmentPreview, type CloudAttachmentPreviewLease } from '@/features/cloud/cloudAttachments';
@@ -42,8 +44,9 @@ import type { AttachmentImageForegroundTone } from './transcriptAttachmentTypes'
 import { usePointerClickWithoutDrag } from './usePointerClickWithoutDrag';
 import { messageStickerAttachment } from './messageStickerPresentation';
 import { sampleAttachmentImageForegroundTone } from './transcriptAttachmentForegroundTone';
+import { imageTileClass, isAttachmentSending } from './transcriptAttachmentPresentation';
+import { AttachmentVideoCard } from './transcriptVideoAttachment';
 import type { Message, MessageAttachment } from '../types';
-
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
 export {
   clearAttachmentPreviewRecoveryStateForTests,
@@ -55,23 +58,6 @@ export { shouldCloseAttachmentContextMenuForTarget } from './transcriptAttachmen
 export type { AttachmentContextMenuState } from './transcriptAttachmentContextMenuState';
 export { attachmentImageForegroundToneFromRgba } from './transcriptAttachmentForegroundTone';
 export type { AttachmentImageDeliveryVisual, AttachmentImageForegroundTone } from './transcriptAttachmentTypes';
-
-function isAttachmentSending(msg: Message) {
-  return (msg.statusChips ?? []).some((chip) => {
-    const normalized = chip.trim().toLowerCase();
-    return normalized === 'sending' || normalized === 'pending';
-  });
-}
-function imageTileClass(index: number, totalCount: number, intrinsicSingleImage = false) {
-  if (totalCount <= 1) return intrinsicSingleImage ? 'col-span-6' : 'col-span-6 row-span-3';
-  if (totalCount === 2) return 'col-span-3 row-span-3';
-  if (totalCount === 3) return index === 0 ? 'col-span-6 row-span-2' : 'col-span-3 row-span-2';
-  if (totalCount === 4) return 'col-span-3 row-span-2';
-  if (totalCount === 5) return index < 2 ? 'col-span-3 row-span-2' : 'col-span-2 row-span-2';
-  if (totalCount === 6) return 'col-span-2 row-span-2';
-  return index < 2 ? 'col-span-3 row-span-2' : 'col-span-2 row-span-2';
-}
-
 function AttachmentImageCard({
   attachment,
   index,
@@ -146,7 +132,6 @@ function AttachmentImageCard({
     index,
     event.currentTarget,
   ));
-
   useEffect(() => {
     if (
       usableRecoveredPreviewUrl
@@ -366,7 +351,10 @@ export function AttachmentPreview({
   const attachments = msg.attachments ?? [];
   const stickerAttachment = messageStickerAttachment(msg);
   const previewImageAttachments = attachments.filter((attachment) => shouldPreviewAttachmentInline(attachment));
-  const downloadableAttachments = attachments.filter((attachment) => !shouldPreviewAttachmentInline(attachment));
+  const videoAttachments = attachments.filter(isMp4VideoAttachment);
+  const downloadableAttachments = attachments.filter((attachment) => (
+    !shouldPreviewAttachmentInline(attachment) && !isMp4VideoAttachment(attachment)
+  ));
   const mediaAttachments = imageGallery?.length ? imageGallery : previewImageAttachments;
   const imageGroupId = useId();
   const [isImageGroupExpanded, setIsImageGroupExpanded] = useState(false);
@@ -399,9 +387,10 @@ export function AttachmentPreview({
     () => cloudAttachmentUploadSnapshot(deliveryImagePath),
     () => null,
   );
-  const deliveryUploadProgress = deliveryUpload && deliveryUpload.totalBytes > 0
-    ? (deliveryUpload.uploadedBytes / deliveryUpload.totalBytes) * 100
-    : null;
+  const resolvedDeliveryUpload = resolveCloudAttachmentUploadProgress(
+    deliveryUpload,
+    deliveryImageAttachment?.sizeBytes,
+  );
   const deliveryUploadIsActive = deliveryUpload
     && ['preparing', 'uploading'].includes(deliveryUpload.phase);
   const deliveryUploadFailure = deliveryUpload?.phase === 'failed'
@@ -468,7 +457,9 @@ export function AttachmentPreview({
                 time={msg.time}
                 foregroundTone={deliveryForegroundTone}
                 onRetry={onRetryImage}
-                uploadProgress={deliveryUploadProgress}
+                uploadProgress={resolvedDeliveryUpload?.percent}
+                uploadedBytes={resolvedDeliveryUpload?.uploadedBytes}
+                totalBytes={resolvedDeliveryUpload?.totalBytes}
                 onCancelUpload={deliveryUploadIsActive
                   ? () => void cancelCloudAttachmentUpload(deliveryImagePath)
                   : undefined}
@@ -501,6 +492,15 @@ export function AttachmentPreview({
             })}
           </TranscriptImageGroup>
         ) : null}
+        {videoAttachments.map((attachment, index) => (
+          <AttachmentVideoCard
+            key={`${attachment.name}-${index}-${attachmentPreviewIdentity(attachment)}`}
+            attachment={attachment}
+            deliveryStatus={resolvedImageDeliveryStatus}
+            time={msg.time}
+            onRetry={onRetryImage}
+          />
+        ))}
         {downloadableAttachments.length > 0 ? (
           <div className="flex flex-col items-start gap-1.5">
             {downloadableAttachments.map((attachment, index) => (

@@ -17,7 +17,9 @@
 //! of total file size while preserving the private storage boundary.
 
 pub(crate) mod access;
+pub(crate) mod content;
 mod content_type;
+pub(crate) mod playback;
 pub(crate) mod preview;
 mod response;
 pub mod routes;

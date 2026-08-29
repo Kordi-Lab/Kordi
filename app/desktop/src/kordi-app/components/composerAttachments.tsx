@@ -14,10 +14,12 @@ import {
   FileImage,
   FileSpreadsheet,
   FileText,
+  FileVideo,
   FolderOpen,
   ImagePlus,
   Pencil,
   Plus,
+  Video,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -78,6 +80,12 @@ function attachmentVisual(attachment: ComposerAttachmentPresentation): Attachmen
     return {
       Icon: FileImage,
       iconClassName: 'bg-violet-500/10 text-violet-500',
+    };
+  }
+  if (attachment.mimeType?.toLowerCase() === 'video/mp4' || extension === 'mp4') {
+    return {
+      Icon: FileVideo,
+      iconClassName: 'bg-sky-500/10 text-sky-500',
     };
   }
   if (extension === 'pdf' || attachment.mimeType === 'application/pdf') {
@@ -256,6 +264,7 @@ type ComposerAttachmentAddMenuProps = {
   inputRef: RefObject<HTMLInputElement | null>;
   memeInputRef?: RefObject<HTMLInputElement | null>;
   onChooseFiles?: () => void;
+  onRecordVideo?: () => void;
   className?: string;
   disabled?: boolean;
   'data-companion-attachment-control'?: string;
@@ -265,6 +274,7 @@ export function ComposerAttachmentAddMenu({
   inputRef,
   memeInputRef,
   onChooseFiles,
+  onRecordVideo,
   className,
   disabled = false,
   'data-companion-attachment-control': companionAttachmentControl,
@@ -350,6 +360,11 @@ export function ComposerAttachmentAddMenu({
     queueMicrotask(() => triggerRef.current?.focus());
   }
 
+  function recordVideo() {
+    setIsOpen(false);
+    onRecordVideo?.();
+  }
+
   const renderMenu = () => (
     <div
       ref={menuRef}
@@ -376,6 +391,17 @@ export function ComposerAttachmentAddMenu({
         <FolderOpen className="app-transient-action-icon" strokeWidth={1.8} aria-hidden="true" />
         <span className="app-transient-action-label">Files and folders</span>
       </button>
+      {onRecordVideo ? (
+        <button
+          type="button"
+          role="menuitem"
+          onClick={recordVideo}
+          className="app-composer-attachment-add-menu-action app-transient-flat-action app-transient-action-row flex w-full items-center gap-2 rounded-[8px] px-1.5 py-1 text-left"
+        >
+          <Video className="app-transient-action-icon" strokeWidth={1.8} aria-hidden="true" />
+          <span className="app-transient-action-label">Record video</span>
+        </button>
+      ) : null}
       {memeInputRef ? (
         <>
           <button

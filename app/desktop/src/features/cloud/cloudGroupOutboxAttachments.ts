@@ -30,6 +30,9 @@ export function cloudGroupOutboxAttachmentSources(
         } : {}),
     formatLabel: attachment.formatLabel ?? null,
     mimeType: attachment.mimeType ?? null,
+    ...(attachment.previewUrl?.startsWith('data:image/') ? {
+      previewUrl: attachment.previewUrl,
+    } : {}),
     sizeBytes: attachment.sizeBytes ?? null,
     widthPixels: attachment.widthPixels ?? null,
     heightPixels: attachment.heightPixels ?? null,
