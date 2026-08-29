@@ -1748,23 +1748,25 @@ private struct MessageVideoAttachment: View {
                                 .accessibilityHidden(true)
                         }
                         Color.black.opacity(poster == nil ? 1 : 0.45)
-                        VStack(spacing: 9) {
+                        Group {
                             if isLoading {
                                 ProgressView()
+                                    .controlSize(.large)
                                     .tint(.white)
-                                    .accessibilityHidden(true)
                             } else {
                                 Image(systemName: loadFailed ? "arrow.clockwise" : "play.fill")
                                     .font(.title2.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .accessibilityHidden(true)
+                                    .offset(x: loadFailed ? 0 : 1)
                             }
-                            Text(isLoading
-                                 ? "Preparing video…"
-                                 : loadFailed ? "Try loading again" : "Play video")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white)
                         }
+                        .frame(width: 56, height: 56)
+                        .foregroundStyle(.white)
+                        .background(Color.black.opacity(0.58), in: Circle())
+                        .overlay {
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                        }
+                        .accessibilityHidden(true)
                     }
                     .aspectRatio(16 / 9, contentMode: .fit)
                     .frame(maxWidth: .infinity)

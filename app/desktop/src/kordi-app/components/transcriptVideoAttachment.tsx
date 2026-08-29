@@ -154,37 +154,29 @@ export function AttachmentVideoCard({
               <img
                 src={posterUrl}
                 alt=""
-                className="absolute inset-0 h-full w-full object-cover opacity-65"
+                className="absolute inset-0 h-full w-full object-cover"
                 aria-hidden="true"
               />
             ) : null}
-            <div className="absolute inset-0 bg-black/45" aria-hidden="true" />
-            {transferPending ? null : phase === 'loading' ? (
-              <LoaderCircle className="relative h-7 w-7 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-            ) : phase === 'error' ? (
-              <RotateCcw className="relative h-7 w-7" aria-hidden="true" />
-            ) : (
-              <Play className="relative h-8 w-8 fill-current" aria-hidden="true" />
-            )}
-            {!transferPending ? (
-              <div className="relative">
-                <p className="text-[12px] font-semibold">
-                  {phase === 'loading' ? 'Loading video…' : phase === 'error' ? 'Video unavailable' : 'Video message'}
-                </p>
-                <p className="mt-1 max-w-[34ch] text-[10.5px] leading-4 text-white/70">
-                  {phase === 'error'
-                    ? 'Check your connection and try again, or download the original.'
-                    : 'Stream the video without waiting for the full download.'}
-                </p>
-              </div>
-            ) : null}
-            {!transferPending && phase !== 'loading' && (source || attachmentId) ? (
+            <div className="absolute inset-0 bg-black/30" aria-hidden="true" />
+            {!transferPending && phase === 'loading' ? (
+              <span
+                className="relative grid h-14 w-14 place-items-center rounded-full bg-white/20 text-white"
+                role="status"
+                aria-label={`Loading ${attachment.name}`}
+              >
+                <LoaderCircle className="h-6 w-6 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+              </span>
+            ) : !transferPending && (source || attachmentId) ? (
               <button
                 type="button"
                 onClick={() => { void loadVideo(); }}
-                className="relative rounded-full bg-white px-3.5 py-1.5 text-[11px] font-semibold text-black outline-none transition hover:bg-white/90 focus-visible:ring-2 focus-visible:ring-sky-400"
+                className="relative grid h-14 w-14 place-items-center rounded-full bg-white/20 text-white outline-none transition hover:bg-white/30 active:scale-95 focus-visible:ring-2 focus-visible:ring-white/90 motion-reduce:active:scale-100"
+                aria-label={phase === 'error' ? `Retry loading ${attachment.name}` : `Play ${attachment.name}`}
               >
-                {phase === 'error' ? 'Try again' : 'Play video'}
+                {phase === 'error'
+                  ? <RotateCcw className="h-6 w-6" aria-hidden="true" />
+                  : <Play className="h-6 w-6 translate-x-px fill-current" aria-hidden="true" />}
               </button>
             ) : null}
           </div>
