@@ -96,9 +96,8 @@ export function VideoAttachmentReviewSurface({
 }: {
   attachment: AttachmentItem;
   onCancel: () => void;
-  onSend: (attachment: AttachmentItem, caption: string) => void;
+  onSend: (attachment: AttachmentItem) => void;
 }) {
-  const [caption, setCaption] = useState('');
   const titleId = 'video-attachment-review-title';
   return (
     <AppDialog
@@ -122,8 +121,6 @@ export function VideoAttachmentReviewSurface({
         onCancel={onCancel}
         onSend={onSend}
         dataAttribute="attachment"
-        caption={caption}
-        onCaptionChange={setCaption}
       />
     </AppDialog>
   );
@@ -136,17 +133,13 @@ function VideoReviewSurface({
   onRetake,
   onSend,
   dataAttribute,
-  caption = '',
-  onCaptionChange,
 }: {
   attachment: AttachmentItem;
   error?: string | null;
   onCancel: () => void;
   onRetake?: () => void;
-  onSend: (attachment: AttachmentItem, caption: string) => void;
+  onSend: (attachment: AttachmentItem) => void;
   dataAttribute: 'attachment' | 'recording';
-  caption?: string;
-  onCaptionChange?: (value: string) => void;
 }) {
   const [preparedAttachment, setPreparedAttachment] = useState(attachment);
   const source = attachmentVideoUrl(preparedAttachment);
@@ -205,18 +198,6 @@ function VideoReviewSurface({
           Preparing video poster…
         </p>
       ) : null}
-      {onCaptionChange ? (
-        <label className="grid gap-1.5">
-          <span className="text-[11px] font-medium text-[color:var(--utility-muted-text)]">Caption</span>
-          <textarea
-            value={caption}
-            onChange={(event) => onCaptionChange(event.target.value)}
-            rows={2}
-            className="min-h-[56px] resize-none rounded-[12px] border border-[color:var(--app-transient-border)] bg-[color:var(--app-transient-raised-bg)] px-3 py-2 text-[13px] text-[color:var(--utility-foreground)] outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--app-sidebar-accent)]"
-            placeholder="Add a caption…"
-          />
-        </label>
-      ) : null}
       <div className="flex flex-wrap items-center justify-end gap-2">
         <Button type="button" variant="quiet" size="sm" onClick={onCancel}>
           <X className="mr-1.5 h-4 w-4" aria-hidden="true" />Cancel
@@ -229,7 +210,7 @@ function VideoReviewSurface({
         <Button
           type="button"
           size="sm"
-          onClick={() => onSend(preparedAttachment, caption)}
+          onClick={() => onSend(preparedAttachment)}
           disabled={playbackState !== 'ready' || !posterReady}
         >
           <Send className="mr-1.5 h-4 w-4" aria-hidden="true" />

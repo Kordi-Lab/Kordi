@@ -191,10 +191,10 @@ export function MainComposer({
     void discardDesktopChatAttachment(attachedVideoReview.path).catch(() => undefined);
   }
 
-  function sendAttachedVideoReview(preparedAttachment: AttachmentItem, caption: string) {
+  function sendAttachedVideoReview(preparedAttachment: AttachmentItem) {
     if (!attachedVideoReview) return;
     try {
-      const result = onSend(caption, [preparedAttachment]);
+      const result = onSend('', [preparedAttachment]);
       setAttachedVideoReviewQueue((current) => current.slice(1));
       if (preparedAttachment.playbackUrl?.startsWith('blob:')) {
         URL.revokeObjectURL(preparedAttachment.playbackUrl);
