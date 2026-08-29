@@ -146,6 +146,35 @@ test('renders an agent name with a separate owner tag', () => {
   assert.doesNotMatch(markup, /app-message-bubble-own|app-message-bubble-peer/);
 });
 
+test('renders the owner tag while the viewer-owned agent is still working', () => {
+  const turn: DesktopChatTurnSnapshot = {
+    id: 'turn-live-owner',
+    sessionId: 'session-1',
+    prompt: 'hi',
+    status: 'working',
+    message: 'Working',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    succeeded: false,
+    error: null,
+  };
+  const message: Message = {
+    role: 'owned-agent',
+    sender: 'Babytang',
+    text: '',
+    time: '14:30',
+    turn,
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, />Babytang</);
+  assert.match(markup, /Owner · You/);
+  assert.match(markup, /aria-label="Owner: You"/);
+});
+
 test('renders peer human sender names inside the bubble with colorful bold styling', () => {
   const message: Message = {
     role: 'person',

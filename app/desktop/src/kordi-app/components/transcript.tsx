@@ -368,6 +368,7 @@ function MessageBubbleView({
   const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
+  const agentOwnerName = msg.senderOwnerName?.trim() || (msg.role === 'owned-agent' ? 'You' : null);
   const selectionClickSuppressedRef = useRef(false);
   const rowSelectionDragRef = useRef<{
     pointerId: number;
@@ -727,7 +728,7 @@ function MessageBubbleView({
               <div className="app-message-meta">
                 {msg.sender}
               </div>
-              <AgentOwnerTag name={msg.senderOwnerName} />
+              <AgentOwnerTag name={agentOwnerName} />
               {forkButton}
               {forkChip}
             </div>
@@ -822,7 +823,7 @@ function MessageBubbleView({
       {showHeaderMeta ? (
         <div className="app-message-meta flex items-center gap-1.5 px-1">
           <span>{msg.sender}</span>
-          <AgentOwnerTag name={msg.senderOwnerName} />
+          <AgentOwnerTag name={agentOwnerName} />
         </div>
       ) : null}
       <div className={cn(
