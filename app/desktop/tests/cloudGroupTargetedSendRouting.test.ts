@@ -74,3 +74,13 @@ test('direct cloud first sends and retries share the same idempotency key', () =
     'the stable optimistic id must reach the server transport',
   );
 });
+
+test('direct person chats resolve a mention of the local renamed agent', () => {
+  const source = chatMessagesSource();
+  const activeStart = source.indexOf('const handleSendChatMessage = useCallback(async (');
+  assert.notEqual(activeStart, -1);
+  assert.match(
+    source.slice(activeStart),
+    /activeGroupSessionIsGroup \|\| activeConvCollaborationTarget\?\.runtime === 'person'[\s\S]*resolveMentionedLocalAgentTarget/,
+  );
+});

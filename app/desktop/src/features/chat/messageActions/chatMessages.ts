@@ -1068,7 +1068,7 @@ export function useChatMessageActions({
       sharedCloudAgents, resolveSharedCloudAgentsForMention,
     );
     const mentionedTarget = resolvedMentionedTarget
-      ?? (activeGroupSessionIsGroup
+      ?? (activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person'
         ? resolveMentionedLocalAgentTarget(text, desktopChatState, desktopCollaborationState)
         : null);
     const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);

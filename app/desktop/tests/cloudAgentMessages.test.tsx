@@ -192,6 +192,15 @@ test('cloud agent mention matching recognizes local Kordi labels', () => {
   assert.equal(cloudMessageMentionsLocalAgent('@MyKordi who are you?', account, { allowFirstPerson: false }), false);
   assert.equal(cloudMessageMentionsLocalAgent('@Kordi who are you?', account, { allowFirstPerson: false }), false);
   assert.equal(cloudMessageMentionsLocalAgent('@MayasKordi who are you?', account, { allowFirstPerson: false }), true);
+  assert.equal(cloudMessageMentionsLocalAgent('@Babytang who are you?', {
+    ...account,
+    defaultAgent: {
+      agentId: 'cloud-agent:acct_me',
+      displayName: 'Babytang',
+      avatarUrl: null,
+      avatar: cloudAccountAvatarFixture,
+    },
+  }, { allowFirstPerson: false }), true);
 });
 
 test('cloud first-person agent mentions are sender-owned, not recipient-owned', () => {

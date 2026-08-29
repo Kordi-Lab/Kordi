@@ -238,6 +238,7 @@ export function normalizedCloudAgentMention(value: string): string {
 }
 
 function localAgentMentionKeys(account: CloudAccount, options: { allowFirstPerson?: boolean } = {}): Set<string> {
+  const agentName = normalizedCloudAgentMention(account.defaultAgent?.displayName ?? '');
   const names = [
     account.displayName,
     account.primaryEmail?.split('@')[0],
@@ -245,6 +246,7 @@ function localAgentMentionKeys(account: CloudAccount, options: { allowFirstPerso
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
   const keys = new Set<string>();
+  if (agentName) keys.add(agentName);
   if (options.allowFirstPerson !== false) {
     keys.add('kordi');
     keys.add('mykordi');
