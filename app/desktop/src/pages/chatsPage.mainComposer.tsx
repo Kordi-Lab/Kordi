@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { AttachmentItem, ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
@@ -135,6 +135,7 @@ export function MainComposer({
   const memeAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const [pastedImageEditId, setPastedImageEditId] = useState<string | null>(null);
   const [attachedVideoReviewQueue, setAttachedVideoReviewQueue] = useState<AttachmentItem[]>([]);
+  const attachedVideoReviewQueueRef = useRef(attachedVideoReviewQueue);
   const memeValidationMessageId = useId();
   const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
   const hasSendableDraft = Boolean(chatComposerText.trim() || chatComposerAttachments.length > 0);
@@ -156,6 +157,17 @@ export function MainComposer({
   const attachedVideoReview = attachedVideoReviewQueue[0] ?? null;
   const mediaSurfaceActive = voiceSurfaceActive || video.surfaceActive || Boolean(attachedVideoReview);
 
+  useEffect(() => {
+    attachedVideoReviewQueueRef.current = attachedVideoReviewQueue;
+  }, [attachedVideoReviewQueue]);
+
+  useEffect(() => () => {
+    for (const attachment of attachedVideoReviewQueueRef.current) {
+      if (attachment.playbackUrl?.startsWith('blob:')) URL.revokeObjectURL(attachment.playbackUrl);
+      void discardDesktopChatAttachment(attachment.path).catch(() => undefined);
+    }
+  }, []);
+
   function stageVideoReviews(pendingAttachments: Promise<AttachmentItem[]>) {
     void pendingAttachments.then((saved) => {
       const videos = saved.filter(isMp4VideoAttachment);
@@ -173,6 +185,9 @@ export function MainComposer({
   function cancelAttachedVideoReview() {
     if (!attachedVideoReview) return;
     setAttachedVideoReviewQueue((current) => current.slice(1));
+    if (attachedVideoReview.playbackUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(attachedVideoReview.playbackUrl);
+    }
     void discardDesktopChatAttachment(attachedVideoReview.path).catch(() => undefined);
   }
 
@@ -181,6 +196,9 @@ export function MainComposer({
     try {
       const result = onSend(caption, [preparedAttachment]);
       setAttachedVideoReviewQueue((current) => current.slice(1));
+      if (preparedAttachment.playbackUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(preparedAttachment.playbackUrl);
+      }
       void Promise.resolve(result).catch(() => undefined);
     } catch {
       // Keep the review open when sending could not start.
@@ -428,9 +446,6 @@ export function MainComposer({
             {!voiceSurfaceActive ? <ComposerAttachmentAddMenu
               inputRef={chatAttachmentInputRef}
               memeInputRef={memeAttachmentInputRef}
-              onChooseFiles={display.isNativeShell
-                ? () => { void stageVideoReviews(saveDesktopAttachmentPaths()); }
-                : undefined}
               onRecordVideo={() => { void video.start(); }}
               disabled={voice.recording}
             /> : null}

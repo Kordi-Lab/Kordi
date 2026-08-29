@@ -389,7 +389,7 @@ export function ComposerAttachmentAddMenu({
         className="app-composer-attachment-add-menu-action app-transient-flat-action app-transient-action-row flex w-full items-center gap-2 rounded-[8px] px-1.5 py-1 text-left"
       >
         <FolderOpen className="app-transient-action-icon" strokeWidth={1.8} aria-hidden="true" />
-        <span className="app-transient-action-label">Files and folders</span>
+        <span className="app-transient-action-label">{onChooseFiles ? 'Files and folders' : 'Files'}</span>
       </button>
       {onRecordVideo ? (
         <button

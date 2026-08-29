@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
   attachmentVideoDisplaySize,
+  attachmentVideoUrl,
   attachmentsAreOnlyMp4Videos,
   isMp4VideoAttachment,
   playableVideoSource,
@@ -114,6 +115,13 @@ test('video-only messages use the borderless media surface', () => {
 });
 
 test('video playback falls back to the signed stream after a local source fails', () => {
+  assert.equal(attachmentVideoUrl({
+    kind: 'file',
+    name: 'video.mp4',
+    mimeType: 'video/mp4',
+    localPath: '/staged/video.mp4',
+    playbackUrl: 'blob:video-review',
+  }), 'blob:video-review');
   assert.equal(playableVideoSource('asset://local.mp4', null, null), 'asset://local.mp4');
   assert.equal(
     playableVideoSource('asset://local.mp4', 'https://kordi.ai/playback', 'asset://local.mp4'),

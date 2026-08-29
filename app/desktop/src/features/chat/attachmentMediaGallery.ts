@@ -134,8 +134,9 @@ export function attachmentPreviewUrl(attachment: MessageAttachment) {
   return undefined;
 }
 
-export function attachmentVideoUrl(attachment: MessageAttachment) {
+export function attachmentVideoUrl(attachment: MessageAttachment & { playbackUrl?: string | null }) {
   if (!isMp4VideoAttachment(attachment)) return undefined;
+  if (attachment.playbackUrl?.startsWith('blob:')) return attachment.playbackUrl;
   if (attachment.localPath && isNativeShell()) {
     try {
       return convertFileSrc(attachment.localPath);

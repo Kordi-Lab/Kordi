@@ -128,15 +128,6 @@ export async function videoPosterDataUrlFromSource(source: string) {
   return (await videoPreviewFromSource(source))?.previewUrl ?? null;
 }
 
-export async function videoPreviewFromBlob(blob: Blob) {
-  const source = URL.createObjectURL(blob);
-  try {
-    return await videoPreviewFromSource(source);
-  } finally {
-    URL.revokeObjectURL(source);
-  }
-}
-
 function extensionFromName(name: string) {
   const match = name.trim().match(/\.([A-Za-z0-9]+)$/);
   return match?.[1]?.toLowerCase() ?? '';
@@ -368,9 +359,9 @@ export async function composerAttachmentItemFromFile(
   }
   const stored = await storeDesktopChatAttachmentFile(file, name);
   const path = stored.path;
-  const videoPreview = isMp4VideoAttachment({ kind, name, mimeType })
-    ? await videoPreviewFromBlob(file)
-    : null;
+  const isVideo = isMp4VideoAttachment({ kind, name, mimeType });
+  const playbackUrl = isVideo ? URL.createObjectURL(file) : undefined;
+  const videoPreview = playbackUrl ? await videoPreviewFromSource(playbackUrl) : null;
   const previewUrl = kind === 'image'
     ? URL.createObjectURL(file)
     : videoPreview?.previewUrl;
@@ -389,6 +380,7 @@ export async function composerAttachmentItemFromFile(
     mimeType,
     formatLabel: attachmentFormatLabel(name, mimeType),
     previewUrl,
+    playbackUrl,
     sizeBytes: file.size,
     ...(dimensions ?? {}),
     ...(subtype ? { subtype, altText: '', memeRightsConfirmed: false } : {}),
@@ -402,6 +394,9 @@ export function updatedComposerAttachment(
   if ('path' in update) {
     if (attachment.previewUrl?.startsWith('blob:') && attachment.previewUrl !== update.previewUrl) {
       URL.revokeObjectURL(attachment.previewUrl);
+    }
+    if (attachment.playbackUrl?.startsWith('blob:') && attachment.playbackUrl !== update.playbackUrl) {
+      URL.revokeObjectURL(attachment.playbackUrl);
     }
     return update;
   }
