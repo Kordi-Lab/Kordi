@@ -130,7 +130,9 @@ export function useCloudCollaborationTransport({
   const directMessaging = useCloudDirectMessaging({
     account,
     client,
+    messagesByPeerRef: stores.messages.byPeerRef,
     setMessagesByPeer: stores.messages.setByPeer,
+    syncDiff: syncCloudCollaborationDiff,
   });
   const claimFreshCloudGroupFallback =
     useCloudFreshGroupFallbackClaim({

@@ -74,11 +74,12 @@ function sessionPane(
   composerLabel: string,
   paneMessages: ChatSessionPaneProps['viewport']['messages'] = messages,
   densityMode: ChatSessionPaneProps['presentation']['densityMode'] = 'default',
+  paneActions: ChatSessionPaneProps['actions'] = actions,
 ) {
   return (
     <ChatSessionPane
       presentation={{ ...presentation, densityMode }}
-      actions={actions}
+      actions={paneActions}
       selection={selection}
       viewport={{
         sessionKey: 'session:stable',
@@ -137,6 +138,40 @@ test('composer-only updates do not rerender the transcript subtree', async () =>
   assert.equal(
     host.querySelector('[data-composer-label]')?.textContent,
     'second draft',
+  );
+});
+
+test('equivalent action callbacks do not rerender unchanged message bubbles', async () => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  const paneMessages: ChatSessionPaneProps['viewport']['messages'] = [{
+    id: 'stable-message',
+    role: 'person',
+    sender: 'Person',
+    senderType: 'human',
+    text: 'Stable message',
+    time: '10:00',
+  }];
+  const changingActions = (): ChatSessionPaneProps['actions'] => ({
+    onOpenSource: () => {},
+    onOpenArtifact: () => {},
+    onOpenAuthSettings: () => {},
+    onStopCollaborationAgentRequest: () => {},
+    onForwardMessage: () => {},
+    onRetryMessage: () => {},
+  });
+
+  await act(async () => root?.render(sessionPane('draft', paneMessages, 'default', changingActions())));
+  await flush();
+  clearChatPerformanceRecords();
+
+  await act(async () => root?.render(sessionPane('draft', paneMessages, 'default', changingActions())));
+  await flush();
+
+  assert.equal(
+    readChatPerformanceRecords().filter((record) => record.name === 'transcript-virtual-render').length,
+    0,
   );
 });
 

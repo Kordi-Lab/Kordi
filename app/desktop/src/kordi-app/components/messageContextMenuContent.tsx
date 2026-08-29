@@ -125,7 +125,8 @@ export function MessageContextMenuContent({
     }
   };
   const handleReaction = (reaction: string) => {
-    void Promise.resolve(onReactMessage?.(msg, reaction)).finally(() => onClose?.());
+    onClose?.();
+    void onReactMessage?.(msg, reaction);
   };
   const reviewMediaAttachment = () => {
     if (!mediaAttachment) return;

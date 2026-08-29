@@ -303,7 +303,7 @@ export function useKordiAppFoundation({
     cachedMessagesReady, pendingGroupProjectionSessionIds,
     cloudHiddenSessionIds,
     cloudDeletedSessionIds,
-    cloudSessionPinsById,
+    cloudSessionPinsById, cloudCanonicalReactionState,
     cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs,
   } = useCloudCollaborationState({
     account: cloudSession.account,
@@ -475,7 +475,7 @@ export function useKordiAppFoundation({
       cloudAgentDefinitionsById, refreshCloudContacts, cloudContacts,
       cloudSessionActivity, initialContactsSettled, initialMessagesSettled,
       cachedMessagesReady, pendingGroupProjectionSessionIds, cloudHiddenSessionIds, cloudDeletedSessionIds,
-      cloudSessionPinsById, cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs,
+      cloudSessionPinsById, cloudCanonicalReactionState, cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs,
       isCollaborationSyncing, lastCollaborationSyncAt,
       unsupportedLegacyCollaborationAction,
       setCloudAgentRuntimeRoutesBySessionId,

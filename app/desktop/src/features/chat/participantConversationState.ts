@@ -71,11 +71,20 @@ export function attachmentOnlyMessagePreview(
   return { kind: 'file', label: `${attachments.length} attachments` };
 }
 
+export function latestParticipantSpacePreviewMessage(conversation: Conversation) {
+  for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
+    const message = conversation.messages[index];
+    if (!message || message.role === 'system') continue;
+    const preview = safePreviewText(message.text)
+      || safePreviewText(message.turn?.assistantText)
+      || attachmentOnlyMessagePreview(message)?.label;
+    if (preview) return { message, preview };
+  }
+  return null;
+}
+
 export function latestParticipantSpaceMessageText(conversation: Conversation) {
-  const latest = conversation.messages[conversation.messages.length - 1];
-  return safePreviewText(latest?.text)
-    || safePreviewText(latest?.turn?.assistantText)
-    || attachmentOnlyMessagePreview(latest)?.label
+  return latestParticipantSpacePreviewMessage(conversation)?.preview
     || safePreviewText(conversation.subtitle)
     || safePreviewText(conversation.name);
 }

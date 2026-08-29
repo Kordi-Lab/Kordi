@@ -17,6 +17,7 @@ import {
   TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
+import { preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP } from '@/features/chat/virtualTranscriptLayout';
 import {
   TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS,
   useVirtualTranscriptNavigation,
@@ -59,10 +60,6 @@ export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
   estimateSize?: (item: Item, index: number) => number;
   gap?: number;
 };
-const preserveMeasuredDisclosurePosition = () => false;
-const STABLE_DISCLOSURE_SETTLE_MS = 320;
-const TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP = 12;
-const TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT = 72;
 
 type StableDisclosureAnchor = {
   sessionKey: string;
@@ -121,7 +118,6 @@ export function VirtualTranscript<Item>({
   const stableDisclosureReleaseFrameRef = useRef<number | null>(null);
   const stableDisclosureResizeObserverRef = useRef<ResizeObserver | null>(null);
   const stableDisclosureDirectionRef = useRef(new WeakMap<HTMLElement, TranscriptDisclosureDirection>());
-
   const setScrollElement = useCallback((node: HTMLDivElement | null) => {
     internalScrollRef.current = node;
     if (scrollRef) scrollRef.current = node;
@@ -152,7 +148,11 @@ export function VirtualTranscript<Item>({
   });
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = stableDisclosureActive
     ? preserveMeasuredDisclosurePosition
-    : undefined;
+    : (virtualizer.scrollRect?.height ?? 0) > 0
+      ? (item, delta, instance) => preserveMeasuredTranscriptRow(
+          item, delta, instance, tailAlignmentActiveRef, tailAlignmentTargetRef,
+        )
+      : undefined;
 
   const pagingEnabled = hasOlder && Boolean(onLoadOlder);
   const olderLoadScopeRef = useRef({ sessionKey, pagingEnabled });

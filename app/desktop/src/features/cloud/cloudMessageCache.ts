@@ -1,6 +1,9 @@
 import type { CloudMessage, CloudMessageAttachment } from './authClient';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
-import { normalizeCloudReaderAccountIds } from './cloudMessageMerge';
+import {
+  normalizeCloudMessageReactions,
+  normalizeCloudReaderAccountIds,
+} from './cloudMessageMerge';
 import { IndexedDbCloudMessageCacheStore } from './indexedDbCloudMessageCacheStore';
 import { cloudVoiceMessageMetadataOnly } from './cloudVoiceMessage';
 import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
@@ -93,7 +96,12 @@ export function cloudMessageMetadataOnly(message: CloudMessage): CloudMessage {
     .map(cloudMessageAttachmentMetadataOnly)
     .filter((attachment): attachment is CloudMessageAttachment => Boolean(attachment));
   const voiceMessage = cloudVoiceMessageMetadataOnly(message.voiceMessage);
-  const { attachments: _attachments, voiceMessage: _voiceMessage, ...metadata } = message;
+  const {
+    attachments: _attachments,
+    voiceMessage: _voiceMessage,
+    pendingReactionIntents: _pendingReactionIntents,
+    ...metadata
+  } = message;
   return {
     ...metadata,
     ...(attachments.length > 0 ? { attachments } : {}),
@@ -124,15 +132,7 @@ function normalizedMessage(accountId: string, value: unknown): CloudMessage | nu
   const version = Number.isSafeInteger(record.version)
     && Number(record.version) > 0 ? Number(record.version) : null;
   const readByAccountIds = normalizeCloudReaderAccountIds(record.readByAccountIds);
-  const reactions = Array.isArray(record.reactions)
-    ? record.reactions.flatMap((value) => {
-        if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
-        const reaction = value as Record<string, unknown>;
-        const emoji = cleanText(reaction.value);
-        const accountIds = normalizeCloudReaderAccountIds(reaction.accountIds);
-        return emoji && accountIds ? [{ value: emoji, accountIds }] : [];
-      })
-    : [];
+  const reactions = normalizeCloudMessageReactions(record.reactions) ?? [];
   return {
     messageId,
     fromAccountId,

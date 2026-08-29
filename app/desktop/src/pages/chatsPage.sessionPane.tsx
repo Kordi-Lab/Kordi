@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import type {
   Dispatch,
   ReactNode,
@@ -26,6 +26,7 @@ import type {
 } from '@/kordi-app/types';
 import type {
   ChatAttachment as Attachment,
+  ChatSessionPaneActions,
   ChatSessionPaneProps,
 } from '@/pages/chatsPage.types';
 import { useChatTranscriptViewport } from '@/pages/chatsPage.transcriptViewport';
@@ -250,12 +251,71 @@ function TranscriptLoadingSkeleton({
   );
 }
 
+function useStableChatSessionPaneActions(
+  actions: ChatSessionPaneActions,
+): ChatSessionPaneActions {
+  const actionsRef = useRef(actions);
+  useLayoutEffect(() => {
+    actionsRef.current = actions;
+  }, [actions]);
+  const delegates = useMemo<ChatSessionPaneActions>(() => ({
+    onSelectSession: (sessionId) => actionsRef.current.onSelectSession?.(sessionId),
+    onOpenSource: (file) => actionsRef.current.onOpenSource(file),
+    onOpenArtifact: (artifactId) => actionsRef.current.onOpenArtifact(artifactId),
+    onOpenAuthSettings: () => actionsRef.current.onOpenAuthSettings(),
+    onNavigateToMessage: (messageId, sourceMessage) => (
+      actionsRef.current.onNavigateToMessage?.(messageId, sourceMessage)
+    ),
+    onOpenMessageDetail: (message) => actionsRef.current.onOpenMessageDetail?.(message),
+    onStopCollaborationAgentRequest: (...args) => (
+      actionsRef.current.onStopCollaborationAgentRequest(...args)
+    ),
+    onStopActiveTurn: () => actionsRef.current.onStopActiveTurn?.(),
+    onRequestCollaborationContact: () => actionsRef.current.onRequestCollaborationContact?.(),
+    onOpenSenderProfile: (message, anchorRect) => (
+      actionsRef.current.onOpenSenderProfile?.(message, anchorRect)
+    ),
+    onForkMessage: (entryId) => actionsRef.current.onForkMessage?.(entryId),
+    onOpenForkSession: (sessionId) => actionsRef.current.onOpenForkSession?.(sessionId),
+    onReplyMessage: (message) => actionsRef.current.onReplyMessage?.(message),
+    onForwardMessage: (message) => actionsRef.current.onForwardMessage?.(message),
+    onReactMessage: (message, reaction) => actionsRef.current.onReactMessage?.(message, reaction),
+    onRetryMessage: (message) => actionsRef.current.onRetryMessage?.(message),
+    onSelectMessage: (message) => actionsRef.current.onSelectMessage?.(message),
+    onRequestPinMessage: (message) => actionsRef.current.onRequestPinMessage?.(message),
+    onRequestUnpinMessage: (message) => actionsRef.current.onRequestUnpinMessage?.(message),
+  }), []);
+  return {
+    ...delegates,
+    onSelectSession: actions.onSelectSession ? delegates.onSelectSession : undefined,
+    onNavigateToMessage: actions.onNavigateToMessage ? delegates.onNavigateToMessage : undefined,
+    onOpenMessageDetail: actions.onOpenMessageDetail ? delegates.onOpenMessageDetail : undefined,
+    onStopActiveTurn: actions.onStopActiveTurn ? delegates.onStopActiveTurn : undefined,
+    onRequestCollaborationContact: actions.onRequestCollaborationContact
+      ? delegates.onRequestCollaborationContact
+      : undefined,
+    onOpenSenderProfile: actions.onOpenSenderProfile ? delegates.onOpenSenderProfile : undefined,
+    onForkMessage: actions.onForkMessage ? delegates.onForkMessage : undefined,
+    onOpenForkSession: actions.onOpenForkSession ? delegates.onOpenForkSession : undefined,
+    onReplyMessage: actions.onReplyMessage ? delegates.onReplyMessage : undefined,
+    onForwardMessage: actions.onForwardMessage ? delegates.onForwardMessage : undefined,
+    onReactMessage: actions.onReactMessage ? delegates.onReactMessage : undefined,
+    onRetryMessage: actions.onRetryMessage ? delegates.onRetryMessage : undefined,
+    onSelectMessage: actions.onSelectMessage ? delegates.onSelectMessage : undefined,
+    onRequestPinMessage: actions.onRequestPinMessage ? delegates.onRequestPinMessage : undefined,
+    onRequestUnpinMessage: actions.onRequestUnpinMessage
+      ? delegates.onRequestUnpinMessage
+      : undefined,
+  };
+}
+
 export function ChatSessionPane({
   viewport,
   presentation,
   actions,
   selection,
 }: ChatSessionPaneProps) {
+  const stableActions = useStableChatSessionPaneActions(actions);
   const {
     messages,
     composer,
@@ -364,7 +424,7 @@ export function ChatSessionPane({
   const transcriptViewport = useChatTranscriptViewport({
     viewport,
     presentation,
-    actions,
+    actions: stableActions,
     selection,
     transcriptEntries,
     transcriptMessages,

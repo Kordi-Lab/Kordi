@@ -170,7 +170,7 @@ export type CloudMessage = {
   messageKind?: string | null;
   canonicalHistoryLocalMessageId?: string | null;
   version?: number | null;
-  reactions?: Array<{ value: string; accountIds: string[] }>;
+  reactions?: Array<{ value: string; accountIds: string[] }>; pendingReactionIntents?: Array<{ value: string; accountId: string; active: boolean }>;
 };
 export type CloudSyncEventType = string;
 

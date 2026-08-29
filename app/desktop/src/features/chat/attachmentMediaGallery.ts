@@ -153,6 +153,19 @@ export function collectConversationImageAttachments(messages: readonly Message[]
   return messages.flatMap((message) => (message.attachments ?? []).filter(shouldPreviewAttachmentInline));
 }
 
+export function attachmentMediaGalleriesEqual(
+  left: readonly MessageAttachment[] | undefined,
+  right: readonly MessageAttachment[] | undefined,
+) {
+  if (left === right) return true;
+  if ((left?.length ?? 0) !== (right?.length ?? 0)) return false;
+  return (left ?? []).every((attachment, index) => {
+    const other = right?.[index];
+    if (!other) return false;
+    return attachmentPreviewIdentity(attachment) === attachmentPreviewIdentity(other);
+  });
+}
+
 export function attachmentMediaGalleryIndex(
   gallery: readonly MessageAttachment[],
   attachment: MessageAttachment,

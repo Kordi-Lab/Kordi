@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cloudGroupMemberJoinNoticeRequests, cloudGroupSessionTitleSnapshotForControl, encodeCloudGroupControl, parseCloudGroupControl, cloudGroupTitleUpdateNoticeRequest, cloudSessionTitleUpdateNoticeRequest } from '../src/features/cloud/cloudGroupMessages';
 import { legacyCloudGroupTitleNoticeClassifications } from '../src/features/cloud/legacyCloudGroupTitleNotices';
+import { cloudGroupHistoryReplayPreservesSessionShell } from '../src/features/cloud/cloudGroupSessionControl';
+
+test('history replay preserves an existing group session shell', () => {
+  assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, true), true);
+  assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, false), false);
+  assert.equal(cloudGroupHistoryReplayPreservesSessionShell(false, true), false);
+});
 
 test('legacy session rename controls become administrator-authored title snapshots', () => {
   const snapshot = cloudGroupSessionTitleSnapshotForControl({
@@ -239,4 +246,13 @@ test('group invites carry one durable join notice for each invited member', () =
     invitedByIdentityId: 'human:cloud:acct_inviter',
     invitedByDisplayName: 'Alex Morgan',
   });
+  assert.deepEqual(cloudGroupMemberJoinNoticeRequests({
+    envelope: envelope!,
+    actorIdentityId: 'human:cloud:acct_inviter',
+    identityIdByAccount: new Map([
+      ['acct_inviter', 'human:cloud:acct_inviter'],
+      ['acct_new', 'human:cloud:acct_new'],
+    ]),
+    existingMessageIds: new Set([requests[0]!.id!]),
+  }), []);
 });

@@ -127,8 +127,14 @@ export function preserveEquivalentTranscriptMessageReferences(
 export type TranscriptReferenceCache = ReadonlyMap<string, readonly Message[]>;
 
 export type TranscriptReferenceStabilizer = {
-  prepare: (conversations: Conversation[]) => ReturnType<typeof preserveConversationTranscriptReferences>;
-  commit: (cache: TranscriptReferenceCache) => void;
+  prepare: (conversations: Conversation[]) => PreparedTranscriptReferences;
+  commit: (prepared: PreparedTranscriptReferences) => void;
+};
+
+type PreparedTranscriptReferences = ReturnType<
+  typeof preserveConversationTranscriptReferences
+> & {
+  conversationCache: ReadonlyMap<string, Conversation>;
 };
 
 function conversationTranscriptKey(conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>) {
@@ -164,6 +170,23 @@ export function preserveConversationTranscriptReferences(
   };
 }
 
+function equivalentConversation(
+  previous: Conversation,
+  next: Conversation,
+) {
+  const previousRecord = previous as unknown as Record<string, unknown>;
+  const nextRecord = next as unknown as Record<string, unknown>;
+  const previousKeys = Object.keys(previousRecord);
+  const nextKeys = Object.keys(nextRecord);
+  return previousKeys.length === nextKeys.length
+    && nextKeys.every((key) => (
+      Object.prototype.hasOwnProperty.call(previousRecord, key)
+      && (key === 'messages'
+        ? previous.messages === next.messages
+        : jsonValuesEqual(previousRecord[key], nextRecord[key]))
+    ));
+}
+
 /**
  * Keeps render preparation pure with respect to the last committed UI. A
  * concurrent render may prepare a candidate cache, but only a layout effect
@@ -171,12 +194,38 @@ export function preserveConversationTranscriptReferences(
  */
 export function createTranscriptReferenceStabilizer(): TranscriptReferenceStabilizer {
   let committedCache: TranscriptReferenceCache = new Map();
+  let committedConversationCache: ReadonlyMap<string, Conversation> = new Map();
+  let committedConversations: Conversation[] = [];
   return {
     prepare(conversations) {
-      return preserveConversationTranscriptReferences(conversations, committedCache);
+      const prepared = preserveConversationTranscriptReferences(
+        conversations,
+        committedCache,
+      );
+      const conversationCache = new Map<string, Conversation>();
+      const reconciled = prepared.conversations.map((conversation) => {
+        const key = conversationTranscriptKey(conversation);
+        const previous = committedConversationCache.get(key);
+        const stable = previous && equivalentConversation(previous, conversation)
+          ? previous
+          : conversation;
+        conversationCache.set(key, stable);
+        return stable;
+      });
+      const stableConversations = committedConversations.length === reconciled.length
+        && reconciled.every((conversation, index) => conversation === committedConversations[index])
+        ? committedConversations
+        : reconciled;
+      return {
+        ...prepared,
+        conversations: stableConversations,
+        conversationCache,
+      };
     },
-    commit(cache) {
-      committedCache = cache;
+    commit(prepared) {
+      committedCache = prepared.cache;
+      committedConversationCache = prepared.conversationCache;
+      committedConversations = prepared.conversations;
     },
   };
 }

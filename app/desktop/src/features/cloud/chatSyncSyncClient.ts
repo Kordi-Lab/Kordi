@@ -280,7 +280,10 @@ export class ChatSyncSyncClient {
           message.sender_account_id,
         ),
         messageId: message.id,
-        payload: { message: cloudMessageFromChatSync(message, conversation) },
+        payload: {
+          message: cloudMessageFromChatSync(message, conversation),
+          ...(event.type === 'reaction.updated' ? { reactionStateConfirmed: true } : {}),
+        },
       }];
     }
     if ((event.type === 'conversation.created'

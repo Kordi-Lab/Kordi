@@ -34,12 +34,12 @@ import { MarkdownContent } from './markdown';
 import { MessageInlineContent, MessageMentionProfileContent } from './messageInlineContent';
 import { MessageLinkPreview } from './messageLinkPreview';
 import { firstExternalMessageLink } from './messageLinks';
+import { messageBubblePropsEqual } from './messageBubbleMemo';
 import { MessageReactionChips } from './messageReactions';
 import { MessageContextMenuHost } from './messageContextMenuHost';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
 import { AttachmentPreview } from './transcriptAttachments';
 import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
-import { messageSnapshotKey } from './transcriptMessageSnapshot';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
@@ -991,42 +991,8 @@ function MessageBubbleView({
   );
 }
 
-export const MessageBubble = memo(
-  MessageBubbleView,
-  (previous, next) => previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
-    && previous.onStopActiveTurn === next.onStopActiveTurn
-    && previous.onNavigateToMessage === next.onNavigateToMessage
-    && previous.onOpenArtifact === next.onOpenArtifact
-    && previous.onOpenAuthSettings === next.onOpenAuthSettings
-    && previous.onRequestCollaborationContact === next.onRequestCollaborationContact
-    && previous.onOpenSenderProfile === next.onOpenSenderProfile
-    && previous.onForkMessage === next.onForkMessage
-    && previous.onOpenForkSession === next.onOpenForkSession
-    && previous.relatedAgentSessionStatusById === next.relatedAgentSessionStatusById
-    && previous.onReplyMessage === next.onReplyMessage
-    && previous.onForwardMessage === next.onForwardMessage
-    && previous.onRetryMessage === next.onRetryMessage
-    && previous.onOpenMessageDetail === next.onOpenMessageDetail
-    && previous.onSelectMessage === next.onSelectMessage
-    && previous.onRequestPinMessage === next.onRequestPinMessage
-    && previous.onRequestUnpinMessage === next.onRequestUnpinMessage
-    && previous.onReactMessage === next.onReactMessage
-    && previous.pinnedMessageIds === next.pinnedMessageIds
-    && previous.selectionMode === next.selectionMode
-    && previous.selectedMessageIds === next.selectedMessageIds
-    && previous.isMessageSelectable === next.isMessageSelectable
-    && previous.onToggleSelectedMessage === next.onToggleSelectedMessage
-    && previous.onSelectionDragStart === next.onSelectionDragStart
-    && previous.onSelectionDragEnter === next.onSelectionDragEnter
-    && previous.onSelectionDragEnd === next.onSelectionDragEnd
-    && previous.plainAgentResponse === next.plainAgentResponse
-    && previous.messageForks === next.messageForks
-    && previous.imageGallery === next.imageGallery
-    && previous.densityMode === next.densityMode
-    && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
-    && previous.isGroupedWithNext === next.isGroupedWithNext
-    && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),
-);
+export type MessageBubbleProps = Parameters<typeof MessageBubbleView>[0];
+export const MessageBubble = memo(MessageBubbleView, messageBubblePropsEqual);
 function contactAvatarKind(contact: Contact): IdentityAvatarKind {
   return contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human';
 }

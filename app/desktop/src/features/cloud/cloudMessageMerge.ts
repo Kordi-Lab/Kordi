@@ -1,5 +1,11 @@
 import type { CloudMessage } from './authClient';
 
+export type CloudReactionIntent = {
+  value: string;
+  accountId: string;
+  active: boolean;
+};
+
 export function latestCloudReceiptAt(
   current: string | null,
   incoming: string | null,
@@ -54,13 +60,67 @@ function mergeCloudReaderAccountIds(current?: string[], incoming?: string[]): st
   return normalizeCloudReaderAccountIds([...(current ?? []), ...(incoming ?? [])]);
 }
 
-function cloudReactionsEqual(left: CloudMessage['reactions'] = [], right: CloudMessage['reactions'] = []) {
+export function normalizeCloudMessageReactions(value: unknown): CloudMessage['reactions'] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const accountIdsByReaction = new Map<string, string[]>();
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const reaction = item as Record<string, unknown>;
+    const emoji = typeof reaction.value === 'string' ? reaction.value.trim() : '';
+    const accountIds = normalizeCloudReaderAccountIds(reaction.accountIds);
+    if (!emoji || !accountIds) continue;
+    accountIdsByReaction.set(
+      emoji,
+      normalizeCloudReaderAccountIds([
+        ...(accountIdsByReaction.get(emoji) ?? []),
+        ...accountIds,
+      ]) ?? [],
+    );
+  }
+  return [...accountIdsByReaction]
+    .map(([value, accountIds]) => ({ value, accountIds }))
+    .sort((left, right) => left.value.localeCompare(right.value));
+}
+
+export function cloudReactionsEqual(left: CloudMessage['reactions'] = [], right: CloudMessage['reactions'] = []) {
   if (left.length !== right.length) return false;
   return left.every((reaction, index) => {
     const other = right[index];
     return Boolean(other)
       && reaction.value === other.value
       && cloudReaderAccountIdsEqual(reaction.accountIds, other.accountIds);
+  });
+}
+
+export function applyCloudReactionIntents(
+  reactions: CloudMessage['reactions'],
+  intents: readonly CloudReactionIntent[],
+): NonNullable<CloudMessage['reactions']> {
+  let next = normalizeCloudMessageReactions(reactions) ?? [];
+  for (const intent of intents) {
+    const accountIds = new Set(
+      next.find((reaction) => reaction.value === intent.value)?.accountIds ?? [],
+    );
+    if (intent.active) accountIds.add(intent.accountId);
+    else accountIds.delete(intent.accountId);
+    next = normalizeCloudMessageReactions([
+      ...next.filter((reaction) => reaction.value !== intent.value),
+      ...(accountIds.size > 0 ? [{ value: intent.value, accountIds: [...accountIds] }] : []),
+    ]) ?? [];
+  }
+  return next;
+}
+
+function cloudReactionIntentsEqual(
+  left: CloudMessage['pendingReactionIntents'] = [],
+  right: CloudMessage['pendingReactionIntents'] = [],
+) {
+  return left.length === right.length && left.every((intent, index) => {
+    const other = right[index];
+    if (!other) return false;
+    return intent.value === other.value
+      && intent.accountId === other.accountId
+      && intent.active === other.active;
   });
 }
 
@@ -97,6 +157,7 @@ export function cloudMessagesEqual(
     && (message.canonicalHistoryLocalMessageId ?? null) === (other.canonicalHistoryLocalMessageId ?? null)
     && (message.version ?? null) === (other.version ?? null)
     && cloudReactionsEqual(message.reactions, other.reactions)
+    && cloudReactionIntentsEqual(message.pendingReactionIntents, other.pendingReactionIntents)
     && cloudMessageAttachmentsEqual(message.attachments, other.attachments);
 }
 
@@ -123,10 +184,22 @@ export function compareCloudMessages(left: CloudMessage, right: CloudMessage): n
 export function mergeCloudMessageMonotonicState(
   current: CloudMessage,
   incoming: CloudMessage,
+  options: { confirmReactionState?: boolean } = {},
 ): CloudMessage {
   const incomingIsOlder = current.version != null
     && incoming.version != null
     && incoming.version < current.version;
+  const pendingReactionIntentsBeforeConfirmation = incoming.pendingReactionIntents
+    ?? current.pendingReactionIntents
+    ?? [];
+  const pendingReactionIntents = options.confirmReactionState
+    && incoming.reactions !== undefined
+    ? pendingReactionIntentsBeforeConfirmation.filter((intent) => {
+        const active = incoming.reactions?.find((reaction) => reaction.value === intent.value)
+          ?.accountIds.includes(intent.accountId) === true;
+        return active !== intent.active;
+      })
+    : pendingReactionIntentsBeforeConfirmation;
   const merged = {
     ...current,
     ...(incomingIsOlder ? {} : incoming),
@@ -142,9 +215,15 @@ export function mergeCloudMessageMonotonicState(
       current.readByAccountIds,
       incoming.readByAccountIds,
     ),
-    reactions: incomingIsOlder
-      ? current.reactions
-      : incoming.reactions ?? current.reactions,
+    reactions: applyCloudReactionIntents(
+      options.confirmReactionState
+        ? incoming.reactions ?? current.reactions
+        : incomingIsOlder ? current.reactions : incoming.reactions ?? current.reactions,
+      pendingReactionIntents,
+    ),
+    pendingReactionIntents: pendingReactionIntents.length > 0
+      ? pendingReactionIntents
+      : undefined,
   };
   return cloudMessagesEqual(current, merged) ? current : merged;
 }

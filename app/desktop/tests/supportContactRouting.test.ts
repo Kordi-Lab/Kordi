@@ -184,7 +184,7 @@ test('duplicate Support collapse keeps history and the hydrated real-owner route
 
 test('runtime-only support conversation does not show a permanent canonical loader', () => {
   const conversation = supportConversation();
-  const selected = applyCanonicalHydrationPlaceholder(conversation, 'cold');
+  const selected = applyCanonicalHydrationPlaceholder(conversation);
 
   assert.equal(selected, conversation);
   assert.deepEqual(selected.messages, []);

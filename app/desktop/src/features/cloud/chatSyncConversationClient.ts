@@ -244,14 +244,16 @@ export class ChatSyncConversationClient {
     reaction: string,
     active: boolean,
   ): Promise<CloudMessage> {
-    let conversation = this.state.conversationById.get(conversationId);
+    let conversation = this.state.conversationById.get(conversationId)
+      ?? this.state.conversationBySessionId.get(conversationId);
     if (!conversation) {
       await this.state.bootstrap(token);
-      conversation = this.state.conversationById.get(conversationId);
+      conversation = this.state.conversationById.get(conversationId)
+        ?? this.state.conversationBySessionId.get(conversationId);
     }
     if (!conversation) throw new Error('This conversation is unavailable for reliable chat sync.');
     const response = await this.state.send<{ message: ChatSyncMessage }>(
-      `/v2/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/reactions`,
+      `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/messages/${encodeURIComponent(messageId)}/reactions`,
       {
         method: active ? 'PUT' : 'DELETE',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
