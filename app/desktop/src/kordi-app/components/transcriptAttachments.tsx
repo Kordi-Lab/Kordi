@@ -15,6 +15,7 @@ import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import {
   cancelCloudAttachmentUpload,
   cloudAttachmentUploadSnapshot,
+  resolveCloudAttachmentUploadProgress,
   subscribeCloudAttachmentUpload,
 } from '@/features/cloud/cloudAttachmentUpload';
 import { loadVisibleCloudAttachmentPreview, type CloudAttachmentPreviewLease } from '@/features/cloud/cloudAttachments';
@@ -389,9 +390,10 @@ export function AttachmentPreview({
     () => cloudAttachmentUploadSnapshot(deliveryImagePath),
     () => null,
   );
-  const deliveryUploadProgress = deliveryUpload && deliveryUpload.totalBytes > 0
-    ? (deliveryUpload.uploadedBytes / deliveryUpload.totalBytes) * 100
-    : null;
+  const resolvedDeliveryUpload = resolveCloudAttachmentUploadProgress(
+    deliveryUpload,
+    deliveryImageAttachment?.sizeBytes,
+  );
   const deliveryUploadIsActive = deliveryUpload
     && ['preparing', 'uploading'].includes(deliveryUpload.phase);
   const deliveryUploadFailure = deliveryUpload?.phase === 'failed'
@@ -458,7 +460,9 @@ export function AttachmentPreview({
                 time={msg.time}
                 foregroundTone={deliveryForegroundTone}
                 onRetry={onRetryImage}
-                uploadProgress={deliveryUploadProgress}
+                uploadProgress={resolvedDeliveryUpload?.percent}
+                uploadedBytes={resolvedDeliveryUpload?.uploadedBytes}
+                totalBytes={resolvedDeliveryUpload?.totalBytes}
                 onCancelUpload={deliveryUploadIsActive
                   ? () => void cancelCloudAttachmentUpload(deliveryImagePath)
                   : undefined}

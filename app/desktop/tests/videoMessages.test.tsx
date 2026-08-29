@@ -150,7 +150,9 @@ test('sending videos keep the final card geometry and move progress into the med
 
   assert.match(markup, /data-attachment-video-card="true"/);
   assert.match(markup, /aspect-ratio:464 \/ 261/);
-  assert.match(markup, /aria-label="Sending video"/);
+  assert.match(markup, /aria-label="Sending video, 0%, 0 B \/ 1\.0 KB"/);
+  assert.match(markup, /app-attachment-image-media-ring-label">0%/);
+  assert.match(markup, /app-attachment-media-upload-size">0 B \/ 1\.0 KB/);
   assert.doesNotMatch(markup, /<video/);
 });
 

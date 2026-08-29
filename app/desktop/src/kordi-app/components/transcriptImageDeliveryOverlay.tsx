@@ -1,7 +1,10 @@
 import { Check, CheckCheck, LoaderCircle } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import type { AttachmentImageDeliveryVisual } from './transcriptAttachmentTypes';
+import {
+  formatAttachmentSize,
+  type AttachmentImageDeliveryVisual,
+} from './transcriptAttachmentTypes';
 
 type TranscriptImageDeliveryOverlayProps = {
   visual: AttachmentImageDeliveryVisual | null;
@@ -9,6 +12,8 @@ type TranscriptImageDeliveryOverlayProps = {
   foregroundTone: 'light' | 'dark' | null;
   onRetry?: () => void;
   uploadProgress?: number | null;
+  uploadedBytes?: number | null;
+  totalBytes?: number | null;
   onCancelUpload?: () => void;
   mediaLabel?: string;
 };
@@ -28,6 +33,8 @@ export function TranscriptImageDeliveryOverlay({
   foregroundTone,
   onRetry,
   uploadProgress = null,
+  uploadedBytes = null,
+  totalBytes = null,
   onCancelUpload,
   mediaLabel = 'image',
 }: TranscriptImageDeliveryOverlayProps) {
@@ -37,6 +44,9 @@ export function TranscriptImageDeliveryOverlay({
     const progress = uploadProgress === null
       ? null
       : Math.max(0, Math.min(100, Math.floor(uploadProgress)));
+    const uploadedSize = formatAttachmentSize(uploadedBytes);
+    const totalSize = formatAttachmentSize(totalBytes);
+    const sizeProgress = uploadedSize && totalSize ? `${uploadedSize} / ${totalSize}` : null;
     const ring = (
       <div className="app-attachment-image-media-ring-spinner" data-determinate={progress !== null}>
         <svg viewBox="0 0 32 32" focusable="false" aria-hidden="true">
@@ -60,8 +70,9 @@ export function TranscriptImageDeliveryOverlay({
         data-attachment-image-delivery-status="uploading"
         className={adaptiveDeliveryOverlayClassName(foregroundTone)}
         role="status"
-        aria-label={progress === null ? visual.label : `${visual.label}, ${progress}%`}
+        aria-label={progress === null ? visual.label : `${visual.label}, ${progress}%, ${sizeProgress ?? ''}`.replace(/, $/, '')}
       >
+        {sizeProgress ? <span className="app-attachment-media-upload-size">{sizeProgress}</span> : null}
         <div className="app-attachment-image-media-ring">
           {onCancelUpload ? (
             <button

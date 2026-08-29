@@ -1377,6 +1377,8 @@ final class AppModel: ObservableObject {
             errorMessage: nil,
             requestMessageId: nil,
             attachments: voiceMessage == nil ? outgoingAttachments.map(\.optimisticAttachment) : [],
+            attachmentUploadProgress: outgoingAttachments.count == 1
+                && outgoingAttachments[0].isMP4Video ? 0 : nil,
             replyToMessageId: messageAction?.replyToMessageId,
             messageAction: messageAction,
             mentions: mentions,

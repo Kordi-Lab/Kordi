@@ -1860,6 +1860,11 @@ private struct MessageVideoAttachment: View {
                     Text("\(Int((uploadProgress * 100).rounded()))%")
                         .font(.caption.monospacedDigit().weight(.semibold))
                         .foregroundStyle(poster == nil ? Color.primary : .white)
+                    if let sizeLabel = uploadSizeProgressLabel {
+                        Text(sizeLabel)
+                            .font(.caption2.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(poster == nil ? Color.secondary : .white.opacity(0.9))
+                    }
                 } else {
                     ProgressView()
                         .controlSize(.large)
@@ -1878,6 +1883,14 @@ private struct MessageVideoAttachment: View {
         .accessibilityValue(uploadProgress.map {
             "\(Int(($0 * 100).rounded())) percent"
         } ?? "In progress")
+    }
+
+    private var uploadSizeProgressLabel: String? {
+        guard let uploadProgress, let totalBytes = attachment.sizeBytes, totalBytes > 0 else {
+            return nil
+        }
+        let uploadedBytes = Int64((Double(totalBytes) * min(1, max(0, uploadProgress))).rounded())
+        return "\(ByteCountFormatter.string(fromByteCount: uploadedBytes, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: totalBytes, countStyle: .file))"
     }
 
     private var resolvingSurface: some View {

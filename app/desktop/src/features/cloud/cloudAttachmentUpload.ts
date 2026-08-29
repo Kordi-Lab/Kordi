@@ -55,6 +55,24 @@ export function cloudAttachmentUploadSnapshot(path: string) {
   return path ? states.get(path) ?? null : null;
 }
 
+export function resolveCloudAttachmentUploadProgress(
+  state: CloudAttachmentUploadState | null,
+  fallbackTotalBytes?: number | null,
+) {
+  const totalBytes = state && state.totalBytes > 0
+    ? state.totalBytes
+    : typeof fallbackTotalBytes === 'number' && fallbackTotalBytes > 0
+      ? fallbackTotalBytes
+      : null;
+  if (totalBytes === null) return null;
+  const uploadedBytes = Math.min(totalBytes, Math.max(0, state?.uploadedBytes ?? 0));
+  return {
+    uploadedBytes,
+    totalBytes,
+    percent: (uploadedBytes / totalBytes) * 100,
+  };
+}
+
 async function runNativeCloudAttachmentUpload({
   path,
   contentType,

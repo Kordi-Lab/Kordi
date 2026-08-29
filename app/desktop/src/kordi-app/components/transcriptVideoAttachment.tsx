@@ -16,6 +16,7 @@ import { loadVisibleCloudAttachmentPreview } from '@/features/cloud/cloudAttachm
 import {
   cancelCloudAttachmentUpload,
   cloudAttachmentUploadSnapshot,
+  resolveCloudAttachmentUploadProgress,
   subscribeCloudAttachmentUpload,
 } from '@/features/cloud/cloudAttachmentUpload';
 import {
@@ -109,9 +110,7 @@ export function AttachmentVideoCard({
     () => cloudAttachmentUploadSnapshot(uploadPath),
     () => null,
   );
-  const uploadProgress = upload && upload.totalBytes > 0
-    ? (upload.uploadedBytes / upload.totalBytes) * 100
-    : null;
+  const resolvedUpload = resolveCloudAttachmentUploadProgress(upload, attachment.sizeBytes);
   const uploadIsActive = upload
     && ['preparing', 'uploading', 'finishing'].includes(upload.phase);
   const uploadFailure = upload?.phase === 'failed'
@@ -421,7 +420,9 @@ export function AttachmentVideoCard({
           time={time}
           foregroundTone="light"
           onRetry={onRetry}
-          uploadProgress={uploadProgress}
+          uploadProgress={resolvedUpload?.percent}
+          uploadedBytes={resolvedUpload?.uploadedBytes}
+          totalBytes={resolvedUpload?.totalBytes}
           onCancelUpload={uploadIsActive
             ? () => void cancelCloudAttachmentUpload(uploadPath)
             : undefined}

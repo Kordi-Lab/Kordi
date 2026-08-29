@@ -281,6 +281,21 @@
   transform: translate3d(-50%, -50%, 0);
 }
 
+.app-attachment-media-upload-size {
+  position: absolute;
+  top: 0.55rem;
+  left: 0.55rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 56%);
+  color: white;
+  font-size: 0.6875rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  mix-blend-mode: normal;
+}
+
 .app-attachment-image-media-ring-spinner,
 .app-attachment-image-media-ring-spinner svg {
   display: block;
