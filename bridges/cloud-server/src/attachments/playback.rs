@@ -57,7 +57,7 @@ enum PlaybackTokenError {
 fn signing_key() -> Result<Vec<u8>, PlaybackTokenError> {
     let key = std::env::var("KORDI_CHAT_SYNC_CURSOR_SECRET")
         .ok()
-        .filter(|value| value.as_bytes().len() >= MINIMUM_SECRET_BYTES)
+        .filter(|value| value.len() >= MINIMUM_SECRET_BYTES)
         .ok_or(PlaybackTokenError::Unavailable)?;
     Ok(key.into_bytes())
 }
