@@ -35,6 +35,7 @@ test('file upload cancellation is an external opposite-avatar action with confir
   assert.match(source, />Cancel upload\?</);
   assert.match(source, /Keep uploading/);
   assert.match(source, /Cancel upload/);
+  assert.match(source, /attachment\.kind === 'file' && !isMp4VideoAttachment\(attachment\)/);
   assert.doesNotMatch(inlineLinkSource, /cancelCloudAttachmentUpload/);
   assert.match(inlineLinkSource, /isNativeShell\(\)[\s\S]*downloadCloudAttachmentToLocalPath/);
   assert.ok(

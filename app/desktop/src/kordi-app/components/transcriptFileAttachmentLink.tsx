@@ -16,6 +16,7 @@ import {
   subscribeCloudAttachmentUpload,
 } from '@/features/cloud/cloudAttachmentUpload';
 import { loadSession } from '@/features/cloud/session';
+import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
 import { downloadDesktopAttachment, openDesktopExternalUrl, storeDesktopChatAttachment } from '@/lib/desktop';
 import type { MessageAttachment } from '../types';
 
@@ -90,7 +91,7 @@ export function TranscriptFileAttachmentUploadActions({
   attachments: readonly MessageAttachment[];
 }) {
   return attachments
-    .filter((attachment) => attachment.kind === 'file')
+    .filter((attachment) => attachment.kind === 'file' && !isMp4VideoAttachment(attachment))
     .map((attachment, index) => (
       <TranscriptFileAttachmentUploadAction
         key={attachment.localPath ?? attachment.attachmentId ?? `${attachment.name}:${index}`}
