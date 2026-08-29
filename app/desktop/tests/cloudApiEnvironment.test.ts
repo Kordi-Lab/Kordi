@@ -110,6 +110,11 @@ test('cloud auth client gives local SSH tunnels a longer default timeout', () =>
 
 test('cloud realtime WebSockets stay off for local SSH tunnel tests', () => {
   assert.equal(cloudRealtimeWebSocketEnabled('https://kordi.ai'), true);
+  assert.equal(cloudRealtimeWebSocketEnabled('https://kordi.ai', {
+    DEV: true,
+    VITE_KORDI_DEV_PROFILE: 'operator',
+    VITE_KORDI_PRODUCTION_DEBUG_ACK: '1',
+  }), false);
   assert.equal(cloudRealtimeWebSocketEnabled('http://127.0.0.1:17081'), false);
   assert.equal(cloudRealtimeWebSocketEnabled('http://localhost:17081'), false);
   assert.equal(cloudRealtimeWebSocketEnabled('http://127.0.0.1:17081', {
