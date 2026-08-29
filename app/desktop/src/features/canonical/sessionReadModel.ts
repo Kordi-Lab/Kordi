@@ -73,9 +73,9 @@ function presentCanonicalParticipants(
   });
 }
 
-function presentCanonicalMessages(messages: Message[], localAgentDisplayName?: string | null) {
+export function presentLocalAgentMessages(messages: Message[], localAgentDisplayName?: string | null) {
   return messages.map((message) => {
-    if (message.role !== 'owned-agent') return message;
+    if (message.role !== 'owned-agent' && message.senderOwnerName?.trim().toLowerCase() !== 'you') return message;
     const sender = currentDefaultAgentLabel(message.sender, localAgentDisplayName);
     const senderOwnerName = message.senderOwnerName?.trim() || 'You';
     return sender === message.sender && senderOwnerName === message.senderOwnerName
@@ -541,7 +541,7 @@ export function createCanonicalSessionReadModel(
       return indexes.taskActivitiesBySessionId.get(sessionId) ?? [];
     },
     messages(sessionId) {
-      return presentCanonicalMessages(
+      return presentLocalAgentMessages(
         indexes.canonicalMessagesBySessionId.get(sessionId) ?? [],
         options.localAgentDisplayName,
       );
@@ -570,7 +570,7 @@ export function createCanonicalSessionReadModel(
           : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
       const hydratedWithReceipts = mergeCanonicalReadReceipts(hydratedMessages, canonicalMessages);
-      const messages = presentCanonicalMessages(
+      const messages = presentLocalAgentMessages(
         dedupeRepeatedFailedAgentTurns(isSupportContact ? normalizeSupportContactMessages(hydratedWithReceipts) : hydratedWithReceipts),
         options.localAgentDisplayName,
       );

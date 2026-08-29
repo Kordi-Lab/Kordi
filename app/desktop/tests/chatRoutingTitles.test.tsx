@@ -281,6 +281,7 @@ test('canonical read model keeps the renamed default agent and owner tag after h
     messages: [
       { id: 'msg:user', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'hi', content: { sender: 'Me' }, status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'user' },
       { id: 'msg:agent', sessionId, senderIdentityId: 'agent:legacy', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Hi!', content: { sender: 'Kordi' }, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'agent' },
+      { id: 'msg:external-role', sessionId, senderIdentityId: 'agent:legacy', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'Welcome back!', content: { sender: 'Kordi' }, status: 'complete', sequenceNum: 3, createdAtMs: 3, updatedAtMs: 3, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'external-role' },
     ],
     delegatedExchanges: [],
     contextSnapshots: [],
@@ -293,6 +294,12 @@ test('canonical read model keeps the renamed default agent and owner tag after h
   assert.equal(conversation?.name, 'Babytang');
   assert.equal(agentMessage?.sender, 'Babytang');
   assert.equal(agentMessage?.senderOwnerName, 'You');
+  assert.deepEqual(
+    conversation?.messages
+      .filter((message) => message.senderOwnerName === 'You')
+      .map((message) => message.sender),
+    ['Babytang', 'Babytang'],
+  );
 });
 
 test('canonical read model ignores inherited manual title metadata when session title is still New session', () => {

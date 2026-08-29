@@ -21,7 +21,7 @@ import {
   projectRootFromCanonicalProjectGroupId,
   resolveProjectSelection,
 } from '@/features/canonical/sessionResolver';
-import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
+import { createCanonicalSessionReadModel, presentLocalAgentMessages } from '@/features/canonical/sessionReadModel';
 import { canonicalLocalAgentAvatarSeed } from '@/features/canonical/avatarIdentity';
 import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import {
@@ -405,9 +405,12 @@ export function useWorkspaceViewModels({
       : merged;
     const conversationsWithStableOrder = [...hydrated]
       .sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0))
-      .map(({ _updatedAtMs, ...conversation }) => conversation);
+      .map(({ _updatedAtMs, ...conversation }) => ({
+        ...conversation,
+        messages: presentLocalAgentMessages(conversation.messages, localAgentDisplayName),
+      }));
     return transcriptReferenceStabilizer.prepare(conversationsWithStableOrder);
-  }, [collaborationChatConversations, canonicalReadModel, isNativeShell, localChatConversations, transcriptReferenceStabilizer, transientChatConversations, visibleCollaborationChatConversations]);
+  }, [collaborationChatConversations, canonicalReadModel, isNativeShell, localAgentDisplayName, localChatConversations, transcriptReferenceStabilizer, transientChatConversations, visibleCollaborationChatConversations]);
   useLayoutEffect(() => {
     transcriptReferenceStabilizer.commit(hydratedChatConversations.cache);
   }, [hydratedChatConversations.cache, transcriptReferenceStabilizer]);
