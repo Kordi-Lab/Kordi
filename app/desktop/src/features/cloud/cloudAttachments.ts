@@ -1,5 +1,10 @@
+import { convertFileSrc } from '@tauri-apps/api/core';
+
 import type { AttachmentItem } from '@/features/chat/composerController.types';
-import { isAnimatedGifAttachment } from '@/features/chat/attachmentMediaGallery';
+import {
+  isAnimatedGifAttachment,
+  isMp4VideoAttachment,
+} from '@/features/chat/attachmentMediaGallery';
 import type { MessageAttachment } from '@/kordi-app/types';
 import { isNativeDesktopShell, storeDesktopChatAttachment } from '@/lib/desktop';
 import { imagePixelDimensionsFromBlob, normalizedImagePixelDimensions } from '@/lib/imageDimensions';
@@ -271,7 +276,20 @@ export async function loadCloudAttachmentPreview({
   signal?: AbortSignal;
   createObjectUrl?: (blob: Blob) => string;
 }) {
-  if (attachment.kind !== 'image') return null;
+  const isVideo = isMp4VideoAttachment(attachment);
+  if (attachment.kind !== 'image' && !isVideo) return null;
+  const previewCacheId = cloudAttachmentPreviewCacheId(
+    attachment.attachmentId,
+    attachment.previewAttachmentId,
+  );
+  const previewCacheName = isVideo ? `${attachment.name}.preview.jpg` : attachment.name;
+  if (isNativeDesktopShell()) {
+    const cachedPath = await loadCachedCloudAttachmentLocalPath(
+      previewCacheId,
+      previewCacheName,
+    );
+    if (cachedPath) return convertFileSrc(cachedPath);
+  }
   const isAnimatedGif = isAnimatedGifAttachment(attachment);
   const contentAttachmentId = isAnimatedGif ? attachment.attachmentId?.trim() : attachment.previewAttachmentId?.trim() || attachment.attachmentId?.trim();
   if (!contentAttachmentId) return null;
@@ -282,7 +300,11 @@ export async function loadCloudAttachmentPreview({
     ?? await client.downloadAttachmentContent(token, contentAttachmentId, signal);
   if (signal?.aborted) throw abortError();
   if (isNativeDesktopShell()) {
-    await persistCloudAttachmentBytes(cloudAttachmentPreviewCacheId(attachment.attachmentId, attachment.previewAttachmentId), attachment.name, blob);
+    await persistCloudAttachmentBytes(
+      previewCacheId,
+      previewCacheName,
+      blob,
+    );
   }
   return createObjectUrl(blob);
 }

@@ -160,6 +160,13 @@ final class CloudPresencePublisher {
 
 @MainActor
 final class AppModel: ObservableObject {
+    private static let attachmentPreviewImageCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 256
+        cache.totalCostLimit = 32 * 1_024 * 1_024
+        return cache
+    }()
+
     private static let cloudUnavailableMessage = "Kordi Cloud is unavailable. Check your connection and try again."
     private static let cloudSyncRepairInterval: Duration = .seconds(2)
     private static let cachedConversationPageLimit = 8
@@ -458,6 +465,7 @@ final class AppModel: ObservableObject {
         expressiveMediaSyncTask = nil
         expressiveMediaSyncTaskID = nil
         knownStickerAttachmentSignatures.removeAll()
+        Self.attachmentPreviewImageCache.removeAllObjects()
         cloudSyncCursor = "0"
         cloudSyncLastStreamSequence = 0
         cloudSyncHasCurrentSequence = false
@@ -2463,8 +2471,14 @@ final class AppModel: ObservableObject {
     }
 
     func prepareAttachmentPreviewImage(_ attachment: ChatAttachment) async -> UIImage? {
+        let cacheKey = attachment.attachmentId as NSString
+        if let cached = Self.attachmentPreviewImageCache.object(forKey: cacheKey) {
+            return cached
+        }
         if let data = AttachmentPreviewDataURL.decode(attachment.previewURL) {
-            return UIImage(data: data)
+            guard let image = UIImage(data: data) else { return nil }
+            Self.attachmentPreviewImageCache.setObject(image, forKey: cacheKey, cost: data.count)
+            return image
         }
         guard let token,
               !attachment.attachmentId.hasPrefix("pending:"),
@@ -2474,7 +2488,9 @@ final class AppModel: ObservableObject {
               ) else {
             return nil
         }
-        return UIImage(data: data)
+        guard let image = UIImage(data: data) else { return nil }
+        Self.attachmentPreviewImageCache.setObject(image, forKey: cacheKey, cost: data.count)
+        return image
     }
 
     func addAttachmentToExpressiveMediaLibrary(
