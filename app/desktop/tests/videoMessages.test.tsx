@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
   isMp4VideoAttachment,
+  requiresExplicitVideoPlayback,
 } from '../src/features/chat/attachmentMediaGallery';
 import { AttachmentPreview } from '../src/kordi-app/components/transcriptAttachments';
 import {
@@ -30,6 +31,26 @@ test('MP4 classification prefers MIME metadata and only falls back for untyped f
     name: 'document.mp4',
     mimeType: 'application/pdf',
   }), false);
+});
+
+test('videos over 20 MiB require explicit playback before any remote preview load', () => {
+  assert.equal(requiresExplicitVideoPlayback({
+    kind: 'file',
+    name: 'small.mp4',
+    mimeType: 'video/mp4',
+    sizeBytes: 20 * 1024 * 1024,
+  }), false);
+  assert.equal(requiresExplicitVideoPlayback({
+    kind: 'file',
+    name: 'large.mp4',
+    mimeType: 'video/mp4',
+    sizeBytes: 20 * 1024 * 1024 + 1,
+  }), true);
+  assert.equal(requiresExplicitVideoPlayback({
+    kind: 'file',
+    name: 'unknown.mp4',
+    mimeType: 'video/mp4',
+  }), true);
 });
 
 test('MP4 attachments stay poster-backed until explicit playback instead of rendering file links', () => {

@@ -187,6 +187,37 @@ final class AttachmentTransferTests: XCTestCase {
         XCTAssertFalse(mismatch.isMP4Video)
     }
 
+    func testVideosOver20MiBRequireExplicitPlayback() {
+        let threshold = ChatAttachment(
+            attachmentId: "video-threshold",
+            name: "threshold.mp4",
+            kind: .file,
+            mimeType: "video/mp4",
+            sizeBytes: VideoAttachmentPolicy.automaticLoadLimitBytes,
+            previewURL: nil
+        )
+        let large = ChatAttachment(
+            attachmentId: "video-large",
+            name: "large.mp4",
+            kind: .file,
+            mimeType: "video/mp4",
+            sizeBytes: VideoAttachmentPolicy.automaticLoadLimitBytes + 1,
+            previewURL: nil
+        )
+        let unknown = ChatAttachment(
+            attachmentId: "video-unknown",
+            name: "unknown.mp4",
+            kind: .file,
+            mimeType: "video/mp4",
+            sizeBytes: nil,
+            previewURL: nil
+        )
+
+        XCTAssertFalse(VideoAttachmentPolicy.requiresExplicitPlayback(threshold))
+        XCTAssertTrue(VideoAttachmentPolicy.requiresExplicitPlayback(large))
+        XCTAssertTrue(VideoAttachmentPolicy.requiresExplicitPlayback(unknown))
+    }
+
     func testLargeMP4DraftsStayFileBacked() throws {
         let source = FileManager.default.temporaryDirectory
             .appendingPathComponent("source-\(UUID().uuidString).mp4")

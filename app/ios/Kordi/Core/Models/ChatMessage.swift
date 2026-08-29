@@ -388,11 +388,19 @@ struct ChatAttachment: Identifiable, Codable, Hashable {
 }
 
 enum VideoAttachmentPolicy {
+    static let automaticLoadLimitBytes: Int64 = 20 * 1_024 * 1_024
+
     nonisolated static func isMP4(name: String, mimeType: String?) -> Bool {
         let normalizedMIMEType = mimeType?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalizedMIMEType == "video/mp4"
             || ((normalizedMIMEType == nil || normalizedMIMEType == "application/octet-stream")
                 && URL(fileURLWithPath: name).pathExtension.lowercased() == "mp4")
+    }
+
+    nonisolated static func requiresExplicitPlayback(_ attachment: ChatAttachment) -> Bool {
+        guard attachment.isMP4Video else { return false }
+        guard let sizeBytes = attachment.sizeBytes else { return true }
+        return sizeBytes > automaticLoadLimitBytes
     }
 }
 
