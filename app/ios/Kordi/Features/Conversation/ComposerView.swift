@@ -188,7 +188,6 @@ struct ComposerView: View {
     let destinationName: String
     let cameraAvailable: Bool
     let onTakePhoto: () -> Void
-    let onRecordVideo: () -> Void
     let onChoosePhotos: () -> Void
     let onChooseMeme: () -> Void
     let onChooseFiles: () -> Void
@@ -655,9 +654,6 @@ struct ComposerView: View {
                 Label("Camera", systemImage: "camera")
             }
             .disabled(!cameraAvailable)
-            Button(action: onRecordVideo) {
-                Label("Record Video", systemImage: "video")
-            }
             Button(action: onChoosePhotos) {
                 Label("Photo Library", systemImage: "photo.on.rectangle")
             }

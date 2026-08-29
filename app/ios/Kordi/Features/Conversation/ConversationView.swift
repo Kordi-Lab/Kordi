@@ -60,7 +60,6 @@ struct ConversationView: View {
     @State private var showPhotoPicker = false
     @State private var showMemePhotoPicker = false
     @State private var showCamera = false
-    @State private var showVideoCamera = false
     @State private var videoReview: PendingAttachment?
     @State private var queuedVideoReviews: [PendingAttachment] = []
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -543,23 +542,6 @@ struct ConversationView: View {
                             destinationName: conversation.displayName,
                             cameraAvailable: UIImagePickerController.isSourceTypeAvailable(.camera),
                             onTakePhoto: { showCamera = true },
-                            onRecordVideo: {
-                                guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-                                    model.errorMessage = "Kordi could not find an available camera on this iPhone."
-                                    return
-                                }
-                                guard callCoordinator.activeCall == nil else {
-                                    model.errorMessage = "Finish the current call before recording a video message."
-                                    return
-                                }
-                                Task {
-                                    if let error = await VideoCaptureAuthorization.requestError() {
-                                        model.errorMessage = error
-                                    } else {
-                                        showVideoCamera = true
-                                    }
-                                }
-                            },
                             onChoosePhotos: {
                                 guard canPresentPhotoPicker() else { return }
                                 selectedPhotoSubtype = nil
@@ -823,7 +805,6 @@ struct ConversationView: View {
         }
         .onChange(of: conversation.id) { _, _ in
             voiceRecorder.cancel()
-            showVideoCamera = false
             videoReview?.discardOwnedFile()
             queuedVideoReviews.forEach { $0.discardOwnedFile() }
             videoReview = nil
@@ -855,22 +836,16 @@ struct ConversationView: View {
             )
         }
         .fullScreenCover(isPresented: $showCamera) {
-            CameraImagePicker(
+            CameraCapturePicker(
                 onImage: { image in
                     showCamera = false
                     importCameraImage(image)
                 },
-                onCancel: { showCamera = false }
-            )
-            .ignoresSafeArea()
-        }
-        .fullScreenCover(isPresented: $showVideoCamera) {
-            CameraVideoPicker(
                 onVideo: { url in
-                    showVideoCamera = false
+                    showCamera = false
                     importCameraVideo(url)
                 },
-                onCancel: { showVideoCamera = false }
+                onCancel: { showCamera = false }
             )
             .ignoresSafeArea()
         }
