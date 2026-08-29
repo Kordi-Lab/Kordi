@@ -29,6 +29,16 @@
   font-variant-numeric: tabular-nums;
 }
 
+.app-attachment-image-media-ring-cancel-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.9rem;
+  height: 0.9rem;
+  transform: translate(-50%, -50%);
+  stroke-width: 2.5;
+}
+
 .app-attachment-image-media-ring-cancel {
   pointer-events: auto;
   display: grid;

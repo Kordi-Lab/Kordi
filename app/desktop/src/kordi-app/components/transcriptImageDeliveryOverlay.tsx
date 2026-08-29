@@ -1,4 +1,4 @@
-import { Check, CheckCheck, LoaderCircle } from 'lucide-react';
+import { Check, CheckCheck, LoaderCircle, X } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import {
@@ -62,7 +62,11 @@ export function TranscriptImageDeliveryOverlay({
             }}
           />
         </svg>
-        {progress === null ? null : <span className="app-attachment-image-media-ring-label">{progress}%</span>}
+        {onCancelUpload ? (
+          <X className="app-attachment-image-media-ring-cancel-icon" aria-hidden="true" />
+        ) : progress === null ? null : (
+          <span className="app-attachment-image-media-ring-label">{progress}%</span>
+        )}
       </div>
     );
     return (

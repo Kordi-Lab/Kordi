@@ -17,7 +17,8 @@ test('active image uploads expose determinate progress and cancellation', () => 
 
   assert.match(markup, /aria-label="Sending image, 42%, 4\.1 MB \/ 9\.5 MB"/);
   assert.match(markup, /data-determinate="true"/);
-  assert.match(markup, /app-attachment-image-media-ring-label">42%/);
+  assert.match(markup, /app-attachment-image-media-ring-cancel-icon/);
+  assert.doesNotMatch(markup, /app-attachment-image-media-ring-label">42%/);
   assert.match(markup, /app-attachment-media-upload-size">4\.1 MB \/ 9\.5 MB/);
   assert.match(markup, /aria-label="Cancel image upload"/);
 });

@@ -41,6 +41,10 @@ import { useVideoMessageRecorder } from '@/features/chat/useVideoMessageRecorder
 import { isMp4VideoAttachment } from '@/features/chat/attachmentMediaGallery';
 import { discardDesktopChatAttachment } from '@/lib/desktopAttachmentStream';
 import {
+  isNativeAttachmentUploadAvailable,
+  uploadNativeCloudAttachment,
+} from '@/features/cloud/cloudAttachmentUpload';
+import {
   VideoAttachmentReviewSurface,
   VideoRecordingSurface,
 } from './chatsPage.videoComposer';
@@ -200,6 +204,12 @@ export function MainComposer({
     attachedVideoReviewQueueRef.current = remainingReviews;
     setAttachedVideoReviewQueue(remainingReviews);
     try {
+      if (isNativeAttachmentUploadAvailable()) {
+        void uploadNativeCloudAttachment({
+          path: preparedAttachment.path,
+          contentType: preparedAttachment.mimeType,
+        }).catch(() => undefined);
+      }
       const result = onSend('', [preparedAttachment]);
       if (preparedAttachment.playbackUrl?.startsWith('blob:')) {
         URL.revokeObjectURL(preparedAttachment.playbackUrl);

@@ -225,6 +225,10 @@ test('large video paths stay chunked and file-backed', () => {
   assert.ok(recorder.indexOf("clear(false)") > recorder.indexOf("onSend('', [attachment])"));
   assert.ok(
     composer.indexOf('attachedVideoReviewQueueRef.current = remainingReviews')
+      < composer.indexOf('void uploadNativeCloudAttachment({'),
+  );
+  assert.ok(
+    composer.indexOf('void uploadNativeCloudAttachment({')
       < composer.indexOf("const result = onSend('', [preparedAttachment])"),
   );
 });
