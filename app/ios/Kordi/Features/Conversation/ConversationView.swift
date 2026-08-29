@@ -86,7 +86,7 @@ struct ConversationView: View {
     @State private var messageActionFeedback = 0
 
     private var navigationBarVisibility: Visibility {
-        showsNavigationChrome && messageActionMessage == nil ? .visible : .hidden
+        showsNavigationChrome ? .visible : .hidden
     }
     @State private var forwardedDestination: ConversationSummary?
     @State private var selectedCompanionConversation: ConversationSummary?
@@ -183,10 +183,6 @@ struct ConversationView: View {
             && (callCoordinator.isCallScreenPresented || callCoordinator.isAwaitingIncomingAnswer)
         let mentionTargets = model.mentionTargets(for: conversation)
         let pendingMentionCount = model.pendingMentionCount(for: conversation)
-        let groupParticipantsByID = Dictionary(
-            conversation.groupParticipants.map { ($0.accountId, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
         ScrollViewReader { proxy in
             VStack(spacing: 0) {
                 if !coordinatorOwnsConversationCall,
@@ -267,10 +263,6 @@ struct ConversationView: View {
                                             let index = visibleStartIndex + row.offset
                                             let presentation = timelinePresentation[index - presentationStartIndex]
                                             let avatar = avatarIdentity(for: message)
-                                            let readers = readReceiptParticipants(
-                                                for: message,
-                                                participantsByID: groupParticipantsByID
-                                            )
                                             let backgroundSessions = message.backgroundAgentSessions.map {
                                                 BackgroundAgentSessionPresentation(
                                                     session: $0,
@@ -306,7 +298,6 @@ struct ConversationView: View {
                                                         ownAccountId: model.account?.accountId,
                                                         automaticallyPresentsActions: ProcessInfo.processInfo.arguments.contains("--preview-message-actions")
                                                             && message.id == previewActionMessageID,
-                                                        readByNames: readers.map(\.displayName),
                                                         backgroundSessions: backgroundSessions,
                                                         onOpenAuthorProfile: {
                                                             authorProfileConversation = ConversationAuthorProfileResolver.destination(
@@ -476,6 +467,7 @@ struct ConversationView: View {
                             guard ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
                                 hasRevealedInitialViewport: hasRevealedInitialViewport,
                                 wasAtLatest: wasAtLatest,
+                                isMessageActionPresented: messageActionMessage != nil,
                                 previousViewportSize: previousViewportSize,
                                 currentViewportSize: currentViewportSize
                             ) else { return }
@@ -870,7 +862,10 @@ struct ConversationView: View {
         .sheet(item: $detailsMessage) { message in
             MessageDetailsSheet(
                 message: message,
-                readers: readReceiptParticipants(for: message)
+                readers: MessageReadReceiptPresentation.readers(
+                    for: message,
+                    in: conversation
+                )
             )
         }
         .sheet(isPresented: $showsProviderAuthentication) {
@@ -893,7 +888,11 @@ struct ConversationView: View {
         pinnedMessageIDs: Set<String>,
         timeline: [ChatMessage]
     ) -> some View {
-        WindowOverlayPresenter(
+        let readReceiptReaders = MessageReadReceiptPresentation.readers(
+            for: message,
+            in: conversation
+        )
+        return WindowOverlayPresenter(
             passthroughFrame: messageActionAttachment == nil && !message.text.isEmpty
                 ? messageActionFrame
                 : nil
@@ -910,6 +909,11 @@ struct ConversationView: View {
                 ),
                 isPinned: pinnedMessageIDs.contains(message.id),
                 mediaAttachment: messageActionAttachment,
+                readReceiptLabel: MessageReadReceiptPresentation.label(
+                    for: message,
+                    readers: readReceiptReaders
+                ),
+                readReceiptReaders: readReceiptReaders,
                 onDismiss: dismissMessageActions,
                 onReviewAttachment: {
                     guard let attachment = messageActionAttachment else { return }
@@ -1136,31 +1140,6 @@ struct ConversationView: View {
             selfAccountID: model.account?.accountId,
             contacts: model.contacts,
             conversations: model.conversations
-        )
-    }
-
-    private func readReceiptParticipants(
-        for message: ChatMessage,
-        participantsByID: [String: CloudGroupParticipant]
-    ) -> [CloudGroupParticipant] {
-        guard conversation.kind == .group, message.author == .me else { return [] }
-        return message.readByAccountIds.map { accountID in
-            participantsByID[accountID] ?? CloudGroupParticipant(
-                accountId: accountID,
-                displayName: "Kordi user",
-                avatarUrl: nil,
-                role: nil
-            )
-        }
-    }
-
-    private func readReceiptParticipants(for message: ChatMessage) -> [CloudGroupParticipant] {
-        readReceiptParticipants(
-            for: message,
-            participantsByID: Dictionary(
-                conversation.groupParticipants.map { ($0.accountId, $0) },
-                uniquingKeysWith: { first, _ in first }
-            )
         )
     }
 
@@ -2054,11 +2033,13 @@ enum ConversationTimelineScrollBehavior {
     static func shouldKeepLatestVisibleAfterViewportChange(
         hasRevealedInitialViewport: Bool,
         wasAtLatest: Bool,
+        isMessageActionPresented: Bool = false,
         previousViewportSize: CGSize,
         currentViewportSize: CGSize
     ) -> Bool {
         hasRevealedInitialViewport
             && wasAtLatest
+            && !isMessageActionPresented
             && previousViewportSize != .zero
             && previousViewportSize != currentViewportSize
     }

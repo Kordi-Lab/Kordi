@@ -172,7 +172,7 @@ struct MessageDetailsSheet: View {
                     LabeledContent("Sent", value: message.createdAt.formatted(date: .abbreviated, time: .shortened))
                     LabeledContent("Status", value: message.deliveryState.label)
                     if readers.isEmpty, let count = message.readByCount, count > 0 {
-                        LabeledContent("Read by", value: "\(count) people")
+                        LabeledContent("Seen by", value: "\(count) people")
                     }
                     if message.messageAction?.kind == "forward" {
                         LabeledContent("Forwarded from", value: message.messageAction?.source.senderLabel ?? "Message")
@@ -180,7 +180,7 @@ struct MessageDetailsSheet: View {
                 }
 
                 if !readers.isEmpty {
-                    Section("Read by") {
+                    Section("Seen by") {
                         ForEach(readers) { reader in
                             HStack(spacing: 12) {
                                 IdentityAvatar(
@@ -198,7 +198,7 @@ struct MessageDetailsSheet: View {
                                     .accessibilityHidden(true)
                             }
                             .accessibilityElement(children: .combine)
-                            .accessibilityLabel("Read by \(reader.displayName)")
+                            .accessibilityLabel("Seen by \(reader.displayName)")
                         }
                     }
                 }
@@ -226,6 +226,46 @@ struct MessageDetailsSheet: View {
                 }
             }
         }
+    }
+}
+
+enum MessageReadReceiptPresentation {
+    static func readers(
+        for message: ChatMessage,
+        in conversation: ConversationSummary
+    ) -> [CloudGroupParticipant] {
+        guard message.author == .me else { return [] }
+        if conversation.kind == .group {
+            let participantsByID = Dictionary(
+                conversation.groupParticipants.map { ($0.accountId, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            return message.readByAccountIds.map { accountID in
+                participantsByID[accountID] ?? CloudGroupParticipant(
+                    accountId: accountID,
+                    displayName: "Kordi user",
+                    avatarUrl: nil,
+                    role: nil
+                )
+            }
+        }
+        guard conversation.kind == .person,
+              message.readByAccountIds.contains(conversation.peerAccountId) else { return [] }
+        return [CloudGroupParticipant(
+            accountId: conversation.peerAccountId,
+            displayName: conversation.ownerDisplayName?.nonEmpty ?? conversation.displayName,
+            avatarUrl: conversation.avatarSource,
+            role: nil
+        )]
+    }
+
+    static func label(
+        for message: ChatMessage,
+        readers: [CloudGroupParticipant]
+    ) -> String? {
+        guard message.author == .me, message.deliveryState == .read else { return nil }
+        let count = max(message.readByCount ?? 0, readers.count)
+        return count > 0 ? "\(count) Seen" : nil
     }
 }
 
@@ -493,6 +533,8 @@ struct MessageActionOverlay: View {
     let allowsReactions: Bool
     let isPinned: Bool
     let mediaAttachment: ChatAttachment?
+    let readReceiptLabel: String?
+    let readReceiptReaders: [CloudGroupParticipant]
     let onDismiss: () -> Void
     let onReviewAttachment: () -> Void
     let onShareAttachment: () -> Void
@@ -518,6 +560,7 @@ struct MessageActionOverlay: View {
             + 3
             + mediaActionCount
             + (stickerAttachment == nil ? 0 : 1)
+            + (readReceiptLabel == nil ? 0 : 1)
     }
 
     private var mediaKind: ExpressiveMediaLibraryKind? {
@@ -628,15 +671,15 @@ struct MessageActionOverlay: View {
     private func dismissalBackdrop(cutout: CGRect) -> some View {
         Button(action: onDismiss) {
             ZStack {
-                MessageActionBackdrop(cutout: cutout)
+                MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author)
                     .fill(.ultraThinMaterial, style: FillStyle(eoFill: true))
-                MessageActionBackdrop(cutout: cutout)
+                MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author)
                     .fill(.black.opacity(0.08), style: FillStyle(eoFill: true))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(
                 mediaAttachment == nil
-                    ? AnyShape(MessageActionBackdrop(cutout: cutout))
+                    ? AnyShape(MessageActionBackdrop(cutout: cutout, sourceAuthor: message.author))
                     : AnyShape(Rectangle()),
                 eoFill: mediaAttachment == nil
             )
@@ -758,6 +801,10 @@ struct MessageActionOverlay: View {
                 )
                 Divider().padding(.horizontal, 14)
                 actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
+                MessageActionReadReceiptRow(
+                    label: readReceiptLabel,
+                    readers: readReceiptReaders
+                )
             }
             .padding(.vertical, 4)
         }
@@ -789,6 +836,55 @@ struct MessageActionOverlay: View {
         }
         .buttonStyle(.plain)
         .disabled(disabled)
+    }
+}
+
+private struct MessageActionReadReceiptRow: View {
+    @ScaledMetric(relativeTo: .footnote) private var avatarSize = 18.0
+    let label: String?
+    let readers: [CloudGroupParticipant]
+
+    @ViewBuilder
+    var body: some View {
+        if let label {
+            Divider().padding(.horizontal, 14)
+            HStack(spacing: 10) {
+                MessageDeliveryGlyph(state: .read, readByCount: readers.count)
+                    .foregroundStyle(.secondary)
+                Text(label)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                if !readers.isEmpty {
+                    HStack(spacing: -4) {
+                        ForEach(Array(readers.prefix(4).enumerated()), id: \.element.id) { index, reader in
+                            IdentityAvatar(
+                                name: reader.displayName,
+                                imageSource: reader.avatarUrl,
+                                kind: .person,
+                                size: avatarSize,
+                                seed: reader.accountId
+                            )
+                            .overlay {
+                                Circle().stroke(Color(uiColor: .systemBackground), lineWidth: 1)
+                            }
+                            .zIndex(Double(index))
+                        }
+                    }
+                    .accessibilityHidden(true)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 16)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel ?? label)
+        }
+    }
+
+    private var accessibilityLabel: String? {
+        let names = readers.map(\.displayName).compactMap(\.nonEmpty)
+        return names.isEmpty ? nil : "Seen by \(names.joined(separator: ", "))"
     }
 }
 
@@ -915,13 +1011,11 @@ private final class MessageActionWindowOverlayView: UIView {
 
 private struct MessageActionBackdrop: Shape {
     let cutout: CGRect
+    let sourceAuthor: MessageAuthor
 
     func path(in rect: CGRect) -> Path {
         var path = Path(rect)
-        path.addRoundedRect(
-            in: cutout,
-            cornerSize: CGSize(width: 18, height: 18)
-        )
+        path.addPath(MessageBubbleGeometry.shape(for: sourceAuthor).path(in: cutout))
         return path
     }
 }
