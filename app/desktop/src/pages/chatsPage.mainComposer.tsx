@@ -193,14 +193,21 @@ export function MainComposer({
 
   function sendAttachedVideoReview(preparedAttachment: AttachmentItem) {
     if (!attachedVideoReview) return;
+    const queuedReviews = attachedVideoReviewQueueRef.current;
+    const remainingReviews = queuedReviews.filter(
+      (attachment) => attachment.path !== attachedVideoReview.path,
+    );
+    attachedVideoReviewQueueRef.current = remainingReviews;
+    setAttachedVideoReviewQueue(remainingReviews);
     try {
       const result = onSend('', [preparedAttachment]);
-      setAttachedVideoReviewQueue((current) => current.slice(1));
       if (preparedAttachment.playbackUrl?.startsWith('blob:')) {
         URL.revokeObjectURL(preparedAttachment.playbackUrl);
       }
       void Promise.resolve(result).catch(() => undefined);
     } catch {
+      attachedVideoReviewQueueRef.current = queuedReviews;
+      setAttachedVideoReviewQueue(queuedReviews);
       // Keep the review open when sending could not start.
     }
   }

@@ -209,6 +209,10 @@ test('large video paths stay chunked and file-backed', () => {
     new URL('../src/lib/desktopAttachmentStream.ts', import.meta.url),
     'utf8',
   );
+  const composer = readFileSync(
+    new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url),
+    'utf8',
+  );
 
   assert.doesNotMatch(recorder, /new Blob\(chunks/);
   assert.doesNotMatch(attachments, /file\.arrayBuffer\(\)/);
@@ -219,4 +223,8 @@ test('large video paths stay chunked and file-backed', () => {
   assert.match(recorder, /frameRate: \{ ideal: 30, max: 30 \}/);
   assert.doesNotMatch(recorder, /phase: 'sending'/);
   assert.ok(recorder.indexOf("clear(false)") > recorder.indexOf("onSend('', [attachment])"));
+  assert.ok(
+    composer.indexOf('attachedVideoReviewQueueRef.current = remainingReviews')
+      < composer.indexOf("const result = onSend('', [preparedAttachment])"),
+  );
 });
