@@ -432,6 +432,7 @@ test('workspace keeps a desktop runtime transcript visible while canonical hydra
         presence: [],
         contextSnapshots: [],
       } as never,
+      localAgentDisplayName: 'Babytang',
       canonicalHydrationBySessionId: { 'local-runtime-session': 'loading' },
       hiddenSessionIds: new Set(),
       projectWorkspaces: [],
@@ -473,4 +474,14 @@ test('workspace keeps a desktop runtime transcript visible while canonical hydra
     'No provider configured yet.',
   ]);
   assert.notEqual(viewModels?.activeConv.subtitle, 'Loading chat history…');
+  assert.deepEqual(
+    viewModels?.activeConv.messages
+      .filter((message) => message.role === 'owned-agent')
+      .map((message) => [message.sender, message.senderOwnerName]),
+    [
+      ['Babytang', 'You'],
+      ['Babytang', 'You'],
+      ['Babytang', 'You'],
+    ],
+  );
 });

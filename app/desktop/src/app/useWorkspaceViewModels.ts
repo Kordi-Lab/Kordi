@@ -121,6 +121,7 @@ type UseWorkspaceViewModelsArgs = {
   isNativeShell: boolean;
   isDesktopChatLoading: boolean;
   desktopChatState: DesktopChatState | null;
+  localAgentDisplayName?: string | null;
   desktopCollaborationState: DesktopCollaborationState | null;
   canonicalSessionState: CanonicalSessionState | null;
   canonicalSessionSummaries?: CanonicalSessionSummary[];
@@ -156,6 +157,7 @@ export function useWorkspaceViewModels({
   isNativeShell,
   isDesktopChatLoading: _isDesktopChatLoading,
   desktopChatState,
+  localAgentDisplayName = null,
   desktopCollaborationState,
   canonicalSessionState,
   canonicalSessionSummaries = [],
@@ -187,7 +189,6 @@ export function useWorkspaceViewModels({
   transientChatConversations = [],
 }: UseWorkspaceViewModelsArgs) {
   const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
-  const localAgentDisplayName = desktopChatState?.localAgent.label ?? null;
   const canonicalReadModel = useMemo(
     () => createCanonicalSessionReadModel(canonicalSessionState, {
       summaries: canonicalSessionSummaries,

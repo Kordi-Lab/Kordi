@@ -56,7 +56,7 @@ const LEGACY_DEFAULT_AGENT_LABEL = /^(?:my\s+)?kordi$/iu;
 
 function currentDefaultAgentLabel(value: string | undefined, localAgentDisplayName?: string | null) {
   const preferred = localAgentDisplayName?.trim();
-  return preferred && LEGACY_DEFAULT_AGENT_LABEL.test(value?.trim() ?? '') ? preferred : value;
+  return preferred && (!value?.trim() || LEGACY_DEFAULT_AGENT_LABEL.test(value.trim())) ? preferred : value;
 }
 
 function presentCanonicalParticipants(
@@ -570,7 +570,10 @@ export function createCanonicalSessionReadModel(
           : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
       const hydratedWithReceipts = mergeCanonicalReadReceipts(hydratedMessages, canonicalMessages);
-      const messages = dedupeRepeatedFailedAgentTurns(isSupportContact ? normalizeSupportContactMessages(hydratedWithReceipts) : hydratedWithReceipts);
+      const messages = presentCanonicalMessages(
+        dedupeRepeatedFailedAgentTurns(isSupportContact ? normalizeSupportContactMessages(hydratedWithReceipts) : hydratedWithReceipts),
+        options.localAgentDisplayName,
+      );
       const rawCanonicalParticipants = this.participantDetails(sessionId);
       const canonicalParticipants = visibleParticipantsForSession(session, rawCanonicalParticipants);
       const participants = isSupportContact
