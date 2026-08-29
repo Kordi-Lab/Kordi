@@ -100,6 +100,7 @@ test('large video paths stay chunked and file-backed', () => {
 
   assert.doesNotMatch(recorder, /new Blob\(chunks/);
   assert.doesNotMatch(attachments, /file\.arrayBuffer\(\)/);
+  assert.match(attachments, /file\.size > MAX_IN_MEMORY_ATTACHMENT_BYTES && file\.type\?\.startsWith\('image\/'\)/);
   assert.match(desktop, /file\.slice\(offset, offset \+ chunkSize\)/);
   assert.match(recorder, /appendDesktopChatAttachmentStream/);
   assert.match(recorder, /videoBitsPerSecond: VIDEO_BITS_PER_SECOND/);

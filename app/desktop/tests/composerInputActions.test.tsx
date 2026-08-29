@@ -96,13 +96,13 @@ test('composer path attachments skip eager previews when image decoding could bl
   assert.equal(attachment.path, '/Users/alice/Pictures/very-large.png');
 });
 
-test('browser file fallback rejects unsafe in-memory transfers before reading bytes', async () => {
+test('browser file fallback rejects oversized files and images before reading bytes', async () => {
   await assert.rejects(
     composerAttachmentItemFromFile({ size: MAX_CHAT_ATTACHMENT_SIZE_BYTES + 1 } as File),
     /2 GiB or smaller/,
   );
   await assert.rejects(
-    composerAttachmentItemFromFile({ size: 65 * 1024 * 1024 } as File),
+    composerAttachmentItemFromFile({ size: 65 * 1024 * 1024, type: 'image/png' } as File),
     /Use Files and folders/,
   );
 });

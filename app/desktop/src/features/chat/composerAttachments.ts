@@ -249,8 +249,8 @@ export async function composerAttachmentItemFromFile(
   if (file.size > MAX_CHAT_ATTACHMENT_SIZE_BYTES) {
     throw new Error('Attachments must be 2 GiB or smaller.');
   }
-  if (file.size > MAX_IN_MEMORY_ATTACHMENT_BYTES) {
-    throw new Error('Use Files and folders to attach files larger than 64 MiB.');
+  if (file.size > MAX_IN_MEMORY_ATTACHMENT_BYTES && file.type?.startsWith('image/')) {
+    throw new Error('Use Files and folders to attach images larger than 64 MiB.');
   }
   const mimeType = file.type || undefined;
   const kind = file.type.startsWith('image/') ? ('image' as const) : ('file' as const);
