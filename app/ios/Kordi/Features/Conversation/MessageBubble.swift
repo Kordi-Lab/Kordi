@@ -1749,6 +1749,7 @@ private struct MessageVideoAttachment: View {
     @State private var posterAspectRatio: CGFloat?
     @State private var isLoading = false
     @State private var loadFailed = false
+    @State private var isFullscreenPresented = false
 
     var body: some View {
         Group {
@@ -1757,11 +1758,26 @@ private struct MessageVideoAttachment: View {
             } else if deliveryState == .sending && (uploadProgress ?? 0) < 1 {
                 sendingSurface
             } else if let player {
-                VideoPlayer(player: player)
-                    .aspectRatio(videoAspectRatio, contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .background(.black)
-                    .accessibilityLabel("Play \(attachment.name)")
+                ZStack(alignment: .topTrailing) {
+                    VideoPlayer(player: player)
+                        .aspectRatio(videoAspectRatio, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .background(.black)
+                        .accessibilityLabel("Play \(attachment.name)")
+                    Button {
+                        isFullscreenPresented = true
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.body.weight(.semibold))
+                            .frame(width: 40, height: 40)
+                            .foregroundStyle(.white)
+                            .background(Color.black.opacity(0.58), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 54)
+                    .padding(.trailing, 8)
+                    .accessibilityLabel("Play \(attachment.name) in full screen")
+                }
             } else {
                 Button(action: loadAndPlay) {
                     ZStack {
@@ -1823,7 +1839,14 @@ private struct MessageVideoAttachment: View {
                 }
             }
         }
-        .onDisappear { player?.pause() }
+        .fullScreenCover(isPresented: $isFullscreenPresented) {
+            if let player {
+                FullScreenMessageVideo(player: player, name: attachment.name)
+            }
+        }
+        .onDisappear {
+            if !isFullscreenPresented { player?.pause() }
+        }
     }
 
     private var sendingSurface: some View {
@@ -1979,6 +2002,34 @@ private struct MessageVideoAttachment: View {
             widthPixels: width,
             heightPixels: height
         )
+    }
+}
+
+private struct FullScreenMessageVideo: View {
+    @Environment(\.dismiss) private var dismiss
+    let player: AVPlayer
+    let name: String
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            VideoPlayer(player: player)
+                .ignoresSafeArea()
+                .accessibilityLabel("Play \(name)")
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(.white)
+                    .background(.black.opacity(0.62), in: Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(16)
+            .accessibilityLabel("Exit full screen video")
+        }
+        .onAppear { player.play() }
     }
 }
 
