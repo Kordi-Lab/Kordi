@@ -17,6 +17,7 @@ import {
   getRemoteAvatarImageCacheStatsForTests,
   getRemoteAvatarImageSnapshot,
   loadAvatarThroughNativeProxy,
+  loadRemoteImageThroughNativeProxy,
   shouldLoadAvatarThroughNativeProxy,
 } from '../src/kordi-app/components/remoteAvatarImage';
 
@@ -61,6 +62,15 @@ test('native desktop routes remote HTTPS avatars through its proxy-aware image l
   assert.equal(shouldLoadAvatarThroughNativeProxy('https://images.example/avatar.png', true), true);
   assert.equal(shouldLoadAvatarThroughNativeProxy('data:image/png;base64,avatar', true), false);
   assert.equal(shouldLoadAvatarThroughNativeProxy('https://images.example/avatar.png', false), false);
+  assert.equal(shouldLoadAvatarThroughNativeProxy('http://127.0.0.1:17185/avatar.png', true), false);
+  assert.equal(
+    shouldLoadAvatarThroughNativeProxy('http://127.0.0.1:17185/blob.webp', true, true, true),
+    true,
+  );
+  assert.equal(
+    shouldLoadAvatarThroughNativeProxy('http://localhost:17185/blob.webp', true, true, true),
+    false,
+  );
 });
 
 test('remote avatar image requests share one native load per URL', async () => {
@@ -79,6 +89,26 @@ test('remote avatar image requests share one native load per URL', async () => {
   assert.deepEqual(calls, [{
     command: 'desktop_fetch_remote_image_data_url',
     url: 'https://images.example/avatar.png',
+  }]);
+});
+
+test('content-addressed image requests share their native integrity-checked load', async () => {
+  clearRemoteAvatarImageCacheForTests();
+  const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+  const invoke = async <T,>(command: string, args?: Record<string, unknown>): Promise<T> => {
+    calls.push({ command, args });
+    return 'data:image/webp;base64,ZW1vamk=' as T;
+  };
+  const url = 'https://images.example/blob.webp';
+  const expectedSha256 = 'a'.repeat(64);
+  const options = { command: 'desktop_fetch_blob_emoji_data_url' as const, expectedSha256 };
+
+  const first = loadRemoteImageThroughNativeProxy(url, options, invoke);
+  const second = loadRemoteImageThroughNativeProxy(url, options, invoke);
+  assert.equal(await first, await second);
+  assert.deepEqual(calls, [{
+    command: 'desktop_fetch_blob_emoji_data_url',
+    args: { url, expectedSha256 },
   }]);
 });
 

@@ -88,6 +88,8 @@ test('cloud server image builds and runs against one glibc baseline', async () =
   assert.match(dockerfile, /RUN cargo build --release -p kordi-cloud-server/);
   assert.match(dockerfile, /^FROM --platform=linux\/amd64 debian:bookworm-slim AS runtime/m);
   assert.match(dockerfile, /COPY --from=builder \/workspace\/target\/release\/kordi-cloud-server/);
+  assert.match(dockerfile, /COPY --from=builder \/workspace\/shared\/blob-emoji\/assets \/usr\/local\/share\/kordi\/blob-emoji/);
+  assert.match(dockerfile, /KORDI_BLOB_EMOJI_DIR=\/usr\/local\/share\/kordi\/blob-emoji/);
   assert.match(dockerignore, /^target$/m);
   assert.doesNotMatch(dockerignore, /^!target/m);
   assert.match(syncScript, /cargo build --release -p kordi-cloud-server/);
@@ -186,7 +188,7 @@ test('product origin serves desktop routes without redirects', async () => {
 
   assert.match(
     caddyfile,
-    /@cloud_product_routes path \/v1\/cloud\/\* \/health \/updates\/\*/,
+    /@cloud_product_routes path \/v1\/cloud\/\* \/assets\/blob-emoji\/\* \/health \/updates\/\*/,
   );
   assert.ok(
     caddyfile.indexOf('handle @cloud_product_routes') < caddyfile.lastIndexOf('handle {'),

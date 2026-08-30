@@ -10,7 +10,7 @@ kordi.ai, www.kordi.ai {
 	encode zstd gzip
 	root * /srv/kordi-homepage/current
 
-	@cloud_product_routes path /v1/cloud/* /health /updates/*
+	@cloud_product_routes path /v1/cloud/* /assets/blob-emoji/* /health /updates/*
 	handle @cloud_product_routes {
 		reverse_proxy 127.0.0.1:30081 {
 			header_up X-Real-IP {remote_host}

@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import {
+  blobEmojiAssetUrl,
+  blobEmojiCatalog,
+} from '../src/features/emoji/blobEmoji';
 import {
   insertEmojiAtSelection,
   normalizeEmojiSelection,
@@ -76,6 +81,22 @@ test('composer uses the complete Blob Emoji catalog and private sticker and GIF 
   assert.match(picker, /async function sendMedia[\s\S]*?if \(mediaSendPendingRef\.current\) return;[\s\S]*?setIsOpen\(false\);[\s\S]*?await onSendMedia\(attachment\)/);
   assert.doesNotMatch(picker, /emoji-picker-react|EmojiStyle/);
   assert.doesNotMatch(picker, /PublicMemeGrid|PublicGifGrid|Public Stickers|Public GIFs/);
+});
+
+test('Blob Emoji assets are content addressed and excluded from the desktop bundle', () => {
+  assert.equal(existsSync(new URL('../public/blob-emoji', import.meta.url)), false);
+  assert.equal(blobEmojiCatalog.length, 547);
+  for (const emoji of blobEmojiCatalog) {
+    const bytes = readFileSync(new URL(`../../../shared/blob-emoji/assets/${emoji.file}`, import.meta.url));
+    assert.match(emoji.sha256, /^[a-f0-9]{64}$/);
+    assert.equal(emoji.sizeBytes, bytes.length);
+    assert.equal(emoji.sha256, createHash('sha256').update(bytes).digest('hex'));
+  }
+  const emoji = blobEmojiCatalog[0];
+  assert.equal(
+    blobEmojiAssetUrl(emoji, 'https://assets.example'),
+    `https://assets.example/assets/blob-emoji/${emoji.sha256}/${emoji.file}`,
+  );
 });
 
 test('public GIF fallback searches Commons without a key and keeps reusable licenses only', () => {

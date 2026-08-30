@@ -335,7 +335,7 @@ test('message context menu shows Blob Emoji reactions for synced messages', () =
   assert.match(markup, /data-message-context-menu-reactions="true"/);
   assert.match(markup, /w-\[17\.5rem\]/);
   assert.match(markup, /Show all reactions/);
-  assert.match(markup, /blob-emoji\/assets\//);
+  assert.match(markup, /assets\/blob-emoji\/[a-f0-9]{64}\//);
   assert.doesNotMatch(markup, />Details</);
 });
 

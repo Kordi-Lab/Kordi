@@ -8,6 +8,7 @@
 pub mod attachments;
 pub mod auth;
 pub mod avatars;
+pub mod blob_emoji;
 pub mod calls;
 pub mod chat_sync;
 pub mod cloud_agent_runtime;
