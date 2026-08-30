@@ -3,7 +3,6 @@ import test from 'node:test';
 
 import type { CloudExpressiveMediaItem } from '../src/features/cloud/authClient';
 import {
-  deleteExpressiveMediaLibraryItem,
   EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY,
   expressiveMediaLibraryStorageKey,
   readExpressiveMediaLibrary,
@@ -11,6 +10,7 @@ import {
   writeExpressiveMediaLibrary,
   type ExpressiveMediaLibraryItem,
 } from '../src/features/emoji/expressiveMediaLibrary';
+import { deleteExpressiveMediaLibraryItem } from '../src/features/emoji/expressiveMediaLibraryDeletion';
 
 function memoryStorage() {
   const values = new Map<string, string>();
