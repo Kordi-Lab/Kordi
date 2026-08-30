@@ -43,6 +43,7 @@ export async function loadCachedCloudAttachmentLocalPath(
 ) {
   const cached = cachedCloudAttachmentLocalPath(attachmentId);
   if (cached) return cached;
+  if (!isNativeDesktopShell() && load === cachedDesktopCloudAttachmentPath) return null;
   try {
     const path = await load(attachmentId, name);
     if (path) cacheCloudAttachmentLocalPath(attachmentId, path);
