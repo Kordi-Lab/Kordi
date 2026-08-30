@@ -188,6 +188,33 @@ export function writeExpressiveMediaLibrary(
   expressiveMediaLibraryListeners.forEach((listener) => listener());
 }
 
+export async function deleteExpressiveMediaLibraryItem(
+  itemId: string,
+  options: {
+    accountId?: string | null;
+    storage?: ExpressiveMediaStorage | null;
+    token?: string | null;
+    client?: Pick<CloudAuthClient, 'deleteExpressiveMedia'>;
+  } = {},
+) {
+  const accountId = options.accountId?.trim();
+  if (accountId) await expressiveMediaSyncs.get(accountId);
+  const storage = options.storage === undefined ? browserStorage() : options.storage;
+  const items = readExpressiveMediaLibrary(storage, accountId);
+  const item = items.find((candidate) => candidate.id === itemId);
+  if (!item) return items;
+  const remoteId = item.cloudItemId ?? item.attachmentId;
+  if (remoteId) {
+    if (!options.token || !options.client) {
+      throw new Error('Sign in again before deleting this saved media.');
+    }
+    await options.client.deleteExpressiveMedia(options.token, remoteId);
+  }
+  const next = items.filter((candidate) => candidate.id !== itemId);
+  writeExpressiveMediaLibrary(next, storage, accountId);
+  return next;
+}
+
 export async function addMediaToExpressiveMediaLibrary(
   media: ExpressiveMediaSource,
   kind: ExpressiveMediaKind,
@@ -309,10 +336,19 @@ async function performExpressiveMediaLibrarySync(
   const remoteByAttachmentId = new Map(
     remoteItems.map((item) => [item.attachmentId, item]),
   );
+  const remoteByItemId = new Map(remoteItems.map((item) => [item.itemId, item]));
   const readFile = options.readFile ?? readDesktopChatAttachment;
   for (const localItem of localItems) {
     try {
-      let cloudItem = localItem.attachmentId
+      if (localItem.cloudItemId && !remoteByItemId.has(localItem.cloudItemId)) {
+        localItems = readExpressiveMediaLibrary(storage, options.accountId)
+          .filter((item) => item.id !== localItem.id);
+        writeExpressiveMediaLibrary(localItems, storage, options.accountId);
+        continue;
+      }
+      let cloudItem = localItem.cloudItemId
+        ? remoteByItemId.get(localItem.cloudItemId)
+        : localItem.attachmentId
         ? remoteByAttachmentId.get(localItem.attachmentId)
         : undefined;
       let attachmentId = localItem.attachmentId;
@@ -335,6 +371,7 @@ async function performExpressiveMediaLibrarySync(
           name: localItem.name,
         });
         remoteByAttachmentId.set(cloudItem.attachmentId, cloudItem);
+        remoteByItemId.set(cloudItem.itemId, cloudItem);
       }
       localItems = readExpressiveMediaLibrary(storage, options.accountId).map((item) => (
         item.id === localItem.id

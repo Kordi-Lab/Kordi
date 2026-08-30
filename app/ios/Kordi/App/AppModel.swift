@@ -1514,7 +1514,9 @@ final class AppModel: ObservableObject {
                     errorMessage: nil,
                     requestMessageId: nil,
                     readByCount: 0,
-                    attachments: uploadedVoiceMessage == nil ? uploadedAttachments.map(\.chatAttachment) : [],
+                    attachments: uploadedVoiceMessage == nil
+                        ? uploadedAttachments.map { $0.chatAttachment(messageKind: outgoingMessageKind) }
+                        : [],
                     replyToMessageId: messageAction?.replyToMessageId,
                     messageAction: messageAction,
                     mentions: mentions,
@@ -2621,6 +2623,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func removeExpressiveMedia(_ entry: ExpressiveMediaLibraryEntry) async -> Bool {
+        guard let accountId = account?.accountId else { return false }
+        do {
+            if let mediaId = entry.item.cloudItemId ?? entry.item.attachmentId {
+                guard let token else { throw AttachmentTransferError.missingSession }
+                try await api.deleteExpressiveMedia(token: token, mediaId: mediaId)
+            }
+            try await expressiveMediaLibrary.remove(accountId: accountId, itemId: entry.id)
+            await refreshLoadedConversationProjections()
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not delete this saved media.")
+            return false
+        }
+    }
+
     private func scheduleExpressiveMediaLibrarySync() {
         guard expressiveMediaSyncTask == nil else { return }
         Task { [weak self] in
@@ -2641,10 +2659,23 @@ final class AppModel: ObservableObject {
         var cloudByAttachmentId = Dictionary(
             uniqueKeysWithValues: remoteItems.map { ($0.attachmentId, $0) }
         )
+        var cloudByItemId = Dictionary(uniqueKeysWithValues: remoteItems.map { ($0.itemId, $0) })
         let localItems = await expressiveMediaLibrary.items(accountId: accountId)
         for local in localItems {
             guard !Task.isCancelled, account?.accountId == accountId else { return }
             do {
+                if let cloudItemId = local.cloudItemId {
+                    if let cloudItem = cloudByItemId[cloudItemId] {
+                        try await expressiveMediaLibrary.markSynced(
+                            accountId: accountId,
+                            itemId: local.id,
+                            cloudItem: cloudItem
+                        )
+                    } else {
+                        try await expressiveMediaLibrary.remove(accountId: accountId, itemId: local.id)
+                    }
+                    continue
+                }
                 if let attachmentId = local.attachmentId,
                    let cloudItem = cloudByAttachmentId[attachmentId] {
                     try await expressiveMediaLibrary.markSynced(
@@ -2678,6 +2709,7 @@ final class AppModel: ObservableObject {
                     name: local.name
                 )
                 cloudByAttachmentId[cloudItem.attachmentId] = cloudItem
+                cloudByItemId[cloudItem.itemId] = cloudItem
                 try await expressiveMediaLibrary.markSynced(
                     accountId: accountId,
                     itemId: local.id,

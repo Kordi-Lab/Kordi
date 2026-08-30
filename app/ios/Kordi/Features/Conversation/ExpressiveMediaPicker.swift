@@ -597,29 +597,39 @@ private struct ExpressiveMediaLibraryPanel: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 54, alignment: .center)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 8) {
-                        ForEach(libraryEntries) { entry in
-                            Button {
-                                send(entry)
-                            } label: {
-                                LocalExpressiveMediaThumbnail(url: entry.fileURL)
-                                    .overlay {
-                                        if activeMediaID == entry.id {
-                                            ProgressView()
-                                                .tint(.white)
-                                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                                .background(.black.opacity(0.28))
-                                        }
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 64, maximum: 64), spacing: 8)],
+                    spacing: 8
+                ) {
+                    ForEach(libraryEntries) { entry in
+                        Button {
+                            send(entry)
+                        } label: {
+                            LocalExpressiveMediaThumbnail(url: entry.fileURL)
+                                .overlay {
+                                    if activeMediaID == entry.id {
+                                        ProgressView()
+                                            .tint(.white)
+                                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                            .background(.black.opacity(0.28))
                                     }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(activeMediaID != nil || isSending)
+                        .accessibilityLabel("Send \(entry.item.name)")
+                        .accessibilityAction(named: "Delete \(entry.item.name)") {
+                            remove(entry)
+                        }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                remove(entry)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
                             }
-                            .buttonStyle(.plain)
-                            .disabled(activeMediaID != nil || isSending)
-                            .accessibilityLabel("Send \(entry.item.name)")
                         }
                     }
                 }
-                .frame(height: 64)
             }
         }
     }
@@ -705,6 +715,17 @@ private struct ExpressiveMediaLibraryPanel: View {
         Task {
             if let attachment = await model.pendingAttachment(for: entry) {
                 await onSendMedia(attachment)
+            }
+            activeMediaID = nil
+        }
+    }
+
+    private func remove(_ entry: ExpressiveMediaLibraryEntry) {
+        guard activeMediaID == nil, !isSending else { return }
+        activeMediaID = entry.id
+        Task {
+            if await model.removeExpressiveMedia(entry) {
+                libraryEntries = await model.expressiveMediaLibraryEntries(kind: kind)
             }
             activeMediaID = nil
         }

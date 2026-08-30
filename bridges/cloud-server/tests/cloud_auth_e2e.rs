@@ -189,6 +189,8 @@ async fn read_json(response: axum::response::Response) -> serde_json::Value {
 mod account_auth;
 #[path = "cloud_auth_e2e/devices.rs"]
 mod devices;
+#[path = "cloud_auth_e2e/expressive_media.rs"]
+mod expressive_media;
 #[path = "cloud_auth_e2e/group_invitations.rs"]
 mod group_invitations;
 #[path = "cloud_auth_e2e/public_identity.rs"]
