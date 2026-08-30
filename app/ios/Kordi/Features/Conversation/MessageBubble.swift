@@ -347,7 +347,10 @@ struct MessageBubble: View, Equatable {
             }
             .environment(\.colorScheme, bubbleContentColorScheme)
             .foregroundStyle(bubbleTextColor)
-            .background(bubbleColor, in: bubbleShape)
+            .background {
+                bubbleShape.fill(bubbleColor)
+                bubbleShape.fill(chatTheme.accent.opacity(lightAppearanceBubbleTintOpacity))
+            }
             .clipShape(bubbleShape)
         }
     }
@@ -410,6 +413,7 @@ struct MessageBubble: View, Equatable {
                     text: message.text,
                     mentionTargets: mentionTargets,
                     mentions: message.mentions,
+                    inlineAccent: bubbleInlineAccentColor,
                     allowsTextSelection: isActionPresented,
                     onSelectedTextChange: onSelectedTextChange,
                     onOpenPersonMention: onOpenMentionProfile
@@ -636,25 +640,29 @@ struct MessageBubble: View, Equatable {
         return Button {
             onNavigateToReply(source.sourceMessageId)
         } label: {
-            HStack(spacing: 8) {
-                Capsule()
-                    .fill(message.author == .me ? chatTheme.accent : KordiTheme.agentViolet)
-                    .frame(width: 3)
+            HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(source.senderLabel)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(message.author == .me ? chatTheme.accent : KordiTheme.agentViolet)
+                        .foregroundStyle(bubbleInlineAccentColor)
                     MarkdownMessageContent(
                         text: source.textPreview.nonEmpty ?? attachmentCountText(source.attachmentCount),
                         density: .compact,
                         mentionTargets: mentionTargets,
-                        mentions: source.mentions ?? []
+                        mentions: source.mentions ?? [],
+                        inlineAccent: bubbleInlineAccentColor
                     )
                         .foregroundStyle(bubbleSecondaryTextColor)
                         .lineLimit(2)
                 }
                 Spacer(minLength: 0)
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                replyPreviewBackgroundColor,
+                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -666,6 +674,31 @@ struct MessageBubble: View, Equatable {
         case .me: chatTheme.ownBubble
         case .agent: chatTheme.agentBubble
         case .person: chatTheme.peerBubble
+        }
+    }
+
+    private var lightAppearanceBubbleTintOpacity: Double {
+        guard colorScheme == .light else { return 0 }
+        return switch message.author {
+        case .me: 0.12
+        case .person: 0.16
+        case .agent: 0
+        }
+    }
+
+    private var bubbleInlineAccentColor: Color {
+        switch message.author {
+        case .me: chatTheme.ownText
+        case .person: chatTheme.accent
+        case .agent: KordiTheme.agentMention
+        }
+    }
+
+    private var replyPreviewBackgroundColor: Color {
+        switch message.author {
+        case .me: bubbleTextColor.opacity(0.16)
+        case .person: chatTheme.accent.opacity(0.22)
+        case .agent: KordiTheme.agentViolet.opacity(0.22)
         }
     }
 

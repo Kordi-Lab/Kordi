@@ -486,6 +486,7 @@ struct MarkdownMessageContent: View {
     let density: Density
     let mentionTargets: [ComposerMentionTarget]
     let mentions: [MessageMention]
+    let inlineAccent: Color?
     let allowsTextSelection: Bool
     let onSelectedTextChange: (String?) -> Void
     let onOpenPersonMention: (String) -> Void
@@ -500,6 +501,7 @@ struct MarkdownMessageContent: View {
         density: Density = .standard,
         mentionTargets: [ComposerMentionTarget] = [],
         mentions: [MessageMention] = [],
+        inlineAccent: Color? = nil,
         allowsTextSelection: Bool = false,
         onSelectedTextChange: @escaping (String?) -> Void = { _ in },
         onOpenPersonMention: @escaping (String) -> Void = { _ in }
@@ -508,6 +510,7 @@ struct MarkdownMessageContent: View {
         self.density = density
         self.mentionTargets = mentionTargets
         self.mentions = mentions
+        self.inlineAccent = inlineAccent
         self.allowsTextSelection = allowsTextSelection
         self.onSelectedTextChange = onSelectedTextChange
         self.onOpenPersonMention = onOpenPersonMention
@@ -549,7 +552,7 @@ struct MarkdownMessageContent: View {
                     }
                     .font(.caption.weight(.semibold))
                     .buttonStyle(.plain)
-                    .foregroundStyle(KordiTheme.signalBlue)
+                    .foregroundStyle(inlineAccent ?? KordiTheme.signalBlue)
                     .accessibilityHint("Changes how much of this long message is visible")
                 }
             } else {
@@ -561,6 +564,7 @@ struct MarkdownMessageContent: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .environment(\.composerMentionTargets, mentionTargets)
                 .environment(\.messageMentions, mentions)
+                .environment(\.messageInlineAccent, inlineAccent)
                 .environment(\.openURL, OpenURLAction { url in
                     guard let accountID = MentionProfileLink.accountID(from: url) else {
                         return .systemAction
@@ -621,6 +625,7 @@ private struct InlineMarkdownText: View {
     let font: Font
     @Environment(\.composerMentionTargets) private var mentionTargets
     @Environment(\.messageMentions) private var mentions
+    @Environment(\.messageInlineAccent) private var inlineAccent
 
     var body: some View {
         let parts = KordiMarkdownParser.parseInline(text)
@@ -654,7 +659,7 @@ private struct InlineMarkdownText: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(KordiTheme.signalBlue)
+                .foregroundStyle(inlineAccent ?? KordiTheme.signalBlue)
                 .accessibilityLabel(linkLabelAccessibilityText(labelParts))
             } else {
                 Text(attributedText([part]))
@@ -734,7 +739,7 @@ private struct InlineMarkdownText: View {
             case let .link(label, url):
                 fragment = AttributedString(KordiMarkdownParser.compactLinkLabel(label, url: url))
                 fragment.link = url
-                fragment.foregroundColor = KordiTheme.signalBlue
+                fragment.foregroundColor = inlineAccent ?? KordiTheme.signalBlue
                 fragment.underlineStyle = .single
             case .blobEmoji:
                 continue
@@ -757,9 +762,9 @@ private struct InlineMarkdownText: View {
             var fragment = AttributedString(segment.text)
             if let kind = segment.kind {
                 fragment.font = font.weight(.semibold)
-                fragment.foregroundColor = kind == .agent
+                fragment.foregroundColor = inlineAccent ?? (kind == .agent
                     ? KordiTheme.agentMention
-                    : KordiTheme.personMention
+                    : KordiTheme.personMention)
                 if let accountID = segment.profileAccountId,
                    let url = MentionProfileLink.url(for: accountID) {
                     fragment.link = url
@@ -943,6 +948,7 @@ private struct SelectableMessageTextView: UIViewRepresentable {
 private extension EnvironmentValues {
     @Entry var composerMentionTargets: [ComposerMentionTarget] = []
     @Entry var messageMentions: [MessageMention] = []
+    @Entry var messageInlineAccent: Color? = nil
 }
 
 private struct MarkdownListRow: View {

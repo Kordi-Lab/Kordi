@@ -502,6 +502,44 @@ enum PreviewData {
                 )
             ),
             ChatMessage(id: "m5", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "Can you send the latest numbers?", createdAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil, reactionTargetMessageId: "018f47c2-9f4c-7a5e-b001-000000000005"),
+            ChatMessage(
+                id: "m5-reply-own",
+                conversationId: conversationId,
+                author: .me,
+                authorName: "You",
+                text: "Review the updated colors at https://kordi.ai.",
+                createdAt: now.addingTimeInterval(-50),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil,
+                replyToMessageId: "m5",
+                messageAction: .quote(MessageActionSource(
+                    sourceSessionId: conversationId,
+                    sourceMessageId: "m5",
+                    senderLabel: "Maya Chen",
+                    textPreview: "Can you send the latest numbers?",
+                    attachmentCount: 0
+                ))
+            ),
+            ChatMessage(
+                id: "m5-reply-peer",
+                conversationId: conversationId,
+                author: .person,
+                authorName: "Maya Chen",
+                text: "@Alex The link and reply stay readable in every theme.",
+                createdAt: now.addingTimeInterval(-40),
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: nil,
+                replyToMessageId: "m5-reply-own",
+                messageAction: .quote(MessageActionSource(
+                    sourceSessionId: conversationId,
+                    sourceMessageId: "m5-reply-own",
+                    senderLabel: "You",
+                    textPreview: "Review the updated colors at https://kordi.ai.",
+                    attachmentCount: 0
+                ))
+            ),
         ])
         messages.append(contentsOf: previewMediaMessages(now: now))
         return messages

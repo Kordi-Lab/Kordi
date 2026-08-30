@@ -15,14 +15,31 @@ test('light outgoing human bubble uses the selected chat-theme tokens with no vi
   const css = readDesktopShellCss();
   const tokens = readFileSync(new URL('../src/styles/chat-theme-tokens.css', import.meta.url), 'utf8');
   const rule = cssRule(css, '.kordi-app.theme-light .app-chat-bubble-user');
+  const baseRule = cssRule(css, '.app-chat-bubble-user');
 
-  assert.match(rule, /--app-message-bubble-fill:\s*var\(--app-chat-bubble-user-bg\);/);
+  assert.match(
+    rule,
+    /--app-message-bubble-fill:\s*color-mix\(in oklab, var\(--app-chat-accent\) 12%, var\(--app-chat-bubble-user-bg\)\);/,
+  );
   assert.match(rule, /--app-message-bubble-stroke:\s*transparent;/);
   assert.match(rule, /--app-message-mention:\s*var\(--app-chat-mention-own\);/);
   assert.match(rule, /--app-message-meta:\s*var\(--app-chat-meta-own\);/);
   assert.match(rule, /color:\s*var\(--app-chat-bubble-user-text\);/);
+  assert.match(baseRule, /--app-markdown-link:\s*var\(--app-chat-mention-own\);/);
   assert.match(tokens, /--app-chat-bubble-user-bg:\s*#E2EBF5;/);
   assert.match(tokens, /--app-chat-bubble-user-text:\s*#1F3145;/);
+});
+
+test('light incoming bubbles use the selected theme accent instead of blending into the canvas', () => {
+  const css = readDesktopShellCss();
+  const rule = cssRule(css, '.kordi-app.theme-light .app-chat-bubble-peer');
+  const baseRule = cssRule(css, '.app-chat-bubble-peer');
+
+  assert.match(
+    rule,
+    /--app-message-bubble-fill:\s*color-mix\(in oklab, var\(--app-chat-accent\) 16%, var\(--app-chat-bubble-peer-bg\)\);/,
+  );
+  assert.match(baseRule, /--app-markdown-link:\s*var\(--app-chat-mention-peer\);/);
 });
 
 test('every chat theme keeps small metadata at its verified WCAG AA opacity floor', () => {
