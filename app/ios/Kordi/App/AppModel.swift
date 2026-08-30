@@ -1514,7 +1514,9 @@ final class AppModel: ObservableObject {
                     errorMessage: nil,
                     requestMessageId: nil,
                     readByCount: 0,
-                    attachments: uploadedVoiceMessage == nil ? uploadedAttachments.map(\.chatAttachment) : [],
+                    attachments: uploadedVoiceMessage == nil
+                        ? uploadedAttachments.map { $0.chatAttachment(messageKind: outgoingMessageKind) }
+                        : [],
                     replyToMessageId: messageAction?.replyToMessageId,
                     messageAction: messageAction,
                     mentions: mentions,

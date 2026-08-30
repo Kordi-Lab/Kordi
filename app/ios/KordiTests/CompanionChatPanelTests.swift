@@ -265,6 +265,24 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertTrue(source.contains("model.removeExpressiveMedia(entry)"))
     }
 
+    func testGroupStickerConfirmationKeepsTheCompactStickerSubtype() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/App/AppModel.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let groupSendStart = try XCTUnwrap(source.range(of: "if conversation.kind == .group {"))
+        let directSendStart = try XCTUnwrap(
+            source.range(of: "let wireBody: String", range: groupSendStart.upperBound..<source.endIndex)
+        )
+        let groupSend = source[groupSendStart.lowerBound..<directSendStart.lowerBound]
+
+        XCTAssertTrue(groupSend.contains(
+            "uploadedAttachments.map { $0.chatAttachment(messageKind: outgoingMessageKind) }"
+        ))
+        XCTAssertFalse(groupSend.contains("uploadedAttachments.map(\\.chatAttachment)"))
+    }
+
     func testConversationRowsRenderTheLatestStickerPreview() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
