@@ -129,6 +129,8 @@ enum CloudDirectMessageProjector {
             authorName: authorName,
             text: CloudMessageCodec.displayText(message.body),
             createdAt: createdAt ?? parseCloudDate(message.createdAt),
+            editedAt: message.editedAt.map(parseCloudDate),
+            cloudMessageVersion: message.version,
             deliveryState: state,
             errorMessage: nil,
             requestMessageId: responseRequestId,

@@ -33,6 +33,7 @@ import type {
   DetailTab,
   EditFilePreview,
   Message,
+  MessageEditState,
   MessageSourceReference,
   ParticipantSpaceViewModel,
   QueuedDesktopChatMessage,
@@ -141,6 +142,8 @@ export type ChatsPageComposer = {
   onClearChatQuote?: () => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onEditMessage?: (message: Message) => void;
+  onDeleteMessage?: (message: Message) => void;
   onReactMessage?: (message: Message, reaction: string) => Promise<void> | void;
   onSelectMessage?: (message: Message) => void;
   messageSelectionMode?: boolean;
@@ -155,6 +158,12 @@ export type ChatsPageComposer = {
   onSelectAllMessages?: () => void;
   onCopySelectedMessages?: () => void;
   onForwardSelectedMessages?: () => void;
+  activeMessageEdit?: MessageEditState | null;
+  messageEditBusy?: boolean;
+  messageEditError?: string | null;
+  updateMessageEditText?: (text: string) => void;
+  cancelMessageEdit?: () => void;
+  saveMessageEdit?: () => Promise<void>;
 };
 
 export type ChatsPageRuntime = {
@@ -292,6 +301,8 @@ export type ChatSessionPaneActions = {
   onOpenForkSession?: (sessionId: string) => void;
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onEditMessage?: (message: Message) => void;
+  onDeleteMessage?: (message: Message) => void;
   onReactMessage?: (message: Message, reaction: string) => Promise<void> | void;
   onRetryMessage?: (message: Message) => Promise<void> | void;
   onSelectMessage?: (message: Message) => void;

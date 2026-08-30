@@ -65,12 +65,20 @@ fn attach_cloud_group_read_receipts(
         })
         .map_err(|error| error.to_string())?;
     let mut summaries = HashMap::new();
+    let mut mutation_metadata = HashMap::new();
     for row in rows {
         let (message_id, sequence, wire_json, conversation_json) =
             row.map_err(|error| error.to_string())?;
         let wire: Value = serde_json::from_str(&wire_json).map_err(|error| error.to_string())?;
         let conversation: Value =
             serde_json::from_str(&conversation_json).map_err(|error| error.to_string())?;
+        mutation_metadata.insert(
+            message_id.clone(),
+            (
+                wire.get("version").and_then(Value::as_i64),
+                wire.get("edited_at").cloned().unwrap_or(Value::Null),
+            ),
+        );
         let viewer_account_id = conversation
             .pointer("/preferences/account_id")
             .and_then(Value::as_str)
@@ -109,11 +117,17 @@ fn attach_cloud_group_read_receipts(
         summaries.insert(message_id, readers);
     }
     for message in messages {
-        let Some(readers) = summaries.remove(&message.id) else {
-            continue;
-        };
         let content = message.content.get_or_insert_with(|| json!({}));
         let Some(content) = content.as_object_mut() else {
+            continue;
+        };
+        if let Some((version, edited_at)) = mutation_metadata.remove(&message.id) {
+            if let Some(version) = version {
+                content.insert("cloudMessageVersion".to_string(), Value::from(version));
+            }
+            content.insert("editedAt".to_string(), edited_at);
+        }
+        let Some(readers) = summaries.remove(&message.id) else {
             continue;
         };
         content.insert(

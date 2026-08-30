@@ -29,11 +29,11 @@ const MAX_IMAGE_PIXEL_DIMENSION: u64 = 100_000;
 
 mod group_envelope;
 mod http;
+mod message_mutations;
 mod reaction;
 
 use group_envelope::normalize_legacy_group_envelope;
 use http::*;
-use reaction::{add_reaction, remove_reaction};
 #[derive(Clone)]
 struct ChatSyncRuntime {
     cursor_codec: Option<CursorCodec>,
@@ -71,10 +71,7 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
             "/v2/chat/conversations/:conversation_id/messages",
             get(history).post(send_message),
         )
-        .route(
-            "/v2/chat/conversations/:conversation_id/messages/:message_id/reactions",
-            put(add_reaction).delete(remove_reaction),
-        )
+        .merge(message_mutations::routes())
         .route(
             "/v2/chat/conversations/:conversation_id/delivered",
             put(advance_delivery_cursor),

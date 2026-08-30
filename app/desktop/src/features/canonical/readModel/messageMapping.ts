@@ -510,7 +510,7 @@ export function mapCanonicalMessage(
     messageAction,
     sourceMessage,
     ...canonicalMessageReactionMetadata(message, content, sourceTransport),
-    statusChips: role === 'user' ? [canonicalUserStatusChip(message, content)] : undefined,
+    cloudMessageVersion: numberValue(content.cloudMessageVersion) ?? null, editedAt: stringValue(content.editedAt) ?? null, statusChips: role === 'user' ? [canonicalUserStatusChip(message, content)] : undefined,
     turn: isAgentTurn
       ? {
           id: `canonical-turn:${message.id}`,

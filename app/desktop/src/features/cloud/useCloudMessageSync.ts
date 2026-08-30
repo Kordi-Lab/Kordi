@@ -85,7 +85,7 @@ export type UseCloudMessageSyncInput = {
   cancelledRef: MutableRefObject<boolean>;
   stores: CloudMessageSyncStores;
   setUnreadReadiness: Dispatch<SetStateAction<CloudUnreadReadinessSnapshot>>;
-  refreshCloudAgents: (generation?: number) => Promise<void>;
+  refreshCloudAgents: (generation?: number) => Promise<void>; onMessagesDeleted?: (messageIds: string[]) => Promise<void> | void;
 };
 
 export type CloudMessageSyncController = {
@@ -105,7 +105,7 @@ export function useCloudMessageSync({
   cancelledRef,
   stores,
   setUnreadReadiness,
-  refreshCloudAgents,
+  refreshCloudAgents, onMessagesDeleted,
 }: UseCloudMessageSyncInput): CloudMessageSyncController {
   const {
     stateRef: messagesRef,
@@ -170,6 +170,7 @@ export function useCloudMessageSync({
     let directoryBootstrapPending = false;
     let cursorOverride = forceBootstrap ? '0' : null;
     let bootstrapRecoveryAttempted = forceBootstrap;
+    const deletedMessageIds = new Set<string>();
     // A bootstrap cursor can be many pages behind the server (especially on a
     // fresh install). Keep the accumulated state private until the cursor is
     // exhausted so the sidebar never publishes a succession of partial
@@ -209,6 +210,7 @@ export function useCloudMessageSync({
             events: response.chat.events,
           });
           publishCloudDeviceEvents(response.chat.events, account.accountId, session.deviceId, response.events);
+          for (const event of response.events) if (event.eventType === 'message.deleted' && event.messageId) deletedMessageIds.add(event.messageId);
           directoryBootstrapPending ||= chatEventsRequireDirectoryBootstrap(response.chat.events);
           if (local) {
             await Promise.allSettled(local.changedConversationHeads.map((conversation) => (
@@ -251,12 +253,9 @@ export function useCloudMessageSync({
       if (!result.hasMore) break;
     }
     if (cancelledRef.current || !coordinator.isCurrentGeneration(generation)) return;
-    messagesRef.current = mergeCloudMessagesByPeerSnapshot(
-      messagesRef.current,
-      messagesByPeer,
-    );
+    messagesRef.current = mergeCloudMessagesByPeerSnapshot(messagesRef.current, messagesByPeer, deletedMessageIds);
     setMessages((current) => {
-      const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer);
+      const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer, deletedMessageIds);
       if (cloudMessagesByPeerEqual(current, merged)) return current;
       return merged;
     });
@@ -280,6 +279,7 @@ export function useCloudMessageSync({
     setDeletedSessionIds((current) => (
       cloudSetsEqual(current, deletedSessionIds) ? current : new Set(deletedSessionIds)
     ));
+    if (deletedMessageIds.size > 0) await onMessagesDeleted?.([...deletedMessageIds]);
   }, [
     account,
     activityRef,
@@ -290,7 +290,7 @@ export function useCloudMessageSync({
     deletedSessionIdsRef,
     forksRef,
     hiddenSessionIdsRef,
-    messagesRef,
+    messagesRef, onMessagesDeleted,
     pinsRef,
     setActivity,
     setAgents,

@@ -9,7 +9,7 @@ import {
   type CloudAccount,
   type CloudMessage,
 } from './authClient';
-import { cloudGroupSessionTitlesForReadModel, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from './cloudCollaborationStateHelpers';
+import { cloudGroupSessionTitlesForReadModel, patchCanonicalCloudGroupSessionTitles, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from './cloudCollaborationStateHelpers';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
 } from './cloudAgentMessages';
@@ -336,6 +336,7 @@ export function useCloudCollaborationState({
     syncCloudCollaborationDiff,
     claimFreshCloudGroupFallback,
     mergeMessage,
+    editMessage: editCloudMessage, deleteMessage: deleteCloudMessage,
     prepareForwardAttachments: prepareCloudForwardAttachments,
     sendMessage: sendCloudCollaborationMessage,
     updateSessionTitle: updateCloudCollaborationSessionTitle, setReaction: setCloudMessageReaction,
@@ -642,14 +643,13 @@ export function useCloudCollaborationState({
       && message.toAccountId === account?.accountId
     ))
   ), [account?.accountId, cloudMessageIndex.allMessages]);
-  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => patchCanonicalCloudReactions(canonicalSessionState ?? null, cloudMessageIndex.groupRows), [canonicalSessionState, cloudMessageIndex.groupRows]);
+  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => patchCanonicalCloudReactions(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById]);
   return {
     cloudAgentRuntimeRouteMessages,
     cloudCollaborationState,
     setCloudCollaborationState,
     mergedCollaborationState: cloudCollaborationState,
-    prepareCloudForwardAttachments,
-    sendCloudCollaborationMessage,
+    prepareCloudForwardAttachments, sendCloudCollaborationMessage, editCloudMessage, deleteCloudMessage,
     updateCloudCollaborationSessionTitle,
     sendCloudGroupControl,
     setCloudMessageReaction,

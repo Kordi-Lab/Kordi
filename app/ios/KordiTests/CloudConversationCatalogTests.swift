@@ -995,6 +995,41 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.first { $0.kind == .group }?.unreadCount, 0)
     }
 
+    func testCanonicalNormalizedGroupMessageDrivesPreviewCountAndUnreadState() throws {
+        let sessionId = "session:group:normalized"
+        let canonical = canonicalConversation(
+            id: "conversation-normalized",
+            kind: "group",
+            sessionId: sessionId,
+            latestSequence: 1,
+            lastReadSequence: 0,
+            sharedTitle: "Normalized group"
+        )
+        let message = wire(
+            id: "canonical-normalized-message",
+            body: "Visible on every device",
+            sessionId: sessionId,
+            createdAt: "2026-08-08T12:00:00Z",
+            from: "acct_maya",
+            to: "acct_me",
+            conversationId: canonical.id,
+            conversationSequence: 1
+        )
+
+        let group = try XCTUnwrap(CloudConversationCatalog.build(
+            account: account,
+            contacts: [contact],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_maya": [message]],
+            canonicalConversations: [canonical]
+        ).first(where: { $0.sessionId == sessionId }))
+
+        XCTAssertEqual(group.lastMessage, message.body)
+        XCTAssertEqual(group.messageCount, 1)
+        XCTAssertEqual(group.unreadCount, 1)
+    }
+
     func testGroupSessionWithoutAnExplicitTitleUsesItsFirstMessageLikeMac() throws {
         let participants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),

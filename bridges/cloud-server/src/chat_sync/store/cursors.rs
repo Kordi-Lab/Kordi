@@ -214,14 +214,21 @@ pub async fn history(
         "SELECT message_id, client_message_id, conversation_id, conversation_sequence, \
                 sender_account_id, message_kind, content, reply_to_message_id, version, \
                 generation_status, provider_response_id, created_at, edited_at, deleted_at \
-         FROM cloud_chat_messages \
+         FROM cloud_chat_messages message \
          WHERE conversation_id = $1 AND conversation_sequence < $2 \
+           AND deleted_at IS NULL \
+           AND NOT EXISTS ( \
+             SELECT 1 FROM cloud_chat_message_visibility visibility \
+             WHERE visibility.account_id = $4 \
+               AND visibility.message_id = message.message_id \
+           ) \
          ORDER BY conversation_sequence DESC \
          LIMIT $3",
     )
     .bind(conversation_id)
     .bind(before)
     .bind(limit + 1)
+    .bind(account_id)
     .fetch_all(&mut *transaction)
     .await?;
     let has_more = rows.len() as i64 > limit;
@@ -423,14 +430,24 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 message.content, message.reply_to_message_id, message.version, \
                 message.generation_status, message.provider_response_id, message.created_at, \
                 message.edited_at, message.deleted_at \
-         FROM cloud_chat_messages message \
-         JOIN cloud_chat_conversations conversation \
-           ON conversation.conversation_id = message.conversation_id \
-          AND conversation.latest_message_sequence = message.conversation_sequence \
-         WHERE message.conversation_id = ANY($1) \
+         FROM cloud_chat_conversations conversation \
+         JOIN LATERAL ( \
+           SELECT candidate.* FROM cloud_chat_messages candidate \
+           WHERE candidate.conversation_id = conversation.conversation_id \
+             AND candidate.deleted_at IS NULL \
+             AND NOT EXISTS ( \
+               SELECT 1 FROM cloud_chat_message_visibility visibility \
+               WHERE visibility.account_id = $2 \
+                 AND visibility.message_id = candidate.message_id \
+             ) \
+           ORDER BY candidate.conversation_sequence DESC \
+           LIMIT 1 \
+         ) message ON TRUE \
+         WHERE conversation.conversation_id = ANY($1) \
          ORDER BY message.conversation_id ASC",
     )
     .bind(&conversation_ids)
+    .bind(account_id)
     .fetch_all(&mut *transaction)
     .await?;
     let message_ids = latest_rows.iter().map(|row| row.0).collect::<Vec<_>>();

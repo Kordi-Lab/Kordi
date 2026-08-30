@@ -422,7 +422,20 @@ enum PreviewData {
                     displayLabel: "All"
                 )]
             ),
-            ChatMessage(id: "gm3b", conversationId: conversationId, author: .person, authorName: "Ethan Park", text: "The accessibility notes are in the same folder.", createdAt: now.addingTimeInterval(-90), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
+            ChatMessage(id: "gm3b", conversationId: conversationId, author: .person, authorName: "Ethan Park", text: "The accessibility notes are in the same folder.", createdAt: now.addingTimeInterval(-90), editedAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(
+                id: "gm4",
+                conversationId: conversationId,
+                author: .me,
+                authorName: "You",
+                text: "Long-press to edit or delete this message.",
+                createdAt: now.addingTimeInterval(-30),
+                cloudMessageVersion: 1,
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil,
+                reactionTargetMessageId: "018f47c2-9f4c-7a5e-b001-000000000006"
+            )
         ])
         if includesMentionAttention {
             let mention = MessageMention(

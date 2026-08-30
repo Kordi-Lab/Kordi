@@ -115,6 +115,60 @@ final class CloudGroupMessageCodecTests: XCTestCase {
         XCTAssertTrue(projected.allSatisfy(\.isSystemNotice))
     }
 
+    func testCanonicalGroupTextProjectsWithoutALegacyGroupEnvelope() throws {
+        let conversation = ConversationSummary(
+            id: "group:mobile",
+            kind: .group,
+            peerAccountId: "acct_peer",
+            agentId: nil,
+            ownerDisplayName: "Mobile builders",
+            displayName: "Mobile builders",
+            lastMessage: "",
+            lastActivityAt: Date(timeIntervalSince1970: 1),
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: nil,
+            sessionId: "session:group:mobile",
+            groupSpaceId: "session:group:mobile",
+            groupParticipants: [
+                CloudGroupParticipant(
+                    accountId: "acct_peer",
+                    displayName: "Maya",
+                    avatarUrl: nil,
+                    role: "member"
+                )
+            ]
+        )
+        let wire = CloudMessageDTO(
+            messageId: "canonical-message",
+            fromAccountId: "acct_peer",
+            toAccountId: "acct_me",
+            body: "Synced canonical group text",
+            createdAt: "2026-08-14T10:00:00Z",
+            editedAt: "2026-08-14T10:01:00Z",
+            deliveredAt: "2026-08-14T10:00:01Z",
+            readAt: nil,
+            direction: "incoming",
+            sessionId: conversation.sessionId,
+            conversationId: "conversation-canonical",
+            conversationSequence: 4,
+            version: 2
+        )
+
+        let projected = AppModel.mapGroupMessages(
+            AppModel.groupWireMessages(for: conversation, in: [wire]),
+            conversation: conversation,
+            ownAccountId: "acct_me"
+        )
+        let message = try XCTUnwrap(projected.first)
+
+        XCTAssertEqual(message.text, wire.body)
+        XCTAssertEqual(message.authorName, "Maya")
+        XCTAssertEqual(message.cloudMessageVersion, 2)
+        XCTAssertTrue(message.isEdited)
+        XCTAssertEqual(message.reactionTargetMessageId, wire.messageId)
+    }
+
     func testGroupAgentResponseProjectsLinkedBackgroundSession() throws {
         let participant = CloudGroupParticipant(
             accountId: "acct_me",

@@ -80,6 +80,12 @@ struct ConversationView: View {
     @State private var forwardRequest: MessageForwardRequest?
     @State private var detailsMessage: ChatMessage?
     @State private var pinTarget: ChatMessage?
+    @State private var editTarget: ChatMessage?
+    @State private var draftBeforeEditing = ""
+    @State private var isEditingMessage = false
+    @State private var deleteTarget: ChatMessage?
+    @State private var isDeletingMessage = false
+    @State private var messageMutationError: String?
     @State private var messageActionMessage: ChatMessage?
     @State private var messageActionFrame = CGRect.zero
     @State private var messageActionAttachment: ChatAttachment?
@@ -532,6 +538,7 @@ struct ConversationView: View {
                             attachments: $attachments,
                             photoGrouping: $photoGrouping,
                             replySource: $replySource,
+                            editingMessage: editTarget,
                             selectedMention: $selectedMention,
                             isFocused: $isComposerFocused,
                             isExpressivePickerPresented: Binding(
@@ -557,7 +564,7 @@ struct ConversationView: View {
                             voiceGestureIntent: $voiceGestureIntent,
                             conversation: conversation,
                             mentionTargets: mentionTargets,
-                            isSending: isSending,
+                            isSending: isSending || isEditingMessage,
                             isPreparingAttachments: isPreparingAttachments,
                             voiceRecorder: voiceRecorder,
                             destinationName: conversation.displayName,
@@ -569,8 +576,15 @@ struct ConversationView: View {
                             },
                             onChooseFiles: { showFileImporter = true },
                             onSendExpressiveMedia: sendExpressiveMedia,
-                            onSend: { Task { await send() } },
-                            onSendVoice: { Task { await sendVoiceMessage() } }
+                            onSend: {
+                                if let editTarget {
+                                    saveMessageEdit(editTarget)
+                                } else {
+                                    Task { await send() }
+                                }
+                            },
+                            onSendVoice: { Task { await sendVoiceMessage() } },
+                            onCancelEdit: cancelMessageEdit
                         )
                     }
                 } else {
@@ -786,6 +800,20 @@ struct ConversationView: View {
                let message = messages.last(where: { ($0.readByCount ?? 0) > 0 }) {
                 detailsMessage = message
             }
+            if ProcessInfo.processInfo.arguments.contains("--preview-message-edit"),
+               editTarget == nil,
+               let message = messages.last(where: {
+                   $0.author == .me && $0.cloudMessageVersion != nil
+               }) {
+                beginMessageEdit(message)
+            }
+            if ProcessInfo.processInfo.arguments.contains("--preview-message-delete"),
+               deleteTarget == nil,
+               let message = messages.last(where: {
+                   $0.author == .me && $0.reactionTargetMessageId != nil
+               }) {
+                deleteTarget = message
+            }
             if ProcessInfo.processInfo.arguments.contains("--preview-media"),
                mediaPreview == nil,
                let message = messages.first(where: { message in
@@ -909,6 +937,41 @@ struct ConversationView: View {
                 )
             )
         }
+        .alert(
+            "Delete this message?",
+            isPresented: Binding(
+                get: { deleteTarget != nil },
+                set: { if !$0 { deleteTarget = nil } }
+            ),
+            presenting: deleteTarget
+        ) { message in
+            Button("Delete for me", role: .destructive) {
+                deleteMessage(message, forEveryone: false)
+            }
+            if message.author == .me {
+                Button("Delete for everyone", role: .destructive) {
+                    deleteMessage(message, forEveryone: true)
+                }
+            }
+            Button("Cancel", role: .cancel) { deleteTarget = nil }
+        } message: { message in
+            if message.author == .me {
+                Text("Delete only for you, or remove it for everyone in the conversation.")
+            } else {
+                Text("This removes the message only for you.")
+            }
+        }
+        .alert(
+            "Message action failed",
+            isPresented: Binding(
+                get: { messageMutationError != nil },
+                set: { if !$0 { messageMutationError = nil } }
+            )
+        ) {
+            Button("OK") { messageMutationError = nil }
+        } message: {
+            Text(messageMutationError ?? "Please try again.")
+        }
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
         }
@@ -948,6 +1011,17 @@ struct ConversationView: View {
                     for: message,
                     isPreviewMode: model.isPreviewMode
                 ),
+                allowsEdit: message.author == .me
+                    && !message.isSystemNotice
+                    && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && !["voice", "sticker", "call"].contains(message.messageKind?.lowercased() ?? "")
+                    && message.cloudMessageVersion != nil
+                    && message.reactionTargetMessageId?.nonEmpty != nil,
+                allowsDelete: message.author != .agent
+                    && !message.isSystemNotice
+                    && message.deliveryState != .sending
+                    && message.deliveryState != .failed
+                    && message.reactionTargetMessageId?.nonEmpty != nil,
                 isPinned: pinnedMessageIDs.contains(message.id),
                 mediaAttachment: messageActionAttachment,
                 readReceiptLabel: MessageReadReceiptPresentation.label(
@@ -1005,6 +1079,14 @@ struct ConversationView: View {
                         sourceConversation: conversation,
                         messages: [message]
                     )
+                    dismissMessageActions()
+                },
+                onEdit: {
+                    beginMessageEdit(message)
+                    dismissMessageActions()
+                },
+                onDelete: {
+                    deleteTarget = message
                     dismissMessageActions()
                 },
                 onSaveSticker: { attachment in
@@ -1154,6 +1236,63 @@ struct ConversationView: View {
     private func pinMessage(_ target: ChatMessage, shared: Bool) {
         pinTarget = nil
         Task { _ = await model.pin(target, in: conversation, shared: shared) }
+    }
+
+    private func saveMessageEdit(_ target: ChatMessage) {
+        guard !isEditingMessage else { return }
+        isEditingMessage = true
+        Task {
+            let succeeded = await model.editMessage(
+                target,
+                text: draft,
+                in: conversation
+            )
+            isEditingMessage = false
+            if succeeded {
+                draft = draftBeforeEditing
+                draftBeforeEditing = ""
+                editTarget = nil
+            } else {
+                messageMutationError = model.errorMessage ?? "Could not edit this message."
+            }
+        }
+    }
+
+    private func beginMessageEdit(_ target: ChatMessage) {
+        if editTarget == nil { draftBeforeEditing = draft }
+        draft = target.text
+        editTarget = target
+        isExpressivePickerPresented = false
+        showAgentModel = false
+        isComposerFocused = true
+    }
+
+    private func cancelMessageEdit() {
+        guard !isEditingMessage else { return }
+        draft = draftBeforeEditing
+        draftBeforeEditing = ""
+        editTarget = nil
+    }
+
+    private func deleteMessage(_ target: ChatMessage, forEveryone: Bool) {
+        guard !isDeletingMessage else { return }
+        isDeletingMessage = true
+        deleteTarget = nil
+        Task {
+            let succeeded = await model.deleteMessage(
+                target,
+                forEveryone: forEveryone,
+                in: conversation
+            )
+            isDeletingMessage = false
+            if succeeded,
+               editTarget?.reactionTargetMessageId == target.reactionTargetMessageId {
+                cancelMessageEdit()
+            }
+            if !succeeded {
+                messageMutationError = model.errorMessage ?? "Could not delete this message."
+            }
+        }
     }
 
     private func pinActivityText(for pin: CloudSessionPin) -> String? {

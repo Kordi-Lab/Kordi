@@ -22,6 +22,68 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(MessageBubble.reactionChipVerticalLift, 14)
     }
 
+    func testEditedMessageStateRoundTripsAndDrivesBubbleMetadata() throws {
+        let editedAt = Date(timeIntervalSince1970: 2)
+        let message = ChatMessage(
+            id: "edited-message",
+            conversationId: "conversation",
+            author: .person,
+            authorName: "Mira",
+            text: "Updated text",
+            createdAt: Date(timeIntervalSince1970: 1),
+            editedAt: editedAt,
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil
+        )
+        let decoded = try JSONDecoder().decode(
+            ChatMessage.self,
+            from: JSONEncoder().encode(message)
+        )
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Conversation/MessageBubble.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(decoded.isEdited)
+        XCTAssertEqual(decoded.editedAt, editedAt)
+        XCTAssertTrue(source.contains("Text(\"edited\", comment:"))
+        XCTAssertTrue(source.contains("if message.isEdited"))
+    }
+
+    func testMessageActionsExposeEditAndBothDeletionScopes() throws {
+        let conversationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation")
+        let actionSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageActionSheets.swift"),
+            encoding: .utf8
+        )
+        let conversationSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("ConversationView.swift"),
+            encoding: .utf8
+        )
+        let composerSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("ComposerView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(actionSource.contains("actionButton(\"Edit\""))
+        XCTAssertTrue(actionSource.contains("\"Delete\","))
+        XCTAssertTrue(conversationSource.contains("Button(\"Delete for me\", role: .destructive)"))
+        XCTAssertTrue(conversationSource.contains("Button(\"Delete for everyone\", role: .destructive)"))
+        XCTAssertTrue(conversationSource.contains("Delete only for you, or remove it for everyone"))
+        XCTAssertTrue(conversationSource.contains(".alert(\n            \"Delete this message?\""))
+        XCTAssertTrue(conversationSource.contains("editingMessage: editTarget"))
+        XCTAssertTrue(composerSource.contains("editPreview(editingMessage)"))
+        XCTAssertTrue(composerSource.contains("Text(\"Edit message\")"))
+        XCTAssertFalse(conversationSource.contains("MessageEditSheet("))
+    }
+
     func testMessageBubblesUseThemeAwareContrastForRepliesLinksAndMentions() throws {
         let conversationDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

@@ -66,6 +66,17 @@ export type UseCloudCollaborationStateResult = {
     attachments?: AttachmentItem[],
     options?: SendCloudCollaborationMessageOptions,
   ) => Promise<CloudMessage>;
+  editCloudMessage: (input: {
+    conversationId: string;
+    messageId: string;
+    expectedVersion: number;
+    text: string;
+  }) => Promise<CloudMessage>;
+  deleteCloudMessage: (input: {
+    conversationId: string;
+    messageId: string;
+    forEveryone: boolean;
+  }) => Promise<void>;
   updateCloudCollaborationSessionTitle: (
     sessionId: string,
     title: string,

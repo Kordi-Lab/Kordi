@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useCallback, type Dispatch, type SetStateAction } from 'react';
 
 import type { CanonicalSessionState, Contact } from '@/kordi-app/types';
 
@@ -16,6 +16,8 @@ import type {
 import { useCloudDirectMessaging } from './useCloudDirectMessaging';
 import { useCloudFreshGroupFallbackClaim } from './useCloudFreshGroupFallbackClaim';
 import { useCloudMessageSync } from './useCloudMessageSync';
+import { deleteCanonicalCloudMessage } from '@/features/canonical/canonicalMessageSources';
+import { fetchCanonicalSessionState } from '@/lib/desktop';
 
 type CloudCollaborationStores =
   ReturnType<typeof useCloudCollaborationStores>;
@@ -54,6 +56,32 @@ export function useCloudCollaborationTransport({
     error: unknown,
   ) => void;
 }) {
+  const onMessagesDeleted = useCallback(async (messageIds: string[]) => {
+    if (messageIds.length === 0) return;
+    const deletedCanonicalIds = new Set((await Promise.all(
+      messageIds.map((messageId) => deleteCanonicalCloudMessage(messageId)),
+    )).flat());
+    if (setCanonicalState) {
+      const refreshed = await fetchCanonicalSessionState().catch(() => null);
+      if (refreshed) {
+        setCanonicalState(refreshed);
+        return;
+      }
+    }
+    setCanonicalState?.((current) => {
+      if (!current) return current;
+      const messages = current.messages.filter((message) => {
+        if (deletedCanonicalIds.has(message.id)) return false;
+        const sourceTransport = message.sourceTransport?.trim() ?? '';
+        const sourceEventId = message.sourceEventId?.trim() ?? '';
+        return !sourceTransport.startsWith('cloud-group') || !messageIds.some((messageId) => {
+          const prefix = `${sourceTransport}:${messageId}`;
+          return sourceEventId === prefix || sourceEventId.startsWith(`${prefix}:`);
+        });
+      });
+      return messages.length === current.messages.length ? current : { ...current, messages };
+    });
+  }, [setCanonicalState]);
   const catalog = useCloudAgentCatalog({
     account,
     client: agentsClient,
@@ -114,6 +142,7 @@ export function useCloudCollaborationTransport({
       },
       setUnreadReadiness: stores.unread.setReadiness,
       refreshCloudAgents: catalog.refreshDefinitions,
+      onMessagesDeleted,
     });
   const claimCloudFallbackRun = useCloudAgentAvailability({
     account,

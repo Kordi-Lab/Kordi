@@ -133,8 +133,13 @@ export async function applyCloudGroupMessageControl({
     candidate.id === message.id
       || (ownAgentProcessingId !== null && candidate.id === ownAgentProcessingId)
   )) ?? null;
+  const existingCloudGroupContent = stateOps.objectContent(existingCloudGroupMessage?.content);
+  const existingCloudMessageVersion = typeof existingCloudGroupContent.cloudMessageVersion === 'number'
+    ? existingCloudGroupContent.cloudMessageVersion
+    : 0;
   const messageAlreadyExists = existingCloudGroupMessage?.sourceTransport === incomingSourceTransport
     && existingCloudGroupMessage.sourceEventId === incomingSourceEventId
+    && existingCloudMessageVersion >= (cloudMessage.version ?? 1)
     && stateOps.incomingAlreadyApplied(
       existingCloudGroupMessage,
       agentDeliveryState ?? humanOutgoingDeliveryState,
@@ -297,6 +302,8 @@ export async function applyCloudGroupMessageControl({
       contentText: senderIsAgent && agentDeliveryState === 'failed' ? '' : message.text,
       content: senderIsAgent ? {
         ...structuredContent,
+        cloudMessageVersion: cloudMessage.version ?? null,
+        editedAt: cloudMessage.editedAt ?? null,
         ...(message.mentions?.length ? { mentions: message.mentions } : {}),
         sender: message.senderDisplayName?.trim() || 'Kordi',
         timestampMs: message.createdAtMs,
@@ -308,6 +315,8 @@ export async function applyCloudGroupMessageControl({
         ...(agentDeliveryState === 'failed' ? { error: message.text || 'Message failed' } : {}),
       } : (Object.keys(structuredContent).length > 0 || mappedAttachments.length > 0 || message.voiceMessage?.mediaId || message.mentions?.length || message.messageAction) ? {
         ...structuredContent,
+        cloudMessageVersion: cloudMessage.version ?? null,
+        editedAt: cloudMessage.editedAt ?? null,
         ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
         ...(message.voiceMessage?.mediaId ? {
           voiceMessage: {
@@ -322,7 +331,10 @@ export async function applyCloudGroupMessageControl({
             ? message.messageAction.source.sourceMessageId
             : undefined,
         } : {}),
-      } : undefined,
+      } : {
+        cloudMessageVersion: cloudMessage.version ?? null,
+        editedAt: cloudMessage.editedAt ?? null,
+      },
       createdAtMs: message.createdAtMs,
       parentMessageId: senderIsAgent
         ? messageReplyToId

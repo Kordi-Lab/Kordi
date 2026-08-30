@@ -120,6 +120,18 @@ pub struct SendMessageRequest {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct UpdateMessageRequest {
+    pub expected_version: i32,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct DeleteMessageQuery {
+    #[serde(default)]
+    pub for_everyone: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct UpdateReactionRequest {
     pub reaction: String,
 }

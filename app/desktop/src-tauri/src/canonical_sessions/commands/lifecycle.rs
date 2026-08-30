@@ -68,6 +68,63 @@ pub(in crate::canonical_sessions) fn desktop_canonical_mark_session_read(
     mark_session_read_in_db(&conn, request)
 }
 
+pub(in crate::canonical_sessions) fn desktop_canonical_delete_cloud_message(
+    cloud_message_id: &str,
+) -> Result<Vec<String>, String> {
+    let cloud_message_id = cloud_message_id.trim();
+    if cloud_message_id.is_empty() {
+        return Err("Cloud message id is required".to_string());
+    }
+    let mut conn = open_db()?;
+    let transaction = conn.transaction().map_err(|error| error.to_string())?;
+    let rows = {
+        let mut statement = transaction
+            .prepare(
+                "SELECT id, session_id FROM session_messages
+                 WHERE source_transport LIKE 'cloud-group%'
+                   AND (
+                     source_event_id = source_transport || ':' || ?1
+                     OR source_event_id LIKE source_transport || ':' || ?1 || ':%'
+                   )",
+            )
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map(rusqlite::params![cloud_message_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())?;
+        rows
+    };
+    for (message_id, _) in &rows {
+        transaction
+            .execute(
+                "DELETE FROM session_messages WHERE id = ?1",
+                rusqlite::params![message_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    for session_id in rows
+        .iter()
+        .map(|(_, session_id)| session_id)
+        .collect::<std::collections::BTreeSet<_>>()
+    {
+        transaction
+            .execute(
+                "UPDATE sessions
+                 SET last_message_at_ms = (
+                   SELECT MAX(created_at_ms) FROM session_messages WHERE session_id = ?1
+                 )
+                 WHERE id = ?1",
+                rusqlite::params![session_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(rows.into_iter().map(|(message_id, _)| message_id).collect())
+}
+
 pub(crate) fn session_exists(session_id: &str) -> Result<bool, String> {
     let conn = open_db()?;
     let exists = conn

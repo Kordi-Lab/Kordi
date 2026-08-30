@@ -160,3 +160,25 @@ test('meaningful persisted group titles remain stable while partial history hydr
     { preferFallback: sessionPrefersPersistedTitle(groupSession) },
   ), 'main');
 });
+
+test('canonical external group titles win over message-derived fallbacks', () => {
+  const groupSession = {
+    id: 'session:group:external',
+    kind: 'group',
+    title: 'Mutation Test Group',
+    status: 'active',
+    createdByIdentityId: 'human:me',
+    createdAtMs: 1,
+    updatedAtMs: 2,
+    metadata: { sessionTitleSource: 'external' },
+  } as const;
+
+  assert.equal(sessionPrefersPersistedTitle(groupSession), true);
+  assert.equal(sessionConversationDisplayTitle(
+    groupSession,
+    [],
+    [{ role: 'user', text: 'First message fallback', timeLabel: '10:00' }],
+    groupSession.title,
+    { preferFallback: sessionPrefersPersistedTitle(groupSession) },
+  ), 'Mutation Test Group');
+});

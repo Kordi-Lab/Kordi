@@ -207,9 +207,10 @@ fn bootstrap_reads_titles_only_from_canonical_state() {
 fn canonical_routes_are_exclusive_for_chat_and_require_signed_cursors() {
     let root = repository_root();
     let routes = format!(
-        "{}\n{}",
+        "{}\n{}\n{}",
         read(root.join("bridges/cloud-server/src/chat_sync/routes.rs")),
         read(root.join("bridges/cloud-server/src/chat_sync/routes/http.rs")),
+        read(root.join("bridges/cloud-server/src/chat_sync/routes/message_mutations.rs")),
     );
     let server = read(root.join("bridges/cloud-server/src/server.rs"));
 

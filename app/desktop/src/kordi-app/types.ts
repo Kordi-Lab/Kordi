@@ -6,7 +6,7 @@ import type {
   DesktopChatAttachment,
   DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
-  Message,
+  Message, MessageEditState,
   MessageActionMetadata,
   MessageActionSource,
   MessageAttachment,
@@ -30,7 +30,7 @@ export type {
   DesktopChatTurnSnapshot,
   EditDiffLine,
   EditFilePreview,
-  Message,
+  Message, MessageEditState,
   MessageActionMetadata,
   MessageActionSource,
   MessageAttachment,
@@ -914,7 +914,7 @@ export type DesktopCollaborationConversationMessage = {
   mentions?: MessageMention[];
   messageAction?: MessageActionMetadata | null;
   messageKind?: string | null; voiceMessage?: Message['voiceMessage']; readReceiptSummary?: Message['readReceiptSummary'];
-  localTurn?: DesktopChatTurnSnapshot | null; reactionConversationId?: string | null; reactionTargetMessageId?: string | null; reactions?: Array<{ value: string; accountIds: string[] }>;
+  localTurn?: DesktopChatTurnSnapshot | null; reactionConversationId?: string | null; reactionTargetMessageId?: string | null; cloudMessageVersion?: number | null; editedAt?: string | null; reactions?: Array<{ value: string; accountIds: string[] }>;
 };
 export type DesktopCollaborationSessionThreadMessage = {
   role: Message['role'] | string;

@@ -175,6 +175,7 @@ struct ComposerView: View {
     @Binding var attachments: [PendingAttachment]
     @Binding var photoGrouping: PhotoSendGrouping
     @Binding var replySource: MessageActionSource?
+    let editingMessage: ChatMessage?
     @Binding var selectedMention: ComposerMentionTarget?
     @Binding var isFocused: Bool
     @Binding var isExpressivePickerPresented: Bool
@@ -193,6 +194,7 @@ struct ComposerView: View {
     let onSendExpressiveMedia: (PendingAttachment) async -> Void
     let onSend: () -> Void
     let onSendVoice: () -> Void
+    let onCancelEdit: () -> Void
     @State private var textSelection = ComposerTextSelection(location: 0, length: 0)
     @State private var keyboardSurfaceHeight: CGFloat = 0
     @State private var composerContentHeight: CGFloat = 0
@@ -218,6 +220,7 @@ struct ComposerView: View {
             .overlay(alignment: .bottomTrailing) {
                 VoiceRecordingGestureCapture(
                     isEnabled: isVoiceInputMode
+                        && editingMessage == nil
                         && !canSend
                         && !isSending
                         && !isPreparingAttachments
@@ -247,6 +250,14 @@ struct ComposerView: View {
             }
             .animation(.snappy(duration: 0.2), value: attachments.count)
             .animation(.snappy(duration: 0.2), value: replySource?.sourceMessageId)
+            .animation(.snappy(duration: 0.2), value: editingMessage?.id)
+            .onChange(of: editingMessage?.id) { _, messageId in
+                guard messageId != nil else { return }
+                isVoiceInputMode = false
+                dismissExpressivePicker()
+                dismissAgentModelPicker()
+                isFocused = true
+            }
             .sensoryFeedback(.error, trigger: shortVoiceFeedback)
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) {
                 rememberKeyboardSurfaceHeight(from: $0)
@@ -293,7 +304,11 @@ struct ComposerView: View {
 
     private var composerContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let replySource {
+            if let editingMessage {
+                editPreview(editingMessage)
+                    .padding(.horizontal, 10)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if let replySource {
                 replyPreview(replySource)
                     .padding(.horizontal, 10)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -358,7 +373,9 @@ struct ComposerView: View {
             .transition(voiceRecordingSurfaceTransition)
         } else {
             HStack(alignment: .bottom, spacing: 8) {
-                attachmentMenu
+                if editingMessage == nil {
+                    attachmentMenu
+                }
                 messageFieldSurface
                     .layoutPriority(1)
             }
@@ -421,7 +438,9 @@ struct ComposerView: View {
                 }
                 .overlay(alignment: .bottomTrailing) {
                     HStack(spacing: 0) {
-                        expressivePickerButton
+                        if editingMessage == nil {
+                            expressivePickerButton
+                        }
                         sendButton
                     }
                     .padding(.bottom, 3)
@@ -468,11 +487,13 @@ struct ComposerView: View {
             onRequestExpressiveMediaImport: requestExpressiveMediaImport,
             measuredHeight: $messageEditorHeight,
             draftButtonThreshold: draftPaneExpansionThreshold,
-            accessibilityLabel: "Message \(destinationName)"
+            accessibilityLabel: editingMessage == nil
+                ? "Message \(destinationName)"
+                : "Edit message"
         )
         .frame(height: messageEditorHeight)
         .padding(.horizontal, 8)
-        .accessibilityLabel("Message \(destinationName)")
+        .accessibilityLabel(editingMessage == nil ? "Message \(destinationName)" : "Edit message")
         .onChange(of: isFocused) { _, isFocused in
             if isFocused, !isExpressivePickerPresented {
                 dismissAgentModelPicker()
@@ -513,7 +534,7 @@ struct ComposerView: View {
     }
 
     private var showsDraftPaneButton: Bool {
-        ComposerDraftPaneLayout.showsExpandButton(
+        editingMessage == nil && ComposerDraftPaneLayout.showsExpandButton(
             editorHeight: messageEditorHeight,
             threshold: draftPaneExpansionThreshold
         )
@@ -687,7 +708,9 @@ struct ComposerView: View {
         Button {
             dismissExpressivePicker()
             dismissAgentModelPicker()
-            if isVoiceInputMode {
+            if editingMessage != nil {
+                if canSend { onSend() }
+            } else if isVoiceInputMode {
                 isVoiceInputMode = false
                 showKeyboard()
             } else if canSend {
@@ -707,7 +730,9 @@ struct ComposerView: View {
                 if isSending {
                     ProgressView().tint(.white).controlSize(.small)
                 } else {
-                    Image(systemName: isVoiceInputMode ? "keyboard" : canSend ? "arrow.up" : "mic.fill")
+                    Image(systemName: editingMessage != nil
+                        ? "checkmark"
+                        : isVoiceInputMode ? "keyboard" : canSend ? "arrow.up" : "mic.fill")
                         .font(.body.weight(.bold))
                         .foregroundStyle(
                             canSend && !isVoiceInputMode
@@ -721,14 +746,22 @@ struct ComposerView: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .disabled(isSending || isPreparingAttachments)
+        .disabled(
+            isSending
+                || isPreparingAttachments
+                || (editingMessage != nil && !canSend)
+        )
         .accessibilityLabel(
-            isVoiceInputMode
+            editingMessage != nil
+                ? "Save message edit"
+                : isVoiceInputMode
                 ? "Switch to text input"
                 : canSend ? "Send message" : "Switch to voice input"
         )
         .accessibilityHint(
-            memeValidationError
+            editingMessage != nil
+                ? "Updates this message"
+                : memeValidationError
                 ?? (isVoiceInputMode
                     ? "Returns to the message field and opens the keyboard"
                     : canSend
@@ -893,7 +926,8 @@ struct ComposerView: View {
     }
 
     private var showsMentionPicker: Bool {
-        isFocused
+        editingMessage == nil
+            && isFocused
             && !isExpressivePickerPresented
             && !isAgentModelPickerPresented
             && !filteredMentionTargets.isEmpty
@@ -950,6 +984,41 @@ struct ComposerView: View {
         .padding(.trailing, 6)
         .padding(.vertical, 2)
         .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+    }
+
+    private func editPreview(_ message: ChatMessage) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "pencil")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(KordiTheme.signalBlue)
+                .frame(width: 16)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Edit message")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(KordiTheme.signalBlue)
+                Text(message.text)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: onCancelEdit) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.body)
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("Cancel message edit")
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 6)
+        .padding(.vertical, 2)
+        .background(
+            Color(uiColor: .secondarySystemGroupedBackground),
+            in: RoundedRectangle(cornerRadius: 13, style: .continuous)
+        )
     }
 
     private var attachmentTray: some View {
@@ -1058,8 +1127,12 @@ struct ComposerView: View {
     }
 
     private var canSend: Bool {
-        (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty)
-            && memeValidationError == nil
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let editingMessage {
+            return !normalized.isEmpty
+                && normalized != editingMessage.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return (!normalized.isEmpty || !attachments.isEmpty) && memeValidationError == nil
     }
 
     private var memeValidationError: String? {

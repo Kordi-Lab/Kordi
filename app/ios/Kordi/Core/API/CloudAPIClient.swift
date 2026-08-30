@@ -991,6 +991,63 @@ actor CloudAPIClient {
         )
     }
 
+    func editMessage(
+        token: String,
+        sessionId: String,
+        messageId: String,
+        expectedVersion: Int,
+        text: String
+    ) async throws -> CloudMessageDTO {
+        let accountId = try requireActiveAccountId()
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId]
+            ?? chatConversationsById[sessionId] else {
+            throw CloudAPIError(
+                code: "chat_conversation_missing",
+                message: "This conversation is not available in reliable chat sync.",
+                statusCode: 404
+            )
+        }
+        let response: ChatMessageResponse = try await send(
+            path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages/\(escapedPath(messageId))",
+            method: "PATCH",
+            token: token,
+            body: ChatUpdateMessageRequest(expectedVersion: expectedVersion, text: text),
+            fallback: "Could not edit this message."
+        )
+        chatMessagesById[response.message.id] = response.message
+        return legacyMessage(
+            from: response.message,
+            conversation: conversation,
+            viewerAccountId: accountId
+        )
+    }
+
+    func deleteMessage(
+        token: String,
+        sessionId: String,
+        messageId: String,
+        forEveryone: Bool
+    ) async throws {
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId]
+            ?? chatConversationsById[sessionId] else {
+            throw CloudAPIError(
+                code: "chat_conversation_missing",
+                message: "This conversation is not available in reliable chat sync.",
+                statusCode: 404
+            )
+        }
+        try await sendWithoutResponse(
+            path: "/v2/chat/conversations/\(escapedPath(conversation.id))/messages/\(escapedPath(messageId))",
+            method: "DELETE",
+            token: token,
+            query: [URLQueryItem(name: "for_everyone", value: forEveryone ? "true" : "false")],
+            fallback: "Could not delete this message."
+        )
+        chatMessagesById.removeValue(forKey: messageId)
+    }
+
     func startCall(
         token: String,
         conversation: ConversationSummary,
@@ -1835,6 +1892,7 @@ actor CloudAPIClient {
             toAccountId: outgoing ? peerAccountId : viewerAccountId,
             body: message.deletedAt == nil ? message.content.body : "",
             createdAt: message.createdAt,
+            editedAt: message.editedAt,
             deliveredAt: delivered ? message.createdAt : nil,
             readAt: read ? message.createdAt : nil,
             readByAccountIds: outgoing && conversation.kind == "group" ? readByAccountIds : nil,
@@ -1845,6 +1903,7 @@ actor CloudAPIClient {
             voiceMessage: message.content.voiceMessage,
             conversationId: conversation.id,
             conversationSequence: message.conversationSequence,
+            version: message.version,
             reactions: (message.reactions ?? []).map {
                 MessageReaction(value: $0.reaction, accountIds: $0.accountIds)
             }
@@ -1894,8 +1953,27 @@ actor CloudAPIClient {
         var conversation = event.payload.conversation
             ?? event.conversationId.flatMap { chatConversationsById[$0] }
         if let conversation { remember(conversation) }
+        if ["message.deleted", "message.hidden"].contains(event.eventType),
+           let messageId = event.entityId?.nonEmpty {
+            chatMessagesById.removeValue(forKey: messageId)
+            return [CloudSyncEvent(
+                eventId: event.eventId,
+                eventType: "message.deleted",
+                peerAccountId: nil,
+                messageId: messageId,
+                payload: CloudSyncEventPayload(
+                    message: nil, messageIds: nil, messageId: messageId, readAt: nil,
+                    sessionId: conversation?.legacySessionId ?? event.conversationId,
+                    scope: nil, updatedAt: event.occurredAt,
+                    forkSessionId: nil, parentSessionId: nil, parentMessageId: nil,
+                    createdByAccountId: nil, createdAt: nil, sessionTitle: nil,
+                    deviceId: nil, call: nil
+                ),
+                occurredAt: event.occurredAt
+            )]
+        }
         let messageTypes: Set<String> = [
-            "message.created", "message.updated", "message.deleted",
+            "message.created", "message.updated",
             "generation.updated", "generation.completed", "generation.failed",
             "reaction.updated"
         ]
@@ -2216,9 +2294,17 @@ actor CloudAPIClient {
         path: String,
         method: String,
         token: String? = nil,
+        query: [URLQueryItem] = [],
         fallback: String
     ) async throws {
-        try await sendWithoutResponse(path: path, method: method, token: token, bodyData: nil, fallback: fallback)
+        try await sendWithoutResponse(
+            path: path,
+            method: method,
+            token: token,
+            query: query,
+            bodyData: nil,
+            fallback: fallback
+        )
     }
 
     private func sendWithoutResponse<Body: Encodable>(
@@ -2228,17 +2314,25 @@ actor CloudAPIClient {
         body: Body,
         fallback: String
     ) async throws {
-        try await sendWithoutResponse(path: path, method: method, token: token, bodyData: try encoder.encode(body), fallback: fallback)
+        try await sendWithoutResponse(
+            path: path,
+            method: method,
+            token: token,
+            query: [],
+            bodyData: try encoder.encode(body),
+            fallback: fallback
+        )
     }
 
     private func sendWithoutResponse(
         path: String,
         method: String,
         token: String?,
+        query: [URLQueryItem],
         bodyData: Data?,
         fallback: String
     ) async throws {
-        let request = try makeRequest(path: path, method: method, token: token, query: [], body: bodyData)
+        let request = try makeRequest(path: path, method: method, token: token, query: query, body: bodyData)
         let (data, response) = try await session.data(for: request)
         try validate(response: response, data: data, fallback: fallback)
     }
@@ -2498,6 +2592,16 @@ private struct ChatSendMessageRequest: Encodable {
 
 private struct ChatUpdateReactionRequest: Encodable {
     let reaction: String
+}
+
+private struct ChatUpdateMessageRequest: Encodable {
+    let expectedVersion: Int
+    let text: String
+
+    enum CodingKeys: String, CodingKey {
+        case expectedVersion = "expected_version"
+        case text
+    }
 }
 
 private struct ChatAdvanceCursorRequest: Encodable {

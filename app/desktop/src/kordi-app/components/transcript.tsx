@@ -48,7 +48,7 @@ import { VoiceMessageContent } from './voiceMessage';
 import { transcriptMessageIsOwnHuman, transcriptMessageIsPeerHuman } from './transcriptMessageHumanRole';
 import { MessageDeliveryStatusSlot, TranscriptMessageTransferActions } from './transcriptMessageTransferActions';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
-import { ContactRequestTime, MessageHoverTime } from './transcriptMessageTime';
+import { ContactRequestTime, MessageEditedLabel, MessageHoverTime } from './transcriptMessageTime';
 import type { MessageForkSummary } from './transcriptMessageForks';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { MessageContextMenuContent } from './messageContextMenuContent';
@@ -189,14 +189,14 @@ function ContactRequestFailureNotice({
 }
 
 function MessageFooter({
-  status,
+  message, status,
   detail,
   isUser,
   compact = false,
   replySummary,
   onNavigateToMessage,
 }: {
-  status?: string | null;
+  message: Message; status?: string | null;
   detail?: string;
   isUser?: boolean;
   compact?: boolean;
@@ -204,15 +204,15 @@ function MessageFooter({
   onNavigateToMessage?: (messageId: string) => void;
 }) {
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
-  if (!isUser && !showDetail && !replySummary) return null;
+  if (!isUser && !showDetail && !replySummary && !message.editedAt) return null;
 
   return (
     <div className={cn(
-      'app-message-footer app-message-delivery-footer flex items-center gap-1.5 text-[10px] leading-none tabular-nums',
+      'app-message-footer app-message-delivery-footer flex items-center text-[10px] leading-none tabular-nums',
       compact ? 'shrink-0 self-end whitespace-nowrap pl-2 justify-end' : 'ml-auto mt-1.5 justify-end',
-      isUser ? 'text-black/45' : 'text-slate-500/80',
+      isUser ? 'gap-0.5 text-black/45' : 'gap-1.5 text-slate-500/80',
     )}>
-      {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
+      {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}<MessageEditedLabel msg={message} />
       <RequestReplyLine summary={replySummary} own={Boolean(isUser)} inline onNavigateToMessage={onNavigateToMessage} />
       {isUser ? <MessageDeliveryStatusSlot status={status} /> : null}
     </div>
@@ -298,7 +298,7 @@ function MessageBubbleView({
   onOpenForkSession,
   relatedAgentSessionStatusById,
   onReplyMessage,
-  onForwardMessage,
+  onForwardMessage, onEditMessage, onDeleteMessage,
   onRetryMessage,
   onOpenMessageDetail,
   onSelectMessage,
@@ -333,7 +333,7 @@ function MessageBubbleView({
   onOpenForkSession?: (sessionId: string) => void;
   relatedAgentSessionStatusById?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
   onReplyMessage?: (message: Message) => void;
-  onForwardMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void; onEditMessage?: (message: Message) => void; onDeleteMessage?: (message: Message) => void;
   onRetryMessage?: (message: Message) => Promise<void> | void;
   onOpenMessageDetail?: (message: Message) => void;
   onSelectMessage?: (message: Message) => void;
@@ -351,7 +351,7 @@ function MessageBubbleView({
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const selectionId = messageSelectionId(msg);
   const isPinned = Boolean(selectionId && pinnedMessageIds?.includes(selectionId));
-  const menuActionHandlers = { onReplyMessage, onForwardMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, onReactMessage, isPinned, imageGallery };
+  const menuActionHandlers = { onReplyMessage, onForwardMessage, onEditMessage, onDeleteMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, onReactMessage, isPinned, imageGallery };
   const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
@@ -912,12 +912,12 @@ function MessageBubbleView({
               <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
                 {msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <HumanMessageMarkdown message={msg} inline onOpenSenderProfile={onOpenSenderProfile} />}
               </span>
-              {isOwnHumanMessage || footerDetail || msg.replySummary ? (
+              {isOwnHumanMessage || footerDetail || msg.replySummary || msg.editedAt ? (
                 <span className={cn(
                   'app-message-footer app-message-compact-footer inline-flex translate-y-[1px] items-center whitespace-nowrap text-[9.5px] leading-none tabular-nums',
                   isOwnHumanMessage ? 'app-message-delivery-footer ml-3 gap-0.5 text-black/45' : 'ml-4 gap-1 text-slate-500/80',
                 )}>
-                  {!isOwnHumanMessage && footerDetail ? <span>{footerDetail}</span> : null}
+                  {!isOwnHumanMessage && footerDetail ? <span>{footerDetail}</span> : null}<MessageEditedLabel msg={msg} />
                   <RequestReplyLine summary={msg.replySummary} own={isOwnHumanMessage} inline onNavigateToMessage={onNavigateToMessage} />
                   {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={bubbleDeliveryStatus} /> : null}
                 </span>
@@ -926,7 +926,7 @@ function MessageBubbleView({
           ) : (
             <>
               <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
-                {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} footer={<MessageFooter status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
+                {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} footer={<MessageFooter message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
                 {hasAttachments ? (
                   <AttachmentPreview
                     msg={msg}
@@ -944,7 +944,7 @@ function MessageBubbleView({
               </div>
               {!hasOnlyBorderlessMediaAttachments && !hasVoice ? (
                 <MessageFooter
-                  status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined}
+                  message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined}
                   detail={footerDetail}
                   isUser={isOwnHumanMessage}
                   replySummary={msg.replySummary}
