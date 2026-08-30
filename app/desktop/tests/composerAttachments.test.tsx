@@ -237,6 +237,20 @@ test('main composer opens pasted images directly in the editor', () => {
   assert.match(source, /requestedEditAttachmentId=\{pastedImageEditId\}/);
 });
 
+test('main composer and add menu do not expose meme shortcuts', () => {
+  const mainComposer = readFileSync(
+    new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url),
+    'utf8',
+  );
+  const addMenu = readFileSync(
+    new URL('../src/kordi-app/components/composerAttachments.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.doesNotMatch(mainComposer, /memeAttachmentInputRef|MEME_IMAGE_ACCEPT/);
+  assert.doesNotMatch(addMenu, /Meme image|memeInputRef/);
+});
+
 test('composer add trigger opens one Files and folders action and dismisses accessibly', async () => {
   const installed = installDom();
   const host = installed.dom.window.document.createElement('div');

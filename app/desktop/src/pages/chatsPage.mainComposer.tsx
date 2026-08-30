@@ -5,7 +5,7 @@ import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
-import { MEME_IMAGE_ACCEPT, memeAttachmentDraftError } from '@/features/chat/memeAttachments';
+import { memeAttachmentDraftError } from '@/features/chat/memeAttachments';
 import {
   CompactComposerModelMenu,
   ComposerMentionMenu,
@@ -86,7 +86,6 @@ export function MainComposer({
   } = runtime;
   const imeCompositionGuard = useImeCompositionGuard();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const memeAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const [pastedImageEditId, setPastedImageEditId] = useState<string | null>(null);
   const memeValidationMessageId = useId();
   const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
@@ -161,18 +160,6 @@ export function MainComposer({
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
                 if (files.length > 0) void videoReviews.stage(saveDesktopAttachments(files));
-                event.currentTarget.value = '';
-              }}
-            />
-            <input
-              ref={memeAttachmentInputRef}
-              type="file"
-              multiple
-              accept={MEME_IMAGE_ACCEPT}
-              className="hidden"
-              onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                if (files.length > 0) void saveDesktopAttachments(files, { subtype: 'meme' });
                 event.currentTarget.value = '';
               }}
             />
@@ -353,7 +340,6 @@ export function MainComposer({
             ) : null}
             {!voiceSurfaceActive ? <ComposerAttachmentAddMenu
               inputRef={chatAttachmentInputRef}
-              memeInputRef={memeAttachmentInputRef}
               onRecordVideo={() => { void video.start(); }}
               disabled={voice.recording}
             /> : null}
