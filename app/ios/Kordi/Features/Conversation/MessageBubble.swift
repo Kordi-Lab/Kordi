@@ -683,7 +683,7 @@ struct MessageBubble: View, Equatable {
         return switch message.author {
         case .me: chatTheme == .quiet ? .clear : chatTheme.accent.opacity(0.12)
         case .person: chatTheme == .quiet
-            ? chatTheme.peerText.opacity(0.07)
+            ? chatTheme.peerText.opacity(0.12)
             : chatTheme.accent.opacity(0.16)
         case .agent: .clear
         }
