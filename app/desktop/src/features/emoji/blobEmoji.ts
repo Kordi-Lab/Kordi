@@ -1,9 +1,12 @@
 import catalogPayload from '../../../../../shared/blob-emoji/catalog.json';
+import { cloudApiBaseUrl } from '@/features/cloud/cloudApiEnvironment';
 
 export type BlobEmoji = {
   id: string;
   file: string;
   animated: boolean;
+  sizeBytes: number;
+  sha256: string;
 };
 
 export const blobEmojiCatalog = Object.freeze(
@@ -12,8 +15,11 @@ export const blobEmojiCatalog = Object.freeze(
 export const blobEmojiById = new Map(blobEmojiCatalog.map((emoji) => [emoji.id, emoji]));
 export const BLOB_EMOJI_RECENTS_KEY = 'kordi.blob-emoji.recents';
 
-export function blobEmojiAssetUrl(emoji: BlobEmoji) {
-  return `/blob-emoji/assets/${encodeURIComponent(emoji.file)}`;
+export function blobEmojiAssetUrl(emoji: BlobEmoji, baseUrl = cloudApiBaseUrl()) {
+  return new URL(
+    `/assets/blob-emoji/${emoji.sha256}/${encodeURIComponent(emoji.file)}`,
+    baseUrl,
+  ).toString();
 }
 
 export function blobEmojiReactionValue(emoji: BlobEmoji) {

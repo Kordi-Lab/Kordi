@@ -17,6 +17,7 @@ import {
   getRemoteAvatarImageCacheStatsForTests,
   getRemoteAvatarImageSnapshot,
   loadAvatarThroughNativeProxy,
+  loadRemoteImageThroughNativeProxy,
   shouldLoadAvatarThroughNativeProxy,
 } from '../src/kordi-app/components/remoteAvatarImage';
 
@@ -79,6 +80,26 @@ test('remote avatar image requests share one native load per URL', async () => {
   assert.deepEqual(calls, [{
     command: 'desktop_fetch_remote_image_data_url',
     url: 'https://images.example/avatar.png',
+  }]);
+});
+
+test('content-addressed image requests share their native integrity-checked load', async () => {
+  clearRemoteAvatarImageCacheForTests();
+  const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+  const invoke = async <T,>(command: string, args?: Record<string, unknown>): Promise<T> => {
+    calls.push({ command, args });
+    return 'data:image/webp;base64,ZW1vamk=' as T;
+  };
+  const url = 'https://images.example/blob.webp';
+  const expectedSha256 = 'a'.repeat(64);
+  const options = { command: 'desktop_fetch_blob_emoji_data_url' as const, expectedSha256 };
+
+  const first = loadRemoteImageThroughNativeProxy(url, options, invoke);
+  const second = loadRemoteImageThroughNativeProxy(url, options, invoke);
+  assert.equal(await first, await second);
+  assert.deepEqual(calls, [{
+    command: 'desktop_fetch_blob_emoji_data_url',
+    args: { url, expectedSha256 },
   }]);
 });
 

@@ -43,6 +43,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && install -d -o kordi -g kordi /var/lib/kordi-cloud
 
 COPY --from=builder /workspace/target/release/kordi-cloud-server /usr/local/bin/kordi-cloud-server
+COPY --from=builder /workspace/shared/blob-emoji/assets /usr/local/share/kordi/blob-emoji
+
+ENV KORDI_BLOB_EMOJI_DIR=/usr/local/share/kordi/blob-emoji
 
 USER kordi
 WORKDIR /var/lib/kordi-cloud

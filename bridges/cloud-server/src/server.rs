@@ -135,6 +135,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
     Router::new()
         .merge(playback_router)
         .merge(crate::avatars::routes(state.clone()))
+        .merge(crate::blob_emoji::routes())
         .merge(crate::auth::routes::routes_with_config(
             state.clone(),
             crate::auth::password::PasswordHasherConfig::production(),

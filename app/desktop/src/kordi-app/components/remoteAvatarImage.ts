@@ -2,6 +2,13 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 
 type NativeInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
+export type RemoteImageNativeOptions = {
+  command?: 'desktop_fetch_remote_image_data_url' | 'desktop_fetch_blob_emoji_data_url';
+  expectedSha256?: string;
+};
+
+const DEFAULT_REMOTE_IMAGE_COMMAND = 'desktop_fetch_remote_image_data_url';
+
 export type RemoteAvatarImageSnapshot =
   | { status: 'idle'; dataUrl: null; error: null }
   | { status: 'pending'; dataUrl: null; error: null }
@@ -49,12 +56,25 @@ function normalizeRemoteAvatarUrl(imageUrl: string | null | undefined): string {
   return imageUrl?.trim() ?? '';
 }
 
-export function shouldLoadAvatarThroughNativeProxy(
+export function shouldLoadRemoteImageThroughNativeProxy(
   imageUrl: string | null | undefined,
   tauriRuntime = isTauriRuntime(),
 ): boolean {
   if (!tauriRuntime) return false;
   return normalizeRemoteAvatarUrl(imageUrl).startsWith('https://');
+}
+
+export const shouldLoadAvatarThroughNativeProxy = shouldLoadRemoteImageThroughNativeProxy;
+
+function remoteImageRequestKey(
+  imageUrl: string,
+  options: RemoteImageNativeOptions = {},
+): string {
+  return [
+    options.command ?? DEFAULT_REMOTE_IMAGE_COMMAND,
+    options.expectedSha256?.trim().toLowerCase() ?? '',
+    imageUrl,
+  ].join('\u0000');
 }
 
 async function defaultNativeInvoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
@@ -141,84 +161,128 @@ function rememberFailedRemoteAvatar(url: string, error: unknown): void {
   });
 }
 
-export function getRemoteAvatarImageSnapshot(
+export function getRemoteImageSnapshot(
   imageUrl: string | null | undefined,
+  options: RemoteImageNativeOptions = {},
 ): RemoteAvatarImageSnapshot {
   const normalized = normalizeRemoteAvatarUrl(imageUrl);
   if (!normalized) return IDLE_REMOTE_AVATAR_SNAPSHOT;
-  const resolved = resolvedRemoteAvatars.get(normalized);
+  const key = remoteImageRequestKey(normalized, options);
+  const resolved = resolvedRemoteAvatars.get(key);
   if (resolved) return resolved.snapshot;
-  if (pendingRemoteAvatars.has(normalized)) return PENDING_REMOTE_AVATAR_SNAPSHOT;
-  return failedRemoteAvatars.get(normalized)?.snapshot ?? IDLE_REMOTE_AVATAR_SNAPSHOT;
+  if (pendingRemoteAvatars.has(key)) return PENDING_REMOTE_AVATAR_SNAPSHOT;
+  return failedRemoteAvatars.get(key)?.snapshot ?? IDLE_REMOTE_AVATAR_SNAPSHOT;
 }
 
-export function loadAvatarThroughNativeProxy(
+export function getRemoteAvatarImageSnapshot(
+  imageUrl: string | null | undefined,
+): RemoteAvatarImageSnapshot {
+  return getRemoteImageSnapshot(imageUrl);
+}
+
+export function loadRemoteImageThroughNativeProxy(
   imageUrl: string,
+  options: RemoteImageNativeOptions = {},
   invoke: NativeInvoke = defaultNativeInvoke,
 ): Promise<string> {
   const normalized = normalizeRemoteAvatarUrl(imageUrl);
   if (!normalized) return Promise.reject(new Error('Avatar image URL is empty.'));
+  const key = remoteImageRequestKey(normalized, options);
 
-  const cached = readResolvedRemoteAvatar(normalized, true);
+  const cached = readResolvedRemoteAvatar(key, true);
   if (cached) return Promise.resolve(cached);
-  const inFlight = inFlightRemoteAvatars.get(normalized);
+  const inFlight = inFlightRemoteAvatars.get(key);
   if (inFlight) return inFlight;
 
-  const failed = failedRemoteAvatars.get(normalized);
+  const failed = failedRemoteAvatars.get(key);
   if (
     failed
     && Date.now() - failed.failedAt < FAILED_REMOTE_AVATAR_RETRY_COOLDOWN_MS
   ) {
     return Promise.reject(failed.error);
   }
-  failedRemoteAvatars.delete(normalized);
-  pendingRemoteAvatars.add(normalized);
-  notifyRemoteAvatarListeners(normalized);
+  failedRemoteAvatars.delete(key);
+  pendingRemoteAvatars.add(key);
+  notifyRemoteAvatarListeners(key);
+
+  const command = options.command ?? DEFAULT_REMOTE_IMAGE_COMMAND;
+  const args: Record<string, unknown> = { url: normalized };
+  if (options.expectedSha256) args.expectedSha256 = options.expectedSha256;
 
   const request = Promise.resolve()
-    .then(() => invoke<string>('desktop_fetch_remote_image_data_url', { url: normalized }))
+    .then(() => invoke<string>(command, args))
     .then((dataUrl) => {
-      inFlightRemoteAvatars.delete(normalized);
-      pendingRemoteAvatars.delete(normalized);
-      rememberResolvedRemoteAvatar(normalized, dataUrl);
-      notifyRemoteAvatarListeners(normalized);
+      inFlightRemoteAvatars.delete(key);
+      pendingRemoteAvatars.delete(key);
+      rememberResolvedRemoteAvatar(key, dataUrl);
+      notifyRemoteAvatarListeners(key);
       return dataUrl;
     })
     .catch((error: unknown) => {
-      inFlightRemoteAvatars.delete(normalized);
-      pendingRemoteAvatars.delete(normalized);
-      rememberFailedRemoteAvatar(normalized, error);
-      notifyRemoteAvatarListeners(normalized);
+      inFlightRemoteAvatars.delete(key);
+      pendingRemoteAvatars.delete(key);
+      rememberFailedRemoteAvatar(key, error);
+      notifyRemoteAvatarListeners(key);
       throw error;
     });
-  inFlightRemoteAvatars.set(normalized, request);
+  inFlightRemoteAvatars.set(key, request);
   return request;
+}
+
+export function loadAvatarThroughNativeProxy(
+  imageUrl: string,
+  invoke: NativeInvoke = defaultNativeInvoke,
+): Promise<string> {
+  return loadRemoteImageThroughNativeProxy(imageUrl, {}, invoke);
+}
+
+export function useRemoteImage(
+  imageUrl: string | null | undefined,
+  enabled: boolean,
+  options: RemoteImageNativeOptions = {},
+): RemoteAvatarImageSnapshot {
+  const normalized = enabled ? normalizeRemoteAvatarUrl(imageUrl) : '';
+  const command = options.command ?? DEFAULT_REMOTE_IMAGE_COMMAND;
+  const expectedSha256 = options.expectedSha256;
+  const key = normalized
+    ? remoteImageRequestKey(normalized, { command, expectedSha256 })
+    : '';
+  const subscribe = useCallback(
+    (listener: () => void) => subscribeRemoteAvatar(key, listener),
+    [key],
+  );
+  const getSnapshot = useCallback(
+    () => getRemoteImageSnapshot(normalized, { command, expectedSha256 }),
+    [command, expectedSha256, normalized],
+  );
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  useEffect(() => {
+    if (!normalized || snapshot.status !== 'idle') return;
+    void loadRemoteImageThroughNativeProxy(normalized, { command, expectedSha256 }).catch(() => {
+      // Native validation and loading failures are represented by the shared
+      // failed snapshot. Never fall back to loading the HTTPS URL in WebView.
+    });
+  }, [command, expectedSha256, normalized, snapshot.status]);
+
+  useEffect(() => {
+    if (!key || snapshot.status !== 'failed' || typeof window === 'undefined') return;
+    const retry = () => {
+      failedRemoteAvatars.delete(key);
+      notifyRemoteAvatarListeners(key);
+    };
+    window.addEventListener('online', retry, { once: true });
+    return () => window.removeEventListener('online', retry);
+  }, [key, snapshot.status]);
+
+  return snapshot;
 }
 
 export function useRemoteAvatarImage(
   imageUrl: string | null | undefined,
   enabled: boolean,
 ): RemoteAvatarImageSnapshot {
-  const normalized = enabled ? normalizeRemoteAvatarUrl(imageUrl) : '';
-  const subscribe = useCallback(
-    (listener: () => void) => subscribeRemoteAvatar(normalized, listener),
-    [normalized],
-  );
-  const getSnapshot = useCallback(
-    () => getRemoteAvatarImageSnapshot(normalized),
-    [normalized],
-  );
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-
-  useEffect(() => {
-    if (!normalized || snapshot.status === 'ready' || snapshot.status === 'pending') return;
-    void loadAvatarThroughNativeProxy(normalized).catch(() => {
-      // Native validation and loading failures are represented by the shared
-      // failed snapshot. Never fall back to loading the HTTPS URL in WebView.
-    });
-  }, [normalized, snapshot.status]);
-
-  return snapshot;
+  return useRemoteImage(imageUrl, enabled);
 }
 
 export function clearRemoteAvatarImageCacheForTests(): void {

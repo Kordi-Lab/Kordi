@@ -19,12 +19,40 @@ const MAX_REMOTE_IMAGE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_REMOTE_IMAGE_REDIRECTS: usize = 3;
 const REMOTE_IMAGE_TIMEOUT: Duration = Duration::from_secs(15);
 const REMOTE_IMAGE_CACHE_VERSION: u8 = 1;
-const REMOTE_IMAGE_CACHE_MAGIC: &[u8] = b"KORDI_REMOTE_AVATAR_V1\n";
-const REMOTE_IMAGE_CACHE_EXTENSION: &str = "avatar";
 const REMOTE_IMAGE_CACHE_MAX_HEADER_BYTES: usize = 4 * 1024;
-const REMOTE_IMAGE_CACHE_MAX_ENTRIES: usize = 128;
-const REMOTE_IMAGE_CACHE_MAX_BYTES: u64 = 32 * 1024 * 1024;
-const REMOTE_IMAGE_CACHE_TTL: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+struct RemoteImageCachePolicy {
+    directory: &'static str,
+    magic: &'static [u8],
+    extension: &'static str,
+    max_entries: usize,
+    max_bytes: u64,
+    ttl: Option<Duration>,
+    required_media_type: Option<&'static str>,
+    account_scoped: bool,
+}
+
+const AVATAR_CACHE_POLICY: RemoteImageCachePolicy = RemoteImageCachePolicy {
+    directory: "remote-avatars-v1",
+    magic: b"KORDI_REMOTE_AVATAR_V1\n",
+    extension: "avatar",
+    max_entries: 128,
+    max_bytes: 32 * 1024 * 1024,
+    ttl: Some(Duration::from_secs(30 * 24 * 60 * 60)),
+    required_media_type: None,
+    account_scoped: true,
+};
+
+const BLOB_EMOJI_CACHE_POLICY: RemoteImageCachePolicy = RemoteImageCachePolicy {
+    directory: "blob-emoji-v1",
+    magic: b"KORDI_BLOB_EMOJI_V1\n",
+    extension: "webp",
+    max_entries: 512,
+    max_bytes: 64 * 1024 * 1024,
+    ttl: None,
+    required_media_type: Some("image/webp"),
+    account_scoped: false,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct RemoteImageCacheHeader {
@@ -158,24 +186,33 @@ fn remote_image_url_cache_key(url: &str) -> String {
     sha256_hex(url.as_bytes())
 }
 
-fn remote_image_cache_dir(storage_root: &str) -> PathBuf {
-    PathBuf::from(storage_root)
-        .join("cache")
-        .join("remote-avatars-v1")
+fn remote_image_cache_dir(
+    storage_root: impl AsRef<Path>,
+    policy: &RemoteImageCachePolicy,
+) -> PathBuf {
+    storage_root.as_ref().join("cache").join(policy.directory)
 }
 
-fn active_remote_image_cache_dir() -> Option<PathBuf> {
+fn active_remote_image_cache_dir(policy: &RemoteImageCachePolicy) -> Option<PathBuf> {
+    if !policy.account_scoped {
+        return std::env::var_os("APP_DATA_DIR")
+            .map(|root| remote_image_cache_dir(PathBuf::from(root), policy));
+    }
     crate::cloud_account_paths::cloud_account_storage_current()
         .ok()
         .flatten()
-        .map(|activation| remote_image_cache_dir(&activation.storage_root))
+        .map(|activation| remote_image_cache_dir(&activation.storage_root, policy))
 }
 
-fn remote_image_cache_entry_path(cache_dir: &Path, url: &str) -> PathBuf {
+fn remote_image_cache_entry_path(
+    cache_dir: &Path,
+    url: &str,
+    policy: &RemoteImageCachePolicy,
+) -> PathBuf {
     cache_dir.join(format!(
         "{}.{}",
         remote_image_url_cache_key(url),
-        REMOTE_IMAGE_CACHE_EXTENSION
+        policy.extension
     ))
 }
 
@@ -191,6 +228,7 @@ fn encode_remote_image_cache_entry(
     media_type: &str,
     bytes: &[u8],
     cached_at_unix_seconds: u64,
+    policy: &RemoteImageCachePolicy,
 ) -> Result<Vec<u8>, String> {
     let media_type = supported_image_media_type(media_type)
         .ok_or_else(|| "Avatar cache media type is not supported.".to_string())?;
@@ -211,8 +249,8 @@ fn encode_remote_image_cache_entry(
         return Err("Avatar cache metadata is too large.".to_string());
     }
     let mut encoded =
-        Vec::with_capacity(REMOTE_IMAGE_CACHE_MAGIC.len() + encoded_header.len() + 1 + bytes.len());
-    encoded.extend_from_slice(REMOTE_IMAGE_CACHE_MAGIC);
+        Vec::with_capacity(policy.magic.len() + encoded_header.len() + 1 + bytes.len());
+    encoded.extend_from_slice(policy.magic);
     encoded.extend_from_slice(&encoded_header);
     encoded.push(b'\n');
     encoded.extend_from_slice(bytes);
@@ -223,17 +261,16 @@ fn decode_remote_image_cache_entry(
     url: &str,
     encoded: &[u8],
     now_unix_seconds: u64,
+    expected_sha256: Option<&str>,
+    policy: &RemoteImageCachePolicy,
 ) -> Result<RemoteImagePayload, String> {
     if encoded.len()
-        > REMOTE_IMAGE_CACHE_MAGIC.len()
-            + REMOTE_IMAGE_CACHE_MAX_HEADER_BYTES
-            + 1
-            + MAX_REMOTE_IMAGE_BYTES
+        > policy.magic.len() + REMOTE_IMAGE_CACHE_MAX_HEADER_BYTES + 1 + MAX_REMOTE_IMAGE_BYTES
     {
         return Err("Avatar cache entry is too large.".to_string());
     }
     let remainder = encoded
-        .strip_prefix(REMOTE_IMAGE_CACHE_MAGIC)
+        .strip_prefix(policy.magic)
         .ok_or_else(|| "Avatar cache entry has an invalid format.".to_string())?;
     let header_end = remainder
         .iter()
@@ -250,14 +287,20 @@ fn decode_remote_image_cache_entry(
         || bytes.is_empty()
         || bytes.len() > MAX_REMOTE_IMAGE_BYTES
         || supported_image_media_type(&header.media_type).is_none()
+        || policy
+            .required_media_type
+            .is_some_and(|required| required != header.media_type)
         || header.content_sha256 != sha256_hex(bytes)
+        || expected_sha256.is_some_and(|expected| expected != header.content_sha256)
     {
         return Err("Avatar cache entry failed validation.".to_string());
     }
-    if header.cached_at_unix_seconds > now_unix_seconds.saturating_add(5 * 60)
-        || now_unix_seconds.saturating_sub(header.cached_at_unix_seconds)
-            > REMOTE_IMAGE_CACHE_TTL.as_secs()
-    {
+    if header.cached_at_unix_seconds > now_unix_seconds.saturating_add(5 * 60) {
+        return Err("Avatar cache entry has expired.".to_string());
+    }
+    if policy.ttl.is_some_and(|ttl| {
+        now_unix_seconds.saturating_sub(header.cached_at_unix_seconds) > ttl.as_secs()
+    }) {
         return Err("Avatar cache entry has expired.".to_string());
     }
 
@@ -271,15 +314,26 @@ fn read_cached_remote_image(
     cache_dir: &Path,
     url: &str,
     now_unix_seconds: u64,
+    expected_sha256: Option<&str>,
+    policy: &RemoteImageCachePolicy,
 ) -> Option<RemoteImagePayload> {
-    let path = remote_image_cache_entry_path(cache_dir, url);
+    let path = remote_image_cache_entry_path(cache_dir, url, policy);
     let encoded = match std::fs::read(&path) {
         Ok(encoded) => encoded,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return None,
         Err(_) => return None,
     };
-    match decode_remote_image_cache_entry(url, &encoded, now_unix_seconds) {
-        Ok(payload) => Some(payload),
+    match decode_remote_image_cache_entry(url, &encoded, now_unix_seconds, expected_sha256, policy)
+    {
+        Ok(payload) => {
+            let _ = std::fs::OpenOptions::new()
+                .write(true)
+                .open(&path)
+                .and_then(|file| {
+                    file.set_times(std::fs::FileTimes::new().set_modified(SystemTime::now()))
+                });
+            Some(payload)
+        }
         Err(_) => {
             let _ = std::fs::remove_file(path);
             None
@@ -291,6 +345,7 @@ fn prune_remote_image_cache(
     cache_dir: &Path,
     max_entries: usize,
     max_bytes: u64,
+    policy: &RemoteImageCachePolicy,
 ) -> Result<(), String> {
     let mut entries = std::fs::read_dir(cache_dir)
         .map_err(|error| format!("Unable to inspect avatar cache: {error}"))?
@@ -301,9 +356,7 @@ fn prune_remote_image_cache(
                 let _ = std::fs::remove_file(path);
                 return None;
             }
-            if path.extension().and_then(|value| value.to_str())
-                != Some(REMOTE_IMAGE_CACHE_EXTENSION)
-            {
+            if path.extension().and_then(|value| value.to_str()) != Some(policy.extension) {
                 return None;
             }
             let metadata = entry.metadata().ok()?;
@@ -332,11 +385,13 @@ fn write_cached_remote_image(
     media_type: &str,
     bytes: &[u8],
     now_unix_seconds: u64,
+    policy: &RemoteImageCachePolicy,
 ) -> Result<(), String> {
     std::fs::create_dir_all(cache_dir)
         .map_err(|error| format!("Unable to create avatar cache: {error}"))?;
-    let encoded = encode_remote_image_cache_entry(url, media_type, bytes, now_unix_seconds)?;
-    let destination = remote_image_cache_entry_path(cache_dir, url);
+    let encoded =
+        encode_remote_image_cache_entry(url, media_type, bytes, now_unix_seconds, policy)?;
+    let destination = remote_image_cache_entry_path(cache_dir, url, policy);
     let temporary = cache_dir.join(format!(
         ".{}.{}.tmp",
         remote_image_url_cache_key(url),
@@ -350,11 +405,7 @@ fn write_cached_remote_image(
         let _ = std::fs::remove_file(&temporary);
         return Err(format!("Unable to commit avatar cache: {error}"));
     }
-    prune_remote_image_cache(
-        cache_dir,
-        REMOTE_IMAGE_CACHE_MAX_ENTRIES,
-        REMOTE_IMAGE_CACHE_MAX_BYTES,
-    )
+    prune_remote_image_cache(cache_dir, policy.max_entries, policy.max_bytes, policy)
 }
 
 async fn resolve_public_remote_image_addrs(url: &Url) -> Result<Vec<SocketAddr>, String> {
@@ -453,15 +504,37 @@ where
     Ok(bytes)
 }
 
-#[tauri::command]
-pub async fn desktop_fetch_remote_image_data_url(url: String) -> Result<String, String> {
+fn validated_expected_sha256(value: &str) -> Result<String, String> {
+    let value = value.trim().to_ascii_lowercase();
+    if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("Remote image SHA-256 is invalid.".to_string());
+    }
+    Ok(value)
+}
+
+async fn fetch_remote_image_data_url(
+    url: String,
+    expected_sha256: Option<String>,
+    policy: &'static RemoteImageCachePolicy,
+) -> Result<String, String> {
     let url = validated_remote_image_url(&url)?;
+    let expected_sha256 = expected_sha256
+        .as_deref()
+        .map(validated_expected_sha256)
+        .transpose()?;
     let normalized_url = url.as_str().to_string();
-    let cache_dir = active_remote_image_cache_dir();
+    let cache_dir = active_remote_image_cache_dir(policy);
     if let Some(cache_dir) = cache_dir.clone() {
         let cache_url = normalized_url.clone();
+        let cache_expected_sha256 = expected_sha256.clone();
         if let Ok(Some(payload)) = tokio::task::spawn_blocking(move || {
-            read_cached_remote_image(&cache_dir, &cache_url, unix_timestamp_seconds())
+            read_cached_remote_image(
+                &cache_dir,
+                &cache_url,
+                unix_timestamp_seconds(),
+                cache_expected_sha256.as_deref(),
+                policy,
+            )
         })
         .await
         {
@@ -483,9 +556,21 @@ pub async fn desktop_fetch_remote_image_data_url(url: String) -> Result<String, 
             .and_then(|value| value.to_str().ok())
             .and_then(supported_image_media_type)
             .ok_or_else(|| "Avatar URL did not return a supported image.".to_string())?;
+        if policy
+            .required_media_type
+            .is_some_and(|required| required != media_type)
+        {
+            return Err("Remote image response type did not match the catalog.".to_string());
+        }
         let bytes =
             collect_bounded_remote_image_stream(response.bytes_stream(), MAX_REMOTE_IMAGE_BYTES)
                 .await?;
+        if expected_sha256
+            .as_deref()
+            .is_some_and(|expected| expected != sha256_hex(&bytes))
+        {
+            return Err("Remote image response failed integrity validation.".to_string());
+        }
         Ok::<RemoteImagePayload, String>(RemoteImagePayload {
             media_type: media_type.to_string(),
             bytes,
@@ -505,11 +590,25 @@ pub async fn desktop_fetch_remote_image_data_url(url: String) -> Result<String, 
                 &cache_payload.media_type,
                 &cache_payload.bytes,
                 unix_timestamp_seconds(),
+                policy,
             )
         })
         .await;
     }
     Ok(data_url)
+}
+
+#[tauri::command]
+pub async fn desktop_fetch_remote_image_data_url(url: String) -> Result<String, String> {
+    fetch_remote_image_data_url(url, None, &AVATAR_CACHE_POLICY).await
+}
+
+#[tauri::command]
+pub async fn desktop_fetch_blob_emoji_data_url(
+    url: String,
+    expected_sha256: String,
+) -> Result<String, String> {
+    fetch_remote_image_data_url(url, Some(expected_sha256), &BLOB_EMOJI_CACHE_POLICY).await
 }
 
 #[cfg(test)]
@@ -611,16 +710,28 @@ mod tests {
         let cache_dir = avatar_cache_test_dir("roundtrip");
         let url = "https://images.example/profile.png";
         let now = 1_750_000_000;
-        write_cached_remote_image(&cache_dir, url, "image/png", b"avatar", now)
-            .expect("write avatar cache");
+        write_cached_remote_image(
+            &cache_dir,
+            url,
+            "image/png",
+            b"avatar",
+            now,
+            &AVATAR_CACHE_POLICY,
+        )
+        .expect("write avatar cache");
 
-        let payload = read_cached_remote_image(&cache_dir, url, now + 1)
-            .expect("read avatar after simulated relaunch");
+        let payload =
+            read_cached_remote_image(&cache_dir, url, now + 1, None, &AVATAR_CACHE_POLICY)
+                .expect("read avatar after simulated relaunch");
         assert_eq!(payload.media_type, "image/png");
         assert_eq!(payload.bytes, b"avatar");
 
-        let encoded = std::fs::read(remote_image_cache_entry_path(&cache_dir, url))
-            .expect("encoded cache entry");
+        let encoded = std::fs::read(remote_image_cache_entry_path(
+            &cache_dir,
+            url,
+            &AVATAR_CACHE_POLICY,
+        ))
+        .expect("encoded cache entry");
         assert!(
             !String::from_utf8_lossy(&encoded).contains(url),
             "cache metadata must not persist the source URL or query string"
@@ -630,12 +741,16 @@ mod tests {
 
     #[test]
     fn avatar_cache_paths_are_scoped_by_account_storage_root() {
-        let alpha = remote_image_cache_dir("/app-data/accounts/alpha/kordi");
-        let beta = remote_image_cache_dir("/app-data/accounts/beta/kordi");
+        let alpha = remote_image_cache_dir("/app-data/accounts/alpha/kordi", &AVATAR_CACHE_POLICY);
+        let beta = remote_image_cache_dir("/app-data/accounts/beta/kordi", &AVATAR_CACHE_POLICY);
 
         assert_ne!(alpha, beta);
         assert!(alpha.ends_with("accounts/alpha/kordi/cache/remote-avatars-v1"));
         assert!(beta.ends_with("accounts/beta/kordi/cache/remote-avatars-v1"));
+        assert!(
+            remote_image_cache_dir("/app-data", &BLOB_EMOJI_CACHE_POLICY)
+                .ends_with("app-data/cache/blob-emoji-v1")
+        );
     }
 
     #[test]
@@ -643,19 +758,36 @@ mod tests {
         let cache_dir = avatar_cache_test_dir("invalid");
         std::fs::create_dir_all(&cache_dir).expect("create cache directory");
         let corrupt_url = "https://images.example/corrupt.png";
-        let corrupt_path = remote_image_cache_entry_path(&cache_dir, corrupt_url);
+        let corrupt_path =
+            remote_image_cache_entry_path(&cache_dir, corrupt_url, &AVATAR_CACHE_POLICY);
         std::fs::write(&corrupt_path, b"not-a-cache-entry").expect("write corrupt entry");
-        assert!(read_cached_remote_image(&cache_dir, corrupt_url, 1_750_000_000).is_none());
+        assert!(read_cached_remote_image(
+            &cache_dir,
+            corrupt_url,
+            1_750_000_000,
+            None,
+            &AVATAR_CACHE_POLICY,
+        )
+        .is_none());
         assert!(!corrupt_path.exists());
 
         let stale_url = "https://images.example/stale.png";
-        write_cached_remote_image(&cache_dir, stale_url, "image/webp", b"stale", 1)
-            .expect("write stale entry");
-        let stale_path = remote_image_cache_entry_path(&cache_dir, stale_url);
+        write_cached_remote_image(
+            &cache_dir,
+            stale_url,
+            "image/webp",
+            b"stale",
+            1,
+            &AVATAR_CACHE_POLICY,
+        )
+        .expect("write stale entry");
+        let stale_path = remote_image_cache_entry_path(&cache_dir, stale_url, &AVATAR_CACHE_POLICY);
         assert!(read_cached_remote_image(
             &cache_dir,
             stale_url,
-            REMOTE_IMAGE_CACHE_TTL.as_secs() + 2,
+            AVATAR_CACHE_POLICY.ttl.expect("avatar TTL").as_secs() + 2,
+            None,
+            &AVATAR_CACHE_POLICY,
         )
         .is_none());
         assert!(!stale_path.exists());
@@ -668,7 +800,7 @@ mod tests {
         std::fs::create_dir_all(&cache_dir).expect("create cache directory");
         for index in 0..5 {
             std::fs::write(
-                cache_dir.join(format!("entry-{index}.{REMOTE_IMAGE_CACHE_EXTENSION}")),
+                cache_dir.join(format!("entry-{index}.{}", AVATAR_CACHE_POLICY.extension)),
                 vec![index as u8; 16],
             )
             .expect("write cache fixture");
@@ -677,17 +809,58 @@ mod tests {
         std::fs::write(&abandoned_temporary, vec![0_u8; 16])
             .expect("write abandoned cache fixture");
 
-        prune_remote_image_cache(&cache_dir, 2, 32).expect("prune avatar cache");
+        prune_remote_image_cache(&cache_dir, 2, 32, &AVATAR_CACHE_POLICY)
+            .expect("prune avatar cache");
         let entries = std::fs::read_dir(&cache_dir)
             .expect("read cache directory")
             .filter_map(Result::ok)
             .filter(|entry| {
                 entry.path().extension().and_then(|value| value.to_str())
-                    == Some(REMOTE_IMAGE_CACHE_EXTENSION)
+                    == Some(AVATAR_CACHE_POLICY.extension)
             })
             .count();
         assert_eq!(entries, 2);
         assert!(!abandoned_temporary.exists());
+        let _ = std::fs::remove_dir_all(cache_dir);
+    }
+
+    #[test]
+    fn blob_emoji_cache_is_immutable_and_integrity_checked() {
+        let cache_dir = avatar_cache_test_dir("blob-emoji");
+        let url = "https://images.example/blob.webp";
+        let bytes = b"emoji";
+        let digest = sha256_hex(bytes);
+        write_cached_remote_image(
+            &cache_dir,
+            url,
+            "image/webp",
+            bytes,
+            1,
+            &BLOB_EMOJI_CACHE_POLICY,
+        )
+        .expect("write Blob Emoji cache");
+
+        let after_one_year = 366 * 24 * 60 * 60;
+        assert_eq!(
+            read_cached_remote_image(
+                &cache_dir,
+                url,
+                after_one_year,
+                Some(&digest),
+                &BLOB_EMOJI_CACHE_POLICY,
+            )
+            .expect("immutable Blob Emoji cache")
+            .bytes,
+            bytes,
+        );
+        assert!(read_cached_remote_image(
+            &cache_dir,
+            url,
+            after_one_year,
+            Some(&"0".repeat(64)),
+            &BLOB_EMOJI_CACHE_POLICY,
+        )
+        .is_none());
         let _ = std::fs::remove_dir_all(cache_dir);
     }
 }

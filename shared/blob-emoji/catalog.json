@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "source": "https://blobs.gg/",
   "sourceArchiveSha256": "ae8d34bdce80e2f9ccec63ca17b01caa0221b8ef90d5876cffdf302db803d278",
   "license": "Apache-2.0",
@@ -7,2737 +7,3831 @@
     {
       "id": "b1nzyblob",
       "file": "b1nzyblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3874,
+      "sha256": "fb6569129a2fc3ab1ace39b8efd42c8ed0bbfd7af78388f924fa4c7f072ec814"
     },
     {
       "id": "b1nzyblob2",
       "file": "b1nzyblob2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3800,
+      "sha256": "96e301ef3d586a0b607d30f435b138a64b869733bbf2945802d994a662318620"
     },
     {
       "id": "b4nzyblob",
       "file": "b4nzyblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4626,
+      "sha256": "06382549b27485681cd8c18cfa4a88bd96928095e7b4cbc105e6356f31d548aa"
     },
     {
       "id": "blob",
       "file": "blob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2838,
+      "sha256": "4a201ced8446db6c23e2aa06f4f0d70240b07d2bbff1ea6c6fdb8e2df5f9599d"
     },
     {
       "id": "blob0w0",
       "file": "blob0w0.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3868,
+      "sha256": "e19e81cb3791a2fd737627aef4e8a2421dd9c1e4fea2638010ff84ef59b697e9"
     },
     {
       "id": "blob3c",
       "file": "blob3c.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3836,
+      "sha256": "b264453cb32119efd5d121988ec01cf96b039f2544f593d1499dd2083cc9a0c3"
     },
     {
       "id": "blob3cevil",
       "file": "blob3cevil.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 12578,
+      "sha256": "b7c962bab4f6ee2343e33dade8d381596f0cc8a0f81a9ffc14f16a86cac67902"
     },
     {
       "id": "blob3cuwu",
       "file": "blob3cuwu.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3992,
+      "sha256": "ff942c356ec135af0140ab33ada82259add9e2439da004cf5d061e8f260432bc"
     },
     {
       "id": "blobaffection",
       "file": "blobaffection.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2666,
+      "sha256": "d5534ad0cc60508d0aca371e73e76ae8010db342d4e298e0bcbc3b2a90025111"
     },
     {
       "id": "blobamused",
       "file": "blobamused.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3388,
+      "sha256": "2c428802944c7543873a110372d8815dc9b04889cea534bfddecd42f2f9454d9"
     },
     {
       "id": "blobangel",
       "file": "blobangel.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5074,
+      "sha256": "a0cd1a5e4cad4583f2611dec0b42bfda93c27f59261cf79e12adfd69306bb935"
     },
     {
       "id": "blobangery",
       "file": "blobangery.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3526,
+      "sha256": "7dae63e652718e2bab40b1a1dbeb6d903fa3b12c2098c5a5dbb69ee4efb00708"
     },
     {
       "id": "blobangry",
       "file": "blobangry.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3714,
+      "sha256": "5daae2123f7f1e0a511b50f98b99ff5cc648b946954811b1169996753fe23727"
     },
     {
       "id": "blobangry2",
       "file": "blobangry2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3412,
+      "sha256": "ed2a80f4bbcd8ec4254a541e35841ce7b3cade33bab5c01bacaaf8f5819b0a83"
     },
     {
       "id": "blobangrypuff",
       "file": "blobangrypuff.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3550,
+      "sha256": "45abd7e908d9b46f79ab0e3f5751bcecd8322454d16145c8bf831c666b9a2cb8"
     },
     {
       "id": "blobartist",
       "file": "blobartist.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4606,
+      "sha256": "86b2cb246261e0521d06acca20e5e932f6699268791c7f398e75830cf93bfaa0"
     },
     {
       "id": "blobaviator",
       "file": "blobaviator.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4988,
+      "sha256": "b099186e5a5f65b1105867e04eb564194c58a108e7959e2557afae5eb6fd8597"
     },
     {
       "id": "blobawkward",
       "file": "blobawkward.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3678,
+      "sha256": "587912e0a26a2a1c6f5f514c609ba1fe74754a0aeec4543eeba32638280858d3"
     },
     {
       "id": "blobaww",
       "file": "blobaww.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3096,
+      "sha256": "be108b5f35cc00430f8fe4fcc1a423035e8c6e54297c12c3036ecf4620d0c341"
     },
     {
       "id": "blobbandage",
       "file": "blobbandage.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2634,
+      "sha256": "353e2f5654915d9c1740e386326123788abdb1e0f4b16456f4ea1fe3ed5e0057"
     },
     {
       "id": "blobbanhammer",
       "file": "blobbanhammer.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5776,
+      "sha256": "98685fcfb576e0beba0c4487db558d04b9fb97a7790e37b095208c5784b13c4b"
     },
     {
       "id": "blobbathtub",
       "file": "blobbathtub.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4066,
+      "sha256": "c5cf9c2c379ccfbc58e9032aa4b1baf06f220a1990484728741c407d898e2b2a"
     },
     {
       "id": "blobblackcat",
       "file": "blobblackcat.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3408,
+      "sha256": "c109e3e6a5764204ff2fbbd4c2533c003e8fb3b82f87e32ec85a4b1b3c7d13f9"
     },
     {
       "id": "blobblush",
       "file": "blobblush.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3500,
+      "sha256": "91a2722b3167692d5f68187daffa5eaeb797fcb40d6f7b895f8f393bdaee05f9"
     },
     {
       "id": "blobbonk",
       "file": "blobbonk.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4634,
+      "sha256": "c82c977d28abcd5e34fb30c7f593b37559994eded31e6c9b00c365bf0444f24b"
     },
     {
       "id": "blobboost",
       "file": "blobboost.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4482,
+      "sha256": "089320986ecd348abff280d21e74e94589e4e1b04fa69eaf22208691612a428d"
     },
     {
       "id": "blobbored",
       "file": "blobbored.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3328,
+      "sha256": "84de99e6d889cea44706b732bcc2d3a5ec908e68dd06bff28a6177a5e1fbedb9"
     },
     {
       "id": "blobbot",
       "file": "blobbot.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3772,
+      "sha256": "ad18a66260a686de3194bd54141b1377835534c3a6794626736c9bee444da624"
     },
     {
       "id": "blobbowing",
       "file": "blobbowing.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2114,
+      "sha256": "10638577c134d913d85ef076ca8d5ae0c370f13493f1870402405a071faa1a9f"
     },
     {
       "id": "blobbroken",
       "file": "blobbroken.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5132,
+      "sha256": "3ad0e900704349dc8cbe6d51768d2115064f7b93827840a6a48a5de8420b1c42"
     },
     {
       "id": "blobcamera",
       "file": "blobcamera.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3724,
+      "sha256": "a55c6fa1bb4779fed8c5da6293b699c1247142c366600c1cd80dde077260e819"
     },
     {
       "id": "blobcat",
       "file": "blobcat.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4716,
+      "sha256": "9893c1df8bc83e9df850cb0f0f4ae2637426826554428d48086a656686d6b6c2"
     },
     {
       "id": "blobcheeky",
       "file": "blobcheeky.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3862,
+      "sha256": "cc097f81bf9d6f49e857e91e7c3e025bd6a86054c8d5e7076297ced222541eae"
     },
     {
       "id": "blobcheer",
       "file": "blobcheer.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2304,
+      "sha256": "ca8981c85fd0dbb74c98fc7af3324ffdfe0105b514b292e3f068627d317a61cf"
     },
     {
       "id": "blobcheerful",
       "file": "blobcheerful.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3682,
+      "sha256": "82274f483d4fc4fea329dd58400d7f76d49f7d70c58c89b053690819fc67cec4"
     },
     {
       "id": "blobcheerful2",
       "file": "blobcheerful2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3628,
+      "sha256": "926a84508c1fc32f5949214194a14dc1642b60d1ebe14571e0a6f69233b1e45f"
     },
     {
       "id": "blobcmereyou",
       "file": "blobcmereyou.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6296,
+      "sha256": "b6cd81aed1ab0a5b02cb78f2f024e89e809452e639cdda970a82c1f37d28c4df"
     },
     {
       "id": "blobcocoa",
       "file": "blobcocoa.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3984,
+      "sha256": "c91db86997a653c9ca1f2b52bed83a7bfa6630bc2344242090d98eba98938aab"
     },
     {
       "id": "blobcomfort",
       "file": "blobcomfort.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5836,
+      "sha256": "0bdab1648333f5747afa4bf8b6b8c8d0bb417c13e90a0c0f4e2665d1b63d201e"
     },
     {
       "id": "blobconcerned",
       "file": "blobconcerned.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4032,
+      "sha256": "857e3dec67ffce3e45b1d6de521216e6bd723f261a09cb4b2f86ccb4fe0f6baa"
     },
     {
       "id": "blobconfounded",
       "file": "blobconfounded.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3574,
+      "sha256": "05a3b14d2e0a0755d84b19550de83e45284d2ebb601cc43cd2d317a75c4be17b"
     },
     {
       "id": "blobconfused",
       "file": "blobconfused.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3618,
+      "sha256": "349bd862f986c714708ef1aa874a1a47b7eba4ffb54339fb24318a193e729841"
     },
     {
       "id": "blobcool",
       "file": "blobcool.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4198,
+      "sha256": "cb53d33ad38dad46d77e74f9290be3d769c925e9ba9a057521601cca3d808372"
     },
     {
       "id": "blobcouncil",
       "file": "blobcouncil.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 7098,
+      "sha256": "afbaea0a9a3c6d75cbca2112a0d55e4eefbf5aa52d0c6d7b399ac973b67dacfb"
     },
     {
       "id": "blobcouple",
       "file": "blobcouple.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4902,
+      "sha256": "5cfd400949b7bf56e8d9561bddc442666f90bba0d9243d594bf0884dbb344b0f"
     },
     {
       "id": "blobcowboy",
       "file": "blobcowboy.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3780,
+      "sha256": "db35ecb65e23e475d65fad00079603060d43634a037cc0a34595fcbfd801cf1c"
     },
     {
       "id": "blobcry",
       "file": "blobcry.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3586,
+      "sha256": "220ae50f2a9cb53a266244c5e24b7ebd1edcdd0af523c80371a25644c9d7d202"
     },
     {
       "id": "blobdancer",
       "file": "blobdancer.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4140,
+      "sha256": "fdd4e9e8ce0fb900dd5030852468a870d24258e0d40dc28fa66b8d6f3c27bb49"
     },
     {
       "id": "blobdead",
       "file": "blobdead.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4540,
+      "sha256": "3972dbb015c6cc39e8534001d05c258b449f63ec78c16c95f6f0f93ddb26cc71"
     },
     {
       "id": "blobderpy",
       "file": "blobderpy.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3630,
+      "sha256": "66a5262c4a10a2fe7aaf0b0256c84e6365a3b259fadfe178e577cb7f9e485f2c"
     },
     {
       "id": "blobderpyhappy",
       "file": "blobderpyhappy.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3582,
+      "sha256": "b7da5f9a80d99231620933f6c3494824bb428669a7d8876c7cb6e84e79356468"
     },
     {
       "id": "blobderpytrap",
       "file": "blobderpytrap.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5322,
+      "sha256": "bb1cba5b033573f10d5f334febc65da621d05daf31c6325a18d554a56879ce65"
     },
     {
       "id": "blobdetective",
       "file": "blobdetective.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2228,
+      "sha256": "728a73c22e03ec6da638b36d674d1c7856c2cc962b1f7c4c804c9c544170f7cf"
     },
     {
       "id": "blobdevil",
       "file": "blobdevil.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4512,
+      "sha256": "d39c6100ceca089a754f1249ad9fd19334f9db6c867b41598015c490fa592ceb"
     },
     {
       "id": "blobdevilsmile",
       "file": "blobdevilsmile.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4330,
+      "sha256": "e33ab1557fd177bf8166167b8d38533461082c78730e0432c49c29818a40cb36"
     },
     {
       "id": "blobdisapproval",
       "file": "blobdisapproval.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4012,
+      "sha256": "a5d101f40890403aa4452a16e89465db3e28f55d50e3fd2805198a293d7c6e40"
     },
     {
       "id": "blobdisguise",
       "file": "blobdisguise.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4848,
+      "sha256": "cf0602d7980c84a6b22c88d3e4d983343c01d9f9c37732d54617aa8d292c797c"
     },
     {
       "id": "blobdizzy",
       "file": "blobdizzy.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4816,
+      "sha256": "e47de643a13b310e8aca185734af4aefd24f1adb169b0bc1e512bf09df5efa26"
     },
     {
       "id": "blobdizzy2",
       "file": "blobdizzy2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4332,
+      "sha256": "548b0037606b01a2cc0260a99befb4cac242c70e919d1025ba6f84b407eebbe0"
     },
     {
       "id": "blobdoctor",
       "file": "blobdoctor.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5270,
+      "sha256": "1bc9e746c160ea60245bc2cf51644e0e5091e38518132559a7f06c7fe81265de"
     },
     {
       "id": "blobdoubt",
       "file": "blobdoubt.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4628,
+      "sha256": "c5a3ff92aa249a64c5185813df2bb798eca9c78d57713d1087675a28920884a0"
     },
     {
       "id": "blobdoubtful",
       "file": "blobdoubtful.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3780,
+      "sha256": "2228ef17cbf244b52c042e10c033ce64385ed867d6e010b518b7257c39fd1b8e"
     },
     {
       "id": "blobdrool",
       "file": "blobdrool.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3482,
+      "sha256": "0772336034ae495a66b54d2bb531d6e2256b68a5cffcad40c93312b4edac4193"
     },
     {
       "id": "blobeagle",
       "file": "blobeagle.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4100,
+      "sha256": "3fdfe08238abdd220916cb6304d22c652ca4f40caf8f2d3e559a469a5c3b4ad1"
     },
     {
       "id": "blobembarrassed",
       "file": "blobembarrassed.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3682,
+      "sha256": "7f703c310495a064a0fd4116a134bbddf0b750e678df911ea5e24dd939ba63b8"
     },
     {
       "id": "blobembarrassed2",
       "file": "blobembarrassed2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4320,
+      "sha256": "89c52e462c45c06e23e4863afb2e665a54358ae8a866d86212f2b42000c264bb"
     },
     {
       "id": "blobenjoy",
       "file": "blobenjoy.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3814,
+      "sha256": "63f9e85a0512ab5edcdb127627089291d859fbc0ff7d9b663d514c8fde721684"
     },
     {
       "id": "bloberm",
       "file": "bloberm.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6720,
+      "sha256": "a3aca08268b1bcd01585e12f9b43adfbafc6c0483b3da7c58c085d58a62a1da4"
     },
     {
       "id": "blobexpressionless",
       "file": "blobexpressionless.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3120,
+      "sha256": "23c4de63e4c15ced51135f6783a49e0e1da6c43ff6854cdcbbe664377e30b55f"
     },
     {
       "id": "blobeyesdown",
       "file": "blobeyesdown.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3638,
+      "sha256": "ab128cfea4835821f86f5fef407a24f328a0881282036d3fd1af86495f2cdfd7"
     },
     {
       "id": "blobeyesup",
       "file": "blobeyesup.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3622,
+      "sha256": "85641edf279477246a0b1948730b736c75dd3e95b826ff6e583ea77091a8d247"
     },
     {
       "id": "blobfacemask",
       "file": "blobfacemask.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4138,
+      "sha256": "21e9797874f775f3ad890abe438346061d1c2a51d6eebee36d6375afa1e98fc7"
     },
     {
       "id": "blobfacepalm",
       "file": "blobfacepalm.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4290,
+      "sha256": "16879038ed7da9077d31cdc4f4d5890f283049d2f6250bf1136af7fba7652a45"
     },
     {
       "id": "blobfearful",
       "file": "blobfearful.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3998,
+      "sha256": "c234ca554730df590575bbb4c9d04bcde01cd5762dc7c493b16bd4247514c679"
     },
     {
       "id": "blobfingerguns",
       "file": "blobfingerguns.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4930,
+      "sha256": "d373c4fae1b64d06db6a0403453989676c888b48685316f5d5da28fe148ab4c1"
     },
     {
       "id": "blobfingerscrossed",
       "file": "blobfingerscrossed.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4636,
+      "sha256": "900f8b08ad619ddbdfce0018325c69ad10ceaa02c7cd60fa8f8bc67cc58af2e4"
     },
     {
       "id": "blobfirefighter",
       "file": "blobfirefighter.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3172,
+      "sha256": "163d06deac3e68f0d0db13b14f24a194e3ff8ac90a26799d51532e9485701b4b"
     },
     {
       "id": "blobfistbumpL",
       "file": "blobfistbumpL.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4028,
+      "sha256": "ccceec4db49d18a2688191897916621c265a79904d48490ebb4a386d55f770f0"
     },
     {
       "id": "blobfistbumpR",
       "file": "blobfistbumpR.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4000,
+      "sha256": "06114b8dabde44d091ac11131e4d30178d1b88985a156e744b2a0c0c9a504058"
     },
     {
       "id": "blobfistshake",
       "file": "blobfistshake.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4818,
+      "sha256": "8edbd79735a3507e3890542a6525a32b3d339a5c24cb209a8e610472b56b0dff"
     },
     {
       "id": "blobflushed",
       "file": "blobflushed.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3430,
+      "sha256": "78e7295c7ea1f68f885a97e88fe19ad3c3617d8bb5c023a6601e0e6cf633f5f6"
     },
     {
       "id": "blobfreezing",
       "file": "blobfreezing.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4698,
+      "sha256": "f75054956319194af97069c27b4bbcd68d6e05330ab39d12f8200ccea059a724"
     },
     {
       "id": "blobfrog",
       "file": "blobfrog.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3652,
+      "sha256": "5c30a4947abb1705f436130956f59718f17b92d7d70d89fbad815162a4c154d8"
     },
     {
       "id": "blobfrown",
       "file": "blobfrown.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3552,
+      "sha256": "7e603cf7f7ad826ebbeba1d9f8abebc79a2059707b679bb99f4533f7aba618dc"
     },
     {
       "id": "blobfrowning",
       "file": "blobfrowning.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3490,
+      "sha256": "7f1d513f69acd15f51ee78be59404561059f7ab6251ee391bc2e86c2adf4f57a"
     },
     {
       "id": "blobfrowningbig",
       "file": "blobfrowningbig.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2092,
+      "sha256": "620d1ec468e1adbdc899d6152a1731a5bbc06b311d06def854e3baf2481f17f3"
     },
     {
       "id": "blobgamer",
       "file": "blobgamer.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5222,
+      "sha256": "1236e8675eb9eec3f0e1fcd6d4063bf5bd650d0c2be0c3bbfdd674b44bd659f0"
     },
     {
       "id": "blobgift",
       "file": "blobgift.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4872,
+      "sha256": "b0da841b9a5a8a58b25168cc9ccb4b92dd24e0a61533789e322c92211c04161d"
     },
     {
       "id": "blobgiggle",
       "file": "blobgiggle.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4794,
+      "sha256": "0c87a09bafe78f6c34c9f1de9440bf2f8b5917ff29f0126ea416837635e6cb76"
     },
     {
       "id": "blobglare",
       "file": "blobglare.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3762,
+      "sha256": "bf48026b96c970914566b5d04cdeece33c265be43abe8508a6012b42ec7655ef"
     },
     {
       "id": "blobglareannoyed",
       "file": "blobglareannoyed.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3622,
+      "sha256": "8c6b909b6a196cf7b6625ebbf8f7dfdb615c187e58150ad23f2150908ebd9ac6"
     },
     {
       "id": "blobglarepolice",
       "file": "blobglarepolice.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4446,
+      "sha256": "92d4fd70c847730cb199c72aee419fc6e91bf078fe9e3ee6404c1627522ec757"
     },
     {
       "id": "blobglassesdown",
       "file": "blobglassesdown.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4858,
+      "sha256": "42ff7bbdc3fc0e89ae83ce0e78107f8594f37ba378eb8cd31973b113ed4d026d"
     },
     {
       "id": "blobgo",
       "file": "blobgo.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4674,
+      "sha256": "09992ed44cd47a21802563ac04d81f10001100b6d96b8b962bccb2d7480ba57c"
     },
     {
       "id": "blobgoat",
       "file": "blobgoat.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4018,
+      "sha256": "306adfdf135242f5369022824fc2a40c17a13790d38217ef070aa148e32abd2f"
     },
     {
       "id": "blobgoodmorning",
       "file": "blobgoodmorning.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4632,
+      "sha256": "eb54c3e3a789bb9cd99d5b151d9ea31b4a7501afab041db3d0bd20fd5bfc8fd3"
     },
     {
       "id": "blobgoodmorningreverse",
       "file": "blobgoodmorningreverse.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4638,
+      "sha256": "9da9c90f5c66fb2b3b48a1b799716f6a4350481c32085b246c8b4597225d15ba"
     },
     {
       "id": "blobgoodnight",
       "file": "blobgoodnight.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5956,
+      "sha256": "84e9c706d524ffd017617129bb683f544ddd9a8fea8ad2e7af9f842cf3026c82"
     },
     {
       "id": "blobgoodnightreverse",
       "file": "blobgoodnightreverse.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6002,
+      "sha256": "6f70429ce5c32e4ad2c91a83d046a64215832ca8938d5964053c83f06d997a22"
     },
     {
       "id": "blobgrimace",
       "file": "blobgrimace.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4064,
+      "sha256": "89a0e653637890103b7b49d27f2404493a56451bdf52435b0bb80363cfda1379"
     },
     {
       "id": "blobgrin",
       "file": "blobgrin.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4250,
+      "sha256": "22411245c0066494e079ba1434a9af0507790f0cb77afbc2c8c938db0e8f29c7"
     },
     {
       "id": "blobgrumpy",
       "file": "blobgrumpy.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3518,
+      "sha256": "25e784400ce5b100c6ddb264ccdefb11d676b54a981cbf180170b901bfa39c1b"
     },
     {
       "id": "blobheart",
       "file": "blobheart.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3702,
+      "sha256": "90e43d3c9967185cca0cc24f2908db86333c7e996d1d9ff86d30479f43c8a202"
     },
     {
       "id": "blobhearteyes",
       "file": "blobhearteyes.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3732,
+      "sha256": "26d2fc3d022ed8730f88a974e07dd0e3b73815bd06595e3f67d76b92bed1a463"
     },
     {
       "id": "blobhero",
       "file": "blobhero.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5130,
+      "sha256": "b7dfb60c5b13238b8c648a7b7427dbabea7e326277acac8adc731b1be29c24e4"
     },
     {
       "id": "blobhighfive",
       "file": "blobhighfive.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4992,
+      "sha256": "262727adde3b8c9f0fa32f662d06ee06e555cc28fd6e3e6cd8ad3d29b13287d0"
     },
     {
       "id": "blobhmpf",
       "file": "blobhmpf.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3470,
+      "sha256": "537a2a14e7bc74dec68aabbf6cc3f9d69e6dfbd788f7ec6f61e7d1be9584a374"
     },
     {
       "id": "blobhug",
       "file": "blobhug.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5174,
+      "sha256": "c67b73e81776964d010cc4ad3feaf8fa7c832470a9b901618b1b445b405f419d"
     },
     {
       "id": "blobhug2",
       "file": "blobhug2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6514,
+      "sha256": "97976d3e4a8aecc928366f072c8a0254760c2c0cfd497b1aec6cfa8721fb28c2"
     },
     {
       "id": "blobhuh",
       "file": "blobhuh.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3716,
+      "sha256": "63ed2f27862c39c8a49135adfe820481d29b5dd99dea58e50e5ae36e97418f0f"
     },
     {
       "id": "blobhushed",
       "file": "blobhushed.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3322,
+      "sha256": "33988e92572b37f9ee0637c8354b35c099d6d9d5cc92fa8c1af568c17cc47ffd"
     },
     {
       "id": "blobhyperthink",
       "file": "blobhyperthink.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5524,
+      "sha256": "329aafb5a0509fcf9decce8748d20d35ca87dc5c6c4454850dd41ca533653f18"
     },
     {
       "id": "blobhyperthinkfast",
       "file": "blobhyperthinkfast.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5702,
+      "sha256": "136297232d231d4284dc7a2f4743bf51745828d5201c7f7044fb3ae1f1d2b064"
     },
     {
       "id": "blobhypesquad",
       "file": "blobhypesquad.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4968,
+      "sha256": "7daa00ec2c3a9e567934341b8f03722f3563c00eead4f863343496824fb461ea"
     },
     {
       "id": "blobidea",
       "file": "blobidea.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4044,
+      "sha256": "340aeb5f9e0d8adf0ad80dc4f1a9f0c8714503f7d68909457b0c0f2c52c1c5fc"
     },
     {
       "id": "blobimfine",
       "file": "blobimfine.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3720,
+      "sha256": "12fc6f4c6816ae8b70dc29103b18ebec13e7c7cc8dc1aee022ebc694fc77341f"
     },
     {
       "id": "blobinlove",
       "file": "blobinlove.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4360,
+      "sha256": "dbeed2c4ec1944e9dc8ed6db8f8a9cfed75b766bad9827e8ab92a6fcfa2304e2"
     },
     {
       "id": "blobjam",
       "file": "blobjam.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4896,
+      "sha256": "69a543af6f3075690fb59b2d8d13dca923176f948462a83acae08f3898104806"
     },
     {
       "id": "blobjoy",
       "file": "blobjoy.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4532,
+      "sha256": "5c292bd64ef9bccd4863fa0fea9a12cd74b1d49bdbba0a709399c6728267560e"
     },
     {
       "id": "blobkiss",
       "file": "blobkiss.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3540,
+      "sha256": "8688ba76f45a162b4f6daef1d71ac0353772a92c733881c8914d68266098a796"
     },
     {
       "id": "blobkissblush",
       "file": "blobkissblush.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3656,
+      "sha256": "aef00ae371bea168b425db02b1116a9459a49a00fb5a93bccf119583b866c1b4"
     },
     {
       "id": "blobkissheart",
       "file": "blobkissheart.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3756,
+      "sha256": "4cc5c7e245d159dfcb3c79f60376468aad47923882e7bdfec1c5aef0704d01ab"
     },
     {
       "id": "bloblamp",
       "file": "bloblamp.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 8398,
+      "sha256": "35a2a3a68992a9359678a0f3592b1189255a7060ae78436f75006462c65c639c"
     },
     {
       "id": "bloblul",
       "file": "bloblul.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4682,
+      "sha256": "0d04827bf0e2b899fa9bc826a6550df00706301f6cb3f4a7827980b46963fec6"
     },
     {
       "id": "blobmail",
       "file": "blobmail.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 1712,
+      "sha256": "2ab194c833830c96f00419397696a34f8337381b7e85e1f953c0d044669cf19f"
     },
     {
       "id": "blobmaracas",
       "file": "blobmaracas.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4282,
+      "sha256": "880732ed2708b24d278b074b3d1cbdea7f42bd79d30468b332eff5debb81c722"
     },
     {
       "id": "blobmelt",
       "file": "blobmelt.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3746,
+      "sha256": "f2e1522fd69ca6a7c1ee647e1d0161a4833698de5dbbc7dc85428c729c5422f2"
     },
     {
       "id": "blobmeltblush",
       "file": "blobmeltblush.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3254,
+      "sha256": "f5b2e2f4b97ec5e3d820b7a5edaba7046ea237e590a71e92b03b176ba440e4e7"
     },
     {
       "id": "blobmeltsob",
       "file": "blobmeltsob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3480,
+      "sha256": "9c39692dd3f1b75b700ea25e80de34fc7379ef7631f91ebbf5463b9e34a810a7"
     },
     {
       "id": "blobmeltsoblove",
       "file": "blobmeltsoblove.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4092,
+      "sha256": "b4c04e1f9f7e41b2bf7211f0d40338442eeaf8ea877df0292c4ce5c9b6aaab8c"
     },
     {
       "id": "blobmindblown",
       "file": "blobmindblown.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4908,
+      "sha256": "109752d5dd0d230307c9371e9be37f6a8c7688f4322f14db8490d80dd63a0096"
     },
     {
       "id": "blobmlem",
       "file": "blobmlem.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3882,
+      "sha256": "6be80b85149f193e610c9da5cb61b7a64e910fd30d1e611af51ee8ead246aefd"
     },
     {
       "id": "blobmorning",
       "file": "blobmorning.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4572,
+      "sha256": "ed075a8d42cc5b7e6a1ed081310c2bcf484452ee330915e321ff2522bf8155c1"
     },
     {
       "id": "blobmousetrap",
       "file": "blobmousetrap.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4254,
+      "sha256": "6df95f72d7d16fd60e8126dc78469146860bd9eada620fda357be35407f61e77"
     },
     {
       "id": "blobmoustache",
       "file": "blobmoustache.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4100,
+      "sha256": "59bd426b6fd39eaaa8dd151e3aa4868e63282a58006059aca374ca9a778f9dd5"
     },
     {
       "id": "blobnauseated",
       "file": "blobnauseated.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3426,
+      "sha256": "8be38654ea94d44208dbf05df5a8e31b021e290db3b2f0c27896c16e7b5139d6"
     },
     {
       "id": "blobnerd",
       "file": "blobnerd.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2978,
+      "sha256": "c1f21a2cd80dd0caafaab802a460de8ecdb3948c4afbf6cd3ecdefeaa374b9cb"
     },
     {
       "id": "blobnervous",
       "file": "blobnervous.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3638,
+      "sha256": "ee470bf2ab3be99d3c56e111264a36de2bbb134dbd0425d3c8b579402797bf85"
     },
     {
       "id": "blobnervous2",
       "file": "blobnervous2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4318,
+      "sha256": "772c3f51824cb28da99ca2ac26909a2293951b16b158d55954695794e6e3718b"
     },
     {
       "id": "blobnervouspleading",
       "file": "blobnervouspleading.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5572,
+      "sha256": "4a8756999d14afb21683dfc732990a70e977fb67c4b0c7dd0ccb3357c961b581"
     },
     {
       "id": "blobneutral",
       "file": "blobneutral.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3452,
+      "sha256": "cbf3f189650dadc882658a019985225826875414500b8c428d3b2789bdf51710"
     },
     {
       "id": "blobnight",
       "file": "blobnight.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4388,
+      "sha256": "ba72729b108f9276eda55b405b91dfcced6e4f83ea52131996ff75a0e6ee0670"
     },
     {
       "id": "blobninja",
       "file": "blobninja.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3446,
+      "sha256": "6e28f73508a85da1e4bdd81f909cb393ef49fdacb89d6559fcc869b6d4b0500c"
     },
     {
       "id": "blobnitro",
       "file": "blobnitro.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4514,
+      "sha256": "a251f21e5ed47bcfc19a04632b42d82aa4a3bdbdbcf476f9fdbbf4b068ca7b02"
     },
     {
       "id": "blobno",
       "file": "blobno.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5030,
+      "sha256": "db70a8bf70cdadd7edeafe492c7429c60cca0ba983b6299358aab7f5b488228c"
     },
     {
       "id": "blobnogood",
       "file": "blobnogood.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3018,
+      "sha256": "418aa754c2d74e89a97aa0bdded1298a8c3bf46ec92f2df56374343d0b81de98"
     },
     {
       "id": "blobnom",
       "file": "blobnom.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4332,
+      "sha256": "b31be66142c9936d29a697ea573765d2e6b87e242ed85af44776bf6568469778"
     },
     {
       "id": "blobnomchocolate",
       "file": "blobnomchocolate.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3862,
+      "sha256": "b6d9bc1405dde210d6e183b5f0546e96dc94cf2c799568d7fac59e7f09944b26"
     },
     {
       "id": "blobnomchristmas",
       "file": "blobnomchristmas.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5400,
+      "sha256": "536b66c3bd0ad950439d151fc0d9d66213b92a1df314274a1f672a5b3369bdcb"
     },
     {
       "id": "blobnomcookie",
       "file": "blobnomcookie.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4266,
+      "sha256": "bc2a2f2cad41504daf481a909ac4499845e0dc0ea56426518bdc87bed376a5ef"
     },
     {
       "id": "blobnomglobal1",
       "file": "blobnomglobal1.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 7070,
+      "sha256": "f5d424b6d9c162cb8b90fe57672dc8c1223fdd3d7c64a194188b12381ff9da13"
     },
     {
       "id": "blobnomglobal2",
       "file": "blobnomglobal2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 7034,
+      "sha256": "f9072951ee134a3f2485560f091bc4b04fa9dae96a4ce46f7d7aa755f93ca436"
     },
     {
       "id": "blobnomglobal3",
       "file": "blobnomglobal3.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6742,
+      "sha256": "bd318a8a05186048d0a21585177a7c8244a898dcc4e230a118476425a2fb07dd"
     },
     {
       "id": "blobnomnom",
       "file": "blobnomnom.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4556,
+      "sha256": "599a119215aabcca581d5110b7b25f090e7784cdb7634fdc1872df7aebc519d5"
     },
     {
       "id": "blobnomouth",
       "file": "blobnomouth.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3284,
+      "sha256": "c7e944d0c26f62faef1fafbc995b0d7d3f280f89e4a6779d2bf4b93728b19b5b"
     },
     {
       "id": "blobnook",
       "file": "blobnook.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5248,
+      "sha256": "273e2a4f772afc2737a76c874bb6d6983b1364efe0c777ea0da09574fb5b36b6"
     },
     {
       "id": "blobnostar",
       "file": "blobnostar.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5228,
+      "sha256": "48be6d75b6012a46f57963bc2537d01cbce86915632d8c1ab59cd3ccdf933173"
     },
     {
       "id": "blobnostar2",
       "file": "blobnostar2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4836,
+      "sha256": "bb37d0275484821761f3df7e310f78ae3379e400566c55a4fd7207f3fa648b57"
     },
     {
       "id": "blobnote",
       "file": "blobnote.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6118,
+      "sha256": "da7697ce54b1550ae1f2e1a0bb66c980f1a94a61bbc1683df5c2685fc7fb5e6c"
     },
     {
       "id": "blobnwn",
       "file": "blobnwn.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3734,
+      "sha256": "8fe1d4f84ef4deaa10ac03c05d2e16e195cf45a1374bef090e334db3aa7c6961"
     },
     {
       "id": "blobok",
       "file": "blobok.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5442,
+      "sha256": "e7b1a456d6192aa5ff1d7185d3eaef8adf0663b0b0ad415a36dd0c30383f9c46"
     },
     {
       "id": "blobokhand",
       "file": "blobokhand.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4066,
+      "sha256": "12d69a8fa1b463172dd866a918d655c0b22ed9995faa44f88bcbe69b09002d13"
     },
     {
       "id": "blobomo",
       "file": "blobomo.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6676,
+      "sha256": "90dbe4ca142deacac8362d4c9c168c91f5e73304b5ded5d963dd9daa047a5375"
     },
     {
       "id": "blobonfire",
       "file": "blobonfire.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3642,
+      "sha256": "ffb98afd8fd3118eb7052c522836dc628c0257726db963ae51d21fd1b6ba56e8"
     },
     {
       "id": "blobono",
       "file": "blobono.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6558,
+      "sha256": "42fdf2059cce6c78d6fe469a4948a8bfdae61118bcb7a5ea0525ce376f84b8d6"
     },
     {
       "id": "blobooh",
       "file": "blobooh.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4182,
+      "sha256": "0f5aace18f9197ec2d5ea270a281d4dc89b6e4e0e99e9224959d90455125374f"
     },
     {
       "id": "bloboohcry",
       "file": "bloboohcry.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4166,
+      "sha256": "db5e317c27c8561166b4bc91d034cb732058fae93ca770769583f627ac3afa0c"
     },
     {
       "id": "blobopenmouth",
       "file": "blobopenmouth.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3400,
+      "sha256": "321412f91585ebb5cf9d85b4cd31652c8fabe6501fec041c0fcd65ddb0ca3fa1"
     },
     {
       "id": "bloboro",
       "file": "bloboro.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4442,
+      "sha256": "c8feae26232f9a1a326a8556e415ac591e0c391fc1ddf00d1091cc3ebce4e85a"
     },
     {
       "id": "bloboutage",
       "file": "bloboutage.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3574,
+      "sha256": "c948cb0767b70669b4c863eb912194558403a506ee906196bbf79d8c39ab720a"
     },
     {
       "id": "bloboverheated",
       "file": "bloboverheated.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3774,
+      "sha256": "fcaaabe85d20f43869f2d94c00ea1aad29c7d31058d7f2fb745acb4a6ca0ec17"
     },
     {
       "id": "blobovo",
       "file": "blobovo.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3414,
+      "sha256": "13d80e3949dd4d00e2ab36da472badf35d6a9ce8bddcd20d86e8dbee56329182"
     },
     {
       "id": "blobowo",
       "file": "blobowo.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3538,
+      "sha256": "3882b6466b92c1dc3ec248f39afc11ca5a9d4cc0c09746e7953a84694d9f41bd"
     },
     {
       "id": "blobowo2",
       "file": "blobowo2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3442,
+      "sha256": "0f59217029a04f2de323567f3fee0edf16c61bf958a85e20ecce889ef5a4683a"
     },
     {
       "id": "blobowoevil",
       "file": "blobowoevil.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3460,
+      "sha256": "b7bc92fcc58cbb5874a08625add8567ef949db31cc26d7dc04fdd0fbe87c0b10"
     },
     {
       "id": "blobowosquint",
       "file": "blobowosquint.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3684,
+      "sha256": "c89970e38e299fa7332e1ada34a66f97515c7c65c8957d8ba29a6e4e5dfb315c"
     },
     {
       "id": "blobpain",
       "file": "blobpain.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3624,
+      "sha256": "8baac38e2278030f4f74c6292905b4a48e53864d3f015c7dda4ab0131fd2ad9f"
     },
     {
       "id": "blobpainpats",
       "file": "blobpainpats.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4088,
+      "sha256": "abe4787d97ee1c869b6b27154d4d971af2224bf5b72246acb8e7c444831e4638"
     },
     {
       "id": "blobpan",
       "file": "blobpan.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4596,
+      "sha256": "7e51b9f86310ad378030fbcac454fe6ef863a8c9a966fc2cf5a9c386ca7f2ebb"
     },
     {
       "id": "blobpanic",
       "file": "blobpanic.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3712,
+      "sha256": "711eb236d5fb84e75d7bac6dccdcc519ac75ed2cee6a42c88b92e44203a1c7c1"
     },
     {
       "id": "blobpanic2",
       "file": "blobpanic2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3640,
+      "sha256": "610fdbd4d0cb0d2454bbbd040e6706a8bf07575f7ffb30ce6c83517e09ee0936"
     },
     {
       "id": "blobpartlysunny",
       "file": "blobpartlysunny.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5606,
+      "sha256": "48126a9dd587677ea1d80e1edfc2d797c097deeafe7785f2870091fd42f35af6"
     },
     {
       "id": "blobparty",
       "file": "blobparty.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6832,
+      "sha256": "a0b3a334aa4e573e3fad2c3fd8c599f810f4e9b339595e76e7450c7d6714f9f1"
     },
     {
       "id": "blobpatrol",
       "file": "blobpatrol.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3970,
+      "sha256": "e2cfe70254bcae2dd4d1f7fa6633290a7d880cc8212beab8f13bcae1e108243c"
     },
     {
       "id": "blobpats",
       "file": "blobpats.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4212,
+      "sha256": "6f201083dec9bf7dfd8dc070b3f8cd745e15965dc0d7da88429263a4802547c5"
     },
     {
       "id": "blobpeek",
       "file": "blobpeek.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2732,
+      "sha256": "dc6df4cf0dbc1736d6edbbc88b28b23c422c39bf048248bdc56b127f40e0877a"
     },
     {
       "id": "blobpensive",
       "file": "blobpensive.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3598,
+      "sha256": "cd8010902f0760cf401644fcec22a59e3839c1c88338cca3800d78f3e968083a"
     },
     {
       "id": "blobpensivepray",
       "file": "blobpensivepray.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 7140,
+      "sha256": "deb7c6838c1a94b5d1a5fc06a368fdd64dcdbac7bd696c96b59790913035245a"
     },
     {
       "id": "blobpin",
       "file": "blobpin.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3978,
+      "sha256": "7a0dff29d4314e91a9a82976fbf36ba3b80052ac7729889c9e5566f5cd350c94"
     },
     {
       "id": "blobpirate",
       "file": "blobpirate.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4700,
+      "sha256": "18120d71e51d0860667cbc507428958fe956b2385a8296b8b710c736b890bf9a"
     },
     {
       "id": "blobpleading",
       "file": "blobpleading.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4180,
+      "sha256": "00051d63fa56ec54b1b69d477b2dfa1fec5f8625522bd51f685059eacdcce31f"
     },
     {
       "id": "blobpolice",
       "file": "blobpolice.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3838,
+      "sha256": "e949d67b19aa439c722c2dff07fe615afa62f5d4a935faf1b7604fb56b757af9"
     },
     {
       "id": "blobpoliceangery",
       "file": "blobpoliceangery.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4564,
+      "sha256": "ee004e68cfa642c1dc4028bd73d2a3686164bdd27ce85911967378aca91628fb"
     },
     {
       "id": "blobpoll",
       "file": "blobpoll.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3810,
+      "sha256": "7b6c94a61ecd5e17265bdfaeac6740584a313063cdd431004903db7ae203b4bc"
     },
     {
       "id": "blobpopcorn",
       "file": "blobpopcorn.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3448,
+      "sha256": "b586a8b318db4ad22ba1a827299ab5b712a2e580687feaad003d729be3c48be5"
     },
     {
       "id": "blobpopsicle",
       "file": "blobpopsicle.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4016,
+      "sha256": "00638d4673bd89f684d6bbe47f49d4eccd2ec9f589df4f5da90ba2c1415627af"
     },
     {
       "id": "blobpout",
       "file": "blobpout.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3720,
+      "sha256": "703f604a1f7ac1f84729ab70e4d39afc0323b2fe0abbdc31a4e02e24aaefa682"
     },
     {
       "id": "blobpout2",
       "file": "blobpout2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3222,
+      "sha256": "2721d6e3b684f672c4663f756a004e83eeb936d21a42f032eb3fbfe8e17e6193"
     },
     {
       "id": "blobpray",
       "file": "blobpray.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2402,
+      "sha256": "65f3c2b9505f11182e827f53e3d5393f523913c67d6705101b592fb9aea8e874"
     },
     {
       "id": "blobpumpkin",
       "file": "blobpumpkin.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4396,
+      "sha256": "a7c624f508eb462d2d7e57ed99969f491ab06a28d410d7857ebfd4dd75cb0314"
     },
     {
       "id": "blobrage",
       "file": "blobrage.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4174,
+      "sha256": "e51df33579641be230eefbb0a0df3c37f71fd5d2d9335f6f6c5a5019a70189e3"
     },
     {
       "id": "blobrageangry",
       "file": "blobrageangry.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4082,
+      "sha256": "69e9fc7d867577aaf59da57ac65659d8c76f94876e4f78ba44f02260889292de"
     },
     {
       "id": "blobreach",
       "file": "blobreach.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2660,
+      "sha256": "ab3c730a07fd97c9a72f29f8452fc6ac1dfd8ae0447eee86bdd8237f1631f122"
     },
     {
       "id": "blobreachdrool",
       "file": "blobreachdrool.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4250,
+      "sha256": "e73dfe40249b4c111afb08e731058d8758e7a3665c62c9b64712ad3ba929efd7"
     },
     {
       "id": "blobreachfront",
       "file": "blobreachfront.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3904,
+      "sha256": "4c000afe071255afc377ba4ec24f4fc67f61ed67b78758602127313d022e2eb8"
     },
     {
       "id": "blobreachfrown",
       "file": "blobreachfrown.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2532,
+      "sha256": "a0adb5f1ceae33ded46d29690b4f073721f0fbdec687a9a92732c8c41c912382"
     },
     {
       "id": "blobreachreverse",
       "file": "blobreachreverse.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2668,
+      "sha256": "3a70d534a26416fd6db793e003241d7987e753d8f01fce1baa0932c4fe5c71da"
     },
     {
       "id": "blobreachsob",
       "file": "blobreachsob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4320,
+      "sha256": "2796ef05384213b7dd603daad1ad508168326b1cffef012cc94ae3d046e9504b"
     },
     {
       "id": "blobrelieved",
       "file": "blobrelieved.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3390,
+      "sha256": "5b4ba145e144c3f584aa50c15de7d51987247569d4aca447e20bc087e37af142"
     },
     {
       "id": "blobrofl",
       "file": "blobrofl.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4134,
+      "sha256": "a605c79da8fbaef2d7f0413fe52bddfab6d131f2ae10070e81fcf3a83dcf4f87"
     },
     {
       "id": "blobrollingeyes",
       "file": "blobrollingeyes.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 1916,
+      "sha256": "28cc6c0eef7bb68f8d54233318bfbb4779b9e29c9d884ff9d638628ae95abe46"
     },
     {
       "id": "blobross",
       "file": "blobross.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4166,
+      "sha256": "2812d6304f9334552d1209c94d7ab7f39c21355ad4551177ed506bd4d0ac3d3d"
     },
     {
       "id": "blobsad",
       "file": "blobsad.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3584,
+      "sha256": "cf107216772ee6d42d8f001be774730e6004047bbabda9c44e1edbe5a3009c3a"
     },
     {
       "id": "blobsadpats",
       "file": "blobsadpats.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4078,
+      "sha256": "9a2bd15f8be36334c8f853a030e5f5755582fe8c81cd71a434c1aa61eff02cd6"
     },
     {
       "id": "blobsadrain",
       "file": "blobsadrain.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4660,
+      "sha256": "fff0e8f58d99d9f5ec883275998a7a18f1b5b5d0b53a0286dc12871a08eefe1c"
     },
     {
       "id": "blobsalute",
       "file": "blobsalute.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4820,
+      "sha256": "0e601bdc014f96a7e237c0a4dc3f33c6e91501342064c7b4eada4213fd9aa096"
     },
     {
       "id": "blobsanta",
       "file": "blobsanta.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3980,
+      "sha256": "abce02d5c0c38afd47e4f682835e746177a662e267c324a7a1e25317c827d9c3"
     },
     {
       "id": "blobscarf",
       "file": "blobscarf.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4796,
+      "sha256": "df1147d45dcbf52a0758f759034d345ca7dd509927e0b686904c83a53e281ed3"
     },
     {
       "id": "blobscream",
       "file": "blobscream.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4044,
+      "sha256": "7ae0af42497e1a93b33f98da1bd43c0f06364d5a1a9b29cb5c30255869f1d02e"
     },
     {
       "id": "blobsecret",
       "file": "blobsecret.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3856,
+      "sha256": "510775bc569f9247c2d98b8495f29132653a6a0a0c2a5792f4d2ea87878ec0dc"
     },
     {
       "id": "blobshh",
       "file": "blobshh.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4454,
+      "sha256": "e278a9261bf986de43f6de533cd74cb16785aecfe3f3bcd90d5508558b1e0a48"
     },
     {
       "id": "blobshrug",
       "file": "blobshrug.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3126,
+      "sha256": "52f95344c7dec5f76598ad578e786ac213bf9e4324da4a1f7555353676d7e623"
     },
     {
       "id": "blobsick",
       "file": "blobsick.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4132,
+      "sha256": "f2e4461a03400c9373535154c21628f528379bdcaf5884bf2e6055a4a6ade14f"
     },
     {
       "id": "blobsip",
       "file": "blobsip.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4224,
+      "sha256": "311d896d5f47e23865e5ba0441f7af7a73b829767f536100a9115e25d04f4adb"
     },
     {
       "id": "blobsleeping",
       "file": "blobsleeping.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4416,
+      "sha256": "33294caa0413002cdeb351b1dada5530aac56de7c2879b926d429cafac632935"
     },
     {
       "id": "blobsleepless",
       "file": "blobsleepless.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3728,
+      "sha256": "9e7be2e451225fd06c271688c759225f6fd3127579b91cf842144192f7f2d1ef"
     },
     {
       "id": "blobslightsmile",
       "file": "blobslightsmile.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6710,
+      "sha256": "25df4b2eb31236edae434362b98c239487add3f732a6f05cfde807a65414476d"
     },
     {
       "id": "blobsmile",
       "file": "blobsmile.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3538,
+      "sha256": "4cba2b36054a17142ec1f528f007623a710a904e27b852573baf4dcf4cfa1cca"
     },
     {
       "id": "blobsmilehappy",
       "file": "blobsmilehappy.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3808,
+      "sha256": "5cafccc65b9903b578cda4f98d55d7989dd7e96d2ff53008027b036a87084579"
     },
     {
       "id": "blobsmilehappyeyes",
       "file": "blobsmilehappyeyes.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3850,
+      "sha256": "976c30e1f2ce74898ad4f176614d2378bc846a6108763efbc95032633ef84330"
     },
     {
       "id": "blobsmilesweat",
       "file": "blobsmilesweat.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3722,
+      "sha256": "5bb22209c3df3fdffb6e4c08b117259ce9744dd603bded97ba9945df434f4d73"
     },
     {
       "id": "blobsmilesweat2",
       "file": "blobsmilesweat2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3686,
+      "sha256": "e868d6908794f68c34278de0a8058c6e07c04058e19573dcdda3177d2f581805"
     },
     {
       "id": "blobsmiletear",
       "file": "blobsmiletear.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3634,
+      "sha256": "d5e26f3d20db8898bb85024505436de317763ad9291ee71da40f52cae218bc40"
     },
     {
       "id": "blobsmiley",
       "file": "blobsmiley.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3524,
+      "sha256": "34853df647501f65b509c759a9560a957840ccf195a5054e4df4ee15af6a683c"
     },
     {
       "id": "blobsmirk",
       "file": "blobsmirk.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3630,
+      "sha256": "1f1d92753d1c912ec67334d894a91a0883e56f998395c069641cfcf1569e3dc2"
     },
     {
       "id": "blobsmirk2",
       "file": "blobsmirk2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3878,
+      "sha256": "30b87b30e0154de26b250f603aaeb989d55d4d051bd0daae7118b9277d7f5bfb"
     },
     {
       "id": "blobsneezing",
       "file": "blobsneezing.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4230,
+      "sha256": "df9faf21dd31da9f657a1d9148c3424cae4c0e5f1d273e618842220a6e3a253f"
     },
     {
       "id": "blobsnuggle",
       "file": "blobsnuggle.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4110,
+      "sha256": "2e152d0f89b5f30d8909e846a465de8accc6765903536a8689bd0e78f584a050"
     },
     {
       "id": "blobsob",
       "file": "blobsob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4184,
+      "sha256": "2f390d267ab96b3df717daa41af9172737a061dda2e39e7e983c7a501f6c5179"
     },
     {
       "id": "blobsobglasses",
       "file": "blobsobglasses.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4776,
+      "sha256": "925f4eaf1a2e4d9ff3bf744b8d4db914a258c144e6b7b1f7beaf6de2621cd87d"
     },
     {
       "id": "blobspam",
       "file": "blobspam.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 7864,
+      "sha256": "7dd0d6855a81650d00050ca78b466971d4bbb8072353fd70a08c2ea0e777fd49"
     },
     {
       "id": "blobsplosion",
       "file": "blobsplosion.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5854,
+      "sha256": "e1da5e614c57581106379169814589d303bd756fcf204aa7f061e744796168f3"
     },
     {
       "id": "blobspy",
       "file": "blobspy.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3770,
+      "sha256": "338048235bd522b8b9b6c736c3743d642a586fbea0663d3cb46ab8ec18f0b3f4"
     },
     {
       "id": "blobsquare",
       "file": "blobsquare.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 794,
+      "sha256": "ab3889b6b23808dc37c47f6710f3b742660fa85d9e79d3e595d0b1fd0c77dcc4"
     },
     {
       "id": "blobsquee",
       "file": "blobsquee.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3536,
+      "sha256": "3f7190e3a76779e5c0550b69a8dbd853c86e0dc9c9dbd3d43ca26d0875279eb6"
     },
     {
       "id": "blobstare",
       "file": "blobstare.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3490,
+      "sha256": "ebc792d0c275b74d685fb71444bc1a77765a2a750f3ec0427eec727fe5d3afb8"
     },
     {
       "id": "blobstarstruck",
       "file": "blobstarstruck.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3620,
+      "sha256": "c6a215f59e554917aba5acebe92393a90b581db139d10390d5fabb60aa662957"
     },
     {
       "id": "blobstop",
       "file": "blobstop.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4678,
+      "sha256": "3a607402807a2c9d24b3a4229b239faf8a4596c26b4771a355cda85497d261f4"
     },
     {
       "id": "blobstudent",
       "file": "blobstudent.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5136,
+      "sha256": "741b8948de068b03be5ac156a4c433fa714e974a3e1033e8b0a5e8cdcf78088e"
     },
     {
       "id": "blobsunglasses",
       "file": "blobsunglasses.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4238,
+      "sha256": "5ee76e4b33d4406014c284b1a2f4f55067dfbc4d9eb15bf6bc82a7ca1d092064"
     },
     {
       "id": "blobsurprised",
       "file": "blobsurprised.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2076,
+      "sha256": "0a9a57eded5d9c35a0863edc94a10249c1178751b28897684f7fabaab8c27551"
     },
     {
       "id": "blobsus",
       "file": "blobsus.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3806,
+      "sha256": "9cad044b49e31b18388cfde2f84f1dac85436afb1407f1788fbc5d8a30f633e3"
     },
     {
       "id": "blobsweats",
       "file": "blobsweats.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3860,
+      "sha256": "1cabe431ed904671ed63d597227b294beb1b3e330a4a5c1865e47a0947d4c2f2"
     },
     {
       "id": "blobsweatsweary",
       "file": "blobsweatsweary.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2072,
+      "sha256": "eb61d50879a11998924939700c5c70bb1208c68adcbb5e879960b4ed7f7ec3de"
     },
     {
       "id": "blobteefs",
       "file": "blobteefs.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3816,
+      "sha256": "a25b5be37d9f6cffaeb9afc8db52a58f181dcc2a5f48c60c0fd323a052d9e9e7"
     },
     {
       "id": "blobthanks",
       "file": "blobthanks.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4844,
+      "sha256": "edd7b1374ceaf76b2967193201476ae942bc5b622553f5920bf25681dd959d08"
     },
     {
       "id": "blobthief",
       "file": "blobthief.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4018,
+      "sha256": "78d1439959b3d25cf3d0eeecfff9de77e5d806ef63ba10767d01469cc8dff251"
     },
     {
       "id": "blobthinking",
       "file": "blobthinking.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4442,
+      "sha256": "67a55078a1f820b58d1cadb5dd614927613622b0176aefe7102b49a76a0efa4d"
     },
     {
       "id": "blobthinkingcool",
       "file": "blobthinkingcool.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4756,
+      "sha256": "c9b4e29ea1f2f6fbd75d8f06b07424d42a0ad2fd4994fa52ded0a5e97d68dde6"
     },
     {
       "id": "blobthinkingdown",
       "file": "blobthinkingdown.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4370,
+      "sha256": "c1ba6f29077597f4b7889b3bd5fd5b240c81635018d0c66fb1fcb45bea67e63a"
     },
     {
       "id": "blobthinkingeyes",
       "file": "blobthinkingeyes.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5034,
+      "sha256": "6ecb716f1fa6a76a9fd561f52ef88b329764732b4fec677dc19b7ec9c6a94751"
     },
     {
       "id": "blobthinkingfast",
       "file": "blobthinkingfast.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4292,
+      "sha256": "4ed0a2bb9c1c05932675bc7a8f532cccf927c9d7cfd2d00ca30bea11205bbb97"
     },
     {
       "id": "blobthinkingglare",
       "file": "blobthinkingglare.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4392,
+      "sha256": "05f857c0008f7ff9caac6b8b87976b6dc7ecbac48c748c1e95a4e32f48f48786"
     },
     {
       "id": "blobthinkingsmirk",
       "file": "blobthinkingsmirk.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3342,
+      "sha256": "500d1d27631f282e65c68295a72d1bf952f2fab2deb1a746d1fc4a0586c8047c"
     },
     {
       "id": "blobthinksmart",
       "file": "blobthinksmart.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4598,
+      "sha256": "a1eda155eff790c56d72713038c74847e905d76718c61790347aaa463dd67b34"
     },
     {
       "id": "blobthis",
       "file": "blobthis.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5140,
+      "sha256": "2eb7a9b51068f05c9f277d2e4118f8561f64e38b42a80e75da5c4853bba25f00"
     },
     {
       "id": "blobthonkang",
       "file": "blobthonkang.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4842,
+      "sha256": "84cb8e804d3592ae29510c0f5b84f476f8573e70ffa2a37cbbfca0021629ea9c"
     },
     {
       "id": "blobthumbsdown",
       "file": "blobthumbsdown.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4414,
+      "sha256": "2bb1217f68e3768de02c791b670710945cf1989b3f06906bdfbb93404773a48d"
     },
     {
       "id": "blobthumbsup",
       "file": "blobthumbsup.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3438,
+      "sha256": "3113bce7f479567eef57b179cfd5ecc3a9e74aeeedc90da4ce7c86074d039fa6"
     },
     {
       "id": "blobthump",
       "file": "blobthump.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4160,
+      "sha256": "c1e0afc28e1f9fc78180d3564dd6fd37a3a0ad840f40ffb2bdb3c81541e27937"
     },
     {
       "id": "blobtilt",
       "file": "blobtilt.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 1844,
+      "sha256": "c9c315ada661584050e1b483693e1aae875051d369abee029a849819de79606f"
     },
     {
       "id": "blobtired",
       "file": "blobtired.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3740,
+      "sha256": "d32a61bdd5d659079873411eecfbd69dfa564ecf65982a4dc0eae27787b87f1a"
     },
     {
       "id": "blobtongue",
       "file": "blobtongue.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3822,
+      "sha256": "9f27bfdcdcdd12024b8cfb2533f1c263e9f0c6296c1067dc21dfed0ed5b9da1a"
     },
     {
       "id": "blobtonguewink",
       "file": "blobtonguewink.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3696,
+      "sha256": "130f9e1304b24ab68d7bda5cebe7e21615f318cdd1c92c97cbd67cacc6a3aeeb"
     },
     {
       "id": "blobtorch",
       "file": "blobtorch.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3272,
+      "sha256": "818f093887811bc19c0ec3eafad785c2e628758435a5adb2d8b2ba5da4b81c24"
     },
     {
       "id": "blobtrans",
       "file": "blobtrans.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4062,
+      "sha256": "0f6fe50e1880fd15c430612398ce73ef6f133a9b933db3bd4c2da9afca34ad37"
     },
     {
       "id": "blobtriumph",
       "file": "blobtriumph.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4170,
+      "sha256": "44b06097454272fcfa072ff97566dc658f83c0c178fffffe94fe1d322b73af34"
     },
     {
       "id": "blobtriumph2",
       "file": "blobtriumph2.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4432,
+      "sha256": "270cb77d67254bb498b0483ed120fcebeaf8962fecbd1f5cb2cff6aec3c046b6"
     },
     {
       "id": "blobugh",
       "file": "blobugh.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4060,
+      "sha256": "9be6eb2682b4b65039c0e07a8f24c165eda7767bb29de6c0ae5a4d71daa07541"
     },
     {
       "id": "blobunamused",
       "file": "blobunamused.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3414,
+      "sha256": "dc55a737bf5fc7e5e3e30bb2e2348e4537e144a61b29865a805be8825acbb0a6"
     },
     {
       "id": "blobunsure",
       "file": "blobunsure.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3782,
+      "sha256": "f01a12de769e1e1c15ed14df3da6f059245432647c22fd67489bdddcfcef89a7"
     },
     {
       "id": "blobupset",
       "file": "blobupset.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3848,
+      "sha256": "c1fecaac29e435912f5ef0446798a034166df67985a8b8c4fccd7b4945095863"
     },
     {
       "id": "blobupsidedown",
       "file": "blobupsidedown.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3572,
+      "sha256": "9f7c93ce6d2035ce24d4e7aa6065dfd5212311b769f348849f9fbd5d4344ae9f"
     },
     {
       "id": "blobuwu",
       "file": "blobuwu.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3592,
+      "sha256": "b9b47f8213ea2d72376dcb3344defae4f8774e582264e6c35174553489b17a33"
     },
     {
       "id": "blobvomiting",
       "file": "blobvomiting.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4104,
+      "sha256": "afa63756564839148fe1dcb7bd08c781eba5b2e1246c0d50f830d5d62a38cde3"
     },
     {
       "id": "blobwaitwhat",
       "file": "blobwaitwhat.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4224,
+      "sha256": "82bbcfe8e03f7fd3d7fb274a855c3c9eaeb289625a989007f8d95692c5065bba"
     },
     {
       "id": "blobwave",
       "file": "blobwave.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3922,
+      "sha256": "80f0cefa09bf212b7a5511dcb5ea6cddbe936172ee352fe1682c3c9818e33d98"
     },
     {
       "id": "blobwavereverse",
       "file": "blobwavereverse.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3932,
+      "sha256": "bae63386ef91b18330ead19647b62877e2429f4044910fdfb5f502dcafa23c9a"
     },
     {
       "id": "blobwavesob",
       "file": "blobwavesob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4156,
+      "sha256": "e1412939a65a9bef50518863d3e924fbd4ac6c6d020c96187f7c3667abdc047f"
     },
     {
       "id": "blobweary",
       "file": "blobweary.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3424,
+      "sha256": "08b7540b25fdd603a4a1887c25196c46ad36953445822247b7f3ce0c650fcd6f"
     },
     {
       "id": "blobwhistle",
       "file": "blobwhistle.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3990,
+      "sha256": "c505d63b9030b89b697201f65543cbdaff242ae9fdaeadefd50e3174abf6155e"
     },
     {
       "id": "blobwink",
       "file": "blobwink.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3698,
+      "sha256": "6023fd75967c0e0ce3cfa32f4f80693bf2e9e0681f12f767d2afabb62026664b"
     },
     {
       "id": "blobwitch",
       "file": "blobwitch.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4710,
+      "sha256": "8c59c48aba581bf1d31693ae79c84ab91ccb90678c53a4238ebc6e52e8f31a20"
     },
     {
       "id": "blobwizard",
       "file": "blobwizard.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4948,
+      "sha256": "d7190a035bb7776b01e1b44d56bef955d789a5be925c324a901626b2f91ecb14"
     },
     {
       "id": "blobwoah",
       "file": "blobwoah.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3668,
+      "sha256": "e88321ffc7b59ca0807a938cb64638d0a2f94ce4deb06a4c32d2bc3d5a742315"
     },
     {
       "id": "blobwoahopenmouth",
       "file": "blobwoahopenmouth.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3620,
+      "sha256": "1eb14333fe914cf33f97ca1197358a51fdb2717e365db9bf3d75b6e2b1536b8c"
     },
     {
       "id": "blobwob",
       "file": "blobwob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5002,
+      "sha256": "5a008d917d79e7c77da95f59fb72ffbcdb0971064d8ed452ed1da51ae3121d7f"
     },
     {
       "id": "blobwooloo",
       "file": "blobwooloo.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4266,
+      "sha256": "bc7831076858d91f8d4eeb4e0b7a39ef1e68e4c2de9ea8eeb42afb9aa6a60cb7"
     },
     {
       "id": "blobwoozy",
       "file": "blobwoozy.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4102,
+      "sha256": "02694ba7fb74aa9151c5be8b339b7c5ec4433d010c5d8f721c5ced2d5c561d09"
     },
     {
       "id": "blobworker",
       "file": "blobworker.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4028,
+      "sha256": "3939a496b9aef1c6ea1ab3d05a8e60557219f2bdbd1b94ecc0ff0dd57f14c197"
     },
     {
       "id": "blobworried",
       "file": "blobworried.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3676,
+      "sha256": "f579b5b020971f76028239743fad2c7272557676761998aa1a8c82971ba2762f"
     },
     {
       "id": "blobxd",
       "file": "blobxd.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3986,
+      "sha256": "c20dcb0cc50b2e9b250679989a3a0436f308a6fa60e9446e26988e1446aeb3e1"
     },
     {
       "id": "blobyawn",
       "file": "blobyawn.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5490,
+      "sha256": "33e9314ff28831892b5cdd87b6ff968de204f83972b1f081ac9cab10dd6c6c8a"
     },
     {
       "id": "blobyes",
       "file": "blobyes.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5056,
+      "sha256": "d99918769ebb882862ada90da229318fd9674d13f9a36f7d97517574bcb7ac2a"
     },
     {
       "id": "blobyikes",
       "file": "blobyikes.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4038,
+      "sha256": "1fd28cf30265376b65280b2068c8677dbbced60ecab736cace9c75da5a17385c"
     },
     {
       "id": "blobyum",
       "file": "blobyum.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4218,
+      "sha256": "9a681a90998fe40f1431a537c7b61856f76dfc7c3a893500b14a340470206541"
     },
     {
       "id": "blobzippermouth",
       "file": "blobzippermouth.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2530,
+      "sha256": "5b09ac511fc55d79d8e75c448cd756268fbbfdda39f84e5a1dab354cca9e258d"
     },
     {
       "id": "bolb",
       "file": "bolb.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2674,
+      "sha256": "14bafc0aea90cf07ad02127d7c2518ea113012ce4ac2dde0787b63ee8f65bf51"
     },
     {
       "id": "doggoblob",
       "file": "doggoblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3794,
+      "sha256": "6795c8bf016e28028f56a77129df85367e5735082555e20d85ca5ae9d5bac68d"
     },
     {
       "id": "feelsblobman",
       "file": "feelsblobman.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2804,
+      "sha256": "4992f2b43c1fab46f96392079a5da23ab1fdbc90e75a48b9a079bf3566bfb155"
     },
     {
       "id": "ferretblob",
       "file": "ferretblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4998,
+      "sha256": "455a22b8d562eae12765392d12656e7b489e634bb1e76671f8332568e7a708d7"
     },
     {
       "id": "gentleblob",
       "file": "gentleblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4338,
+      "sha256": "4a25a564d9b2a96e7d775b1e65617c61ce518ce4ef4ac158893e39fffcc9cae0"
     },
     {
       "id": "googlebear",
       "file": "googlebear.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3842,
+      "sha256": "8575fe45acdf3aac306cca0719306bdc7b9376cf6e72a9265077528f62be1322"
     },
     {
       "id": "googlebee",
       "file": "googlebee.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5720,
+      "sha256": "5186f3815a5890b404ccbad710e943a6a1de0719af6e735b3186d13c0d41de9a"
     },
     {
       "id": "googlebird",
       "file": "googlebird.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 1794,
+      "sha256": "b14675b1ece7755a07484ae49dfa85f9dc74fd3b65eb3613c42673a24c3f5ee0"
     },
     {
       "id": "googleblueheart",
       "file": "googleblueheart.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2476,
+      "sha256": "42d182d0c8c11e4b7c66515b72dd1474b4bcc9829612e5aa8292f48c4879c39c"
     },
     {
       "id": "googlecake",
       "file": "googlecake.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5132,
+      "sha256": "b8bfb5ef2dfccc12c888a295649fcc04230a258ae76d8a7fa3643eb099954ecf"
     },
     {
       "id": "googlecat",
       "file": "googlecat.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4710,
+      "sha256": "fcd16d293791010884397497f49ce4c653e7efb3feebc87df2a7f622a06d957d"
     },
     {
       "id": "googlecatface",
       "file": "googlecatface.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4444,
+      "sha256": "7979829aa699ff5c7574ef09f65ebf460fdfc99d05ea5e2cb3c6beee497169f9"
     },
     {
       "id": "googlecatheart",
       "file": "googlecatheart.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4432,
+      "sha256": "1b31773273cc05d39ae32891513669695bd6f37c44527a22aa8ea75e24e0c243"
     },
     {
       "id": "googlechick",
       "file": "googlechick.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4326,
+      "sha256": "7d39b0b0b849f724b6945a5538c2906a9ceb25416d3d9af73d47d4c3a6d313f1"
     },
     {
       "id": "googlechicken",
       "file": "googlechicken.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3602,
+      "sha256": "264145588fc51c918d37b983b3d76636689de2e71d49d45f72e27d1db6cd80b3"
     },
     {
       "id": "googlechristmastree",
       "file": "googlechristmastree.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4840,
+      "sha256": "be147fb3c66a662a84521b05834bdb9502c876ef528b0402d6994d0f0a697717"
     },
     {
       "id": "googlecow",
       "file": "googlecow.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4338,
+      "sha256": "816529a640748565934cc0389847ce200596b1dd0b1290b01c770eeb6335a3d3"
     },
     {
       "id": "googlecrab",
       "file": "googlecrab.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6688,
+      "sha256": "03796bfa868d44ec20f00cf96b62fa471ce1dfb78ba8ab0b9ad806e02748612d"
     },
     {
       "id": "googledog",
       "file": "googledog.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4928,
+      "sha256": "c19b4920f68a1e3d28261b4705760017b1eb527c38f6025d7a29be2fef8bf8e3"
     },
     {
       "id": "googledove",
       "file": "googledove.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4568,
+      "sha256": "d0eac34fad24395431dc5e592f4dd00a25e46473182c9b4eaf7637e22f6dc050"
     },
     {
       "id": "googleduck",
       "file": "googleduck.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4290,
+      "sha256": "cddb7df849d14b987d59f24adf50aa90356965a7b8c73e3ba26231970c013c95"
     },
     {
       "id": "googleeagle",
       "file": "googleeagle.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5808,
+      "sha256": "26049ab810d4d9b8aac2d65a984ce88ec0451eea5f1b95844e6299ed81fb6f97"
     },
     {
       "id": "googlefire",
       "file": "googlefire.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3424,
+      "sha256": "f0d2a9d7cf24cfd01d0949c12b9a09de747b1b1922835dfb5964d121073c7ce8"
     },
     {
       "id": "googlefox",
       "file": "googlefox.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5260,
+      "sha256": "566f6da09589beda4d217b4fc3d1cbc889fe370afe19fc4ce6e894574603b27b"
     },
     {
       "id": "googleghost",
       "file": "googleghost.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4474,
+      "sha256": "a7e2ab417b875a42f50dcfb155a0947e14703d8c3b394b1e2634e6980fdaba6f"
     },
     {
       "id": "googlegift",
       "file": "googlegift.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4688,
+      "sha256": "3776887fd1040300fa3b840c1a94a041f2971c3206854a716861db7b1fec8435"
     },
     {
       "id": "googlegoat",
       "file": "googlegoat.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4530,
+      "sha256": "fba4a38f1bc27468339ae4c1257f0e492e0381ffcedf5e9752edf72caf576f4d"
     },
     {
       "id": "googlegun",
       "file": "googlegun.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2764,
+      "sha256": "f5f5ec287e0243a02dada42423b13a74cc532c82e03027dec198c6864302dab2"
     },
     {
       "id": "googleicecream",
       "file": "googleicecream.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2766,
+      "sha256": "67b45a0f7d6c9be10e2259cf120c4cb9d12db709f65316d7aab8ab3671d12d93"
     },
     {
       "id": "googlekoala",
       "file": "googlekoala.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3246,
+      "sha256": "d5cb2ee011afaa74573b7504c1cd1f08cfd4546a5a6c172ba196565b335b049d"
     },
     {
       "id": "googlelion",
       "file": "googlelion.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5240,
+      "sha256": "53e0bfab297209af6c7eaf5d4b5ea5e277b0cce344e8cbf6bd3f27d94102449d"
     },
     {
       "id": "googlemouse",
       "file": "googlemouse.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4652,
+      "sha256": "2f93c1fe4ca1ae624aac495bc636cc5e9cb71a37d618cd1305b3030be637bc00"
     },
     {
       "id": "googlemuscleL",
       "file": "googlemuscleL.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3096,
+      "sha256": "77c18529d12385fa049bf6df9f1e1f456047684e81b795860278e2faaeae0e2b"
     },
     {
       "id": "googlemuscleR",
       "file": "googlemuscleR.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3164,
+      "sha256": "d8df8548ebfce179487809db0bd2c7a28c15a7f1d1208b80aeb33480c92695a5"
     },
     {
       "id": "googleoctopus",
       "file": "googleoctopus.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 7186,
+      "sha256": "0fa3a228dea689d0e070e9c3d56b770a48b33356287471c2cad5abda152b81ff"
     },
     {
       "id": "googlepanda",
       "file": "googlepanda.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3794,
+      "sha256": "2220339524248ce202febae4377a154cf491f7a8727bc21b9968b28a0cea4179"
     },
     {
       "id": "googlepenguin",
       "file": "googlepenguin.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4328,
+      "sha256": "406ac9f2d700b91d628181c1ea5763d8f130bb74173bde9ddf8b4a2e3baf1608"
     },
     {
       "id": "googlepig",
       "file": "googlepig.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3780,
+      "sha256": "060782f9dd8b33454368bee5f60013f983550160ed1359ca9978ddc1e8434aa2"
     },
     {
       "id": "googlepizza",
       "file": "googlepizza.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4454,
+      "sha256": "be41b1956e217362ff40704086cb5ae4b9193136cb18e05e4a1d515ab5de65fd"
     },
     {
       "id": "googlerabbit",
       "file": "googlerabbit.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4038,
+      "sha256": "843afd6ad5f743046e01ba6cd37f9a4b541da43f4eb718bea3d7226bbb6f9dfd"
     },
     {
       "id": "googlerat",
       "file": "googlerat.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5038,
+      "sha256": "09bcf0afd7c0208e33727eccac7a05d1b91fa929c9a988fed2dfc15494683ed2"
     },
     {
       "id": "googleredheart",
       "file": "googleredheart.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2632,
+      "sha256": "2a70810db5c84d806017fc86dd3d9665978224383786c74b9b4fab660b7d35a4"
     },
     {
       "id": "googlescorpion",
       "file": "googlescorpion.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6218,
+      "sha256": "d0494bd659696e62c017b54cb5c4203d20ff4a83fb3cf926d23e7c82a5d36c24"
     },
     {
       "id": "googlesheep",
       "file": "googlesheep.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3974,
+      "sha256": "a7f4f5ad82c5d1280b54eeb71e983f8d6fb7b4fc6a320e7f6953f503a99ffdff"
     },
     {
       "id": "googlesnail",
       "file": "googlesnail.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4844,
+      "sha256": "70bba357eeb91e35fb8abbb8784eaed02640cfd11c08f26612cefc2fcc206973"
     },
     {
       "id": "googlesnake",
       "file": "googlesnake.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5052,
+      "sha256": "43dcc9c4c3d0b8f8d1ba8c32a719c58a5b24577f416560ad532db35cd430335c"
     },
     {
       "id": "googlesquirrel",
       "file": "googlesquirrel.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2274,
+      "sha256": "19f97cb607e54544098103d2d1bc7342ab6ee7fa04aa46a61d677e37c5b30e20"
     },
     {
       "id": "googleturtle",
       "file": "googleturtle.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4036,
+      "sha256": "ef6cde2b9e362f66f1af4b328c77866e4b2ffab37a8e56fda70c37ee078a43d9"
     },
     {
       "id": "googlewhale",
       "file": "googlewhale.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5072,
+      "sha256": "fd93e4fc7c0bdc1687cdbef4a2d3a3d5270fa30e4740786294b985326c73595c"
     },
     {
       "id": "greentick",
       "file": "greentick.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2264,
+      "sha256": "e4368a78cd239c1fbf2b32c4267c89ab9e7b2f3b0a8ebda1bfcaec20af8a1ace"
     },
     {
       "id": "jakeblob",
       "file": "jakeblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4642,
+      "sha256": "86a5795380ec8369494dfcd872e9ae97eee6ae96d1a1aec95c89896690955fe6"
     },
     {
       "id": "kirbyblob",
       "file": "kirbyblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3698,
+      "sha256": "fa02b95bf12b13a35429f1c95d2bff9b887eeb7a4780d81abe1df914efc078e4"
     },
     {
       "id": "nellyblob",
       "file": "nellyblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4922,
+      "sha256": "bcc3430dfa5efb155fbeab3182791ae34bbee184ba8b5b3c5823dc831c0e3388"
     },
     {
       "id": "nikoblob",
       "file": "nikoblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4946,
+      "sha256": "a912919a714259c89f0824e9025d35fe89a8cf3f0cde5a786c43ee07289d3e66"
     },
     {
       "id": "notlikeblob",
       "file": "notlikeblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4580,
+      "sha256": "457246df3a0e878b81ba868518666bc2208fc8956b0118f3b75730c27043c060"
     },
     {
       "id": "pandablob",
       "file": "pandablob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3824,
+      "sha256": "b23844cd78d8bd23c043d9318fc7ab8f38d7f0621894dcec7abcb59b6a096720"
     },
     {
       "id": "photoblob",
       "file": "photoblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2044,
+      "sha256": "1941687229affdf63c8e808b33323aea6c94aa271a6604dcfb176c0860520301"
     },
     {
       "id": "pikablob",
       "file": "pikablob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4750,
+      "sha256": "d9e3089befe4fef3334d9574c9ad098c4ffa91d9f1c5db354105235d4ab2c893"
     },
     {
       "id": "pusheenblob",
       "file": "pusheenblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3360,
+      "sha256": "6c2fe67ebdce86573d892cc85157d6860659440456db830f6056320b7e17e1e3"
     },
     {
       "id": "rainblob",
       "file": "rainblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4434,
+      "sha256": "6875ba30cb8651406f60e2e305cea8d7383b65dbaf8fa1304a1daac4c24f5185"
     },
     {
       "id": "redtick",
       "file": "redtick.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 2686,
+      "sha256": "a701cddb9a3e34673959777959d9bc89cb466366ef664c4799ee9d266cf47d14"
     },
     {
       "id": "reindeerblob",
       "file": "reindeerblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 6336,
+      "sha256": "89b6d37add12e7453045c206175a455e471350187ea165784a1e7fa83ad7f055"
     },
     {
       "id": "rickblob",
       "file": "rickblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4752,
+      "sha256": "6d57ef87ee8e3a9aa71b84cb18c1ec857387f33d925e49f88cbe8f3253769c75"
     },
     {
       "id": "superblob",
       "file": "superblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4510,
+      "sha256": "1a9a7149228886148a8ba91ac46b5f3d15091025954bf0a7b678176fad58050c"
     },
     {
       "id": "thinkingwithblobs",
       "file": "thinkingwithblobs.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 5322,
+      "sha256": "e958f5779faed4954b1bbab1fdd151c3b26e2eaf96677d4172b7033e8dc4bbc5"
     },
     {
       "id": "wolfiriblob",
       "file": "wolfiriblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 4132,
+      "sha256": "716079285146915dd9cd65fc330bdb6f5f4c51b0fad45d5ef388043754905972"
     },
     {
       "id": "wumpusblob",
       "file": "wumpusblob.webp",
-      "animated": false
+      "animated": false,
+      "sizeBytes": 3606,
+      "sha256": "3a582b8c5e8db676d7113d9c4f249e037325a45a10dd5ee35f79c9e548ad9ed9"
     },
     {
       "id": "ab1nzyblob2",
       "file": "ab1nzyblob2.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 120312,
+      "sha256": "e6f1f647199fcdac82beda4a5549f6cca5c16dd1f5354993afcc23c02440ab63"
     },
     {
       "id": "ablobabducted",
       "file": "ablobabducted.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 226998,
+      "sha256": "4f166e4cb4c174385ed8d71136d013904118cbf32b86ce0193e981ef81c51825"
     },
     {
       "id": "ablobangel",
       "file": "ablobangel.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 142178,
+      "sha256": "a463a1380e754040d90f385ad53e78ea83b867387cdbea969e810c2abf900fcb"
     },
     {
       "id": "ablobanvil",
       "file": "ablobanvil.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 19040,
+      "sha256": "72a5e2dbba71368bdf0ec76f5f9345cb6a44bf50fb8a4783177a133205bba3d2"
     },
     {
       "id": "ablobattention",
       "file": "ablobattention.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 68998,
+      "sha256": "c6b53cf5db952e57e4b4771983896a4507c20060521d25ed7082eac92f444566"
     },
     {
       "id": "ablobattentionreverse",
       "file": "ablobattentionreverse.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 69260,
+      "sha256": "70b1121e92b5ec02dac024d2e8a456574025472d8fb552255cdfe23aa1a04844"
     },
     {
       "id": "ablobaww",
       "file": "ablobaww.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 588940,
+      "sha256": "29e67f6c0b87094a3da990ecede1d30e01ff438cc42f055b00d8bfa882cb03d4"
     },
     {
       "id": "ablobbanhammer",
       "file": "ablobbanhammer.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 240634,
+      "sha256": "6b39b8110ee5ad1d97b0e1d5cd698cbaf03681dc9ad58aeede1b4d2a303ebcc6"
     },
     {
       "id": "ablobbass",
       "file": "ablobbass.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 418440,
+      "sha256": "e970cf4037cb1612d0fe93c56c986e85aa6bfd07a58ab9c0d1c7dabbc26399ba"
     },
     {
       "id": "ablobbathtub",
       "file": "ablobbathtub.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 127044,
+      "sha256": "36b121aab69b7c4f5b510b9c4dcce434cc0b4ceb4c89baad13a05e991780830a"
     },
     {
       "id": "ablobblastoff",
       "file": "ablobblastoff.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 260112,
+      "sha256": "ef66d6b717c8aa4f24210d5d4aa893365b3409fa27a92af82a7f012d7cd5443f"
     },
     {
       "id": "ablobblewobble",
       "file": "ablobblewobble.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 24668,
+      "sha256": "e99d37c34a0c159fdeea351e7114dbda2e19637411fe1792308c890b67f27955"
     },
     {
       "id": "ablobbonk",
       "file": "ablobbonk.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 346208,
+      "sha256": "a906e772dfa0a53c14792a9c2365c86e15ca87f19ff1bf9c0989b734daf801fd"
     },
     {
       "id": "ablobbounce",
       "file": "ablobbounce.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 114830,
+      "sha256": "6ae6bafc365202be70184c54dc0a52cc4ab78bc2be9b09c5b1dd5b84d6636d28"
     },
     {
       "id": "ablobbouncefast",
       "file": "ablobbouncefast.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 35770,
+      "sha256": "6859a316d7c0fb080406d9ad09c82bedbcfaf1b59ec6bc27b11af8a358a47990"
     },
     {
       "id": "ablobcaramelldansen",
       "file": "ablobcaramelldansen.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 115816,
+      "sha256": "83ee99fc202bb5d17a5b56dc9bd9122356d3975be2e1e5038aa24aeb4a5874b2"
     },
     {
       "id": "ablobcheer",
       "file": "ablobcheer.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 56776,
+      "sha256": "2b1565f56d8c0a59afcd4e6d6c2588e55c0891776f3b6c91727b3c7e2a8e2b4f"
     },
     {
       "id": "ablobcolorshift",
       "file": "ablobcolorshift.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 275070,
+      "sha256": "9838f44967faa6582c2b2f244df8bd1bc4c4e73b2da7d7c6e411012ac7327914"
     },
     {
       "id": "ablobcongarollbounce",
       "file": "ablobcongarollbounce.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 665160,
+      "sha256": "c44d5d6c82bc8872cff2fdda59dccd67db611ca0f839a0189925f9cbb6b7a917"
     },
     {
       "id": "ablobcouncil",
       "file": "ablobcouncil.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 162306,
+      "sha256": "04cf318c414570c413043ebc4795b4be130b02a7e8c0d7f3bb90ba610b2d37f1"
     },
     {
       "id": "ablobcouple",
       "file": "ablobcouple.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 75612,
+      "sha256": "31062339edbc259855157be6c5f521952eef08fc4277a22fc5e912ee5446fd50"
     },
     {
       "id": "ablobcry",
       "file": "ablobcry.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 83038,
+      "sha256": "1b75dcc301f10e95ad27a3d018a3549dea1db5c0125db42726b8661f08f82b0e"
     },
     {
       "id": "ablobdancer",
       "file": "ablobdancer.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 48406,
+      "sha256": "1b0f3a4cb167966edb16c72d168411b70cfb61df33019a4611615cff67af1bae"
     },
     {
       "id": "ablobderpy",
       "file": "ablobderpy.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 101118,
+      "sha256": "7428d2ef7831dd4cee86abe24a6e6b39251c4c974447a963c12917013e0d7b90"
     },
     {
       "id": "ablobderpyhappy",
       "file": "ablobderpyhappy.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 92448,
+      "sha256": "5f107d3e39680b808e4557f8d222cb5d9a151e2da6863ab1b63254baeb09add7"
     },
     {
       "id": "ablobderpytrap",
       "file": "ablobderpytrap.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 111900,
+      "sha256": "4325ec898d11687082aef83cb7412a3c9f53c741760d1b12ea0e3b98cedf59f3"
     },
     {
       "id": "ablobdevil",
       "file": "ablobdevil.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 226472,
+      "sha256": "2e6025372a07cfaebba8cb5f845c2eb35cf53e55a4955d07f2bf31574aa18798"
     },
     {
       "id": "ablobdizzy",
       "file": "ablobdizzy.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 342422,
+      "sha256": "2f2aab9419a5e2e6cb467dca490ca0c438af15a6ec78b4f9c61cbe9ca997456f"
     },
     {
       "id": "ablobdrool",
       "file": "ablobdrool.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 101126,
+      "sha256": "764087ff9bdb7a252c930aa5a0d3485acb8bc2e23b1be11a3af592f6af29d71c"
     },
     {
       "id": "ablobdrum",
       "file": "ablobdrum.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 285214,
+      "sha256": "20be7add806942d641fd27b6d3cd8def2d09c6fdc038bea339edfb53bea4d5e7"
     },
     {
       "id": "ablobdundundun",
       "file": "ablobdundundun.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 185476,
+      "sha256": "1509f37c4fb0dc6ec98e4ade320a704c5844e4801f8681542d029b5e815cb1d2"
     },
     {
       "id": "ablobenjoy",
       "file": "ablobenjoy.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 194490,
+      "sha256": "50c94b4cb0c7f0d5e0f69567a57b90c3c06deadbcae000a98139d1ce0e0478ae"
     },
     {
       "id": "ablobenjoyrain",
       "file": "ablobenjoyrain.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 353438,
+      "sha256": "37b9e7c924d182918a561b0c2b1dcf57ee56ffffe99b3128e694ac7cb1964357"
     },
     {
       "id": "ablobenjoysnow",
       "file": "ablobenjoysnow.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 360848,
+      "sha256": "a6ec185d6b17a0cf6af7b3f399a88f0cec014b8c657124166259c504d1406360"
     },
     {
       "id": "ablobeyesdown",
       "file": "ablobeyesdown.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 147598,
+      "sha256": "b86847f23338282f0d1698910b7ed8ef7141fd7eab243b11fe7f7e53801afd9d"
     },
     {
       "id": "ablobeyesup",
       "file": "ablobeyesup.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 145538,
+      "sha256": "ec61b3339a4a5cba47c926c5b7d69381cf0302e096c6960156011bc505994166"
     },
     {
       "id": "ablobflushed",
       "file": "ablobflushed.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 57420,
+      "sha256": "2e7e1143705a4649542bd583fb4513218444ca6ee2e575a0936133c151342882"
     },
     {
       "id": "ablobgift",
       "file": "ablobgift.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 274222,
+      "sha256": "049ca6a2036a392f470a173445de6d83a9ba5abf8932f6318cf52f4ed90d7bb8"
     },
     {
       "id": "ablobgiggle",
       "file": "ablobgiggle.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 363222,
+      "sha256": "482a6abf4416ac777190de799ea689d337cc0f03ee75b3053675ee8c624ec190"
     },
     {
       "id": "ablobglarezoom",
       "file": "ablobglarezoom.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 197950,
+      "sha256": "9bac6478073df0f04a657d6418889c83480b504211510ca3077415c60dcdd3fe"
     },
     {
       "id": "ablobglarezoombutfast",
       "file": "ablobglarezoombutfast.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 99890,
+      "sha256": "74dfc01d20b6b350503f2c6736d27967b7f5c19aeaa1f1979a428e9aebba630f"
     },
     {
       "id": "ablobglitch",
       "file": "ablobglitch.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 165794,
+      "sha256": "db1b3af08ee87ac741247b50ee10bd57c075dcd4228162f867e78f10429511b3"
     },
     {
       "id": "ablobgoodnight",
       "file": "ablobgoodnight.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 290800,
+      "sha256": "2131f41cc310e12fe00f2e6df651f2b7f2cc67c9282fddf93ad596a3184e90b7"
     },
     {
       "id": "ablobgoodnightreverse",
       "file": "ablobgoodnightreverse.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 296628,
+      "sha256": "8f5d94b76597ad484eb684087accb6464d5188d7080fbd355c0ac2b5a79c2d29"
     },
     {
       "id": "ablobgrimace",
       "file": "ablobgrimace.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 34196,
+      "sha256": "410a390162e581ddcc99bcdffe5c8da1c2fbbe394cabb6ba62234f917c627899"
     },
     {
       "id": "ablobgrin",
       "file": "ablobgrin.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 82912,
+      "sha256": "d0108aa6591db3619882a049ef9104ce4ae3c4000f12d863972b954b797df0cb"
     },
     {
       "id": "ablobguitar",
       "file": "ablobguitar.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 642262,
+      "sha256": "2d7e170158df1ae588c6d1a5590c1dacfab978e0b27769fbe6b8ce22cff6d4f9"
     },
     {
       "id": "ablobheadshake",
       "file": "ablobheadshake.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 275170,
+      "sha256": "ca70e8c034be64b799c6df1fa4413ec94122ab7966bbb2136aa0e2a41a20d649"
     },
     {
       "id": "ablobhearteyes",
       "file": "ablobhearteyes.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 103150,
+      "sha256": "d7aafd4a559e7993c8fc6f9afeb5331f3d0dff6589ab2872118d114d02f664ff"
     },
     {
       "id": "ablobhologram",
       "file": "ablobhologram.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 1030440,
+      "sha256": "3d017f469cd91e602aa7462f84226e2ec28ee5d2fb76b991a30b53438d88cc18"
     },
     {
       "id": "ablobhop",
       "file": "ablobhop.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 215702,
+      "sha256": "b3da15d85b79738525b1a1767092f62c73326bad0f0ccb6f993a30b2cd11636c"
     },
     {
       "id": "ablobhungry",
       "file": "ablobhungry.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 80268,
+      "sha256": "d1adc1b19eb61ed9fed03919100cf6bc9e11f6bd7f97174aead0cb48ed1271dc"
     },
     {
       "id": "ablobhydraulicpress",
       "file": "ablobhydraulicpress.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 160656,
+      "sha256": "1c09a062b28e3623e2258af15ae4543784676ad30eef8f1899b05be2706d8381"
     },
     {
       "id": "ablobhype",
       "file": "ablobhype.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 16790,
+      "sha256": "3d0b3d51d209002ae5a3c90cd9e704b9d5b2fd247da60bcfac0d0e6fc7c0ac56"
     },
     {
       "id": "ablobjam",
       "file": "ablobjam.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 430492,
+      "sha256": "cd176cd7d68ffd081a44f025bc032c0dc39bed69e8c99310251c488a41890303"
     },
     {
       "id": "ablobjoin",
       "file": "ablobjoin.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 135632,
+      "sha256": "5f9ad9a62a3e784f3a5e445dede005ae7f2f792eb256c8e56bb1f108e77e742d"
     },
     {
       "id": "ablobjoy",
       "file": "ablobjoy.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 51650,
+      "sha256": "82299061787ff2fdc5ab4b9f58f5495fe77ed52a8cd1ad3d53b65367ad17e34f"
     },
     {
       "id": "ablobkeyboard",
       "file": "ablobkeyboard.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 243960,
+      "sha256": "96da53e6d37f52770de6d1645f026ee7006515fac160cc6932a3e606cd8b2e1e"
     },
     {
       "id": "ablobkiss",
       "file": "ablobkiss.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 71436,
+      "sha256": "056614d4a3a143887f4d34ea32847f0fe9138586cc469c292ba6e2cb99d0dde4"
     },
     {
       "id": "abloblamp",
       "file": "abloblamp.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 26792,
+      "sha256": "ea4f1981a106b47ecb7c1a6f21850b82a307f43ba166a2c15eb0df89b20ccf95"
     },
     {
       "id": "ablobleave",
       "file": "ablobleave.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 113056,
+      "sha256": "25cd502ed55fc88603117471f0b76fea658d8ffddf5940ca9cf4aaea6b0761c7"
     },
     {
       "id": "abloblurk",
       "file": "abloblurk.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 75884,
+      "sha256": "742e63ea28f24d73abd9ee667a27c3851dd7e05bd0ce43a8aa0b299465d38fd1"
     },
     {
       "id": "ablobmaracas",
       "file": "ablobmaracas.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 75184,
+      "sha256": "07492409169078c193850233e38bc2b9c5bd3556168e5b7b20c0ee966683983d"
     },
     {
       "id": "ablobmelt",
       "file": "ablobmelt.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 191852,
+      "sha256": "979b20d0bc4f4963c5b8a0b82a3eaf0c0297300979e5046618af94b08a9714e4"
     },
     {
       "id": "ablobmelting",
       "file": "ablobmelting.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 212444,
+      "sha256": "d68fa805fb8f65a343ab7a02c8192d4102ec7178e0c130f5cb447f542227ad13"
     },
     {
       "id": "ablobmeltsoblove",
       "file": "ablobmeltsoblove.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 445576,
+      "sha256": "658c32f1959154ad3c0ed3fafff7e5cbb18a83bae3953fcc8550e6e8e37f0952"
     },
     {
       "id": "ablobmicrophone",
       "file": "ablobmicrophone.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 352420,
+      "sha256": "cf8f55c0d81ddc788043c8650e34a62b460c1e2dae89a08e3c08660f8d5bed72"
     },
     {
       "id": "ablobnervous",
       "file": "ablobnervous.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 125822,
+      "sha256": "492a3ada54c189b2e84a5f95330bf092a4d105ec66e0659f611c4397ee229277"
     },
     {
       "id": "ablobnervous2",
       "file": "ablobnervous2.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 257848,
+      "sha256": "fd8fba29c5f9ec8fd1b8a1b8e10789e032ab87d8e250371aebd0bab71c375216"
     },
     {
       "id": "ablobnod",
       "file": "ablobnod.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 194702,
+      "sha256": "410937ec7817927aa6a1d416ab23313b359177ef117b3387fc8fd0a37c78b513"
     },
     {
       "id": "ablobnodfast",
       "file": "ablobnodfast.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 195844,
+      "sha256": "dc5865f900f07812cf572d4ac31be823a849b21916ef8964aaa1261f7e50262d"
     },
     {
       "id": "ablobnogood",
       "file": "ablobnogood.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 95966,
+      "sha256": "93c7dd19acbd98b2d8f252dd989e80f38602c4197a22aa7fbc4793c820884fcb"
     },
     {
       "id": "ablobnom",
       "file": "ablobnom.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 604886,
+      "sha256": "85ebdcec985ad5f2a7601ae9545176eb5bd56cf1344642e9d02a55ee9fd680f6"
     },
     {
       "id": "ablobnomcookie",
       "file": "ablobnomcookie.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 286544,
+      "sha256": "23b999ea3bb0381168c77d6caba8f20e4789185e6537442b36ac971f25fb2c8f"
     },
     {
       "id": "ablobnote",
       "file": "ablobnote.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 241170,
+      "sha256": "df38b1aa2443a452b7760bbe7a4a2c81edac865c773a664c711e611d84ad0c84"
     },
     {
       "id": "ablobnwn",
       "file": "ablobnwn.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 57574,
+      "sha256": "0aae28e539f4b962d176b8ba1c04292d80a1b11745edfab8f16816e5116b43e5"
     },
     {
       "id": "ablobonfire",
       "file": "ablobonfire.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 145786,
+      "sha256": "183e59d44a27dfb2c0885502f4984e662e1bde3b30bfeca3eefcb946f5040a18"
     },
     {
       "id": "ablobowo",
       "file": "ablobowo.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 21206,
+      "sha256": "c7617f5315b619ccda910b1e33881beb63f921b5f73efd08c5cc17973a3e729a"
     },
     {
       "id": "ablobpainpats",
       "file": "ablobpainpats.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 114084,
+      "sha256": "f260c41e2ab741af68cf521b0db423c7165d7e575764a1a227d660a67e87d489"
     },
     {
       "id": "ablobpainrain",
       "file": "ablobpainrain.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 271732,
+      "sha256": "2f1ebad31bd39beaec86d85ec174ef373a1401089144a0826fcacfccccb5f526"
     },
     {
       "id": "ablobpanic",
       "file": "ablobpanic.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 139860,
+      "sha256": "cc483947e509bb8f9c33cbd4e3dc89efb92c823d9d7d8fb34ee301be5e759c40"
     },
     {
       "id": "ablobpanic2",
       "file": "ablobpanic2.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 133988,
+      "sha256": "5de2803c65b8a0630c5e19745202f264620aa3888a698979f909812f35a925ea"
     },
     {
       "id": "ablobparty",
       "file": "ablobparty.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 1021550,
+      "sha256": "a8f16ff1935b612fb8087aee84984613064a127e8277f603dc0cf1fe3262998d"
     },
     {
       "id": "ablobpats",
       "file": "ablobpats.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 110562,
+      "sha256": "b90a590607e33986dae8b1fb65e7aaade6f98082f68847b09859e33191effade"
     },
     {
       "id": "ablobpeek",
       "file": "ablobpeek.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 230304,
+      "sha256": "7f72d9196e7bef09d5a8a1b5dcd6032a6b7884439f4bf68fa8bc203935ef5489"
     },
     {
       "id": "ablobplsnospam",
       "file": "ablobplsnospam.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 738268,
+      "sha256": "1c4a8d7a5343e6557048a2316ae32c44cba5d6267d9163dee493ae7e93fbb9d0"
     },
     {
       "id": "ablobpopcorn",
       "file": "ablobpopcorn.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 458266,
+      "sha256": "17187317e96a5f36b1bd1013e07f36af730af71c2a76a07579357ac83b50e2d9"
     },
     {
       "id": "ablobpropeller",
       "file": "ablobpropeller.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 239346,
+      "sha256": "78d4b5f8398a144fb81894d8e3dd2351619fc547c75447937b4a10affb6739ad"
     },
     {
       "id": "ablobpumpkin",
       "file": "ablobpumpkin.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 244396,
+      "sha256": "da30fe057ec56381aef530b5ac97a03519ca11e1c0d43b532d2ccead8464e316"
     },
     {
       "id": "ablobrage",
       "file": "ablobrage.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 175952,
+      "sha256": "d4f1249ea063dc5bfcd519929802d06c4da3fb8b2e518c3983d4601f76d92260"
     },
     {
       "id": "ablobraisehand",
       "file": "ablobraisehand.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 93852,
+      "sha256": "da80e62a18676e6c2e6ac4b39eb5a0c8b144a49e848cbfda2a645d06dd7ea4e8"
     },
     {
       "id": "ablobreach",
       "file": "ablobreach.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 100222,
+      "sha256": "ba5a8a859b3121a06308649d6c8ecab58d84e8e10c995a9c36295378fd8f1536"
     },
     {
       "id": "ablobreachreverse",
       "file": "ablobreachreverse.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 96444,
+      "sha256": "99fb70c4f83fe8e08626352d8cace97f488df2939ad59cbc12b79b3b144134ef"
     },
     {
       "id": "ablobreachsob",
       "file": "ablobreachsob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 314098,
+      "sha256": "7549742fc72252458822a9823022c02c644af3b8a83c4081afbe45addef60a66"
     },
     {
       "id": "ablobrollbounce",
       "file": "ablobrollbounce.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 803486,
+      "sha256": "855dc1b87c1821620e6d3778271d65f7cad87f6cec05edb5d1b43ae423c4710d"
     },
     {
       "id": "ablobrollingeyes",
       "file": "ablobrollingeyes.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 42214,
+      "sha256": "ded6c8bf5b6c2beb3daa5f2d184bd4b79a57dd1acf354537c4c65e72eceb0d13"
     },
     {
       "id": "ablobsad",
       "file": "ablobsad.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 106604,
+      "sha256": "67093268d6e7eb507a401262357115127241411a0f0a668d0fe329351cc8a263"
     },
     {
       "id": "ablobsadpats",
       "file": "ablobsadpats.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 113628,
+      "sha256": "7b8908d297331cacc00dc122c375b1a6d90abebac95f1cf097556778a150bf2d"
     },
     {
       "id": "ablobsadrain",
       "file": "ablobsadrain.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 269636,
+      "sha256": "bd1816ba8ed73316d4c996fb8a47bd9fa932ff8a64e9987bb60e18dbbd84c81b"
     },
     {
       "id": "ablobsalute",
       "file": "ablobsalute.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 160298,
+      "sha256": "0fc2107ce65209f53366f4d1bbf4a56eaa9f03cf9688077728738ed9fa1d00c0"
     },
     {
       "id": "ablobsaxophone",
       "file": "ablobsaxophone.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 420038,
+      "sha256": "01e520a2b6974b6b364d1f4422923d75ef65f2a53cf6b6cb007ce5de1bf64daf"
     },
     {
       "id": "ablobscream",
       "file": "ablobscream.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 208862,
+      "sha256": "60f260d9c81ae27656abcd140421cdf55933cd4273226acb527af1f755be1730"
     },
     {
       "id": "ablobshrug",
       "file": "ablobshrug.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 145528,
+      "sha256": "234a81974a311bb24288b75218e1e778ba7e255c154a0f798bbdacd03484988d"
     },
     {
       "id": "ablobsigh",
       "file": "ablobsigh.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 77404,
+      "sha256": "c8592f2d672f1a0cb98baca926034d5872ec236010f9e5e9e0f4e46d8d009314"
     },
     {
       "id": "ablobsleep",
       "file": "ablobsleep.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 95948,
+      "sha256": "5310a9255f241c91cfc198a76bec7aa06a80d644f06b4412f3e54c994b62cae1"
     },
     {
       "id": "ablobsleeping",
       "file": "ablobsleeping.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 344516,
+      "sha256": "8ea102590cb9a14171ecd027828a3c82c9f0e06d6d9e117f6fcceb755d60e42d"
     },
     {
       "id": "ablobsleepy",
       "file": "ablobsleepy.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 174366,
+      "sha256": "5ad69dd7c6071480c28d5698af24f9270f561e715fe6d0ffc0e78ad313461901"
     },
     {
       "id": "ablobslide",
       "file": "ablobslide.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 184936,
+      "sha256": "b5d2255968c026cd45a37e313689fb3de78cb731df3be59d7f0662741e20ac03"
     },
     {
       "id": "ablobsmile",
       "file": "ablobsmile.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 62326,
+      "sha256": "be02cd21b9bd7ef899ff0df82da90aceb07756fc559026f033c1cf6d4a88ae02"
     },
     {
       "id": "ablobsmilehappy",
       "file": "ablobsmilehappy.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 161426,
+      "sha256": "bdf018d1d4778e195215ddc965b55e3d7b6b0b79f5251ad77b793d63cdaf3786"
     },
     {
       "id": "ablobsmooch",
       "file": "ablobsmooch.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 105836,
+      "sha256": "4852f8c98fc60a66d9038da58111c29511759580213244284675e022237fc67f"
     },
     {
       "id": "ablobsplosion",
       "file": "ablobsplosion.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 120860,
+      "sha256": "9d2e97720c84d4e512604a42f586e7858eb14b050ee8cfa16cc7ab1eec501b7c"
     },
     {
       "id": "ablobsquish",
       "file": "ablobsquish.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 186088,
+      "sha256": "9aba3d362735ad6d42c8d782bd7da1c56825cfb8e7c4bf4ab4bd044287180f77"
     },
     {
       "id": "ablobstare",
       "file": "ablobstare.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 29744,
+      "sha256": "7e03e8618fcd2a31fe18ff05263d0788bb93b4650eaf4b0f70b402895198352e"
     },
     {
       "id": "ablobsunglasses",
       "file": "ablobsunglasses.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 83858,
+      "sha256": "6c3998df52525ebb533d11777206e36238a6e50968ba6194826f6e8c53b0a1af"
     },
     {
       "id": "ablobsurpriseblush",
       "file": "ablobsurpriseblush.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 372576,
+      "sha256": "5a4d1e3594cdbca5817121933de4b85fa3682f81697e91b7fb45bef99fb33629"
     },
     {
       "id": "ablobsweating",
       "file": "ablobsweating.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 106558,
+      "sha256": "73146ec9be34b5553ed0826e39fa144f37d8f5713af3943622222b504e7ec268"
     },
     {
       "id": "ablobsweats",
       "file": "ablobsweats.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 308680,
+      "sha256": "306ff95ad84a1059a92667b21bfd528cdd42c3d884d9f4d38197d595547f33ff"
     },
     {
       "id": "ablobthinking",
       "file": "ablobthinking.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 112458,
+      "sha256": "0bbec300d904c4339b1d7b32bf447538f8bf8479b00c8a67de7a91d86e46a041"
     },
     {
       "id": "ablobthinkingeyes",
       "file": "ablobthinkingeyes.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 340234,
+      "sha256": "0c5f0d9631c34ad9f198d23627e5838452eb8cd6e422af4a39fc889ddf20c0e2"
     },
     {
       "id": "ablobthinkingfast",
       "file": "ablobthinkingfast.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 171630,
+      "sha256": "98fe22094970a4686bdfbd47fb979c990559fddbda59e66929780be0b27914ba"
     },
     {
       "id": "ablobthinkzerogravity",
       "file": "ablobthinkzerogravity.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 297884,
+      "sha256": "afe07b0a1c3fa29b35b09e615ccb6bd12e85949437e0d1abb7c4a22b589d0290"
     },
     {
       "id": "ablobtipping",
       "file": "ablobtipping.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 67462,
+      "sha256": "fea206b3472530af8bb67a38d0aa370cf9290714c59c4ecd6c802158d95546a9"
     },
     {
       "id": "ablobtoiletflush",
       "file": "ablobtoiletflush.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 31062,
+      "sha256": "e4725115ec126beb39ec0ae5e8b5165c69673787e49c35a68f06f7434c3d58fd"
     },
     {
       "id": "ablobtonguewink",
       "file": "ablobtonguewink.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 60442,
+      "sha256": "e91354149c4efff3661270f7fa43173c31400ef9e1043820575c855b5f870785"
     },
     {
       "id": "ablobtrans",
       "file": "ablobtrans.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 156204,
+      "sha256": "44bd21534b6f39f07e0d69072ce4d99a3448db5be2b85f12c26bccf55c6ed7a0"
     },
     {
       "id": "ablobunamused",
       "file": "ablobunamused.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 45958,
+      "sha256": "ee1ffceab7a59db666e8679ec021ab719c1673510ffd05e86cb2a29cf2454366"
     },
     {
       "id": "ablobuwu",
       "file": "ablobuwu.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 55892,
+      "sha256": "fc4ea78149051d641ca36c64dc8a3af41fa47101b008c64fb58d41a866e41592"
     },
     {
       "id": "ablobwave",
       "file": "ablobwave.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 84346,
+      "sha256": "4d57fd2b9c4aad03bbcae7e303d3b76b746cb25eec2e03f4f2445663f36ec007"
     },
     {
       "id": "ablobwavereverse",
       "file": "ablobwavereverse.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 84028,
+      "sha256": "23467e418004979fd9cc5e013c69a31a15d3e277b7a10f29e658d5c4af51e882"
     },
     {
       "id": "ablobwavesob",
       "file": "ablobwavesob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 138514,
+      "sha256": "5a5f0634db51567bd14465c077330ac98ba16f83b380d388bfafc6a9b8a223c7"
     },
     {
       "id": "ablobweary",
       "file": "ablobweary.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 85414,
+      "sha256": "d3114a56289949d963aec4404679b1e803575fb3785666cc9345265a37a3ddc2"
     },
     {
       "id": "ablobwhee",
       "file": "ablobwhee.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 41896,
+      "sha256": "5d673cd93d9f553479e8da59ed1349945c2491887ad02441b6301e8092cdb9db"
     },
     {
       "id": "ablobwhistle",
       "file": "ablobwhistle.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 256774,
+      "sha256": "2547cdfb126bd6c6940f4045f57f47982c4c1b1b7b6ac08ee19acd84aaafbaf0"
     },
     {
       "id": "ablobwink",
       "file": "ablobwink.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 17338,
+      "sha256": "16db9cfdc696674d36e0dc268538b395206abbcad67f3c96d81889e318b2d0b1"
     },
     {
       "id": "ablobwoah",
       "file": "ablobwoah.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 388172,
+      "sha256": "71b01f376b27819f931639232d0d0e9ec8c276af8276943d2d1ea1a0196d4fa6"
     },
     {
       "id": "ablobwoahsnow",
       "file": "ablobwoahsnow.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 479510,
+      "sha256": "423dbd59eca3de2cbc61a5d77e688a3b8f48a4de7ac89941797427584bac4ee9"
     },
     {
       "id": "ablobwob",
       "file": "ablobwob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 60342,
+      "sha256": "91d5339576c7b7a7b63ec448c0578f12a728a808b41032443829ff7d2ce6c4bf"
     },
     {
       "id": "ablobwobroll",
       "file": "ablobwobroll.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 136788,
+      "sha256": "a0c0aaca40aae364984f1735d86f793962bcf0e0063fade85ec5eb72e2e7728c"
     },
     {
       "id": "ablobwobwork",
       "file": "ablobwobwork.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 60354,
+      "sha256": "b6cd56a26f37b047fb04c785c2f3d5423c6e3bffe6609681a665cfffd8772411"
     },
     {
       "id": "ablobzerogravity",
       "file": "ablobzerogravity.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 413110,
+      "sha256": "7966d7e2e85f19eb685e1b7a197f240b5aa045683b609cc426b9661357768417"
     },
     {
       "id": "abongoblob",
       "file": "abongoblob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 6106,
+      "sha256": "03fa38c12c577b5b6459e0eece9b39c2468152620d6c079e9d7ad86d6ced8b40"
     },
     {
       "id": "acongablob",
       "file": "acongablob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 43856,
+      "sha256": "c304678d63b180a17ec3f60de259bbe65f06f0d6d23fe17a7cda3e76b117d52d"
     },
     {
       "id": "adontfeelsoblob",
       "file": "adontfeelsoblob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 651916,
+      "sha256": "8e7507023565dc515156fc3cf858e7d7b0f4e892b78aff6b17c4f989543f92c8"
     },
     {
       "id": "agoogle100",
       "file": "agoogle100.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 9006,
+      "sha256": "173b5547f40c090992ae25f41b58c330ef213390a41fe58207b78e2a6018c6c5"
     },
     {
       "id": "agooglebee",
       "file": "agooglebee.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 54598,
+      "sha256": "242a2f7b2f3c6abef2ac525bd4686a402f2c2df0bc1f1f27ade4f6498497a089"
     },
     {
       "id": "agooglebell",
       "file": "agooglebell.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 75718,
+      "sha256": "85b620d95f66e279e43d14dc3155a60a650b5ae2b0f6f65f3ebdb1d70d53f6e7"
     },
     {
       "id": "agooglebomb",
       "file": "agooglebomb.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 51330,
+      "sha256": "5143ca6cc27cb74ce63ccd066f833ae61dd09adfdccf3815c0f4508ba4d4b570"
     },
     {
       "id": "agooglebrokenheart",
       "file": "agooglebrokenheart.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 8022,
+      "sha256": "6055800d07af88587a9b75cbbcea7d3af01ad2c56192b294ca58da8083198dff"
     },
     {
       "id": "agooglecake",
       "file": "agooglecake.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 121656,
+      "sha256": "8b8e916efd7b3b78a9fa44a388f1a510e303482d7275b36d02398f5de87bff9c"
     },
     {
       "id": "agooglecat",
       "file": "agooglecat.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 90656,
+      "sha256": "c2ce49f02ccbbe136a3d60fc8e19a055fad75affcc73ee4c3d58dd38aa778c7e"
     },
     {
       "id": "agooglecheers",
       "file": "agooglecheers.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 56180,
+      "sha256": "bde2814e3d424c474d6cee8c47a2cbd2c6c72cbf0e0afe5d55dbff4257870613"
     },
     {
       "id": "agoogleclap",
       "file": "agoogleclap.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 55040,
+      "sha256": "8305cf837c1cd3edaa5e65aa40828d078efacbc8b8bae97d2b81173da904c9fc"
     },
     {
       "id": "agooglehearts",
       "file": "agooglehearts.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 3414,
+      "sha256": "55edf813d3e40de7ce317543a360ff485cf9f0665f755ba17ff8ed1dfee163a3"
     },
     {
       "id": "agooglemonkey",
       "file": "agooglemonkey.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 72798,
+      "sha256": "ca43678d5f02828e5e790df9d1441d659ace74ae33cb71107f41c9b101d5e88f"
     },
     {
       "id": "agoogleoctopus",
       "file": "agoogleoctopus.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 81844,
+      "sha256": "2d86f442f79f03f6a88e6ad5643b2752dc405a82c131484655d2afa11b645010"
     },
     {
       "id": "agooglepeach",
       "file": "agooglepeach.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 106300,
+      "sha256": "2600c5051de2732806c785def358fa8b72a5027eed41b76dda181a85509e8371"
     },
     {
       "id": "agooglepoop",
       "file": "agooglepoop.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 61226,
+      "sha256": "947deee33c3eb5810cc55143b234f037cdcc3613e39083e9ab1fd399c2a6fcd1"
     },
     {
       "id": "agooglerainbowheart",
       "file": "agooglerainbowheart.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 451906,
+      "sha256": "5cbc05ab97d901d5bed07e208d86bc31e346acdfc2d1bbff28dddee4e9109615"
     },
     {
       "id": "agooglesnail",
       "file": "agooglesnail.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 187012,
+      "sha256": "d2fc07827bfee2931f11ff7c88af3d4241e642e8690f56fe3e9f9d0509181bf8"
     },
     {
       "id": "agooglesun",
       "file": "agooglesun.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 168052,
+      "sha256": "dd449dae82c06bd25823ed99ed8f5881eacc3d51b0fe2e7190a57f961473a514"
     },
     {
       "id": "agoogletada",
       "file": "agoogletada.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 198498,
+      "sha256": "4b877051e2450200f6e8f067102503902de4e43ba98e4f65276ab1a525feaf96"
     },
     {
       "id": "agooglethumbsdown",
       "file": "agooglethumbsdown.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 19124,
+      "sha256": "247e22bb3bc15e0d698cc2e2955400c68dd0dcfcbda7df18a122fc5897ee838f"
     },
     {
       "id": "agooglethumbsup",
       "file": "agooglethumbsup.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 19554,
+      "sha256": "3aa4dcd27dcbc509721216fbf00dd75933100c0302c3145b97570f361ac074d5"
     },
     {
       "id": "agoogleturtle",
       "file": "agoogleturtle.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 108980,
+      "sha256": "533c6802b492cb6f90f676d58a346cf4607fd4d29ea76ae9672540933d6dfafc"
     },
     {
       "id": "agooglewine",
       "file": "agooglewine.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 47566,
+      "sha256": "ff777f782ab77febaf2b92b52ac0a128f3e94641d8c73c1f3f5235a2a77c7a40"
     },
     {
       "id": "ajakeblob",
       "file": "ajakeblob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 86566,
+      "sha256": "d2268179d9a0a2152fa20f7f0f75a4a2a336b4ccf44691884c02f37aa82cf0e2"
     },
     {
       "id": "amegablobsweats",
       "file": "amegablobsweats.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 337402,
+      "sha256": "4f4858d2a85664877f5d0c7fa1a81ec6e2fd95e8375c5eb32489aa77b5a0835e"
     },
     {
       "id": "apartyblob",
       "file": "apartyblob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 31440,
+      "sha256": "6d5703b5e363610fbc51d8c1888da6bdfe14beb1cd724f176c8b32ec1ae903bb"
     },
     {
       "id": "aphotoblob",
       "file": "aphotoblob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 89616,
+      "sha256": "e3c88f03fb984249fbca3ee309050b9c916bf7020f8ecb4a62fc3671570c4a07"
     },
     {
       "id": "arainblob",
       "file": "arainblob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 189668,
+      "sha256": "ae6cf155c20ee9be6c6ef5093e918067e8d7a5d450c1f814210da4a42b2b2935"
     },
     {
       "id": "athinkingwithblobs",
       "file": "athinkingwithblobs.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 71570,
+      "sha256": "1d82a0bc75067f79593a1d2120c2c669630162a6fcd2d00e327bda01cb0c16eb"
     },
     {
       "id": "awolfiriblob",
       "file": "awolfiriblob.webp",
-      "animated": true
+      "animated": true,
+      "sizeBytes": 133938,
+      "sha256": "de1e63a034d92496c0aea3b3eae8dd8b0ecbbe63834ac8cac4505cb7cd4aec39"
     }
   ]
 }
