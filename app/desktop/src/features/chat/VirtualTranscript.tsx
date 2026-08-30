@@ -100,6 +100,7 @@ export function VirtualTranscript<Item>({
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [stableDisclosureActive, setStableDisclosureActive] = useState(false);
+  const [revealedSessionKey, setRevealedSessionKey] = useState(sessionKey);
   const loadAttemptSignatureRef = useRef<string | null>(null);
   const olderLoadPromiseRef = useRef<Promise<void> | null>(null);
   const olderLoadGenerationRef = useRef(0);
@@ -117,8 +118,9 @@ export function VirtualTranscript<Item>({
   const tailAlignmentActiveRef = useRef(false);
   const tailAlignmentFrameRef = useRef<number | null>(null);
   const tailAlignmentTargetRef = useRef<number | null>(null);
-  const tailLiftAnimationRef = useRef<Animation | null>(null);
+  const tailLiftRowsRef = useRef<HTMLElement[]>([]);
   const sizeContainerRef = useRef<HTMLDivElement | null>(null);
+  const sessionRevealFrameRef = useRef<number | null>(null);
   const stableDisclosureAnchorRef = useRef<StableDisclosureAnchor | null>(null);
   const stableDisclosureReleaseFrameRef = useRef<number | null>(null);
   const stableDisclosureResizeObserverRef = useRef<ResizeObserver | null>(null);
@@ -178,8 +180,11 @@ export function VirtualTranscript<Item>({
   }, [totalSize, virtualizer]);
 
   const cancelTailLiftAnimation = useCallback(() => {
-    tailLiftAnimationRef.current?.cancel();
-    tailLiftAnimationRef.current = null;
+    for (const row of tailLiftRowsRef.current) {
+      row.style.animation = 'none';
+      row.style.removeProperty('--app-transcript-row-lift');
+    }
+    tailLiftRowsRef.current = [];
   }, []);
 
   const cancelTailAlignment = useCallback(() => {
@@ -231,30 +236,41 @@ export function VirtualTranscript<Item>({
     viewportWasAtTailRef.current = true;
   }, []);
 
-  const scheduleTailAlignment = useCallback((animateFromScrollTop?: number) => {
+  const scheduleTailAlignment = useCallback((revealFromIndex?: number) => {
     if (tailAlignmentFrameRef.current !== null) {
       window.cancelAnimationFrame(tailAlignmentFrameRef.current);
     }
-    if (animateFromScrollTop !== undefined) cancelTailLiftAnimation();
+    if (revealFromIndex !== undefined) cancelTailLiftAnimation();
     tailAlignmentActiveRef.current = true;
-    alignViewportToTail();
-    const element = internalScrollRef.current;
-    const liftDistance = animateFromScrollTop === undefined || !element
-      ? 0
-      : element.scrollTop - animateFromScrollTop;
     const sizeContainer = sizeContainerRef.current;
+    const rows = sizeContainer
+      ? [...sizeContainer.querySelectorAll<HTMLElement>('[data-transcript-window-item="true"]')]
+      : [];
+    const appendedRows = revealFromIndex === undefined
+      ? []
+      : rows.filter((row) => Number(row.dataset.index) >= revealFromIndex);
+    for (const row of appendedRows) virtualizer.measureElement(row);
+    alignViewportToTail();
+    const liftDistance = appendedRows.reduce(
+      (height, row) => height + row.offsetHeight + gap,
+      0,
+    );
     if (
       liftDistance > 1
-      && typeof sizeContainer?.animate === 'function'
+      && sizeContainer
+      && revealFromIndex !== undefined
       && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
     ) {
-      tailLiftAnimationRef.current = sizeContainer.animate([
-        { transform: `translate3d(0, ${liftDistance}px, 0)` },
-        { transform: 'translate3d(0, 0, 0)' },
-      ], {
-        duration: 280,
-        easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-      });
+      const previousRows = rows.filter((row) => Number(row.dataset.index) < revealFromIndex);
+      for (const row of previousRows) {
+        row.style.setProperty('--app-transcript-row-lift', `${liftDistance}px`);
+        row.style.animation = 'none';
+      }
+      void sizeContainer.offsetWidth;
+      for (const row of previousRows) {
+        row.style.animation = 'app-transcript-existing-row-lift 150ms cubic-bezier(0.23, 1, 0.32, 1)';
+      }
+      tailLiftRowsRef.current = previousRows;
     }
     let framesRemaining = 4;
     const settle = () => {
@@ -267,7 +283,7 @@ export function VirtualTranscript<Item>({
       }
     };
     tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
-  }, [alignViewportToTail, cancelTailLiftAnimation]);
+  }, [alignViewportToTail, cancelTailLiftAnimation, gap, virtualizer]);
 
   useEffect(() => {
     // React Strict Mode intentionally runs an extra setup/cleanup cycle in
@@ -280,6 +296,10 @@ export function VirtualTranscript<Item>({
       cancelStableDisclosureRelease();
       disconnectStableDisclosureResizeObserver();
       stableDisclosureAnchorRef.current = null;
+      if (sessionRevealFrameRef.current !== null) {
+        window.cancelAnimationFrame(sessionRevealFrameRef.current);
+        sessionRevealFrameRef.current = null;
+      }
     };
   }, [cancelStableDisclosureRelease, cancelTailAlignment, disconnectStableDisclosureResizeObserver]);
 
@@ -494,8 +514,8 @@ export function VirtualTranscript<Item>({
       || tailContentChanged
       || measuredSizeChanged
       || viewportSizeChanged;
-    const animateFromScrollTop = animateLatestAppend && latestItemAppended
-      ? aligned?.scrollTop
+    const revealFromIndex = animateLatestAppend && latestItemAppended
+      ? aligned?.itemCount
       : undefined;
     if (stableDisclosureSizeChanged && stableDisclosureAnchor) {
       cancelTailAlignment();
@@ -512,7 +532,7 @@ export function VirtualTranscript<Item>({
       if (items.length > 0) {
         virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
       }
-      scheduleTailAlignment(animateFromScrollTop);
+      scheduleTailAlignment(revealFromIndex);
     }
     alignedSessionRef.current = {
       sessionKey,
@@ -526,6 +546,59 @@ export function VirtualTranscript<Item>({
   }, [animateLatestAppend, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
+  const sessionRevealed = revealedSessionKey === sessionKey;
+  useLayoutEffect(() => {
+    if (sessionRevealed || items.length === 0) return;
+    // ponytail: fail open after 20 frames; use a virtualizer readiness event if one becomes available.
+    let framesRemaining = 20;
+    let stableFrames = 0;
+    let previousSignature = '';
+    const revealWhenMeasured = () => {
+      sessionRevealFrameRef.current = null;
+      const viewport = internalScrollRef.current;
+      const sizeContainer = sizeContainerRef.current;
+      const measuredItems = virtualizer.getVirtualItems();
+      const rowsByIndex = new Map(
+        [...(sizeContainer?.querySelectorAll<HTMLElement>('[data-transcript-window-item="true"]') ?? [])]
+          .map((row) => [Number(row.dataset.index), row]),
+      );
+      const allMountedRowsMeasured = measuredItems.length > 0 && measuredItems.every((item) => {
+        const row = rowsByIndex.get(item.index);
+        return Boolean(row && Math.abs(row.offsetHeight - item.size) <= 1);
+      });
+      const tailMounted = rowsByIndex.has(items.length - 1);
+      const distanceFromBottom = viewport
+        ? viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
+        : Number.POSITIVE_INFINITY;
+      const signature = viewport
+        ? `${viewport.scrollHeight}:${viewport.scrollTop}:${virtualizer.getTotalSize()}`
+        : '';
+      if (
+        allMountedRowsMeasured
+        && tailMounted
+        && distanceFromBottom <= Math.max(1, gap)
+        && signature === previousSignature
+      ) {
+        stableFrames += 1;
+      } else {
+        stableFrames = 0;
+      }
+      previousSignature = signature;
+      if (stableFrames >= 5 || --framesRemaining <= 0) {
+        setRevealedSessionKey(sessionKey);
+      } else {
+        sessionRevealFrameRef.current = window.requestAnimationFrame(revealWhenMeasured);
+      }
+    };
+    sessionRevealFrameRef.current = window.requestAnimationFrame(revealWhenMeasured);
+    return () => {
+      if (sessionRevealFrameRef.current !== null) {
+        window.cancelAnimationFrame(sessionRevealFrameRef.current);
+        sessionRevealFrameRef.current = null;
+      }
+    };
+  }, [gap, items.length, sessionKey, sessionRevealed, virtualizer]);
+
   const scrollToNavigationIndex = useCallback((index: number) => {
     virtualizer.scrollToIndex(index, { align: 'center' });
   }, [virtualizer]);
@@ -585,6 +658,7 @@ export function VirtualTranscript<Item>({
         <div
           ref={setSizeContainer}
           data-virtual-transcript-size="true"
+          data-virtual-transcript-session-ready={sessionRevealed ? 'true' : 'false'}
           className="relative w-full"
         >
           {virtualItems.map((virtualItem) => {

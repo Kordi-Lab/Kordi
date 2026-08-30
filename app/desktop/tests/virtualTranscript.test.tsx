@@ -31,6 +31,17 @@ test('equal-length session switches mount the new tail before paint', async () =
   assert.ok(mountedIds.length > 0);
   assert.ok(mountedIds.every((id) => id?.startsWith('b')));
   assert.ok(mountedIds.includes('b999'));
+  assert.equal(
+    view.host.querySelector<HTMLElement>('[data-virtual-transcript-size]')
+      ?.dataset.virtualTranscriptSessionReady,
+    'false',
+  );
+  for (let frame = 0; frame < 5; frame += 1) await flush();
+  assert.equal(
+    view.host.querySelector<HTMLElement>('[data-virtual-transcript-size]')
+      ?.dataset.virtualTranscriptSessionReady,
+    'true',
+  );
 });
 
 test('session switches do not reuse message elements or measurements with matching item keys', async () => {
@@ -130,17 +141,8 @@ test('appending the latest message while pinned to the tail keeps the full row v
   );
 });
 
-test('an approved outgoing append animates the transcript tail lift once and honors reduced motion', async () => {
-  const animations: Array<{ keyframes: Keyframe[]; options: KeyframeAnimationOptions }> = [];
-  const originalAnimate = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'animate');
+test('an outgoing append lifts only existing rows by its measured height and honors reduced motion', async () => {
   const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
-  Object.defineProperty(HTMLElement.prototype, 'animate', {
-    configurable: true,
-    value(keyframes: Keyframe[], options: KeyframeAnimationOptions) {
-      animations.push({ keyframes, options });
-      return { cancel() {} } as Animation;
-    },
-  });
 
   try {
     const initialItems = rows('motion-', 0, 20, 50);
@@ -156,11 +158,16 @@ test('an approved outgoing append animates the transcript tail lift once and hon
       animateLatestAppend: true,
     }));
 
-    assert.equal(animations.length, 1);
-    assert.match(String(animations[0]?.keyframes[0]?.transform), /^translate3d\(0, [1-9]\d*(?:\.\d+)?px, 0\)$/);
-    assert.equal(animations[0]?.keyframes[1]?.transform, 'translate3d(0, 0, 0)');
-    assert.equal(animations[0]?.options.duration, 280);
-    assert.equal(animations[0]?.options.easing, 'cubic-bezier(0.16, 1, 0.3, 1)');
+    const previousRow = view.host.querySelector<HTMLElement>('[data-index="19"]');
+    const appendedRow = view.host.querySelector<HTMLElement>('[data-index="20"]');
+    assert.ok(previousRow);
+    assert.ok(appendedRow);
+    assert.equal(previousRow.style.getPropertyValue('--app-transcript-row-lift'), '144px');
+    assert.equal(
+      previousRow.style.animation,
+      'app-transcript-existing-row-lift 150ms cubic-bezier(0.23, 1, 0.32, 1)',
+    );
+    assert.equal(appendedRow.style.animation, '');
 
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
@@ -172,10 +179,12 @@ test('an approved outgoing append animates the transcript tail lift once and hon
       animateLatestAppend: true,
     }));
 
-    assert.equal(animations.length, 1);
+    assert.equal(previousRow.style.animation, 'none');
+    assert.equal(
+      view.host.querySelector<HTMLElement>('[data-index="21"]')?.style.animation,
+      '',
+    );
   } finally {
-    if (originalAnimate) Object.defineProperty(HTMLElement.prototype, 'animate', originalAnimate);
-    else delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
     if (originalMatchMedia) Object.defineProperty(window, 'matchMedia', originalMatchMedia);
     else delete (window as Partial<Window>).matchMedia;
   }
