@@ -38,7 +38,7 @@ final class ConversationReadPresentationTests: XCTestCase {
 
         XCTAssertTrue(bubbleSource.contains("lightAppearanceBubbleTintColor"))
         XCTAssertTrue(bubbleSource.contains("chatTheme == .quiet ? .clear"))
-        XCTAssertTrue(bubbleSource.contains("chatTheme.peerText.opacity(0.07)"))
+        XCTAssertFalse(bubbleSource.contains("chatTheme.peerText.opacity(0.07)"))
         XCTAssertTrue(bubbleSource.contains("chatTheme.peerText.opacity(0.12)"))
         XCTAssertTrue(bubbleSource.contains("replyPreviewBackgroundColor"))
         XCTAssertTrue(bubbleSource.contains("inlineAccent: bubbleInlineAccentColor"))
