@@ -126,6 +126,62 @@ final class CloudMessageCodecTests: XCTestCase {
         XCTAssertEqual(forwarded.forwardSource(sessionId: "session:destination"), source)
     }
 
+    func testAttachmentOnlyReplySourcesIdentifyTheirMediaType() {
+        let cases: [(ChatAttachment, String?, String)] = [
+            (ChatAttachment(
+                attachmentId: "photo",
+                name: "photo.png",
+                kind: .image,
+                mimeType: "image/png",
+                sizeBytes: 1_024,
+                previewURL: nil
+            ), nil, "Photo"),
+            (ChatAttachment(
+                attachmentId: "video",
+                name: "clip.mp4",
+                kind: .file,
+                mimeType: "video/mp4",
+                sizeBytes: 1_024,
+                previewURL: nil
+            ), nil, "Video"),
+            (ChatAttachment(
+                attachmentId: "sticker",
+                name: "wave.png",
+                kind: .image,
+                subtype: .sticker,
+                mimeType: "image/png",
+                sizeBytes: 1_024,
+                previewURL: nil
+            ), "sticker", "Sticker"),
+            (ChatAttachment(
+                attachmentId: "gif",
+                name: "dance.gif",
+                kind: .image,
+                mimeType: "image/gif",
+                sizeBytes: 1_024,
+                previewURL: nil
+            ), nil, "GIF")
+        ]
+
+        for (attachment, messageKind, expected) in cases {
+            let message = ChatMessage(
+                id: "message-\(attachment.id)",
+                conversationId: "conversation",
+                author: .person,
+                authorName: "Maya",
+                text: "",
+                createdAt: Date(timeIntervalSince1970: 1_786_000_000),
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: nil,
+                attachments: [attachment],
+                messageKind: messageKind
+            )
+
+            XCTAssertEqual(message.actionSource.textPreview, expected)
+        }
+    }
+
     func testPlainMessageRemainsUnchanged() {
         XCTAssertEqual(CloudMessageCodec.displayText("Hello Maya"), "Hello Maya")
         XCTAssertFalse(CloudMessageCodec.isAgentResponse("Hello Maya"))
