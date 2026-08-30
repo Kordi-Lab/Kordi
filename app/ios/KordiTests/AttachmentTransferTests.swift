@@ -388,6 +388,12 @@ final class AttachmentTransferTests: XCTestCase {
         XCTAssertEqual(pendingGIF.mimeType, "image/gif")
         XCTAssertEqual(pendingGIF.data, gifData)
 
+        let savedGIFURL = accountDirectory.appendingPathComponent(savedGIF.relativeFileName)
+        try await store.remove(accountId: accountId, itemId: savedGIF.id)
+        let itemsAfterRemoval = await store.items(accountId: accountId)
+        XCTAssertFalse(itemsAfterRemoval.contains { $0.id == savedGIF.id })
+        XCTAssertFalse(FileManager.default.fileExists(atPath: savedGIFURL.path))
+
         let savedGIFSticker = try await store.add(
             accountId: accountId,
             fileAt: gifURL,

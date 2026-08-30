@@ -284,6 +284,10 @@ pub fn routes_with_config(
             get(list_expressive_media).post(save_expressive_media),
         )
         .route(
+            "/v1/cloud/expressive-media/:media_id",
+            delete(delete_expressive_media),
+        )
+        .route(
             "/v1/cloud/sessions/:source_session_id/forks",
             get(list_cloud_session_forks).post(create_cloud_session_fork),
         )

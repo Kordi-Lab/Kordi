@@ -280,14 +280,16 @@ test('public media rejects untrusted hosts and unsupported MIME types', async ()
   );
 });
 
-test('expressive picker uses a compact narrow popover', () => {
+test('expressive picker uses a dense five-column scrollable popover', () => {
   const styles = readFileSync(
     new URL('../src/styles/shell-expressive-picker.css', import.meta.url),
     'utf8',
   );
 
-  assert.match(styles, /width: min\(20rem, calc\(100vw - 1\.5rem\)\)/);
+  assert.match(styles, /width: min\(25rem, calc\(100vw - 1\.5rem\)\)/);
   assert.match(styles, /height: min\(25rem, calc\(100vh - 7rem\)\)/);
+  assert.match(styles, /app-expressive-picker-media-panel[\s\S]*?overflow-y: auto/);
+  assert.match(styles, /app-expressive-picker-media-grid[\s\S]*?repeat\(5, minmax\(0, 1fr\)\)/);
 });
 
 test('expressive picker trigger sits in the left action row beside the attachment control', () => {
@@ -409,6 +411,20 @@ test('My Stickers and My GIFs persist as a media library instead of composer dra
 
   assert.equal(values.has(EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY), true);
   assert.deepEqual(readExpressiveMediaLibrary(storage), [item]);
+});
+
+test('saved media exposes the management menu without redundant guidance', () => {
+  const picker = readFileSync(
+    new URL('../src/features/emoji/ComposerExpressivePicker.tsx', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(picker, /onClick=\{\(\) => void sendMedia/);
+  assert.match(picker, /onContextMenu=/);
+  assert.match(picker, /event\.shiftKey && event\.key === 'F10'/);
+  assert.match(picker, /data-expressive-media-menu="true"/);
+  assert.match(picker, /deleteExpressiveMediaLibraryItem/);
+  assert.doesNotMatch(picker, /Added media stays in your library/);
 });
 
 test('media selection uses an explicit attachment override for immediate send', () => {

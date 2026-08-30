@@ -91,7 +91,7 @@ pub(super) async fn list_expressive_media(
     let rows: Vec<ExpressiveMediaRow> = match query_as(
         "SELECT item_id, attachment_id, kind, name, mime_type, size_bytes, created_at, updated_at \
              FROM cloud_expressive_media_items \
-             WHERE account_id = $1 \
+             WHERE account_id = $1 AND deleted_at IS NULL \
              ORDER BY created_at DESC, item_id DESC",
     )
     .bind(&session.account_id)
@@ -187,14 +187,14 @@ pub(super) async fn save_expressive_media(
 
     let now = Utc::now().to_rfc3339();
     let item_id = format!("media_{}", uuid::Uuid::new_v4().simple());
-    let row: (String, String, String, String, String, i64, String, String) =
-        match query_as(
+    let row: Option<ExpressiveMediaRow> = match query_as(
             "INSERT INTO cloud_expressive_media_items \
              (item_id, account_id, attachment_id, kind, name, mime_type, size_bytes, created_at, updated_at) \
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) \
              ON CONFLICT (account_id, attachment_id) DO UPDATE SET \
                kind = EXCLUDED.kind, name = EXCLUDED.name, mime_type = EXCLUDED.mime_type, \
                size_bytes = EXCLUDED.size_bytes, updated_at = EXCLUDED.updated_at \
+             WHERE cloud_expressive_media_items.deleted_at IS NULL \
              RETURNING item_id, attachment_id, kind, name, mime_type, size_bytes, created_at, updated_at",
         )
         .bind(&item_id)
@@ -205,7 +205,7 @@ pub(super) async fn save_expressive_media(
         .bind(content_type.trim().to_ascii_lowercase())
         .bind(size_bytes)
         .bind(&now)
-        .fetch_one(state.db_pool())
+        .fetch_optional(state.db_pool())
         .await
         {
             Ok(row) => row,
@@ -217,11 +217,52 @@ pub(super) async fn save_expressive_media(
                 )
             }
         };
+    let Some(row) = row else {
+        return err(
+            "media_deleted",
+            "This saved media was deleted. Add it as a new upload to save it again.",
+            StatusCode::CONFLICT,
+        );
+    };
 
     Json(CloudExpressiveMediaMutationResponse {
         item: media_item_from_row(row),
     })
     .into_response()
+}
+
+pub(super) async fn delete_expressive_media(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    axum::extract::Path(media_id): axum::extract::Path<String>,
+) -> Response {
+    let media_id = media_id.trim();
+    if media_id.is_empty() || media_id.len() > 512 {
+        return err(
+            "invalid_media_item",
+            "mediaId is invalid.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+
+    let now = Utc::now().to_rfc3339();
+    match query(
+        "UPDATE cloud_expressive_media_items SET deleted_at = $1, updated_at = $1 \
+         WHERE account_id = $2 AND (item_id = $3 OR attachment_id = $3) AND deleted_at IS NULL",
+    )
+    .bind(&now)
+    .bind(&session.account_id)
+    .bind(media_id)
+    .execute(state.db_pool())
+    .await
+    {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(_) => err(
+            "server_error",
+            "Could not delete this saved media.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    }
 }
 
 #[cfg(test)]

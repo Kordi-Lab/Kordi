@@ -322,6 +322,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "quarantine invalid support conversations",
         sql: include_str!("../../migrations/0067_quarantine_invalid_support_conversations.sql"),
     },
+    EmbeddedMigration {
+        version: 70,
+        description: "expressive media deletion tombstones",
+        sql: include_str!("../../migrations/0070_expressive_media_deletions.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

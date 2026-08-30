@@ -51,7 +51,7 @@ pub(crate) async fn attachment_access_row(
     if row.1 != session.account_id {
         let allowed: Option<(i32,)> = match query_as(
             "SELECT 1 FROM cloud_expressive_media_items \
-             WHERE attachment_id = $1 AND account_id = $2 \
+             WHERE attachment_id = $1 AND account_id = $2 AND deleted_at IS NULL \
              UNION ALL \
              SELECT 1 \
              FROM cloud_chat_message_attachments attachment \

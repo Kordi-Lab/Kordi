@@ -1545,6 +1545,16 @@ actor CloudAPIClient {
         return response.item
     }
 
+    func deleteExpressiveMedia(token: String, mediaId: String) async throws {
+        let encodedId = mediaId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? mediaId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/expressive-media/\(encodedId)",
+            method: "DELETE",
+            token: token,
+            fallback: "Could not delete this saved media."
+        )
+    }
+
     func markMessagesRead(
         token: String,
         peerAccountId: String,

@@ -850,6 +850,17 @@ export class CloudAuthClient {
     return response.item;
   }
 
+  async deleteExpressiveMedia(token: string, mediaId: string): Promise<void> {
+    return this.send<void>(
+      `/v1/cloud/expressive-media/${encodeURIComponent(mediaId)}`,
+      {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not delete this saved media.',
+    );
+  }
+
   async markMessagesRead(token: string, peerAccountId: string): Promise<void> { return this.chat.markMessagesRead(token, peerAccountId); }
 
   async markSessionMessagesRead(token: string, sessionId: string): Promise<void> { return this.chat.markSessionMessagesRead(token, sessionId); }

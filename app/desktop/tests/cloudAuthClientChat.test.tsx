@@ -71,7 +71,7 @@ test('rekeyed and deleted sessions release stale local routing identities', () =
   assert.deepEqual(state.knownSessionIds('acct_me'), []);
 });
 
-test('expressive media client lists and saves account-owned library items', async () => {
+test('expressive media client lists, saves, and deletes account-owned library items', async () => {
   const mediaItem = {
     itemId: 'media-1',
     attachmentId: 'attachment-1',
@@ -82,11 +82,12 @@ test('expressive media client lists and saves account-owned library items', asyn
     createdAt: '2026-08-17T10:00:00Z',
     updatedAt: '2026-08-17T10:00:00Z',
   };
-  const { calls, fetchImpl } = recordingFetch((call) => (
-    call.init?.method === 'POST'
+  const { calls, fetchImpl } = recordingFetch((call) => {
+    if (call.init?.method === 'DELETE') return new Response(null, { status: 204 });
+    return call.init?.method === 'POST'
       ? jsonResponse(200, { item: mediaItem })
-      : jsonResponse(200, { items: [mediaItem] })
-  ));
+      : jsonResponse(200, { items: [mediaItem] });
+  });
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
 
   assert.deepEqual(await client.listExpressiveMedia('token-a'), [mediaItem]);
@@ -95,6 +96,7 @@ test('expressive media client lists and saves account-owned library items', asyn
     kind: 'sticker',
     name: 'wave.webp',
   }), mediaItem);
+  await client.deleteExpressiveMedia('token-a', 'media-1');
 
   assert.equal(calls[0].url, 'http://srv/v1/cloud/expressive-media');
   assert.equal(calls[0].init?.method, 'GET');
@@ -104,6 +106,8 @@ test('expressive media client lists and saves account-owned library items', asyn
     kind: 'sticker',
     name: 'wave.webp',
   });
+  assert.equal(calls[2].url, 'http://srv/v1/cloud/expressive-media/media-1');
+  assert.equal(calls[2].init?.method, 'DELETE');
 });
 
 test('sendMessage uses canonical conversation identity and canonical idempotent message writes', async () => {
