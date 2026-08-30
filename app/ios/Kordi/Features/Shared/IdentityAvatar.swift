@@ -25,11 +25,7 @@ struct IdentityAvatar: View {
 
     var body: some View {
         ZStack {
-            if normalizedImageSource == nil {
-                fallback
-            } else {
-                imageLoadingPlaceholder
-            }
+            fallback
 
             if let normalizedImageSource {
                 AvatarSourceImage(source: normalizedImageSource)
@@ -59,27 +55,20 @@ struct IdentityAvatar: View {
                     .foregroundStyle(KordiTheme.signalBlue)
             case .person:
                 Circle().fill(Color(uiColor: .secondarySystemFill))
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: size * 0.42, weight: .regular))
+                Text(initials)
+                    .font(.system(size: size * 0.36, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
         }
     }
 
-    @ViewBuilder
-    private var imageLoadingPlaceholder: some View {
-        if isKordiSupport {
-            KordiSupportAvatar()
-        } else if kind == .agent {
-            Circle().fill(Color(uiColor: .secondarySystemFill))
-        } else {
-            Circle().fill(Color(uiColor: .secondarySystemFill))
-            Image(systemName: kind == .group ? "person.2.fill" : "person.crop.circle.fill")
-                .font(.system(size: size * 0.42, weight: .regular))
-                .foregroundStyle(.secondary)
-        }
+    private var initials: String {
+        let words = name.split(whereSeparator: \.isWhitespace)
+        let value = words.count > 1
+            ? String(words.prefix(2).compactMap(\.first))
+            : String((words.first ?? Substring()).prefix(2))
+        return value.nonEmpty?.uppercased() ?? "?"
     }
-
 }
 
 struct AvatarActionPill: View {
@@ -229,6 +218,11 @@ private struct AvatarSourceImage: View {
     let source: String
     @State private var image: UIImage?
 
+    init(source: String) {
+        self.source = source
+        _image = State(initialValue: AvatarImageLoader.cachedImage(from: source))
+    }
+
     var body: some View {
         Color.clear
             .overlay {
@@ -287,7 +281,6 @@ enum AvatarImageLoader {
         } else {
             data = nil
         }
-
         guard let data, data.count <= maximumBytes else { return nil }
         let image = await Task.detached(priority: .utility) {
             AttachmentImageDecoder.downsampledImage(
@@ -296,9 +289,34 @@ enum AvatarImageLoader {
             )
         }.value
         guard let image else { return nil }
-        let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
-        cache.setObject(image, forKey: normalized as NSString, cost: cost)
+        store(image, for: normalized)
         return image
+    }
+
+    static func cachedImage(from source: String, urlCache: URLCache = .shared) -> UIImage? {
+        guard let normalized = normalizedSource(source) else { return nil }
+        if let cached = cache.object(forKey: normalized as NSString) { return cached }
+
+        let data: Data?
+        if normalized.lowercased().hasPrefix("data:image/") {
+            data = dataFromImageURL(normalized)
+        } else if let url = URL(string: normalized) {
+            data = urlCache.cachedResponse(for: URLRequest(url: url))?.data
+        } else {
+            data = nil
+        }
+        guard let data, data.count <= maximumBytes,
+              let image = AttachmentImageDecoder.downsampledImage(
+                data: data,
+                maximumPixelSize: maximumPixelSize
+              ) else { return nil }
+        store(image, for: normalized)
+        return image
+    }
+
+    private static func store(_ image: UIImage, for source: String) {
+        let cost = image.cgImage.map { $0.bytesPerRow * $0.height } ?? 0
+        cache.setObject(image, forKey: source as NSString, cost: cost)
     }
 
     private static func remoteData(from url: URL) async throws -> Data {
