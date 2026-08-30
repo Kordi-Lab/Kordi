@@ -1,12 +1,14 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { Split } from 'lucide-react';
 
+import { shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { transcriptMessageRenderKey } from '@/features/chat/transcriptRenderKeys';
 import { collectConversationImageAttachments } from '@/features/chat/attachmentMediaGallery';
 import { transcriptTimeSeparatorLabels } from '@/features/chat/transcriptTimestamps';
 import { transcriptWindowMessageMatchesId } from '@/features/chat/transcriptWindowing';
 import { VirtualTranscript } from '@/features/chat/VirtualTranscript';
 import { MessageBubble } from '@/kordi-app/components';
+import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMessageHumanRole';
 import type { Message } from '@/kordi-app/types';
 import type { ChatSessionPaneProps } from '@/pages/chatsPage.types';
 import { QueuedMessageBubble } from '@/pages/chatsPage.queuedMessage';
@@ -142,6 +144,14 @@ export function useChatTranscriptViewport({
     () => collectConversationImageAttachments(transcriptMessages),
     [transcriptMessages],
   );
+  const latestMessage = transcriptMessages[transcriptMessages.length - 1];
+  const animateLatestAppend = Boolean(
+    latestMessage
+    && shouldAnimateHumanMessageEntry(
+      transcriptMessageIsOwnHuman(latestMessage),
+      latestMessage.statusChips?.[0]?.trim().toLowerCase(),
+    ),
+  );
 
   return useMemo(() => (
     <VirtualTranscript
@@ -162,6 +172,7 @@ export function useChatTranscriptViewport({
       selectionMode={selectionMode}
       onCancelMessageSelection={onCancelMessageSelection}
       onSelectAllMessages={onSelectAllMessages}
+      animateLatestAppend={animateLatestAppend}
       getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
       renderItem={({ message: msg, originalIndex: idx }) => (
         <div>
@@ -247,6 +258,7 @@ export function useChatTranscriptViewport({
   ), [
     activeForkSourceSessionId,
     activeForkSourceTitle,
+    animateLatestAppend,
     canLoadOlderMessages,
     densityMode,
     emptyState,

@@ -35,6 +35,24 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertEqual(immediate.phase, .signedIn)
     }
 
+    @MainActor
+    func testPreviewSendSettlesLocallyWithoutRetry() async throws {
+        let model = AppModel(previewMode: true)
+        let conversation = try XCTUnwrap(
+            model.conversations.first(where: { $0.id == "person:acct_maya" })
+        )
+        let initialCount = model.messages(for: conversation).count
+
+        await model.send("Preview the entry motion", to: conversation)
+
+        let messages = model.messages(for: conversation)
+        XCTAssertEqual(messages.count, initialCount + 1)
+        XCTAssertEqual(messages.last?.text, "Preview the entry motion")
+        XCTAssertEqual(messages.last?.deliveryState, .read)
+        XCTAssertNil(messages.last?.errorMessage)
+        XCTAssertNil(model.errorMessage)
+    }
+
     func testNewChatMenuRoutesEveryActionToItsNavigationDestination() {
         XCTAssertEqual(
             NewChatMode.allCases.map(\.menuTitle),

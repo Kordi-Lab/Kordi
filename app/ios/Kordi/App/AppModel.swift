@@ -1436,6 +1436,12 @@ final class AppModel: ObservableObject {
             attachment: voiceMessage == nil ? outgoingAttachments.first?.optimisticAttachment : nil,
             date: optimistic.createdAt
         )
+        if previewMode {
+            setMessageDeliveryState(localId, conversationId: conversation.id, state: .read)
+            clearPendingSendMetadata(localId)
+            if requestsAgentRun { completeAgentRequest(conversationId: conversation.id) }
+            return
+        }
 
         do {
             let conversationId = conversation.id
