@@ -176,6 +176,10 @@ test('styles source quote colors contextually across chat themes', () => {
   assert.doesNotMatch(shellCss, /\.kordi-app\.theme-light \.app-chat-bubble-user \.app-source-message-quote/);
   assert.match(peerBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-chat-accent\) 22%, var\(--app-chat-bubble-peer-bg\)\)/);
   assert.match(quoteMentionBlock, /color:\s*var\(--app-source-message-quote-accent\)/);
+  assert.match(
+    shellCss,
+    /body\[data-kordi-chat-theme="quiet"\][\s\S]*?\.app-chat-bubble-peer \.app-source-message-quote,[\s\S]*?--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-chat-bubble-peer-text\) 12%, var\(--app-chat-bubble-peer-bg\)\)/,
+  );
 });
 
 test('keeps medium completed agent responses readable without folding too early', () => {

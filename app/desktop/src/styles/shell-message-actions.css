@@ -252,6 +252,12 @@
   --app-source-message-quote-fade-bg: var(--app-chat-bubble-peer-bg);
 }
 
+body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer .app-source-message-quote,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="quiet"] .app-chat-bubble-peer .app-source-message-quote {
+  --app-source-message-quote-bg: color-mix(in oklab, var(--app-chat-bubble-peer-text) 12%, var(--app-chat-bubble-peer-bg));
+  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-chat-bubble-peer-text) 16%, var(--app-chat-bubble-peer-bg));
+}
+
 .app-source-message-quote-link {
   width: 100%;
   grid-template-columns: minmax(0, 1fr);

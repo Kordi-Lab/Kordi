@@ -349,7 +349,7 @@ struct MessageBubble: View, Equatable {
             .foregroundStyle(bubbleTextColor)
             .background {
                 bubbleShape.fill(bubbleColor)
-                bubbleShape.fill(chatTheme.accent.opacity(lightAppearanceBubbleTintOpacity))
+                bubbleShape.fill(lightAppearanceBubbleTintColor)
             }
             .clipShape(bubbleShape)
         }
@@ -677,12 +677,14 @@ struct MessageBubble: View, Equatable {
         }
     }
 
-    private var lightAppearanceBubbleTintOpacity: Double {
-        guard colorScheme == .light else { return 0 }
+    private var lightAppearanceBubbleTintColor: Color {
+        guard colorScheme == .light else { return .clear }
         return switch message.author {
-        case .me: 0.12
-        case .person: 0.16
-        case .agent: 0
+        case .me: chatTheme == .quiet ? .clear : chatTheme.accent.opacity(0.12)
+        case .person: chatTheme == .quiet
+            ? chatTheme.peerText.opacity(0.07)
+            : chatTheme.accent.opacity(0.16)
+        case .agent: .clear
         }
     }
 
@@ -697,7 +699,9 @@ struct MessageBubble: View, Equatable {
     private var replyPreviewBackgroundColor: Color {
         switch message.author {
         case .me: bubbleTextColor.opacity(0.16)
-        case .person: chatTheme.accent.opacity(0.22)
+        case .person: colorScheme == .light && chatTheme == .quiet
+            ? chatTheme.peerText.opacity(0.12)
+            : chatTheme.accent.opacity(0.22)
         case .agent: KordiTheme.agentViolet.opacity(0.22)
         }
     }
