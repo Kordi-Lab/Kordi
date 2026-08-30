@@ -153,6 +153,7 @@ Install dependencies once with `pnpm install --frozen-lockfile`, then use the ro
 | [Architecture](docs/architecture.md) | Product topology and layer responsibilities |
 | [Hosted cloud guide](docs/hosted-cloud-developer-guide.md) | Hosted testing, deployment, and redaction rules |
 | [Changelog](CHANGELOG.md) | User-facing changes since the latest beta release |
+| [Dual-platform release runbook](docs/development/dual-platform-release-runbook.md) | Joint preflight and standard macOS beta plus iOS TestFlight release path |
 | [Release guide](docs/release.md) | Desktop packaging and release responsibilities |
 
 ## Contributing

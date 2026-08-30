@@ -7,6 +7,11 @@ credentials, publisher arguments, channel policy, and backend deployment.
 Voice/video deployment and installed-app acceptance remain governed by the
 [call hosting guide](../call-hosting.md).
 
+For a coordinated macOS and iOS release, begin with the
+[standard dual-platform release runbook](dual-platform-release-runbook.md).
+This document starts only after the joint preflight has passed and one merged
+commit has been pinned for both platforms.
+
 ## Release invariant
 
 One immutable, merged `origin/main` commit must identify all of the following:
@@ -30,22 +35,27 @@ been verified.
 
 ## Preflight before compiling
 
-1. Fetch `origin/main`, select the merged release commit, and create a clean
+1. Confirm the joint macOS/iOS preflight passed. Do not compile desktop after a
+   source-only desktop check while iOS version, tests, Apple capabilities, team,
+   signing, or build-number state remain unknown.
+2. Fetch `origin/main`, select the merged release commit, and create a clean
    detached worktree for it.
-2. Compare the commit with the previous release tag, confirm every user-facing
+3. Compare the commit with the previous release tag, confirm every user-facing
    change is represented in the dated `CHANGELOG.md` entry, and run the
    release-version test. The changelog version/link and all package, Cargo, and
    Tauri version sources must agree.
-3. Select the release profile before building:
+4. Select the release profile before building:
    - production requires Developer ID signing and notarization;
-   - ad-hoc requires explicit approval and can publish only to `acceptance`.
-4. Verify GCP authentication, signing material, disk space, memory pressure,
+   - ad-hoc requires explicit approval and can publish only to `acceptance`;
+   - the historical beta.5.1/beta.6 bootstrap is never the default acceptance
+     path for a standard release.
+5. Verify GCP authentication, signing material, disk space, memory pressure,
    mounted DMGs, running Kordi instances, and ports `9900` and `9901`.
-5. Record the Rust, Xcode, and linker versions so a later rebuild can reproduce
+6. Record the Rust, Xcode, and linker versions so a later rebuild can reproduce
    the toolchain.
-6. Inspect the macOS system proxy with `scutil --proxy`. Never bake a proxy
+7. Inspect the macOS system proxy with `scutil --proxy`. Never bake a proxy
    host or port into a release.
-7. If the release contains call changes or follows a call-service deployment,
+8. If the release contains call changes or follows a call-service deployment,
    confirm the product call readiness checks are green before compiling.
 
 Useful read-only checks:
@@ -137,6 +147,11 @@ unset VITE_KORDI_CLOUD_API_BASE
 agent runtime and Tauri dependency graph concurrently caused severe memory
 pressure and multiple multi-gigabyte Kordi processes during beta.9.
 
+Use an already-installed, valid Developer ID Application identity on the
+approved local release Mac. Import the protected p12 into a temporary keychain
+only when the identity is absent or the build runs in an ephemeral environment.
+In both cases, the production prerequisite gate remains authoritative.
+
 Persistent `CARGO_TARGET_DIR` caches under
 `$HOME/.cache/kordi/releases/` may be reused when the toolchain, target,
 `RUSTFLAGS`, and relevant lockfiles are compatible. Name new caches by
@@ -188,7 +203,8 @@ has been corrected.
 Use this order so expensive work and external state changes happen only after
 their prerequisites are known:
 
-1. Merge the release-preparation PR and pin `RELEASE_COMMIT`.
+1. Complete the joint desktop/iOS preflight, merge any fix, then pin
+   `RELEASE_COMMIT` once for both platforms.
 2. Back up the production database.
 3. Deploy server and runner images built from `RELEASE_COMMIT`; verify rollout,
    schema, secret-free logs, public health, and the [two-account call acceptance
@@ -214,6 +230,12 @@ their prerequisites are known:
     DMG only after product verification succeeds.
 13. Verify the GitHub asset digest and size, close tunnels, remove secrets,
     detach DMGs, and remove the neutral worktree.
+
+Immutable upload, acceptance promotion, normal beta promotion, stable/manual
+metadata, tag, and GitHub prerelease are separate states. Report each state
+after it is verified. An already-open prior desktop version checks on updater
+component mount; restart it or use an explicit check action after beta promotion
+before concluding that the update indicator is missing.
 
 Never deploy `KORDI_RELEASE_VERSION`, `KORDI_RELEASE_CHANGELOG_URL`, or manual
 install copy for a version whose referenced immutable DMG is not publicly
@@ -322,6 +344,12 @@ Before declaring the release complete:
 - remove the neutral worktree with `git worktree remove`;
 - preserve only non-secret release artifacts and validated build caches;
 - confirm the original development worktree is unchanged.
+
+The shell that loads release credentials must also own the cleanup trap. Do not
+pipe that shell directly through an untested redaction command: a failed output
+consumer can interrupt the command and leave protected files behind. Capture a
+mode-600 raw log, let cleanup finish, redact the completed log, emit the safe
+summary, and delete the raw log.
 
 ## Beta.9 reference result
 

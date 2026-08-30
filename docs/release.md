@@ -69,12 +69,19 @@ Signed Hosted Desktop beta releases use two different version strings:
 - App/package version: `0.0.1-beta.N`
 - Git tag and GitHub prerelease: `V0.0.1.betaN`
 
+For a normal macOS beta and iOS TestFlight release from one source commit, start
+with the [standard dual-platform release runbook](development/dual-platform-release-runbook.md).
+Its joint preflight must pass for both platforms before either platform deploys,
+builds, uploads, or tags. Use this document and the platform runbooks for the
+detailed commands and recovery paths after that preflight.
+
 Ad-hoc releases are explicit, per-release exceptions to the signed production
 procedure. The beta.6 acceptance-only procedure below is retained as a
 historical reference. A later ad-hoc release must be approved independently,
 must stay off the normal beta updater channel, and must not be presented as a
 notarized production build. Whether it is mirrored to GitHub is also an
-explicit release decision.
+explicit release decision. A standard release must not build the historical
+beta.5.1/bootstrap or beta.6 preview artifacts.
 
 Use a clean release branch/worktree from the latest `origin/main`. Do not release from a dirty local development worktree.
 
@@ -105,11 +112,17 @@ a new version next time if any immutable bytes were uploaded. Follow the full
 ### Signed desktop release prerequisites
 
 Every production updater release uses a Tauri minisign key and a notarized
-Developer ID build. The private Tauri key, its password, and Apple
-signing/notary material must be stored in GCP Secret Manager. Only the Tauri
-public key is committed in `app/desktop/src-tauri/tauri.conf.json`.
+Developer ID build. The private Tauri key, its password, and Apple notarization
+material must be stored in GCP Secret Manager. On the approved local release
+Mac, signing may use a valid Developer ID Application identity already installed
+in the operator keychain. Ephemeral or CI environments import the protected p12
+into a temporary keychain. Only the Tauri public key is committed in
+`app/desktop/src-tauri/tauri.conf.json`.
 
-The production secret names are:
+The production secret names are listed below. The p12 pair is required for
+ephemeral import and recovery; its absence does not invalidate an approved,
+already-installed local Developer ID identity when the production prerequisite
+gate passes.
 
 - `kordi-tauri-updater-private-key`
 - `kordi-tauri-updater-private-key-password`
@@ -176,6 +189,9 @@ pnpm release:publish-desktop -- \
 ```
 
 ### Beta.6 ad-hoc external-test preview
+
+This entire section is historical and is not part of the standard beta.7+
+release path. Do not use it as a generic acceptance bootstrap.
 
 Beta.6 is an acceptance-only, ad-hoc-signed external-test preview. It is not Apple-signed, notarized, tagged, mirrored to a public GitHub release, or promoted to `desktop/channels/beta/latest.json`. Invited testers install beta.5.1 manually once and use Apple's per-app **Open Anyway** flow. Do not disable Gatekeeper or remove quarantine attributes.
 
@@ -469,7 +485,9 @@ Preserve production data and deploy in place from a clean worktree at `RELEASE_C
 
    ```bash
    export KORDI_CLOUD_IMAGE_TAG="release-${RELEASE_COMMIT:0:12}"
-   export KORDI_EXPECT_DESKTOP_RELEASE_UNPUBLISHED=true
+   # Set true only when the current beta pointer is already unpublished.
+   # Keep false while the last verified beta remains live.
+   export KORDI_EXPECT_DESKTOP_RELEASE_UNPUBLISHED=false
    bash bridges/cloud-server/deploy/k3s/create-release-credentials.sh
    bash bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh
    ```
@@ -559,6 +577,11 @@ strings "$DMG" | rg -F 'https://kordi.ai'
 8. Only after promotion passes, create the annotated `V0.0.1.betaN` tag at `RELEASE_COMMIT`, push it, and create the GitHub prerelease mirror. Include the merge commit, artifact hashes/sizes, deployed image tag, backup identifier, schema/health results, endpoint matrix, acceptance evidence, and rollback pointer digest.
 
 ## Validation before release
+
+For a coordinated macOS and iOS release, complete the
+[joint preflight](development/dual-platform-release-runbook.md#phase-1-joint-preflight-before-expensive-work)
+before running this desktop baseline. Do not publish the desktop candidate and
+then discover an iOS source, test, team, capability, or build-number failure.
 
 Recommended baseline:
 
