@@ -1,7 +1,6 @@
 import type { AttachmentItem } from './composerController.types';
 
 export const MEME_ALT_TEXT_MAX_CHARACTERS = 500;
-export const MEME_IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
 
 const MEME_IMAGE_MIME_TYPES = new Set([
   'image/gif',

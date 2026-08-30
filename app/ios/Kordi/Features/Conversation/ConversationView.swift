@@ -1,6 +1,5 @@
 import SwiftUI
 import QuickLook
-import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
 
@@ -58,12 +57,9 @@ struct ConversationView: View {
     @State private var shouldFollowLatestAfterInputSurfaceChange = false
     @State private var showFileImporter = false
     @State private var showPhotoPicker = false
-    @State private var showMemePhotoPicker = false
     @State private var showCamera = false
     @State private var videoReview: PendingAttachment?
     @State private var queuedVideoReviews: [PendingAttachment] = []
-    @State private var selectedPhotos: [PhotosPickerItem] = []
-    @State private var selectedPhotoSubtype: ChatAttachmentSubtype?
     @State private var isPreparingAttachments = false
     @State private var voiceRecorder = VoiceMessageRecorder()
     @State private var voiceGestureIntent = VoiceRecordingGestureIntent.hold
@@ -548,12 +544,7 @@ struct ConversationView: View {
                             onTakePhoto: { showCamera = true },
                             onChoosePhotos: {
                                 guard canPresentPhotoPicker() else { return }
-                                selectedPhotoSubtype = nil
                                 showPhotoPicker = true
-                            },
-                            onChooseMeme: {
-                                selectedPhotoSubtype = .meme
-                                showMemePhotoPicker = true
                             },
                             onChooseFiles: { showFileImporter = true },
                             onSendExpressiveMedia: sendExpressiveMedia,
@@ -821,17 +812,6 @@ struct ConversationView: View {
             allowsMultipleSelection: true,
             onCompletion: importFiles
         )
-        .photosPicker(
-            isPresented: $showMemePhotoPicker,
-            selection: $selectedPhotos,
-            maxSelectionCount: max(1, PendingAttachmentLoader.maximumAttachmentCount - attachments.count),
-            selectionBehavior: .ordered,
-            matching: .images
-        )
-        .onChange(of: selectedPhotos) { _, items in
-            guard !items.isEmpty else { return }
-            importPhotos(items)
-        }
         .fullScreenCover(isPresented: $showPhotoPicker) {
             PhotoLibrarySendPicker(
                 allowsSeparateMessages: conversation.kind != .agent,
@@ -1741,45 +1721,6 @@ struct ConversationView: View {
                 }
                 attachments.append(contentsOf: prepared.filter { !$0.isMP4Video })
                 enqueueVideoReviews(prepared.filter(\.isMP4Video))
-            } catch {
-                model.errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func importPhotos(_ items: [PhotosPickerItem]) {
-        guard !isPreparingAttachments else { return }
-        let importedSubtype = selectedPhotoSubtype
-        selectedPhotoSubtype = nil
-        isPreparingAttachments = true
-        selectedPhotos = []
-        Task {
-            defer { isPreparingAttachments = false }
-            do {
-                let remaining = max(0, PendingAttachmentLoader.maximumAttachmentCount - attachments.count)
-                guard items.count <= remaining else {
-                    throw AttachmentTransferError.tooManyFiles(PendingAttachmentLoader.maximumAttachmentCount)
-                }
-                var loaded: [PendingAttachment] = []
-                for (index, item) in items.enumerated() {
-                    guard let data = try await item.loadTransferable(type: Data.self) else {
-                        throw AttachmentTransferError.invalidImage
-                    }
-                    let preferredExtension = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
-                    var attachment = try await Task.detached(priority: .userInitiated) {
-                        try PendingAttachmentLoader.loadImage(
-                            data: data,
-                            suggestedName: "Photo-\(index + 1).\(preferredExtension)"
-                        )
-                    }.value
-                    attachment.subtype = importedSubtype
-                    if importedSubtype == .meme {
-                        attachment.altText = ""
-                        attachment.memeRightsConfirmed = false
-                    }
-                    loaded.append(attachment)
-                }
-                attachments.append(contentsOf: loaded)
             } catch {
                 model.errorMessage = error.localizedDescription
             }

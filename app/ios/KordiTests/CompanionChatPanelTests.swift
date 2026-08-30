@@ -221,6 +221,25 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertFalse(source.contains("isShowingExpressiveMediaImporter"))
     }
 
+    func testComposerMenusDoNotExposeMemeShortcuts() throws {
+        let conversationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation")
+        let composer = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("ComposerView.swift"),
+            encoding: .utf8
+        )
+        let conversation = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("ConversationView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertFalse(composer.contains("Meme from Photos"))
+        XCTAssertFalse(composer.contains("onChooseMeme"))
+        XCTAssertFalse(conversation.contains("showMemePhotoPicker"))
+    }
+
     func testExpressiveLibraryAddUsesPhotosInsteadOfFiles() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

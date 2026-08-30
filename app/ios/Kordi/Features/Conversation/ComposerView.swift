@@ -189,7 +189,6 @@ struct ComposerView: View {
     let cameraAvailable: Bool
     let onTakePhoto: () -> Void
     let onChoosePhotos: () -> Void
-    let onChooseMeme: () -> Void
     let onChooseFiles: () -> Void
     let onSendExpressiveMedia: (PendingAttachment) async -> Void
     let onSend: () -> Void
@@ -656,9 +655,6 @@ struct ComposerView: View {
             .disabled(!cameraAvailable)
             Button(action: onChoosePhotos) {
                 Label("Photo Library", systemImage: "photo.on.rectangle")
-            }
-            Button(action: onChooseMeme) {
-                Label("Meme from Photos", systemImage: "text.bubble")
             }
             Button(action: onChooseFiles) {
                 Label("Files", systemImage: "doc")
