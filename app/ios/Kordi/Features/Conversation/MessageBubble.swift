@@ -39,6 +39,7 @@ struct MessageBubble: View, Equatable {
     let ownAccountId: String?
     let automaticallyPresentsActions: Bool
     let backgroundSessions: [BackgroundAgentSessionPresentation]
+    let fullScreenVideoAttachmentID: String?
     let onOpenAuthorProfile: () -> Void
     let onOpenMentionProfile: (String) -> Void
     let onRetry: () async -> Void
@@ -52,6 +53,7 @@ struct MessageBubble: View, Equatable {
     let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
     let onPrepareAttachment: (ChatAttachment) async -> URL?
     let onPrepareAttachmentPreview: (ChatAttachment) async -> UIImage?
+    let onOpenVideo: (ChatAttachment, AVPlayer, UIImage?) -> Void
     let onAddAttachmentToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let onOpenBackgroundSession: (BackgroundAgentSession) -> Void
     let onAgentExecutionExpansionChange: (Bool) -> Void
@@ -86,6 +88,7 @@ struct MessageBubble: View, Equatable {
             && lhs.ownAccountId == rhs.ownAccountId
             && lhs.automaticallyPresentsActions == rhs.automaticallyPresentsActions
             && lhs.backgroundSessions == rhs.backgroundSessions
+            && lhs.fullScreenVideoAttachmentID == rhs.fullScreenVideoAttachmentID
     }
 
     var body: some View {
@@ -327,7 +330,9 @@ struct MessageBubble: View, Equatable {
                         deliveryState: message.deliveryState,
                         uploadProgress: message.attachmentUploadProgress,
                         onPrepare: onPrepareAttachment,
-                        onPreparePreview: onPrepareAttachmentPreview
+                        onPreparePreview: onPrepareAttachmentPreview,
+                        onExpand: onOpenVideo,
+                        isPresentedFullScreen: fullScreenVideoAttachmentID == attachment.id
                     )
                 }
             }
@@ -453,6 +458,8 @@ struct MessageBubble: View, Equatable {
                                 onShare: { onShareAttachment(attachment) },
                                 onPrepare: onPrepareAttachment,
                                 onPreparePreview: onPrepareAttachmentPreview,
+                                onOpenVideo: onOpenVideo,
+                                isVideoPresentedFullScreen: fullScreenVideoAttachmentID == attachment.id,
                                 onAddToMediaLibrary: onAddAttachmentToMediaLibrary,
                                 isActionTarget: actionAttachment?.id == attachment.id,
                                 onPrepareActions: { prepareImageActions(attachment) },
@@ -1370,6 +1377,8 @@ private struct MessageAttachmentCard: View {
     let onShare: () -> Void
     let onPrepare: (ChatAttachment) async -> URL?
     let onPreparePreview: (ChatAttachment) async -> UIImage?
+    let onOpenVideo: (ChatAttachment, AVPlayer, UIImage?) -> Void
+    let isVideoPresentedFullScreen: Bool
     let onAddToMediaLibrary: (ChatAttachment) async -> ExpressiveMediaLibraryKind?
     let isActionTarget: Bool
     let onPrepareActions: () -> Void
@@ -1395,7 +1404,9 @@ private struct MessageAttachmentCard: View {
                 deliveryState: deliveryState,
                 uploadProgress: uploadProgress,
                 onPrepare: onPrepare,
-                onPreparePreview: onPreparePreview
+                onPreparePreview: onPreparePreview,
+                onExpand: onOpenVideo,
+                isPresentedFullScreen: isVideoPresentedFullScreen
             )
         } else {
             MessageFileAttachmentCard(
@@ -1774,19 +1785,59 @@ private struct MessageFileAttachmentCard: View {
     }
 }
 
+struct VideoPreviewPresentation: Identifiable {
+    let attachment: ChatAttachment
+    let player: AVPlayer
+    let poster: UIImage?
+    var id: ObjectIdentifier { ObjectIdentifier(player) }
+
+    init(attachment: ChatAttachment, inlinePlayer: AVPlayer, poster: UIImage?) {
+        self.attachment = attachment
+        self.player = inlinePlayer
+        self.poster = poster
+    }
+}
+
+private struct NativeFullScreenVideoPlayer: UIViewControllerRepresentable {
+    let player: AVPlayer
+
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
+        controller.player = player
+        controller.showsPlaybackControls = true
+        controller.videoGravity = .resizeAspect
+        return controller
+    }
+
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) {
+        if controller.player !== player { controller.player = player }
+    }
+
+    static func dismantleUIViewController(
+        _ controller: AVPlayerViewController,
+        coordinator: ()
+    ) {
+        controller.player?.pause()
+        controller.player = nil
+    }
+}
+
 private struct MessageVideoAttachment: View {
     let attachment: ChatAttachment
     let deliveryState: MessageDeliveryState
     let uploadProgress: Double?
     let onPrepare: (ChatAttachment) async -> URL?
     let onPreparePreview: (ChatAttachment) async -> UIImage?
+    let onExpand: (ChatAttachment, AVPlayer, UIImage?) -> Void
+    let isPresentedFullScreen: Bool
 
     @State private var player: AVPlayer?
     @State private var poster: UIImage?
     @State private var posterAspectRatio: CGFloat?
     @State private var isLoading = false
     @State private var loadFailed = false
-    @State private var isFullscreenPresented = false
+    @State private var playbackHasStarted = false
+    @State private var playbackTimeObserver: Any?
 
     var body: some View {
         Group {
@@ -1796,24 +1847,58 @@ private struct MessageVideoAttachment: View {
                 sendingSurface
             } else if let player {
                 ZStack(alignment: .topTrailing) {
-                    VideoPlayer(player: player)
-                        .aspectRatio(videoAspectRatio, contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .background(.black)
-                        .accessibilityLabel("Play \(attachment.name)")
-                    Button {
-                        isFullscreenPresented = true
-                    } label: {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.body.weight(.semibold))
-                            .frame(width: 40, height: 40)
-                            .foregroundStyle(.white)
-                            .background(Color.black.opacity(0.58), in: Circle())
+                    if isPresentedFullScreen {
+                        if let poster {
+                            Image(uiImage: poster)
+                                .resizable()
+                                .scaledToFill()
+                        } else {
+                            Color(uiColor: .secondarySystemBackground)
+                        }
+                    } else {
+                        VideoPlayer(player: player)
+                            .aspectRatio(videoAspectRatio, contentMode: .fit)
+                            .frame(maxWidth: .infinity)
+                            .background(.black)
+                            .accessibilityLabel("Play \(attachment.name)")
+                        if !playbackHasStarted {
+                            ZStack {
+                                if let poster {
+                                    Image(uiImage: poster)
+                                        .resizable()
+                                        .scaledToFill()
+                                } else {
+                                    Color(uiColor: .secondarySystemBackground)
+                                }
+                                Color.black.opacity(poster == nil ? 0 : 0.18)
+                                ProgressView()
+                                    .controlSize(.large)
+                                    .tint(.white)
+                            }
+                            .clipped()
+                            .allowsHitTesting(false)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("Loading \(attachment.name)")
+                        } else {
+                            Button {
+                                onExpand(attachment, player, poster)
+                            } label: {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.caption.weight(.semibold))
+                                    .frame(width: 34, height: 34)
+                                    .foregroundStyle(.white)
+                                    .background(Color.black.opacity(0.44), in: Circle())
+                                    .overlay {
+                                        Circle().stroke(Color.white.opacity(0.12), lineWidth: 0.5)
+                                    }
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(4)
+                            .zIndex(1)
+                            .accessibilityLabel("Play \(attachment.name) in full screen")
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .padding(.top, 54)
-                    .padding(.trailing, 8)
-                    .accessibilityLabel("Play \(attachment.name) in full screen")
                 }
             } else {
                 Button(action: loadAndPlay) {
@@ -1876,13 +1961,9 @@ private struct MessageVideoAttachment: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $isFullscreenPresented) {
-            if let player {
-                FullScreenMessageVideo(player: player, name: attachment.name)
-            }
-        }
         .onDisappear {
-            if !isFullscreenPresented { player?.pause() }
+            clearPlaybackTimeObserver()
+            player?.pause()
         }
     }
 
@@ -2010,10 +2091,32 @@ private struct MessageVideoAttachment: View {
                 }
             }
             let preparedPlayer = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+            observePlaybackStart(preparedPlayer)
             player = preparedPlayer
             isLoading = false
             preparedPlayer.play()
         }
+    }
+
+    private func observePlaybackStart(_ player: AVPlayer) {
+        clearPlaybackTimeObserver()
+        playbackHasStarted = false
+        playbackTimeObserver = player.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: CMTime(seconds: 0.05, preferredTimescale: 600))],
+            queue: .main
+        ) { [weak player] in
+            playbackHasStarted = true
+            if let observer = playbackTimeObserver {
+                player?.removeTimeObserver(observer)
+                playbackTimeObserver = nil
+            }
+        }
+    }
+
+    private func clearPlaybackTimeObserver() {
+        guard let playbackTimeObserver else { return }
+        player?.removeTimeObserver(playbackTimeObserver)
+        self.playbackTimeObserver = nil
     }
 
     private var videoAspectRatio: CGFloat {
@@ -2042,17 +2145,40 @@ private struct MessageVideoAttachment: View {
     }
 }
 
-private struct FullScreenMessageVideo: View {
+struct FullScreenMessageVideo: View {
     @Environment(\.dismiss) private var dismiss
     let player: AVPlayer
     let name: String
+    let poster: UIImage?
+    @State private var playbackHasStarted = false
+    @State private var playbackTimeObserver: Any?
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             Color.black.ignoresSafeArea()
-            VideoPlayer(player: player)
+            NativeFullScreenVideoPlayer(player: player)
                 .ignoresSafeArea()
                 .accessibilityLabel("Play \(name)")
+            if !playbackHasStarted {
+                ZStack {
+                    if let poster {
+                        Image(uiImage: poster)
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        Color(uiColor: .secondarySystemBackground)
+                            .ignoresSafeArea()
+                    }
+                    Color.black.opacity(poster == nil ? 0 : 0.12)
+                        .ignoresSafeArea()
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(.white)
+                }
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Loading \(name)")
+            }
             Button {
                 dismiss()
             } label: {
@@ -2066,7 +2192,39 @@ private struct FullScreenMessageVideo: View {
             .padding(16)
             .accessibilityLabel("Exit full screen video")
         }
-        .onAppear { player.play() }
+        .onAppear {
+            observePlaybackStart()
+            player.play()
+        }
+        .onDisappear {
+            clearPlaybackTimeObserver()
+            player.pause()
+        }
+    }
+
+    private func observePlaybackStart() {
+        clearPlaybackTimeObserver()
+        playbackHasStarted = false
+        let revealTime = CMTimeAdd(
+            player.currentTime(),
+            CMTime(seconds: 0.05, preferredTimescale: 600)
+        )
+        playbackTimeObserver = player.addBoundaryTimeObserver(
+            forTimes: [NSValue(time: revealTime)],
+            queue: .main
+        ) { [weak player] in
+            playbackHasStarted = true
+            if let observer = playbackTimeObserver {
+                player?.removeTimeObserver(observer)
+                playbackTimeObserver = nil
+            }
+        }
+    }
+
+    private func clearPlaybackTimeObserver() {
+        guard let playbackTimeObserver else { return }
+        player.removeTimeObserver(playbackTimeObserver)
+        self.playbackTimeObserver = nil
     }
 }
 

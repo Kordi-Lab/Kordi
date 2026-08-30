@@ -15,14 +15,19 @@ import { loadSession } from '@/features/cloud/session';
 import {
   attachmentPreviewIdentity,
   attachmentPreviewUrl,
+  attachmentVideoUrl,
   isAnimatedGifAttachment,
+  isMp4VideoAttachment,
 } from '@/features/chat/attachmentMediaGallery';
 import {
   AttachmentContextMenu,
   recoverAttachmentPreviewOnce,
   type AttachmentContextMenuState,
 } from '@/kordi-app/components/transcriptAttachments';
-import { AttachmentImageLightbox } from '@/kordi-app/components/transcriptAttachmentLightbox';
+import {
+  AttachmentImageLightbox,
+  AttachmentVideoLightbox,
+} from '@/kordi-app/components/transcriptAttachmentLightbox';
 import type { MessageAttachment } from '@/kordi-app/types';
 import type { ResolvedThemeMode } from '@/kordi-app/types';
 
@@ -74,6 +79,7 @@ export default function AttachmentMediaWindow() {
   const [zoom, setZoom] = useState(1);
   const [theme, setTheme] = useState<ResolvedThemeMode>(initialMediaWindowTheme);
   const [failedDirectIdentity, setFailedDirectIdentity] = useState<string | null>(null);
+  const [failedVideoIdentity, setFailedVideoIdentity] = useState<string | null>(null);
   const [remotePreview, setRemotePreview] = useState<PreviewState>({
     attachmentIdentity: '',
     status: 'loading',
@@ -109,6 +115,7 @@ export default function AttachmentMediaWindow() {
       setPayload(nextPayload);
       setSelectedIndex(nextPayload.selectedIndex);
       setZoom(1);
+      setFailedVideoIdentity(null);
       if (nextPayload.theme) setTheme(nextPayload.theme);
     }).then((nextUnsubscribe) => {
       if (disposed) nextUnsubscribe();
@@ -131,10 +138,21 @@ export default function AttachmentMediaWindow() {
 
   const attachment = payload?.attachments[selectedIndex] ?? null;
   const attachmentIdentity = attachment ? attachmentPreviewIdentity(attachment) : null;
+  const isVideo = attachment ? isMp4VideoAttachment(attachment) : false;
   const initialPreviewUrl = payload && selectedIndex === payload.selectedIndex
     ? payload.initialPreviewUrl?.trim() || null
     : null;
+  const initialMediaUrl = payload && selectedIndex === payload.selectedIndex
+    ? payload.initialMediaUrl?.trim() || null
+    : null;
+  const initialMediaTime = payload && selectedIndex === payload.selectedIndex
+    ? payload.initialMediaTime ?? 0
+    : 0;
   const directPreviewUrl = attachment ? initialPreviewUrl || attachmentPreviewUrl(attachment) || null : null;
+  const directVideoUrl = attachment ? initialMediaUrl || attachmentVideoUrl(attachment) || null : null;
+  const usableVideoUrl = directVideoUrl && failedVideoIdentity !== attachmentIdentity
+    ? directVideoUrl
+    : null;
   const usableDirectPreviewUrl = directPreviewUrl && failedDirectIdentity !== attachmentIdentity
     ? directPreviewUrl
     : null;
@@ -145,13 +163,13 @@ export default function AttachmentMediaWindow() {
       : { status: 'loading' as const, url: null, source: null };
 
   useEffect(() => {
-    if (preview.status === 'unavailable') revealWindow();
-  }, [preview.status, revealWindow]);
+    if ((isVideo && !usableVideoUrl) || (!isVideo && preview.status === 'unavailable')) revealWindow();
+  }, [isVideo, preview.status, revealWindow, usableVideoUrl]);
 
   useEffect(() => {
     previewLeaseRef.current?.release();
     previewLeaseRef.current = null;
-    if (!payload || !attachment || !attachmentIdentity) return;
+    if (!payload || !attachment || !attachmentIdentity || isVideo) return;
 
     if (usableDirectPreviewUrl) return;
 
@@ -204,7 +222,7 @@ export default function AttachmentMediaWindow() {
       }
     });
     return () => controller.abort();
-  }, [attachment, attachmentIdentity, directPreviewUrl, payload, usableDirectPreviewUrl]);
+  }, [attachment, attachmentIdentity, directPreviewUrl, isVideo, payload, usableDirectPreviewUrl]);
 
   useEffect(() => () => {
     previewLeaseRef.current?.release();
@@ -229,24 +247,26 @@ export default function AttachmentMediaWindow() {
         return;
       }
       if (contextMenuState) return;
-      const zoomAction = attachmentMediaZoomActionForKey(event);
-      if (zoomAction) {
-        event.preventDefault();
-        setZoom((current) => nextAttachmentMediaZoom(current, zoomAction));
-        return;
-      }
-      if (event.key === 'ArrowLeft' && selectedIndex > 0) {
-        event.preventDefault();
-        navigate(-1);
-      }
-      if (event.key === 'ArrowRight' && payload && selectedIndex < payload.attachments.length - 1) {
-        event.preventDefault();
-        navigate(1);
+      if (!isVideo) {
+        const zoomAction = attachmentMediaZoomActionForKey(event);
+        if (zoomAction) {
+          event.preventDefault();
+          setZoom((current) => nextAttachmentMediaZoom(current, zoomAction));
+          return;
+        }
+        if (event.key === 'ArrowLeft' && selectedIndex > 0) {
+          event.preventDefault();
+          navigate(-1);
+        }
+        if (event.key === 'ArrowRight' && payload && selectedIndex < payload.attachments.length - 1) {
+          event.preventDefault();
+          navigate(1);
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [contextMenuState, navigate, payload, selectedIndex]);
+  }, [contextMenuState, isVideo, navigate, payload, selectedIndex]);
 
   const openContextMenu = useCallback((event: MouseEvent) => {
     if (!attachment) return;
@@ -260,37 +280,53 @@ export default function AttachmentMediaWindow() {
   }
 
   if (!payload || !attachment) {
-    return <div className="app-attachment-media-window-status" role="status">Opening image…</div>;
+    return <div className="app-attachment-media-window-status" role="status">Opening media…</div>;
   }
 
   return (
     <>
-      <AttachmentImageLightbox
-        attachment={attachment}
-        previewUrl={preview.url}
-        previewStatus={preview.status}
-        onImageLoad={revealWindow}
-        onImageError={() => {
-          if (preview.source === 'direct' && attachmentIdentity) {
-            setFailedDirectIdentity(attachmentIdentity);
-          } else {
-            previewLeaseRef.current?.release();
-            previewLeaseRef.current = null;
-            setRemotePreview({ attachmentIdentity: attachmentIdentity ?? '', status: 'unavailable', url: null });
-          }
-        }}
-        onClose={() => void closeMediaWindow()}
-        canGoPrevious={selectedIndex > 0}
-        canGoNext={selectedIndex < payload.attachments.length - 1}
-        onPrevious={() => navigate(-1)}
-        onNext={() => navigate(1)}
-        onContextMenu={openContextMenu}
-        positionLabel={`${selectedIndex + 1} of ${payload.attachments.length}`}
-        zoom={zoom}
-        onZoomIn={() => setZoom((current) => nextAttachmentMediaZoom(current, 'in'))}
-        onZoomOut={() => setZoom((current) => nextAttachmentMediaZoom(current, 'out'))}
-        onZoomReset={() => setZoom(1)}
-      />
+      {isVideo ? (
+        <AttachmentVideoLightbox
+          attachment={attachment}
+          videoUrl={usableVideoUrl}
+          posterUrl={initialPreviewUrl}
+          initialTime={initialMediaTime}
+          onVideoLoad={revealWindow}
+          onVideoError={() => {
+            if (attachmentIdentity) setFailedVideoIdentity(attachmentIdentity);
+            revealWindow();
+          }}
+          onClose={() => void closeMediaWindow()}
+          onContextMenu={openContextMenu}
+        />
+      ) : (
+        <AttachmentImageLightbox
+          attachment={attachment}
+          previewUrl={preview.url}
+          previewStatus={preview.status}
+          onImageLoad={revealWindow}
+          onImageError={() => {
+            if (preview.source === 'direct' && attachmentIdentity) {
+              setFailedDirectIdentity(attachmentIdentity);
+            } else {
+              previewLeaseRef.current?.release();
+              previewLeaseRef.current = null;
+              setRemotePreview({ attachmentIdentity: attachmentIdentity ?? '', status: 'unavailable', url: null });
+            }
+          }}
+          onClose={() => void closeMediaWindow()}
+          canGoPrevious={selectedIndex > 0}
+          canGoNext={selectedIndex < payload.attachments.length - 1}
+          onPrevious={() => navigate(-1)}
+          onNext={() => navigate(1)}
+          onContextMenu={openContextMenu}
+          positionLabel={`${selectedIndex + 1} of ${payload.attachments.length}`}
+          zoom={zoom}
+          onZoomIn={() => setZoom((current) => nextAttachmentMediaZoom(current, 'in'))}
+          onZoomOut={() => setZoom((current) => nextAttachmentMediaZoom(current, 'out'))}
+          onZoomReset={() => setZoom(1)}
+        />
+      )}
       {contextMenuState ? (
         <AttachmentContextMenu state={contextMenuState} onClose={() => setContextMenuState(null)} />
       ) : null}

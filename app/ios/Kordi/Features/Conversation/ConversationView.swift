@@ -65,6 +65,8 @@ struct ConversationView: View {
     @State private var voiceGestureIntent = VoiceRecordingGestureIntent.hold
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
+    @State private var videoPreview: VideoPreviewPresentation?
+    @State private var fullScreenVideoAttachmentID: String?
     @State private var shareItem: SharedFileItem?
     @State private var messageShareItem: SharedMessageItem?
     @State private var showSessionDetails = false
@@ -301,6 +303,9 @@ struct ConversationView: View {
                                                         automaticallyPresentsActions: ProcessInfo.processInfo.arguments.contains("--preview-message-actions")
                                                             && message.id == previewActionMessageID,
                                                         backgroundSessions: backgroundSessions,
+                                                        fullScreenVideoAttachmentID: message.attachments.contains {
+                                                            $0.id == fullScreenVideoAttachmentID
+                                                        } ? fullScreenVideoAttachmentID : nil,
                                                         onOpenAuthorProfile: {
                                                             authorProfileConversation = ConversationAuthorProfileResolver.destination(
                                                                 currentConversation: conversation,
@@ -354,6 +359,22 @@ struct ConversationView: View {
                                                         },
                                                         onPrepareAttachmentPreview: { attachment in
                                                             await model.prepareAttachmentPreviewImage(attachment)
+                                                        },
+                                                        onOpenVideo: { attachment, player, poster in
+                                                            let presentation = VideoPreviewPresentation(
+                                                                attachment: attachment,
+                                                                inlinePlayer: player,
+                                                                poster: poster
+                                                            )
+                                                            player.pause()
+                                                            fullScreenVideoAttachmentID = attachment.id
+                                                            Task { @MainActor in
+                                                                await Task.yield()
+                                                                guard fullScreenVideoAttachmentID == attachment.id else {
+                                                                    return
+                                                                }
+                                                                videoPreview = presentation
+                                                            }
                                                         },
                                                         onAddAttachmentToMediaLibrary: { attachment in
                                                             await model.addAttachmentToExpressiveMediaLibrary(attachment)
@@ -804,6 +825,8 @@ struct ConversationView: View {
             queuedVideoReviews.forEach { $0.discardOwnedFile() }
             videoReview = nil
             queuedVideoReviews = []
+            videoPreview = nil
+            fullScreenVideoAttachmentID = nil
             synchronizeReadPresentation()
         }
         .fileImporter(
@@ -843,6 +866,15 @@ struct ConversationView: View {
         .quickLookPreview($previewURL)
         .fullScreenCover(item: $mediaPreview) { presentation in
             MediaPreviewView(presentation: presentation)
+        }
+        .fullScreenCover(item: $videoPreview, onDismiss: {
+            fullScreenVideoAttachmentID = nil
+        }) { presentation in
+            FullScreenMessageVideo(
+                player: presentation.player,
+                name: presentation.attachment.name,
+                poster: presentation.poster
+            )
         }
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.url])

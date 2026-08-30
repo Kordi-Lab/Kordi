@@ -16,7 +16,7 @@ struct CameraCapturePicker: UIViewControllerRepresentable {
         controller.sourceType = .camera
         controller.mediaTypes = [UTType.image.identifier, UTType.movie.identifier]
         controller.cameraCaptureMode = .photo
-        controller.videoQuality = .typeMedium
+        controller.videoQuality = .typeHigh
         controller.videoMaximumDuration = 60
         controller.delegate = context.coordinator
         return controller

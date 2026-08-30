@@ -61,6 +61,40 @@ final class AttachmentTransferTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
     }
 
+    func testUploadedVideoCacheSurvivesDeletingItsPendingFile() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-uploaded-video-cache-\(UUID().uuidString)")
+        let sourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-video-\(UUID().uuidString).mp4")
+        defer {
+            try? FileManager.default.removeItem(at: directory)
+            try? FileManager.default.removeItem(at: sourceURL)
+        }
+        try Data([1, 2, 3, 4]).write(to: sourceURL)
+        let attachment = ChatAttachment(
+            attachmentId: "canonical-video",
+            name: "video.mp4",
+            kind: .file,
+            mimeType: "video/mp4",
+            sizeBytes: 4,
+            previewURL: nil
+        )
+        let stored = try await AttachmentFileStore(directory: directory).store(
+            fileAt: sourceURL,
+            attachment: attachment,
+            accountId: "acct_a"
+        )
+
+        try FileManager.default.removeItem(at: sourceURL)
+        let restored = await AttachmentFileStore(directory: directory).cachedURL(
+            for: attachment,
+            accountId: "acct_a"
+        )
+
+        XCTAssertEqual(restored, stored)
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(restored)), Data([1, 2, 3, 4]))
+    }
+
     func testAttachmentCacheIsAccountScoped() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("kordi-attachment-account-cache-\(UUID().uuidString)")

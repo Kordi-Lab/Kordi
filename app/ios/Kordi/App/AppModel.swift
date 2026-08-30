@@ -246,6 +246,7 @@ final class AppModel: ObservableObject {
     private var pendingProviderAuthBindingsBySessionID: [String: String] = [:]
     private var providerAuthenticationSyncTask: Task<Void, Never>?
     private var pendingAttachmentDraftsByMessageId: [String: [PendingAttachment]] = [:]
+    private var videoCacheTasks: [String: Task<Void, Never>] = [:]
     private var pendingVoiceDraftsByMessageId: [String: PendingVoiceMessage] = [:]
     private var pendingReplyByMessageId: [String: MessageActionSource] = [:]
     private var pendingMessageActionByMessageId: [String: MessageActionMetadata] = [:]
@@ -539,6 +540,8 @@ final class AppModel: ObservableObject {
             drafts.forEach { $0.discardOwnedFile() }
         }
         pendingAttachmentDraftsByMessageId = [:]
+        videoCacheTasks.values.forEach { $0.cancel() }
+        videoCacheTasks = [:]
         pendingReplyByMessageId = [:]
         pendingMessageActionByMessageId = [:]
         pendingMentionByMessageId = [:]
@@ -1467,6 +1470,17 @@ final class AppModel: ObservableObject {
                 }
             }
             let uploadedAttachments = try await attachmentUpload
+            if outgoingAttachments.count == 1,
+               let draft = outgoingAttachments.first,
+               let uploaded = uploadedAttachments.first,
+               draft.isMP4Video,
+               let fileURL = draft.fileURL {
+                _ = try? await attachmentFileStore.store(
+                    fileAt: fileURL,
+                    attachment: uploaded.chatAttachment,
+                    accountId: account.accountId
+                )
+            }
             let uploadedVoiceMessage = resolvedVoiceMessage.flatMap { draft in
                 uploadedAttachments.first.map { draft.voiceMessage(mediaId: $0.attachmentId) }
             }
@@ -1523,6 +1537,7 @@ final class AppModel: ObservableObject {
                     messageKind: outgoingMessageKind,
                     voiceMessage: uploadedVoiceMessage
                 ))
+                outgoingAttachments.forEach { $0.discardOwnedFile() }
                 clearPendingSendMetadata(localId)
                 if mentionTarget?.kind == .agent {
                     await startAgentRun(
@@ -2792,6 +2807,11 @@ final class AppModel: ObservableObject {
                         token: token,
                         attachmentId: attachment.attachmentId
                     )
+                    cacheVideoAttachmentInBackground(
+                        attachment,
+                        token: token,
+                        accountId: accountId
+                    )
                 } catch let error as CloudAPIError where error.statusCode == 404 {
                     let temporaryURL = try await api.downloadAttachmentContentFile(
                         token: token,
@@ -2834,6 +2854,34 @@ final class AppModel: ObservableObject {
             }
             errorMessage = userFacing(error, fallback: "Could not download \(attachment.name).")
             return nil
+        }
+    }
+
+    private func cacheVideoAttachmentInBackground(
+        _ attachment: ChatAttachment,
+        token: String,
+        accountId: String
+    ) {
+        let cacheKey = "\(accountId):\(attachment.attachmentId)"
+        guard videoCacheTasks[cacheKey] == nil else { return }
+        videoCacheTasks[cacheKey] = Task { [weak self] in
+            guard let self else { return }
+            defer { videoCacheTasks[cacheKey] = nil }
+            do {
+                let temporaryURL = try await api.downloadAttachmentContentFile(
+                    token: token,
+                    attachmentId: attachment.attachmentId
+                )
+                defer { try? FileManager.default.removeItem(at: temporaryURL) }
+                guard !Task.isCancelled, account?.accountId == accountId else { return }
+                _ = try await attachmentFileStore.store(
+                    fileAt: temporaryURL,
+                    attachment: attachment,
+                    accountId: accountId
+                )
+            } catch {
+                // Streaming remains usable; a later play retries the cache fill.
+            }
         }
     }
 
