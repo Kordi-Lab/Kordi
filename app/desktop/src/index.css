@@ -15,6 +15,7 @@
 @import './styles/shell-group-invitations.css';
 @import './styles/shell-calls.css';
 @import './styles/shell-bubbles.css';
+@import './styles/shell-transcript-motion.css';
 @import './styles/shell-voice-messages.css';
 @import './styles/shell-transcript-loading.css';
 @import './styles/shell-attachment-transfer.css';

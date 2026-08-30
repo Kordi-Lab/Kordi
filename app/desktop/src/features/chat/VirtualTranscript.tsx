@@ -18,6 +18,7 @@ import {
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
 import { preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP } from '@/features/chat/virtualTranscriptLayout';
+import { alignAndRevealMeasuredTranscriptRows, cancelTranscriptRowLift, useStableTranscriptSessionReveal } from '@/features/chat/virtualTranscriptMotion';
 import {
   TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS,
   useVirtualTranscriptNavigation,
@@ -117,7 +118,7 @@ export function VirtualTranscript<Item>({
   const tailAlignmentActiveRef = useRef(false);
   const tailAlignmentFrameRef = useRef<number | null>(null);
   const tailAlignmentTargetRef = useRef<number | null>(null);
-  const tailLiftAnimationRef = useRef<Animation | null>(null);
+  const tailLiftRowsRef = useRef<HTMLElement[]>([]);
   const sizeContainerRef = useRef<HTMLDivElement | null>(null);
   const stableDisclosureAnchorRef = useRef<StableDisclosureAnchor | null>(null);
   const stableDisclosureReleaseFrameRef = useRef<number | null>(null);
@@ -178,8 +179,8 @@ export function VirtualTranscript<Item>({
   }, [totalSize, virtualizer]);
 
   const cancelTailLiftAnimation = useCallback(() => {
-    tailLiftAnimationRef.current?.cancel();
-    tailLiftAnimationRef.current = null;
+    cancelTranscriptRowLift(tailLiftRowsRef.current);
+    tailLiftRowsRef.current = [];
   }, []);
 
   const cancelTailAlignment = useCallback(() => {
@@ -231,31 +232,21 @@ export function VirtualTranscript<Item>({
     viewportWasAtTailRef.current = true;
   }, []);
 
-  const scheduleTailAlignment = useCallback((animateFromScrollTop?: number) => {
+  const scheduleTailAlignment = useCallback((revealFromIndex?: number) => {
     if (tailAlignmentFrameRef.current !== null) {
       window.cancelAnimationFrame(tailAlignmentFrameRef.current);
     }
-    if (animateFromScrollTop !== undefined) cancelTailLiftAnimation();
+    if (revealFromIndex !== undefined) cancelTailLiftAnimation();
     tailAlignmentActiveRef.current = true;
-    alignViewportToTail();
-    const element = internalScrollRef.current;
-    const liftDistance = animateFromScrollTop === undefined || !element
-      ? 0
-      : element.scrollTop - animateFromScrollTop;
-    const sizeContainer = sizeContainerRef.current;
-    if (
-      liftDistance > 1
-      && typeof sizeContainer?.animate === 'function'
-      && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
-    ) {
-      tailLiftAnimationRef.current = sizeContainer.animate([
-        { transform: `translate3d(0, ${liftDistance}px, 0)` },
-        { transform: 'translate3d(0, 0, 0)' },
-      ], {
-        duration: 280,
-        easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-      });
-    }
+    const liftedRows = alignAndRevealMeasuredTranscriptRows({
+      alignToTail: alignViewportToTail,
+      gap,
+      reduceMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+      revealFromIndex,
+      sizeContainer: sizeContainerRef.current,
+      virtualizer,
+    });
+    if (revealFromIndex !== undefined) tailLiftRowsRef.current = liftedRows;
     let framesRemaining = 4;
     const settle = () => {
       tailAlignmentFrameRef.current = null;
@@ -267,7 +258,7 @@ export function VirtualTranscript<Item>({
       }
     };
     tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
-  }, [alignViewportToTail, cancelTailLiftAnimation]);
+  }, [alignViewportToTail, cancelTailLiftAnimation, gap, virtualizer]);
 
   useEffect(() => {
     // React Strict Mode intentionally runs an extra setup/cleanup cycle in
@@ -494,8 +485,8 @@ export function VirtualTranscript<Item>({
       || tailContentChanged
       || measuredSizeChanged
       || viewportSizeChanged;
-    const animateFromScrollTop = animateLatestAppend && latestItemAppended
-      ? aligned?.scrollTop
+    const revealFromIndex = animateLatestAppend && latestItemAppended
+      ? aligned?.itemCount
       : undefined;
     if (stableDisclosureSizeChanged && stableDisclosureAnchor) {
       cancelTailAlignment();
@@ -512,7 +503,7 @@ export function VirtualTranscript<Item>({
       if (items.length > 0) {
         virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
       }
-      scheduleTailAlignment(animateFromScrollTop);
+      scheduleTailAlignment(revealFromIndex);
     }
     alignedSessionRef.current = {
       sessionKey,
@@ -526,6 +517,14 @@ export function VirtualTranscript<Item>({
   }, [animateLatestAppend, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
+  const sessionRevealed = useStableTranscriptSessionReveal({
+    gap,
+    itemCount: items.length,
+    sessionKey,
+    sizeContainerRef,
+    viewportRef: internalScrollRef,
+    virtualizer,
+  });
   const scrollToNavigationIndex = useCallback((index: number) => {
     virtualizer.scrollToIndex(index, { align: 'center' });
   }, [virtualizer]);
@@ -585,6 +584,7 @@ export function VirtualTranscript<Item>({
         <div
           ref={setSizeContainer}
           data-virtual-transcript-size="true"
+          data-virtual-transcript-session-ready={sessionRevealed ? 'true' : 'false'}
           className="relative w-full"
         >
           {virtualItems.map((virtualItem) => {

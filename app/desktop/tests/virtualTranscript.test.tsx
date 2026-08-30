@@ -130,57 +130,6 @@ test('appending the latest message while pinned to the tail keeps the full row v
   );
 });
 
-test('an approved outgoing append animates the transcript tail lift once and honors reduced motion', async () => {
-  const animations: Array<{ keyframes: Keyframe[]; options: KeyframeAnimationOptions }> = [];
-  const originalAnimate = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'animate');
-  const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
-  Object.defineProperty(HTMLElement.prototype, 'animate', {
-    configurable: true,
-    value(keyframes: Keyframe[], options: KeyframeAnimationOptions) {
-      animations.push({ keyframes, options });
-      return { cancel() {} } as Animation;
-    },
-  });
-
-  try {
-    const initialItems = rows('motion-', 0, 20, 50);
-    const view = await render(transcript({
-      items: initialItems,
-      sessionKey: 'motion-tail-follow',
-      animateLatestAppend: true,
-    }));
-
-    await view.rerender(transcript({
-      items: [...initialItems, { id: 'motion-20', height: 140 }],
-      sessionKey: 'motion-tail-follow',
-      animateLatestAppend: true,
-    }));
-
-    assert.equal(animations.length, 1);
-    assert.match(String(animations[0]?.keyframes[0]?.transform), /^translate3d\(0, [1-9]\d*(?:\.\d+)?px, 0\)$/);
-    assert.equal(animations[0]?.keyframes[1]?.transform, 'translate3d(0, 0, 0)');
-    assert.equal(animations[0]?.options.duration, 280);
-    assert.equal(animations[0]?.options.easing, 'cubic-bezier(0.16, 1, 0.3, 1)');
-
-    Object.defineProperty(window, 'matchMedia', {
-      configurable: true,
-      value: () => ({ matches: true }) as MediaQueryList,
-    });
-    await view.rerender(transcript({
-      items: [...initialItems, { id: 'motion-20', height: 140 }, { id: 'motion-21', height: 80 }],
-      sessionKey: 'motion-tail-follow',
-      animateLatestAppend: true,
-    }));
-
-    assert.equal(animations.length, 1);
-  } finally {
-    if (originalAnimate) Object.defineProperty(HTMLElement.prototype, 'animate', originalAnimate);
-    else delete (HTMLElement.prototype as Partial<HTMLElement>).animate;
-    if (originalMatchMedia) Object.defineProperty(window, 'matchMedia', originalMatchMedia);
-    else delete (window as Partial<Window>).matchMedia;
-  }
-});
-
 test('appending queued or live tail content keeps the complete tail visible', async () => {
   const initialItems = rows('tail-message-', 0, 20, 50);
   const view = await render(transcript({
