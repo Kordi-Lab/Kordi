@@ -130,6 +130,8 @@ test('markdown links use a quiet URL treatment without underlines or external ic
   assert.doesNotMatch(html, /\bunderline\b|decoration-cyan|text-cyan/);
   assert.doesNotMatch(html, /<svg\b/);
   assert.match(shellCss, /\.app-markdown-link\s*{[\s\S]*color:\s*var\(--app-markdown-link\);[\s\S]*text-decoration:\s*none;/);
+  assert.match(shellCss, /\.kordi-app\.theme-light a:not\(\.app-markdown-link\)/);
+  assert.doesNotMatch(shellCss, /\.kordi-app\.theme-light a\s*{/);
   assert.match(themeTokensCss, /--app-markdown-link:\s*oklch\(/);
 });
 

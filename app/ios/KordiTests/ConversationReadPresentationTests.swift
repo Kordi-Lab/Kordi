@@ -22,6 +22,45 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(MessageBubble.reactionChipVerticalLift, 14)
     }
 
+    func testMessageBubblesUseThemeAwareContrastForRepliesLinksAndMentions() throws {
+        let conversationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation")
+        let bubbleSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageBubble.swift"),
+            encoding: .utf8
+        )
+        let markdownSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MarkdownMessageContent.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(bubbleSource.contains("lightAppearanceBubbleTintColor"))
+        XCTAssertTrue(bubbleSource.contains("chatTheme == .quiet ? .clear"))
+        XCTAssertTrue(bubbleSource.contains("chatTheme.peerText.opacity(0.07)"))
+        XCTAssertTrue(bubbleSource.contains("chatTheme.peerText.opacity(0.12)"))
+        XCTAssertTrue(bubbleSource.contains("replyPreviewBackgroundColor"))
+        XCTAssertTrue(bubbleSource.contains("inlineAccent: bubbleInlineAccentColor"))
+        XCTAssertTrue(markdownSource.contains("@Entry var messageInlineAccent: Color? = nil"))
+        XCTAssertTrue(markdownSource.contains("inlineAccent ?? KordiTheme.signalBlue"))
+    }
+
+    func testSyntheticConversationPreviewExposesThemeControls() throws {
+        let appSource = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/App/KordiApp.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(appSource.contains("--preview-theme-controls"))
+        XCTAssertTrue(appSource.contains("PreviewThemeControls("))
+        XCTAssertTrue(appSource.contains("ForEach(KordiChatTheme.allCases)"))
+        XCTAssertTrue(appSource.contains("ForEach(AppAppearance.allCases)"))
+    }
+
     func testMessageActionsStopConversationPanningAfterTheHoldWins() {
         XCTAssertFalse(MessageGestureArbitration.allowsSimultaneousRecognition(
             with: UIPanGestureRecognizer()

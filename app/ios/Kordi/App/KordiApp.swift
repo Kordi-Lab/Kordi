@@ -101,6 +101,14 @@ struct KordiApp: App {
                 .environmentObject(notificationCoordinator)
                 .environment(\.kordiChatTheme, selectedChatTheme)
                 .tint(KordiTheme.signalBlue)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if showsPreviewThemeControls {
+                        PreviewThemeControls(
+                            appearanceRawValue: $appearanceRawValue,
+                            chatThemeRawValue: $chatThemeRawValue
+                        )
+                    }
+                }
                 .preferredColorScheme(preferredColorScheme)
                 .fullScreenCover(isPresented: $callCoordinator.isCallScreenPresented) {
                     KordiCallView(room: callCoordinator.room)
@@ -165,6 +173,60 @@ struct KordiApp: App {
         case .light: .light
         case .dark: .dark
         }
+    }
+
+    private var selectedChatTheme: KordiChatTheme {
+        KordiChatTheme(rawValue: chatThemeRawValue) ?? .quiet
+    }
+
+    private var showsPreviewThemeControls: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--preview-theme-controls")
+#else
+        false
+#endif
+    }
+}
+
+private struct PreviewThemeControls: View {
+    @Binding var appearanceRawValue: String
+    @Binding var chatThemeRawValue: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Menu {
+                ForEach(AppAppearance.allCases) { appearance in
+                    Button {
+                        appearanceRawValue = appearance.rawValue
+                    } label: {
+                        Label(appearance.label, systemImage: appearance.systemImage)
+                    }
+                }
+            } label: {
+                Label(selectedAppearance.label, systemImage: selectedAppearance.systemImage)
+            }
+            Menu {
+                ForEach(KordiChatTheme.allCases) { theme in
+                    Button(theme.label) {
+                        chatThemeRawValue = theme.rawValue
+                    }
+                }
+            } label: {
+                Label(selectedChatTheme.label, systemImage: selectedChatTheme.systemImage)
+            }
+        }
+        .font(.caption.weight(.semibold))
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial)
+        .accessibilityElement(children: .contain)
+    }
+
+    private var selectedAppearance: AppAppearance {
+        AppAppearance(rawValue: appearanceRawValue) ?? .system
     }
 
     private var selectedChatTheme: KordiChatTheme {

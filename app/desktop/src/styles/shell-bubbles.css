@@ -4,6 +4,8 @@
   --app-message-bubble-shadow: none;
   --app-message-mention: var(--app-chat-mention-own);
   --app-message-meta: var(--app-chat-meta-own);
+  --app-markdown-link: var(--app-chat-mention-own);
+  --app-markdown-link-hover: color-mix(in oklab, var(--app-chat-mention-own) 84%, var(--app-chat-bubble-user-text));
   border: 0;
   background: transparent;
   color: var(--app-chat-bubble-user-text);
@@ -11,11 +13,16 @@
 }
 
 .kordi-app.theme-light .app-chat-bubble-user {
-  --app-message-bubble-fill: var(--app-chat-bubble-user-bg);
+  --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-accent) 12%, var(--app-chat-bubble-user-bg));
   --app-message-bubble-stroke: transparent;
   --app-message-mention: var(--app-chat-mention-own);
   --app-message-meta: var(--app-chat-meta-own);
   color: var(--app-chat-bubble-user-text);
+}
+
+body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-user,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="quiet"] .app-chat-bubble-user {
+  --app-message-bubble-fill: var(--app-chat-bubble-user-bg);
 }
 
 .app-chat-bubble-peer {
@@ -24,15 +31,28 @@
   --app-message-bubble-shadow: none;
   --app-message-mention: var(--app-chat-mention-peer);
   --app-message-meta: var(--app-chat-meta-peer);
+  --app-markdown-link: var(--app-chat-mention-peer);
+  --app-markdown-link-hover: color-mix(in oklab, var(--app-chat-mention-peer) 84%, var(--app-chat-bubble-peer-text));
   border: 0;
   background: transparent;
   color: var(--app-chat-bubble-peer-text);
   box-shadow: none;
 }
 
+.kordi-app.theme-light .app-chat-bubble-peer {
+  --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-accent) 16%, var(--app-chat-bubble-peer-bg));
+}
+
+body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="quiet"] .app-chat-bubble-peer {
+  --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-bubble-peer-text) 7%, var(--app-chat-bubble-peer-bg));
+}
+
 .app-chat-bubble-agent {
   --app-message-mention: var(--app-chat-mention-peer);
   --app-message-meta: var(--app-chat-meta-peer);
+  --app-markdown-link: var(--app-chat-mention-peer);
+  --app-markdown-link-hover: color-mix(in oklab, var(--app-chat-mention-peer) 84%, var(--app-chat-bubble-agent-text));
   border: 0;
   background: var(--app-chat-bubble-agent-bg);
   color: var(--app-chat-bubble-agent-text);
