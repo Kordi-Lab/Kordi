@@ -144,7 +144,7 @@ struct MessageBubble: View, Equatable {
 
                 messageSurface
                     .overlay(alignment: .bottomTrailing) {
-                        if message.author == .me, !isCallActivity {
+                        if message.author == .me, !isCallActivity, !message.isEdited {
                             if showsMediaDeliveryStatus {
                                 mediaDeliveryStatusOverlay
                             } else {
@@ -346,7 +346,9 @@ struct MessageBubble: View, Equatable {
                     .padding(
                         .trailing,
                         message.author == .me
-                            ? (message.voiceMessage == nil ? 30 : 26)
+                            ? message.isEdited
+                                ? (message.voiceMessage == nil ? 12 : 10)
+                                : (message.voiceMessage == nil ? 30 : 26)
                             : (message.voiceMessage == nil ? 12 : 10)
                     )
                     .padding(.vertical, message.voiceMessage == nil ? 8 : 6)
@@ -470,6 +472,22 @@ struct MessageBubble: View, Equatable {
                         }
                     }
                 }
+            }
+
+            if message.isEdited {
+                HStack(spacing: 2) {
+                    Spacer(minLength: 0)
+                    Text("edited", comment: "Message metadata indicating that its text was changed after sending.")
+                    if message.author == .me {
+                        MessageDeliveryGlyph(
+                            state: message.deliveryState,
+                            readByCount: message.readByCount
+                        )
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(bubbleSecondaryTextColor)
+                .accessibilityElement(children: .combine)
             }
         }
     }
@@ -751,7 +769,8 @@ struct MessageBubble: View, Equatable {
             mentions: message.mentions,
             targets: mentionTargets
         )
-        return "\(message.authorName), \(messageText)\(attachmentLabel), \(receipt)"
+        let editedLabel = message.isEdited ? ", edited" : ""
+        return "\(message.authorName), \(messageText)\(attachmentLabel)\(editedLabel), \(receipt)"
     }
 
     private func attachmentCountText(_ count: Int) -> String {

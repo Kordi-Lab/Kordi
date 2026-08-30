@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { CheckCheck, CheckCircle2, Copy, Eye, Forward, Pin, Reply } from 'lucide-react';
+import { CheckCheck, CheckCircle2, Copy, Eye, Forward, Pencil, Pin, Reply, Trash2 } from 'lucide-react';
 
 import {
   attachmentMediaGalleryIndex,
@@ -13,6 +13,7 @@ import { IdentityAvatar } from './IdentityAvatar';
 import { MessageReactionSurface } from './messageReactions';
 import { AttachmentActions } from './transcriptAttachmentActions';
 import { messageStickerAttachment } from './messageStickerPresentation';
+import { transcriptMessageIsOwnHuman } from './transcriptMessageHumanRole';
 
 const textStyle = {
   fontSize: '10px',
@@ -53,13 +54,16 @@ function SeenRow({ summary }: { summary?: Message['readReceiptSummary'] | null }
   );
 }
 
-function Action({ icon, label, action, onClick }: { icon: ReactNode; label: string; action: string; onClick?: () => void }) {
+function Action({ icon, label, action, onClick, destructive = false }: { icon: ReactNode; label: string; action: string; onClick?: () => void; destructive?: boolean }) {
   return (
     <button
       type="button"
       role="menuitem"
       data-message-context-menu-action={action}
-      className="app-transient-flat-action app-transient-action-row app-message-context-menu-action flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left font-normal transition"
+      className={cn(
+        'app-transient-flat-action app-transient-action-row app-message-context-menu-action flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left font-normal transition',
+        destructive && 'app-transient-flat-action-danger',
+      )}
       style={textStyle}
       onClick={onClick}
     >
@@ -72,6 +76,8 @@ function Action({ icon, label, action, onClick }: { icon: ReactNode; label: stri
 export type MessageContextMenuActionHandlers = {
   onReplyMessage?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
+  onEditMessage?: (message: Message) => void;
+  onDeleteMessage?: (message: Message) => void;
   onOpenMessageDetail?: (message: Message) => void;
   onSelectMessage?: (message: Message) => void;
   onRequestPinMessage?: (message: Message) => void;
@@ -86,11 +92,33 @@ function isActionEligible(msg: Message) {
   return !msg.turn || msg.turn.completed;
 }
 
+function messageCanEdit(msg: Message) {
+  const status = new Set((msg.statusChips ?? []).map((value) => value.trim().toLowerCase()));
+  return isActionEligible(msg)
+    && transcriptMessageIsOwnHuman(msg)
+    && msg.senderType === 'human'
+    && Boolean(msg.text.trim())
+    && Boolean(msg.reactionConversationId && msg.reactionTargetMessageId)
+    && Number.isInteger(msg.cloudMessageVersion)
+    && Number(msg.cloudMessageVersion) > 0
+    && !status.has('sending')
+    && !status.has('failed')
+    && !['voice', 'sticker', 'call'].includes(msg.messageKind?.trim().toLowerCase() ?? '');
+}
+
+function messageCanDelete(msg: Message) {
+  return isActionEligible(msg)
+    && msg.senderType === 'human'
+    && Boolean(msg.reactionConversationId && msg.reactionTargetMessageId);
+}
+
 export function MessageContextMenuContent({
   msg,
   onClose,
   onReplyMessage,
   onForwardMessage,
+  onEditMessage,
+  onDeleteMessage,
   onSelectMessage,
   onRequestPinMessage,
   onRequestUnpinMessage,
@@ -108,6 +136,8 @@ export function MessageContextMenuContent({
   const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
   const stickerAttachment = messageStickerAttachment(msg);
   const actionEligible = isActionEligible(msg);
+  const canEdit = Boolean(onEditMessage && messageCanEdit(msg));
+  const canDelete = Boolean(onDeleteMessage && messageCanDelete(msg));
   const canReact = actionEligible
     && Boolean(msg.reactionConversationId && msg.reactionTargetMessageId && onReactMessage);
   const closeAfter = (action?: (message: Message) => void) => {
@@ -166,6 +196,7 @@ export function MessageContextMenuContent({
           </>
         ) : null}
         {actionEligible ? <Action action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={() => closeAfter(onReplyMessage)} /> : null}
+        {canEdit ? <Action action="edit" icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={() => closeAfter(onEditMessage)} /> : null}
         {copyableText ? <Action action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy" onClick={() => void copyText()} /> : null}
         {actionEligible ? <Action action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => closeAfter(onForwardMessage)} /> : null}
         {stickerAttachment ? <AddAttachmentToMediaLibraryAction attachment={{ ...stickerAttachment, subtype: 'sticker' }} onAdded={() => onClose?.()} /> : null}
@@ -176,6 +207,7 @@ export function MessageContextMenuContent({
         ) : null}
         {actionEligible ? <div className="app-transient-divider mx-3 my-1 border-t" role="separator" /> : null}
         {actionEligible ? <Action action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={() => closeAfter(onSelectMessage)} /> : null}
+        {canDelete ? <Action action="delete" icon={<Trash2 className="h-4 w-4" />} label="Delete" destructive onClick={() => closeAfter(onDeleteMessage)} /> : null}
         <SeenRow summary={msg.readReceiptSummary} />
       </div> : null}
     </div>

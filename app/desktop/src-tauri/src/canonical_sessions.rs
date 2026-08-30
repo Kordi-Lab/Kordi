@@ -307,6 +307,16 @@ pub async fn desktop_canonical_existing_message_sources(
 }
 
 #[tauri::command]
+pub async fn desktop_canonical_delete_cloud_message(
+    cloud_message_id: String,
+) -> Result<Vec<String>, String> {
+    run_canonical_blocking(move || {
+        commands::desktop_canonical_delete_cloud_message(&cloud_message_id)
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn desktop_canonical_upsert_identity(
     request: UpsertCanonicalIdentityRequest,
 ) -> Result<CanonicalSessionState, String> {

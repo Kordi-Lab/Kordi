@@ -33,7 +33,7 @@ import type {
   DetailTab,
   QueuedDesktopChatMessage,
   EditFilePreview,
-  Message,
+  Message, MessageEditState,
   NavId,
   ParticipantSpaceViewModel,
   Project,
@@ -250,7 +250,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   activeChatQuote: ComposerQuoteState | null;
   onClearChatQuote: () => void;
   onReplyMessage: (message: Message) => void;
-  onForwardMessage: (message: Message) => void; onReactMessage: (message: Message, reaction: string) => Promise<void> | void;
+  onForwardMessage: (message: Message) => void; onEditMessage: (message: Message) => void; onDeleteMessage: (message: Message) => void; onReactMessage: (message: Message, reaction: string) => Promise<void> | void;
   onSelectMessage: (message: Message) => void;
   messageSelectionMode: boolean;
   selectedMessageCount: number;
@@ -263,7 +263,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   onCancelMessageSelection: () => void;
   onSelectAllMessages: () => void;
   onCopySelectedMessages: () => void;
-  onForwardSelectedMessages: () => void;
+  onForwardSelectedMessages: () => void; activeMessageEdit: MessageEditState | null; messageEditBusy: boolean; messageEditError: string | null; updateMessageEditText: (text: string) => void; cancelMessageEdit: () => void; saveMessageEdit: () => Promise<void>;
   composerControlsRef: MutableRefObject<HTMLDivElement | null>;
   activeRuntimeSessionId?: string;
   activeRuntimeContextStatus?: DesktopChatState['activeSession']['contextWindowStatus'];
@@ -549,7 +549,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeChatQuote'
   | 'onClearChatQuote'
   | 'onReplyMessage'
-  | 'onForwardMessage' | 'onReactMessage'
+  | 'onForwardMessage' | 'onEditMessage' | 'onDeleteMessage' | 'onReactMessage'
   | 'onSelectMessage'
   | 'messageSelectionMode'
   | 'selectedMessageCount'
@@ -562,7 +562,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'onCancelMessageSelection'
   | 'onSelectAllMessages'
   | 'onCopySelectedMessages'
-  | 'onForwardSelectedMessages'
+  | 'onForwardSelectedMessages' | 'activeMessageEdit' | 'messageEditBusy' | 'messageEditError' | 'updateMessageEditText' | 'cancelMessageEdit' | 'saveMessageEdit'
   | 'composerSelectionChat'
   | 'composerAuthLabelChat'
   | 'composerAuthOptionsChat'

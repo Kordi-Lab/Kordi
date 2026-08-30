@@ -170,7 +170,7 @@ export type CloudMessage = {
   clientMessageId?: string | null;
   messageKind?: string | null;
   canonicalHistoryLocalMessageId?: string | null;
-  version?: number | null;
+  version?: number | null; editedAt?: string | null; deletedAt?: string | null;
   reactions?: Array<{ value: string; accountIds: string[] }>; pendingReactionIntents?: Array<{ value: string; accountId: string; active: boolean }>;
 };
 export type CloudSyncEventType = string;
@@ -744,7 +744,7 @@ export class CloudAuthClient {
     return this.chat.sendMessage(token, peerAccountId, body, options);
   }
 
-  async drainChatOutbox(token: string, accountId: string): Promise<CloudMessage[]> { return this.chat.drainOutbox(token, accountId); }
+  async drainChatOutbox(token: string, accountId: string): Promise<CloudMessage[]> { return this.chat.drainOutbox(token, accountId); } async editMessage(token: string, conversationId: string, messageId: string, expectedVersion: number, text: string): Promise<CloudMessage> { return this.chat.editMessage(token, conversationId, messageId, expectedVersion, text); } async deleteMessage(token: string, conversationId: string, messageId: string, forEveryone: boolean): Promise<void> { return this.chat.deleteMessage(token, conversationId, messageId, forEveryone); }
   async setReaction(token: string, conversationId: string, messageId: string, reaction: string, active: boolean): Promise<CloudMessage> { return this.chat.setReaction(token, conversationId, messageId, reaction, active); }
   async initiateAttachment(token: string): Promise<CloudAttachmentInitiateResult> {
     return this.send<CloudAttachmentInitiateResult>(

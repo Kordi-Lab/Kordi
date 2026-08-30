@@ -190,6 +190,15 @@ export type ComposerQuoteState = {
   source: MessageActionSource;
 };
 
+export type MessageEditState = {
+  sessionId: string;
+  conversationId: string;
+  messageId: string;
+  expectedVersion: number;
+  originalText: string;
+  text: string;
+};
+
 export type Message = {
   id?: string;
   /** Stable idempotency identity retained while an optimistic Cloud row is
@@ -241,6 +250,8 @@ export type Message = {
   messageAction?: MessageActionMetadata | null;
   reactionConversationId?: string | null;
   reactionTargetMessageId?: string | null;
+  cloudMessageVersion?: number | null;
+  editedAt?: string | null;
   reactions?: MessageReaction[];
   sourceMessage?: MessageSourceReference | null;
   turn?: DesktopChatTurnSnapshot;

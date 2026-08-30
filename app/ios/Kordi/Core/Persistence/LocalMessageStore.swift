@@ -111,6 +111,8 @@ final class CachedMessageRecord {
     var authorName: String
     var text: String
     var createdAt: Date
+    var editedAt: Date?
+    var cloudMessageVersion: Int?
     var deliveryState: String
     var errorMessage: String?
     var requestMessageId: String?
@@ -136,6 +138,8 @@ final class CachedMessageRecord {
         authorName = message.authorName
         text = message.text
         createdAt = message.createdAt
+        editedAt = message.editedAt
+        cloudMessageVersion = message.cloudMessageVersion
         deliveryState = message.deliveryState.rawValue
         errorMessage = message.errorMessage
         requestMessageId = message.requestMessageId
@@ -159,6 +163,8 @@ final class CachedMessageRecord {
         authorName = message.authorName
         text = message.text
         createdAt = message.createdAt
+        editedAt = message.editedAt
+        cloudMessageVersion = message.cloudMessageVersion
         deliveryState = message.deliveryState.rawValue
         errorMessage = message.errorMessage
         requestMessageId = message.requestMessageId
@@ -187,6 +193,8 @@ final class CachedMessageRecord {
             authorName: authorName,
             text: text,
             createdAt: createdAt,
+            editedAt: editedAt,
+            cloudMessageVersion: cloudMessageVersion,
             deliveryState: state,
             errorMessage: errorMessage,
             requestMessageId: requestMessageId,

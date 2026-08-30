@@ -11,6 +11,7 @@ import {
   messageContextMenuPosition,
 } from '../src/kordi-app/components/transcript';
 import type { Message } from '../src/kordi-app/types';
+import { MessageDeleteDialog } from '../src/pages/MessageDeleteDialog';
 
 test('multi-pin shelf is folded by default and single pins keep their controls visible', () => {
   const message: Message = {
@@ -217,6 +218,77 @@ test('messages without read receipts still expose the Telegram-style message con
   assert.doesNotMatch(menuMarkup, /Seen/);
 });
 
+test('message edit and delete actions are limited to durable human cloud messages', () => {
+  const own: Message = {
+    id: 'message-1',
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'Editable',
+    time: '10:42',
+    reactionConversationId: 'conversation-1',
+    reactionTargetMessageId: 'message-1',
+    cloudMessageVersion: 2,
+  };
+  const peer = { ...own, role: 'person' as const, sender: 'Alice', isOwnMessage: false };
+  const canonicalOwn = { ...own, isOwnMessage: undefined };
+  const agent = { ...peer, role: 'external-agent' as const, senderType: 'agent' as const };
+
+  const ownMarkup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: own,
+    onEditMessage: () => undefined,
+    onDeleteMessage: () => undefined,
+  }));
+  const peerMarkup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: peer,
+    onEditMessage: () => undefined,
+    onDeleteMessage: () => undefined,
+  }));
+  const canonicalOwnMarkup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: canonicalOwn,
+    onEditMessage: () => undefined,
+    onDeleteMessage: () => undefined,
+  }));
+  const agentMarkup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: agent,
+    onEditMessage: () => undefined,
+    onDeleteMessage: () => undefined,
+  }));
+  assert.match(ownMarkup, /data-message-context-menu-action="edit"/);
+  assert.match(ownMarkup, /data-message-context-menu-action="delete"/);
+  assert.match(canonicalOwnMarkup, /data-message-context-menu-action="edit"/);
+  assert.match(ownMarkup, /app-transient-flat-action-danger/);
+  assert.doesNotMatch(peerMarkup, /data-message-context-menu-action="edit"/);
+  assert.match(peerMarkup, /data-message-context-menu-action="delete"/);
+  assert.doesNotMatch(agentMarkup, /data-message-context-menu-action="(?:edit|delete)"/);
+});
+
+test('delete confirmation offers Telegram-style revoke copy only for own messages', () => {
+  const own: Message = {
+    role: 'user', sender: 'Me', senderType: 'human',
+    text: 'Delete me', time: '10:42',
+  };
+  const ownMarkup = renderToStaticMarkup(createElement(MessageDeleteDialog, {
+    message: own,
+    peerName: 'Alice',
+    group: false,
+    onCancel: () => undefined,
+    onDelete: async () => undefined,
+  }));
+  const peerMarkup = renderToStaticMarkup(createElement(MessageDeleteDialog, {
+    message: { ...own, role: 'person', sender: 'Alice', isOwnMessage: false },
+    peerName: 'Alice',
+    group: false,
+    onCancel: () => undefined,
+    onDelete: async () => undefined,
+  }));
+  assert.match(ownMarkup, /Delete this message\?/);
+  assert.match(ownMarkup, /Also delete for Alice/);
+  assert.match(ownMarkup, /type="checkbox"[^>]*checked=""/);
+  assert.doesNotMatch(peerMarkup, /Also delete for/);
+});
+
 test('agent turn messages also expose the Telegram-style message context menu target', () => {
   const message: Message = {
     role: 'owned-agent',
@@ -286,7 +358,7 @@ test('blank outgoing delivery status still renders the stable hidden glyph stack
   assert.match(markup, /lucide-check-check[^\"]*opacity-0/);
 });
 
-test('exact message time moves beside the bubble while delivery state stays inside', () => {
+test('edited outgoing label stays inside while the timestamp remains hover-only', () => {
   const message: Message = {
     role: 'user',
     sender: 'Me',
@@ -295,20 +367,44 @@ test('exact message time moves beside the bubble while delivery state stays insi
     text: 'hover for the exact time',
     time: '20:25',
     timestampMs: Date.parse('2026-08-04T20:25:00.000Z'),
+    editedAt: '2026-08-04T20:26:00.000Z',
     statusChips: ['read'],
   };
 
   const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
   const footerStart = markup.indexOf('app-message-footer');
+  const editedStart = markup.indexOf('data-message-edited-label="true"');
+  const deliveryStart = markup.indexOf('data-message-delivery-status="read"');
   const hoverTimeStart = markup.indexOf('app-message-hover-time pointer-events-none');
 
   assert.ok(footerStart >= 0);
-  assert.ok(hoverTimeStart > footerStart);
+  assert.ok(editedStart > footerStart);
+  assert.ok(deliveryStart > editedStart);
+  assert.ok(hoverTimeStart > deliveryStart);
+  assert.match(markup, />edited<\/span>/);
   assert.doesNotMatch(markup.slice(footerStart, hoverTimeStart), /20:25/);
   assert.match(markup.slice(hoverTimeStart), />20:25<\/time>/);
   assert.match(markup, /app-message-hover-time-trigger/);
   assert.doesNotMatch(markup, /group-hover\/message:opacity-100/);
   assert.match(markup, /data-message-delivery-glyph="double-check"/);
+});
+
+test('edited incoming human messages show the marker without delivery checks', () => {
+  const message: Message = {
+    role: 'person',
+    sender: 'Noah Test',
+    senderType: 'human',
+    isOwnMessage: false,
+    text: 'Edited on iOS',
+    time: '20:52',
+    timestampMs: Date.parse('2026-08-30T20:52:00.000Z'),
+    editedAt: '2026-08-30T20:53:00.000Z',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /data-message-edited-label="true"[^>]*>edited<\/span>/);
+  assert.doesNotMatch(markup, /data-message-delivery-status=/);
 });
 
 test('blank transcript-row space does not reveal the exact message time', () => {

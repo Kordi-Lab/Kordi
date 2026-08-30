@@ -42,6 +42,8 @@ export function messageBubblePropsEqual(
     )
     && previous.onReplyMessage === next.onReplyMessage
     && previous.onForwardMessage === next.onForwardMessage
+    && previous.onEditMessage === next.onEditMessage
+    && previous.onDeleteMessage === next.onDeleteMessage
     && previous.onRetryMessage === next.onRetryMessage
     && previous.onOpenMessageDetail === next.onOpenMessageDetail
     && previous.onSelectMessage === next.onSelectMessage

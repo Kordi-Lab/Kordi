@@ -75,6 +75,12 @@ pub(super) fn store_error(context: &str, error: StoreError) -> Response {
             "The conversation preferences changed on another device.",
             Some(json!({ "current_preferences": current })),
         ),
+        StoreError::MessageVersionConflict(current) => error_response(
+            StatusCode::CONFLICT,
+            "VERSION_CONFLICT",
+            "The message changed on another device.",
+            Some(json!({ "current_message": current })),
+        ),
         StoreError::CursorExpired => error_response(
             StatusCode::CONFLICT,
             "SYNC_CURSOR_EXPIRED",

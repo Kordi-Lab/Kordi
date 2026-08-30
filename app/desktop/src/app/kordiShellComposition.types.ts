@@ -196,6 +196,8 @@ export type KordiShellCompositionArgs = {
     | 'onClearChatQuote'
     | 'onReplyMessage'
     | 'onForwardMessage'
+    | 'onEditMessage'
+    | 'onDeleteMessage'
     | 'onReactMessage'
     | 'onSelectMessage'
     | 'messageSelectionMode'
@@ -210,6 +212,12 @@ export type KordiShellCompositionArgs = {
     | 'onSelectAllMessages'
     | 'onCopySelectedMessages'
     | 'onForwardSelectedMessages'
+    | 'activeMessageEdit'
+    | 'messageEditBusy'
+    | 'messageEditError'
+    | 'updateMessageEditText'
+    | 'cancelMessageEdit'
+    | 'saveMessageEdit'
   >;
   composerRuntime: ShellArgGroup<
     | 'composerControlsRef'

@@ -215,6 +215,14 @@ export function applyCloudSyncEventsToMessagesByPeer(
       continue;
     }
 
+    if (event.eventType === 'message.deleted' && event.messageId) {
+      for (const peerId of Object.keys(currentMessagesByPeer)) {
+        const indexed = indexedPeerMessages(peerId);
+        if (indexed.delete(event.messageId)) changedPeerIds.add(peerId);
+      }
+      continue;
+    }
+
     if (event.eventType === 'message.upsert') {
       const message = payloadCloudSyncMessage(event);
       if (!message) continue;

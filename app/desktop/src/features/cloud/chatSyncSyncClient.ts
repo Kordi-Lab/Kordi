@@ -260,6 +260,25 @@ export class ChatSyncSyncClient {
         },
       }];
     }
+    if (event.type === 'message.deleted' || event.type === 'message.hidden') {
+      const messageId = event.entity_id?.trim();
+      if (!messageId) return [];
+      const previous = this.state.messageById.get(messageId);
+      this.state.messageById.delete(messageId);
+      return [{
+        ...base,
+        eventType: 'message.deleted',
+        peerAccountId: previous && conversation
+          ? conversationPeer(
+              conversation,
+              conversation.preferences.account_id,
+              previous.sender_account_id,
+            )
+          : null,
+        messageId,
+        payload: { messageId },
+      }];
+    }
     if ([
       'message.created',
       'message.updated',

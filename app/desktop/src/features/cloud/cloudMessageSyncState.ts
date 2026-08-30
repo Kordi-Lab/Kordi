@@ -83,6 +83,7 @@ export function cloudMessagesByPeerEqual(
 export function mergeCloudMessagesByPeerSnapshot(
   current: Record<string, CloudMessage[]>,
   incoming: Record<string, CloudMessage[]>,
+  removedMessageIds: ReadonlySet<string> = new Set(),
 ): Record<string, CloudMessage[]> {
   const peerIds = uniqueSortedPeerIds([...Object.keys(current), ...Object.keys(incoming)]);
   const merged: Record<string, CloudMessage[]> = {};
@@ -90,8 +91,11 @@ export function mergeCloudMessagesByPeerSnapshot(
   for (const peerId of peerIds) {
     const currentMessages = current[peerId] ?? [];
     const byMessageId = new Map<string, CloudMessage>();
-    for (const message of currentMessages) byMessageId.set(message.messageId, message);
+    for (const message of currentMessages) {
+      if (!removedMessageIds.has(message.messageId)) byMessageId.set(message.messageId, message);
+    }
     for (const message of incoming[peerId] ?? []) {
+      if (removedMessageIds.has(message.messageId)) continue;
       const previous = byMessageId.get(message.messageId);
       if (!previous) {
         byMessageId.set(message.messageId, message);

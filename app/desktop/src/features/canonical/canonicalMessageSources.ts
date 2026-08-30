@@ -14,3 +14,10 @@ export async function fetchExistingCanonicalMessageSources(
     { sources },
   );
 }
+
+export async function deleteCanonicalCloudMessage(cloudMessageId: string) {
+  if (!isNativeDesktopShell()) return [];
+  return invokeDesktop<string[]>('desktop_canonical_delete_cloud_message', {
+    cloudMessageId,
+  });
+}

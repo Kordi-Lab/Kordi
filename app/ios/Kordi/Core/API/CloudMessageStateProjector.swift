@@ -93,6 +93,7 @@ enum CloudMessageStateProjector {
                     toAccountId: message.toAccountId,
                     body: message.body,
                     createdAt: message.createdAt,
+                    editedAt: message.editedAt,
                     deliveredAt: message.deliveredAt ?? readAt,
                     readAt: readAt,
                     readByAccountIds: message.readByAccountIds,
@@ -103,6 +104,7 @@ enum CloudMessageStateProjector {
                     voiceMessage: message.voiceMessage,
                     conversationId: message.conversationId,
                     conversationSequence: message.conversationSequence,
+                    version: message.version,
                     reactions: message.reactions
                 )
             }

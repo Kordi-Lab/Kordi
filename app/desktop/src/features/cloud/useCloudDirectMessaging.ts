@@ -87,6 +87,51 @@ export function useCloudDirectMessaging({
     });
   }, [account?.accountId, setMessagesByPeer]);
 
+  const editMessage = useCallback(async (input: {
+    conversationId: string;
+    messageId: string;
+    expectedVersion: number;
+    text: string;
+  }) => {
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    const message = await client.editMessage(
+      session.token,
+      input.conversationId,
+      input.messageId,
+      input.expectedVersion,
+      input.text,
+    );
+    mergeMessage(message);
+    void syncDiff().catch(() => undefined);
+    return message;
+  }, [client, mergeMessage, syncDiff]);
+
+  const deleteMessage = useCallback(async (input: {
+    conversationId: string;
+    messageId: string;
+    forEveryone: boolean;
+  }) => {
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    await client.deleteMessage(
+      session.token,
+      input.conversationId,
+      input.messageId,
+      input.forEveryone,
+    );
+    setMessagesByPeer((current) => {
+      let changed = false;
+      const next = Object.fromEntries(Object.entries(current).map(([peerId, messages]) => {
+        const filtered = messages.filter((message) => message.messageId !== input.messageId);
+        changed ||= filtered.length !== messages.length;
+        return [peerId, filtered];
+      }));
+      return changed ? next : current;
+    });
+    void syncDiff().catch(() => undefined);
+  }, [client, setMessagesByPeer, syncDiff]);
+
   const prepareForwardAttachments = useCallback(async (
     attachments: MessageAttachment[],
   ) => {
@@ -230,6 +275,8 @@ export function useCloudDirectMessaging({
   }, [account?.accountId, client, enqueueReactionMutation, mergeMessage, messagesByPeerRef, setMessagesByPeer, syncDiff]);
 
   return {
+    deleteMessage,
+    editMessage,
     mergeMessage,
     prepareForwardAttachments,
     sendMessage,

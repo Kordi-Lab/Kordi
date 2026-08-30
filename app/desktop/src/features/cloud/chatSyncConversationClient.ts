@@ -237,13 +237,7 @@ export class ChatSyncConversationClient {
     return delivered;
   }
 
-  async setReaction(
-    token: string,
-    conversationId: string,
-    messageId: string,
-    reaction: string,
-    active: boolean,
-  ): Promise<CloudMessage> {
+  private async mutationConversation(token: string, conversationId: string) {
     let conversation = this.state.conversationById.get(conversationId)
       ?? this.state.conversationBySessionId.get(conversationId);
     if (!conversation) {
@@ -252,6 +246,61 @@ export class ChatSyncConversationClient {
         ?? this.state.conversationBySessionId.get(conversationId);
     }
     if (!conversation) throw new Error('This conversation is unavailable for reliable chat sync.');
+    return conversation;
+  }
+
+  async editMessage(
+    token: string,
+    conversationId: string,
+    messageId: string,
+    expectedVersion: number,
+    text: string,
+  ): Promise<CloudMessage> {
+    const conversation = await this.mutationConversation(token, conversationId);
+    const response = await this.state.send<{ message: ChatSyncMessage }>(
+      `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/messages/${encodeURIComponent(messageId)}`,
+      {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ expected_version: expectedVersion, text }),
+      },
+      'Could not edit message.',
+    );
+    if (!response?.message) throw new Error('Empty response from chat sync server.');
+    this.state.messageById.set(response.message.id, response.message);
+    return cloudMessageFromChatSync(
+      response.message,
+      conversation,
+      conversation.preferences.account_id,
+    );
+  }
+
+  async deleteMessage(
+    token: string,
+    conversationId: string,
+    messageId: string,
+    forEveryone: boolean,
+  ): Promise<void> {
+    const conversation = await this.mutationConversation(token, conversationId);
+    await this.state.send<void>(
+      `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/messages/${encodeURIComponent(messageId)}?for_everyone=${forEveryone}`,
+      {
+        method: 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      'Could not delete message.',
+    );
+    this.state.messageById.delete(messageId);
+  }
+
+  async setReaction(
+    token: string,
+    conversationId: string,
+    messageId: string,
+    reaction: string,
+    active: boolean,
+  ): Promise<CloudMessage> {
+    const conversation = await this.mutationConversation(token, conversationId);
     const response = await this.state.send<{ message: ChatSyncMessage }>(
       `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/messages/${encodeURIComponent(messageId)}/reactions`,
       {

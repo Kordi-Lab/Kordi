@@ -277,8 +277,7 @@ export function useKordiAppFoundation({
     cloudAgentRuntimeRouteMessages,
     setCloudCollaborationState,
     mergedCollaborationState: desktopCollaborationState,
-    prepareCloudForwardAttachments,
-    sendCloudCollaborationMessage,
+    prepareCloudForwardAttachments, sendCloudCollaborationMessage, editCloudMessage, deleteCloudMessage,
     updateCloudCollaborationSessionTitle,
     sendCloudGroupControl,
     setCloudMessageReaction,
@@ -469,6 +468,7 @@ export function useKordiAppFoundation({
     cloud: {
       setCloudCollaborationState, desktopCollaborationState,
       prepareCloudForwardAttachments, sendCloudCollaborationMessage,
+      editCloudMessage, deleteCloudMessage,
       sendCloudGroupControl, setCloudMessageReaction, recordCloudSessionFork, updateCloudSessionPin,
       hideCloudSession, deleteCloudSession, cancelCloudAgentRequest,
       refreshCloudMessages, refreshSharedCloudAgents, sharedCloudAgents,

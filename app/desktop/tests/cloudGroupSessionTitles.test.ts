@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { cloudGroupSessionTitlesForReadModel, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from '../src/features/cloud/cloudCollaborationStateHelpers';
+import { cloudGroupSessionTitlesForReadModel, patchCanonicalCloudGroupSessionTitles, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from '../src/features/cloud/cloudCollaborationStateHelpers';
 
 test('reliable group preferences override legacy message-derived titles', () => {
   const titles = cloudGroupSessionTitlesForReadModel(
@@ -34,4 +34,32 @@ test('reliable group preferences override legacy message-derived titles', () => 
       { wire: { createdAt: '2026-08-28T08:00:00Z' } },
     ]],
   ]) as never).get('session:group:austin'), Date.parse('2026-08-28T08:00:00Z'));
+});
+
+test('reliable group titles patch placeholder canonical session shells', () => {
+  const state = {
+    sessions: [{
+      id: 'session:group:austin',
+      kind: 'group',
+      title: 'New chat',
+      metadata: { sessionTitleSource: 'placeholder', sessionTitleRevision: 0 },
+    }],
+  } as never;
+  const patched = patchCanonicalCloudGroupSessionTitles(state, {
+    'session:group:austin': {
+      sessionId: 'session:group:austin',
+      title: 'Austin life',
+      titleSource: 'external',
+      titleRevision: 4,
+      titlePolicyVersion: 1,
+      titleGeneratedFromMessageId: null,
+      updatedAtMs: 123,
+      updatedByAccountId: 'acct_owner',
+      updatedAt: '2026-08-30T00:00:00Z',
+    },
+  });
+
+  assert.equal(patched?.sessions[0]?.title, 'Austin life');
+  assert.equal(patched?.sessions[0]?.metadata?.sessionTitleSource, 'external');
+  assert.equal(patched?.sessions[0]?.metadata?.sessionTitleRevision, 4);
 });

@@ -2,6 +2,9 @@ use super::meme_validation::{meme_attachment_metadata, validate_meme_attachment_
 use super::support::*;
 use super::*;
 
+mod mutations;
+pub use mutations::{delete_message, edit_message};
+
 pub async fn load_message_snapshot(
     pool: &PgPool,
     message_id: Uuid,

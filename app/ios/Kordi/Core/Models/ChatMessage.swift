@@ -956,6 +956,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     let authorName: String
     var text: String
     let createdAt: Date
+    let editedAt: Date?
+    let cloudMessageVersion: Int?
     var deliveryState: MessageDeliveryState
     var errorMessage: String?
     var requestMessageId: String?
@@ -991,6 +993,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
             || callActivity != nil
     }
 
+    var isEdited: Bool { editedAt != nil }
+
     static func timelinePrecedes(_ left: ChatMessage, _ right: ChatMessage) -> Bool {
         if let leftSequence = left.conversationSequence,
            let rightSequence = right.conversationSequence,
@@ -1010,6 +1014,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         authorName: String,
         text: String,
         createdAt: Date,
+        editedAt: Date? = nil,
+        cloudMessageVersion: Int? = nil,
         deliveryState: MessageDeliveryState,
         errorMessage: String?,
         requestMessageId: String?,
@@ -1035,6 +1041,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.authorName = authorName
         self.text = text
         self.createdAt = createdAt
+        self.editedAt = editedAt
+        self.cloudMessageVersion = cloudMessageVersion
         self.deliveryState = deliveryState
         self.errorMessage = errorMessage
         self.requestMessageId = requestMessageId
@@ -1088,7 +1096,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, clientMessageId, conversationId, conversationSequence, author, authorName, text, createdAt, deliveryState, errorMessage
+        case id, clientMessageId, conversationId, conversationSequence, author, authorName, text, createdAt, editedAt, cloudMessageVersion, deliveryState, errorMessage
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, reactionTargetMessageId, messageAction
         case messageKind, voiceMessage
         case agentExecution
@@ -1107,6 +1115,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         authorName = try container.decode(String.self, forKey: .authorName)
         text = try container.decode(String.self, forKey: .text)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
+        editedAt = try container.decodeIfPresent(Date.self, forKey: .editedAt)
+        cloudMessageVersion = try container.decodeIfPresent(Int.self, forKey: .cloudMessageVersion)
         deliveryState = try container.decode(MessageDeliveryState.self, forKey: .deliveryState)
         errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
         requestMessageId = try container.decodeIfPresent(String.self, forKey: .requestMessageId)
