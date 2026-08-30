@@ -18,6 +18,7 @@ import {
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
 import { preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP } from '@/features/chat/virtualTranscriptLayout';
+import { alignAndRevealMeasuredTranscriptRows, cancelTranscriptRowLift, useStableTranscriptSessionReveal } from '@/features/chat/virtualTranscriptMotion';
 import {
   TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS,
   useVirtualTranscriptNavigation,
@@ -100,7 +101,6 @@ export function VirtualTranscript<Item>({
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [stableDisclosureActive, setStableDisclosureActive] = useState(false);
-  const [revealedSessionKey, setRevealedSessionKey] = useState(sessionKey);
   const loadAttemptSignatureRef = useRef<string | null>(null);
   const olderLoadPromiseRef = useRef<Promise<void> | null>(null);
   const olderLoadGenerationRef = useRef(0);
@@ -120,7 +120,6 @@ export function VirtualTranscript<Item>({
   const tailAlignmentTargetRef = useRef<number | null>(null);
   const tailLiftRowsRef = useRef<HTMLElement[]>([]);
   const sizeContainerRef = useRef<HTMLDivElement | null>(null);
-  const sessionRevealFrameRef = useRef<number | null>(null);
   const stableDisclosureAnchorRef = useRef<StableDisclosureAnchor | null>(null);
   const stableDisclosureReleaseFrameRef = useRef<number | null>(null);
   const stableDisclosureResizeObserverRef = useRef<ResizeObserver | null>(null);
@@ -180,10 +179,7 @@ export function VirtualTranscript<Item>({
   }, [totalSize, virtualizer]);
 
   const cancelTailLiftAnimation = useCallback(() => {
-    for (const row of tailLiftRowsRef.current) {
-      row.style.animation = 'none';
-      row.style.removeProperty('--app-transcript-row-lift');
-    }
+    cancelTranscriptRowLift(tailLiftRowsRef.current);
     tailLiftRowsRef.current = [];
   }, []);
 
@@ -242,36 +238,15 @@ export function VirtualTranscript<Item>({
     }
     if (revealFromIndex !== undefined) cancelTailLiftAnimation();
     tailAlignmentActiveRef.current = true;
-    const sizeContainer = sizeContainerRef.current;
-    const rows = sizeContainer
-      ? [...sizeContainer.querySelectorAll<HTMLElement>('[data-transcript-window-item="true"]')]
-      : [];
-    const appendedRows = revealFromIndex === undefined
-      ? []
-      : rows.filter((row) => Number(row.dataset.index) >= revealFromIndex);
-    for (const row of appendedRows) virtualizer.measureElement(row);
-    alignViewportToTail();
-    const liftDistance = appendedRows.reduce(
-      (height, row) => height + row.offsetHeight + gap,
-      0,
-    );
-    if (
-      liftDistance > 1
-      && sizeContainer
-      && revealFromIndex !== undefined
-      && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
-    ) {
-      const previousRows = rows.filter((row) => Number(row.dataset.index) < revealFromIndex);
-      for (const row of previousRows) {
-        row.style.setProperty('--app-transcript-row-lift', `${liftDistance}px`);
-        row.style.animation = 'none';
-      }
-      void sizeContainer.offsetWidth;
-      for (const row of previousRows) {
-        row.style.animation = 'app-transcript-existing-row-lift 150ms cubic-bezier(0.23, 1, 0.32, 1)';
-      }
-      tailLiftRowsRef.current = previousRows;
-    }
+    const liftedRows = alignAndRevealMeasuredTranscriptRows({
+      alignToTail: alignViewportToTail,
+      gap,
+      reduceMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+      revealFromIndex,
+      sizeContainer: sizeContainerRef.current,
+      virtualizer,
+    });
+    if (revealFromIndex !== undefined) tailLiftRowsRef.current = liftedRows;
     let framesRemaining = 4;
     const settle = () => {
       tailAlignmentFrameRef.current = null;
@@ -296,10 +271,6 @@ export function VirtualTranscript<Item>({
       cancelStableDisclosureRelease();
       disconnectStableDisclosureResizeObserver();
       stableDisclosureAnchorRef.current = null;
-      if (sessionRevealFrameRef.current !== null) {
-        window.cancelAnimationFrame(sessionRevealFrameRef.current);
-        sessionRevealFrameRef.current = null;
-      }
     };
   }, [cancelStableDisclosureRelease, cancelTailAlignment, disconnectStableDisclosureResizeObserver]);
 
@@ -546,59 +517,14 @@ export function VirtualTranscript<Item>({
   }, [animateLatestAppend, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
-  const sessionRevealed = revealedSessionKey === sessionKey;
-  useLayoutEffect(() => {
-    if (sessionRevealed || items.length === 0) return;
-    // ponytail: fail open after 20 frames; use a virtualizer readiness event if one becomes available.
-    let framesRemaining = 20;
-    let stableFrames = 0;
-    let previousSignature = '';
-    const revealWhenMeasured = () => {
-      sessionRevealFrameRef.current = null;
-      const viewport = internalScrollRef.current;
-      const sizeContainer = sizeContainerRef.current;
-      const measuredItems = virtualizer.getVirtualItems();
-      const rowsByIndex = new Map(
-        [...(sizeContainer?.querySelectorAll<HTMLElement>('[data-transcript-window-item="true"]') ?? [])]
-          .map((row) => [Number(row.dataset.index), row]),
-      );
-      const allMountedRowsMeasured = measuredItems.length > 0 && measuredItems.every((item) => {
-        const row = rowsByIndex.get(item.index);
-        return Boolean(row && Math.abs(row.offsetHeight - item.size) <= 1);
-      });
-      const tailMounted = rowsByIndex.has(items.length - 1);
-      const distanceFromBottom = viewport
-        ? viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
-        : Number.POSITIVE_INFINITY;
-      const signature = viewport
-        ? `${viewport.scrollHeight}:${viewport.scrollTop}:${virtualizer.getTotalSize()}`
-        : '';
-      if (
-        allMountedRowsMeasured
-        && tailMounted
-        && distanceFromBottom <= Math.max(1, gap)
-        && signature === previousSignature
-      ) {
-        stableFrames += 1;
-      } else {
-        stableFrames = 0;
-      }
-      previousSignature = signature;
-      if (stableFrames >= 5 || --framesRemaining <= 0) {
-        setRevealedSessionKey(sessionKey);
-      } else {
-        sessionRevealFrameRef.current = window.requestAnimationFrame(revealWhenMeasured);
-      }
-    };
-    sessionRevealFrameRef.current = window.requestAnimationFrame(revealWhenMeasured);
-    return () => {
-      if (sessionRevealFrameRef.current !== null) {
-        window.cancelAnimationFrame(sessionRevealFrameRef.current);
-        sessionRevealFrameRef.current = null;
-      }
-    };
-  }, [gap, items.length, sessionKey, sessionRevealed, virtualizer]);
-
+  const sessionRevealed = useStableTranscriptSessionReveal({
+    gap,
+    itemCount: items.length,
+    sessionKey,
+    sizeContainerRef,
+    viewportRef: internalScrollRef,
+    virtualizer,
+  });
   const scrollToNavigationIndex = useCallback((index: number) => {
     virtualizer.scrollToIndex(index, { align: 'center' });
   }, [virtualizer]);

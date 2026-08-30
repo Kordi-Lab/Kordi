@@ -68,15 +68,6 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
   background: transparent;
 }
 
-[data-virtual-transcript-session-ready='false'] {
-  opacity: 0;
-}
-
-[data-virtual-transcript-session-ready='true'] {
-  opacity: 1;
-  transition: opacity 80ms cubic-bezier(0.23, 1, 0.32, 1);
-}
-
 .app-message-bubble {
   --app-message-bubble-enter-x: 0px;
   --app-message-bubble-tail-width: 8px;
@@ -201,55 +192,6 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
   --app-message-bubble-shadow: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12));
 }
 
-.app-message-bubble-enter {
-  animation: app-message-bubble-send-enter 150ms cubic-bezier(0.23, 1, 0.32, 1) both;
-}
-
-.app-message-bubble-queued {
-  animation: app-message-bubble-enter 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@keyframes app-message-bubble-send-enter {
-  from {
-    opacity: 0.72;
-    transform: translate3d(var(--app-message-bubble-enter-x), 9px, 0);
-  }
-
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
-@keyframes app-transcript-existing-row-lift {
-  from {
-    translate: 0 var(--app-transcript-row-lift);
-  }
-
-  to {
-    translate: 0 0;
-  }
-}
-
-@keyframes app-message-bubble-enter {
-  0% {
-    opacity: 0.18;
-    filter: blur(0.7px);
-    transform: translate3d(var(--app-message-bubble-enter-x), 16px, 0) scale(0.955);
-  }
-
-  46% {
-    opacity: 1;
-    filter: blur(0);
-  }
-
-  to {
-    opacity: 1;
-    filter: blur(0);
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
 @keyframes app-support-contact-typing-pulse {
   0%, 60%, 100% {
     opacity: 0.3;
@@ -269,33 +211,6 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
 
   to {
     transform: translate3d(115%, 0, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  [data-virtual-transcript-session-ready] {
-    transition: none;
-  }
-
-  [data-transcript-window-item] {
-    animation: none !important;
-    translate: none !important;
-  }
-
-  .app-message-bubble,
-  .app-message-bubble-enter,
-  .app-message-bubble-queued {
-    animation: none;
-    transition: none;
-  }
-
-  .app-message-bubble-shape-fill {
-    transition: none;
-  }
-
-  .app-support-contact-typing-dot {
-    animation: none;
-    opacity: 0.52;
   }
 }
 
