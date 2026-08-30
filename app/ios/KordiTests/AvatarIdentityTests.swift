@@ -30,6 +30,31 @@ final class AvatarIdentityTests: XCTestCase {
         XCTAssertNil(AvatarImageLoader.normalizedSource("file:///private/avatar.png"))
     }
 
+    func testAvatarLoaderUsesURLCacheBeforeAsyncLoad() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kordi-avatar-cache-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let data = try XCTUnwrap(Data(base64Encoded:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        ))
+        let url = try XCTUnwrap(URL(string: "https://avatars.example/acct_me-v1.png"))
+        let request = URLRequest(url: url)
+        let response = try XCTUnwrap(HTTPURLResponse(
+            url: url,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Cache-Control": "public, max-age=31536000, immutable"]
+        ))
+        let urlCache = URLCache(
+            memoryCapacity: 1_024 * 1_024,
+            diskCapacity: 1_024 * 1_024,
+            directory: directory
+        )
+        urlCache.storeCachedResponse(CachedURLResponse(response: response, data: data), for: request)
+
+        XCTAssertNotNil(AvatarImageLoader.cachedImage(from: url.absoluteString, urlCache: urlCache))
+    }
+
     func testCanonicalAvatarMarkerResolvesToThePinnedKordiRenderer() throws {
         let marker = try XCTUnwrap(CanonicalAvatarSystem.marker(
             style: CanonicalAvatarSystem.humanStyle,
