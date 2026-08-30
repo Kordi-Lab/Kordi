@@ -30,8 +30,9 @@ import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { ForwardedFromHeader } from './forwardedFromHeader';
+import { HumanMessageMarkdown } from './humanMessageMarkdown';
 import { MarkdownContent } from './markdown';
-import { MessageInlineContent, MessageMentionProfileContent } from './messageInlineContent';
+import { MessageInlineContent } from './messageInlineContent';
 import { MessageLinkPreview } from './messageLinkPreview';
 import { firstExternalMessageLink } from './messageLinks';
 import { messageBubblePropsEqual } from './messageBubbleMemo';
@@ -757,7 +758,7 @@ function MessageBubbleView({
   const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasOnlyBorderlessMediaAttachments = hasOnlyImageAttachments || (!hasText && !hasVoice && attachmentsAreOnlyMp4Videos(msg.attachments)); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
   const hasGroupedImageAttachments = hasOnlyImageAttachments && (msg.attachments?.length ?? 0) > 1;
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
-  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse && !hasLinkPreview;
+  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse && !hasLinkPreview && !(/\r?\n/.test(msg.text) || /^\s*(?:`{3,}|#{1,3}\s+|>|[-*+]\s+|\d+\.\s+)/.test(msg.text));
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
   const avatarSeed = isOwnHumanMessage
@@ -778,7 +779,6 @@ function MessageBubbleView({
   const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode);
   const isForwardedMessage = msg.messageAction?.kind === 'forward';
   const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
-
   return (
     <MessageContextMenuHost
       msg={msg}
@@ -910,7 +910,7 @@ function MessageBubbleView({
           showInlineCompactFooter ? (
             <div className="leading-[1.45]">
               <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
-                {msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageMentionProfileContent message={msg} onOpenSenderProfile={onOpenSenderProfile} />}
+                {msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <HumanMessageMarkdown message={msg} inline onOpenSenderProfile={onOpenSenderProfile} />}
               </span>
               {isOwnHumanMessage || footerDetail || msg.replySummary ? (
                 <span className={cn(
@@ -939,7 +939,7 @@ function MessageBubbleView({
                 ) : hasText ? (
                   msg.supportContactResponse
                     ? <SupportContactAnswer text={msg.text} />
-                    : <><div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageMentionProfileContent message={msg} onOpenSenderProfile={onOpenSenderProfile} />}</div>{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>
+                    : <>{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <HumanMessageMarkdown message={msg} onOpenSenderProfile={onOpenSenderProfile} />}{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>
                 ) : null}
               </div>
               {!hasOnlyBorderlessMediaAttachments && !hasVoice ? (
