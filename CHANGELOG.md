@@ -4,6 +4,44 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
+## [0.0.1-beta.18] - 2026-08-31
+
+### Added
+
+- Added version-checked editing for your own messages plus **Delete for me**
+  and **Delete for everyone** across macOS and iOS, including direct and group
+  conversations, confirmation flows, and edited markers. ([#1289])
+- Added saved sticker and GIF deletion from the macOS context menu and iOS
+  long-press menu while preserving synchronized media types. ([#1275])
+
+### Changed
+
+- Improved chat contrast across themes and aligned iOS reaction chips with
+  their sender avatars. ([#1273], [#1278], [#1280])
+- Refined outgoing desktop message feedback and transcript motion while
+  preserving reduced-motion behavior and stable scroll position. ([#1288],
+  [#1290])
+- Moved Blob Emoji delivery out of the desktop bundle and into immutable hosted
+  assets with durable native caching, substantially reducing download size
+  while preserving previously used emoji offline. ([#1287])
+- Removed meme-creation shortcuts from the macOS and iOS composer menus while
+  preserving existing meme messages, forwarding, and synchronization.
+  ([#1284])
+
+### Fixed
+
+- Rendered human message Markdown consistently on macOS without losing safe
+  links, structured mentions, link previews, or theme-aware colors. ([#1272])
+- Restored cache-first iOS avatars without refresh flicker and made
+  attachment-only reply previews identify photos, videos, stickers, and GIFs
+  on both platforms. ([#1276], [#1283])
+- Improved video capture and playback previews across macOS and iOS with
+  higher-quality iPhone recording, stable posters, native full-screen iOS
+  playback, and resizable macOS playback. ([#1286])
+- Kept captioned multi-image groups outside message bubbles on macOS and iOS
+  while preserving borderless image-only messages and sender alignment.
+  ([#1292])
+
 ## [0.0.1-beta.17] - 2026-08-29
 
 ### Added
@@ -307,7 +345,8 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta17...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta18...HEAD
+[0.0.1-beta.18]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta17...V0.0.1.beta18
 [0.0.1-beta.17]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta16...V0.0.1.beta17
 [0.0.1-beta.16]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta15...V0.0.1.beta16
 [0.0.1-beta.15]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta14...V0.0.1.beta15
@@ -462,3 +501,17 @@ This release is the comparison baseline for beta.8. See the
 [#1255]: https://github.com/Kordi-Lab/Kordi/pull/1255
 [#1256]: https://github.com/Kordi-Lab/Kordi/pull/1256
 [#1258]: https://github.com/Kordi-Lab/Kordi/pull/1258
+[#1272]: https://github.com/Kordi-Lab/Kordi/pull/1272
+[#1273]: https://github.com/Kordi-Lab/Kordi/pull/1273
+[#1275]: https://github.com/Kordi-Lab/Kordi/pull/1275
+[#1276]: https://github.com/Kordi-Lab/Kordi/pull/1276
+[#1278]: https://github.com/Kordi-Lab/Kordi/pull/1278
+[#1280]: https://github.com/Kordi-Lab/Kordi/pull/1280
+[#1283]: https://github.com/Kordi-Lab/Kordi/pull/1283
+[#1284]: https://github.com/Kordi-Lab/Kordi/pull/1284
+[#1286]: https://github.com/Kordi-Lab/Kordi/pull/1286
+[#1287]: https://github.com/Kordi-Lab/Kordi/pull/1287
+[#1288]: https://github.com/Kordi-Lab/Kordi/pull/1288
+[#1289]: https://github.com/Kordi-Lab/Kordi/pull/1289
+[#1290]: https://github.com/Kordi-Lab/Kordi/pull/1290
+[#1292]: https://github.com/Kordi-Lab/Kordi/pull/1292
