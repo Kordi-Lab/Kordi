@@ -72,6 +72,7 @@ export function VoiceComposerControls({
             onSend();
           }}
           disabled={Boolean(validationError) || recorder.state.phase === 'sending'}
+          data-composer-send={hasSendableDraft ? 'true' : undefined}
           title={!hasSendableDraft
             ? 'Hold to record · release to send · swipe up to cancel'
             : validationError ?? (activeLiveTurnIsRunning

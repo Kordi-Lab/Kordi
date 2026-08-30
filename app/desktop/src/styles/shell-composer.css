@@ -58,6 +58,21 @@
     0 8px 18px rgba(0, 0, 0, 0.18);
 }
 
+.app-composer-send[data-composer-send='true'] {
+  transition: transform 140ms var(--app-motion-ease);
+}
+
+.app-composer-send[data-composer-send='true']:active:not(:disabled) {
+  transform: scale(0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-composer-send[data-composer-send='true'] {
+    transform: none;
+    transition: none;
+  }
+}
+
 .app-mode-tab {
   border: 1px solid var(--app-mode-tab-border);
   background: var(--app-mode-tab-bg);

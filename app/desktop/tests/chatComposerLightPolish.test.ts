@@ -88,6 +88,15 @@ test('chat wallpaper spans the transcript and composer gutter as one surface', (
   assert.match(cssRule(css, '.app-chat-canvas'), /background:\s*transparent;/);
 });
 
+test('message send press feedback is scoped and reduced-motion safe', () => {
+  const controls = readFileSync(new URL('../src/pages/chatsPage.voiceControls.tsx', import.meta.url), 'utf8');
+  const css = readDesktopShellCss();
+
+  assert.match(controls, /data-composer-send=\{hasSendableDraft \? 'true' : undefined\}/);
+  assert.match(css, /\.app-composer-send\[data-composer-send='true'\]:active:not\(:disabled\)\s*\{[^}]*transform:\s*scale\(0\.9\)/s);
+  assert.match(css, /prefers-reduced-motion:\s*reduce[\s\S]*\.app-composer-send\[data-composer-send='true'\][\s\S]*transition:\s*none/);
+});
+
 test('compact reply indicator is inline icon plus count so it does not expand message spacing', () => {
   const source = readFileSync(new URL('../src/kordi-app/components/transcriptReplyAttribution.tsx', import.meta.url), 'utf8');
   const transcriptSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');

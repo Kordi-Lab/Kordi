@@ -57,6 +57,7 @@ export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
   emptyState?: ReactNode;
   tail?: ReactNode;
   tailKey?: string | number;
+  animateLatestAppend?: boolean;
   estimateSize?: (item: Item, index: number) => number;
   gap?: number;
 };
@@ -91,6 +92,7 @@ export function VirtualTranscript<Item>({
   emptyState,
   tail,
   tailKey,
+  animateLatestAppend = false,
   estimateSize,
   gap = 4, selectionMode = false, onSelectAllMessages, onCancelMessageSelection,
 }: VirtualTranscriptProps<Item>) {
@@ -109,11 +111,14 @@ export function VirtualTranscript<Item>({
     tailKey: string;
     totalSize: number;
     viewportSize: number;
+    scrollTop: number;
   } | null>(null);
   const viewportWasAtTailRef = useRef(true);
   const tailAlignmentActiveRef = useRef(false);
   const tailAlignmentFrameRef = useRef<number | null>(null);
   const tailAlignmentTargetRef = useRef<number | null>(null);
+  const tailLiftAnimationRef = useRef<Animation | null>(null);
+  const sizeContainerRef = useRef<HTMLDivElement | null>(null);
   const stableDisclosureAnchorRef = useRef<StableDisclosureAnchor | null>(null);
   const stableDisclosureReleaseFrameRef = useRef<number | null>(null);
   const stableDisclosureResizeObserverRef = useRef<ResizeObserver | null>(null);
@@ -165,20 +170,27 @@ export function VirtualTranscript<Item>({
   const totalSize = virtualizer.getTotalSize();
   const viewportSize = virtualizer.scrollRect?.height ?? 0;
   const setSizeContainer = useCallback((node: HTMLDivElement | null) => {
+    sizeContainerRef.current = node;
     virtualizer.containerRef(node);
     // Commit the new extent before layout effects restore a prepend anchor;
     // otherwise the browser can clamp that anchor against the previous size.
     if (node) node.style.height = `${totalSize}px`;
   }, [totalSize, virtualizer]);
 
+  const cancelTailLiftAnimation = useCallback(() => {
+    tailLiftAnimationRef.current?.cancel();
+    tailLiftAnimationRef.current = null;
+  }, []);
+
   const cancelTailAlignment = useCallback(() => {
+    cancelTailLiftAnimation();
     tailAlignmentActiveRef.current = false;
     tailAlignmentTargetRef.current = null;
     if (tailAlignmentFrameRef.current !== null) {
       window.cancelAnimationFrame(tailAlignmentFrameRef.current);
       tailAlignmentFrameRef.current = null;
     }
-  }, []);
+  }, [cancelTailLiftAnimation]);
 
   const selectionViewportProps = useTranscriptSelectionViewportProps({ cancelTailAlignment, viewportRef: internalScrollRef, selectionMode, onSelectAllMessages, onCancelMessageSelection });
 
@@ -219,12 +231,31 @@ export function VirtualTranscript<Item>({
     viewportWasAtTailRef.current = true;
   }, []);
 
-  const scheduleTailAlignment = useCallback(() => {
+  const scheduleTailAlignment = useCallback((animateFromScrollTop?: number) => {
     if (tailAlignmentFrameRef.current !== null) {
       window.cancelAnimationFrame(tailAlignmentFrameRef.current);
     }
+    if (animateFromScrollTop !== undefined) cancelTailLiftAnimation();
     tailAlignmentActiveRef.current = true;
     alignViewportToTail();
+    const element = internalScrollRef.current;
+    const liftDistance = animateFromScrollTop === undefined || !element
+      ? 0
+      : element.scrollTop - animateFromScrollTop;
+    const sizeContainer = sizeContainerRef.current;
+    if (
+      liftDistance > 1
+      && typeof sizeContainer?.animate === 'function'
+      && !(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false)
+    ) {
+      tailLiftAnimationRef.current = sizeContainer.animate([
+        { transform: `translate3d(0, ${liftDistance}px, 0)` },
+        { transform: 'translate3d(0, 0, 0)' },
+      ], {
+        duration: 280,
+        easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      });
+    }
     let framesRemaining = 4;
     const settle = () => {
       tailAlignmentFrameRef.current = null;
@@ -236,7 +267,7 @@ export function VirtualTranscript<Item>({
       }
     };
     tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
-  }, [alignViewportToTail]);
+  }, [alignViewportToTail, cancelTailLiftAnimation]);
 
   useEffect(() => {
     // React Strict Mode intentionally runs an extra setup/cleanup cycle in
@@ -408,6 +439,7 @@ export function VirtualTranscript<Item>({
 
   useLayoutEffect(() => {
     const aligned = alignedSessionRef.current;
+    if (aligned && aligned.sessionKey !== sessionKey) cancelTailLiftAnimation();
     const stableDisclosureAnchor = stableDisclosureAnchorRef.current?.sessionKey === sessionKey
       ? stableDisclosureAnchorRef.current
       : null;
@@ -462,14 +494,9 @@ export function VirtualTranscript<Item>({
       || tailContentChanged
       || measuredSizeChanged
       || viewportSizeChanged;
-    alignedSessionRef.current = {
-      sessionKey,
-      itemCount: items.length,
-      lastItemKey: newestItemKey,
-      tailKey: normalizedTailKey,
-      totalSize,
-      viewportSize,
-    };
+    const animateFromScrollTop = animateLatestAppend && latestItemAppended
+      ? aligned?.scrollTop
+      : undefined;
     if (stableDisclosureSizeChanged && stableDisclosureAnchor) {
       cancelTailAlignment();
       const element = internalScrollRef.current;
@@ -485,9 +512,18 @@ export function VirtualTranscript<Item>({
       if (items.length > 0) {
         virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
       }
-      scheduleTailAlignment();
+      scheduleTailAlignment(animateFromScrollTop);
     }
-  }, [cancelTailAlignment, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
+    alignedSessionRef.current = {
+      sessionKey,
+      itemCount: items.length,
+      lastItemKey: newestItemKey,
+      tailKey: normalizedTailKey,
+      totalSize,
+      viewportSize,
+      scrollTop: internalScrollRef.current?.scrollTop ?? 0,
+    };
+  }, [animateLatestAppend, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const scrollToNavigationIndex = useCallback((index: number) => {
