@@ -728,6 +728,35 @@ enum PreviewData {
             ]
         }
         let attachments = previewChatAttachments()
+        if ProcessInfo.processInfo.arguments.contains("--preview-media-messages") {
+            let groupedAttachments = Array(attachments.prefix(2))
+            return [
+                ChatMessage(
+                    id: "preview-captioned-images-peer",
+                    conversationId: "person:acct_maya",
+                    author: .person,
+                    authorName: "Maya Chen",
+                    text: "I see the same issue on my side.",
+                    createdAt: now.addingTimeInterval(-32),
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    attachments: groupedAttachments
+                ),
+                ChatMessage(
+                    id: "preview-captioned-images-own",
+                    conversationId: "person:acct_maya",
+                    author: .me,
+                    authorName: "You",
+                    text: "ok I think may be there are some bugs in apple internal system.",
+                    createdAt: now.addingTimeInterval(-30),
+                    deliveryState: .read,
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    attachments: groupedAttachments
+                ),
+            ]
+        }
         if ProcessInfo.processInfo.arguments.contains("--preview-media-separated") {
             return attachments.enumerated().map { index, attachment in
                 ChatMessage(

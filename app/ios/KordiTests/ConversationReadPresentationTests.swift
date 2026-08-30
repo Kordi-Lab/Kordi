@@ -432,7 +432,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains("action: onShareMessage"))
     }
 
-    func testMixedMessageImagesCenterInsideTheirBubble() throws {
+    func testGroupedMessageImagesRenderBeforeTheirSeparateBubble() throws {
         let conversationDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -441,10 +441,14 @@ final class ConversationReadPresentationTests: XCTestCase {
             contentsOf: conversationDirectory.appendingPathComponent("MessageBubble.swift"),
             encoding: .utf8
         )
+        let messageSurface = source.components(separatedBy: "private var messageSurface")[1]
+            .components(separatedBy: "private var imageCollection")[0]
         let bubbleContents = source.components(separatedBy: "private var bubbleContents")[1]
             .components(separatedBy: "private var usesBorderlessImageSurface")[0]
 
-        XCTAssertTrue(bubbleContents.contains(".frame(maxWidth: .infinity, alignment: .center)"))
+        XCTAssertTrue(messageSurface.contains("} else if usesDetachedImageGroup {"))
+        XCTAssertTrue(messageSurface.contains("imageCollection\n                bubbleSurface"))
+        XCTAssertTrue(bubbleContents.contains("!usesDetachedImageGroup"))
     }
 
     func testOnlyTerminalContentMessagesAllowReactions() {

@@ -10,7 +10,7 @@ import type { ContactRequest, DesktopChatTurnSnapshot, Message } from '../src/ko
 test('transcript human avatars are large enough to read beside message bubbles', () => {
   const source = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
   const avatarStart = source.indexOf('{showAvatar ? (');
-  const avatarEnd = source.indexOf('{forwardedSource ?', avatarStart);
+  const avatarEnd = source.indexOf('data-message-context-menu-anchor', avatarStart);
   assert.ok(avatarStart >= 0 && avatarEnd > avatarStart, 'message avatar rendering block should be present');
   const avatarBlock = source.slice(avatarStart, avatarEnd);
   const avatarSizeContract = /useHumanCompactDensity \? 'h-7 w-7' : 'h-8 w-8'/g;

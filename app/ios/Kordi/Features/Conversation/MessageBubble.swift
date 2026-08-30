@@ -311,17 +311,12 @@ struct MessageBubble: View, Equatable {
         if isCallActivity {
             ConversationCallActivityCard(message: message)
         } else if usesBorderlessImageSurface {
-            MessageImageCollection(
-                attachments: message.attachments,
-                author: message.author,
-                onOpen: onOpenAttachment,
-                onShare: onShareAttachment,
-                onPrepare: onPrepareAttachment,
-                onAddToMediaLibrary: onAddAttachmentToMediaLibrary,
-                actionAttachmentID: actionAttachment?.id,
-                onPrepareActions: prepareImageActions,
-                onRequestActions: requestImageActions
-            )
+            imageCollection
+        } else if usesDetachedImageGroup {
+            VStack(alignment: message.author == .me ? .trailing : .leading, spacing: 7) {
+                imageCollection
+                bubbleSurface
+            }
         } else if usesBorderlessVideoSurface {
             VStack(spacing: 7) {
                 ForEach(message.attachments) { attachment in
@@ -337,30 +332,48 @@ struct MessageBubble: View, Equatable {
                 }
             }
         } else {
-            AdaptiveBubbleLayout(
-                maximumWidth: 360,
-                minimumWidth: agentExecutionMinimumWidth
-            ) {
-                bubbleContents
-                    .padding(.leading, message.voiceMessage == nil ? 12 : 10)
-                    .padding(
-                        .trailing,
-                        message.author == .me
-                            ? message.isEdited
-                                ? (message.voiceMessage == nil ? 12 : 10)
-                                : (message.voiceMessage == nil ? 30 : 26)
-                            : (message.voiceMessage == nil ? 12 : 10)
-                    )
-                    .padding(.vertical, message.voiceMessage == nil ? 8 : 6)
-            }
-            .environment(\.colorScheme, bubbleContentColorScheme)
-            .foregroundStyle(bubbleTextColor)
-            .background {
-                bubbleShape.fill(bubbleColor)
-                bubbleShape.fill(lightAppearanceBubbleTintColor)
-            }
-            .clipShape(bubbleShape)
+            bubbleSurface
         }
+    }
+
+    private var imageCollection: some View {
+        MessageImageCollection(
+            attachments: message.attachments,
+            author: message.author,
+            onOpen: onOpenAttachment,
+            onShare: onShareAttachment,
+            onPrepare: onPrepareAttachment,
+            onAddToMediaLibrary: onAddAttachmentToMediaLibrary,
+            actionAttachmentID: actionAttachment?.id,
+            onPrepareActions: prepareImageActions,
+            onRequestActions: requestImageActions
+        )
+    }
+
+    private var bubbleSurface: some View {
+        AdaptiveBubbleLayout(
+            maximumWidth: 360,
+            minimumWidth: agentExecutionMinimumWidth
+        ) {
+            bubbleContents
+                .padding(.leading, message.voiceMessage == nil ? 12 : 10)
+                .padding(
+                    .trailing,
+                    message.author == .me
+                        ? message.isEdited
+                            ? (message.voiceMessage == nil ? 12 : 10)
+                            : (message.voiceMessage == nil ? 30 : 26)
+                        : (message.voiceMessage == nil ? 12 : 10)
+                )
+                .padding(.vertical, message.voiceMessage == nil ? 8 : 6)
+        }
+        .environment(\.colorScheme, bubbleContentColorScheme)
+        .foregroundStyle(bubbleTextColor)
+        .background {
+            bubbleShape.fill(bubbleColor)
+            bubbleShape.fill(lightAppearanceBubbleTintColor)
+        }
+        .clipShape(bubbleShape)
     }
 
     private var agentExecutionMinimumWidth: CGFloat {
@@ -433,7 +446,7 @@ struct MessageBubble: View, Equatable {
                 }
             }
 
-            if !message.attachments.isEmpty {
+            if !message.attachments.isEmpty, !usesDetachedImageGroup {
                 if message.attachments.allSatisfy({ $0.kind == .image }) {
                     MessageImageCollection(
                         attachments: message.attachments,
@@ -494,6 +507,10 @@ struct MessageBubble: View, Equatable {
 
     private var usesBorderlessImageSurface: Bool {
         MessageAttachmentPresentation.usesBorderlessImageSurface(for: message)
+    }
+
+    private var usesDetachedImageGroup: Bool {
+        MessageAttachmentPresentation.usesDetachedImageGroup(for: message)
     }
 
     private var usesBorderlessVideoSurface: Bool {
@@ -1340,6 +1357,12 @@ enum MessageAttachmentPresentation {
             && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && message.replyToMessageId == nil
             && message.messageAction == nil
+    }
+
+    static func usesDetachedImageGroup(for message: ChatMessage) -> Bool {
+        message.attachments.count > 1
+            && message.attachments.allSatisfy { $0.kind == .image }
+            && !usesBorderlessImageSurface(for: message)
     }
 
     static func usesBorderlessMediaSurface(for message: ChatMessage) -> Bool {

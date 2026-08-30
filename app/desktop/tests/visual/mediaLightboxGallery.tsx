@@ -17,6 +17,7 @@ const surface = requestedSurface === 'transcript'
     || requestedSurface === 'remote-transcript'
     || requestedSurface === 'retry-transcript'
     || requestedSurface === 'link-preview'
+    || requestedSurface === 'captioned-group'
   ? requestedSurface
   : 'lightbox';
 
@@ -155,6 +156,26 @@ function TranscriptImageGallery() {
   );
 }
 
+function CaptionedImageGroupGallery() {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'ok I think may be there are some bugs in apple internal system.',
+    time: '14:39',
+    attachments: images.slice(0, 2),
+  };
+
+  return (
+    <main className={`kordi-app theme-${theme} transcript-image-visual-shell captioned-image-group-visual-shell`}>
+      <section aria-label="Captioned image group message">
+        <MessageBubble msg={message} />
+      </section>
+    </main>
+  );
+}
+
 function RemoteTranscriptGallery() {
   const [sessionReady, setSessionReady] = useState(false);
 
@@ -235,6 +256,8 @@ document.documentElement.style.colorScheme = theme;
 createRoot(document.querySelector('#root')!).render(
   surface === 'transcript'
     ? <TranscriptImageGallery />
+    : surface === 'captioned-group'
+      ? <CaptionedImageGroupGallery />
     : surface === 'remote-transcript'
       ? <RemoteTranscriptGallery />
       : surface === 'retry-transcript'

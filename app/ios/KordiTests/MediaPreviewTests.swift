@@ -174,13 +174,18 @@ final class MediaPreviewTests: XCTestCase {
         let imageMessage = message(
             id: "image-message",
             author: .me,
-            attachments: [attachment(id: "image", kind: .image)]
+            attachments: [
+                attachment(id: "image-1", kind: .image),
+                attachment(id: "image-2", kind: .image)
+            ]
         )
         var captionedMessage = imageMessage
         captionedMessage.text = "Caption"
 
         XCTAssertTrue(MessageAttachmentPresentation.usesBorderlessImageSurface(for: imageMessage))
+        XCTAssertFalse(MessageAttachmentPresentation.usesDetachedImageGroup(for: imageMessage))
         XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessImageSurface(for: captionedMessage))
+        XCTAssertTrue(MessageAttachmentPresentation.usesDetachedImageGroup(for: captionedMessage))
     }
 
     func testVideoOnlyMessageUsesBorderlessMediaSurface() {
