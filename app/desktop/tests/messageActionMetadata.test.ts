@@ -123,3 +123,17 @@ test('messageActionPreviewText prefers assistant text and truncates multi-line t
   );
   assert.equal(preview, 'Line one Line t…');
 });
+
+test('messageActionPreviewText identifies attachment-only reply targets', () => {
+  const cases: Array<[Message['attachments'], Message['messageKind'], string]> = [
+    [[{ kind: 'image', name: 'photo.png', mimeType: 'image/png' }], undefined, 'Photo'],
+    [[{ kind: 'file', name: 'clip.mp4', mimeType: 'video/mp4' }], undefined, 'Video'],
+    [[{ kind: 'image', subtype: 'sticker', name: 'wave.png' }], 'sticker', 'Sticker'],
+    [[{ kind: 'image', name: 'dance.gif', mimeType: 'image/gif' }], undefined, 'GIF'],
+    [[{ kind: 'file', name: 'brief.pdf', mimeType: 'application/pdf' }], undefined, 'brief.pdf'],
+  ];
+
+  for (const [attachments, messageKind, expected] of cases) {
+    assert.equal(messageActionPreviewText({ text: '', attachments, messageKind }), expected);
+  }
+});

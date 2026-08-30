@@ -1062,13 +1062,15 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         let preview = normalized.count <= 220
             ? normalized
             : String(normalized.prefix(219)).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
-        let previewMentions = MessageMention.rebased(mentions, in: preview)
+        let actionPreview = preview.nonEmpty
+            ?? (attachments.isEmpty ? "" : AppModel.attachmentSummary(attachments, messageKind: messageKind))
+        let previewMentions = MessageMention.rebased(mentions, in: actionPreview)
         return MessageActionSource(
             sourceSessionId: sessionId,
             sourceMessageId: id,
             sourceMessageKind: author == .agent ? "agent-turn" : "text",
             senderLabel: author == .me ? "You" : authorName,
-            textPreview: preview,
+            textPreview: actionPreview,
             mentions: previewMentions.isEmpty ? nil : previewMentions,
             attachmentCount: attachments.count,
             createdAtMs: createdAt.timeIntervalSince1970 * 1_000,

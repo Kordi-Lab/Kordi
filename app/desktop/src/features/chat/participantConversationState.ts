@@ -1,4 +1,5 @@
 import type { Conversation, Message } from '@/kordi-app/types';
+import { isMp4VideoAttachment } from './attachmentMediaGallery';
 
 const blobEmojiInlineTokenPattern = /:blob:[A-Za-z0-9_-]+:/gu;
 
@@ -41,6 +42,13 @@ export function attachmentOnlyMessagePreview(
 
   const attachments = message.attachments ?? [];
   if (attachments.length === 0) return null;
+
+  if (attachments.every(isMp4VideoAttachment)) {
+    return {
+      kind: 'file',
+      label: attachments.length === 1 ? 'Video' : `${attachments.length} videos`,
+    };
+  }
 
   const imageCount = attachments.filter(
     (attachment) =>

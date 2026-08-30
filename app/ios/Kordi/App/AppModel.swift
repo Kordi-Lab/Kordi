@@ -3816,11 +3816,19 @@ final class AppModel: ObservableObject {
         _ attachments: [ChatAttachment],
         messageKind: String? = nil
     ) -> String {
-        guard attachments.count == 1, let attachment = attachments.first else {
+        guard let attachment = attachments.first else { return "0 attachments" }
+        guard attachments.count == 1 else {
+            if attachments.allSatisfy({ $0.kind == .image }) {
+                return "\(attachments.count) photos"
+            }
+            if attachments.allSatisfy(\.isMP4Video) {
+                return "\(attachments.count) videos"
+            }
             return "\(attachments.count) attachments"
         }
         if messageKind == "sticker" || attachment.subtype == .sticker { return "Sticker" }
         if MessageImageInteraction.isAnimatedGIF(attachment) { return "GIF" }
+        if attachment.isMP4Video { return "Video" }
         return attachment.kind == .image ? "Photo" : attachment.name
     }
 
