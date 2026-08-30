@@ -59,9 +59,19 @@ function normalizeRemoteAvatarUrl(imageUrl: string | null | undefined): string {
 export function shouldLoadRemoteImageThroughNativeProxy(
   imageUrl: string | null | undefined,
   tauriRuntime = isTauriRuntime(),
+  allowDebugLoopback = false,
+  development = Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV),
 ): boolean {
   if (!tauriRuntime) return false;
-  return normalizeRemoteAvatarUrl(imageUrl).startsWith('https://');
+  const normalized = normalizeRemoteAvatarUrl(imageUrl);
+  if (normalized.startsWith('https://')) return true;
+  if (!allowDebugLoopback || !development) return false;
+  try {
+    const url = new URL(normalized);
+    return url.protocol === 'http:' && url.hostname === '127.0.0.1';
+  } catch {
+    return false;
+  }
 }
 
 export const shouldLoadAvatarThroughNativeProxy = shouldLoadRemoteImageThroughNativeProxy;

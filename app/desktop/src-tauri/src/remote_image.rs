@@ -30,6 +30,7 @@ struct RemoteImageCachePolicy {
     ttl: Option<Duration>,
     required_media_type: Option<&'static str>,
     account_scoped: bool,
+    allow_debug_loopback: bool,
 }
 
 const AVATAR_CACHE_POLICY: RemoteImageCachePolicy = RemoteImageCachePolicy {
@@ -41,18 +42,21 @@ const AVATAR_CACHE_POLICY: RemoteImageCachePolicy = RemoteImageCachePolicy {
     ttl: Some(Duration::from_secs(30 * 24 * 60 * 60)),
     required_media_type: None,
     account_scoped: true,
+    allow_debug_loopback: false,
 };
 
 const BLOB_EMOJI_CACHE_POLICY: RemoteImageCachePolicy = RemoteImageCachePolicy {
     directory: "blob-emoji-v1",
     magic: b"KORDI_BLOB_EMOJI_V1\n",
     extension: "webp",
-    max_entries: 512,
+    max_entries: 1024,
     max_bytes: 64 * 1024 * 1024,
     ttl: None,
     required_media_type: Some("image/webp"),
     account_scoped: false,
+    allow_debug_loopback: true,
 };
+const _: () = assert!(BLOB_EMOJI_CACHE_POLICY.max_entries >= 547);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct RemoteImageCacheHeader {
@@ -144,6 +148,24 @@ pub(crate) fn validated_remote_image_url(value: &str) -> Result<Url, String> {
         }
     }
     Ok(url)
+}
+
+fn validated_remote_image_url_for_policy(
+    value: &str,
+    policy: &RemoteImageCachePolicy,
+) -> Result<(Url, bool), String> {
+    if cfg!(debug_assertions) && policy.allow_debug_loopback {
+        if let Ok(url) = Url::parse(value.trim()) {
+            let loopback = url.scheme() == "http"
+                && url.host_str() == Some("127.0.0.1")
+                && url.username().is_empty()
+                && url.password().is_none();
+            if loopback {
+                return Ok((url, true));
+            }
+        }
+    }
+    validated_remote_image_url(value).map(|url| (url, false))
 }
 
 fn supported_image_media_type(value: &str) -> Option<&'static str> {
@@ -482,6 +504,25 @@ pub(crate) async fn request_public_remote_image(mut url: Url) -> Result<Response
     Err("Avatar image redirected too many times.".to_string())
 }
 
+async fn request_debug_loopback_image(url: Url) -> Result<Response, String> {
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(Policy::none())
+        .build()
+        .map_err(|error| format!("Unable to prepare debug image request: {error}"))?;
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|error| format!("Unable to load debug image: {error}"))?;
+    if response.status().is_redirection() {
+        return Err("Debug image redirects are not allowed.".to_string());
+    }
+    response
+        .error_for_status()
+        .map_err(|error| format!("Unable to load debug image: {error}"))
+}
+
 async fn collect_bounded_remote_image_stream<S, B, E>(
     stream: S,
     max_bytes: usize,
@@ -517,7 +558,7 @@ async fn fetch_remote_image_data_url(
     expected_sha256: Option<String>,
     policy: &'static RemoteImageCachePolicy,
 ) -> Result<String, String> {
-    let url = validated_remote_image_url(&url)?;
+    let (url, debug_loopback) = validated_remote_image_url_for_policy(&url, policy)?;
     let expected_sha256 = expected_sha256
         .as_deref()
         .map(validated_expected_sha256)
@@ -543,7 +584,11 @@ async fn fetch_remote_image_data_url(
     }
 
     let payload = tokio::time::timeout(REMOTE_IMAGE_TIMEOUT, async move {
-        let response = request_public_remote_image(url).await?;
+        let response = if debug_loopback {
+            request_debug_loopback_image(url).await?
+        } else {
+            request_public_remote_image(url).await?
+        };
         if response
             .content_length()
             .is_some_and(|length| length > MAX_REMOTE_IMAGE_BYTES as u64)
@@ -629,6 +674,27 @@ mod tests {
         assert!(validated_remote_image_url("https://localhost/avatar.png").is_err());
         assert!(validated_remote_image_url("https://127.0.0.1/avatar.png").is_err());
         assert!(validated_remote_image_url("https://192.168.1.20/avatar.png").is_err());
+    }
+
+    #[test]
+    fn blob_emoji_debug_cache_accepts_only_literal_loopback_http() {
+        assert!(validated_remote_image_url_for_policy(
+            "http://127.0.0.1:17185/assets/blob.webp",
+            &BLOB_EMOJI_CACHE_POLICY,
+        )
+        .is_ok_and(|(_, debug_loopback)| debug_loopback));
+        for url in [
+            "http://localhost:17185/assets/blob.webp",
+            "http://192.168.1.20/assets/blob.webp",
+            "http://127.0.0.1@example.test/assets/blob.webp",
+        ] {
+            assert!(validated_remote_image_url_for_policy(url, &BLOB_EMOJI_CACHE_POLICY).is_err());
+        }
+        assert!(validated_remote_image_url_for_policy(
+            "http://127.0.0.1:17185/assets/avatar.png",
+            &AVATAR_CACHE_POLICY,
+        )
+        .is_err());
     }
 
     #[test]

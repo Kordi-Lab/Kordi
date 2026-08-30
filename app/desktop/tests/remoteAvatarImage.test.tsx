@@ -62,6 +62,15 @@ test('native desktop routes remote HTTPS avatars through its proxy-aware image l
   assert.equal(shouldLoadAvatarThroughNativeProxy('https://images.example/avatar.png', true), true);
   assert.equal(shouldLoadAvatarThroughNativeProxy('data:image/png;base64,avatar', true), false);
   assert.equal(shouldLoadAvatarThroughNativeProxy('https://images.example/avatar.png', false), false);
+  assert.equal(shouldLoadAvatarThroughNativeProxy('http://127.0.0.1:17185/avatar.png', true), false);
+  assert.equal(
+    shouldLoadAvatarThroughNativeProxy('http://127.0.0.1:17185/blob.webp', true, true, true),
+    true,
+  );
+  assert.equal(
+    shouldLoadAvatarThroughNativeProxy('http://localhost:17185/blob.webp', true, true, true),
+    false,
+  );
 });
 
 test('remote avatar image requests share one native load per URL', async () => {

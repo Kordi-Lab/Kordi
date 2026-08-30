@@ -43,7 +43,7 @@ function useNearViewport(ref: RefObject<Element | null>, enabled: boolean) {
 
 function useBlobEmojiSource(emoji: BlobEmoji, nearViewport: boolean) {
   const remoteUrl = blobEmojiAssetUrl(emoji);
-  const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl);
+  const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl, undefined, true);
   const remote = useRemoteImage(remoteUrl, native && nearViewport, {
     command: 'desktop_fetch_blob_emoji_data_url',
     expectedSha256: emoji.sha256,
@@ -65,7 +65,7 @@ function ReducedMotionBlobEmoji({
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const remoteUrl = blobEmojiAssetUrl(emoji);
-  const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl);
+  const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl, undefined, true);
   const nearViewport = useNearViewport(canvasRef, native);
   const { source } = useBlobEmojiSource(emoji, nearViewport);
 
@@ -133,7 +133,7 @@ function LoadedBlobEmojiImage({
 }) {
   const imageRef = useRef<HTMLImageElement | null>(null);
   const remoteUrl = blobEmojiAssetUrl(emoji);
-  const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl);
+  const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl, undefined, true);
   const nearViewport = useNearViewport(imageRef, native);
   const { source } = useBlobEmojiSource(emoji, nearViewport);
   return (
