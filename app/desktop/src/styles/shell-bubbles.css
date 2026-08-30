@@ -416,6 +416,10 @@ body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer
   color: color-mix(in oklab, currentColor 62%, transparent);
 }
 
+.app-attachment-inline-video::-webkit-media-controls-fullscreen-button {
+  display: none;
+}
+
 .app-auth-notice {
   border: 1px solid rgba(251, 191, 36, 0.26);
   background: rgba(251, 191, 36, 0.11);

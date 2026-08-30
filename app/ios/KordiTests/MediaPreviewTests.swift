@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import Kordi
 
@@ -226,6 +227,21 @@ final class MediaPreviewTests: XCTestCase {
         )
         XCTAssertEqual(size.width, 180, accuracy: 0.1)
         XCTAssertEqual(size.height, 320, accuracy: 0.1)
+    }
+
+    func testFullScreenVideoReusesTheLoadedInlinePlayer() {
+        let sourceURL = URL(fileURLWithPath: "/tmp/kordi-video-preview-test.mp4")
+        let asset = AVURLAsset(url: sourceURL)
+        let inlinePlayer = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+        let poster = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { _ in }
+        let presentation = VideoPreviewPresentation(
+            attachment: attachment(id: "video", kind: .file),
+            inlinePlayer: inlinePlayer,
+            poster: poster
+        )
+
+        XCTAssertTrue(presentation.player === inlinePlayer)
+        XCTAssertTrue(presentation.poster === poster)
     }
 
     func testTransparentImageKeepsBorderlessSurfaceClear() throws {

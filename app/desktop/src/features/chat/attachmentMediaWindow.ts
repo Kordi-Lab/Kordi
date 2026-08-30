@@ -11,6 +11,8 @@ export type AttachmentMediaWindowPayload = {
   attachments: MessageAttachment[];
   selectedIndex: number;
   initialPreviewUrl?: string | null;
+  initialMediaUrl?: string | null;
+  initialMediaTime?: number;
   theme?: ResolvedThemeMode;
 };
 

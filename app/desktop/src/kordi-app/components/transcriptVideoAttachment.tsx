@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { LoaderCircle, Play, RotateCcw } from 'lucide-react';
+import { LoaderCircle, Maximize2, Play, RotateCcw } from 'lucide-react';
 
 import {
   attachmentVideoDisplaySize,
   attachmentVideoUrl,
   playableVideoSource,
 } from '@/features/chat/attachmentMediaGallery';
+import { openAttachmentMediaWindow } from '@/features/chat/attachmentMediaWindow';
 import { displayAttachmentName } from '@/features/chat/composerAttachments';
 import { videoPreviewFromSource } from '@/features/chat/composerVideoPreview';
 import { defaultCloudAuthClient } from '@/features/cloud/authClient';
@@ -90,6 +91,7 @@ export function AttachmentVideoCard({
   const [playbackRequested, setPlaybackRequested] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const controlsTimer = useRef<number | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const downloadedLocalPath = useRef<string | null>(null);
   const playbackEnded = useRef(false);
   const localSource = attachmentVideoUrl(localPath ? { ...attachment, localPath } : attachment);
@@ -291,6 +293,22 @@ export function AttachmentVideoCard({
     await requestCloudPlayback();
   }, [phase, requestCloudPlayback, source]);
 
+  const openVideoWindow = useCallback(() => {
+    const video = videoRef.current;
+    if (!source || !video) return;
+    const wasPlaying = !video.paused;
+    if (wasPlaying) video.pause();
+    void openAttachmentMediaWindow({
+      attachments: [attachment],
+      selectedIndex: 0,
+      initialPreviewUrl: posterUrl,
+      initialMediaUrl: source,
+      initialMediaTime: video.currentTime,
+    }).catch(() => {
+      if (wasPlaying) void video.play().catch(() => undefined);
+    });
+  }, [attachment, posterUrl, source]);
+
   if (!videoDimensions) {
     return (
       <div
@@ -334,47 +352,62 @@ export function AttachmentVideoCard({
       <div
         className="relative w-full overflow-hidden bg-[color:var(--app-control-bg)]"
         style={{ aspectRatio: `${displaySize.width} / ${displaySize.height}` }}
+        onPointerMove={showControlsBriefly}
       >
         {source && playbackRequested && !transferPending ? (
-          <video
-            src={source}
-            controls={controlsVisible}
-            autoPlay
-            playsInline
-            preload="metadata"
-            poster={posterUrl ?? undefined}
-            className="block h-full w-full object-contain"
-            aria-label={`Play ${displayAttachmentName(attachment.name, attachment.kind)}`}
-            onLoadedMetadata={(event) => {
-              const { videoWidth, videoHeight } = event.currentTarget;
-              if (videoWidth > 0 && videoHeight > 0) {
-                const dimensions = { widthPixels: videoWidth, heightPixels: videoHeight };
-                if (posterUrl) rememberPresentation(posterUrl, dimensions, 'local');
-                else setLocalVideoDimensions(dimensions);
-              }
-            }}
-            onClick={showControlsBriefly}
-            onPlay={showControlsBriefly}
-            onPause={keepControlsVisible}
-            onEnded={() => {
-              keepControlsVisible();
-              playbackEnded.current = true;
-              setPlaybackRequested(false);
-              if (downloadedLocalPath.current) {
-                setFailedSource(null);
-                setLocalPath(downloadedLocalPath.current);
-              }
-            }}
-            onError={() => {
-              setPlaybackRequested(false);
-              setFailedSource(source);
-              if (source === localSource && attachmentId) {
-                void requestCloudPlayback();
-              } else {
-                setPhase('error');
-              }
-            }}
-          />
+          <>
+            <video
+              ref={videoRef}
+              src={source}
+              controls={controlsVisible}
+              controlsList="nofullscreen"
+              autoPlay
+              playsInline
+              preload="metadata"
+              poster={posterUrl ?? undefined}
+              className="app-attachment-inline-video block h-full w-full object-contain"
+              aria-label={`Play ${displayAttachmentName(attachment.name, attachment.kind)}`}
+              onLoadedMetadata={(event) => {
+                const { videoWidth, videoHeight } = event.currentTarget;
+                if (videoWidth > 0 && videoHeight > 0) {
+                  const dimensions = { widthPixels: videoWidth, heightPixels: videoHeight };
+                  if (posterUrl) rememberPresentation(posterUrl, dimensions, 'local');
+                  else setLocalVideoDimensions(dimensions);
+                }
+              }}
+              onClick={showControlsBriefly}
+              onPlay={showControlsBriefly}
+              onPause={keepControlsVisible}
+              onEnded={() => {
+                keepControlsVisible();
+                playbackEnded.current = true;
+                setPlaybackRequested(false);
+                if (downloadedLocalPath.current) {
+                  setFailedSource(null);
+                  setLocalPath(downloadedLocalPath.current);
+                }
+              }}
+              onError={() => {
+                setPlaybackRequested(false);
+                setFailedSource(source);
+                if (source === localSource && attachmentId) {
+                  void requestCloudPlayback();
+                } else {
+                  setPhase('error');
+                }
+              }}
+            />
+            <button
+              type="button"
+              data-attachment-video-window-trigger="true"
+              onClick={openVideoWindow}
+              className={`absolute right-2 top-2 z-10 grid h-10 w-10 place-items-center rounded-full bg-black/55 text-white shadow-sm outline-none transition hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-white/90 ${controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+              aria-label={`Open ${displayAttachmentName(attachment.name, attachment.kind)} in a separate window`}
+              title="Open in separate window"
+            >
+              <Maximize2 className="h-4.5 w-4.5" aria-hidden="true" />
+            </button>
+          </>
         ) : (
           <div className="relative flex h-full flex-col items-center justify-center gap-3 overflow-hidden px-5 py-6 text-center">
             {posterUrl ? (
