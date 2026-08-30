@@ -8,10 +8,11 @@
 import type { CloudMessageSnapshotResponse } from './cloudMessageSnapshot';
 import type { CloudContactSummary } from './cloudContactTypes';
 import type { CloudPresenceAccount, CloudPresenceContactsResponse } from './presence';
-import type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
+import type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
 import { downloadCloudAttachmentBlob } from './cloudAttachmentDownloadClient';
 import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
 import type { CloudAuthErrorCode } from './cloudAuthError';
+import { CloudExpressiveMediaClient } from './cloudExpressiveMediaClient';
 import { CloudDeviceClient } from './cloudDeviceClient';
 import type {
   CloudDeviceListResponse,
@@ -356,6 +357,7 @@ export class CloudAuthClient {
   private activeAccountId: string | null = null;
   private readonly chat: ChatSyncClient;
   private readonly devices: CloudDeviceClient;
+  private readonly expressiveMedia: CloudExpressiveMediaClient;
   private readonly identity: CloudIdentityAuthClient;
 
   constructor(options: CloudAuthClientOptions = {}) {
@@ -371,6 +373,9 @@ export class CloudAuthClient {
       (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
       this.baseUrl,
       deviceRegistration,
+    );
+    this.expressiveMedia = new CloudExpressiveMediaClient(
+      (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
     );
     this.chat = new ChatSyncClient({
       request: (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
@@ -820,45 +825,18 @@ export class CloudAuthClient {
   }
 
   async listExpressiveMedia(token: string): Promise<CloudExpressiveMediaItem[]> {
-    const response = await this.send<CloudExpressiveMediaListResponse>(
-      '/v1/cloud/expressive-media',
-      {
-        method: 'GET',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not synchronize your saved stickers and GIFs.',
-    );
-    return response.items;
+    return this.expressiveMedia.list(token);
   }
 
   async saveExpressiveMedia(
     token: string,
     input: Pick<CloudExpressiveMediaItem, 'attachmentId' | 'kind' | 'name'>,
   ): Promise<CloudExpressiveMediaItem> {
-    const response = await this.send<CloudExpressiveMediaMutationResponse>(
-      '/v1/cloud/expressive-media',
-      {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(input),
-      },
-      'Could not synchronize this saved media.',
-    );
-    return response.item;
+    return this.expressiveMedia.save(token, input);
   }
 
   async deleteExpressiveMedia(token: string, mediaId: string): Promise<void> {
-    return this.send<void>(
-      `/v1/cloud/expressive-media/${encodeURIComponent(mediaId)}`,
-      {
-        method: 'DELETE',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not delete this saved media.',
-    );
+    return this.expressiveMedia.delete(token, mediaId);
   }
 
   async markMessagesRead(token: string, peerAccountId: string): Promise<void> { return this.chat.markMessagesRead(token, peerAccountId); }

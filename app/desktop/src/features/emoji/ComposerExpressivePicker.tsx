@@ -17,7 +17,6 @@ import { BlobEmojiPicker } from './BlobEmojiPicker';
 import { blobEmojiInlineToken } from './blobEmoji';
 import {
   addFilesToExpressiveMediaLibrary,
-  deleteExpressiveMediaLibraryItem,
   expressiveMediaAttachment,
   expressiveMediaPreviewUrl,
   GIF_FILE_ACCEPT,
@@ -26,6 +25,7 @@ import {
   synchronizeExpressiveMediaLibrary,
   type ExpressiveMediaKind,
 } from './expressiveMediaLibrary';
+import { deleteExpressiveMediaLibraryItem } from './expressiveMediaLibraryDeletion';
 
 type PickerTab = 'emoji' | 'stickers' | 'gifs';
 

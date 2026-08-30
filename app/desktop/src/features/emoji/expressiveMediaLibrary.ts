@@ -188,31 +188,8 @@ export function writeExpressiveMediaLibrary(
   expressiveMediaLibraryListeners.forEach((listener) => listener());
 }
 
-export async function deleteExpressiveMediaLibraryItem(
-  itemId: string,
-  options: {
-    accountId?: string | null;
-    storage?: ExpressiveMediaStorage | null;
-    token?: string | null;
-    client?: Pick<CloudAuthClient, 'deleteExpressiveMedia'>;
-  } = {},
-) {
-  const accountId = options.accountId?.trim();
+export async function waitForExpressiveMediaLibrarySync(accountId?: string) {
   if (accountId) await expressiveMediaSyncs.get(accountId);
-  const storage = options.storage === undefined ? browserStorage() : options.storage;
-  const items = readExpressiveMediaLibrary(storage, accountId);
-  const item = items.find((candidate) => candidate.id === itemId);
-  if (!item) return items;
-  const remoteId = item.cloudItemId ?? item.attachmentId;
-  if (remoteId) {
-    if (!options.token || !options.client) {
-      throw new Error('Sign in again before deleting this saved media.');
-    }
-    await options.client.deleteExpressiveMedia(options.token, remoteId);
-  }
-  const next = items.filter((candidate) => candidate.id !== itemId);
-  writeExpressiveMediaLibrary(next, storage, accountId);
-  return next;
 }
 
 export async function addMediaToExpressiveMediaLibrary(
