@@ -61,6 +61,21 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(appSource.contains("ForEach(AppAppearance.allCases)"))
     }
 
+    func testReactionChipsMatchTheAvatarEdgeAndMacOSSurface() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Conversation/MessageBubble.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("scrollAnchor: message.author == .me ? .trailing : .leading"))
+        XCTAssertTrue(source.contains(".defaultScrollAnchor(scrollAnchor)"))
+        XCTAssertTrue(source.contains(".background(Color(uiColor: .tertiarySystemFill), in: Capsule())"))
+        XCTAssertFalse(source.contains("KordiTheme.agentViolet.opacity(0.14)"))
+    }
+
     func testMessageActionsStopConversationPanningAfterTheHoldWins() {
         XCTAssertFalse(MessageGestureArbitration.allowsSimultaneousRecognition(
             with: UIPanGestureRecognizer()

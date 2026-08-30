@@ -238,6 +238,7 @@ struct MessageBubble: View, Equatable {
                     MessageReactionChips(
                         reactions: message.reactions,
                         ownAccountId: ownAccountId,
+                        scrollAnchor: message.author == .me ? .trailing : .leading,
                         onReact: onReact
                     )
                     .offset(y: -Self.reactionChipVerticalLift)
@@ -755,6 +756,7 @@ struct MessageBubble: View, Equatable {
 private struct MessageReactionChips: View {
     let reactions: [MessageReaction]
     let ownAccountId: String?
+    let scrollAnchor: UnitPoint
     let onReact: (String) -> Void
 
     var body: some View {
@@ -777,21 +779,7 @@ private struct MessageReactionChips: View {
                         }
                         .padding(.horizontal, 9)
                         .frame(minHeight: 32)
-                        .background(
-                            reaction.includes(accountId: ownAccountId)
-                                ? KordiTheme.agentViolet.opacity(0.14)
-                                : Color(uiColor: .tertiarySystemFill),
-                            in: Capsule()
-                        )
-                        .overlay {
-                            Capsule()
-                                .stroke(
-                                    reaction.includes(accountId: ownAccountId)
-                                        ? KordiTheme.agentViolet.opacity(0.36)
-                                        : Color.clear,
-                                    lineWidth: 1
-                                )
-                        }
+                        .background(Color(uiColor: .tertiarySystemFill), in: Capsule())
                         .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
@@ -806,7 +794,8 @@ private struct MessageReactionChips: View {
                 }
             }
         }
-        .frame(maxWidth: 310, alignment: .leading)
+        .defaultScrollAnchor(scrollAnchor)
+        .frame(maxWidth: 310)
     }
 
     private func reactionAccessibilityName(_ value: String) -> String {
