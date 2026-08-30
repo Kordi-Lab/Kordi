@@ -84,12 +84,21 @@ test('image metadata reserves the final frame before the preview loads', () => {
   }
 });
 
-test('mixed text and image messages use the media-width bubble cap', () => {
+test('captioned image groups render outside the message bubble', () => {
   const markup = renderToStaticMarkup(createElement(MessageBubble, {
-    msg: { ...ownImageMessage, text: 'The screenshot shows the issue.' },
+    msg: {
+      ...ownImageMessage,
+      text: 'The screenshots show the issue.',
+      attachments: [
+        ownImageMessage.attachments![0]!,
+        { ...ownImageMessage.attachments![0]!, name: 'Screenshot 2.png' },
+      ],
+    },
   }));
 
   assert.match(markup, /data-message-mixed-images="true"/);
+  assert.match(markup, /data-message-detached-image-group="true"/);
+  assert.ok(markup.indexOf('data-attachment-image-group-shell') < markup.indexOf('data-message-caption-bubble="true"'));
   assert.match(markup, /max-w-\[31rem\]/);
   assert.doesNotMatch(markup, /max-w-\[52rem\]/);
 });
