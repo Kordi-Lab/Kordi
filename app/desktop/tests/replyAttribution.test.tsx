@@ -350,8 +350,8 @@ test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent convers
   assert.equal(shouldSuppressAgentReplyAttribution({
     id: 'session:self-agent:1',
     type: 'owned-agent',
-    participantSpaceId: null,
-    canonicalParticipantCount: 1,
+    participantSpaceId: 'space:self',
+    canonicalParticipantCount: 2,
   }), true);
   assert.equal(shouldSuppressAgentReplyAttribution({
     id: 'session:group:1',

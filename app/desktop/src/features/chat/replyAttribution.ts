@@ -334,7 +334,6 @@ export function shouldSuppressAgentReplyAttribution(
     | undefined,
 ) {
   if (!conversation || conversation.type !== 'owned-agent') return false;
-  if (conversation.participantSpaceId?.trim()) return false;
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
   const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
   if (sessionId.startsWith('session:group:') || forkParentId.startsWith('session:group:')) return false;
