@@ -97,6 +97,7 @@ function renderComposerValue(root: HTMLElement, value: string) {
   if (parts[parts.length - 1]?.type === 'emoji') {
     const caretAnchor = document.createElement('span');
     caretAnchor.setAttribute(BLOB_EMOJI_CARET_ANCHOR_ATTRIBUTE, 'true');
+    caretAnchor.setAttribute('aria-hidden', 'true');
     caretAnchor.textContent = BLOB_EMOJI_CARET_MARKER;
     fragment.append(caretAnchor);
   }
@@ -243,7 +244,7 @@ function deleteTrailingBlobEmojiAtCaret(root: HTMLElement) {
     : selection.anchorNode.parentElement)?.closest(
       `[${BLOB_EMOJI_CARET_ANCHOR_ATTRIBUTE}]`,
     );
-  if (!anchor || blobEmojiCaretAnchorValue(anchor) !== '') return false;
+  if (!anchor || !root.contains(anchor) || blobEmojiCaretAnchorValue(anchor) !== '') return false;
   const emoji = anchor.previousSibling;
   if (!emoji || !blobEmojiTokenFor(emoji)) return false;
   emoji.remove();

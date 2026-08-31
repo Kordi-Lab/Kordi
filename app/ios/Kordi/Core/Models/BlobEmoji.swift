@@ -223,16 +223,17 @@ private struct BlobEmojiTokenMatch {
 }
 
 struct BlobEmojiPreviewText: View {
+    @ScaledMetric(relativeTo: .subheadline) private var emojiSize = 18.0
     let text: String
 
     var body: some View {
         KordiMarkdownParser.parseInline(text).reduce(Text("")) { result, part in
             switch part {
             case let .blobEmoji(emoji):
-                guard let image = BlobEmojiCatalog.previewImage(for: emoji, size: 18) else {
+                guard let image = BlobEmojiCatalog.previewImage(for: emoji, size: emojiSize) else {
                     return result + Text("Emoji")
                 }
-                return result + Text(Image(uiImage: image)).baselineOffset(-3)
+                return result + Text(Image(uiImage: image)).baselineOffset(-emojiSize / 6)
             case let .text(value), let .code(value), let .strong(value), let .emphasis(value):
                 return result + Text(value)
             case let .link(label, _):

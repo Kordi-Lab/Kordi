@@ -89,6 +89,7 @@ test('typing or pasting a known token rehydrates it as an inline image', async (
     });
     const caretAnchor = editor.querySelector(`[${BLOB_EMOJI_CARET_ANCHOR_ATTRIBUTE}]`);
     assert.equal(caretAnchor?.textContent, BLOB_EMOJI_CARET_MARKER);
+    assert.equal(caretAnchor?.getAttribute('aria-hidden'), 'true');
     assert.equal(window.getSelection()?.anchorNode, caretAnchor?.firstChild);
     assert.equal(window.getSelection()?.anchorOffset, BLOB_EMOJI_CARET_MARKER.length);
     assert.equal(blobEmojiComposerValue(editor), twoEmoji);
