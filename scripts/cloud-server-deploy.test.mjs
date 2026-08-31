@@ -149,7 +149,10 @@ test('global updater edge caches only release paths through a private VM endpoin
   assert.match(script, /--no-negative-caching/);
   assert.match(script, /X-Kordi-CDN-Cache:\{cdn_cache_status\}/);
   assert.match(script, /\/updates\/releases\/\*/);
-  assert.match(script, /--certificate-manager-certificates/);
+  assert.match(script, /certificate-manager maps create/);
+  assert.match(script, /maps entries create[\s\S]*--hostname/);
+  assert.match(script, /--certificate-map/);
+  assert.doesNotMatch(script, /--certificate-manager-certificates/);
   assert.match(script, /KORDI_CLOUD_CDN_ENABLED=true/);
   assert.doesNotMatch(script, /dns record-sets|gcloud config set/i);
 });

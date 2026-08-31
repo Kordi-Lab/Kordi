@@ -34,6 +34,7 @@ HTTP_PROXY="${PREFIX}-http-proxy"
 ADDRESS="${PREFIX}-edge-ip"
 HTTPS_FORWARDING_RULE="${PREFIX}-https"
 HTTP_FORWARDING_RULE="${PREFIX}-http"
+CERTIFICATE_MAP="${PREFIX}-certificates"
 
 CERTIFICATE_STATE="$(gcloud certificate-manager certificates describe "${CERTIFICATE}" \
 	--location=global \
@@ -52,6 +53,30 @@ elif ! gcloud certificate-manager certificates describe "${CERTIFICATE}" \
 	echo "KORDI_CLOUD_CDN_CERTIFICATE must identify a usable global certificate" >&2
 	exit 1
 fi
+
+if ! gcloud certificate-manager maps describe "${CERTIFICATE_MAP}" \
+	--location=global \
+	--project="${PROJECT}" >/dev/null 2>&1; then
+	gcloud certificate-manager maps create "${CERTIFICATE_MAP}" \
+		--location=global \
+		--project="${PROJECT}" \
+		--quiet >/dev/null
+fi
+for hostname in kordi.ai www.kordi.ai; do
+	entry_name="${PREFIX}-$(printf '%s' "${hostname}" | tr '.' '-')"
+	if ! gcloud certificate-manager maps entries describe "${entry_name}" \
+		--map="${CERTIFICATE_MAP}" \
+		--location=global \
+		--project="${PROJECT}" >/dev/null 2>&1; then
+		gcloud certificate-manager maps entries create "${entry_name}" \
+			--map="${CERTIFICATE_MAP}" \
+			--hostname="${hostname}" \
+			--certificates="${CERTIFICATE}" \
+			--location=global \
+			--project="${PROJECT}" \
+			--quiet >/dev/null
+	fi
+done
 
 if ! gcloud compute network-endpoint-groups describe "${NEG}" \
 	--zone="${ZONE}" \
@@ -208,14 +233,14 @@ if gcloud compute target-https-proxies describe "${HTTPS_PROXY}" \
 	--project="${PROJECT}" >/dev/null 2>&1; then
 	gcloud compute target-https-proxies update "${HTTPS_PROXY}" \
 		--url-map="${HTTPS_URL_MAP}" \
-		--certificate-manager-certificates="${CERTIFICATE}" \
+		--certificate-map="${CERTIFICATE_MAP}" \
 		--global \
 		--project="${PROJECT}" \
 		--quiet >/dev/null
 else
 	gcloud compute target-https-proxies create "${HTTPS_PROXY}" \
 		--url-map="${HTTPS_URL_MAP}" \
-		--certificate-manager-certificates="${CERTIFICATE}" \
+		--certificate-map="${CERTIFICATE_MAP}" \
 		--global \
 		--project="${PROJECT}" \
 		--quiet >/dev/null
