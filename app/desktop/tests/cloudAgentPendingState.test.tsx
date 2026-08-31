@@ -281,6 +281,45 @@ test('cloud local agent runner accepts iOS first-person envelopes', () => {
   }), true);
 });
 
+test('renamed default-agent envelopes keep processing visible after canonical sync', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_renamed_default_agent_request',
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_peer',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: '@Kordirename11 hihihihi',
+      targetCloudAgentId: `cloud-agent:${account.accountId}`,
+      targetCloudAgentName: 'Kordirename11',
+      targetCloudAgentOwnerAccountId: account.accountId,
+      targetCloudAgentOwnerName: account.displayName,
+    }),
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+  };
+  const state = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+
+  assert.equal(state.conversations[0]?.awaitingReply, true);
+  assert.equal(state.conversations[0]?.outreach?.sourceRequestId, request.messageId);
+  assert.equal(state.conversations[0]?.messages.at(-1)?.deliveryState, 'processing');
+  const view = mapCollaborationConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
+  assert.equal(view.messages.at(-1)?.turn?.status, 'processing');
+  assert.equal(view.messages.at(-1)?.sender, 'Kordirename11');
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: request,
+    peerMessages: [request],
+  }), true);
+});
+
 test('cloud outgoing self-agent mentions expose localhost-style local processing UI', () => {
   const request: CloudMessage = {
     ...message,

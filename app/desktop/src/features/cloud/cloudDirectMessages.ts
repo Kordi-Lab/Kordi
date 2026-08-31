@@ -78,7 +78,9 @@ export function cloudDirectMessageMentions(body: string): MessageMention[] | und
 
 export function cloudDirectMessageTargetCloudAgentId(body: string): string | null {
   const agentId = parseCloudDirectMessageEnvelope(body)?.targetCloudAgentId?.trim() ?? '';
-  return agentId.startsWith('cloud_agent_') ? agentId : null;
+  return agentId.startsWith('cloud_agent_') || agentId.startsWith('cloud-agent:') || agentId === 'cloud-local-agent'
+    ? agentId
+    : null;
 }
 
 export function cloudDirectMessageTargetCloudAgentName(body: string): string | null {

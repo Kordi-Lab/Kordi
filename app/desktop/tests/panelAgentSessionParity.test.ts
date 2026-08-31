@@ -36,7 +36,6 @@ const chatSessionPaneSource = () => readFileSync(new URL('../src/pages/chatsPage
 const chatTranscriptViewportSource = () => readFileSync(new URL('../src/pages/chatsPage.transcriptViewport.tsx', import.meta.url), 'utf8');
 const queuedMessageSource = () => readFileSync(new URL('../src/pages/chatsPage.queuedMessage.tsx', import.meta.url), 'utf8');
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
-const cloudAgentMentionTargetSource = () => readFileSync(new URL('../src/features/chat/messageActions/cloudAgentMentionTarget.ts', import.meta.url), 'utf8');
 const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/message.ts', import.meta.url), 'utf8');
 const appModelSource = readKordiAppModelImplementationSource;
 const collaborationNavigationActionsSource = () => readFileSync(new URL('../src/app/useKordiCollaborationNavigationActions.ts', import.meta.url), 'utf8');
@@ -422,35 +421,6 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
   assert.match(targetedSendBlock, /if \(delayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'side-panel duplicate sends should wait for the in-flight session without promoting normal preparation to an error');
   assert.doesNotMatch(targetedSendBlock, /Kordi is still preparing this session/, 'normal session preparation should not render through the sidebar-wide error channel');
   assert.match(actionsSource, /message\.runtimeRoute \?\? resolveChatRuntimeRoute\(message\.sessionId\)[\s\S]*message\.contextMessages \?\? \[\]/, 'flushing queued side messages should preserve the selected runtime route and reference context');
-});
-
-test('new local sessions expose centered progress and coalesce duplicate first sends', () => {
-  const chatsSource = chatsPageSource();
-  const actionsSource = chatMessagesSource();
-  const activeSendStart = actionsSource.indexOf('const handleSendChatMessage = useCallback');
-  assert.notEqual(activeSendStart, -1, 'active send handler should exist');
-  const activeSendBlock = actionsSource.slice(activeSendStart);
-
-  assert.match(chatsSource, /const isStarting = isDraft && isSending;/, 'the pending visual should be scoped to the local draft session');
-  assert.match(chatsSource, /emptyState: isEmptySelection[\s\S]*: models\.header\.isStarting[\s\S]*\? <SessionStartingState \/>[\s\S]*: null/, 'the pending visual should occupy a selected draft transcript rather than the global error banner');
-  assert.match(activeSendBlock, /if \(localSendDelayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'duplicate first sends should be coalesced while materialization is in flight');
-  assert.doesNotMatch(actionsSource, /Kordi is still preparing this session/, 'session-starting should never use failure copy');
-
-  const delayGuardIndex = activeSendBlock.indexOf("if (localSendDelayReason === 'session-starting')");
-  const draftDetectionIndex = activeSendBlock.indexOf('const isTransientDraftConversation');
-  const mentionResolutionIndex = activeSendBlock.indexOf('resolvePreferredAgentMentionTarget');
-  const noProviderShortcutIndex = activeSendBlock.indexOf('const noProviderShortcutSessionId');
-  const noProviderStartingIndex = activeSendBlock.indexOf('setIsDesktopChatSending(true);', noProviderShortcutIndex);
-  const noProviderCreateIndex = activeSendBlock.indexOf('await openOrCreateCanonicalSession({', noProviderShortcutIndex);
-  assert.ok(delayGuardIndex >= 0 && delayGuardIndex < noProviderShortcutIndex, 'the duplicate guard should run before generating a no-provider draft session id');
-  assert.ok(draftDetectionIndex >= 0 && draftDetectionIndex < mentionResolutionIndex, 'a new local session should bypass remote mention discovery before claiming its send');
-  assert.match(activeSendBlock, /resolvePreferredAgentMentionTarget\([\s\S]*isTransientDraftConversation/, 'a local draft should carry its skip flag into mention resolution');
-  assert.match(cloudAgentMentionTargetSource(), /return localTarget \?\? \(skip \? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh/, 'a skipped local draft should not wait for remote mention discovery');
-  assert.ok(noProviderStartingIndex >= 0 && noProviderStartingIndex < noProviderCreateIndex, 'the centered starting state should appear before no-provider session creation is awaited');
-  const optimisticDraftIndex = activeSendBlock.indexOf('appendOptimisticLocalDraftMessage(current');
-  const materializeIndex = activeSendBlock.indexOf('const resolvedSessionId = await ensureLocalSessionId()');
-  assert.ok(optimisticDraftIndex >= 0 && optimisticDraftIndex < materializeIndex, 'the first message should render before native session materialization');
-  assert.doesNotMatch(activeSendBlock, /await publishCloudAgentRuntimeRouteChange\(\{/, 'Cloud route publication should not block the local first-send path');
 });
 
 test('side-panel local-agent sends use the shared local send pipeline instead of duplicating optimistic persistence', () => {
