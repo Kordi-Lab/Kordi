@@ -9,7 +9,7 @@ struct GroupSpaceSummary: Identifiable, Hashable {
     let unreadMentionCount: Int
     let participants: [CloudGroupParticipant]
     let sessions: [ConversationSummary]
-    /// Includes control-only sessions hidden from the visible session list.
+    /// Includes every canonical session used for group membership fanout.
     let membershipSessions: [ConversationSummary]
 
     var fullyJoinedParticipantAccountIds: Set<String> {
@@ -56,9 +56,8 @@ enum GroupSpaceCatalog {
         conversations: [ConversationSummary],
         ownAccountId: String
     ) -> [GroupSpaceSummary] {
-        // macOS presents forks in their own history surface and suppresses
-        // control-only placeholder sessions once a group has real messages.
-        // Apply the same projection before computing counts and unread badges.
+        // Forks live in their own history surface. Keep every remaining
+        // canonical group session visible and available for membership fanout.
         let groups = Dictionary(grouping: conversations.filter {
             $0.kind == .group && $0.forkedFromSessionId == nil
         }) { conversation in
@@ -67,13 +66,7 @@ enum GroupSpaceCatalog {
 
         return groups.map { key, conversations in
             let membershipSessions = conversations.sorted(by: conversationPrecedes)
-            let substantive = membershipSessions.filter { conversation in
-                conversation.messageCount == nil || (conversation.messageCount ?? 0) > 0
-            }
-            let visible = substantive.isEmpty
-                ? Array(membershipSessions.prefix(1))
-                : substantive
-            let sessions = visible.sorted(by: conversationPrecedes)
+            let sessions = membershipSessions
             let latest = sessions[0]
             let participants = mergedParticipants(from: membershipSessions)
             let groupTitle = membershipSessions

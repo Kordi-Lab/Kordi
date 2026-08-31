@@ -4330,6 +4330,16 @@ final class AppModel: ObservableObject {
             createdByAccountId: account.accountId,
             actor: actor,
             participants: participants,
+            sessionTitle: conversation.displayName.nonEmpty.map {
+                CloudGroupSessionTitleSnapshot(
+                    title: $0,
+                    titleSource: "manual",
+                    titleRevision: 1,
+                    titlePolicyVersion: 1,
+                    updatedAtMs: Date().timeIntervalSince1970 * 1_000,
+                    updatedByAccountId: account.accountId
+                )
+            },
             memberJoins: memberJoins.isEmpty ? nil : memberJoins,
             message: nil
         )
