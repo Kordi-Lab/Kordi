@@ -33,7 +33,6 @@ struct SessionDetailView: View {
     @State private var mediaPreview: MediaPreviewPresentation?
     @State private var shareItem: SharedFileItem?
     @State private var loadingAttachmentId: String?
-    @State private var notificationsMuted: Bool
     @State private var featureNotice: SessionFeatureNotice?
     @State private var groupManagementPresentation: GroupManagementPresentation?
     @State private var groupInviteSpace: GroupSpaceSummary?
@@ -44,13 +43,14 @@ struct SessionDetailView: View {
     init(conversation: ConversationSummary) {
         self.conversation = conversation
         _tab = State(initialValue: conversation.kind == .group ? .members : .media)
-        _notificationsMuted = State(
-            initialValue: SessionNotificationPreferenceStore.isMuted(sessionID: conversation.sessionId)
-        )
     }
 
     private var currentConversation: ConversationSummary {
         model.conversations.first { $0.id == conversation.id } ?? conversation
+    }
+
+    private var notificationsMuted: Bool {
+        model.mutedSessionIds.contains(currentConversation.sessionId)
     }
 
     private var activity: CloudSessionActivity? {
@@ -474,11 +474,8 @@ struct SessionDetailView: View {
     }
 
     private func toggleNotificationsMuted() {
-        notificationsMuted.toggle()
-        SessionNotificationPreferenceStore.setMuted(
-            notificationsMuted,
-            sessionID: currentConversation.sessionId
-        )
+        let muted = !notificationsMuted
+        Task { _ = await model.setConversationMuted(currentConversation, muted: muted) }
     }
 
     private func openGroupSettings() {
@@ -1204,23 +1201,6 @@ enum SessionRelatedGroupCatalog {
             let participantIDs = Set(space.participants.map(\.accountId))
             return participantIDs.contains(ownAccountID)
                 && participantIDs.contains(peerAccountID)
-        }
-    }
-}
-
-private enum SessionNotificationPreferenceStore {
-    private static let keyPrefix = "kordi.session-notifications-muted."
-
-    static func isMuted(sessionID: String) -> Bool {
-        UserDefaults.standard.bool(forKey: keyPrefix + sessionID)
-    }
-
-    static func setMuted(_ isMuted: Bool, sessionID: String) {
-        let key = keyPrefix + sessionID
-        if isMuted {
-            UserDefaults.standard.set(true, forKey: key)
-        } else {
-            UserDefaults.standard.removeObject(forKey: key)
         }
     }
 }

@@ -81,8 +81,11 @@ export type WorkspaceSidebarChats = {
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   participantSpaces: WorkspaceSidebarParticipantSpace[];
+  archivedParticipantSpaces: WorkspaceSidebarParticipantSpace[];
   contactParticipantSpaces: WorkspaceSidebarParticipantSpace[];
   agentParticipantSpaces: WorkspaceSidebarParticipantSpace[];
+  pinnedSessionIds: ReadonlySet<string>;
+  mutedSessionIds: ReadonlySet<string>;
   initialSelectedParticipantSpaceId?: string | null;
   initialChatChannel?: ChatChannel;
   activeConvId: string;
@@ -110,6 +113,10 @@ export type WorkspaceSidebarChats = {
     isAdmin: boolean,
   ) => Promise<void> | void;
   onDeleteChatSession: (sessionId: string) => void | Promise<void>;
+  onArchiveChatSession: (sessionId: string) => void | Promise<void>;
+  onRestoreChatSession: (sessionId: string) => void | Promise<void>;
+  onSetChatSessionPinned: (sessionId: string, pinned: boolean) => void | Promise<void>;
+  onSetChatSessionMuted: (sessionId: string, muted: boolean) => void | Promise<void>;
   isCollaborationSyncing: boolean;
   isCollaborationSyncUnavailable?: boolean;
 };

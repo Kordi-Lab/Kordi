@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, MoreHorizontal, Paperclip, Plus, Split } from 'lucide-react';
+import { BellOff, ChevronDown, ChevronRight, MoreHorizontal, Paperclip, Pin, Plus, Split } from 'lucide-react';
 
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
 import { isBlankParticipantSpaceSession } from '@/features/chat/participantSpaces';
@@ -90,7 +90,12 @@ function ParticipantSpaceSessionRow({
           conversation,
           event.clientX,
           event.clientY,
-          { canRename: participantSpaceCanRenameSessions(space) },
+          {
+            canRename: participantSpaceCanRenameSessions(space),
+            archived: model.showArchived,
+            pinned: model.pinnedSessionIds.has(session.id),
+            muted: model.mutedSessionIds.has(session.id),
+          },
         );
         if (!target) return;
         event.preventDefault();
@@ -130,6 +135,12 @@ function ParticipantSpaceSessionRow({
           indicator={session.statusIndicator}
           active={isActive}
         />
+        {model.pinnedSessionIds.has(session.id) ? (
+          <Pin className="h-3 w-3 text-slate-400" aria-label="Pinned" />
+        ) : null}
+        {model.mutedSessionIds.has(session.id) ? (
+          <BellOff className="h-3 w-3 text-slate-400" aria-label="Muted" />
+        ) : null}
         {hasForks ? (
           <>
             <span
@@ -252,6 +263,23 @@ function ParticipantSpaceRow({
           data-participant-space-toggle={isDirectHuman ? undefined : 'true'}
           aria-expanded={isDirectHuman ? undefined : isExpanded}
           onClick={selectPrimarySession}
+          onContextMenu={(event) => {
+            if (!isDirectHuman || !latestSession) return;
+            const target = sessionContextMenuTargetForConversation(
+              latestSession.conversation,
+              event.clientX,
+              event.clientY,
+              {
+                archived: model.showArchived,
+                pinned: model.pinnedSessionIds.has(latestSession.id),
+                muted: model.mutedSessionIds.has(latestSession.id),
+              },
+            );
+            if (!target) return;
+            event.preventDefault();
+            event.stopPropagation();
+            actions.onOpenSessionContextMenu(target);
+          }}
           className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
         >
           <ParticipantSpaceAvatarStack space={space} />
@@ -375,6 +403,12 @@ function ParticipantSpaceRow({
               active={isDirectHuman && isPrimarySessionActive}
               reserveStatusSpace={false}
             />
+            {isDirectHuman && latestSession && model.pinnedSessionIds.has(latestSession.id) ? (
+              <Pin className="h-3 w-3 text-slate-400" aria-label="Pinned" />
+            ) : null}
+            {isDirectHuman && latestSession && model.mutedSessionIds.has(latestSession.id) ? (
+              <BellOff className="h-3 w-3 text-slate-400" aria-label="Muted" />
+            ) : null}
           </div>
         </div>
       </div>

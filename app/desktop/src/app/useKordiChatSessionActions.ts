@@ -78,6 +78,9 @@ type UseKordiChatSessionActionsArgs = {
   isNativeShell: boolean;
   deleteCloudSession: (sessionId: string) => Promise<void>;
   hideCloudSession: (sessionId: string) => Promise<void>;
+  unhideCloudSession: (sessionId: string) => Promise<void>;
+  setCloudSessionPinned: (sessionId: string, pinned: boolean) => Promise<void>;
+  setCloudSessionMuted: (sessionId: string, muted: boolean) => Promise<void>;
   refreshCanonicalState: () => Promise<void>;
   refreshDesktopChat: (activeSessionId?: string) => Promise<void>;
   sendCloudGroupControl: (
@@ -101,6 +104,9 @@ export function useKordiChatSessionActions({
   isNativeShell,
   deleteCloudSession,
   hideCloudSession,
+  unhideCloudSession,
+  setCloudSessionPinned,
+  setCloudSessionMuted,
   refreshCanonicalState,
   refreshDesktopChat,
   sendCloudGroupControl,
@@ -114,11 +120,13 @@ export function useKordiChatSessionActions({
   const desktopActiveSessionId = desktopState?.activeSessionId;
   const desktopSessions = desktopState?.sessions;
 
-  const optimisticallyRemoveSession = useCallback((sessionId: string) => {
+  const optimisticallyRemoveSession = useCallback((sessionId: string, hideLocally = true) => {
     const fallbackSessionId = desktopSessions?.find(
       (session) => session.id !== sessionId,
     )?.id ?? LOCAL_DRAFT_CHAT_CONVERSATION_ID;
-    setLocallyHiddenSessionIds((current) => new Set(current).add(sessionId));
+    if (hideLocally) {
+      setLocallyHiddenSessionIds((current) => new Set(current).add(sessionId));
+    }
     setDesktopState((current) => removeSessionFromDesktopState(
       current,
       sessionId,
@@ -275,7 +283,7 @@ export function useKordiChatSessionActions({
       setDesktopError(null);
       if (shouldUseCloudSessionAction(trimmedSessionId)) {
         await hideCloudSession(trimmedSessionId);
-        optimisticallyRemoveSession(trimmedSessionId);
+        optimisticallyRemoveSession(trimmedSessionId, false);
         await refreshCanonicalState();
         return;
       }
@@ -320,7 +328,7 @@ export function useKordiChatSessionActions({
       setDesktopError(null);
       if (shouldUseCloudSessionAction(trimmedSessionId)) {
         await deleteCloudSession(trimmedSessionId);
-        optimisticallyRemoveSession(trimmedSessionId);
+        optimisticallyRemoveSession(trimmedSessionId, false);
         try {
           const nextState = await archiveDesktopChatSession(
             trimmedSessionId,
@@ -375,9 +383,46 @@ export function useKordiChatSessionActions({
     setDesktopState,
   ]);
 
+  const restoreSession = useCallback(async (sessionId: string) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!isNativeShell || !trimmedSessionId) return;
+    setDesktopError(null);
+    await unhideCloudSession(trimmedSessionId);
+    setLocallyHiddenSessionIds((current) => {
+      if (!current.has(trimmedSessionId)) return current;
+      const next = new Set(current);
+      next.delete(trimmedSessionId);
+      return next;
+    });
+    await refreshCanonicalState();
+  }, [
+    isNativeShell,
+    refreshCanonicalState,
+    setDesktopError,
+    setLocallyHiddenSessionIds,
+    unhideCloudSession,
+  ]);
+
+  const setSessionPinned = useCallback(async (sessionId: string, pinned: boolean) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!isNativeShell || !trimmedSessionId) return;
+    setDesktopError(null);
+    await setCloudSessionPinned(trimmedSessionId, pinned);
+  }, [isNativeShell, setCloudSessionPinned, setDesktopError]);
+
+  const setSessionMuted = useCallback(async (sessionId: string, muted: boolean) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!isNativeShell || !trimmedSessionId) return;
+    setDesktopError(null);
+    await setCloudSessionMuted(trimmedSessionId, muted);
+  }, [isNativeShell, setCloudSessionMuted, setDesktopError]);
+
   return {
     renameSession,
     archiveSession,
+    restoreSession,
+    setSessionPinned,
+    setSessionMuted,
     deleteSession,
   };
 }

@@ -140,8 +140,11 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         isDesktopChatLoading: args.isDesktopChatLoading,
         desktopChatError: args.desktopChatError,
         participantSpaces: args.participantSpaces,
+        archivedParticipantSpaces: args.archivedParticipantSpaces,
         contactParticipantSpaces: args.contactParticipantSpaces,
         agentParticipantSpaces: args.agentParticipantSpaces,
+        pinnedSessionIds: args.pinnedChatSessionIds,
+        mutedSessionIds: args.mutedChatSessionIds,
         activeConvId: args.activeConvId,
         onPrefetchChatSession: (sessionId) => {
           void args.handlePrefetchChatSession(sessionId);
@@ -165,6 +168,18 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         onSetChatGroupAdmin: chatActions.onSetChatGroupAdmin,
         onDeleteChatSession: (sessionId) => {
           void args.handleDeleteChatSession(sessionId);
+        },
+        onArchiveChatSession: (sessionId) => {
+          void args.handleArchiveChatSession(sessionId);
+        },
+        onRestoreChatSession: (sessionId) => {
+          void args.handleRestoreChatSession(sessionId);
+        },
+        onSetChatSessionPinned: (sessionId, pinned) => {
+          void args.handleSetChatSessionPinned(sessionId, pinned);
+        },
+        onSetChatSessionMuted: (sessionId, muted) => {
+          void args.handleSetChatSessionMuted(sessionId, muted);
         },
         isCollaborationSyncing: args.isCollaborationSyncing,
       }}

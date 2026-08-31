@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { Plus, Search } from 'lucide-react';
+import { Archive, ChevronLeft, Plus, Search } from 'lucide-react';
 
 import type { ChatChannel } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
@@ -167,6 +167,10 @@ export function WorkspaceSidebar({
     onAddChatGroupMembers,
     onRemoveChatGroupMember,
     onSetChatGroupAdmin,
+    onArchiveChatSession,
+    onRestoreChatSession,
+    onSetChatSessionPinned,
+    onSetChatSessionMuted,
     onDeleteChatSession,
   } = chats;
   const {
@@ -283,8 +287,19 @@ export function WorkspaceSidebar({
                   <div className="flex h-full flex-col p-2.5">
                     <div className="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2.5">
                       <div className="flex min-w-0 items-center gap-1">
+                        {chatModel.showArchived ? (
+                          <button
+                            type="button"
+                            className="app-icon-button grid h-7 w-7 place-items-center rounded-[9px]"
+                            onClick={() => chatModel.setShowArchived(false)}
+                            title="Back to chats"
+                            aria-label="Back to chats"
+                          >
+                            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                        ) : null}
                         <div className="shrink-0 text-[15px] font-semibold text-white">
-                          Chats
+                          {chatModel.showArchived ? 'Archived chats' : 'Chats'}
                         </div>
                         <CollaborationSyncIndicator
                           status={chatModel.collaborationSyncStatus}
@@ -292,7 +307,7 @@ export function WorkspaceSidebar({
                         />
                       </div>
                       <div className="app-chat-sidebar-actions flex shrink-0 items-center gap-2">
-                        <button
+                        {!chatModel.showArchived ? <button
                           type="button"
                           onClick={openChatCreateDialog}
                           className="app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] p-0 transition"
@@ -303,7 +318,7 @@ export function WorkspaceSidebar({
                             className="h-4 w-4 stroke-[2.2]"
                             aria-hidden="true"
                           />
-                        </button>
+                        </button> : null}
                       </div>
                     </div>
 
@@ -365,6 +380,18 @@ export function WorkspaceSidebar({
                       </div>
                     </div>
 
+                    {!chatModel.showArchived && chatModel.archivedSessionCount > 0 ? (
+                      <button
+                        type="button"
+                        className="app-transient-flat-action mb-2 flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[11px] text-slate-300"
+                        onClick={() => chatModel.setShowArchived(true)}
+                      >
+                        <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span className="flex-1">Archived chats</span>
+                        <span className="tabular-nums text-slate-500">{chatModel.archivedSessionCount}</span>
+                      </button>
+                    ) : null}
+
                     {desktopChatError ? (
                       <div className="app-error-text mb-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
                         {desktopChatError}
@@ -414,6 +441,10 @@ export function WorkspaceSidebar({
           target={sessionContextMenu}
           onClose={() => setSessionContextMenu(null)}
           onRename={setRenameSessionTarget}
+          onArchive={(sessionId) => { void onArchiveChatSession(sessionId); }}
+          onRestore={(sessionId) => { void onRestoreChatSession(sessionId); }}
+          onSetPinned={(sessionId, pinned) => { void onSetChatSessionPinned(sessionId, pinned); }}
+          onSetMuted={(sessionId, muted) => { void onSetChatSessionMuted(sessionId, muted); }}
           onDelete={setRemoveSessionTarget}
         />
       ) : null}

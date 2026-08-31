@@ -242,10 +242,12 @@ test('claimCloudAgentRun posts typed claim request and parses status response', 
   });
 });
 
-test('listSessionVisibility loads hidden and deleted cloud session ids', async () => {
+test('listSessionVisibility loads account-scoped chat list state', async () => {
   const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
     hiddenSessionIds: ['session:hidden'],
     deletedSessionIds: ['session:deleted'],
+    pinnedSessionIds: ['session:pinned'],
+    mutedSessionIds: ['session:muted'],
   }));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
 
@@ -258,7 +260,22 @@ test('listSessionVisibility loads hidden and deleted cloud session ids', async (
   assert.deepEqual(visibility, {
     hiddenSessionIds: ['session:hidden'],
     deletedSessionIds: ['session:deleted'],
+    pinnedSessionIds: ['session:pinned'],
+    mutedSessionIds: ['session:muted'],
   });
+});
+
+test('chat list pin and mute methods use the account preference routes', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  await client.setCloudSessionPinned('kordi_cs_xyz', 'session:one', true);
+  await client.setCloudSessionMuted('kordi_cs_xyz', 'session:one', false);
+
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/session%3Aone/pinned');
+  assert.equal(calls[0].init?.method, 'PUT');
+  assert.equal(calls[1].url, 'http://srv/v1/cloud/sessions/session%3Aone/muted');
+  assert.equal(calls[1].init?.method, 'DELETE');
 });
 
 test('hideCloudSession sends an authenticated PUT to the hidden route', async () => {

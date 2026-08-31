@@ -251,6 +251,8 @@ export type CloudSessionActivity = {
 export type CloudSessionVisibility = {
   hiddenSessionIds: string[];
   deletedSessionIds: string[];
+  pinnedSessionIds: string[];
+  mutedSessionIds: string[];
 };
 
 export type CloudSessionTitle = {
@@ -857,6 +859,8 @@ export class CloudAuthClient {
     return {
       hiddenSessionIds: response?.hiddenSessionIds ?? [],
       deletedSessionIds: response?.deletedSessionIds ?? [],
+      pinnedSessionIds: response?.pinnedSessionIds ?? [],
+      mutedSessionIds: response?.mutedSessionIds ?? [],
     };
   }
 
@@ -919,6 +923,28 @@ export class CloudAuthClient {
         headers: { authorization: `Bearer ${token}` },
       },
       'Could not remove cloud chat.',
+    );
+  }
+
+  async setCloudSessionPinned(token: string, sessionId: string, pinned: boolean): Promise<void> {
+    await this.send<void>(
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/pinned`,
+      {
+        method: pinned ? 'PUT' : 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      pinned ? 'Could not pin cloud chat.' : 'Could not unpin cloud chat.',
+    );
+  }
+
+  async setCloudSessionMuted(token: string, sessionId: string, muted: boolean): Promise<void> {
+    await this.send<void>(
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/muted`,
+      {
+        method: muted ? 'PUT' : 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      muted ? 'Could not mute cloud chat.' : 'Could not unmute cloud chat.',
     );
   }
 

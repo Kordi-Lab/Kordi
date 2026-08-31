@@ -72,6 +72,8 @@ struct GroupSpaceRow: View {
 struct GroupSessionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let session: ConversationSummary
+    var isPinned = false
+    var isMuted = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -103,13 +105,17 @@ struct GroupSessionRow: View {
                         mentionCount: session.unreadMentionCount
                     )
                 }
+                ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
             }
         }
         .padding(.leading, dynamicTypeSize.isAccessibilitySize ? 0 : 28)
         .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 46)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(session.accessibilitySummary)
+        .accessibilityLabel(
+            session.accessibilitySummary
+                + ChatListStateIndicators.accessibilitySuffix(isPinned: isPinned, isMuted: isMuted)
+        )
     }
 
     private var sessionTitle: String {

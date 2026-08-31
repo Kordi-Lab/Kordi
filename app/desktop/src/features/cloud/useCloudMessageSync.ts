@@ -72,6 +72,8 @@ export type CloudMessageSyncStores = {
   agents: CloudSyncStore<Record<string, CloudAgentDefinition>>;
   hiddenSessionIds: CloudSyncStore<Set<string>>;
   deletedSessionIds: CloudSyncStore<Set<string>>;
+  pinnedSessionIds: CloudSyncStore<Set<string>>;
+  mutedSessionIds: CloudSyncStore<Set<string>>;
 };
 
 export type UseCloudMessageSyncInput = {
@@ -124,6 +126,14 @@ export function useCloudMessageSync({
     stateRef: deletedSessionIdsRef,
     setState: setDeletedSessionIds,
   } = stores.deletedSessionIds;
+  const {
+    stateRef: pinnedSessionIdsRef,
+    setState: setPinnedSessionIds,
+  } = stores.pinnedSessionIds;
+  const {
+    stateRef: mutedSessionIdsRef,
+    setState: setMutedSessionIds,
+  } = stores.mutedSessionIds;
   const pendingRequestRef = useRef<PendingCloudSyncRequest | null>(null);
   const startupSnapshotContextRef = useRef<string | null>(null);
 
@@ -167,6 +177,8 @@ export function useCloudMessageSync({
     let cloudAgentsById = agentsRef.current;
     let hiddenSessionIds = hiddenSessionIdsRef.current;
     let deletedSessionIds = deletedSessionIdsRef.current;
+    let pinnedSessionIds = pinnedSessionIdsRef.current;
+    let mutedSessionIds = mutedSessionIdsRef.current;
     let directoryBootstrapPending = false;
     let cursorOverride = forceBootstrap ? '0' : null;
     let bootstrapRecoveryAttempted = forceBootstrap;
@@ -186,6 +198,8 @@ export function useCloudMessageSync({
         cloudAgentsById,
         hiddenSessionIds,
         deletedSessionIds,
+        pinnedSessionIds,
+        mutedSessionIds,
         shouldSaveCursor: () => coordinator.isCurrentGeneration(generation),
         loadCursor: async () => {
           if (cursorOverride) {
@@ -245,6 +259,8 @@ export function useCloudMessageSync({
       cloudAgentsById = result.cloudAgentsById;
       hiddenSessionIds = result.hiddenSessionIds;
       deletedSessionIds = result.deletedSessionIds;
+      pinnedSessionIds = result.pinnedSessionIds;
+      mutedSessionIds = result.mutedSessionIds;
       if (!result.hasMore && directoryBootstrapPending) {
         directoryBootstrapPending = false;
         cursorOverride = '0';
@@ -279,6 +295,12 @@ export function useCloudMessageSync({
     setDeletedSessionIds((current) => (
       cloudSetsEqual(current, deletedSessionIds) ? current : new Set(deletedSessionIds)
     ));
+    setPinnedSessionIds((current) => (
+      cloudSetsEqual(current, pinnedSessionIds) ? current : new Set(pinnedSessionIds)
+    ));
+    setMutedSessionIds((current) => (
+      cloudSetsEqual(current, mutedSessionIds) ? current : new Set(mutedSessionIds)
+    ));
     if (deletedMessageIds.size > 0) await onMessagesDeleted?.([...deletedMessageIds]);
   }, [
     account,
@@ -290,15 +312,19 @@ export function useCloudMessageSync({
     deletedSessionIdsRef,
     forksRef,
     hiddenSessionIdsRef,
+    mutedSessionIdsRef,
     messagesRef, onMessagesDeleted,
     pinsRef,
+    pinnedSessionIdsRef,
     setActivity,
     setAgents,
     setDeletedSessionIds,
     setForks,
     setHiddenSessionIds,
     setMessages,
+    setMutedSessionIds,
     setPins,
+    setPinnedSessionIds,
     setTitles,
     titlesRef,
   ]);

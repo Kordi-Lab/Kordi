@@ -71,8 +71,11 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   chatConversations: Conversation[];
   companionConversations: Conversation[];
   participantSpaces: ParticipantSpaceViewModel[];
+  archivedParticipantSpaces: ParticipantSpaceViewModel[];
   contactParticipantSpaces: ParticipantSpaceViewModel[];
   agentParticipantSpaces: ParticipantSpaceViewModel[];
+  pinnedChatSessionIds: ReadonlySet<string>;
+  mutedChatSessionIds: ReadonlySet<string>;
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   filteredConversations: Conversation[];
@@ -114,6 +117,9 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   handleRemoveChatGroupMember: (sessionIds: string[], identityId: string) => Promise<void>;
   handleSetChatGroupAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void>;
   handleArchiveChatSession: (sessionId: string) => Promise<void>;
+  handleRestoreChatSession: (sessionId: string) => Promise<void>;
+  handleSetChatSessionPinned: (sessionId: string, pinned: boolean) => Promise<void>;
+  handleSetChatSessionMuted: (sessionId: string, muted: boolean) => Promise<void>;
   handleDeleteChatSession: (sessionId: string) => Promise<void>;
   handleMoveChatSessionToProject: (sessionId: string, projectRoot: string) => Promise<void>;
   handleCreateProjectFromFolder: (folderPath: string, name?: string) => Promise<void>;
@@ -330,8 +336,11 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'cloudSession'
   | 'chatConversations'
   | 'participantSpaces'
+  | 'archivedParticipantSpaces'
   | 'contactParticipantSpaces'
   | 'agentParticipantSpaces'
+  | 'pinnedChatSessionIds'
+  | 'mutedChatSessionIds'
   | 'handleCreateChatSession'
   | 'chatSearch'
   | 'setChatSearch'
@@ -351,6 +360,9 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleRemoveChatGroupMember'
   | 'handleSetChatGroupAdmin'
   | 'handleArchiveChatSession'
+  | 'handleRestoreChatSession'
+  | 'handleSetChatSessionPinned'
+  | 'handleSetChatSessionMuted'
   | 'handleDeleteChatSession'
   | 'handleMoveChatSessionToProject'
   | 'handleCreateProjectFromFolder'

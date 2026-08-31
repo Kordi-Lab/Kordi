@@ -100,6 +100,8 @@ export type UseCloudCollaborationStateResult = {
   }) => Promise<CloudSessionPin>;
   hideCloudSession: (sessionId: string) => Promise<void>;
   unhideCloudSession: (sessionId: string) => Promise<void>;
+  setCloudSessionPinned: (sessionId: string, pinned: boolean) => Promise<void>;
+  setCloudSessionMuted: (sessionId: string, muted: boolean) => Promise<void>;
   deleteCloudSession: (sessionId: string) => Promise<void>;
   cancelCloudAgentRequest:
     (conversationId: string, requestId: string) => Promise<void>;
@@ -132,6 +134,8 @@ export type UseCloudCollaborationStateResult = {
   pendingGroupProjectionSessionIds: ReadonlySet<string>;
   cloudHiddenSessionIds: Set<string>;
   cloudDeletedSessionIds: Set<string>;
+  cloudPinnedSessionIds: Set<string>;
+  cloudMutedSessionIds: Set<string>;
   cloudSessionPinsById: CloudSessionPinsById;
   cloudCanonicalReactionState: CanonicalSessionState | null;
   cloudLegacyGroupSessionTitlesById: ReadonlyMap<string, string>;

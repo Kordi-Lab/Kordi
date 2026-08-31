@@ -124,6 +124,7 @@ type UseWorkspaceViewModelsArgs = {
   canonicalSessionState: CanonicalSessionState | null;
   canonicalSessionSummaries?: CanonicalSessionSummary[];
   hiddenSessionIds: Set<string>;
+  archivedSessionIds?: ReadonlySet<string>;
   projectWorkspaces: Project[];
   projectSelectedSessionIds: Record<string, string>;
   activeNav: NavId;
@@ -158,6 +159,7 @@ export function useWorkspaceViewModels({
   canonicalSessionState,
   canonicalSessionSummaries = [],
   hiddenSessionIds,
+  archivedSessionIds = EMPTY_DESKTOP_SESSION_IDS,
   projectWorkspaces,
   projectSelectedSessionIds,
   activeNav,
@@ -455,6 +457,14 @@ export function useWorkspaceViewModels({
     hiddenSessionIds,
     localAgentCollaborationReachoutSessionIds,
   ]);
+  const archivedChatConversations = useMemo(
+    () => blankShellCollapsedChatConversations.filter((conversation) => {
+      const canonicalId = conversation.canonicalSessionId ?? conversation.id;
+      return archivedSessionIds.has(canonicalId)
+        || archivedSessionIds.has(conversation.id);
+    }),
+    [archivedSessionIds, blankShellCollapsedChatConversations],
+  );
   const companionConversations = useMemo(
     () => companionConversationList(chatConversations, blankShellCollapsedChatConversations),
     [blankShellCollapsedChatConversations, chatConversations],
@@ -498,6 +508,10 @@ export function useWorkspaceViewModels({
   const participantSpaces = useMemo(
     () => ensureSelfParticipantSpace(buildParticipantSpaces(chatConversations), { avatarSeed: getLocalProfileAvatarSeed() }),
     [chatConversations],
+  );
+  const archivedParticipantSpaces = useMemo(
+    () => buildParticipantSpaces(archivedChatConversations),
+    [archivedChatConversations],
   );
   const contactParticipantSpaces = useMemo(
     () => filterParticipantSpaces(participantSpaces, chatSearch, 'contact'),
@@ -1088,6 +1102,7 @@ export function useWorkspaceViewModels({
     companionConversations,
     filteredConversations,
     participantSpaces,
+    archivedParticipantSpaces,
     contactParticipantSpaces,
     agentParticipantSpaces,
     activeConv,

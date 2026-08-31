@@ -1,4 +1,4 @@
-import { Bookmark, ChevronRight, Paperclip, Pin, Split } from 'lucide-react';
+import { BellOff, Bookmark, ChevronRight, Paperclip, Pin, Split } from 'lucide-react';
 
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
 import { attachmentOnlyMessagePreview } from '@/features/chat/participantConversationState';
@@ -104,6 +104,11 @@ export function AgentSidebarRow({
             conversation,
             event.clientX,
             event.clientY,
+            {
+              archived: model.showArchived,
+              pinned: model.pinnedSessionIds.has(session.id),
+              muted: model.mutedSessionIds.has(session.id),
+            },
           );
           if (!target) return;
           event.preventDefault();
@@ -166,6 +171,12 @@ export function AgentSidebarRow({
             active={isActive}
             reserveStatusSpace={!isSavedMessages}
           />
+          {model.pinnedSessionIds.has(session.id) ? (
+            <Pin className="h-3 w-3 text-slate-400" aria-label="Pinned" />
+          ) : null}
+          {model.mutedSessionIds.has(session.id) ? (
+            <BellOff className="h-3 w-3 text-slate-400" aria-label="Muted" />
+          ) : null}
           {isSavedMessages ? (
             <Pin className="app-saved-messages-pin h-3 w-3" aria-label="Pinned" />
           ) : null}

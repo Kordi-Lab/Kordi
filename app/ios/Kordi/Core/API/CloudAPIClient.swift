@@ -818,6 +818,36 @@ actor CloudAPIClient {
         )
     }
 
+    func setSessionArchived(token: String, sessionId: String, archived: Bool) async throws {
+        let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/sessions/\(escaped)/hidden",
+            method: archived ? "PUT" : "DELETE",
+            token: token,
+            fallback: archived ? "Could not archive this chat." : "Could not restore this chat."
+        )
+    }
+
+    func setSessionPinned(token: String, sessionId: String, pinned: Bool) async throws {
+        let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/sessions/\(escaped)/pinned",
+            method: pinned ? "PUT" : "DELETE",
+            token: token,
+            fallback: pinned ? "Could not pin this chat." : "Could not unpin this chat."
+        )
+    }
+
+    func setSessionMuted(token: String, sessionId: String, muted: Bool) async throws {
+        let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/sessions/\(escaped)/muted",
+            method: muted ? "PUT" : "DELETE",
+            token: token,
+            fallback: muted ? "Could not mute this chat." : "Could not unmute this chat."
+        )
+    }
+
     func sessionPin(token: String, sessionId: String) async throws -> CloudSessionPin {
         let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
         let response: SessionPinResponse = try await send(
@@ -2086,12 +2116,17 @@ actor CloudAPIClient {
                 occurredAt: event.occurredAt
             )]
         }
-        if event.eventType == "session.deleted",
+        let sessionListEvents: Set<String> = [
+            "session.hidden", "session.unhidden", "session.deleted",
+            "session.pinned", "session.unpinned", "session.muted", "session.unmuted"
+        ]
+        if sessionListEvents.contains(event.eventType),
            let sessionId = event.payload.sessionId?.nonEmpty {
-            if let conversation = chatConversationsBySessionId.removeValue(forKey: sessionId),
+            if event.eventType == "session.deleted",
+               let conversation = chatConversationsBySessionId.removeValue(forKey: sessionId),
                conversation.legacySessionId?.nonEmpty == sessionId {
-                chatConversationsById.removeValue(forKey: conversation.id)
-                chatConversationsBySessionId.removeValue(forKey: conversation.id)
+                    chatConversationsById.removeValue(forKey: conversation.id)
+                    chatConversationsBySessionId.removeValue(forKey: conversation.id)
             }
             return [CloudSyncEvent(
                 eventId: event.eventId,
@@ -2110,7 +2145,7 @@ actor CloudAPIClient {
         }
         let knownNonChatEvents: Set<String> = [
             "task.upsert", "artifact.upsert", "artifact.archived",
-            "session.hidden", "session.unhidden", "session-forked"
+            "session-forked"
         ]
         if ["device.added", "device.confirmed", "device.revoked", "device.renamed"]
             .contains(event.eventType) {

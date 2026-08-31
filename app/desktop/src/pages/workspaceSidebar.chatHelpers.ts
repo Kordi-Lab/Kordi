@@ -67,7 +67,12 @@ export function sessionContextMenuTargetForConversation(
   conversation: ConversationItem,
   x: number,
   y: number,
-  options: { canRename?: boolean } = {},
+  options: {
+    canRename?: boolean;
+    archived?: boolean;
+    pinned?: boolean;
+    muted?: boolean;
+  } = {},
 ): SessionContextMenuTarget | null {
   const sessionId = sessionActionIdForConversation(conversation);
   if (!sessionId) return null;
@@ -78,6 +83,9 @@ export function sessionContextMenuTargetForConversation(
     x,
     y,
     ...(options.canRename === false ? { canRename: false } : {}),
+    ...(options.archived ? { archived: true } : {}),
+    ...(options.pinned ? { pinned: true } : {}),
+    ...(options.muted ? { muted: true } : {}),
   };
 }
 

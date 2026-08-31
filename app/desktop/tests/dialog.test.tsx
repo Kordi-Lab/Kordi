@@ -173,7 +173,7 @@ test('DeleteSessionDialog keeps loading and failure feedback inside the popout',
     await act(async () => buttons[1]?.click());
 
     assert.equal(dialog?.getAttribute('aria-busy'), 'true');
-    assert.match(buttons[1]?.textContent ?? '', /Removing…/);
+    assert.match(buttons[1]?.textContent ?? '', /Deleting…/);
     assert.equal(buttons[0]?.hasAttribute('disabled'), true);
 
     await act(async () => {

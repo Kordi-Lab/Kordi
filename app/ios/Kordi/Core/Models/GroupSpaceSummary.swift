@@ -54,7 +54,8 @@ enum ChatListOrdering {
 enum GroupSpaceCatalog {
     static func build(
         conversations: [ConversationSummary],
-        ownAccountId: String
+        ownAccountId: String,
+        pinnedSessionIds: Set<String> = []
     ) -> [GroupSpaceSummary] {
         // Forks live in their own history surface. Keep every remaining
         // canonical group session visible and available for membership fanout.
@@ -68,8 +69,13 @@ enum GroupSpaceCatalog {
 
         return groups.map { key, conversations in
             let membershipSessions = conversations.sorted(by: conversationPrecedes)
-            let sessions = membershipSessions
-            let latest = sessions[0]
+            let sessions = membershipSessions.sorted {
+                let leftPinned = pinnedSessionIds.contains($0.sessionId)
+                let rightPinned = pinnedSessionIds.contains($1.sessionId)
+                if leftPinned != rightPinned { return leftPinned }
+                return conversationPrecedes($0, $1)
+            }
+            let latest = membershipSessions[0]
             let participants = mergedParticipants(from: membershipSessions)
             let groupTitle = membershipSessions
                 .sorted {

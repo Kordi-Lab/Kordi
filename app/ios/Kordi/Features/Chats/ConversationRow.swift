@@ -10,6 +10,8 @@ struct ConversationRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let conversation: ConversationSummary
     var presentation: ConversationRowPresentation = .standard
+    var isPinned = false
+    var isMuted = false
 
     var body: some View {
         Group {
@@ -22,7 +24,10 @@ struct ConversationRow: View {
         .contentShape(Rectangle())
         .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 64 : 48)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(conversation.accessibilitySummary)
+        .accessibilityLabel(
+            conversation.accessibilitySummary
+                + ChatListStateIndicators.accessibilitySuffix(isPinned: isPinned, isMuted: isMuted)
+        )
     }
 
     private var compactLayout: some View {
@@ -46,6 +51,7 @@ struct ConversationRow: View {
                         .font(.caption)
                         .foregroundStyle(conversation.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
                     attentionBadge
+                    ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
                 }
             }
         }
@@ -149,6 +155,7 @@ struct ConversationRow: View {
                 .foregroundStyle(conversation.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
                 .lineLimit(1)
             attentionBadge
+            ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
         }
     }
 
@@ -187,6 +194,33 @@ struct ConversationRow: View {
 
     private func shortOwnerName(_ name: String) -> String {
         name.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? name
+    }
+}
+
+struct ChatListStateIndicators: View {
+    let isPinned: Bool
+    let isMuted: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if isPinned {
+                Image(systemName: "pin.fill")
+                    .accessibilityLabel("Pinned")
+            }
+            if isMuted {
+                Image(systemName: "bell.slash.fill")
+                    .accessibilityLabel("Muted")
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(.tertiary)
+    }
+
+    static func accessibilitySuffix(isPinned: Bool, isMuted: Bool) -> String {
+        [isPinned ? "Pinned" : nil, isMuted ? "Muted" : nil]
+            .compactMap { $0 }
+            .map { ", \($0)" }
+            .joined()
     }
 }
 

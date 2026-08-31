@@ -139,6 +139,14 @@ export function useCloudCollaborationTransport({
           stateRef: stores.visibility.deletedSessionIdsRef,
           setState: stores.visibility.setDeletedSessionIds,
         },
+        pinnedSessionIds: {
+          stateRef: stores.visibility.pinnedSessionIdsRef,
+          setState: stores.visibility.setPinnedSessionIds,
+        },
+        mutedSessionIds: {
+          stateRef: stores.visibility.mutedSessionIdsRef,
+          setState: stores.visibility.setMutedSessionIds,
+        },
       },
       setUnreadReadiness: stores.unread.setReadiness,
       refreshCloudAgents: catalog.refreshDefinitions,

@@ -1312,6 +1312,8 @@ struct CloudSyncResponse: Codable, Hashable {
 struct CloudSessionVisibility: Codable, Hashable {
     let hiddenSessionIds: [String]
     let deletedSessionIds: [String]
+    let pinnedSessionIds: [String]?
+    let mutedSessionIds: [String]?
 }
 
 struct CloudSessionForkSummary: Codable, Hashable {

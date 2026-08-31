@@ -53,7 +53,7 @@ fn decoded_envelope(value: &str, prefix: &str) -> Option<serde_json::Value> {
     serde_json::from_slice(&bytes).ok()
 }
 
-pub(super) fn is_agent_authored_message(message: &MessageSnapshot) -> bool {
+pub(crate) fn is_agent_authored_message(message: &MessageSnapshot) -> bool {
     let Some(raw_text) = raw_message_text(message) else {
         return false;
     };

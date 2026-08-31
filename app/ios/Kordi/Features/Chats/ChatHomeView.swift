@@ -17,6 +17,7 @@ struct ChatHomeView: View {
     @State private var renameTarget: ConversationSummary?
     @State private var renameDraft = ""
     @State private var deleteTarget: ConversationSummary?
+    @State private var showingArchivedChats = false
     @State private var groupManagementPresentation: GroupManagementPresentation?
     @State private var pullRefreshState: ChatPullRefreshVisualState = .idle
     private let onOpenConversation: ((ConversationSummary) -> Void)?
@@ -41,14 +42,16 @@ struct ChatHomeView: View {
         AgentSessionTimelineCatalog.build(
             conversations: model.conversations,
             searchText: searchQuery,
-            collapsedForkParentIds: collapsedAgentForkParentIds
+            collapsedForkParentIds: collapsedAgentForkParentIds,
+            pinnedSessionIds: model.pinnedSessionIds
         )
     }
 
     private var groupSpaces: [GroupSpaceSummary] {
         let spaces = GroupSpaceCatalog.build(
             conversations: model.conversations,
-            ownAccountId: model.account?.accountId ?? ""
+            ownAccountId: model.account?.accountId ?? "",
+            pinnedSessionIds: model.pinnedSessionIds
         )
         guard !searchQuery.isEmpty else { return spaces }
         return spaces.filter { space in
@@ -76,7 +79,10 @@ struct ChatHomeView: View {
                 .map(ContactListItem.conversation)
         return (people + groupSpaces.map(ContactListItem.group))
             .sorted {
-                ChatListOrdering.precedes(
+                let leftPinned = $0.pinnedSessionID.map(model.pinnedSessionIds.contains) == true
+                let rightPinned = $1.pinnedSessionID.map(model.pinnedSessionIds.contains) == true
+                if leftPinned != rightPinned { return leftPinned }
+                return ChatListOrdering.precedes(
                     id: $0.id,
                     displayName: $0.displayName,
                     lastActivityAt: $0.lastActivityAt,
@@ -85,6 +91,25 @@ struct ChatHomeView: View {
                     lastActivityAt: $1.lastActivityAt
                 )
             }
+    }
+
+    private var archivedForChannel: [ConversationSummary] {
+        model.archivedConversations.filter {
+            channel == .agent ? $0.kind == .agent : $0.kind != .agent
+        }
+    }
+
+    private var contactRows: [ContactListRow] {
+        contactItems.flatMap { item -> [ContactListRow] in
+            switch item {
+            case let .conversation(conversation):
+                return [.conversation(conversation)]
+            case let .group(space):
+                return [.group(space)] + (groupIsExpanded(space)
+                    ? space.sessions.map { .groupSession($0) }
+                    : [])
+            }
+        }
     }
 
     var body: some View {
@@ -131,6 +156,9 @@ struct ChatHomeView: View {
         }
         .navigationDestination(item: $composedConversation) { selected in
             ConversationView(conversation: selected)
+        }
+        .navigationDestination(isPresented: $showingArchivedChats) {
+            ArchivedChatsView(channel: channel)
         }
         .toolbar {
             if #available(iOS 26.0, *) {
@@ -181,21 +209,21 @@ struct ChatHomeView: View {
             Text("This name is used for the session, matching Kordi on macOS.")
         }
         .confirmationDialog(
-            "Delete this session?",
+            "Delete this chat from your list?",
             isPresented: Binding(
                 get: { deleteTarget != nil },
                 set: { if !$0 { deleteTarget = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Delete session", role: .destructive) {
+            Button("Delete chat", role: .destructive) {
                 guard let target = deleteTarget else { return }
                 deleteTarget = nil
                 Task { _ = await model.deleteConversation(target) }
             }
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: {
-            Text("This removes the session from Kordi Cloud and all synced devices.")
+            Text("This does not delete it for other participants. It will return if someone sends a new message.")
         }
         .overlay(alignment: .bottom) {
             if let error = model.errorMessage {
@@ -246,12 +274,41 @@ struct ChatHomeView: View {
         ) { EmptyView() }
     }
 
+    @ViewBuilder
+    private var archivedChatsEntry: some View {
+        if !archivedForChannel.isEmpty {
+            Button {
+                showingArchivedChats = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "archivebox")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                    Text("Archived Chats")
+                        .font(.headline)
+                    Spacer()
+                    Text(archivedForChannel.count, format: .number)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Shows archived chats")
+            .chatHomeRow(separatorLeading: 71)
+        }
+    }
+
     private var contactPage: some View {
         ChatPullToRefreshScrollView(
             coordinateSpaceName: "contact-chat-refresh",
             visualState: $pullRefreshState,
             onRefresh: { await model.refreshWorkspace() }
         ) {
+            archivedChatsEntry
             if contactItems.isEmpty {
                 ContentUnavailableView(
                     searchQuery.isEmpty ? "No contact conversations yet" : "No chats found",
@@ -260,8 +317,8 @@ struct ChatHomeView: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 360)
             } else {
-                ForEach(contactItems) { item in
-                    contactItemRow(item)
+                ForEach(contactRows) { row in
+                    contactRow(row)
                 }
             }
         }
@@ -269,52 +326,50 @@ struct ChatHomeView: View {
     }
 
     @ViewBuilder
-    private func contactItemRow(_ item: ContactListItem) -> some View {
-        switch item {
+    private func contactRow(_ row: ContactListRow) -> some View {
+        switch row {
         case let .conversation(conversation):
             destination(for: conversation)
         case let .group(space):
             let isExpanded = groupIsExpanded(space)
-            VStack(spacing: 0) {
+            Button {
+                toggleGroupSpace(space)
+            } label: {
+                GroupSpaceRow(space: space, isExpanded: isExpanded)
+            }
+            .buttonStyle(.plain)
+            .contextMenu {
                 Button {
-                    toggleGroupSpace(space)
+                    groupManagementPresentation = GroupManagementPresentation(
+                        space: space,
+                        startsInInviteMode: false
+                    )
                 } label: {
-                    GroupSpaceRow(space: space, isExpanded: isExpanded)
+                    Label("Manage group", systemImage: "person.2")
                 }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Button {
-                        groupManagementPresentation = GroupManagementPresentation(
-                            space: space,
-                            startsInInviteMode: false
-                        )
-                    } label: {
-                        Label("Manage group", systemImage: "person.2")
-                    }
-                    Button {
-                        groupManagementPresentation = GroupManagementPresentation(
-                            space: space,
-                            startsInInviteMode: true
-                        )
-                    } label: {
-                        Label("Invite people", systemImage: "person.badge.plus")
-                    }
-                    Button {
-                        Task { await model.markGroupSpaceRead(space) }
-                    } label: {
-                        Label("Mark as read", systemImage: "checkmark.circle")
-                    }
+                Button {
+                    groupManagementPresentation = GroupManagementPresentation(
+                        space: space,
+                        startsInInviteMode: true
+                    )
+                } label: {
+                    Label("Invite people", systemImage: "person.badge.plus")
                 }
-                .accessibilityHint("Double-tap to show sessions. Touch and hold to manage or invite people.")
-                .chatHomeRow(separatorLeading: 71)
-
-                if isExpanded {
-                    ForEach(space.sessions) { session in
-                        sessionActionRow(for: session) {
-                            GroupSessionRow(session: session)
-                        }
-                    }
+                Button {
+                    Task { await model.markGroupSpaceRead(space) }
+                } label: {
+                    Label("Mark as read", systemImage: "checkmark.circle")
                 }
+            }
+            .accessibilityHint("Double-tap to show sessions. Touch and hold to manage or invite people.")
+            .chatHomeRow(separatorLeading: 71)
+        case let .groupSession(session):
+            sessionActionRow(for: session) {
+                GroupSessionRow(
+                    session: session,
+                    isPinned: model.pinnedSessionIds.contains(session.sessionId),
+                    isMuted: model.mutedSessionIds.contains(session.sessionId)
+                )
             }
         }
     }
@@ -325,6 +380,7 @@ struct ChatHomeView: View {
             visualState: $pullRefreshState,
             onRefresh: { await model.refreshWorkspace() }
         ) {
+            archivedChatsEntry
             if agentSessions.isEmpty {
                 ContentUnavailableView(
                     searchQuery.isEmpty ? "No agent sessions yet" : "No chats found",
@@ -343,7 +399,11 @@ struct ChatHomeView: View {
 
     private func destination(for conversation: ConversationSummary) -> some View {
         sessionActionRow(for: conversation) {
-            ConversationRow(conversation: conversation)
+            ConversationRow(
+                conversation: conversation,
+                isPinned: model.pinnedSessionIds.contains(conversation.sessionId),
+                isMuted: model.mutedSessionIds.contains(conversation.sessionId)
+            )
         }
     }
 
@@ -358,23 +418,22 @@ struct ChatHomeView: View {
         }
         .buttonStyle(.plain)
         .contextMenu {
-            Button {
-                renameDraft = conversation.displayName
-                renameTarget = conversation
-            } label: {
-                Label("Rename", systemImage: "pencil")
-            }
-            Button {
-                Task { await model.markConversationRead(conversation) }
-            } label: {
-                Label("Mark as read", systemImage: "checkmark.circle")
-            }
-            Divider()
-            Button(role: .destructive) {
-                deleteTarget = conversation
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
+            sessionContextMenu(for: conversation)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            sessionSwipeActions(for: conversation)
+        }
+        .accessibilityAction(named: model.pinnedSessionIds.contains(conversation.sessionId) ? "Unpin" : "Pin") {
+            togglePinned(conversation)
+        }
+        .accessibilityAction(named: model.mutedSessionIds.contains(conversation.sessionId) ? "Unmute" : "Mute notifications") {
+            toggleMuted(conversation)
+        }
+        .accessibilityAction(named: "Archive") {
+            Task { _ = await model.archiveConversation(conversation) }
+        }
+        .accessibilityAction(named: "Delete chat") {
+            deleteTarget = conversation
         }
         .accessibilityHint("Double-tap to open. Touch and hold for session actions.")
         .chatHomeRow(separatorLeading: 71)
@@ -402,6 +461,21 @@ struct ChatHomeView: View {
         .contextMenu {
             sessionContextMenu(for: item.conversation)
         }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            sessionSwipeActions(for: item.conversation)
+        }
+        .accessibilityAction(named: model.pinnedSessionIds.contains(item.conversation.sessionId) ? "Unpin" : "Pin") {
+            togglePinned(item.conversation)
+        }
+        .accessibilityAction(named: model.mutedSessionIds.contains(item.conversation.sessionId) ? "Unmute" : "Mute notifications") {
+            toggleMuted(item.conversation)
+        }
+        .accessibilityAction(named: "Archive") {
+            Task { _ = await model.archiveConversation(item.conversation) }
+        }
+        .accessibilityAction(named: "Delete chat") {
+            deleteTarget = item.conversation
+        }
         .accessibilityHint("Double-tap to open. Touch and hold for session actions.")
         .chatHomeRow(separatorLeading: 16)
     }
@@ -410,7 +484,12 @@ struct ChatHomeView: View {
         Button {
             openConversation(item.conversation)
         } label: {
-            AgentSessionRow(conversation: item.conversation, isFork: item.isFork)
+            AgentSessionRow(
+                conversation: item.conversation,
+                isFork: item.isFork,
+                isPinned: model.pinnedSessionIds.contains(item.conversation.sessionId),
+                isMuted: model.mutedSessionIds.contains(item.conversation.sessionId)
+            )
                 .padding(.leading, CGFloat(item.depth) * 16)
         }
         .buttonStyle(.plain)
@@ -453,11 +532,69 @@ struct ChatHomeView: View {
             Label("Mark as read", systemImage: "checkmark.circle")
         }
         Divider()
+        Button {
+            togglePinned(conversation)
+        } label: {
+            Label(
+                model.pinnedSessionIds.contains(conversation.sessionId) ? "Unpin" : "Pin",
+                systemImage: "pin"
+            )
+        }
+        Button {
+            toggleMuted(conversation)
+        } label: {
+            Label(
+                model.mutedSessionIds.contains(conversation.sessionId) ? "Unmute" : "Mute notifications",
+                systemImage: model.mutedSessionIds.contains(conversation.sessionId) ? "bell" : "bell.slash"
+            )
+        }
+        Button {
+            Task { _ = await model.archiveConversation(conversation) }
+        } label: {
+            Label("Archive", systemImage: "archivebox")
+        }
+        Divider()
         Button(role: .destructive) {
             deleteTarget = conversation
         } label: {
             Label("Delete", systemImage: "trash")
         }
+    }
+
+    @ViewBuilder
+    private func sessionSwipeActions(for conversation: ConversationSummary) -> some View {
+        Button {
+            toggleMuted(conversation)
+        } label: {
+            Label(
+                model.mutedSessionIds.contains(conversation.sessionId) ? "Unmute" : "Mute",
+                systemImage: model.mutedSessionIds.contains(conversation.sessionId) ? "bell" : "bell.slash"
+            )
+        }
+        .tint(.orange)
+
+        Button(role: .destructive) {
+            deleteTarget = conversation
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+
+        Button {
+            Task { _ = await model.archiveConversation(conversation) }
+        } label: {
+            Label("Archive", systemImage: "archivebox")
+        }
+        .tint(.gray)
+    }
+
+    private func togglePinned(_ conversation: ConversationSummary) {
+        let pinned = !model.pinnedSessionIds.contains(conversation.sessionId)
+        Task { _ = await model.setConversationPinned(conversation, pinned: pinned) }
+    }
+
+    private func toggleMuted(_ conversation: ConversationSummary) {
+        let muted = !model.mutedSessionIds.contains(conversation.sessionId)
+        Task { _ = await model.setConversationMuted(conversation, muted: muted) }
     }
 
     private func groupIsExpanded(_ space: GroupSpaceSummary) -> Bool {
@@ -495,6 +632,119 @@ struct ChatHomeView: View {
         }
     }
 
+}
+
+private struct ArchivedChatsView: View {
+    @EnvironmentObject private var model: AppModel
+    let channel: ChatChannel
+    @State private var deleteTarget: ConversationSummary?
+
+    private var conversations: [ConversationSummary] {
+        model.archivedConversations.filter {
+            channel == .agent ? $0.kind == .agent : $0.kind != .agent
+        }
+    }
+
+    var body: some View {
+        List {
+            ForEach(conversations) { conversation in
+                archivedRow(conversation)
+                    .contextMenu {
+                        Button {
+                            Task { _ = await model.restoreConversation(conversation) }
+                        } label: {
+                            Label("Restore", systemImage: "archivebox.fill")
+                        }
+                        Button {
+                            let muted = !model.mutedSessionIds.contains(conversation.sessionId)
+                            Task { _ = await model.setConversationMuted(conversation, muted: muted) }
+                        } label: {
+                            Label(
+                                model.mutedSessionIds.contains(conversation.sessionId) ? "Unmute" : "Mute notifications",
+                                systemImage: model.mutedSessionIds.contains(conversation.sessionId) ? "bell" : "bell.slash"
+                            )
+                        }
+                        Button(role: .destructive) {
+                            deleteTarget = conversation
+                        } label: {
+                            Label("Delete chat", systemImage: "trash")
+                        }
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            deleteTarget = conversation
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        Button {
+                            Task { _ = await model.restoreConversation(conversation) }
+                        } label: {
+                            Label("Restore", systemImage: "archivebox.fill")
+                        }
+                        .tint(.blue)
+                    }
+                    .accessibilityAction(named: "Restore") {
+                        Task { _ = await model.restoreConversation(conversation) }
+                    }
+                    .accessibilityAction(named: "Delete chat") {
+                        deleteTarget = conversation
+                    }
+                    .chatHomeRow(separatorLeading: 71)
+            }
+        }
+        .listStyle(.plain)
+        .navigationTitle("Archived Chats")
+        .overlay {
+            if conversations.isEmpty {
+                ContentUnavailableView(
+                    "No Archived Chats",
+                    systemImage: "archivebox",
+                    description: Text("Chats you archive appear here.")
+                )
+            }
+        }
+        .confirmationDialog(
+            "Delete this chat from your list?",
+            isPresented: Binding(
+                get: { deleteTarget != nil },
+                set: { if !$0 { deleteTarget = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete chat", role: .destructive) {
+                guard let target = deleteTarget else { return }
+                deleteTarget = nil
+                Task { _ = await model.deleteConversation(target) }
+            }
+            Button("Cancel", role: .cancel) { deleteTarget = nil }
+        } message: {
+            Text("This does not delete it for other participants. It will return if someone sends a new message.")
+        }
+    }
+
+    @ViewBuilder
+    private func archivedRow(_ conversation: ConversationSummary) -> some View {
+        switch conversation.kind {
+        case .person:
+            ConversationRow(
+                conversation: conversation,
+                isPinned: false,
+                isMuted: model.mutedSessionIds.contains(conversation.sessionId)
+            )
+        case .group:
+            GroupSessionRow(
+                session: conversation,
+                isPinned: false,
+                isMuted: model.mutedSessionIds.contains(conversation.sessionId)
+            )
+        case .agent:
+            AgentSessionRow(
+                conversation: conversation,
+                isPinned: false,
+                isMuted: model.mutedSessionIds.contains(conversation.sessionId)
+            )
+        }
+    }
 }
 
 enum ChatHomeSearch {
@@ -537,132 +787,34 @@ enum ChatHomeSearch {
     }
 }
 
-enum ChatPullToRefreshBehavior {
-    static let triggerDistance: CGFloat = 68
-
-    static func pullDistance(contentOffsetY: CGFloat, contentInsetTop: CGFloat) -> CGFloat {
-        max(0, -(contentOffsetY + contentInsetTop))
-    }
-
-    static func shouldStart(distance: CGFloat, isRefreshing: Bool) -> Bool {
-        !isRefreshing && distance >= triggerDistance
-    }
-}
-
 private struct ChatPullToRefreshScrollView<Content: View>: View {
-    let coordinateSpaceName: String
     let onRefresh: () async -> Void
     let content: Content
     @Binding var visualState: ChatPullRefreshVisualState
-    @State private var pullDistance: CGFloat = 0
-    @State private var isRefreshing = false
 
     init(
-        coordinateSpaceName: String,
+        coordinateSpaceName _: String,
         visualState: Binding<ChatPullRefreshVisualState>,
         onRefresh: @escaping () async -> Void,
         @ViewBuilder content: () -> Content
     ) {
-        self.coordinateSpaceName = coordinateSpaceName
         _visualState = visualState
         self.onRefresh = onRefresh
         self.content = content()
     }
 
-    @ViewBuilder
     var body: some View {
-        if #available(iOS 18.0, *) {
-            scrollView(includeLegacyOffsetProbe: false)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    ChatPullToRefreshBehavior.pullDistance(
-                        contentOffsetY: geometry.contentOffset.y,
-                        contentInsetTop: geometry.contentInsets.top
-                    )
-                } action: { _, distance in
-                    updatePullDistance(distance)
-                }
-                .onScrollPhaseChange { oldPhase, newPhase in
-                    if newPhase == .interacting { return }
-                    guard oldPhase == .interacting, newPhase != .interacting else { return }
-                    finishPullGesture()
-                }
-        } else {
-            scrollView(includeLegacyOffsetProbe: true)
-                .coordinateSpace(.named(coordinateSpaceName))
-                .onPreferenceChange(ChatPullOffsetPreferenceKey.self) { offset in
-                    updatePullDistance(max(0, offset))
-                }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 8).onEnded { _ in
-                        finishPullGesture()
-                    }
-                )
+        List {
+            content
         }
-    }
-
-    private func scrollView(includeLegacyOffsetProbe: Bool) -> some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                if includeLegacyOffsetProbe {
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: ChatPullOffsetPreferenceKey.self,
-                            value: proxy.frame(in: .named(coordinateSpaceName)).minY
-                        )
-                    }
-                    .frame(height: 0)
-                }
-
-                LazyVStack(spacing: 0) {
-                    content
-                }
-            }
-        }
-        .scrollBounceBehavior(.always)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
-    }
-
-    private func updatePullDistance(_ distance: CGFloat) {
-        guard !isRefreshing else { return }
-        pullDistance = distance
-        if distance > 0.5 {
-            visualState = .pulling(progress: KordiSyncMarkGeometry.pullProgress(
-                for: distance,
-                triggerDistance: ChatPullToRefreshBehavior.triggerDistance
-            ))
-        } else if visualState != .idle {
+        .refreshable {
+            visualState = .refreshing
+            await onRefresh()
             visualState = .idle
         }
-    }
-
-    private func finishPullGesture() {
-        guard ChatPullToRefreshBehavior.shouldStart(
-            distance: pullDistance,
-            isRefreshing: isRefreshing
-        ) else { return }
-        beginRefresh()
-    }
-
-    private func beginRefresh() {
-        guard !isRefreshing else { return }
-        isRefreshing = true
-        pullDistance = 0
-        visualState = .refreshing
-        Task {
-            await onRefresh()
-            withAnimation(.smooth(duration: 0.24)) {
-                isRefreshing = false
-                visualState = .idle
-            }
-        }
-    }
-}
-
-private struct ChatPullOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }
 
@@ -671,6 +823,9 @@ private extension View {
         frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
             .padding(.vertical, 4)
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
             .overlay(alignment: .bottom) {
                 Rectangle()
                     .fill(Color(uiColor: .separator).opacity(0.45))
@@ -702,6 +857,27 @@ private enum ContactListItem: Identifiable {
         switch self {
         case let .conversation(conversation): conversation.lastActivityAt
         case let .group(space): space.lastActivityAt
+        }
+    }
+
+    var pinnedSessionID: String? {
+        switch self {
+        case let .conversation(conversation): conversation.sessionId
+        case .group: nil
+        }
+    }
+}
+
+private enum ContactListRow: Identifiable {
+    case conversation(ConversationSummary)
+    case group(GroupSpaceSummary)
+    case groupSession(ConversationSummary)
+
+    var id: String {
+        switch self {
+        case let .conversation(conversation): "conversation:\(conversation.id)"
+        case let .group(space): "space:\(space.id)"
+        case let .groupSession(session): "group-session:\(session.sessionId)"
         }
     }
 }

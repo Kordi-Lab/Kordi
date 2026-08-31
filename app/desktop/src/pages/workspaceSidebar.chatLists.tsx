@@ -42,7 +42,9 @@ export function WorkspaceChatLists({
         )}
         emptyState={
           <SidebarEmptyState>
-            No conversations yet. Start a chat to see it here.
+            {model.showArchived
+              ? 'No archived contact chats.'
+              : 'No conversations yet. Start a chat to see it here.'}
           </SidebarEmptyState>
         }
       />
@@ -51,7 +53,7 @@ export function WorkspaceChatLists({
 
   return (
     <>
-      <div className="mb-1 flex shrink-0 justify-center px-1">
+      {!model.showArchived ? <div className="mb-1 flex shrink-0 justify-center px-1">
         <button
           type="button"
           onClick={onOpenAgentCreate}
@@ -62,7 +64,7 @@ export function WorkspaceChatLists({
           <Plus className="h-3.5 w-3.5" />
           <span>New session</span>
         </button>
-      </div>
+      </div> : null}
       <VirtualChatList
         rows={model.agentSidebarRows}
         activeSessionId={model.activeSidebarRowSessionId}
@@ -79,7 +81,9 @@ export function WorkspaceChatLists({
         )}
         emptyState={
           <SidebarEmptyState>
-            No agent conversations yet. Start one to see it here.
+            {model.showArchived
+              ? 'No archived agent chats.'
+              : 'No agent conversations yet. Start one to see it here.'}
           </SidebarEmptyState>
         }
       />

@@ -824,15 +824,6 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
-    func testPullToRefreshStartsOnceOnlyAfterCrossingTheThreshold() {
-        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 24, isRefreshing: false))
-        XCTAssertTrue(ChatPullToRefreshBehavior.shouldStart(
-            distance: ChatPullToRefreshBehavior.triggerDistance,
-            isRefreshing: false
-        ))
-        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 120, isRefreshing: true))
-    }
-
     func testChatSearchNormalizesWhitespaceAndMatchesContactIdentity() {
         let conversation = searchConversation(
             displayName: "Research Agent",
@@ -900,17 +891,6 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertEqual(sharedWithMaya.map(\.displayName), ["Mobile builders"])
         XCTAssertEqual(sharedWithMaya.first?.sessions.count, 2)
         XCTAssertTrue(sharedWithPriya.isEmpty)
-    }
-
-    func testPullDistanceUsesNativeScrollGeometryInsets() {
-        XCTAssertEqual(
-            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -59, contentInsetTop: 59),
-            0
-        )
-        XCTAssertEqual(
-            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -93, contentInsetTop: 59),
-            34
-        )
     }
 
     func testConversationDoesNotAnimateItsInitialLatestMessagePosition() {

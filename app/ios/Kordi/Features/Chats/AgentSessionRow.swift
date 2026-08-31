@@ -35,6 +35,8 @@ struct AgentSessionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let conversation: ConversationSummary
     var isFork = false
+    var isPinned = false
+    var isMuted = false
 
     var body: some View {
         Group {
@@ -47,7 +49,10 @@ struct AgentSessionRow: View {
         .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 46, alignment: .leading)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(conversation.accessibilitySummary)
+        .accessibilityLabel(
+            conversation.accessibilitySummary
+                + ChatListStateIndicators.accessibilitySuffix(isPinned: isPinned, isMuted: isMuted)
+        )
     }
 
     private var accessibilityLayout: some View {
@@ -64,6 +69,7 @@ struct AgentSessionRow: View {
                 if conversation.hasUnreadAttention {
                     attentionBadge
                 }
+                ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
             }
         }
         .padding(.vertical, 8)
@@ -87,6 +93,7 @@ struct AgentSessionRow: View {
                           activity != .ready {
                     AgentSessionActivityLabel(activity: activity, compact: true)
                 }
+                ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
             }
         }
     }

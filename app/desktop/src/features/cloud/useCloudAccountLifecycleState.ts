@@ -164,6 +164,12 @@ export function useCloudAccountLifecycleState({
   const [deletedSessionIds, setDeletedSessionIds] = useState<Set<string>>(
     () => loadCloudSessionVisibility(account?.accountId).deletedSessionIds,
   );
+  const [pinnedSessionIds, setPinnedSessionIds] = useState<Set<string>>(
+    () => loadCloudSessionVisibility(account?.accountId).pinnedSessionIds,
+  );
+  const [mutedSessionIds, setMutedSessionIds] = useState<Set<string>>(
+    () => loadCloudSessionVisibility(account?.accountId).mutedSessionIds,
+  );
 
   const sessionActivityRef =
     useRef<CloudSessionActivityStore>(sessionActivity);
@@ -178,6 +184,8 @@ export function useCloudAccountLifecycleState({
     useRef<Record<string, CloudAgentDefinition>>(agentDefinitionsById);
   const hiddenSessionIdsRef = useRef<Set<string>>(hiddenSessionIds);
   const deletedSessionIdsRef = useRef<Set<string>>(deletedSessionIds);
+  const pinnedSessionIdsRef = useRef<Set<string>>(pinnedSessionIds);
+  const mutedSessionIdsRef = useRef<Set<string>>(mutedSessionIds);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -255,6 +263,14 @@ export function useCloudAccountLifecycleState({
   }, [deletedSessionIds]);
 
   useEffect(() => {
+    pinnedSessionIdsRef.current = pinnedSessionIds;
+  }, [pinnedSessionIds]);
+
+  useEffect(() => {
+    mutedSessionIdsRef.current = mutedSessionIds;
+  }, [mutedSessionIds]);
+
+  useEffect(() => {
     if (
       !account
       || messagesCacheAccountRef.current !== account.accountId
@@ -262,12 +278,16 @@ export function useCloudAccountLifecycleState({
     saveCloudSessionVisibility(account.accountId, {
       hiddenSessionIds,
       deletedSessionIds,
+      pinnedSessionIds,
+      mutedSessionIds,
     });
   }, [
     account,
     deletedSessionIds,
     hiddenSessionIds,
+    mutedSessionIds,
     messagesCacheAccountRef,
+    pinnedSessionIds,
   ]);
 
   useEffect(() => () => {
@@ -346,8 +366,12 @@ export function useCloudAccountLifecycleState({
     const visibility = loadCloudSessionVisibility(accountId);
     hiddenSessionIdsRef.current = visibility.hiddenSessionIds;
     deletedSessionIdsRef.current = visibility.deletedSessionIds;
+    pinnedSessionIdsRef.current = visibility.pinnedSessionIds;
+    mutedSessionIdsRef.current = visibility.mutedSessionIds;
     setHiddenSessionIds(visibility.hiddenSessionIds);
     setDeletedSessionIds(visibility.deletedSessionIds);
+    setPinnedSessionIds(visibility.pinnedSessionIds);
+    setMutedSessionIds(visibility.mutedSessionIds);
 
     return () => {
       cancelled = true;
@@ -361,6 +385,7 @@ export function useCloudAccountLifecycleState({
     groupReplayCoordinator,
     groupSessionTitleBackfillsRef,
     hiddenSessionIdsRef,
+    mutedSessionIdsRef,
     hydratedCacheAccountRef,
     peerReadAtByPeerRef,
     messageCache,
@@ -370,11 +395,13 @@ export function useCloudAccountLifecycleState({
     sessionForksByIdRef,
     sessionPinsByIdRef,
     sessionTitlesByIdRef,
+    pinnedSessionIdsRef,
     setAgentDefinitionsById,
     setCollaborationOverride,
     setCollaborationOverrideContextKey,
     setDeletedSessionIds,
     setHiddenSessionIds,
+    setMutedSessionIds,
     setLocalAgentTurnsByRequestId,
     setMessagesByPeer,
     setPublishedContextKey,
@@ -383,6 +410,7 @@ export function useCloudAccountLifecycleState({
     setSessionForksById,
     setSessionPinsById,
     setSessionTitlesById,
+    setPinnedSessionIds,
     setUnreadReadiness,
     syncCoordinator,
   ]);
@@ -423,6 +451,12 @@ export function useCloudAccountLifecycleState({
       deletedSessionIds,
       setDeletedSessionIds,
       deletedSessionIdsRef,
+      pinnedSessionIds,
+      setPinnedSessionIds,
+      pinnedSessionIdsRef,
+      mutedSessionIds,
+      setMutedSessionIds,
+      mutedSessionIdsRef,
     },
     cancelledRef,
     resetAccountState,
@@ -434,11 +468,15 @@ export function useCloudSessionVisibilityRefresh({
   client,
   setHiddenSessionIds,
   setDeletedSessionIds,
+  setPinnedSessionIds,
+  setMutedSessionIds,
 }: {
   account: CloudAccount | null;
   client: CloudAuthClient;
   setHiddenSessionIds: Dispatch<SetStateAction<Set<string>>>;
   setDeletedSessionIds: Dispatch<SetStateAction<Set<string>>>;
+  setPinnedSessionIds: Dispatch<SetStateAction<Set<string>>>;
+  setMutedSessionIds: Dispatch<SetStateAction<Set<string>>>;
 }) {
   useEffect(() => {
     if (!account) return;
@@ -461,10 +499,22 @@ export function useCloudSessionVisibilityRefresh({
               .map((value) => value.trim())
               .filter(Boolean),
           ),
+          pinnedSessionIds: new Set(
+            visibility.pinnedSessionIds
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+          mutedSessionIds: new Set(
+            visibility.mutedSessionIds
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
         };
         saveCloudSessionVisibility(account.accountId, nextVisibility);
         setHiddenSessionIds(nextVisibility.hiddenSessionIds);
         setDeletedSessionIds(nextVisibility.deletedSessionIds);
+        setPinnedSessionIds(nextVisibility.pinnedSessionIds);
+        setMutedSessionIds(nextVisibility.mutedSessionIds);
       })
       .catch(() => {
         // A visibility refresh failure should not block message bootstrap;
@@ -478,5 +528,7 @@ export function useCloudSessionVisibilityRefresh({
     client,
     setDeletedSessionIds,
     setHiddenSessionIds,
+    setMutedSessionIds,
+    setPinnedSessionIds,
   ]);
 }

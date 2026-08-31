@@ -22,7 +22,17 @@ function dialogLayerClass(markup: string, presentation: 'modal' | 'popover') {
   return match[1];
 }
 
-test('SessionContextMenu offers Remove chat without a separate Not show here action', () => {
+const menuActions = {
+  onClose: () => {},
+  onRename: () => {},
+  onArchive: () => {},
+  onRestore: () => {},
+  onSetPinned: () => {},
+  onSetMuted: () => {},
+  onDelete: () => {},
+};
+
+test('SessionContextMenu exposes pin, mute, archive, and reversible delete actions', () => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: { innerWidth: 1024, innerHeight: 768 },
@@ -30,14 +40,15 @@ test('SessionContextMenu offers Remove chat without a separate Not show here act
 
   const markup = renderToStaticMarkup(createElement(SessionContextMenu, {
     target: { sessionId: 'session:one', sessionName: 'Trip planning', x: 120, y: 120 },
-    onClose: () => {},
-    onRename: () => {},
-    onDelete: () => {},
+    ...menuActions,
   }));
 
   assert.doesNotMatch(markup, /Not show here/);
   assert.doesNotMatch(markup, /Delete forever/);
-  assert.match(markup, /Remove chat…/);
+  assert.match(markup, />Pin</);
+  assert.match(markup, />Mute notifications</);
+  assert.match(markup, />Archive</);
+  assert.match(markup, /Delete chat…/);
 });
 
 test('SessionContextMenu keeps available actions flat and omits the removed project action', () => {
@@ -53,13 +64,12 @@ test('SessionContextMenu keeps available actions flat and omits the removed proj
       x: 120,
       y: 120,
     },
-    onClose: () => {},
-    onRename: () => {},
-    onDelete: () => {},
+    ...menuActions,
   }));
 
   assert.match(markup, /app-transient-flat-action[^>]*>Rename…</);
-  assert.match(markup, /app-transient-row app-transient-row-danger[^>]*>Remove chat…</);
+  assert.match(markup, /app-transient-row app-transient-row-danger/);
+  assert.match(markup, /Delete chat…/);
   assert.doesNotMatch(markup, /Move to project/);
   assert.doesNotMatch(markup, /app-transient-row[^>]*>Rename…</);
 });
@@ -78,13 +88,31 @@ test('SessionContextMenu hides rename for a non-admin group member', () => {
       y: 120,
       canRename: false,
     },
-    onClose: () => {},
-    onRename: () => {},
-    onDelete: () => {},
+    ...menuActions,
   }));
 
   assert.doesNotMatch(markup, /Rename…/);
-  assert.match(markup, /Remove chat…/);
+  assert.match(markup, /Delete chat…/);
+});
+
+test('SessionContextMenu restores archived chats without offering pin', () => {
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { innerWidth: 1024, innerHeight: 768 },
+  });
+  const markup = renderToStaticMarkup(createElement(SessionContextMenu, {
+    target: {
+      sessionId: 'session:archived',
+      sessionName: 'Archived',
+      x: 120,
+      y: 120,
+      archived: true,
+    },
+    ...menuActions,
+  }));
+
+  assert.match(markup, />Restore</);
+  assert.doesNotMatch(markup, /data-session-context-action="pin"/);
 });
 
 test('RenameSessionDialog uses the anchored popout presentation', () => {
@@ -104,7 +132,7 @@ test('RenameSessionDialog uses the anchored popout presentation', () => {
   assert.match(html, />Rename</);
 });
 
-test('DeleteSessionDialog keeps the confirmation concise and exposes semantic actions', () => {
+test('DeleteSessionDialog explains account-scoped soft deletion', () => {
   const removeMarkup = renderToStaticMarkup(createElement(DeleteSessionDialog, {
     target: {
       sessionId: 'session:one',
@@ -120,7 +148,7 @@ test('DeleteSessionDialog keeps the confirmation concise and exposes semantic ac
     onConfirm: () => {},
   }));
 
-  assert.match(removeMarkup, /Remove chat\?/);
+  assert.match(removeMarkup, /Delete this chat from your list\?/);
   assert.match(removeMarkup, /role="dialog"/);
   assert.match(removeMarkup, /aria-modal="true"/);
   assert.match(removeMarkup, /data-dialog-presentation="popover"/);
@@ -133,9 +161,9 @@ test('DeleteSessionDialog keeps the confirmation concise and exposes semantic ac
   assert.match(removeMarkup, /app-button-primary[^\"]*h-9[^\"]*rounded-\[12px\][^\"]*px-3/);
   assert.doesNotMatch(removeMarkup, /app-button-muted|app-button-destructive/);
   assert.match(removeMarkup, />Cancel</);
-  assert.match(removeMarkup, />Remove chat</);
-  assert.doesNotMatch(removeMarkup, /removed from your chat list/);
-  assert.doesNotMatch(removeMarkup, /It will show again when there is a new update/);
+  assert.match(removeMarkup, />Delete chat</);
+  assert.match(removeMarkup, /does not delete it for other participants/);
+  assert.match(removeMarkup, /return if someone sends a new message/);
   assert.doesNotMatch(removeMarkup, /permanently removed/);
   assert.doesNotMatch(removeMarkup, /cannot be recovered/);
   assert.doesNotMatch(removeMarkup, /Trip planning/);

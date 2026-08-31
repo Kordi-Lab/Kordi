@@ -202,7 +202,10 @@ export function applyCloudSyncEventsToMessagesByPeer(
 
     if (event.eventType === 'session.unhidden') {
       const sessionId = cloudSyncEventSessionId(event);
-      if (sessionId) hiddenSessionIds.delete(sessionId);
+      if (sessionId) {
+        hiddenSessionIds.delete(sessionId);
+        deletedSessionIds.delete(sessionId);
+      }
       continue;
     }
 
@@ -228,10 +231,6 @@ export function applyCloudSyncEventsToMessagesByPeer(
       if (!message) continue;
       const peerId = messagePeerId(accountId, message, event.peerAccountId);
       if (!peerId) continue;
-      for (const key of cloudMessageSessionKeys(accountId, message, event.peerAccountId)) {
-        hiddenSessionIds.delete(key);
-        deletedSessionIds.delete(key);
-      }
       const indexed = indexedPeerMessages(peerId);
       const existing = indexed.get(message.messageId);
       const merged = existing

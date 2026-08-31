@@ -167,6 +167,10 @@ export function useCloudCollaborationStores({
       lifecycle.visibility.setHiddenSessionIds,
     setDeletedSessionIds:
       lifecycle.visibility.setDeletedSessionIds,
+    setPinnedSessionIds:
+      lifecycle.visibility.setPinnedSessionIds,
+    setMutedSessionIds:
+      lifecycle.visibility.setMutedSessionIds,
   });
 
   return {

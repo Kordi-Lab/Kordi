@@ -49,6 +49,33 @@ test('contact and group spaces share one latest-activity order', () => {
   );
 });
 
+test('WorkspaceSidebar exposes archived chats and account-scoped row indicators', () => {
+  const active = conversation({
+    id: 'session:direct-person:active',
+    canonicalSessionId: 'session:direct-person:active',
+    name: 'Active chat',
+  });
+  const archived = conversation({
+    id: 'session:direct-person:archived',
+    canonicalSessionId: 'session:direct-person:archived',
+    name: 'Archived chat',
+  });
+  const participantSpaces = buildParticipantSpaces([active]);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations: [active],
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    archivedParticipantSpaces: buildParticipantSpaces([archived]),
+    pinnedSessionIds: new Set([active.id]),
+    mutedSessionIds: new Set([active.id]),
+    activeConvId: active.id,
+  }) as never));
+
+  assert.match(markup, /Archived chats/);
+  assert.match(markup, /aria-label="Pinned"/);
+  assert.match(markup, /aria-label="Muted"/);
+});
+
 test('WorkspaceSidebar auto-expands an active space without replacing its other sessions', () => {
   const chatConversations = [
     conversation({
