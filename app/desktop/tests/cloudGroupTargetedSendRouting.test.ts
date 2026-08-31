@@ -86,5 +86,5 @@ test('direct person chats resolve a mention of the local renamed agent', () => {
   assert.notEqual(activeStart, -1);
   assert.match(source.slice(activeStart), /resolvePreferredAgentMentionTarget\([\s\S]*activeGroupSessionIsGroup \|\| activeConvCollaborationTarget\?\.runtime === 'person'/);
   assert.ok(resolverSource.indexOf('resolveMentionedLocalAgentTarget') < resolverSource.indexOf('resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh'));
-  assert.match(resolverSource, /return localTarget \?\? \(skip \? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh/);
+  assert.match(resolverSource, /return cachedRemoteTarget \?\? localTarget \?\? \(skip \? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh/);
 });

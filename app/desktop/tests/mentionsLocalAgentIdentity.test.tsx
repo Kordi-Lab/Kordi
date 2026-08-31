@@ -35,4 +35,8 @@ test('renamed local agent mentions resolve to the immutable default Cloud agent 
   const local = await resolvePreferredAgentMentionTarget('@BabyTREE hi', { localAgent: { label: 'BabyTREE' } } as DesktopChatState, state, directPerson, [], undefined, false, true);
   assert.equal(remote?.peer.humanId, 'acct-peer');
   assert.equal(local?.peer.humanId, 'host-human-1');
+
+  state.hosts[0].visiblePeers[0].displayName = 'BabyTREE';
+  const sameNameRemote = await resolvePreferredAgentMentionTarget('@BabyTREE hi', { localAgent: { label: 'BabyTREE' } } as DesktopChatState, state, directPerson, [], undefined, false, true);
+  assert.equal(sameNameRemote?.peer.humanId, 'acct-peer');
 });

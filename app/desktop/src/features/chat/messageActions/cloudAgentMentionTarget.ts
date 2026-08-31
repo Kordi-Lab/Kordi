@@ -3,7 +3,7 @@ import { stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type { DesktopChatState, DesktopCollaborationState } from '@/kordi-app/types';
 import type { ResolvedMentionedCollaborationTarget } from './types';
-import { localAgentMentionLabels, resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh, resolveMentionedLocalAgentTarget, type MentionScopeConversation } from './mentions';
+import { localAgentMentionLabels, resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh, resolveMentionedCollaborationTarget, resolveMentionedLocalAgentTarget, type MentionScopeConversation } from './mentions';
 import { mentionTextStartsWithLabel } from './localAgentMentions';
 import { normalizeMentionLabel } from './mentionHandles';
 
@@ -17,6 +17,19 @@ export async function resolvePreferredAgentMentionTarget(
   skip: boolean,
   canResolveLocal: boolean,
 ) {
+  const activeHost = collaborationState?.hosts.find((host) => host.id === collaborationState.activeHostId)
+    ?? collaborationState?.hosts[0]
+    ?? null;
+  const cachedRemoteTarget = skip ? null : resolveMentionedCollaborationTarget(
+    text,
+    collaborationState,
+    conversation,
+    {
+      targetKind: 'agent',
+      sharedCloudAgents,
+      localAccountId: activeHost?.humanId ?? activeHost?.nodeId ?? null,
+    },
+  );
   const localCandidate = !skip && canResolveLocal
     ? resolveMentionedLocalAgentTarget(text, desktopChatState, collaborationState)
     : null;
@@ -24,7 +37,7 @@ export async function resolvePreferredAgentMentionTarget(
   const localTarget = localCandidate && localAgentMentionLabels(desktopChatState, collaborationState).some((label) => (
     normalizeMentionLabel(label) !== 'kordi' && mentionTextStartsWithLabel(afterAt, label)
   )) ? localCandidate : null;
-  return localTarget ?? (skip ? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
+  return cachedRemoteTarget ?? localTarget ?? (skip ? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
     text, collaborationState, conversation, sharedCloudAgents, refreshSharedCloudAgents,
   ));
 }

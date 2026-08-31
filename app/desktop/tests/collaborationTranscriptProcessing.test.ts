@@ -171,6 +171,27 @@ test('direct person agent mentions show the renamed local agent processing immed
   assert.equal(legacyView.messages.find((message) => message.turn)?.turn?.pendingCollaborationAgentRequest?.requestId, 'request-legacy-canonical');
 });
 
+test('remote pending agent mentions show the canonical owner and agent avatar immediately', () => {
+  const conversationId = 'bridge:cloud:acct-shu:person';
+  const host = {
+    id: 'cloud', nodeId: 'acct-other', humanId: 'acct-other', ownerName: 'Other User', agents: [],
+    visiblePeers: [{ nodeId: 'acct-shu', humanId: 'acct-shu', agentId: 'cloud-agent:acct-shu', ownerName: 'Shu Yang', displayName: 'Kordirename11', runtime: 'kordi-desktop', profileImageUrl: 'https://images.test/kordirename11.png' }],
+  } as DesktopCollaborationState['hosts'][number];
+  const state = appendOptimisticCollaborationMessage({
+    activeHostId: 'cloud', hosts: [host], conversations: [conversation({
+      id: conversationId, canonicalSessionId: 'session:direct-person:acct-other:acct-shu', hostId: 'cloud', peerNodeId: 'acct-shu', peerDisplayName: 'Shu Yang', peerOwnerName: 'Shu Yang', peerRuntime: 'person',
+      identity: { sourceHostId: 'cloud', localHumanId: 'acct-other', localHumanName: 'Other User', localAgentId: 'cloud-agent:acct-other', localAgentName: 'Kordi', localAgentNodeId: 'acct-other', remoteHumanId: 'acct-shu', remoteHumanName: 'Shu Yang', remoteHumanNodeId: 'acct-shu', remoteAgentId: 'cloud-agent:acct-shu', remoteAgentName: 'Kordirename11', remoteAgentNodeId: 'acct-shu', remoteAgentRuntime: 'kordi-desktop' },
+    })],
+  }, conversationId, '@Kordirename11 hi', '21:31', 'request-remote-agent', [], undefined, null, [{ label: 'Kordirename11', targetKind: 'agent', sourceHostId: 'cloud', nodeId: 'acct-shu', humanId: 'acct-shu', agentId: 'cloud-agent:acct-shu', displayLabel: 'Kordirename11' }]);
+  const optimisticConversation = state?.conversations[0];
+  assert.ok(optimisticConversation);
+
+  const pending = mapCollaborationConversationToViewModel(optimisticConversation, host, 'Kordi').messages.find((message) => message.turn?.status === 'processing');
+  assert.equal(pending?.role, 'external-agent');
+  assert.equal(pending?.senderOwnerName, 'Shu Yang');
+  assert.equal(pending?.senderProfileImageUrl, 'https://images.test/kordirename11.png');
+});
+
 test('Kordi Support shows contact typing without exposing the agent processing card', () => {
   const supportConversationId = `bridge:cloud:${KORDI_SUPPORT_ACCOUNT_ID}:person`;
   const state: DesktopCollaborationState = {

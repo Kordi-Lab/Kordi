@@ -276,7 +276,7 @@ test('new local sessions expose centered progress and coalesce duplicate first s
   assert.ok(delayGuardIndex >= 0 && delayGuardIndex < noProviderShortcutIndex);
   assert.ok(draftDetectionIndex >= 0 && draftDetectionIndex < mentionResolutionIndex);
   assert.match(activeSendBlock, /resolvePreferredAgentMentionTarget\([\s\S]*isTransientDraftConversation/);
-  assert.match(mentionTargetSource, /return localTarget \?\? \(skip \? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh/);
+  assert.match(mentionTargetSource, /return cachedRemoteTarget \?\? localTarget \?\? \(skip \? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh/);
   assert.ok(activeSendBlock.indexOf('setIsDesktopChatSending(true);', noProviderShortcutIndex) < activeSendBlock.indexOf('await openOrCreateCanonicalSession({', noProviderShortcutIndex));
   assert.ok(activeSendBlock.indexOf('appendOptimisticLocalDraftMessage(current') < activeSendBlock.indexOf('const resolvedSessionId = await ensureLocalSessionId()'));
   assert.doesNotMatch(activeSendBlock, /await publishCloudAgentRuntimeRouteChange\(\{/);

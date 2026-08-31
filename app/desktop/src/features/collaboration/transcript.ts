@@ -225,15 +225,22 @@ export function mapCollaborationConversationToViewModel(
     ? realAgentLabelForOwner(remoteHumanSourceLabel, remoteAgentLabel)
     : remoteAgentLabel;
   const peer = host?.visiblePeers.find((candidate) => candidate.nodeId === conversation.peerNodeId);
+  const remoteAgentPeer = host?.visiblePeers.find((candidate) => (
+    candidate.agentId
+    && (candidate.agentId === conversation.identity?.remoteAgentId || candidate.humanId === conversation.identity?.remoteHumanId)
+  ));
   const localHumanAvatarSeed = host?.humanId || conversation.identity?.localHumanId || host?.ownerName || 'local';
   const localAgentAvatarSeed = DEFAULT_LOCAL_AGENT_AVATAR_SEED;
   const remoteHumanAvatarSeed = peer?.avatarSeed || conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId;
-  const remoteAgentAvatarSeed = conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
+  const remoteAgentAvatarSeed = remoteAgentPeer?.avatarSeed || conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
   const conversationAvatarSeed = isCloudSelfAgent ? localAgentAvatarSeed : isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;
   const localHumanProfileImageUrl = collaborationProfileImageUrl(host?.profileImageUrl);
   const remoteHumanProfileImageUrl = isSupportContact
     ? KORDI_SUPPORT_AVATAR_URL
     : collaborationProfileImageUrl(peer?.profileImageUrl);
+  const remoteAgentProfileImageUrl = isSupportContact
+    ? KORDI_SUPPORT_AVATAR_URL
+    : collaborationProfileImageUrl(remoteAgentPeer?.profileImageUrl) || remoteHumanProfileImageUrl;
   const participantAvatarSeeds: Record<string, string> = {
     You: localHumanAvatarSeed,
     [localHumanLabel]: localHumanAvatarSeed,
@@ -245,6 +252,7 @@ export function mapCollaborationConversationToViewModel(
     You: localHumanProfileImageUrl,
     [localHumanLabel]: localHumanProfileImageUrl,
     [remoteHumanLabel]: remoteHumanProfileImageUrl,
+    [remoteAgentLabel]: remoteAgentProfileImageUrl,
   };
   const collaborationViewMessageId = (message: DesktopCollaborationConversationMessage) => `collaboration-message:${conversation.id}:${message.id}`;
   const requestMessageIdByRequestId = new Map<string, string>();
@@ -359,9 +367,7 @@ export function mapCollaborationConversationToViewModel(
         isOwnMessage: false,
         showSenderMeta: true,
         senderAvatarSeed: isRemoteAgentResponse ? remoteAgentAvatarSeed : localAgentAvatarSeed,
-        senderProfileImageUrl: isSupportContact && isRemoteAgentResponse
-          ? KORDI_SUPPORT_AVATAR_URL
-          : null,
+        senderProfileImageUrl: isRemoteAgentResponse ? remoteAgentProfileImageUrl : null,
         text: '',
         time: message.timeLabel,
         timestampMs: message.timestampMs,
@@ -468,10 +474,14 @@ export function mapCollaborationConversationToViewModel(
       id: `collaboration-live-turn:${conversation.id}:processing`,
       role: pendingAgentIsLocal ? 'owned-agent' : 'external-agent',
       sender: awaitingAgentOutreach ? outreachAgentLabel : pendingAgentLabel,
+      senderOwnerName: !pendingAgentIsLocal && !isSupportContact
+        ? conversation.outreach?.targetOwnerName?.trim() || remoteHumanSourceLabel
+        : null,
       senderType: 'agent',
       isOwnMessage: false,
       showSenderMeta: true,
       senderAvatarSeed: awaitingAgentOutreach ? outreachAgentAvatarSeed : pendingAgentIsLocal ? localAgentAvatarSeed : remoteAgentAvatarSeed,
+      senderProfileImageUrl: pendingAgentIsLocal ? null : remoteAgentProfileImageUrl,
       text: '',
       time: conversation.updatedAtLabel,
       timestampMs: conversation.updatedAtMs,
