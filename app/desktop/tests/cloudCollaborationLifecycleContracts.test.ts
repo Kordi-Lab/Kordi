@@ -184,7 +184,7 @@ test('Cloud unread reconciliation waits for authoritative sync', () => {
     'utf8',
   );
   const unreadStart = source.indexOf(
-    'const unreadBySessionId = cloudGroupUnreadCountsBySessionId({',
+    'patchCanonicalCloudUnreadCounts(',
   );
   assert.notEqual(
     unreadStart,
@@ -201,7 +201,7 @@ test('Cloud unread reconciliation waits for authoritative sync', () => {
 
   assert.match(
     guard,
-    /!canonicalState[\s\S]*!authoritative[\s\S]*!unreadContextKey/,
+    /!canonicalState[\s\S]*!authoritative[\s\S]*!unreadBySessionId[\s\S]*!unreadContextKey/,
     'cached messages must not persist unread badges before sync',
   );
   assert.match(

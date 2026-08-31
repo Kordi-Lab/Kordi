@@ -228,6 +228,7 @@ export function useCloudCollaborationState({
       byPeer: messagesByPeer,
       setByPeer: setMessagesByPeer,
       currentAccountByPeer: currentAccountMessagesByPeer,
+      fullCurrentAccountByPeer: fullCurrentAccountMessagesByPeer,
       belongsToCurrentAccount: messagesBelongToCurrentAccount,
       index: cloudMessageIndex,
       indexRef: cloudMessageIndexRef,
@@ -412,19 +413,17 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  useCloudCanonicalReconciliation({
+  const fullUnreadCountsBySessionId = useCloudCanonicalReconciliation({
     account,
     activeConversationId,
     canonical: {
       state: canonicalSessionState,
       setState: setCanonicalSessionState,
     },
-    messages: {
-      index: cloudMessageIndex,
-      authoritative: authoritativeMessagesReady,
-    },
+    messages: { fullByPeer: messagesBelongToCurrentAccount ? fullCurrentAccountMessagesByPeer : null, index: cloudMessageIndex, authoritative: authoritativeMessagesReady },
     unread: {
       contextKey: cloudUnreadContextKey,
+      readInboundMessageIdsByPeer,
       setPublishedContextKey:
         setPublishedCloudUnreadContextKey,
     },
@@ -570,6 +569,7 @@ export function useCloudCollaborationState({
     initialMessagesSettled,
     messageIndex: cloudMessageIndex,
     messagesByPeer: currentAccountMessagesByPeer,
+    unreadCountsBySessionId: fullUnreadCountsBySessionId,
     readInboundMessageIdsByPeer,
   });
   const sendCloudGroupControl = useCloudGroupControlSender({

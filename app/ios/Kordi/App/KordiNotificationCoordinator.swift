@@ -33,6 +33,13 @@ enum KordiNotificationAuthorizationState: String, Equatable {
     }
 }
 
+func shouldAutomaticallyRequestNotificationAuthorization(
+    accountAvailable: Bool,
+    state: KordiNotificationAuthorizationState
+) -> Bool {
+    accountAvailable && state == .notDetermined
+}
+
 enum KordiMessageNotificationPreference {
     case messages
     case sound
@@ -61,6 +68,7 @@ final class KordiNotificationCoordinator: ObservableObject {
     private weak var model: AppModel?
     private var pendingNotificationPayload: [AnyHashable: Any]?
     private var latestPushToken: String?
+    private var authorizationRequestInFlight = false
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -83,15 +91,32 @@ final class KordiNotificationCoordinator: ObservableObject {
             Task { await setBadgeCount(0) }
             return
         }
-        Task { await refreshAuthorizationState(registerIfAllowed: true) }
+        requestAuthorizationIfNeeded()
         registerCurrentPushToken()
         routePendingNotificationIfPossible()
+    }
+
+    private func requestAuthorizationIfNeeded() {
+        guard !authorizationRequestInFlight else { return }
+        authorizationRequestInFlight = true
+        Task { [weak self] in
+            guard let self else { return }
+            defer { authorizationRequestInFlight = false }
+            await refreshAuthorizationState(registerIfAllowed: true)
+            guard shouldAutomaticallyRequestNotificationAuthorization(
+                accountAvailable: model?.account != nil,
+                state: authorizationState
+            ) else { return }
+            await requestAuthorization()
+        }
     }
 
     func requestAuthorization() async {
         let center = UNUserNotificationCenter.current()
         _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
         await refreshAuthorizationState(registerIfAllowed: true)
+        synchronizeBadge()
+        registerCurrentPushToken()
     }
 
     func openSystemSettings() {
@@ -134,9 +159,7 @@ final class KordiNotificationCoordinator: ObservableObject {
 
     func synchronizeBadge() {
         let count = badgeEnabled
-            ? model?.conversations.reduce(0) { partial, conversation in
-                partial + max(0, conversation.unreadCount)
-            } ?? 0
+            ? MainTabUnreadCounts.build(conversations: model?.conversations ?? []).total
             : 0
         Task { await setBadgeCount(count) }
     }

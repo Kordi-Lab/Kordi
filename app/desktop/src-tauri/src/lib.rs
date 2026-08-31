@@ -272,6 +272,7 @@ pub fn run() {
             canonical_sessions::chat_sync::desktop_chat_sync_cursor,
             canonical_sessions::chat_sync::desktop_chat_sync_coverage,
             canonical_sessions::chat_sync::desktop_chat_sync_conversations,
+            canonical_sessions::chat_sync::unread::desktop_chat_sync_unread_counts,
             canonical_sessions::chat_sync::desktop_chat_sync_message_refs,
             canonical_sessions::chat_sync::desktop_chat_sync_messages_page,
             canonical_sessions::chat_sync::desktop_chat_sync_recovery_message_ids,
