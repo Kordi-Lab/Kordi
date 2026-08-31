@@ -351,7 +351,7 @@ test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent convers
     id: 'session:self-agent:1',
     type: 'owned-agent',
     participantSpaceId: 'space:self',
-    canonicalParticipantCount: 2,
+    canonicalParticipantCount: 4,
   }), true);
   assert.equal(shouldSuppressAgentReplyAttribution({
     id: 'session:group:1',
@@ -365,6 +365,12 @@ test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent convers
     participantSpaceId: null,
     canonicalParticipantCount: 1,
     forkedFromSessionId: 'session:group:1',
+  }), false);
+  assert.equal(shouldSuppressAgentReplyAttribution({
+    id: 'session:project:1',
+    type: 'owned-agent',
+    participantSpaceId: 'space:project',
+    canonicalParticipantCount: 4,
   }), false);
   assert.equal(shouldSuppressAgentReplyAttribution({
     id: 'session:external-agent:1',

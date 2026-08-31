@@ -336,9 +336,9 @@ export function shouldSuppressAgentReplyAttribution(
   if (!conversation || conversation.type !== 'owned-agent') return false;
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
   const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
-  if (sessionId.startsWith('session:group:') || forkParentId.startsWith('session:group:')) return false;
-  const participantCount = conversation.canonicalParticipantCount ?? conversation.canonicalParticipants?.length ?? 0;
-  return participantCount <= 2;
+  return !['session:group:', 'session:project:'].some((prefix) => (
+    sessionId.startsWith(prefix) || forkParentId.startsWith(prefix)
+  ));
 }
 
 export function buildReplyAttribution(
