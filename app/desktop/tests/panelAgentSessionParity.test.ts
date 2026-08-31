@@ -436,11 +436,19 @@ test('new local sessions expose centered progress and coalesce duplicate first s
   assert.doesNotMatch(actionsSource, /Kordi is still preparing this session/, 'session-starting should never use failure copy');
 
   const delayGuardIndex = activeSendBlock.indexOf("if (localSendDelayReason === 'session-starting')");
+  const draftDetectionIndex = activeSendBlock.indexOf('const isTransientDraftConversation');
+  const mentionResolutionIndex = activeSendBlock.indexOf('resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh');
   const noProviderShortcutIndex = activeSendBlock.indexOf('const noProviderShortcutSessionId');
   const noProviderStartingIndex = activeSendBlock.indexOf('setIsDesktopChatSending(true);', noProviderShortcutIndex);
   const noProviderCreateIndex = activeSendBlock.indexOf('await openOrCreateCanonicalSession({', noProviderShortcutIndex);
   assert.ok(delayGuardIndex >= 0 && delayGuardIndex < noProviderShortcutIndex, 'the duplicate guard should run before generating a no-provider draft session id');
+  assert.ok(draftDetectionIndex >= 0 && draftDetectionIndex < mentionResolutionIndex, 'a new local session should bypass remote mention discovery before claiming its send');
+  assert.match(activeSendBlock, /const resolvedMentionedTarget = isTransientDraftConversation\s*\? null\s*:\s*await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh/, 'a local draft should not wait for remote mention discovery');
   assert.ok(noProviderStartingIndex >= 0 && noProviderStartingIndex < noProviderCreateIndex, 'the centered starting state should appear before no-provider session creation is awaited');
+  const optimisticDraftIndex = activeSendBlock.indexOf('appendOptimisticLocalDraftMessage(current');
+  const materializeIndex = activeSendBlock.indexOf('const resolvedSessionId = await ensureLocalSessionId()');
+  assert.ok(optimisticDraftIndex >= 0 && optimisticDraftIndex < materializeIndex, 'the first message should render before native session materialization');
+  assert.doesNotMatch(activeSendBlock, /await publishCloudAgentRuntimeRouteChange\(\{/, 'Cloud route publication should not block the local first-send path');
 });
 
 test('side-panel local-agent sends use the shared local send pipeline instead of duplicating optimistic persistence', () => {

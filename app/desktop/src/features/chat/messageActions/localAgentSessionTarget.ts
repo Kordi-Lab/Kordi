@@ -1,5 +1,21 @@
-import type { CanonicalSessionState, DesktopChatState } from '@/kordi-app/types';
+import type { CanonicalSessionState, ComposerQuoteState, DesktopChatState } from '@/kordi-app/types';
 import { fetchDesktopChatState } from '@/lib/desktop';
+import type { AttachmentItem } from '../composerController.types';
+import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '../draftSessions';
+import { appendOptimisticOutboundMessage } from './optimistic';
+
+export function appendOptimisticLocalDraftMessage(
+  current: DesktopChatState | null,
+  previewText: string,
+  text: string,
+  attachments: AttachmentItem[],
+  sentAt: string,
+  quote: ComposerQuoteState | null | undefined,
+) {
+  return current
+    ? appendOptimisticOutboundMessage(current, LOCAL_DRAFT_CHAT_CONVERSATION_ID, previewText, text, attachments, sentAt, [], quote ?? null)
+    : current;
+}
 
 export function generatedSelfAgentSessionId() {
   const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto

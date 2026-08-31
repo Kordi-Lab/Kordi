@@ -71,6 +71,7 @@ import {
   terminalCollaborationSendFailure,
 } from './collaborationSendLifecycle';
 import {
+  appendOptimisticLocalDraftMessage,
   fetchMaterializedLocalChatTarget,
   generatedSelfAgentSessionId,
   shouldUseNoProviderSelfAgentShortcut,
@@ -1050,6 +1051,7 @@ export function useChatMessageActions({
       setDesktopChatError(memeValidationError);
       return;
     }
+    const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);
     const activeGroupSessionScope = {
       canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
       participantSpaceId: activeConvMentionScope?.participantSpaceId,
@@ -1058,10 +1060,10 @@ export function useChatMessageActions({
     };
     const activeGroupSessionIsGroup = isCollaborationGroupSession(activeGroupSessionScope);
     const localAgentMentioned = mentionsLocalAgent(text, desktopChatState, desktopCollaborationState);
-    const resolvedMentionedTarget = await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
-      text, desktopCollaborationState, activeConvMentionScope,
-      sharedCloudAgents, resolveSharedCloudAgentsForMention,
-    );
+    const resolvedMentionedTarget = isTransientDraftConversation ? null
+      : await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
+        text, desktopCollaborationState, activeConvMentionScope, sharedCloudAgents, resolveSharedCloudAgentsForMention,
+      );
     const mentionedTarget = resolvedMentionedTarget
       ?? (activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person'
         ? resolveMentionedLocalAgentTarget(text, desktopChatState, desktopCollaborationState)
@@ -1476,7 +1478,6 @@ export function useChatMessageActions({
       return;
     }
 
-    const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);
     let targetSessionId = localChatTargetSessionIdForActiveConversation({
       activeConvId,
       activeConvCanonicalSessionId,
@@ -1640,7 +1641,7 @@ export function useChatMessageActions({
       materializedState = await createDesktopChatSession();
       targetSessionId = materializedState.activeSessionId;
       if (runtimeRouteForSend?.model && publishCloudAgentRuntimeRouteChange) {
-        await publishCloudAgentRuntimeRouteChange({
+        void publishCloudAgentRuntimeRouteChange({
           sessionId: targetSessionId,
           model: runtimeRouteForSend.model,
           authProvider: runtimeRouteForSend.authProvider,
@@ -1650,7 +1651,7 @@ export function useChatMessageActions({
             text,
             chatComposerAttachments.length,
           ),
-        });
+        }).catch((error: unknown) => setDesktopChatError(error instanceof Error ? error.message : 'Unable to sync session model'));
       }
       setDesktopChatState(materializedState);
       setActiveConvId(targetSessionId);
@@ -1663,6 +1664,9 @@ export function useChatMessageActions({
       shouldAutoFollowChatRef.current = true;
       setIsDesktopChatSending(true);
       setDesktopChatError(null);
+      if (isTransientDraftConversation) {
+        setDesktopChatState((current) => appendOptimisticLocalDraftMessage(current, attachmentSummaryText(text, attachmentsToSend), text, attachmentsToSend, formatDesktopEventTime(), activeChatQuote));
+      }
       const resolvedSessionId = await ensureLocalSessionId();
       localChatSendInFlightRef.current = { sessionId: resolvedSessionId };
 
