@@ -14,6 +14,7 @@ import {
   resolveLockedKordiSupportAgentTarget,
 } from '../src/features/chat/messageActions/directHostedAgentTarget';
 import { shouldUseCollaborationConversationRouting } from '../src/features/chat/messageActions/chatMessages';
+import { buildParticipantSpaces, filterParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { normalizeSupportContactConversationCollection } from '../src/features/support/supportConversationPresentation';
 import type { Conversation } from '../src/kordi-app/types';
 import { KORDI_SUPPORT_AVATAR_URL } from '../src/features/support/supportIdentity';
@@ -56,6 +57,27 @@ function supportConversationWithRealOwner(): Conversation {
     },
   };
 }
+
+test('canonical participant identity keeps Kordi Support as a flat Contact row', () => {
+  const [normalized] = normalizeSupportContactConversationCollection([{
+    ...supportConversation(),
+    id: 'cloud:conversation:opaque:agent',
+    canonicalSessionId: 'session:direct-agent:opaque',
+    supportTicketEnabled: false,
+    type: 'owned-agent',
+    directness: 'Agent chat',
+    collaborationTarget: undefined,
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local' },
+      { id: 'agent:cloud_agent_kordi_support', name: 'Kordi Support', kind: 'agent', role: 'delegate', source: 'cloud' },
+    ],
+  }]);
+  const spaces = buildParticipantSpaces([normalized!]);
+
+  assert.equal(normalized?.type, 'person');
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'contact').map((space) => space.title), ['Kordi Support']);
+  assert.deepEqual(filterParticipantSpaces(spaces, '', 'agent'), []);
+});
 
 test('legacy unscoped support selection resolves to the named support session', () => {
   const conversation = supportConversation();

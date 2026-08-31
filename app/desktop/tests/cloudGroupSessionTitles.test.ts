@@ -28,12 +28,18 @@ test('reliable group preferences override legacy message-derived titles', () => 
     ['session:group:austin'],
   );
   assert.match(source, /const cloudGroupSessionTitles = useMemo\(\(\) => cloudGroupSessionTitlesForReadModel/);
-  assert.equal(reliableCloudGroupSessionActivityAtMs(new Map([
+  const activity = reliableCloudGroupSessionActivityAtMs(new Map([
     ['session:group:austin', [
-      { wire: { createdAt: '2026-08-28T07:00:00Z' } },
-      { wire: { createdAt: '2026-08-28T08:00:00Z' } },
+      { wire: { createdAt: '2026-08-28T07:00:00Z' }, envelope: { kind: 'group-message', message: { forkSnapshot: false } } },
+      { wire: { createdAt: '2026-08-28T08:00:00Z' }, envelope: { kind: 'session-title-update' } },
+      { wire: { createdAt: '2026-08-28T09:00:00Z' }, envelope: { kind: 'group-message', message: { forkSnapshot: true } } },
     ]],
-  ]) as never).get('session:group:austin'), Date.parse('2026-08-28T08:00:00Z'));
+    ['session:group:controls-only', [
+      { wire: { createdAt: '2026-08-28T10:00:00Z' }, envelope: { kind: 'group-update' } },
+    ]],
+  ]) as never);
+  assert.equal(activity.get('session:group:austin'), Date.parse('2026-08-28T07:00:00Z'));
+  assert.equal(activity.has('session:group:controls-only'), false);
 });
 
 test('reliable group titles patch placeholder canonical session shells', () => {
