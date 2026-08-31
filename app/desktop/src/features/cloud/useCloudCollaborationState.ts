@@ -16,7 +16,7 @@ import {
 import {
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';
-import { patchCanonicalCloudReactions, type IndexedCloudGroupRow } from './cloudMessageIndex';
+import { patchCanonicalCloudMessages, type IndexedCloudGroupRow } from './cloudMessageIndex';
 import { defaultCloudAgentsClient } from './cloudAgentsClient';
 import { defaultCloudMessageCache } from './cloudMessageCache';
 import {
@@ -643,7 +643,7 @@ export function useCloudCollaborationState({
       && message.toAccountId === account?.accountId
     ))
   ), [account?.accountId, cloudMessageIndex.allMessages]);
-  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => patchCanonicalCloudReactions(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById]);
+  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => patchCanonicalCloudMessages(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById]);
   return {
     cloudAgentRuntimeRouteMessages,
     cloudCollaborationState,

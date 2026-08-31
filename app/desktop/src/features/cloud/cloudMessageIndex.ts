@@ -12,7 +12,10 @@ import { parseCloudGroupControl, type CloudGroupControlEnvelope } from './cloudG
 import { compareCloudMessages } from './cloudMessageMerge';
 import { cloudMessageRevision } from './cloudMessageRevision';
 
-export { patchCanonicalCloudReactions } from './cloudReactionProjection';
+export {
+  patchCanonicalCloudMessages,
+  patchCanonicalCloudReactions,
+} from './cloudReactionProjection';
 
 export type CloudDeliveryReader = {
   accountId: string;
