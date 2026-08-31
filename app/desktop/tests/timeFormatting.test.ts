@@ -114,4 +114,5 @@ test('sessionChatActivityAtMs ignores fork snapshot/import rows for last active'
   ] as CanonicalSessionMessage[];
 
   assert.equal(sessionChatActivityAtMs(session as never, messages), realMessageAtMs);
+  assert.equal(sessionChatActivityAtMs({ ...session, lastMessageAtMs: null } as never), 0);
 });

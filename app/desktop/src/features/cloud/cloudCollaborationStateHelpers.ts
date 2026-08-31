@@ -66,6 +66,7 @@ export function reliableCloudGroupSessionActivityAtMs(
   const activity = new Map<string, number>();
   for (const [sessionId, rows] of rowsBySessionId) {
     for (const row of rows) {
+      if (row.envelope.kind !== 'group-message' || !row.envelope.message || row.envelope.message.forkSnapshot) continue;
       const createdAtMs = Date.parse(row.wire.createdAt);
       if (Number.isFinite(createdAtMs)) {
         activity.set(sessionId, Math.max(activity.get(sessionId) ?? 0, createdAtMs));
