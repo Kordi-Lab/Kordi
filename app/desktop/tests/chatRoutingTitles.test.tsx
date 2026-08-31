@@ -117,9 +117,12 @@ test('canonical read model sorts group latest by chat activity instead of metada
 
   const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[messages.length - 1]?.text ?? fallback ?? '') ?? [];
   const spaces = buildParticipantSpaces(conversations);
+  const emptyConversation = conversations.find((conversation) => conversation.canonicalSessionId === 'session:group:old-empty');
 
   assert.equal(spaces[0]?.title, 'testgroup two');
   assert.equal(spaces[0]?.sessions[0]?.canonicalSessionId, 'session:group:testgroup-two');
+  assert.equal(emptyConversation?.updatedAtLabel, '');
+  assert.equal(emptyConversation?._updatedAtMs, 0);
 });
 
 test('canonical read model names chat-created direct and group sessions from the first user message', () => {

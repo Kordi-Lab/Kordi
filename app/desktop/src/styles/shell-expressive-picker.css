@@ -174,6 +174,30 @@
   object-fit: contain;
 }
 
+.app-blob-emoji-composer[data-empty="true"]::before {
+  color: var(--utility-muted-text);
+  content: attr(data-placeholder);
+  pointer-events: none;
+}
+
+.app-blob-emoji-composer {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.app-composer-blob-emoji {
+  display: inline-block;
+  width: 1.45em;
+  height: 1.45em;
+  margin: -0.25em 0.08em;
+  vertical-align: -0.25em;
+}
+
+.app-composer-blob-emoji > :is(img, canvas) {
+  width: 100%;
+  height: 100%;
+}
+
 .app-expressive-picker-media-panel {
   display: flex;
   min-height: 0;

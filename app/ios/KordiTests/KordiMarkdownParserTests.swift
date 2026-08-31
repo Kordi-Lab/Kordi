@@ -69,6 +69,37 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
+    func testBlobEmojiComposerRenderingRoundTripsTokensAndSelection() throws {
+        let token = ":blob:blobwave:"
+        let raw = "Hi \(token) there"
+        let attributed = BlobEmojiComposerText.attributedString(
+            raw,
+            font: .preferredFont(forTextStyle: .body)
+        )
+
+        XCTAssertEqual(BlobEmojiComposerText.rawText(attributed), raw)
+        XCTAssertFalse(BlobEmojiComposerText.containsUnrenderedToken(attributed))
+        XCTAssertEqual(BlobEmojiComposerText.plainText(raw), "Hi Emoji there")
+        XCTAssertEqual(
+            BlobEmojiComposerText.plainText(":blob:not-in-the-catalog:"),
+            ":blob:not-in-the-catalog:"
+        )
+
+        let rawSelection = NSRange(
+            location: 3,
+            length: (token as NSString).length
+        )
+        let rendered = BlobEmojiComposerText.renderedSelection(
+            forRaw: rawSelection,
+            in: raw
+        )
+        XCTAssertEqual(rendered, NSRange(location: 3, length: 1))
+        XCTAssertEqual(
+            BlobEmojiComposerText.rawSelection(forRendered: rendered, in: raw),
+            rawSelection
+        )
+    }
+
     func testLongEmojiMarkdownLinkRendersOneDestinationAndCompactsItsLabel() throws {
         let url = "https://www.xiaohongshu.com/discovery/item/redacted?app_platform=ios&xsec_token=redacted&share_id=redacted"
         let markdown = "[:blob:blobwave: \(url)]\n(\(url))"

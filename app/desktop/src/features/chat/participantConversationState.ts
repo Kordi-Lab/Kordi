@@ -1,8 +1,6 @@
 import type { Conversation, Message } from '@/kordi-app/types';
 import { isMp4VideoAttachment } from './attachmentMediaGallery';
 
-const blobEmojiInlineTokenPattern = /:blob:[A-Za-z0-9_-]+:/gu;
-
 function cleanText(value?: string | null) {
   return value?.trim() ?? '';
 }
@@ -19,7 +17,7 @@ function metadataText(metadata: Record<string, unknown>, key: string) {
 }
 
 export function safePreviewText(value: string | undefined | null) {
-  const text = value?.replace(blobEmojiInlineTokenPattern, 'Emoji').trim() ?? '';
+  const text = value?.trim() ?? '';
   const rawId = text.startsWith('session:')
     || text.startsWith('bridge:')
     || text.startsWith('canonical:')

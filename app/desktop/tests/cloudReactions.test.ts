@@ -303,7 +303,7 @@ test('canonical reactions are a derived read-only workspace projection', () => {
     'utf8',
   );
   assert.doesNotMatch(reconciliation, /patchCanonicalCloudReactions/);
-  assert.match(cloudState, /cloudCanonicalReactionState = useMemo\(\(\) => patchCanonicalCloudReactions/);
+  assert.match(cloudState, /cloudCanonicalReactionState = useMemo\(\(\) => patchCanonicalCloudMessages/);
   assert.match(workspace, /canonicalSessionState: cloudCanonicalReactionState \?\? canonicalSessionState/);
 });
 

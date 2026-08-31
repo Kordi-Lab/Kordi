@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use axum::body::Body;
 use axum::extract::{Path, State};
-use axum::http::{header, HeaderName, HeaderValue, StatusCode};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
@@ -14,6 +13,10 @@ use crate::server::ServerState;
 
 use super::model::{select_update, ReleaseAsset, UpdateDecision};
 use super::store::{ReleaseCatalogStore, ReleaseStoreError};
+
+mod asset;
+
+use asset::asset_response;
 
 const DEFAULT_PUBLIC_BASE_URL: &str = "https://kordi.ai";
 const IMMUTABLE_CACHE_CONTROL: &str = "public, max-age=31536000, immutable";
@@ -325,21 +328,24 @@ async fn release_metadata(
 async fn immutable_asset_get(
     State(state): State<Arc<ServerState>>,
     Path((version, asset)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> Response {
-    immutable_asset(state, version, asset, false).await
+    immutable_asset(state, version, asset, headers, false).await
 }
 
 async fn immutable_asset_head(
     State(state): State<Arc<ServerState>>,
     Path((version, asset)): Path<(String, String)>,
+    headers: HeaderMap,
 ) -> Response {
-    immutable_asset(state, version, asset, true).await
+    immutable_asset(state, version, asset, headers, true).await
 }
 
 async fn immutable_asset(
     state: Arc<ServerState>,
     version: String,
     file_name: String,
+    headers: HeaderMap,
     head_only: bool,
 ) -> Response {
     if Version::parse(&version).is_err() || !safe_route_component(&file_name) {
@@ -354,18 +360,26 @@ async fn immutable_asset(
         Ok(None) | Err(ReleaseStoreError::NotFound) => return not_found(),
         Err(_) => return unavailable(),
     };
-    asset_response(&store, &allowed.asset, head_only, IMMUTABLE_CACHE_CONTROL).await
+    asset_response(
+        &store,
+        &allowed.asset,
+        &allowed.release.pub_date,
+        &headers,
+        head_only,
+        IMMUTABLE_CACHE_CONTROL,
+    )
+    .await
 }
 
-async fn stable_dmg_get(State(state): State<Arc<ServerState>>) -> Response {
-    stable_dmg(state, false).await
+async fn stable_dmg_get(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> Response {
+    stable_dmg(state, headers, false).await
 }
 
-async fn stable_dmg_head(State(state): State<Arc<ServerState>>) -> Response {
-    stable_dmg(state, true).await
+async fn stable_dmg_head(State(state): State<Arc<ServerState>>, headers: HeaderMap) -> Response {
+    stable_dmg(state, headers, true).await
 }
 
-async fn stable_dmg(state: Arc<ServerState>, head_only: bool) -> Response {
+async fn stable_dmg(state: Arc<ServerState>, headers: HeaderMap, head_only: bool) -> Response {
     let store = match release_store(&state) {
         Ok(store) => store,
         Err(response) => return *response,
@@ -375,53 +389,15 @@ async fn stable_dmg(state: Arc<ServerState>, head_only: bool) -> Response {
         Ok(None) | Err(ReleaseStoreError::NotFound) => return not_found(),
         Err(_) => return unavailable(),
     };
-    asset_response(&store, &catalog.release.manual, head_only, "no-store").await
-}
-
-async fn asset_response(
-    store: &ReleaseCatalogStore,
-    asset: &ReleaseAsset,
-    head_only: bool,
-    cache_control: &'static str,
-) -> Response {
-    let body = if head_only {
-        if store.verify_asset_size(asset).await.is_err() {
-            return unavailable();
-        }
-        Body::empty()
-    } else {
-        let object = match store.open_asset(asset).await {
-            Ok(object) => object,
-            Err(ReleaseStoreError::NotFound) => return not_found(),
-            Err(_) => return unavailable(),
-        };
-        Body::from_stream(object.body)
-    };
-
-    let mut response = Response::new(body);
-    *response.status_mut() = StatusCode::OK;
-    let headers = response.headers_mut();
-    let Ok(content_type) = HeaderValue::from_str(&asset.content_type) else {
-        return unavailable();
-    };
-    let Ok(content_length) = HeaderValue::from_str(&asset.size_bytes.to_string()) else {
-        return unavailable();
-    };
-    let Ok(checksum) = HeaderValue::from_str(&asset.sha256) else {
-        return unavailable();
-    };
-    let Ok(etag) = HeaderValue::from_str(&format!("\"{}\"", asset.sha256)) else {
-        return unavailable();
-    };
-    headers.insert(header::CONTENT_TYPE, content_type);
-    headers.insert(header::CONTENT_LENGTH, content_length);
-    headers.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static(cache_control),
-    );
-    headers.insert(HeaderName::from_static("x-checksum-sha256"), checksum);
-    headers.insert(header::ETAG, etag);
-    response
+    asset_response(
+        &store,
+        &catalog.release.manual,
+        &catalog.release.pub_date,
+        &headers,
+        head_only,
+        "no-store",
+    )
+    .await
 }
 
 async fn legacy_release_version(State(state): State<Arc<ServerState>>) -> Response {

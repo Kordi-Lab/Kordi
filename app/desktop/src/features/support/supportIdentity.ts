@@ -20,6 +20,7 @@ type SupportConversationIdentity = {
     remoteAgentNodeId?: string | null;
   } | null;
   canonicalParticipants?: Array<{
+    id?: string | null;
     ownerIdentityId?: string | null;
     sourceIdentityId?: string | null;
     humanId?: string | null;
@@ -78,7 +79,8 @@ export function isKordiSupportConversation(
   }
 
   return Boolean(conversation.canonicalParticipants?.some((participant) => (
-    isSupportIdentityId(participant.ownerIdentityId)
+    supportIdentityAppearsInSessionId(participant.id)
+    || isSupportIdentityId(participant.ownerIdentityId)
     || isSupportIdentityId(participant.sourceIdentityId)
     || isSupportIdentityId(participant.humanId)
     || isSupportIdentityId(participant.agentId)

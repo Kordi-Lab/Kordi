@@ -103,12 +103,12 @@ export function parseModelSelection(value: string) {
   };
 }
 
-export const CHAT_COMPOSER_TEXTAREA_SELECTOR = 'textarea[data-composer-scope="chat"]';
+export const CHAT_COMPOSER_TEXTAREA_SELECTOR = '[data-composer-scope="chat"]';
 
 export function focusComposerTextarea(selector: string) {
   window.requestAnimationFrame(() => {
-    const textarea = document.querySelector(selector) as HTMLTextAreaElement | null;
-    textarea?.focus();
+    const input = document.querySelector(selector) as HTMLElement | null;
+    input?.focus();
   });
 }
 
@@ -149,14 +149,26 @@ export function focusComposerTextareaForNativeInput(
 
 export function resizeComposerTextarea(selector: string, value?: string) {
   window.requestAnimationFrame(() => {
-    const textarea = document.querySelector(selector) as HTMLTextAreaElement | null;
-    if (!textarea) return;
-    textarea.value = value ?? '';
-    textarea.style.height = '0px';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
+    const input = document.querySelector(selector) as HTMLElement | null;
+    if (!input) return;
+    if (input.tagName === 'TEXTAREA' || 'value' in input) {
+      const textarea = input as HTMLTextAreaElement;
+      textarea.value = value ?? '';
+      textarea.style.height = '0px';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 220)}px`;
+    }
     if (typeof value === 'string') {
-      textarea.focus();
-      textarea.setSelectionRange(value.length, value.length);
+      input.focus();
+      if ('setSelectionRange' in input) {
+        (input as HTMLTextAreaElement).setSelectionRange(value.length, value.length);
+      } else {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(input);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
     }
   });
 }

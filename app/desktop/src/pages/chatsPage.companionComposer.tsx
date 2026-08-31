@@ -4,6 +4,7 @@ import { Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
+import { BlobEmojiComposerInput } from '@/features/emoji/BlobEmojiComposerInput';
 import {
   collaborationChatRoutingControlVisibility,
   type LocalCollaborationAgentRoutingOption,
@@ -84,7 +85,7 @@ export type CompanionComposerProps = {
   onDraftChange: (
     conversationId: string,
     value: string,
-    target?: HTMLTextAreaElement,
+    target?: HTMLTextAreaElement | HTMLDivElement,
   ) => void;
   onSend: (conversation: Conversation) => void;
 };
@@ -158,11 +159,10 @@ export function CompanionComposer({
                 {attachmentError}
               </p>
             ) : null}
-            <textarea
-              rows={1}
+            <BlobEmojiComposerInput
               value={draftText}
-              onPointerDown={(event) => event.stopPropagation()}
-              onChange={(event) => onDraftChange(conversation.id, event.target.value, event.target)}
+              onPointerDownCapture={(event) => event.stopPropagation()}
+              onChange={(value, target) => onDraftChange(conversation.id, value, target)}
               onPaste={(event) => {
                 const files = extractClipboardFiles(event.clipboardData);
                 if (files.length > 0) {
@@ -187,7 +187,6 @@ export function CompanionComposer({
               }}
               className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
               placeholder={paneKind === 'agent' ? 'Ask the agent…' : `Message ${conversation.name}`}
-              data-composer-scope="chat"
             />
           </div>
         </div>

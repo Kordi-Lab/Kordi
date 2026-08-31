@@ -18,6 +18,7 @@ import { useDesktopMessageAttention } from '@/features/notifications/useDesktopM
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudArtifactsForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
+import { invokeDesktop } from '@/lib/desktop';
 
 function liveTurnArtifactSignature(turn?: DesktopChatTurnSnapshot | null) {
   if (!turn) return '';
@@ -176,6 +177,13 @@ export function useKordiDesktopActivity({
     const baseTitle = import.meta.env.VITE_KORDI_WINDOW_TITLE?.trim() || 'Kordi';
     document.title = totalUnreadMessages > 0 ? `(${totalUnreadMessages}) ${baseTitle}` : baseTitle;
   }, [totalUnreadMessages]);
+
+  useEffect(() => {
+    if (!isNativeShell) return;
+    void invokeDesktop<void>('desktop_set_menu_bar_unread_count', {
+      count: totalUnreadMessages,
+    }).catch(() => undefined);
+  }, [isNativeShell, totalUnreadMessages]);
 
   useDesktopMessageAttention({
     isNativeShell,

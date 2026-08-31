@@ -963,7 +963,9 @@ struct ComposerView: View {
                 Text("Replying to \(source.senderLabel)")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(KordiTheme.signalBlue)
-                Text(source.textPreview.nonEmpty ?? attachmentCountText(source.attachmentCount))
+                BlobEmojiPreviewText(
+                    text: source.textPreview.nonEmpty ?? attachmentCountText(source.attachmentCount)
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -997,7 +999,7 @@ struct ComposerView: View {
                 Text("Edit message")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(KordiTheme.signalBlue)
-                Text(message.text)
+                BlobEmojiPreviewText(text: message.text)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -1282,6 +1284,45 @@ struct ComposerFloatingPanelSurfaceModifier: ViewModifier {
     }
 }
 
+final class BlobEmojiComposerUITextView: UITextView {
+    override func copy(_ sender: Any?) {
+        let raw = BlobEmojiComposerText.rawText(attributedText)
+        let selection = BlobEmojiComposerText.rawSelection(
+            forRendered: selectedRange,
+            in: raw
+        )
+        UIPasteboard.general.string = (raw as NSString).substring(with: NSRange(
+            location: selection.location,
+            length: selection.length
+        ))
+    }
+
+    override func cut(_ sender: Any?) {
+        copy(sender)
+        replaceSelectedText(textRange(from: selectedRange), with: "")
+    }
+
+    override func paste(_ sender: Any?) {
+        guard let value = UIPasteboard.general.string else {
+            super.paste(sender)
+            return
+        }
+        replaceSelectedText(textRange(from: selectedRange), with: value)
+    }
+
+    private func textRange(from range: NSRange) -> UITextRange? {
+        guard let start = position(from: beginningOfDocument, offset: range.location),
+              let end = position(from: start, offset: range.length) else { return nil }
+        return textRange(from: start, to: end)
+    }
+
+    private func replaceSelectedText(_ range: UITextRange?, with text: String) {
+        guard let range else { return }
+        replace(range, withText: text)
+        delegate?.textViewDidChange?(self)
+    }
+}
+
 struct ComposerTextView: UIViewRepresentable {
     let model: AppModel
     @Binding var text: String
@@ -1303,7 +1344,7 @@ struct ComposerTextView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+        let textView = BlobEmojiComposerUITextView()
         textView.delegate = context.coordinator
         textView.backgroundColor = .clear
         textView.font = .preferredFont(forTextStyle: .body)
@@ -1322,6 +1363,12 @@ struct ComposerTextView: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.parent = self
         textView.accessibilityLabel = accessibilityLabel
+        textView.accessibilityValue = BlobEmojiComposerText.plainText(text)
+        let font = UIFont.preferredFont(forTextStyle: .body)
+        let renderedFont = textView.attributedText.length > 0
+            ? textView.attributedText.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
+            : font
+        textView.font = font
         updateExclusionPaths(of: textView, height: measuredHeight)
 
         let inputView = isExpressivePickerPresented
@@ -1357,23 +1404,35 @@ struct ComposerTextView: UIViewRepresentable {
                 coordinator.finishComposition(in: textView)
             }
         }
-        if ComposerTextReconciliation.shouldApplyBindingText(
+        let editorText = BlobEmojiComposerText.rawText(textView.attributedText)
+        let needsTokenRendering = !hasMarkedText
+            && !coordinator.isComposingText
+            && BlobEmojiComposerText.containsUnrenderedToken(textView.attributedText)
+        let shouldApplyBinding = ComposerTextReconciliation.shouldApplyBindingText(
             bindingChanged: bindingChanged,
             bindingMatchesLatestEditorText: bindingMatchesLatestEditorText,
             hasMarkedText: hasMarkedText,
             isComposingText: coordinator.isComposingText
-        ), textView.text != text {
-            textView.text = text
+        )
+        if !hasMarkedText,
+           !coordinator.isComposingText,
+           (shouldApplyBinding || needsTokenRendering || renderedFont != font),
+           editorText != text || needsTokenRendering || renderedFont != font {
+            textView.attributedText = BlobEmojiComposerText.attributedString(
+                text,
+                font: font
+            )
             textView.invalidateIntrinsicContentSize()
             coordinator.latestEditorText = text
+            BlobEmojiComposerText.resetTypingAttributes(of: textView)
         }
         if !hasMarkedText,
            !coordinator.isComposingText,
-           textView.text == text {
-            let utf16Count = (textView.text as NSString).length
-            let location = min(max(selection.location, 0), utf16Count)
-            let length = min(max(selection.length, 0), utf16Count - location)
-            let selectedRange = NSRange(location: location, length: length)
+           BlobEmojiComposerText.rawText(textView.attributedText) == text {
+            let selectedRange = BlobEmojiComposerText.renderedSelection(
+                forRaw: NSRange(location: selection.location, length: selection.length),
+                in: text
+            )
             if textView.selectedRange != selectedRange {
                 textView.selectedRange = selectedRange
             }
@@ -1499,7 +1558,7 @@ struct ComposerTextView: UIViewRepresentable {
         }
 
         func textViewDidChange(_ textView: UITextView) {
-            latestEditorText = textView.text ?? ""
+            latestEditorText = BlobEmojiComposerText.rawText(textView.attributedText)
             if textView.markedTextRange != nil {
                 isComposingText = true
                 return
@@ -1518,13 +1577,19 @@ struct ComposerTextView: UIViewRepresentable {
                 finishComposition(in: textView)
                 return
             }
+            let updatedText = BlobEmojiComposerText.rawText(textView.attributedText)
+            let rawSelection = BlobEmojiComposerText.rawSelection(
+                forRendered: textView.selectedRange,
+                in: updatedText
+            )
             let updatedSelection = ComposerTextSelection(
-                location: textView.selectedRange.location,
-                length: textView.selectedRange.length
+                location: rawSelection.location,
+                length: rawSelection.length
             )
             if parent.selection != updatedSelection {
                 parent.selection = updatedSelection
             }
+            BlobEmojiComposerText.resetTypingAttributes(of: textView)
         }
 
         func finishComposition(in textView: UITextView) {
@@ -1534,11 +1599,15 @@ struct ComposerTextView: UIViewRepresentable {
         }
 
         private func commitEditorState(_ textView: UITextView) {
-            let updatedText = textView.text ?? ""
+            let updatedText = BlobEmojiComposerText.rawText(textView.attributedText)
             latestEditorText = updatedText
+            let rawSelection = BlobEmojiComposerText.rawSelection(
+                forRendered: textView.selectedRange,
+                in: updatedText
+            )
             let updatedSelection = ComposerTextSelection(
-                location: textView.selectedRange.location,
-                length: textView.selectedRange.length
+                location: rawSelection.location,
+                length: rawSelection.length
             )
             if parent.text != updatedText {
                 parent.text = updatedText

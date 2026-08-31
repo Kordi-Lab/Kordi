@@ -71,9 +71,11 @@ Signed Hosted Desktop beta releases use two different version strings:
 
 For a normal macOS beta and iOS TestFlight release from one source commit, start
 with the [standard dual-platform release runbook](development/dual-platform-release-runbook.md).
-Its joint preflight must pass for both platforms before either platform deploys,
-builds, uploads, or tags. Use this document and the platform runbooks for the
-detailed commands and recovery paths after that preflight.
+It qualifies and pins merged source, verifies or deploys the product backend,
+publishes macOS to `kordi.ai` and GitHub, then archives and uploads iOS. Feature
+tests and simulator acceptance belong to the implementation PRs; the standard
+release operation does not create a simulator. Use this document and the
+platform runbooks for detailed commands and recovery paths.
 
 Ad-hoc releases are explicit, per-release exceptions to the signed production
 procedure. The beta.6 acceptance-only procedure below is retained as a
@@ -155,7 +157,7 @@ Before publishing built artifacts, omit `--source-only` and pass the exact `Kord
 
 ### Private updater storage and publisher
 
-Desktop updater artifacts live in the private MinIO bucket `kordi-releases`. Clients never connect to MinIO directly; all immutable manifests and downloads use `https://kordi.ai`. The Cloud server uses the read-only `kordi-release-reader` identity. Release operators use a separate publisher identity that can create/read release objects but cannot delete objects or administer buckets and policies. Cleanup and rollback conditionally PUT a strict unpublished tombstone instead of deleting a pointer; out-of-band pointer deletion is forbidden.
+Desktop updater artifacts live in the private MinIO bucket `kordi-releases`. Clients never connect to MinIO directly; all immutable manifests and downloads use `https://kordi.ai`. Versioned release paths traverse Cloud CDN to a firewall-restricted Caddy origin, then the Cloud server streams only the requested bytes from MinIO. The mutable stable-DMG alias remains `no-store`. The Cloud server uses the read-only `kordi-release-reader` identity. Release operators use a separate publisher identity that can create/read release objects but cannot delete objects or administer buckets and policies. Cleanup and rollback conditionally PUT a strict unpublished tombstone instead of deleting a pointer; out-of-band pointer deletion is forbidden.
 
 Provision or reconcile these identities from a trusted operator machine:
 
@@ -174,7 +176,7 @@ Kordi.app.tar.gz
 Kordi.app.tar.gz.sig
 ```
 
-Pass the corresponding `Kordi.app` bundle separately. By default, the publisher uses the production profile and checks the clean commit, all version sources, app/archive/DMG contents, updater signature, Developer ID signature, Gatekeeper assessment, privacy patterns, and the `kordi.ai` product origin. A live publication verifies the exact bytes, checksums, updater manifest, stable DMG, and safe legacy metadata through `kordi.ai`; failure prevents promotion or restores the prior channel pointer. A dry run performs every local check and writes `release.json`, `checksums.sha256`, and the channel pointer without contacting storage:
+Pass the corresponding `Kordi.app` bundle separately. By default, the publisher uses the production profile and checks the clean commit, all version sources, app/archive/DMG contents, updater signature, Developer ID signature, Gatekeeper assessment, privacy patterns, and the `kordi.ai` product origin. A live publication verifies exact GET, HEAD, and bounded-range bytes; content type, length, checksum, ETag, cache policy, and range headers; the CDN cache-status marker; updater metadata; stable DMG; and safe legacy metadata through `kordi.ai`. Failure prevents promotion or restores and re-verifies the prior channel pointer. A dry run performs every local check and writes `release.json`, `checksums.sha256`, and the channel pointer without contacting storage:
 
 ```bash
 RELEASE_COMMIT="$(git rev-parse HEAD)"
@@ -565,7 +567,7 @@ strings "$DMG" | rg -F 'https://kordi.ai'
 3. Copy the updater archive, change one byte, and verify the Tauri signature check rejects the copy while the installed app remains runnable. Never upload the tampered copy.
 4. On a separate installation of the prior production beta, use the update confirmation to open the product-domain manual DMG. Verify the old app never starts its native installer, then drag the new version to Applications once and confirm login, Keychain, canonical sessions, caches, and preferences remain intact.
 5. After all acceptance clients have migrated, mark the acceptance channel unpublished with its strict compare-and-swap tombstone and verify HTTP 204 for a client on the prior acceptance version while retaining immutable objects. Do not clear acceptance while beta.6 preview testers still need beta.7.
-6. Publish the same immutable signed release to `--channel beta`. The publisher must pass the complete `https://kordi.ai` endpoint matrix: supported older clients receive the same signed manifest, current/newer/unsupported clients receive 204, and anonymous DMG GET/HEAD plus updater archive GET/HEAD match the recorded sizes and SHA-256 values.
+6. Publish the same immutable signed release to `--channel beta`. The publisher must pass the complete `https://kordi.ai` endpoint matrix: supported older clients receive the same signed manifest; current/newer/unsupported clients receive 204; and anonymous DMG and updater-archive GET, HEAD, and range responses match the recorded types, sizes, validators, cache policies, bytes, and SHA-256 values through the CDN path.
 7. Exercise rollback with an explicit expected-current-version guard. The command replaces the beta pointer with an unpublished tombstone only if its ETag and version still match, verifies updater 204, stable-DMG 404, and safe legacy metadata through the product origin, and restores/re-verifies the release if those checks fail. Then promote the release again and repeat the endpoint matrix:
 
    ```bash
@@ -576,24 +578,38 @@ strings "$DMG" | rg -F 'https://kordi.ai'
 
 8. Only after promotion passes, create the annotated `V0.0.1.betaN` tag at `RELEASE_COMMIT`, push it, and create the GitHub prerelease mirror. Include the merge commit, artifact hashes/sizes, deployed image tag, backup identifier, schema/health results, endpoint matrix, acceptance evidence, and rollback pointer digest.
 
+From two external regions, including the operator route, record cold and warm
+full-download `time_total`, `speed_download`, response size, SHA-256, and
+`X-Kordi-CDN-Cache` for both immutable assets. Also record a 1 MiB range probe.
+The operator-route warm download for an approximately 25 MB updater archive
+must complete in under 30 seconds and materially exceed the prior 183 KB/s
+baseline. Keep credentials, host identifiers, and unredacted logs out of the
+release record.
+
 ## Validation before release
 
-For a coordinated macOS and iOS release, complete the
-[joint preflight](development/dual-platform-release-runbook.md#phase-1-joint-preflight-before-expensive-work)
-before running this desktop baseline. Do not publish the desktop candidate and
-then discover an iOS source, test, team, capability, or build-number failure.
+For a coordinated macOS and iOS release, complete the release-preparation and
+[candidate preflight](development/dual-platform-release-runbook.md#phase-1-pin-and-preflight-the-merged-candidate)
+before running this desktop baseline. The preparation PR must already contain
+the required test evidence and reviewed iOS version/capability metadata. The
+standard operator sequence publishes macOS and its GitHub mirror before iOS
+archive/upload.
 
-Recommended baseline:
+Required source-only baseline:
 
 ```bash
-pnpm check
 pnpm --dir app/desktop exec node --test tests/releaseVersion.test.mjs
 pnpm --dir app/desktop release:secret-guard
-pnpm --dir app/desktop tauri:build:cloud:dmg
-pnpm build:registry
+pnpm --dir app/desktop release:prerequisites -- \
+  --source-only \
+  --expected-commit "$(git rev-parse HEAD)"
 ```
 
-Add focused tests for recently changed release surfaces, and always scan the final DMG before upload.
+Use the focused and full-suite evidence already attached to the merged
+implementation/release PRs. Do not rerun `pnpm check`, simulator suites,
+standalone registry builds, or unrelated product builds during standard release
+operation. The macOS phase runs its one production build and always scans the
+final DMG before upload.
 
 When the release contains call changes or follows a call-service deployment,
 the installed candidate must also pass the [call hosting readiness

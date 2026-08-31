@@ -132,7 +132,7 @@ export async function createS3ReleaseStore({ env = process.env, client: injected
 
 export function createPublicHttpAdapter({ fetchImpl = globalThis.fetch } = {}) {
   if (typeof fetchImpl !== 'function') throw new Error('A Fetch implementation is required');
-  async function request(url, method) {
+  async function request(url, method, requestHeaders = {}) {
     const parsed = new URL(url);
     if (parsed.origin !== PRODUCT_ORIGIN) {
       throw new Error(`Public verification URL must use ${PRODUCT_ORIGIN}`);
@@ -141,7 +141,10 @@ export function createPublicHttpAdapter({ fetchImpl = globalThis.fetch } = {}) {
       method,
       redirect: 'error',
       cache: 'no-store',
-      headers: { Accept: method === 'GET' ? 'application/json, application/octet-stream;q=0.9, */*;q=0.1' : '*/*' },
+      headers: {
+        Accept: method === 'GET' ? 'application/json, application/octet-stream;q=0.9, */*;q=0.1' : '*/*',
+        ...requestHeaders,
+      },
     });
     return {
       status: response.status,
@@ -151,7 +154,9 @@ export function createPublicHttpAdapter({ fetchImpl = globalThis.fetch } = {}) {
   }
   return {
     head(url) { return request(url, 'HEAD'); },
-    get(url) { return request(url, 'GET'); },
+    get(url, options = {}) {
+      return request(url, 'GET', options.range ? { Range: options.range } : {});
+    },
   };
 }
 

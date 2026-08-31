@@ -18,7 +18,7 @@ struct GroupSpaceRow: View {
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     .layoutPriority(1)
 
-                Text(space.lastMessage)
+                BlobEmojiPreviewText(text: space.lastMessage)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
@@ -85,7 +85,7 @@ struct GroupSessionRow: View {
                     .font(.body.weight(.semibold))
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
-                Text(session.lastMessage.nonEmpty ?? "No messages yet")
+                BlobEmojiPreviewText(text: session.lastMessage.nonEmpty ?? "No messages yet")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)

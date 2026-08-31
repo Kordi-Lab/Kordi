@@ -134,7 +134,7 @@ export type ChatsPageComposer = {
   chatComposerText: string;
   updateChatComposerDraft: (
     value: string,
-    target: HTMLTextAreaElement,
+    target: HTMLTextAreaElement | HTMLDivElement,
   ) => void;
   setChatComposerText: (value: string) => void;
   setChatComposerTextForSession: (sessionId: string, value: string) => void;

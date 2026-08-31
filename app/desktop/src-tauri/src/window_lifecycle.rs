@@ -34,6 +34,9 @@ pub(crate) fn show_and_focus_main_window<R: tauri::Runtime>(app: &tauri::AppHand
         if let Err(err) = window.show() {
             eprintln!("[kordi] Unable to show main window: {err}");
         }
+        if let Err(err) = window.unminimize() {
+            eprintln!("[kordi] Unable to unminimize main window: {err}");
+        }
         if let Err(err) = window.set_focus() {
             eprintln!("[kordi] Unable to focus main window: {err}");
         }

@@ -157,7 +157,9 @@ pub(super) fn message_preview(
     image_attachment_count: usize,
 ) -> (String, String) {
     let text = match message_notification_content(message) {
-        MessageNotificationContent::Visible(text) => text.map(|text| truncate_preview(&text)),
+        MessageNotificationContent::Visible(text) => {
+            text.map(|text| truncate_preview(&crate::blob_emoji::plain_text(&text)))
+        }
         MessageNotificationContent::Hidden => None,
     };
     if let Some(text) = text {

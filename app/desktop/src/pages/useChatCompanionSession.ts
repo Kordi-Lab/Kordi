@@ -206,14 +206,14 @@ export function useChatCompanionSession({
   const updateDraft = (
     conversationId: string,
     value: string,
-    target?: HTMLTextAreaElement,
+    target?: HTMLTextAreaElement | HTMLDivElement,
   ) => {
     updateState((current) => ({
       ...current,
       drafts: { ...current.drafts, [conversationId]: value },
     }));
     setComposerTextForSession(conversationId, value);
-    if (!target) return;
+    if (!target || target.tagName !== 'TEXTAREA') return;
     target.style.height = '0px';
     target.style.height = `${Math.min(target.scrollHeight, 160)}px`;
   };

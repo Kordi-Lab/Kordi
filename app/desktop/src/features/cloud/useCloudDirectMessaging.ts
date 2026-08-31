@@ -31,6 +31,12 @@ import {
 import {
   cloudMessageMetadataOnly,
 } from './cloudMessageCache';
+import {
+  deleteCloudMessageOptimistically,
+  editCloudMessageOptimistically,
+  rollbackCloudMessageDelete,
+  rollbackCloudMessageEdit,
+} from './cloudMessageMutations';
 import { upsertCloudMessage } from './cloudMessageMerge';
 import {
   cloudReactionMutationTargets,
@@ -93,44 +99,71 @@ export function useCloudDirectMessaging({
     expectedVersion: number;
     text: string;
   }) => {
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    const message = await client.editMessage(
-      session.token,
-      input.conversationId,
-      input.messageId,
-      input.expectedVersion,
-      input.text,
-    );
-    mergeMessage(message);
-    void syncDiff().catch(() => undefined);
-    return message;
-  }, [client, mergeMessage, syncDiff]);
+    const accountId = account?.accountId ?? null;
+    const sessionPromise = loadSession();
+    const previous = messagesByPeerRef.current;
+    const optimisticEditedAt = new Date().toISOString();
+    flushSync(() => {
+      setMessagesByPeer(editCloudMessageOptimistically(
+        previous,
+        input,
+        optimisticEditedAt,
+      ));
+    });
+    try {
+      const session = await sessionPromise;
+      if (!session?.token) throw new Error('Not signed in.');
+      const message = await client.editMessage(
+        session.token,
+        input.conversationId,
+        input.messageId,
+        input.expectedVersion,
+        input.text,
+      );
+      if (accountIdRef.current === accountId) mergeMessage(message);
+      void syncDiff().catch(() => undefined);
+      return message;
+    } catch (error) {
+      if (accountIdRef.current === accountId) {
+        setMessagesByPeer((current) => rollbackCloudMessageEdit(
+          current,
+          previous,
+          input,
+          optimisticEditedAt,
+        ));
+      }
+      throw error;
+    }
+  }, [account?.accountId, client, mergeMessage, messagesByPeerRef, setMessagesByPeer, syncDiff]);
 
   const deleteMessage = useCallback(async (input: {
     conversationId: string;
     messageId: string;
     forEveryone: boolean;
   }) => {
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    await client.deleteMessage(
-      session.token,
-      input.conversationId,
-      input.messageId,
-      input.forEveryone,
-    );
-    setMessagesByPeer((current) => {
-      let changed = false;
-      const next = Object.fromEntries(Object.entries(current).map(([peerId, messages]) => {
-        const filtered = messages.filter((message) => message.messageId !== input.messageId);
-        changed ||= filtered.length !== messages.length;
-        return [peerId, filtered];
-      }));
-      return changed ? next : current;
+    const accountId = account?.accountId ?? null;
+    const sessionPromise = loadSession();
+    const previous = messagesByPeerRef.current;
+    flushSync(() => {
+      setMessagesByPeer(deleteCloudMessageOptimistically(previous, input));
     });
-    void syncDiff().catch(() => undefined);
-  }, [client, setMessagesByPeer, syncDiff]);
+    try {
+      const session = await sessionPromise;
+      if (!session?.token) throw new Error('Not signed in.');
+      await client.deleteMessage(
+        session.token,
+        input.conversationId,
+        input.messageId,
+        input.forEveryone,
+      );
+      void syncDiff().catch(() => undefined);
+    } catch (error) {
+      if (accountIdRef.current === accountId) {
+        setMessagesByPeer((current) => rollbackCloudMessageDelete(current, previous, input));
+      }
+      throw error;
+    }
+  }, [account?.accountId, client, messagesByPeerRef, setMessagesByPeer, syncDiff]);
 
   const prepareForwardAttachments = useCallback(async (
     attachments: MessageAttachment[],
