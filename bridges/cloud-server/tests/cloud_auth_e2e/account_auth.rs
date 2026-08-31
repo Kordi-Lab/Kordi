@@ -172,6 +172,25 @@ async fn default_agent_name_persists_in_the_account_profile() {
         format!("cloud-agent:{account_id}")
     );
     assert_eq!(updated["defaultAgent"]["displayName"], "BabyTREE");
+    let marker = kordi_cloud_server::avatars::parse_generated_avatar_marker(
+        updated["defaultAgent"]["avatarUrl"].as_str().unwrap(),
+    )
+    .unwrap();
+    let avatar = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!(
+                    "/v1/avatars/{}/{}/{}.png?v={}",
+                    marker.renderer_version, marker.style, marker.seed, marker.version,
+                ))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(avatar.status(), StatusCode::OK);
 
     let current = read_json(
         router

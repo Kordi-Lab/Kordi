@@ -46,7 +46,8 @@ fn fast_router(state: Arc<ServerState>) -> axum::Router {
         per_email_failure_limit: 5,
         per_email_lockout: Duration::from_secs(900),
     });
-    routes_with_config(state, PasswordHasherConfig::for_tests(), limiter)
+    routes_with_config(state.clone(), PasswordHasherConfig::for_tests(), limiter)
+        .merge(kordi_cloud_server::avatars::routes(state))
 }
 
 fn unique_email(prefix: &str) -> String {
