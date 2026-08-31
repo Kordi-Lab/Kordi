@@ -10,14 +10,96 @@ import {
   type PointerEventHandler,
 } from 'react';
 
+import {
+  loadRemoteImageThroughNativeProxy,
+  shouldLoadRemoteImageThroughNativeProxy,
+} from '@/kordi-app/components/remoteAvatarImage';
 import { cn } from '@/lib/utils';
-import { BlobEmojiImage } from './BlobEmojiImage';
-import { blobEmojiTextParts } from './blobEmoji';
+import {
+  blobEmojiAssetUrl,
+  blobEmojiTextParts,
+  type BlobEmoji,
+} from './blobEmoji';
 import {
   blobEmojiComposerValue,
   blobEmojiTokenFor,
 } from './blobEmojiComposerDom';
 import type { EmojiTextSelection } from './emojiText';
+
+function setBlobEmojiSource(
+  media: HTMLImageElement | HTMLCanvasElement,
+  source: string,
+) {
+  if (media.tagName === 'IMG') {
+    (media as HTMLImageElement).src = source;
+    return;
+  }
+  const canvas = media as HTMLCanvasElement;
+  const image = new Image();
+  image.onload = () => {
+    if (!canvas.isConnected) return;
+    canvas.width = image.naturalWidth || 128;
+    canvas.height = image.naturalHeight || 128;
+    canvas.getContext('2d')?.drawImage(image, 0, 0);
+  };
+  image.src = source;
+}
+
+function blobEmojiComposerNode(emoji: BlobEmoji, token: string) {
+  const wrapper = document.createElement('span');
+  wrapper.contentEditable = 'false';
+  wrapper.dataset.blobEmojiToken = token;
+  wrapper.className = 'app-composer-blob-emoji';
+
+  const reduceMotion = emoji.animated
+    && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const media = reduceMotion
+    ? document.createElement('canvas')
+    : document.createElement('img');
+  media.className = 'object-contain';
+  media.setAttribute('role', 'img');
+  media.setAttribute('aria-label', emoji.id);
+  if (media.tagName === 'IMG') {
+    const image = media as HTMLImageElement;
+    image.alt = emoji.id;
+    image.decoding = 'async';
+    image.draggable = false;
+  }
+  wrapper.append(media);
+
+  const remoteUrl = blobEmojiAssetUrl(emoji);
+  if (shouldLoadRemoteImageThroughNativeProxy(remoteUrl, undefined, true)) {
+    void loadRemoteImageThroughNativeProxy(remoteUrl, {
+      command: 'desktop_fetch_blob_emoji_data_url',
+      expectedSha256: emoji.sha256,
+    }).then((source) => {
+      if (wrapper.isConnected) setBlobEmojiSource(media, source);
+    }).catch(() => {
+      if (wrapper.isConnected) setBlobEmojiSource(media, remoteUrl);
+    });
+  } else {
+    setBlobEmojiSource(media, remoteUrl);
+  }
+  return wrapper;
+}
+
+function renderComposerValue(root: HTMLElement, value: string) {
+  const fragment = document.createDocumentFragment();
+  for (const part of blobEmojiTextParts(value)) {
+    fragment.append(part.type === 'emoji'
+      ? blobEmojiComposerNode(part.emoji, part.token)
+      : document.createTextNode(part.value));
+  }
+  root.replaceChildren(fragment);
+}
+
+function renderedBlobEmojiCount(root: HTMLElement) {
+  return root.querySelectorAll('[data-blob-emoji-token]').length;
+}
+
+function expectedBlobEmojiCount(value: string) {
+  return blobEmojiTextParts(value).filter((part) => part.type === 'emoji').length;
+}
 
 function logicalLength(node: Node): number {
   const token = blobEmojiTokenFor(node);
@@ -177,7 +259,14 @@ export const BlobEmojiComposerInput = forwardRef<BlobEmojiComposerInputHandle, P
     useLayoutEffect(() => {
       const root = rootRef.current;
       const nextSelection = pendingSelection.current;
-      if (!root || !nextSelection) return;
+      if (!root) return;
+      if (
+        blobEmojiComposerValue(root) !== value
+        || renderedBlobEmojiCount(root) !== expectedBlobEmojiCount(value)
+      ) {
+        renderComposerValue(root, value);
+      }
+      if (!nextSelection) return;
       pendingSelection.current = null;
       restoreSelection(root, nextSelection);
     }, [value]);
@@ -198,7 +287,6 @@ export const BlobEmojiComposerInput = forwardRef<BlobEmojiComposerInputHandle, P
         aria-busy={ariaBusy || undefined}
         aria-describedby={ariaDescribedBy}
         contentEditable={!readOnly}
-        suppressContentEditableWarning
         spellCheck
         data-composer-scope="chat"
         data-empty={value.length === 0 ? 'true' : undefined}
@@ -247,22 +335,7 @@ export const BlobEmojiComposerInput = forwardRef<BlobEmojiComposerInputHandle, P
           replaceSelection(event.currentTarget, event.clipboardData.getData('text/plain'));
           commit(event.currentTarget);
         }}
-      >
-        <span key={value} data-composer-content="true">
-          {blobEmojiTextParts(value).map((part, index) => (
-            part.type === 'emoji' ? (
-              <span
-                key={`${part.emoji.id}-${index}`}
-                contentEditable={false}
-                data-blob-emoji-token={part.token}
-                className="app-composer-blob-emoji"
-              >
-                <BlobEmojiImage emoji={part.emoji} />
-              </span>
-            ) : part.value
-          ))}
-        </span>
-      </div>
+      />
     );
   },
 );

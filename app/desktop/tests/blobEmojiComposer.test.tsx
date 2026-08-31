@@ -62,9 +62,8 @@ test('typing or pasting a known token rehydrates it as an inline image', async (
   try {
     await act(async () => root.render(<Harness />));
     const editor = host.querySelector('[contenteditable="true"]') as HTMLDivElement;
-    const content = editor.querySelector('[data-composer-content]') as HTMLSpanElement;
     await act(async () => {
-      content.textContent = 'Hi :blob:blobwave:';
+      editor.textContent = 'Hi :blob:blobwave:';
       editor.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     });
 
