@@ -1,6 +1,5 @@
 import SwiftUI
 import QuickLook
-import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
 
@@ -58,17 +57,16 @@ struct ConversationView: View {
     @State private var shouldFollowLatestAfterInputSurfaceChange = false
     @State private var showFileImporter = false
     @State private var showPhotoPicker = false
-    @State private var showMemePhotoPicker = false
     @State private var showCamera = false
     @State private var videoReview: PendingAttachment?
     @State private var queuedVideoReviews: [PendingAttachment] = []
-    @State private var selectedPhotos: [PhotosPickerItem] = []
-    @State private var selectedPhotoSubtype: ChatAttachmentSubtype?
     @State private var isPreparingAttachments = false
     @State private var voiceRecorder = VoiceMessageRecorder()
     @State private var voiceGestureIntent = VoiceRecordingGestureIntent.hold
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
+    @State private var videoPreview: VideoPreviewPresentation?
+    @State private var fullScreenVideoAttachmentID: String?
     @State private var shareItem: SharedFileItem?
     @State private var messageShareItem: SharedMessageItem?
     @State private var showSessionDetails = false
@@ -82,6 +80,12 @@ struct ConversationView: View {
     @State private var forwardRequest: MessageForwardRequest?
     @State private var detailsMessage: ChatMessage?
     @State private var pinTarget: ChatMessage?
+    @State private var editTarget: ChatMessage?
+    @State private var draftBeforeEditing = ""
+    @State private var isEditingMessage = false
+    @State private var deleteTarget: ChatMessage?
+    @State private var isDeletingMessage = false
+    @State private var messageMutationError: String?
     @State private var messageActionMessage: ChatMessage?
     @State private var messageActionFrame = CGRect.zero
     @State private var messageActionAttachment: ChatAttachment?
@@ -305,6 +309,9 @@ struct ConversationView: View {
                                                         automaticallyPresentsActions: ProcessInfo.processInfo.arguments.contains("--preview-message-actions")
                                                             && message.id == previewActionMessageID,
                                                         backgroundSessions: backgroundSessions,
+                                                        fullScreenVideoAttachmentID: message.attachments.contains {
+                                                            $0.id == fullScreenVideoAttachmentID
+                                                        } ? fullScreenVideoAttachmentID : nil,
                                                         onOpenAuthorProfile: {
                                                             authorProfileConversation = ConversationAuthorProfileResolver.destination(
                                                                 currentConversation: conversation,
@@ -358,6 +365,22 @@ struct ConversationView: View {
                                                         },
                                                         onPrepareAttachmentPreview: { attachment in
                                                             await model.prepareAttachmentPreviewImage(attachment)
+                                                        },
+                                                        onOpenVideo: { attachment, player, poster in
+                                                            let presentation = VideoPreviewPresentation(
+                                                                attachment: attachment,
+                                                                inlinePlayer: player,
+                                                                poster: poster
+                                                            )
+                                                            player.pause()
+                                                            fullScreenVideoAttachmentID = attachment.id
+                                                            Task { @MainActor in
+                                                                await Task.yield()
+                                                                guard fullScreenVideoAttachmentID == attachment.id else {
+                                                                    return
+                                                                }
+                                                                videoPreview = presentation
+                                                            }
                                                         },
                                                         onAddAttachmentToMediaLibrary: { attachment in
                                                             await model.addAttachmentToExpressiveMediaLibrary(attachment)
@@ -515,6 +538,7 @@ struct ConversationView: View {
                             attachments: $attachments,
                             photoGrouping: $photoGrouping,
                             replySource: $replySource,
+                            editingMessage: editTarget,
                             selectedMention: $selectedMention,
                             isFocused: $isComposerFocused,
                             isExpressivePickerPresented: Binding(
@@ -540,7 +564,7 @@ struct ConversationView: View {
                             voiceGestureIntent: $voiceGestureIntent,
                             conversation: conversation,
                             mentionTargets: mentionTargets,
-                            isSending: isSending,
+                            isSending: isSending || isEditingMessage,
                             isPreparingAttachments: isPreparingAttachments,
                             voiceRecorder: voiceRecorder,
                             destinationName: conversation.displayName,
@@ -548,17 +572,19 @@ struct ConversationView: View {
                             onTakePhoto: { showCamera = true },
                             onChoosePhotos: {
                                 guard canPresentPhotoPicker() else { return }
-                                selectedPhotoSubtype = nil
                                 showPhotoPicker = true
-                            },
-                            onChooseMeme: {
-                                selectedPhotoSubtype = .meme
-                                showMemePhotoPicker = true
                             },
                             onChooseFiles: { showFileImporter = true },
                             onSendExpressiveMedia: sendExpressiveMedia,
-                            onSend: { Task { await send() } },
-                            onSendVoice: { Task { await sendVoiceMessage() } }
+                            onSend: {
+                                if let editTarget {
+                                    saveMessageEdit(editTarget)
+                                } else {
+                                    Task { await send() }
+                                }
+                            },
+                            onSendVoice: { Task { await sendVoiceMessage() } },
+                            onCancelEdit: cancelMessageEdit
                         )
                     }
                 } else {
@@ -774,6 +800,20 @@ struct ConversationView: View {
                let message = messages.last(where: { ($0.readByCount ?? 0) > 0 }) {
                 detailsMessage = message
             }
+            if ProcessInfo.processInfo.arguments.contains("--preview-message-edit"),
+               editTarget == nil,
+               let message = messages.last(where: {
+                   $0.author == .me && $0.cloudMessageVersion != nil
+               }) {
+                beginMessageEdit(message)
+            }
+            if ProcessInfo.processInfo.arguments.contains("--preview-message-delete"),
+               deleteTarget == nil,
+               let message = messages.last(where: {
+                   $0.author == .me && $0.reactionTargetMessageId != nil
+               }) {
+                deleteTarget = message
+            }
             if ProcessInfo.processInfo.arguments.contains("--preview-media"),
                mediaPreview == nil,
                let message = messages.first(where: { message in
@@ -813,6 +853,8 @@ struct ConversationView: View {
             queuedVideoReviews.forEach { $0.discardOwnedFile() }
             videoReview = nil
             queuedVideoReviews = []
+            videoPreview = nil
+            fullScreenVideoAttachmentID = nil
             synchronizeReadPresentation()
         }
         .fileImporter(
@@ -821,17 +863,6 @@ struct ConversationView: View {
             allowsMultipleSelection: true,
             onCompletion: importFiles
         )
-        .photosPicker(
-            isPresented: $showMemePhotoPicker,
-            selection: $selectedPhotos,
-            maxSelectionCount: max(1, PendingAttachmentLoader.maximumAttachmentCount - attachments.count),
-            selectionBehavior: .ordered,
-            matching: .images
-        )
-        .onChange(of: selectedPhotos) { _, items in
-            guard !items.isEmpty else { return }
-            importPhotos(items)
-        }
         .fullScreenCover(isPresented: $showPhotoPicker) {
             PhotoLibrarySendPicker(
                 allowsSeparateMessages: conversation.kind != .agent,
@@ -863,6 +894,15 @@ struct ConversationView: View {
         .quickLookPreview($previewURL)
         .fullScreenCover(item: $mediaPreview) { presentation in
             MediaPreviewView(presentation: presentation)
+        }
+        .fullScreenCover(item: $videoPreview, onDismiss: {
+            fullScreenVideoAttachmentID = nil
+        }) { presentation in
+            FullScreenMessageVideo(
+                player: presentation.player,
+                name: presentation.attachment.name,
+                poster: presentation.poster
+            )
         }
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.url])
@@ -896,6 +936,41 @@ struct ConversationView: View {
                     in: conversation
                 )
             )
+        }
+        .alert(
+            "Delete this message?",
+            isPresented: Binding(
+                get: { deleteTarget != nil },
+                set: { if !$0 { deleteTarget = nil } }
+            ),
+            presenting: deleteTarget
+        ) { message in
+            Button("Delete for me", role: .destructive) {
+                deleteMessage(message, forEveryone: false)
+            }
+            if message.author == .me {
+                Button("Delete for everyone", role: .destructive) {
+                    deleteMessage(message, forEveryone: true)
+                }
+            }
+            Button("Cancel", role: .cancel) { deleteTarget = nil }
+        } message: { message in
+            if message.author == .me {
+                Text("Delete only for you, or remove it for everyone in the conversation.")
+            } else {
+                Text("This removes the message only for you.")
+            }
+        }
+        .alert(
+            "Message action failed",
+            isPresented: Binding(
+                get: { messageMutationError != nil },
+                set: { if !$0 { messageMutationError = nil } }
+            )
+        ) {
+            Button("OK") { messageMutationError = nil }
+        } message: {
+            Text(messageMutationError ?? "Please try again.")
         }
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
@@ -936,6 +1011,17 @@ struct ConversationView: View {
                     for: message,
                     isPreviewMode: model.isPreviewMode
                 ),
+                allowsEdit: message.author == .me
+                    && !message.isSystemNotice
+                    && !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && !["voice", "sticker", "call"].contains(message.messageKind?.lowercased() ?? "")
+                    && message.cloudMessageVersion != nil
+                    && message.reactionTargetMessageId?.nonEmpty != nil,
+                allowsDelete: message.author != .agent
+                    && !message.isSystemNotice
+                    && message.deliveryState != .sending
+                    && message.deliveryState != .failed
+                    && message.reactionTargetMessageId?.nonEmpty != nil,
                 isPinned: pinnedMessageIDs.contains(message.id),
                 mediaAttachment: messageActionAttachment,
                 readReceiptLabel: MessageReadReceiptPresentation.label(
@@ -993,6 +1079,14 @@ struct ConversationView: View {
                         sourceConversation: conversation,
                         messages: [message]
                     )
+                    dismissMessageActions()
+                },
+                onEdit: {
+                    beginMessageEdit(message)
+                    dismissMessageActions()
+                },
+                onDelete: {
+                    deleteTarget = message
                     dismissMessageActions()
                 },
                 onSaveSticker: { attachment in
@@ -1142,6 +1236,63 @@ struct ConversationView: View {
     private func pinMessage(_ target: ChatMessage, shared: Bool) {
         pinTarget = nil
         Task { _ = await model.pin(target, in: conversation, shared: shared) }
+    }
+
+    private func saveMessageEdit(_ target: ChatMessage) {
+        guard !isEditingMessage else { return }
+        isEditingMessage = true
+        Task {
+            let succeeded = await model.editMessage(
+                target,
+                text: draft,
+                in: conversation
+            )
+            isEditingMessage = false
+            if succeeded {
+                draft = draftBeforeEditing
+                draftBeforeEditing = ""
+                editTarget = nil
+            } else {
+                messageMutationError = model.errorMessage ?? "Could not edit this message."
+            }
+        }
+    }
+
+    private func beginMessageEdit(_ target: ChatMessage) {
+        if editTarget == nil { draftBeforeEditing = draft }
+        draft = target.text
+        editTarget = target
+        isExpressivePickerPresented = false
+        showAgentModel = false
+        isComposerFocused = true
+    }
+
+    private func cancelMessageEdit() {
+        guard !isEditingMessage else { return }
+        draft = draftBeforeEditing
+        draftBeforeEditing = ""
+        editTarget = nil
+    }
+
+    private func deleteMessage(_ target: ChatMessage, forEveryone: Bool) {
+        guard !isDeletingMessage else { return }
+        isDeletingMessage = true
+        deleteTarget = nil
+        Task {
+            let succeeded = await model.deleteMessage(
+                target,
+                forEveryone: forEveryone,
+                in: conversation
+            )
+            isDeletingMessage = false
+            if succeeded,
+               editTarget?.reactionTargetMessageId == target.reactionTargetMessageId {
+                cancelMessageEdit()
+            }
+            if !succeeded {
+                messageMutationError = model.errorMessage ?? "Could not delete this message."
+            }
+        }
     }
 
     private func pinActivityText(for pin: CloudSessionPin) -> String? {
@@ -1741,45 +1892,6 @@ struct ConversationView: View {
                 }
                 attachments.append(contentsOf: prepared.filter { !$0.isMP4Video })
                 enqueueVideoReviews(prepared.filter(\.isMP4Video))
-            } catch {
-                model.errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func importPhotos(_ items: [PhotosPickerItem]) {
-        guard !isPreparingAttachments else { return }
-        let importedSubtype = selectedPhotoSubtype
-        selectedPhotoSubtype = nil
-        isPreparingAttachments = true
-        selectedPhotos = []
-        Task {
-            defer { isPreparingAttachments = false }
-            do {
-                let remaining = max(0, PendingAttachmentLoader.maximumAttachmentCount - attachments.count)
-                guard items.count <= remaining else {
-                    throw AttachmentTransferError.tooManyFiles(PendingAttachmentLoader.maximumAttachmentCount)
-                }
-                var loaded: [PendingAttachment] = []
-                for (index, item) in items.enumerated() {
-                    guard let data = try await item.loadTransferable(type: Data.self) else {
-                        throw AttachmentTransferError.invalidImage
-                    }
-                    let preferredExtension = item.supportedContentTypes.first?.preferredFilenameExtension ?? "jpg"
-                    var attachment = try await Task.detached(priority: .userInitiated) {
-                        try PendingAttachmentLoader.loadImage(
-                            data: data,
-                            suggestedName: "Photo-\(index + 1).\(preferredExtension)"
-                        )
-                    }.value
-                    attachment.subtype = importedSubtype
-                    if importedSubtype == .meme {
-                        attachment.altText = ""
-                        attachment.memeRightsConfirmed = false
-                    }
-                    loaded.append(attachment)
-                }
-                attachments.append(contentsOf: loaded)
             } catch {
                 model.errorMessage = error.localizedDescription
             }

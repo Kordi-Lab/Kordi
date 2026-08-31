@@ -1,8 +1,13 @@
 import {
   useCallback,
+  useEffect,
+  useRef,
+  useState,
   type Dispatch,
+  type MutableRefObject,
   type SetStateAction,
 } from 'react';
+import { flushSync } from 'react-dom';
 import type {
   AttachmentItem,
 } from '@/features/chat/composerController.types';
@@ -28,6 +33,13 @@ import {
 } from './cloudMessageCache';
 import { upsertCloudMessage } from './cloudMessageMerge';
 import {
+  cloudReactionMutationTargets,
+  createCloudReactionMutationQueue,
+  mergeCloudMessageReactionResponse,
+  updateCloudMessageReaction,
+  type CloudReactionMutation,
+} from './cloudReactionMutations';
+import {
   loadSession,
 } from './session';
 
@@ -43,14 +55,23 @@ export type SendCloudCollaborationMessageOptions = {
 export function useCloudDirectMessaging({
   account,
   client,
+  messagesByPeerRef,
   setMessagesByPeer,
+  syncDiff,
 }: {
   account: CloudAccount | null;
   client: CloudAuthClient;
+  messagesByPeerRef: MutableRefObject<Record<string, CloudMessage[]>>;
   setMessagesByPeer: Dispatch<
     SetStateAction<Record<string, CloudMessage[]>>
   >;
+  syncDiff: () => Promise<void>;
 }) {
+  const [enqueueReactionMutation] = useState(createCloudReactionMutationQueue);
+  const accountIdRef = useRef(account?.accountId ?? null);
+  useEffect(() => {
+    accountIdRef.current = account?.accountId ?? null;
+  }, [account?.accountId]);
   const mergeMessage = useCallback((message: CloudMessage) => {
     const metadataMessage = cloudMessageMetadataOnly(message);
     const peerId =
@@ -65,6 +86,51 @@ export function useCloudDirectMessaging({
       return { ...current, [peerId]: next };
     });
   }, [account?.accountId, setMessagesByPeer]);
+
+  const editMessage = useCallback(async (input: {
+    conversationId: string;
+    messageId: string;
+    expectedVersion: number;
+    text: string;
+  }) => {
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    const message = await client.editMessage(
+      session.token,
+      input.conversationId,
+      input.messageId,
+      input.expectedVersion,
+      input.text,
+    );
+    mergeMessage(message);
+    void syncDiff().catch(() => undefined);
+    return message;
+  }, [client, mergeMessage, syncDiff]);
+
+  const deleteMessage = useCallback(async (input: {
+    conversationId: string;
+    messageId: string;
+    forEveryone: boolean;
+  }) => {
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    await client.deleteMessage(
+      session.token,
+      input.conversationId,
+      input.messageId,
+      input.forEveryone,
+    );
+    setMessagesByPeer((current) => {
+      let changed = false;
+      const next = Object.fromEntries(Object.entries(current).map(([peerId, messages]) => {
+        const filtered = messages.filter((message) => message.messageId !== input.messageId);
+        changed ||= filtered.length !== messages.length;
+        return [peerId, filtered];
+      }));
+      return changed ? next : current;
+    });
+    void syncDiff().catch(() => undefined);
+  }, [client, setMessagesByPeer, syncDiff]);
 
   const prepareForwardAttachments = useCallback(async (
     attachments: MessageAttachment[],
@@ -156,26 +222,61 @@ export function useCloudDirectMessaging({
     );
   }, [client]);
 
-  const setReaction = useCallback(async (input: {
-    conversationId: string;
-    messageId: string;
-    reaction: string;
-    active: boolean;
-  }) => {
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    const message = await client.setReaction(
-      session.token,
-      input.conversationId,
-      input.messageId,
-      input.reaction,
-      input.active,
+  const setReaction = useCallback((input: CloudReactionMutation) => {
+    const accountId = account?.accountId?.trim();
+    if (!accountId) return Promise.reject(new Error('Not signed in.'));
+    const sessionPromise = loadSession();
+    const targets = cloudReactionMutationTargets(
+      messagesByPeerRef.current,
+      accountId,
+      input,
     );
-    mergeMessage(message);
-    return message;
-  }, [client, mergeMessage]);
+    const updateTargets = (
+      current: Record<string, CloudMessage[]>,
+      active: boolean,
+      pending: boolean,
+    ) => targets.reduce((next, target) => updateCloudMessageReaction(
+      next,
+      accountId,
+      { ...target, active },
+      pending,
+    ), current);
+    flushSync(() => {
+      setMessagesByPeer((current) => updateTargets(current, input.active, true));
+    });
+    const key = [accountId, input.conversationId, input.messageId, input.reaction].join('\u0001');
+    return enqueueReactionMutation(
+      key,
+      async () => {
+        const session = await sessionPromise;
+        if (!session?.token) throw new Error('Not signed in.');
+        const messages = await Promise.all(targets.map((target) => client.setReaction(
+          session.token,
+          target.conversationId,
+          target.messageId,
+          target.reaction,
+          target.active,
+        )));
+        void syncDiff().catch(() => undefined);
+        return messages;
+      },
+      (messages) => {
+        if (accountIdRef.current !== accountId) return;
+        setMessagesByPeer((current) => messages.reduce((next, message, index) => (
+          mergeCloudMessageReactionResponse(next, targets[index], message)
+        ), current));
+        messages.forEach(mergeMessage);
+      },
+      () => {
+        if (accountIdRef.current !== accountId) return;
+        setMessagesByPeer((current) => updateTargets(current, !input.active, false));
+      },
+    ).then((messages) => messages[0]);
+  }, [account?.accountId, client, enqueueReactionMutation, mergeMessage, messagesByPeerRef, setMessagesByPeer, syncDiff]);
 
   return {
+    deleteMessage,
+    editMessage,
     mergeMessage,
     prepareForwardAttachments,
     sendMessage,

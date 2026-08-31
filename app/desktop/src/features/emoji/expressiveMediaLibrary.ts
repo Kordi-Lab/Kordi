@@ -188,6 +188,10 @@ export function writeExpressiveMediaLibrary(
   expressiveMediaLibraryListeners.forEach((listener) => listener());
 }
 
+export async function waitForExpressiveMediaLibrarySync(accountId?: string) {
+  if (accountId) await expressiveMediaSyncs.get(accountId);
+}
+
 export async function addMediaToExpressiveMediaLibrary(
   media: ExpressiveMediaSource,
   kind: ExpressiveMediaKind,
@@ -309,10 +313,19 @@ async function performExpressiveMediaLibrarySync(
   const remoteByAttachmentId = new Map(
     remoteItems.map((item) => [item.attachmentId, item]),
   );
+  const remoteByItemId = new Map(remoteItems.map((item) => [item.itemId, item]));
   const readFile = options.readFile ?? readDesktopChatAttachment;
   for (const localItem of localItems) {
     try {
-      let cloudItem = localItem.attachmentId
+      if (localItem.cloudItemId && !remoteByItemId.has(localItem.cloudItemId)) {
+        localItems = readExpressiveMediaLibrary(storage, options.accountId)
+          .filter((item) => item.id !== localItem.id);
+        writeExpressiveMediaLibrary(localItems, storage, options.accountId);
+        continue;
+      }
+      let cloudItem = localItem.cloudItemId
+        ? remoteByItemId.get(localItem.cloudItemId)
+        : localItem.attachmentId
         ? remoteByAttachmentId.get(localItem.attachmentId)
         : undefined;
       let attachmentId = localItem.attachmentId;
@@ -335,6 +348,7 @@ async function performExpressiveMediaLibrarySync(
           name: localItem.name,
         });
         remoteByAttachmentId.set(cloudItem.attachmentId, cloudItem);
+        remoteByItemId.set(cloudItem.itemId, cloudItem);
       }
       localItems = readExpressiveMediaLibrary(storage, options.accountId).map((item) => (
         item.id === localItem.id

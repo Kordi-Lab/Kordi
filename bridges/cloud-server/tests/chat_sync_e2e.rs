@@ -1,7 +1,7 @@
 use kordi_cloud_server::chat_sync::models::{
     AddConversationMembersRequest, AdvanceConversationCursorRequest, ConversationKind,
     CreateConversationRequest, SendMessageRequest, UpdateConversationTitleRequest,
-    UpdatePersonalTitleRequest,
+    UpdateMessageRequest, UpdatePersonalTitleRequest,
 };
 use kordi_cloud_server::chat_sync::store::{self, StoreError};
 use kordi_cloud_server::{chat_sync::retention, pg::init_pool};
@@ -13,6 +13,8 @@ use uuid::Uuid;
 mod default_self_agent;
 #[path = "chat_sync_e2e/membership.rs"]
 mod membership;
+#[path = "chat_sync_e2e/message_mutations.rs"]
+mod message_mutations;
 #[path = "chat_sync_e2e/reactions.rs"]
 mod reactions;
 #[path = "chat_sync_e2e/session_pins.rs"]

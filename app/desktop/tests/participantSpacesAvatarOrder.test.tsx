@@ -117,7 +117,7 @@ test('fallback participant spaces preserve per-participant profile image urls', 
   assert.equal(spaces[0]?.participants.find((participant) => participant.name === 'Me')?.profileImageUrl, 'https://images.test/me.png');
 });
 
-test('group participant avatar stack uses the canonical first three human members', () => {
+test('group participant avatar stack uses stable group-member identity', () => {
   const alice = participant('acct_a', 'seed-a', 'Alice');
   const bob = participant('acct_b', 'seed-b', 'Bob');
   const carol = participant('acct_c', 'seed-c', 'Carol');
@@ -136,6 +136,32 @@ test('group participant avatar stack uses the canonical first three human member
     metadata,
   }])[0];
 
-  assert.deepEqual(first?.avatarStack.map((avatar) => avatar.seed), ['seed-b', 'seed-d', 'seed-a']);
-  assert.deepEqual(second?.avatarStack.map((avatar) => avatar.seed), ['seed-b', 'seed-d', 'seed-a']);
+  assert.deepEqual(first?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);
+  assert.deepEqual(second?.avatarStack.map((avatar) => avatar.seed), ['seed-a', 'seed-b', 'seed-c']);
+});
+
+test('group avatar order does not follow child-session activity', () => {
+  const alice = participant('acct_a', 'seed-a', 'Alice');
+  const bob = participant('acct_b', 'seed-b', 'Bob');
+  const carol = participant('acct_c', 'seed-c', 'Carol');
+  const group = (firstActivity: number, secondActivity: number) => buildParticipantSpaces([{
+    ...groupConversation([alice, bob, carol]),
+    id: 'session:group:first',
+    canonicalSessionId: 'session:group:first',
+    canonicalCreatedAtMs: 1,
+    participantSpaceId: 'group:shared',
+    metadata: { groupSpaceId: 'shared', avatarAccountIds: ['acct_b', 'acct_a', 'acct_c'] },
+    _updatedAtMs: firstActivity,
+  }, {
+    ...groupConversation([alice, bob, carol]),
+    id: 'session:group:second',
+    canonicalSessionId: 'session:group:second',
+    canonicalCreatedAtMs: 2,
+    participantSpaceId: 'group:shared',
+    metadata: { groupSpaceId: 'shared', avatarAccountIds: ['acct_c', 'acct_b', 'acct_a'] },
+    _updatedAtMs: secondActivity,
+  }])[0]?.avatarStack.map((avatar) => avatar.seed);
+
+  assert.deepEqual(group(10, 20), ['seed-a', 'seed-b', 'seed-c']);
+  assert.deepEqual(group(30, 5), ['seed-a', 'seed-b', 'seed-c']);
 });

@@ -4,6 +4,8 @@
   --app-message-bubble-shadow: none;
   --app-message-mention: var(--app-chat-mention-own);
   --app-message-meta: var(--app-chat-meta-own);
+  --app-markdown-link: var(--app-chat-mention-own);
+  --app-markdown-link-hover: color-mix(in oklab, var(--app-chat-mention-own) 84%, var(--app-chat-bubble-user-text));
   border: 0;
   background: transparent;
   color: var(--app-chat-bubble-user-text);
@@ -11,11 +13,16 @@
 }
 
 .kordi-app.theme-light .app-chat-bubble-user {
-  --app-message-bubble-fill: var(--app-chat-bubble-user-bg);
+  --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-accent) 12%, var(--app-chat-bubble-user-bg));
   --app-message-bubble-stroke: transparent;
   --app-message-mention: var(--app-chat-mention-own);
   --app-message-meta: var(--app-chat-meta-own);
   color: var(--app-chat-bubble-user-text);
+}
+
+body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-user,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="quiet"] .app-chat-bubble-user {
+  --app-message-bubble-fill: var(--app-chat-bubble-user-bg);
 }
 
 .app-chat-bubble-peer {
@@ -24,15 +31,28 @@
   --app-message-bubble-shadow: none;
   --app-message-mention: var(--app-chat-mention-peer);
   --app-message-meta: var(--app-chat-meta-peer);
+  --app-markdown-link: var(--app-chat-mention-peer);
+  --app-markdown-link-hover: color-mix(in oklab, var(--app-chat-mention-peer) 84%, var(--app-chat-bubble-peer-text));
   border: 0;
   background: transparent;
   color: var(--app-chat-bubble-peer-text);
   box-shadow: none;
 }
 
+.kordi-app.theme-light .app-chat-bubble-peer {
+  --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-accent) 16%, var(--app-chat-bubble-peer-bg));
+}
+
+body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="quiet"] .app-chat-bubble-peer {
+  --app-message-bubble-fill: color-mix(in oklab, var(--app-chat-bubble-peer-text) 7%, var(--app-chat-bubble-peer-bg));
+}
+
 .app-chat-bubble-agent {
   --app-message-mention: var(--app-chat-mention-peer);
   --app-message-meta: var(--app-chat-meta-peer);
+  --app-markdown-link: var(--app-chat-mention-peer);
+  --app-markdown-link-hover: color-mix(in oklab, var(--app-chat-mention-peer) 84%, var(--app-chat-bubble-agent-text));
   border: 0;
   background: var(--app-chat-bubble-agent-bg);
   color: var(--app-chat-bubble-agent-text);
@@ -172,23 +192,6 @@
   --app-message-bubble-shadow: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12));
 }
 
-.app-message-bubble-enter,
-.app-message-bubble-queued {
-  animation: app-message-bubble-enter var(--app-motion-base) var(--app-motion-ease) both;
-}
-
-@keyframes app-message-bubble-enter {
-  from {
-    opacity: 0;
-    transform: translate3d(var(--app-message-bubble-enter-x), 5px, 0) scale(0.985);
-  }
-
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
 @keyframes app-support-contact-typing-pulse {
   0%, 60%, 100% {
     opacity: 0.3;
@@ -208,24 +211,6 @@
 
   to {
     transform: translate3d(115%, 0, 0);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .app-message-bubble,
-  .app-message-bubble-enter,
-  .app-message-bubble-queued {
-    animation: none;
-    transition: none;
-  }
-
-  .app-message-bubble-shape-fill {
-    transition: none;
-  }
-
-  .app-support-contact-typing-dot {
-    animation: none;
-    opacity: 0.52;
   }
 }
 
@@ -394,6 +379,10 @@
 
 .app-attachment-image-fallback-name {
   color: color-mix(in oklab, currentColor 62%, transparent);
+}
+
+.app-attachment-inline-video::-webkit-media-controls-fullscreen-button {
+  display: none;
 }
 
 .app-auth-notice {

@@ -121,13 +121,13 @@ test('transcript only exposes its focus ring after keyboard input', async () => 
   assert.equal(viewport.dataset.transcriptKeyboardFocus, undefined);
 });
 
-test('transcript replaces the native WebKit outline with a deliberate keyboard focus ring', () => {
+test('transcript replaces the blue viewport outline with a quiet keyboard focus inset', () => {
   const css = readFileSync(new URL('../src/styles/shell-transcript.css', import.meta.url), 'utf8');
 
   assert.match(css, /\[data-virtual-transcript-scroll\]\s*\{[^}]*outline:\s*none;/s);
   assert.match(
     css,
-    /\[data-virtual-transcript-scroll\]\[data-transcript-keyboard-focus='true'\]:focus\s*\{[^}]*border-radius:\s*12px;[^}]*outline:\s*2px solid color-mix\(in oklab, var\(--app-quiet-control-focus-ring\) 76%, transparent\);[^}]*outline-offset:\s*-4px;/s,
+    /\[data-virtual-transcript-scroll\]\[data-transcript-keyboard-focus='true'\]:focus\s*\{[^}]*box-shadow:\s*inset 0 0 0 1px color-mix\(in oklab, var\(--utility-muted-text\) 24%, transparent\);/s,
   );
   assert.match(css, /@media \(forced-colors:\s*active\)/);
 });

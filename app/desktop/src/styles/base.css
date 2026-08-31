@@ -157,10 +157,3 @@ body.app-cloud-gate-active.theme-dark {
 body.app-cloud-gate-active.theme-light {
   background: linear-gradient(180deg, rgb(248 250 252) 0%, rgb(241 245 249) 54%, rgb(226 232 240) 100%);
 }
-
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}

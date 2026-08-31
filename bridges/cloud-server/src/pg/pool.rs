@@ -332,6 +332,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "account default agent profiles",
         sql: include_str!("../../migrations/0069_default_agent_profiles.sql"),
     },
+    EmbeddedMigration {
+        version: 70,
+        description: "expressive media deletion tombstones",
+        sql: include_str!("../../migrations/0070_expressive_media_deletions.sql"),
+    },
+    EmbeddedMigration {
+        version: 71,
+        description: "chat message edit and deletion",
+        sql: include_str!("../../migrations/0071_chat_message_mutations.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

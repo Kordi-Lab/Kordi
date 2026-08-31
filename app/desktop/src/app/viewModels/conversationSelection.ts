@@ -1,4 +1,3 @@
-import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import { sessionHasActiveProcessing } from '@/features/canonical/readModel/conversationMapping';
 import { isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
@@ -147,7 +146,6 @@ export function activeConversationForSelection(
 
 export function applyCanonicalHydrationPlaceholder(
   selectedConversation: Conversation,
-  hydration: SessionHydrationState | undefined,
 ): Conversation {
   if (
     selectedConversation.desktopRuntimeBacked
@@ -174,20 +172,7 @@ export function applyCanonicalHydrationPlaceholder(
       )],
     };
   }
-  const knownCanonicalMessageCount =
-    selectedConversation.canonicalMessageCount;
-  if (
-    typeof knownCanonicalMessageCount !== 'number'
-    || knownCanonicalMessageCount <= 0
-    || selectedConversation.messages.length >= knownCanonicalMessageCount
-    || selectedConversation.desktopRuntimeBacked
-    || (hydration !== 'cold' && hydration !== 'loading')
-  ) {
-    return selectedConversation;
-  }
-  return selectedConversation.messages.length > 1
-    ? selectedConversation
-    : { ...selectedConversation, messages: [] };
+  return selectedConversation;
 }
 
 export function pendingCanonicalCloudConversationForActiveId(

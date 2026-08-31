@@ -159,22 +159,27 @@ test('styles reply attribution surfaces with stronger dark-mode contrast', () =>
   assert.match(quoteTextBlock, /var\(--app-source-message-quote-text\)/);
 });
 
-test('styles source quote colors contextually inside own message bubbles for dark and light modes', () => {
+test('styles source quote colors contextually across chat themes', () => {
   const shellCss = readDesktopShellCss();
   const quoteRootBlock = shellCss.match(/\.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
   const ownBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-user \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
-  const lightOwnBubbleQuoteBlock = shellCss.match(/\.kordi-app\.theme-light \.app-chat-bubble-user \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
   const peerBubbleQuoteBlock = shellCss.match(/\.app-chat-bubble-peer \.app-source-message-quote \{[\s\S]*?\n\}/)?.[0] ?? '';
+  const quoteMentionBlock = shellCss.match(/\.app-source-message-quote \.app-message-mention \{[\s\S]*?\n\}/)?.[0] ?? '';
 
   assert.match(quoteRootBlock, /--app-source-message-quote-foreground:\s*var\(--utility-foreground\)/);
+  assert.match(quoteRootBlock, /--app-source-message-quote-accent:\s*var\(--app-message-mention, var\(--app-chat-accent/);
   assert.match(quoteRootBlock, /--app-source-message-quote-text:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 82%, var\(--app-source-message-quote-muted\)\)/);
   assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*var\(--app-chat-bubble-user-text\)/);
   assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-muted:\s*color-mix\(in oklab, var\(--app-chat-bubble-user-text\) 72%, transparent\)/);
-  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-foreground:\s*rgb\(31 49 69\)/);
-  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-label:\s*rgba\(31, 49, 69, 0\.86\)/);
-  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-text:\s*rgba\(31, 49, 69, 0\.74\)/);
-  assert.match(lightOwnBubbleQuoteBlock, /--app-source-message-quote-fade-bg:\s*rgb\(226 235 245\)/);
-  assert.match(peerBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-source-message-quote-foreground\) 8%, transparent\)/);
+  assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-chat-bubble-user-text\) 16%, transparent\)/);
+  assert.match(ownBubbleQuoteBlock, /--app-source-message-quote-fade-bg:\s*var\(--app-chat-bubble-user-bg\)/);
+  assert.doesNotMatch(shellCss, /\.kordi-app\.theme-light \.app-chat-bubble-user \.app-source-message-quote/);
+  assert.match(peerBubbleQuoteBlock, /--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-chat-accent\) 22%, var\(--app-chat-bubble-peer-bg\)\)/);
+  assert.match(quoteMentionBlock, /color:\s*var\(--app-source-message-quote-accent\)/);
+  assert.match(
+    shellCss,
+    /body\[data-kordi-chat-theme="quiet"\][\s\S]*?\.app-chat-bubble-peer \.app-source-message-quote,[\s\S]*?--app-source-message-quote-bg:\s*color-mix\(in oklab, var\(--app-chat-bubble-peer-text\) 12%, var\(--app-chat-bubble-peer-bg\)\)/,
+  );
 });
 
 test('keeps medium completed agent responses readable without folding too early', () => {

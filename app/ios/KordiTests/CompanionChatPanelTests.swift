@@ -35,6 +35,24 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertEqual(immediate.phase, .signedIn)
     }
 
+    @MainActor
+    func testPreviewSendSettlesLocallyWithoutRetry() async throws {
+        let model = AppModel(previewMode: true)
+        let conversation = try XCTUnwrap(
+            model.conversations.first(where: { $0.id == "person:acct_maya" })
+        )
+        let initialCount = model.messages(for: conversation).count
+
+        await model.send("Preview the entry motion", to: conversation)
+
+        let messages = model.messages(for: conversation)
+        XCTAssertEqual(messages.count, initialCount + 1)
+        XCTAssertEqual(messages.last?.text, "Preview the entry motion")
+        XCTAssertEqual(messages.last?.deliveryState, .read)
+        XCTAssertNil(messages.last?.errorMessage)
+        XCTAssertNil(model.errorMessage)
+    }
+
     func testNewChatMenuRoutesEveryActionToItsNavigationDestination() {
         XCTAssertEqual(
             NewChatMode.allCases.map(\.menuTitle),
@@ -221,6 +239,25 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertFalse(source.contains("isShowingExpressiveMediaImporter"))
     }
 
+    func testComposerMenusDoNotExposeMemeShortcuts() throws {
+        let conversationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation")
+        let composer = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("ComposerView.swift"),
+            encoding: .utf8
+        )
+        let conversation = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("ConversationView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertFalse(composer.contains("Meme from Photos"))
+        XCTAssertFalse(composer.contains("onChooseMeme"))
+        XCTAssertFalse(conversation.contains("showMemePhotoPicker"))
+    }
+
     func testExpressiveLibraryAddUsesPhotosInsteadOfFiles() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -233,18 +270,54 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertFalse(source.contains(".fileImporter("))
     }
 
-    func testExpressiveMediaThumbnailsKeepMixedAspectRatiosInsideFixedSlots() throws {
+    func testExpressiveMediaLibraryUsesAdaptiveRowsAndFixedThumbnails() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
             .appendingPathComponent("Kordi/Features/Conversation/ExpressiveMediaPicker.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
-        let start = try XCTUnwrap(source.range(of: "private struct LocalExpressiveMediaThumbnail"))
-        let thumbnail = source[start.lowerBound...]
+        let panelStart = try XCTUnwrap(source.range(of: "private struct ExpressiveMediaLibraryPanel"))
+        let thumbnailStart = try XCTUnwrap(source.range(of: "private struct LocalExpressiveMediaThumbnail"))
+        let panel = source[panelStart.lowerBound..<thumbnailStart.lowerBound]
+        let thumbnail = source[thumbnailStart.lowerBound...]
 
+        XCTAssertTrue(panel.contains("LazyVGrid("))
+        XCTAssertTrue(panel.contains("GridItem(.adaptive(minimum: 64, maximum: 64), spacing: 8)"))
+        XCTAssertFalse(panel.contains("ScrollView(.horizontal"))
         XCTAssertTrue(thumbnail.contains(".scaledToFit()"))
         XCTAssertTrue(thumbnail.contains(".frame(width: 64, height: 64)"))
         XCTAssertTrue(thumbnail.contains(".clipped()"))
+    }
+
+    func testSavedMediaUsesTheNativeLongPressDeleteMenu() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ExpressiveMediaPicker.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains(".contextMenu {"))
+        XCTAssertTrue(source.contains("Label(\"Delete\", systemImage: \"trash\")"))
+        XCTAssertTrue(source.contains(".accessibilityAction(named: \"Delete"))
+        XCTAssertTrue(source.contains("model.removeExpressiveMedia(entry)"))
+    }
+
+    func testGroupStickerConfirmationKeepsTheCompactStickerSubtype() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/App/AppModel.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let groupSendStart = try XCTUnwrap(source.range(of: "if conversation.kind == .group {"))
+        let directSendStart = try XCTUnwrap(
+            source.range(of: "let wireBody: String", range: groupSendStart.upperBound..<source.endIndex)
+        )
+        let groupSend = source[groupSendStart.lowerBound..<directSendStart.lowerBound]
+
+        XCTAssertTrue(groupSend.contains(
+            "uploadedAttachments.map { $0.chatAttachment(messageKind: outgoingMessageKind) }"
+        ))
+        XCTAssertFalse(groupSend.contains("uploadedAttachments.map(\\.chatAttachment)"))
     }
 
     func testConversationRowsRenderTheLatestStickerPreview() throws {

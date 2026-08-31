@@ -1,11 +1,13 @@
 import { useId, useRef, useState } from 'react';
+import { Check, LoaderCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
-import { MEME_IMAGE_ACCEPT, memeAttachmentDraftError } from '@/features/chat/memeAttachments';
+import { memeAttachmentDraftError } from '@/features/chat/memeAttachments';
 import {
   CompactComposerModelMenu,
   ComposerMentionMenu,
@@ -19,6 +21,7 @@ import { ComposerDropSurface } from './chatsPage.composerDropSurface';
 import { CollaborationRoutingControls } from '@/pages/chatsPage.collaborationRoutingControls';
 import {
   ComposerQuotePreview,
+  ComposerEditPreview,
   MessageSelectionBar,
 } from '@/pages/chatsPage.composerPrimitives';
 import {
@@ -70,6 +73,8 @@ export function MainComposer({
     onCancelMessageSelection,
     onCopySelectedMessages,
     onForwardSelectedMessages,
+    activeMessageEdit, messageEditBusy = false, messageEditError,
+    updateMessageEditText, cancelMessageEdit, saveMessageEdit,
   } = composer;
   const {
     composerControlsRef,
@@ -86,11 +91,19 @@ export function MainComposer({
   } = runtime;
   const imeCompositionGuard = useImeCompositionGuard();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const memeAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const [pastedImageEditId, setPastedImageEditId] = useState<string | null>(null);
   const memeValidationMessageId = useId();
+  const editErrorMessageId = useId();
   const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
-  const hasSendableDraft = Boolean(chatComposerText.trim() || chatComposerAttachments.length > 0);
+  const editingMessage = Boolean(activeMessageEdit);
+  const composerText = activeMessageEdit?.text ?? chatComposerText;
+  const hasSendableDraft = Boolean(composerText.trim() || (!editingMessage && chatComposerAttachments.length > 0));
+  const canSaveEdit = Boolean(
+    activeMessageEdit
+    && activeMessageEdit.text.trim()
+    && activeMessageEdit.text !== activeMessageEdit.originalText
+    && !messageEditBusy,
+  );
   const canConfigureModelRoute = canConfigureConversationModelRoute(conversation);
   const useCompactRouteMenu = canConfigureModelRoute
     && shouldUseCompactModelRouteMenu(conversation);
@@ -130,17 +143,17 @@ export function MainComposer({
           onForward={onForwardSelectedMessages}
         />
       ) : null}
-      <ComposerDropSurface saveDesktopAttachments={(files) => (
+      <ComposerDropSurface disabled={editingMessage} saveDesktopAttachments={(files) => (
         videoReviews.stage(saveDesktopAttachments(files))
       )}>
         <div className="relative">
-          {filteredChatSlashCommands.length > 0 ? (
+          {!editingMessage && filteredChatSlashCommands.length > 0 ? (
             <ComposerSlashMenu
               items={filteredChatSlashCommands}
               selectedIndex={Math.min(chatSlashMenuIndex, filteredChatSlashCommands.length - 1)}
               onSelect={acceptChatSlashCommand}
             />
-          ) : filteredChatMentionTargets.length > 0 ? (
+          ) : !editingMessage && filteredChatMentionTargets.length > 0 ? (
             <ComposerMentionMenu
               items={filteredChatMentionTargets}
               selectedIndex={Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)}
@@ -150,7 +163,7 @@ export function MainComposer({
           <div
             className={cn(
               'app-composer-input rounded-[18px] transition',
-              chatComposerAttachments.length > 0 ? 'px-3 pb-1.5 pt-1' : 'px-4 py-2.5',
+              !editingMessage && chatComposerAttachments.length > 0 ? 'px-3 pb-1.5 pt-1' : 'px-4 py-2.5',
             )}
           >
             <input
@@ -164,30 +177,20 @@ export function MainComposer({
                 event.currentTarget.value = '';
               }}
             />
-            <input
-              ref={memeAttachmentInputRef}
-              type="file"
-              multiple
-              accept={MEME_IMAGE_ACCEPT}
-              className="hidden"
-              onChange={(event) => {
-                const files = Array.from(event.target.files ?? []);
-                if (files.length > 0) void saveDesktopAttachments(files, { subtype: 'meme' });
-                event.currentTarget.value = '';
-              }}
-            />
-            {activeChatQuote ? (
+            {activeMessageEdit ? (
+              <ComposerEditPreview text={activeMessageEdit.originalText} onCancel={cancelMessageEdit} />
+            ) : activeChatQuote ? (
               <ComposerQuotePreview quote={activeChatQuote} onClear={onClearChatQuote} />
             ) : null}
-            <ComposerAttachmentList
+            {!editingMessage ? <ComposerAttachmentList
               attachments={chatComposerAttachments}
               onRemove={removeChatComposerAttachment}
               onUpdate={updateChatComposerAttachment}
               onReplace={updateChatComposerAttachment}
               requestedEditAttachmentId={pastedImageEditId}
               onRequestedEditClosed={() => setPastedImageEditId(null)}
-            />
-            {memeValidationError ? (
+            /> : null}
+            {!editingMessage && memeValidationError ? (
               <p
                 id={memeValidationMessageId}
                 className="px-0.5 pb-1 text-[10.5px] leading-4 text-amber-500"
@@ -210,7 +213,9 @@ export function MainComposer({
               <textarea
                 ref={textareaRef}
                 rows={1}
-                value={chatComposerText}
+                value={composerText}
+                readOnly={editingMessage && messageEditBusy}
+                aria-busy={editingMessage && messageEditBusy || undefined}
                 onPointerDownCapture={() => {
                   focusComposerTextareaForNativeInput(
                     CHAT_COMPOSER_TEXTAREA_SELECTOR,
@@ -223,8 +228,12 @@ export function MainComposer({
                     display.isNativeShell,
                   );
                 }}
-                onChange={(event) => updateChatComposerDraft(event.target.value, event.target)}
+                onChange={(event) => {
+                  if (editingMessage) updateMessageEditText?.(event.target.value);
+                  else updateChatComposerDraft(event.target.value, event.target);
+                }}
                 onPaste={(event) => {
+                  if (editingMessage) return;
                   const files = extractClipboardFiles(event.clipboardData);
                   if (files.length > 0) {
                     event.preventDefault();
@@ -244,7 +253,12 @@ export function MainComposer({
                 onCompositionEnd={imeCompositionGuard.onCompositionEnd}
                 onKeyDown={(event) => {
                   if (imeCompositionGuard.isComposingKeyDown(event)) return;
-                  if (filteredChatSlashCommands.length > 0) {
+                  if (event.key === 'Escape' && editingMessage) {
+                    event.preventDefault();
+                    cancelMessageEdit?.();
+                    return;
+                  }
+                  if (!editingMessage && filteredChatSlashCommands.length > 0) {
                     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                       event.preventDefault();
                       const delta = event.key === 'ArrowDown' ? 1 : -1;
@@ -269,7 +283,7 @@ export function MainComposer({
                       return;
                     }
                   }
-                  if (filteredChatMentionTargets.length > 0) {
+                  if (!editingMessage && filteredChatMentionTargets.length > 0) {
                     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                       event.preventDefault();
                       event.stopPropagation();
@@ -297,12 +311,12 @@ export function MainComposer({
                       return;
                     }
                   }
-                  if (event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
+                  if (!editingMessage && event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
                     event.preventDefault();
                     setChatComposerText('/');
                     return;
                   }
-                  if (event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
+                  if (!editingMessage && event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
                     event.preventDefault();
                     setChatComposerText(chatComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
                     return;
@@ -314,15 +328,21 @@ export function MainComposer({
                     && !event.shiftKey
                   ) {
                     event.preventDefault();
-                    void onSend(event.currentTarget.value);
+                    if (editingMessage) void saveMessageEdit?.();
+                    else void onSend(event.currentTarget.value);
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
                 data-composer-scope="chat"
-                aria-describedby={memeValidationError ? memeValidationMessageId : undefined}
-                placeholder={display.placeholder}
+                aria-describedby={messageEditError ? editErrorMessageId : memeValidationError ? memeValidationMessageId : undefined}
+                placeholder={editingMessage ? 'Edit message' : display.placeholder}
               />
             </div>}
+            {messageEditError ? (
+              <p id={editErrorMessageId} className="app-error-text mt-1 text-[11px] leading-4 text-rose-500" role="alert">
+                {messageEditError}
+              </p>
+            ) : null}
           </div>
         </div>
         <div
@@ -336,7 +356,7 @@ export function MainComposer({
             className="flex shrink-0 items-center gap-2 overflow-visible pr-1"
             data-composer-left-actions="true"
           >
-            {useCompactRouteMenu ? (
+            {!editingMessage && useCompactRouteMenu ? (
               <CompactComposerModelMenu
                 scope="chat"
                 selection={
@@ -351,13 +371,12 @@ export function MainComposer({
                 onSave={collaborationRouting.onSaveCompact}
               />
             ) : null}
-            {!voiceSurfaceActive ? <ComposerAttachmentAddMenu
+            {!editingMessage && !voiceSurfaceActive ? <ComposerAttachmentAddMenu
               inputRef={chatAttachmentInputRef}
-              memeInputRef={memeAttachmentInputRef}
               onRecordVideo={() => { void video.start(); }}
               disabled={voice.recording}
             /> : null}
-            {!voiceSurfaceActive ? <ComposerExpressivePicker
+            {!editingMessage && !voiceSurfaceActive ? <ComposerExpressivePicker
               key={cloudAccountId?.trim() || 'local'}
               accountId={cloudAccountId}
               captureSelection={() => ({
@@ -386,7 +405,7 @@ export function MainComposer({
               display.showCompanionPane ? 'shrink gap-2' : 'shrink-0 gap-3',
             )}
           >
-            {!voiceSurfaceActive && localRouting.paneKind === 'agent'
+            {!editingMessage && !voiceSurfaceActive && localRouting.paneKind === 'agent'
               && !collaborationRouting.enabled
               && (display.isNativeShell || localRouting.contextStatus) ? (
                 <ComposerRuntimeStatus
@@ -394,7 +413,7 @@ export function MainComposer({
                   cacheText={localRouting.cacheText}
                 />
               ) : null}
-            {!voiceSurfaceActive && canConfigureModelRoute
+            {!editingMessage && !voiceSurfaceActive && canConfigureModelRoute
               && localRouting.paneKind === 'agent'
               && !collaborationRouting.enabled
               && !useCompactRouteMenu ? (
@@ -425,7 +444,7 @@ export function MainComposer({
                     : undefined}
                   compact={display.showCompanionPane}
                 />
-              ) : !voiceSurfaceActive && canConfigureModelRoute
+              ) : !editingMessage && !voiceSurfaceActive && canConfigureModelRoute
                 && collaborationRouting.enabled
                 && !useCompactRouteMenu
                 && collaborationRouting.model ? (
@@ -450,13 +469,25 @@ export function MainComposer({
                     }}
                   />
                 ) : null}
-            <VoiceComposerControls
+            {editingMessage ? (
+              <Button
+                className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
+                onClick={() => { void saveMessageEdit?.(); }}
+                disabled={!canSaveEdit}
+                aria-label="Save message edit"
+                title="Save message edit"
+              >
+                {messageEditBusy
+                  ? <LoaderCircle className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  : <Check className="h-4 w-4" aria-hidden="true" />}
+              </Button>
+            ) : <VoiceComposerControls
               voice={voice}
               hasSendableDraft={hasSendableDraft}
               validationError={memeValidationError}
               activeLiveTurnIsRunning={display.activeLiveTurnIsRunning}
               onSend={() => { void onSend(); }}
-            />
+            />}
           </div>
         </div>
       </ComposerDropSurface>

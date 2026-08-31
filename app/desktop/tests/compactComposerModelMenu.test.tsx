@@ -314,6 +314,6 @@ test('ChatsPage places compact model route control before attachment and keeps e
 test('ChatsPage shows compact model route for group/contact chats even without a bridge routing agent', () => {
   const source = readFileSync(new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url), 'utf8');
   assert.match(source, /const useCompactRouteMenu = canConfigureModelRoute[\s\S]*shouldUseCompactModelRouteMenu\(conversation\)/);
-  assert.match(source, /\{useCompactRouteMenu \? \(/);
+  assert.match(source, /\{!editingMessage && useCompactRouteMenu \? \(/);
   assert.doesNotMatch(source, /useCompactRouteMenu && \(!collaborationRouting\.enabled \|\| collaborationRouting\.model\)/);
 });

@@ -20,7 +20,7 @@ type ContextMenuState = {
 export function MessageContextMenuHost({
   msg, id, className, children, onPointerDown, onPointerEnter, onPointerMove,
   onPointerUp, onPointerCancel, dragSelectHandleId, dragSelectState, dragSelectLabel,
-  onReplyMessage, onForwardMessage, onSelectMessage, onRequestPinMessage,
+  onReplyMessage, onForwardMessage, onEditMessage, onDeleteMessage, onSelectMessage, onRequestPinMessage,
   onRequestUnpinMessage, onReactMessage, isPinned, imageGallery,
 }: {
   msg: Message;
@@ -120,6 +120,8 @@ export function MessageContextMenuHost({
         onClose={() => setMenu(null)}
         onReplyMessage={onReplyMessage}
         onForwardMessage={onForwardMessage}
+        onEditMessage={onEditMessage}
+        onDeleteMessage={onDeleteMessage}
         onSelectMessage={onSelectMessage}
         onRequestPinMessage={onRequestPinMessage}
         onRequestUnpinMessage={onRequestUnpinMessage}

@@ -130,12 +130,14 @@ export function useDesktopSessionController({
       isLegacyCanonicalCollaborationSessionId(sessionId)
       || isCanonicalCloudSessionId(sessionId)
     ) {
-      setActiveConvId(sessionId);
       setDesktopChatError(null);
-      void hydrateCanonicalSessionPage(sessionId).catch((error) => {
+      try {
+        await hydrateCanonicalSessionPage(sessionId);
+      } catch (error) {
         if (selectionRequestIdRef.current !== requestId) return;
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to open chat session');
-      });
+      }
+      if (selectionRequestIdRef.current === requestId) setActiveConvId(sessionId);
       return;
     }
 

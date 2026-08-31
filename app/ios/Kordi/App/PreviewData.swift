@@ -422,7 +422,20 @@ enum PreviewData {
                     displayLabel: "All"
                 )]
             ),
-            ChatMessage(id: "gm3b", conversationId: conversationId, author: .person, authorName: "Ethan Park", text: "The accessibility notes are in the same folder.", createdAt: now.addingTimeInterval(-90), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
+            ChatMessage(id: "gm3b", conversationId: conversationId, author: .person, authorName: "Ethan Park", text: "The accessibility notes are in the same folder.", createdAt: now.addingTimeInterval(-90), editedAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil),
+            ChatMessage(
+                id: "gm4",
+                conversationId: conversationId,
+                author: .me,
+                authorName: "You",
+                text: "Long-press to edit or delete this message.",
+                createdAt: now.addingTimeInterval(-30),
+                cloudMessageVersion: 1,
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil,
+                reactionTargetMessageId: "018f47c2-9f4c-7a5e-b001-000000000006"
+            )
         ])
         if includesMentionAttention {
             let mention = MessageMention(
@@ -502,6 +515,44 @@ enum PreviewData {
                 )
             ),
             ChatMessage(id: "m5", conversationId: conversationId, author: .person, authorName: "Maya Chen", text: "Can you send the latest numbers?", createdAt: now.addingTimeInterval(-60), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil, reactionTargetMessageId: "018f47c2-9f4c-7a5e-b001-000000000005"),
+            ChatMessage(
+                id: "m5-reply-own",
+                conversationId: conversationId,
+                author: .me,
+                authorName: "You",
+                text: "Review the updated colors at https://kordi.ai.",
+                createdAt: now.addingTimeInterval(-50),
+                deliveryState: .read,
+                errorMessage: nil,
+                requestMessageId: nil,
+                replyToMessageId: "m5",
+                messageAction: .quote(MessageActionSource(
+                    sourceSessionId: conversationId,
+                    sourceMessageId: "m5",
+                    senderLabel: "Maya Chen",
+                    textPreview: "Can you send the latest numbers?",
+                    attachmentCount: 0
+                ))
+            ),
+            ChatMessage(
+                id: "m5-reply-peer",
+                conversationId: conversationId,
+                author: .person,
+                authorName: "Maya Chen",
+                text: "@Alex The link and reply stay readable in every theme.",
+                createdAt: now.addingTimeInterval(-40),
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: nil,
+                replyToMessageId: "m5-reply-own",
+                messageAction: .quote(MessageActionSource(
+                    sourceSessionId: conversationId,
+                    sourceMessageId: "m5-reply-own",
+                    senderLabel: "You",
+                    textPreview: "Review the updated colors at https://kordi.ai.",
+                    attachmentCount: 0
+                ))
+            ),
         ])
         messages.append(contentsOf: previewMediaMessages(now: now))
         return messages
@@ -677,6 +728,35 @@ enum PreviewData {
             ]
         }
         let attachments = previewChatAttachments()
+        if ProcessInfo.processInfo.arguments.contains("--preview-media-messages") {
+            let groupedAttachments = Array(attachments.prefix(2))
+            return [
+                ChatMessage(
+                    id: "preview-captioned-images-peer",
+                    conversationId: "person:acct_maya",
+                    author: .person,
+                    authorName: "Maya Chen",
+                    text: "I see the same issue on my side.",
+                    createdAt: now.addingTimeInterval(-32),
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    attachments: groupedAttachments
+                ),
+                ChatMessage(
+                    id: "preview-captioned-images-own",
+                    conversationId: "person:acct_maya",
+                    author: .me,
+                    authorName: "You",
+                    text: "ok I think may be there are some bugs in apple internal system.",
+                    createdAt: now.addingTimeInterval(-30),
+                    deliveryState: .read,
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    attachments: groupedAttachments
+                ),
+            ]
+        }
         if ProcessInfo.processInfo.arguments.contains("--preview-media-separated") {
             return attachments.enumerated().map { index, attachment in
                 ChatMessage(

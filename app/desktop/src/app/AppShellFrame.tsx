@@ -29,6 +29,7 @@ type AppShellFrameProps = {
   authGate?: ReactNode;
   inlineAuthDialog?: ReactNode;
   messageForwardDialog?: ReactNode;
+  messageDeleteDialog?: ReactNode;
   windowResizeHandles?: ReactNode;
   callOverlay?: ReactNode;
 };
@@ -60,6 +61,7 @@ export function AppShellFrame({
   authGate,
   inlineAuthDialog,
   messageForwardDialog,
+  messageDeleteDialog,
   windowResizeHandles,
   callOverlay,
 }: AppShellFrameProps) {
@@ -214,6 +216,7 @@ export function AppShellFrame({
         {authGate}
         {inlineAuthDialog}
         {messageForwardDialog}
+        {messageDeleteDialog}
         {callOverlay}
         {!isNativeShell ? windowResizeHandles : null}
       </div>

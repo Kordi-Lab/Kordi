@@ -246,6 +246,11 @@ export function sessionPrefersPersistedTitle(session: CanonicalSessionState['ses
     if (sessionHasManualTitle(session)) return true;
     const metadata = sessionMetadata(session);
     const title = session.title.trim();
+    if (
+      stringValue(metadata.sessionTitleSource) === 'external'
+      && title
+      && !isGenericSessionTitle(title)
+    ) return true;
     const groupName = stringValue(metadata.customName)?.trim() ?? '';
     const groupSpaceId = stringValue(metadata.groupSpaceId)
       ?? stringValue(metadata.groupId)

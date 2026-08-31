@@ -205,6 +205,14 @@ enum CloudConversationCatalog {
             let peers = participants.filter { $0.accountId != account.accountId }
             let groupMessages = deduplicatedGroupMessages(sorted)
             let latestMessage = groupMessages.max { $0.createdAtMs < $1.createdAtMs }
+            let canonicalContentMessages = messages.filter {
+                CloudMessageStateProjector.sessionKeys(for: $0).contains(groupId)
+                    && ChatCallActivity(messageKind: $0.messageKind) == nil
+                    && CloudGroupMessageCodec.parse($0.body) == nil
+            }
+            let latestCanonicalMessage = canonicalContentMessages.max {
+                parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt)
+            }
             let callMessages = Dictionary(
                 grouping: messages.filter {
                     ChatCallActivity(messageKind: $0.messageKind) != nil
@@ -217,23 +225,32 @@ enum CloudConversationCatalog {
             let latestCallMessage = callMessages.max {
                 parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt)
             }
-            let latestGroupDate = latestMessage.map {
-                Date(timeIntervalSince1970: $0.createdAtMs / 1_000)
+            var visibleRows: [(date: Date, text: String?, attachment: ChatAttachment?)] = []
+            if let latestMessage {
+                visibleRows.append((
+                    Date(timeIntervalSince1970: latestMessage.createdAtMs / 1_000),
+                    CloudMessageCodec.previewText(latestMessage).nonEmpty,
+                    previewAttachment(latestMessage)
+                ))
             }
-            let latestCallDate = latestCallMessage.map { parseCloudDate($0.createdAt) }
-            let latestVisibleText: String?
-            let latestVisibleDate: Date?
-            let latestVisibleAttachment: ChatAttachment?
-            if let latestCallMessage, let latestCallDate,
-               latestCallDate >= (latestGroupDate ?? .distantPast) {
-                latestVisibleText = latestCallMessage.body.nonEmpty
-                latestVisibleDate = latestCallDate
-                latestVisibleAttachment = nil
-            } else {
-                latestVisibleText = latestMessage.flatMap { CloudMessageCodec.previewText($0).nonEmpty }
-                latestVisibleDate = latestGroupDate
-                latestVisibleAttachment = previewAttachment(latestMessage)
+            if let latestCanonicalMessage {
+                visibleRows.append((
+                    parseCloudDate(latestCanonicalMessage.createdAt),
+                    CloudMessageCodec.previewText(latestCanonicalMessage).nonEmpty,
+                    previewAttachment(latestCanonicalMessage)
+                ))
             }
+            if let latestCallMessage {
+                visibleRows.append((
+                    parseCloudDate(latestCallMessage.createdAt),
+                    latestCallMessage.body.nonEmpty,
+                    nil
+                ))
+            }
+            let latestVisible = visibleRows.max { $0.date < $1.date }
+            let latestVisibleText = latestVisible?.text
+            let latestVisibleDate = latestVisible?.date
+            let latestVisibleAttachment = latestVisible?.attachment
             let sessionTitle = sorted.reversed().compactMap { row -> String? in
                 row.1.kind == "session-title-update" ? nonGenericTitle(row.1.groupTitle) : nil
             }.first
@@ -283,6 +300,16 @@ enum CloudConversationCatalog {
                       ) else { return nil }
                 return message.id
             })
+            let canonicalUnreadMessageIds = Set(canonicalContentMessages.compactMap { wire -> String? in
+                guard wire.fromAccountId != account.accountId,
+                      messageIsUnread(
+                        wire,
+                        conversation: canonical,
+                        accountId: account.accountId,
+                        allowSelfAuthoredAgent: false
+                      ) else { return nil }
+                return wire.messageId
+            })
             let unreadMentionMessageIds = Set(sorted.compactMap { wire, envelope -> String? in
                 guard envelope.kind == "group-message",
                       let message = envelope.message else { return nil }
@@ -318,13 +345,17 @@ enum CloudConversationCatalog {
                     ?? sorted.last.map(rowDate)
                     ?? canonical.map { parseCloudDate($0.updatedAt) }
                     ?? .distantPast,
-                unreadCount: unreadMessageIds.count,
+                unreadCount: unreadMessageIds.union(canonicalUnreadMessageIds).count,
                 avatarSource: nil,
                 agentActivity: nil,
                 sessionId: groupId,
                 groupSpaceId: groupSpaceId,
                 groupParticipants: participants,
-                messageCount: groupMessages.count + callMessages.count,
+                messageCount: Set(
+                    groupMessages.map(\.id)
+                        + canonicalContentMessages.map(\.messageId)
+                        + callMessages.map(\.messageId)
+                ).count,
                 forkedFromSessionId: canonicalLineage[groupId]?.forkedFromSessionId
                     ?? canonical?.forkedFromSessionId?.nonEmpty,
                 unreadMentionCount: unreadMentionMessageIds.count,

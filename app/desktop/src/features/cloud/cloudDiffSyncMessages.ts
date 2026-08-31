@@ -5,6 +5,7 @@ import {
   compareCloudMessages,
   latestCloudReceiptAt,
   mergeCloudMessageMonotonicState,
+  normalizeCloudMessageReactions,
   normalizeCloudReaderAccountIds,
 } from './cloudMessageMerge';
 
@@ -39,6 +40,7 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
     ? Number(record.version)
     : null;
   const readByAccountIds = normalizeCloudReaderAccountIds(record.readByAccountIds);
+  const reactions = normalizeCloudMessageReactions(record.reactions);
   return cloudMessageMetadataOnly({
     messageId,
     fromAccountId,
@@ -60,6 +62,7 @@ function normalizeCloudMessage(value: unknown): CloudMessage | null {
     ...(version ? { version } : {}),
     ...(attachments ? { attachments } : {}),
     ...(voiceMessage ? { voiceMessage } : {}),
+    ...(reactions ? { reactions } : {}),
   });
 }
 
@@ -78,6 +81,10 @@ function messagePeerId(
 export function payloadCloudSyncMessage(event: CloudSyncEvent): CloudMessage | null {
   const payload = objectRecord(event.payload);
   return normalizeCloudMessage(payload?.message);
+}
+
+export function cloudSyncEventConfirmsReactionState(event: CloudSyncEvent): boolean {
+  return objectRecord(event.payload)?.reactionStateConfirmed === true;
 }
 
 export function cloudSyncEventSessionId(event: CloudSyncEvent): string {
@@ -208,6 +215,14 @@ export function applyCloudSyncEventsToMessagesByPeer(
       continue;
     }
 
+    if (event.eventType === 'message.deleted' && event.messageId) {
+      for (const peerId of Object.keys(currentMessagesByPeer)) {
+        const indexed = indexedPeerMessages(peerId);
+        if (indexed.delete(event.messageId)) changedPeerIds.add(peerId);
+      }
+      continue;
+    }
+
     if (event.eventType === 'message.upsert') {
       const message = payloadCloudSyncMessage(event);
       if (!message) continue;
@@ -220,7 +235,9 @@ export function applyCloudSyncEventsToMessagesByPeer(
       const indexed = indexedPeerMessages(peerId);
       const existing = indexed.get(message.messageId);
       const merged = existing
-        ? mergeCloudMessageMonotonicState(existing, message)
+        ? mergeCloudMessageMonotonicState(existing, message, {
+            confirmReactionState: cloudSyncEventConfirmsReactionState(event),
+          })
         : message;
       if (merged !== existing) {
         indexed.set(message.messageId, merged);

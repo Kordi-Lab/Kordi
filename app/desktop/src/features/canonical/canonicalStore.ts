@@ -68,6 +68,24 @@ function mergeMessages(
     : merged;
 }
 
+function mergeReadyPageMessages(
+  existing: CanonicalSessionMessage[],
+  incoming: readonly CanonicalSessionMessage[],
+) {
+  if (existing.length === 0) return mergeMessages(existing, incoming);
+  const existingIds = new Set(existing.map((message) => message.id));
+  const newest = existing.reduce((latest, message) => (
+    compareCanonicalMessages(latest, message) < 0 ? message : latest
+  ));
+  return mergeMessages(existing, incoming.filter((message) => (
+    existingIds.has(message.id)
+    || (
+      compareCanonicalMessages(newest, message) < 0
+      && message.createdAtMs >= newest.createdAtMs
+    )
+  )));
+}
+
 function recordsMatch<T>(
   existing: Readonly<Record<string, T>>,
   incoming: Readonly<Record<string, T>>,
@@ -291,7 +309,6 @@ export function mergeCanonicalStateIntoStore(
     const previous = previousSummaryBySessionId.get(session.id);
     const previousMessages = store.messagesBySessionId[session.id] ?? [];
     const previousById = new Map(previousMessages.map((message) => [message.id, message]));
-    const nextById = new Map(messages.map((message) => [message.id, message]));
     const incomingReadableCount = messages.reduce(
       (count, message) => count + Number(canonicalMessageCountsAsReadable(message)),
       0,
@@ -299,26 +316,29 @@ export function mergeCanonicalStateIntoStore(
     const containsCompleteReadableHistory = incomingReadableCount >= (previous?.messageCount ?? 0);
     const readableDelta = messages.reduce((delta, message) => {
       if (!canonicalMessageCountsAsReadable(message)) return delta;
-      return delta + Number(!previousById.has(message.id) || !canonicalMessageCountsAsReadable(previousById.get(message.id)!));
-    }, 0) - previousMessages.reduce((delta, message) => {
-      if (!canonicalMessageCountsAsReadable(message)) return delta;
-      const next = nextById.get(message.id);
-      return delta + Number(!next || !canonicalMessageCountsAsReadable(next));
+      const existing = previousById.get(message.id);
+      if (existing) {
+        return delta + Number(!canonicalMessageCountsAsReadable(existing));
+      }
+      return delta;
     }, 0);
     const messageCount = containsCompleteReadableHistory
       ? incomingReadableCount
-      : Math.max(0, (previous?.messageCount ?? 0) + readableDelta);
+      : Math.max(
+          previous?.messageCount ?? 0,
+          (previous?.messageCount ?? 0) + readableDelta,
+        );
     const incomingLatest = latestReadableMessage(messages);
-    const previousLatestInNext = previous?.latestMessage
-      ? nextById.get(previous.latestMessage.id)
-      : null;
-    const previousLatestStillReadable = previousLatestInNext
-      ? canonicalMessageCountsAsReadable(previousLatestInNext)
-      : false;
-    const latestMessage = containsCompleteReadableHistory || !previousLatestStillReadable
+    const partialIncomingAdvancesLatest = Boolean(
+      incomingLatest
+      && previous?.latestMessage
+      && incomingLatest.createdAtMs >= previous.latestMessage.createdAtMs
+      && compareCanonicalMessages(previous.latestMessage, incomingLatest) < 0,
+    );
+    const latestMessage = containsCompleteReadableHistory
       ? incomingLatest
-      : incomingLatest && previous?.latestMessage
-        ? (compareCanonicalMessages(previous.latestMessage, incomingLatest) < 0 ? incomingLatest : previous.latestMessage)
+      : partialIncomingAdvancesLatest
+        ? incomingLatest
         : previous?.latestMessage ?? incomingLatest;
     return {
       sessionId: session.id,
@@ -344,9 +364,12 @@ export function mergeCanonicalStateIntoStore(
   const nextMessagesBySessionId = Object.fromEntries(
     state.sessions.map((session) => {
       const incoming = messagesBySessionId[session.id] ?? [];
-      const existing = catalogMerged.messagesBySessionId[session.id] ?? [];
-      const merged = store.hydrationBySessionId[session.id] === 'ready'
-        ? mergeMessages(existing, incoming)
+      const ready = store.hydrationBySessionId[session.id] === 'ready';
+      const existing = ready
+        ? store.messagesBySessionId[session.id] ?? []
+        : catalogMerged.messagesBySessionId[session.id] ?? [];
+      const merged = ready
+        ? mergeReadyPageMessages(existing, incoming)
         : incoming;
       const stable = existing.length === merged.length
         && existing.every((message, index) => (

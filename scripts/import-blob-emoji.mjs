@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { copyFile, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { copyFile, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
@@ -24,10 +25,13 @@ for (const source of sources) {
   const directory = path.join(sourceRoot, source.directory)
   const files = (await readdir(directory)).filter((file) => file.endsWith('.webp')).sort()
   for (const file of files) {
+    const bytes = await readFile(path.join(directory, file))
     entries.push({
       id: file.slice(0, -5),
       file,
       animated: source.animated,
+      sizeBytes: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
     })
   }
 }
@@ -61,7 +65,7 @@ await writeFile(
 await writeFile(
   path.join(destinationRoot, 'catalog.json'),
   `${JSON.stringify({
-    schema: 1,
+    schema: 2,
     source: 'https://blobs.gg/',
     sourceArchiveSha256: archiveSha256,
     license: 'Apache-2.0',

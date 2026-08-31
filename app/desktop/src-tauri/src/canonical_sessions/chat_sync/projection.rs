@@ -173,6 +173,7 @@ pub(super) fn apply_event(
             | "message.created"
             | "message.updated"
             | "message.deleted"
+            | "message.hidden"
             | "reaction.updated"
             | "delivery_cursor.updated"
             | "read_cursor.updated"
@@ -213,6 +214,15 @@ pub(super) fn apply_event(
         .get("payload")
         .and_then(Value::as_object)
         .ok_or_else(|| "Chat sync event payload is invalid".to_string())?;
+    if matches!(event_type, "message.deleted" | "message.hidden") {
+        let message_id = required_text(event, "entity_id")?;
+        tx.execute(
+            "DELETE FROM chat_sync_messages WHERE account_id = ?1 AND message_id = ?2",
+            params![account_id, message_id],
+        )
+        .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
     if event_type == "membership.removed" {
         let conversation_id = required_text(event, "conversation_id")?;
         let removed_account_id = payload

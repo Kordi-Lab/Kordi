@@ -4,6 +4,88 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
+## [0.0.1-beta.18] - 2026-08-31
+
+### Added
+
+- Added version-checked editing for your own messages plus **Delete for me**
+  and **Delete for everyone** across macOS and iOS, including direct and group
+  conversations, confirmation flows, and edited markers. ([#1289])
+- Added saved sticker and GIF deletion from the macOS context menu and iOS
+  long-press menu while preserving synchronized media types. ([#1275])
+
+### Changed
+
+- Improved chat contrast across themes and aligned iOS reaction chips with
+  their sender avatars. ([#1273], [#1278], [#1280])
+- Refined outgoing desktop message feedback and transcript motion while
+  preserving reduced-motion behavior and stable scroll position. ([#1288],
+  [#1290])
+- Moved Blob Emoji delivery out of the desktop bundle and into immutable hosted
+  assets with durable native caching, substantially reducing download size
+  while preserving previously used emoji offline. ([#1287])
+- Removed meme-creation shortcuts from the macOS and iOS composer menus while
+  preserving existing meme messages, forwarding, and synchronization.
+  ([#1284])
+
+### Fixed
+
+- Rendered human message Markdown consistently on macOS without losing safe
+  links, structured mentions, link previews, or theme-aware colors. ([#1272])
+- Restored cache-first iOS avatars without refresh flicker and made
+  attachment-only reply previews identify photos, videos, stickers, and GIFs
+  on both platforms. ([#1276], [#1283])
+- Improved video capture and playback previews across macOS and iOS with
+  higher-quality iPhone recording, stable posters, native full-screen iOS
+  playback, and resizable macOS playback. ([#1286])
+- Kept captioned multi-image groups outside message bubbles on macOS and iOS
+  while preserving borderless image-only messages and sender alignment.
+  ([#1292])
+
+## [0.0.1-beta.17] - 2026-08-29
+
+### Added
+
+- Added file-backed inline video recording, sending, playback, retry, and
+  forwarding across macOS and iOS. ([#1241])
+- Added bounded rich-link previews on macOS and iOS, plus native iPhone sharing
+  into and out of Kordi. ([#1255])
+- Opened contact cards from human avatars and structured person mentions in
+  group conversations. ([#1228])
+
+### Changed
+
+- Refined voice recording with a deliberate hold-to-record interaction,
+  release-to-send, cancellation, transcription, and sub-second discard across
+  iOS and macOS. ([#1217])
+- Improved chat hierarchy and interactions with clearer grouped-session rows,
+  readable expressive-media previews, reliable message gestures and text
+  selection, simpler group previews, and visible grouped sender names.
+  ([#1213], [#1219], [#1224], [#1231], [#1239], [#1256])
+
+### Fixed
+
+- Restored synchronized private and shared pins and stabilized cached, cold-start,
+  and paged conversation history across macOS and iOS without transcript flashes,
+  duplicate shells, input loss, or scroll instability. ([#1216], [#1226],
+  [#1230], [#1237], [#1258])
+- Isolated side-panel attachment drafts, repaired sticker and GIF upload and
+  synchronization, preserved media geometry while loading, and made every iOS
+  photo tile reliably tappable. ([#1212], [#1236], [#1244], [#1254])
+- Kept failed tool calls available as diagnostics rather than treating them as
+  fatal, recovered stopped turns, and prevented late activity from reviving
+  cancelled iOS responses. ([#1215])
+- Made agent authentication routes portable across devices and cleared stale
+  provider, model, and thinking selections after disconnecting. ([#1235])
+- Repaired malformed and legacy Kordi Support conversations while preserving
+  valid history and merging newly delivered Support messages. ([#1240],
+  [#1243], [#1245])
+- Kept Seen receipts and reactions monotonic across stale snapshots, cached
+  messages, retries, and transcript updates on macOS and iOS. ([#1224],
+  [#1251], [#1258])
+- Restored the native macOS notification permission flow and made installed
+  updates relaunch reliably through LaunchServices. ([#1220], [#1221])
+
 ## [0.0.1-beta.16] - 2026-08-22
 
 ### Fixed
@@ -263,7 +345,9 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta16...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta18...HEAD
+[0.0.1-beta.18]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta17...V0.0.1.beta18
+[0.0.1-beta.17]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta16...V0.0.1.beta17
 [0.0.1-beta.16]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta15...V0.0.1.beta16
 [0.0.1-beta.15]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta14...V0.0.1.beta15
 [0.0.1-beta.14]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta13...V0.0.1.beta14
@@ -390,3 +474,44 @@ This release is the comparison baseline for beta.8. See the
 [#1102]: https://github.com/Kordi-Lab/Kordi/issues/1102
 [#1179]: https://github.com/Kordi-Lab/Kordi/issues/1179
 [#1181]: https://github.com/Kordi-Lab/Kordi/pull/1181
+[#1212]: https://github.com/Kordi-Lab/Kordi/pull/1212
+[#1213]: https://github.com/Kordi-Lab/Kordi/pull/1213
+[#1215]: https://github.com/Kordi-Lab/Kordi/pull/1215
+[#1216]: https://github.com/Kordi-Lab/Kordi/pull/1216
+[#1217]: https://github.com/Kordi-Lab/Kordi/pull/1217
+[#1219]: https://github.com/Kordi-Lab/Kordi/pull/1219
+[#1220]: https://github.com/Kordi-Lab/Kordi/pull/1220
+[#1221]: https://github.com/Kordi-Lab/Kordi/pull/1221
+[#1224]: https://github.com/Kordi-Lab/Kordi/pull/1224
+[#1226]: https://github.com/Kordi-Lab/Kordi/pull/1226
+[#1228]: https://github.com/Kordi-Lab/Kordi/pull/1228
+[#1230]: https://github.com/Kordi-Lab/Kordi/pull/1230
+[#1231]: https://github.com/Kordi-Lab/Kordi/pull/1231
+[#1235]: https://github.com/Kordi-Lab/Kordi/pull/1235
+[#1236]: https://github.com/Kordi-Lab/Kordi/pull/1236
+[#1237]: https://github.com/Kordi-Lab/Kordi/pull/1237
+[#1239]: https://github.com/Kordi-Lab/Kordi/pull/1239
+[#1240]: https://github.com/Kordi-Lab/Kordi/pull/1240
+[#1241]: https://github.com/Kordi-Lab/Kordi/pull/1241
+[#1243]: https://github.com/Kordi-Lab/Kordi/pull/1243
+[#1244]: https://github.com/Kordi-Lab/Kordi/pull/1244
+[#1245]: https://github.com/Kordi-Lab/Kordi/pull/1245
+[#1251]: https://github.com/Kordi-Lab/Kordi/pull/1251
+[#1254]: https://github.com/Kordi-Lab/Kordi/pull/1254
+[#1255]: https://github.com/Kordi-Lab/Kordi/pull/1255
+[#1256]: https://github.com/Kordi-Lab/Kordi/pull/1256
+[#1258]: https://github.com/Kordi-Lab/Kordi/pull/1258
+[#1272]: https://github.com/Kordi-Lab/Kordi/pull/1272
+[#1273]: https://github.com/Kordi-Lab/Kordi/pull/1273
+[#1275]: https://github.com/Kordi-Lab/Kordi/pull/1275
+[#1276]: https://github.com/Kordi-Lab/Kordi/pull/1276
+[#1278]: https://github.com/Kordi-Lab/Kordi/pull/1278
+[#1280]: https://github.com/Kordi-Lab/Kordi/pull/1280
+[#1283]: https://github.com/Kordi-Lab/Kordi/pull/1283
+[#1284]: https://github.com/Kordi-Lab/Kordi/pull/1284
+[#1286]: https://github.com/Kordi-Lab/Kordi/pull/1286
+[#1287]: https://github.com/Kordi-Lab/Kordi/pull/1287
+[#1288]: https://github.com/Kordi-Lab/Kordi/pull/1288
+[#1289]: https://github.com/Kordi-Lab/Kordi/pull/1289
+[#1290]: https://github.com/Kordi-Lab/Kordi/pull/1290
+[#1292]: https://github.com/Kordi-Lab/Kordi/pull/1292

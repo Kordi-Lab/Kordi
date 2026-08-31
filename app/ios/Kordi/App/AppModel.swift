@@ -246,6 +246,7 @@ final class AppModel: ObservableObject {
     private var pendingProviderAuthBindingsBySessionID: [String: String] = [:]
     private var providerAuthenticationSyncTask: Task<Void, Never>?
     private var pendingAttachmentDraftsByMessageId: [String: [PendingAttachment]] = [:]
+    private var videoCacheTasks: [String: Task<Void, Never>] = [:]
     private var pendingVoiceDraftsByMessageId: [String: PendingVoiceMessage] = [:]
     private var pendingReplyByMessageId: [String: MessageActionSource] = [:]
     private var pendingMessageActionByMessageId: [String: MessageActionMetadata] = [:]
@@ -539,6 +540,8 @@ final class AppModel: ObservableObject {
             drafts.forEach { $0.discardOwnedFile() }
         }
         pendingAttachmentDraftsByMessageId = [:]
+        videoCacheTasks.values.forEach { $0.cancel() }
+        videoCacheTasks = [:]
         pendingReplyByMessageId = [:]
         pendingMessageActionByMessageId = [:]
         pendingMentionByMessageId = [:]
@@ -1433,6 +1436,12 @@ final class AppModel: ObservableObject {
             attachment: voiceMessage == nil ? outgoingAttachments.first?.optimisticAttachment : nil,
             date: optimistic.createdAt
         )
+        if previewMode {
+            setMessageDeliveryState(localId, conversationId: conversation.id, state: .read)
+            clearPendingSendMetadata(localId)
+            if requestsAgentRun { completeAgentRequest(conversationId: conversation.id) }
+            return
+        }
 
         do {
             let conversationId = conversation.id
@@ -1467,6 +1476,17 @@ final class AppModel: ObservableObject {
                 }
             }
             let uploadedAttachments = try await attachmentUpload
+            if outgoingAttachments.count == 1,
+               let draft = outgoingAttachments.first,
+               let uploaded = uploadedAttachments.first,
+               draft.isMP4Video,
+               let fileURL = draft.fileURL {
+                _ = try? await attachmentFileStore.store(
+                    fileAt: fileURL,
+                    attachment: uploaded.chatAttachment,
+                    accountId: account.accountId
+                )
+            }
             let uploadedVoiceMessage = resolvedVoiceMessage.flatMap { draft in
                 uploadedAttachments.first.map { draft.voiceMessage(mediaId: $0.attachmentId) }
             }
@@ -1514,13 +1534,16 @@ final class AppModel: ObservableObject {
                     errorMessage: nil,
                     requestMessageId: nil,
                     readByCount: 0,
-                    attachments: uploadedVoiceMessage == nil ? uploadedAttachments.map(\.chatAttachment) : [],
+                    attachments: uploadedVoiceMessage == nil
+                        ? uploadedAttachments.map { $0.chatAttachment(messageKind: outgoingMessageKind) }
+                        : [],
                     replyToMessageId: messageAction?.replyToMessageId,
                     messageAction: messageAction,
                     mentions: mentions,
                     messageKind: outgoingMessageKind,
                     voiceMessage: uploadedVoiceMessage
                 ))
+                outgoingAttachments.forEach { $0.discardOwnedFile() }
                 clearPendingSendMetadata(localId)
                 if mentionTarget?.kind == .agent {
                     await startAgentRun(
@@ -1863,6 +1886,71 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func editMessage(
+        _ message: ChatMessage,
+        text: String,
+        in conversation: ConversationSummary
+    ) async -> Bool {
+        let replacement = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !replacement.isEmpty,
+              let messageId = message.reactionTargetMessageId?.nonEmpty ?? message.id.nonEmpty,
+              let expectedVersion = message.cloudMessageVersion else {
+            errorMessage = "This message is no longer available to edit."
+            return false
+        }
+        if previewMode {
+            if let index = messagesByConversation[conversation.id]?.firstIndex(where: { $0.id == message.id }) {
+                messagesByConversation[conversation.id]?[index].text = replacement
+            }
+            return true
+        }
+        guard let token else { return false }
+        do {
+            let updated = try await api.editMessage(
+                token: token,
+                sessionId: conversation.sessionId,
+                messageId: messageId,
+                expectedVersion: expectedVersion,
+                text: replacement
+            )
+            mergeCloudMessage(updated, peerHint: conversation.peerAccountId)
+            await rebuildConversationCatalog()
+            await refreshLoadedConversationProjections()
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not edit this message.")
+            return false
+        }
+    }
+
+    func deleteMessage(
+        _ message: ChatMessage,
+        forEveryone: Bool,
+        in conversation: ConversationSummary
+    ) async -> Bool {
+        guard let messageId = message.reactionTargetMessageId?.nonEmpty ?? message.id.nonEmpty else {
+            errorMessage = "This message is no longer available to delete."
+            return false
+        }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await api.deleteMessage(
+                    token: token,
+                    sessionId: conversation.sessionId,
+                    messageId: messageId,
+                    forEveryone: forEveryone
+                )
+            } catch {
+                errorMessage = userFacing(error, fallback: "Could not delete this message.")
+                return false
+            }
+        }
+        removeCloudMessage(messageId)
+        if !previewMode { await rebuildConversationCatalog() }
+        return true
+    }
+
     nonisolated static func updatingReaction(
         _ value: String,
         accountId: String,
@@ -2087,6 +2175,8 @@ final class AppModel: ObservableObject {
                     authorName: message.authorName,
                     text: message.text,
                     createdAt: message.createdAt,
+                    editedAt: message.editedAt,
+                    cloudMessageVersion: message.cloudMessageVersion,
                     deliveryState: message.deliveryState,
                     errorMessage: message.errorMessage,
                     requestMessageId: message.requestMessageId,
@@ -2621,6 +2711,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func removeExpressiveMedia(_ entry: ExpressiveMediaLibraryEntry) async -> Bool {
+        guard let accountId = account?.accountId else { return false }
+        do {
+            if let mediaId = entry.item.cloudItemId ?? entry.item.attachmentId {
+                guard let token else { throw AttachmentTransferError.missingSession }
+                try await api.deleteExpressiveMedia(token: token, mediaId: mediaId)
+            }
+            try await expressiveMediaLibrary.remove(accountId: accountId, itemId: entry.id)
+            await refreshLoadedConversationProjections()
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not delete this saved media.")
+            return false
+        }
+    }
+
     private func scheduleExpressiveMediaLibrarySync() {
         guard expressiveMediaSyncTask == nil else { return }
         Task { [weak self] in
@@ -2641,10 +2747,23 @@ final class AppModel: ObservableObject {
         var cloudByAttachmentId = Dictionary(
             uniqueKeysWithValues: remoteItems.map { ($0.attachmentId, $0) }
         )
+        var cloudByItemId = Dictionary(uniqueKeysWithValues: remoteItems.map { ($0.itemId, $0) })
         let localItems = await expressiveMediaLibrary.items(accountId: accountId)
         for local in localItems {
             guard !Task.isCancelled, account?.accountId == accountId else { return }
             do {
+                if let cloudItemId = local.cloudItemId {
+                    if let cloudItem = cloudByItemId[cloudItemId] {
+                        try await expressiveMediaLibrary.markSynced(
+                            accountId: accountId,
+                            itemId: local.id,
+                            cloudItem: cloudItem
+                        )
+                    } else {
+                        try await expressiveMediaLibrary.remove(accountId: accountId, itemId: local.id)
+                    }
+                    continue
+                }
                 if let attachmentId = local.attachmentId,
                    let cloudItem = cloudByAttachmentId[attachmentId] {
                     try await expressiveMediaLibrary.markSynced(
@@ -2678,6 +2797,7 @@ final class AppModel: ObservableObject {
                     name: local.name
                 )
                 cloudByAttachmentId[cloudItem.attachmentId] = cloudItem
+                cloudByItemId[cloudItem.itemId] = cloudItem
                 try await expressiveMediaLibrary.markSynced(
                     accountId: accountId,
                     itemId: local.id,
@@ -2760,6 +2880,11 @@ final class AppModel: ObservableObject {
                         token: token,
                         attachmentId: attachment.attachmentId
                     )
+                    cacheVideoAttachmentInBackground(
+                        attachment,
+                        token: token,
+                        accountId: accountId
+                    )
                 } catch let error as CloudAPIError where error.statusCode == 404 {
                     let temporaryURL = try await api.downloadAttachmentContentFile(
                         token: token,
@@ -2802,6 +2927,34 @@ final class AppModel: ObservableObject {
             }
             errorMessage = userFacing(error, fallback: "Could not download \(attachment.name).")
             return nil
+        }
+    }
+
+    private func cacheVideoAttachmentInBackground(
+        _ attachment: ChatAttachment,
+        token: String,
+        accountId: String
+    ) {
+        let cacheKey = "\(accountId):\(attachment.attachmentId)"
+        guard videoCacheTasks[cacheKey] == nil else { return }
+        videoCacheTasks[cacheKey] = Task { [weak self] in
+            guard let self else { return }
+            defer { videoCacheTasks[cacheKey] = nil }
+            do {
+                let temporaryURL = try await api.downloadAttachmentContentFile(
+                    token: token,
+                    attachmentId: attachment.attachmentId
+                )
+                defer { try? FileManager.default.removeItem(at: temporaryURL) }
+                guard !Task.isCancelled, account?.accountId == accountId else { return }
+                _ = try await attachmentFileStore.store(
+                    fileAt: temporaryURL,
+                    attachment: attachment,
+                    accountId: accountId
+                )
+            } catch {
+                // Streaming remains usable; a later play retries the cache fill.
+            }
         }
     }
 
@@ -3793,11 +3946,19 @@ final class AppModel: ObservableObject {
         _ attachments: [ChatAttachment],
         messageKind: String? = nil
     ) -> String {
-        guard attachments.count == 1, let attachment = attachments.first else {
+        guard let attachment = attachments.first else { return "0 attachments" }
+        guard attachments.count == 1 else {
+            if attachments.allSatisfy({ $0.kind == .image }) {
+                return "\(attachments.count) photos"
+            }
+            if attachments.allSatisfy(\.isMP4Video) {
+                return "\(attachments.count) videos"
+            }
             return "\(attachments.count) attachments"
         }
         if messageKind == "sticker" || attachment.subtype == .sticker { return "Sticker" }
         if MessageImageInteraction.isAnimatedGIF(attachment) { return "GIF" }
+        if attachment.isMP4Video { return "Video" }
         return attachment.kind == .image ? "Photo" : attachment.name
     }
 
@@ -4224,6 +4385,8 @@ final class AppModel: ObservableObject {
             authorName: author == .me ? "You" : conversation.displayName,
             text: CloudMessageCodec.displayText(message.body),
             createdAt: parseCloudDate(message.createdAt),
+            editedAt: message.editedAt.map(parseCloudDate),
+            cloudMessageVersion: message.version,
             deliveryState: state,
             errorMessage: nil,
             requestMessageId: responseRequestId,
@@ -4253,10 +4416,44 @@ final class AppModel: ObservableObject {
     ) -> [ChatMessage] {
         var rowsByMessageId: [String: [(CloudMessageDTO, CloudGroupMessagePayload)]] = [:]
         var memberJoinMessagesByID: [String: ChatMessage] = [:]
+        var canonicalMessagesByID: [String: ChatMessage] = [:]
         let participantNames = Dictionary(uniqueKeysWithValues: conversation.groupParticipants.map { ($0.accountId, $0.displayName) })
         for wire in messages {
-            guard let envelope = CloudGroupMessageCodec.parse(wire.body),
-                  envelope.groupId == conversation.sessionId else { continue }
+            guard let envelope = CloudGroupMessageCodec.parse(wire.body) else {
+                guard ChatCallActivity(messageKind: wire.messageKind) == nil else { continue }
+                let author: MessageAuthor = wire.fromAccountId == ownAccountId ? .me : .person
+                canonicalMessagesByID[wire.messageId] = ChatMessage(
+                    id: wire.messageId,
+                    clientMessageId: wire.clientMessageId,
+                    conversationId: conversation.id,
+                    conversationSequence: wire.conversationSequence,
+                    author: author,
+                    authorName: author == .me
+                        ? "You"
+                        : participantNames[wire.fromAccountId] ?? conversation.displayName,
+                    text: CloudMessageCodec.displayText(wire.body),
+                    createdAt: parseCloudDate(wire.createdAt),
+                    editedAt: wire.editedAt.map(parseCloudDate),
+                    cloudMessageVersion: wire.version,
+                    deliveryState: CloudMessageStateProjector.deliveryState(
+                        for: wire,
+                        ownAccountId: ownAccountId
+                    ),
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    readByCount: wire.readByAccountIds?.count,
+                    readByAccountIds: wire.readByAccountIds ?? [],
+                    attachments: wire.attachments.map {
+                        $0.chatAttachment(messageKind: wire.messageKind)
+                    },
+                    reactionTargetMessageId: wire.messageId,
+                    messageKind: wire.messageKind,
+                    voiceMessage: wire.voiceMessage,
+                    reactions: wire.reactions
+                )
+                continue
+            }
+            guard envelope.groupId == conversation.sessionId else { continue }
             if envelope.kind == "group-invite" {
                 let participantIDs = Set(envelope.participants.compactMap { $0.accountId.nonEmpty })
                 for join in envelope.memberJoins ?? [] {
@@ -4330,6 +4527,8 @@ final class AppModel: ObservableObject {
                             ?? payload.createdAtMs
                     ) / 1_000
                 ),
+                editedAt: wire.editedAt.map(parseCloudDate),
+                cloudMessageVersion: wire.version,
                 deliveryState: delivery?.state ?? CloudMessageStateProjector.deliveryState(for: wire, ownAccountId: ownAccountId),
                 errorMessage: nil,
                 requestMessageId: payload.requestId,
@@ -4381,6 +4580,8 @@ final class AppModel: ObservableObject {
                     : participantNames[wire.fromAccountId] ?? "Participant",
                 text: wire.body,
                 createdAt: parseCloudDate(wire.createdAt),
+                editedAt: wire.editedAt.map(parseCloudDate),
+                cloudMessageVersion: wire.version,
                 deliveryState: CloudMessageStateProjector.deliveryState(for: wire, ownAccountId: ownAccountId),
                 errorMessage: nil,
                 requestMessageId: nil,
@@ -4389,8 +4590,10 @@ final class AppModel: ObservableObject {
                 reactions: wire.reactions
             )
         }
-        return (chatMessages + callMessages + Array(memberJoinMessagesByID.values))
-            .sorted(by: ChatMessage.timelinePrecedes)
+        for message in chatMessages + callMessages + Array(memberJoinMessagesByID.values) {
+            canonicalMessagesByID[message.id] = message
+        }
+        return canonicalMessagesByID.values.sorted(by: ChatMessage.timelinePrecedes)
     }
 
     nonisolated static func mergedReactions(
@@ -5075,6 +5278,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func removeCloudMessage(_ messageId: String) {
+        cloudMessagesByPeer = cloudMessagesByPeer.mapValues { messages in
+            messages.filter { $0.messageId != messageId }
+        }
+        rebuildCloudMessageIndices()
+        for conversationId in Array(messagesByConversation.keys) {
+            guard let messages = messagesByConversation[conversationId] else { continue }
+            let filtered = messages.filter {
+                $0.id != messageId && $0.reactionTargetMessageId != messageId
+            }
+            guard filtered.count != messages.count else { continue }
+            messagesByConversation[conversationId] = filtered
+            cacheCurrentMessages(conversationId)
+        }
+    }
+
     private func mergeCloudMessage(_ message: CloudMessageDTO, peerHint: String?) {
         guard let accountId = account?.accountId else { return }
         let peer = peerHint?.nonEmpty
@@ -5088,6 +5307,7 @@ final class AppModel: ObservableObject {
         sessionPinsByID = Self.applyingSessionPinEvents(events, to: sessionPinsByID)
         var upsertsByPeer: [String: [CloudMessageDTO]] = [:]
         var readUpdatesByPeer: [String: [String: String]] = [:]
+        var deletedMessageIds = Set<String>()
         var deviceListChanged = false
 
         for event in events {
@@ -5134,6 +5354,11 @@ final class AppModel: ObservableObject {
                 if let peer { upsertsByPeer[peer, default: []].append(message) }
                 continue
             }
+            if event.eventType == "message.deleted", let messageId = event.messageId?.nonEmpty {
+                deletedMessageIds.insert(messageId)
+                removeCloudMessage(messageId)
+                continue
+            }
             if ["session.hidden", "session.unhidden", "session.deleted"].contains(event.eventType),
                let sessionId = event.payload?.sessionId?.nonEmpty ?? event.peerAccountId?.nonEmpty {
                 switch event.eventType {
@@ -5167,7 +5392,12 @@ final class AppModel: ObservableObject {
 
         // Merge and sort once per peer. Replaying a large account used to sort
         // the growing history once per event, which made the UI feel blocked.
-        for (peer, messages) in upsertsByPeer { mergeMessages(messages, for: peer) }
+        for (peer, messages) in upsertsByPeer {
+            mergeMessages(
+                messages.filter { !deletedMessageIds.contains($0.messageId) },
+                for: peer
+            )
+        }
         for (peer, updates) in readUpdatesByPeer {
             guard var messages = cloudMessagesByPeer[peer] else { continue }
             let indices = cloudMessageIndicesByPeer[peer, default: [:]]
@@ -5183,6 +5413,7 @@ final class AppModel: ObservableObject {
                     toAccountId: message.toAccountId,
                     body: message.body,
                     createdAt: message.createdAt,
+                    editedAt: message.editedAt,
                     deliveredAt: message.deliveredAt ?? readAt,
                     readAt: readAt,
                     readByAccountIds: message.readByAccountIds,
@@ -5193,6 +5424,7 @@ final class AppModel: ObservableObject {
                     voiceMessage: message.voiceMessage,
                     conversationId: message.conversationId,
                     conversationSequence: message.conversationSequence,
+                    version: message.version,
                     reactions: message.reactions
                 )
                 changed = true

@@ -287,6 +287,8 @@ export function ChatMainWorkspace({
                 onOpenForkSession: companion.openSession,
                 onReplyMessage: composer.onReplyMessage,
                 onForwardMessage: composer.onForwardMessage,
+                onEditMessage: composer.onEditMessage,
+                onDeleteMessage: composer.onDeleteMessage,
                 onReactMessage: composer.onReactMessage,
                 onRetryMessage: runtime.onRetryChatMessage,
                 onSelectMessage: composer.onSelectMessage,

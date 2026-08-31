@@ -17,10 +17,14 @@ import {
   nextAttachmentMediaZoom,
 } from '../src/features/chat/attachmentMediaZoom';
 import {
+  attachmentMediaGalleriesEqual,
   attachmentMediaGalleryIndex,
   collectConversationImageAttachments,
 } from '../src/features/chat/attachmentMediaGallery';
-import { AttachmentImageLightbox } from '../src/kordi-app/components/transcriptAttachmentLightbox';
+import {
+  AttachmentImageLightbox,
+  AttachmentVideoLightbox,
+} from '../src/kordi-app/components/transcriptAttachmentLightbox';
 import { shouldDismissAttachmentImageLightboxForTarget } from '../src/kordi-app/components/transcriptAttachmentLightboxHitTest';
 import { AttachmentPreview } from '../src/kordi-app/components/transcriptAttachments';
 import type { Message } from '../src/kordi-app/types';
@@ -112,6 +116,21 @@ test('media lightbox is native-window content without modal chrome or tooltip no
   assert.match(markup, /aria-label="Next image"/);
   assert.match(markup, />2 of 3</);
   assert.doesNotMatch(markup, /Right-click for image actions|Close image preview|data-attachment-image-lightbox-panel/);
+});
+
+test('detached video preview keeps playback in the resizable media window', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentVideoLightbox, {
+    attachment: { kind: 'file', name: 'Clip.mp4', mimeType: 'video/mp4' },
+    videoUrl: 'https://files.test/clip.mp4',
+    posterUrl: 'data:image/jpeg;base64,cG9zdGVy',
+    onClose: () => {},
+  }));
+
+  assert.match(markup, /data-attachment-video-lightbox="true"/);
+  assert.match(markup, /aria-label="Video preview: Clip\.mp4"/);
+  assert.match(markup, /src="https:\/\/files\.test\/clip\.mp4"/);
+  assert.match(markup, /controlsList="nofullscreen"/);
+  assert.doesNotMatch(markup, /app-attachment-image-lightbox-zoom-controls/);
 });
 
 test('media lightbox uses meme alt text as its image description', () => {
@@ -240,6 +259,8 @@ test('conversation gallery preserves transcript image order across separate mess
 
   assert.deepEqual(gallery.map((attachment) => attachment.name), ['First.png', 'Second.png', 'Third.png']);
   assert.equal(attachmentMediaGalleryIndex(gallery, secondMessage.attachments![0]!), 1);
+  assert.equal(attachmentMediaGalleriesEqual(gallery, [...gallery]), true);
+  assert.equal(attachmentMediaGalleriesEqual(gallery, gallery.slice(0, 1)), false);
 });
 
 test('thumbnail click launches a separate resizable browser window with the full conversation gallery', async () => {
@@ -274,6 +295,63 @@ test('thumbnail click launches a separate resizable browser window with the full
     const payload = JSON.parse(window.localStorage.getItem(`kordi:attachment-media:${requestId}`) ?? '') as AttachmentMediaWindowPayload;
     assert.deepEqual(payload.attachments.map((attachment) => attachment.name), ['First.png', 'Second.png', 'Third.png']);
     assert.equal(payload.selectedIndex, 0);
+  } finally {
+    window.open = originalOpen;
+    if (root) await act(async () => root?.unmount());
+    root = null;
+    environment.restore();
+  }
+});
+
+test('video expand opens the detached media window instead of browser fullscreen', async () => {
+  const environment = installDom();
+  const host = document.createElement('div');
+  document.body.append(host);
+  let root: Root | null = createRoot(host);
+  let openedUrl = '';
+  const originalOpen = window.open;
+  window.open = ((url?: string | URL) => {
+    openedUrl = String(url ?? '');
+    return { focus() {} } as Window;
+  }) as typeof window.open;
+
+  try {
+    const message: Message = {
+      role: 'person',
+      text: '',
+      time: '12:30',
+      attachments: [{
+        attachmentId: 'video-1',
+        kind: 'file',
+        name: 'Clip.mp4',
+        mimeType: 'video/mp4',
+        previewUrl: 'https://files.test/clip.mp4',
+        widthPixels: 1_920,
+        heightPixels: 1_080,
+      }],
+    };
+    await act(async () => root?.render(createElement(AttachmentPreview, { msg: message })));
+    const play = host.querySelector<HTMLButtonElement>('[aria-label="Play Clip.mp4"]');
+    assert.ok(play);
+    await act(async () => play.click());
+
+    const video = host.querySelector<HTMLVideoElement>('video');
+    const expand = host.querySelector<HTMLButtonElement>('[data-attachment-video-window-trigger="true"]');
+    assert.ok(video);
+    assert.ok(expand);
+    assert.equal(video.getAttribute('controlsList'), 'nofullscreen');
+    video.currentTime = 12.5;
+    await act(async () => expand.click());
+    await flushReactUpdates();
+
+    const requestId = new URL(openedUrl).searchParams.get('mediaPreviewRequest');
+    assert.ok(requestId);
+    const payload = JSON.parse(
+      window.localStorage.getItem(`kordi:attachment-media:${requestId}`) ?? '',
+    ) as AttachmentMediaWindowPayload;
+    assert.equal(payload.initialMediaUrl, 'https://files.test/clip.mp4');
+    assert.equal(payload.initialMediaTime, 12.5);
+    assert.equal(payload.attachments[0]?.attachmentId, 'video-1');
   } finally {
     window.open = originalOpen;
     if (root) await act(async () => root?.unmount());

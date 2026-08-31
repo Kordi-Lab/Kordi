@@ -781,6 +781,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     let toAccountId: String
     let body: String
     let createdAt: String
+    let editedAt: String?
     let deliveredAt: String?
     let readAt: String?
     let readByAccountIds: [String]?
@@ -791,6 +792,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
     let voiceMessage: VoiceMessage?
     let conversationId: String?
     let conversationSequence: Int64?
+    let version: Int?
     let reactions: [MessageReaction]
 
     var id: String { messageId }
@@ -802,6 +804,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         toAccountId: String,
         body: String,
         createdAt: String,
+        editedAt: String? = nil,
         deliveredAt: String?,
         readAt: String?,
         readByAccountIds: [String]? = nil,
@@ -812,6 +815,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         voiceMessage: VoiceMessage? = nil,
         conversationId: String? = nil,
         conversationSequence: Int64? = nil,
+        version: Int? = nil,
         reactions: [MessageReaction] = []
     ) {
         self.messageId = messageId
@@ -820,6 +824,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         self.toAccountId = toAccountId
         self.body = body
         self.createdAt = createdAt
+        self.editedAt = editedAt
         self.deliveredAt = deliveredAt
         self.readAt = readAt
         self.readByAccountIds = readByAccountIds
@@ -830,14 +835,15 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         self.voiceMessage = voiceMessage
         self.conversationId = conversationId
         self.conversationSequence = conversationSequence
+        self.version = version
         self.reactions = reactions
     }
 
     enum CodingKeys: String, CodingKey {
-        case messageId, clientMessageId, fromAccountId, toAccountId, body, createdAt, deliveredAt, readAt, readByAccountIds, direction, sessionId, attachments
+        case messageId, clientMessageId, fromAccountId, toAccountId, body, createdAt, editedAt, deliveredAt, readAt, readByAccountIds, direction, sessionId, attachments
         case messageKind = "kind"
         case voiceMessage
-        case conversationId, conversationSequence, reactions
+        case conversationId, conversationSequence, version, reactions
     }
 
     init(from decoder: Decoder) throws {
@@ -848,6 +854,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         toAccountId = try container.decode(String.self, forKey: .toAccountId)
         body = try container.decode(String.self, forKey: .body)
         createdAt = try container.decode(String.self, forKey: .createdAt)
+        editedAt = try container.decodeIfPresent(String.self, forKey: .editedAt)
         deliveredAt = try container.decodeIfPresent(String.self, forKey: .deliveredAt)
         readAt = try container.decodeIfPresent(String.self, forKey: .readAt)
         readByAccountIds = try container.decodeIfPresent([String].self, forKey: .readByAccountIds)
@@ -858,6 +865,7 @@ struct CloudMessageDTO: Codable, Hashable, Identifiable {
         voiceMessage = try container.decodeIfPresent(VoiceMessage.self, forKey: .voiceMessage)
         conversationId = try container.decodeIfPresent(String.self, forKey: .conversationId)
         conversationSequence = try container.decodeIfPresent(Int64.self, forKey: .conversationSequence)
+        version = try container.decodeIfPresent(Int.self, forKey: .version)
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
     }
 }

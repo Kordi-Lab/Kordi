@@ -10,6 +10,7 @@ import {
 } from '../src/kordi-app/components/linkPreviewMetadata';
 import { MessageLinkPreview } from '../src/kordi-app/components/messageLinkPreview';
 import { firstExternalMessageLink } from '../src/kordi-app/components/messageLinks';
+import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('link preview extraction skips code and preserves a markdown destination', () => {
   const destination = 'https://example.com/page_(final)?token=redacted';
@@ -29,6 +30,10 @@ test('link preview renders a compact fallback without showing query parameters',
   assert.match(copy, /example\.com/);
   assert.match(copy, /quarterly review/);
   assert.doesNotMatch(copy, /token|share|private/);
+  assert.match(
+    readDesktopShellCss(),
+    /\.kordi-app\.theme-light a:not\(\.app-markdown-link\):not\(\.app-message-link-preview\)/,
+  );
 });
 
 test('link preview metadata requests deduplicate and stay bounded', async () => {

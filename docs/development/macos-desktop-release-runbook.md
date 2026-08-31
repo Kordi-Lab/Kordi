@@ -7,6 +7,12 @@ credentials, publisher arguments, channel policy, and backend deployment.
 Voice/video deployment and installed-app acceptance remain governed by the
 [call hosting guide](../call-hosting.md).
 
+For a coordinated macOS and iOS release, begin with the
+[standard dual-platform release runbook](dual-platform-release-runbook.md).
+This document starts after release preparation has merged, source qualification
+is recorded, and one commit is pinned. macOS publication and GitHub mirroring
+finish before the standard pipeline starts iOS archive/upload.
+
 ## Release invariant
 
 One immutable, merged `origin/main` commit must identify all of the following:
@@ -30,22 +36,27 @@ been verified.
 
 ## Preflight before compiling
 
-1. Fetch `origin/main`, select the merged release commit, and create a clean
+1. Confirm the release-preparation PR merged and the standard pipeline's source
+   and external prerequisite gates passed. Required iOS simulator/device tests
+   belong to merged implementation evidence, not release-day operation.
+2. Fetch `origin/main`, select the merged release commit, and create a clean
    detached worktree for it.
-2. Compare the commit with the previous release tag, confirm every user-facing
+3. Compare the commit with the previous release tag, confirm every user-facing
    change is represented in the dated `CHANGELOG.md` entry, and run the
    release-version test. The changelog version/link and all package, Cargo, and
    Tauri version sources must agree.
-3. Select the release profile before building:
+4. Select the release profile before building:
    - production requires Developer ID signing and notarization;
-   - ad-hoc requires explicit approval and can publish only to `acceptance`.
-4. Verify GCP authentication, signing material, disk space, memory pressure,
+   - ad-hoc requires explicit approval and can publish only to `acceptance`;
+   - the historical beta.5.1/beta.6 bootstrap is never the default acceptance
+     path for a standard release.
+5. Verify GCP authentication, signing material, disk space, memory pressure,
    mounted DMGs, running Kordi instances, and ports `9900` and `9901`.
-5. Record the Rust, Xcode, and linker versions so a later rebuild can reproduce
+6. Record the Rust, Xcode, and linker versions so a later rebuild can reproduce
    the toolchain.
-6. Inspect the macOS system proxy with `scutil --proxy`. Never bake a proxy
+7. Inspect the macOS system proxy with `scutil --proxy`. Never bake a proxy
    host or port into a release.
-7. If the release contains call changes or follows a call-service deployment,
+8. If the release contains call changes or follows a call-service deployment,
    confirm the product call readiness checks are green before compiling.
 
 Useful read-only checks:
@@ -118,7 +129,9 @@ exist:
 ```bash
 RELEASE_COMMIT="$(git rev-parse origin/main)"
 RELEASE_SOURCE_ROOT=/Applications/KordiReleaseSource-betaN
+RELEASE_BUILD_ROOT=/Applications/KordiReleaseBuild-betaN
 test ! -e "$RELEASE_SOURCE_ROOT"
+test ! -e "$RELEASE_BUILD_ROOT"
 git worktree add --detach "$RELEASE_SOURCE_ROOT" "$RELEASE_COMMIT"
 cd "$RELEASE_SOURCE_ROOT"
 test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
@@ -130,12 +143,23 @@ Use path remapping for the desktop binary and its native Kordi runtime sidecar:
 ```bash
 export RUSTFLAGS="--remap-path-prefix=$HOME=/build"
 export CARGO_BUILD_JOBS=1
+export CARGO_TARGET_DIR="$RELEASE_BUILD_ROOT"
+export APPLE_SIGNING_IDENTITY="<APPROVED_DEVELOPER_IDENTITY>"
 unset VITE_KORDI_CLOUD_API_BASE
 ```
 
 `CARGO_BUILD_JOBS=1` is the safe default on the release Mac. Building the
 agent runtime and Tauri dependency graph concurrently caused severe memory
 pressure and multiple multi-gigabyte Kordi processes during beta.9.
+
+Do not inherit a shared `CARGO_TARGET_DIR` from another task. Select the
+release-specific directory and the Developer ID signing identity explicitly
+before the first build.
+
+Use an already-installed, valid Developer ID Application identity on the
+approved local release Mac. Import the protected p12 into a temporary keychain
+only when the identity is absent or the build runs in an ephemeral environment.
+In both cases, the production prerequisite gate remains authoritative.
 
 Persistent `CARGO_TARGET_DIR` caches under
 `$HOME/.cache/kordi/releases/` may be reused when the toolchain, target,
@@ -188,20 +212,25 @@ has been corrected.
 Use this order so expensive work and external state changes happen only after
 their prerequisites are known:
 
-1. Merge the release-preparation PR and pin `RELEASE_COMMIT`.
-2. Back up the production database.
-3. Deploy server and runner images built from `RELEASE_COMMIT`; verify rollout,
-   schema, secret-free logs, public health, and the [two-account call acceptance
-   test](../call-hosting.md#required-two-account-acceptance-test). Keep legacy
-   release metadata on the last verified artifact while the new artifact does
-   not yet exist.
+1. Complete release preparation and candidate preflight, then pin
+   `RELEASE_COMMIT` once for both platforms. Do not create a release simulator.
+2. Inspect product server/runner images and schema. If the candidate has no
+   undeployed backend/runner diff, record compatibility and skip deployment.
+3. Only when a relevant diff exists, back up production and deploy the changed
+   server/runner components from `RELEASE_COMMIT`; verify rollout, schema,
+   secret-free logs, and public health. Run the [two-account call acceptance
+   test](../call-hosting.md#required-two-account-acceptance-test) only when
+   call/media/APNs/edge behavior changed. Keep legacy release metadata on the
+   last verified artifact while the new artifact does not yet exist.
 4. Build or reuse path-remapped sidecars, then build the desktop bundle from
    the physical neutral worktree.
 5. Run the source gate, bundle/signing gate, DMG layout gate, checksum gate,
    and final artifact privacy scan.
 6. Run `release:publish-desktop --dry-run` before opening MinIO tunnels.
 7. Inspect and replace only known stale remote port-forwards, then open the
-   loopback-only MinIO and SSH tunnels.
+   loopback-only MinIO and SSH tunnels. Prove a full authenticated DMG read and
+   SHA-256 through the exact tunnel before publication; a health request does
+   not detect large-stream resets.
 8. Publish immutable objects and the `acceptance` pointer.
 9. Verify the public manifest, updater archive, direct DMG, and current-version
    HTTP `204` behavior against the locally recorded metadata.
@@ -214,6 +243,18 @@ their prerequisites are known:
     DMG only after product verification succeeds.
 13. Verify the GitHub asset digest and size, close tunnels, remove secrets,
     detach DMGs, and remove the neutral worktree.
+
+When `kubectl port-forward` remains alive but logs stream timeouts or clients
+receive `socket hang up`/`ECONNRESET`, do not retry pointer mutation through the
+same path. Replace it with a task-owned loopback SSH forward to the current
+private MinIO pod endpoint, prove a full-object read, and close it immediately
+after publication.
+
+Immutable upload, acceptance promotion, normal beta promotion, stable/manual
+metadata, tag, and GitHub prerelease are separate states. Report each state
+after it is verified. An already-open prior desktop version checks on updater
+component mount; restart it or use an explicit check action after beta promotion
+before concluding that the update indicator is missing.
 
 Never deploy `KORDI_RELEASE_VERSION`, `KORDI_RELEASE_CHANGELOG_URL`, or manual
 install copy for a version whose referenced immutable DMG is not publicly
@@ -322,6 +363,12 @@ Before declaring the release complete:
 - remove the neutral worktree with `git worktree remove`;
 - preserve only non-secret release artifacts and validated build caches;
 - confirm the original development worktree is unchanged.
+
+The shell that loads release credentials must also own the cleanup trap. Do not
+pipe that shell directly through an untested redaction command: a failed output
+consumer can interrupt the command and leave protected files behind. Capture a
+mode-600 raw log, let cleanup finish, redact the completed log, emit the safe
+summary, and delete the raw log.
 
 ## Beta.9 reference result
 

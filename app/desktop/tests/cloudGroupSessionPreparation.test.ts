@@ -2,7 +2,7 @@ import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { cloudGroupSessionPreparationSignature } from '../src/features/cloud/cloudGroupSessionControl';
+import { cloudGroupSessionPreparationSignature } from '../src/features/cloud/cloudGroupSessionPolicy';
 import type { CloudAccount } from '../src/features/cloud/authClient';
 import type { CloudGroupControlEnvelope } from '../src/features/cloud/cloudGroupMessages';
 
@@ -112,6 +112,13 @@ test('group replay preparation signature invalidates when membership or title ch
         : participant
     )),
   });
+  const agentIdentityUpdated = groupMessage({
+    participants: original.participants.map((participant) => (
+      participant.accountId === 'acct_peer'
+        ? { ...participant, agentId: 'agent:peer', agentDisplayName: 'Peer agent' }
+        : participant
+    )),
+  });
 
   const signature = cloudGroupSessionPreparationSignature(original, account);
   assert.notEqual(
@@ -125,5 +132,9 @@ test('group replay preparation signature invalidates when membership or title ch
   assert.notEqual(
     signature,
     cloudGroupSessionPreparationSignature(publicIdentityUpdated, account),
+  );
+  assert.notEqual(
+    signature,
+    cloudGroupSessionPreparationSignature(agentIdentityUpdated, account),
   );
 });

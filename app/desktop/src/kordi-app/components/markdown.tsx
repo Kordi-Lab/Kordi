@@ -1,24 +1,13 @@
-import { Fragment, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
 import { Check, Copy } from 'lucide-react';
 
 import { copySurfaceProps, type KordiCopySurface } from '@/features/contentSelection';
 import { cn } from '@/lib/utils';
-import { ExternalMessageLink, MessageInlineContent } from './messageInlineContent';
+import type { MessageMention } from '../types';
+import { MarkdownInlineContent, type MarkdownInlineOptions, type MarkdownTone } from './markdownInline';
 import { MarkdownTable } from './markdownTable';
-import {
-  bareHttpUrlStartPattern, compactExternalLinkLabel, markdownHttpLinkPrefix,
-  safeExternalHttpHref,
-  splitBareHttpUrl,
-} from './messageLinks';
 
 export { openExternalMessageLink as openExternalMarkdownLink } from './messageLinks';
-
-type MarkdownInlinePart =
-  | { type: 'text'; value: string }
-  | { type: 'code'; value: string }
-  | { type: 'strong'; value: string }
-  | { type: 'em'; value: string }
-  | { type: 'link'; label: string; href: string };
 
 type MarkdownList = {
   ordered: boolean;
@@ -39,120 +28,14 @@ type MarkdownBlock =
   | { type: 'blockquote'; text: string }
   | { type: 'table'; headers: string[]; rows: string[][] };
 
-function nextInlineTokenIndex(slice: string) {
-  return [slice.indexOf('['), slice.indexOf('`'), slice.indexOf('*'), slice.search(bareHttpUrlStartPattern)]
-    .filter((value) => value >= 0)
-    .sort((left, right) => left - right)[0];
-}
-
-function parseInlineMarkdown(text: string): MarkdownInlinePart[] {
-  const parts: MarkdownInlinePart[] = [];
-  let index = 0;
-
-  while (index < text.length) {
-    const slice = text.slice(index);
-    const markdownLink = markdownHttpLinkPrefix(slice);
-    if (markdownLink) {
-      parts.push({ type: 'link', label: markdownLink.label, href: markdownLink.href });
-      index += markdownLink.matchedLength; continue;
-    }
-    const patterns = [
-      { type: 'bareLink' as const, match: slice.match(/^https?:\/\/[^\s<>"']+/i) },
-      { type: 'code' as const, match: slice.match(/^`([^`]+)`/) },
-      { type: 'strong' as const, match: slice.match(/^\*\*([^*]+)\*\*/) },
-      { type: 'em' as const, match: slice.match(/^\*([^*]+)\*/) },
-    ];
-    const hit = patterns.find((entry) => entry.match);
-
-    if (!hit?.match) {
-      const nextIndex = nextInlineTokenIndex(slice);
-      if (nextIndex === undefined) {
-        parts.push({ type: 'text', value: text.slice(index) });
-        break;
-      }
-      if (nextIndex === 0) {
-        parts.push({ type: 'text', value: slice[0] });
-        index += 1;
-        continue;
-      }
-      const endIndex = index + nextIndex;
-      parts.push({ type: 'text', value: text.slice(index, endIndex) });
-      index = endIndex;
-      continue;
-    }
-
-    const [matched, first] = hit.match;
-    if (hit.type === 'bareLink') {
-      const { href, suffix } = splitBareHttpUrl(matched);
-      const safeHref = safeExternalHttpHref(href);
-      parts.push(safeHref
-        ? { type: 'link', label: href, href: safeHref }
-        : { type: 'text', value: href });
-      if (suffix) {
-        parts.push({ type: 'text', value: suffix });
-      }
-    } else if (hit.type === 'code') {
-      parts.push({ type: 'code', value: first });
-    } else if (hit.type === 'strong') {
-      parts.push({ type: 'strong', value: first });
-    } else {
-      parts.push({ type: 'em', value: first });
-    }
-    index += matched.length;
-  }
-
-  return parts;
-}
-
-function renderInlineMarkdown(
-  text: string,
-  tone: 'default' | 'muted' = 'default',
-  showLinkIcons = false,
-) {
-  return parseInlineMarkdown(text).map((part, index) => {
-    if (part.type === 'code') {
-      return (
-        <code
-          key={`code-${index}`}
-          className={cn(
-            'rounded bg-[color:var(--app-control-bg)] px-1.5 py-0.5 font-mono text-[0.92em]',
-            tone === 'muted' ? 'text-slate-200' : 'text-slate-100',
-          )}
-        >
-          {part.value}
-        </code>
-      );
-    }
-    if (part.type === 'strong') {
-      return (
-        <strong key={`strong-${index}`} className={cn('font-semibold', tone === 'muted' ? 'text-slate-100' : 'text-white')}>
-          <MessageInlineContent text={part.value} showSiteIcons={false} />
-        </strong>
-      );
-    }
-    if (part.type === 'em') {
-      return (
-        <em key={`em-${index}`} className={cn('italic', tone === 'muted' ? 'text-slate-300' : 'text-slate-100')}>
-          <MessageInlineContent text={part.value} showSiteIcons={false} />
-        </em>
-      );
-    }
-    if (part.type === 'link') {
-      const label = compactExternalLinkLabel(part.label, part.href);
-      return (
-        <ExternalMessageLink
-          key={`link-${index}`}
-          href={part.href}
-          tone={tone}
-          showSiteIcon={showLinkIcons}
-        >
-          <MessageInlineContent text={label} linksInteractive={false} showSiteIcons={false} />
-        </ExternalMessageLink>
-      );
-    }
-    return <Fragment key={`text-${index}`}><MessageInlineContent text={part.value} showSiteIcons={false} /></Fragment>;
-  });
-}
+const inheritedMarkdownColorVariables = {
+  '--utility-foreground': 'currentColor',
+  '--utility-muted-text': 'color-mix(in oklab, currentColor 72%, transparent)',
+  '--utility-meta-text': 'color-mix(in oklab, currentColor 64%, transparent)',
+  '--app-divider': 'color-mix(in oklab, currentColor 18%, transparent)',
+  '--app-main-muted-bg': 'color-mix(in oklab, currentColor 7%, transparent)',
+  '--app-control-hover': 'color-mix(in oklab, currentColor 9%, transparent)',
+} as CSSProperties;
 
 function leadingIndentWidth(line: string) {
   const indent = line.match(/^\s*/)?.[0] ?? '';
@@ -240,7 +123,7 @@ function parseMarkdownList(lines: string[], startIndex: number): { list: Markdow
   return { list: rootList, nextIndex: index };
 }
 
-function parseMarkdownBlocks(text: string): MarkdownBlock[] {
+function parseMarkdownBlocks(text: string, preserveLineBreaks = false): MarkdownBlock[] {
   const normalized = text.replace(/\r\n/g, '\n');
   const blocks: MarkdownBlock[] = [];
   const lines = normalized.split('\n');
@@ -323,7 +206,7 @@ function parseMarkdownBlocks(text: string): MarkdownBlock[] {
       paragraph.push(current);
       index += 1;
     }
-    blocks.push({ type: 'paragraph', text: paragraph.join(' ') });
+    blocks.push({ type: 'paragraph', text: paragraph.join(preserveLineBreaks ? '\n' : ' ') });
   }
 
   return blocks;
@@ -609,18 +492,20 @@ function MarkdownCodeBlock({
 function MarkdownListView({
   list,
   depth = 0,
-  showLinkIcons = false,
+  inlineOptions,
 }: {
   list: MarkdownList;
   depth?: number;
-  showLinkIcons?: boolean;
+  inlineOptions: MarkdownInlineOptions;
 }) {
   const Wrapper = list.ordered ? 'ol' : 'ul';
+  const inheritColor = inlineOptions.tone === 'inherit';
 
   return (
     <Wrapper data-kordi-copy-block={depth === 0 ? 'true' : undefined}
       className={cn(
-        'space-y-1 text-sm leading-6 text-slate-100 marker:text-slate-500',
+        'space-y-1 text-sm leading-6',
+        inheritColor ? 'text-[color:inherit] marker:text-[color:inherit]' : 'text-slate-100 marker:text-slate-500',
         depth === 0 ? 'pl-5' : 'pl-4 pt-1',
         list.ordered ? 'list-decimal' : 'list-disc',
       )}
@@ -638,10 +523,10 @@ function MarkdownListView({
                 {item.checked ? '✓' : ''}
               </span>
             ) : null}
-            <div className="min-w-0">{renderInlineMarkdown(item.text, 'default', showLinkIcons)}</div>
+            <div className="min-w-0"><MarkdownInlineContent text={item.text} {...inlineOptions} /></div>
           </div>
           {item.children.map((child, childIndex) => (
-            <MarkdownListView key={`${depth}-${index}-child-${childIndex}`} list={child} depth={depth + 1} showLinkIcons={showLinkIcons} />
+            <MarkdownListView key={`${depth}-${index}-child-${childIndex}`} list={child} depth={depth + 1} inlineOptions={inlineOptions} />
           ))}
         </li>
       ))}
@@ -653,34 +538,54 @@ function MarkdownContent({
   text,
   className,
   tone = 'default',
-  showLinkIcons = false, copySurface,
+  showLinkIcons = false,
+  copySurface,
+  mentions,
+  onOpenMention,
+  preserveLineBreaks = false,
 }: {
   text: string;
   className?: string;
-  tone?: 'default' | 'muted';
-  showLinkIcons?: boolean; copySurface?: KordiCopySurface;
+  tone?: MarkdownTone;
+  showLinkIcons?: boolean;
+  copySurface?: KordiCopySurface;
+  mentions?: MessageMention[];
+  onOpenMention?: (mention: MessageMention, anchorRect: DOMRect) => void;
+  preserveLineBreaks?: boolean;
 }) {
-  const blocks = useMemo(() => parseMarkdownBlocks(text), [text]);
+  const blocks = useMemo(() => parseMarkdownBlocks(text, preserveLineBreaks), [preserveLineBreaks, text]);
+  const inlineOptions = { tone, showLinkIcons, mentions, onOpenMention };
+  const defaultBlockInlineOptions = tone === 'inherit' ? inlineOptions : { ...inlineOptions, tone: 'default' as const };
 
   return (
-    <div className={cn('min-w-0 space-y-3 break-words [overflow-wrap:anywhere]', className)} {...copySurfaceProps(copySurface)}>
+    <div
+      className={cn('min-w-0 space-y-3 break-words [overflow-wrap:anywhere]', className)}
+      style={tone === 'inherit' ? inheritedMarkdownColorVariables : undefined}
+      {...copySurfaceProps(copySurface)}
+    >
       {blocks.map((block, index) => {
         if (block.type === 'heading') {
           const headingClass =
             block.level === 1
-              ? tone === 'muted'
+              ? tone === 'inherit'
+                ? 'text-[1.05rem] font-semibold'
+                : tone === 'muted'
                 ? 'app-markdown-muted-heading text-[1.05rem] font-medium text-slate-300'
                 : 'text-[1.05rem] font-semibold text-white'
               : block.level === 2
-                ? tone === 'muted'
+                ? tone === 'inherit'
+                  ? 'text-[0.98rem] font-semibold'
+                  : tone === 'muted'
                   ? 'app-markdown-muted-heading text-[0.98rem] font-medium text-slate-300'
                   : 'text-[0.98rem] font-semibold text-white'
-                : tone === 'muted'
+                : tone === 'inherit'
+                  ? 'text-[0.92rem] font-semibold'
+                  : tone === 'muted'
                   ? 'app-markdown-muted-heading text-[0.92rem] font-medium text-slate-400'
                   : 'text-[0.92rem] font-semibold text-slate-100';
           return (
             <div key={`heading-${index}`} data-kordi-copy-block="true" className={cn(headingClass, 'min-w-0 break-words [overflow-wrap:anywhere]')}>
-              {renderInlineMarkdown(block.text, tone, showLinkIcons)}
+              <MarkdownInlineContent text={block.text} {...inlineOptions} />
             </div>
           );
         }
@@ -690,13 +595,13 @@ function MarkdownContent({
             : <MarkdownCodeBlock key={`code-${index}`} language={block.language} code={block.code} />;
         }
         if (block.type === 'list') {
-          return <MarkdownListView key={`list-${index}`} list={{ ordered: block.ordered, items: block.items }} showLinkIcons={showLinkIcons} />;
+          return <MarkdownListView key={`list-${index}`} list={{ ordered: block.ordered, items: block.items }} inlineOptions={defaultBlockInlineOptions} />;
         }
         if (block.type === 'blockquote') {
           return (
-            <blockquote key={`quote-${index}`} data-kordi-copy-block="true" className={cn('min-w-0 break-words [overflow-wrap:anywhere] border-l-2 pl-4 text-sm italic leading-6', tone === 'muted' ? 'app-markdown-muted-quote border-slate-500/20 text-slate-500' : 'border-slate-500/40 text-slate-300')}>
+            <blockquote key={`quote-${index}`} data-kordi-copy-block="true" className={cn('min-w-0 break-words [overflow-wrap:anywhere] border-l-2 pl-4 text-sm italic leading-6', tone === 'inherit' ? 'border-current text-[color:inherit] opacity-80' : tone === 'muted' ? 'app-markdown-muted-quote border-slate-500/20 text-slate-500' : 'border-slate-500/40 text-slate-300')}>
               {block.text.split('\n').map((line, lineIndex) => (
-                <p key={`quote-line-${lineIndex}`}>{renderInlineMarkdown(line, tone, showLinkIcons)}</p>
+                <p key={`quote-line-${lineIndex}`}><MarkdownInlineContent text={line} {...inlineOptions} /></p>
               ))}
             </blockquote>
           );
@@ -705,13 +610,13 @@ function MarkdownContent({
           return (
             <div key={`table-${index}`} data-kordi-copy-block="true">
               <MarkdownTable headers={block.headers} rows={block.rows}
-                renderCell={(value) => renderInlineMarkdown(value, 'default', showLinkIcons)} />
+                renderCell={(value) => <MarkdownInlineContent text={value} {...defaultBlockInlineOptions} />} />
             </div>
           );
         }
         return (
-          <p key={`paragraph-${index}`} data-kordi-copy-block="true" className={cn('min-w-0 break-words [overflow-wrap:anywhere] text-sm leading-6', tone === 'muted' ? 'app-markdown-muted-copy text-slate-400' : 'text-slate-100')}>
-            {renderInlineMarkdown(block.text, tone, showLinkIcons)}
+          <p key={`paragraph-${index}`} data-kordi-copy-block="true" className={cn('min-w-0 break-words [overflow-wrap:anywhere] text-sm leading-6', preserveLineBreaks && 'whitespace-pre-wrap', tone === 'inherit' ? 'text-[color:inherit]' : tone === 'muted' ? 'app-markdown-muted-copy text-slate-400' : 'text-slate-100')}>
+            <MarkdownInlineContent text={block.text} {...inlineOptions} />
           </p>
         );
       })}

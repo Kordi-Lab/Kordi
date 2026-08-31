@@ -57,6 +57,18 @@ export function relatedAgentSessionStatusById(
   return statuses;
 }
 
+export function relatedAgentSessionStatusMapsEqual(
+  left: ReadonlyMap<string, RelatedAgentSessionRunStatus> | undefined,
+  right: ReadonlyMap<string, RelatedAgentSessionRunStatus> | undefined,
+) {
+  if (left === right) return true;
+  if ((left?.size ?? 0) !== (right?.size ?? 0)) return false;
+  for (const [sessionId, status] of left ?? []) {
+    if (right?.get(sessionId) !== status) return false;
+  }
+  return true;
+}
+
 export function normalizedRelatedAgentSessionStatus(status: string): RelatedAgentSessionRunStatus {
   const normalized = status.trim().toLowerCase();
   if (['done', 'complete', 'completed', 'succeeded', 'success'].includes(normalized)) return 'done';

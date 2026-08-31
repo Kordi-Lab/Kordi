@@ -82,7 +82,7 @@
 }
 
 .app-chat-pane-transcript-scroll {
-  padding: var(--app-chat-pane-transcript-block) var(--app-chat-pane-transcript-inline);
+  padding: var(--app-chat-pane-transcript-block) var(--app-chat-pane-transcript-inline) 0.25rem;
 }
 
 .app-chat-destination-tabs {

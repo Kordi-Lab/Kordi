@@ -23,7 +23,6 @@ import {
 } from '@/features/canonical/sessionResolver';
 import { createCanonicalSessionReadModel, presentLocalAgentMessages } from '@/features/canonical/sessionReadModel';
 import { canonicalLocalAgentAvatarSeed } from '@/features/canonical/avatarIdentity';
-import type { SessionHydrationState } from '@/features/canonical/canonicalStore';
 import {
   isLocalDraftChatConversationId,
   isProjectDraftSessionId,
@@ -125,7 +124,6 @@ type UseWorkspaceViewModelsArgs = {
   desktopCollaborationState: DesktopCollaborationState | null;
   canonicalSessionState: CanonicalSessionState | null;
   canonicalSessionSummaries?: CanonicalSessionSummary[];
-  canonicalHydrationBySessionId?: Record<string, SessionHydrationState>;
   hiddenSessionIds: Set<string>;
   projectWorkspaces: Project[];
   projectSelectedSessionIds: Record<string, string>;
@@ -161,7 +159,6 @@ export function useWorkspaceViewModels({
   desktopCollaborationState,
   canonicalSessionState,
   canonicalSessionSummaries = [],
-  canonicalHydrationBySessionId = {},
   hiddenSessionIds,
   projectWorkspaces,
   projectSelectedSessionIds,
@@ -395,7 +392,7 @@ export function useWorkspaceViewModels({
 
   const hydratedChatConversations = useMemo(() => {
     if (!isNativeShell) {
-      return transcriptReferenceStabilizer.prepare(conversations);
+      return conversations;
     }
     const collaborationSourceConversations = canonicalReadModel ? collaborationChatConversations : visibleCollaborationChatConversations;
     const merged = [...collaborationSourceConversations, ...localChatConversations, ...transientChatConversations];
@@ -409,16 +406,12 @@ export function useWorkspaceViewModels({
         ...conversation,
         messages: presentLocalAgentMessages(conversation.messages, localAgentDisplayName),
       }));
-    return transcriptReferenceStabilizer.prepare(conversationsWithStableOrder);
-  }, [collaborationChatConversations, canonicalReadModel, isNativeShell, localAgentDisplayName, localChatConversations, transcriptReferenceStabilizer, transientChatConversations, visibleCollaborationChatConversations]);
-  useLayoutEffect(() => {
-    transcriptReferenceStabilizer.commit(hydratedChatConversations.cache);
-  }, [hydratedChatConversations.cache, transcriptReferenceStabilizer]);
-  const stableHydratedChatConversations = hydratedChatConversations.conversations;
+    return conversationsWithStableOrder;
+  }, [collaborationChatConversations, canonicalReadModel, isNativeShell, localAgentDisplayName, localChatConversations, transientChatConversations, visibleCollaborationChatConversations]);
 
   const decoratedChatConversations = useMemo(() => {
     const withCloudPresence = applyCloudPresenceToConversations(
-      stableHydratedChatConversations,
+      hydratedChatConversations,
       cloudPresence,
     );
     const withCloudActivity = withCloudPresence.map((conversation) => {
@@ -438,11 +431,18 @@ export function useWorkspaceViewModels({
       };
     });
     return hideRawConversationIds(withCloudActivity);
-  }, [cloudPresence, cloudSessionActivity, stableHydratedChatConversations]);
-  const blankShellCollapsedChatConversations = useMemo(
+  }, [cloudPresence, cloudSessionActivity, hydratedChatConversations]);
+  const rawBlankShellCollapsedChatConversations = useMemo(
     () => collapseBlankConversationShells(decoratedChatConversations),
     [decoratedChatConversations],
   );
+  const stableChatConversations = transcriptReferenceStabilizer.prepare(
+    rawBlankShellCollapsedChatConversations,
+  );
+  useLayoutEffect(() => {
+    transcriptReferenceStabilizer.commit(stableChatConversations);
+  }, [stableChatConversations, transcriptReferenceStabilizer]);
+  const blankShellCollapsedChatConversations = stableChatConversations.conversations;
 
   const chatConversations = useMemo(() => {
     const hiddenIds = new Set([
@@ -480,10 +480,8 @@ export function useWorkspaceViewModels({
         visibleMaterializedChatConversations[0]
         ?? (!isNativeShell ? conversations[0] : undefined),
     });
-    const canonicalSessionId = selected.canonicalSessionId ?? selected.id;
-    const hydration = canonicalHydrationBySessionId[canonicalSessionId];
-    return applyCanonicalHydrationPlaceholder(selected, hydration);
-  }, [activeConvId, canonicalHydrationBySessionId, chatConversations, isNativeShell, nativeChatPlaceholder, visibleMaterializedChatConversations]);
+    return applyCanonicalHydrationPlaceholder(selected);
+  }, [activeConvId, chatConversations, isNativeShell, nativeChatPlaceholder, visibleMaterializedChatConversations]);
   const activeConversationUsesCollaboration = isNativeShell && (
     activeConv.id.startsWith('bridge:')
     || isLegacyCanonicalCollaborationSessionId(activeConv.canonicalSessionId ?? activeConv.id)

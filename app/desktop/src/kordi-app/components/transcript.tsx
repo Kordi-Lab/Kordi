@@ -20,7 +20,7 @@ import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual, shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGallery';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
-import { MessageBubbleShapeBackdrop, humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
+import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import {
   relatedAgentSessionsFromTools,
   type RelatedAgentSessionRunStatus,
@@ -30,16 +30,17 @@ import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
 import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
 import { ForwardedFromHeader } from './forwardedFromHeader';
+import { HumanMessageMarkdown } from './humanMessageMarkdown';
 import { MarkdownContent } from './markdown';
-import { MessageInlineContent, MessageMentionProfileContent } from './messageInlineContent';
+import { MessageInlineContent } from './messageInlineContent';
 import { MessageLinkPreview } from './messageLinkPreview';
 import { firstExternalMessageLink } from './messageLinks';
+import { messageBubblePropsEqual } from './messageBubbleMemo';
 import { MessageReactionChips } from './messageReactions';
 import { MessageContextMenuHost } from './messageContextMenuHost';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
 import { AttachmentPreview } from './transcriptAttachments';
 import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
-import { messageSnapshotKey } from './transcriptMessageSnapshot';
 import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
@@ -47,8 +48,9 @@ import { VoiceMessageContent } from './voiceMessage';
 import { transcriptMessageIsOwnHuman, transcriptMessageIsPeerHuman } from './transcriptMessageHumanRole';
 import { MessageDeliveryStatusSlot, TranscriptMessageTransferActions } from './transcriptMessageTransferActions';
 import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
-import { ContactRequestTime, MessageHoverTime } from './transcriptMessageTime';
+import { ContactRequestTime, MessageEditedLabel, MessageHoverTime } from './transcriptMessageTime';
 import type { MessageForkSummary } from './transcriptMessageForks';
+import { TranscriptMessageSurface } from './transcriptMessageSurface';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { MessageContextMenuContent } from './messageContextMenuContent';
 export type { MessageContextMenuActionHandlers } from './messageContextMenuContent';
@@ -202,14 +204,14 @@ function ContactRequestFailureNotice({
 }
 
 function MessageFooter({
-  status,
+  message, status,
   detail,
   isUser,
   compact = false,
   replySummary,
   onNavigateToMessage,
 }: {
-  status?: string | null;
+  message: Message; status?: string | null;
   detail?: string;
   isUser?: boolean;
   compact?: boolean;
@@ -217,15 +219,15 @@ function MessageFooter({
   onNavigateToMessage?: (messageId: string) => void;
 }) {
   const showDetail = detail && (!status || (status !== 'read' && status !== 'responded'));
-  if (!isUser && !showDetail && !replySummary) return null;
+  if (!isUser && !showDetail && !replySummary && !message.editedAt) return null;
 
   return (
     <div className={cn(
-      'app-message-footer app-message-delivery-footer flex items-center gap-1.5 text-[10px] leading-none tabular-nums',
+      'app-message-footer app-message-delivery-footer flex items-center text-[10px] leading-none tabular-nums',
       compact ? 'shrink-0 self-end whitespace-nowrap pl-2 justify-end' : 'ml-auto mt-1.5 justify-end',
-      isUser ? 'text-black/45' : 'text-slate-500/80',
+      isUser ? 'gap-0.5 text-black/45' : 'gap-1.5 text-slate-500/80',
     )}>
-      {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}
+      {showDetail ? <span className="truncate text-[10px]">{detail}</span> : null}<MessageEditedLabel msg={message} />
       <RequestReplyLine summary={replySummary} own={Boolean(isUser)} inline onNavigateToMessage={onNavigateToMessage} />
       {isUser ? <MessageDeliveryStatusSlot status={status} /> : null}
     </div>
@@ -311,7 +313,7 @@ function MessageBubbleView({
   onOpenForkSession,
   relatedAgentSessionStatusById,
   onReplyMessage,
-  onForwardMessage,
+  onForwardMessage, onEditMessage, onDeleteMessage,
   onRetryMessage,
   onOpenMessageDetail,
   onSelectMessage,
@@ -346,7 +348,7 @@ function MessageBubbleView({
   onOpenForkSession?: (sessionId: string) => void;
   relatedAgentSessionStatusById?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
   onReplyMessage?: (message: Message) => void;
-  onForwardMessage?: (message: Message) => void;
+  onForwardMessage?: (message: Message) => void; onEditMessage?: (message: Message) => void; onDeleteMessage?: (message: Message) => void;
   onRetryMessage?: (message: Message) => Promise<void> | void;
   onOpenMessageDetail?: (message: Message) => void;
   onSelectMessage?: (message: Message) => void;
@@ -364,7 +366,7 @@ function MessageBubbleView({
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const selectionId = messageSelectionId(msg);
   const isPinned = Boolean(selectionId && pinnedMessageIds?.includes(selectionId));
-  const menuActionHandlers = { onReplyMessage, onForwardMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, onReactMessage, isPinned, imageGallery };
+  const menuActionHandlers = { onReplyMessage, onForwardMessage, onEditMessage, onDeleteMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, onReactMessage, isPinned, imageGallery };
   const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
@@ -771,9 +773,9 @@ function MessageBubbleView({
   const showCompactFooter = isOwnHumanMessage || isPeerHumanMessage; const showHeaderMeta = Boolean(isAgentMessage && msg.sender);
   const hasVoice = Boolean(msg.voiceMessage); const hasText = Boolean(msg.callActivity) || (!hasVoice && msg.text.trim().length > 0); const hasLinkPreview = hasText && !msg.callActivity && Boolean(firstExternalMessageLink(msg.text));
   const hasAttachments = (msg.attachments?.length ?? 0) > 0; const hasOnlyImageAttachments = hasAttachments && !hasText && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasOnlyBorderlessMediaAttachments = hasOnlyImageAttachments || (!hasText && !hasVoice && attachmentsAreOnlyMp4Videos(msg.attachments)); const hasMixedImageAttachments = hasText && (msg.attachments ?? []).some((attachment) => attachment.kind === 'image');
-  const hasGroupedImageAttachments = hasOnlyImageAttachments && (msg.attachments?.length ?? 0) > 1;
+  const hasGroupedImageAttachments = hasAttachments && (msg.attachments?.length ?? 0) > 1 && (msg.attachments ?? []).every((attachment) => attachment.kind === 'image'); const hasDetachedImageGroup = hasGroupedImageAttachments && hasText;
   const showsExternalRetry = isOwnHumanMessage && deliveryVisual?.tone === 'red' && Boolean(onRetryMessage); const bubbleDeliveryStatus = showsExternalRetry ? null : deliveryStatus;
-  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse && !hasLinkPreview;
+  const showInlineCompactFooter = showCompactFooter && hasText && !hasAttachments && !msg.supportContactResponse && !hasLinkPreview && !(/\r?\n/.test(msg.text) || /^\s*(?:`{3,}|#{1,3}\s+|>|[-*+]\s+|\d+\.\s+)/.test(msg.text));
   const avatarKind: IdentityAvatarKind = isAgentMessage ? 'agent' : 'human';
   const avatarName = selfDisplayName(msg.sender || (isOwnHumanMessage ? 'Me' : avatarKind === 'agent' ? 'Agent' : 'Person'), isOwnHumanMessage);
   const avatarSeed = isOwnHumanMessage
@@ -788,13 +790,84 @@ function MessageBubbleView({
       && onRequestCollaborationContact
       && contactRequestFailureCanBeRetried(msg.detail),
   );
-  const footerDetail = showContactRequestAction ? undefined : msg.detail;
-  const showAvatarSlot = !isAgentMessage;
-  const showAvatar = showAvatarSlot && !isGroupedWithNext;
-  const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode);
-  const isForwardedMessage = msg.messageAction?.kind === 'forward';
-  const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
-
+  const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = !isAgentMessage; const showAvatar = showAvatarSlot && !isGroupedWithNext;
+  const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode); const isForwardedMessage = msg.messageAction?.kind === 'forward'; const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
+  const messageSurfaceContent = (
+    <>
+      {showInlineHumanSender ? (
+        <div className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4">{msg.sender}</div>
+      ) : null}
+      {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
+      {msg.sourceMessage && !isForwardedMessage ? (
+        <div className={cn(hasText || hasAttachments || hasVoice ? 'mb-2' : '')}><SourceMessageQuote sourceMessage={msg.sourceMessage} compactReplyPreview={isOwnHumanMessage || isPeerHumanMessage} onNavigateToMessage={onNavigateToMessage} /></div>
+      ) : null}
+      {showCompactFooter ? (
+        showInlineCompactFooter ? (
+          <div className="leading-[1.45]">
+            <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
+              {msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <HumanMessageMarkdown message={msg} inline onOpenSenderProfile={onOpenSenderProfile} />}
+            </span>
+            {isOwnHumanMessage || footerDetail || msg.replySummary || msg.editedAt ? (
+              <span className={cn(
+                'app-message-footer app-message-compact-footer inline-flex translate-y-[1px] items-center whitespace-nowrap text-[9.5px] leading-none tabular-nums',
+                isOwnHumanMessage ? 'app-message-delivery-footer ml-3 gap-0.5 text-black/45' : 'ml-4 gap-1 text-slate-500/80',
+              )}>
+                {!isOwnHumanMessage && footerDetail ? <span>{footerDetail}</span> : null}<MessageEditedLabel msg={msg} />
+                <RequestReplyLine summary={msg.replySummary} own={isOwnHumanMessage} inline onNavigateToMessage={onNavigateToMessage} />
+                {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={bubbleDeliveryStatus} /> : null}
+              </span>
+            ) : null}
+          </div>
+        ) : (
+          <>
+            <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>
+              {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} footer={<MessageFooter message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
+              {hasAttachments && !hasDetachedImageGroup ? (
+                <AttachmentPreview
+                  msg={msg}
+                  imageGallery={imageGallery}
+                  imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null}
+                />
+              ) : null}
+              {msg.supportContactTyping ? (
+                <SupportContactTypingIndicator />
+              ) : hasText ? (
+                msg.supportContactResponse
+                  ? <SupportContactAnswer text={msg.text} />
+                  : <>{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <HumanMessageMarkdown message={msg} onOpenSenderProfile={onOpenSenderProfile} />}{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>
+              ) : null}
+            </div>
+            {!hasOnlyBorderlessMediaAttachments && !hasVoice ? (
+              <MessageFooter
+                message={msg} status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined}
+                detail={footerDetail}
+                isUser={isOwnHumanMessage}
+                replySummary={msg.replySummary}
+                onNavigateToMessage={onNavigateToMessage}
+              />
+            ) : null}
+          </>
+        )
+      ) : (
+        <>
+          <div className={cn('flex flex-col', hasAttachments && !hasDetachedImageGroup && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
+            {hasAttachments && !hasDetachedImageGroup ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}
+            {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <><MarkdownContent text={msg.text} showLinkIcons copySurface="message" />{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>) : null}
+          </div>
+          {(msg.statusChips?.length || footerDetail) ? (
+            <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>
+              {msg.statusChips?.map((chip) => (
+                <span key={chip} className="app-message-status-chip inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300">
+                  {chip}
+                </span>
+              ))}
+              {footerDetail ? <span className="text-slate-400">{footerDetail}</span> : null}
+            </div>
+          ) : null}
+        </>
+      )}
+    </>
+  );
   return (
     <MessageContextMenuHost
       msg={msg}
@@ -872,8 +945,13 @@ function MessageBubbleView({
         ) : showAvatarSlot ? (
           <span className={cn('app-message-avatar-spacer shrink-0', useHumanCompactDensity ? 'h-7 w-7' : 'h-8 w-8')} aria-hidden="true" />
         ) : null}
-        <div data-message-context-menu-anchor="true"
-          data-message-media-side={hasOnlyBorderlessMediaAttachments ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
+        <TranscriptMessageSurface data-message-context-menu-anchor="true"
+          data-message-media-side={hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
+          data-message-detached-image-group={hasDetachedImageGroup ? 'true' : undefined}
+          attachmentPreview={<AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={hasOnlyBorderlessMediaAttachments}
+          bubbleClassName={bubble} compact={useHumanCompactDensity} detachedImageGroup={hasDetachedImageGroup}
+          enter={shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus)}
+          side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'}
           data-transcript-density={compactDensity}
           onClick={(event) => {
             if (!selectableInSelectionMode) return;
@@ -885,17 +963,18 @@ function MessageBubbleView({
           }}
           className={cn(
           'app-message-hover-time-trigger min-w-0',
+          hasDetachedImageGroup ? cn('flex flex-col gap-2', isOwnHumanMessage ? 'items-end' : 'items-start') : '',
           hasGroupedImageAttachments ? (isOwnHumanMessage ? 'mr-4' : isPeerHumanMessage ? 'ml-4' : '') : '',
-          hasOnlyBorderlessMediaAttachments ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
+          hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
-            ? hasOnlyBorderlessMediaAttachments
+            ? hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup
               ? 'w-fit max-w-[31rem] p-0'
               : useHumanCompactDensity
                 ? cn('app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
                 : cn('w-fit px-4 py-2.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
-              ? hasOnlyBorderlessMediaAttachments
+              ? hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup
                 ? 'w-fit max-w-[31rem] p-0'
                 : useHumanCompactDensity
                   ? cn(
@@ -908,91 +987,12 @@ function MessageBubbleView({
                     msg.supportContactTyping ? 'min-w-[4rem]' : undefined,
                     humanMessageBubbleShapeClass('peer'),
                   )
-               : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'px-2.5 py-1.5' : '',
-          !hasOnlyBorderlessMediaAttachments && bubble,
+               : hasDetachedImageGroup ? 'w-fit max-w-[31rem] p-0' : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'px-2.5 py-1.5' : '',
+          !hasOnlyBorderlessMediaAttachments && !hasDetachedImageGroup && bubble,
         )}
         >
-        {isOwnHumanMessage && !hasOnlyBorderlessMediaAttachments ? <MessageBubbleShapeBackdrop side="own" /> : null}
-        {isPeerHumanMessage && !hasOnlyBorderlessMediaAttachments ? <MessageBubbleShapeBackdrop side="peer" /> : null}
-        {showInlineHumanSender ? (
-          <div
-            className="app-message-inline-sender mb-1 truncate text-[12px] font-semibold leading-4"
-          >
-            {msg.sender}
-          </div>
-        ) : null}
-        {forwardedSource ? <ForwardedFromHeader senderLabel={forwardedSource.senderLabel} /> : null}
-        {msg.sourceMessage && !isForwardedMessage ? (
-          <div className={cn(hasText || hasAttachments || hasVoice ? 'mb-2' : '')}>
-            <SourceMessageQuote sourceMessage={msg.sourceMessage} compactReplyPreview={isOwnHumanMessage || isPeerHumanMessage} onNavigateToMessage={onNavigateToMessage} />
-          </div>
-        ) : null}
-        {showCompactFooter ? (
-          showInlineCompactFooter ? (
-            <div className="leading-[1.45]">
-              <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
-                {msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageMentionProfileContent message={msg} onOpenSenderProfile={onOpenSenderProfile} />}
-              </span>
-              {isOwnHumanMessage || footerDetail || msg.replySummary ? (
-                <span className={cn(
-                  'app-message-footer app-message-compact-footer inline-flex translate-y-[1px] items-center whitespace-nowrap text-[9.5px] leading-none tabular-nums',
-                  isOwnHumanMessage ? 'app-message-delivery-footer ml-3 gap-0.5 text-black/45' : 'ml-4 gap-1 text-slate-500/80',
-                )}>
-                  {!isOwnHumanMessage && footerDetail ? <span>{footerDetail}</span> : null}
-                  <RequestReplyLine summary={msg.replySummary} own={isOwnHumanMessage} inline onNavigateToMessage={onNavigateToMessage} />
-                  {isOwnHumanMessage ? <MessageDeliveryStatusSlot status={bubbleDeliveryStatus} /> : null}
-                </span>
-              ) : null}
-            </div>
-          ) : (
-            <>
-              <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>
-                {msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} footer={<MessageFooter status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined} detail={footerDetail} isUser={isOwnHumanMessage} compact replySummary={msg.replySummary} onNavigateToMessage={onNavigateToMessage} />} /> : null}
-                {hasAttachments ? (
-                  <AttachmentPreview
-                    msg={msg}
-                    imageGallery={imageGallery}
-                    imageDeliveryStatus={hasOnlyBorderlessMediaAttachments && isOwnHumanMessage ? bubbleDeliveryStatus : null}
-                  />
-                ) : null}
-                {msg.supportContactTyping ? (
-                  <SupportContactTypingIndicator />
-                ) : hasText ? (
-                  msg.supportContactResponse
-                    ? <SupportContactAnswer text={msg.text} />
-                    : <><div className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">{msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <MessageMentionProfileContent message={msg} onOpenSenderProfile={onOpenSenderProfile} />}</div>{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>
-                ) : null}
-              </div>
-              {!hasOnlyBorderlessMediaAttachments && !hasVoice ? (
-                <MessageFooter
-                  status={isOwnHumanMessage ? bubbleDeliveryStatus : undefined}
-                  detail={footerDetail}
-                  isUser={isOwnHumanMessage}
-                  replySummary={msg.replySummary}
-                  onNavigateToMessage={onNavigateToMessage}
-                />
-              ) : null}
-            </>
-          )
-        ) : (
-          <>
-            <div className={cn('flex flex-col', hasAttachments && hasText ? 'gap-2.5' : 'gap-0')}>{msg.voiceMessage ? <VoiceMessageContent voice={msg.voiceMessage} /> : null}
-              {hasAttachments ? <AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} /> : null}
-              {hasText ? (msg.callActivity ? <TranscriptCallActivityContent message={msg} /> : <><MarkdownContent text={msg.text} showLinkIcons copySurface="message" />{hasLinkPreview ? <MessageLinkPreview text={msg.text} /> : null}</>) : null}
-            </div>
-            {(msg.statusChips?.length || footerDetail) ? (
-              <div className={cn('app-message-status-bar border-t border-white/10 pt-2 text-[11px] text-slate-300', hasAttachments || hasText ? 'mt-2' : '')}>
-                {msg.statusChips?.map((chip) => (
-                  <span key={chip} className="app-message-status-chip inline-flex items-center rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[10px] text-slate-300">
-                    {chip}
-                  </span>
-                ))}
-                {footerDetail ? <span className="text-slate-400">{footerDetail}</span> : null}
-              </div>
-            ) : null}
-          </>
-        )}
-        </div>
+        {messageSurfaceContent}
+        </TranscriptMessageSurface>
         <TranscriptMessageTransferActions message={msg} showUploads={isOwnHumanMessage} retryable={showsExternalRetry} onRetryMessage={onRetryMessage} />
         <MessageHoverTime msg={msg} side={isOwnHumanMessage ? 'own' : 'peer'} />
         {forkButton}
@@ -1012,42 +1012,8 @@ function MessageBubbleView({
   );
 }
 
-export const MessageBubble = memo(
-  MessageBubbleView,
-  (previous, next) => previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
-    && previous.onStopActiveTurn === next.onStopActiveTurn
-    && previous.onNavigateToMessage === next.onNavigateToMessage
-    && previous.onOpenArtifact === next.onOpenArtifact
-    && previous.onOpenAuthSettings === next.onOpenAuthSettings
-    && previous.onRequestCollaborationContact === next.onRequestCollaborationContact
-    && previous.onOpenSenderProfile === next.onOpenSenderProfile
-    && previous.onForkMessage === next.onForkMessage
-    && previous.onOpenForkSession === next.onOpenForkSession
-    && previous.relatedAgentSessionStatusById === next.relatedAgentSessionStatusById
-    && previous.onReplyMessage === next.onReplyMessage
-    && previous.onForwardMessage === next.onForwardMessage
-    && previous.onRetryMessage === next.onRetryMessage
-    && previous.onOpenMessageDetail === next.onOpenMessageDetail
-    && previous.onSelectMessage === next.onSelectMessage
-    && previous.onRequestPinMessage === next.onRequestPinMessage
-    && previous.onRequestUnpinMessage === next.onRequestUnpinMessage
-    && previous.onReactMessage === next.onReactMessage
-    && previous.pinnedMessageIds === next.pinnedMessageIds
-    && previous.selectionMode === next.selectionMode
-    && previous.selectedMessageIds === next.selectedMessageIds
-    && previous.isMessageSelectable === next.isMessageSelectable
-    && previous.onToggleSelectedMessage === next.onToggleSelectedMessage
-    && previous.onSelectionDragStart === next.onSelectionDragStart
-    && previous.onSelectionDragEnter === next.onSelectionDragEnter
-    && previous.onSelectionDragEnd === next.onSelectionDragEnd
-    && previous.plainAgentResponse === next.plainAgentResponse
-    && previous.messageForks === next.messageForks
-    && previous.imageGallery === next.imageGallery
-    && previous.densityMode === next.densityMode
-    && previous.isGroupedWithPrevious === next.isGroupedWithPrevious
-    && previous.isGroupedWithNext === next.isGroupedWithNext
-    && (previous.msg === next.msg || messageSnapshotKey(previous.msg) === messageSnapshotKey(next.msg)),
-);
+export type MessageBubbleProps = Parameters<typeof MessageBubbleView>[0];
+export const MessageBubble = memo(MessageBubbleView, messageBubblePropsEqual);
 function contactAvatarKind(contact: Contact): IdentityAvatarKind {
   return contact.classType === 'my-agents' || contact.classType === 'other-users-agents' ? 'agent' : 'human';
 }

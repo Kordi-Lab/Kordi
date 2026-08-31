@@ -69,12 +69,21 @@ Signed Hosted Desktop beta releases use two different version strings:
 - App/package version: `0.0.1-beta.N`
 - Git tag and GitHub prerelease: `V0.0.1.betaN`
 
+For a normal macOS beta and iOS TestFlight release from one source commit, start
+with the [standard dual-platform release runbook](development/dual-platform-release-runbook.md).
+It qualifies and pins merged source, verifies or deploys the product backend,
+publishes macOS to `kordi.ai` and GitHub, then archives and uploads iOS. Feature
+tests and simulator acceptance belong to the implementation PRs; the standard
+release operation does not create a simulator. Use this document and the
+platform runbooks for detailed commands and recovery paths.
+
 Ad-hoc releases are explicit, per-release exceptions to the signed production
 procedure. The beta.6 acceptance-only procedure below is retained as a
 historical reference. A later ad-hoc release must be approved independently,
 must stay off the normal beta updater channel, and must not be presented as a
 notarized production build. Whether it is mirrored to GitHub is also an
-explicit release decision.
+explicit release decision. A standard release must not build the historical
+beta.5.1/bootstrap or beta.6 preview artifacts.
 
 Use a clean release branch/worktree from the latest `origin/main`. Do not release from a dirty local development worktree.
 
@@ -105,11 +114,17 @@ a new version next time if any immutable bytes were uploaded. Follow the full
 ### Signed desktop release prerequisites
 
 Every production updater release uses a Tauri minisign key and a notarized
-Developer ID build. The private Tauri key, its password, and Apple
-signing/notary material must be stored in GCP Secret Manager. Only the Tauri
-public key is committed in `app/desktop/src-tauri/tauri.conf.json`.
+Developer ID build. The private Tauri key, its password, and Apple notarization
+material must be stored in GCP Secret Manager. On the approved local release
+Mac, signing may use a valid Developer ID Application identity already installed
+in the operator keychain. Ephemeral or CI environments import the protected p12
+into a temporary keychain. Only the Tauri public key is committed in
+`app/desktop/src-tauri/tauri.conf.json`.
 
-The production secret names are:
+The production secret names are listed below. The p12 pair is required for
+ephemeral import and recovery; its absence does not invalidate an approved,
+already-installed local Developer ID identity when the production prerequisite
+gate passes.
 
 - `kordi-tauri-updater-private-key`
 - `kordi-tauri-updater-private-key-password`
@@ -176,6 +191,9 @@ pnpm release:publish-desktop -- \
 ```
 
 ### Beta.6 ad-hoc external-test preview
+
+This entire section is historical and is not part of the standard beta.7+
+release path. Do not use it as a generic acceptance bootstrap.
 
 Beta.6 is an acceptance-only, ad-hoc-signed external-test preview. It is not Apple-signed, notarized, tagged, mirrored to a public GitHub release, or promoted to `desktop/channels/beta/latest.json`. Invited testers install beta.5.1 manually once and use Apple's per-app **Open Anyway** flow. Do not disable Gatekeeper or remove quarantine attributes.
 
@@ -469,7 +487,9 @@ Preserve production data and deploy in place from a clean worktree at `RELEASE_C
 
    ```bash
    export KORDI_CLOUD_IMAGE_TAG="release-${RELEASE_COMMIT:0:12}"
-   export KORDI_EXPECT_DESKTOP_RELEASE_UNPUBLISHED=true
+   # Set true only when the current beta pointer is already unpublished.
+   # Keep false while the last verified beta remains live.
+   export KORDI_EXPECT_DESKTOP_RELEASE_UNPUBLISHED=false
    bash bridges/cloud-server/deploy/k3s/create-release-credentials.sh
    bash bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh
    ```
@@ -560,17 +580,28 @@ strings "$DMG" | rg -F 'https://kordi.ai'
 
 ## Validation before release
 
-Recommended baseline:
+For a coordinated macOS and iOS release, complete the release-preparation and
+[candidate preflight](development/dual-platform-release-runbook.md#phase-1-pin-and-preflight-the-merged-candidate)
+before running this desktop baseline. The preparation PR must already contain
+the required test evidence and reviewed iOS version/capability metadata. The
+standard operator sequence publishes macOS and its GitHub mirror before iOS
+archive/upload.
+
+Required source-only baseline:
 
 ```bash
-pnpm check
 pnpm --dir app/desktop exec node --test tests/releaseVersion.test.mjs
 pnpm --dir app/desktop release:secret-guard
-pnpm --dir app/desktop tauri:build:cloud:dmg
-pnpm build:registry
+pnpm --dir app/desktop release:prerequisites -- \
+  --source-only \
+  --expected-commit "$(git rev-parse HEAD)"
 ```
 
-Add focused tests for recently changed release surfaces, and always scan the final DMG before upload.
+Use the focused and full-suite evidence already attached to the merged
+implementation/release PRs. Do not rerun `pnpm check`, simulator suites,
+standalone registry builds, or unrelated product builds during standard release
+operation. The macOS phase runs its one production build and always scans the
+final DMG before upload.
 
 When the release contains call changes or follows a call-service deployment,
 the installed candidate must also pass the [call hosting readiness

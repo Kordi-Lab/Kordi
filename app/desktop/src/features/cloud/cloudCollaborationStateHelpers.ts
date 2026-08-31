@@ -1,5 +1,41 @@
 import type { CloudSessionTitle } from './authClient';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
+import type { CanonicalSessionState } from '@/kordi-app/types';
+
+export function patchCanonicalCloudGroupSessionTitles(
+  state: CanonicalSessionState | null,
+  syncedTitles: Record<string, CloudSessionTitle>,
+): CanonicalSessionState | null {
+  if (!state) return state;
+  let changed = false;
+  const sessions = state.sessions.map((session) => {
+    const snapshot = syncedTitles[session.id];
+    const title = snapshot?.title.trim() ?? '';
+    if (session.kind !== 'group' || !title) return session;
+    const metadata = session.metadata && typeof session.metadata === 'object'
+      && !Array.isArray(session.metadata)
+      ? session.metadata as Record<string, unknown>
+      : {};
+    if (metadata.sessionTitleSource === 'manual') return session;
+    if (
+      session.title === title
+      && metadata.sessionTitleSource === 'external'
+      && metadata.sessionTitleRevision === snapshot.titleRevision
+    ) return session;
+    changed = true;
+    return {
+      ...session,
+      title,
+      metadata: {
+        ...metadata,
+        sessionTitleSource: 'external',
+        sessionTitleRevision: snapshot.titleRevision,
+        sessionTitleUpdatedAtMs: snapshot.updatedAtMs,
+      },
+    };
+  });
+  return changed ? { ...state, sessions } : state;
+}
 
 export function cloudGroupSessionTitlesForReadModel(
   syncedTitles: Record<string, Pick<CloudSessionTitle, 'title'>>,

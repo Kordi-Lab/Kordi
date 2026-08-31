@@ -40,6 +40,7 @@ import type {
 } from '@/kordi-app/types';
 import { appendCanonicalMessage } from '@/lib/desktop';
 import { useMessageSelectionActions } from './useMessageSelectionActions';
+import { useKordiMessageMutations } from './useKordiMessageMutations';
 
 type MessageActionCloudTransport = Pick<
   UseCloudCollaborationStateResult,
@@ -47,6 +48,8 @@ type MessageActionCloudTransport = Pick<
   | 'sendCloudCollaborationMessage'
   | 'sendCloudGroupControl'
   | 'setCloudMessageReaction'
+  | 'editCloudMessage'
+  | 'deleteCloudMessage'
 >;
 
 type UseKordiMessageActionsArgs = {
@@ -96,7 +99,19 @@ export function useKordiMessageActions({
     sendCloudCollaborationMessage,
     sendCloudGroupControl,
     setCloudMessageReaction,
+    editCloudMessage,
+    deleteCloudMessage,
   } = cloudTransport;
+  const messageMutations = useKordiMessageMutations({
+    activeConversation,
+    draftSessionId,
+    isNativeShell,
+    setDesktopChatError,
+    setChatQuoteBySessionId,
+    setCanonicalState,
+    editCloudMessage,
+    deleteCloudMessage,
+  });
   const copyTextToClipboard = useCallback(async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -471,5 +486,6 @@ export function useKordiMessageActions({
     onCopySelectedMessages,
     onForwardSelectedMessages,
     messageForwardDialog,
+    ...messageMutations,
   };
 }

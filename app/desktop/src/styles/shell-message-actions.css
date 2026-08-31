@@ -226,9 +226,9 @@
 .app-source-message-quote {
   --app-source-message-quote-foreground: var(--utility-foreground);
   --app-source-message-quote-muted: var(--utility-muted-text);
-  --app-source-message-quote-accent: rgb(147 197 253);
-  --app-source-message-quote-bg: color-mix(in oklab, var(--app-source-message-quote-foreground) 7%, transparent);
-  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-source-message-quote-foreground) 10%, transparent);
+  --app-source-message-quote-accent: var(--app-message-mention, var(--app-chat-accent, rgb(147 197 253)));
+  --app-source-message-quote-bg: color-mix(in oklab, var(--app-source-message-quote-foreground) 10%, transparent);
+  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-source-message-quote-foreground) 14%, transparent);
   --app-source-message-quote-label: color-mix(in oklab, var(--app-source-message-quote-foreground) 94%, var(--app-source-message-quote-muted));
   --app-source-message-quote-text: color-mix(in oklab, var(--app-source-message-quote-foreground) 82%, var(--app-source-message-quote-muted));
   --app-source-message-quote-fade-bg: var(--app-live-assistant-answer-bg, var(--app-modal-bg));
@@ -241,27 +241,21 @@
 .app-chat-bubble-user .app-source-message-quote {
   --app-source-message-quote-foreground: var(--app-chat-bubble-user-text);
   --app-source-message-quote-muted: color-mix(in oklab, var(--app-chat-bubble-user-text) 72%, transparent);
-  --app-source-message-quote-accent: color-mix(in oklab, var(--app-sidebar-accent) 70%, var(--app-chat-bubble-user-text));
-  --app-source-message-quote-bg: color-mix(in oklab, var(--app-chat-bubble-user-text) 8%, transparent);
-  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-chat-bubble-user-text) 11%, transparent);
+  --app-source-message-quote-bg: color-mix(in oklab, var(--app-chat-bubble-user-text) 16%, transparent);
+  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-chat-bubble-user-text) 22%, transparent);
   --app-source-message-quote-fade-bg: var(--app-chat-bubble-user-bg);
 }
 
-.kordi-app.theme-light .app-chat-bubble-user .app-source-message-quote {
-  --app-source-message-quote-foreground: rgb(31 49 69);
-  --app-source-message-quote-muted: rgba(31, 49, 69, 0.62);
-  --app-source-message-quote-accent: rgb(59 99 148);
-  --app-source-message-quote-bg: rgba(31, 49, 69, 0.05);
-  --app-source-message-quote-bg-hover: rgba(31, 49, 69, 0.08);
-  --app-source-message-quote-label: rgba(31, 49, 69, 0.86);
-  --app-source-message-quote-text: rgba(31, 49, 69, 0.74);
-  --app-source-message-quote-fade-bg: rgb(226 235 245);
+.app-chat-bubble-peer .app-source-message-quote {
+  --app-source-message-quote-bg: color-mix(in oklab, var(--app-chat-accent) 22%, var(--app-chat-bubble-peer-bg));
+  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-chat-accent) 28%, var(--app-chat-bubble-peer-bg));
+  --app-source-message-quote-fade-bg: var(--app-chat-bubble-peer-bg);
 }
 
-.app-chat-bubble-peer .app-source-message-quote {
-  --app-source-message-quote-bg: color-mix(in oklab, var(--app-source-message-quote-foreground) 8%, transparent);
-  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-source-message-quote-foreground) 11%, transparent);
-  --app-source-message-quote-fade-bg: var(--app-chat-bubble-peer-bg);
+body[data-kordi-chat-theme="quiet"] .kordi-app.theme-light .app-chat-bubble-peer .app-source-message-quote,
+.kordi-app.theme-light .app-chat-theme-preview[data-kordi-chat-theme="quiet"] .app-chat-bubble-peer .app-source-message-quote {
+  --app-source-message-quote-bg: color-mix(in oklab, var(--app-chat-bubble-peer-text) 12%, var(--app-chat-bubble-peer-bg));
+  --app-source-message-quote-bg-hover: color-mix(in oklab, var(--app-chat-bubble-peer-text) 16%, var(--app-chat-bubble-peer-bg));
 }
 
 .app-source-message-quote-link {
@@ -296,6 +290,10 @@
 
 .app-source-message-quote-text {
   color: var(--app-source-message-quote-text);
+}
+
+.app-source-message-quote .app-message-mention {
+  color: var(--app-source-message-quote-accent);
 }
 
 .app-source-message-quote-folded {

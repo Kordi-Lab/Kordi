@@ -40,9 +40,11 @@ import {
 } from './cloudGroupMessageControl';
 import {
   applyCloudGroupSessionControl,
+} from './cloudGroupSessionControl';
+import {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
   resolveCloudGroupAdminSnapshot,
-} from './cloudGroupSessionControl';
+} from './cloudGroupSessionPolicy';
 import type {
   CloudGroupControlEnvelope,
 } from './cloudGroupMessages';
@@ -288,6 +290,7 @@ export function useCloudGroupControlApplication({
     const sessionContext = await applyCloudGroupSessionControl({
       cloudMessage,
       envelope,
+      historyReplay: options.historyReplay,
       runtime: {
         account,
         client,

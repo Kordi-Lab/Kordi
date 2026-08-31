@@ -6,6 +6,21 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { MarkdownContent, openExternalMarkdownLink } from '../src/kordi-app/components/markdown';
+import { MessageBubble } from '../src/kordi-app/components/transcript';
+import type { Message } from '../src/kordi-app/types';
+
+function humanMessage(overrides: Partial<Message> = {}): Message {
+  return {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: 'Hello',
+    time: '16:48',
+    statusChips: ['read'],
+    ...overrides,
+  };
+}
 
 test('renders bare http or https links as external markdown links', () => {
   const html = renderToStaticMarkup(createElement(MarkdownContent, { text: 'Read https://kordi.ai/docs for details.' }));
@@ -38,6 +53,74 @@ test('emphasizes mentions in agent markdown regardless of markdown weight', () =
   assert.match(html, /<strong[^>]*>[^<]*<span class="[^"]*app-message-mention-agent[^"]*"[^>]*>@EthanParksKordi<\/span><\/strong>/);
 });
 
+test('renders human release announcements with Markdown blocks and the independent link preview', () => {
+  const text = [
+    '@all We released a new version.',
+    '* Update resource and cache handling',
+    '* Improve **GIF** and video sending',
+    '* Fix macOS reactions',
+    'https://kordi.ai/updates/releases/latest/Kordi.dmg',
+  ].join('\n');
+  const mentions = [{
+    label: 'all',
+    targetKind: 'all',
+    targetIdentityId: 'group:release-team',
+    startUtf16: 0,
+    lengthUtf16: 4,
+    displayText: '@all',
+  }];
+
+  for (const msg of [
+    humanMessage({ text, mentions }),
+    humanMessage({ role: 'person', sender: 'Peer', isOwnMessage: false, text, mentions }),
+  ]) {
+    const html = renderToStaticMarkup(createElement(MessageBubble, { msg }));
+
+    assert.match(html, /<ul[^>]*class="[^"]*list-disc/);
+    assert.equal((html.match(/<li\b/g) ?? []).length, 3);
+    assert.match(html, /<strong[^>]*>GIF<\/strong>/);
+    assert.match(html, /data-mention-kind="all"[^>]*aria-label="@all, all people in this group"/);
+    assert.match(html, /class="app-message-link-preview"/);
+  }
+});
+
+test('keeps structured person mentions actionable inside human Markdown blocks', () => {
+  const text = 'Reviewers:\n* @Ethan Park please review';
+  const displayText = '@Ethan Park';
+  const html = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: humanMessage({
+      text,
+      mentions: [{
+        label: 'Ethan Park',
+        targetKind: 'person',
+        targetIdentityId: 'human:acct_ethan',
+        humanId: 'acct_ethan',
+        startUtf16: text.indexOf(displayText),
+        lengthUtf16: displayText.length,
+        displayText,
+      }],
+    }),
+    onOpenSenderProfile: () => undefined,
+  }));
+
+  assert.match(html, /<button[^>]*aria-label="Open Ethan Park profile"/);
+  assert.match(html, /data-mention-identity="human:acct_ethan"/);
+});
+
+test('keeps compact inline formatting and intentional human line breaks', () => {
+  const compact = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: humanMessage({ text: 'Hello **team**' }),
+  }));
+  const multiline = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: humanMessage({ text: 'First line\nSecond line' }),
+  }));
+
+  assert.match(compact, /<strong[^>]*>team<\/strong>/);
+  assert.match(compact, /app-message-compact-footer/);
+  assert.match(multiline, /whitespace-pre-wrap[^>]*>First line\nSecond line<\/p>/);
+  assert.doesNotMatch(multiline, /app-message-compact-footer/);
+});
+
 test('markdown links use a quiet URL treatment without underlines or external icons', () => {
   const html = renderToStaticMarkup(createElement(MarkdownContent, { text: 'Open https://www.google.com/ now.' }));
   const shellCss = readDesktopShellCss();
@@ -47,6 +130,8 @@ test('markdown links use a quiet URL treatment without underlines or external ic
   assert.doesNotMatch(html, /\bunderline\b|decoration-cyan|text-cyan/);
   assert.doesNotMatch(html, /<svg\b/);
   assert.match(shellCss, /\.app-markdown-link\s*{[\s\S]*color:\s*var\(--app-markdown-link\);[\s\S]*text-decoration:\s*none;/);
+  assert.match(shellCss, /\.kordi-app\.theme-light a:not\(\.app-markdown-link\)/);
+  assert.doesNotMatch(shellCss, /\.kordi-app\.theme-light a\s*{/);
   assert.match(themeTokensCss, /--app-markdown-link:\s*oklch\(/);
 });
 

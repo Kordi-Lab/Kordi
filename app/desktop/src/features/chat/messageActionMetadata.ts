@@ -1,4 +1,5 @@
 import { messageMentionsForText } from './messageMentions';
+import { attachmentOnlyMessagePreview } from './participantConversationState';
 import type { Message, MessageAttachment, MessageMention, MessageVoice } from '../../kordi-app/types/message';
 
 export type MessageActionKind = 'quote' | 'forward';
@@ -37,14 +38,12 @@ function clean(value?: string | null): string {
 }
 
 export function messageActionPreviewText(
-  message: Pick<Message, 'text' | 'turn' | 'detail' | 'attachments'>,
+  message: Pick<Message, 'text' | 'turn' | 'detail' | 'attachments' | 'messageKind'>,
   maxChars = 220,
 ): string {
   const raw = clean(message.turn?.assistantText) || clean(message.text) || clean(message.detail);
   const normalized = raw.replace(/\s+/g, ' ').trim();
-  const fallback = !normalized && (message.attachments?.length ?? 0) > 0
-    ? `${message.attachments!.length} attachment${message.attachments!.length === 1 ? '' : 's'}`
-    : normalized;
+  const fallback = normalized || attachmentOnlyMessagePreview(message)?.label || '';
   if (fallback.length <= maxChars) {
     return fallback;
   }

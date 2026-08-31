@@ -1,3 +1,4 @@
+import AVFoundation
 import XCTest
 @testable import Kordi
 
@@ -173,13 +174,18 @@ final class MediaPreviewTests: XCTestCase {
         let imageMessage = message(
             id: "image-message",
             author: .me,
-            attachments: [attachment(id: "image", kind: .image)]
+            attachments: [
+                attachment(id: "image-1", kind: .image),
+                attachment(id: "image-2", kind: .image)
+            ]
         )
         var captionedMessage = imageMessage
         captionedMessage.text = "Caption"
 
         XCTAssertTrue(MessageAttachmentPresentation.usesBorderlessImageSurface(for: imageMessage))
+        XCTAssertFalse(MessageAttachmentPresentation.usesDetachedImageGroup(for: imageMessage))
         XCTAssertFalse(MessageAttachmentPresentation.usesBorderlessImageSurface(for: captionedMessage))
+        XCTAssertTrue(MessageAttachmentPresentation.usesDetachedImageGroup(for: captionedMessage))
     }
 
     func testVideoOnlyMessageUsesBorderlessMediaSurface() {
@@ -226,6 +232,21 @@ final class MediaPreviewTests: XCTestCase {
         )
         XCTAssertEqual(size.width, 180, accuracy: 0.1)
         XCTAssertEqual(size.height, 320, accuracy: 0.1)
+    }
+
+    func testFullScreenVideoReusesTheLoadedInlinePlayer() {
+        let sourceURL = URL(fileURLWithPath: "/tmp/kordi-video-preview-test.mp4")
+        let asset = AVURLAsset(url: sourceURL)
+        let inlinePlayer = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+        let poster = UIGraphicsImageRenderer(size: CGSize(width: 2, height: 2)).image { _ in }
+        let presentation = VideoPreviewPresentation(
+            attachment: attachment(id: "video", kind: .file),
+            inlinePlayer: inlinePlayer,
+            poster: poster
+        )
+
+        XCTAssertTrue(presentation.player === inlinePlayer)
+        XCTAssertTrue(presentation.poster === poster)
     }
 
     func testTransparentImageKeepsBorderlessSurfaceClear() throws {

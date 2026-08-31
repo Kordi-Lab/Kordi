@@ -26,6 +26,8 @@ export function messageSnapshotKey(msg: Message) {
     msg.readReceiptSummary ? [msg.readReceiptSummary.count, msg.readReceiptSummary.participants.map((participant) => [participant.id, participant.name, participant.readAt ?? ''].join(':')).join('|')].join(':') : '',
     msg.reactionConversationId ?? '',
     msg.reactionTargetMessageId ?? '',
+    msg.cloudMessageVersion ?? '',
+    msg.editedAt ?? '',
     msg.reactions?.map((reaction) => [reaction.value, reaction.accountIds.join(',')].join(':')).join('|') ?? '',
     msg.sourceMessage ? [msg.sourceMessage.messageId, msg.sourceMessage.text, msg.sourceMessage.senderLabel ?? '', JSON.stringify(msg.sourceMessage.mentions ?? [])].join(':') : '',
     msg.attachments?.map((attachment) => [attachment.kind, attachment.name, attachment.formatLabel ?? '', attachment.previewUrl ?? '', attachment.localPath ?? '', attachment.mimeType ?? ''].join(':')).join('|') ?? '',

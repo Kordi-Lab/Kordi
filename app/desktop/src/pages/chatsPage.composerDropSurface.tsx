@@ -5,9 +5,11 @@ import { cn } from '@/lib/utils';
 export function ComposerDropSurface({
   children,
   saveDesktopAttachments,
+  disabled = false,
 }: {
   children: ReactNode;
   saveDesktopAttachments: (files: File[]) => Promise<unknown>;
+  disabled?: boolean;
 }) {
   const [isFileDropActive, setIsFileDropActive] = useState(false);
 
@@ -18,12 +20,14 @@ export function ComposerDropSurface({
         isFileDropActive && 'ring-2 ring-sky-400/55 ring-offset-2 ring-offset-transparent',
       )}
       onDragEnter={(event) => {
+        if (disabled) return;
         if (!event.dataTransfer.types.includes('Files')) return;
         event.preventDefault();
         event.stopPropagation();
         setIsFileDropActive(true);
       }}
       onDragOver={(event) => {
+        if (disabled) return;
         if (!event.dataTransfer.types.includes('Files')) return;
         event.preventDefault();
         event.stopPropagation();
@@ -36,6 +40,7 @@ export function ComposerDropSurface({
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsFileDropActive(false);
       }}
       onDrop={(event) => {
+        if (disabled) return;
         if (!event.dataTransfer.types.includes('Files')) return;
         event.preventDefault();
         event.stopPropagation();

@@ -10,6 +10,7 @@ import {
   writeExpressiveMediaLibrary,
   type ExpressiveMediaLibraryItem,
 } from '../src/features/emoji/expressiveMediaLibrary';
+import { deleteExpressiveMediaLibraryItem } from '../src/features/emoji/expressiveMediaLibraryDeletion';
 
 function memoryStorage() {
   const values = new Map<string, string>();
@@ -158,4 +159,53 @@ test('concurrent cloud reconciliation coalesces uploads for one account', async 
 
   assert.equal(listCount, 1);
   assert.equal(uploadCount, 1);
+});
+
+test('saved media deletion is durable and preserves the item when the server fails', async () => {
+  const { storage } = memoryStorage();
+  const accountId = 'acct-delete';
+  const item: ExpressiveMediaLibraryItem = {
+    id: 'local-synced',
+    cloudItemId: 'media-synced',
+    attachmentId: 'attachment-synced',
+    kind: 'sticker',
+    name: 'saved.png',
+    path: '/stored/saved.png',
+    mimeType: 'image/png',
+    sizeBytes: 4,
+    createdAtMs: 100,
+  };
+  writeExpressiveMediaLibrary([item], storage, accountId);
+
+  let deletedId = '';
+  const deleted = await deleteExpressiveMediaLibraryItem(item.id, {
+    accountId,
+    storage,
+    token: 'token-a',
+    client: { deleteExpressiveMedia: async (_token, mediaId) => { deletedId = mediaId; } },
+  });
+  assert.equal(deletedId, item.cloudItemId);
+  assert.deepEqual(deleted, []);
+
+  writeExpressiveMediaLibrary([item], storage, accountId);
+  await assert.rejects(deleteExpressiveMediaLibraryItem(item.id, {
+    accountId,
+    storage,
+    token: 'token-a',
+    client: { deleteExpressiveMedia: async () => { throw new Error('offline'); } },
+  }), /offline/);
+  assert.deepEqual(readExpressiveMediaLibrary(storage, accountId), [item]);
+
+  const synchronized = await synchronizeExpressiveMediaLibrary({
+    accountId,
+    token: 'token-a',
+    storage,
+    client: {
+      listExpressiveMedia: async () => [],
+      saveExpressiveMedia: async () => { throw new Error('Deleted media must not be saved again.'); },
+      uploadAttachment: async () => { throw new Error('Deleted media must not be uploaded again.'); },
+      downloadAttachmentContent: async () => new Blob(),
+    },
+  });
+  assert.deepEqual(synchronized, []);
 });

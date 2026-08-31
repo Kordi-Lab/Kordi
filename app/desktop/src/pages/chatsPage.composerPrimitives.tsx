@@ -1,4 +1,4 @@
-import { Copy, Send, X } from 'lucide-react';
+import { Copy, Pencil, Send, X } from 'lucide-react';
 
 import type { ChatsPageComposer } from '@/pages/chatsPage.types';
 
@@ -80,6 +80,34 @@ export function ComposerQuotePreview({
         type="button"
         aria-label="Remove quoted message"
         onClick={onClear}
+        className="app-button-quiet grid h-7 w-7 shrink-0 place-items-center rounded-[8px] p-0"
+      >
+        <X className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+export function ComposerEditPreview({
+  text,
+  onCancel,
+}: {
+  text: string;
+  onCancel?: () => void;
+}) {
+  return (
+    <div data-composer-edit-preview="true" className="mb-1 flex items-center gap-2 px-1 py-1 text-left">
+      <Pencil className="h-4 w-4 shrink-0 text-[color:var(--app-sidebar-accent)]" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[11px] font-semibold text-[color:var(--app-sidebar-accent)]">
+          Edit message
+        </div>
+        <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">{text}</div>
+      </div>
+      <button
+        type="button"
+        aria-label="Cancel message edit"
+        onClick={onCancel}
         className="app-button-quiet grid h-7 w-7 shrink-0 place-items-center rounded-[8px] p-0"
       >
         <X className="h-3.5 w-3.5" />

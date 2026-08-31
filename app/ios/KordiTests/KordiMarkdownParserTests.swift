@@ -220,7 +220,7 @@ final class KordiMarkdownParserTests: XCTestCase {
         let fixture = PreviewData.make(now: Date(timeIntervalSince1970: 1_000_000))
         let expectedLatestMessageIDs = [
             "person:acct_maya": "m6",
-            "group:mobile": "gm3",
+            "group:mobile": "gm4",
             "agent:my-kordi": "m2"
         ]
 

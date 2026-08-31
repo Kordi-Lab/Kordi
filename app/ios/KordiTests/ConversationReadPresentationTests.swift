@@ -22,6 +22,122 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(MessageBubble.reactionChipVerticalLift, 14)
     }
 
+    func testEditedMessageStateRoundTripsAndDrivesBubbleMetadata() throws {
+        let editedAt = Date(timeIntervalSince1970: 2)
+        let message = ChatMessage(
+            id: "edited-message",
+            conversationId: "conversation",
+            author: .person,
+            authorName: "Mira",
+            text: "Updated text",
+            createdAt: Date(timeIntervalSince1970: 1),
+            editedAt: editedAt,
+            deliveryState: .delivered,
+            errorMessage: nil,
+            requestMessageId: nil
+        )
+        let decoded = try JSONDecoder().decode(
+            ChatMessage.self,
+            from: JSONEncoder().encode(message)
+        )
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Conversation/MessageBubble.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(decoded.isEdited)
+        XCTAssertEqual(decoded.editedAt, editedAt)
+        XCTAssertTrue(source.contains("Text(\"edited\", comment:"))
+        XCTAssertTrue(source.contains("if message.isEdited"))
+    }
+
+    func testMessageActionsExposeEditAndBothDeletionScopes() throws {
+        let conversationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation")
+        let actionSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageActionSheets.swift"),
+            encoding: .utf8
+        )
+        let conversationSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("ConversationView.swift"),
+            encoding: .utf8
+        )
+        let composerSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("ComposerView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(actionSource.contains("actionButton(\"Edit\""))
+        XCTAssertTrue(actionSource.contains("\"Delete\","))
+        XCTAssertTrue(conversationSource.contains("Button(\"Delete for me\", role: .destructive)"))
+        XCTAssertTrue(conversationSource.contains("Button(\"Delete for everyone\", role: .destructive)"))
+        XCTAssertTrue(conversationSource.contains("Delete only for you, or remove it for everyone"))
+        XCTAssertTrue(conversationSource.contains(".alert(\n            \"Delete this message?\""))
+        XCTAssertTrue(conversationSource.contains("editingMessage: editTarget"))
+        XCTAssertTrue(composerSource.contains("editPreview(editingMessage)"))
+        XCTAssertTrue(composerSource.contains("Text(\"Edit message\")"))
+        XCTAssertFalse(conversationSource.contains("MessageEditSheet("))
+    }
+
+    func testMessageBubblesUseThemeAwareContrastForRepliesLinksAndMentions() throws {
+        let conversationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation")
+        let bubbleSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageBubble.swift"),
+            encoding: .utf8
+        )
+        let markdownSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MarkdownMessageContent.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(bubbleSource.contains("lightAppearanceBubbleTintColor"))
+        XCTAssertTrue(bubbleSource.contains("chatTheme == .quiet ? .clear"))
+        XCTAssertFalse(bubbleSource.contains("chatTheme.peerText.opacity(0.07)"))
+        XCTAssertTrue(bubbleSource.contains("chatTheme.peerText.opacity(0.12)"))
+        XCTAssertTrue(bubbleSource.contains("replyPreviewBackgroundColor"))
+        XCTAssertTrue(bubbleSource.contains("inlineAccent: bubbleInlineAccentColor"))
+        XCTAssertTrue(markdownSource.contains("@Entry var messageInlineAccent: Color? = nil"))
+        XCTAssertTrue(markdownSource.contains("inlineAccent ?? KordiTheme.signalBlue"))
+    }
+
+    func testSyntheticConversationPreviewExposesThemeControls() throws {
+        let appSource = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/App/KordiApp.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(appSource.contains("--preview-theme-controls"))
+        XCTAssertTrue(appSource.contains("PreviewThemeControls("))
+        XCTAssertTrue(appSource.contains("ForEach(KordiChatTheme.allCases)"))
+        XCTAssertTrue(appSource.contains("ForEach(AppAppearance.allCases)"))
+    }
+
+    func testReactionChipsMatchTheAvatarEdgeAndMacOSSurface() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Conversation/MessageBubble.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("scrollAnchor: message.author == .me ? .trailing : .leading"))
+        XCTAssertTrue(source.contains(".defaultScrollAnchor(scrollAnchor)"))
+        XCTAssertTrue(source.contains(".background(Color(uiColor: .tertiarySystemFill), in: Capsule())"))
+        XCTAssertFalse(source.contains("KordiTheme.agentViolet.opacity(0.14)"))
+    }
+
     func testMessageActionsStopConversationPanningAfterTheHoldWins() {
         XCTAssertFalse(MessageGestureArbitration.allowsSimultaneousRecognition(
             with: UIPanGestureRecognizer()
@@ -316,7 +432,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(overlaySource.contains("action: onShareMessage"))
     }
 
-    func testMixedMessageImagesCenterInsideTheirBubble() throws {
+    func testGroupedMessageImagesRenderBeforeTheirSeparateBubble() throws {
         let conversationDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -325,10 +441,14 @@ final class ConversationReadPresentationTests: XCTestCase {
             contentsOf: conversationDirectory.appendingPathComponent("MessageBubble.swift"),
             encoding: .utf8
         )
+        let messageSurface = source.components(separatedBy: "private var messageSurface")[1]
+            .components(separatedBy: "private var imageCollection")[0]
         let bubbleContents = source.components(separatedBy: "private var bubbleContents")[1]
             .components(separatedBy: "private var usesBorderlessImageSurface")[0]
 
-        XCTAssertTrue(bubbleContents.contains(".frame(maxWidth: .infinity, alignment: .center)"))
+        XCTAssertTrue(messageSurface.contains("} else if usesDetachedImageGroup {"))
+        XCTAssertTrue(messageSurface.contains("imageCollection\n                bubbleSurface"))
+        XCTAssertTrue(bubbleContents.contains("!usesDetachedImageGroup"))
     }
 
     func testOnlyTerminalContentMessagesAllowReactions() {

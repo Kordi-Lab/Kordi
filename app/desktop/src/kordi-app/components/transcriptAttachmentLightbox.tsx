@@ -149,3 +149,83 @@ export function AttachmentImageLightbox({
     </div>
   );
 }
+
+export function AttachmentVideoLightbox({
+  attachment,
+  videoUrl,
+  posterUrl,
+  initialTime = 0,
+  onVideoLoad,
+  onVideoError,
+  onClose,
+  onContextMenu,
+}: {
+  attachment: MessageAttachment;
+  videoUrl?: string | null;
+  posterUrl?: string | null;
+  initialTime?: number;
+  onVideoLoad?: () => void;
+  onVideoError?: () => void;
+  onClose: () => void;
+  onContextMenu?: (event: MouseEvent) => void;
+}) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const instructionId = useId();
+  const videoName = attachment.name?.trim() || 'Attached video';
+
+  useEffect(() => {
+    dialogRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  return (
+    <div
+      ref={dialogRef}
+      data-attachment-video-lightbox="true"
+      className="app-attachment-video-lightbox fixed inset-0 flex items-center justify-center"
+      role="dialog"
+      aria-label={`Video preview: ${videoName}`}
+      aria-describedby={instructionId}
+      tabIndex={-1}
+      onPointerDown={(event) => {
+        if (shouldDismissAttachmentImageLightboxForTarget(videoRef.current, event.target)) onClose();
+      }}
+    >
+      <div
+        data-tauri-drag-region
+        data-attachment-image-lightbox-control="true"
+        className="app-attachment-image-lightbox-titlebar"
+        aria-hidden="true"
+      />
+      <span id={instructionId} className="sr-only">
+        Video preview in a separate window. Press Escape to close.
+      </span>
+      {videoUrl ? (
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          poster={posterUrl ?? undefined}
+          controls
+          controlsList="nofullscreen"
+          autoPlay
+          playsInline
+          preload="auto"
+          className="app-attachment-video-lightbox-video"
+          aria-label={`Play ${videoName}`}
+          onLoadedMetadata={(event) => {
+            if (Number.isFinite(initialTime) && initialTime > 0) {
+              event.currentTarget.currentTime = initialTime;
+            }
+            onVideoLoad?.();
+          }}
+          onError={onVideoError}
+          onContextMenu={onContextMenu}
+        />
+      ) : (
+        <div className="app-attachment-image-lightbox-status" role="status" aria-live="polite">
+          Video preview unavailable
+        </div>
+      )}
+    </div>
+  );
+}

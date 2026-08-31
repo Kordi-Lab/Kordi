@@ -9,14 +9,14 @@ import {
   type CloudAccount,
   type CloudMessage,
 } from './authClient';
-import { cloudGroupSessionTitlesForReadModel, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from './cloudCollaborationStateHelpers';
+import { cloudGroupSessionTitlesForReadModel, patchCanonicalCloudGroupSessionTitles, reliableCloudGroupSessionActivityAtMs, reliableCloudGroupSessionTitleIds } from './cloudCollaborationStateHelpers';
 import {
   CLOUD_AGENT_RUNTIME_SESSION_PREFIX,
 } from './cloudAgentMessages';
 import {
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';
-import { type IndexedCloudGroupRow } from './cloudMessageIndex';
+import { patchCanonicalCloudReactions, type IndexedCloudGroupRow } from './cloudMessageIndex';
 import { defaultCloudAgentsClient } from './cloudAgentsClient';
 import { defaultCloudMessageCache } from './cloudMessageCache';
 import {
@@ -94,7 +94,7 @@ export type {
 export {
   resolveAuthorizedCloudGroupSessionTitleSnapshot,
   resolveCloudGroupAdminSnapshot,
-} from './cloudGroupSessionControl';
+} from './cloudGroupSessionPolicy';
 export {
   CLOUD_FOCUS_REFRESH_DELAY_MS,
   CLOUD_FOCUS_REFRESH_THROTTLE_MS,
@@ -336,6 +336,7 @@ export function useCloudCollaborationState({
     syncCloudCollaborationDiff,
     claimFreshCloudGroupFallback,
     mergeMessage,
+    editMessage: editCloudMessage, deleteMessage: deleteCloudMessage,
     prepareForwardAttachments: prepareCloudForwardAttachments,
     sendMessage: sendCloudCollaborationMessage,
     updateSessionTitle: updateCloudCollaborationSessionTitle, setReaction: setCloudMessageReaction,
@@ -644,14 +645,13 @@ export function useCloudCollaborationState({
       && message.toAccountId === account?.accountId
     ))
   ), [account?.accountId, cloudMessageIndex.allMessages]);
-  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]);
+  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => patchCanonicalCloudReactions(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById]);
   return {
     cloudAgentRuntimeRouteMessages,
     cloudCollaborationState,
     setCloudCollaborationState,
     mergedCollaborationState: cloudCollaborationState,
-    prepareCloudForwardAttachments,
-    sendCloudCollaborationMessage,
+    prepareCloudForwardAttachments, sendCloudCollaborationMessage, editCloudMessage, deleteCloudMessage,
     updateCloudCollaborationSessionTitle,
     sendCloudGroupControl,
     setCloudMessageReaction,
@@ -681,7 +681,7 @@ export function useCloudCollaborationState({
     cachedMessagesReady: messagesBelongToCurrentAccount && cloudMessageIndex.allMessages.length > 0, pendingGroupProjectionSessionIds: messageStore.pendingGroupProjectionSessionIds,
     cloudHiddenSessionIds,
     cloudDeletedSessionIds,
-    cloudSessionPinsById,
+    cloudSessionPinsById, cloudCanonicalReactionState,
     cloudLegacyGroupSessionTitlesById: cloudGroupSessionTitles, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs: cloudReliableGroupActivity,
   };
 }

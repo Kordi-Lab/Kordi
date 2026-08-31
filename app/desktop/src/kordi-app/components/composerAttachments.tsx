@@ -16,7 +16,6 @@ import {
   FileText,
   FileVideo,
   FolderOpen,
-  ImagePlus,
   Pencil,
   Plus,
   Video,
@@ -262,7 +261,6 @@ export function ComposerAttachmentList({
 
 type ComposerAttachmentAddMenuProps = {
   inputRef: RefObject<HTMLInputElement | null>;
-  memeInputRef?: RefObject<HTMLInputElement | null>;
   onChooseFiles?: () => void;
   onRecordVideo?: () => void;
   className?: string;
@@ -272,7 +270,6 @@ type ComposerAttachmentAddMenuProps = {
 
 export function ComposerAttachmentAddMenu({
   inputRef,
-  memeInputRef,
   onChooseFiles,
   onRecordVideo,
   className,
@@ -354,12 +351,6 @@ export function ComposerAttachmentAddMenu({
     queueMicrotask(() => triggerRef.current?.focus());
   }
 
-  function openMemePicker() {
-    setIsOpen(false);
-    memeInputRef?.current?.click();
-    queueMicrotask(() => triggerRef.current?.focus());
-  }
-
   function recordVideo() {
     setIsOpen(false);
     onRecordVideo?.();
@@ -401,22 +392,6 @@ export function ComposerAttachmentAddMenu({
           <Video className="app-transient-action-icon" strokeWidth={1.8} aria-hidden="true" />
           <span className="app-transient-action-label">Record video</span>
         </button>
-      ) : null}
-      {memeInputRef ? (
-        <>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={openMemePicker}
-            className="app-composer-attachment-add-menu-action app-transient-flat-action app-transient-action-row flex w-full items-center gap-2 rounded-[8px] px-1.5 py-1 text-left"
-          >
-            <ImagePlus className="app-transient-action-icon" strokeWidth={1.8} aria-hidden="true" />
-            <span className="app-transient-action-label">Meme image</span>
-          </button>
-          <p className="app-transient-muted px-1.5 pb-0.5 pt-1 text-[9.5px] leading-3.5">
-            You will add alt text and confirm your right to share it before sending.
-          </p>
-        </>
       ) : null}
     </div>
   );

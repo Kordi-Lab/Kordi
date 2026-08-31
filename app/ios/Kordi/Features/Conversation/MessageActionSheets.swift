@@ -531,6 +531,8 @@ struct MessageActionOverlay: View {
     let ownAccountId: String?
     let allowsReply: Bool
     let allowsReactions: Bool
+    let allowsEdit: Bool
+    let allowsDelete: Bool
     let isPinned: Bool
     let mediaAttachment: ChatAttachment?
     let readReceiptLabel: String?
@@ -545,6 +547,8 @@ struct MessageActionOverlay: View {
     let onCopy: () -> Void
     let onShareMessage: () -> Void
     let onForward: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
     let onSaveSticker: (ChatAttachment) -> Void
     let onSelect: () -> Void
 
@@ -559,6 +563,8 @@ struct MessageActionOverlay: View {
         (allowsReply ? 1 : 0)
             + (!message.text.isEmpty ? 2 : 0)
             + 3
+            + (allowsEdit ? 1 : 0)
+            + (allowsDelete ? 1 : 0)
             + mediaActionCount
             + (stickerAttachment == nil ? 0 : 1)
             + (readReceiptLabel == nil ? 0 : 1)
@@ -786,6 +792,9 @@ struct MessageActionOverlay: View {
                         action: onShareMessage
                     )
                 }
+                if allowsEdit {
+                    actionButton("Edit", systemImage: "pencil", action: onEdit)
+                }
                 actionButton(
                     "Forward",
                     systemImage: "arrowshape.turn.up.right",
@@ -807,6 +816,14 @@ struct MessageActionOverlay: View {
                 )
                 Divider().padding(.horizontal, 14)
                 actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
+                if allowsDelete {
+                    actionButton(
+                        "Delete",
+                        systemImage: "trash",
+                        role: .destructive,
+                        action: onDelete
+                    )
+                }
                 MessageActionReadReceiptRow(
                     label: readReceiptLabel,
                     readers: readReceiptReaders
@@ -830,12 +847,14 @@ struct MessageActionOverlay: View {
     private func actionButton(
         _ title: String,
         systemImage: String,
+        role: ButtonRole? = nil,
         disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button(role: role, action: action) {
             Label(title, systemImage: systemImage)
                 .font(.body)
+                .foregroundStyle(role == .destructive ? Color.red : Color.primary)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .padding(.horizontal, 16)
                 .contentShape(Rectangle())

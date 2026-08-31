@@ -67,6 +67,17 @@ export type UseCloudCollaborationStateResult = {
     attachments?: AttachmentItem[],
     options?: SendCloudCollaborationMessageOptions,
   ) => Promise<CloudMessage>;
+  editCloudMessage: (input: {
+    conversationId: string;
+    messageId: string;
+    expectedVersion: number;
+    text: string;
+  }) => Promise<CloudMessage>;
+  deleteCloudMessage: (input: {
+    conversationId: string;
+    messageId: string;
+    forEveryone: boolean;
+  }) => Promise<void>;
   updateCloudCollaborationSessionTitle: (
     sessionId: string,
     title: string,
@@ -123,6 +134,7 @@ export type UseCloudCollaborationStateResult = {
   cloudHiddenSessionIds: Set<string>;
   cloudDeletedSessionIds: Set<string>;
   cloudSessionPinsById: CloudSessionPinsById;
+  cloudCanonicalReactionState: CanonicalSessionState | null;
   cloudLegacyGroupSessionTitlesById: ReadonlyMap<string, string>;
   cloudReliableGroupSessionTitleIds: ReadonlySet<string>;
   cloudReliableGroupSessionActivityAtMs: ReadonlyMap<string, number>;

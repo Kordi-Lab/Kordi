@@ -47,6 +47,14 @@ export class ChatSyncClient {
     return this.conversations.drainChatOutbox(token, accountId);
   }
 
+  editMessage(token: string, conversationId: string, messageId: string, expectedVersion: number, text: string): Promise<CloudMessage> {
+    return this.conversations.editMessage(token, conversationId, messageId, expectedVersion, text);
+  }
+
+  deleteMessage(token: string, conversationId: string, messageId: string, forEveryone: boolean): Promise<void> {
+    return this.conversations.deleteMessage(token, conversationId, messageId, forEveryone);
+  }
+
   setReaction(token: string, conversationId: string, messageId: string, reaction: string, active: boolean): Promise<CloudMessage> {
     return this.conversations.setReaction(token, conversationId, messageId, reaction, active);
   }

@@ -686,6 +686,16 @@ actor ExpressiveMediaLibraryStore {
         )
     }
 
+    func remove(accountId: String, itemId: String) throws {
+        let directory = try scopedDirectory(accountId: accountId)
+        var savedItems = allItems(in: directory)
+        guard let index = savedItems.firstIndex(where: { $0.id == itemId }) else { return }
+        let fileURL = directory.appendingPathComponent(savedItems[index].relativeFileName)
+        savedItems.remove(at: index)
+        try write(savedItems, to: directory)
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
     func markSynced(
         accountId: String,
         itemId: String,

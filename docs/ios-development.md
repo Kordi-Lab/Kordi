@@ -212,17 +212,139 @@ See [Kordi iOS cloud contract](cloud-mobile.md) for endpoints and projection rul
 
 ## TestFlight
 
-Before archiving:
+For a coordinated desktop and iOS release, use the
+[standard dual-platform release runbook](development/dual-platform-release-runbook.md).
+The standard operator order publishes macOS to `kordi.ai` and GitHub before
+iOS archive/upload. Simulator and physical-device qualification belong to the
+implementation PRs and must already be recorded on the merged candidate.
 
-1. Regenerate the project and confirm `project.yml` and the `.xcodeproj` agree.
-2. Increment `CURRENT_PROJECT_VERSION`; keep `MARKETING_VERSION` aligned with the intended release.
-3. Run the complete simulator test suite.
-4. Run the signed build on a physical iPhone and verify login, sync, direct chat, group chat, agent fallback, attachments, appearance, and provider-auth recovery.
-5. Confirm the Release configuration uses `https://kordi.ai` and contains no preview arguments or test credentials.
-6. Complete the [product call readiness and two-account acceptance test](call-hosting.md#required-two-account-acceptance-test), including voice, video, first remote frame, terminal state, and background CallKit answer.
-7. In Xcode, choose Any iOS Device (arm64), then Product > Archive and distribute through App Store Connect.
+### Source and test preflight
 
-TestFlight upload and tester enrollment require the correct App Store Connect team, bundle identifier, agreements, and tester account. Those credentials and team IDs are intentionally not stored in this repository.
+1. Update `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `project.yml`.
+2. Regenerate the project and require no unexpected diff:
+
+   ```bash
+   cd app/ios
+   xcodegen generate
+   git diff --exit-code -- project.yml Kordi.xcodeproj/project.pbxproj
+   cd ../..
+   ```
+
+3. Confirm the production `Kordi` Release build settings identify the intended
+   version/build, `ai.kordi.ios`, `https://kordi.ai`, production distribution,
+   and production APNs. Never archive `Kordi Beta`.
+4. Confirm the merged implementation/release PRs record the required CI,
+   simulator, physical-device, and focused acceptance evidence. The standard
+   release operation does not create or reuse a simulator. Missing evidence is
+   a source-qualification failure: stop, fix/test/merge, and use a new
+   candidate.
+5. When calls, APNs, media, or relevant backend/client behavior changed,
+   confirm the merged candidate already passed the [product call readiness and
+   two-account acceptance test](call-hosting.md#required-two-account-acceptance-test),
+   including voice, video, first remote frame, terminal state, and background
+   CallKit answer.
+6. Resolve packages into a task-owned DerivedData directory and scan downloaded
+   binary frameworks for forbidden private build paths before archive.
+
+### Apple account and capability preflight
+
+Before archive creation:
+
+- confirm the build number is unused in App Store Connect;
+- load the production team privately from approved product configuration; do
+  not infer it from a local provisioning profile;
+- confirm the signed-in Xcode account belongs to that team;
+- confirm App Group `group.ai.kordi.share` is assigned to both
+  `ai.kordi.ios` and `ai.kordi.ios.share`;
+- confirm the internal `Kordi Team` TestFlight group exists and is configured
+  for all builds;
+- confirm agreements and App Store Connect access are current.
+
+Adding or changing an Apple capability invalidates affected profiles. Let the
+production Xcode account regenerate them before export. The App Store Connect
+API key may validate and upload without having cloud-managed certificate
+permission, so do not use its ability to query builds as proof that it can
+export a signed IPA.
+
+### Archive and export
+
+Archive with the signed-in production Xcode account:
+
+```bash
+export DEVELOPER_DIR="<XCODE_DEVELOPER_DIR>"
+export KORDI_IOS_TEAM_ID="<PRIVATE_PRODUCTION_TEAM_ID>"
+
+xcodebuild -quiet \
+  -project app/ios/Kordi.xcodeproj \
+  -scheme Kordi \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath /protected/Kordi.xcarchive \
+  -derivedDataPath /protected/kordi-ios-archive-derived-data \
+  -allowProvisioningUpdates \
+  -hideShellScriptEnvironment \
+  DEVELOPMENT_TEAM="$KORDI_IOS_TEAM_ID" \
+  CODE_SIGN_STYLE=Automatic \
+  archive
+```
+
+Export locally with an `ExportOptions.plist` using:
+
+```text
+method: app-store-connect
+destination: export
+signingStyle: automatic
+teamID: the private production team
+manageAppVersionAndBuildNumber: false
+uploadSymbols: true
+testFlightInternalTestingOnly: false
+```
+
+Use the signed-in Xcode account for export. Then inspect the exported IPA and
+require:
+
+- reviewed version/build on the app and share extension;
+- production bundle IDs and product origin;
+- production APNs;
+- `group.ai.kordi.share` on both signed targets and provisioning profiles;
+- the production team and `get-task-allow=false`;
+- `ITSAppUsesNonExemptEncryption=false`;
+- successful code-signature verification;
+- no `/Users/`, `/private/tmp`, `/var/folders`, test hosts, credentials, local
+  account data, or private identifiers in the extracted IPA or native binaries;
+- a recorded byte size and SHA-256.
+
+Third-party XCFrameworks are release inputs. If one contains a forbidden path,
+rebuild or update it with source-path remapping in a reviewed source change and
+use a new candidate. Do not make release-day binary string replacement the
+normal path.
+
+### Validate, upload, and verify TestFlight
+
+Use the App Store Connect API key only after local IPA verification:
+
+```bash
+xcrun altool --validate-app /protected/Kordi.ipa \
+  --api-key "<APP_STORE_KEY_ID>" \
+  --api-issuer "<APP_STORE_ISSUER_ID>" \
+  --p8-file-path /protected/AuthKey.p8 \
+  --output-format json
+
+xcrun altool --upload-package /protected/Kordi.ipa \
+  --api-key "<APP_STORE_KEY_ID>" \
+  --api-issuer "<APP_STORE_ISSUER_ID>" \
+  --p8-file-path /protected/AuthKey.p8 \
+  --wait \
+  --output-format json
+```
+
+Do not report TestFlight complete until App Store Connect reports the reviewed
+build as `VALID` and the build is visible to `Kordi Team`. Upload success alone
+is not the final state. A macOS notarization key may not have App Store provider
+or build-status access; use a dedicated App Store Connect key. When upload uses
+the signed-in Xcode account, assign explicit UI verification ownership if no
+status-capable API key is available. Credentials and team identifiers are
+intentionally not stored in this repository.
 
 ## Troubleshooting
 

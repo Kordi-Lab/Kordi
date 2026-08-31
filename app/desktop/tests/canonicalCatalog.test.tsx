@@ -132,6 +132,46 @@ test('bounded state updates cannot shrink a ready transcript page', () => {
   );
 });
 
+test('background recovery cannot expand a ready transcript with older rows', () => {
+  const base = catalog();
+  let store = mergeCanonicalCatalog(createCanonicalStore(), {
+    ...base,
+    summaries: [{
+      ...base.summaries[0]!,
+      messageCount: 100,
+      latestMessage: message('m100', 'session:one', 100),
+    }],
+  });
+  store = mergeCanonicalMessagePage(store, {
+    sessionId: 'session:one',
+    messages: [
+      message('m98', 'session:one', 98),
+      message('m99', 'session:one', 99),
+      message('m100', 'session:one', 100),
+    ],
+    oldestSequenceNum: 98,
+    newestSequenceNum: 100,
+    hasOlder: true,
+  });
+  const current = canonicalStateFromStore(store);
+  assert.ok(current);
+  const recoveredOlderRow = {
+    ...message('recovered-m50', 'session:one', 101),
+    createdAtMs: 50,
+  };
+
+  store = mergeCanonicalStateIntoStore(store, {
+    ...current,
+    messages: [...current.messages, recoveredOlderRow],
+  });
+
+  assert.equal(store.catalog?.summaries[0]?.messageCount, 100);
+  assert.deepEqual(
+    store.messagesBySessionId['session:one']?.map((item) => item.id),
+    ['m98', 'm99', 'm100'],
+  );
+});
+
 test('an older page prepends without replacing the existing ready tail', () => {
   let store = mergeCanonicalCatalog(createCanonicalStore(), catalog());
   store = mergeCanonicalMessagePage(store, {
