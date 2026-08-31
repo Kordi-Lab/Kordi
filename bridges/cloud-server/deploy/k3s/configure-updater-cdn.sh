@@ -74,10 +74,17 @@ for hostname_certificate in "kordi.ai:${CERTIFICATE}" "www.kordi.ai:${WWW_CERTIF
 	hostname="${hostname_certificate%%:*}"
 	certificate="${hostname_certificate#*:}"
 	entry_name="${PREFIX}-$(printf '%s' "${hostname}" | tr '.' '-')"
-	if ! gcloud certificate-manager maps entries describe "${entry_name}" \
+	if gcloud certificate-manager maps entries describe "${entry_name}" \
 		--map="${CERTIFICATE_MAP}" \
 		--location=global \
 		--project="${PROJECT}" >/dev/null 2>&1; then
+		gcloud certificate-manager maps entries update "${entry_name}" \
+			--map="${CERTIFICATE_MAP}" \
+			--certificates="${certificate}" \
+			--location=global \
+			--project="${PROJECT}" \
+			--quiet >/dev/null
+	else
 		gcloud certificate-manager maps entries create "${entry_name}" \
 			--map="${CERTIFICATE_MAP}" \
 			--hostname="${hostname}" \
