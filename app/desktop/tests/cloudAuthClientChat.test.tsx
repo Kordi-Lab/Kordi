@@ -172,13 +172,14 @@ test('sendMessage uses canonical conversation identity and canonical idempotent 
 });
 
 test('group fanout preserves recipient-specific client message ids', async () => {
+  const base = chatConversation();
   const conversation = chatConversation({
     kind: 'group',
     legacy_session_id: 'session:group:fanout',
     members: [
-      chatConversation().members[0],
-      { ...chatConversation().members[1], account_id: 'acct_a' },
-      { ...chatConversation().members[1], account_id: 'acct_b' },
+      base.members[0],
+      { ...base.members[1], account_id: 'acct_a' },
+      { ...base.members[1], account_id: 'acct_b' },
     ],
   });
   const { calls, fetchImpl } = recordingFetch((call) => {
@@ -188,21 +189,11 @@ test('group fanout preserves recipient-specific client message ids', async () =>
     const request = JSON.parse(String(call.init?.body));
     return jsonResponse(201, {
       message: {
-        id: crypto.randomUUID(),
-        client_message_id: request.client_message_id,
-        conversation_id: conversation.id,
-        conversation_sequence: 1,
-        sender_account_id: 'acct_me',
-        kind: 'text',
-        content: request.content,
-        reply_to_message_id: null,
-        attachment_ids: [],
-        version: 1,
-        generation_status: null,
-        provider_response_id: null,
-        created_at: '2026-05-12T00:00:00Z',
-        edited_at: null,
-        deleted_at: null,
+        id: crypto.randomUUID(), client_message_id: request.client_message_id,
+        conversation_id: conversation.id, conversation_sequence: 1,
+        sender_account_id: 'acct_me', kind: 'text', content: request.content,
+        reply_to_message_id: null, attachment_ids: [], version: 1,
+        created_at: '2026-05-12T00:00:00Z', edited_at: null, deleted_at: null,
       },
     });
   });
@@ -214,14 +205,11 @@ test('group fanout preserves recipient-specific client message ids', async () =>
     memberAccountIds: ['acct_a', 'acct_b'],
   };
 
-  await client.sendMessage('token', 'acct_a', 'kordi-cloud-group:fanout', {
-    ...options,
-    clientMessageId: 'fanout:acct_a',
-  });
-  await client.sendMessage('token', 'acct_b', 'kordi-cloud-group:fanout', {
-    ...options,
-    clientMessageId: 'fanout:acct_b',
-  });
+  for (const peer of ['acct_a', 'acct_b']) {
+    await client.sendMessage('token', peer, 'kordi-cloud-group:fanout', {
+      ...options, clientMessageId: `fanout:${peer}`,
+    });
+  }
 
   const messageIds = calls
     .filter((call) => call.url.endsWith('/messages'))
