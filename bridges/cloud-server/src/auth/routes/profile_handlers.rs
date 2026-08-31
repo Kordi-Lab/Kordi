@@ -44,7 +44,7 @@ pub(super) async fn update_me(
     )
     .await
     {
-        return response;
+        return *response;
     }
     let mut tx = match pool.begin().await {
         Ok(value) => value,
@@ -143,7 +143,7 @@ pub(super) async fn update_me(
     .await
     {
         Ok(row) => row,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let avatar_url = next_avatar.image_url();
     let row: Option<AccountRecordRow> = match query_as(

@@ -4,7 +4,7 @@ pub(super) async fn materialize_default_agent_avatar_mutation(
     state: &Arc<ServerState>,
     account_id: &str,
     mutation: &mut Option<AvatarMutationRequest>,
-) -> Result<(), Response> {
+) -> Result<(), Box<Response>> {
     let Some(mutation) = mutation.as_mut() else {
         return Ok(());
     };
@@ -19,9 +19,9 @@ pub(super) async fn materialize_default_agent_avatar_mutation(
     .await
     .map_err(|error| match error {
         crate::avatars::assets::AvatarAssetError::Invalid(message) => {
-            err("invalid_avatar", message, StatusCode::BAD_REQUEST)
+            boxed_err("invalid_avatar", message, StatusCode::BAD_REQUEST)
         }
-        _ => err(
+        _ => boxed_err(
             "avatar_storage_unavailable",
             "Avatar storage is unavailable.",
             StatusCode::SERVICE_UNAVAILABLE,
@@ -35,7 +35,7 @@ pub(super) async fn update_default_agent_profile(
     display_name: Option<&str>,
     mutation: Option<&AvatarMutationRequest>,
     now: &str,
-) -> Result<DefaultAgentProfileRow, Response> {
+) -> Result<DefaultAgentProfileRow, Box<Response>> {
     let current: Option<DefaultAgentProfileRow> = query_as(
         "SELECT owner_account_id, display_name, avatar_url, avatar_source, avatar_style, \
             avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at \
@@ -46,7 +46,7 @@ pub(super) async fn update_default_agent_profile(
     .await
     .map_err(|_| agent_profile_error())?;
     let current = current.ok_or_else(|| {
-        err(
+        boxed_err(
             "account_missing",
             "Default agent profile is unavailable.",
             StatusCode::NOT_FOUND,
@@ -55,7 +55,7 @@ pub(super) async fn update_default_agent_profile(
     let current_avatar = default_agent_profile_from_row(account_id, Some(current), now).avatar;
     let next_avatar = match mutation {
         Some(mutation) if mutation.expected_version.is_none() => {
-            return Err(err(
+            return Err(boxed_err(
                 "invalid_avatar_version",
                 "Refresh the agent profile before changing its avatar.",
                 StatusCode::BAD_REQUEST,
@@ -65,7 +65,7 @@ pub(super) async fn update_default_agent_profile(
             preserve_avatar_render_key(tx, &current_avatar)
                 .await
                 .map_err(|_| {
-                    err(
+                    boxed_err(
                         "server_error",
                         "Could not preserve agent avatar history.",
                         StatusCode::INTERNAL_SERVER_ERROR,
@@ -74,13 +74,13 @@ pub(super) async fn update_default_agent_profile(
             let next =
                 apply_avatar_mutation(&current_avatar, mutation, now).map_err(
                     |error| match error {
-                        AvatarMutationError::Conflict => err(
+                        AvatarMutationError::Conflict => boxed_err(
                             "avatar_conflict",
                             "Agent avatar changed on another device. Refresh and try again.",
                             StatusCode::CONFLICT,
                         ),
                         AvatarMutationError::Invalid(message) => {
-                            err("invalid_avatar", message, StatusCode::BAD_REQUEST)
+                            boxed_err("invalid_avatar", message, StatusCode::BAD_REQUEST)
                         }
                     },
                 )?;
@@ -98,7 +98,7 @@ pub(super) async fn update_default_agent_profile(
                     next.uploaded_asset.as_deref().unwrap_or_default(),
                 )
                 .await
-                .map_err(avatar_activation_error)?;
+                .map_err(|error| Box::new(avatar_activation_error(error)))?;
             }
             next
         }
@@ -125,7 +125,7 @@ pub(super) async fn update_default_agent_profile(
     .await
     .map_err(|_| agent_profile_error())?;
     updated.ok_or_else(|| {
-        err(
+        boxed_err(
             "account_missing",
             "Default agent profile is unavailable.",
             StatusCode::NOT_FOUND,
@@ -133,8 +133,8 @@ pub(super) async fn update_default_agent_profile(
     })
 }
 
-fn agent_profile_error() -> Response {
-    err(
+fn agent_profile_error() -> Box<Response> {
+    boxed_err(
         "server_error",
         "Could not update agent profile.",
         StatusCode::INTERNAL_SERVER_ERROR,
