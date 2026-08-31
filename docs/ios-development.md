@@ -214,7 +214,9 @@ See [Kordi iOS cloud contract](cloud-mobile.md) for endpoints and projection rul
 
 For a coordinated desktop and iOS release, use the
 [standard dual-platform release runbook](development/dual-platform-release-runbook.md).
-Finish this entire preflight before the desktop artifact is published.
+The standard operator order publishes macOS to `kordi.ai` and GitHub before
+iOS archive/upload. Simulator and physical-device qualification belong to the
+implementation PRs and must already be recorded on the merged candidate.
 
 ### Source and test preflight
 
@@ -231,27 +233,18 @@ Finish this entire preflight before the desktop artifact is published.
 3. Confirm the production `Kordi` Release build settings identify the intended
    version/build, `ai.kordi.ios`, `https://kordi.ai`, production distribution,
    and production APNs. Never archive `Kordi Beta`.
-4. Run the complete suite on a task-owned simulator and DerivedData directory:
-
-   ```bash
-   DEVELOPER_DIR="<XCODE_DEVELOPER_DIR>" xcodebuild -quiet \
-     -project app/ios/Kordi.xcodeproj \
-     -scheme Kordi \
-     -destination 'id=<TASK_SIMULATOR_ID>' \
-     -derivedDataPath /protected/kordi-ios-derived-data \
-     -resultBundlePath /protected/kordi-ios-tests.xcresult \
-     -collect-test-diagnostics never \
-     test
-   ```
-
-   Stop on any failure. Rerun a focused failure with
-   `-collect-test-diagnostics on-failure` only when the diagnostic bundle is
-   needed.
-
-5. Run the signed build on a physical iPhone and verify login, sync, direct
-   chat, group chat, agent fallback, attachments, sharing, appearance, and
-   provider-auth recovery.
-6. Complete the [product call readiness and two-account acceptance test](call-hosting.md#required-two-account-acceptance-test), including voice, video, first remote frame, terminal state, and background CallKit answer.
+4. Confirm the merged implementation/release PRs record the required CI,
+   simulator, physical-device, and focused acceptance evidence. The standard
+   release operation does not create or reuse a simulator. Missing evidence is
+   a source-qualification failure: stop, fix/test/merge, and use a new
+   candidate.
+5. When calls, APNs, media, or relevant backend/client behavior changed,
+   confirm the merged candidate already passed the [product call readiness and
+   two-account acceptance test](call-hosting.md#required-two-account-acceptance-test),
+   including voice, video, first remote frame, terminal state, and background
+   CallKit answer.
+6. Resolve packages into a task-owned DerivedData directory and scan downloaded
+   binary frameworks for forbidden private build paths before archive.
 
 ### Apple account and capability preflight
 
@@ -317,7 +310,14 @@ require:
 - the production team and `get-task-allow=false`;
 - `ITSAppUsesNonExemptEncryption=false`;
 - successful code-signature verification;
+- no `/Users/`, `/private/tmp`, `/var/folders`, test hosts, credentials, local
+  account data, or private identifiers in the extracted IPA or native binaries;
 - a recorded byte size and SHA-256.
+
+Third-party XCFrameworks are release inputs. If one contains a forbidden path,
+rebuild or update it with source-path remapping in a reviewed source change and
+use a new candidate. Do not make release-day binary string replacement the
+normal path.
 
 ### Validate, upload, and verify TestFlight
 
@@ -340,8 +340,11 @@ xcrun altool --upload-package /protected/Kordi.ipa \
 
 Do not report TestFlight complete until App Store Connect reports the reviewed
 build as `VALID` and the build is visible to `Kordi Team`. Upload success alone
-is not the final state. Credentials and team identifiers are intentionally not
-stored in this repository.
+is not the final state. A macOS notarization key may not have App Store provider
+or build-status access; use a dedicated App Store Connect key. When upload uses
+the signed-in Xcode account, assign explicit UI verification ownership if no
+status-capable API key is available. Credentials and team identifiers are
+intentionally not stored in this repository.
 
 ## Troubleshooting
 
