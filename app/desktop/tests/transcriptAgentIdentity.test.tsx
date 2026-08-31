@@ -55,4 +55,3 @@ test('renders the owner tag while the viewer-owned agent is still working', () =
   assert.match(markup, /Owner · You/);
   assert.match(markup, /aria-label="Owner: You"/);
 });
-

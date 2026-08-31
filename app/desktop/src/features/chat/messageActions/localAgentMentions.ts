@@ -186,4 +186,3 @@ export function mentionTextStartsWithLabel(text: string, label: string) {
   const next = normalizedText.slice(normalizedLabel.length, normalizedLabel.length + 1);
   return !next || /[\s:;,.!?—-]/.test(next);
 }
-

@@ -47,4 +47,3 @@ export function cloudGroupAgentMentionHasResponse(input: {
 }): boolean {
   return cloudGroupAgentMentionResponseState(input) !== null;
 }
-

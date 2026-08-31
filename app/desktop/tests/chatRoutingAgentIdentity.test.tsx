@@ -60,4 +60,3 @@ test('canonical read model keeps the renamed default agent and owner tag after h
     ['Babytang', 'Babytang'],
   );
 });
-
