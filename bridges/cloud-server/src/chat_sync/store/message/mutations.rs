@@ -137,19 +137,7 @@ pub async fn edit_message(
     .execute(&mut *transaction)
     .await?;
     let message = load_message(&mut transaction, message_id).await?;
-    for recipient in active_member_ids(&mut transaction, conversation_id).await? {
-        let conversation = load_conversation(&mut transaction, conversation_id, &recipient).await?;
-        insert_sync_event(
-            &mut transaction,
-            &recipient,
-            "message.updated",
-            Some(conversation_id),
-            Some(message_id),
-            Some(message.version),
-            &json!({ "message": &message, "conversation": &conversation }),
-        )
-        .await?;
-    }
+    fanout_message_sync_event(&mut transaction, "message.updated", &message).await?;
     transaction.commit().await?;
     Ok(message)
 }
@@ -233,19 +221,7 @@ pub async fn delete_message(
         .execute(&mut *transaction)
         .await?;
     let message = load_message(&mut transaction, message_id).await?;
-    for recipient in active_member_ids(&mut transaction, conversation_id).await? {
-        let conversation = load_conversation(&mut transaction, conversation_id, &recipient).await?;
-        insert_sync_event(
-            &mut transaction,
-            &recipient,
-            "message.deleted",
-            Some(conversation_id),
-            Some(message_id),
-            Some(message.version),
-            &json!({ "message": &message, "conversation": &conversation }),
-        )
-        .await?;
-    }
+    fanout_message_sync_event(&mut transaction, "message.deleted", &message).await?;
     transaction.commit().await?;
     Ok(())
 }

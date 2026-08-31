@@ -13,6 +13,7 @@ type MessageMutationTransport = Pick<
 
 export function useKordiMessageMutations({
   activeConversation,
+  canonicalState,
   draftSessionId,
   isNativeShell,
   setDesktopChatError,
@@ -22,6 +23,7 @@ export function useKordiMessageMutations({
   deleteCloudMessage,
 }: {
   activeConversation: Conversation;
+  canonicalState: CanonicalSessionState | null;
   draftSessionId: string;
   isNativeShell: boolean;
   setDesktopChatError: (message: string | null) => void;
@@ -73,16 +75,18 @@ export function useKordiMessageMutations({
     messageEditBusyRef.current = true;
     setMessageEditBusy(true);
     setMessageEditError(null);
+    const pendingEdit = messageEdit;
+    setMessageEdit(null);
     try {
       await editCloudMessage({
-        conversationId: messageEdit.conversationId,
-        messageId: messageEdit.messageId,
-        expectedVersion: messageEdit.expectedVersion,
-        text: messageEdit.text,
+        conversationId: pendingEdit.conversationId,
+        messageId: pendingEdit.messageId,
+        expectedVersion: pendingEdit.expectedVersion,
+        text: pendingEdit.text,
       });
-      setMessageEdit(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not edit message.';
+      setMessageEdit((current) => current ?? pendingEdit);
       setMessageEditError(message);
       setDesktopChatError(message);
     } finally {
@@ -106,12 +110,16 @@ export function useKordiMessageMutations({
           const conversationId = deleteTarget.reactionConversationId?.trim();
           const messageId = deleteTarget.reactionTargetMessageId?.trim();
           if (!conversationId || !messageId) throw new Error('Message is no longer available.');
-          await deleteCloudMessage({ conversationId, messageId, forEveryone });
           const localMessageIds = new Set([
             deleteTarget.id?.trim(),
             deleteTarget.entryId?.trim(),
             messageId,
           ].filter((value): value is string => Boolean(value)));
+          const removedCanonicalMessages = canonicalState?.messages.filter((message) => (
+            localMessageIds.has(message.id)
+            || localMessageIds.has(message.sourceEventId?.trim() ?? '')
+          )) ?? [];
+          const deletion = deleteCloudMessage({ conversationId, messageId, forEveryone });
           setCanonicalState((current) => {
             if (!current) return current;
             const messages = current.messages.filter((message) => (
@@ -122,7 +130,27 @@ export function useKordiMessageMutations({
               ? current
               : { ...current, messages };
           });
+          setDeleteTarget(null);
           if (messageEdit?.messageId === messageId) setMessageEdit(null);
+          try {
+            await deletion;
+          } catch (error) {
+            setCanonicalState((current) => {
+              if (!current || removedCanonicalMessages.length === 0) return current;
+              const currentIds = new Set(current.messages.map((message) => message.id));
+              const missing = removedCanonicalMessages.filter((message) => !currentIds.has(message.id));
+              return missing.length === 0
+                ? current
+                : {
+                    ...current,
+                    messages: [...current.messages, ...missing].sort((left, right) => (
+                      left.createdAtMs - right.createdAtMs || left.id.localeCompare(right.id)
+                    )),
+                  };
+            });
+            setDesktopChatError(error instanceof Error ? error.message : 'Could not delete message.');
+            return;
+          }
         },
       })
     : null;

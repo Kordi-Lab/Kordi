@@ -14,7 +14,7 @@ const contentRecord = (value: unknown): Record<string, unknown> => (
     : {}
 );
 
-export function patchCanonicalCloudReactions(
+export function patchCanonicalCloudMessages(
   current: CanonicalSessionState | null,
   groupRows: readonly IndexedCloudGroupRow[],
 ): CanonicalSessionState | null {
@@ -22,6 +22,9 @@ export function patchCanonicalCloudReactions(
   const projections = new Map<string, {
     conversationId: string;
     targetMessageId: string;
+    text: string;
+    version: number | null;
+    editedAt: string | null;
     reactions: NonNullable<CloudMessage['reactions']>;
     pendingReactionIntents: NonNullable<CloudMessage['pendingReactionIntents']>;
   }>();
@@ -32,13 +35,23 @@ export function patchCanonicalCloudReactions(
     if (!messageId || !conversationId || !targetMessageId) continue;
     const key = `${row.envelope.groupId}\u0000${messageId}`;
     const previous = projections.get(key);
+    const version = row.wire.version ?? null;
+    const useRowContent = !previous
+      || (version ?? 0) > (previous.version ?? 0)
+      || (
+        version === previous.version
+        && (row.wire.editedAt ?? '') >= (previous.editedAt ?? '')
+      );
     const pendingReactionIntents = [
       ...(previous?.pendingReactionIntents ?? []),
       ...(row.wire.pendingReactionIntents ?? []),
     ];
     projections.set(key, {
-      conversationId,
-      targetMessageId,
+      conversationId: useRowContent ? conversationId : previous.conversationId,
+      targetMessageId: useRowContent ? targetMessageId : previous.targetMessageId,
+      text: useRowContent ? row.envelope.message!.text : previous.text,
+      version: useRowContent ? version : previous.version,
+      editedAt: useRowContent ? row.wire.editedAt ?? null : previous.editedAt,
       reactions: applyCloudReactionIntents(
         normalizeCloudMessageReactions([
           ...(previous?.reactions ?? []),
@@ -63,15 +76,22 @@ export function patchCanonicalCloudReactions(
     if (!projection) return message;
     const reactions = normalizeCloudMessageReactions(content.reactions) ?? [];
     if (
-      content.cloudReactionConversationId === projection.conversationId
+      message.contentText === projection.text
+      && content.cloudMessageVersion === projection.version
+      && content.editedAt === projection.editedAt
+      && content.cloudReactionConversationId === projection.conversationId
       && content.cloudReactionTargetMessageId === projection.targetMessageId
       && cloudReactionsEqual(reactions, projection.reactions)
     ) return message;
     changed = true;
     return {
       ...message,
+      contentText: projection.text,
+      contentHash: null,
       content: {
         ...content,
+        cloudMessageVersion: projection.version,
+        editedAt: projection.editedAt,
         cloudReactionConversationId: projection.conversationId,
         cloudReactionTargetMessageId: projection.targetMessageId,
         reactions: projection.reactions,
@@ -80,3 +100,5 @@ export function patchCanonicalCloudReactions(
   });
   return changed ? { ...current, messages } : current;
 }
+
+export const patchCanonicalCloudReactions = patchCanonicalCloudMessages;
