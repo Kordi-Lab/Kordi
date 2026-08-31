@@ -50,6 +50,9 @@ export type CloudCallsController = {
   currentCall: PresentedCloudCall | null;
   incomingCall: PresentedCloudCall | null;
   handoffCall: PresentedCloudCall | null;
+  detachedCall: PresentedCloudCall | null;
+  detachedThumbnailUrl: string | null;
+  isDetachedCallFolded: boolean;
   phase: CloudCallPhase;
   error: string | null;
   isPresented: boolean;
@@ -65,7 +68,7 @@ export type CloudCallsController = {
   callForConversation(conversation: Conversation): CloudCall | null;
   start(conversation: Conversation, kind: Exclude<CloudCallKind, 'meeting'>): Promise<void>;
   join(call: CloudCall, sessionId?: string | null): Promise<void>;
-  decline(call: CloudCall, sessionId?: string | null): Promise<void>;
+  decline(call: CloudCall, sessionId?: string | null): Promise<CloudCall | null>;
   leave(): Promise<void>;
   end(): Promise<void>;
   invite(): Promise<void>;
@@ -76,5 +79,11 @@ export type CloudCallsController = {
   switchMediaDevice(kind: MediaDeviceKind, deviceId: string): Promise<void>;
   show(): void;
   minimize(): void;
+  moveToWindow: () => Promise<void>;
+  claimIncomingCallWindow: (callId: string) => void;
+  showWindow: () => Promise<void>;
+  clearDetachedCall: () => void;
+  setDetachedCallFolded: (folded: boolean) => void;
+  updateDetachedThumbnail: (dataUrl: string) => void;
   dismissError(): void;
 };

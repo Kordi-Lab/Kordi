@@ -1,6 +1,28 @@
 import LiveKit
 import SwiftUI
 
+struct KordiCallAvatarIdentity: Equatable {
+    let name: String
+    let imageSource: String?
+    let seed: String
+}
+
+enum KordiCallAvatarResolver {
+    static func identity(
+        accountID: String,
+        fallbackName: String,
+        fallbackImageSource: String?,
+        participants: [CloudCallParticipant]
+    ) -> KordiCallAvatarIdentity {
+        let participant = participants.first { $0.accountId == accountID }
+        return KordiCallAvatarIdentity(
+            name: participant?.displayName?.nonEmpty ?? fallbackName,
+            imageSource: participant?.avatarUrl?.nonEmpty ?? fallbackImageSource?.nonEmpty,
+            seed: participant?.accountId ?? accountID
+        )
+    }
+}
+
 struct KordiCallView: View {
     @EnvironmentObject private var coordinator: KordiCallCoordinator
     @ObservedObject var room: Room
@@ -175,7 +197,10 @@ private struct LiveCallParticipantStage: View {
     @ObservedObject var room: Room
 
     private var participants: [CallRoomParticipantItem] {
-        CallRoomParticipantItem.make(from: room)
+        CallRoomParticipantItem.make(
+            from: room,
+            callParticipants: presentation.call.participants
+        )
     }
 
     var body: some View {
@@ -205,7 +230,7 @@ private struct DirectCallParticipantStage: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            LiveCallParticipantTile(item: remote)
+            LiveCallParticipantTile(item: remote, layoutMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if let local {
@@ -540,7 +565,7 @@ private struct CallAudioRouteControl: View {
         }
         .frame(maxWidth: 62)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Choose audio output")
+        .accessibilityLabel("Choose audio route")
     }
 }
 
@@ -549,17 +574,26 @@ private struct CallWaitingStage: View {
     let participants: [CloudCallParticipant]
     let isPreview: Bool
 
+    private var peerIdentity: KordiCallAvatarIdentity {
+        KordiCallAvatarResolver.identity(
+            accountID: conversation.peerAccountId,
+            fallbackName: conversation.displayName,
+            fallbackImageSource: conversation.avatarSource,
+            participants: participants
+        )
+    }
+
     var body: some View {
         VStack(spacing: 22) {
             if conversation.kind == .group {
                 GroupAvatarStack(participants: conversation.groupParticipants, size: 132)
             } else {
                 IdentityAvatar(
-                    name: conversation.displayName,
-                    imageSource: conversation.avatarSource,
+                    name: peerIdentity.name,
+                    imageSource: peerIdentity.imageSource,
                     kind: .person,
                     size: 132,
-                    seed: conversation.peerAccountId
+                    seed: peerIdentity.seed
                 )
             }
 
@@ -577,16 +611,40 @@ private struct CallRoomParticipantItem: Identifiable {
     let id: String
     let participant: Participant
     let isLocal: Bool
+    let identity: KordiCallAvatarIdentity
 
-    static func make(from room: Room) -> [CallRoomParticipantItem] {
+    static func make(
+        from room: Room,
+        callParticipants: [CloudCallParticipant]
+    ) -> [CallRoomParticipantItem] {
         var result: [CallRoomParticipantItem] = []
         let local = room.localParticipant
         if let identity = local.identity?.stringValue {
-            result.append(CallRoomParticipantItem(id: identity, participant: local, isLocal: true))
+            result.append(CallRoomParticipantItem(
+                id: identity,
+                participant: local,
+                isLocal: true,
+                identity: KordiCallAvatarResolver.identity(
+                    accountID: identity,
+                    fallbackName: local.name?.nonEmpty ?? "You",
+                    fallbackImageSource: nil,
+                    participants: callParticipants
+                )
+            ))
         }
         result += room.remoteParticipants.values.compactMap { participant in
             guard let identity = participant.identity?.stringValue else { return nil }
-            return CallRoomParticipantItem(id: identity, participant: participant, isLocal: false)
+            return CallRoomParticipantItem(
+                id: identity,
+                participant: participant,
+                isLocal: false,
+                identity: KordiCallAvatarResolver.identity(
+                    accountID: identity,
+                    fallbackName: participant.name?.nonEmpty ?? identity,
+                    fallbackImageSource: nil,
+                    participants: callParticipants
+                )
+            )
         }
         return result.sorted {
             if $0.isLocal != $1.isLocal { return $0.isLocal }
@@ -600,10 +658,12 @@ private struct CallRoomParticipantItem: Identifiable {
 
 private struct LiveCallParticipantTile: View {
     let item: CallRoomParticipantItem
+    let layoutMode: VideoView.LayoutMode
     @ObservedObject private var participant: Participant
 
-    init(item: CallRoomParticipantItem) {
+    init(item: CallRoomParticipantItem, layoutMode: VideoView.LayoutMode = .fill) {
         self.item = item
+        self.layoutMode = layoutMode
         participant = item.participant
     }
 
@@ -618,14 +678,14 @@ private struct LiveCallParticipantTile: View {
                 .fill(.black.opacity(0.28))
 
             if let videoTrack {
-                SwiftUIVideoView(videoTrack, layoutMode: .fill)
+                SwiftUIVideoView(videoTrack, layoutMode: layoutMode)
             } else {
                 IdentityAvatar(
-                    name: participant.name?.nonEmpty ?? item.id,
-                    imageSource: nil,
+                    name: item.identity.name,
+                    imageSource: item.identity.imageSource,
                     kind: .person,
                     size: 92,
-                    seed: item.id
+                    seed: item.identity.seed
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -635,7 +695,7 @@ private struct LiveCallParticipantTile: View {
                     Image(systemName: "mic.slash.fill")
                         .font(.caption)
                 }
-                Text(item.isLocal ? "You" : participant.name?.nonEmpty ?? item.id)
+                Text(item.isLocal ? "You" : item.identity.name)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
             }
@@ -652,7 +712,7 @@ private struct LiveCallParticipantTile: View {
                 .stroke(participant.isSpeaking ? Color.green : .white.opacity(0.08), lineWidth: 2)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(item.isLocal ? "You" : participant.name?.nonEmpty ?? item.id)
+        .accessibilityLabel(item.isLocal ? "You" : item.identity.name)
     }
 }
 
@@ -665,7 +725,10 @@ private struct CallParticipantList: View {
     @State private var invitationNotice: String?
 
     private var liveParticipants: [CallRoomParticipantItem] {
-        CallRoomParticipantItem.make(from: room)
+        CallRoomParticipantItem.make(
+            from: room,
+            callParticipants: displayedCall.participants
+        )
     }
 
     private var displayedCall: CloudCall {

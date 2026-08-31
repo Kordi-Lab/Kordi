@@ -102,11 +102,22 @@ struct KordiApp: App {
                 .environment(\.kordiChatTheme, selectedChatTheme)
                 .tint(KordiTheme.signalBlue)
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    if showsPreviewThemeControls {
-                        PreviewThemeControls(
-                            appearanceRawValue: $appearanceRawValue,
-                            chatThemeRawValue: $chatThemeRawValue
-                        )
+                    VStack(spacing: 0) {
+                        if showsPreviewThemeControls {
+                            PreviewThemeControls(
+                                appearanceRawValue: $appearanceRawValue,
+                                chatThemeRawValue: $chatThemeRawValue
+                            )
+                        }
+                        if callCoordinator.isMinimized,
+                           let call = callCoordinator.activeCall {
+                            MinimizedCallBar(
+                                title: call.conversation.displayName,
+                                phase: callCoordinator.phase,
+                                hasVideo: call.call.kind.allowsVideo,
+                                onOpen: callCoordinator.showCallScreen
+                            )
+                        }
                     }
                 }
                 .preferredColorScheme(preferredColorScheme)
@@ -185,6 +196,48 @@ struct KordiApp: App {
 #else
         false
 #endif
+    }
+}
+
+private struct MinimizedCallBar: View {
+    let title: String
+    let phase: KordiCallPhase
+    let hasVideo: Bool
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 12) {
+                Image(systemName: hasVideo ? "video.fill" : "phone.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(KordiTheme.signalBlue.gradient, in: Circle())
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Text(phase.label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                Label("Return", systemImage: "chevron.up")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(KordiTheme.signalBlue)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial)
+            .overlay(alignment: .bottom) { Divider() }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Return to \(title) call")
+        .accessibilityValue(phase.label)
     }
 }
 

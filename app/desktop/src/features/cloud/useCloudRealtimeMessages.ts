@@ -8,7 +8,10 @@ import {
   type CloudAccount,
   type CloudAuthClient,
   type CloudMessage,
+  type CloudSyncEvent,
+  type ChatSyncEvent,
 } from './authClient';
+import { publishCloudCallEvents } from './cloudCalls';
 import {
   CLOUD_CONTACT_ACCEPTED_SYNC_EVENT,
 } from './useCloudContacts';
@@ -32,6 +35,18 @@ export function cloudRealtimeReconnectDelayMs(attempt: number): number {
     CLOUD_REALTIME_RECONNECT_INITIAL_MS * (2 ** safeAttempt),
     CLOUD_REALTIME_RECONNECT_MAX_MS,
   );
+}
+
+export function realtimeCallSyncEvent(event: ChatSyncEvent | undefined): CloudSyncEvent | null {
+  if (!event || (event.type !== 'call.created' && event.type !== 'call.updated')) return null;
+  return {
+    eventId: event.event_id,
+    eventType: event.type,
+    peerAccountId: null,
+    messageId: null,
+    payload: { ...event.payload, sessionId: event.conversation_id },
+    occurredAt: event.occurred_at,
+  };
 }
 
 export function useCloudRealtimeMessages({
@@ -167,6 +182,7 @@ export function useCloudRealtimeMessages({
               type?: string;
               stream_seq?: number;
               heartbeat_interval_ms?: number;
+              event?: ChatSyncEvent;
             };
             if (frame.type === 'hello') {
               const interval = Math.max(5_000, frame.heartbeat_interval_ms ?? 30_000);
@@ -189,6 +205,8 @@ export function useCloudRealtimeMessages({
               return;
             }
             if (frame.type !== 'event' || typeof frame.stream_seq !== 'number') return;
+            const callEvent = realtimeCallSyncEvent(frame.event);
+            if (callEvent) publishCloudCallEvents([callEvent], accountIdAtOpen);
             void syncCloudCollaborationDiffRef.current()
               .then(async () => {
                 const applied = await loadChatSyncCursor(accountIdAtOpen);

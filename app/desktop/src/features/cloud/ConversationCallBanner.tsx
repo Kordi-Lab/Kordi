@@ -37,7 +37,8 @@ export function ConversationCallBanner({ conversation }: { conversation: Convers
 
   const hostOwnsCall = (current?.call.id === call.id && calls.isPresented)
     || calls.incomingCall?.call.id === call.id
-    || calls.handoffCall?.call.id === call.id;
+    || calls.handoffCall?.call.id === call.id
+    || calls.detachedCall?.call.id === call.id;
   if (hostOwnsCall) return null;
 
   const isCurrent = current?.call.id === call.id;

@@ -73,7 +73,7 @@ pub(crate) fn desktop_relaunch_after_update(app: tauri::AppHandle) -> Result<(),
 }
 
 pub(crate) fn should_hide_window_instead_of_close(label: &str) -> bool {
-    cfg!(target_os = "macos") && label == MAIN_WINDOW_LABEL
+    cfg!(target_os = "macos") && matches!(label, MAIN_WINDOW_LABEL | "call")
 }
 
 pub(crate) fn should_show_main_window_on_reopen(has_visible_windows: bool) -> bool {
@@ -92,6 +92,7 @@ mod tests {
     #[test]
     fn macos_main_window_close_hides_instead_of_quitting() {
         assert!(should_hide_window_instead_of_close("main"));
+        assert!(should_hide_window_instead_of_close("call"));
         assert!(!should_hide_window_instead_of_close("secondary"));
     }
 

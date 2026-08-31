@@ -100,12 +100,21 @@ private struct CloudRealtimeHeartbeatFrame: Encodable {
     }
 }
 
-private struct CloudRealtimeServerFrame: Decodable {
+struct CloudRealtimeServerFrame: Decodable {
     let type: String
     let streamSequence: Int64?
+    let event: CloudChatEvent?
+
+    var call: CloudCall? {
+        guard let event,
+              event.eventType == "call.created" || event.eventType == "call.updated" else {
+            return nil
+        }
+        return event.payload.call
+    }
 
     enum CodingKeys: String, CodingKey {
-        case type
+        case type, event
         case streamSequence = "stream_seq"
     }
 }
@@ -4755,6 +4764,9 @@ final class AppModel: ObservableObject {
                                     cloudRealtimeLastReceivedSequence,
                                     streamSequence
                                 )
+                            }
+                            if let call = frame.call {
+                                applyCallSnapshot(call)
                             }
                             scheduleRealtimeSyncWake()
                         } else if frame.type == "resync_required" {
