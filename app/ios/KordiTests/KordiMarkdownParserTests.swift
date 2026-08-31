@@ -724,7 +724,8 @@ final class KordiMarkdownParserTests: XCTestCase {
                     role: "person"
                 )
             ],
-            sessions: [session]
+            sessions: [session],
+            membershipSessions: [session]
         )
 
         XCTAssertTrue(ChatHomeSearch.matches(space, query: "maya"))

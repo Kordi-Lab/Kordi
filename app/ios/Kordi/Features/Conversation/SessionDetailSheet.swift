@@ -106,7 +106,7 @@ struct SessionDetailView: View {
     private var groupSpace: GroupSpaceSummary? {
         guard currentConversation.kind == .group else { return nil }
         if let existing = groupSpaces.first(where: { space in
-            space.sessions.contains { $0.id == currentConversation.id }
+            space.membershipSessions.contains { $0.id == currentConversation.id }
         }) {
             return existing
         }
@@ -119,7 +119,8 @@ struct SessionDetailView: View {
             unreadCount: currentConversation.unreadCount,
             unreadMentionCount: currentConversation.unreadMentionCount,
             participants: currentConversation.groupParticipants,
-            sessions: [currentConversation]
+            sessions: [currentConversation],
+            membershipSessions: [currentConversation]
         )
     }
 

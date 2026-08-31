@@ -3095,7 +3095,7 @@ final class AppModel: ObservableObject {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, let token, let account else { return false }
         do {
-            for conversation in space.sessions {
+            for conversation in space.membershipSessions {
                 let participants = groupParticipantsIncludingSelf(conversation, account: account)
                 try await sendGroupControl(
                     kind: "group-title-update",
@@ -3144,7 +3144,7 @@ final class AppModel: ObservableObject {
             )
         }
         do {
-            for conversation in space.sessions {
+            for conversation in space.membershipSessions {
                 let existing = groupParticipantsIncludingSelf(conversation, account: account)
                 let existingIDs = Set(existing.map(\.accountId))
                 let trulyAdded = addedParticipants.filter { !existingIDs.contains($0.accountId) }

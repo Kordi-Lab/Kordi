@@ -1334,6 +1334,58 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(Set(spaces[0].participants.map(\.accountId)), ["acct_me", "acct_maya", "acct_ethan"])
     }
 
+    func testGroupSpaceCatalogKeepsHiddenSessionsInMembershipFanoutAndExposesPartialMembersForRepair() throws {
+        let sharedParticipants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
+        ]
+        let yuxin = CloudGroupParticipant(
+            accountId: "acct_yuxin",
+            displayName: "Yuxin",
+            avatarUrl: nil,
+            role: "person"
+        )
+        let hiddenRoot = groupConversation(
+            id: "session:group:root",
+            spaceId: "session:group:root",
+            title: "Mobile builders",
+            preview: "Group conversation",
+            date: Date(timeIntervalSince1970: 1),
+            participants: sharedParticipants,
+            messageCount: 0
+        )
+        let activeSession = groupConversation(
+            id: "session:group:active",
+            spaceId: "session:group:root",
+            title: "Release checklist",
+            preview: "Yuxin joined here only",
+            date: Date(timeIntervalSince1970: 2),
+            participants: sharedParticipants + [yuxin],
+            messageCount: 1
+        )
+
+        let space = try XCTUnwrap(
+            GroupSpaceCatalog.build(
+                conversations: [hiddenRoot, activeSession],
+                ownAccountId: "acct_me"
+            ).first
+        )
+
+        XCTAssertEqual(space.sessions.map(\.sessionId), ["session:group:active"])
+        XCTAssertEqual(
+            space.membershipSessions.map(\.sessionId),
+            ["session:group:active", "session:group:root"]
+        )
+        XCTAssertEqual(
+            Set(space.participants.map(\.accountId)),
+            ["acct_me", "acct_maya", "acct_yuxin"]
+        )
+        XCTAssertEqual(
+            space.fullyJoinedParticipantAccountIds,
+            ["acct_me", "acct_maya"]
+        )
+    }
+
     func testGroupSpaceCatalogDoesNotMergeDistinctGroupsWithTheSameMembers() {
         let participants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),

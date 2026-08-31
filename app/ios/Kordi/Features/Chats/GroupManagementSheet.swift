@@ -23,7 +23,7 @@ struct GroupManagementSheet: View {
     }
 
     private var memberIDs: Set<String> {
-        Set(presentation.space.participants.map(\.accountId))
+        presentation.space.fullyJoinedParticipantAccountIds
     }
 
     private var availableContacts: [CloudContact] {
@@ -217,7 +217,7 @@ struct GroupMemberInviteSheet: View {
     @State private var completedMemberCount: Int?
 
     private var memberIDs: Set<String> {
-        Set(space.participants.map(\.accountId))
+        space.fullyJoinedParticipantAccountIds
     }
 
     private var eligibleContactItems: [GroupInviteContactItem] {
