@@ -47,7 +47,7 @@ if [ -n "${CERTIFICATE_STATE}" ]; then
 elif ! gcloud certificate-manager certificates describe "${CERTIFICATE}" \
 	--location=global \
 	--project="${PROJECT}" \
-	--format='value(selfManaged.pemCertificate)' \
+	--format='value(pemCertificate)' \
 	| grep -q 'BEGIN CERTIFICATE'; then
 	echo "KORDI_CLOUD_CDN_CERTIFICATE must identify a usable global certificate" >&2
 	exit 1

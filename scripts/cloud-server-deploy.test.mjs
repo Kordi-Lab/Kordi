@@ -139,7 +139,7 @@ test('global updater edge caches only release paths through a private VM endpoin
   assert.match(script, /KORDI_CLOUD_SSH_ZONE:\?Set KORDI_CLOUD_SSH_ZONE/);
   assert.match(script, /KORDI_CLOUD_SSH_TARGET:\?Set KORDI_CLOUD_SSH_TARGET/);
   assert.match(script, /managed\.state[\s\S]*ACTIVE/);
-  assert.match(script, /selfManaged\.pemCertificate[\s\S]*BEGIN CERTIFICATE/);
+  assert.match(script, /value\(pemCertificate\)[\s\S]*BEGIN CERTIFICATE/);
   assert.match(script, /GCE_VM_IP_PORT/);
   assert.match(script, /ORIGIN_PORT=8080/);
   assert.match(script, /--load-balancing-scheme=EXTERNAL_MANAGED/);
