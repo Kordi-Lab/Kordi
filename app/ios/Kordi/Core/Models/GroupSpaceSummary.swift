@@ -9,6 +9,19 @@ struct GroupSpaceSummary: Identifiable, Hashable {
     let unreadMentionCount: Int
     let participants: [CloudGroupParticipant]
     let sessions: [ConversationSummary]
+    /// Includes every canonical session used for group membership fanout.
+    let membershipSessions: [ConversationSummary]
+
+    var fullyJoinedParticipantAccountIds: Set<String> {
+        guard let first = membershipSessions.first else { return [] }
+        return membershipSessions.dropFirst().reduce(
+            into: Set(first.groupParticipants.map(\.accountId).filter { !$0.isEmpty })
+        ) { accountIds, session in
+            accountIds.formIntersection(
+                session.groupParticipants.map(\.accountId).filter { !$0.isEmpty }
+            )
+        }
+    }
 
     var accessibilitySummary: String {
         let sessionLabel = sessions.count == 1 ? "1 session" : "\(sessions.count) sessions"
@@ -43,9 +56,8 @@ enum GroupSpaceCatalog {
         conversations: [ConversationSummary],
         ownAccountId: String
     ) -> [GroupSpaceSummary] {
-        // macOS presents forks in their own history surface and suppresses
-        // control-only placeholder sessions once a group has real messages.
-        // Apply the same projection before computing counts and unread badges.
+        // Forks live in their own history surface. Keep every remaining
+        // canonical group session visible and available for membership fanout.
         let groups = Dictionary(grouping: conversations.filter {
             $0.kind == .group && $0.forkedFromSessionId == nil
         }) { conversation in
@@ -53,16 +65,11 @@ enum GroupSpaceCatalog {
         }
 
         return groups.map { key, conversations in
-            let substantive = conversations.filter { conversation in
-                conversation.messageCount == nil || (conversation.messageCount ?? 0) > 0
-            }
-            let visible = substantive.isEmpty
-                ? Array(conversations.sorted(by: conversationPrecedes).prefix(1))
-                : substantive
-            let sessions = visible.sorted(by: conversationPrecedes)
+            let membershipSessions = conversations.sorted(by: conversationPrecedes)
+            let sessions = membershipSessions
             let latest = sessions[0]
-            let participants = mergedParticipants(from: sessions)
-            let groupTitle = sessions
+            let participants = mergedParticipants(from: membershipSessions)
+            let groupTitle = membershipSessions
                 .sorted {
                     let leftPriority = groupTitlePriority($0)
                     let rightPriority = groupTitlePriority($1)
@@ -86,7 +93,8 @@ enum GroupSpaceCatalog {
                 unreadCount: sessions.reduce(0) { $0 + $1.unreadCount },
                 unreadMentionCount: sessions.reduce(0) { $0 + $1.unreadMentionCount },
                 participants: participants,
-                sessions: sessions
+                sessions: sessions,
+                membershipSessions: membershipSessions
             )
         }
         .sorted {

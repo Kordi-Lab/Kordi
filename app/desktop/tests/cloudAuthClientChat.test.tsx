@@ -171,6 +171,53 @@ test('sendMessage uses canonical conversation identity and canonical idempotent 
   assert.equal(sent.attachments?.[0]?.attachmentId, 'att_1');
 });
 
+test('group fanout preserves recipient-specific client message ids', async () => {
+  const base = chatConversation();
+  const conversation = chatConversation({
+    kind: 'group',
+    legacy_session_id: 'session:group:fanout',
+    members: [
+      base.members[0],
+      { ...base.members[1], account_id: 'acct_a' },
+      { ...base.members[1], account_id: 'acct_b' },
+    ],
+  });
+  const { calls, fetchImpl } = recordingFetch((call) => {
+    if (call.url.endsWith('/v2/chat/conversations')) {
+      return jsonResponse(201, { conversation });
+    }
+    const request = JSON.parse(String(call.init?.body));
+    return jsonResponse(201, {
+      message: {
+        id: crypto.randomUUID(), client_message_id: request.client_message_id,
+        conversation_id: conversation.id, conversation_sequence: 1,
+        sender_account_id: 'acct_me', kind: 'text', content: request.content,
+        reply_to_message_id: null, attachment_ids: [], version: 1,
+        created_at: '2026-05-12T00:00:00Z', edited_at: null, deleted_at: null,
+      },
+    });
+  });
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+  const options = {
+    sessionId: 'session:group:fanout',
+    accountId: 'acct_me',
+    conversationKind: 'group' as const,
+    memberAccountIds: ['acct_a', 'acct_b'],
+  };
+
+  for (const peer of ['acct_a', 'acct_b']) {
+    await client.sendMessage('token', peer, 'kordi-cloud-group:fanout', {
+      ...options, clientMessageId: `fanout:${peer}`,
+    });
+  }
+
+  const messageIds = calls
+    .filter((call) => call.url.endsWith('/messages'))
+    .map((call) => JSON.parse(String(call.init?.body)).client_message_id);
+  assert.equal(messageIds.length, 2);
+  assert.notEqual(messageIds[0], messageIds[1]);
+});
+
 test('setReaction restores a missing session-routed conversation before mutating', async () => {
   const conversation = chatConversation();
   const message = {

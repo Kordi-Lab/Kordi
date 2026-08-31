@@ -875,7 +875,7 @@ export function GroupDetailsDialog({
                       onClick={() => {
                         void runAction(
                           'add-members',
-                          () => onAddMembers(groupSessionIds, selectedAddContactIds),
+                          () => onAddMembers(groupMembershipSessionIds, selectedAddContactIds),
                           () => {
                             setSelectedContactIds([]);
                             setIsAddPeopleOpen(false);

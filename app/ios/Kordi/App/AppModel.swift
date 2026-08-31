@@ -3095,7 +3095,7 @@ final class AppModel: ObservableObject {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, let token, let account else { return false }
         do {
-            for conversation in space.sessions {
+            for conversation in space.membershipSessions {
                 let participants = groupParticipantsIncludingSelf(conversation, account: account)
                 try await sendGroupControl(
                     kind: "group-title-update",
@@ -3144,7 +3144,7 @@ final class AppModel: ObservableObject {
             )
         }
         do {
-            for conversation in space.sessions {
+            for conversation in space.membershipSessions {
                 let existing = groupParticipantsIncludingSelf(conversation, account: account)
                 let existingIDs = Set(existing.map(\.accountId))
                 let trulyAdded = addedParticipants.filter { !existingIDs.contains($0.accountId) }
@@ -4330,6 +4330,16 @@ final class AppModel: ObservableObject {
             createdByAccountId: account.accountId,
             actor: actor,
             participants: participants,
+            sessionTitle: conversation.displayName.nonEmpty.map {
+                CloudGroupSessionTitleSnapshot(
+                    title: $0,
+                    titleSource: "manual",
+                    titleRevision: 1,
+                    titlePolicyVersion: 1,
+                    updatedAtMs: Date().timeIntervalSince1970 * 1_000,
+                    updatedByAccountId: account.accountId
+                )
+            },
             memberJoins: memberJoins.isEmpty ? nil : memberJoins,
             message: nil
         )
