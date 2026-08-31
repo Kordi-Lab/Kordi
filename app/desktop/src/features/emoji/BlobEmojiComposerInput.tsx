@@ -144,9 +144,14 @@ function domPoint(root: HTMLElement, target: number): { node: Node; offset: numb
     if (token) {
       const parent = node.parentNode ?? root;
       const index = Array.prototype.indexOf.call(parent.childNodes, node);
-      if (remaining <= token.length / 2) return { node: parent, offset: index };
+      if (remaining <= token.length) {
+        return {
+          node: parent,
+          offset: remaining <= token.length / 2 ? index : index + 1,
+        };
+      }
       remaining -= token.length;
-      return { node: parent, offset: index + 1 };
+      return null;
     }
     if (node.nodeType === Node.TEXT_NODE) {
       const length = node.textContent?.length ?? 0;

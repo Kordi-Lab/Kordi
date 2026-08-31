@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
-import React, { act, useState } from 'react';
+import React, { act, createRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import {
   BlobEmojiComposerInput,
+  type BlobEmojiComposerInputHandle,
 } from '../src/features/emoji/BlobEmojiComposerInput';
 import { blobEmojiComposerValue } from '../src/features/emoji/blobEmojiComposerDom';
 
 test('rich composer content serializes Blob Emoji images back to stable tokens', () => {
-  const dom = new JSDOM('<div id="composer">Hi <span data-blob-emoji-token=":blob:blobwave:"><img></span> there</div>');
+  const dom = new JSDOM('<div id="composer">Hi <span data-blob-emoji-token=":blob:blobwave:"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></span> there</div>');
   const previousNode = globalThis.Node;
   const previousHTMLElement = globalThis.HTMLElement;
   globalThis.Node = dom.window.Node;
@@ -47,11 +48,13 @@ test('typing or pasting a known token rehydrates it as an inline image', async (
   });
   const host = document.querySelector('#host') as HTMLDivElement;
   const root = createRoot(host);
+  const inputRef = createRef<BlobEmojiComposerInputHandle>();
 
   function Harness() {
     const [value, setValue] = useState('');
     return (
       <BlobEmojiComposerInput
+        ref={inputRef}
         value={value}
         placeholder="Message"
         onChange={setValue}
@@ -69,6 +72,17 @@ test('typing or pasting a known token rehydrates it as an inline image', async (
 
     assert.equal(editor.querySelector('[data-blob-emoji-token]')?.getAttribute('data-blob-emoji-token'), ':blob:blobwave:');
     assert.equal(blobEmojiComposerValue(editor), 'Hi :blob:blobwave:');
+
+    const twoEmoji = ':blob:blobwave::blob:blobwave:';
+    await act(async () => {
+      editor.textContent = twoEmoji;
+      editor.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    });
+    inputRef.current?.focus({ start: twoEmoji.length, end: twoEmoji.length });
+    assert.deepEqual(inputRef.current?.selection(), {
+      start: twoEmoji.length,
+      end: twoEmoji.length,
+    });
   } finally {
     await act(async () => root.unmount());
     previous.forEach((descriptor, key) => {
