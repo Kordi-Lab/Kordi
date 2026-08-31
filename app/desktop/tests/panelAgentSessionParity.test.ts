@@ -36,6 +36,7 @@ const chatSessionPaneSource = () => readFileSync(new URL('../src/pages/chatsPage
 const chatTranscriptViewportSource = () => readFileSync(new URL('../src/pages/chatsPage.transcriptViewport.tsx', import.meta.url), 'utf8');
 const queuedMessageSource = () => readFileSync(new URL('../src/pages/chatsPage.queuedMessage.tsx', import.meta.url), 'utf8');
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
+const cloudAgentMentionTargetSource = () => readFileSync(new URL('../src/features/chat/messageActions/cloudAgentMentionTarget.ts', import.meta.url), 'utf8');
 const messageTypesSource = () => readFileSync(new URL('../src/kordi-app/types/message.ts', import.meta.url), 'utf8');
 const appModelSource = readKordiAppModelImplementationSource;
 const collaborationNavigationActionsSource = () => readFileSync(new URL('../src/app/useKordiCollaborationNavigationActions.ts', import.meta.url), 'utf8');
@@ -437,13 +438,14 @@ test('new local sessions expose centered progress and coalesce duplicate first s
 
   const delayGuardIndex = activeSendBlock.indexOf("if (localSendDelayReason === 'session-starting')");
   const draftDetectionIndex = activeSendBlock.indexOf('const isTransientDraftConversation');
-  const mentionResolutionIndex = activeSendBlock.indexOf('resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh');
+  const mentionResolutionIndex = activeSendBlock.indexOf('resolvePreferredAgentMentionTarget');
   const noProviderShortcutIndex = activeSendBlock.indexOf('const noProviderShortcutSessionId');
   const noProviderStartingIndex = activeSendBlock.indexOf('setIsDesktopChatSending(true);', noProviderShortcutIndex);
   const noProviderCreateIndex = activeSendBlock.indexOf('await openOrCreateCanonicalSession({', noProviderShortcutIndex);
   assert.ok(delayGuardIndex >= 0 && delayGuardIndex < noProviderShortcutIndex, 'the duplicate guard should run before generating a no-provider draft session id');
   assert.ok(draftDetectionIndex >= 0 && draftDetectionIndex < mentionResolutionIndex, 'a new local session should bypass remote mention discovery before claiming its send');
-  assert.match(activeSendBlock, /const resolvedMentionedTarget = isTransientDraftConversation\s*\? null\s*:\s*await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh/, 'a local draft should not wait for remote mention discovery');
+  assert.match(activeSendBlock, /resolvePreferredAgentMentionTarget\([\s\S]*isTransientDraftConversation/, 'a local draft should carry its skip flag into mention resolution');
+  assert.match(cloudAgentMentionTargetSource(), /return localTarget \?\? \(skip \? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh/, 'a skipped local draft should not wait for remote mention discovery');
   assert.ok(noProviderStartingIndex >= 0 && noProviderStartingIndex < noProviderCreateIndex, 'the centered starting state should appear before no-provider session creation is awaited');
   const optimisticDraftIndex = activeSendBlock.indexOf('appendOptimisticLocalDraftMessage(current');
   const materializeIndex = activeSendBlock.indexOf('const resolvedSessionId = await ensureLocalSessionId()');

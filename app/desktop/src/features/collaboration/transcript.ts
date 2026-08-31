@@ -189,6 +189,7 @@ export function mapCollaborationConversationToViewModel(
     awaitingReply: awaitingReplyFromSentRequest,
     hasSentRequest: hasSentCollaborationRequest,
     pendingAgentMention,
+    pendingRequestId,
     staleProcessingPlaceholderIds,
   } = collaborationPendingAgentReplyState(
     conversation,
@@ -456,6 +457,7 @@ export function mapCollaborationConversationToViewModel(
   });
   if ((((isAgent || isSupportContact || pendingAgentMention) && awaitingReplyFromSentRequest) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
     const outreachRequestId = conversation.outreach?.sourceRequestId?.trim();
+    const stoppableRequestId = outreachRequestId || pendingRequestId;
     const requestMessageIds = [...requestMessageIdByRequestId.values()];
     const replyToMessageId = outreachRequestId
       ? requestMessageIdByRequestId.get(outreachRequestId) ?? null
@@ -486,9 +488,9 @@ export function mapCollaborationConversationToViewModel(
         succeeded: false,
         error: localTurn?.error ?? null,
         replyToMessageId,
-        pendingCollaborationAgentRequest: outreachRequestId ? {
+        pendingCollaborationAgentRequest: stoppableRequestId ? {
           conversationId: conversation.id,
-          requestId: outreachRequestId,
+          requestId: stoppableRequestId,
         } : null,
       },
     });

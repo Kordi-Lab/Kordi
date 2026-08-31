@@ -38,11 +38,7 @@ import type { AttachmentItem } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
 import { messageMentionsForSend } from '../messageMentions';
-import {
-  mentionsLocalAgent,
-  resolveMentionedLocalAgentTarget,
-  resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh,
-} from './mentions';
+import { mentionsLocalAgent } from './mentions';
 import {
   appendOptimisticCollaborationMessage,
   appendOptimisticCanonicalMessage,
@@ -57,7 +53,7 @@ import {
   retryAttachmentItemsFromMessage, voiceMessageSendFields,
   type PreparedCanonicalUserMessage,
 } from './optimistic';
-import { activeConversationMatchesSendScope } from './messageSendScope';
+import { activeConversationMatchesSendScope, claimConversationSend, releaseConversationSend } from './messageSendScope';
 import { reconcileOptimisticCollaborationMessageUpdater } from './optimisticReconciliation';
 import {
   markOptimisticCanonicalMessageSent,
@@ -84,7 +80,7 @@ import type {
 import { quoteMessageAction } from '../messageActionMetadata';
 import { memeAttachmentDraftError } from '../memeAttachments';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
-import { cloudAgentMentionIdentity, resolveCloudAgentMentionTargetIds } from './cloudAgentMentionTarget';
+import { cloudAgentMentionIdentity, resolveCloudAgentMentionTargetIds, resolvePreferredAgentMentionTarget } from './cloudAgentMentionTarget';
 import { prefetchNativeVideoRetry, terminalCollaborationRetryFailure } from './collaborationRetry';
 import {
   collaborationDirectSessionParticipants,
@@ -459,6 +455,7 @@ export function useChatMessageActions({
   handleLocalSlashCommand,
   isNativeShell,
   queuedDesktopMessagesBySession,
+  collaborationSendInFlightConversationIdsRef,
   localChatSendInFlightRef,
   refreshDesktopChat,
   setActiveConvId,
@@ -1060,14 +1057,10 @@ export function useChatMessageActions({
     };
     const activeGroupSessionIsGroup = isCollaborationGroupSession(activeGroupSessionScope);
     const localAgentMentioned = mentionsLocalAgent(text, desktopChatState, desktopCollaborationState);
-    const resolvedMentionedTarget = isTransientDraftConversation ? null
-      : await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
-        text, desktopCollaborationState, activeConvMentionScope, sharedCloudAgents, resolveSharedCloudAgentsForMention,
-      );
-    const mentionedTarget = resolvedMentionedTarget
-      ?? (activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person'
-        ? resolveMentionedLocalAgentTarget(text, desktopChatState, desktopCollaborationState)
-        : null);
+    const mentionedTarget = await resolvePreferredAgentMentionTarget(
+      text, desktopChatState, desktopCollaborationState, activeConvMentionScope, sharedCloudAgents, resolveSharedCloudAgentsForMention, isTransientDraftConversation,
+      activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person',
+    );
     const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);
     const { targetCloudAgentId, targetCloudAgentName, ownerAccountId: mentionedCloudSharedAgentOwnerAccountId } = cloudAgentMentionIdentity(mentionedTarget);
     const localCollaborationNodeIds = new Set(
@@ -1262,6 +1255,7 @@ export function useChatMessageActions({
         setDesktopChatError('Unable to resolve group recipients.');
         return;
       }
+      if (!claimConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId)) return;
       const sentAt = formatDesktopEventTime();
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         activeConvCanonicalSessionId,
@@ -1326,6 +1320,7 @@ export function useChatMessageActions({
           setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
         });
       } finally {
+        releaseConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId);
         setIsDesktopChatSending(false);
       }
       return;
@@ -1340,6 +1335,7 @@ export function useChatMessageActions({
         setDesktopChatError('Group chat is still loading. Try again in a moment.');
         return;
       }
+      if (!claimConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId)) return;
       const sentAt = formatDesktopEventTime();
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         activeConvCanonicalSessionId,
@@ -1399,6 +1395,7 @@ export function useChatMessageActions({
           setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
         });
       } finally {
+        releaseConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId);
         setIsDesktopChatSending(false);
       }
       return;
@@ -1409,6 +1406,7 @@ export function useChatMessageActions({
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
+      if (!claimConversationSend(collaborationSendInFlightConversationIdsRef.current, activeCloudConversationId)) return;
       const sentAt = formatDesktopEventTime();
       const optimisticMessageId = createCloudCollaborationClientMessageId();
       const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeCloudConversationId);
@@ -1458,6 +1456,7 @@ export function useChatMessageActions({
           setDesktopChatError(failure.detail);
         }
       } finally {
+        releaseConversationSend(collaborationSendInFlightConversationIdsRef.current, activeCloudConversationId);
         setIsDesktopChatSending(false);
       }
       return;
@@ -1822,6 +1821,7 @@ export function useChatMessageActions({
     hasAnyDesktopAuth,
     desktopLiveTurn,
     clearComposerAfterSend,
+    collaborationSendInFlightConversationIdsRef,
     handleLocalSlashCommand,
     isNativeShell,
     localChatSendInFlightRef,

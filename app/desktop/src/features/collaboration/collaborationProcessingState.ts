@@ -92,6 +92,10 @@ export function collaborationPendingAgentReplyState(
   const pendingAgentMention = awaitingReply
     ? latestRequest?.mentions?.find((mention) => mention.targetKind === 'agent')
     : undefined;
+  const requestId = latestRequest?.requestId?.trim() || null;
+  const pendingRequestId = awaitingReply && normalizeDeliveryState(latestRequest?.deliveryState) !== 'sending'
+    ? latestRequest?.clientMessageId?.trim() === requestId ? latestRequest?.id.trim() || requestId : requestId
+    : null;
   const activeAgentReplyMessage = awaitingReply
     ? [...conversation.messages].reverse().find((message) => (
         isCollaborationAgentResponseDirection(message)
@@ -99,5 +103,5 @@ export function collaborationPendingAgentReplyState(
         && !staleProcessingPlaceholderIds.has(message.id)
       ))
     : undefined;
-  return { activeAgentReplyMessage, awaitingReply, hasSentRequest, pendingAgentMention, staleProcessingPlaceholderIds };
+  return { activeAgentReplyMessage, awaitingReply, hasSentRequest, pendingAgentMention, pendingRequestId, staleProcessingPlaceholderIds };
 }

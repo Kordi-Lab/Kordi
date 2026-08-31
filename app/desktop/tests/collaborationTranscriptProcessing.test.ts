@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 import { appendOptimisticCollaborationMessage } from '../src/features/chat/messageActions/optimistic';
+import { reconcileOptimisticCollaborationMessage } from '../src/features/chat/messageActions/optimisticReconciliation';
 import { COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS } from '../src/features/collaboration/collaborationProcessingState';
 import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
 import { KORDI_SUPPORT_ACCOUNT_ID, KORDI_SUPPORT_AGENT_ID, KORDI_SUPPORT_NAME } from '../src/features/support/supportIdentity';
+import { LiveChatTurnCard } from '../src/kordi-app/components/transcript';
 import type { DesktopCollaborationConversation, DesktopCollaborationState } from '../src/kordi-app/types';
 
 function conversation(
@@ -127,6 +131,44 @@ test('direct person agent mentions show the renamed local agent processing immed
   assert.equal(processing?.role, 'owned-agent');
   assert.equal(processing?.sender, 'Kordirename11');
   assert.equal(processing?.turn?.completed, false);
+  assert.equal(processing?.turn?.pendingCollaborationAgentRequest, null);
+  assert.ok(processing?.turn);
+  const sendingMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn: processing.turn,
+    onStopActiveTurn: () => undefined,
+  }));
+  assert.doesNotMatch(sendingMarkup, /aria-label="Stop agent request"/);
+
+  const delivered = reconcileOptimisticCollaborationMessage(state, conversationId, 'request-local-agent', {
+    messageId: 'request-canonical-agent',
+    clientMessageId: 'request-local-agent',
+  });
+  const deliveredConversation = delivered?.conversations[0];
+  assert.ok(deliveredConversation);
+  const deliveredView = mapCollaborationConversationToViewModel(deliveredConversation, undefined, 'Kordi');
+  const stoppableProcessing = deliveredView.messages.find((message) => message.turn?.status === 'processing');
+  assert.deepEqual(stoppableProcessing?.turn?.pendingCollaborationAgentRequest, {
+    conversationId,
+    requestId: 'request-canonical-agent',
+  });
+  assert.ok(stoppableProcessing?.turn);
+  const deliveredMarkup = renderToStaticMarkup(createElement(LiveChatTurnCard, {
+    turn: stoppableProcessing.turn,
+    onStopCollaborationAgentRequest: () => undefined,
+  }));
+  assert.match(deliveredMarkup, /aria-label="Stop agent request"/);
+
+  const legacyDeliveredConversation = {
+    ...optimisticConversation,
+    messages: optimisticConversation.messages.map((message) => ({
+      ...message,
+      id: 'request-legacy-canonical',
+      clientMessageId: 'request-local-agent',
+      deliveryState: 'delivered',
+    })),
+  };
+  const legacyView = mapCollaborationConversationToViewModel(legacyDeliveredConversation, undefined, 'Kordi');
+  assert.equal(legacyView.messages.find((message) => message.turn)?.turn?.pendingCollaborationAgentRequest?.requestId, 'request-legacy-canonical');
 });
 
 test('Kordi Support shows contact typing without exposing the agent processing card', () => {

@@ -1,6 +1,27 @@
 import { defaultCloudAgentId } from '@/features/cloud/cloudAgentIdentity';
 import { stripSelfPossessivePrefix } from '@/lib/identityLabels';
+import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
+import type { DesktopChatState, DesktopCollaborationState } from '@/kordi-app/types';
 import type { ResolvedMentionedCollaborationTarget } from './types';
+import { resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh, resolveMentionedLocalAgentTarget, type MentionScopeConversation } from './mentions';
+
+export async function resolvePreferredAgentMentionTarget(
+  text: string,
+  desktopChatState: DesktopChatState | null,
+  collaborationState: DesktopCollaborationState | null,
+  conversation: MentionScopeConversation | null | undefined,
+  sharedCloudAgents: SharedCloudAgentSummary[],
+  refreshSharedCloudAgents: (() => Promise<SharedCloudAgentSummary[]>) | undefined,
+  skip: boolean,
+  canResolveLocal: boolean,
+) {
+  const localTarget = !skip && canResolveLocal
+    ? resolveMentionedLocalAgentTarget(text, desktopChatState, collaborationState)
+    : null;
+  return localTarget ?? (skip ? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
+    text, collaborationState, conversation, sharedCloudAgents, refreshSharedCloudAgents,
+  ));
+}
 
 export function cloudAgentMentionIdentity(target: ResolvedMentionedCollaborationTarget | null) {
   const ownerAccountId = target?.peer.humanId?.trim() || target?.peer.nodeId?.trim() || '';
