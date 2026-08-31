@@ -21,6 +21,10 @@ pub(super) async fn list_devices(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
+    let now = Utc::now();
+    let presence_cutoff =
+        crate::presence::stale_presence_cutoff(now, crate::presence::presence_timeout())
+            .to_rfc3339();
     let rows: Vec<DeviceListRow> = match query_as(
         "SELECT d.device_id, d.device_name, d.device_platform, d.os_version, d.app_version, \
                 d.created_at, d.last_seen_at, d.authorization_state, d.protocol_version, \
@@ -30,11 +34,19 @@ pub(super) async fn list_devices(
                 d.approximate_location \
          FROM cloud_devices d \
          WHERE d.account_id = $1 AND d.revoked_at IS NULL \
+           AND (d.device_id = $2 \
+             OR EXISTS (SELECT 1 FROM cloud_refresh_tokens t \
+                        WHERE t.device_id = d.device_id AND t.revoked_at IS NULL \
+                          AND t.expires_at > $3) \
+             OR EXISTS (SELECT 1 FROM cloud_device_presence p \
+                        WHERE p.device_id = d.device_id AND p.account_id = d.account_id \
+                          AND p.state = 'online' AND p.last_heartbeat_at >= $4)) \
          ORDER BY (d.device_id = $2) DESC, d.last_seen_at DESC, d.created_at DESC",
     )
     .bind(&session.account_id)
     .bind(&session.device_id)
-    .bind(Utc::now().to_rfc3339())
+    .bind(now.to_rfc3339())
+    .bind(presence_cutoff)
     .fetch_all(state.db_pool())
     .await
     {
