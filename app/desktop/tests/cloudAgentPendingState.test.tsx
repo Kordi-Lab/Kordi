@@ -281,6 +281,33 @@ test('cloud local agent runner accepts iOS first-person envelopes', () => {
   }), true);
 });
 
+test('an explicit remote Kordi target never falls back to the local Kordi text alias', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_explicit_remote_kordi',
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_peer',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: '@Kordi hi',
+      targetCloudAgentId: 'cloud-agent:acct_peer',
+      targetCloudAgentName: 'Kordi',
+      targetCloudAgentOwnerAccountId: 'acct_peer',
+      targetCloudAgentOwnerName: 'Peer Person',
+    }),
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: request,
+    peerMessages: [request],
+  }), false);
+});
+
 test('renamed default-agent envelopes keep processing visible after canonical sync', () => {
   const request: CloudMessage = {
     ...message,

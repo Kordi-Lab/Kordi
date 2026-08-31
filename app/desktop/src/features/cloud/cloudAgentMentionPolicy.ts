@@ -188,6 +188,13 @@ export function shouldRunLocalCloudAgentForCloudMessage({
     )
     && directEnvelope?.targetCloudAgentOwnerAccountId?.trim()
       === account.accountId;
+  const hasExplicitAgentTarget = Boolean(
+    directEnvelope?.targetCloudAgentId?.trim()
+    || directEnvelope?.targetCloudAgentOwnerAccountId?.trim(),
+  );
+  if (hasExplicitAgentTarget && !targetsHostedCloudAgent && !targetsLocalAgent) {
+    return false;
+  }
   if (
     !targetsHostedCloudAgent
     && !targetsLocalAgent

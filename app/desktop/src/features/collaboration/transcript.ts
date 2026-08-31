@@ -353,6 +353,7 @@ export function mapCollaborationConversationToViewModel(
         id: messageId,
         role: isRemoteAgentResponse ? 'external-agent' as const : 'owned-agent' as const,
         sender: responseSender,
+        senderOwnerName: isRemoteAgentResponse && !isSupportContact ? remoteHumanSourceLabel : null,
         sourceSenderLabel: isRemoteAgentResponse ? remoteAgentSourceLabel : localAgentSourceLabel,
         senderType: 'agent',
         isOwnMessage: false,
