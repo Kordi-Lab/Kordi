@@ -119,6 +119,34 @@ test('a remotely loaded standalone image escapes the temporary loading row', () 
   );
 });
 
+test('a standalone image keeps its original aspect ratio and centers inside a mixed message bubble', () => {
+  const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
+    msg: {
+      role: 'user' as const,
+      text: 'will come next release',
+      time: '16:33',
+      attachments: [{
+        kind: 'image' as const,
+        name: 'landscape.png',
+        previewUrl: 'data:image/png;base64,landscape',
+        widthPixels: 160,
+        heightPixels: 100,
+      }],
+    },
+  }));
+  const stylesheet = readFileSync(new URL('../src/styles/shell-image-groups.css', import.meta.url), 'utf8');
+
+  assert.match(markup, /style="width:160px;aspect-ratio:160 \/ 100;max-width:100%"/);
+  assert.match(
+    stylesheet,
+    /\[data-attachment-image-count="1"\][^{]*\.app-attachment-image-card img\s*\{[^}]*border-radius:\s*0\.5rem;/s,
+  );
+  assert.match(
+    stylesheet,
+    /\[data-message-mixed-images="true"\] \.app-attachment-image-collage\[data-attachment-image-count="1"\]\s*\{[^}]*align-self:\s*center;/s,
+  );
+});
+
 test('folded image groups keep their fixed stack geometry when metadata is available', () => {
   const markup = renderToStaticMarkup(createElement(AttachmentPreview, {
     msg: {

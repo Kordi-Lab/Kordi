@@ -5,6 +5,17 @@
   grid-auto-rows: auto;
 }
 
+.app-attachment-image-collage[data-attachment-image-count="1"],
+.app-attachment-image-collage[data-attachment-image-count="1"] .app-attachment-image-card,
+.app-attachment-image-collage[data-attachment-image-count="1"] .app-attachment-image-card > button,
+.app-attachment-image-collage[data-attachment-image-count="1"] .app-attachment-image-card img {
+  border-radius: 0.5rem;
+}
+
+[data-message-mixed-images="true"] .app-attachment-image-collage[data-attachment-image-count="1"] {
+  align-self: center;
+}
+
 .app-attachment-image-collage[data-attachment-image-count="1"]:has(
   [data-attachment-image-dimensions="true"]
 ) {
