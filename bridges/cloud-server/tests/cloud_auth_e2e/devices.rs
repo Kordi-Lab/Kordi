@@ -129,7 +129,7 @@ async fn current_device_metadata_upgrades_legacy_identity_and_preserves_coarse_l
 }
 
 #[tokio::test]
-async fn active_device_list_omits_expired_offline_authorizations() {
+async fn active_device_list_omits_week_inactive_authorizations() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("device-active-list");
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
@@ -167,13 +167,22 @@ async fn active_device_list_omits_expired_offline_authorizations() {
     );
 
     let fresh_online_id = fresh_online["session"]["deviceId"].as_str().unwrap();
+    let stale_token = stale["session"]["token"].as_str().unwrap();
     let stale_id = stale["session"]["deviceId"].as_str().unwrap();
     sqlx_core::query::query(
         "UPDATE cloud_refresh_tokens SET expires_at = $1 \
-         WHERE device_id = $2 OR device_id = $3",
+         WHERE device_id = $2",
     )
     .bind((chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339())
     .bind(fresh_online_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx_core::query::query(
+        "UPDATE cloud_devices SET last_seen_at = $1 \
+         WHERE device_id = $2",
+    )
+    .bind((chrono::Utc::now() - chrono::Duration::days(8)).to_rfc3339())
     .bind(stale_id)
     .execute(&pool)
     .await
@@ -201,6 +210,42 @@ async fn active_device_list_omits_expired_offline_authorizations() {
     assert!(listed_ids.contains(&valid_offline["session"]["deviceId"].as_str().unwrap()));
     assert!(listed_ids.contains(&fresh_online_id));
     assert!(!listed_ids.contains(&stale_id));
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/auth/me", stale_token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    let reauthenticated = login_with_device(&router, &email, 35, "Restored iPhone").await;
+    assert_eq!(
+        reauthenticated["session"]["deviceId"].as_str().unwrap(),
+        stale_id
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(get_with_token(
+                "/v1/cloud/auth/me",
+                reauthenticated["session"]["token"].as_str().unwrap(),
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/auth/me", stale_token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
 }
 
 #[tokio::test]

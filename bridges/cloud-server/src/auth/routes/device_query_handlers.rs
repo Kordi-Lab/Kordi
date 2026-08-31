@@ -22,6 +22,7 @@ pub(super) async fn list_devices(
     Extension(session): Extension<CloudSession>,
 ) -> Response {
     let now = Utc::now();
+    let inactivity_cutoff = crate::auth::session::session_inactivity_cutoff(now).to_rfc3339();
     let presence_cutoff =
         crate::presence::stale_presence_cutoff(now, crate::presence::presence_timeout())
             .to_rfc3339();
@@ -35,17 +36,19 @@ pub(super) async fn list_devices(
          FROM cloud_devices d \
          WHERE d.account_id = $1 AND d.revoked_at IS NULL \
            AND (d.device_id = $2 \
-             OR EXISTS (SELECT 1 FROM cloud_refresh_tokens t \
-                        WHERE t.device_id = d.device_id AND t.revoked_at IS NULL \
-                          AND t.expires_at > $3) \
-             OR EXISTS (SELECT 1 FROM cloud_device_presence p \
-                        WHERE p.device_id = d.device_id AND p.account_id = d.account_id \
-                          AND p.state = 'online' AND p.last_heartbeat_at >= $4)) \
+             OR (d.last_seen_at > $4 \
+               AND (EXISTS (SELECT 1 FROM cloud_refresh_tokens t \
+                            WHERE t.device_id = d.device_id AND t.revoked_at IS NULL \
+                              AND t.expires_at > $3) \
+                 OR EXISTS (SELECT 1 FROM cloud_device_presence p \
+                            WHERE p.device_id = d.device_id AND p.account_id = d.account_id \
+                              AND p.state = 'online' AND p.last_heartbeat_at >= $5)))) \
          ORDER BY (d.device_id = $2) DESC, d.last_seen_at DESC, d.created_at DESC",
     )
     .bind(&session.account_id)
     .bind(&session.device_id)
     .bind(now.to_rfc3339())
+    .bind(inactivity_cutoff)
     .bind(presence_cutoff)
     .fetch_all(state.db_pool())
     .await
