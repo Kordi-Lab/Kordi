@@ -42,6 +42,14 @@ test('new committed incoming messages create one attention event', () => {
   }]);
 });
 
+test('notification previews never expose known Blob Emoji tokens', () => {
+  const incoming = conversation([{ id: 'm1', role: 'person', sender: 'Maya', text: 'Hi :blob:blobwave:', time: '' }], 1);
+  assert.equal(
+    newMessageAttentionEvents({ previous: {}, conversations: [incoming] })[0]?.previewText,
+    'Hi Emoji',
+  );
+});
+
 test('replay, own messages, and read conversations do not notify', () => {
   const incoming = conversation([{ id: 'm1', role: 'person', text: 'First', time: '' }], 1);
   const previous = messageAttentionSnapshot([incoming]);

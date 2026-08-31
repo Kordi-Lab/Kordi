@@ -525,6 +525,44 @@ final class CompanionChatPanelTests: XCTestCase {
     }
 
     @MainActor
+    func testUIKitEditorRehydratesPastedBlobEmojiAndCopiesItsStableToken() async throws {
+        let model = ComposerTextViewInputSurfaceModel()
+        model.isExpressivePickerPresented = false
+        let controller = UIHostingController(
+            rootView: ComposerTextViewInputSurfaceHarness(
+                model: model,
+                appModel: AppModel(previewMode: true)
+            )
+        )
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 100))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+
+        let textView = try XCTUnwrap(firstTextView(in: controller.view))
+        let pasteboardItems = UIPasteboard.general.items
+        defer {
+            UIPasteboard.general.items = pasteboardItems
+            window.isHidden = true
+        }
+        let token = ":blob:blobwave:"
+        UIPasteboard.general.string = token
+        textView.paste(nil)
+        try await Task.sleep(for: .milliseconds(50))
+        controller.view.layoutIfNeeded()
+
+        XCTAssertEqual(model.text, token)
+        XCTAssertEqual(BlobEmojiComposerText.rawText(textView.attributedText), token)
+        XCTAssertEqual(textView.text, "\u{FFFC}")
+
+        textView.selectedRange = NSRange(location: 0, length: 1)
+        textView.copy(nil)
+        XCTAssertEqual(UIPasteboard.general.string, token)
+    }
+
+    @MainActor
     func testNativeKeyboardDismissalCompletesBeforeSwiftUIFocusReconciles() async throws {
         let model = ComposerTextViewInputSurfaceModel()
         model.isExpressivePickerPresented = false

@@ -17,6 +17,7 @@ const MAX_ASSET_BYTES: usize = 2 * 1024 * 1024;
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct BlobEmojiAsset {
+    id: String,
     file: String,
     size_bytes: usize,
     sha256: String,
@@ -59,6 +60,39 @@ pub fn routes() -> Router {
         "/assets/blob-emoji/:sha256/:file",
         get(asset_get).head(asset_head),
     )
+}
+
+pub(crate) fn plain_text(value: &str) -> String {
+    let mut output = String::with_capacity(value.len());
+    let mut copied_until = 0;
+    let mut scan_from = 0;
+    while let Some(relative_start) = value[scan_from..].find(":blob:") {
+        let start = scan_from + relative_start;
+        let id_start = start + ":blob:".len();
+        let Some(relative_end) = value[id_start..].find(':') else {
+            break;
+        };
+        let end = id_start + relative_end;
+        let id = &value[id_start..end];
+        let known = !id.is_empty()
+            && id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+            && ASSETS
+                .as_ref()
+                .is_ok_and(|assets| assets.values().any(|asset| asset.id == id));
+        if known {
+            output.push_str(&value[copied_until..start]);
+            output.push_str("Emoji");
+            copied_until = end + 1;
+        }
+        scan_from = end + 1;
+    }
+    if copied_until == 0 {
+        return value.to_string();
+    }
+    output.push_str(&value[copied_until..]);
+    output
 }
 
 fn asset_root() -> PathBuf {
@@ -183,5 +217,14 @@ mod tests {
                 .unwrap();
             assert_eq!(response.status(), StatusCode::NOT_FOUND);
         }
+    }
+
+    #[test]
+    fn notification_fallback_replaces_known_tokens_only() {
+        assert_eq!(plain_text("Hi :blob:blobwave:!"), "Hi Emoji!");
+        assert_eq!(
+            plain_text(":blob:not-in-the-catalog:"),
+            ":blob:not-in-the-catalog:"
+        );
     }
 }

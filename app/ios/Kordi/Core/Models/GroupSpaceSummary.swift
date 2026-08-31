@@ -16,7 +16,7 @@ struct GroupSpaceSummary: Identifiable, Hashable {
         let mentions = unreadMentionCount > 0
             ? ", \(unreadMentionCount) unread mention\(unreadMentionCount == 1 ? "" : "s")"
             : ""
-        return "\(displayName), \(sessionLabel)\(unread)\(mentions). \(lastMessage)"
+        return "\(displayName), \(sessionLabel)\(unread)\(mentions). \(BlobEmojiComposerText.plainText(lastMessage))"
     }
 }
 
