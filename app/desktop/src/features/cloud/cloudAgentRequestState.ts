@@ -20,7 +20,7 @@ import {
   isTerminalCloudAgentTurn,
 } from '@/features/canonical/cloudAgentTurnLifecycle';
 import { isProcessingPlaceholderText } from '@/features/collaboration/agentPlaceholderText';
-import { cloudAgentCanonicalIdentityId } from './cloudAgentIdentity';
+import { cloudAgentCanonicalIdentityId, cloudAgentMessageOwnedBy, cloudAgentOwnerAccountId } from './cloudAgentIdentity';
 
 export type CloudAgentRequestCandidate = {
   requestMessage: CanonicalSessionMessage;
@@ -48,23 +48,6 @@ function objectContent(value: unknown): Record<string, unknown> {
 
 function cleanText(value?: string | null) {
   return (value ?? '').trim();
-}
-
-function cloudGroupAgentMessageOwnedBy(
-  message: CanonicalSessionMessage,
-  accountId: string,
-) {
-  const ownerAccountId = cleanText(accountId);
-  if (!ownerAccountId) return false;
-  const content = objectContent(message.content);
-  const recordedOwner = cleanText(
-    typeof content.senderOwnerAccountId === 'string'
-      ? content.senderOwnerAccountId
-      : null,
-  );
-  return recordedOwner
-    ? recordedOwner === ownerAccountId
-    : message.senderIdentityId === `agent:cloud:${ownerAccountId}`;
 }
 
 function cloudGroupRequestSlotMatches(
@@ -106,7 +89,7 @@ function cloudGroupAgentResponseMatches(
   message: CanonicalSessionMessage,
   candidate: CloudAgentRequestCandidate,
 ) {
-  if (!cloudGroupAgentMessageOwnedBy(message, candidate.targetAccountId)) {
+  if (!cloudAgentMessageOwnedBy(message, candidate.targetAccountId)) {
     return false;
   }
   if (message.sourceTransport !== 'cloud-group-agent') return false;
@@ -257,7 +240,7 @@ export function cloudGroupPendingAgentRowMatches(
   const trimmedRequestId = requestId.trim();
   const trimmedTargetAccountId = targetAccountId.trim();
   if (!trimmedRequestId || !trimmedTargetAccountId) return false;
-  if (!cloudGroupAgentMessageOwnedBy(message, trimmedTargetAccountId)) {
+  if (!cloudAgentMessageOwnedBy(message, trimmedTargetAccountId)) {
     return false;
   }
   if (!message.sourceTransport?.startsWith('cloud-group-agent')) return false;
@@ -338,15 +321,7 @@ export function collapseCloudAgentOfflinePlaceholderForRequest(
   processingMessage: CanonicalSessionMessage,
   requestId: string,
 ): CanonicalSessionState {
-  const content = objectContent(processingMessage.content);
-  const targetAccountId = cleanText(
-    typeof content.senderOwnerAccountId === 'string'
-      ? content.senderOwnerAccountId
-      : processingMessage.senderIdentityId.startsWith('agent:cloud:')
-        && !processingMessage.senderIdentityId.startsWith('agent:cloud-agent:')
-        ? processingMessage.senderIdentityId.slice('agent:cloud:'.length)
-        : null,
-  );
+  const targetAccountId = cloudAgentOwnerAccountId(processingMessage);
   if (!targetAccountId) return nextState;
   const offlinePlaceholderId =
     `msg:cloud-agent-offline:${requestId.trim()}:${targetAccountId}`;

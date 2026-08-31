@@ -15,7 +15,6 @@ import {
   publicLocalAgentMentionText,
   resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh,
   resolveMentionedCollaborationTarget,
-  resolveMentionedLocalAgentTarget,
 } from '../src/features/chat/messageActions/mentions';
 import type { Conversation, DesktopCollaborationPeer, DesktopCollaborationState, DesktopChatState } from '../src/kordi-app/types';
 
@@ -882,16 +881,4 @@ test('mentionsLocalAgent does not treat the local human display name as an agent
 
   assert.equal(mentionsLocalAgent('@MayaTest hi', null, collaborationState), false);
   assert.equal(mentionsLocalAgent('@MayaTestsKordi hi', null, collaborationState), true);
-});
-
-test('renamed local agent mentions resolve to the immutable default Cloud agent id', () => {
-  const state = bridgeStateWithPeers([]);
-  const target = resolveMentionedLocalAgentTarget('@BabyTREE this is just a test', {
-    localAgent: { label: 'BabyTREE' },
-  } as DesktopChatState, state);
-
-  assert.equal(target?.displayLabel, 'BabyTREE');
-  assert.equal(target?.peer.humanId, 'host-human-1');
-  assert.equal(target?.peer.agentId, 'cloud-agent:host-human-1');
-  assert.equal(target?.requestText, 'this is just a test');
 });

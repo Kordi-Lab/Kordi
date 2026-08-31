@@ -14,6 +14,40 @@ use super::transient_drafts::{
 use super::turns::session_has_running_turn;
 use super::{agent_builder, DesktopChatManager, DesktopChatState};
 
+pub(super) async fn reload_skill_resources(manager: &DesktopChatManager) -> Result<(), String> {
+    let sessions = manager
+        .sessions
+        .lock()
+        .await
+        .iter()
+        .filter(|(session_id, _)| !agent_builder::is_agent_builder_session_id(session_id))
+        .map(|(_, session)| session.clone())
+        .collect::<Vec<_>>();
+    let mut errors = Vec::new();
+    for session in sessions {
+        if let Err(error) = session.lock().await.reload_resources().await {
+            let message = error.to_string();
+            if !is_missing_session_error(&message) {
+                errors.push(message);
+            }
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Skills were updated, but {} open session{} could not reload: {}",
+            errors.len(),
+            if errors.len() == 1 { "" } else { "s" },
+            errors.join("; ")
+        ))
+    }
+}
+
+pub(super) fn is_missing_session_error(message: &str) -> bool {
+    message.starts_with("No session matching '")
+}
+
 pub(super) fn session_exists_globally(session_id: &str) -> Result<bool, String> {
     kordi_cli::desktop_runtime::session_exists(session_id).map_err(|err| err.to_string())
 }

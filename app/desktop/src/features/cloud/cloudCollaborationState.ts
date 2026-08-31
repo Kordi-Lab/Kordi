@@ -42,6 +42,7 @@ import { cloudMessageAttachmentToMessageAttachment, cloudVoiceMessageToMessageVo
 import { cloudMessageDeliveryPresentation } from './cloudMessageDeliveryPresentation';
 import { cloudAvatarImageUrl } from './avatar';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
+import { cloudCanonicalDefaultAgentContactFields, cloudDefaultAgentPresentation } from './cloudAgentIdentity';
 import {
   cloudGroupIdentityRequest,
   cloudGroupParticipantFromContact,
@@ -387,12 +388,10 @@ function cloudMessageIsAtOrBeforeReadCursor(message: CloudMessage, cursor?: Clou
   const createdAtMs = Date.parse(message.createdAt);
   return Number.isFinite(createdAtMs) && createdAtMs <= lastReadCreatedAtMs;
 }
-
 export function buildCloudCollaborationHost(
   account: CloudAccount,
   contacts: Contact[],
-  localAgentRuntimeRoute: DesktopChatMessageRoute | null = null,
-  localAgentLabel = 'Kordi',
+  localAgentRuntimeRoute: DesktopChatMessageRoute | null = null, localAgentLabel = 'Kordi',
 ): DesktopCollaborationHost {
   const displayName = account.displayName?.trim() || account.primaryEmail?.trim() || 'Cloud user';
   const peers = contacts.filter(isDirectCloudContact).flatMap((contact) => (
@@ -400,11 +399,7 @@ export function buildCloudCollaborationHost(
       ? [cloudContactToAgentPeer(contact)]
       : [cloudContactToPersonPeer(contact), cloudContactToAgentPeer(contact)]
   ));
-  const defaultAgentId = account.defaultAgent?.agentId?.trim() || `cloud-agent:${account.accountId}`;
-  const defaultAgentName = localAgentLabel.trim() || account.defaultAgent?.displayName?.trim() || 'Kordi';
-  const defaultAgentAvatarUrl = account.defaultAgent
-    ? cloudAvatarImageUrl(canonicalAvatarImageSource(account.defaultAgent.avatar))
-    : null;
+  const defaultAgent = cloudDefaultAgentPresentation(account, localAgentLabel);
   return {
     id: CLOUD_HOST_SENTINEL,
     registered: true,
@@ -420,10 +415,10 @@ export function buildCloudCollaborationHost(
     humanVisibilityPolicy: 'server-approval',
     contactApprovalPolicy: 'approval-required',
     profileImageUrl: cloudAvatarImageUrl(canonicalAvatarImageSource(account.avatar)),
-    activeAgentId: defaultAgentId,
+    activeAgentId: defaultAgent.id,
     agents: [{
-      id: defaultAgentId,
-      label: defaultAgentName,
+      id: defaultAgent.id,
+      label: defaultAgent.name,
       nodeId: account.nodeId || account.accountId,
       runtime: CLOUD_AGENT_RUNTIME,
       isDefault: true,
@@ -437,7 +432,7 @@ export function buildCloudCollaborationHost(
       fallbackAuthChoice: null,
       thinking: localAgentRuntimeRoute?.thinking ?? null,
       reachabilityPolicy: 'contacts',
-      profileImageUrl: defaultAgentAvatarUrl,
+      profileImageUrl: defaultAgent.avatarUrl,
     }],
     visiblePeers: peers,
     visiblePeerCount: peers.length,
@@ -446,19 +441,11 @@ export function buildCloudCollaborationHost(
     lastError: null,
   };
 }
-
 function metadataAccountId(value: unknown): string {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return '';
   const accountId = (value as Record<string, unknown>).accountId;
   return typeof accountId === 'string' ? accountId.trim() : '';
 }
-
-function metadataText(value: unknown, key: string): string | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const text = (value as Record<string, unknown>)[key];
-  return typeof text === 'string' && text.trim() ? text.trim() : null;
-}
-
 export function cloudGroupParticipantContacts(input: {
   account: CloudAccount;
   canonicalSessionState: CanonicalSessionState | null | undefined;
@@ -502,12 +489,7 @@ export function cloudGroupParticipantContacts(input: {
       contactRequestDirection: null,
       avatarSeed: identity.avatarKey || accountId,
       profileImageUrl: identity.profileImageUrl ?? null,
-      targetCloudAgentId: metadataText(identity.metadata, 'defaultAgentId') ?? `cloud-agent:${accountId}`,
-      targetCloudAgentName: metadataText(identity.metadata, 'defaultAgentDisplayName') ?? 'Kordi',
-      targetCloudAgentOwnerAccountId: accountId,
-      targetCloudAgentOwnerName: identity.displayName || accountId,
-      targetCloudAgentAvatarUrl: metadataText(identity.metadata, 'defaultAgentAvatarUrl'),
-      targetCloudAgentAvatarSeed: metadataText(identity.metadata, 'defaultAgentAvatarSeed') ?? `cloud-agent:${accountId}`,
+      ...cloudCanonicalDefaultAgentContactFields(identity, accountId),
     });
   }
 
@@ -556,8 +538,7 @@ export function buildCloudCollaborationConversation({
   }
   const cancelledRequestIds = new Set(cancelMessageByRequestId.keys());
   const sessionAgentTarget = isSelfPeer ? cloudAgentSessionTargetFromMessages(messages, account.accountId) : null;
-  const defaultAgentId = account.defaultAgent?.agentId ?? `cloud-agent:${account.accountId}`;
-  const defaultAgentName = account.defaultAgent?.displayName ?? 'Kordi';
+  const { id: defaultAgentId, name: defaultAgentName } = cloudDefaultAgentPresentation(account);
   const selfAgentId = sessionAgentTarget?.targetCloudAgentId || defaultAgentId;
   const selfAgentName = sessionAgentTarget?.targetCloudAgentName || defaultAgentName;
   const requestTargetAccountIds = new Map<string, string>();
@@ -779,7 +760,6 @@ export function buildCloudCollaborationConversation({
     messages: collaborationMessages,
   };
 }
-
 export function buildCloudDesktopCollaborationState({
   account,
   contacts,
@@ -790,8 +770,7 @@ export function buildCloudDesktopCollaborationState({
   readCursorsBySessionId = {},
   activeConversationId,
   localAgentTurnsByRequestId = {},
-  localAgentRuntimeRoute = null,
-  localAgentLabel = 'Kordi',
+  localAgentRuntimeRoute = null, localAgentLabel = 'Kordi',
   cloudSessionTitlesById = {},
   hiddenCloudSessionIds = new Set<string>(),
   suppressUnscopedSelfAgentConversation = false,
@@ -805,8 +784,7 @@ export function buildCloudDesktopCollaborationState({
   readCursorsBySessionId?: Record<string, CloudGroupReadCursor | null | undefined>;
   activeConversationId?: string | null;
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
-  localAgentRuntimeRoute?: DesktopChatMessageRoute | null;
-  localAgentLabel?: string | null;
+  localAgentRuntimeRoute?: DesktopChatMessageRoute | null; localAgentLabel?: string | null;
   cloudSessionTitlesById?: Record<string, string | null | undefined>;
   hiddenCloudSessionIds?: ReadonlySet<string>;
   suppressUnscopedSelfAgentConversation?: boolean;

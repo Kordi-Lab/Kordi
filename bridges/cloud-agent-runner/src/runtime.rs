@@ -324,7 +324,6 @@ mod tests {
             })
         }
     }
-
     fn leased_run(run_id: &str, provider_auth_available: bool) -> CloudAgentRun {
         CloudAgentRun {
             run_id: run_id.to_string(),

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
-import { defaultCloudAgentId } from '@/features/cloud/cloudAgentIdentity';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
@@ -82,9 +81,9 @@ import type {
   UseChatMessageActionsArgs,
 } from './types';
 import { quoteMessageAction } from '../messageActionMetadata';
-import { stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import { memeAttachmentDraftError } from '../memeAttachments';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
+import { cloudAgentMentionIdentity, resolveCloudAgentMentionTargetIds } from './cloudAgentMentionTarget';
 import { prefetchNativeVideoRetry, terminalCollaborationRetryFailure } from './collaborationRetry';
 import {
   collaborationDirectSessionParticipants,
@@ -344,10 +343,6 @@ export function collaborationConversationSendPlan({
     canAppendCollaborationOptimisticMessage: Boolean(targetConversationId),
   };
 }
-function cleanText(value?: string | null) {
-  return value?.trim() || null;
-}
-
 export function activeLocalTurnShouldDelayChatSend({
   activeConversationUsesCollaborationRouting,
   activeConvId,
@@ -1072,25 +1067,7 @@ export function useChatMessageActions({
         ? resolveMentionedLocalAgentTarget(text, desktopChatState, desktopCollaborationState)
         : null);
     const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);
-    const mentionedAgentOwnerAccountId = cleanText(mentionedTarget?.peer.humanId)
-      || cleanText(mentionedTarget?.peer.nodeId)
-      || '';
-    const mentionedAgentId = cleanText(mentionedTarget?.peer.agentId) || '';
-    const targetCloudAgentId = mentionedTarget
-      ? mentionedAgentId.startsWith('cloud_agent_')
-        || mentionedAgentId.startsWith('cloud-agent:')
-        ? mentionedAgentId
-        : defaultCloudAgentId(mentionedAgentOwnerAccountId)
-      : null;
-    const targetCloudAgentName = targetCloudAgentId
-      ? stripSelfPossessivePrefix(
-        mentionedTarget?.displayLabel,
-        mentionedTarget?.peer.ownerName,
-      ) || 'Kordi'
-      : null;
-    const mentionedCloudSharedAgentOwnerAccountId = targetCloudAgentId
-      ? mentionedAgentOwnerAccountId
-      : null;
+    const { targetCloudAgentId, targetCloudAgentName, ownerAccountId: mentionedCloudSharedAgentOwnerAccountId } = cloudAgentMentionIdentity(mentionedTarget);
     const localCollaborationNodeIds = new Set(
       (desktopCollaborationState?.hosts ?? [])
         .map((host) => host.nodeId?.trim())
@@ -1117,15 +1094,7 @@ export function useChatMessageActions({
       ? collaborationGroupSessionSendTargets(activeGroupSessionScope, activeConvCollaborationTarget, localCollaborationNodeIds)
       : [];
     const cloudGroupTargetIds = cloudGroupTargetAccountIds(allGroupSendTargets);
-    const directCloudSharedAgentTargetIds = !activeGroupSessionIsGroup && mentionedCloudSharedAgentOwnerAccountId
-      ? [mentionedCloudSharedAgentOwnerAccountId]
-      : [];
-    const cloudAgentMentionTargetIds = activeGroupSessionIsGroup
-      ? [...new Set([
-        ...cloudGroupTargetIds,
-        ...(mentionedCloudSharedAgentOwnerAccountId ? [mentionedCloudSharedAgentOwnerAccountId] : []),
-      ])]
-      : directCloudSharedAgentTargetIds;
+    const cloudAgentMentionTargetIds = resolveCloudAgentMentionTargetIds(activeGroupSessionIsGroup, cloudGroupTargetIds, mentionedCloudSharedAgentOwnerAccountId);
     const cloudAgentMentionParticipants = activeGroupSessionIsGroup
       ? activeGroupSessionParticipants
       : collaborationDirectSessionParticipants(activeGroupSessionScope, activeCollaborationHost, activeConvCollaborationTarget, { selfPublicName: selfPublicCollaborationName });

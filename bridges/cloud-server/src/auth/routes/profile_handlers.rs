@@ -1,5 +1,8 @@
 use super::*;
 
+mod default_agent;
+use default_agent::*;
+
 pub(super) async fn update_me(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -34,29 +37,14 @@ pub(super) async fn update_me(
             };
         }
     }
-    let default_agent_id = default_agent_id(&session.account_id);
-    if let Some(mutation) = agent_avatar_mutation.as_mut() {
-        if let Err(error) = crate::avatars::assets::materialize_legacy_avatar_mutation(
-            pool,
-            state.s3(),
-            &session.account_id,
-            "agent",
-            &default_agent_id,
-            mutation,
-        )
-        .await
-        {
-            return match error {
-                crate::avatars::assets::AvatarAssetError::Invalid(message) => {
-                    err("invalid_avatar", message, StatusCode::BAD_REQUEST)
-                }
-                _ => err(
-                    "avatar_storage_unavailable",
-                    "Avatar storage is unavailable.",
-                    StatusCode::SERVICE_UNAVAILABLE,
-                ),
-            };
-        }
+    if let Err(response) = materialize_default_agent_avatar_mutation(
+        &state,
+        &session.account_id,
+        &mut agent_avatar_mutation,
+    )
+    .await
+    {
+        return response;
     }
     let mut tx = match pool.begin().await {
         Ok(value) => value,
@@ -145,118 +133,17 @@ pub(super) async fn update_me(
         }
         None => current_avatar,
     };
-    let current_agent_row: Option<DefaultAgentProfileRow> = match query_as(
-        "SELECT owner_account_id, display_name, avatar_url, avatar_source, avatar_style, \
-            avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at \
-         FROM cloud_default_agent_profiles WHERE owner_account_id = $1 FOR UPDATE",
+    let updated_agent_row = match update_default_agent_profile(
+        &mut tx,
+        &session.account_id,
+        agent_display_name.as_deref(),
+        agent_avatar_mutation.as_ref(),
+        &now,
     )
-    .bind(&session.account_id)
-    .fetch_optional(&mut *tx)
     .await
     {
-        Ok(value) => value,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Could not update agent profile.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    };
-    let Some(current_agent_row) = current_agent_row else {
-        return err(
-            "account_missing",
-            "Default agent profile is unavailable.",
-            StatusCode::NOT_FOUND,
-        );
-    };
-    let current_agent_avatar =
-        default_agent_profile_from_row(&session.account_id, Some(current_agent_row.clone()), &now)
-            .avatar;
-    let next_agent_avatar = match agent_avatar_mutation.as_ref() {
-        Some(mutation) if mutation.expected_version.is_none() => {
-            return err(
-                "invalid_avatar_version",
-                "Refresh the agent profile before changing its avatar.",
-                StatusCode::BAD_REQUEST,
-            );
-        }
-        Some(mutation) => {
-            if preserve_avatar_render_key(&mut tx, &current_agent_avatar)
-                .await
-                .is_err()
-            {
-                return err(
-                    "server_error",
-                    "Could not preserve agent avatar history.",
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                );
-            }
-            let next = match apply_avatar_mutation(&current_agent_avatar, mutation, &now) {
-                Ok(value) => value,
-                Err(AvatarMutationError::Conflict) => {
-                    return err(
-                        "avatar_conflict",
-                        "Agent avatar changed on another device. Refresh and try again.",
-                        StatusCode::CONFLICT,
-                    );
-                }
-                Err(AvatarMutationError::Invalid(message)) => {
-                    return err("invalid_avatar", message, StatusCode::BAD_REQUEST);
-                }
-            };
-            if mutation.action.trim() == "upload"
-                && crate::avatars::assets::parse_uploaded_avatar_marker(
-                    next.uploaded_asset.as_deref().unwrap_or_default(),
-                )
-                .is_some()
-            {
-                if let Err(error) = crate::avatars::assets::activate_avatar_asset(
-                    &mut tx,
-                    &session.account_id,
-                    "agent",
-                    &default_agent_id,
-                    next.uploaded_asset.as_deref().unwrap_or_default(),
-                )
-                .await
-                {
-                    return avatar_activation_error(error);
-                }
-            }
-            next
-        }
-        None => current_agent_avatar,
-    };
-    let next_agent_url = next_agent_avatar.image_url();
-    let updated_agent_row: Option<DefaultAgentProfileRow> = match query_as(
-        "UPDATE cloud_default_agent_profiles SET display_name = COALESCE($1, display_name), \
-            avatar_url = $2, avatar_source = $3, avatar_style = $4, avatar_seed = $5, \
-            avatar_renderer_version = $6, avatar_version = $7, avatar_updated_at = $8, updated_at = $8 \
-         WHERE owner_account_id = $9 \
-         RETURNING owner_account_id, display_name, avatar_url, avatar_source, avatar_style, \
-            avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at",
-    )
-    .bind(agent_display_name.as_deref())
-    .bind(&next_agent_url)
-    .bind(&next_agent_avatar.source)
-    .bind(&next_agent_avatar.style)
-    .bind(&next_agent_avatar.seed)
-    .bind(&next_agent_avatar.renderer_version)
-    .bind(next_agent_avatar.version)
-    .bind(&now)
-    .bind(&session.account_id)
-    .fetch_optional(&mut *tx)
-    .await
-    {
-        Ok(value) => value,
-        Err(_) => return err("server_error", "Could not update agent profile.", StatusCode::INTERNAL_SERVER_ERROR),
-    };
-    let Some(updated_agent_row) = updated_agent_row else {
-        return err(
-            "account_missing",
-            "Default agent profile is unavailable.",
-            StatusCode::NOT_FOUND,
-        );
+        Ok(row) => row,
+        Err(response) => return response,
     };
     let avatar_url = next_avatar.image_url();
     let row: Option<AccountRecordRow> = match query_as(

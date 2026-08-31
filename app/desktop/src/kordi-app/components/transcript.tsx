@@ -51,6 +51,7 @@ import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { ContactRequestTime, MessageEditedLabel, MessageHoverTime } from './transcriptMessageTime';
 import type { MessageForkSummary } from './transcriptMessageForks';
 import { TranscriptMessageSurface } from './transcriptMessageSurface';
+import { AgentHeaderMeta, AgentOwnerTag } from './AgentOwnerTag';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { MessageContextMenuContent } from './messageContextMenuContent';
 export type { MessageContextMenuActionHandlers } from './messageContextMenuContent';
@@ -87,7 +88,6 @@ function compactionTokenLabel(detail?: string) {
   const match = detail?.match(/Conversation compressed\s*•\s*([^•]+?)\s+tokens before/i);
   return match?.[1]?.trim() ? `${match[1].trim()} tokens before` : null;
 }
-
 export function TypeBadge({ type, compact = false }: { type: ConversationType; compact?: boolean }) {
   const sizeClassName = compact
     ? 'gap-1 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] leading-none [&_svg]:h-2.5 [&_svg]:w-2.5'
@@ -124,21 +124,6 @@ export function StatusPill({ children, className }: { children: ReactNode; class
     </div>
   );
 }
-
-function AgentOwnerTag({ name }: { name?: string | null }) {
-  const owner = name?.trim();
-  if (!owner) return null;
-  return (
-    <span
-      className="inline-flex max-w-48 items-center truncate text-[9px] font-medium leading-none opacity-75"
-      aria-label={`Owner: ${owner}`}
-      title={`Owner: ${owner}`}
-    >
-      Owner · {owner}
-    </span>
-  );
-}
-
 function primaryMessageStatus(msg: Message) {
   return msg.statusChips?.[0]?.trim().toLowerCase() ?? null;
 }
@@ -155,7 +140,6 @@ function contactRequestFailureCanBeRetried(detail?: string | null) {
 }
 
 type ContactRequestActionState = 'idle' | 'sending' | 'sent' | 'error';
-
 function ContactRequestFailureNotice({
   detail,
   onRequestCollaborationContact,
@@ -893,12 +877,7 @@ function MessageBubbleView({
       )}
       data-transcript-density={compactDensity}
     >
-      {showHeaderMeta ? (
-        <div className="app-message-meta flex items-center gap-1.5 px-1">
-          <span>{msg.sender}</span>
-          <AgentOwnerTag name={agentOwnerName} />
-        </div>
-      ) : null}
+      {showHeaderMeta ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} /> : null}
       <div className={cn(
         'flex w-full max-w-full',
         hasOnlyBorderlessMediaAttachments ? 'items-start' : 'items-end',

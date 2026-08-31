@@ -297,19 +297,15 @@ export function canonicalGroupParticipantsForSession(state: CanonicalSessionStat
         agentId: identity.agentId,
         avatarKey: identity.avatarKey,
         profileImageUrl: identity.profileImageUrl,
-        defaultAgentId: metadataString(metadata, 'defaultAgentId'),
-        defaultAgentDisplayName: metadataString(metadata, 'defaultAgentDisplayName'),
-        defaultAgentAvatarUrl: metadataString(metadata, 'defaultAgentAvatarUrl'),
-        defaultAgentAvatarSeed: metadataString(metadata, 'defaultAgentAvatarSeed'),
+        defaultAgentId: metadataString(metadata, 'defaultAgentId'), defaultAgentDisplayName: metadataString(metadata, 'defaultAgentDisplayName'),
+        defaultAgentAvatarUrl: metadataString(metadata, 'defaultAgentAvatarUrl'), defaultAgentAvatarSeed: metadataString(metadata, 'defaultAgentAvatarSeed'),
       } satisfies ConversationParticipant];
     });
 }
-
 export function isParticipantSpaceSelfIdentity(participant: ParticipantSpaceViewModel['participants'][number]) {
   return participant.role === 'self'
     || (participant.kind === 'human' && participant.source === 'local');
 }
-
 export function participantSpaceNonSelfIdentities(space: ParticipantSpaceViewModel, kind?: 'human' | 'agent') {
   return space.participants.filter((participant) => (
     !isParticipantSpaceSelfIdentity(participant)
@@ -504,7 +500,6 @@ export function uniqueStrings(values: string[]) {
   }
   return result;
 }
-
 export function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false;
   return typeof window.__TAURI_INTERNALS__ !== 'undefined';

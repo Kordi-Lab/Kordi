@@ -1,7 +1,11 @@
 import {
+  canonicalAvatarImageSource,
   parseGeneratedAvatarMarker,
   type CanonicalAvatarMutation,
 } from './canonicalAvatar';
+import type { CanonicalIdentity, CanonicalSessionMessage } from '@/kordi-app/types';
+import type { CloudAccount } from './authClient';
+import { cloudAvatarImageUrl } from './avatar';
 
 export function defaultCloudAgentId(ownerAccountId: string): string {
   const owner = ownerAccountId.trim();
@@ -24,6 +28,52 @@ export function cloudAgentCanonicalIdentityId(
 
 export function cloudAgentDisplayName(value?: string | null): string {
   return value?.trim() || 'Kordi';
+}
+
+export function cloudAgentOwnerAccountId(message: CanonicalSessionMessage): string {
+  const content = message.content && typeof message.content === 'object' && !Array.isArray(message.content)
+    ? message.content as Record<string, unknown>
+    : {};
+  const recorded = typeof content.senderOwnerAccountId === 'string'
+    ? content.senderOwnerAccountId.trim()
+    : '';
+  if (recorded) return recorded;
+  const legacyPrefix = 'agent:cloud:';
+  return message.senderIdentityId.startsWith(legacyPrefix)
+    && !message.senderIdentityId.startsWith('agent:cloud-agent:')
+    ? message.senderIdentityId.slice(legacyPrefix.length).trim()
+    : '';
+}
+
+export function cloudAgentMessageOwnedBy(message: CanonicalSessionMessage, accountId: string) {
+  const owner = accountId.trim();
+  return Boolean(owner && cloudAgentOwnerAccountId(message) === owner);
+}
+
+export function cloudDefaultAgentPresentation(account: CloudAccount, label?: string | null) {
+  const profile = account.defaultAgent;
+  return {
+    id: profile?.agentId?.trim() || defaultCloudAgentId(account.accountId),
+    name: label?.trim() || profile?.displayName?.trim() || 'Kordi',
+    avatarUrl: profile ? cloudAvatarImageUrl(canonicalAvatarImageSource(profile.avatar)) : null,
+  };
+}
+
+export function cloudCanonicalDefaultAgentContactFields(identity: CanonicalIdentity, accountId: string) {
+  const metadata = identity.metadata && typeof identity.metadata === 'object' && !Array.isArray(identity.metadata)
+    ? identity.metadata as Record<string, unknown>
+    : {};
+  const text = (key: string) => typeof metadata[key] === 'string' && metadata[key].trim()
+    ? metadata[key].trim()
+    : null;
+  return {
+    targetCloudAgentId: text('defaultAgentId') ?? defaultCloudAgentId(accountId),
+    targetCloudAgentName: text('defaultAgentDisplayName') ?? 'Kordi',
+    targetCloudAgentOwnerAccountId: accountId,
+    targetCloudAgentOwnerName: identity.displayName || accountId,
+    targetCloudAgentAvatarUrl: text('defaultAgentAvatarUrl'),
+    targetCloudAgentAvatarSeed: text('defaultAgentAvatarSeed') ?? defaultCloudAgentId(accountId),
+  };
 }
 
 export function legacyDefaultAgentProfileUpdate({

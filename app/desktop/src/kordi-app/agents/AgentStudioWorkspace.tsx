@@ -602,8 +602,7 @@ export function AgentStudioWorkspace({
   editableCapabilityKinds,
   allowCapabilityCreation,
   canEditPrompt,
-  onPromptChange,
-  onNameChange,
+  onPromptChange, onNameChange,
   onCreationDraftChange,
   creationAvatarUrl,
   onCreationAvatarUpload,
@@ -658,8 +657,7 @@ export function AgentStudioWorkspace({
   editableCapabilityKinds: ReadonlySet<AgentStudioCapabilityKind>;
   allowCapabilityCreation: boolean;
   canEditPrompt: boolean;
-  onPromptChange: (value: string) => void;
-  onNameChange?: (value: string) => void;
+  onPromptChange: (value: string) => void; onNameChange?: (value: string) => void;
   onCreationDraftChange: (draft: ShapeAgentDraft) => void;
   creationAvatarUrl?: string | null;
   onCreationAvatarUpload?: (avatar: string) => void;
@@ -755,8 +753,7 @@ export function AgentStudioWorkspace({
             accessScope={accessScope}
             onAccessScopeChange={setAccessScope}
             canEditPrompt={canEditPrompt}
-            onPromptChange={onPromptChange}
-            onNameChange={onNameChange}
+            onPromptChange={onPromptChange} onNameChange={onNameChange}
             onCreationDraftChange={onCreationDraftChange}
             creationAvatarUrl={creationAvatarUrl}
             onCreationAvatarUpload={onCreationAvatarUpload}

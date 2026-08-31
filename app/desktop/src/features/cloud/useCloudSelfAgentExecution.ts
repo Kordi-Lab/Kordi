@@ -61,16 +61,16 @@ import { loadSession } from './session';
 import {
   cloudSelfAgentExecutionCanStart,
   cloudSelfAgentHasTerminalResponse,
-  cloudSelfAgentTerminalResponseRequestIds,
+  cloudSelfAgentTerminalOrLocalRequestIds,
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
   localSelfAgentRequestClientMessageIds,
 } from './cloudSelfAgentExecutionState';
 import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
-
 export {
   cloudSelfAgentExecutionCanStart,
   cloudSelfAgentHasTerminalResponse,
+  cloudSelfAgentTerminalOrLocalRequestIds,
   cloudSelfAgentTerminalResponseRequestIds,
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
@@ -140,17 +140,7 @@ export function useCloudSelfAgentExecution({
   useEffect(() => {
     if (!account) return;
     const selfMessages = messageIndex.byPeerId.get(account.accountId) ?? [];
-    const localRequestClientMessageIds =
-      localSelfAgentRequestClientMessageIds(canonicalState);
-    const terminalRequestIds = new Set([
-      ...cloudSelfAgentTerminalResponseRequestIds(selfMessages),
-      ...selfMessages.flatMap((message) => (
-        message.clientMessageId
-          && localRequestClientMessageIds.has(message.clientMessageId)
-          ? [message.messageId]
-          : []
-      )),
-    ]);
+    const terminalRequestIds = cloudSelfAgentTerminalOrLocalRequestIds(selfMessages, canonicalState);
     setLocalTurns((current) => omitTerminalCloudSelfAgentLocalTurns(
       current,
       terminalRequestIds,

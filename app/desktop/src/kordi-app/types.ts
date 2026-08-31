@@ -89,12 +89,8 @@ export type ConversationParticipant = {
   sourceIdentityId?: string | null;
   humanId?: string | null;
   agentId?: string | null;
-  avatarKey?: string | null;
-  profileImageUrl?: string | null;
-  defaultAgentId?: string | null;
-  defaultAgentDisplayName?: string | null;
-  defaultAgentAvatarUrl?: string | null;
-  defaultAgentAvatarSeed?: string | null;
+  avatarKey?: string | null; profileImageUrl?: string | null;
+  defaultAgentId?: string | null; defaultAgentDisplayName?: string | null; defaultAgentAvatarUrl?: string | null; defaultAgentAvatarSeed?: string | null;
   presenceStatus?: string | null;
   presenceDetail?: string | null;
 };

@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use kordi_core::settings::Settings;
 use tauri::State;
 
 #[cfg(test)]
@@ -14,6 +13,7 @@ use kordi_cli::desktop_runtime::{
 };
 
 pub(crate) mod agent_builder;
+pub(crate) mod agent_identity;
 pub(crate) mod agent_prompt_runner;
 pub(crate) mod artifacts;
 pub(crate) mod attachments;
@@ -29,6 +29,11 @@ pub(crate) mod session_observation;
 pub(crate) mod session_preparation;
 mod transient_drafts;
 pub(crate) mod turns;
+
+#[cfg(test)]
+use agent_identity::normalized_agent_name;
+#[cfg(test)]
+use session_lifecycle::is_missing_session_error;
 
 pub(crate) use attachments::allow_attachment_asset_scope;
 
@@ -129,38 +134,8 @@ pub struct DesktopChatManager {
 
 impl DesktopChatManager {
     pub(crate) async fn reload_skill_resources(&self) -> Result<(), String> {
-        let sessions = self
-            .sessions
-            .lock()
-            .await
-            .iter()
-            .filter(|(session_id, _)| !agent_builder::is_agent_builder_session_id(session_id))
-            .map(|(_, session)| session.clone())
-            .collect::<Vec<_>>();
-        let mut errors = Vec::new();
-        for session in sessions {
-            if let Err(error) = session.lock().await.reload_resources().await {
-                let message = error.to_string();
-                if !is_missing_session_error(&message) {
-                    errors.push(message);
-                }
-            }
-        }
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(format!(
-                "Skills were updated, but {} open session{} could not reload: {}",
-                errors.len(),
-                if errors.len() == 1 { "" } else { "s" },
-                errors.join("; ")
-            ))
-        }
+        session_lifecycle::reload_skill_resources(self).await
     }
-}
-
-fn is_missing_session_error(message: &str) -> bool {
-    message.starts_with("No session matching '")
 }
 
 fn chat_cwd() -> Result<PathBuf, String> {
@@ -211,42 +186,6 @@ pub async fn desktop_chat_session_detail(
     };
     let session = session.lock().await;
     session.detail().map_err(|err| err.to_string())
-}
-
-#[tauri::command]
-pub async fn desktop_chat_rename_agent(
-    manager: State<'_, DesktopChatManager>,
-    name: String,
-) -> Result<String, String> {
-    let name = normalized_agent_name(&name)?;
-    let mut settings = Settings::load_global();
-    settings.agent_name = Some(name.clone());
-    settings.save_global().map_err(|error| error.to_string())?;
-    let sessions = manager
-        .sessions
-        .lock()
-        .await
-        .values()
-        .cloned()
-        .collect::<Vec<_>>();
-    for session in sessions {
-        session.lock().await.refresh_saved_agent_persona();
-    }
-    Ok(name)
-}
-
-fn normalized_agent_name(name: &str) -> Result<String, String> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Err("Agent name is required.".to_string());
-    }
-    if name.chars().count() > 120 {
-        return Err("Agent name must be 120 characters or fewer.".to_string());
-    }
-    if name.chars().any(char::is_control) {
-        return Err("Agent name cannot contain control characters.".to_string());
-    }
-    Ok(name.to_string())
 }
 
 #[tauri::command]

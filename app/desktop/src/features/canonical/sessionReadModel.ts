@@ -50,39 +50,12 @@ import {
 } from './readModel/runtimeMessageMatching';
 import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
 import { mergeCanonicalReadReceipts, mergedMessageReactionMetadata } from './readModel/messageReactionMetadata';
+import { presentCanonicalParticipants, presentLocalAgentMessages } from './readModel/localAgentPresentation';
+import { mergedUnreadBySessionId, withMergedUnreadForSession } from './readModel/conversationUnread';
+
+export { presentLocalAgentMessages } from './readModel/localAgentPresentation';
 
 const EMPTY_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map(); const EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS: ReadonlySet<string> = new Set(); const EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY: ReadonlyMap<string, number> = new Map();
-const LEGACY_DEFAULT_AGENT_LABEL = /^(?:my\s+)?kordi$/iu;
-
-function currentDefaultAgentLabel(value: string | undefined, localAgentDisplayName?: string | null) {
-  const preferred = localAgentDisplayName?.trim();
-  return preferred && (!value?.trim() || LEGACY_DEFAULT_AGENT_LABEL.test(value.trim())) ? preferred : value;
-}
-
-function presentCanonicalParticipants(
-  participants: ConversationParticipant[],
-  profileHumanIdentityId: string | null | undefined,
-  localAgentDisplayName?: string | null,
-) {
-  return participants.map((participant) => {
-    const name = participant.kind === 'agent'
-      && (participant.role === 'owned-agent' || participant.ownerIdentityId === profileHumanIdentityId)
-      ? currentDefaultAgentLabel(participant.name, localAgentDisplayName)
-      : participant.name;
-    return name === participant.name ? participant : { ...participant, name: name ?? participant.name };
-  });
-}
-
-export function presentLocalAgentMessages(messages: Message[], localAgentDisplayName?: string | null) {
-  return messages.map((message) => {
-    if (message.role !== 'owned-agent' && message.senderOwnerName?.trim().toLowerCase() !== 'you') return message;
-    const sender = currentDefaultAgentLabel(message.sender, localAgentDisplayName);
-    const senderOwnerName = message.senderOwnerName?.trim() || 'You';
-    return sender === message.sender && senderOwnerName === message.senderOwnerName
-      ? message
-      : { ...message, sender, senderOwnerName };
-  });
-}
 
 export function mergeCanonicalHistoryIntoRuntime(
   canonicalMessages: Message[],
@@ -431,40 +404,6 @@ function legacyCollaborationTargetForSession(
   }
 
   return null;
-}
-
-function addUnreadForSession(unreadBySessionId: Map<string, number>, sessionId: string | null | undefined, count: number | null | undefined) {
-  const normalizedSessionId = sessionId?.trim();
-  const unread = Math.max(0, count ?? 0);
-  if (!normalizedSessionId || unread <= 0) return;
-  unreadBySessionId.set(normalizedSessionId, (unreadBySessionId.get(normalizedSessionId) ?? 0) + unread);
-}
-
-function mergedUnreadBySessionId(conversations: Conversation[]) {
-  const unreadBySessionId = new Map<string, number>();
-  for (const conversation of conversations) {
-    const scopedUnread = conversation.collaborationUnreadByParentSessionId ?? {};
-    const scopedEntries = Object.entries(scopedUnread);
-    if (scopedEntries.length > 0) {
-      for (const [sessionId, unread] of scopedEntries) {
-        addUnreadForSession(unreadBySessionId, sessionId, unread);
-      }
-      continue;
-    }
-    addUnreadForSession(unreadBySessionId, conversation.canonicalSessionId ?? conversation.id, conversation.unread);
-  }
-  return unreadBySessionId;
-}
-
-function withMergedUnreadForSession<T extends Conversation>(conversation: T, sessionId: string, unread: number): T {
-  return {
-    ...conversation,
-    unread,
-    collaborationUnreadByParentSessionId: {
-      ...(conversation.collaborationUnreadByParentSessionId ?? {}),
-      [sessionId]: unread,
-    },
-  };
 }
 
 export type CanonicalSessionReadModel = {

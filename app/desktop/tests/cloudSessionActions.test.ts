@@ -14,6 +14,7 @@ import type { CanonicalSessionState } from '../src/kordi-app/types';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
 const cloudAgentAvailabilitySource = () => readFileSync(new URL('../src/features/cloud/useCloudAgentAvailability.ts', import.meta.url), 'utf8');
+const cloudDirectAgentFallbackSource = () => readFileSync(new URL('../src/features/cloud/useCloudDirectAgentFallback.ts', import.meta.url), 'utf8');
 const cloudAgentRequestStateSource = () => readFileSync(new URL('../src/features/cloud/cloudAgentRequestState.ts', import.meta.url), 'utf8');
 const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
 const cloudGroupAgentExecutionSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
@@ -383,10 +384,10 @@ test('fresh group sends claim fallback before waiting for a background Cloud syn
 });
 
 test('direct agent fallback retries until the owner Mac answers or goes offline', () => {
-  const source = cloudAgentAvailabilitySource();
+  const source = cloudDirectAgentFallbackSource();
   assert.match(source, /claim\.idempotencyKey\.startsWith\('cloud-agent-fallback:'\)/);
   assert.match(source, /result === 'retryable-failure' \|\| result === 'in-flight'/);
-  assert.match(source, /window\.setTimeout\(\s*checkDirectFallback,\s*CLOUD_GROUP_AGENT_STATUS_RECHECK_MS/);
+  assert.match(source, /window\.setTimeout\(recheck, recheckMs\)/);
 });
 
 test('adding existing group members publishes Cloud authorization before the local batch commit', () => {

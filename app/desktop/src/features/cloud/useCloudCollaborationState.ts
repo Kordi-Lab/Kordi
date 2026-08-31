@@ -530,8 +530,7 @@ export function useCloudCollaborationState({
   });
 
   useCloudSelfAgentCanonicalSync({
-    account,
-    agentDisplayName: localAgentLabel,
+    account, agentDisplayName: localAgentLabel,
     canonicalState: canonicalSessionState,
     setCanonicalState: setCanonicalSessionState,
     messagesByPeer,
@@ -555,8 +554,7 @@ export function useCloudCollaborationState({
     activeConversationId,
     canonicalState: canonicalSessionState,
     routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
-    defaultRoute: defaultCloudAgentRuntimeRoute,
-    localAgentLabel,
+    defaultRoute: defaultCloudAgentRuntimeRoute, localAgentLabel,
     contacts: cloudContacts,
     hiddenSessionIds: cloudHiddenSessionIds,
     deletedSessionIds: cloudDeletedSessionIds,

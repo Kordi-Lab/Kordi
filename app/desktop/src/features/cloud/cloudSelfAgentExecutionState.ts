@@ -65,6 +65,20 @@ export function localSelfAgentRequestClientMessageIds(
   )));
 }
 
+export function cloudSelfAgentTerminalOrLocalRequestIds(
+  messages: readonly CloudMessage[],
+  state: CanonicalSessionState | null | undefined,
+) {
+  const localClientMessageIds = localSelfAgentRequestClientMessageIds(state);
+  return new Set([
+    ...cloudSelfAgentTerminalResponseRequestIds(messages),
+    ...messages.flatMap((message) => message.clientMessageId
+      && localClientMessageIds.has(message.clientMessageId)
+      ? [message.messageId]
+      : []),
+  ]);
+}
+
 export function pendingCloudSelfAgentExecutionRequests({
   account,
   messageIndex,

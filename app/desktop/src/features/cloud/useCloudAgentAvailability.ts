@@ -45,6 +45,7 @@ import {
 } from './cloudGroupMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import { loadSession } from './session';
+import { useCloudDirectAgentFallback } from './useCloudDirectAgentFallback';
 
 export const CLOUD_GROUP_AGENT_STATUS_RECHECK_MS = 5_000;
 export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 2 * 60_000;
@@ -84,10 +85,6 @@ export function useCloudAgentAvailability({
   const claimedRunKeysRef = useRef<Set<string>>(new Set());
   const claimingRunKeysRef = useRef<Set<string>>(new Set());
   const [selfFallbackRevision, checkSelfFallback] = useReducer(
-    (revision: number) => revision + 1,
-    0,
-  );
-  const [directFallbackRevision, checkDirectFallback] = useReducer(
     (revision: number) => revision + 1,
     0,
   );
@@ -419,58 +416,7 @@ export function useCloudAgentAvailability({
     setCanonicalSessionState,
   ]);
 
-  useEffect(() => {
-    if (!account || !initialMessagesSettled) return;
-    const claims = cloudFallbackRunClaimsForMessages({
-      account,
-      contacts,
-      messageIndex,
-      recentSinceMs: Date.now() - CLOUD_AGENT_MENTION_WINDOW_MS,
-    }).filter((claim) => (
-      claim.ownerAccountId !== account.accountId
-      && claim.idempotencyKey.startsWith('cloud-agent-fallback:')
-      && !claimedRunKeysRef.current.has(claim.idempotencyKey)
-    ));
-    if (claims.length === 0) return;
-    let cancelled = false;
-    let retryTimer: number | null = null;
-    void (async () => {
-      const session = await loadSession();
-      if (!session?.token || cancelled) return;
-      let shouldRetry = false;
-      for (const claim of claims) {
-        if (cancelled) return;
-        const result = await claimCloudFallbackRun(claim, session.token);
-        shouldRetry ||= result === 'retryable-failure' || result === 'in-flight';
-      }
-      if (shouldRetry && !cancelled) {
-        retryTimer = window.setTimeout(
-          checkDirectFallback,
-          CLOUD_GROUP_AGENT_STATUS_RECHECK_MS,
-        );
-      }
-    })().catch((error) => {
-      reportWarning('[cloud-agent-fallback] direct claim failed', error);
-      if (!cancelled) {
-        retryTimer = window.setTimeout(
-          checkDirectFallback,
-          CLOUD_GROUP_AGENT_STATUS_RECHECK_MS,
-        );
-      }
-    });
-    return () => {
-      cancelled = true;
-      if (retryTimer !== null) window.clearTimeout(retryTimer);
-    };
-  }, [
-    account,
-    claimCloudFallbackRun,
-    contacts,
-    directFallbackRevision,
-    initialMessagesSettled,
-    messageIndex,
-    reportWarning,
-  ]);
+  useCloudDirectAgentFallback({ account, contacts, messageIndex, initialMessagesSettled, claimCloudFallbackRun, claimedRunKeysRef, reportWarning, recheckMs: CLOUD_GROUP_AGENT_STATUS_RECHECK_MS });
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;

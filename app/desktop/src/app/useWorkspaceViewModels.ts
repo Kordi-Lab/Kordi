@@ -119,8 +119,7 @@ export function collaborationChatConversationIsVisible(
 type UseWorkspaceViewModelsArgs = {
   isNativeShell: boolean;
   isDesktopChatLoading: boolean;
-  desktopChatState: DesktopChatState | null;
-  localAgentDisplayName?: string | null;
+  desktopChatState: DesktopChatState | null; localAgentDisplayName?: string | null;
   desktopCollaborationState: DesktopCollaborationState | null;
   canonicalSessionState: CanonicalSessionState | null;
   canonicalSessionSummaries?: CanonicalSessionSummary[];
@@ -154,8 +153,7 @@ type UseWorkspaceViewModelsArgs = {
 export function useWorkspaceViewModels({
   isNativeShell,
   isDesktopChatLoading: _isDesktopChatLoading,
-  desktopChatState,
-  localAgentDisplayName = null,
+  desktopChatState, localAgentDisplayName = null,
   desktopCollaborationState,
   canonicalSessionState,
   canonicalSessionSummaries = [],
@@ -188,8 +186,7 @@ export function useWorkspaceViewModels({
   const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
   const canonicalReadModel = useMemo(
     () => createCanonicalSessionReadModel(canonicalSessionState, {
-      summaries: canonicalSessionSummaries,
-      localAgentDisplayName,
+      summaries: canonicalSessionSummaries, localAgentDisplayName,
       cloudUnreadReady, pendingGroupProjectionSessionIds,
       legacyGroupSessionTitlesById: cloudLegacyGroupSessionTitlesById, reliableGroupSessionTitleIds: cloudReliableGroupSessionTitleIds, reliableGroupSessionActivityAtMs: cloudReliableGroupSessionActivityAtMs,
     }),
@@ -402,10 +399,7 @@ export function useWorkspaceViewModels({
       : merged;
     const conversationsWithStableOrder = [...hydrated]
       .sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0))
-      .map(({ _updatedAtMs, ...conversation }) => ({
-        ...conversation,
-        messages: presentLocalAgentMessages(conversation.messages, localAgentDisplayName),
-      }));
+      .map(({ _updatedAtMs, ...conversation }) => ({ ...conversation, messages: presentLocalAgentMessages(conversation.messages, localAgentDisplayName) }));
     return conversationsWithStableOrder;
   }, [collaborationChatConversations, canonicalReadModel, isNativeShell, localAgentDisplayName, localChatConversations, transientChatConversations, visibleCollaborationChatConversations]);
 

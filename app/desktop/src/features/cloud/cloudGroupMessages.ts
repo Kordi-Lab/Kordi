@@ -27,6 +27,8 @@ import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import { normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
 import { cloudAgentCanonicalIdentityId } from './cloudAgentIdentity';
+export { cloudGroupAgentMentionHasResponse, cloudGroupAgentMentionResponseState } from './cloudGroupAgentResponseState';
+export type { CloudGroupAgentMentionResponseState } from './cloudGroupAgentResponseState';
 import { cloudGroupTransportParticipant, type CloudGroupActor, type CloudGroupParticipant } from './cloudGroupParticipantTypes';
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:'; const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
@@ -866,51 +868,6 @@ export function cloudGroupControlReplayKey(message: CloudMessage): string | null
   return `${envelope.kind}:${envelope.groupId}:${message.body}`;
 }
 
-export type CloudGroupAgentMentionResponseState = 'processing' | 'terminal';
-
-export function cloudGroupAgentMentionResponseState(input: {
-  requestMessageId: string;
-  targetAccountId: string;
-  messages: CanonicalSessionMessage[];
-}): CloudGroupAgentMentionResponseState | null {
-  const requestMessageId = cleanText(input.requestMessageId);
-  const targetAccountId = cleanText(input.targetAccountId);
-  if (!requestMessageId || !targetAccountId) return null;
-  let sawProcessing = false;
-  for (const message of input.messages) {
-    if (message.sourceTransport !== 'cloud-group-agent') continue;
-    const content = objectRecord(message.content);
-    const senderOwnerAccountId = cleanText(
-      typeof content.senderOwnerAccountId === 'string'
-        ? content.senderOwnerAccountId
-        : null,
-    );
-    if (
-      senderOwnerAccountId
-        ? senderOwnerAccountId !== targetAccountId
-        : message.senderIdentityId !== `agent:cloud:${targetAccountId}`
-    ) continue;
-    const linkedRequestId = cleanText(message.parentMessageId)
-      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
-      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
-    if (linkedRequestId !== requestMessageId) continue;
-    const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
-    if (message.status === 'processing' || deliveryState === 'processing') {
-      sawProcessing = true;
-      continue;
-    }
-    return 'terminal';
-  }
-  return sawProcessing ? 'processing' : null;
-}
-
-export function cloudGroupAgentMentionHasResponse(input: {
-  requestMessageId: string;
-  targetAccountId: string;
-  messages: CanonicalSessionMessage[];
-}): boolean {
-  return cloudGroupAgentMentionResponseState(input) !== null;
-}
 
 export function cloudGroupAgentRequestingNoticeRequest(input: {
   sessionId: string;

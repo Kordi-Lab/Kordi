@@ -17,6 +17,9 @@ mod attachments;
 mod background_sessions;
 mod model_options;
 mod models;
+mod prompt_context;
+#[cfg(test)]
+use prompt_context::strip_session_prompt_context;
 mod session_catalog;
 mod session_detail;
 mod transcript;
@@ -62,15 +65,6 @@ pub use turn_execution::{DesktopRuntimeTurn, DesktopRuntimeTurnResult};
 
 const ATTACHMENT_CONTEXT_CUSTOM_TYPE: &str = "desktop_attachment_context";
 const CLOUD_AGENT_CONTEXT_CUSTOM_TYPE: &str = "cloud_agent_context_message";
-const DESKTOP_DYNAMIC_SYSTEM_CONTEXT_START: &str = "<desktop_dynamic_system_context>";
-const DESKTOP_DYNAMIC_SYSTEM_CONTEXT_END: &str = "</desktop_dynamic_system_context>";
-const DESKTOP_OWNER_PERSONA_START: &str = "<desktop_owner_agent_persona>";
-const DESKTOP_OWNER_PERSONA_END: &str = "</desktop_owner_agent_persona>";
-const DESKTOP_SESSION_CONTEXT_START: &str = "\n\n<desktop_session_context>";
-const DESKTOP_SESSION_CONTEXT_END: &str = "</desktop_session_context>";
-const LEGACY_DESKTOP_BRIDGE_CONTEXT_START: &str = "\n\n<desktop_bridge_outreach_context>";
-const LEGACY_DESKTOP_BRIDGE_CONTEXT_END: &str = "</desktop_bridge_outreach_context>";
-
 fn visible_task_record_status_for_store(status: &str) -> String {
     match status.trim().to_ascii_lowercase().as_str() {
         "closed" | "complete" | "completed" => "closed".to_string(),
@@ -193,25 +187,10 @@ impl DesktopRuntimeSession {
     }
 
     pub fn refresh_saved_agent_persona(&mut self) {
-        let base_prompt = strip_tagged_prompt_context(
+        self.setup.system_prompt = prompt_context::with_saved_agent_persona(
             &self.setup.system_prompt,
-            DESKTOP_OWNER_PERSONA_START,
-            DESKTOP_OWNER_PERSONA_END,
-        );
-        if !self.owner_persona_enabled || base_prompt.contains(DESKTOP_DYNAMIC_SYSTEM_CONTEXT_START)
-        {
-            self.setup.system_prompt = base_prompt;
-            return;
-        }
-        let settings = Settings::load_merged(&self.setup.tool_ctx.cwd);
-        let name = settings
-            .agent_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or("Kordi");
-        self.setup.system_prompt = format!(
-            "{DESKTOP_OWNER_PERSONA_START}\nYou are {name}, the user's local Kordi agent. Use {name} as your name in chats, mentions, and replies.\n{DESKTOP_OWNER_PERSONA_END}\n\n{base_prompt}"
+            &self.setup.tool_ctx.cwd,
+            self.owner_persona_enabled,
         );
     }
 
@@ -516,25 +495,10 @@ impl DesktopRuntimeSession {
         &mut self,
         messages: &[DesktopChatContextMessage],
     ) -> Result<usize> {
-        let system_context = messages
+        self.set_dynamic_system_context(prompt_context::system_context(messages));
+        let history_messages = messages
             .iter()
-            .filter(|message| {
-                message
-                    .context_role
-                    .as_deref()
-                    .is_some_and(|role| role.eq_ignore_ascii_case("system"))
-            })
-            .map(|message| message.text.trim())
-            .filter(|text| !text.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        self.set_dynamic_system_context((!system_context.is_empty()).then_some(system_context));
-        let history_messages = messages.iter().filter(|message| {
-            !message
-                .context_role
-                .as_deref()
-                .is_some_and(|role| role.eq_ignore_ascii_case("system"))
-        });
+            .filter(|message| !prompt_context::is_system_context(message));
         if messages.is_empty() {
             return Ok(0);
         }
@@ -644,44 +608,17 @@ impl DesktopRuntimeSession {
     }
 
     pub fn set_session_prompt_context(&mut self, context: Option<String>) {
-        let base_prompt = strip_session_prompt_context(&self.setup.system_prompt);
-        let Some(context) = context
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        else {
-            self.setup.system_prompt = base_prompt;
-            return;
-        };
-        self.setup.system_prompt = format!(
-            "{base_prompt}{DESKTOP_SESSION_CONTEXT_START}\n{context}\n{DESKTOP_SESSION_CONTEXT_END}"
-        );
+        self.setup.system_prompt =
+            prompt_context::with_session_context(&self.setup.system_prompt, context.as_deref());
     }
 
     fn set_dynamic_system_context(&mut self, context: Option<String>) {
-        let prompt_without_dynamic = strip_tagged_prompt_context(
+        self.setup.system_prompt = prompt_context::with_dynamic_system_context(
             &self.setup.system_prompt,
-            DESKTOP_DYNAMIC_SYSTEM_CONTEXT_START,
-            DESKTOP_DYNAMIC_SYSTEM_CONTEXT_END,
+            &self.setup.tool_ctx.cwd,
+            self.owner_persona_enabled,
+            context.as_deref(),
         );
-        let base_prompt = strip_tagged_prompt_context(
-            &prompt_without_dynamic,
-            DESKTOP_OWNER_PERSONA_START,
-            DESKTOP_OWNER_PERSONA_END,
-        );
-        self.setup.system_prompt = context
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(|context| {
-                format!(
-                    "{DESKTOP_DYNAMIC_SYSTEM_CONTEXT_START}\n{context}\n{DESKTOP_DYNAMIC_SYSTEM_CONTEXT_END}\n\n{base_prompt}"
-                )
-            })
-            .unwrap_or(base_prompt);
-        if context.is_none() {
-            self.refresh_saved_agent_persona();
-        }
     }
 
     pub fn set_name(&mut self, requested_name: &str) -> Result<()> {
@@ -766,32 +703,6 @@ fn apply_runtime_profile(setup: &mut SessionRuntimeSetup, profile: &DesktopRunti
             setup.tool_ctx.schedule_task = None;
         }
     }
-}
-
-fn strip_tagged_prompt_context(prompt: &str, start_tag: &str, end_tag: &str) -> String {
-    let Some(start) = prompt.find(start_tag) else {
-        return prompt.to_string();
-    };
-    let Some(end_relative) = prompt[start..].find(end_tag) else {
-        return prompt.to_string();
-    };
-    let end = start + end_relative + end_tag.len();
-    format!("{}{}", &prompt[..start], &prompt[end..])
-        .trim_end()
-        .to_string()
-}
-
-fn strip_session_prompt_context(prompt: &str) -> String {
-    let without_current = strip_tagged_prompt_context(
-        prompt,
-        DESKTOP_SESSION_CONTEXT_START,
-        DESKTOP_SESSION_CONTEXT_END,
-    );
-    strip_tagged_prompt_context(
-        &without_current,
-        LEGACY_DESKTOP_BRIDGE_CONTEXT_START,
-        LEGACY_DESKTOP_BRIDGE_CONTEXT_END,
-    )
 }
 
 pub fn fork_session_from_message(
