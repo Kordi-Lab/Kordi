@@ -366,12 +366,7 @@ test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent convers
     canonicalParticipantCount: 1,
     forkedFromSessionId: 'session:group:1',
   }), false);
-  assert.equal(shouldSuppressAgentReplyAttribution({
-    id: 'session:project:1',
-    type: 'owned-agent',
-    participantSpaceId: 'space:project',
-    canonicalParticipantCount: 4,
-  }), false);
+  assert.equal(shouldSuppressAgentReplyAttribution({ id: 'session:project:1', type: 'owned-agent', participantSpaceId: 'space:project', canonicalParticipantCount: 4 }), false);
   assert.equal(shouldSuppressAgentReplyAttribution({
     id: 'session:external-agent:1',
     type: 'external-agent',
@@ -379,7 +374,6 @@ test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent convers
     canonicalParticipantCount: 2,
   }), false);
 });
-
 test('buildReplyAttribution resolves canonical bridge parent aliases as the source request', () => {
   const messages: Message[] = [
     humanRequest({

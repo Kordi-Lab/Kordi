@@ -87,6 +87,48 @@ test('bridge transcript keeps a fresh processing response visible', () => {
   assert.equal(view.messages.some((message) => message.turn?.status === 'processing'), true);
 });
 
+test('direct person agent mentions show the renamed local agent processing immediately', () => {
+  const conversationId = 'bridge:cloud:acct-peer:person';
+  const state = appendOptimisticCollaborationMessage({
+    activeHostId: 'cloud',
+    hosts: [],
+    conversations: [conversation({
+      id: conversationId,
+      canonicalSessionId: 'session:direct-person:acct-me:acct-peer',
+      hostId: 'cloud',
+      peerNodeId: 'acct-peer',
+      peerDisplayName: 'Peer',
+      peerOwnerName: 'Peer',
+      peerRuntime: 'person',
+      identity: {
+        sourceHostId: 'cloud',
+        localHumanId: 'acct-me',
+        localHumanName: 'Me',
+        localAgentId: 'agent-local',
+        localAgentName: 'Kordirename11',
+        localAgentNodeId: 'acct-me',
+      },
+    })],
+  }, conversationId, '@Kordirename11 what are you doing', '21:04', 'request-local-agent', [], undefined, null, [{
+    label: 'Kordirename11',
+    targetKind: 'agent',
+    targetIdentityId: 'agent:agent-local',
+    sourceHostId: 'cloud',
+    nodeId: 'acct-me',
+    agentId: 'agent-local',
+    displayLabel: 'Kordirename11',
+  }]);
+  const optimisticConversation = state?.conversations[0];
+  assert.ok(optimisticConversation);
+  assert.equal(optimisticConversation.awaitingReply, true);
+
+  const view = mapCollaborationConversationToViewModel(optimisticConversation, undefined, 'Kordi');
+  const processing = view.messages.find((message) => message.turn?.status === 'processing');
+  assert.equal(processing?.role, 'owned-agent');
+  assert.equal(processing?.sender, 'Kordirename11');
+  assert.equal(processing?.turn?.completed, false);
+});
+
 test('Kordi Support shows contact typing without exposing the agent processing card', () => {
   const supportConversationId = `bridge:cloud:${KORDI_SUPPORT_ACCOUNT_ID}:person`;
   const state: DesktopCollaborationState = {
