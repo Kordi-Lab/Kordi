@@ -271,6 +271,8 @@ export KORDI_CLOUD_SSH_TARGET="<PRODUCT_GCE_INSTANCE>"
 export KORDI_CLOUD_SSH_ZONE="<PRODUCT_GCP_ZONE>"
 export KORDI_CLOUD_GCP_PROJECT="<PRODUCT_GCP_PROJECT>"
 export KORDI_CLOUD_CDN_CERTIFICATE="<ACTIVE_CERTIFICATE_MANAGER_CERTIFICATE>"
+# Set KORDI_CLOUD_CDN_WWW_CERTIFICATE only when a temporary bootstrap uses
+# separate current certificates for kordi.ai and www.kordi.ai.
 
 bash bridges/cloud-server/deploy/k3s/configure-product-firewall.sh
 bash bridges/cloud-server/deploy/k3s/configure-updater-cdn.sh

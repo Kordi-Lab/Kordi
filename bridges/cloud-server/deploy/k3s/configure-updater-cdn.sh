@@ -10,6 +10,7 @@ PROJECT="${KORDI_CLOUD_GCP_PROJECT:?Set KORDI_CLOUD_GCP_PROJECT}"
 ZONE="${KORDI_CLOUD_SSH_ZONE:?Set KORDI_CLOUD_SSH_ZONE}"
 INSTANCE="${KORDI_CLOUD_SSH_TARGET:?Set KORDI_CLOUD_SSH_TARGET}"
 CERTIFICATE="${KORDI_CLOUD_CDN_CERTIFICATE:?Set KORDI_CLOUD_CDN_CERTIFICATE to an ACTIVE global Certificate Manager certificate}"
+WWW_CERTIFICATE="${KORDI_CLOUD_CDN_WWW_CERTIFICATE:-${CERTIFICATE}}"
 NETWORK="${KORDI_CLOUD_GCP_NETWORK:-default}"
 PREFIX="${KORDI_CLOUD_CDN_PREFIX:-kordi-product}"
 ORIGIN_PORT=8080
@@ -36,23 +37,30 @@ HTTPS_FORWARDING_RULE="${PREFIX}-https"
 HTTP_FORWARDING_RULE="${PREFIX}-http"
 CERTIFICATE_MAP="${PREFIX}-certificates"
 
-CERTIFICATE_STATE="$(gcloud certificate-manager certificates describe "${CERTIFICATE}" \
-	--location=global \
-	--project="${PROJECT}" \
-	--format='value(managed.state)')"
-if [ -n "${CERTIFICATE_STATE}" ]; then
-	if [ "${CERTIFICATE_STATE}" != "ACTIVE" ]; then
-		echo "The managed Certificate Manager certificate must be ACTIVE before CDN staging" >&2
+require_usable_certificate() {
+	local certificate="$1"
+	local certificate_state
+	certificate_state="$(gcloud certificate-manager certificates describe "${certificate}" \
+		--location=global \
+		--project="${PROJECT}" \
+		--format='value(managed.state)')"
+	if [ -n "${certificate_state}" ]; then
+		if [ "${certificate_state}" != "ACTIVE" ]; then
+			echo "The managed Certificate Manager certificate must be ACTIVE before CDN staging" >&2
+			exit 1
+		fi
+	elif ! gcloud certificate-manager certificates describe "${certificate}" \
+		--location=global \
+		--project="${PROJECT}" \
+		--format='value(pemCertificate)' \
+		| grep -q 'BEGIN CERTIFICATE'; then
+		echo "The CDN certificate must identify a usable global certificate" >&2
 		exit 1
 	fi
-elif ! gcloud certificate-manager certificates describe "${CERTIFICATE}" \
-	--location=global \
-	--project="${PROJECT}" \
-	--format='value(pemCertificate)' \
-	| grep -q 'BEGIN CERTIFICATE'; then
-	echo "KORDI_CLOUD_CDN_CERTIFICATE must identify a usable global certificate" >&2
-	exit 1
-fi
+}
+
+require_usable_certificate "${CERTIFICATE}"
+require_usable_certificate "${WWW_CERTIFICATE}"
 
 if ! gcloud certificate-manager maps describe "${CERTIFICATE_MAP}" \
 	--location=global \
@@ -62,7 +70,9 @@ if ! gcloud certificate-manager maps describe "${CERTIFICATE_MAP}" \
 		--project="${PROJECT}" \
 		--quiet >/dev/null
 fi
-for hostname in kordi.ai www.kordi.ai; do
+for hostname_certificate in "kordi.ai:${CERTIFICATE}" "www.kordi.ai:${WWW_CERTIFICATE}"; do
+	hostname="${hostname_certificate%%:*}"
+	certificate="${hostname_certificate#*:}"
 	entry_name="${PREFIX}-$(printf '%s' "${hostname}" | tr '.' '-')"
 	if ! gcloud certificate-manager maps entries describe "${entry_name}" \
 		--map="${CERTIFICATE_MAP}" \
@@ -71,7 +81,7 @@ for hostname in kordi.ai www.kordi.ai; do
 		gcloud certificate-manager maps entries create "${entry_name}" \
 			--map="${CERTIFICATE_MAP}" \
 			--hostname="${hostname}" \
-			--certificates="${CERTIFICATE}" \
+			--certificates="${certificate}" \
 			--location=global \
 			--project="${PROJECT}" \
 			--quiet >/dev/null
