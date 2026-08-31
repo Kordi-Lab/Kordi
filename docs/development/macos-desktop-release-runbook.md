@@ -9,8 +9,9 @@ Voice/video deployment and installed-app acceptance remain governed by the
 
 For a coordinated macOS and iOS release, begin with the
 [standard dual-platform release runbook](dual-platform-release-runbook.md).
-This document starts only after the joint preflight has passed and one merged
-commit has been pinned for both platforms.
+This document starts after release preparation has merged, source qualification
+is recorded, and one commit is pinned. macOS publication and GitHub mirroring
+finish before the standard pipeline starts iOS archive/upload.
 
 ## Release invariant
 
@@ -35,9 +36,9 @@ been verified.
 
 ## Preflight before compiling
 
-1. Confirm the joint macOS/iOS preflight passed. Do not compile desktop after a
-   source-only desktop check while iOS version, tests, Apple capabilities, team,
-   signing, or build-number state remain unknown.
+1. Confirm the release-preparation PR merged and the standard pipeline's source
+   and external prerequisite gates passed. Required iOS simulator/device tests
+   belong to merged implementation evidence, not release-day operation.
 2. Fetch `origin/main`, select the merged release commit, and create a clean
    detached worktree for it.
 3. Compare the commit with the previous release tag, confirm every user-facing
@@ -128,7 +129,9 @@ exist:
 ```bash
 RELEASE_COMMIT="$(git rev-parse origin/main)"
 RELEASE_SOURCE_ROOT=/Applications/KordiReleaseSource-betaN
+RELEASE_BUILD_ROOT=/Applications/KordiReleaseBuild-betaN
 test ! -e "$RELEASE_SOURCE_ROOT"
+test ! -e "$RELEASE_BUILD_ROOT"
 git worktree add --detach "$RELEASE_SOURCE_ROOT" "$RELEASE_COMMIT"
 cd "$RELEASE_SOURCE_ROOT"
 test "$(git rev-parse HEAD)" = "$RELEASE_COMMIT"
@@ -140,12 +143,18 @@ Use path remapping for the desktop binary and its native Kordi runtime sidecar:
 ```bash
 export RUSTFLAGS="--remap-path-prefix=$HOME=/build"
 export CARGO_BUILD_JOBS=1
+export CARGO_TARGET_DIR="$RELEASE_BUILD_ROOT"
+export APPLE_SIGNING_IDENTITY="<APPROVED_DEVELOPER_IDENTITY>"
 unset VITE_KORDI_CLOUD_API_BASE
 ```
 
 `CARGO_BUILD_JOBS=1` is the safe default on the release Mac. Building the
 agent runtime and Tauri dependency graph concurrently caused severe memory
 pressure and multiple multi-gigabyte Kordi processes during beta.9.
+
+Do not inherit a shared `CARGO_TARGET_DIR` from another task. Select the
+release-specific directory and the Developer ID signing identity explicitly
+before the first build.
 
 Use an already-installed, valid Developer ID Application identity on the
 approved local release Mac. Import the protected p12 into a temporary keychain
@@ -203,21 +212,25 @@ has been corrected.
 Use this order so expensive work and external state changes happen only after
 their prerequisites are known:
 
-1. Complete the joint desktop/iOS preflight, merge any fix, then pin
-   `RELEASE_COMMIT` once for both platforms.
-2. Back up the production database.
-3. Deploy server and runner images built from `RELEASE_COMMIT`; verify rollout,
-   schema, secret-free logs, public health, and the [two-account call acceptance
-   test](../call-hosting.md#required-two-account-acceptance-test). Keep legacy
-   release metadata on the last verified artifact while the new artifact does
-   not yet exist.
+1. Complete release preparation and candidate preflight, then pin
+   `RELEASE_COMMIT` once for both platforms. Do not create a release simulator.
+2. Inspect product server/runner images and schema. If the candidate has no
+   undeployed backend/runner diff, record compatibility and skip deployment.
+3. Only when a relevant diff exists, back up production and deploy the changed
+   server/runner components from `RELEASE_COMMIT`; verify rollout, schema,
+   secret-free logs, and public health. Run the [two-account call acceptance
+   test](../call-hosting.md#required-two-account-acceptance-test) only when
+   call/media/APNs/edge behavior changed. Keep legacy release metadata on the
+   last verified artifact while the new artifact does not yet exist.
 4. Build or reuse path-remapped sidecars, then build the desktop bundle from
    the physical neutral worktree.
 5. Run the source gate, bundle/signing gate, DMG layout gate, checksum gate,
    and final artifact privacy scan.
 6. Run `release:publish-desktop --dry-run` before opening MinIO tunnels.
 7. Inspect and replace only known stale remote port-forwards, then open the
-   loopback-only MinIO and SSH tunnels.
+   loopback-only MinIO and SSH tunnels. Prove a full authenticated DMG read and
+   SHA-256 through the exact tunnel before publication; a health request does
+   not detect large-stream resets.
 8. Publish immutable objects and the `acceptance` pointer.
 9. Verify the public manifest, updater archive, direct DMG, and current-version
    HTTP `204` behavior against the locally recorded metadata.
@@ -230,6 +243,12 @@ their prerequisites are known:
     DMG only after product verification succeeds.
 13. Verify the GitHub asset digest and size, close tunnels, remove secrets,
     detach DMGs, and remove the neutral worktree.
+
+When `kubectl port-forward` remains alive but logs stream timeouts or clients
+receive `socket hang up`/`ECONNRESET`, do not retry pointer mutation through the
+same path. Replace it with a task-owned loopback SSH forward to the current
+private MinIO pod endpoint, prove a full-object read, and close it immediately
+after publication.
 
 Immutable upload, acceptance promotion, normal beta promotion, stable/manual
 metadata, tag, and GitHub prerelease are separate states. Report each state

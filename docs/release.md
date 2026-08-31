@@ -71,9 +71,11 @@ Signed Hosted Desktop beta releases use two different version strings:
 
 For a normal macOS beta and iOS TestFlight release from one source commit, start
 with the [standard dual-platform release runbook](development/dual-platform-release-runbook.md).
-Its joint preflight must pass for both platforms before either platform deploys,
-builds, uploads, or tags. Use this document and the platform runbooks for the
-detailed commands and recovery paths after that preflight.
+It qualifies and pins merged source, verifies or deploys the product backend,
+publishes macOS to `kordi.ai` and GitHub, then archives and uploads iOS. Feature
+tests and simulator acceptance belong to the implementation PRs; the standard
+release operation does not create a simulator. Use this document and the
+platform runbooks for detailed commands and recovery paths.
 
 Ad-hoc releases are explicit, per-release exceptions to the signed production
 procedure. The beta.6 acceptance-only procedure below is retained as a
@@ -578,22 +580,28 @@ strings "$DMG" | rg -F 'https://kordi.ai'
 
 ## Validation before release
 
-For a coordinated macOS and iOS release, complete the
-[joint preflight](development/dual-platform-release-runbook.md#phase-1-joint-preflight-before-expensive-work)
-before running this desktop baseline. Do not publish the desktop candidate and
-then discover an iOS source, test, team, capability, or build-number failure.
+For a coordinated macOS and iOS release, complete the release-preparation and
+[candidate preflight](development/dual-platform-release-runbook.md#phase-1-pin-and-preflight-the-merged-candidate)
+before running this desktop baseline. The preparation PR must already contain
+the required test evidence and reviewed iOS version/capability metadata. The
+standard operator sequence publishes macOS and its GitHub mirror before iOS
+archive/upload.
 
-Recommended baseline:
+Required source-only baseline:
 
 ```bash
-pnpm check
 pnpm --dir app/desktop exec node --test tests/releaseVersion.test.mjs
 pnpm --dir app/desktop release:secret-guard
-pnpm --dir app/desktop tauri:build:cloud:dmg
-pnpm build:registry
+pnpm --dir app/desktop release:prerequisites -- \
+  --source-only \
+  --expected-commit "$(git rev-parse HEAD)"
 ```
 
-Add focused tests for recently changed release surfaces, and always scan the final DMG before upload.
+Use the focused and full-suite evidence already attached to the merged
+implementation/release PRs. Do not rerun `pnpm check`, simulator suites,
+standalone registry builds, or unrelated product builds during standard release
+operation. The macOS phase runs its one production build and always scans the
+final DMG before upload.
 
 When the release contains call changes or follows a call-service deployment,
 the installed candidate must also pass the [call hosting readiness
