@@ -35,11 +35,21 @@ ADDRESS="${PREFIX}-edge-ip"
 HTTPS_FORWARDING_RULE="${PREFIX}-https"
 HTTP_FORWARDING_RULE="${PREFIX}-http"
 
-if [ "$(gcloud certificate-manager certificates describe "${CERTIFICATE}" \
+CERTIFICATE_STATE="$(gcloud certificate-manager certificates describe "${CERTIFICATE}" \
 	--location=global \
 	--project="${PROJECT}" \
-	--format='value(managed.state)')" != "ACTIVE" ]; then
-	echo "The Certificate Manager certificate must be ACTIVE before CDN staging" >&2
+	--format='value(managed.state)')"
+if [ -n "${CERTIFICATE_STATE}" ]; then
+	if [ "${CERTIFICATE_STATE}" != "ACTIVE" ]; then
+		echo "The managed Certificate Manager certificate must be ACTIVE before CDN staging" >&2
+		exit 1
+	fi
+elif ! gcloud certificate-manager certificates describe "${CERTIFICATE}" \
+	--location=global \
+	--project="${PROJECT}" \
+	--format='value(selfManaged.pemCertificate)' \
+	| grep -q 'BEGIN CERTIFICATE'; then
+	echo "KORDI_CLOUD_CDN_CERTIFICATE must identify a usable global certificate" >&2
 	exit 1
 fi
 

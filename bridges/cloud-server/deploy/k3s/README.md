@@ -260,8 +260,11 @@ The complete Caddy config preserves both public responsibilities:
 
 Use a global Certificate Manager certificate that was provisioned with DNS
 authorization and is already `ACTIVE`; this avoids a certificate outage during
-the DNS cutover. Keep its resource name local to the operator environment.
-Then stage the edge without changing DNS:
+the DNS cutover. If the DNS provider temporarily blocks authorization changes,
+a self-managed copy of the current valid Caddy certificate may bootstrap the
+edge, but its expiry must be recorded and it must be replaced by the managed
+certificate before renewal. Keep certificate resource names local to the
+operator environment. Then stage the edge without changing DNS:
 
 ```bash
 export KORDI_CLOUD_SSH_TARGET="<PRODUCT_GCE_INSTANCE>"
