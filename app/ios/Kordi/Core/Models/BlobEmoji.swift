@@ -26,7 +26,7 @@ enum BlobEmojiCatalog {
         ),
         let data = try? Data(contentsOf: url),
         let payload = try? JSONDecoder().decode(Payload.self, from: data),
-        payload.schema == 1 else { return [] }
+        payload.schema == 2 else { return [] }
         return payload.emoji
     }()
 
