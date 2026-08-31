@@ -5,6 +5,8 @@ pub mod store;
 #[cfg(test)]
 mod model_tests;
 #[cfg(test)]
+mod range_routes_tests;
+#[cfg(test)]
 mod release_metadata_tests;
 #[cfg(test)]
 mod routes_test_support;

@@ -13,6 +13,10 @@ const firewallScriptPath = new URL(
   '../bridges/cloud-server/deploy/k3s/configure-product-firewall.sh',
   import.meta.url,
 );
+const updaterCdnScriptPath = new URL(
+  '../bridges/cloud-server/deploy/k3s/configure-updater-cdn.sh',
+  import.meta.url,
+);
 const caddyfilePath = new URL('../bridges/cloud-server/deploy/Caddyfile.snippet', import.meta.url);
 const portForwardServicePath = new URL(
   '../bridges/cloud-server/deploy/k3s/systemd/kordi-cloud-port-forward.service',
@@ -52,6 +56,7 @@ test('all remote deployment helpers require an explicit GCP project', async () =
     deployScriptPath,
     runnerDeployScriptPath,
     releaseCredentialsScriptPath,
+    updaterCdnScriptPath,
   ].map((path) => readFile(path, 'utf8')));
 
   for (const script of scripts) {
@@ -109,18 +114,43 @@ test('product host bootstrap is idempotent and leaves the default proxy stopped'
   assert.doesNotMatch(script, /CLIENT_SECRET|DATABASE_URL|MINIO_ROOT_PASSWORD/);
 });
 
-test('product firewall overrides broad shared-network ingress rules', async () => {
+test('product firewall stages the CDN origin and closes direct web ingress after cutover', async () => {
   const script = await readFile(firewallScriptPath, 'utf8');
 
-  assert.match(script, /--rules=tcp:22,tcp:80,tcp:443/);
-  assert.match(script, /--rules=tcp:7881,udp:3478,udp:7882,udp:30000-30100/);
-  assert.match(script, /--source-ranges=0\.0\.0\.0\/0/);
-  assert.match(script, /--source-ranges="\$\{PRIVATE_SOURCE_RANGE\}"/);
-  assert.match(script, /--priority=900[\s\S]*--action=DENY[\s\S]*--rules=all/);
+  assert.match(script, /KORDI_CLOUD_CDN_ENABLED:-false/);
+  assert.match(script, /PUBLIC_PORTS="tcp:22,tcp:80,tcp:443"/);
+  assert.match(script, /PUBLIC_PORTS="tcp:22"/);
+  assert.match(script, /ensure_rule "\$\{RULE_PREFIX\}-cdn-origin-ingress" 702 ALLOW[\s\S]*tcp:8080/);
+  assert.match(script, /ensure_rule "\$\{RULE_PREFIX\}-media-ingress" 705 ALLOW[\s\S]*tcp:7881,udp:3478,udp:7882,udp:30000-30100/);
+  assert.match(script, /ensure_rule "\$\{RULE_PREFIX\}-public-ingress" 700 ALLOW/);
+  assert.match(script, /130\.211\.0\.0\/22,35\.191\.0\.0\/16/);
+  assert.match(script, /ensure_rule "\$\{RULE_PREFIX\}-internal-ingress" 710 ALLOW[\s\S]*PRIVATE_SOURCE_RANGE/);
+  assert.match(script, /ensure_rule "\$\{RULE_PREFIX\}-deny-other-ingress" 900 DENY[\s\S]*all 0\.0\.0\.0\/0/);
+  assert.match(script, /firewall-rules update/);
   assert.match(script, /instances add-tags/);
   assert.match(script, /KORDI_CLOUD_GCP_PROJECT/);
   assert.doesNotMatch(script, /tcp:30081/);
-  assert.doesNotMatch(script, /35\.\d+\.\d+\.\d+/);
+});
+
+test('global updater edge caches only release paths through a private VM endpoint', async () => {
+  const script = await readFile(updaterCdnScriptPath, 'utf8');
+
+  assert.match(script, /KORDI_CLOUD_GCP_PROJECT:\?Set KORDI_CLOUD_GCP_PROJECT/);
+  assert.match(script, /KORDI_CLOUD_SSH_ZONE:\?Set KORDI_CLOUD_SSH_ZONE/);
+  assert.match(script, /KORDI_CLOUD_SSH_TARGET:\?Set KORDI_CLOUD_SSH_TARGET/);
+  assert.match(script, /managed\.state[\s\S]*ACTIVE/);
+  assert.match(script, /GCE_VM_IP_PORT/);
+  assert.match(script, /ORIGIN_PORT=8080/);
+  assert.match(script, /--load-balancing-scheme=EXTERNAL_MANAGED/);
+  assert.match(script, /--enable-cdn/);
+  assert.match(script, /--cache-mode=USE_ORIGIN_HEADERS/);
+  assert.match(script, /--compression-mode=DISABLED/);
+  assert.match(script, /--no-negative-caching/);
+  assert.match(script, /X-Kordi-CDN-Cache:\{cdn_cache_status\}/);
+  assert.match(script, /\/updates\/releases\/\*/);
+  assert.match(script, /--certificate-manager-certificates/);
+  assert.match(script, /KORDI_CLOUD_CDN_ENABLED=true/);
+  assert.doesNotMatch(script, /dns record-sets|gcloud config set/i);
 });
 
 test('k3s exposes the Cloud NodePort only on loopback', async () => {
@@ -195,6 +225,8 @@ test('product origin serves desktop routes without redirects', async () => {
     'product routes must be handled before any catch-all response or redirect',
   );
   assert.match(caddyfile, /handle @cloud_product_routes[\s\S]*reverse_proxy/);
+  assert.match(caddyfile, /\(kordi_product_site\)/);
+  assert.match(caddyfile, /:8080 \{[\s\S]*import kordi_product_site/);
   assert.match(caddyfile, /root \* \/srv\/kordi-homepage\/current/);
   assert.match(caddyfile, /handle \/beta-api\/\*[\s\S]*reverse_proxy 127\.0\.0\.1:17181/);
   assert.match(caddyfile, /kordi\.ai, www\.kordi\.ai/);

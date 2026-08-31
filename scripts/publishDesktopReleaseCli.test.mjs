@@ -55,7 +55,7 @@ test('public release verification accepts only the product origin', async () => 
   const requested = [];
   const publicHttp = createPublicHttpAdapter({
     fetchImpl: async (url, options) => {
-      requested.push([url.toString(), options.method]);
+      requested.push([url.toString(), options.method, options.headers.Range ?? null]);
       return {
         status: 200,
         headers: {},
@@ -67,14 +67,16 @@ test('public release verification accepts only the product origin', async () => 
   });
 
   await publicHttp.get('https://kordi.ai/updates/releases/version');
+  await publicHttp.get('https://kordi.ai/updates/releases/version', { range: 'bytes=0-1' });
   await publicHttp.head('https://kordi.ai/updates/releases/version');
   await assert.rejects(
     publicHttp.get('https://example.com/updates/releases/version'),
     /must use https:\/\/kordi\.ai/i,
   );
   assert.deepEqual(requested, [
-    ['https://kordi.ai/updates/releases/version', 'GET'],
-    ['https://kordi.ai/updates/releases/version', 'HEAD'],
+    ['https://kordi.ai/updates/releases/version', 'GET', null],
+    ['https://kordi.ai/updates/releases/version', 'GET', 'bytes=0-1'],
+    ['https://kordi.ai/updates/releases/version', 'HEAD', null],
   ]);
 });
 
