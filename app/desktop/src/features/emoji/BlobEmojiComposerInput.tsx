@@ -21,6 +21,9 @@ import {
   type BlobEmoji,
 } from './blobEmoji';
 import {
+  BLOB_EMOJI_CARET_ANCHOR_ATTRIBUTE,
+  BLOB_EMOJI_CARET_MARKER,
+  blobEmojiCaretAnchorValue,
   blobEmojiComposerValue,
   blobEmojiTokenFor,
 } from './blobEmojiComposerDom';
@@ -85,10 +88,17 @@ function blobEmojiComposerNode(emoji: BlobEmoji, token: string) {
 
 function renderComposerValue(root: HTMLElement, value: string) {
   const fragment = document.createDocumentFragment();
-  for (const part of blobEmojiTextParts(value)) {
+  const parts = blobEmojiTextParts(value);
+  for (const part of parts) {
     fragment.append(part.type === 'emoji'
       ? blobEmojiComposerNode(part.emoji, part.token)
       : document.createTextNode(part.value));
+  }
+  if (parts[parts.length - 1]?.type === 'emoji') {
+    const caretAnchor = document.createElement('span');
+    caretAnchor.setAttribute(BLOB_EMOJI_CARET_ANCHOR_ATTRIBUTE, 'true');
+    caretAnchor.textContent = BLOB_EMOJI_CARET_MARKER;
+    fragment.append(caretAnchor);
   }
   root.replaceChildren(fragment);
 }
@@ -101,15 +111,47 @@ function expectedBlobEmojiCount(value: string) {
   return blobEmojiTextParts(value).filter((part) => part.type === 'emoji').length;
 }
 
+function expectsCaretAnchor(value: string) {
+  const parts = blobEmojiTextParts(value);
+  return parts[parts.length - 1]?.type === 'emoji';
+}
+
+function hasValidCaretAnchor(root: HTMLElement) {
+  const anchor = root.lastElementChild;
+  return Boolean(
+    anchor?.hasAttribute(BLOB_EMOJI_CARET_ANCHOR_ATTRIBUTE)
+    && anchor.textContent?.includes(BLOB_EMOJI_CARET_MARKER),
+  );
+}
+
+function composerNeedsRender(root: HTMLElement, value: string) {
+  return blobEmojiComposerValue(root) !== value
+    || renderedBlobEmojiCount(root) !== expectedBlobEmojiCount(value)
+    || hasValidCaretAnchor(root) !== expectsCaretAnchor(value);
+}
+
 function logicalLength(node: Node): number {
   const token = blobEmojiTokenFor(node);
   if (token) return token.length;
+  const caretAnchor = blobEmojiCaretAnchorValue(node);
+  if (caretAnchor !== null) return caretAnchor.length;
   if (node.nodeType === Node.TEXT_NODE) return node.textContent?.length ?? 0;
   return Array.from(node.childNodes).reduce((total, child) => total + logicalLength(child), 0);
 }
 
 function logicalOffset(root: HTMLElement, target: Node, targetOffset: number) {
   function visit(node: Node): { found: boolean; length: number } {
+    const caretAnchor = blobEmojiCaretAnchorValue(node);
+    if (caretAnchor !== null) {
+      const containsTarget = node === target || node.contains(target);
+      if (!containsTarget) return { found: false, length: caretAnchor.length };
+      const source = node.textContent ?? '';
+      const offset = node === target ? source.length : targetOffset;
+      return {
+        found: true,
+        length: source.slice(0, offset).split(BLOB_EMOJI_CARET_MARKER).join('').length,
+      };
+    }
     if (node === target) {
       if (node.nodeType === Node.TEXT_NODE) {
         return { found: true, length: Math.min(targetOffset, node.textContent?.length ?? 0) };
@@ -145,6 +187,15 @@ function domPoint(root: HTMLElement, target: number): { node: Node; offset: numb
       const parent = node.parentNode ?? root;
       const index = Array.prototype.indexOf.call(parent.childNodes, node);
       if (remaining <= token.length) {
+        const caretAnchor = node.nextSibling;
+        if (
+          remaining > token.length / 2
+          && caretAnchor
+          && blobEmojiCaretAnchorValue(caretAnchor) !== null
+        ) {
+          const text = caretAnchor.firstChild ?? caretAnchor;
+          return { node: text, offset: text.textContent?.length ?? 0 };
+        }
         return {
           node: parent,
           offset: remaining <= token.length / 2 ? index : index + 1,
@@ -152,6 +203,22 @@ function domPoint(root: HTMLElement, target: number): { node: Node; offset: numb
       }
       remaining -= token.length;
       return null;
+    }
+    const caretAnchor = blobEmojiCaretAnchorValue(node);
+    if (caretAnchor !== null) {
+      if (remaining > caretAnchor.length) {
+        remaining -= caretAnchor.length;
+        return null;
+      }
+      const text = node.firstChild ?? node;
+      const source = text.textContent ?? '';
+      let logicalOffset = 0;
+      for (let offset = 0; offset < source.length; offset += 1) {
+        if (source[offset] === BLOB_EMOJI_CARET_MARKER) continue;
+        if (logicalOffset === remaining) return { node: text, offset };
+        logicalOffset += 1;
+      }
+      return { node: text, offset: source.length };
     }
     if (node.nodeType === Node.TEXT_NODE) {
       const length = node.textContent?.length ?? 0;
@@ -166,6 +233,27 @@ function domPoint(root: HTMLElement, target: number): { node: Node; offset: numb
     return null;
   }
   return visit(root) ?? { node: root, offset: root.childNodes.length };
+}
+
+function deleteTrailingBlobEmojiAtCaret(root: HTMLElement) {
+  const selection = window.getSelection();
+  if (!selection?.isCollapsed || !selection.anchorNode) return false;
+  const anchor = (selection.anchorNode.nodeType === Node.ELEMENT_NODE
+    ? selection.anchorNode as Element
+    : selection.anchorNode.parentElement)?.closest(
+      `[${BLOB_EMOJI_CARET_ANCHOR_ATTRIBUTE}]`,
+    );
+  if (!anchor || blobEmojiCaretAnchorValue(anchor) !== '') return false;
+  const emoji = anchor.previousSibling;
+  if (!emoji || !blobEmojiTokenFor(emoji)) return false;
+  emoji.remove();
+  anchor.remove();
+  const range = document.createRange();
+  range.selectNodeContents(root);
+  range.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return true;
 }
 
 function selectionIn(root: HTMLElement): EmojiTextSelection {
@@ -265,10 +353,7 @@ export const BlobEmojiComposerInput = forwardRef<BlobEmojiComposerInputHandle, P
       const root = rootRef.current;
       const nextSelection = pendingSelection.current;
       if (!root) return;
-      if (
-        blobEmojiComposerValue(root) !== value
-        || renderedBlobEmojiCount(root) !== expectedBlobEmojiCount(value)
-      ) {
+      if (composerNeedsRender(root, value)) {
         renderComposerValue(root, value);
       }
       if (!nextSelection) return;
@@ -277,8 +362,14 @@ export const BlobEmojiComposerInput = forwardRef<BlobEmojiComposerInputHandle, P
     }, [value]);
 
     const commit = (target: HTMLDivElement) => {
-      pendingSelection.current = selectionIn(target);
-      onChange(blobEmojiComposerValue(target), target);
+      const nextSelection = selectionIn(target);
+      const nextValue = blobEmojiComposerValue(target);
+      pendingSelection.current = nextSelection;
+      if (composerNeedsRender(target, nextValue)) {
+        renderComposerValue(target, nextValue);
+        restoreSelection(target, nextSelection);
+      }
+      onChange(nextValue, target);
     };
 
     const handleInput = (event: FormEvent<HTMLDivElement>) => commit(event.currentTarget);
@@ -304,6 +395,15 @@ export const BlobEmojiComposerInput = forwardRef<BlobEmojiComposerInputHandle, P
         onCompositionEnd={onCompositionEnd}
         onKeyDown={(event) => {
           onKeyDown?.(event);
+          if (
+            !event.defaultPrevented
+            && event.key === 'Backspace'
+            && deleteTrailingBlobEmojiAtCaret(event.currentTarget)
+          ) {
+            event.preventDefault();
+            commit(event.currentTarget);
+            return;
+          }
           if (!event.defaultPrevented && event.key === 'Enter' && event.shiftKey) {
             event.preventDefault();
             replaceSelection(event.currentTarget, '\n');

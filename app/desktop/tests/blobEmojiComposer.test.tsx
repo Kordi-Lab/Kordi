@@ -8,7 +8,11 @@ import {
   BlobEmojiComposerInput,
   type BlobEmojiComposerInputHandle,
 } from '../src/features/emoji/BlobEmojiComposerInput';
-import { blobEmojiComposerValue } from '../src/features/emoji/blobEmojiComposerDom';
+import {
+  BLOB_EMOJI_CARET_ANCHOR_ATTRIBUTE,
+  BLOB_EMOJI_CARET_MARKER,
+  blobEmojiComposerValue,
+} from '../src/features/emoji/blobEmojiComposerDom';
 
 test('rich composer content serializes Blob Emoji images back to stable tokens', () => {
   const dom = new JSDOM('<div id="composer">Hi <span data-blob-emoji-token=":blob:blobwave:"><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></span> there</div>');
@@ -83,6 +87,19 @@ test('typing or pasting a known token rehydrates it as an inline image', async (
       start: twoEmoji.length,
       end: twoEmoji.length,
     });
+    const caretAnchor = editor.querySelector(`[${BLOB_EMOJI_CARET_ANCHOR_ATTRIBUTE}]`);
+    assert.equal(caretAnchor?.textContent, BLOB_EMOJI_CARET_MARKER);
+    assert.equal(window.getSelection()?.anchorNode, caretAnchor?.firstChild);
+    assert.equal(window.getSelection()?.anchorOffset, BLOB_EMOJI_CARET_MARKER.length);
+    assert.equal(blobEmojiComposerValue(editor), twoEmoji);
+
+    await act(async () => {
+      editor.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+        key: 'Backspace',
+        bubbles: true,
+      }));
+    });
+    assert.equal(blobEmojiComposerValue(editor), ':blob:blobwave:');
   } finally {
     await act(async () => root.unmount());
     previous.forEach((descriptor, key) => {
