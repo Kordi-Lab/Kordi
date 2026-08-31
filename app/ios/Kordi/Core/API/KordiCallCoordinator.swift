@@ -68,6 +68,23 @@ enum KordiCallStartPolicy {
     }
 }
 
+enum KordiIncomingCallPolicy {
+    static func shouldReport(
+        call: CloudCall,
+        accountID: String?,
+        alreadyReported: Bool
+    ) -> Bool {
+        guard let accountID else { return false }
+        return call.state != .ended
+            && (call.kind == .meeting || call.state == .ringing)
+            && call.createdByAccountId != accountID
+            && call.participants.contains {
+                $0.accountId == accountID && $0.state == "invited"
+            }
+            && !alreadyReported
+    }
+}
+
 enum KordiCallSystemStartErrorPresentation {
     static func message(for error: Error) -> String {
         let error = error as NSError
@@ -101,6 +118,10 @@ enum KordiCallMediaFailurePolicy {
     ) -> Bool {
         requestedEnabled && !hasPublished
     }
+}
+
+enum KordiCallVideoQuality {
+    static let captureDimensions = Dimensions.h1080_169
 }
 
 enum KordiCallRecoveryPolicy {
@@ -245,6 +266,10 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         activeCall?.direction == .incoming && media == nil && phase == .ringing
     }
 
+    var isMinimized: Bool {
+        activeCall != nil && !isCallScreenPresented && !isAwaitingIncomingAnswer
+    }
+
     override init() {
         let configuration = CXProviderConfiguration()
         configuration.supportedHandleTypes = [.generic]
@@ -253,7 +278,13 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
         configuration.supportsVideo = true
         provider = CXProvider(configuration: configuration)
         pushRegistry = PKPushRegistry(queue: .main)
-        room = Room()
+        room = Room(
+            roomOptions: RoomOptions(
+                defaultCameraCaptureOptions: CameraCaptureOptions(
+                    dimensions: KordiCallVideoQuality.captureDimensions
+                )
+            )
+        )
         super.init()
 
         provider.setDelegate(self, queue: nil)
@@ -453,14 +484,11 @@ final class KordiCallCoordinator: NSObject, ObservableObject {
                 updateActiveCall(call, conversation: conversation)
                 continue
             }
-            guard call.state != .ended,
-                  call.kind != .meeting,
-                  call.state == .ringing,
-                  call.createdByAccountId != model.account?.accountId,
-                  call.participants.contains(where: {
-                      $0.accountId == model.account?.accountId && $0.state == "invited"
-                  }),
-                  !reportedIncomingCallIDs.contains(call.id) else { continue }
+            guard KordiIncomingCallPolicy.shouldReport(
+                call: call,
+                accountID: model.account?.accountId,
+                alreadyReported: reportedIncomingCallIDs.contains(call.id)
+            ) else { continue }
             reportIncoming(call: call, conversation: conversation)
         }
     }

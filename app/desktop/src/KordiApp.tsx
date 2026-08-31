@@ -1,5 +1,5 @@
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { useEffect, useState, type MouseEventHandler } from 'react';
+import { useEffect, useRef, useState, type MouseEventHandler } from 'react';
 
 import { AppShellFrame } from '@/app/AppShellFrame';
 import { syncNativeWindowTheme } from '@/app/nativeWindowTheme';
@@ -7,6 +7,18 @@ import { readStoredThemeMode, resolveThemeMode } from '@/app/themePreference';
 import { useKordiAppModel } from '@/app/useKordiAppModel';
 import { CloudCallHost } from '@/features/cloud/CloudCallHost';
 import { CloudCallProvider } from '@/features/cloud/CloudCallProvider';
+import {
+  CALL_WINDOW_THUMBNAIL_EVENT,
+  CALL_WINDOW_RESULT_EVENT,
+  CALL_WINDOW_VISIBILITY_EVENT,
+  openCallWindow,
+  relayCallWindowState,
+} from '@/features/cloud/callWindow';
+import {
+  CLOUD_CALLS_CHANGED_EVENT,
+  type CloudCallsChangedDetail,
+} from '@/features/cloud/cloudCalls';
+import type { CloudCallsController } from '@/features/cloud/cloudCallController';
 import { shouldStartNativeWindowDrag } from '@/app/windowDrag';
 import {
   clearNativeTextSelection,
@@ -25,6 +37,7 @@ import { useCloudSession, type UseCloudSessionResult } from '@/features/cloud/us
 import { WhatsNewLaunchWindow } from '@/features/updates/useWhatsNewWindow';
 import { CloudLoginPage } from '@/kordi-app/cloud/CloudLoginPage';
 import type { ResolvedThemeMode, ThemeMode } from '@/kordi-app/types';
+import type { Conversation } from '@/kordi-app/types';
 import { GroupInvitationDialog } from '@/pages/GroupInvitationDialog';
 
 const SHOW_DEBUG_AUTH_DIAGNOSTICS = cloudAuthCapabilityDiscoveryEnabled();
@@ -289,7 +302,13 @@ function KordiAppShell({
   }, []);
 
   const appShellFrameProps = useKordiAppModel({ cloudSessionOverride: cloudSession });
-  const { cloudInitialSync, cloudCalls, ...frameProps } = appShellFrameProps;
+  const detachedCallWindowEnabled = isTauriRuntime();
+  const {
+    cloudInitialSync,
+    cloudCalls,
+    callConversations,
+    ...frameProps
+  } = appShellFrameProps;
   if (cloudInitialSync.status !== 'ready') {
     return (
       <div className={`kordi-app ${appShellFrameProps.rootThemeClass}`}>
@@ -303,9 +322,19 @@ function KordiAppShell({
   return (
     <>
       <CloudCallProvider controller={cloudCalls}>
+        <DetachedCallWindowLauncher
+          controller={cloudCalls}
+          conversations={callConversations}
+          enabled={detachedCallWindowEnabled}
+        />
         <AppShellFrame
           {...frameProps}
-          callOverlay={<CloudCallHost controller={cloudCalls} />}
+          callOverlay={(
+            <CloudCallHost
+              controller={cloudCalls}
+              suppressCurrentSurface={detachedCallWindowEnabled}
+            />
+          )}
         />
       </CloudCallProvider>
       <WhatsNewLaunchWindow />
@@ -322,6 +351,131 @@ function KordiAppShell({
       ) : null}
     </>
   );
+}
+
+function DetachedCallWindowLauncher({
+  controller,
+  conversations,
+  enabled,
+}: {
+  controller: CloudCallsController;
+  conversations: readonly Conversation[];
+  enabled: boolean;
+}) {
+  const openingCallIdRef = useRef<string | null>(null);
+  const { detachedCall, setDetachedCallFolded, updateDetachedThumbnail } = controller;
+
+  useEffect(() => {
+    const current = controller.currentCall;
+    const incoming = controller.incomingCall;
+    const presented = current ?? incoming;
+    const requiresAnswer = !current && Boolean(incoming);
+    if (!enabled
+      || !presented
+      || !controller.account
+      || controller.detachedCall
+      || (current && !controller.isPresented)
+      || (current
+        && controller.phase !== 'connecting'
+        && controller.phase !== 'ringing'
+        && controller.phase !== 'connected'
+        && controller.phase !== 'reconnecting')
+      || openingCallIdRef.current === presented.call.id) return;
+    const conversation = conversations.find((candidate) => (
+      (candidate.canonicalSessionId || candidate.id) === presented.sessionId
+    ));
+    if (!conversation) return;
+    openingCallIdRef.current = presented.call.id;
+    void openCallWindow({
+      account: controller.account,
+      call: presented.call,
+      sessionId: presented.sessionId,
+      requiresAnswer,
+      conversation: {
+        id: conversation.id,
+        canonicalSessionId: conversation.canonicalSessionId,
+        name: conversation.name,
+      },
+    }, {
+      onReady: async () => {
+        if (requiresAnswer) controller.claimIncomingCallWindow(presented.call.id);
+        else await controller.moveToWindow();
+      },
+      onDestroyed: () => {
+        openingCallIdRef.current = null;
+        controller.clearDetachedCall();
+      },
+    }).catch(() => {
+      openingCallIdRef.current = null;
+    });
+  }, [controller, conversations, enabled]);
+
+  useEffect(() => {
+    if (!controller.account) return undefined;
+    const handleCallState = (event: Event) => {
+      const detail = (event as CustomEvent<CloudCallsChangedDetail>).detail;
+      const callId = controller.detachedCall?.call.id ?? openingCallIdRef.current;
+      if (!detail || detail.accountId !== controller.account?.accountId || !callId) return;
+      const calls = detail.calls.filter((entry) => entry.call.id === callId);
+      if (calls.length > 0) {
+        void relayCallWindowState({ ...detail, calls });
+      }
+    };
+    window.addEventListener(CLOUD_CALLS_CHANGED_EVENT, handleCallState);
+    return () => window.removeEventListener(CLOUD_CALLS_CHANGED_EVENT, handleCallState);
+  }, [controller.account, controller.detachedCall]);
+
+  useEffect(() => {
+    if (!detachedCall) return undefined;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void import('@tauri-apps/api/event').then(async ({ listen }) => {
+      const unlistenThumbnail = await listen<{ dataUrl?: string }>(
+        CALL_WINDOW_THUMBNAIL_EVENT,
+        (event) => {
+          const dataUrl = event.payload?.dataUrl;
+          if (!disposed
+            && typeof dataUrl === 'string'
+            && dataUrl.startsWith('data:image/jpeg;base64,')
+            && dataUrl.length < 200_000) {
+            updateDetachedThumbnail(dataUrl);
+          }
+        },
+      );
+      const unlistenVisibility = await listen<{ folded?: boolean }>(
+        CALL_WINDOW_VISIBILITY_EVENT,
+        (event) => {
+          if (!disposed && typeof event.payload?.folded === 'boolean') {
+            setDetachedCallFolded(event.payload.folded);
+          }
+        },
+      );
+      const unlistenResult = await listen<CloudCallsChangedDetail>(
+        CALL_WINDOW_RESULT_EVENT,
+        (event) => {
+          if (!disposed) {
+            window.dispatchEvent(new CustomEvent(CLOUD_CALLS_CHANGED_EVENT, {
+              detail: event.payload,
+            }));
+          }
+        },
+      );
+      return () => {
+        unlistenThumbnail();
+        unlistenVisibility();
+        unlistenResult();
+      };
+    }).then((nextUnlisten) => {
+      if (disposed) nextUnlisten();
+      else unlisten = nextUnlisten;
+    });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [detachedCall, setDetachedCallFolded, updateDetachedThumbnail]);
+
+  return null;
 }
 
 export default function KordiApp() {

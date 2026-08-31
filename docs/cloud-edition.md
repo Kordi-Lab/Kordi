@@ -98,12 +98,13 @@ Groups reuse the chat/session UI while syncing through group controls with the `
 
 Kordi uses the hosted API for call lifecycle, participant authorization, and
 short-lived media credentials. LiveKit carries audio and video after the API
-authorizes a participant. Direct calls use PushKit and CallKit for incoming
-ringing, while group meetings use ordinary APNs alerts plus a durable Join card
-above the conversation. Call lifecycle changes use the durable realtime chat
-stream; desktop has a 15-second repair poll and iOS has a two-second repair
-poll when realtime is unavailable. Each snapshot carries a monotonic revision,
-and an ended call is terminal for every client projection.
+authorizes a participant. Direct calls and group meetings use PushKit and
+CallKit for full-screen incoming ringing on iOS. The durable Join card remains
+available as recovery when a meeting is already active. Call lifecycle changes
+use the durable realtime chat stream; desktop has a 15-second repair poll and
+iOS has a two-second repair poll when realtime is unavailable. Each snapshot
+carries a monotonic revision, and an ended call is terminal for every client
+projection.
 
 Configure the LiveKit variables together. `KORDI_LIVEKIT_URL` must use `wss`,
 except that an isolated development service may use `ws` on a loopback host.
@@ -130,9 +131,9 @@ KORDI_APNS_PRIVATE_KEY_BASE64=...
 KORDI_APNS_BUNDLE_ID=...
 ```
 
-The APNs key value is the base64 encoding of the private key file. Direct-call
-VoIP tokens and ordinary notification tokens are registered separately so an
-alert token is never used for a PushKit request.
+The APNs key value is the base64 encoding of the private key file. Call VoIP
+tokens and ordinary notification tokens are registered separately so an alert
+token is never used for a PushKit request.
 
 Ordinary APNs tokens also receive message attention events after the message
 transaction commits. Delivery excludes the sender, respects conversation mute

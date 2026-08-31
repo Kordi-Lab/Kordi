@@ -30,15 +30,16 @@ import type {
 import {
   activeCallsBySessionId,
   callMutationCompleted,
-  callParticipant,
   callStartedOnAnotherDevice,
   conversationSessionId,
+  isIncomingCallInvitation,
   newestCloudCallSnapshot,
   preferredCallEntry,
   reconcileCloudCallSnapshot,
   shouldApplyActiveCallSnapshot,
 } from './cloudCallState';
 import { useCloudCallMedia } from './useCloudCallMedia';
+import { showCallWindow } from './callWindow';
 import type { Conversation } from '@/kordi-app/types';
 
 const ACTIVE_CALL_REFRESH_MS = 15_000;
@@ -49,7 +50,7 @@ export function useCloudCalls({
   client: clientOverride,
 }: {
   account: CloudAccount | null;
-  conversations: readonly Conversation[];
+  conversations: readonly Pick<Conversation, 'id' | 'canonicalSessionId'>[];
   client?: CloudAuthClient;
 }): CloudCallsController {
   const client = useMemo(() => clientOverride ?? defaultCloudAuthClient(), [clientOverride]);
@@ -59,6 +60,9 @@ export function useCloudCalls({
   const [phase, setPhase] = useState<CloudCallPhase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [isPresented, setIsPresented] = useState(false);
+  const [detachedCallId, setDetachedCallId] = useState<string | null>(null);
+  const [detachedThumbnailUrl, setDetachedThumbnailUrl] = useState<string | null>(null);
+  const [isDetachedCallFolded, setDetachedCallFolded] = useState(false);
   const operationRef = useRef(0);
   const currentRef = useRef<CurrentCallState | null>(null);
   const locallyEndedCallIdsRef = useRef(new Set<string>());
@@ -103,6 +107,9 @@ export function useCloudCalls({
     callSnapshotGenerationRef.current += 1;
     if (ended) {
       locallyEndedCallIdsRef.current.add(call.id);
+      setDetachedCallId((currentId) => currentId === call.id ? null : currentId);
+      setDetachedThumbnailUrl(null);
+      setDetachedCallFolded(false);
     }
     else if (locallyEndedCallIdsRef.current.has(call.id)) return;
     const resolvedSessionId = sessionId?.trim()
@@ -128,6 +135,9 @@ export function useCloudCalls({
     if (activeAccountIdRef.current === accountId) return;
     activeAccountIdRef.current = accountId;
     locallyEndedCallIdsRef.current.clear();
+    setDetachedCallId(null);
+    setDetachedThumbnailUrl(null);
+    setDetachedCallFolded(false);
     callSnapshotGenerationRef.current += 1;
     activeCallsRequestRef.current += 1;
     setCallsBySessionId({});
@@ -207,12 +217,14 @@ export function useCloudCalls({
 
   const decline = useCallback(async (call: CloudCall, sessionId?: string | null) => {
     const stored = await loadSession();
-    if (!stored?.token) return;
+    if (!stored?.token) return null;
     try {
       const updated = await callClient.decline(stored.token, call.id);
       if (updated) updateCall(updated, sessionId);
+      return updated;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not decline the call.');
+      return null;
     }
   }, [callClient, updateCall]);
 
@@ -329,17 +341,38 @@ export function useCloudCalls({
   const incomingCall = useMemo(() => {
     if (!account || current) return null;
     return preferredCallEntry(entries, (call) => (
-      call.kind !== 'meeting'
-      && call.createdByAccountId !== account.accountId
-      && callParticipant(call, account.accountId)?.state === 'invited'
+      call.id !== detachedCallId
+        && isIncomingCallInvitation(call, account.accountId)
     ));
-  }, [account, current, entries]);
+  }, [account, current, detachedCallId, entries]);
   const handoffCall = useMemo(() => {
     if (!account || current || incomingCall) return null;
     return preferredCallEntry(entries, (call) => (
+      call.id !== detachedCallId
+      &&
       callStartedOnAnotherDevice(call, account.accountId)
     ));
-  }, [account, current, entries, incomingCall]);
+  }, [account, current, detachedCallId, entries, incomingCall]);
+  const detachedCall = useMemo(() => {
+    if (!detachedCallId) return null;
+    const entry = entries.find(([, call]) => call.id === detachedCallId);
+    return entry ? { sessionId: entry[0], call: entry[1] } : null;
+  }, [detachedCallId, entries]);
+
+  const moveToWindow = useCallback(async () => {
+    const active = currentRef.current;
+    if (!active) return;
+    setDetachedCallId(active.call.id);
+    setDetachedThumbnailUrl(null);
+    setDetachedCallFolded(false);
+    await resetCurrent();
+  }, [resetCurrent]);
+
+  const claimIncomingCallWindow = useCallback((callId: string) => {
+    setDetachedCallId(callId);
+    setDetachedThumbnailUrl(null);
+    setDetachedCallFolded(false);
+  }, []);
 
   return {
     account,
@@ -347,6 +380,9 @@ export function useCloudCalls({
     currentCall,
     incomingCall,
     handoffCall,
+    detachedCall,
+    detachedThumbnailUrl,
+    isDetachedCallFolded,
     phase,
     error,
     isPresented,
@@ -373,6 +409,19 @@ export function useCloudCalls({
     switchMediaDevice,
     show: () => setIsPresented(true),
     minimize: () => setIsPresented(false),
+    moveToWindow,
+    claimIncomingCallWindow,
+    showWindow: async () => {
+      setDetachedCallFolded(false);
+      await showCallWindow();
+    },
+    clearDetachedCall: () => {
+      setDetachedCallId(null);
+      setDetachedThumbnailUrl(null);
+      setDetachedCallFolded(false);
+    },
+    setDetachedCallFolded,
+    updateDetachedThumbnail: setDetachedThumbnailUrl,
     dismissError: () => setError(null),
   };
 }

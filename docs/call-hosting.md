@@ -305,7 +305,7 @@ exchange media.
 
 ### 4. Configure iOS background ringing separately
 
-Foreground calls can work without APNs. Incoming direct calls while iOS is
+Foreground calls can work without APNs. Incoming calls while iOS is
 backgrounded require all five APNs variables on the Cloud server:
 
 ```text

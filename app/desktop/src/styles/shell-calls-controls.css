@@ -194,12 +194,6 @@
   font-weight: 660;
 }
 
-.app-call-device-menu-heading span {
-  margin-top: 3px;
-  color: rgb(225 230 255 / 0.6);
-  font-size: 10px;
-}
-
 .app-call-device-group {
   padding: 5px 0 6px;
   border-top: 1px solid rgb(255 255 255 / 0.07);
@@ -211,8 +205,6 @@
   color: rgb(226 231 255 / 0.6);
   font-size: 10px;
   font-weight: 680;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .app-call-device-option {
@@ -266,4 +258,38 @@
   color: rgb(225 230 255 / 0.68);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.app-call-window-root .app-call-controls {
+  bottom: 20px;
+  width: auto;
+  max-width: calc(100% - 32px);
+  justify-content: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.app-call-window-root .app-call-control {
+  min-width: 64px;
+  gap: 6px;
+  padding: 0;
+}
+
+.app-call-window-root .app-call-control-disc {
+  width: 54px;
+  height: 54px;
+  background: rgb(255 255 255 / 0.13);
+}
+
+.app-call-window-root .app-call-control-label {
+  font-size: 11px;
+}
+
+.app-call-window-root .app-call-device-menu {
+  bottom: 84px;
 }

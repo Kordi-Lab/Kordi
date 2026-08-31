@@ -114,8 +114,12 @@
   }
 
   .app-call-device-menu {
-    right: -56px;
+    position: fixed;
+    right: auto;
+    bottom: 110px;
+    left: 50%;
     width: min(286px, calc(100vw - 24px));
+    transform: translateX(-50%);
   }
 }
 

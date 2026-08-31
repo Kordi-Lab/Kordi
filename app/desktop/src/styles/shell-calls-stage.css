@@ -9,6 +9,47 @@
   background: rgb(4 6 11 / 0.82);
 }
 
+.app-call-window-root,
+.app-call-window-root body,
+.app-call-window-root #root,
+.app-call-window-shell {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #06080c;
+}
+
+.app-call-window-root .app-call-overlay {
+  position: fixed;
+}
+
+.app-call-window-pending {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgb(248 249 255 / 0.94);
+  background: #1b1f23;
+}
+
+.app-call-window-incoming-controls {
+  position: absolute;
+  right: 0;
+  bottom: 28px;
+  left: 0;
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+}
+
+.app-call-window-answer-control .app-call-control-disc {
+  background: rgb(5 150 105);
+}
+
+.app-call-window-answer-control .app-call-control:hover .app-call-control-disc {
+  background: rgb(4 120 87);
+}
+
 .app-call-surface {
   position: relative;
   isolation: isolate;
@@ -309,6 +350,17 @@
   background: rgb(5 7 12 / 0.78);
 }
 
+.app-call-remote-video video {
+  object-fit: contain;
+}
+
+.app-call-window-root .app-call-remote-video {
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: var(--app-call-remote-aspect, 16 / 9);
+}
+
 .app-call-local-preview {
   position: absolute;
   z-index: 4;
@@ -337,4 +389,105 @@
 
 .app-call-surface > audio {
   display: none;
+}
+
+/* The detached macOS call window follows native call-app composition: media
+ * leads, native chrome owns the window, and controls stay visually separate. */
+.app-call-window-root .app-call-surface {
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  background: #1b1f23;
+}
+
+.app-call-window-root .app-call-surface::before {
+  display: none;
+}
+
+.app-call-window-root .app-call-surface-header {
+  position: absolute;
+  z-index: 6;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  min-height: 0;
+  justify-content: flex-end;
+  padding: 16px 16px 0;
+}
+
+.app-call-window-root .app-call-surface-actions {
+  display: flex;
+}
+
+.app-call-window-root .app-call-icon-button {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(5 7 10 / 0.72);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.app-call-window-root .app-call-direct-stage {
+  padding: 44px 24px 118px;
+}
+
+.app-call-window-root .app-call-participant-grid {
+  padding: 52px 20px 118px;
+}
+
+.app-call-window-root .app-call-identity-stage {
+  animation: none;
+}
+
+.app-call-window-root .app-call-identity-avatar-shell {
+  width: 116px;
+  box-shadow: none;
+}
+
+.app-call-window-root .app-call-identity-avatar {
+  font-size: 32px;
+}
+
+.app-call-window-root .app-call-identity-stage h3 {
+  margin-top: 20px;
+  font-size: 28px;
+}
+
+.app-call-window-root .app-call-identity-stage p {
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.app-call-window-root .app-call-remote-video {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 12px;
+  background: #111419;
+  outline: none;
+}
+
+.app-call-window-shell[data-video-orientation='portrait'] .app-call-remote-video {
+  width: auto;
+  height: 100%;
+}
+
+.app-call-window-shell[data-video-orientation='landscape'] .app-call-remote-video {
+  width: 100%;
+  height: auto;
+}
+
+.app-call-window-root .app-call-local-preview {
+  top: auto;
+  right: 24px;
+  bottom: 112px;
+  width: clamp(112px, 20vw, 156px);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 14px;
+  box-shadow: 0 14px 34px rgb(0 0 0 / 0.34);
+}
+
+.app-call-window-shell[data-video-orientation='portrait'] .app-call-local-preview {
+  width: clamp(96px, 20vw, 128px);
 }
