@@ -38,6 +38,7 @@ import {
 import type {
   CloudMessageIndex,
 } from './cloudMessageIndex';
+import { patchCloudCollaborationUnreadCounts } from './cloudUnreadReconciliation';
 
 export function localOwnedAgentSessionsForCloudHiding(
   sessions: CanonicalSessionState['sessions'],
@@ -215,6 +216,7 @@ export function useCloudCollaborationReadModel({
   initialMessagesSettled,
   messageIndex,
   messagesByPeer,
+  unreadCountsBySessionId,
   readInboundMessageIdsByPeer,
 }: {
   account: CloudAccount | null;
@@ -239,6 +241,7 @@ export function useCloudCollaborationReadModel({
   initialMessagesSettled: boolean;
   messageIndex: CloudMessageIndex;
   messagesByPeer: Record<string, CloudMessage[]>;
+  unreadCountsBySessionId: Readonly<Record<string, number>> | null;
   readInboundMessageIdsByPeer: Record<string, Set<string>>;
 }) {
   const baseCloudCollaborationState = useMemo(() => {
@@ -297,8 +300,14 @@ export function useCloudCollaborationReadModel({
       hiddenCloudSessionIds,
       suppressUnscopedSelfAgentConversation,
     });
+    const reconciled = unreadCountsBySessionId
+      ? patchCloudCollaborationUnreadCounts(
+          generated,
+          unreadCountsBySessionId,
+        )
+      : generated;
     return mergeCloudCollaborationOptimisticState(
-      generated,
+      reconciled,
       currentOverride,
     );
   }, [
@@ -314,6 +323,7 @@ export function useCloudCollaborationReadModel({
     override,
     overrideContextKey,
     readInboundMessageIdsByPeer,
+    unreadCountsBySessionId,
   ]);
 
   const cloudCollaborationState = useMemo(() => {

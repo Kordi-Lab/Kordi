@@ -45,6 +45,7 @@ export type CloudCollaborationMessageStore = {
   onSelfAgentRecoverySettled: () => void;
   pendingGroupProjectionSessionIds: ReadonlySet<string>;
   currentAccountValue: Record<string, CloudMessage[]>;
+  fullCurrentAccountValue: Record<string, CloudMessage[]>;
   belongsToCurrentAccount: boolean;
   index: CloudMessageIndex;
   indexRef: MutableRefObject<CloudMessageIndex>;
@@ -79,6 +80,7 @@ export function useCloudCollaborationStores({
     setValue: setMessagesByPeer,
     valueRef: messagesByPeerRef,
     currentAccountValue: currentAccountMessagesByPeer,
+    fullCurrentAccountValue: fullCurrentAccountMessagesByPeer,
     belongsToCurrentAccount: messagesBelongToCurrentAccount,
     index: messageIndex,
     indexRef: messageIndexRef,
@@ -173,6 +175,7 @@ export function useCloudCollaborationStores({
       setByPeer: setMessagesByPeer,
       byPeerRef: messagesByPeerRef,
       currentAccountByPeer: currentAccountMessagesByPeer,
+      fullCurrentAccountByPeer: fullCurrentAccountMessagesByPeer,
       belongsToCurrentAccount: messagesBelongToCurrentAccount,
       index: messageIndex,
       indexRef: messageIndexRef,

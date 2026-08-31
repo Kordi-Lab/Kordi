@@ -4,6 +4,16 @@ use std::collections::HashSet;
 
 const STARTUP_TAIL_PER_CONVERSATION: i64 = 64;
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatSyncConversationHead {
+    pub conversation_id: String,
+    pub session_id: String,
+    pub latest_message_sequence: i64,
+    pub last_read_sequence: i64,
+    pub unread_count: i64,
+}
+
 pub(super) fn load_cursor_state(
     conn: &Connection,
     account_id: &str,
@@ -334,6 +344,15 @@ fn load_conversation_heads(
              WHERE account_id = ?1 AND conversation_id = ?2",
         )
         .map_err(|error| error.to_string())?;
+    let mut unread_statement = conn
+        .prepare(
+            "SELECT COUNT(*) FROM chat_sync_messages
+             WHERE account_id = ?1 AND conversation_id = ?2
+               AND conversation_sequence > ?3
+               AND COALESCE(json_extract(snapshot_json, '$.sender_account_id'), '') <> ?1
+               AND json_extract(snapshot_json, '$.deleted_at') IS NULL",
+        )
+        .map_err(|error| error.to_string())?;
     let mut heads = Vec::with_capacity(conversation_ids.len());
     for conversation_id in conversation_ids {
         let snapshot: Option<String> = statement
@@ -342,13 +361,57 @@ fn load_conversation_heads(
             .map_err(|error| error.to_string())?;
         let Some(snapshot) = snapshot else { continue };
         let snapshot: Value = serde_json::from_str(&snapshot).map_err(|error| error.to_string())?;
+        let last_read_sequence = snapshot
+            .get("members")
+            .and_then(Value::as_array)
+            .and_then(|members| {
+                members.iter().find(|member| {
+                    member.get("account_id").and_then(Value::as_str) == Some(account_id)
+                })
+            })
+            .and_then(|member| member.get("last_read_sequence"))
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        let unread_count = unread_statement
+            .query_row(
+                params![account_id, conversation_id, last_read_sequence],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
         heads.push(ChatSyncConversationHead {
             conversation_id: conversation_id.clone(),
+            session_id: snapshot
+                .get("legacy_session_id")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(conversation_id)
+                .to_string(),
             latest_message_sequence: snapshot
                 .get("latest_message_sequence")
                 .and_then(Value::as_i64)
                 .unwrap_or(0),
+            last_read_sequence,
+            unread_count,
         });
     }
     Ok(heads)
+}
+
+pub(super) fn load_all_conversation_heads(
+    conn: &Connection,
+    account_id: &str,
+) -> Result<Vec<ChatSyncConversationHead>, String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT conversation_id FROM chat_sync_conversations
+             WHERE account_id = ?1 ORDER BY conversation_id ASC",
+        )
+        .map_err(|error| error.to_string())?;
+    let conversation_ids = statement
+        .query_map([account_id], |row| row.get(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<std::collections::BTreeSet<String>, _>>()
+        .map_err(|error| error.to_string())?;
+    load_conversation_heads(conn, account_id, &conversation_ids)
 }

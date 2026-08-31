@@ -1997,11 +1997,15 @@ actor CloudAPIClient {
         if ["delivery_cursor.updated", "read_cursor.updated"].contains(event.eventType),
            let current = conversation,
            let cursor = event.payload.cursor {
+            let affectedMessages = cloudChatMessagesAffectedByCursor(
+                chatMessagesById.values,
+                conversation: current,
+                cursor: cursor
+            )
             let updated = current.withCursor(cursor)
             remember(updated)
             conversation = updated
-            return chatMessagesById.values
-                .filter { $0.conversationId == updated.id }
+            return affectedMessages
                 .map {
                     messageEvent(
                         id: "\(event.eventId):\($0.id)",
@@ -2407,6 +2411,31 @@ actor CloudAPIClient {
     }
 }
 
+func cloudChatMessagesAffectedByCursor<Messages: Sequence>(
+    _ messages: Messages,
+    conversation: CloudChatConversation,
+    cursor: CloudChatCursor
+) -> [CloudChatMessage] where Messages.Element == CloudChatMessage {
+    guard let member = conversation.members.first(where: { $0.accountId == cursor.accountId }) else {
+        return []
+    }
+    let lastDeliveredSequence = max(
+        member.lastDeliveredSequence,
+        cursor.lastDeliveredSequence
+    )
+    let lastReadSequence = max(member.lastReadSequence, cursor.lastReadSequence)
+    return messages.filter { message in
+        guard message.conversationId == conversation.id else { return false }
+        return (
+            message.conversationSequence > member.lastDeliveredSequence
+                && message.conversationSequence <= lastDeliveredSequence
+        ) || (
+            message.conversationSequence > member.lastReadSequence
+                && message.conversationSequence <= lastReadSequence
+        )
+    }
+}
+
 private struct LoginRequest: Encodable {
     let email: String
     let password: String
@@ -2736,8 +2765,14 @@ private extension CloudChatConversation {
                     role: member.role,
                     membershipState: member.membershipState,
                     version: member.version,
-                    lastDeliveredSequence: cursor.lastDeliveredSequence,
-                    lastReadSequence: cursor.lastReadSequence,
+                    lastDeliveredSequence: max(
+                        member.lastDeliveredSequence,
+                        cursor.lastDeliveredSequence
+                    ),
+                    lastReadSequence: max(
+                        member.lastReadSequence,
+                        cursor.lastReadSequence
+                    ),
                     joinedAt: member.joinedAt,
                     leftAt: member.leftAt
                 )

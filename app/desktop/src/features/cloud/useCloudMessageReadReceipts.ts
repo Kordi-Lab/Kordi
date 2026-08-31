@@ -44,6 +44,22 @@ import {
 type SyncCloudCollaborationDiff =
   CloudMessageSyncController['syncCloudCollaborationDiff'];
 
+export function rollbackReadInboundMessageIds(
+  current: Record<string, Set<string>>,
+  peerId: string,
+  messageIds: readonly string[],
+): Record<string, Set<string>> {
+  const existing = current[peerId];
+  if (!existing) return current;
+  const next = new Set(existing);
+  for (const messageId of messageIds) next.delete(messageId);
+  if (next.size === existing.size) return current;
+  const result = { ...current };
+  if (next.size > 0) result[peerId] = next;
+  else delete result[peerId];
+  return result;
+}
+
 export function useCloudMessageReadReceipts({
   account,
   activeConversationId,
@@ -105,6 +121,29 @@ export function useCloudMessageReadReceipts({
       groupReadTargets.peerIds.length > 0
       || groupReadTargets.sessionIds.length > 0
     ) {
+      const groupSessionIds = new Set(groupReadTargets.sessionIds);
+      const optimisticGroupMessageIdsByPeer = new Map<string, string[]>();
+      for (const row of messageIndex.groupRows) {
+        if (!groupSessionIds.has(row.envelope.groupId)) continue;
+        const peerId = row.wire.fromAccountId.trim();
+        if (!peerId || row.wire.toAccountId !== account.accountId) continue;
+        const messageIds = optimisticGroupMessageIdsByPeer.get(peerId) ?? [];
+        messageIds.push(row.wire.messageId);
+        optimisticGroupMessageIdsByPeer.set(peerId, messageIds);
+      }
+      setReadInboundMessageIdsByPeer((current) => {
+        let changed = false;
+        const next = { ...current };
+        for (const [peerId, messageIds] of optimisticGroupMessageIdsByPeer) {
+          const existing = current[peerId] ?? new Set<string>();
+          const merged = new Set(existing);
+          for (const messageId of messageIds) merged.add(messageId);
+          if (merged.size === existing.size) continue;
+          next[peerId] = merged;
+          changed = true;
+        }
+        return changed ? next : current;
+      });
       setMessagesByPeer((current) => {
         const next = markCloudMessagesReadLocally(
           current,
@@ -147,7 +186,7 @@ export function useCloudMessageReadReceipts({
 
       void loadSession()
         .then((session) => {
-          if (!session?.token) return null;
+          if (!session?.token) throw new Error('Cloud session is unavailable.');
           const readRequests =
             groupReadTargets.sessionIds.length > 0
               ? groupReadTargets.sessionIds.map((sessionId) =>
@@ -161,11 +200,18 @@ export function useCloudMessageReadReceipts({
                 );
           return Promise.all(readRequests);
         })
-        .then((result) => {
-          if (result === null) return;
+        .then(() => {
           void sync();
         })
-        .catch(() => {});
+        .catch(() => {
+          setReadInboundMessageIdsByPeer((current) => {
+            let next = current;
+            for (const [peerId, messageIds] of optimisticGroupMessageIdsByPeer) {
+              next = rollbackReadInboundMessageIds(next, peerId, messageIds);
+            }
+            return next;
+          });
+        });
     }
 
     const peerId =
@@ -189,13 +235,17 @@ export function useCloudMessageReadReceipts({
       `${peerId}:${inboundIds.slice().sort().join(',')}`;
     if (readReceiptRequestRef.current === readSignature) return;
     readReceiptRequestRef.current = readSignature;
+    const rollbackOptimisticRead = () => {
+      setReadInboundMessageIdsByPeer((current) =>
+        rollbackReadInboundMessageIds(current, peerId, inboundIds)
+      );
+    };
     void loadSession()
       .then((session) => {
-        if (!session?.token) return null;
+        if (!session?.token) throw new Error('Cloud session is unavailable.');
         return client.markMessagesRead(session.token, peerId);
       })
-      .then((result) => {
-        if (result === null) return;
+      .then(() => {
         setMessagesByPeer((current) => {
           const next = markCloudMessagesReadLocally(
             current,
@@ -207,6 +257,7 @@ export function useCloudMessageReadReceipts({
         void sync();
       })
       .catch(() => {
+        rollbackOptimisticRead();
         readReceiptRequestRef.current = null;
       });
   }, [
