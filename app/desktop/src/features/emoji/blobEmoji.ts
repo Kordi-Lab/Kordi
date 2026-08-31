@@ -14,6 +14,11 @@ export const blobEmojiCatalog = Object.freeze(
 );
 export const blobEmojiById = new Map(blobEmojiCatalog.map((emoji) => [emoji.id, emoji]));
 export const BLOB_EMOJI_RECENTS_KEY = 'kordi.blob-emoji.recents';
+const blobEmojiInlineTokenPattern = /:blob:([A-Za-z0-9_-]+):/gu;
+
+export type BlobEmojiTextPart =
+  | { type: 'text'; value: string }
+  | { type: 'emoji'; emoji: BlobEmoji; token: string };
 
 export function blobEmojiAssetUrl(emoji: BlobEmoji, baseUrl = cloudApiBaseUrl()) {
   return new URL(
@@ -33,6 +38,26 @@ export function blobEmojiFromReaction(value?: string | null) {
 
 export function blobEmojiInlineToken(emoji: BlobEmoji) {
   return `:blob:${emoji.id}:`;
+}
+
+export function blobEmojiTextParts(value: string): BlobEmojiTextPart[] {
+  const parts: BlobEmojiTextPart[] = [];
+  let cursor = 0;
+  for (const match of value.matchAll(blobEmojiInlineTokenPattern)) {
+    const emoji = blobEmojiById.get(match[1]);
+    if (!emoji) continue;
+    if (match.index > cursor) parts.push({ type: 'text', value: value.slice(cursor, match.index) });
+    parts.push({ type: 'emoji', emoji, token: match[0] });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < value.length) parts.push({ type: 'text', value: value.slice(cursor) });
+  return parts.length > 0 ? parts : [{ type: 'text', value }];
+}
+
+export function blobEmojiPlainText(value: string) {
+  return blobEmojiTextParts(value)
+    .map((part) => part.type === 'emoji' ? 'Emoji' : part.value)
+    .join('');
 }
 
 export function readRecentBlobEmojiIDs(storage: Pick<Storage, 'getItem'> | null = typeof localStorage === 'undefined' ? null : localStorage) {

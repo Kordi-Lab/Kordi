@@ -1,5 +1,6 @@
 import { Copy, Pencil, Send, X } from 'lucide-react';
 
+import { BlobEmojiInlineText } from '@/features/emoji/BlobEmojiInlineText';
 import type { ChatsPageComposer } from '@/pages/chatsPage.types';
 
 type MessageSelectionBarProps = {
@@ -72,8 +73,8 @@ export function ComposerQuotePreview({
           {quote.source.senderLabel}
         </div>
         <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">
-          {quote.source.textPreview
-            || `${quote.source.attachmentCount} attachment${quote.source.attachmentCount === 1 ? '' : 's'}`}
+          <BlobEmojiInlineText text={quote.source.textPreview
+            || `${quote.source.attachmentCount} attachment${quote.source.attachmentCount === 1 ? '' : 's'}`} />
         </div>
       </div>
       <button
@@ -102,7 +103,7 @@ export function ComposerEditPreview({
         <div className="truncate text-[11px] font-semibold text-[color:var(--app-sidebar-accent)]">
           Edit message
         </div>
-        <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]">{text}</div>
+        <div className="truncate text-[11px] text-[color:var(--utility-muted-text)]"><BlobEmojiInlineText text={text} /></div>
       </div>
       <button
         type="button"

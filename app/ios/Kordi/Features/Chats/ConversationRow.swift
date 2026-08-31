@@ -116,7 +116,7 @@ struct ConversationRow: View {
                             if let attachment = conversation.lastAttachment {
                                 ConversationAttachmentThumbnail(attachment: attachment)
                             }
-                            Text(conversation.previewText)
+                            BlobEmojiPreviewText(text: conversation.previewText)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                         }
@@ -132,7 +132,7 @@ struct ConversationRow: View {
                     if let attachment = conversation.lastAttachment {
                         ConversationAttachmentThumbnail(attachment: attachment)
                     }
-                    Text(conversation.previewText)
+                    BlobEmojiPreviewText(text: conversation.previewText)
                 }
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

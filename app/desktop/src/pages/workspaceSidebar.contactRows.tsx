@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, MoreHorizontal, Paperclip, Plus, Split } fro
 
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
 import { isBlankParticipantSpaceSession } from '@/features/chat/participantSpaces';
+import { BlobEmojiInlineText } from '@/features/emoji/BlobEmojiInlineText';
 import { cn } from '@/lib/utils';
 import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
 import {
@@ -117,7 +118,7 @@ function ParticipantSpaceSessionRow({
               && 'app-participant-space-session-preview-live',
           )}
         >
-          {sessionPreview}
+          <BlobEmojiInlineText text={sessionPreview} />
         </div>
       </div>
       <div className="app-participant-space-session-side">
@@ -281,7 +282,7 @@ function ParticipantSpaceRow({
                 <Paperclip className="h-3 w-3 shrink-0" aria-hidden="true" />
               ) : null}
               <span className="min-w-0 truncate">
-                {space.preview || `${participantSpaceKindText(space)} space`}
+                <BlobEmojiInlineText text={space.preview || `${participantSpaceKindText(space)} space`} />
               </span>
             </div>
           </div>
