@@ -141,8 +141,8 @@ test('media lightbox remains image-first across desktop sizes and themes', async
   expect(peerImageBox).not.toBeNull();
   expect(Math.abs((ownTextBox!.x + ownTextBox!.width) - (ownImageBox!.x + ownImageBox!.width))).toBeLessThanOrEqual(1);
   expect(Math.abs(peerTextBox!.x - peerImageBox!.x)).toBeLessThanOrEqual(1);
-  await expect(singleImage).toHaveCSS('border-radius', '16px');
-  await expect(page.locator('[data-attachment-image-collage="true"]').first()).toHaveCSS('border-radius', '16px');
+  await expect(singleImage).toHaveCSS('border-radius', '8px');
+  await expect(page.locator('[data-attachment-image-collage="true"]').first()).toHaveCSS('border-radius', '8px');
   await expect(imageGroupDisclosure).toHaveAccessibleName('Expand 3');
   await expect(imageGroupDisclosure).toHaveAttribute('aria-expanded', 'false');
   await expect(imageGroupDisclosure).toHaveCSS('height', '32px');
