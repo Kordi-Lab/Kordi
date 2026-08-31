@@ -10,6 +10,7 @@ mod cloud_presence;
 mod cloud_session;
 mod link_preview;
 mod media_preview_window;
+mod menu_bar;
 mod message_notification;
 mod project;
 mod remote_image;
@@ -215,6 +216,9 @@ pub fn run() {
             if let Err(err) = chat::allow_attachment_asset_scope(app) {
                 eprintln!("[kordi] Unable to allow attachment preview assets: {err}");
             }
+            if let Err(err) = menu_bar::setup(app) {
+                eprintln!("[kordi] Unable to create menu bar item: {err}");
+            }
             if update_relaunch_requested() {
                 show_and_focus_main_window(app.handle());
             }
@@ -228,6 +232,7 @@ pub fn run() {
             desktop_relaunch_after_update,
             desktop_open_media_preview_window,
             desktop_reveal_media_preview_window,
+            menu_bar::desktop_set_menu_bar_unread_count,
             message_notification::desktop_notification_permission_state,
             message_notification::desktop_request_notification_permission,
             message_notification::desktop_show_message_notification,
