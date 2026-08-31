@@ -126,14 +126,10 @@ export function truncateInlineText(value: string, maxChars = 96) {
 
 export function buildMessagePreview(message: Message) {
   const text = safePreviewText(message.text);
-  if (text.length > 0) {
-    return blobEmojiPlainText(text);
-  }
+  if (text.length > 0) return blobEmojiPlainText(text);
 
   const agentResponseText = safePreviewText(message.turn?.assistantText);
-  if (agentResponseText.length > 0) {
-    return blobEmojiPlainText(agentResponseText);
-  }
+  if (agentResponseText.length > 0) return blobEmojiPlainText(agentResponseText);
 
   return attachmentOnlyMessagePreview(message)?.label ?? '';
 }
