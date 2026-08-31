@@ -195,14 +195,17 @@ unset KORDI_LIVEKIT_API_KEY KORDI_LIVEKIT_API_SECRET
 ```
 
 Install the reviewed Caddy file and run `configure-product-firewall.sh` before
-deploying. Caddy sends only `/rtc` to LiveKit on the existing `kordi.ai` TLS
-origin. The firewall exposes ICE TCP/UDP, TURN/UDP, and the bounded TURN relay
-range; database and application ports stay private.
+deploying. Caddy sends only `/rtc` to LiveKit. The firewall exposes ICE
+TCP/UDP, TURN/UDP, and the bounded TURN relay range; database and application
+ports stay private. During CDN staging, direct HTTP/HTTPS remains available;
+after cutover it must be disabled with `KORDI_CLOUD_CDN_ENABLED=true`.
 
-The production origin at `kordi.ai` serves `/v1/cloud/*`, `/v2/chat/*`,
-`/health`, and `/updates/*` directly. Cross-host redirects must never match
-those product routes because they break browser CORS preflights and can also
-disable WebSockets and desktop updates.
+The public `kordi.ai` origin is a global external Application Load Balancer.
+It routes `/updates/releases/*` through a Cloud CDN-enabled backend and every
+other path through a non-CDN backend. Both backends use the same private Caddy
+origin. Cross-host redirects must never match product routes because they
+break browser CORS preflights and can also disable WebSockets and desktop
+updates.
 
 Before DNS cutover, set
 `KORDI_VERIFY_RESOLVE_IP=<GREEN_STATIC_IP>` so the deploy checks exercise the
@@ -213,11 +216,13 @@ override.
 
 ## Product edge
 
-Caddy reaches the Kubernetes Service through its fixed TCP NodePort at
-`127.0.0.1:30081`. Kubernetes routes the connection to ready pods without an
-embedded cluster IP or a long-running `kubectl port-forward` process. The
-reviewed K3s drop-in restricts NodePorts to loopback, and the product firewall
-must continue denying public TCP access to the NodePort.
+The load balancer reaches Caddy through the zonal VM endpoint on port `8080`.
+Only Google Front End proxy ranges may reach that port. Caddy then reaches the
+Kubernetes Service through its fixed TCP NodePort at `127.0.0.1:30081`.
+Kubernetes routes the connection to ready pods without an embedded cluster IP
+or a long-running `kubectl port-forward` process. The reviewed K3s drop-in
+restricts NodePorts to loopback, and the product firewall must continue
+denying public TCP access to the NodePort.
 
 Install the K3s drop-in and restart K3s first. Then deploy the updated Cloud
 server manifest with `deploy-cloud-server.sh`; the deploy fails closed unless
@@ -250,6 +255,56 @@ The complete Caddy config preserves both public responsibilities:
 
 - website and beta intake on `kordi.ai`;
 - Cloud API, WebSocket, health, and updater routes on `kordi.ai`.
+
+### CDN staging and cutover
+
+Use a global Certificate Manager certificate that was provisioned with DNS
+authorization and is already `ACTIVE`; this avoids a certificate outage during
+the DNS cutover. If the DNS provider temporarily blocks authorization changes,
+a self-managed copy of the current valid Caddy certificate may bootstrap the
+edge, but its expiry must be recorded and it must be replaced by the managed
+certificate before renewal. Keep certificate resource names local to the
+operator environment. Then stage the edge without changing DNS:
+
+```bash
+export KORDI_CLOUD_SSH_TARGET="<PRODUCT_GCE_INSTANCE>"
+export KORDI_CLOUD_SSH_ZONE="<PRODUCT_GCP_ZONE>"
+export KORDI_CLOUD_GCP_PROJECT="<PRODUCT_GCP_PROJECT>"
+export KORDI_CLOUD_CDN_CERTIFICATE="<ACTIVE_CERTIFICATE_MANAGER_CERTIFICATE>"
+# Set KORDI_CLOUD_CDN_WWW_CERTIFICATE only when a temporary bootstrap uses
+# separate current certificates for kordi.ai and www.kordi.ai.
+
+bash bridges/cloud-server/deploy/k3s/configure-product-firewall.sh
+bash bridges/cloud-server/deploy/k3s/configure-updater-cdn.sh
+```
+
+The CDN helper creates a zonal `GCE_VM_IP_PORT` endpoint for Caddy, separate
+cacheable and non-cacheable backend services, the release-path URL rule, HTTP
+redirect, and global HTTPS frontend. It never changes DNS. `USE_ORIGIN_HEADERS`
+keeps the stable `latest/Kordi.dmg` alias at `no-store`, while versioned assets
+retain their one-year immutable policy. Dynamic compression is disabled on the
+release backend so byte ranges continue to describe the signed artifact bytes.
+
+Before cutover, use the staged edge IP printed by the helper with `curl
+--resolve` and verify the homepage, health, auth preflight, WebSocket upgrade,
+updater decision matrix, immutable GET/HEAD, and a bounded byte range. An
+immutable response must include `X-Kordi-CDN-Cache: miss` or `hit`, and a warm
+repeat must become `hit`. A range must return `206`, `Accept-Ranges: bytes`, an
+exact `Content-Range`, the expected range length, and matching local bytes.
+
+After that matrix passes, point `kordi.ai` and `www.kordi.ai` at the staged
+global edge IP. Repeat the matrix through normal DNS, then close the direct
+origin path:
+
+```bash
+KORDI_CLOUD_CDN_ENABLED=true \
+  bash bridges/cloud-server/deploy/k3s/configure-product-firewall.sh
+```
+
+Verify the matrix again. If edge verification fails before the origin is
+closed, restore the prior DNS record. If it fails afterward, first restore the
+direct firewall mode with `KORDI_CLOUD_CDN_ENABLED=false`, then restore prior
+DNS. Never change or delete an immutable release object during edge rollback.
 
 Keep Caddy stopped on a green host until its website assets, beta-intake
 database, TLS state, and product data have been migrated and verified. During

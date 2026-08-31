@@ -4,9 +4,11 @@
 # WebSocket, health, and updater routes.
 #
 # The loopback-only Kubernetes NodePort follows ready Service endpoints without
-# a long-running kubectl transport process or an embedded cluster IP.
+# a long-running kubectl transport process or an embedded cluster IP. Port 8080
+# is the private load-balancer origin and must accept traffic only from Google
+# Front End proxy ranges.
 
-kordi.ai, www.kordi.ai {
+(kordi_product_site) {
 	encode zstd gzip
 	root * /srv/kordi-homepage/current
 
@@ -96,4 +98,12 @@ kordi.ai, www.kordi.ai {
 			}
 		}
 	}
+}
+
+kordi.ai, www.kordi.ai {
+	import kordi_product_site
+}
+
+:8080 {
+	import kordi_product_site
 }

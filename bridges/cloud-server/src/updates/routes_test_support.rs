@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
@@ -16,12 +16,15 @@ use crate::server::ServerState;
 use super::model::{ChannelPointer, ReleaseAsset, ReleaseManifest};
 use super::routes::routes;
 use super::store::{
-    ReleaseCatalogStore, ReleaseObjectStream, ReleaseStoreBackend, ReleaseStoreError,
+    ReleaseByteRange, ReleaseCatalogStore, ReleaseObjectStream, ReleaseStoreBackend,
+    ReleaseStoreError,
 };
 
 #[derive(Default)]
 pub(super) struct MemoryBackend {
     objects: Mutex<HashMap<String, Bytes>>,
+    stream_failures: Mutex<HashSet<String>>,
+    streamed_ranges: Mutex<Vec<Option<ReleaseByteRange>>>,
 }
 
 impl MemoryBackend {
@@ -30,6 +33,14 @@ impl MemoryBackend {
             .lock()
             .unwrap()
             .insert(key.into(), bytes.into());
+    }
+
+    pub(super) fn streamed_ranges(&self) -> Vec<Option<ReleaseByteRange>> {
+        self.streamed_ranges.lock().unwrap().clone()
+    }
+
+    pub(super) fn fail_stream(&self, key: impl Into<String>) {
+        self.stream_failures.lock().unwrap().insert(key.into());
     }
 }
 
@@ -58,17 +69,37 @@ impl ReleaseStoreBackend for MemoryBackend {
             .ok_or(ReleaseStoreError::NotFound)
     }
 
-    async fn stream_object(&self, key: &str) -> Result<ReleaseObjectStream, ReleaseStoreError> {
-        let bytes = self
+    async fn stream_object(
+        &self,
+        key: &str,
+        byte_range: Option<ReleaseByteRange>,
+    ) -> Result<ReleaseObjectStream, ReleaseStoreError> {
+        let mut bytes = self
             .objects
             .lock()
             .unwrap()
             .get(key)
             .cloned()
             .ok_or(ReleaseStoreError::NotFound)?;
+        self.streamed_ranges.lock().unwrap().push(byte_range);
+        if let Some(range) = byte_range {
+            let start = usize::try_from(range.start).map_err(|_| ReleaseStoreError::Unavailable)?;
+            let end = usize::try_from(
+                range
+                    .end_inclusive
+                    .checked_add(1)
+                    .ok_or(ReleaseStoreError::Unavailable)?,
+            )
+            .map_err(|_| ReleaseStoreError::Unavailable)?;
+            bytes = bytes.slice(start..end);
+        }
         let size_bytes = bytes.len() as u64;
-        let body: Pin<Box<dyn Stream<Item = Result<Bytes, ReleaseStoreError>> + Send>> =
-            Box::pin(stream::once(async move { Ok(bytes) }));
+        let failed = self.stream_failures.lock().unwrap().contains(key);
+        let body: Pin<Box<dyn Stream<Item = Result<Bytes, ReleaseStoreError>> + Send>> = if failed {
+            Box::pin(stream::once(async { Err(ReleaseStoreError::Unavailable) }))
+        } else {
+            Box::pin(stream::once(async move { Ok(bytes) }))
+        };
         Ok(ReleaseObjectStream { size_bytes, body })
     }
 }

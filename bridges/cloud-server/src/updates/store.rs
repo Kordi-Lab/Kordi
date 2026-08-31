@@ -97,6 +97,19 @@ pub enum ReleaseStoreError {
     LengthMismatch,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReleaseByteRange {
+    pub start: u64,
+    pub end_inclusive: u64,
+    pub complete_length: u64,
+}
+
+impl ReleaseByteRange {
+    pub fn length(self) -> Option<u64> {
+        self.end_inclusive.checked_sub(self.start)?.checked_add(1)
+    }
+}
+
 pub struct ReleaseObjectStream {
     pub size_bytes: u64,
     pub body: Pin<Box<dyn Stream<Item = Result<Bytes, ReleaseStoreError>> + Send>>,
@@ -116,7 +129,11 @@ impl fmt::Debug for ReleaseObjectStream {
 pub trait ReleaseStoreBackend: Send + Sync {
     async fn get_metadata(&self, key: &str, max_bytes: usize) -> Result<Bytes, ReleaseStoreError>;
     async fn head_object(&self, key: &str) -> Result<u64, ReleaseStoreError>;
-    async fn stream_object(&self, key: &str) -> Result<ReleaseObjectStream, ReleaseStoreError>;
+    async fn stream_object(
+        &self,
+        key: &str,
+        byte_range: Option<ReleaseByteRange>,
+    ) -> Result<ReleaseObjectStream, ReleaseStoreError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -243,10 +260,24 @@ impl ReleaseCatalogStore {
     pub async fn open_asset(
         &self,
         asset: &ReleaseAsset,
+        byte_range: Option<ReleaseByteRange>,
     ) -> Result<ReleaseObjectStream, ReleaseStoreError> {
         self.verify_asset_size(asset).await?;
-        let stream = self.backend.stream_object(&asset.object_key).await?;
-        if stream.size_bytes != asset.size_bytes {
+        let expected_size = match byte_range {
+            Some(range)
+                if range.complete_length == asset.size_bytes
+                    && range.end_inclusive < asset.size_bytes =>
+            {
+                range.length().ok_or(ReleaseStoreError::LengthMismatch)?
+            }
+            Some(_) => return Err(ReleaseStoreError::LengthMismatch),
+            None => asset.size_bytes,
+        };
+        let stream = self
+            .backend
+            .stream_object(&asset.object_key, byte_range)
+            .await?;
+        if stream.size_bytes != expected_size {
             return Err(ReleaseStoreError::LengthMismatch);
         }
         Ok(stream)
@@ -382,18 +413,46 @@ impl ReleaseStoreBackend for MinioReleaseStore {
         value.parse().map_err(|_| ReleaseStoreError::Unavailable)
     }
 
-    async fn stream_object(&self, key: &str) -> Result<ReleaseObjectStream, ReleaseStoreError> {
-        let response = self
-            .client
-            .get(self.get_url(key)?)
+    async fn stream_object(
+        &self,
+        key: &str,
+        byte_range: Option<ReleaseByteRange>,
+    ) -> Result<ReleaseObjectStream, ReleaseStoreError> {
+        let mut request = self.client.get(self.get_url(key)?);
+        if let Some(range) = byte_range {
+            request = request.header(
+                reqwest::header::RANGE,
+                format!("bytes={}-{}", range.start, range.end_inclusive),
+            );
+        }
+        let response = request
             .send()
             .await
             .map_err(|_| ReleaseStoreError::Unavailable)?;
         if response.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(ReleaseStoreError::NotFound);
         }
-        if !response.status().is_success() {
+        let expected_status = if byte_range.is_some() {
+            reqwest::StatusCode::PARTIAL_CONTENT
+        } else {
+            reqwest::StatusCode::OK
+        };
+        if response.status() != expected_status {
             return Err(ReleaseStoreError::Unavailable);
+        }
+        if let Some(range) = byte_range {
+            let expected = format!(
+                "bytes {}-{}/{}",
+                range.start, range.end_inclusive, range.complete_length
+            );
+            if response
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|value| value.to_str().ok())
+                != Some(expected.as_str())
+            {
+                return Err(ReleaseStoreError::Unavailable);
+            }
         }
         let size_bytes = response
             .content_length()

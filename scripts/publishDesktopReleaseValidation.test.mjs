@@ -123,12 +123,14 @@ test('uploads immutable objects, verifies product GET and HEAD, and writes the p
   assert.equal(puts.at(-1).metadata.ifNoneMatch, '*');
   assert.ok(puts.slice(0, -1).every((action) => action.key.startsWith(`desktop/releases/${VERSION}/`)));
   assert.deepEqual(
-    publicHttp.actions.slice(0, 4).map(({ method, url }) => [method, url]),
+    publicHttp.actions.slice(0, 6).map(({ method, url, range }) => [method, url, range]),
     [
-      ['HEAD', prepared.urls.manual],
-      ['GET', prepared.urls.manual],
-      ['HEAD', prepared.urls.updaterArchive],
-      ['GET', prepared.urls.updaterArchive],
+      ['HEAD', prepared.urls.manual, null],
+      ['GET', prepared.urls.manual, `bytes=0-${fixture.dmg.length - 1}`],
+      ['GET', prepared.urls.manual, null],
+      ['HEAD', prepared.urls.updaterArchive, null],
+      ['GET', prepared.urls.updaterArchive, `bytes=0-${fixture.archive.length - 1}`],
+      ['GET', prepared.urls.updaterArchive, null],
     ],
   );
   assert.equal(publicHttp.actions.some(({ url }) => url === prepared.urls.updaterEndpoint), true);

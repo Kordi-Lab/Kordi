@@ -281,12 +281,24 @@ export class MemoryStore {
   }
 }
 
-export function responseFor(bytes, digest, status = 200) {
+export function responseFor(bytes, digest, {
+  status = 200,
+  contentType = 'application/octet-stream',
+  cacheControl = 'public, max-age=31536000, immutable',
+  contentRange,
+} = {}) {
   return {
     status,
     headers: {
       'content-length': String(bytes.length),
+      'content-type': contentType,
       'x-checksum-sha256': digest,
+      etag: `"${digest}"`,
+      'last-modified': 'Mon, 13 Jul 2026 00:00:00 GMT',
+      'accept-ranges': 'bytes',
+      'cache-control': cacheControl,
+      'x-kordi-cdn-cache': cacheControl === 'no-store' ? 'uncacheable' : 'miss',
+      ...(contentRange ? { 'content-range': contentRange } : {}),
     },
     body: Buffer.from(bytes),
   };
@@ -303,19 +315,23 @@ export function makePublicHttp(prepared, {
   byUrl.set(prepared.urls.manual, {
     bytes: prepared.artifacts.manual.bytes,
     digest: prepared.artifacts.manual.sha256,
+    contentType: prepared.release.manual.contentType,
   });
   byUrl.set(prepared.urls.updaterArchive, {
     bytes: wrongArchive ? Buffer.from('tampered') : prepared.artifacts.updater.bytes,
     digest: prepared.artifacts.updater.sha256,
+    contentType: prepared.release.platforms['darwin-aarch64'].contentType,
   });
   if (previousPrepared) {
     byUrl.set(previousPrepared.urls.manual, {
       bytes: previousPrepared.artifacts.manual.bytes,
       digest: previousPrepared.artifacts.manual.sha256,
+      contentType: previousPrepared.release.manual.contentType,
     });
     byUrl.set(previousPrepared.urls.updaterArchive, {
       bytes: previousPrepared.artifacts.updater.bytes,
       digest: previousPrepared.artifacts.updater.sha256,
+      contentType: previousPrepared.release.platforms['darwin-aarch64'].contentType,
     });
   }
   let postPromotionFailed = false;
@@ -327,19 +343,37 @@ export function makePublicHttp(prepared, {
     signature: release.release.platforms['darwin-aarch64'].signature,
   }));
   const stableAsset = () => (postPromotionFailed ? previousPrepared?.artifacts.manual : prepared.artifacts.manual);
+  const assetResponse = (found, { range, cacheControl } = {}) => {
+    if (!range) {
+      return responseFor(found.bytes, found.digest ?? found.sha256, {
+        contentType: found.contentType ?? prepared.release.manual.contentType,
+        cacheControl,
+      });
+    }
+    const match = /^bytes=(\d+)-(\d+)$/.exec(range);
+    if (!match) return { status: 416, headers: {}, body: Buffer.alloc(0) };
+    const start = Number(match[1]);
+    const end = Math.min(Number(match[2]), found.bytes.length - 1);
+    return responseFor(found.bytes.subarray(start, end + 1), found.digest ?? found.sha256, {
+      status: 206,
+      contentType: found.contentType ?? prepared.release.manual.contentType,
+      cacheControl,
+      contentRange: `bytes ${start}-${end}/${found.bytes.length}`,
+    });
+  };
   return {
     actions,
     async head(url) {
-      actions.push({ method: 'HEAD', url });
+      actions.push({ method: 'HEAD', url, range: null });
       if (url === prepared.urls.stableManual) {
         const found = stableAsset();
-        return found ? responseFor(found.bytes, found.sha256) : { status: 404, headers: {}, body: Buffer.alloc(0) };
+        return found ? assetResponse(found, { cacheControl: 'no-store' }) : { status: 404, headers: {}, body: Buffer.alloc(0) };
       }
       const found = byUrl.get(url);
-      return found ? responseFor(found.bytes, found.digest) : { status: 404, headers: {}, body: Buffer.alloc(0) };
+      return found ? assetResponse(found) : { status: 404, headers: {}, body: Buffer.alloc(0) };
     },
-    async get(url) {
-      actions.push({ method: 'GET', url });
+    async get(url, options = {}) {
+      actions.push({ method: 'GET', url, range: options.range ?? null });
       if (url === prepared.urls.updaterEndpoint) {
         const shouldFailPostPromotion = !postPromotionFailed && failPostPromotion;
         if (shouldFailPostPromotion) {
@@ -368,10 +402,10 @@ export function makePublicHttp(prepared, {
       }
       if (url === prepared.urls.stableManual) {
         const found = stableAsset();
-        return found ? responseFor(found.bytes, found.sha256) : { status: 404, headers: {}, body: Buffer.alloc(0) };
+        return found ? assetResponse(found, { range: options.range, cacheControl: 'no-store' }) : { status: 404, headers: {}, body: Buffer.alloc(0) };
       }
       const found = byUrl.get(url);
-      return found ? responseFor(found.bytes, found.digest) : { status: 404, headers: {}, body: Buffer.alloc(0) };
+      return found ? assetResponse(found, { range: options.range }) : { status: 404, headers: {}, body: Buffer.alloc(0) };
     },
   };
 }
