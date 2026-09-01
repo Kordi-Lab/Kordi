@@ -20,6 +20,7 @@ import { canonicalAvatarImageSource } from './canonicalAvatar';
 import {
   cloudGroupIdentityRequest,
   cloudGroupMemberJoinNoticeRequests,
+  cloudGroupNonGenericTitle,
   cloudGroupParticipantsWithProfiles,
   cloudGroupSelfParticipant,
   cloudGroupTitleUpdateNoticeRequest,
@@ -72,6 +73,7 @@ export type ApplyCloudGroupSessionControlInput = {
   cloudMessage: CloudGroupControlContext['cloudMessage'];
   envelope: CloudGroupControlEnvelope;
   historyReplay?: boolean;
+  catalogGroupTitle?: string | null;
   runtime: CloudGroupSessionRuntime;
   canonical: CloudGroupCanonicalRuntime;
   stateOps: CloudGroupSessionStateOps;
@@ -80,14 +82,16 @@ export type ApplyCloudGroupSessionControlInput = {
 export function cloudGroupHistoryReplayPreservesSessionShell(
   historyReplay: boolean | undefined,
   hasExistingSession: boolean,
+  hasCatalogGroupTitle = false,
 ) {
-  return historyReplay === true && hasExistingSession;
+  return historyReplay === true && hasExistingSession && !hasCatalogGroupTitle;
 }
 
 export async function applyCloudGroupSessionControl({
   cloudMessage,
   envelope,
   historyReplay,
+  catalogGroupTitle,
   runtime,
   canonical,
   stateOps,
@@ -97,13 +101,15 @@ export async function applyCloudGroupSessionControl({
   if (!account || !canonicalState || !canonical.setState) return null;
   const localHumanIdentityId = canonicalState.profile.humanIdentityId?.trim();
   if (!localHumanIdentityId) return null;
-  if (envelope.kind !== 'group-message') {
+  const normalizedCatalogGroupTitle = cloudGroupNonGenericTitle(catalogGroupTitle);
+  if (envelope.kind !== 'group-message' || normalizedCatalogGroupTitle) {
     runtime.sessionPreparationCache.delete(envelope.groupId);
   }
   const preparationSignature = cloudGroupSessionPreparationSignature(envelope, account);
   const cachedPreparation = runtime.sessionPreparationCache.get(envelope.groupId);
   if (
     envelope.kind === 'group-message'
+    && !normalizedCatalogGroupTitle
     && cachedPreparation?.signature === preparationSignature
     && cachedPreparation.localHumanIdentityId === localHumanIdentityId
     && canonicalState.sessions.some((session) => session.id === envelope.groupId)
@@ -174,7 +180,11 @@ export async function applyCloudGroupSessionControl({
 
   const groupSpaceId = envelope.groupSpaceId?.trim() || envelope.groupId;
   const envelopeSession = canonicalState.sessions.find((session) => session.id === envelope.groupId) ?? null;
-  if (cloudGroupHistoryReplayPreservesSessionShell(historyReplay, Boolean(envelopeSession))) {
+  if (cloudGroupHistoryReplayPreservesSessionShell(
+    historyReplay,
+    Boolean(envelopeSession),
+    Boolean(normalizedCatalogGroupTitle),
+  )) {
     const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId)
       ?? envelopeSession!.createdByIdentityId;
     for (const noticeRequest of cloudGroupMemberJoinNoticeRequests({
@@ -220,7 +230,8 @@ export async function applyCloudGroupSessionControl({
     .filter(([, identityId]) => identityId !== createdByIdentityId)
     .map(([, identityId]) => identityId);
   const sessionTitleUpdateTitle = cloudSessionTitleUpdateTitle(envelope);
-  const incomingGroupTitle = shouldApplyCloudGroupTitleUpdate(envelope) ? envelope.groupTitle : null;
+  const incomingGroupTitle = normalizedCatalogGroupTitle
+    ?? (shouldApplyCloudGroupTitleUpdate(envelope) ? envelope.groupTitle : null);
   const isSelfAuthoredControl = envelope.actor.accountId === account.accountId;
   const participantNames = [...participantByAccount.values()].map((participant) => participant.displayName);
   const forkMetadata = envelope.fork ? {
@@ -248,7 +259,8 @@ export async function applyCloudGroupSessionControl({
     groupSpaceId,
     incomingTitle: incomingGroupTitle,
     incomingUpdatedAtMs: controlCreatedAtMs,
-    replaceStoredTitle: envelope.kind === 'group-title-update',
+    replaceStoredTitle: Boolean(normalizedCatalogGroupTitle)
+      || envelope.kind === 'group-title-update',
   });
   const envelopeAdminUpdatedAtMs = typeof envelopeSessionMetadata.groupAdminUpdatedAtMs === 'number'
     && Number.isFinite(envelopeSessionMetadata.groupAdminUpdatedAtMs)
@@ -352,7 +364,11 @@ export async function applyCloudGroupSessionControl({
       nextState = await appendCanonicalMessage(noticeRequest);
     }
   }
-  if (groupTitleResolution.appliesIncoming && !isSelfAuthoredControl) {
+  if (
+    groupTitleResolution.appliesIncoming
+    && !normalizedCatalogGroupTitle
+    && !isSelfAuthoredControl
+  ) {
     const noticeRequest = cloudGroupTitleUpdateNoticeRequest({
       envelope,
       actorIdentityId,

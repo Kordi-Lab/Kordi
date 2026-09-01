@@ -276,7 +276,11 @@ export function useCloudGroupControlApplication({
   const apply = useCallback(async (
     cloudMessage: CloudMessage,
     envelope: CloudGroupControlEnvelope,
-    options: { deferPublish?: boolean; historyReplay?: boolean } = {},
+    options: {
+      deferPublish?: boolean;
+      historyReplay?: boolean;
+      catalogGroupTitle?: string | null;
+    } = {},
   ) => {
     const currentAccountId = account?.accountId ?? null;
     if (sessionPreparationCacheRef.current.accountId !== currentAccountId) {
@@ -291,6 +295,7 @@ export function useCloudGroupControlApplication({
       cloudMessage,
       envelope,
       historyReplay: options.historyReplay,
+      catalogGroupTitle: options.catalogGroupTitle,
       runtime: {
         account,
         client,

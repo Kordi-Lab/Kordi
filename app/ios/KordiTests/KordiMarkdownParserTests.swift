@@ -824,6 +824,35 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
+    func testChatListKeepsCustomThreeDotPullToRefreshAndNativeRows() throws {
+        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 24, isRefreshing: false))
+        XCTAssertTrue(ChatPullToRefreshBehavior.shouldStart(
+            distance: ChatPullToRefreshBehavior.triggerDistance,
+            isRefreshing: false
+        ))
+        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 120, isRefreshing: true))
+        XCTAssertEqual(
+            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -93, contentInsetTop: 59),
+            34
+        )
+
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Chats/ChatHomeView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private struct ChatPullToRefreshScrollView"))
+        let end = try XCTUnwrap(source.range(
+            of: "private struct ChatPullOffsetPreferenceKey",
+            range: start.upperBound..<source.endIndex
+        ))
+        let refreshView = source[start.lowerBound..<end.lowerBound]
+
+        XCTAssertTrue(refreshView.contains("List {"))
+        XCTAssertTrue(refreshView.contains("visualState = .pulling(progress:"))
+        XCTAssertFalse(source.contains(".refreshable"))
+    }
+
     func testChatSearchNormalizesWhitespaceAndMatchesContactIdentity() {
         let conversation = searchConversation(
             displayName: "Research Agent",

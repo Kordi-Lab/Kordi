@@ -6,6 +6,7 @@ import React, { act, useMemo, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 import type { ChatSidebarRow } from '../src/pages/sidebar/VirtualChatList';
+import { estimatedChatSidebarRowSize } from '../src/pages/sidebar/chatSidebarRows';
 
 let VirtualChatList: typeof import('../src/pages/sidebar/VirtualChatList').VirtualChatList;
 let buildChatSidebarRows: typeof import('../src/pages/sidebar/VirtualChatList').buildChatSidebarRows;
@@ -144,6 +145,23 @@ test('flat descriptors own expansion, active ancestry, and fork traversal', () =
   });
   assert.equal(expanded.length, collapsed.length + 1);
   assert.ok(expanded.some((row) => row.key === 'session:child-hidden'));
+});
+
+test('initial row estimates match space and session geometry', () => {
+  assert.equal(estimatedChatSidebarRowSize({
+    kind: 'space',
+    key: 'space:one',
+    spaceId: 'one',
+    depth: 0,
+  }), 64);
+  assert.equal(estimatedChatSidebarRowSize({
+    kind: 'session',
+    key: 'session:one',
+    sessionId: 'one',
+    spaceId: 'space:one',
+    depth: 0,
+    activePath: false,
+  }), 46);
 });
 
 test('two sessions in one group space switch the active child row by exact id', async () => {

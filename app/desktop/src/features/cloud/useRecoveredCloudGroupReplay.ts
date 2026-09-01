@@ -58,7 +58,11 @@ export function useRecoveredCloudGroupReplay({
   applyControl: (
     wire: CloudMessage,
     envelope: CloudGroupControlEnvelope,
-    options?: { deferPublish?: boolean; historyReplay?: boolean },
+    options?: {
+      deferPublish?: boolean;
+      historyReplay?: boolean;
+      catalogGroupTitle?: string | null;
+    },
   ) => Promise<void>;
   flushCanonicalState: () => void;
   onNativeHistorySettled?: () => void;
@@ -114,7 +118,7 @@ export function useRecoveredCloudGroupReplay({
   }, [applyControl, flushCanonicalState, reportWarning]);
 
   useEffect(() => {
-    if (!nativeShell || !accountId || !setCanonicalState || !initialMessagesSettled) return;
+    if (!nativeShell || !accountId || !setCanonicalState || !humanIdentityId?.trim()) return;
     let active = true;
     bootstrapRef.current = null;
     void (async () => {
@@ -149,6 +153,7 @@ export function useRecoveredCloudGroupReplay({
           await replayCallbacksRef.current.applyControl(row.wire, row.envelope, {
             deferPublish: true,
             historyReplay: true,
+            catalogGroupTitle: row.conversation.group_title,
           });
           replayCallbacksRef.current.flushCanonicalState();
         }
@@ -168,7 +173,7 @@ export function useRecoveredCloudGroupReplay({
     return () => {
       active = false;
     };
-  }, [accountId, client, initialMessagesSettled, nativeShell, setCanonicalState]);
+  }, [accountId, client, humanIdentityId, nativeShell, setCanonicalState]);
 
   const requestedActivePageKey = accountId && activeSessionId.startsWith('session:')
     ? `${accountId}:${activeSessionId}`

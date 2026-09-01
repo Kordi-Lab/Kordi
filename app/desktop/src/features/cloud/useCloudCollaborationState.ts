@@ -609,9 +609,9 @@ export function useCloudCollaborationState({
         setById: setCloudSessionPinsById,
       },
       visibility: {
-        setHiddenIds: setCloudHiddenSessionIds, setDeletedIds: setCloudDeletedSessionIds, setUnreadIds: setCloudUnreadSessionIds,
+        setHiddenIds: setCloudHiddenSessionIds, hiddenIdsRef: stores.visibility.hiddenSessionIdsRef, setDeletedIds: setCloudDeletedSessionIds, setUnreadIds: setCloudUnreadSessionIds,
         setLocallyReadIds: setLocallyReadSessionIds,
-        setPinnedIds: setCloudPinnedSessionIds, setMutedIds: setCloudMutedSessionIds, setPinnedGroupSpaceIds: setCloudPinnedGroupSpaceIds,
+        setPinnedIds: setCloudPinnedSessionIds, pinnedIdsRef: stores.visibility.pinnedSessionIdsRef, setMutedIds: setCloudMutedSessionIds, setPinnedGroupSpaceIds: setCloudPinnedGroupSpaceIds, pinnedGroupSpaceIdsRef: stores.visibility.pinnedGroupSpaceIdsRef,
       },
       messages: {
         setByPeer: setMessagesByPeer,

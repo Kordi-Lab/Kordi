@@ -21,6 +21,10 @@ export type ChatSidebarSessionInput = {
   parentSessionId?: string | null;
 };
 
+export function estimatedChatSidebarRowSize(row?: ChatSidebarRow) {
+  return row?.kind === 'session' ? 46 : 64;
+}
+
 export function buildChatSidebarRows({
   spaces,
   sessions,

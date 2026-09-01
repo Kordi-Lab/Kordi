@@ -968,34 +968,134 @@ enum ChatHomeSearch {
     }
 }
 
+enum ChatPullToRefreshBehavior {
+    static let triggerDistance: CGFloat = 68
+
+    static func pullDistance(contentOffsetY: CGFloat, contentInsetTop: CGFloat) -> CGFloat {
+        max(0, -(contentOffsetY + contentInsetTop))
+    }
+
+    static func shouldStart(distance: CGFloat, isRefreshing: Bool) -> Bool {
+        !isRefreshing && distance >= triggerDistance
+    }
+}
+
 private struct ChatPullToRefreshScrollView<Content: View>: View {
+    let coordinateSpaceName: String
     let onRefresh: () async -> Void
     let content: Content
     @Binding var visualState: ChatPullRefreshVisualState
+    @State private var pullDistance: CGFloat = 0
+    @State private var isRefreshing = false
 
     init(
-        coordinateSpaceName _: String,
+        coordinateSpaceName: String,
         visualState: Binding<ChatPullRefreshVisualState>,
         onRefresh: @escaping () async -> Void,
         @ViewBuilder content: () -> Content
     ) {
+        self.coordinateSpaceName = coordinateSpaceName
         _visualState = visualState
         self.onRefresh = onRefresh
         self.content = content()
     }
 
+    @ViewBuilder
     var body: some View {
+        if #available(iOS 18.0, *) {
+            list(includeLegacyOffsetProbe: false)
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    ChatPullToRefreshBehavior.pullDistance(
+                        contentOffsetY: geometry.contentOffset.y,
+                        contentInsetTop: geometry.contentInsets.top
+                    )
+                } action: { _, distance in
+                    updatePullDistance(distance)
+                }
+                .onScrollPhaseChange { oldPhase, newPhase in
+                    guard oldPhase == .interacting, newPhase != .interacting else { return }
+                    finishPullGesture()
+                }
+        } else {
+            list(includeLegacyOffsetProbe: true)
+                .coordinateSpace(.named(coordinateSpaceName))
+                .onPreferenceChange(ChatPullOffsetPreferenceKey.self) { offset in
+                    updatePullDistance(max(0, offset))
+                }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 8).onEnded { _ in
+                        finishPullGesture()
+                    }
+                )
+        }
+    }
+
+    private func list(includeLegacyOffsetProbe: Bool) -> some View {
         List {
+            if includeLegacyOffsetProbe {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: ChatPullOffsetPreferenceKey.self,
+                        value: proxy.frame(in: .named(coordinateSpaceName)).minY
+                    )
+                }
+                .frame(height: 0)
+                .listRowInsets(EdgeInsets())
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .accessibilityHidden(true)
+            }
+
             content
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .scrollBounceBehavior(.always)
         .scrollDismissesKeyboard(.interactively)
-        .refreshable {
-            visualState = .refreshing
-            await onRefresh()
+        .environment(\.defaultMinListRowHeight, 0)
+    }
+
+    private func updatePullDistance(_ distance: CGFloat) {
+        guard !isRefreshing else { return }
+        pullDistance = distance
+        if distance > 0.5 {
+            visualState = .pulling(progress: KordiSyncMarkGeometry.pullProgress(
+                for: distance,
+                triggerDistance: ChatPullToRefreshBehavior.triggerDistance
+            ))
+        } else if visualState != .idle {
             visualState = .idle
         }
+    }
+
+    private func finishPullGesture() {
+        guard ChatPullToRefreshBehavior.shouldStart(
+            distance: pullDistance,
+            isRefreshing: isRefreshing
+        ) else { return }
+        beginRefresh()
+    }
+
+    private func beginRefresh() {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        pullDistance = 0
+        visualState = .refreshing
+        Task {
+            await onRefresh()
+            withAnimation(.smooth(duration: 0.24)) {
+                isRefreshing = false
+                visualState = .idle
+            }
+        }
+    }
+}
+
+private struct ChatPullOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
