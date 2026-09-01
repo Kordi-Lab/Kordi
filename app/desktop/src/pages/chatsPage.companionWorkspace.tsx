@@ -307,6 +307,7 @@ export function ChatCompanionWorkspace({
           sessionKey: conversation.id,
           messages: transcriptMessages,
           scrollRef: session.refs.transcriptScroll,
+          unreadCount: conversation.unread,
           scrollClassName:
             'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain',
           hasOlderMessages: Boolean(

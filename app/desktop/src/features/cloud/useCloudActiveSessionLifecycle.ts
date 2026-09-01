@@ -14,6 +14,7 @@ export function useCloudActiveSessionLifecycle({
   canonicalState,
   setCanonicalState,
   client,
+  markRead,
   setPinsBySessionId,
 }: {
   account: CloudAccount | null;
@@ -22,6 +23,7 @@ export function useCloudActiveSessionLifecycle({
   canonicalState?: CanonicalSessionState | null;
   setCanonicalState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
   client: CloudAuthClient;
+  markRead: (sessionIds: string[]) => Promise<void>;
   setPinsBySessionId: Dispatch<SetStateAction<CloudSessionPinsById>>;
 }) {
   useCanonicalActiveSessionRead({
@@ -29,7 +31,7 @@ export function useCloudActiveSessionLifecycle({
     activeConversationId,
     canMarkActiveConversationRead,
     canonicalState,
-    client,
+    markRead,
     setCanonicalState,
   });
   useCloudActiveSessionPin({

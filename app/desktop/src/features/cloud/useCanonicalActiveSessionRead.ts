@@ -21,9 +21,7 @@ import {
 } from '@/features/collaboration/conversationIds';
 import type {
   CloudAccount,
-  CloudAuthClient,
 } from './authClient';
-import { loadSession } from './session';
 
 export function canonicalActiveSessionId(
   activeConversationId: string | null | undefined,
@@ -44,14 +42,14 @@ export function useCanonicalActiveSessionRead({
   activeConversationId,
   canMarkActiveConversationRead,
   canonicalState,
-  client,
+  markRead,
   setCanonicalState,
 }: {
   account: CloudAccount | null;
   activeConversationId: string | null | undefined;
   canMarkActiveConversationRead: boolean;
   canonicalState: CanonicalSessionState | null | undefined;
-  client: CloudAuthClient;
+  markRead: (sessionIds: string[]) => Promise<void>;
   setCanonicalState?: Dispatch<
     SetStateAction<CanonicalSessionState | null>
   >;
@@ -77,7 +75,6 @@ export function useCanonicalActiveSessionRead({
     const canonicalSession = canonicalState.sessions.find(
       (session) => session.id === sessionId,
     );
-    if (!canonicalSession) return;
     const latestMessages = canonicalState.messages
       .filter((message) => (
         message.sessionId === sessionId
@@ -123,18 +120,14 @@ export function useCanonicalActiveSessionRead({
           sessionId,
           messageId: latestMessage.id,
         });
-    const cloudRead = loadSession().then((session) => {
-      if (!session?.token || session.accountId !== accountId) {
-        throw new Error('Cloud session is unavailable.');
-      }
-      return client.markSessionMessagesRead(session.token, sessionId);
-    });
+    const cloudRead = markRead([sessionId]);
     void Promise.all([localRead, cloudRead])
       .then(([delta]) => {
-        if (!delta) return;
-        setCanonicalState?.((current) =>
-          mergeCanonicalReadCursorDelta(current, delta)
-        );
+        if (delta) {
+          setCanonicalState?.((current) =>
+            mergeCanonicalReadCursorDelta(current, delta)
+          );
+        }
       })
       .catch(() => {
         persistedReadSignatureRef.current = null;
@@ -144,7 +137,7 @@ export function useCanonicalActiveSessionRead({
     activeConversationId,
     canMarkActiveConversationRead,
     canonicalState,
-    client,
+    markRead,
     setCanonicalState,
   ]);
 }

@@ -305,10 +305,14 @@ export function useCloudSessionActions({
     if (normalizedIds.length === 0) return;
     const session = await loadSession();
     if (!session?.token) throw new Error('Not signed in.');
-    await Promise.all(normalizedIds.flatMap((sessionId) => [
-      client.markSessionMessagesRead(session.token, sessionId),
-      client.setCloudSessionUnread(session.token, sessionId, false),
-    ]));
+    await Promise.all(normalizedIds.map(async (sessionId) => {
+      await client.markSessionMessagesRead(session.token, sessionId);
+      try {
+        await client.setCloudSessionUnread(session.token, sessionId, false);
+      } catch {
+        // ponytail: preference cleanup is best-effort until every product server exposes chat-list actions.
+      }
+    }));
     setUnreadIds((current) => {
       const next = new Set(current);
       for (const sessionId of normalizedIds) next.delete(sessionId);
