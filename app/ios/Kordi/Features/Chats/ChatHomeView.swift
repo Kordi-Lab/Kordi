@@ -667,11 +667,12 @@ struct ChatHomeView: View {
         .tint(.orange)
         .accessibilityLabel(isMuted ? "Unmute" : "Mute")
 
-        Button(role: .destructive) {
+        Button {
             requestDelete(conversation)
         } label: {
             Image(systemName: "trash")
         }
+        .tint(.red)
         .accessibilityLabel("Delete")
 
         Button {
@@ -840,11 +841,12 @@ private struct ArchivedChatsView: View {
                         }
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
+                        Button {
                             requestDelete(conversation)
                         } label: {
                             Image(systemName: "trash")
                         }
+                        .tint(.red)
                         .accessibilityLabel("Delete")
                         Button {
                             Task { _ = await model.restoreConversation(conversation) }

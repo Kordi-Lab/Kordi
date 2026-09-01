@@ -17,6 +17,14 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(source.contains(".alert(\n            \"Delete this chat from your list?\""))
         XCTAssertTrue(source.contains("deleteTarget.map { \"delete:"))
         XCTAssertFalse(source.contains(".confirmationDialog(\n            \"Delete this chat from your list?\""))
+        XCTAssertEqual(
+            source.components(separatedBy: "Button(role: .destructive) {")
+                .dropFirst()
+                .filter { $0.prefix(160).contains("requestDelete") }
+                .count,
+            2,
+            "Only context-menu delete actions may be destructive before confirmation"
+        )
     }
 
     func testGroupSessionRowsShowOnlyTheLatestMessagePreview() throws {
