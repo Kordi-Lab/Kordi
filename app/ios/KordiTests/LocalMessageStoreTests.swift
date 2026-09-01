@@ -122,6 +122,33 @@ final class LocalMessageStoreTests: XCTestCase {
         )
     }
 
+    func testDeletingCachedMessageRemovesRowsAndLatestPageProjection() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let conversationID = "person:deleted-message"
+        let kept = message(id: "kept", conversationID: conversationID, text: "Keep")
+        let deleted = message(id: "deleted", conversationID: conversationID, text: "Delete")
+        store.saveMessages(
+            [kept, deleted],
+            conversationId: conversationID,
+            accountId: "account-a"
+        )
+
+        store.deleteMessages([deleted.id], accountId: "account-a")
+
+        XCTAssertEqual(
+            store.loadMessages(accountId: "account-a", conversationId: conversationID),
+            [kept]
+        )
+        XCTAssertEqual(
+            store.loadMessagePage(
+                accountId: "account-a",
+                conversationId: conversationID,
+                limit: 20
+            ).messages,
+            [kept]
+        )
+    }
+
     func testCacheRoundTripsMessageReactions() throws {
         let store = try LocalMessageStore(inMemory: true)
         let conversationID = "person:reaction-contact"

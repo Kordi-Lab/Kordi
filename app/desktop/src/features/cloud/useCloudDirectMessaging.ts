@@ -144,9 +144,7 @@ export function useCloudDirectMessaging({
     const accountId = account?.accountId ?? null;
     const sessionPromise = loadSession();
     const previous = messagesByPeerRef.current;
-    flushSync(() => {
-      setMessagesByPeer(deleteCloudMessageOptimistically(previous, input));
-    });
+    setMessagesByPeer((current) => deleteCloudMessageOptimistically(current, input));
     try {
       const session = await sessionPromise;
       if (!session?.token) throw new Error('Not signed in.');

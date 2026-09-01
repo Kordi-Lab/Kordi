@@ -2,6 +2,51 @@ import XCTest
 @testable import Kordi
 
 final class CloudMessageStateProjectorTests: XCTestCase {
+    func testAuthoritativeHistoryPagePrunesOnlyMissingMessagesInItsWindow() {
+        let sessionId = "session:group:one"
+        let earlier = wire(
+            id: "earlier",
+            from: "acct_me",
+            to: "acct_peer",
+            sessionId: sessionId,
+            conversationSequence: 40
+        )
+        let live = wire(
+            id: "live",
+            from: "acct_me",
+            to: "acct_peer",
+            sessionId: sessionId,
+            conversationSequence: 41
+        )
+        let deleted = wire(
+            id: "deleted",
+            from: "acct_me",
+            to: "acct_peer",
+            sessionId: sessionId,
+            conversationSequence: 42
+        )
+        let otherSession = wire(
+            id: "other-session",
+            from: "acct_me",
+            to: "acct_peer",
+            sessionId: "session:group:other",
+            conversationSequence: 42
+        )
+
+        let missing = AppModel.cloudMessageIDsMissingFromHistoryPage(
+            [earlier, live, deleted, otherSession],
+            page: CloudConversationMessagePage(
+                messages: [live],
+                nextBeforeSequence: 41,
+                hasMore: true
+            ),
+            sessionId: sessionId,
+            beforeSequence: nil
+        )
+
+        XCTAssertEqual(missing, ["deleted"])
+    }
+
     func testLatestAgentModelChangeUsesConversationSequenceInsteadOfArrivalOrder() {
         let latest = wire(
             id: "latest",
