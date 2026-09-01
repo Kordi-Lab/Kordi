@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
+
+test('Factory list prefers the synced default-agent profile name', () => {
+  const source = readFileSync(new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url), 'utf8');
+  assert.match(source, /name: agent\.isDefault \? localAgentDisplayName\?\.trim\(\) \|\| runtimeAgent\?\.label \|\| agent\.label/);
+  assert.match(source, /localAgentCollaborationReachoutsByAgentId, localAgentDisplayName/);
+});
 
 test('canonical read model keeps the renamed default agent and owner tag after hydration', () => {
   const sessionId = 'session:self-agent:renamed-default';

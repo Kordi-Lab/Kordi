@@ -722,7 +722,7 @@ export function useWorkspaceViewModels({
           ...(agent.nodeId ? localAgentCollaborationReachoutsByAgentId.get(agent.nodeId) ?? [] : []),
         ].filter((reachout, index, list) => list.findIndex((candidate) => candidate.sessionId === reachout.sessionId) === index);
         items.push({
-          name: runtimeAgent?.label ?? agent.label,
+          name: agent.isDefault ? localAgentDisplayName?.trim() || runtimeAgent?.label || agent.label : runtimeAgent?.label ?? agent.label,
           id: agent.id,
           role: 'My agent',
           messaging: 'Direct local chat',
@@ -777,7 +777,7 @@ export function useWorkspaceViewModels({
     if (items.length === 0 && localAgent) {
       const localAgentRouting = desktopCollaborationState?.localAgentRouting;
       items.push({
-        name: localAgent.label,
+        name: localAgentDisplayName?.trim() || localAgent.label,
         id: 'desktop:local-agent',
         role: 'Local desktop agent',
         messaging: 'Local runtime',
@@ -820,7 +820,7 @@ export function useWorkspaceViewModels({
     }
 
     return items;
-  }, [cloudAgentDefinitionsById, desktopCollaborationState?.hosts, desktopCollaborationState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentCollaborationReachoutsByAgentId]);
+  }, [cloudAgentDefinitionsById, desktopCollaborationState?.hosts, desktopCollaborationState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentCollaborationReachoutsByAgentId, localAgentDisplayName]);
 
   const groupedContacts = useMemo(
     () =>
