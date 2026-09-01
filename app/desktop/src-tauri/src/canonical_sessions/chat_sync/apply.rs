@@ -1,8 +1,10 @@
 use super::compaction::{compact_agent_response_snapshots, compact_startup_snapshots};
 use super::*;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use std::collections::HashSet;
 
 const STARTUP_TAIL_PER_CONVERSATION: i64 = 64;
+const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -346,7 +348,8 @@ fn load_conversation_heads(
         .map_err(|error| error.to_string())?;
     let mut unread_statement = conn
         .prepare(
-            "SELECT COUNT(*) FROM chat_sync_messages
+            "SELECT json_extract(snapshot_json, '$.content.blocks[0].text')
+             FROM chat_sync_messages
              WHERE account_id = ?1 AND conversation_id = ?2
                AND conversation_sequence > ?3
                AND COALESCE(json_extract(snapshot_json, '$.sender_account_id'), '') <> ?1
@@ -372,12 +375,19 @@ fn load_conversation_heads(
             .and_then(|member| member.get("last_read_sequence"))
             .and_then(Value::as_i64)
             .unwrap_or(0);
-        let unread_count = unread_statement
-            .query_row(
+        let unread_rows = unread_statement
+            .query_map(
                 params![account_id, conversation_id, last_read_sequence],
-                |row| row.get(0),
+                |row| row.get::<_, Option<String>>(0),
             )
             .map_err(|error| error.to_string())?;
+        let mut unread_count = 0;
+        for body in unread_rows {
+            if chat_sync_body_counts_as_unread(body.map_err(|error| error.to_string())?.as_deref())
+            {
+                unread_count += 1;
+            }
+        }
         heads.push(ChatSyncConversationHead {
             conversation_id: conversation_id.clone(),
             session_id: snapshot
@@ -396,6 +406,29 @@ fn load_conversation_heads(
         });
     }
     Ok(heads)
+}
+
+fn chat_sync_body_counts_as_unread(body: Option<&str>) -> bool {
+    let Some(encoded) = body.and_then(|value| value.strip_prefix(CLOUD_GROUP_PREFIX)) else {
+        return true;
+    };
+    let Ok(decoded) = URL_SAFE_NO_PAD.decode(encoded) else {
+        return false;
+    };
+    let Ok(envelope) = serde_json::from_slice::<Value>(&decoded) else {
+        return false;
+    };
+    if envelope.get("kind").and_then(Value::as_str) != Some("group-message") {
+        return false;
+    }
+    let Some(message) = envelope.get("message").filter(|value| !value.is_null()) else {
+        return false;
+    };
+    !(message.get("senderKind").and_then(Value::as_str) == Some("agent")
+        && matches!(
+            message.get("deliveryState").and_then(Value::as_str),
+            Some("queued" | "processing")
+        ))
 }
 
 pub(super) fn load_all_conversation_heads(

@@ -7,9 +7,9 @@ use super::{
 };
 
 #[test]
-fn unread_counts_cover_history_omitted_from_the_startup_projection() {
+fn unread_counts_cover_history_and_ignore_sync_controls() {
     let mut conn = super::tests::test_connection();
-    let messages = (1..=100)
+    let mut messages = (1..=100)
         .map(|sequence| {
             json!({
                 "id": format!("message-{sequence}"),
@@ -21,20 +21,27 @@ fn unread_counts_cover_history_omitted_from_the_startup_projection() {
                 "version": 1
             })
         })
-        .collect();
+        .collect::<Vec<_>>();
+    let title = URL_SAFE_NO_PAD.encode(json!({ "kind": "session-title-update" }).to_string());
+    messages.push(json!({
+        "id": "control-101", "conversation_id": "conversation-1",
+        "conversation_sequence": 101, "sender_account_id": "acct_peer",
+        "content": { "blocks": [{ "text": format!("kordi-cloud-group:{title}") }] },
+        "deleted_at": null, "version": 1
+    }));
     apply_on_connection(
         &mut conn,
         ChatSyncApplyRequest {
             account_id: "acct_test".to_string(),
             bootstrap: true,
-            cursor: Some("cursor-100".to_string()),
-            last_stream_seq: Some(100),
+            cursor: Some("cursor-101".to_string()),
+            last_stream_seq: Some(101),
             conversations: vec![json!({
                 "id": "conversation-1",
                 "kind": "group",
                 "legacy_session_id": "session:group:one",
                 "version": 1,
-                "latest_message_sequence": 100,
+                "latest_message_sequence": 101,
                 "members": [{
                     "account_id": "acct_test",
                     "last_read_sequence": 10
