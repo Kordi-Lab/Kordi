@@ -15,7 +15,10 @@ import {
   beginChatPerformanceSpan,
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
-import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
+import {
+  estimatedChatSidebarRowSize,
+  type ChatSidebarRow,
+} from '@/pages/sidebar/chatSidebarRows';
 
 export { buildChatSidebarRows } from '@/pages/sidebar/chatSidebarRows';
 export type {
@@ -75,7 +78,7 @@ export function VirtualChatList({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => internalScrollRef.current,
-    estimateSize: () => 64,
+    estimateSize: (index) => estimatedChatSidebarRowSize(rows[index]),
     getItemKey: (index) => rows[index]?.key ?? `missing:${index}`,
     overscan: rows.length <= 100 ? rows.length : 24,
     useFlushSync: false,
@@ -102,12 +105,17 @@ export function VirtualChatList({
       : Math.max(0, Math.min(rows.length - fallbackCount, activeRowIndex - Math.floor(fallbackCount / 2)));
     return Array.from({ length: fallbackCount }, (_, offset) => {
       const index = start + offset;
+      const size = estimatedChatSidebarRowSize(rows[index]);
+      const rowStart = rows.slice(0, index).reduce(
+        (total, row) => total + estimatedChatSidebarRowSize(row),
+        0,
+      );
       return {
         index,
         key: rows[index]?.key ?? `missing:${index}`,
-        start: index * 56,
-        end: (index + 1) * 56,
-        size: 56,
+        start: rowStart,
+        end: rowStart + size,
+        size,
         lane: 0,
       };
     });
