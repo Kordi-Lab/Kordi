@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
+use sqlx_core::query_builder::QueryBuilder;
 use sqlx_core::transaction::Transaction;
 use sqlx_postgres::{PgPool, Postgres};
 use uuid::Uuid;
@@ -219,5 +220,5 @@ pub use reaction::set_reaction;
 pub use support::{
     append_user_sync_events_in_transaction, identity_sync_recipient_ids, publish_user_sync_events,
 };
-use sync_events::{insert_noncritical_sync_event, insert_sync_event};
+use sync_events::{insert_noncritical_sync_event, insert_sync_event, insert_sync_event_fanout};
 pub use titles::{update_personal_title, update_shared_title};

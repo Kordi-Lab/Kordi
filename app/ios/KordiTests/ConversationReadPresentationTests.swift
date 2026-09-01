@@ -557,11 +557,12 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
     }
 
-    func testTabUnreadCountsDeduplicateGroupSpacesAndExcludeAgentTemplates() {
+    func testTabUnreadCountsSumMessagesAndExcludeHiddenSessionsAndAgentTemplates() {
         let conversations = [
             conversation(id: "person", kind: .person, unread: 2),
             conversation(id: "group-main", kind: .group, unread: 3, groupSpaceId: "space"),
             conversation(id: "group-followup", kind: .group, unread: 1, groupSpaceId: "space"),
+            conversation(id: "group-fork", kind: .group, unread: 7, groupSpaceId: "space", forkedFromSessionId: "session:group-main"),
             conversation(id: "agent-session", kind: .agent, unread: 4),
             conversation(id: "agent-template:unused", kind: .agent, unread: 9),
         ]
@@ -570,8 +571,9 @@ final class ConversationReadPresentationTests: XCTestCase {
             MainTabUnreadCounts.build(
                 conversations: conversations
             ),
-            MainTabUnreadCounts(chats: 2, agents: 1)
+            MainTabUnreadCounts(chats: 6, agents: 4)
         )
+        XCTAssertEqual(MainTabUnreadCounts.build(conversations: conversations).total, 10)
         XCTAssertEqual(ConversationAttentionBadge.countLabel(120), "99+")
     }
 
@@ -595,11 +597,31 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(restored.badgeEnabled)
     }
 
+    func testNotificationAuthorizationRequestsAutomaticallyOnlyAfterLogin() {
+        XCTAssertTrue(shouldAutomaticallyRequestNotificationAuthorization(
+            accountAvailable: true,
+            state: .notDetermined
+        ))
+        XCTAssertFalse(shouldAutomaticallyRequestNotificationAuthorization(
+            accountAvailable: false,
+            state: .notDetermined
+        ))
+        XCTAssertFalse(shouldAutomaticallyRequestNotificationAuthorization(
+            accountAvailable: true,
+            state: .authorized
+        ))
+        XCTAssertFalse(shouldAutomaticallyRequestNotificationAuthorization(
+            accountAvailable: true,
+            state: .denied
+        ))
+    }
+
     private func conversation(
         id: String,
         kind: ConversationKind,
         unread: Int,
-        groupSpaceId: String? = nil
+        groupSpaceId: String? = nil,
+        forkedFromSessionId: String? = nil
     ) -> ConversationSummary {
         ConversationSummary(
             id: id,
@@ -615,7 +637,8 @@ final class ConversationReadPresentationTests: XCTestCase {
             agentActivity: nil,
             sessionId: "session:\(id)",
             groupSpaceId: groupSpaceId,
-            messageCount: 1
+            messageCount: 1,
+            forkedFromSessionId: forkedFromSessionId
         )
     }
 }

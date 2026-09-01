@@ -198,6 +198,12 @@ async fn immutable_artifact_get_and_head_are_allow_listed_with_integrity_headers
             response.headers()[header::CACHE_CONTROL],
             "public, max-age=31536000, immutable"
         );
+        assert_eq!(response.headers()[header::ACCEPT_RANGES], "bytes");
+        assert_eq!(
+            response.headers()[header::ETAG],
+            format!("\"{}\"", release.manual.sha256)
+        );
+        assert!(response.headers().contains_key(header::LAST_MODIFIED));
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
         if method == Method::GET {
             assert_eq!(sha256(&body), release.manual.sha256);

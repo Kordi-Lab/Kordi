@@ -98,7 +98,6 @@ function CallSurface({ controller }: { controller: CloudCallsController }) {
       >
         <p className="sr-only" role="status" aria-live="polite">{status}</p>
         <header className="app-call-surface-header">
-          <span className="app-call-surface-kind">{isMeeting ? 'Kordi meeting' : 'Kordi call'}</span>
           <div className="app-call-surface-actions">
             <button
               type="button"
@@ -247,14 +246,44 @@ function CallCard({
   mode,
 }: {
   controller: CloudCallsController;
-  mode: 'incoming' | 'handoff';
+  mode: 'incoming' | 'detached';
 }) {
-  const presented = mode === 'incoming' ? controller.incomingCall : controller.handoffCall;
+  const presented = mode === 'incoming'
+    ? controller.incomingCall
+    : controller.detachedCall;
   if (!presented) return null;
   const participant = otherParticipant(presented.call, controller.account?.accountId);
   const title = presented.call.kind === 'meeting' ? 'Group meeting' : participantName(participant);
+  if (mode === 'detached') {
+    return (
+      <aside className="app-call-card app-call-card-detached" aria-label="Call active in a separate window">
+        <button
+          type="button"
+          className="app-call-detached-preview"
+          onClick={() => { void controller.showWindow(); }}
+          aria-label="Open call window"
+          title="Open call window"
+        >
+          {controller.detachedThumbnailUrl ? (
+            <img src={controller.detachedThumbnailUrl} alt="" />
+          ) : (
+            <IdentityAvatar
+              kind="human"
+              seed={participant?.accountId || presented.call.id}
+              name={title}
+              imageUrl={participant?.avatarUrl}
+              className="app-call-detached-avatar"
+            />
+          )}
+        </button>
+      </aside>
+    );
+  }
   return (
-    <aside className="app-call-card" aria-label={mode === 'incoming' ? `Incoming call from ${title}` : 'Call active on another device'}>
+    <aside
+      className="app-call-card"
+      aria-label={`Incoming call from ${title}`}
+    >
       <IdentityAvatar
         kind="human"
         seed={participant?.accountId || presented.call.id}
@@ -264,30 +293,30 @@ function CallCard({
       />
       <div
         className="app-call-card-copy"
-        aria-live={mode === 'incoming' ? 'assertive' : 'polite'}
+        aria-live="assertive"
         aria-atomic="true"
       >
         <strong>{title}</strong>
-        <span>{mode === 'incoming' ? `Incoming ${callKindLabel(presented.call)}` : 'Call active on another device'}</span>
+        <span>{`Incoming ${callKindLabel(presented.call)}`}</span>
       </div>
       <div className="app-call-card-actions">
-        {mode === 'incoming' ? (
-          <button
-            type="button"
-            className="app-call-card-button app-call-card-decline"
-            onClick={() => { void controller.decline(presented.call, presented.sessionId); }}
-            aria-label="Decline call"
-            title="Decline"
-          >
-            <PhoneOff />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className="app-call-card-button app-call-card-decline"
+          onClick={() => { void controller.decline(presented.call, presented.sessionId); }}
+          aria-label="Decline call"
+          title="Decline"
+        >
+          <PhoneOff />
+        </button>
         <button
           type="button"
           className="app-call-card-button app-call-card-answer"
-          onClick={() => { void controller.join(presented.call, presented.sessionId); }}
-          aria-label={mode === 'incoming' ? 'Answer call' : 'Move call to this Mac'}
-          title={mode === 'incoming' ? 'Answer' : 'Move to this Mac'}
+          onClick={() => {
+            void controller.join(presented.call, presented.sessionId);
+          }}
+          aria-label="Answer call"
+          title="Answer"
         >
           {presented.call.kind === 'voice' ? <PhoneIncoming /> : <Video />}
         </button>
@@ -310,12 +339,20 @@ function CallError({ controller }: { controller: CloudCallsController }) {
   );
 }
 
-export function CloudCallHost({ controller }: { controller: CloudCallsController }) {
-  const activeSurface = controller.currentCall && controller.isPresented;
+export function CloudCallHost({
+  controller,
+  suppressCurrentSurface = false,
+}: {
+  controller: CloudCallsController;
+  suppressCurrentSurface?: boolean;
+}) {
+  const activeSurface = controller.currentCall
+    && controller.isPresented
+    && !suppressCurrentSurface;
   const cardMode = controller.incomingCall
     ? 'incoming' as const
-    : controller.handoffCall
-      ? 'handoff' as const
+    : controller.detachedCall && controller.isDetachedCallFolded
+      ? 'detached' as const
       : null;
   return (
     <>

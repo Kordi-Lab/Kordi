@@ -252,7 +252,8 @@ enum CloudConversationCatalog {
             let latestVisibleDate = latestVisible?.date
             let latestVisibleAttachment = latestVisible?.attachment
             let sessionTitle = sorted.reversed().compactMap { row -> String? in
-                row.1.kind == "session-title-update" ? nonGenericTitle(row.1.groupTitle) : nil
+                nonGenericTitle(row.1.sessionTitle?.title)
+                    ?? (row.1.kind == "session-title-update" ? nonGenericTitle(row.1.groupTitle) : nil)
             }.first
             let groupTitle = sorted.reversed().compactMap { row -> String? in
                 ["group-invite", "group-update", "group-title-update"].contains(row.1.kind)

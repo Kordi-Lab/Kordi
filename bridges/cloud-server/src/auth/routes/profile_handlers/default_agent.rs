@@ -1,5 +1,12 @@
 use super::*;
 
+pub(super) fn clean_default_agent_display_name(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.chars().take(120).collect())
+}
+
 pub(super) async fn materialize_default_agent_avatar_mutation(
     state: &Arc<ServerState>,
     account_id: &str,

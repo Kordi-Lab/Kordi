@@ -167,6 +167,67 @@ pub(super) async fn load_conversation(
     })
 }
 
+pub(super) async fn load_active_conversation_projections(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+) -> Result<Vec<(String, ConversationSnapshot)>, StoreError> {
+    let row: Option<ConversationRow> = query_as(
+        "SELECT conversation.conversation_id, conversation.kind, \
+                conversation.shared_title, conversation.version, \
+                conversation.created_by_account_id, conversation.legacy_session_id, \
+                fork.parent_session_id, fork.parent_message_id, \
+                conversation.latest_message_sequence, conversation.created_at, \
+                conversation.updated_at \
+         FROM cloud_chat_conversations conversation \
+         LEFT JOIN cloud_session_forks fork \
+           ON fork.fork_session_id = conversation.legacy_session_id \
+         WHERE conversation.conversation_id = $1",
+    )
+    .bind(conversation_id)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    let row = row.ok_or(StoreError::NotFound)?;
+    let preferences: Vec<(String, Option<String>, i32)> = query_as(
+        "SELECT account_id, personal_title, preferences_version \
+         FROM cloud_chat_conversation_members \
+         WHERE conversation_id = $1 AND membership_state = 'active' \
+         ORDER BY account_id ASC",
+    )
+    .bind(conversation_id)
+    .fetch_all(&mut **transaction)
+    .await?;
+    let members = member_rows(transaction, conversation_id).await?;
+    let kind = parse_kind(&row.1)?;
+    Ok(preferences
+        .into_iter()
+        .map(|(account_id, personal_title, preferences_version)| {
+            (
+                account_id.clone(),
+                ConversationSnapshot {
+                    id: row.0,
+                    kind,
+                    shared_title: row.2.clone(),
+                    version: row.3,
+                    created_by_account_id: row.4.clone(),
+                    legacy_session_id: row.5.clone(),
+                    forked_from_session_id: row.6.clone(),
+                    forked_from_message_id: row.7.clone(),
+                    latest_message_sequence: row.8,
+                    created_at: row.9,
+                    updated_at: row.10,
+                    members: members.clone(),
+                    preferences: ConversationPreferencesSnapshot {
+                        conversation_id,
+                        account_id,
+                        personal_title,
+                        version: preferences_version,
+                    },
+                },
+            )
+        })
+        .collect())
+}
+
 pub(super) async fn attachment_ids(
     transaction: &mut Transaction<'_, Postgres>,
     message_id: Uuid,

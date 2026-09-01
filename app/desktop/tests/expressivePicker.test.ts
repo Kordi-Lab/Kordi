@@ -6,6 +6,8 @@ import test from 'node:test';
 import {
   blobEmojiAssetUrl,
   blobEmojiCatalog,
+  blobEmojiPlainText,
+  blobEmojiTextParts,
 } from '../src/features/emoji/blobEmoji';
 import {
   insertEmojiAtSelection,
@@ -97,6 +99,14 @@ test('Blob Emoji assets are content addressed and excluded from the desktop bund
     blobEmojiAssetUrl(emoji, 'https://assets.example'),
     `https://assets.example/assets/blob-emoji/${emoji.sha256}/${emoji.file}`,
   );
+});
+
+test('Blob Emoji tokens keep images for rich surfaces and readable notification text', () => {
+  const parts = blobEmojiTextParts('Hi :blob:blobwave: :blob:not-real:');
+
+  assert.equal(parts.filter((part) => part.type === 'emoji').length, 1);
+  assert.equal(blobEmojiPlainText('Hi :blob:blobwave:'), 'Hi Emoji');
+  assert.equal(blobEmojiPlainText(':blob:not-real:'), ':blob:not-real:');
 });
 
 test('public GIF fallback searches Commons without a key and keeps reusable licenses only', () => {

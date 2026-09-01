@@ -13,8 +13,9 @@ use tokio::net::TcpListener;
 
 use super::model::{ChannelPointer, ReleaseAsset, ReleaseManifest};
 use super::store::{
-    collect_bounded_metadata, MinioReleaseStore, ReleaseCatalogStore, ReleaseObjectStream,
-    ReleaseStoreBackend, ReleaseStoreConfig, ReleaseStoreError, MAX_RELEASE_METADATA_BYTES,
+    collect_bounded_metadata, MinioReleaseStore, ReleaseByteRange, ReleaseCatalogStore,
+    ReleaseObjectStream, ReleaseStoreBackend, ReleaseStoreConfig, ReleaseStoreError,
+    MAX_RELEASE_METADATA_BYTES,
 };
 
 const VERSION: &str = "0.0.1-beta.6";
@@ -83,6 +84,53 @@ async fn minio_head_object_rejects_duplicate_content_length_headers() {
         minio_head_object_with_response(response).await.unwrap_err(),
         ReleaseStoreError::Unavailable
     );
+}
+
+#[tokio::test]
+async fn minio_range_stream_requires_exact_partial_content() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0_u8; 4096];
+        let bytes_read = socket.read(&mut request).await.unwrap();
+        let request = String::from_utf8_lossy(&request[..bytes_read]).to_ascii_lowercase();
+        assert!(request.starts_with("get "));
+        assert!(request.contains("\r\nrange: bytes=2-4\r\n"));
+        socket
+            .write_all(
+                b"HTTP/1.1 206 Partial Content\r\nContent-Length: 3\r\nContent-Range: bytes 2-4/10\r\nConnection: close\r\n\r\ncde",
+            )
+            .await
+            .unwrap();
+    });
+    let store = MinioReleaseStore::new(ReleaseStoreConfig {
+        endpoint: format!("http://{address}").parse().unwrap(),
+        region: "us-east-1".to_string(),
+        bucket: "kordi-releases".to_string(),
+        access_key: "test-access-key".to_string(),
+        secret_key: "test-secret-key".to_string(),
+    })
+    .unwrap();
+    let mut object = store
+        .stream_object(
+            "test-object",
+            Some(ReleaseByteRange {
+                start: 2,
+                end_inclusive: 4,
+                complete_length: 10,
+            }),
+        )
+        .await
+        .unwrap();
+    let mut body = Vec::new();
+    while let Some(chunk) = object.body.next().await {
+        body.extend_from_slice(&chunk.unwrap());
+    }
+
+    assert_eq!(object.size_bytes, 3);
+    assert_eq!(body, b"cde");
+    server.await.unwrap();
 }
 
 #[tokio::test]
@@ -159,14 +207,29 @@ impl ReleaseStoreBackend for MemoryBackend {
             .ok_or(ReleaseStoreError::NotFound)
     }
 
-    async fn stream_object(&self, key: &str) -> Result<ReleaseObjectStream, ReleaseStoreError> {
-        let bytes = self
+    async fn stream_object(
+        &self,
+        key: &str,
+        byte_range: Option<ReleaseByteRange>,
+    ) -> Result<ReleaseObjectStream, ReleaseStoreError> {
+        let mut bytes = self
             .objects
             .lock()
             .unwrap()
             .get(key)
             .cloned()
             .ok_or(ReleaseStoreError::NotFound)?;
+        if let Some(range) = byte_range {
+            let start = usize::try_from(range.start).map_err(|_| ReleaseStoreError::Unavailable)?;
+            let end = usize::try_from(
+                range
+                    .end_inclusive
+                    .checked_add(1)
+                    .ok_or(ReleaseStoreError::Unavailable)?,
+            )
+            .map_err(|_| ReleaseStoreError::Unavailable)?;
+            bytes = bytes.slice(start..end);
+        }
         let size_bytes = bytes.len() as u64;
         let body: Pin<Box<dyn Stream<Item = Result<Bytes, ReleaseStoreError>> + Send>> =
             Box::pin(stream::once(async move { Ok(bytes) }));
@@ -351,7 +414,7 @@ async fn object_length_mismatch_is_rejected_before_streaming() {
         .unwrap();
 
     assert_eq!(
-        store.open_asset(&allowed.asset).await.unwrap_err(),
+        store.open_asset(&allowed.asset, None).await.unwrap_err(),
         ReleaseStoreError::LengthMismatch
     );
 }
@@ -361,13 +424,37 @@ async fn valid_object_stream_preserves_expected_size_and_bytes() {
     let backend = Arc::new(MemoryBackend::default());
     let release = seed(&backend, "beta");
     let store = ReleaseCatalogStore::new(backend);
-    let mut object = store.open_asset(&release.manual).await.unwrap();
+    let mut object = store.open_asset(&release.manual, None).await.unwrap();
     let mut bytes = Vec::new();
     while let Some(chunk) = object.body.next().await {
         bytes.extend_from_slice(&chunk.unwrap());
     }
     assert_eq!(object.size_bytes, release.manual.size_bytes);
     assert_eq!(sha256(&bytes), release.manual.sha256);
+}
+
+#[tokio::test]
+async fn ranged_object_stream_returns_only_the_requested_bytes() {
+    let backend = Arc::new(MemoryBackend::default());
+    let release = seed(&backend, "beta");
+    let complete_length = release.manual.size_bytes;
+    let store = ReleaseCatalogStore::new(backend);
+    let range = ReleaseByteRange {
+        start: 2,
+        end_inclusive: 6,
+        complete_length,
+    };
+    let mut object = store
+        .open_asset(&release.manual, Some(range))
+        .await
+        .unwrap();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = object.body.next().await {
+        bytes.extend_from_slice(&chunk.unwrap());
+    }
+
+    assert_eq!(object.size_bytes, 5);
+    assert_eq!(bytes, b"xture");
 }
 
 #[test]

@@ -13,7 +13,9 @@ export function canSwitchAudioOutput(): boolean {
     && 'setSinkId' in HTMLMediaElement.prototype;
 }
 
-export function conversationSessionId(conversation: Conversation): string {
+export function conversationSessionId(
+  conversation: Pick<Conversation, 'id' | 'canonicalSessionId'>,
+): string {
   return (conversation.canonicalSessionId || conversation.id).trim();
 }
 
@@ -26,6 +28,15 @@ export function callParticipant(call: CloudCall, accountId: string | undefined) 
 export function callStartedOnAnotherDevice(call: CloudCall, accountId: string): boolean {
   const participant = callParticipant(call, accountId);
   return call.createdByAccountId === accountId || participant?.state === 'joined';
+}
+
+export function isIncomingCallInvitation(call: CloudCall, accountId: string): boolean {
+  return call.kind !== 'meeting'
+    && call.state === 'ringing'
+    && !call.answeredAt
+    && !call.endedAt
+    && call.createdByAccountId !== accountId
+    && callParticipant(call, accountId)?.state === 'invited';
 }
 
 export function preferredCallEntry(

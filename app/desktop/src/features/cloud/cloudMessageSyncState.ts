@@ -196,7 +196,8 @@ export function markCloudMessagesReadLocally(
       if (message.toAccountId !== localAccountId || message.direction !== 'incoming' || message.readAt) {
         continue;
       }
-      const peerMatches = peerIds.has(peerId) || peerIds.has(message.fromAccountId);
+      const peerMatches = sessionIds.size === 0
+        && (peerIds.has(peerId) || peerIds.has(message.fromAccountId));
       const indexedGroupId = targets.groupRowByWireMessageId
         ?.get(message.messageId)
         ?.envelope.groupId;

@@ -95,7 +95,11 @@ fn status_from_metadata(
     let workspace = workspace_for_draft(&metadata.draft_id)?;
     let (draft, validation) = validate_workspace(&workspace);
     let test_report = read_test_report(&container);
-    let publish_ready = validated_draft_is_publish_ready(&metadata.status, validation.valid);
+    let publish_ready = metadata.status == "draft"
+        && validation.valid
+        && test_report
+            .as_ref()
+            .is_some_and(|report| report.passed && report.fingerprint == validation.fingerprint);
     Ok(DesktopAgentBuilderStatus {
         draft_id: metadata.draft_id.clone(),
         target_key: metadata.target_key.clone(),
@@ -107,10 +111,6 @@ fn status_from_metadata(
         test_report,
         publish_ready,
     })
-}
-
-fn validated_draft_is_publish_ready(status: &str, validation_valid: bool) -> bool {
-    status == "draft" && validation_valid
 }
 
 #[tauri::command]

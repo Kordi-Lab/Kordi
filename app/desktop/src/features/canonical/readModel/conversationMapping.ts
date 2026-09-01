@@ -345,7 +345,7 @@ export function sessionChatActivityAtMs(
   const latestRealMessageAtMs = rawMessages
     .filter(canonicalMessageCountsForLastActive)
     .reduce((latest, message) => Math.max(latest, message.createdAtMs), 0);
-  return latestRealMessageAtMs || (session.lastMessageAtMs ?? session.createdAtMs ?? session.updatedAtMs ?? 0);
+  return latestRealMessageAtMs || (session.lastMessageAtMs ?? 0);
 }
 
 export function sessionUnreadCount(session: CanonicalSessionState['sessions'][number]) {
@@ -369,13 +369,14 @@ export function syntheticConversation(
     return acc;
   }, {});
   const collaborationTarget = syntheticCollaborationTarget(session, participants);
-  const updatedAtLabel = formatDesktopLastActiveLabel(sessionChatActivityAtMs(session, rawMessages));
+  const activityAtMs = sessionChatActivityAtMs(session, rawMessages);
+  const updatedAtLabel = activityAtMs > 0 ? formatDesktopLastActiveLabel(activityAtMs) : '';
 
   const displayTitle = sessionConversationDisplayTitle(session, participants, messages, session.title, { preferFallback: sessionPrefersPersistedTitle(session) });
 
   return {
     id: session.id,
-    _updatedAtMs: sessionChatActivityAtMs(session, rawMessages),
+    _updatedAtMs: activityAtMs,
     canonicalSessionId: session.id,
     canonicalCreatedByIdentityId: session.createdByIdentityId,
     canonicalCreatedAtMs: session.createdAtMs,

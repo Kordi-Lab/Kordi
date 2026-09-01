@@ -60,12 +60,17 @@ export function factoryAgentCreateInput({
   };
 }
 
-export function readyFactoryBuildForPublish(status: DesktopAgentBuilderStatus | null) {
+export async function readyFactoryBuildForPublish(
+  status: DesktopAgentBuilderStatus | null,
+  testDraft: () => Promise<DesktopAgentBuilderStatus | null>,
+) {
   if (!status) throw new Error('The Factory draft is unavailable.');
-  if (!status.validation.valid || !status.publishReady) {
-    throw new Error(status.validation.errors[0] || 'Validate the Factory draft before publishing.');
+  if (status.publishReady) return status;
+  const tested = await testDraft();
+  if (!tested?.publishReady) {
+    throw new Error(tested?.testReport?.summary || 'The agent test did not pass. Review Runs and try again.');
   }
-  return status;
+  return tested;
 }
 
 export function shapeDraftFromBuilder(draft: DesktopAgentBuilderDraft): ShapeAgentDraft {

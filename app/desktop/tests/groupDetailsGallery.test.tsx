@@ -428,6 +428,7 @@ test('group management member actions use Kordi handles and dismiss without a cl
 
   assert.match(source, /data-group-member-actions[\s\S]*metadataMode="kordi-handle"/);
   assert.match(source, /target\.closest\('\[data-group-member-grid-item\], \[data-group-member-actions\]'\)/);
+  assert.match(source, /onAddMembers\(groupMembershipSessionIds, selectedAddContactIds\)/);
   assert.doesNotMatch(source, /aria-label=\{`Close \$\{selectedMember\.name\} actions`\}/);
 });
 

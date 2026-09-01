@@ -34,16 +34,85 @@ function sha256(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-async function verifyPublicAsset(publicHttp, url, expectedBytes, expectedDigest) {
+const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
+const CACHEABLE_CDN_STATUSES = new Set(['hit', 'miss', 'revalidated', 'stale']);
+
+function verifyPublicAssetHeaders(response, {
+  contentLength,
+  contentType,
+  expectedDigest,
+  cacheControl,
+  contentRange,
+  cacheable,
+}) {
+  if (headerValue(response, 'content-length') !== String(contentLength)) {
+    throw new Error('Public response content length does not match the release artifact');
+  }
+  if (headerValue(response, 'content-type') !== contentType) {
+    throw new Error('Public response content type does not match the release artifact');
+  }
+  if (headerValue(response, 'x-checksum-sha256') !== expectedDigest) {
+    throw new Error('Public response checksum header is invalid');
+  }
+  if (headerValue(response, 'etag') !== `"${expectedDigest}"`) {
+    throw new Error('Public response ETag is invalid');
+  }
+  if (!headerValue(response, 'last-modified')) {
+    throw new Error('Public response is missing Last-Modified');
+  }
+  if (headerValue(response, 'accept-ranges') !== 'bytes') {
+    throw new Error('Public response does not advertise byte ranges');
+  }
+  if (headerValue(response, 'cache-control') !== cacheControl) {
+    throw new Error('Public response cache policy is invalid');
+  }
+  if (contentRange && headerValue(response, 'content-range') !== contentRange) {
+    throw new Error('Public range response Content-Range is invalid');
+  }
+  const cdnStatus = headerValue(response, 'x-kordi-cdn-cache');
+  let invalidCdnStatus = !cdnStatus || cdnStatus === 'disabled';
+  if (cacheable === true) invalidCdnStatus = !CACHEABLE_CDN_STATUSES.has(cdnStatus);
+  if (cacheable === false) invalidCdnStatus = cdnStatus !== 'uncacheable';
+  if (invalidCdnStatus) {
+    throw new Error('Public response did not traverse the expected CDN cache policy');
+  }
+}
+
+async function verifyPublicAsset(
+  publicHttp,
+  url,
+  expectedBytes,
+  expectedDigest,
+  contentType,
+  { cacheControl = IMMUTABLE_CACHE_CONTROL, cacheable = true } = {},
+) {
   const head = await publicHttp.head(url);
   if (head?.status !== 200) {
     throw new Error(`Public HEAD verification failed with status ${head?.status ?? 'unknown'}`);
   }
-  if (headerValue(head, 'content-length') !== String(expectedBytes.length)) {
-    throw new Error('Public HEAD content length does not match the release artifact');
+  verifyPublicAssetHeaders(head, {
+    contentLength: expectedBytes.length,
+    contentType,
+    expectedDigest,
+    cacheControl,
+    cacheable: null,
+  });
+
+  const rangeEnd = Math.min(expectedBytes.length - 1, 64 * 1024 - 1);
+  const range = await publicHttp.get(url, { range: `bytes=0-${rangeEnd}` });
+  if (range?.status !== 206) {
+    throw new Error(`Public range verification failed with status ${range?.status ?? 'unknown'}`);
   }
-  if (headerValue(head, 'x-checksum-sha256') !== expectedDigest) {
-    throw new Error('Public HEAD digest does not match the release artifact');
+  verifyPublicAssetHeaders(range, {
+    contentLength: rangeEnd + 1,
+    contentType,
+    expectedDigest,
+    cacheControl,
+    contentRange: `bytes 0-${rangeEnd}/${expectedBytes.length}`,
+    cacheable,
+  });
+  if (!responseBody(range).equals(expectedBytes.subarray(0, rangeEnd + 1))) {
+    throw new Error('Public range bytes do not match the release artifact');
   }
 
   const get = await publicHttp.get(url);
@@ -54,9 +123,13 @@ async function verifyPublicAsset(publicHttp, url, expectedBytes, expectedDigest)
   if (bytes.length !== expectedBytes.length || sha256(bytes) !== expectedDigest) {
     throw new Error('Public GET length or digest does not match the release artifact');
   }
-  if (headerValue(get, 'x-checksum-sha256') !== expectedDigest) {
-    throw new Error('Public GET checksum header is invalid');
-  }
+  verifyPublicAssetHeaders(get, {
+    contentLength: expectedBytes.length,
+    contentType,
+    expectedDigest,
+    cacheControl,
+    cacheable,
+  });
 }
 
 export async function verifyPublicReleaseArtifacts(prepared, publicHttp) {
@@ -65,12 +138,14 @@ export async function verifyPublicReleaseArtifacts(prepared, publicHttp) {
     prepared.urls.manual,
     prepared.artifacts.manual.bytes,
     prepared.artifacts.manual.sha256,
+    prepared.release.manual.contentType,
   );
   await verifyPublicAsset(
     publicHttp,
     prepared.urls.updaterArchive,
     prepared.artifacts.updater.bytes,
     prepared.artifacts.updater.sha256,
+    prepared.release.platforms['darwin-aarch64'].contentType,
   );
 }
 
@@ -102,6 +177,7 @@ export async function verifyPromotedRelease(prepared, publicHttp) {
     prepared.urls.updaterArchive,
     prepared.artifacts.updater.bytes,
     prepared.artifacts.updater.sha256,
+    prepared.release.platforms['darwin-aarch64'].contentType,
   );
   if (prepared.channel === 'beta') {
     await verifyPublicAsset(
@@ -109,6 +185,8 @@ export async function verifyPromotedRelease(prepared, publicHttp) {
       prepared.urls.stableManual,
       prepared.artifacts.manual.bytes,
       prepared.artifacts.manual.sha256,
+      prepared.release.manual.contentType,
+      { cacheControl: 'no-store', cacheable: false },
     );
   }
 }

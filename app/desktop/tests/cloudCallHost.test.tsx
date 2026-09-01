@@ -77,6 +77,61 @@ test('an idle call lifecycle never shows a stale connection error', () => {
   assert.match(failedMarkup, /Connection lost/);
 });
 
+test('a detached call leaves chat usable with a compact return card', () => {
+  const call = {
+    id: 'call-detached',
+    revision: 1,
+    conversationId: 'conversation-1',
+    kind: 'video' as const,
+    state: 'active' as const,
+    createdByAccountId: 'acct_me',
+    createdAt: '2026-08-31T09:00:00Z',
+    answeredAt: '2026-08-31T09:00:01Z',
+    endedAt: null,
+    participants: [],
+  };
+  const controller = {
+    account: { accountId: 'acct_me' },
+    currentCall: null,
+    incomingCall: null,
+    handoffCall: null,
+    detachedCall: { call, sessionId: 'session-1' },
+    detachedThumbnailUrl: 'data:image/jpeg;base64,AA==',
+    isDetachedCallFolded: true,
+    phase: 'idle',
+    error: null,
+    mediaParticipants: [],
+    showWindow: async () => undefined,
+  } as unknown as CloudCallsController;
+
+  const markup = renderToStaticMarkup(createElement(CloudCallHost, { controller }));
+  assert.match(markup, /Call active in a separate window/);
+  assert.match(markup, /Open call window/);
+  assert.match(markup, /<img src="data:image\/jpeg;base64,AA==" alt=""/);
+  assert.doesNotMatch(markup, />Call active in a separate window<\/span>/);
+  assert.doesNotMatch(markup, /app-call-surface/);
+
+  const openWindowMarkup = renderToStaticMarkup(createElement(CloudCallHost, {
+    controller: { ...controller, isDetachedCallFolded: false },
+  }));
+  assert.doesNotMatch(openWindowMarkup, /app-call-card-detached/);
+
+  const handoffMarkup = renderToStaticMarkup(createElement(CloudCallHost, {
+    controller: {
+      ...controller,
+      detachedCall: null,
+      handoffCall: { call, sessionId: 'session-1' },
+      isDetachedCallFolded: false,
+    },
+  }));
+  assert.doesNotMatch(handoffMarkup, /app-call-card/);
+
+  const avatarMarkup = renderToStaticMarkup(createElement(CloudCallHost, {
+    controller: { ...controller, detachedThumbnailUrl: null },
+  }));
+  assert.match(avatarMarkup, /app-call-detached-avatar/);
+});
+
 test('the full call surface does not repeat its title and phase in the header', () => {
   const call = {
     id: 'call-1',
@@ -115,6 +170,7 @@ test('the full call surface does not repeat its title and phase in the header', 
 
   const markup = renderToStaticMarkup(createElement(CloudCallHost, { controller }));
   assert.doesNotMatch(markup, /app-call-surface-heading|app-call-phase-dot/);
+  assert.doesNotMatch(markup, />Kordi call</);
   assert.match(markup, /class="sr-only" role="status" aria-live="polite">Ringing/);
 });
 

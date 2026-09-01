@@ -6,6 +6,11 @@ import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } 
 import { useImeCompositionGuard } from '@/features/chat/imeComposition';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
+import {
+  BlobEmojiComposerInput,
+  type BlobEmojiComposerInputHandle,
+} from '@/features/emoji/BlobEmojiComposerInput';
+import { blobEmojiComposerValue } from '@/features/emoji/blobEmojiComposerDom';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
 import { memeAttachmentDraftError } from '@/features/chat/memeAttachments';
 import {
@@ -90,7 +95,7 @@ export function MainComposer({
     chatModelOptions,
   } = runtime;
   const imeCompositionGuard = useImeCompositionGuard();
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const composerInputRef = useRef<BlobEmojiComposerInputHandle | null>(null);
   const [pastedImageEditId, setPastedImageEditId] = useState<string | null>(null);
   const memeValidationMessageId = useId();
   const editErrorMessageId = useId();
@@ -111,13 +116,13 @@ export function MainComposer({
     conversation,
     cloudAccountId,
     onSend,
-    focusComposer: () => textareaRef.current?.focus(),
+    focusComposer: () => composerInputRef.current?.focus(),
   });
   const voiceSurfaceActive = voice.surfaceActive;
   const video = useVideoMessageRecorder({
     conversationId: conversation.id,
     onSend,
-    focusComposer: () => textareaRef.current?.focus(),
+    focusComposer: () => composerInputRef.current?.focus(),
   });
   const videoReviews = useAttachedVideoReviews({
     onSend,
@@ -210,12 +215,11 @@ export function MainComposer({
             ) : voiceSurfaceActive ? (
               <VoiceRecordingSurface voice={voice} />
             ) : <div className="flex min-w-0">
-              <textarea
-                ref={textareaRef}
-                rows={1}
+              <BlobEmojiComposerInput
+                ref={composerInputRef}
                 value={composerText}
                 readOnly={editingMessage && messageEditBusy}
-                aria-busy={editingMessage && messageEditBusy || undefined}
+                ariaBusy={editingMessage && messageEditBusy}
                 onPointerDownCapture={() => {
                   focusComposerTextareaForNativeInput(
                     CHAT_COMPOSER_TEXTAREA_SELECTOR,
@@ -228,9 +232,9 @@ export function MainComposer({
                     display.isNativeShell,
                   );
                 }}
-                onChange={(event) => {
-                  if (editingMessage) updateMessageEditText?.(event.target.value);
-                  else updateChatComposerDraft(event.target.value, event.target);
+                onChange={(value, target) => {
+                  if (editingMessage) updateMessageEditText?.(value);
+                  else updateChatComposerDraft(value, target);
                 }}
                 onPaste={(event) => {
                   if (editingMessage) return;
@@ -329,12 +333,11 @@ export function MainComposer({
                   ) {
                     event.preventDefault();
                     if (editingMessage) void saveMessageEdit?.();
-                    else void onSend(event.currentTarget.value);
+                    else void onSend(blobEmojiComposerValue(event.currentTarget));
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-                data-composer-scope="chat"
-                aria-describedby={messageEditError ? editErrorMessageId : memeValidationError ? memeValidationMessageId : undefined}
+                ariaDescribedBy={messageEditError ? editErrorMessageId : memeValidationError ? memeValidationMessageId : undefined}
                 placeholder={editingMessage ? 'Edit message' : display.placeholder}
               />
             </div>}
@@ -379,21 +382,15 @@ export function MainComposer({
             {!editingMessage && !voiceSurfaceActive ? <ComposerExpressivePicker
               key={cloudAccountId?.trim() || 'local'}
               accountId={cloudAccountId}
-              captureSelection={() => ({
-                start: textareaRef.current?.selectionStart ?? chatComposerText.length,
-                end: textareaRef.current?.selectionEnd ?? chatComposerText.length,
+              captureSelection={() => composerInputRef.current?.selection() ?? ({
+                start: chatComposerText.length,
+                end: chatComposerText.length,
               })}
               onSelectText={(value, selection) => {
                 const insertion = insertEmojiAtSelection(chatComposerText, value, selection);
                 setChatComposerText(insertion.value);
                 window.requestAnimationFrame(() => {
-                  const textarea = textareaRef.current;
-                  if (!textarea) return;
-                  textarea.focus();
-                  textarea.setSelectionRange(
-                    insertion.selection.start,
-                    insertion.selection.end,
-                  );
+                  composerInputRef.current?.focus(insertion.selection);
                 });
               }}
               onSendMedia={(attachment) => onSend('', [attachment])}

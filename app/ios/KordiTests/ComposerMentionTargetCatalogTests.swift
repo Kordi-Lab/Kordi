@@ -114,7 +114,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             sharedAgents: sharedAgents
         )
 
-        XCTAssertEqual(targets.filter { $0.kind == .agent }.count, 9)
+        XCTAssertEqual(targets.filter { $0.kind == .agent }.count, 8)
         XCTAssertEqual(targets.filter { $0.kind == .person }.map(\.accountId), ["acct_group_only"])
         XCTAssertFalse(targets.contains { $0.accountId == "acct_outside" })
     }
@@ -135,7 +135,8 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             account: account,
             conversation: conversation(kind: .group, peerAccountID: "acct_peer", participants: participants),
             ownedAgents: [],
-            sharedAgents: []
+            sharedAgents: [],
+            contacts: [contact(accountID: "acct_peer", name: "Peer")]
         )
         let target = try XCTUnwrap(targets.first { $0.agentId == "cloud-agent:acct_peer" })
 
@@ -525,7 +526,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
 
         XCTAssertEqual(
             Set(targets.filter { $0.kind == .agent }.map(\.id)),
-            ["agent:cloud-local-agent", "agent:cloud-agent:acct_contact"]
+            ["agent:cloud-agent:acct_me", "agent:cloud-agent:acct_contact"]
         )
         XCTAssertFalse(targets.contains { $0.agentId == "cloud-agent:acct_group_only" })
     }

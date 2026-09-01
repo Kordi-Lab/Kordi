@@ -222,6 +222,80 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         XCTAssertTrue(cachedAfterDeletion.isEmpty)
     }
 
+    func testOneCursorStepReprojectsOnlyOneMessageFromTenThousandMessageHistory() {
+        let previousSequence: Int64 = 9_999
+        let latestSequence: Int64 = 10_000
+        let member = CloudChatMember(
+            accountId: "acct_me",
+            displayName: "Me",
+            avatarUrl: nil,
+            defaultAgentId: nil,
+            defaultAgentDisplayName: nil,
+            defaultAgentAvatarUrl: nil,
+            role: "owner",
+            membershipState: "active",
+            version: 1,
+            lastDeliveredSequence: previousSequence,
+            lastReadSequence: previousSequence,
+            joinedAt: "2026-08-31T00:00:00Z",
+            leftAt: nil
+        )
+        let conversation = CloudChatConversation(
+            id: "conversation-large-history",
+            kind: "group",
+            sharedTitle: "Large history",
+            version: 1,
+            createdByAccountId: "acct_me",
+            legacySessionId: "session:group:large-history",
+            forkedFromSessionId: nil,
+            forkedFromMessageId: nil,
+            latestMessageSequence: latestSequence,
+            createdAt: "2026-08-31T00:00:00Z",
+            updatedAt: "2026-08-31T00:00:00Z",
+            members: [member],
+            preferences: CloudChatPreferences(
+                conversationId: "conversation-large-history",
+                accountId: "acct_me",
+                personalTitle: nil,
+                version: 1
+            )
+        )
+        let messages = (1...10_000).map { sequence in
+            CloudChatMessage(
+                id: "message-\(sequence)",
+                clientMessageId: "client-\(sequence)",
+                conversationId: conversation.id,
+                conversationSequence: Int64(sequence),
+                senderAccountId: "acct_peer",
+                kind: "text",
+                content: CloudChatContent(body: "Message", attachments: []),
+                replyToMessageId: nil,
+                attachmentIds: [],
+                version: 1,
+                generationStatus: nil,
+                providerResponseId: nil,
+                createdAt: "2026-08-31T00:00:00Z",
+                editedAt: nil,
+                deletedAt: nil,
+                reactions: nil
+            )
+        }
+        let cursor = CloudChatCursor(
+            conversationId: conversation.id,
+            accountId: member.accountId,
+            lastDeliveredSequence: latestSequence,
+            lastReadSequence: latestSequence
+        )
+
+        let affected = cloudChatMessagesAffectedByCursor(
+            messages,
+            conversation: conversation,
+            cursor: cursor
+        )
+
+        XCTAssertEqual(affected.map(\.conversationSequence), [latestSequence])
+    }
+
     func testSessionPinPathEncodesTheSessionExactlyOnce() async throws {
         SessionPinMutationURLProtocol.request = nil
         let configuration = URLSessionConfiguration.ephemeral

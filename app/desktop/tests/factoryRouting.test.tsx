@@ -70,7 +70,7 @@ const creationBuilderStatus: DesktopAgentBuilderStatus = {
   },
   validation: { valid: true, fingerprint: 'fingerprint-1', errors: [], files: [] },
   testReport: null,
-  publishReady: true,
+  publishReady: false,
 };
 
 test('new agent builds inherit the active configured route and expose Cloud tools', () => {
@@ -108,20 +108,25 @@ test('new agent creation sends its avatar through the canonical Cloud mutation',
   assert.match(random?.mutation.seed ?? '', /^[A-Za-z0-9_-]+$/);
 });
 
-test('publishing requires deterministic validation without running a model test', () => {
+test('publishing tests an untested draft once and continues only when it passes', async () => {
   const shellSource = readFileSync(new URL('../src/app/assembleMainContentSlot.tsx', import.meta.url), 'utf8');
-  assert.equal(readyFactoryBuildForPublish(creationBuilderStatus), creationBuilderStatus);
+  let tests = 0;
+  const tested = { ...creationBuilderStatus, publishReady: true };
+  assert.equal(await readyFactoryBuildForPublish(creationBuilderStatus, async () => {
+    tests += 1;
+    return tested;
+  }), tested);
+  assert.equal(tests, 1);
+  assert.equal(await readyFactoryBuildForPublish(tested, async () => {
+    throw new Error('already tested');
+  }), tested);
+  await assert.rejects(
+    () => readyFactoryBuildForPublish(creationBuilderStatus, async () => null),
+    /agent test did not pass/i,
+  );
   assert.match(shellSource, /setDesktopSkillLibraryEnabled\(skill, enabled\)/);
   assert.match(shellSource, /await renameDesktopAgent\(name\);[\s\S]*await args\.refreshDesktopChat\(\)/);
   assert.doesNotMatch(shellSource, /runDesktopChatSkillCommand/);
-  assert.throws(
-    () => readyFactoryBuildForPublish({
-      ...creationBuilderStatus,
-      validation: { valid: false, fingerprint: '', errors: ['Agent name is required.'], files: [] },
-      publishReady: false,
-    }),
-    /Agent name is required/,
-  );
 });
 
 test('local Kordi publication ignores stale file-only changes without blocking identity updates', () => {

@@ -10,7 +10,7 @@ pub(super) async fn update_me(
 ) -> Response {
     let display_name = clean_profile_display_name(req.display_name.as_deref());
     let mut avatar_mutation = req.avatar_mutation;
-    let agent_display_name = clean_profile_display_name(req.agent_display_name.as_deref());
+    let agent_display_name = clean_default_agent_display_name(req.agent_display_name.as_deref());
     let mut agent_avatar_mutation = req.agent_avatar_mutation;
     let now = Utc::now().to_rfc3339();
     let pool = state.db_pool();

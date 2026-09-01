@@ -5,6 +5,32 @@ use super::*;
 mod mutations;
 pub use mutations::{delete_message, edit_message};
 
+pub(super) async fn fanout_message_sync_event(
+    transaction: &mut Transaction<'_, Postgres>,
+    event_type: &str,
+    message: &MessageSnapshot,
+) -> Result<(), StoreError> {
+    let payloads = load_active_conversation_projections(transaction, message.conversation_id)
+        .await?
+        .into_iter()
+        .map(|(account_id, conversation)| {
+            (
+                account_id,
+                json!({ "message": message, "conversation": conversation }),
+            )
+        })
+        .collect();
+    insert_sync_event_fanout(
+        transaction,
+        event_type,
+        Some(message.conversation_id),
+        Some(message.id),
+        Some(message.version),
+        payloads,
+    )
+    .await
+}
+
 pub async fn load_message_snapshot(
     pool: &PgPool,
     message_id: Uuid,
@@ -175,21 +201,7 @@ pub(crate) async fn send_message_in_transaction(
         .await?;
     }
     let message = load_message(transaction, message_id).await?;
-    let recipients = active_member_ids(transaction, conversation_id).await?;
-    for recipient in &recipients {
-        let conversation = load_conversation(transaction, conversation_id, recipient).await?;
-        let payload = json!({ "message": &message, "conversation": &conversation });
-        insert_sync_event(
-            transaction,
-            recipient,
-            "message.created",
-            Some(conversation_id),
-            Some(message_id),
-            Some(message.version),
-            &payload,
-        )
-        .await?;
-    }
+    fanout_message_sync_event(transaction, "message.created", &message).await?;
     Ok(InsertOutcome {
         value: message,
         inserted: true,
@@ -308,8 +320,8 @@ pub(crate) async fn replace_server_message_in_transaction(
     if message_kind.is_empty() || message_kind.chars().count() > 64 {
         return Err(StoreError::InvalidInput("message kind is invalid"));
     }
-    let row: Option<(Uuid, Uuid, String, Value)> = query_as(
-        "SELECT message_id, conversation_id, message_kind, content \
+    let row: Option<(Uuid, String, Value)> = query_as(
+        "SELECT message_id, message_kind, content \
          FROM cloud_chat_messages \
          WHERE sender_account_id = $1 AND client_message_id = $2 FOR UPDATE",
     )
@@ -317,7 +329,7 @@ pub(crate) async fn replace_server_message_in_transaction(
     .bind(client_message_id)
     .fetch_optional(&mut **transaction)
     .await?;
-    let Some((message_id, conversation_id, stored_kind, stored_content)) = row else {
+    let Some((message_id, stored_kind, stored_content)) = row else {
         return Ok(None);
     };
     if stored_kind == message_kind && stored_content == content {
@@ -335,19 +347,7 @@ pub(crate) async fn replace_server_message_in_transaction(
     .execute(&mut **transaction)
     .await?;
     let message = load_message(transaction, message_id).await?;
-    for recipient in active_member_ids(transaction, conversation_id).await? {
-        let conversation = load_conversation(transaction, conversation_id, &recipient).await?;
-        insert_sync_event(
-            transaction,
-            &recipient,
-            "message.updated",
-            Some(conversation_id),
-            Some(message_id),
-            Some(message.version),
-            &json!({ "message": &message, "conversation": &conversation }),
-        )
-        .await?;
-    }
+    fanout_message_sync_event(transaction, "message.updated", &message).await?;
     Ok(Some(message))
 }
 
@@ -435,19 +435,7 @@ pub async fn replace_message_snapshot(
         .await?;
     }
     let message = load_message(&mut transaction, message_id).await?;
-    for recipient in active_member_ids(&mut transaction, conversation_id).await? {
-        let conversation = load_conversation(&mut transaction, conversation_id, &recipient).await?;
-        insert_sync_event(
-            &mut transaction,
-            &recipient,
-            "message.updated",
-            Some(conversation_id),
-            Some(message_id),
-            Some(message.version),
-            &json!({ "message": &message, "conversation": &conversation }),
-        )
-        .await?;
-    }
+    fanout_message_sync_event(&mut transaction, "message.updated", &message).await?;
     transaction.commit().await?;
     Ok(message)
 }

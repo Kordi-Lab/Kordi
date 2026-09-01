@@ -30,6 +30,7 @@ struct SessionDetailView: View {
     let conversation: ConversationSummary
     @State private var tab: SessionDetailTab
     @State private var previewURL: URL?
+    @State private var mediaPreview: MediaPreviewPresentation?
     @State private var shareItem: SharedFileItem?
     @State private var loadingAttachmentId: String?
     @State private var notificationsMuted: Bool
@@ -106,7 +107,7 @@ struct SessionDetailView: View {
     private var groupSpace: GroupSpaceSummary? {
         guard currentConversation.kind == .group else { return nil }
         if let existing = groupSpaces.first(where: { space in
-            space.sessions.contains { $0.id == currentConversation.id }
+            space.membershipSessions.contains { $0.id == currentConversation.id }
         }) {
             return existing
         }
@@ -119,7 +120,8 @@ struct SessionDetailView: View {
             unreadCount: currentConversation.unreadCount,
             unreadMentionCount: currentConversation.unreadMentionCount,
             participants: currentConversation.groupParticipants,
-            sessions: [currentConversation]
+            sessions: [currentConversation],
+            membershipSessions: [currentConversation]
         )
     }
 
@@ -246,6 +248,9 @@ struct SessionDetailView: View {
             await model.refreshActiveCall(in: currentConversation)
         }
         .quickLookPreview($previewURL)
+        .fullScreenCover(item: $mediaPreview) { presentation in
+            MediaPreviewView(presentation: presentation)
+        }
         .sheet(item: $shareItem) { item in ActivityShareSheet(items: [item.url]) }
         .sheet(item: $groupManagementPresentation) { presentation in
             GroupManagementSheet(presentation: presentation)
@@ -329,7 +334,7 @@ struct SessionDetailView: View {
             ) {
                 ForEach(mediaAttachments) { item in
                     SessionMediaThumbnail(item: item) {
-                        prepare(item.attachment, forSharing: false)
+                        openMedia(item)
                     }
                 }
             }
@@ -491,6 +496,15 @@ struct SessionDetailView: View {
 
     private func openRelatedGroup(_ space: GroupSpaceSummary) {
         relatedConversation = space.sessions.first
+    }
+
+    private func openMedia(_ item: SessionDetailAttachment) {
+        mediaPreview = MediaPreviewPresentation.make(
+            opening: item.attachment,
+            from: item.message,
+            in: model.messages(for: currentConversation),
+            initialImage: nil
+        )
     }
 
     private func prepare(_ attachment: ChatAttachment, forSharing: Bool) {
@@ -1033,24 +1047,23 @@ private struct SessionMediaThumbnail: View {
 
     var body: some View {
         Button(action: onOpen) {
-            ZStack {
-                Color(uiColor: .secondarySystemGroupedBackground)
-
-                if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
-                } else if hasFailed {
-                    Image(systemName: "photo.badge.exclamationmark")
-                        .font(.title2)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ProgressView()
+            Color(uiColor: .secondarySystemGroupedBackground)
+                .overlay {
+                    if let image {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    } else if hasFailed {
+                        Image(systemName: "photo.badge.exclamationmark")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                    }
                 }
-            }
-            .aspectRatio(1, contentMode: .fit)
-            .clipped()
-            .contentShape(Rectangle())
+                .aspectRatio(1, contentMode: .fit)
+                .clipped()
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .task(id: item.attachment.id) { await loadImage() }

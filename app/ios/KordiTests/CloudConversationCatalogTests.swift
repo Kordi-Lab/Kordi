@@ -877,7 +877,50 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(groups[0].messageCount, 1)
     }
 
-    func testControlOnlyCanonicalGroupSessionIsNotPresentedAsChatHistory() throws {
+    func testGroupInviteUsesEmbeddedSessionTitleWithoutSeparateUpdate() throws {
+        let participants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "member"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
+        ]
+        let sessionId = "session:group:mobile-channel-two"
+        let invite = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+            kind: "group-invite",
+            groupId: sessionId,
+            groupSpaceId: "session:group:mobile",
+            groupTitle: "Mobile builders",
+            createdByAccountId: "acct_maya",
+            actor: participants[1],
+            participants: participants,
+            sessionTitle: CloudGroupSessionTitleSnapshot(
+                title: "Channel 2",
+                titleSource: "manual",
+                titleRevision: 1,
+                titlePolicyVersion: 1,
+                updatedAtMs: 1_788_190_800_000,
+                updatedByAccountId: "acct_maya"
+            ),
+            message: nil
+        ))
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [contact],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_maya": [wire(
+                id: "invite",
+                body: invite,
+                sessionId: sessionId,
+                createdAt: "2026-08-31T14:00:00Z",
+                from: "acct_maya",
+                to: "acct_me"
+            )]]
+        )
+
+        XCTAssertEqual(catalog.first { $0.sessionId == sessionId }?.displayName, "Channel 2")
+    }
+
+    func testControlOnlyCanonicalGroupSessionRemainsAvailableForMembershipRepair() throws {
         let participants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Fixture Owner", avatarUrl: nil, role: "member"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "owner")
@@ -945,7 +988,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.first { $0.sessionId == artifactId }?.messageCount, 0)
         let spaces = GroupSpaceCatalog.build(conversations: catalog, ownAccountId: "acct_me")
         XCTAssertEqual(spaces.count, 1)
-        XCTAssertEqual(spaces[0].sessions.map(\.sessionId), [rootId])
+        XCTAssertEqual(spaces[0].sessions.map(\.sessionId), [rootId, artifactId])
     }
 
     func testGroupUnreadIgnoresNonIncomingFanoutCopies() throws {
@@ -1334,7 +1377,62 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(Set(spaces[0].participants.map(\.accountId)), ["acct_me", "acct_maya", "acct_ethan"])
     }
 
-    func testGroupSpaceCatalogDoesNotMergeDistinctGroupsWithTheSameMembers() {
+    func testGroupSpaceCatalogShowsControlOnlySessionsAndExposesPartialMembersForRepair() throws {
+        let sharedParticipants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
+        ]
+        let yuxin = CloudGroupParticipant(
+            accountId: "acct_yuxin",
+            displayName: "Yuxin",
+            avatarUrl: nil,
+            role: "person"
+        )
+        let hiddenRoot = groupConversation(
+            id: "session:group:root",
+            spaceId: "session:group:root",
+            title: "Mobile builders",
+            preview: "Group conversation",
+            date: Date(timeIntervalSince1970: 1),
+            participants: sharedParticipants,
+            messageCount: 0
+        )
+        let activeSession = groupConversation(
+            id: "session:group:active",
+            spaceId: "session:group:root",
+            title: "Release checklist",
+            preview: "Yuxin joined here only",
+            date: Date(timeIntervalSince1970: 2),
+            participants: sharedParticipants + [yuxin],
+            messageCount: 1
+        )
+
+        let space = try XCTUnwrap(
+            GroupSpaceCatalog.build(
+                conversations: [hiddenRoot, activeSession],
+                ownAccountId: "acct_me"
+            ).first
+        )
+
+        XCTAssertEqual(
+            space.sessions.map(\.sessionId),
+            ["session:group:active", "session:group:root"]
+        )
+        XCTAssertEqual(
+            space.membershipSessions.map(\.sessionId),
+            ["session:group:active", "session:group:root"]
+        )
+        XCTAssertEqual(
+            Set(space.participants.map(\.accountId)),
+            ["acct_me", "acct_maya", "acct_yuxin"]
+        )
+        XCTAssertEqual(
+            space.fullyJoinedParticipantAccountIds,
+            ["acct_me", "acct_maya"]
+        )
+    }
+
+    func testGroupSpaceCatalogMergesLegacyCloudRootsWithTheSameMembers() {
         let participants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
@@ -1358,7 +1456,8 @@ final class CloudConversationCatalogTests: XCTestCase {
 
         let spaces = GroupSpaceCatalog.build(conversations: [first, second], ownAccountId: "acct_me")
 
-        XCTAssertEqual(spaces.count, 2)
+        XCTAssertEqual(spaces.count, 1)
+        XCTAssertEqual(spaces[0].sessions.map(\.sessionId), ["session:group:second", "session:group:first"])
     }
 
     func testGroupSpaceCatalogUsesStableIDsWhenActivityAndTitlesTie() {
@@ -1373,7 +1472,10 @@ final class CloudConversationCatalogTests: XCTestCase {
             title: "Same title",
             preview: "Second",
             date: date,
-            participants: participants
+            participants: [
+                participants[0],
+                CloudGroupParticipant(accountId: "acct_ethan", displayName: "Ethan", avatarUrl: nil, role: "admin")
+            ]
         )
         let first = groupConversation(
             id: "session:first",
@@ -1397,7 +1499,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(forward.map(\.id), ["group:session:first", "group:session:second"])
     }
 
-    func testGroupSpaceCatalogHidesForksAndControlOnlyPlaceholders() {
+    func testGroupSpaceCatalogHidesForksAndKeepsMembershipSessions() {
         let participants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
@@ -1446,8 +1548,8 @@ final class CloudConversationCatalogTests: XCTestCase {
         )
 
         XCTAssertEqual(spaces.count, 1)
-        XCTAssertEqual(spaces[0].sessions.map(\.displayName), ["main", "hiiiii"])
-        XCTAssertEqual(spaces[0].sessions.map(\.messageCount), [341, 47])
+        XCTAssertEqual(spaces[0].sessions.map(\.displayName), ["main", "hiiiii", "New chat"])
+        XCTAssertEqual(spaces[0].sessions.map(\.messageCount), [341, 47, 0])
     }
 
     func testHistoricalForkLineageResolvesBackToTheRootGroupSpace() throws {

@@ -29,6 +29,10 @@ type UseCloudCallMediaInput = {
   setError: Dispatch<SetStateAction<string | null>>;
 };
 
+export function callUsesAdaptiveVideo(kind: CloudCall['kind']): boolean {
+  return kind === 'meeting';
+}
+
 export function useCloudCallMedia({
   operationRef,
   currentRef,
@@ -127,9 +131,9 @@ export function useCloudCallMedia({
     const { Room: LiveKitRoom, RoomEvent, VideoPresets } = await import('livekit-client');
     if (operationRef.current !== operation) return;
     const room = new LiveKitRoom({
-      adaptiveStream: true,
+      adaptiveStream: callUsesAdaptiveVideo(session.call.kind),
       dynacast: true,
-      videoCaptureDefaults: { resolution: VideoPresets.h720.resolution },
+      videoCaptureDefaults: { resolution: VideoPresets.h1080.resolution },
     });
     roomRef.current = room;
     currentRef.current = nextCurrent;

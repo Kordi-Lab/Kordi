@@ -33,5 +33,9 @@ export function useKordiAppModel({
     workspace,
     actions,
   });
-  return { ...shell, cloudCalls };
+  return {
+    ...shell,
+    cloudCalls,
+    callConversations: workspace.conversations.chatConversations,
+  };
 }

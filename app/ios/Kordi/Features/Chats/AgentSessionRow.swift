@@ -108,14 +108,14 @@ struct AgentSessionRow: View {
     }
 
     private var preview: some View {
-        (
+        HStack(spacing: 0) {
             Text(conversation.agentDisplayName?.nonEmpty ?? "Kordi")
-                .foregroundColor(KordiTheme.agentViolet)
-            + Text(" · ")
-                .foregroundColor(.secondary)
-            + Text(conversation.lastMessage.nonEmpty ?? "No messages yet")
-                .foregroundColor(.secondary)
-        )
+                .foregroundStyle(KordiTheme.agentViolet)
+            Text(" · ")
+                .foregroundStyle(.secondary)
+            BlobEmojiPreviewText(text: conversation.lastMessage.nonEmpty ?? "No messages yet")
+                .foregroundStyle(.secondary)
+        }
         .font(.subheadline)
         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 1)
     }

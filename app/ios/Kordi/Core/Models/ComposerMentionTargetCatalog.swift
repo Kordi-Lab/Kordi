@@ -76,6 +76,7 @@ enum ComposerMentionTargetCatalog {
 
         if conversation.kind != .agent {
             var seenDefaultAgentOwners = Set<String>()
+            let contactAccountIDs = Set(contacts.map(\.accountId))
             targets.append(defaultAgentTarget(
                 ownerAccountID: account.accountId,
                 ownerName: account.preferredName,
@@ -85,7 +86,8 @@ enum ComposerMentionTargetCatalog {
             ))
             seenDefaultAgentOwners.insert(account.accountId)
             for participant in conversation.groupParticipants
-                where seenDefaultAgentOwners.insert(participant.accountId).inserted {
+                where contactAccountIDs.contains(participant.accountId)
+                    && seenDefaultAgentOwners.insert(participant.accountId).inserted {
                 targets.append(defaultAgentTarget(
                     ownerAccountID: participant.accountId,
                     ownerName: participant.displayName,

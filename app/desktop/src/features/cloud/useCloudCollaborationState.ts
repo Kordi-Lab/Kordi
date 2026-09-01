@@ -16,7 +16,7 @@ import {
 import {
   type CloudGroupReadCursor,
 } from './cloudGroupMessages';
-import { patchCanonicalCloudReactions, type IndexedCloudGroupRow } from './cloudMessageIndex';
+import { patchCanonicalCloudMessages, type IndexedCloudGroupRow } from './cloudMessageIndex';
 import { defaultCloudAgentsClient } from './cloudAgentsClient';
 import { defaultCloudMessageCache } from './cloudMessageCache';
 import {
@@ -228,6 +228,7 @@ export function useCloudCollaborationState({
       byPeer: messagesByPeer,
       setByPeer: setMessagesByPeer,
       currentAccountByPeer: currentAccountMessagesByPeer,
+      fullCurrentAccountByPeer: fullCurrentAccountMessagesByPeer,
       belongsToCurrentAccount: messagesBelongToCurrentAccount,
       index: cloudMessageIndex,
       indexRef: cloudMessageIndexRef,
@@ -412,19 +413,17 @@ export function useCloudCollaborationState({
     reportWarning: reportCloudAgentExecutionWarning,
   });
 
-  useCloudCanonicalReconciliation({
+  const fullUnreadCountsBySessionId = useCloudCanonicalReconciliation({
     account,
     activeConversationId,
     canonical: {
       state: canonicalSessionState,
       setState: setCanonicalSessionState,
     },
-    messages: {
-      index: cloudMessageIndex,
-      authoritative: authoritativeMessagesReady,
-    },
+    messages: { fullByPeer: messagesBelongToCurrentAccount ? fullCurrentAccountMessagesByPeer : null, index: cloudMessageIndex, authoritative: authoritativeMessagesReady },
     unread: {
       contextKey: cloudUnreadContextKey,
+      readInboundMessageIdsByPeer,
       setPublishedContextKey:
         setPublishedCloudUnreadContextKey,
     },
@@ -570,6 +569,7 @@ export function useCloudCollaborationState({
     initialMessagesSettled,
     messageIndex: cloudMessageIndex,
     messagesByPeer: currentAccountMessagesByPeer,
+    unreadCountsBySessionId: fullUnreadCountsBySessionId,
     readInboundMessageIdsByPeer,
   });
   const sendCloudGroupControl = useCloudGroupControlSender({
@@ -643,7 +643,7 @@ export function useCloudCollaborationState({
       && message.toAccountId === account?.accountId
     ))
   ), [account?.accountId, cloudMessageIndex.allMessages]);
-  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => patchCanonicalCloudReactions(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById]);
+  const cloudGroupSessionTitles = useMemo(() => cloudGroupSessionTitlesForReadModel(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupSessionTitleIds = useMemo(() => reliableCloudGroupSessionTitleIds(cloudSessionTitlesById), [cloudSessionTitlesById]); const cloudReliableGroupActivity = useMemo(() => reliableCloudGroupSessionActivityAtMs(cloudMessageIndex.groupRowsBySessionId), [cloudMessageIndex.groupRowsBySessionId]); const cloudCanonicalReactionState = useMemo(() => patchCanonicalCloudMessages(patchCanonicalCloudGroupSessionTitles(canonicalSessionState ?? null, cloudSessionTitlesById), cloudMessageIndex.groupRows), [canonicalSessionState, cloudMessageIndex.groupRows, cloudSessionTitlesById]);
   return {
     cloudAgentRuntimeRouteMessages,
     cloudCollaborationState,

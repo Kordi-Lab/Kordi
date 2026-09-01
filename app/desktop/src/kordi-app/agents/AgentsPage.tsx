@@ -443,9 +443,10 @@ export function AgentsPage({
           ? 'Publishing the Cloud Agent…'
           : `Publishing ${selectedAgent?.name ?? 'agent'}…`;
     setPublishing(true);
-    setPublishFeedback({ tone: 'info', text: publishingText });
+    setPublishFeedback({ tone: 'info', text: builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…' });
     try {
-      const status = readyFactoryBuildForPublish(builder.status);
+      const status = await readyFactoryBuildForPublish(builder.status, builder.testDraft);
+      setPublishFeedback({ tone: 'info', text: publishingText });
       if (creating) {
         if (creatingSkill) {
           const skill = status?.draft?.skills[0];
@@ -662,9 +663,11 @@ export function AgentsPage({
       ? 'Published'
       : !builder.status?.draft || !builder.status.validation.valid
         ? 'Needs setup'
-        : builder.status.publishReady
-          ? 'Ready to publish'
-          : 'Private draft';
+        : !builder.status.testReport || builder.status.testReport.fingerprint !== builder.status.validation.fingerprint || !builder.status.testReport.passed
+          ? 'Needs testing'
+          : builder.status.publishReady
+            ? 'Ready to publish'
+            : 'Private draft';
   const returnFromBuild = () => {
     const context = buildRoute?.returnContext;
     setFactorySection(context?.section ?? 'agents');

@@ -9,7 +9,12 @@ import {
   canonicalNoProviderFailedAgentMessageRequest,
 } from '../src/features/chat/messageActions/chatMessages';
 import { shouldUseNoProviderSelfAgentShortcut } from '../src/features/chat/messageActions/localAgentSessionTarget';
-import { legacyDefaultAgentProfileUpdate } from '../src/features/cloud/cloudAgentIdentity';
+import {
+  legacyDefaultAgentProfileMigrationOwner,
+  legacyDefaultAgentProfileUpdate,
+  markLegacyDefaultAgentProfileMigrated,
+  shouldMigrateLegacyDefaultAgentProfile,
+} from '../src/features/cloud/cloudAgentIdentity';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
@@ -44,6 +49,20 @@ test('legacy local default-agent identity migrates once into the cloud profile',
     remoteDisplayName: 'BabyTREE',
     remoteAvatarVersion: 2,
   }), null);
+});
+
+test('legacy default-agent profile migration records its owning Cloud account', () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+  };
+
+  assert.equal(legacyDefaultAgentProfileMigrationOwner(storage), null);
+  assert.equal(shouldMigrateLegacyDefaultAgentProfile(storage), true);
+  markLegacyDefaultAgentProfileMigrated(storage, 'acct_first');
+  assert.equal(legacyDefaultAgentProfileMigrationOwner(storage), 'acct_first');
+  assert.equal(shouldMigrateLegacyDefaultAgentProfile(storage), false);
 });
 
 test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {

@@ -50,6 +50,16 @@ fn message_preview_is_compact_and_never_empty() {
         message_preview(&message(json!({ "schema": 1, "blocks": [] }), 1), 1),
         ("image".to_string(), "Sent a photo".to_string())
     );
+    assert_eq!(
+        message_preview(
+            &message(
+                json!({ "schema": 1, "blocks": [{ "type": "text", "text": "Hi :blob:blobwave:" }] }),
+                0,
+            ),
+            0,
+        ),
+        ("text".to_string(), "Hi Emoji".to_string())
+    );
 }
 
 #[test]

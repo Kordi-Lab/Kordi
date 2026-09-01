@@ -104,6 +104,7 @@ export function useKordiMessageActions({
   } = cloudTransport;
   const messageMutations = useKordiMessageMutations({
     activeConversation,
+    canonicalState,
     draftSessionId,
     isNativeShell,
     setDesktopChatError,

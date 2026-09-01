@@ -102,11 +102,22 @@ struct KordiApp: App {
                 .environment(\.kordiChatTheme, selectedChatTheme)
                 .tint(KordiTheme.signalBlue)
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    if showsPreviewThemeControls {
-                        PreviewThemeControls(
-                            appearanceRawValue: $appearanceRawValue,
-                            chatThemeRawValue: $chatThemeRawValue
-                        )
+                    VStack(spacing: 0) {
+                        if showsPreviewThemeControls {
+                            PreviewThemeControls(
+                                appearanceRawValue: $appearanceRawValue,
+                                chatThemeRawValue: $chatThemeRawValue
+                            )
+                        }
+                        if callCoordinator.isMinimized,
+                           let call = callCoordinator.activeCall {
+                            MinimizedCallBar(
+                                title: call.conversation.displayName,
+                                phase: callCoordinator.phase,
+                                hasVideo: call.call.kind.allowsVideo,
+                                onOpen: callCoordinator.showCallScreen
+                            )
+                        }
                     }
                 }
                 .preferredColorScheme(preferredColorScheme)
@@ -185,6 +196,48 @@ struct KordiApp: App {
 #else
         false
 #endif
+    }
+}
+
+private struct MinimizedCallBar: View {
+    let title: String
+    let phase: KordiCallPhase
+    let hasVideo: Bool
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 12) {
+                Image(systemName: hasVideo ? "video.fill" : "phone.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 34, height: 34)
+                    .background(KordiTheme.signalBlue.gradient, in: Circle())
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Text(phase.label)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                Label("Return", systemImage: "chevron.up")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(KordiTheme.signalBlue)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial)
+            .overlay(alignment: .bottom) { Divider() }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Return to \(title) call")
+        .accessibilityValue(phase.label)
     }
 }
 
@@ -446,21 +499,21 @@ struct MainTabView: View {
             } label: {
                 Label(MainTab.contacts.rawValue, systemImage: MainTab.contacts.symbol)
             }
-            .badge(pendingIncomingRequestCount)
+            .badge(badgeLabel(pendingIncomingRequestCount))
 
             Tab(value: MainTab.chats) {
                 chatsRoot
             } label: {
                 Label(MainTab.chats.rawValue, systemImage: MainTab.chats.symbol)
             }
-            .badge(unreadTabCounts.chats)
+            .badge(badgeLabel(unreadTabCounts.chats))
 
             Tab(value: MainTab.agents) {
                 agentsRoot
             } label: {
                 Label(MainTab.agents.rawValue, systemImage: MainTab.agents.symbol)
             }
-            .badge(unreadTabCounts.agents)
+            .badge(badgeLabel(unreadTabCounts.agents))
 
             Tab(value: MainTab.digest) {
                 digestRoot
@@ -480,17 +533,17 @@ struct MainTabView: View {
         TabView(selection: $selection) {
             contactsRoot
                 .tabItem { Label(MainTab.contacts.rawValue, systemImage: MainTab.contacts.symbol) }
-                .badge(pendingIncomingRequestCount)
+                .badge(badgeLabel(pendingIncomingRequestCount))
                 .tag(MainTab.contacts)
 
             chatsRoot
                 .tabItem { Label(MainTab.chats.rawValue, systemImage: MainTab.chats.symbol) }
-                .badge(unreadTabCounts.chats)
+                .badge(badgeLabel(unreadTabCounts.chats))
                 .tag(MainTab.chats)
 
             agentsRoot
                 .tabItem { Label(MainTab.agents.rawValue, systemImage: MainTab.agents.symbol) }
-                .badge(unreadTabCounts.agents)
+                .badge(badgeLabel(unreadTabCounts.agents))
                 .tag(MainTab.agents)
 
             digestRoot
@@ -557,24 +610,30 @@ struct MainTabView: View {
     private var unreadTabCounts: MainTabUnreadCounts {
         MainTabUnreadCounts.build(conversations: model.conversations)
     }
+
+    private func badgeLabel(_ count: Int) -> Text? {
+        guard count > 0 else { return nil }
+        return Text(verbatim: ConversationAttentionBadge.countLabel(count))
+    }
 }
 
 struct MainTabUnreadCounts: Equatable {
     let chats: Int
     let agents: Int
 
+    var total: Int { chats + agents }
+
     static func build(conversations: [ConversationSummary]) -> MainTabUnreadCounts {
         let people = conversations.lazy.filter {
-            $0.kind == .person && $0.unreadCount > 0
-        }.count
-        let groups = Set(conversations.lazy.filter {
+            $0.kind == .person
+        }.reduce(0) { $0 + max(0, $1.unreadCount) }
+        let groups = conversations.lazy.filter {
             $0.kind == .group
                 && $0.forkedFromSessionId == nil
-                && $0.unreadCount > 0
-        }.map { $0.groupSpaceId?.nonEmpty ?? $0.sessionId }).count
+        }.reduce(0) { $0 + max(0, $1.unreadCount) }
         let agents = conversations.lazy.filter {
-            $0.kind == .agent && !$0.isAgentLaunchTemplate && $0.unreadCount > 0
-        }.count
+            $0.kind == .agent && !$0.isAgentLaunchTemplate
+        }.reduce(0) { $0 + max(0, $1.unreadCount) }
         return MainTabUnreadCounts(chats: people + groups, agents: agents)
     }
 }

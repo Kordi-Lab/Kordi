@@ -85,7 +85,7 @@ use cloud_presence::{publish_stored_offline_on_exit, should_publish_offline_on_e
 use media_preview_window::{
     desktop_open_media_preview_window, desktop_reveal_media_preview_window,
 };
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use window_lifecycle::{
     desktop_relaunch_after_update, should_hide_window_instead_of_close,
     should_show_main_window_on_reopen, show_and_focus_main_window, update_relaunch_requested,
@@ -272,6 +272,7 @@ pub fn run() {
             canonical_sessions::chat_sync::desktop_chat_sync_cursor,
             canonical_sessions::chat_sync::desktop_chat_sync_coverage,
             canonical_sessions::chat_sync::desktop_chat_sync_conversations,
+            canonical_sessions::chat_sync::unread::desktop_chat_sync_unread_counts,
             canonical_sessions::chat_sync::desktop_chat_sync_message_refs,
             canonical_sessions::chat_sync::desktop_chat_sync_messages_page,
             canonical_sessions::chat_sync::desktop_chat_sync_recovery_message_ids,
@@ -418,6 +419,12 @@ pub fn run() {
             ..
         } if should_hide_window_instead_of_close(&label) => {
             api.prevent_close();
+            if label == "call" {
+                let _ = app_handle.emit(
+                    "kordi://call-window-visibility",
+                    serde_json::json!({ "folded": true }),
+                );
+            }
             if let Some(window) = app_handle.get_webview_window(&label) {
                 if let Err(err) = window.hide() {
                     eprintln!("[kordi] Unable to hide window on close: {err}");

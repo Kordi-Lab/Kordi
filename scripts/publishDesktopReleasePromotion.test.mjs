@@ -99,7 +99,7 @@ test('a pointer read-back failure still rolls back the exact first promotion', a
       }
       return baseHttp.head(url);
     },
-    async get(url) {
+    async get(url, options) {
       const unpublished = JSON.parse(baseStore.bytes(prepared.pointerKey) ?? 'null')?.unpublished === true;
       if (unpublished) {
         if (url === prepared.urls.updaterEndpoint) return { status: 204, headers: {}, body: Buffer.alloc(0) };
@@ -115,7 +115,7 @@ test('a pointer read-back failure still rolls back the exact first promotion', a
           };
         }
       }
-      return baseHttp.get(url);
+      return baseHttp.get(url, options);
     },
   };
 

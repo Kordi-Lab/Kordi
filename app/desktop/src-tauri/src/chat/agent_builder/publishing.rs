@@ -78,7 +78,9 @@ pub(super) fn mark_published(
     ensure_expected_fingerprint(&workspace, expected_fingerprint)?;
     let status = status_from_metadata(&metadata)?;
     if !status.publish_ready {
-        return Err("Validate the current draft before publishing".to_string());
+        return Err(
+            "Validate and successfully test the current draft before publishing".to_string(),
+        );
     }
     metadata.status = "published".to_string();
     metadata.updated_at_ms = now_millis();
@@ -97,7 +99,9 @@ pub(super) async fn install_skill(
     ensure_expected_fingerprint(&workspace, expected_fingerprint)?;
     let status = status_from_metadata(&metadata)?;
     if !status.publish_ready {
-        return Err("Validate the current skill before installing it".to_string());
+        return Err(
+            "Validate and successfully test the current skill before installing it".to_string(),
+        );
     }
     let draft = status
         .draft

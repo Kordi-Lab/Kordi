@@ -127,7 +127,7 @@ struct ConversationSummary: Identifiable, Hashable {
             ? ", \(unreadMentionCount) unread mention\(unreadMentionCount == 1 ? "" : "s")"
             : ""
         let state = agentActivity.map { ", \($0.label)" } ?? ""
-        return "\(displayName)\(state)\(unread)\(mentions). \(previewText)"
+        return "\(displayName)\(state)\(unread)\(mentions). \(BlobEmojiComposerText.plainText(previewText))"
     }
 
     var previewText: String {

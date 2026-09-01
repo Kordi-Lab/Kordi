@@ -4,6 +4,31 @@ import XCTest
 @testable import Kordi
 
 final class KordiMarkdownParserTests: XCTestCase {
+    func testCallAvatarResolverPrefersTheCallParticipantProfileImage() {
+        let participant = CloudCallParticipant(
+            accountId: "acct_peer",
+            displayName: "Current peer name",
+            avatarUrl: "data:image/png;base64,cGVlcg==",
+            state: "joined",
+            joinedAt: nil,
+            leftAt: nil
+        )
+
+        XCTAssertEqual(
+            KordiCallAvatarResolver.identity(
+                accountID: "acct_peer",
+                fallbackName: "Old peer name",
+                fallbackImageSource: nil,
+                participants: [participant]
+            ),
+            KordiCallAvatarIdentity(
+                name: "Current peer name",
+                imageSource: "data:image/png;base64,cGVlcg==",
+                seed: "acct_peer"
+            )
+        )
+    }
+
     func testParsesTheMacDesktopBlockVocabulary() {
         let markdown = """
         # Release plan
@@ -66,6 +91,37 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertFalse(
             KordiMarkdownParser.parseInline(":blob:not-in-the-catalog:")
                 .contains(where: { if case .blobEmoji = $0 { true } else { false } })
+        )
+    }
+
+    func testBlobEmojiComposerRenderingRoundTripsTokensAndSelection() throws {
+        let token = ":blob:blobwave:"
+        let raw = "Hi \(token) there"
+        let attributed = BlobEmojiComposerText.attributedString(
+            raw,
+            font: .preferredFont(forTextStyle: .body)
+        )
+
+        XCTAssertEqual(BlobEmojiComposerText.rawText(attributed), raw)
+        XCTAssertFalse(BlobEmojiComposerText.containsUnrenderedToken(attributed))
+        XCTAssertEqual(BlobEmojiComposerText.plainText(raw), "Hi Emoji there")
+        XCTAssertEqual(
+            BlobEmojiComposerText.plainText(":blob:not-in-the-catalog:"),
+            ":blob:not-in-the-catalog:"
+        )
+
+        let rawSelection = NSRange(
+            location: 3,
+            length: (token as NSString).length
+        )
+        let rendered = BlobEmojiComposerText.renderedSelection(
+            forRaw: rawSelection,
+            in: raw
+        )
+        XCTAssertEqual(rendered, NSRange(location: 3, length: 1))
+        XCTAssertEqual(
+            BlobEmojiComposerText.rawSelection(forRendered: rendered, in: raw),
+            rawSelection
         )
     }
 
@@ -472,6 +528,95 @@ final class KordiMarkdownParserTests: XCTestCase {
 #endif
     }
 
+    func testIncomingCallPolicyReportsDirectCallsAndActiveMeetings() {
+        let participant = CloudCallParticipant(
+            accountId: "acct_me",
+            displayName: "Me",
+            avatarUrl: nil,
+            state: "invited",
+            joinedAt: nil,
+            leftAt: nil
+        )
+        let directCall = CloudCall(
+            id: "direct-call",
+            conversationId: "direct-conversation",
+            kind: .video,
+            state: .ringing,
+            createdByAccountId: "acct_peer",
+            createdAt: "2026-08-31T16:00:00Z",
+            answeredAt: nil,
+            endedAt: nil,
+            participants: [participant]
+        )
+        let meeting = CloudCall(
+            id: "meeting-call",
+            conversationId: "group-conversation",
+            kind: .meeting,
+            state: .active,
+            createdByAccountId: "acct_peer",
+            createdAt: "2026-08-31T16:00:00Z",
+            answeredAt: nil,
+            endedAt: nil,
+            participants: [participant]
+        )
+
+        XCTAssertTrue(KordiIncomingCallPolicy.shouldReport(
+            call: directCall,
+            accountID: "acct_me",
+            alreadyReported: false
+        ))
+        XCTAssertTrue(KordiIncomingCallPolicy.shouldReport(
+            call: meeting,
+            accountID: "acct_me",
+            alreadyReported: false
+        ))
+        XCTAssertFalse(KordiIncomingCallPolicy.shouldReport(
+            call: meeting,
+            accountID: "acct_me",
+            alreadyReported: true
+        ))
+    }
+
+    func testRealtimeCallFrameCarriesTheCallBeforeDurableRepair() throws {
+        let data = Data("""
+        {
+          "type": "event",
+          "stream_seq": 42,
+          "event": {
+            "stream_seq": 42,
+            "event_id": "event-call-updated",
+            "protocol_version": 2,
+            "type": "call.updated",
+            "critical": true,
+            "conversation_id": "conversation-1",
+            "entity_id": null,
+            "entity_version": null,
+            "occurred_at": "2026-08-31T16:00:00Z",
+            "payload": {
+              "call": {
+                "id": "call-1",
+                "revision": 3,
+                "conversation_id": "conversation-1",
+                "kind": "video",
+                "state": "ended",
+                "created_by_account_id": "acct_peer",
+                "created_at": "2026-08-31T15:59:30Z",
+                "answered_at": "2026-08-31T15:59:40Z",
+                "ended_at": "2026-08-31T16:00:00Z",
+                "participants": []
+              }
+            }
+          }
+        }
+        """.utf8)
+
+        let frame = try JSONDecoder().decode(CloudRealtimeServerFrame.self, from: data)
+
+        XCTAssertEqual(frame.streamSequence, 42)
+        XCTAssertEqual(frame.call?.id, "call-1")
+        XCTAssertEqual(frame.call?.state, .ended)
+    }
+
     func testCallKitMuteTimeoutNeverEndsTheCall() {
         let mute = CXSetMutedCallAction(call: UUID(), muted: true)
         XCTAssertFalse(KordiCallActionPolicy.timeoutEndsCall(mute))
@@ -614,6 +759,11 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertTrue(KordiCallMediaFailureStage.device.message.contains("microphone"))
     }
 
+    func testCallCameraCaptureUsesFullHD() {
+        XCTAssertEqual(KordiCallVideoQuality.captureDimensions.width, 1_920)
+        XCTAssertEqual(KordiCallVideoQuality.captureDimensions.height, 1_080)
+    }
+
     func testTimelinePresentationShowsAvatarOnlyOnTheLastAdjacentHumanMessage() {
         let start = Date(timeIntervalSince1970: 1_000)
         let messages = [
@@ -724,7 +874,8 @@ final class KordiMarkdownParserTests: XCTestCase {
                     role: "person"
                 )
             ],
-            sessions: [session]
+            sessions: [session],
+            membershipSessions: [session]
         )
 
         XCTAssertTrue(ChatHomeSearch.matches(space, query: "maya"))

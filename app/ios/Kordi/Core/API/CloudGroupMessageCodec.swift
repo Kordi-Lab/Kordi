@@ -135,6 +135,15 @@ struct CloudGroupMemberJoin: Codable, Hashable {
     let createdAtMs: Double
 }
 
+struct CloudGroupSessionTitleSnapshot: Codable, Hashable {
+    let title: String
+    let titleSource: String
+    let titleRevision: Int
+    let titlePolicyVersion: Int
+    let updatedAtMs: Double
+    let updatedByAccountId: String
+}
+
 struct CloudGroupControlEnvelope: Codable, Hashable {
     let kind: String
     let groupId: String
@@ -143,6 +152,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
     let createdByAccountId: String
     let actor: CloudGroupParticipant
     let participants: [CloudGroupParticipant]
+    let sessionTitle: CloudGroupSessionTitleSnapshot?
     let memberJoins: [CloudGroupMemberJoin]?
     let fork: CloudGroupForkPayload?
     let message: CloudGroupMessagePayload?
@@ -155,6 +165,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         createdByAccountId: String,
         actor: CloudGroupParticipant,
         participants: [CloudGroupParticipant],
+        sessionTitle: CloudGroupSessionTitleSnapshot? = nil,
         memberJoins: [CloudGroupMemberJoin]? = nil,
         fork: CloudGroupForkPayload? = nil,
         message: CloudGroupMessagePayload?
@@ -166,6 +177,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         self.createdByAccountId = createdByAccountId
         self.actor = actor
         self.participants = participants
+        self.sessionTitle = sessionTitle
         self.memberJoins = memberJoins
         self.fork = fork
         self.message = message
@@ -205,6 +217,7 @@ enum CloudGroupMessageCodec {
             createdByAccountId: envelope.createdByAccountId,
             actor: transportParticipant(envelope.actor),
             participants: envelope.participants.map(transportParticipant),
+            sessionTitle: envelope.sessionTitle,
             memberJoins: envelope.memberJoins,
             fork: envelope.fork,
             message: envelope.message

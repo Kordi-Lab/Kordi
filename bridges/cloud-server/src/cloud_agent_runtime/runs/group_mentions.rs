@@ -226,16 +226,19 @@ pub(super) fn mention_instruction(
 
 pub(super) fn persona_instruction(
     envelope: &CloudGroupEnvelope,
-    _responding_account_id: &str,
+    responding_account_id: &str,
     responding_agent_id: &str,
 ) -> Option<String> {
     let message = envelope.message.as_ref()?;
     let allow_agent_mentions = message_mention_depth(message) < CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH;
     let requester_agent_id = default_agent_id(&message.sender_account_id);
+    let requester_owns_agent = message.sender_account_id.trim() == responding_account_id.trim();
     let relationship = if message.sender_kind.as_deref() == Some("agent") {
         "This request came from another agent. Do not delegate to another agent.".to_string()
     } else if requester_agent_id == responding_agent_id.trim() {
         "The human requester owns you. In this request, \"my Kordi\" means you. Perform the request directly and never mention or delegate to your own public handle.".to_string()
+    } else if requester_owns_agent {
+        "The human requester owns you. In this request, \"my Kordi\" means the requester's default Kordi, not you.".to_string()
     } else {
         "The current human requester does not own you. In this request, \"my Kordi\" means the requester's default Kordi, not you.".to_string()
     };
@@ -449,6 +452,7 @@ mod tests {
         assert!(self_persona.contains("\"my Kordi\" means you"));
         let custom_persona = persona_instruction(&envelope, "acct_owner", "cloud_agent_scout")
             .expect("custom persona");
+        assert!(custom_persona.contains("requester owns you"));
         assert!(custom_persona.contains("requester's default Kordi, not you"));
         assert!(!custom_persona.contains("\"my Kordi\" means you"));
 

@@ -123,11 +123,7 @@ async fn start_call(
                         let call = started.call.clone();
                         let caller_name = started.display_name.clone();
                         tokio::spawn(async move {
-                            if call.kind.as_str() == "meeting" {
-                                push.send_group_meeting(&pool, &call, &caller_name).await;
-                            } else {
-                                push.send_incoming_call(&pool, &call, &caller_name).await;
-                            }
+                            push.send_incoming_call(&pool, &call, &caller_name).await;
                         });
                     }
                 }
@@ -229,7 +225,7 @@ async fn invite_call(
                 let call = invitable.call.clone();
                 let inviter_name = invitable.display_name;
                 tokio::spawn(async move {
-                    push.send_group_meeting(&pool, &call, &inviter_name).await;
+                    push.send_incoming_call(&pool, &call, &inviter_name).await;
                 });
             }
             Json(CallResponse {

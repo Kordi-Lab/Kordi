@@ -9,6 +9,7 @@ import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessage
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { cloudAccountGenerationKey, cloudCollaborationPreviousStateForContext, suppressCloudCollaborationUnreadCounts } from '../src/features/cloud/useCloudCollaborationState';
 import { applyCloudAgentRuntimeRouteToState } from '../src/features/cloud/useCloudCollaborationReadModel';
+import { rollbackReadInboundMessageIds } from '../src/features/cloud/useCloudMessageReadReceipts';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -313,6 +314,17 @@ test('cloud read markers keep previously read inbound messages from becoming unr
   });
 
   assert.equal(state.conversations[0].unreadCount, 0);
+});
+
+test('failed cloud read persistence rolls back only its optimistic unread mask', () => {
+  const otherPeerIds = new Set(['other-message']);
+  const rolledBack = rollbackReadInboundMessageIds({
+    acct_peer: new Set(['msg_1', 'msg_2', 'newer-message']),
+    acct_other: otherPeerIds,
+  }, 'acct_peer', ['msg_1', 'msg_2']);
+
+  assert.deepEqual([...rolledBack.acct_peer ?? []], ['newer-message']);
+  assert.equal(rolledBack.acct_other, otherPeerIds);
 });
 
 test('cloud direct unread honors canonical direct-session read cursor when cached readAt is stale', () => {

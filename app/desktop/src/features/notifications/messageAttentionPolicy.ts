@@ -1,4 +1,5 @@
 import type { Conversation, Message } from '@/kordi-app/types';
+import { blobEmojiPlainText } from '@/features/emoji/blobEmoji';
 
 export type MessageAttentionSnapshot = Record<string, {
   messageId: string;
@@ -47,7 +48,7 @@ function latestIncomingMessage(conversation: Conversation) {
 }
 
 function messagePreview(message: Message) {
-  const compactText = message.text.trim().replace(/\s+/g, ' ');
+  const compactText = blobEmojiPlainText(message.text).trim().replace(/\s+/g, ' ');
   if (compactText) {
     return compactText.length > 140 ? `${compactText.slice(0, 140)}…` : compactText;
   }

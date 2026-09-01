@@ -541,7 +541,7 @@ export function createCanonicalSessionReadModel(
               },
             );
           })();
-      const activityAtMs = session.kind === 'group' ? reliableGroupSessionActivityAtMs.get(sessionId) ?? sessionActivityAtMs(session) : sessionActivityAtMs(session); const latestTime = formatDesktopLastActiveLabel(activityAtMs);
+      const activityAtMs = session.kind === 'group' ? reliableGroupSessionActivityAtMs.get(sessionId) ?? sessionActivityAtMs(session) : sessionActivityAtMs(session); const latestTime = activityAtMs > 0 ? formatDesktopLastActiveLabel(activityAtMs) : '';
       const hasActiveProcessing = sessionHasActiveProcessing(messages);
       const directLegacyCollaborationTarget = conversation.collaborationTarget ?? syntheticCollaborationTarget(session, rawCanonicalParticipants);
       const collaborationTarget = directLegacyCollaborationTarget ?? legacyCollaborationTargetForSession(session, rawCanonicalParticipants, indexes);

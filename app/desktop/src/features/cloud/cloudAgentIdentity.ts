@@ -7,6 +7,43 @@ import type { CanonicalIdentity, CanonicalSessionMessage } from '@/kordi-app/typ
 import type { CloudAccount } from './authClient';
 import { cloudAvatarImageUrl } from './avatar';
 
+const LEGACY_DEFAULT_AGENT_PROFILE_MIGRATION_KEY = 'kordi.defaultAgentProfile.migratedAccount.v1';
+
+type DefaultAgentProfileMigrationStorage = Pick<Storage, 'getItem' | 'setItem'>;
+
+export function legacyDefaultAgentProfileMigrationOwner(
+  storage: DefaultAgentProfileMigrationStorage | null,
+) {
+  try {
+    return storage?.getItem(LEGACY_DEFAULT_AGENT_PROFILE_MIGRATION_KEY)?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+export function shouldMigrateLegacyDefaultAgentProfile(
+  storage: DefaultAgentProfileMigrationStorage | null,
+) {
+  if (!storage) return false;
+  try {
+    return !storage.getItem(LEGACY_DEFAULT_AGENT_PROFILE_MIGRATION_KEY)?.trim();
+  } catch {
+    return false;
+  }
+}
+
+export function markLegacyDefaultAgentProfileMigrated(
+  storage: DefaultAgentProfileMigrationStorage | null,
+  accountId: string,
+) {
+  const owner = accountId.trim();
+  try {
+    if (storage && owner) storage.setItem(LEGACY_DEFAULT_AGENT_PROFILE_MIGRATION_KEY, owner);
+  } catch {
+    // Server identity remains authoritative when browser storage is unavailable.
+  }
+}
+
 export function defaultCloudAgentId(ownerAccountId: string): string {
   const owner = ownerAccountId.trim();
   return owner ? `cloud-agent:${owner}` : '';

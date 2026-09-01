@@ -100,12 +100,21 @@ private struct CloudRealtimeHeartbeatFrame: Encodable {
     }
 }
 
-private struct CloudRealtimeServerFrame: Decodable {
+struct CloudRealtimeServerFrame: Decodable {
     let type: String
     let streamSequence: Int64?
+    let event: CloudChatEvent?
+
+    var call: CloudCall? {
+        guard let event,
+              event.eventType == "call.created" || event.eventType == "call.updated" else {
+            return nil
+        }
+        return event.payload.call
+    }
 
     enum CodingKeys: String, CodingKey {
-        case type
+        case type, event
         case streamSequence = "stream_seq"
     }
 }
@@ -3095,7 +3104,7 @@ final class AppModel: ObservableObject {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, let token, let account else { return false }
         do {
-            for conversation in space.sessions {
+            for conversation in space.membershipSessions {
                 let participants = groupParticipantsIncludingSelf(conversation, account: account)
                 try await sendGroupControl(
                     kind: "group-title-update",
@@ -3147,7 +3156,7 @@ final class AppModel: ObservableObject {
             )
         }
         do {
-            for conversation in space.sessions {
+            for conversation in space.membershipSessions {
                 let existing = groupParticipantsIncludingSelf(conversation, account: account)
                 let existingIDs = Set(existing.map(\.accountId))
                 let trulyAdded = addedParticipants.filter { !existingIDs.contains($0.accountId) }
@@ -3342,8 +3351,12 @@ final class AppModel: ObservableObject {
     }
 
     func canChangeRuntimeRouting(for conversation: ConversationSummary) -> Bool {
-        conversation.kind != .agent
+        let canonicalDefaultAgentID = account.map {
+            $0.defaultAgent?.agentId.nonEmpty ?? "cloud-agent:\($0.accountId)"
+        }
+        return conversation.kind != .agent
             || conversation.agentId == CanonicalAvatarSystem.defaultAgentId
+            || conversation.agentId == canonicalDefaultAgentID
             || ownedAgent(for: conversation) != nil
     }
 
@@ -4345,6 +4358,16 @@ final class AppModel: ObservableObject {
             createdByAccountId: account.accountId,
             actor: actor,
             participants: participants,
+            sessionTitle: conversation.displayName.nonEmpty.map {
+                CloudGroupSessionTitleSnapshot(
+                    title: $0,
+                    titleSource: "manual",
+                    titleRevision: 1,
+                    titlePolicyVersion: 1,
+                    updatedAtMs: Date().timeIntervalSince1970 * 1_000,
+                    updatedByAccountId: account.accountId
+                )
+            },
             memberJoins: memberJoins.isEmpty ? nil : memberJoins,
             message: nil
         )
@@ -4760,6 +4783,9 @@ final class AppModel: ObservableObject {
                                     cloudRealtimeLastReceivedSequence,
                                     streamSequence
                                 )
+                            }
+                            if let call = frame.call {
+                                applyCallSnapshot(call)
                             }
                             scheduleRealtimeSyncWake()
                         } else if frame.type == "resync_required" {

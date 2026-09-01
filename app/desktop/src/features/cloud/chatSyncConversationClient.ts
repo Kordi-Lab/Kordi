@@ -111,7 +111,7 @@ export class ChatSyncConversationClient {
     const stableGroupSession = sessionId || `${accountId}:${[...(options.memberAccountIds ?? [])].sort().join(':')}`;
     const clientMessageId = cloudOperationUuid(
       conversationKind === 'group'
-        ? `group-message:${stableGroupSession}:${body}`
+        ? options.clientMessageId?.trim() || `group-message:${stableGroupSession}:${body}`
         : options.clientMessageId,
     );
     const messageKind = options.messageKind?.trim() || 'text';
