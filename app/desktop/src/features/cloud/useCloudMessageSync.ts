@@ -397,8 +397,7 @@ export function useCloudMessageSync({
         beforeSequence = next;
       }
     }
-    // Only a fully hydrated history can distinguish deletion from a bounded page.
-    const prunedMessageIds = await pruneMissingCanonicalCloudMessages(account.accountId);
+    const prunedMessageIds = await pruneMissingCanonicalCloudMessages(account.accountId); // Full hydration above makes absence authoritative.
     if (!coordinator.isCurrentGeneration(generation)) return;
     if (prunedMessageIds.length > 0) await onCanonicalMessagesPruned?.(prunedMessageIds);
   }, [account, client, coordinator, onCanonicalMessagesPruned]);
