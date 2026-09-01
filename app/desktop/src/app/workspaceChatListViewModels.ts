@@ -3,19 +3,7 @@ import {
   ensureSelfParticipantSpace,
   filterParticipantSpaces,
 } from '@/features/chat/participantSpaces';
-import type { CanonicalSessionState, Conversation } from '@/kordi-app/types';
-
-export function workspaceArchivedSessionIds(
-  state: CanonicalSessionState | null,
-  archivedSessionIds: ReadonlySet<string>,
-) {
-  return new Set([
-    ...archivedSessionIds,
-    ...(state?.sessions ?? [])
-      .filter((session) => session.status === 'archived')
-      .map((session) => session.id),
-  ]);
-}
+import type { Conversation } from '@/kordi-app/types';
 
 export function buildWorkspaceChatListViewModels({
   activeConversationId,
@@ -34,11 +22,7 @@ export function buildWorkspaceChatListViewModels({
   hiddenSessionIds: ReadonlySet<string>;
   localAgentReachoutSessionIds: ReadonlySet<string>;
 }) {
-  const hiddenIds = new Set([
-    ...hiddenSessionIds,
-    ...archivedSessionIds,
-    ...localAgentReachoutSessionIds,
-  ]);
+  const hiddenIds = new Set([...hiddenSessionIds, ...localAgentReachoutSessionIds]);
   const chatConversations = hiddenIds.size === 0
     ? allConversations
     : allConversations.filter((conversation) => {
