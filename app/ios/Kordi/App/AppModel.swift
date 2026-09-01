@@ -3389,13 +3389,14 @@ final class AppModel: ObservableObject {
     }
 
     func setGroupSpacePinned(_ space: GroupSpaceSummary, pinned: Bool) async -> Bool {
-        guard !space.id.isEmpty else { return false }
+        let groupSpaceId = space.preferenceId
+        guard !groupSpaceId.isEmpty else { return false }
         if !previewMode {
             guard let token else { return false }
             do {
                 try await api.setGroupSpacePinned(
                     token: token,
-                    groupSpaceId: space.id,
+                    groupSpaceId: groupSpaceId,
                     pinned: pinned
                 )
             } catch {
@@ -3407,9 +3408,9 @@ final class AppModel: ObservableObject {
             }
         }
         if pinned {
-            pinnedGroupSpaceIds.insert(space.id)
+            pinnedGroupSpaceIds.insert(groupSpaceId)
         } else {
-            pinnedGroupSpaceIds.remove(space.id)
+            pinnedGroupSpaceIds.remove(groupSpaceId)
         }
         return true
     }
@@ -3467,7 +3468,7 @@ final class AppModel: ObservableObject {
                     group.addTask { [api] in
                         try await api.setGroupSpacePinned(
                             token: token,
-                            groupSpaceId: space.id,
+                            groupSpaceId: space.preferenceId,
                             pinned: false
                         )
                     }
@@ -3480,7 +3481,7 @@ final class AppModel: ObservableObject {
         }
         hiddenCloudSessionIds.formUnion(sessionIds)
         pinnedSessionIds.subtract(sessionIds)
-        pinnedGroupSpaceIds.remove(space.id)
+        pinnedGroupSpaceIds.remove(space.preferenceId)
         if previewMode {
             let archived = conversations.filter { sessionIds.contains($0.sessionId) }
             conversations.removeAll { sessionIds.contains($0.sessionId) }

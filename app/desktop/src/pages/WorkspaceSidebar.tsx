@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { Archive, Plus, Search } from 'lucide-react';
+import { Archive, ChevronLeft, Plus, Search } from 'lucide-react';
 
 import type { ChatChannel } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
@@ -335,19 +335,6 @@ export function WorkspaceSidebar({
                       />
                     </div>
 
-                    {chatModel.archivedSessionCount > 0 ? (
-                      <button
-                        type="button"
-                        className="app-transient-flat-action mb-2 flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[11px] text-slate-300"
-                        onClick={() => chatModel.setShowArchived(!chatModel.showArchived)}
-                        aria-pressed={chatModel.showArchived}
-                      >
-                        <Archive className="h-3.5 w-3.5" aria-hidden="true" />
-                        <span className="flex-1">Archived chats</span>
-                        <span className="tabular-nums text-slate-500">{chatModel.archivedSessionCount}</span>
-                      </button>
-                    ) : null}
-
                     <div className="mb-2 space-y-1.5">
                       <div className="app-filter-tabs w-full">
                         {(
@@ -391,6 +378,24 @@ export function WorkspaceSidebar({
                         ))}
                       </div>
                     </div>
+
+                    {chatModel.showArchived || chatModel.archivedSessionCount > 0 ? (
+                      <button
+                        type="button"
+                        className="app-transient-flat-action mb-2 flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[11px] text-slate-300"
+                        onClick={() => chatModel.setShowArchived(!chatModel.showArchived)}
+                        title={chatModel.showArchived ? 'Back to chats' : 'Open archived chats'}
+                        aria-label={chatModel.showArchived ? 'Back to chats' : 'Open archived chats'}
+                      >
+                        {chatModel.showArchived
+                          ? <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+                          : <Archive className="h-3.5 w-3.5" aria-hidden="true" />}
+                        <span className="flex-1">Archived chats</span>
+                        {!chatModel.showArchived ? (
+                          <span className="tabular-nums text-slate-500">{chatModel.archivedSessionCount}</span>
+                        ) : null}
+                      </button>
+                    ) : null}
 
                     {desktopChatError ? (
                       <div className="app-error-text mb-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
@@ -456,20 +461,20 @@ export function WorkspaceSidebar({
           onClose={() => setGroupContextMenu(null)}
           onSetPinned={(groupSpaceId, pinned) => { void onSetChatGroupPinned(groupSpaceId, pinned); }}
           onSetMuted={(sessionIds, muted) => {
-            void (async () => {
-              for (const sessionId of sessionIds) await onSetChatSessionMuted(sessionId, muted);
-            })();
+            void Promise.all(sessionIds.map(async (sessionId) => (
+              onSetChatSessionMuted(sessionId, muted)
+            )));
           }}
           onMarkRead={(sessionIds) => { void onMarkChatSessionsRead(sessionIds); }}
           onArchive={(sessionIds) => {
-            void (async () => {
-              for (const sessionId of sessionIds) await onArchiveChatSession(sessionId);
-            })();
+            void Promise.all(sessionIds.map(async (sessionId) => (
+              onArchiveChatSession(sessionId)
+            )));
           }}
           onRestore={(sessionIds) => {
-            void (async () => {
-              for (const sessionId of sessionIds) await onRestoreChatSession(sessionId);
-            })();
+            void Promise.all(sessionIds.map(async (sessionId) => (
+              onRestoreChatSession(sessionId)
+            )));
           }}
         />
       ) : null}

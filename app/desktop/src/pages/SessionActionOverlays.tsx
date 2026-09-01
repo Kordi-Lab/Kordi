@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Archive, ArchiveRestore, BellOff, CheckCircle2, LoaderCircle, Mail, Pin, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Bell, BellOff, CheckCircle2, LoaderCircle, Mail, Pin, PinOff, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -98,7 +98,9 @@ export function SessionContextMenu({
             className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
             onClick={() => run(() => onSetPinned(target.sessionId, !target.pinned))}
           >
-            <Pin className="app-transient-action-icon" aria-hidden="true" />
+            {target.pinned
+              ? <PinOff className="app-transient-action-icon" aria-hidden="true" />
+              : <Pin className="app-transient-action-icon" aria-hidden="true" />}
             {target.pinned ? 'Unpin' : 'Pin'}
           </button>
         ) : null}
@@ -119,7 +121,9 @@ export function SessionContextMenu({
           className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
           onClick={() => run(() => onSetMuted(target.sessionId, !target.muted))}
         >
-          <BellOff className="app-transient-action-icon" aria-hidden="true" />
+          {target.muted
+            ? <Bell className="app-transient-action-icon" aria-hidden="true" />
+            : <BellOff className="app-transient-action-icon" aria-hidden="true" />}
           {target.muted ? 'Unmute' : 'Mute notifications'}
         </button>
         <button
@@ -196,7 +200,9 @@ export function GroupContextMenu({
             className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
             onClick={() => run(() => onSetPinned(target.groupSpaceId, !target.pinned))}
           >
-            <Pin className="app-transient-action-icon" aria-hidden="true" />
+            {target.pinned
+              ? <PinOff className="app-transient-action-icon" aria-hidden="true" />
+              : <Pin className="app-transient-action-icon" aria-hidden="true" />}
             {target.pinned ? 'Unpin group' : 'Pin group'}
           </button>
         ) : null}
@@ -215,7 +221,9 @@ export function GroupContextMenu({
           className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
           onClick={() => run(() => onSetMuted(target.sessionIds, !target.muted))}
         >
-          <BellOff className="app-transient-action-icon" aria-hidden="true" />
+          {target.muted
+            ? <Bell className="app-transient-action-icon" aria-hidden="true" />
+            : <BellOff className="app-transient-action-icon" aria-hidden="true" />}
           {target.muted ? 'Unmute group' : 'Mute group'}
         </button>
         <button

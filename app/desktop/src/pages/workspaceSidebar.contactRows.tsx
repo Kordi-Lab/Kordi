@@ -10,6 +10,7 @@ import {
   participantSpaceKindText,
   participantSpacePreviewAttachment,
   participantSpaceSessionIdLabel,
+  participantSpaceSessionPreferenceId,
   participantSpaceSessionPreviewText,
   participantSpaceSessionRowTitle,
   groupSpacePreferenceId,
@@ -60,6 +61,7 @@ function ParticipantSpaceSessionRow({
     participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
   const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
   const sessionIdLabel = participantSpaceSessionIdLabel(session);
+  const preferenceSessionId = participantSpaceSessionPreferenceId(session);
   const isFork = depth > 0;
   const childForks =
     model.globalForkLineage.forksByParentSessionId.get(session.id) ?? [];
@@ -95,8 +97,8 @@ function ParticipantSpaceSessionRow({
           {
             canRename: participantSpaceCanRenameSessions(space),
             archived: model.showArchived,
-            pinned: model.pinnedSessionIds.has(session.id),
-            muted: model.mutedSessionIds.has(session.id),
+            pinned: model.pinnedSessionIds.has(preferenceSessionId),
+            muted: model.mutedSessionIds.has(preferenceSessionId),
             unread: rowUnreadCount > 0,
           },
         );
@@ -117,10 +119,10 @@ function ParticipantSpaceSessionRow({
           <span className="app-session-row-title app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium">
             {sessionRowTitle}
           </span>
-          {model.pinnedSessionIds.has(session.id) ? (
+          {model.pinnedSessionIds.has(preferenceSessionId) ? (
             <Pin className="h-3 w-3 shrink-0 text-slate-400" aria-label="Pinned" />
           ) : null}
-          {model.mutedSessionIds.has(session.id) ? (
+          {model.mutedSessionIds.has(preferenceSessionId) ? (
             <BellOff className="h-3 w-3 shrink-0 text-slate-400" aria-label="Muted" />
           ) : null}
         </div>
@@ -143,7 +145,7 @@ function ParticipantSpaceSessionRow({
           unreadScope="participant-session"
           indicator={session.statusIndicator}
           active={isActive}
-          muted={model.mutedSessionIds.has(session.id)}
+          muted={model.mutedSessionIds.has(preferenceSessionId)}
         />
         {hasForks ? (
           <>
@@ -233,7 +235,7 @@ function ParticipantSpaceRow({
     && model.pinnedGroupSpaceIds.has(groupSpaceId);
   const groupIsMuted = space.kind === 'group'
     && space.sessions.length > 0
-    && space.sessions.every((session) => model.mutedSessionIds.has(session.id));
+    && space.sessions.every((session) => model.mutedSessionIds.has(participantSpaceSessionPreferenceId(session)));
   const previewAttachment = participantSpacePreviewAttachment(space);
   const previewThumbnailUrl = previewAttachment?.kind === 'image'
     ? attachmentPreviewUrl(previewAttachment.attachment)
@@ -282,7 +284,7 @@ function ParticipantSpaceRow({
               actions.onOpenGroupContextMenu({
                 groupSpaceId,
                 groupName: space.title,
-                sessionIds: space.sessions.map((session) => session.id),
+                sessionIds: space.sessions.map(participantSpaceSessionPreferenceId),
                 x: event.clientX,
                 y: event.clientY,
                 archived: model.showArchived,
@@ -297,8 +299,8 @@ function ParticipantSpaceRow({
               event.clientY,
               {
                 archived: model.showArchived,
-                pinned: model.pinnedSessionIds.has(latestSession.id),
-                muted: model.mutedSessionIds.has(latestSession.id),
+                pinned: model.pinnedSessionIds.has(participantSpaceSessionPreferenceId(latestSession)),
+                muted: model.mutedSessionIds.has(participantSpaceSessionPreferenceId(latestSession)),
                 unread: spaceUnreadCount > 0,
               },
             );
@@ -318,10 +320,10 @@ function ParticipantSpaceRow({
               >
                 {space.title}
               </div>
-              {(groupIsPinned || (isDirectHuman && latestSession && model.pinnedSessionIds.has(latestSession.id))) ? (
+              {(groupIsPinned || (isDirectHuman && latestSession && model.pinnedSessionIds.has(participantSpaceSessionPreferenceId(latestSession)))) ? (
                 <Pin className="h-3 w-3 shrink-0 text-slate-400" aria-label="Pinned" />
               ) : null}
-              {(groupIsMuted || (isDirectHuman && latestSession && model.mutedSessionIds.has(latestSession.id))) ? (
+              {(groupIsMuted || (isDirectHuman && latestSession && model.mutedSessionIds.has(participantSpaceSessionPreferenceId(latestSession)))) ? (
                 <BellOff className="h-3 w-3 shrink-0 text-slate-400" aria-label="Muted" />
               ) : null}
             </div>
@@ -437,7 +439,7 @@ function ParticipantSpaceRow({
               indicator={isExpanded ? undefined : latestSession?.statusIndicator}
               active={isDirectHuman && isPrimarySessionActive}
               reserveStatusSpace={false}
-              muted={groupIsMuted || Boolean(isDirectHuman && latestSession && model.mutedSessionIds.has(latestSession.id))}
+              muted={groupIsMuted || Boolean(isDirectHuman && latestSession && model.mutedSessionIds.has(participantSpaceSessionPreferenceId(latestSession)))}
             />
           </div>
         </div>

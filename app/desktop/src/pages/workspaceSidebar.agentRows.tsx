@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
 import {
   participantSpaceSessionPreviewText,
+  participantSpaceSessionPreferenceId,
   participantSpaceSessionRowTitle,
   sessionContextMenuTargetForConversation,
 } from '@/pages/workspaceSidebar.chatHelpers';
@@ -70,8 +71,9 @@ export function AgentSidebarRow({
   const depth = Math.min(descriptor.depth, 4);
   const indentPaddingLeft =
     depth > 0 ? `${0.625 + depth * 0.875}rem` : undefined;
+  const preferenceSessionId = participantSpaceSessionPreferenceId(session);
   const unreadCount = Math.max(
-    model.unreadSessionIds.has(session.id) ? 1 : 0,
+    model.unreadSessionIds.has(preferenceSessionId) ? 1 : 0,
     session.unread,
   );
 
@@ -110,8 +112,8 @@ export function AgentSidebarRow({
             event.clientY,
             {
               archived: model.showArchived,
-              pinned: model.pinnedSessionIds.has(session.id),
-              muted: model.mutedSessionIds.has(session.id),
+              pinned: model.pinnedSessionIds.has(preferenceSessionId),
+              muted: model.mutedSessionIds.has(preferenceSessionId),
               unread: unreadCount > 0,
             },
           );
@@ -143,10 +145,10 @@ export function AgentSidebarRow({
             >
               {rowTitle}
             </span>
-            {model.pinnedSessionIds.has(session.id) ? (
+            {model.pinnedSessionIds.has(preferenceSessionId) ? (
               <Pin className="h-3 w-3 shrink-0 text-slate-400" aria-label="Pinned" />
             ) : null}
-            {model.mutedSessionIds.has(session.id) ? (
+            {model.mutedSessionIds.has(preferenceSessionId) ? (
               <BellOff className="h-3 w-3 shrink-0 text-slate-400" aria-label="Muted" />
             ) : null}
           </div>
@@ -181,7 +183,7 @@ export function AgentSidebarRow({
             indicator={session.statusIndicator}
             active={isActive}
             reserveStatusSpace={!isSavedMessages}
-            muted={model.mutedSessionIds.has(session.id)}
+            muted={model.mutedSessionIds.has(preferenceSessionId)}
           />
           {isSavedMessages ? (
             <Pin className="app-saved-messages-pin h-3 w-3" aria-label="Pinned" />

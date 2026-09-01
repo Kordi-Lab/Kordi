@@ -67,6 +67,8 @@ test('GroupContextMenu exposes whole-group chat actions', () => {
       sessionIds: ['session:group:mobile', 'session:group:mobile-release'],
       x: 120,
       y: 120,
+      pinned: true,
+      muted: true,
     },
     onClose: () => {},
     onSetPinned: () => {},
@@ -76,10 +78,32 @@ test('GroupContextMenu exposes whole-group chat actions', () => {
     onRestore: () => {},
   }));
 
-  assert.match(markup, />Pin group</);
+  assert.match(markup, />Unpin group</);
   assert.match(markup, />Mark group as read</);
-  assert.match(markup, />Mute group</);
+  assert.match(markup, />Unmute group</);
   assert.match(markup, />Archive group</);
+});
+
+test('GroupContextMenu restores an archived group', () => {
+  const markup = renderToStaticMarkup(createElement(GroupContextMenu, {
+    target: {
+      groupSpaceId: 'session:group:mobile',
+      groupName: 'Mobile builders',
+      sessionIds: ['session:group:mobile', 'session:group:mobile-release'],
+      x: 120,
+      y: 120,
+      archived: true,
+    },
+    onClose: () => {},
+    onSetPinned: () => {},
+    onSetMuted: () => {},
+    onMarkRead: () => {},
+    onArchive: () => {},
+    onRestore: () => {},
+  }));
+
+  assert.match(markup, />Restore group</);
+  assert.doesNotMatch(markup, /data-group-context-action="pin"/);
 });
 
 test('SessionContextMenu keeps available actions flat and omits the removed project action', () => {
@@ -144,6 +168,28 @@ test('SessionContextMenu restores archived chats without offering pin', () => {
 
   assert.match(markup, />Restore</);
   assert.doesNotMatch(markup, /data-session-context-action="pin"/);
+});
+
+test('SessionContextMenu exposes the reverse preference actions', () => {
+  const markup = renderToStaticMarkup(createElement(SessionContextMenu, {
+    target: {
+      sessionId: 'session:selected',
+      sessionName: 'Selected',
+      x: 120,
+      y: 120,
+      pinned: true,
+      muted: true,
+      unread: true,
+    },
+    ...menuActions,
+  }));
+
+  assert.match(markup, />Unpin</);
+  assert.match(markup, />Unmute</);
+  assert.match(markup, />Mark as read</);
+  assert.match(markup, /lucide-pin-off/);
+  assert.match(markup, /lucide-bell/);
+  assert.doesNotMatch(markup, /lucide-bell-off/);
 });
 
 test('RenameSessionDialog uses the anchored popout presentation', () => {

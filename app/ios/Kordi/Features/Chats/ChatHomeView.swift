@@ -759,7 +759,7 @@ struct ChatHomeView: View {
     }
 
     private func groupIsPinned(_ space: GroupSpaceSummary) -> Bool {
-        model.pinnedGroupSpaceIds.contains(space.id)
+        model.pinnedGroupSpaceIds.contains(space.preferenceId)
     }
 
     private func groupIsMuted(_ space: GroupSpaceSummary) -> Bool {
@@ -1049,7 +1049,7 @@ private enum ContactListItem: Identifiable {
         case let .conversation(conversation):
             sessionIds.contains(conversation.sessionId)
         case let .group(space):
-            groupSpaceIds.contains(space.id)
+            groupSpaceIds.contains(space.preferenceId)
         }
     }
 }

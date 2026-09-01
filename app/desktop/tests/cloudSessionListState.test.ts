@@ -69,3 +69,26 @@ test('manual unread and group pin events synchronize account preferences', () =>
   assert.deepEqual([...cleared.unreadSessionIds], []);
   assert.deepEqual([...cleared.pinnedGroupSpaceIds], []);
 });
+
+test('unpin, unmute, and restore events clear their synchronized state', () => {
+  const selected: CloudSessionVisibilityState = {
+    hiddenSessionIds: new Set(['session:one']),
+    deletedSessionIds: new Set(['session:one']),
+    unreadSessionIds: new Set(),
+    pinnedSessionIds: new Set(['session:one']),
+    mutedSessionIds: new Set(['session:one']),
+    pinnedGroupSpaceIds: new Set(['session:group:mobile']),
+  };
+  const cleared = applyCloudSyncEventsToSessionVisibility('acct_me', selected, [
+    event('session.unhidden', 'session:one'),
+    event('session.unpinned', 'session:one'),
+    event('session.unmuted', 'session:one'),
+    event('group_space.unpinned', 'session:group:mobile'),
+  ]);
+
+  assert.deepEqual([...cleared.hiddenSessionIds], []);
+  assert.deepEqual([...cleared.deletedSessionIds], []);
+  assert.deepEqual([...cleared.pinnedSessionIds], []);
+  assert.deepEqual([...cleared.mutedSessionIds], []);
+  assert.deepEqual([...cleared.pinnedGroupSpaceIds], []);
+});

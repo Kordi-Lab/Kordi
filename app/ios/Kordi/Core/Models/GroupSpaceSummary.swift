@@ -12,6 +12,10 @@ struct GroupSpaceSummary: Identifiable, Hashable {
     /// Includes every canonical session used for group membership fanout.
     let membershipSessions: [ConversationSummary]
 
+    var preferenceId: String {
+        id.hasPrefix("group:") ? String(id.dropFirst("group:".count)) : id
+    }
+
     var fullyJoinedParticipantAccountIds: Set<String> {
         guard let first = membershipSessions.first else { return [] }
         return membershipSessions.dropFirst().reduce(

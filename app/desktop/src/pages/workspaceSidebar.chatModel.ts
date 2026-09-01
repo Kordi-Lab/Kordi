@@ -7,7 +7,7 @@ import {
   buildChatSidebarRows,
   type ChatSidebarSessionInput,
 } from '@/pages/sidebar/chatSidebarRows';
-import { filterGroupForkSessionsFromSpaces, groupSpacePreferenceId } from '@/pages/workspaceSidebar.chatHelpers';
+import { filterGroupForkSessionsFromSpaces, groupSpacePreferenceId, participantSpaceSessionPreferenceId } from '@/pages/workspaceSidebar.chatHelpers';
 import type {
   WorkspaceSidebarChats,
   WorkspaceSidebarParticipantSpace as ParticipantSpaceItem,
@@ -29,16 +29,17 @@ function orderPinnedSessions(
   return spaces.map((space) => ({
     ...space,
     sessions: [...space.sessions].sort((left, right) => (
-      Number(pinnedSessionIds.has(right.id)) - Number(pinnedSessionIds.has(left.id))
+      Number(pinnedSessionIds.has(participantSpaceSessionPreferenceId(right)))
+      - Number(pinnedSessionIds.has(participantSpaceSessionPreferenceId(left)))
       || right.updatedAtMs - left.updatedAtMs
     )),
   })).sort((left, right) => {
     const leftPinned = left.kind === 'group'
       ? pinnedGroupSpaceIds.has(groupSpacePreferenceId(left.id))
-      : left.sessions.some((session) => pinnedSessionIds.has(session.id));
+      : left.sessions.some((session) => pinnedSessionIds.has(participantSpaceSessionPreferenceId(session)));
     const rightPinned = right.kind === 'group'
       ? pinnedGroupSpaceIds.has(groupSpacePreferenceId(right.id))
-      : right.sessions.some((session) => pinnedSessionIds.has(session.id));
+      : right.sessions.some((session) => pinnedSessionIds.has(participantSpaceSessionPreferenceId(session)));
     return Number(rightPinned) - Number(leftPinned);
   });
 }
@@ -208,7 +209,7 @@ export function useWorkspaceChatSidebarModel(
       const rowSession = allSidebarSessionRowsById.get(sessionId)?.session;
       const ownUnread = sidebarSessionIsActive(rowSession)
         ? 0
-        : Math.max(unreadSessionIds.has(sessionId) ? 1 : 0, rowSession?.unread ?? 0);
+        : Math.max(rowSession && unreadSessionIds.has(participantSpaceSessionPreferenceId(rowSession)) ? 1 : 0, rowSession?.unread ?? 0);
       const forkUnread = (
         globalForkLineage.forksByParentSessionId.get(sessionId) ?? []
       ).reduce((sum, fork) => sum + visit(fork.id, nextSeen), 0);
@@ -242,7 +243,7 @@ export function useWorkspaceChatSidebarModel(
           sum
           + (sidebarSessionIsActive(rowSession)
             ? 0
-            : Math.max(unreadSessionIds.has(sessionId) ? 1 : 0, rowSession?.unread ?? 0))
+            : Math.max(rowSession && unreadSessionIds.has(participantSpaceSessionPreferenceId(rowSession)) ? 1 : 0, rowSession?.unread ?? 0))
         );
       }, 0);
       unreadBySpaceId.set(space.id, unread);
@@ -258,7 +259,7 @@ export function useWorkspaceChatSidebarModel(
   const contactUnread = visibleContactParticipantSpaces.reduce(
     (sum, space) =>
       sum
-      + (space.sessions.every((session) => mutedSessionIds.has(session.id))
+      + (space.sessions.every((session) => mutedSessionIds.has(participantSpaceSessionPreferenceId(session)))
         ? 0
         : Math.max(
           0,
@@ -274,8 +275,8 @@ export function useWorkspaceChatSidebarModel(
         )
         .sort(
           (left, right) =>
-            Number(pinnedSessionIds.has(right.session.id))
-              - Number(pinnedSessionIds.has(left.session.id))
+            Number(pinnedSessionIds.has(participantSpaceSessionPreferenceId(right.session)))
+              - Number(pinnedSessionIds.has(participantSpaceSessionPreferenceId(left.session)))
             || right.session.updatedAtMs - left.session.updatedAtMs
             || left.session.title.localeCompare(right.session.title),
         ),
@@ -313,9 +314,9 @@ export function useWorkspaceChatSidebarModel(
   const agentUnread = flatAgentSessions.reduce(
     (sum, { session }) =>
       renderableAgentSessionIds.has(session.id)
-        ? sum + (mutedSessionIds.has(session.id)
+        ? sum + (mutedSessionIds.has(participantSpaceSessionPreferenceId(session))
           ? 0
-          : Math.max(unreadSessionIds.has(session.id) ? 1 : 0, session.unread))
+          : Math.max(unreadSessionIds.has(participantSpaceSessionPreferenceId(session)) ? 1 : 0, session.unread))
         : sum,
     0,
   );
@@ -429,6 +430,11 @@ export function useWorkspaceChatSidebarModel(
     : collaborationSyncStatus === 'syncing'
       ? 'Messages are syncing'
       : null;
+  const archivedSessionCount = filterParticipantSpaces(
+    archivedParticipantSpaces,
+    '',
+    chatChannel,
+  ).reduce((count, space) => count + space.sessions.length, 0);
 
   return {
     visibleParticipantSpaces,
@@ -460,10 +466,7 @@ export function useWorkspaceChatSidebarModel(
     collaborationSyncAriaLabel,
     showArchived,
     setShowArchived,
-    archivedSessionCount: archivedParticipantSpaces.reduce(
-      (count, space) => count + space.sessions.length,
-      0,
-    ),
+    archivedSessionCount,
     pinnedSessionIds,
     mutedSessionIds,
     unreadSessionIds,

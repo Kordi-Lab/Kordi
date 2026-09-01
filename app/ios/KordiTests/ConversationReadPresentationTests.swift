@@ -679,21 +679,22 @@ final class ConversationReadPresentationTests: XCTestCase {
             ).first { $0.displayName == "Mobile builders" }
         )
         let sessionIds = Set(space.sessions.map(\.sessionId))
+        XCTAssertEqual(space.preferenceId, "session:group:mobile")
 
         let didPin = await model.setGroupSpacePinned(space, pinned: true)
         XCTAssertTrue(didPin)
-        XCTAssertTrue(model.pinnedGroupSpaceIds.contains(space.id))
+        XCTAssertTrue(model.pinnedGroupSpaceIds.contains(space.preferenceId))
         XCTAssertTrue(model.pinnedSessionIds.isDisjoint(with: sessionIds))
 
         let pinnedSession = try XCTUnwrap(space.sessions.first)
         let didPinSession = await model.setConversationPinned(pinnedSession, pinned: true)
         XCTAssertTrue(didPinSession)
         XCTAssertTrue(model.pinnedSessionIds.contains(pinnedSession.sessionId))
-        XCTAssertTrue(model.pinnedGroupSpaceIds.contains(space.id))
+        XCTAssertTrue(model.pinnedGroupSpaceIds.contains(space.preferenceId))
 
         let didUnpinGroup = await model.setGroupSpacePinned(space, pinned: false)
         XCTAssertTrue(didUnpinGroup)
-        XCTAssertFalse(model.pinnedGroupSpaceIds.contains(space.id))
+        XCTAssertFalse(model.pinnedGroupSpaceIds.contains(space.preferenceId))
         XCTAssertTrue(model.pinnedSessionIds.contains(pinnedSession.sessionId))
         let didRepinGroup = await model.setGroupSpacePinned(space, pinned: true)
         XCTAssertTrue(didRepinGroup)
@@ -716,7 +717,7 @@ final class ConversationReadPresentationTests: XCTestCase {
             sessionIds
         )
         XCTAssertTrue(model.pinnedSessionIds.isDisjoint(with: sessionIds))
-        XCTAssertFalse(model.pinnedGroupSpaceIds.contains(space.id))
+        XCTAssertFalse(model.pinnedGroupSpaceIds.contains(space.preferenceId))
     }
 
     @MainActor

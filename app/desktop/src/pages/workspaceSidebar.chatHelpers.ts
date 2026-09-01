@@ -25,6 +25,13 @@ export function groupSpacePreferenceId(spaceId: string) {
   return id.startsWith('group:') ? id.slice('group:'.length) : id;
 }
 
+export function participantSpaceSessionPreferenceId(session: {
+  id?: string | null;
+  canonicalSessionId?: string | null;
+}) {
+  return (session.canonicalSessionId || session.id || '').trim();
+}
+
 export function participantSpaceSessionRowTitle(title: string) {
   const trimmed = title.trim();
   if (!trimmed) return '# Untitled session';

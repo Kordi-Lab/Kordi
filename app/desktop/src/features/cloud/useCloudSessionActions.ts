@@ -248,7 +248,8 @@ export function useCloudSessionActions({
       else next.delete(trimmedSessionId);
       return next;
     });
-  }, [client, setPinnedIds]);
+    void syncCollaborationDiff();
+  }, [client, setPinnedIds, syncCollaborationDiff]);
 
   const setMuted = useCallback(async (sessionId: string, muted: boolean) => {
     const trimmedSessionId = sessionId.trim();
@@ -262,7 +263,8 @@ export function useCloudSessionActions({
       else next.delete(trimmedSessionId);
       return next;
     });
-  }, [client, setMutedIds]);
+    void syncCollaborationDiff();
+  }, [client, setMutedIds, syncCollaborationDiff]);
 
   const setUnread = useCallback(async (sessionId: string, unread: boolean) => {
     const trimmedSessionId = sessionId.trim();
@@ -276,7 +278,8 @@ export function useCloudSessionActions({
       else next.delete(trimmedSessionId);
       return next;
     });
-  }, [client, setUnreadIds]);
+    void syncCollaborationDiff();
+  }, [client, setUnreadIds, syncCollaborationDiff]);
 
   const markRead = useCallback(async (sessionIds: string[]) => {
     const normalizedIds = [...new Set(sessionIds.map((value) => value.trim()).filter(Boolean))];
@@ -307,7 +310,8 @@ export function useCloudSessionActions({
       else next.delete(trimmedGroupSpaceId);
       return next;
     });
-  }, [client, setPinnedGroupSpaceIds]);
+    void syncCollaborationDiff();
+  }, [client, setPinnedGroupSpaceIds, syncCollaborationDiff]);
 
   const remove = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
