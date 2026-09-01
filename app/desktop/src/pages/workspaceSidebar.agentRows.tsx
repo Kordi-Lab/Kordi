@@ -140,7 +140,7 @@ export function AgentSidebarRow({
         <div className="app-agent-session-main min-w-0">
           <div className="flex items-center gap-1.5">
             <span
-              className="app-session-row-title min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100"
+              className="app-session-row-title min-w-0 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100"
               title={rowTitle}
             >
               {rowTitle}

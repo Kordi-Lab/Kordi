@@ -77,6 +77,17 @@ export function useCloudSessionActions({
   const setPinnedGroupSpaceIds = stores.visibility.setPinnedGroupSpaceIds;
   const setMessagesByPeer = stores.messages.setByPeer;
 
+  const refreshVisibility = useCallback(async (token: string) => {
+    const visibility = await client.listSessionVisibility(token);
+    const ids = (values: string[]) => new Set(values.map((value) => value.trim()).filter(Boolean));
+    setHiddenIds(ids(visibility.hiddenSessionIds));
+    setDeletedIds(ids(visibility.deletedSessionIds));
+    setUnreadIds(ids(visibility.unreadSessionIds));
+    setPinnedIds(ids(visibility.pinnedSessionIds));
+    setMutedIds(ids(visibility.mutedSessionIds));
+    setPinnedGroupSpaceIds(ids(visibility.pinnedGroupSpaceIds));
+  }, [client, setDeletedIds, setHiddenIds, setMutedIds, setPinnedGroupSpaceIds, setPinnedIds, setUnreadIds]);
+
   const refreshActivity = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
     if (!account || !trimmedSessionId) return;
@@ -248,8 +259,8 @@ export function useCloudSessionActions({
       else next.delete(trimmedSessionId);
       return next;
     });
-    void syncCollaborationDiff();
-  }, [client, setPinnedIds, syncCollaborationDiff]);
+    void refreshVisibility(session.token);
+  }, [client, refreshVisibility, setPinnedIds]);
 
   const setMuted = useCallback(async (sessionId: string, muted: boolean) => {
     const trimmedSessionId = sessionId.trim();
@@ -263,8 +274,8 @@ export function useCloudSessionActions({
       else next.delete(trimmedSessionId);
       return next;
     });
-    void syncCollaborationDiff();
-  }, [client, setMutedIds, syncCollaborationDiff]);
+    void refreshVisibility(session.token);
+  }, [client, refreshVisibility, setMutedIds]);
 
   const setUnread = useCallback(async (sessionId: string, unread: boolean) => {
     const trimmedSessionId = sessionId.trim();
@@ -278,8 +289,8 @@ export function useCloudSessionActions({
       else next.delete(trimmedSessionId);
       return next;
     });
-    void syncCollaborationDiff();
-  }, [client, setUnreadIds, syncCollaborationDiff]);
+    void refreshVisibility(session.token);
+  }, [client, refreshVisibility, setUnreadIds]);
 
   const markRead = useCallback(async (sessionIds: string[]) => {
     const normalizedIds = [...new Set(sessionIds.map((value) => value.trim()).filter(Boolean))];
@@ -295,8 +306,9 @@ export function useCloudSessionActions({
       for (const sessionId of normalizedIds) next.delete(sessionId);
       return next;
     });
+    void refreshVisibility(session.token);
     void syncCollaborationDiff();
-  }, [client, setUnreadIds, syncCollaborationDiff]);
+  }, [client, refreshVisibility, setUnreadIds, syncCollaborationDiff]);
 
   const setGroupPinned = useCallback(async (groupSpaceId: string, pinned: boolean) => {
     const trimmedGroupSpaceId = groupSpaceId.trim();
@@ -310,8 +322,8 @@ export function useCloudSessionActions({
       else next.delete(trimmedGroupSpaceId);
       return next;
     });
-    void syncCollaborationDiff();
-  }, [client, setPinnedGroupSpaceIds, syncCollaborationDiff]);
+    void refreshVisibility(session.token);
+  }, [client, refreshVisibility, setPinnedGroupSpaceIds]);
 
   const remove = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();

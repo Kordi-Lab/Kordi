@@ -116,7 +116,7 @@ function ParticipantSpaceSessionRow({
     >
       <div className="app-participant-space-session-main min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="app-session-row-title app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium">
+          <span className="app-session-row-title app-participant-space-session-title min-w-0 truncate text-[12px] font-medium">
             {sessionRowTitle}
           </span>
           {model.pinnedSessionIds.has(preferenceSessionId) ? (
@@ -315,7 +315,7 @@ function ParticipantSpaceRow({
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-1.5">
               <div
-                className="app-participant-space-row-title min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100"
+                className="app-participant-space-row-title min-w-0 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100"
                 title={space.title}
               >
                 {space.title}

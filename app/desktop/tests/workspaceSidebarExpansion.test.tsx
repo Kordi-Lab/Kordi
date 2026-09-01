@@ -76,6 +76,7 @@ test('WorkspaceSidebar exposes archived chats and account-scoped row indicators'
   assert.ok(markup.indexOf('>Contact<') < markup.indexOf('Archived chats'));
   assert.match(markup, /aria-label="Pinned"/);
   assert.match(markup, /aria-label="Muted"/);
+  assert.match(markup, />Bob<\/div><svg[^>]*aria-label="Pinned"[\s\S]*?<\/svg><svg[^>]*aria-label="Muted"/);
 });
 
 test('WorkspaceSidebar counts archived chats inside the selected channel', () => {
