@@ -85,7 +85,8 @@ export function useWorkspaceChatSidebarModel(
   const [collapsedForkParents, setCollapsedForkParents] = useState<Set<string>>(
     new Set(),
   );
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchivedState] = useState(false);
+  const [activeUnreadCounts, setActiveUnreadCounts] = useState({ contact: 0, agent: 0 });
   const orderedParticipantSpaces = useMemo(
     () => orderPinnedSessions(participantSpaces, pinnedSessionIds, pinnedGroupSpaceIds),
     [participantSpaces, pinnedGroupSpaceIds, pinnedSessionIds],
@@ -256,7 +257,7 @@ export function useWorkspaceChatSidebarModel(
     sidebarSessionIsActive,
     unreadSessionIds,
   ]);
-  const contactUnread = visibleContactParticipantSpaces.reduce(
+  const currentContactUnread = visibleContactParticipantSpaces.reduce(
     (sum, space) =>
       sum
       + (space.sessions.every((session) => mutedSessionIds.has(participantSpaceSessionPreferenceId(session)))
@@ -311,7 +312,7 @@ export function useWorkspaceChatSidebarModel(
     for (const { session } of topLevelAgentSessions) visit(session.id);
     return ids;
   }, [agentForkLineage, topLevelAgentSessions]);
-  const agentUnread = flatAgentSessions.reduce(
+  const currentAgentUnread = flatAgentSessions.reduce(
     (sum, { session }) =>
       renderableAgentSessionIds.has(session.id)
         ? sum + (mutedSessionIds.has(participantSpaceSessionPreferenceId(session))
@@ -320,6 +321,14 @@ export function useWorkspaceChatSidebarModel(
         : sum,
     0,
   );
+  const setShowArchived = useCallback((next: boolean) => {
+    if (next) {
+      setActiveUnreadCounts({ contact: currentContactUnread, agent: currentAgentUnread });
+    }
+    setShowArchivedState(next);
+  }, [currentAgentUnread, currentContactUnread]);
+  const contactUnread = showArchived ? activeUnreadCounts.contact : currentContactUnread;
+  const agentUnread = showArchived ? activeUnreadCounts.agent : currentAgentUnread;
   const toggleForkParent = useCallback((parentSessionId: string) => {
     setCollapsedForkParents((current) => {
       const next = new Set(current);

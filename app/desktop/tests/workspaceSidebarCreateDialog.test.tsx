@@ -14,10 +14,16 @@ test('WorkspaceSidebar uses menu for the global plus and agent picker for Agent-
   const dialogSource = readFileSync(new URL('../src/pages/ChatCreateDialog.tsx', import.meta.url), 'utf8');
 
   assert.match(source, /const \[chatCreateInitialMode, setChatCreateInitialMode\]\s*=\s*useState<ChatCreateMode>\('menu'\)/);
-  assert.match(source, /const openChatCreateDialog = \(event: ReactMouseEvent<HTMLElement>\) => \{[\s\S]*setChatCreateInitialMode\('menu'\);[\s\S]*setIsChatCreateDialogOpen\(true\);[\s\S]*\};/);
+  assert.match(source, /const openChatCreateDialog = useCallback\(\(event: ReactMouseEvent<HTMLElement>\) => \{[\s\S]*setChatCreateInitialMode\('menu'\);[\s\S]*setIsChatCreateDialogOpen\(true\);[\s\S]*\}, \[setActiveNav\]\);/);
   assert.match(source, /setChatCreateInitialMode\('agent'\);[\s\S]*setIsChatCreateDialogOpen\(true\);/);
   assert.match(source, /initialMode=\{chatCreateInitialMode\}/);
   assert.doesNotMatch(source, /initialMode=\{chatChannel === 'agent' \? 'agent' : 'menu'\}/);
+  const stableChrome = source.match(/const chatSidebarChrome = useMemo\(\(\) => \([\s\S]*?\n  \), \[[\s\S]*?\n  \]\);/)?.[0] ?? '';
+  assert.match(stableChrome, /app-chat-sidebar-header/);
+  assert.match(stableChrome, /app-workspace-search/);
+  assert.match(stableChrome, /app-filter-tabs/);
+  assert.doesNotMatch(stableChrome, /showArchived/);
+  assert.match(source, /\{chatSidebarChrome\}/);
   assert.match(dialogSource, /if \(isOpen\) \{\s*setMode\(initialMode\);\s*\}/);
 });
 

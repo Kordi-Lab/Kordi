@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 import { Archive, ChevronLeft, Plus, Search } from 'lucide-react';
 
@@ -199,6 +199,14 @@ export function WorkspaceSidebar({
     isCollaborationSyncUnavailable:
       chats.isCollaborationSyncUnavailable === true || !isBrowserOnline,
   });
+  const {
+    agentUnread,
+    chatChannel,
+    collaborationSyncAriaLabel,
+    collaborationSyncStatus,
+    contactUnread,
+    setChatChannel,
+  } = chatModel;
   const pendingContactRequestCount = Math.max(0, contactRequestCount);
 
   const [sessionContextMenu, setSessionContextMenu] =
@@ -221,7 +229,7 @@ export function WorkspaceSidebar({
   const [groupDetailsAnchor, setGroupDetailsAnchor] =
     useState<GroupManagementPopoverAnchor | null>(null);
 
-  const openChatCreateDialog = (event: ReactMouseEvent<HTMLElement>) => {
+  const openChatCreateDialog = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     setActiveNav('chats');
     setChatCreateInitialMode('menu');
@@ -232,7 +240,7 @@ export function WorkspaceSidebar({
       height: rect.height,
     });
     setIsChatCreateDialogOpen(true);
-  };
+  }, [setActiveNav]);
 
   useEffect(() => {
     if (!sessionContextMenu && !groupContextMenu) return;
@@ -256,6 +264,84 @@ export function WorkspaceSidebar({
     setChatCreateAnchor(null);
     setIsChatCreateDialogOpen(true);
   };
+
+  const chatSidebarChrome = useMemo(() => (
+    <>
+      <div className="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2.5">
+        <div className="flex min-w-0 items-center gap-1">
+          <div className="shrink-0 text-[15px] font-semibold text-white">Chats</div>
+          <CollaborationSyncIndicator
+            status={collaborationSyncStatus}
+            ariaLabel={collaborationSyncAriaLabel}
+          />
+        </div>
+        <div className="app-chat-sidebar-actions flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={openChatCreateDialog}
+            className="app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] p-0 transition"
+            title="Start a chat"
+            aria-label="Start a chat"
+          >
+            <Plus className="h-4 w-4 stroke-[2.2]" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+
+      <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
+        <Search className="h-3.5 w-3.5 text-slate-400" />
+        <input
+          value={chatSearch}
+          onChange={(event) => setChatSearch(event.target.value)}
+          placeholder={
+            chatChannel === 'contact'
+              ? 'Search contacts, groups, sessions'
+              : 'Search agent conversations'
+          }
+          className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
+        />
+      </div>
+
+      <div className="mb-2 space-y-1.5">
+        <div className="app-filter-tabs w-full">
+          {(
+            [
+              { id: 'contact', label: 'Contact', unread: contactUnread },
+              { id: 'agent', label: 'Agent', unread: agentUnread },
+            ] as Array<{ id: ChatChannel; label: string; unread: number }>
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setChatChannel(tab.id)}
+              className={
+                chatChannel === tab.id
+                  ? 'app-filter-tab app-filter-tab-active'
+                  : 'app-filter-tab'
+              }
+            >
+              <span>{tab.label}</span>
+              {tab.unread > 0 ? (
+                <span className="ml-1.5 inline-flex">
+                  <SidebarUnreadBadge count={tab.unread} scope="channel-tab" />
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  ), [
+    agentUnread,
+    chatChannel,
+    collaborationSyncAriaLabel,
+    collaborationSyncStatus,
+    contactUnread,
+    chatSearch,
+    openChatCreateDialog,
+    setChatChannel,
+    setChatSearch,
+  ]);
 
   return (
     <>
@@ -295,89 +381,7 @@ export function WorkspaceSidebar({
               <div className="h-full overflow-hidden">
                 {activeNav === 'chats' ? (
                   <div className="flex h-full flex-col p-2.5">
-                    <div className="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2.5">
-                      <div className="flex min-w-0 items-center gap-1">
-                        <div className="shrink-0 text-[15px] font-semibold text-white">
-                          Chats
-                        </div>
-                        <CollaborationSyncIndicator
-                          status={chatModel.collaborationSyncStatus}
-                          ariaLabel={chatModel.collaborationSyncAriaLabel}
-                        />
-                      </div>
-                      <div className="app-chat-sidebar-actions flex shrink-0 items-center gap-2">
-                        {!chatModel.showArchived ? <button
-                          type="button"
-                          onClick={openChatCreateDialog}
-                          className="app-icon-button app-utility-button grid h-8 w-8 place-items-center rounded-[10px] p-0 transition"
-                          title="Start a chat"
-                          aria-label="Start a chat"
-                        >
-                          <Plus
-                            className="h-4 w-4 stroke-[2.2]"
-                            aria-hidden="true"
-                          />
-                        </button> : null}
-                      </div>
-                    </div>
-
-                    <div className="app-input-shell app-workspace-search mb-2 flex items-center gap-2 rounded-lg px-2.5 py-1.5">
-                      <Search className="h-3.5 w-3.5 text-slate-400" />
-                      <input
-                        value={chatSearch}
-                        onChange={(event) => setChatSearch(event.target.value)}
-                        placeholder={
-                          chatModel.chatChannel === 'contact'
-                            ? 'Search contacts, groups, sessions'
-                            : 'Search agent conversations'
-                        }
-                        className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
-                      />
-                    </div>
-
-                    <div className="mb-2 space-y-1.5">
-                      <div className="app-filter-tabs w-full">
-                        {(
-                          [
-                            {
-                              id: 'contact',
-                              label: 'Contact',
-                              unread: chatModel.contactUnread,
-                            },
-                            {
-                              id: 'agent',
-                              label: 'Agent',
-                              unread: chatModel.agentUnread,
-                            },
-                          ] as Array<{
-                            id: ChatChannel;
-                            label: string;
-                            unread: number;
-                          }>
-                        ).map((tab) => (
-                          <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => chatModel.setChatChannel(tab.id)}
-                            className={
-                              chatModel.chatChannel === tab.id
-                                ? 'app-filter-tab app-filter-tab-active'
-                                : 'app-filter-tab'
-                            }
-                          >
-                            <span>{tab.label}</span>
-                            {tab.unread > 0 ? (
-                              <span className="ml-1.5 inline-flex">
-                                <SidebarUnreadBadge
-                                  count={tab.unread}
-                                  scope="channel-tab"
-                                />
-                              </span>
-                            ) : null}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    {chatSidebarChrome}
 
                     {chatModel.showArchived || chatModel.archivedSessionCount > 0 ? (
                       <button
