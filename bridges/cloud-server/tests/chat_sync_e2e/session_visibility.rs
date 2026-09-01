@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn fresh_inbound_message_restores_only_the_deleted_session() {
+async fn only_frontend_visible_messages_restore_deleted_sessions() {
     let Some(pool) = try_pool().await else {
         eprintln!("DATABASE_URL not set — skipping session visibility test");
         return;
@@ -51,20 +51,20 @@ async fn fresh_inbound_message_restores_only_the_deleted_session() {
         .expect("delete session for account");
     }
 
-    let sent = store::send_message(
+    let hidden = store::send_message(
         &pool,
         &owner,
         first,
         SendMessageRequest {
             client_message_id: Uuid::now_v7(),
-            kind: "text".to_string(),
-            content: content("fresh activity"),
+            kind: "agent_control".to_string(),
+            content: json!({ "schema": 1, "blocks": [] }),
             reply_to_message_id: None,
             attachment_ids: Vec::new(),
         },
     )
     .await
-    .expect("send fresh message")
+    .expect("send hidden control message")
     .value;
 
     let remaining: Vec<(String, String, Option<String>, Option<String>)> = query_as(
@@ -82,13 +82,58 @@ async fn fresh_inbound_message_restores_only_the_deleted_session() {
     assert!(remaining
         .iter()
         .any(|row| row.0 == peer && row.1 == second_session));
-    assert!(!remaining
+    assert!(remaining
         .iter()
         .any(|row| row.0 == peer && row.1 == first_session));
 
     let peer_events = store::sync_batch(&pool, &peer, 0, Some(100))
         .await
         .expect("load peer events")
+        .events;
+    assert!(!peer_events.iter().any(|event| {
+        event.event_type == "session.unhidden" && event.payload["sessionId"] == first_session
+    }));
+    assert!(peer_events
+        .iter()
+        .any(|event| event.event_type == "message.created" && event.entity_id == Some(hidden.id)));
+
+    let visible = store::send_message(
+        &pool,
+        &owner,
+        first,
+        SendMessageRequest {
+            client_message_id: Uuid::now_v7(),
+            kind: "text".to_string(),
+            content: content("fresh visible activity"),
+            reply_to_message_id: None,
+            attachment_ids: Vec::new(),
+        },
+    )
+    .await
+    .expect("send visible message")
+    .value;
+
+    let remaining: Vec<(String, String)> = query_as(
+        "SELECT account_id, session_id FROM cloud_account_session_visibility \
+         WHERE account_id = ANY($1) ORDER BY account_id, session_id",
+    )
+    .bind(vec![owner.clone(), peer.clone()])
+    .fetch_all(&pool)
+    .await
+    .expect("load visibility rows after visible message");
+    assert!(remaining
+        .iter()
+        .any(|row| row.0 == owner && row.1 == first_session));
+    assert!(remaining
+        .iter()
+        .any(|row| row.0 == peer && row.1 == second_session));
+    assert!(!remaining
+        .iter()
+        .any(|row| row.0 == peer && row.1 == first_session));
+
+    let peer_events = store::sync_batch(&pool, &peer, 0, Some(100))
+        .await
+        .expect("load peer events after visible message")
         .events;
     let restored_index = peer_events
         .iter()
@@ -98,8 +143,10 @@ async fn fresh_inbound_message_restores_only_the_deleted_session() {
         .expect("restoration event");
     let message_index = peer_events
         .iter()
-        .position(|event| event.event_type == "message.created" && event.entity_id == Some(sent.id))
-        .expect("message event");
+        .position(|event| {
+            event.event_type == "message.created" && event.entity_id == Some(visible.id)
+        })
+        .expect("visible message event");
     assert!(restored_index < message_index);
 
     query(

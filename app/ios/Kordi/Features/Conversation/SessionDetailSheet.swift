@@ -677,7 +677,7 @@ private struct SessionHeroActions: View {
 
     private var actionItems: [SessionHeroAction] {
         switch kind {
-        case .person: [.call, .video, .mute, .more]
+        case .person: [.call, .video, .mute, .chat]
         case .group: [.video, .mute, .search, .more]
         case .agent: [.chat, .mute, .search, .more]
         }

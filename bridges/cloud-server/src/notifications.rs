@@ -7,7 +7,8 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 mod calls;
 #[path = "notifications_message.rs"]
 mod message;
-pub(crate) use message::is_agent_authored_message;
+
+pub(crate) use message::{is_agent_authored_message, is_frontend_visible_message};
 
 #[derive(Clone)]
 pub struct PushNotificationService {

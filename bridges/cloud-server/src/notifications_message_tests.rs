@@ -114,9 +114,23 @@ fn protocol_envelopes_use_visible_text_and_hide_control_rows() {
 }
 
 #[test]
-fn hidden_protocol_rows_do_not_notify() {
+fn only_frontend_visible_messages_can_notify_or_restore_deleted_sessions() {
+    let empty = message(json!({ "schema": 1, "blocks": [] }), 0);
+    assert!(!is_frontend_visible_message(&empty));
+    assert!(!is_notifiable_message(&empty));
+
+    let attachment = message(json!({ "schema": 1, "blocks": [] }), 1);
+    assert!(is_frontend_visible_message(&attachment));
+
+    let text = message(
+        json!({ "schema": 1, "blocks": [{ "type": "text", "text": "Visible" }] }),
+        0,
+    );
+    assert!(is_frontend_visible_message(&text));
+
     let mut snapshot = message(json!({ "schema": 1, "blocks": [] }), 0);
     snapshot.kind = "agent_control".to_string();
+    assert!(!is_frontend_visible_message(&snapshot));
     assert!(!is_notifiable_message(&snapshot));
 }
 

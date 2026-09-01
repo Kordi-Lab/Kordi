@@ -38,12 +38,6 @@ struct ChatHomeView: View {
         ChatHomeSearch.normalized(searchText)
     }
 
-    private var listLayoutIdentity: [String] {
-        ((model.pinnedSessionIds.map { "session:\($0)" }
-            + model.pinnedGroupSpaceIds.map { "group:\($0)" }
-        ) + [deleteTarget.map { "delete:\($0.sessionId)" } ?? "delete:none"]).sorted()
-    }
-
     private var agentSessions: [AgentSessionListItem] {
         AgentSessionTimelineCatalog.build(
             conversations: model.conversations,
@@ -105,10 +99,16 @@ struct ChatHomeView: View {
             }
     }
 
-    private var archivedForChannel: [ConversationSummary] {
-        model.archivedConversations.filter {
-            channel == .agent ? $0.kind == .agent : $0.kind != .agent
+    private var archivedForChannelCount: Int {
+        if channel == .agent {
+            return model.archivedConversations.count { $0.kind == .agent }
         }
+        let people = model.archivedConversations.count { $0.kind == .person }
+        let groups = GroupSpaceCatalog.build(
+            conversations: model.archivedConversations,
+            ownAccountId: model.account?.accountId ?? ""
+        ).count
+        return people + groups
     }
 
     private var contactRows: [ContactListRow] {
@@ -234,7 +234,7 @@ struct ChatHomeView: View {
             }
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: {
-            Text("This does not delete it for other participants. It will return if someone sends a new message.")
+            Text("This does not delete it for other participants. It will return only when a new visible message arrives.")
         }
         .overlay(alignment: .bottom) {
             if let error = model.errorMessage {
@@ -287,7 +287,7 @@ struct ChatHomeView: View {
 
     @ViewBuilder
     private var archivedChatsEntry: some View {
-        if !archivedForChannel.isEmpty {
+        if archivedForChannelCount > 0 {
             Button {
                 showingArchivedChats = true
             } label: {
@@ -299,7 +299,7 @@ struct ChatHomeView: View {
                     Text("Archived Chats")
                         .font(.headline)
                     Spacer()
-                    Text(archivedForChannel.count, format: .number)
+                    Text(archivedForChannelCount, format: .number)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     Image(systemName: "chevron.right")
@@ -333,7 +333,6 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .id(listLayoutIdentity)
         .accessibilityLabel("Contact chats")
     }
 
@@ -452,7 +451,6 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .id(listLayoutIdentity)
         .accessibilityLabel("Agent chats")
     }
 
@@ -705,11 +703,8 @@ struct ChatHomeView: View {
     }
 
     private func requestDelete(_ conversation: ConversationSummary) {
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(180))
-            guard deleteTarget == nil else { return }
-            deleteTarget = conversation
-        }
+        guard deleteTarget == nil else { return }
+        deleteTarget = conversation
     }
 
     @ViewBuilder
@@ -808,6 +803,8 @@ private struct ArchivedChatsView: View {
     @EnvironmentObject private var model: AppModel
     let channel: ChatChannel
     @State private var deleteTarget: ConversationSummary?
+    @State private var selectedConversation: ConversationSummary?
+    @State private var expandedGroupSpaceIds = Set<String>()
 
     private var conversations: [ConversationSummary] {
         model.archivedConversations.filter {
@@ -815,59 +812,54 @@ private struct ArchivedChatsView: View {
         }
     }
 
-    var body: some View {
-        List {
-            ForEach(conversations) { conversation in
-                archivedRow(conversation)
-                    .contextMenu {
-                        Button {
-                            Task { _ = await model.restoreConversation(conversation) }
-                        } label: {
-                            Label("Restore", systemImage: "archivebox.fill")
-                        }
-                        Button {
-                            let muted = !model.mutedSessionIds.contains(conversation.sessionId)
-                            Task { _ = await model.setConversationMuted(conversation, muted: muted) }
-                        } label: {
-                            Label(
-                                model.mutedSessionIds.contains(conversation.sessionId) ? "Unmute" : "Mute notifications",
-                                systemImage: model.mutedSessionIds.contains(conversation.sessionId) ? "bell" : "bell.slash"
-                            )
-                        }
-                        Button(role: .destructive) {
-                            requestDelete(conversation)
-                        } label: {
-                            Label("Delete chat", systemImage: "trash")
-                        }
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button {
-                            requestDelete(conversation)
-                        } label: {
-                            Image(systemName: "trash")
-                        }
-                        .tint(.red)
-                        .accessibilityLabel("Delete")
-                        Button {
-                            Task { _ = await model.restoreConversation(conversation) }
-                        } label: {
-                            Image(systemName: "archivebox.fill")
-                        }
-                        .tint(.blue)
-                        .accessibilityLabel("Restore")
-                    }
-                    .accessibilityAction(named: "Restore") {
-                        Task { _ = await model.restoreConversation(conversation) }
-                    }
-                    .accessibilityAction(named: "Delete chat") {
-                        requestDelete(conversation)
-                    }
-                    .chatHomeRow(separatorLeading: 71)
+    private var groupSpaces: [GroupSpaceSummary] {
+        GroupSpaceCatalog.build(
+            conversations: conversations,
+            ownAccountId: model.account?.accountId ?? ""
+        )
+    }
+
+    private var items: [ContactListItem] {
+        let individualConversations = conversations
+            .filter { channel == .agent ? $0.kind == .agent : $0.kind == .person }
+            .map(ContactListItem.conversation)
+        let groups = channel == .agent ? [] : groupSpaces.map(ContactListItem.group)
+        return (individualConversations + groups).sorted {
+            ChatListOrdering.precedes(
+                id: $0.id,
+                displayName: $0.displayName,
+                lastActivityAt: $0.lastActivityAt,
+                before: $1.id,
+                displayName: $1.displayName,
+                lastActivityAt: $1.lastActivityAt
+            )
+        }
+    }
+
+    private var rows: [ContactListRow] {
+        items.flatMap { item -> [ContactListRow] in
+            switch item {
+            case let .conversation(conversation):
+                return [.conversation(conversation)]
+            case let .group(space):
+                return [.group(space)] + (groupIsExpanded(space)
+                    ? space.sessions.map { .groupSession($0) }
+                    : [])
             }
         }
-        .id(deleteTarget?.sessionId ?? "delete:none")
+    }
+
+    var body: some View {
+        List {
+            ForEach(rows) { row in
+                archivedRow(row)
+            }
+        }
         .listStyle(.plain)
         .navigationTitle("Archived Chats")
+        .navigationDestination(item: $selectedConversation) { conversation in
+            ConversationView(conversation: conversation)
+        }
         .overlay {
             if conversations.isEmpty {
                 ContentUnavailableView(
@@ -891,20 +883,144 @@ private struct ArchivedChatsView: View {
             }
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: {
-            Text("This does not delete it for other participants. It will return if someone sends a new message.")
-        }
-    }
-
-    private func requestDelete(_ conversation: ConversationSummary) {
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(180))
-            guard deleteTarget == nil else { return }
-            deleteTarget = conversation
+            Text("This does not delete it for other participants. It will return only when a new visible message arrives.")
         }
     }
 
     @ViewBuilder
-    private func archivedRow(_ conversation: ConversationSummary) -> some View {
+    private func archivedRow(_ row: ContactListRow) -> some View {
+        switch row {
+        case let .conversation(conversation), let .groupSession(conversation):
+            archivedSessionActionRow(conversation)
+        case let .group(space):
+            archivedGroupActionRow(space)
+        }
+    }
+
+    private func archivedSessionActionRow(_ conversation: ConversationSummary) -> some View {
+        Button {
+            selectedConversation = conversation
+        } label: {
+            archivedConversationRow(conversation)
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                Task { _ = await model.restoreConversation(conversation) }
+            } label: {
+                Label("Restore", systemImage: "archivebox.fill")
+            }
+            Button {
+                let muted = !model.mutedSessionIds.contains(conversation.sessionId)
+                Task { _ = await model.setConversationMuted(conversation, muted: muted) }
+            } label: {
+                Label(
+                    model.mutedSessionIds.contains(conversation.sessionId) ? "Unmute" : "Mute notifications",
+                    systemImage: model.mutedSessionIds.contains(conversation.sessionId) ? "bell" : "bell.slash"
+                )
+            }
+            Button(role: .destructive) {
+                requestDelete(conversation)
+            } label: {
+                Label("Delete chat", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                requestDelete(conversation)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .tint(.red)
+            .accessibilityLabel("Delete")
+            Button {
+                Task { _ = await model.restoreConversation(conversation) }
+            } label: {
+                Image(systemName: "archivebox.fill")
+            }
+            .tint(.blue)
+            .accessibilityLabel("Restore")
+        }
+        .accessibilityAction(named: "Restore") {
+            Task { _ = await model.restoreConversation(conversation) }
+        }
+        .accessibilityAction(named: "Delete chat") {
+            requestDelete(conversation)
+        }
+        .accessibilityHint("Double-tap to open this archived chat.")
+        .chatHomeRow(separatorLeading: 71)
+    }
+
+    private func archivedGroupActionRow(_ space: GroupSpaceSummary) -> some View {
+        Button {
+            toggleGroupSpace(space)
+        } label: {
+            GroupSpaceRow(
+                space: space,
+                isExpanded: groupIsExpanded(space),
+                mutedSessionIds: model.mutedSessionIds,
+                isPinned: false,
+                isMuted: groupIsMuted(space)
+            )
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                Task { _ = await model.restoreGroupSpace(space) }
+            } label: {
+                Label("Restore group", systemImage: "archivebox.fill")
+            }
+            Button {
+                Task { _ = await model.setGroupSpaceMuted(space, muted: !groupIsMuted(space)) }
+            } label: {
+                Label(
+                    groupIsMuted(space) ? "Unmute group" : "Mute group",
+                    systemImage: groupIsMuted(space) ? "bell" : "bell.slash"
+                )
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                Task { _ = await model.restoreGroupSpace(space) }
+            } label: {
+                Image(systemName: "archivebox.fill")
+            }
+            .tint(.blue)
+            .accessibilityLabel("Restore group")
+        }
+        .accessibilityAction(named: "Restore group") {
+            Task { _ = await model.restoreGroupSpace(space) }
+        }
+        .accessibilityHint("Double-tap to show archived sessions.")
+        .chatHomeRow(separatorLeading: 71)
+    }
+
+    private func requestDelete(_ conversation: ConversationSummary) {
+        guard deleteTarget == nil else { return }
+        deleteTarget = conversation
+    }
+
+    private func groupIsMuted(_ space: GroupSpaceSummary) -> Bool {
+        !space.sessions.isEmpty
+            && space.sessions.allSatisfy { model.mutedSessionIds.contains($0.sessionId) }
+    }
+
+    private func groupIsExpanded(_ space: GroupSpaceSummary) -> Bool {
+        expandedGroupSpaceIds.contains(space.id)
+    }
+
+    private func toggleGroupSpace(_ space: GroupSpaceSummary) {
+        withAnimation(.snappy(duration: 0.22)) {
+            if groupIsExpanded(space) {
+                expandedGroupSpaceIds.remove(space.id)
+            } else {
+                expandedGroupSpaceIds.insert(space.id)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func archivedConversationRow(_ conversation: ConversationSummary) -> some View {
         switch conversation.kind {
         case .person:
             ConversationRow(

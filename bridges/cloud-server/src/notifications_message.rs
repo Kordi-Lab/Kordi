@@ -17,7 +17,7 @@ mod content;
 #[path = "notifications_message_delivery.rs"]
 mod delivery;
 
-pub(crate) use content::is_agent_authored_message;
+pub(crate) use content::{is_agent_authored_message, is_frontend_visible_message};
 use content::{
     is_notifiable_message, message_event_id, message_preview, notification_sender_display_name,
 };
