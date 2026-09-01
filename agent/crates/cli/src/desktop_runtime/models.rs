@@ -45,6 +45,8 @@ pub struct DesktopChatContextMessage {
     pub id: String,
     pub author_name: String,
     pub author_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_role: Option<String>,
     pub text: String,
     pub created_at_ms: Option<i64>,
 }

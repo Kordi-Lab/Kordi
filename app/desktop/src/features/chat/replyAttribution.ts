@@ -272,6 +272,13 @@ function withoutLiveTurnReplyAttribution(turn: DesktopChatTurnSnapshot): Desktop
   };
 }
 
+function agentReplyLifecycleKey(message: Message) {
+  if (!isAgentResponse(message)) return null;
+  const replyTargetId = explicitReplyTargetForMessage(message);
+  if (!replyTargetId) return null;
+  return [replyTargetId, message.role, normalizedToken(message.sender)].join('\u0000');
+}
+
 function noProviderReplyDedupeKey(message: Message, sourceMessage: MessageSourceReference) {
   const errorText = cleanText(message.turn?.error) || cleanText(message.text);
   if (!isCloudAgentNoProviderConfiguredError(errorText)) return null;
@@ -335,12 +342,11 @@ export function shouldSuppressAgentReplyAttribution(
     | undefined,
 ) {
   if (!conversation || conversation.type !== 'owned-agent') return false;
-  if (conversation.participantSpaceId?.trim()) return false;
   const sessionId = (conversation.canonicalSessionId || conversation.id).trim();
   const forkParentId = conversation.forkedFromSessionId?.trim() ?? '';
-  if (sessionId.startsWith('session:group:') || forkParentId.startsWith('session:group:')) return false;
-  const participantCount = conversation.canonicalParticipantCount ?? conversation.canonicalParticipants?.length ?? 0;
-  return participantCount <= 2;
+  return !['session:group:', 'session:project:'].some((prefix) => (
+    sessionId.startsWith(prefix) || forkParentId.startsWith(prefix)
+  ));
 }
 
 export function buildReplyAttribution(
@@ -375,6 +381,10 @@ export function buildReplyAttribution(
     }
     return withId;
   });
+  const completedReplyKeys = new Set(messagesWithIds.flatMap((message) => {
+    const key = message.turn?.completed ? agentReplyLifecycleKey(message) : null;
+    return key ? [key] : [];
+  }));
 
   const seenNoProviderReplyKeys = new Set<string>();
   const linkedMessages = messagesWithIds.map((message, index) => {
@@ -410,12 +420,12 @@ export function buildReplyAttribution(
       seenNoProviderReplyKeys.add(noProviderDedupeKey);
     }
 
-    if (suppressAgentReplyAttribution) {
-      return withoutAgentReplyAttribution(message);
-    }
-
+    const attributedMessage = withSourceMessage({ ...message, replyToMessageId: sourceMessage.messageId }, sourceMessage);
+    const replyKey = agentReplyLifecycleKey(attributedMessage);
+    if (message.turn && !message.turn.completed && replyKey && completedReplyKeys.has(replyKey)) return null;
+    if (suppressAgentReplyAttribution) return withoutAgentReplyAttribution(message);
     addReplySummary(summariesByRequestId, sourceMessage.messageId, messageId, completedReplyCountable(message));
-    return withSourceMessage({ ...message, replyToMessageId: sourceMessage.messageId }, sourceMessage);
+    return attributedMessage;
   }).filter((message): message is Message => Boolean(message));
 
   const linkedLiveTurn = (() => {

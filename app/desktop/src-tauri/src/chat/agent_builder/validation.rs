@@ -10,9 +10,9 @@ use super::models::{DesktopAgentBuilderAgentFile, DesktopAgentBuilderSkillFile};
 use super::{
     canonical_skill_path, clean_slug, is_safe_relative_path, is_skill_bundle_file_path,
     DesktopAgentBuilderDraft, DesktopAgentBuilderFileStatus, DesktopAgentBuilderSkillDraft,
-    DesktopAgentBuilderValidation, AGENT_FILE, MAX_AGENT_BYTES, MAX_FINGERPRINT_BYTES,
-    MAX_FINGERPRINT_FILES, MAX_PLUGINS, MAX_PROMPT_BYTES, MAX_SKILLS, MAX_SKILL_BUNDLE_FILES,
-    MAX_SKILL_BYTES, MAX_SKILL_SUPPORT_FILE_BYTES, MAX_TOOLS, PROMPT_FILE,
+    DesktopAgentBuilderValidation, AGENT_FILE, MAX_AGENT_BYTES, MAX_AGENT_NAME_CHARS,
+    MAX_FINGERPRINT_BYTES, MAX_FINGERPRINT_FILES, MAX_PLUGINS, MAX_PROMPT_BYTES, MAX_SKILLS,
+    MAX_SKILL_BUNDLE_FILES, MAX_SKILL_BYTES, MAX_SKILL_SUPPORT_FILE_BYTES, MAX_TOOLS, PROMPT_FILE,
 };
 
 pub(super) fn read_limited(path: &Path, max_bytes: u64) -> Result<String, String> {
@@ -238,6 +238,12 @@ fn validate_named_values(kind: &str, values: &[String], errors: &mut Vec<String>
 fn validate_agent_metadata(agent: &DesktopAgentBuilderAgentFile, errors: &mut Vec<String>) {
     if agent.name.trim().is_empty() {
         errors.push("agent.json must include a name".to_string());
+    } else if agent.name.chars().count() > MAX_AGENT_NAME_CHARS {
+        errors.push(format!(
+            "agent.json name may contain at most {MAX_AGENT_NAME_CHARS} characters"
+        ));
+    } else if agent.name.chars().any(char::is_control) {
+        errors.push("agent.json name cannot contain control characters".to_string());
     }
     if agent.role.trim().is_empty() {
         errors.push("agent.json must include a role".to_string());

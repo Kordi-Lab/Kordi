@@ -108,6 +108,22 @@ test('cloud account profile identity takes precedence over host fallbacks', () =
         version: 1,
         updatedAt: '2026-08-19T00:00:00Z',
       },
+      defaultAgent: {
+        agentId: 'cloud-agent:account-1',
+        displayName: 'Babytang',
+        avatarUrl: null,
+        avatar: {
+          entityType: 'agent',
+          entityId: 'cloud-agent:account-1',
+          source: 'generated',
+          style: 'thumbs',
+          seed: 'babytang',
+          rendererVersion: 'dicebear-rust-10.6.0-styles-10.5.0',
+          uploadedAsset: null,
+          version: 1,
+          updatedAt: '2026-08-19T00:00:00Z',
+        },
+      },
       nodeId: null,
       passwordSet: true,
     },
@@ -127,6 +143,7 @@ test('cloud account profile identity takes precedence over host fallbacks', () =
     'https://cdn.kordi.ai/account.png',
   );
   assert.equal(state.shouldPersistProfileSeed, false);
+  assert.equal(state.localAgentDisplayName, 'Babytang');
 });
 
 test('cloud account email keeps generated self avatars stable when a display name is absent', () => {

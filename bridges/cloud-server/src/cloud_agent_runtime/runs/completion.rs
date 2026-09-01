@@ -220,7 +220,7 @@ pub async fn complete_run(
          SET status = 'completed', response_message_id = $3, \
              error_code = NULL, error_message = NULL, updated_at = $4, completed_at = $4 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message, system_prompt",
     )
     .bind(run_id)
     .bind(runner_id)
@@ -369,7 +369,7 @@ pub async fn fail_run(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'failed', response_message_id = $5, error_code = $3, error_message = $4, updated_at = $6, completed_at = $6 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message, system_prompt",
     )
     .bind(run_id)
     .bind(runner_id)

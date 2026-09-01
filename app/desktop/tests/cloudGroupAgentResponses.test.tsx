@@ -46,18 +46,20 @@ test('cloud group requesting notice uses the final response slot for smooth in-p
     sessionId: 'session:group:one',
     requestMessageId: 'msg_request',
     targetAccountId: 'acct_yang',
-    targetAgentDisplayName: "Márta's Kordi",
+    targetAgentId: 'cloud_agent_scout',
+    targetAgentDisplayName: 'Scout',
     createdAtMs: 123,
     sequenceNum: 9,
   });
 
   assert.equal(message.id, 'msg:cloud-agent-processing:msg_request:acct_yang');
-  assert.equal(message.senderIdentityId, 'agent:cloud:acct_yang');
+  assert.equal(message.senderIdentityId, 'agent:cloud-agent:cloud_agent_scout');
   assert.equal(message.contentText, 'processing...');
   assert.equal(message.status, 'processing');
   assert.equal(message.sourceTransport, 'cloud-group-agent-offline');
   assert.deepEqual(message.content, {
-    sender: "Márta's Kordi",
+    sender: 'Scout',
+    senderOwnerAccountId: 'acct_yang',
     timestampMs: 123,
     deliveryState: 'processing',
     requestId: 'msg_request',
@@ -127,19 +129,20 @@ test('cloud group offline notice replies as the mentioned agent and marks the tu
   });
 
   assert.equal(request.id, 'msg:cloud-agent-offline:msg_request:acct_yang');
-  assert.equal(request.senderIdentityId, 'agent:cloud:acct_yang');
+  assert.equal(request.senderIdentityId, 'agent:cloud-agent:cloud-agent:acct_yang');
   assert.equal(request.senderRole, 'external-agent');
   assert.equal(request.messageKind, 'agent-turn');
   assert.equal(request.contentText, '');
   assert.equal(request.parentMessageId, 'msg_request');
   assert.equal(request.status, 'failed');
   assert.deepEqual(request.content, {
-    sender: "Márta's Kordi",
+    sender: 'Kordi',
+    senderOwnerAccountId: 'acct_yang',
     timestampMs: 123,
     deliveryState: 'failed',
     requestId: 'msg_request',
     replyToMessageId: 'msg_request',
-    error: "Márta and Márta's Kordi are offline.",
+    error: 'Márta and Kordi are offline.',
   });
 });
 

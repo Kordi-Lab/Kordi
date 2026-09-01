@@ -746,7 +746,7 @@ function LiveChatTurnCardView({
   const shouldShowLiveStatusHeader = !historical && !visibleTurn.completed && !hasVisibleContent && !isCompressionStatus;
   const pendingCollaborationAgentRequest = visibleTurn.pendingCollaborationAgentRequest ?? null;
   const turnIsRunning = !historical && !visibleTurn.completed;
-  const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest;
+  const activeStopAvailable = turnIsRunning && Boolean(onStopActiveTurn) && !pendingCollaborationAgentRequest && !visibleTurn.id.startsWith('collaboration-live-turn:');
   const showLiveStatusHeader = useDelayedLiveStatus(shouldShowLiveStatusHeader, visibleTurn.id)
     || Boolean(shouldShowLiveStatusHeader && (pendingCollaborationAgentRequest || activeStopAvailable || visibleTurn.sourceMessage));
   const liveStatusText = visibleTurn.status === 'cancelling'
@@ -940,7 +940,7 @@ export const LiveChatTurnCard = memo(
 
 function LiveChatTurnMessageView({
   turn,
-  sender = 'My Kordi',
+  sender = 'Kordi',
   plainAgentResponse = false,
   onStopCollaborationAgentRequest,
   onStopActiveTurn,

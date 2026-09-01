@@ -78,9 +78,9 @@ test('canonical read model maps delegated exchanges to task activity with partic
 
   assert.equal(conversation?.canonicalDelegatedExchangeCount, 1);
   assert.equal(conversation?.taskActivities?.length, 1);
-  assert.equal(conversation?.taskActivities?.[0]?.target?.name, "Alice's Alice Kordi");
+  assert.equal(conversation?.taskActivities?.[0]?.target?.name, 'Alice Kordi');
   assert.equal(conversation?.taskActivities?.[0]?.initiator?.name, 'Me');
-  assert.deepEqual(conversation?.taskActivities?.[0]?.participants.map((participant) => participant.name), ['Me', 'Alice', "Alice's Alice Kordi"]);
+  assert.deepEqual(conversation?.taskActivities?.[0]?.participants.map((participant) => participant.name), ['Me', 'Alice', 'Alice Kordi']);
   assert.equal(conversation?.taskActivities?.[0]?.sourceRequestId, 'bridge_req_task');
 });
 

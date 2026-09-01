@@ -1228,8 +1228,8 @@ struct ComposerView: View {
     }
 
     private func agentMentionSubtitle(_ target: ComposerMentionTarget) -> String {
-        guard let ownerName = target.ownerName?.nonEmpty else { return "Cloud agent" }
-        return "\(ownerName)’s agent · Cloud or Mac"
+        guard let ownerName = target.ownerName?.nonEmpty else { return "Agent" }
+        return "\(ownerName)’s agent"
     }
 
     private func mentionSubtitle(_ target: ComposerMentionTarget) -> String {

@@ -8,7 +8,7 @@ import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } 
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { cloudVoiceMessageMetadataOnly } from '@/features/cloud/cloudVoiceMessage';
 import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
-import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
+import { isSelfReferenceName, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
 import { canonicalCallActivity } from './callActivity';
 import { canonicalAttachments } from './attachmentMapping';
@@ -16,6 +16,9 @@ import { isInternalCloudAgentControlMessage, isPlaceholderSessionTitleNotice, is
 import { canonicalMentions } from './mentionMapping';
 import { canonicalMessageAction, canonicalMessageActionSourceReference } from './messageActionMapping';
 import { canonicalMessageReactionMetadata } from './messageReactionMetadata';
+import { agentMessagePresentation, ownerScopedAgentName } from './agentMessagePresentation';
+
+export { ownerScopedAgentName } from './agentMessagePresentation';
 
 export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
 export { canonicalAttachments } from './attachmentMapping';
@@ -171,18 +174,6 @@ export function directCollaborationSourceEventForOutreachDuplicate(message: Cano
     ? sourceEventId.slice(0, -':request'.length)
     : sourceEventId;
   return sourceWithoutRequestSuffix.replace('desktop-bridge-outreach:', 'desktop-bridge:');
-}
-
-export function ownerScopedAgentName(
-  identity: CanonicalIdentity | undefined,
-  identityById: Map<string, CanonicalIdentity>,
-  profileHumanIdentityId?: string | null,
-) {
-  if (!identity) return undefined;
-  if (identity.kind !== 'agent') return selfDisplayName(identity.displayName, identity.id === profileHumanIdentityId);
-  const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
-  if (!owner?.displayName) return identity.displayName;
-  return possessiveScopedLabel(owner.displayName, identity.displayName, owner.id === profileHumanIdentityId) ?? identity.displayName;
 }
 
 function agentLabelForHumanIdentity(
@@ -428,16 +419,12 @@ export function mapCanonicalMessage(
   const time = stringValue(content.timeLabel) ?? formatDesktopClockTime(message.createdAtMs);
   const scopedAgentSender = ownerScopedAgentName(identity, identityById, profileHumanIdentityId);
   const contentSender = stringValue(content.sender)?.trim();
+  const agentPresentation = agentMessagePresentation(identity, identityById, trimmedProfileIdentityId, contentSender, stringValue(content.senderOwnerName), isAgentTurn);
   const isHostedCloudAgentTurn = isAgentTurn && sourceTransport.startsWith('cloud-group-agent');
   const isOwnMessage = role === 'user' || message.senderIdentityId === profileHumanIdentityId;
   const sender = (() => {
     if (identity?.kind === 'agent') {
-      if (isHostedCloudAgentTurn) return contentSender || identity.displayName || scopedAgentSender;
-      const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
-      if (owner?.displayName && contentSender) {
-        return possessiveScopedLabel(owner.displayName, contentSender, owner.id === profileHumanIdentityId) ?? contentSender;
-      }
-      return scopedAgentSender;
+      return agentPresentation.sender || scopedAgentSender;
     }
     if (isSelfReferenceName(contentSender) && !isOwnMessage) {
       return identity?.displayName ?? contentSender;
@@ -498,6 +485,7 @@ export function mapCanonicalMessage(
     isForkSnapshot: (sourceTransport === 'canonical-fork-snapshot' || sourceTransport === 'cloud-group-fork-snapshot') || undefined,
     role,
     sender,
+    senderOwnerName: agentPresentation.senderOwnerName,
     senderIdentityId: message.senderIdentityId,
     senderType: isAgentTurn || identity?.kind === 'agent' ? 'agent' : 'human',
     senderProfileImageUrl: identity?.profileImageUrl ?? null,

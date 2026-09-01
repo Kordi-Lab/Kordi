@@ -13,6 +13,8 @@ pub struct CloudAgentRun {
     pub run_id: String,
     pub status: String,
     pub prompt: String,
+    #[serde(rename = "systemPrompt", default)]
+    pub system_prompt: String,
     #[serde(rename = "ownerAccountId")]
     pub owner_account_id: String,
     #[serde(rename = "requesterAccountId")]

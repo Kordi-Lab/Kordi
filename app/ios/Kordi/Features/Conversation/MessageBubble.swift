@@ -139,10 +139,18 @@ struct MessageBubble: View, Equatable {
 
             VStack(alignment: message.author == .me ? .trailing : .leading, spacing: 4) {
                 if showAuthor && message.author == .agent {
-                    Text(message.authorName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(KordiTheme.agentViolet)
-                        .padding(.horizontal, 4)
+                    HStack(spacing: 6) {
+                        Text(message.authorName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(KordiTheme.agentViolet)
+                        if let ownerName = message.senderOwnerName?.nonEmpty {
+                            Text("Owner · \(ownerName)")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .accessibilityElement(children: .combine)
                 }
 
                 messageSurface

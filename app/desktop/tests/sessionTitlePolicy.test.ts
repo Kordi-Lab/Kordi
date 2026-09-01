@@ -130,6 +130,25 @@ test('authoritative manual titles survive even when their text resembles a greet
   }), false);
 });
 
+test('renamed default agent replaces a stale generic self-agent header', () => {
+  const session = {
+    id: 'session:self-agent:renamed',
+    kind: 'self-agent',
+    title: 'Kordi',
+    status: 'active',
+    createdByIdentityId: 'human:me',
+    primaryIdentityId: 'agent:me',
+    createdAtMs: 1,
+    updatedAtMs: 2,
+  } as const;
+  assert.equal(sessionConversationDisplayTitle(
+    session,
+    [{ id: 'agent:me', kind: 'agent', role: 'owned-agent', name: 'Babytang' }],
+    [{ role: 'user', text: 'hello', time: '10:00' }],
+    session.title,
+  ), 'Babytang');
+});
+
 test('meaningful persisted group titles remain stable while partial history hydrates', () => {
   const groupSession = {
     id: 'session:group:main',

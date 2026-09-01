@@ -45,6 +45,7 @@ import {
 } from './cloudGroupMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import { loadSession } from './session';
+import { useCloudDirectAgentFallback } from './useCloudDirectAgentFallback';
 
 export const CLOUD_GROUP_AGENT_STATUS_RECHECK_MS = 5_000;
 export const CLOUD_GROUP_AGENT_OFFLINE_TIMEOUT_MS = 2 * 60_000;
@@ -220,6 +221,7 @@ export function useCloudAgentAvailability({
           sessionId: candidate.requestMessage.sessionId,
           requestMessageId: candidate.requestMessage.id,
           targetAccountId: candidate.targetAccountId,
+          targetAgentId: candidate.targetCloudAgentId,
           targetAgentDisplayName: candidate.targetAgentDisplayName,
           createdAtMs: Date.now(),
         });
@@ -364,6 +366,7 @@ export function useCloudAgentAvailability({
         sessionId: candidate.requestMessage.sessionId,
         requestMessageId: candidate.requestMessage.id,
         targetAccountId: candidate.targetAccountId,
+        targetAgentId: candidate.targetCloudAgentId,
         targetAgentDisplayName: candidate.targetAgentDisplayName,
         createdAtMs: Date.now(),
       });
@@ -412,6 +415,8 @@ export function useCloudAgentAvailability({
     reportWarning,
     setCanonicalSessionState,
   ]);
+
+  useCloudDirectAgentFallback({ account, contacts, messageIndex, initialMessagesSettled, claimCloudFallbackRun, claimedRunKeysRef, reportWarning, recheckMs: CLOUD_GROUP_AGENT_STATUS_RECHECK_MS });
 
   useEffect(() => {
     if (!account || !initialMessagesSettled) return;

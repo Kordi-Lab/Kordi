@@ -34,8 +34,8 @@ test('active composer sends prefer Cloud group routing before direct Cloud bridg
   const source = chatMessagesSource();
   const activeStart = source.indexOf('const handleSendChatMessage = useCallback(async (');
   assert.notEqual(activeStart, -1, 'expected active composer send handler');
-  const activeEnd = source.indexOf('const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);', activeStart);
-  assert.notEqual(activeEnd, -1, 'expected local-send section after bridge routing');
+  const activeEnd = source.indexOf('if (lockedSupportAgentTarget) {', activeStart);
+  assert.notEqual(activeEnd, -1, 'expected local-send fallback after bridge routing');
   const bridgeRoutingSection = source.slice(activeStart, activeEnd);
 
   const normalSendStart = bridgeRoutingSection.indexOf('if (activeLocalTurnShouldDelayChatSend({');

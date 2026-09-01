@@ -11,7 +11,10 @@ import {
   startDesktopChatMessage,
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
-import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
+import type {
+  CanonicalSessionState,
+  DesktopChatTurnSnapshot,
+} from '@/kordi-app/types';
 import type {
   CloudAccount,
   CloudAuthClient,
@@ -58,18 +61,20 @@ import { loadSession } from './session';
 import {
   cloudSelfAgentExecutionCanStart,
   cloudSelfAgentHasTerminalResponse,
-  cloudSelfAgentTerminalResponseRequestIds,
+  cloudSelfAgentTerminalOrLocalRequestIds,
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
+  localSelfAgentRequestClientMessageIds,
 } from './cloudSelfAgentExecutionState';
 import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
-
 export {
   cloudSelfAgentExecutionCanStart,
   cloudSelfAgentHasTerminalResponse,
+  cloudSelfAgentTerminalOrLocalRequestIds,
   cloudSelfAgentTerminalResponseRequestIds,
   omitTerminalCloudSelfAgentLocalTurns,
   pendingCloudSelfAgentExecutionRequests,
+  localSelfAgentRequestClientMessageIds,
 } from './cloudSelfAgentExecutionState';
 
 function preparingExecutionSnapshot(nowMs = Date.now()): CloudAgentExecutionSnapshot {
@@ -85,6 +90,7 @@ function preparingExecutionSnapshot(nowMs = Date.now()): CloudAgentExecutionSnap
 
 export function useCloudSelfAgentExecution({
   account,
+  canonicalState,
   client,
   messageIndex,
   initialMessagesSettled,
@@ -100,6 +106,7 @@ export function useCloudSelfAgentExecution({
   reportWarning,
 }: {
   account: CloudAccount | null;
+  canonicalState: CanonicalSessionState | null | undefined;
   client: CloudAuthClient;
   messageIndex: CloudMessageIndex;
   initialMessagesSettled: boolean;
@@ -133,9 +140,7 @@ export function useCloudSelfAgentExecution({
   useEffect(() => {
     if (!account) return;
     const selfMessages = messageIndex.byPeerId.get(account.accountId) ?? [];
-    const terminalRequestIds = cloudSelfAgentTerminalResponseRequestIds(
-      selfMessages,
-    );
+    const terminalRequestIds = cloudSelfAgentTerminalOrLocalRequestIds(selfMessages, canonicalState);
     setLocalTurns((current) => omitTerminalCloudSelfAgentLocalTurns(
       current,
       terminalRequestIds,
@@ -154,6 +159,7 @@ export function useCloudSelfAgentExecution({
     }
   }, [
     account,
+    canonicalState,
     messageIndex,
     reportWarning,
     setLocalTurns,
@@ -173,6 +179,8 @@ export function useCloudSelfAgentExecution({
     const candidates = pendingCloudSelfAgentExecutionRequests({
       account,
       messageIndex,
+      ignoredClientMessageIds:
+        localSelfAgentRequestClientMessageIds(canonicalState),
     });
     const selfMessages =
       messageIndex.byPeerId.get(account.accountId) ?? [];
@@ -291,8 +299,8 @@ export function useCloudSelfAgentExecution({
             localAccountId: account.accountId,
             localHumanName: ownerName,
             peerHumanName: ownerName,
-            localAgentName: 'My Kordi',
-            peerAgentName: 'My Kordi',
+            localAgentName: account.defaultAgent?.displayName || 'Kordi',
+            peerAgentName: account.defaultAgent?.displayName || 'Kordi',
           }),
         ];
 
@@ -471,6 +479,7 @@ export function useCloudSelfAgentExecution({
     }
   }, [
     account,
+    canonicalState,
     client,
     cloudAgentDefinitionsById,
     defaultRoute,

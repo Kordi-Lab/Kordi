@@ -51,6 +51,14 @@ export function cloudContactToContact(row: CloudContactSummary): Contact {
     targetCloudAgentName: row.targetCloudAgentName?.trim() || null,
     targetCloudAgentOwnerAccountId: row.targetCloudAgentOwnerAccountId?.trim() || null,
     targetCloudAgentOwnerName: row.targetCloudAgentOwnerName?.trim() || null,
+    targetCloudAgentAvatarUrl: row.defaultAgent?.avatarUrl?.trim() || null,
+    targetCloudAgentAvatarSeed: row.defaultAgent?.avatar.seed?.trim() || null,
+    ...(!isSystemAgent && row.defaultAgent ? {
+      targetCloudAgentId: row.defaultAgent.agentId,
+      targetCloudAgentName: row.defaultAgent.displayName,
+      targetCloudAgentOwnerAccountId: row.accountId,
+      targetCloudAgentOwnerName: name,
+    } : {}),
   };
 }
 

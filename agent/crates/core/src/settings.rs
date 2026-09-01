@@ -29,6 +29,8 @@ pub struct Settings {
     pub project_context: Option<String>,
     #[serde(default, alias = "projectSystemPrompt")]
     pub project_system_prompt: Option<String>,
+    #[serde(default, alias = "agentName", skip_serializing_if = "Option::is_none")]
+    pub agent_name: Option<String>,
     #[serde(default, alias = "projectSharedSources")]
     pub project_shared_sources: Vec<ProjectSharedSource>,
     #[serde(default)]
@@ -219,6 +221,7 @@ impl Default for Settings {
             project_name: None,
             project_context: None,
             project_system_prompt: None,
+            agent_name: None,
             project_shared_sources: Vec::new(),
             compaction: CompactionConfig::default(),
             retry: RetryConfig::default(),

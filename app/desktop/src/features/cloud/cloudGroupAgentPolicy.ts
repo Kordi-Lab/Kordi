@@ -12,9 +12,11 @@ import {
 import {
   CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH,
   cloudGroupAgentHandoffTargetsAccount,
+  cloudGroupAgentPersonaInstruction,
   cloudGroupAgentMentionDepth,
   cloudGroupMentionInstruction,
 } from './cloudGroupMentions';
+import { cloudAgentId, defaultCloudAgentId } from './cloudAgentIdentity';
 import type {
   CloudGroupControlEnvelope,
   CloudGroupParticipant,
@@ -37,13 +39,16 @@ export function cloudGroupMessageTargetsLocalAgent(
       account.accountId,
     );
   }
-  const targetsOwnedHostedCloudAgent = Boolean(
-    cleanCloudText(message.targetCloudAgentId)
-      .startsWith('cloud_agent_')
+  const targetCloudAgentId = cleanCloudText(message.targetCloudAgentId);
+  const targetsOwnedCloudAgent = Boolean(
+    (
+      targetCloudAgentId.startsWith('cloud_agent_')
+      || targetCloudAgentId === defaultCloudAgentId(account.accountId)
+    )
     && cleanCloudText(message.targetCloudAgentOwnerAccountId)
       === account.accountId,
   );
-  return targetsOwnedHostedCloudAgent || cloudMessageMentionsLocalAgent(
+  return targetsOwnedCloudAgent || cloudMessageMentionsLocalAgent(
     message.text,
     account,
     {
@@ -59,12 +64,14 @@ export function cloudGroupNativeContextMessages({
   requestMessageId,
   requestCreatedAtMs,
   respondingAccountId,
+  respondingAgentId,
 }: {
   groupRows: readonly IndexedCloudGroupRow[];
   groupId: string;
   requestMessageId: string;
   requestCreatedAtMs: number;
   respondingAccountId: string;
+  respondingAgentId?: string | null;
 }): DesktopChatContextMessage[] {
   const history = compactCloudAgentNativeContextMessages(
     groupRows.flatMap(({ envelope }) => {
@@ -112,6 +119,10 @@ export function cloudGroupNativeContextMessages({
     ? cloudGroupMentionInstruction({
       participants: requestEnvelope.participants,
       respondingAccountId,
+      respondingAgentId: cloudAgentId(
+        respondingAgentId ?? requestEnvelope.message.targetCloudAgentId,
+        respondingAccountId,
+      ),
       allowAgentMentions:
         cloudGroupAgentMentionDepth(requestEnvelope.message)
           < CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH,
@@ -121,16 +132,40 @@ export function cloudGroupNativeContextMessages({
         : 'human',
     })
     : null;
-  if (!mentionInstruction) return history;
+  if (!requestEnvelope?.message) return history;
+  const allowAgentMentions = cloudGroupAgentMentionDepth(
+    requestEnvelope.message,
+  ) < CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH;
+  const personaInstruction = cloudGroupAgentPersonaInstruction({
+    respondingAgentDisplayName: requestEnvelope.message.targetCloudAgentName,
+    respondingAccountId,
+    respondingAgentId: cloudAgentId(
+      respondingAgentId ?? requestEnvelope.message.targetCloudAgentId,
+      respondingAccountId,
+    ),
+    requesterAccountId: requestEnvelope.message.senderAccountId,
+    requesterKind: requestEnvelope.message.senderKind === 'agent'
+      ? 'agent'
+      : 'human',
+    allowAgentMentions,
+  });
   return compactCloudAgentNativeContextMessages([
     ...history,
     {
-      id: `cloud-group-mention-permissions:${groupId}:${cloudContextFingerprint(mentionInstruction)}`,
-      authorName: 'Group mention permissions',
+      id: `cloud-group-persona:${groupId}:${cloudContextFingerprint(personaInstruction)}`,
+      authorName: 'Group agent identity',
       authorKind: 'agent',
-      text: mentionInstruction,
+      contextRole: 'system',
+      text: personaInstruction,
       createdAtMs: requestCreatedAtMs,
     },
+    ...(mentionInstruction ? [{
+      id: `cloud-group-mention-permissions:${groupId}:${cloudContextFingerprint(mentionInstruction)}`,
+      authorName: 'Group mention directory',
+      authorKind: 'agent' as const,
+      text: mentionInstruction,
+      createdAtMs: requestCreatedAtMs,
+    }] : []),
   ]);
 }
 

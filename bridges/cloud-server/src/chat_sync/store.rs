@@ -155,6 +155,8 @@ type MemberRow = (
     Option<String>,
     Option<String>,
     String,
+    Option<String>,
+    String,
     String,
     i32,
     i64,
@@ -178,6 +180,8 @@ type MessageRow = (
     DateTime<Utc>,
     Option<DateTime<Utc>>,
     Option<DateTime<Utc>>,
+    String,
+    Option<String>,
 );
 
 type SyncEventRow = (

@@ -23,6 +23,10 @@ export function isCollaborationAgentResponseDirection(
     || message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
 }
 
+export function isTerminalCollaborationAgentRequestState(value: string | null | undefined) {
+  return ['responded', 'cancelled', 'failed', 'processing_failed', 'no_response'].includes(normalizeDeliveryState(value));
+}
+
 export function collaborationTimestampIsExpired(timestampMs: number, nowMs: number) {
   return Number.isFinite(timestampMs)
     && timestampMs > 0
@@ -67,4 +71,37 @@ export function historicalCollaborationProcessingPlaceholderIds(
     }
   }
   return staleIds;
+}
+
+export function collaborationPendingAgentReplyState(
+  conversation: DesktopCollaborationConversation,
+  nowMs: number,
+  displayText: (message: DesktopCollaborationConversationMessage) => string,
+) {
+  const latestRequest = [...conversation.messages].reverse().find((message) => (
+    message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND
+    && Boolean(message.requestId?.trim())
+  ));
+  const hasSentRequest = Boolean(conversation.outreach?.sourceRequestId)
+    || conversation.messages.some((message) => Boolean(message.requestId));
+  const staleProcessingPlaceholderIds = historicalCollaborationProcessingPlaceholderIds(conversation, nowMs, displayText);
+  const awaitingReply = conversation.awaitingReply
+    && hasSentRequest
+    && !isTerminalCollaborationAgentRequestState(latestRequest?.deliveryState)
+    && !(latestRequest?.timestampMs && collaborationTimestampIsExpired(latestRequest.timestampMs, nowMs));
+  const pendingAgentMention = awaitingReply
+    ? latestRequest?.mentions?.find((mention) => mention.targetKind === 'agent')
+    : undefined;
+  const requestId = latestRequest?.requestId?.trim() || null;
+  const pendingRequestId = awaitingReply && normalizeDeliveryState(latestRequest?.deliveryState) !== 'sending'
+    ? latestRequest?.clientMessageId?.trim() === requestId ? latestRequest?.id.trim() || requestId : requestId
+    : null;
+  const activeAgentReplyMessage = awaitingReply
+    ? [...conversation.messages].reverse().find((message) => (
+        isCollaborationAgentResponseDirection(message)
+        && normalizeDeliveryState(message.deliveryState) === 'processing'
+        && !staleProcessingPlaceholderIds.has(message.id)
+      ))
+    : undefined;
+  return { activeAgentReplyMessage, awaitingReply, hasSentRequest, pendingAgentMention, pendingRequestId, staleProcessingPlaceholderIds };
 }

@@ -19,16 +19,19 @@ pub(super) fn parse_kind(value: &str) -> Result<ConversationKind, StoreError> {
 
 pub(super) fn member_from_row(row: MemberRow) -> MemberSnapshot {
     MemberSnapshot {
+        default_agent_id: format!("cloud-agent:{}", row.0),
         account_id: row.0,
         display_name: row.1,
         avatar_url: row.2,
-        role: row.3,
-        membership_state: row.4,
-        version: row.5,
-        last_delivered_sequence: row.6,
-        last_read_sequence: row.7,
-        joined_at: row.8,
-        left_at: row.9,
+        default_agent_display_name: row.3,
+        default_agent_avatar_url: row.4,
+        role: row.5,
+        membership_state: row.6,
+        version: row.7,
+        last_delivered_sequence: row.8,
+        last_read_sequence: row.9,
+        joined_at: row.10,
+        left_at: row.11,
     }
 }
 
@@ -37,6 +40,13 @@ pub(super) fn message_from_row(
     attachment_ids: Vec<String>,
     reactions: Vec<ReactionSnapshot>,
 ) -> MessageSnapshot {
+    let mut content = row.6;
+    message::normalize_stored_group_agent_identity(
+        &mut content,
+        &row.4,
+        &row.14,
+        row.15.as_deref(),
+    );
     MessageSnapshot {
         id: row.0,
         client_message_id: row.1,
@@ -44,7 +54,7 @@ pub(super) fn message_from_row(
         conversation_sequence: row.3,
         sender_account_id: row.4,
         kind: row.5,
-        content: row.6,
+        content,
         reply_to_message_id: row.7,
         attachment_ids,
         version: row.8,
@@ -95,11 +105,13 @@ pub(super) async fn member_rows(
 ) -> Result<Vec<MemberSnapshot>, StoreError> {
     let rows: Vec<MemberRow> = query_as(
         "SELECT member.account_id, account.display_name, account.avatar_url, \
+                agent.display_name, agent.avatar_url, \
                 member.role, member.membership_state, member.version, \
                 member.last_delivered_sequence, member.last_read_sequence, \
                 member.joined_at, member.left_at \
          FROM cloud_chat_conversation_members member \
          JOIN cloud_accounts account ON account.account_id = member.account_id \
+         JOIN cloud_default_agent_profiles agent ON agent.owner_account_id = member.account_id \
          WHERE member.conversation_id = $1 \
          ORDER BY member.joined_at ASC, member.account_id ASC",
     )
@@ -242,10 +254,15 @@ pub(super) async fn load_message(
     message_id: Uuid,
 ) -> Result<MessageSnapshot, StoreError> {
     let row: Option<MessageRow> = query_as(
-        "SELECT message_id, client_message_id, conversation_id, conversation_sequence, \
-                sender_account_id, message_kind, content, reply_to_message_id, version, \
-                generation_status, provider_response_id, created_at, edited_at, deleted_at \
-         FROM cloud_chat_messages WHERE message_id = $1",
+        "SELECT message.message_id, message.client_message_id, message.conversation_id, \
+                message.conversation_sequence, message.sender_account_id, message.message_kind, \
+                message.content, message.reply_to_message_id, message.version, \
+                message.generation_status, message.provider_response_id, message.created_at, \
+                message.edited_at, message.deleted_at, agent.display_name, account.display_name \
+         FROM cloud_chat_messages message \
+         JOIN cloud_default_agent_profiles agent ON agent.owner_account_id = message.sender_account_id \
+         JOIN cloud_accounts account ON account.account_id = message.sender_account_id \
+         WHERE message.message_id = $1",
     )
     .bind(message_id)
     .fetch_optional(&mut **transaction)

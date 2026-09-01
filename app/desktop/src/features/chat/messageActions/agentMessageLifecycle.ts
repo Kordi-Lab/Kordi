@@ -88,7 +88,7 @@ export function canonicalNoProviderFailedAgentMessageRequest({
     messageKind: 'agent-turn',
     contentText: '',
     content: {
-      sender: 'My Kordi',
+      sender: 'Kordi',
       timestampMs: now,
       deliveryState: 'failed',
       requestId: requestMessageId,

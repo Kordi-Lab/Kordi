@@ -3,6 +3,7 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 const chatMessagesSource = () => readFileSync(new URL('../src/features/chat/messageActions/chatMessages.ts', import.meta.url), 'utf8');
+const mentionTargetSource = () => readFileSync(new URL('../src/features/chat/messageActions/cloudAgentMentionTarget.ts', import.meta.url), 'utf8');
 const cloudDirectMessagingSource = () => readFileSync(new URL('../src/features/cloud/useCloudDirectMessaging.ts', import.meta.url), 'utf8');
 
 test('targeted sends check Cloud group routing before direct Cloud bridge routing', () => {
@@ -50,6 +51,8 @@ test('targeted sends check Cloud group routing before direct Cloud bridge routin
 
 test('direct cloud first sends and retries share the same idempotency key', () => {
   const source = chatMessagesSource();
+  assert.match(source, /if \(!claimConversationSend\(collaborationSendInFlightConversationIdsRef\.current, activeCloudConversationId\)\) return;/);
+  assert.match(source, /finally \{\s*releaseConversationSend\(collaborationSendInFlightConversationIdsRef\.current, activeCloudConversationId\);/);
   assert.match(
     source,
     /const retryCloudBody = retryDirectHostedAgentTarget[\s\S]*?encodeCloudDirectMessageEnvelope\([\s\S]*?: text;[\s\S]*?sendCloudCollaborationMessage\(\s*activeCloudConversationId,\s*retryCloudBody,\s*retryAttachments,\s*\{\s*clientMessageId: retryMessageId,[\s\S]*?\},/,
@@ -73,4 +76,15 @@ test('direct cloud first sends and retries share the same idempotency key', () =
     /clientMessageId:\s*options\.clientMessageId/,
     'the stable optimistic id must reach the server transport',
   );
+});
+
+test('direct person chats resolve a mention of the local renamed agent', () => {
+  const source = chatMessagesSource();
+  const targetSource = mentionTargetSource();
+  const resolverSource = targetSource.slice(targetSource.indexOf('export async function resolvePreferredAgentMentionTarget'));
+  const activeStart = source.indexOf('const handleSendChatMessage = useCallback(async (');
+  assert.notEqual(activeStart, -1);
+  assert.match(source.slice(activeStart), /resolvePreferredAgentMentionTarget\([\s\S]*activeGroupSessionIsGroup \|\| activeConvCollaborationTarget\?\.runtime === 'person'/);
+  assert.ok(resolverSource.indexOf('resolveMentionedLocalAgentTarget') < resolverSource.indexOf('resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh'));
+  assert.match(resolverSource, /return cachedRemoteTarget \?\? localTarget \?\? \(skip \? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh/);
 });

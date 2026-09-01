@@ -84,3 +84,55 @@ async fn uploaded_avatar_assets_are_reference_backed_and_renderable() {
         .unwrap();
     assert!(bytes.starts_with(b"\xff\xd8\xff"));
 }
+
+#[tokio::test]
+async fn default_agent_avatar_assets_are_owner_scoped_and_persisted() {
+    let Some(pool) = try_pool().await else { return };
+    let store = TestObjectStore::spawn().await;
+    let router = test_router_with_s3(pool, &store);
+    let owner = signup(&router, "default-agent-avatar", "Avatar Owner").await;
+    let agent_id = format!("cloud-agent:{}", owner.account_id);
+    let mut source = Cursor::new(Vec::new());
+    image::DynamicImage::new_rgb8(32, 24)
+        .write_to(&mut source, image::ImageFormat::Png)
+        .unwrap();
+
+    let upload = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/v1/cloud/avatar-assets?entityType=agent&entityId={agent_id}"
+                ))
+                .header("authorization", format!("Bearer {}", owner.token))
+                .header("content-type", "image/png")
+                .body(Body::from(source.into_inner()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(upload.status(), StatusCode::OK);
+    let upload = read_json(upload).await;
+    let marker = upload["uploadedAsset"].as_str().unwrap();
+
+    let updated = router
+        .oneshot(patch_json_with_token(
+            "/v1/cloud/auth/me",
+            &owner.token,
+            json!({
+                "agentAvatarMutation": {
+                    "action": "upload",
+                    "uploadedAsset": marker,
+                    "expectedVersion": 1,
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(updated.status(), StatusCode::OK);
+    let updated = read_json(updated).await;
+    assert_eq!(updated["defaultAgent"]["agentId"], agent_id);
+    assert_eq!(updated["defaultAgent"]["avatarUrl"], marker);
+    assert_eq!(updated["defaultAgent"]["avatar"]["uploadedAsset"], marker);
+}

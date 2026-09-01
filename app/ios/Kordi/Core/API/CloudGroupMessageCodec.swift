@@ -8,6 +8,9 @@ struct CloudGroupParticipant: Codable, Hashable, Identifiable {
     let accountId: String
     let displayName: String
     let avatarUrl: String?
+    let agentId: String?
+    let agentDisplayName: String?
+    let agentAvatarUrl: String?
     let role: String?
     let joinedAt: String?
 
@@ -17,12 +20,18 @@ struct CloudGroupParticipant: Codable, Hashable, Identifiable {
         accountId: String,
         displayName: String,
         avatarUrl: String?,
+        agentId: String? = nil,
+        agentDisplayName: String? = nil,
+        agentAvatarUrl: String? = nil,
         role: String?,
         joinedAt: String? = nil
     ) {
         self.accountId = accountId
         self.displayName = displayName
         self.avatarUrl = avatarUrl
+        self.agentId = agentId
+        self.agentDisplayName = agentDisplayName
+        self.agentAvatarUrl = agentAvatarUrl
         self.role = role
         self.joinedAt = joinedAt
     }
@@ -47,6 +56,9 @@ struct CloudGroupMessagePayload: Codable, Hashable {
     let text: String
     let createdAtMs: Double
     let senderKind: String?
+    let senderAgentId: String?
+    let senderOwnerAccountId: String?
+    let senderOwnerName: String?
     let senderDisplayName: String?
     let deliveryState: String?
     let replyToMessageId: String?
@@ -69,6 +81,9 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         text: String,
         createdAtMs: Double,
         senderKind: String?,
+        senderAgentId: String? = nil,
+        senderOwnerAccountId: String? = nil,
+        senderOwnerName: String? = nil,
         senderDisplayName: String?,
         deliveryState: String?,
         replyToMessageId: String?,
@@ -94,6 +109,9 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         // constructing an outbound group message.
         self.createdAtMs = createdAtMs.rounded(.towardZero)
         self.senderKind = senderKind
+        self.senderAgentId = senderAgentId
+        self.senderOwnerAccountId = senderOwnerAccountId
+        self.senderOwnerName = senderOwnerName
         self.senderDisplayName = senderDisplayName
         self.deliveryState = deliveryState
         self.replyToMessageId = replyToMessageId
@@ -262,6 +280,9 @@ enum CloudGroupMessageCodec {
             accountId: participant.accountId,
             displayName: participant.displayName,
             avatarUrl: nil,
+            agentId: participant.agentId,
+            agentDisplayName: participant.agentDisplayName,
+            agentAvatarUrl: nil,
             role: participant.role,
             joinedAt: participant.joinedAt
         )

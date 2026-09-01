@@ -1,5 +1,5 @@
 import type { CloudAgentAccessScope, CreateCloudAgentInput, UpdateCloudAgentInput } from '@/features/cloud/cloudAgentsClient';
-import { newCanonicalAvatarSeed } from '@/features/cloud/canonicalAvatar';
+import { newCanonicalAvatarSeed, type CanonicalAvatarMutation } from '@/features/cloud/canonicalAvatar';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { ComposerModelOption, ComposerProviderOption } from '../components';
 import type { Agent } from '../types';
@@ -36,6 +36,8 @@ export type AgentsPageProps = {
   onCreateCloudAgent?: (input: CreateCloudAgentInput) => Promise<Agent>;
   onUpdateCloudAgent?: (agent: Agent, input: UpdateCloudAgentInput) => Promise<Agent> | Promise<void> | Agent | void;
   onArchiveCloudAgent?: (agent: Agent) => Promise<void>;
+  onRenameLocalAgent?: (name: string) => Promise<void> | void;
+  onUpdateLocalAgentAvatar?: (mutation: CanonicalAvatarMutation) => Promise<void> | void;
   onSetAgentSkillEnabled?: (agent: Agent, skill: string, enabled: boolean) => Promise<void> | void;
 };
 
@@ -253,6 +255,16 @@ export function agentStudioConfigChanges(draft: AgentStudioConfigDraft, persiste
     changes.push({ key: 'plugins', label: 'Plugin selection updated', detail: `${draft.loadedPlugins.length} loaded` });
   }
   return changes;
+}
+
+export function publishableLocalAgentConfigChanges(
+  changes: ReturnType<typeof agentStudioConfigChanges>,
+  canPersistFiles: boolean,
+  canToggleRuntimeSkills: boolean,
+) {
+  return changes.filter((change) => (
+    canPersistFiles || (change.key === 'skills' && canToggleRuntimeSkills)
+  ));
 }
 
 export function getAgentConfigPath(agent: Agent) {

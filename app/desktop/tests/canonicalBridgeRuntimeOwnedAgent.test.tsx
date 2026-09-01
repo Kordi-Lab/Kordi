@@ -311,7 +311,7 @@ test('canonical read model shows one processing item for pending inbound local a
     'canonical-delegation-processing:delegation:pending',
   ]);
   assert.equal(processingMessages.length, 1);
-  assert.equal(processingMessages[0]?.sender, 'My Kordi');
+  assert.equal(processingMessages[0]?.sender, 'Kordi');
   assert.equal(processingMessages[0]?.replyToMessageId, 'msg:request');
 });
 

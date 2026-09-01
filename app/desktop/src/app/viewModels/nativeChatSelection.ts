@@ -30,7 +30,7 @@ export function nativeChatPlaceholderForSelection(
     collaborationSources: ['Local'],
     trust: 'Owned',
     directness: isExplicitDraft ? 'Draft' : '',
-    participants: ['Me', 'My Kordi'],
+    participants: ['Me', 'Kordi'],
     collaborationTarget: undefined,
     messages: [],
   };

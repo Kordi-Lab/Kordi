@@ -1,5 +1,8 @@
 use super::*;
 
+mod default_agent;
+use default_agent::*;
+
 pub(super) async fn update_me(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -7,6 +10,8 @@ pub(super) async fn update_me(
 ) -> Response {
     let display_name = clean_profile_display_name(req.display_name.as_deref());
     let mut avatar_mutation = req.avatar_mutation;
+    let agent_display_name = clean_default_agent_display_name(req.agent_display_name.as_deref());
+    let mut agent_avatar_mutation = req.agent_avatar_mutation;
     let now = Utc::now().to_rfc3339();
     let pool = state.db_pool();
     if let Some(mutation) = avatar_mutation.as_mut() {
@@ -31,6 +36,15 @@ pub(super) async fn update_me(
                 ),
             };
         }
+    }
+    if let Err(response) = materialize_default_agent_avatar_mutation(
+        &state,
+        &session.account_id,
+        &mut agent_avatar_mutation,
+    )
+    .await
+    {
+        return *response;
     }
     let mut tx = match pool.begin().await {
         Ok(value) => value,
@@ -119,6 +133,18 @@ pub(super) async fn update_me(
         }
         None => current_avatar,
     };
+    let updated_agent_row = match update_default_agent_profile(
+        &mut tx,
+        &session.account_id,
+        agent_display_name.as_deref(),
+        agent_avatar_mutation.as_ref(),
+        &now,
+    )
+    .await
+    {
+        Ok(row) => row,
+        Err(response) => return *response,
+    };
     let avatar_url = next_avatar.image_url();
     let row: Option<AccountRecordRow> = match query_as(
         "UPDATE cloud_accounts SET \
@@ -152,7 +178,7 @@ pub(super) async fn update_me(
             StatusCode::NOT_FOUND,
         );
     };
-    let account = account_response_from_row(row);
+    let account = account_response_from_rows(row, Some(updated_agent_row));
     let recipients = match crate::chat_sync::store::identity_sync_recipient_ids(
         &mut tx,
         &session.account_id,
@@ -191,6 +217,7 @@ pub(super) async fn update_me(
             &serde_json::json!({
                 "accountId": account.account_id,
                 "avatarVersion": account.avatar.version,
+                "agentAvatarVersion": account.default_agent.avatar.version,
             }),
         )
         .await
@@ -364,12 +391,23 @@ pub(super) async fn get_profile(
                 .unwrap_or(None);
         contact_row.is_some()
     };
+    let default_agent = match default_agent_profile_row(pool, &account_id).await {
+        Ok(row) => default_agent_profile_from_row(&account_id, row, &Utc::now().to_rfc3339()),
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not fetch agent profile.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
 
     Json(PublicProfileResponse {
         account_id,
         kordi_id: public_account_number.to_string(),
         display_name,
         avatar_url,
+        default_agent,
         node_id: None,
         is_contact,
         is_self,

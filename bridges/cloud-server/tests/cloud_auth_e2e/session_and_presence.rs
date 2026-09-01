@@ -96,6 +96,16 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
     .await;
     let request_id = request["request"]["requestId"].as_str().unwrap();
     let b_token = b["session"]["token"].as_str().unwrap();
+    let renamed = router
+        .clone()
+        .oneshot(patch_json_with_token(
+            "/v1/cloud/auth/me",
+            b_token,
+            json!({ "agentDisplayName": "BabyTREE" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(renamed.status(), StatusCode::OK);
     let accept_path = format!("/v1/cloud/contacts/requests/{request_id}/accept");
     let accept_response = router
         .clone()
@@ -131,6 +141,26 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
     .await
     .unwrap();
     assert_eq!(accepted_chat, (1, 1));
+
+    let contacts = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/contacts", a_token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let peer = contacts["contacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|contact| contact["accountId"] == b_id)
+        .unwrap();
+    assert_eq!(peer["defaultAgent"]["displayName"], "BabyTREE");
+    assert_eq!(
+        peer["defaultAgent"]["agentId"],
+        format!("cloud-agent:{b_id}")
+    );
 
     let online_status = router
         .clone()

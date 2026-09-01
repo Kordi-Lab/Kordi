@@ -1,5 +1,9 @@
-import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
+import type {
+  CanonicalSessionState,
+  DesktopChatTurnSnapshot,
+} from '@/kordi-app/types';
 import type { CloudAccount, CloudMessage } from './authClient';
+import { cloudSelfAgentRequestClientMessageId } from './cloudSelfAgentIdentity';
 import {
   cloudMessageIsSelfAgentRequest,
   parseCloudAgentCancel,
@@ -8,6 +12,7 @@ import {
 import { cloudDirectMessageAction } from './cloudDirectMessages';
 import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
 import type { CloudMessageIndex } from './cloudMessageIndex';
+import { cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
 
 const CLOUD_SELF_AGENT_LOCAL_EXECUTION_WINDOW_MS = 10 * 60_000;
 
@@ -46,18 +51,49 @@ export function omitTerminalCloudSelfAgentLocalTurns(
   return next ?? localTurns;
 }
 
+export function localSelfAgentRequestClientMessageIds(
+  state: CanonicalSessionState | null | undefined,
+): Set<string> {
+  if (!state) return new Set();
+  const sessionIds = cloudSyncedLocalAgentSessionIds(state);
+  return new Set(state.messages.flatMap((message) => (
+    sessionIds.has(message.sessionId)
+    && message.senderRole === 'user'
+    && !message.sourceTransport?.startsWith('cloud-')
+      ? [cloudSelfAgentRequestClientMessageId(message.sessionId, message.id)]
+      : []
+  )));
+}
+
+export function cloudSelfAgentTerminalOrLocalRequestIds(
+  messages: readonly CloudMessage[],
+  state: CanonicalSessionState | null | undefined,
+) {
+  const localClientMessageIds = localSelfAgentRequestClientMessageIds(state);
+  return new Set([
+    ...cloudSelfAgentTerminalResponseRequestIds(messages),
+    ...messages.flatMap((message) => message.clientMessageId
+      && localClientMessageIds.has(message.clientMessageId)
+      ? [message.messageId]
+      : []),
+  ]);
+}
+
 export function pendingCloudSelfAgentExecutionRequests({
   account,
   messageIndex,
+  ignoredClientMessageIds = new Set(),
   nowMs = Date.now(),
 }: {
   account: CloudAccount;
   messageIndex: CloudMessageIndex;
+  ignoredClientMessageIds?: ReadonlySet<string>;
   nowMs?: number;
 }): CloudMessage[] {
   const selfMessages = messageIndex.byPeerId.get(account.accountId) ?? [];
   return selfMessages.filter((message) => {
     if (!cloudMessageIsSelfAgentRequest(message, account)) return false;
+    if (message.clientMessageId && ignoredClientMessageIds.has(message.clientMessageId)) return false;
     if (!cloudMessageActionAllowsAgentTrigger(
       cloudDirectMessageAction(message.body),
     )) return false;

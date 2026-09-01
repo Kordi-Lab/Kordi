@@ -114,8 +114,8 @@ export type CloudOAuthStartResponse = {
 };
 
 export type CloudProfileUpdateInput = {
-  displayName?: string;
-  avatarMutation?: import('./canonicalAvatar').CanonicalAvatarMutation;
+  displayName?: string; avatarMutation?: import('./canonicalAvatar').CanonicalAvatarMutation;
+  agentDisplayName?: string; agentAvatarMutation?: import('./canonicalAvatar').CanonicalAvatarMutation;
 };
 
 export type CloudContactRequestDirection = 'incoming' | 'outgoing';

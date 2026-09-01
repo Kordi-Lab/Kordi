@@ -1,5 +1,12 @@
 import type { CanonicalAvatarDescriptor } from './canonicalAvatar';
 
+export type CloudDefaultAgentProfile = {
+  agentId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  avatar: CanonicalAvatarDescriptor;
+};
+
 export type CloudAccount = {
   accountId: string;
   /** Public nine-digit identity. Optional while cached pre-migration sessions refresh. */
@@ -8,6 +15,8 @@ export type CloudAccount = {
   primaryEmail: string | null;
   avatarUrl: string | null;
   avatar: CanonicalAvatarDescriptor;
+  /** Optional while cached sessions from before default-agent profiles refresh. */
+  defaultAgent?: CloudDefaultAgentProfile | null;
   nodeId: string | null;
   passwordSet: boolean;
 };
@@ -17,6 +26,7 @@ export type CloudPublicProfile = {
   kordiId?: string | null;
   displayName: string | null;
   avatarUrl: string | null;
+  defaultAgent?: CloudDefaultAgentProfile | null;
   nodeId: string | null;
   isContact: boolean;
   isSelf: boolean;

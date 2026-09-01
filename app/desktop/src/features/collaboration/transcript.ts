@@ -10,9 +10,10 @@ import {
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import {
+  collaborationPendingAgentReplyState,
   collaborationTimestampIsExpired,
-  historicalCollaborationProcessingPlaceholderIds,
   isCollaborationAgentResponseDirection,
+  isTerminalCollaborationAgentRequestState,
 } from '@/features/collaboration/collaborationProcessingState';
 import { collaborationProfileImageUrl, isCollaborationConversationPersonChat } from '@/features/collaboration/conversationPresentation';
 import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
@@ -156,17 +157,6 @@ function isFailedCollaborationState(value: string | null | undefined) {
   return ['failed', 'processing_failed', 'no_response'].includes(normalizeDeliveryState(value));
 }
 
-function isTerminalAgentRequestState(value: string | null | undefined) {
-  return ['responded', 'cancelled', 'failed', 'processing_failed', 'no_response'].includes(normalizeDeliveryState(value));
-}
-
-function latestOutboundAgentRequestState(conversation: DesktopCollaborationConversation) {
-  return [...conversation.messages]
-    .reverse()
-    .find((message) => message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND && Boolean(message.requestId))
-    ?.deliveryState;
-}
-
 function isGroupScopedCollaborationMessage(message: DesktopCollaborationConversationMessage) {
   const outreach = message.outreach;
   if (!outreach) return false;
@@ -194,34 +184,18 @@ export function mapCollaborationConversationToViewModel(
     && conversation.peerNodeId === conversation.identity?.localHumanId
     && conversation.identity?.remoteAgentId === conversation.identity?.localAgentId;
   const isAgent = !isPersonChat && isCollaborationAgentRuntime(conversation.peerRuntime);
-  const hasSentCollaborationRequest = Boolean(conversation.outreach?.sourceRequestId)
-    || conversation.messages.some((message) => Boolean(message.requestId));
-  const staleProcessingPlaceholderIds = historicalCollaborationProcessingPlaceholderIds(
+  const {
+    activeAgentReplyMessage,
+    awaitingReply: awaitingReplyFromSentRequest,
+    hasSentRequest: hasSentCollaborationRequest,
+    pendingAgentMention,
+    pendingRequestId,
+    staleProcessingPlaceholderIds,
+  } = collaborationPendingAgentReplyState(
     conversation,
     nowMs,
     (message) => collaborationMessageDisplayText(conversation, message),
   );
-  const latestAgentRequestState = latestOutboundAgentRequestState(conversation);
-  const latestRequestTimestampMs = [...conversation.messages]
-    .reverse()
-    .find((message) => (
-      message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND
-      && Boolean(message.requestId?.trim())
-    ))?.timestampMs;
-  const awaitingReplyFromSentRequest = conversation.awaitingReply
-    && hasSentCollaborationRequest
-    && !isTerminalAgentRequestState(latestAgentRequestState)
-    && !(
-      latestRequestTimestampMs
-      && collaborationTimestampIsExpired(latestRequestTimestampMs, nowMs)
-    );
-  const activeAgentReplyMessage = awaitingReplyFromSentRequest
-    ? [...conversation.messages].reverse().find((message) => (
-        isCollaborationAgentResponseDirection(message)
-        && normalizeDeliveryState(message.deliveryState) === 'processing'
-        && !staleProcessingPlaceholderIds.has(message.id)
-      ))
-    : undefined;
   const localHumanLabel = 'Me';
   const localHumanSourceLabel = conversation.identity?.localHumanName?.trim() || host?.ownerName?.trim() || host?.displayName?.trim() || localHumanLabel;
   const localCollaborationAgentLabel = conversation.identity?.localAgentName?.trim()
@@ -233,6 +207,17 @@ export function mapCollaborationConversationToViewModel(
   const remoteHumanLabel = isSupportContact
     ? remoteAgentLabel
     : conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
+  const pendingAgentId = pendingAgentMention?.agentId?.trim() ?? '';
+  const pendingAgentNodeId = pendingAgentMention?.nodeId?.trim() ?? '';
+  const pendingAgentIsLocal = Boolean(pendingAgentMention && (
+    (pendingAgentId && pendingAgentId === conversation.identity?.localAgentId?.trim())
+    || (pendingAgentNodeId && pendingAgentNodeId === conversation.identity?.localAgentNodeId?.trim())
+    || (pendingAgentNodeId && pendingAgentNodeId === host?.nodeId?.trim())
+    || host?.agents.some((agent) => agent.id === pendingAgentId || Boolean(pendingAgentNodeId && agent.nodeId === pendingAgentNodeId))
+  ));
+  const pendingAgentLabel = pendingAgentMention?.displayLabel?.trim()
+    || pendingAgentMention?.label.trim()
+    || (pendingAgentIsLocal ? localCollaborationAgentLabel : remoteAgentLabel);
   const remoteHumanSourceLabel = isSupportContact
     ? remoteAgentLabel
     : conversation.identity?.remoteHumanName?.trim() || remoteHumanLabel;
@@ -240,15 +225,22 @@ export function mapCollaborationConversationToViewModel(
     ? realAgentLabelForOwner(remoteHumanSourceLabel, remoteAgentLabel)
     : remoteAgentLabel;
   const peer = host?.visiblePeers.find((candidate) => candidate.nodeId === conversation.peerNodeId);
+  const remoteAgentPeer = host?.visiblePeers.find((candidate) => (
+    candidate.agentId
+    && (candidate.agentId === conversation.identity?.remoteAgentId || candidate.humanId === conversation.identity?.remoteHumanId)
+  ));
   const localHumanAvatarSeed = host?.humanId || conversation.identity?.localHumanId || host?.ownerName || 'local';
   const localAgentAvatarSeed = DEFAULT_LOCAL_AGENT_AVATAR_SEED;
   const remoteHumanAvatarSeed = peer?.avatarSeed || conversation.identity?.remoteHumanId || peer?.humanId || conversation.peerOwnerName || conversation.peerNodeId;
-  const remoteAgentAvatarSeed = conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
+  const remoteAgentAvatarSeed = remoteAgentPeer?.avatarSeed || conversation.identity?.remoteAgentId || peer?.agentId || conversation.peerNodeId;
   const conversationAvatarSeed = isCloudSelfAgent ? localAgentAvatarSeed : isAgent ? remoteAgentAvatarSeed : remoteHumanAvatarSeed;
   const localHumanProfileImageUrl = collaborationProfileImageUrl(host?.profileImageUrl);
   const remoteHumanProfileImageUrl = isSupportContact
     ? KORDI_SUPPORT_AVATAR_URL
     : collaborationProfileImageUrl(peer?.profileImageUrl);
+  const remoteAgentProfileImageUrl = isSupportContact
+    ? KORDI_SUPPORT_AVATAR_URL
+    : collaborationProfileImageUrl(remoteAgentPeer?.profileImageUrl) || remoteHumanProfileImageUrl;
   const participantAvatarSeeds: Record<string, string> = {
     You: localHumanAvatarSeed,
     [localHumanLabel]: localHumanAvatarSeed,
@@ -260,6 +252,7 @@ export function mapCollaborationConversationToViewModel(
     You: localHumanProfileImageUrl,
     [localHumanLabel]: localHumanProfileImageUrl,
     [remoteHumanLabel]: remoteHumanProfileImageUrl,
+    [remoteAgentLabel]: remoteAgentProfileImageUrl,
   };
   const collaborationViewMessageId = (message: DesktopCollaborationConversationMessage) => `collaboration-message:${conversation.id}:${message.id}`;
   const requestMessageIdByRequestId = new Map<string, string>();
@@ -274,7 +267,7 @@ export function mapCollaborationConversationToViewModel(
 
   const awaitingAgentOutreach = conversation.outreach?.targetKind === 'agent'
     && isActiveOutreachStatus(conversation.outreach.status)
-    && !isTerminalAgentRequestState(conversation.outreach.deliveryState)
+    && !isTerminalCollaborationAgentRequestState(conversation.outreach.deliveryState)
     && hasSentCollaborationRequest
     && !collaborationTimestampIsExpired(
       conversation.outreach.updatedAtMs || conversation.outreach.createdAtMs,
@@ -368,14 +361,13 @@ export function mapCollaborationConversationToViewModel(
         id: messageId,
         role: isRemoteAgentResponse ? 'external-agent' as const : 'owned-agent' as const,
         sender: responseSender,
+        senderOwnerName: isRemoteAgentResponse && !isSupportContact ? remoteHumanSourceLabel : null,
         sourceSenderLabel: isRemoteAgentResponse ? remoteAgentSourceLabel : localAgentSourceLabel,
         senderType: 'agent',
         isOwnMessage: false,
         showSenderMeta: true,
         senderAvatarSeed: isRemoteAgentResponse ? remoteAgentAvatarSeed : localAgentAvatarSeed,
-        senderProfileImageUrl: isSupportContact && isRemoteAgentResponse
-          ? KORDI_SUPPORT_AVATAR_URL
-          : null,
+        senderProfileImageUrl: isRemoteAgentResponse ? remoteAgentProfileImageUrl : null,
         text: '',
         time: message.timeLabel,
         timestampMs: message.timestampMs,
@@ -472,8 +464,9 @@ export function mapCollaborationConversationToViewModel(
     }
     return [mappedMessage];
   });
-  if ((((isAgent || isSupportContact) && awaitingReplyFromSentRequest) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
+  if ((((isAgent || isSupportContact || pendingAgentMention) && awaitingReplyFromSentRequest) || awaitingAgentOutreach) && !activeAgentReplyMessage) {
     const outreachRequestId = conversation.outreach?.sourceRequestId?.trim();
+    const stoppableRequestId = outreachRequestId || pendingRequestId;
     const requestMessageIds = [...requestMessageIdByRequestId.values()];
     const replyToMessageId = outreachRequestId
       ? requestMessageIdByRequestId.get(outreachRequestId) ?? null
@@ -481,12 +474,16 @@ export function mapCollaborationConversationToViewModel(
     const localTurn = conversation.outreach?.localTurn ?? null;
     messages.push({
       id: `collaboration-live-turn:${conversation.id}:processing`,
-      role: 'external-agent',
-      sender: awaitingAgentOutreach ? outreachAgentLabel : remoteAgentLabel,
+      role: pendingAgentIsLocal ? 'owned-agent' : 'external-agent',
+      sender: awaitingAgentOutreach ? outreachAgentLabel : pendingAgentLabel,
+      senderOwnerName: !pendingAgentIsLocal && !isSupportContact
+        ? conversation.outreach?.targetOwnerName?.trim() || remoteHumanSourceLabel
+        : null,
       senderType: 'agent',
       isOwnMessage: false,
       showSenderMeta: true,
-      senderAvatarSeed: awaitingAgentOutreach ? outreachAgentAvatarSeed : remoteAgentAvatarSeed,
+      senderAvatarSeed: awaitingAgentOutreach ? outreachAgentAvatarSeed : pendingAgentIsLocal ? localAgentAvatarSeed : remoteAgentAvatarSeed,
+      senderProfileImageUrl: pendingAgentIsLocal ? null : remoteAgentProfileImageUrl,
       text: '',
       time: conversation.updatedAtLabel,
       timestampMs: conversation.updatedAtMs,
@@ -504,9 +501,9 @@ export function mapCollaborationConversationToViewModel(
         succeeded: false,
         error: localTurn?.error ?? null,
         replyToMessageId,
-        pendingCollaborationAgentRequest: outreachRequestId ? {
+        pendingCollaborationAgentRequest: stoppableRequestId ? {
           conversationId: conversation.id,
-          requestId: outreachRequestId,
+          requestId: stoppableRequestId,
         } : null,
       },
     });

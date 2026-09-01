@@ -98,6 +98,7 @@ fn test_settings_deserialize() {
 #[test]
 fn test_settings_merge() {
     let global = Settings {
+        agent_name: Some("Release Scout".into()),
         execution_mode: Some(ExecutionMode::Safety),
         project_name: Some("Global project".into()),
         project_context: Some("Global shared context".into()),
@@ -135,6 +136,7 @@ fn test_settings_merge() {
     };
 
     let project = Settings {
+        agent_name: Some("Project override".into()),
         execution_mode: Some(ExecutionMode::Yolo),
         project_name: Some("Desktop".into()),
         project_context: Some("Shared across project sessions".into()),
@@ -178,6 +180,7 @@ fn test_settings_merge() {
 
     assert_eq!(merged.resolved_execution_mode(), ExecutionMode::Yolo);
     assert_eq!(merged.project_name.as_deref(), Some("Desktop"));
+    assert_eq!(merged.agent_name.as_deref(), Some("Release Scout"));
     assert_eq!(
         merged.project_context.as_deref(),
         Some("Shared across project sessions")

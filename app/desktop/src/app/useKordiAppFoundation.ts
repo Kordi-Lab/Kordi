@@ -1,8 +1,4 @@
-import {
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useAppLayoutState } from '@/app/useAppLayoutState';
 import { useActiveConversationReadPresentation } from '@/app/useActiveConversationReadPresentation';
@@ -42,6 +38,7 @@ import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import type { ComposerScope } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
+import { useDefaultAgentProfileSync } from '@/app/useDefaultAgentProfileSync';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useRefreshCompletedCanonicalSession } from '@/app/useRefreshCompletedCanonicalSession';
 export function useKordiAppFoundation({
@@ -156,6 +153,7 @@ export function useKordiAppFoundation({
     mapDesktopMessages,
     refreshCanonicalSession: refreshCompletedCanonicalSession,
   });
+  useDefaultAgentProfileSync(cloudSession, desktopChatState?.localAgent.label, refreshDesktopChat);
   const projectRoutingGroups = useMemo(
     () => buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState),
     [canonicalSessionState, desktopChatState?.projects],
@@ -313,6 +311,7 @@ export function useKordiAppFoundation({
     localTurnsBySessionId: desktopLiveTurnsBySession,
     cloudAgentRuntimeRoutesBySessionId,
     defaultCloudAgentRuntimeRoute,
+    localAgentLabel: desktopChatState?.localAgent.label,
     defaultCloudAgentRuntimeReady:
       !isDesktopAuthLoading && Boolean(defaultCloudAgentRuntimeRoute),
     desktopAuthState,

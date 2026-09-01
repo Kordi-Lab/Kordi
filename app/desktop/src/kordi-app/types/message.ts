@@ -215,6 +215,8 @@ export type Message = {
   entryId?: string | null;
   role: 'system' | 'user' | 'owned-agent' | 'external-agent' | 'person' | 'action' | 'edit';
   sender?: string;
+  /** Human owner shown as secondary attribution for agent messages. */
+  senderOwnerName?: string | null;
   /** Canonical human/agent identity for profile actions in shared transcripts. */
   senderIdentityId?: string | null;
   sourceSenderLabel?: string | null;

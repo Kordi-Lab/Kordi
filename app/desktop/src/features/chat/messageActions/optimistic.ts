@@ -151,7 +151,8 @@ export function appendOptimisticCollaborationMessage(
   const nextConversations = current.conversations.map((conversation) => {
     if (conversation.id !== conversationId) return conversation;
     const expectsAgentReply = Boolean(conversation.supportTicketEnabled)
-      || isCollaborationAgentRuntime(conversation.peerRuntime);
+      || isCollaborationAgentRuntime(conversation.peerRuntime)
+      || mentions.some((mention) => mention.targetKind === 'agent');
     return {
       ...conversation,
       subtitle: subtitleText,

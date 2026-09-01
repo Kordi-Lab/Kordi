@@ -3,6 +3,10 @@ export type CloudGroupParticipant = {
   kordiId?: string | null;
   displayName: string;
   avatarUrl: string | null;
+  agentId?: string | null;
+  agentDisplayName?: string | null;
+  agentAvatarUrl?: string | null;
+  agentAvatarSeed?: string | null;
   role?: string | null;
   joinedAt?: string | null;
 };
@@ -26,5 +30,5 @@ export function compareCloudGroupParticipants(
 export function cloudGroupTransportParticipant(
   participant: CloudGroupParticipant,
 ): CloudGroupParticipant {
-  return { ...participant, avatarUrl: null };
+  return { ...participant, avatarUrl: null, agentAvatarUrl: null };
 }

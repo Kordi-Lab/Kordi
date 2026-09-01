@@ -90,6 +90,7 @@ export type UseChatMessageActionsArgs = Pick<
     scope?: ComposerScope,
   ) => Promise<boolean>;
   pendingCollaborationCancelRequestedRef: MutableRefObject<boolean>;
+  collaborationSendInFlightConversationIdsRef: MutableRefObject<Set<string>>;
   localChatSendInFlightRef: MutableRefObject<LocalChatSendInFlight | null>;
   userCancelledTurnIdsRef: MutableRefObject<Set<string>>;
   setPendingCollaborationOutreach: Dispatch<

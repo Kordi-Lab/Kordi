@@ -41,7 +41,9 @@ use crate::auth::password::{
     PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
-use crate::auth::rows::{AccountRecordRow, ContactListRow, ContactRequestRow};
+use crate::auth::rows::{
+    AccountRecordRow, ContactListRow, ContactRequestRow, DefaultAgentProfileRow,
+};
 use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, touch_device_activity,
     DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX,

@@ -20,6 +20,7 @@ pub(super) fn merge_settings(global: &Settings, project: &Settings) -> Settings 
             .project_system_prompt
             .clone()
             .or_else(|| global.project_system_prompt.clone()),
+        agent_name: global.agent_name.clone(),
         project_shared_sources: merge_project_shared_sources(
             &global.project_shared_sources,
             &project.project_shared_sources,

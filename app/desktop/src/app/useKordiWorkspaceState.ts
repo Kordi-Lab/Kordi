@@ -156,6 +156,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     isNativeShell,
     isDesktopChatLoading,
     desktopChatState,
+    localAgentDisplayName: foundation.profile.localAgentDisplayName,
     desktopCollaborationState,
     canonicalSessionState: cloudCanonicalReactionState ?? canonicalSessionState,
     canonicalSessionSummaries: canonicalStore.catalog?.summaries,

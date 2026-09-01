@@ -40,7 +40,7 @@ function collaborationState(): DesktopCollaborationState {
 function desktopChatState(): DesktopChatState {
   return {
     localAgent: {
-      label: 'My runtime Kordi',
+      label: 'BabyTREE',
       systemPrompt: '',
       loadedSkills: [],
       loadedTools: [],
@@ -105,15 +105,15 @@ test('buildCollaborationMentionTargetsByScope exposes product-facing mention det
     activeConvMentionScope: null,
   });
 
-  const localAgent = targets.chat.find((target) => target.label === 'My Kordi');
+  const localAgent = targets.chat.find((target) => target.label === 'BabyTREE');
   const person = targets.chat.find((target) => target.label === 'Bob' && target.targetKind === 'person');
-  const agent = targets.chat.find((target) => target.label === "Bob's Kordi");
+  const agent = targets.chat.find((target) => target.label === 'Kordi' && target.targetKind === 'agent');
 
-  assert.equal(localAgent?.detail, 'Your agent');
+  assert.equal(localAgent?.detail, 'Owner · You');
   assert.equal(localAgent?.avatarImageUrl, 'https://images.test/alice.png');
   assert.equal(person?.detail, 'Person');
   assert.equal(person?.avatarImageUrl, 'https://images.test/bob.png');
-  assert.equal(agent?.detail, 'Agent');
+  assert.equal(agent?.detail, 'Owner · Bob');
   assert.equal(agent?.avatarImageUrl, 'https://images.test/bob-agent.png');
   for (const target of targets.chat) {
     assert.doesNotMatch(target.detail ?? '', /Bridge|Owner:|kordi-desktop/i);
@@ -168,11 +168,11 @@ test('buildCollaborationMentionTargetsByScope includes the scoped local Bridge a
     activeConvMentionScope: null,
   });
 
-  assert.equal(targets.chat[0]?.label, 'My Kordi');
-  assert.equal(targets.chat[0]?.value, 'MyKordi');
+  assert.equal(targets.chat[0]?.label, 'BabyTREE');
+  assert.equal(targets.chat[0]?.value, 'BabyTREE');
   assert.equal(targets.chat[0]?.targetKind, 'agent');
   assert.equal(targets.chat[0]?.nodeId, 'node-agent-local');
-  assert.equal(targets.project[0]?.label, 'My Kordi');
+  assert.equal(targets.project[0]?.label, 'BabyTREE');
 });
 
 test('buildCollaborationMentionTargetsByScope hides chat mentions in direct agent sessions', () => {
@@ -196,7 +196,7 @@ test('buildCollaborationMentionTargetsByScope hides chat mentions in direct agen
   });
 
   assert.deepEqual(targets.chat, []);
-  assert.equal(targets.project[0]?.label, 'My Kordi');
+  assert.equal(targets.project[0]?.label, 'BabyTREE');
 });
 
 test('mentionableCloudAgentSummaries merges owned shared Cloud Agents for owner autocomplete and send resolution', () => {
@@ -321,7 +321,7 @@ test('buildCollaborationMentionTargetsByScope includes shared hosted Cloud Agent
   assert.equal(projectDriver?.sourceHostId, 'cloud');
   assert.equal(projectDriver?.nodeId, 'acct_owner');
   assert.equal(projectDriver?.ownerName, '111');
-  assert.equal(projectDriver?.detail, "111's Agent");
+  assert.equal(projectDriver?.detail, 'Owner · 111');
   assert.equal(projectDriver?.avatarImageUrl, 'https://images.test/111.png');
 });
 
@@ -512,9 +512,9 @@ test('buildCollaborationMentionTargetsByScope includes group-only people but onl
     targets.chat.map((target) => `${target.targetKind}:${target.label}:${target.nodeId}`),
     [
       'all:All:group:session:group:cloud',
-      'agent:My Kordi:acct_me',
+      'agent:BabyTREE:acct_me',
       'person:Alice:acct_alice',
-      "agent:Alice's Kordi:acct_alice",
+      'agent:Kordi:acct_alice',
       'person:Bob:acct_bob',
     ],
   );
