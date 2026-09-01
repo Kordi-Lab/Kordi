@@ -3712,18 +3712,49 @@ final class AppModel: ObservableObject {
 
     func deleteConversation(_ conversation: ConversationSummary) async -> Bool {
         if !previewMode, token == nil { return false }
+        let visibleRows = conversations.filter { $0.sessionId == conversation.sessionId }
+        let archivedRows = archivedConversations.filter { $0.sessionId == conversation.sessionId }
+        let wasHidden = hiddenCloudSessionIds.contains(conversation.sessionId)
+        let wasDeleted = deletedCloudSessionIds.contains(conversation.sessionId)
+        let wasPinned = pinnedSessionIds.contains(conversation.sessionId)
+        let wasMuted = mutedSessionIds.contains(conversation.sessionId)
+        let wasUnread = markedUnreadSessionIds.contains(conversation.sessionId)
+        let titleOverride = sessionTitleOverrides[conversation.sessionId]
+        let messages = messagesByConversation[conversation.id]
+        let activity = sessionActivityByID[conversation.sessionId]
         beginSessionVisibilityMutation()
         defer { endSessionVisibilityMutation() }
+        removeConversationLocally(conversation)
+        cacheCurrentConversations()
         if !previewMode {
             guard let token else { return false }
             do {
                 try await api.deleteSession(token: token, sessionId: conversation.sessionId)
             } catch {
+                let visibility = try? await api.listSessionVisibility(token: token)
+                if visibility?.deletedSessionIds.contains(conversation.sessionId) == true {
+                    return true
+                }
+                if wasHidden { hiddenCloudSessionIds.insert(conversation.sessionId) }
+                if !wasDeleted { deletedCloudSessionIds.remove(conversation.sessionId) }
+                if wasPinned { pinnedSessionIds.insert(conversation.sessionId) }
+                if wasMuted { mutedSessionIds.insert(conversation.sessionId) }
+                if wasUnread { markedUnreadSessionIds.insert(conversation.sessionId) }
+                if let titleOverride {
+                    sessionTitleOverrides[conversation.sessionId] = titleOverride
+                }
+                UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
+                conversations.append(contentsOf: visibleRows)
+                conversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+                archivedConversations.append(contentsOf: archivedRows)
+                archivedConversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+                if let messages { messagesByConversation[conversation.id] = messages }
+                if let activity { sessionActivityByID[conversation.sessionId] = activity }
+                cacheCurrentConversations()
                 errorMessage = userFacing(error, fallback: "Could not delete this session.")
                 return false
             }
         }
-        removeConversationLocally(conversation)
         return true
     }
 

@@ -38,12 +38,6 @@ struct ChatHomeView: View {
         ChatHomeSearch.normalized(searchText)
     }
 
-    private var listLayoutIdentity: [String] {
-        ((model.pinnedSessionIds.map { "session:\($0)" }
-            + model.pinnedGroupSpaceIds.map { "group:\($0)" }
-        ) + [deleteTarget.map { "delete:\($0.sessionId)" } ?? "delete:none"]).sorted()
-    }
-
     private var agentSessions: [AgentSessionListItem] {
         AgentSessionTimelineCatalog.build(
             conversations: model.conversations,
@@ -339,7 +333,6 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .id(listLayoutIdentity)
         .accessibilityLabel("Contact chats")
     }
 
@@ -458,7 +451,6 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .id(listLayoutIdentity)
         .accessibilityLabel("Agent chats")
     }
 
@@ -863,7 +855,6 @@ private struct ArchivedChatsView: View {
                 archivedRow(row)
             }
         }
-        .id(deleteTarget?.sessionId ?? "delete:none")
         .listStyle(.plain)
         .navigationTitle("Archived Chats")
         .navigationDestination(item: $selectedConversation) { conversation in

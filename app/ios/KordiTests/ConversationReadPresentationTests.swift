@@ -17,7 +17,9 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(source.components(separatedBy: "deleteTarget = conversation").count - 1, 2)
         XCTAssertTrue(source.contains(".alert(\n            \"Delete this chat from your list?\""))
         XCTAssertTrue(source.contains("It will return only when a new visible message arrives."))
-        XCTAssertTrue(source.contains("deleteTarget.map { \"delete:"))
+        XCTAssertFalse(source.contains("deleteTarget.map { \"delete:"))
+        XCTAssertFalse(source.contains(".id(deleteTarget?.sessionId"))
+        XCTAssertFalse(source.contains("listLayoutIdentity"))
         XCTAssertFalse(source.contains(".confirmationDialog(\n            \"Delete this chat from your list?\""))
         XCTAssertEqual(
             source.components(separatedBy: "Button(role: .destructive) {")
@@ -123,7 +125,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         ))
     }
 
-    func testDeleteKeepsTheVisibilityMutationOpenUntilLocalRemoval() throws {
+    func testDeleteUpdatesTheListBeforeWaitingForCloud() throws {
         let source = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent()
@@ -139,11 +141,17 @@ final class ConversationReadPresentationTests: XCTestCase {
         let action = source[start.lowerBound..<end.lowerBound]
         let beginMutation = try XCTUnwrap(action.range(of: "beginSessionVisibilityMutation()"))
         let cloudRequest = try XCTUnwrap(action.range(of: "try await api.deleteSession"))
+        let visibilityCheck = try XCTUnwrap(action.range(of: "try? await api.listSessionVisibility"))
         let localRemoval = try XCTUnwrap(action.range(of: "removeConversationLocally(conversation)"))
+        let rollback = try XCTUnwrap(action.range(of: "conversations.append(contentsOf: visibleRows)"))
 
         XCTAssertTrue(action.contains("defer { endSessionVisibilityMutation() }"))
-        XCTAssertLessThan(beginMutation.lowerBound, cloudRequest.lowerBound)
-        XCTAssertLessThan(cloudRequest.lowerBound, localRemoval.lowerBound)
+        XCTAssertLessThan(beginMutation.lowerBound, localRemoval.lowerBound)
+        XCTAssertLessThan(localRemoval.lowerBound, cloudRequest.lowerBound)
+        XCTAssertLessThan(cloudRequest.lowerBound, visibilityCheck.lowerBound)
+        XCTAssertLessThan(visibilityCheck.lowerBound, rollback.lowerBound)
+        XCTAssertTrue(action.contains("conversations.append(contentsOf: visibleRows)"))
+        XCTAssertTrue(action.contains("archivedConversations.append(contentsOf: archivedRows)"))
     }
 
     func testGroupSessionRowsShowOnlyTheLatestMessagePreview() throws {
