@@ -7,9 +7,12 @@ import {
   type CloudSessionVisibilityState,
 } from '../src/features/cloud/cloudDiffSync';
 import type { CloudSyncEvent } from '../src/features/cloud/authClient';
+import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
+import { buildWorkspaceChatListViewModels } from '../src/app/workspaceChatListViewModels';
 
 const chatSessionActionsSource = () => readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
 const cloudSessionActionsSource = () => readFileSync(new URL('../src/features/cloud/useCloudSessionActions.ts', import.meta.url), 'utf8');
+const workspaceViewModelsSource = () => readFileSync(new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url), 'utf8');
 
 function event(eventType: string, sessionId: string): CloudSyncEvent {
   return {
@@ -99,15 +102,71 @@ test('unpin, unmute, and restore events clear their synchronized state', () => {
 
 test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {
   const source = chatSessionActionsSource();
-  const deleteStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const deleteSession'));
+  const deleteStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) {', source.indexOf('const deleteSession'));
   const cloudDeleteBranch = source.slice(deleteStart, source.indexOf('} catch (error) {', deleteStart));
   assert.match(cloudDeleteBranch, /await deleteCloudSession\(trimmedSessionId\);[\s\S]*archiveDesktopChatSession\(\s*trimmedSessionId,\s*desktopActiveSessionId/);
   assert.match(cloudDeleteBranch, /optimisticallyRemoveSession\(trimmedSessionId, false\)/);
-  const archiveStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const archiveSession'));
+  const archiveStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) {', source.indexOf('const archiveSession'));
   assert.match(
     source.slice(archiveStart, source.indexOf('}', archiveStart)),
     /optimisticallyRemoveSession\(trimmedSessionId, false\)/,
   );
+});
+
+test('archived local agent sessions remain available only in archived chats', () => {
+  const sessionId = 'local-agent-session';
+  const canonicalState = {
+    storagePath: '/tmp/canonical.sqlite3',
+    profile: { id: 'profile', humanIdentityId: 'human:me', createdAtMs: 1, updatedAtMs: 1 },
+    identities: [],
+    sessions: [{
+      id: sessionId,
+      kind: 'self-agent',
+      title: 'Archived agent session',
+      status: 'archived',
+      createdByIdentityId: 'human:me',
+      primaryIdentityId: 'agent:me',
+      createdAtMs: 1,
+      updatedAtMs: 2,
+    }],
+    participants: [],
+    messages: [{
+      id: 'message:one',
+      sessionId,
+      senderIdentityId: 'human:me',
+      senderRole: 'user',
+      messageKind: 'text',
+      contentText: 'Keep this archived session visible',
+      status: 'sent',
+      sequenceNum: 1,
+      createdAtMs: 2,
+      updatedAtMs: 2,
+      sourceTransport: 'desktop-chat',
+    }],
+    delegatedExchanges: [],
+    presence: [],
+    contextSnapshots: [],
+  } as never;
+  const allConversations = createCanonicalSessionReadModel(canonicalState)
+    ?.buildChatConversations([], () => '') ?? [];
+  const viewModels = buildWorkspaceChatListViewModels({
+    activeConversationId: '',
+    allConversations,
+    archivedSessionIds: new Set([sessionId]),
+    avatarSeed: 'profile',
+    chatSearch: '',
+    hiddenSessionIds: new Set(),
+    localAgentReachoutSessionIds: new Set(),
+  });
+
+  assert.equal(viewModels.chatConversations.some((conversation) => conversation.id === sessionId), false);
+  assert.equal(
+    viewModels.archivedParticipantSpaces.some((space) =>
+      space.sessions.some((session) => session.id === sessionId)
+    ),
+    true,
+  );
+  assert.match(workspaceViewModelsSource(), /session\.status === 'archived'/);
 });
 
 test('preference refresh ignores stale snapshots from overlapping actions', () => {

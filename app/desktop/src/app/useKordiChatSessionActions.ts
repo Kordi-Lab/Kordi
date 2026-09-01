@@ -299,7 +299,7 @@ export function useKordiChatSessionActions({
 
     try {
       setDesktopError(null);
-      if (shouldUseCloudSessionAction(trimmedSessionId)) {
+      if (shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) {
         await hideCloudSession(trimmedSessionId);
         optimisticallyRemoveSession(trimmedSessionId, false);
         await refreshCanonicalState();
@@ -327,6 +327,7 @@ export function useKordiChatSessionActions({
     }
   }, [
     activeConversationId,
+    canonicalState,
     desktopActiveSessionId,
     hideCloudSession,
     isNativeShell,
@@ -343,7 +344,7 @@ export function useKordiChatSessionActions({
 
     try {
       setDesktopError(null);
-      if (shouldUseCloudSessionAction(trimmedSessionId)) {
+      if (shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) {
         await deleteCloudSession(trimmedSessionId);
         optimisticallyRemoveSession(trimmedSessionId, false);
         try {
@@ -386,10 +387,11 @@ export function useKordiChatSessionActions({
       const message =
         error instanceof Error ? error.message : 'Unable to remove chat';
       setDesktopError(message.startsWith('Session not found') ? null : message);
-      if (shouldUseCloudSessionAction(trimmedSessionId)) throw error;
+      if (shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) throw error;
     }
   }, [
     activeConversationId,
+    canonicalState,
     deleteCloudSession,
     desktopActiveSessionId,
     isNativeShell,

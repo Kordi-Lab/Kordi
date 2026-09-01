@@ -20,9 +20,14 @@ export function normalizeMentionSearch(value: string) {
   return value.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-export function shouldUseCloudSessionAction(sessionId: string) {
+export function shouldUseCloudSessionAction(
+  sessionId: string,
+  state: CanonicalSessionState | null = null,
+) {
   const trimmed = sessionId.trim();
-  return trimmed.startsWith('session:') || trimmed.startsWith('bridge:cloud:');
+  return trimmed.startsWith('session:')
+    || trimmed.startsWith('bridge:cloud:')
+    || sessionMetadataRecord(state, trimmed).cloudSelfAgentSession === true;
 }
 
 export function canonicalAvatarSeed(state: CanonicalSessionState | null | undefined, identityId?: string | null) {

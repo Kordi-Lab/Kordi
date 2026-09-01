@@ -22,7 +22,11 @@ export function buildWorkspaceChatListViewModels({
   hiddenSessionIds: ReadonlySet<string>;
   localAgentReachoutSessionIds: ReadonlySet<string>;
 }) {
-  const hiddenIds = new Set([...hiddenSessionIds, ...localAgentReachoutSessionIds]);
+  const hiddenIds = new Set([
+    ...hiddenSessionIds,
+    ...archivedSessionIds,
+    ...localAgentReachoutSessionIds,
+  ]);
   const chatConversations = hiddenIds.size === 0
     ? allConversations
     : allConversations.filter((conversation) => {

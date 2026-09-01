@@ -445,12 +445,17 @@ export function useWorkspaceViewModels({
   } = useMemo(() => buildWorkspaceChatListViewModels({
     activeConversationId: activeConvId,
     allConversations: blankShellCollapsedChatConversations,
-    archivedSessionIds,
+    archivedSessionIds: new Set([
+      ...archivedSessionIds,
+      ...(canonicalSessionState?.sessions ?? [])
+        .filter((session) => session.status === 'archived')
+        .map((session) => session.id),
+    ]),
     avatarSeed: getLocalProfileAvatarSeed(),
     chatSearch,
     hiddenSessionIds,
     localAgentReachoutSessionIds: localAgentCollaborationReachoutSessionIds,
-  }), [activeConvId, archivedSessionIds, blankShellCollapsedChatConversations, chatSearch, hiddenSessionIds, localAgentCollaborationReachoutSessionIds]);
+  }), [activeConvId, archivedSessionIds, blankShellCollapsedChatConversations, canonicalSessionState?.sessions, chatSearch, hiddenSessionIds, localAgentCollaborationReachoutSessionIds]);
   const companionConversations = useMemo(
     () => companionConversationList(chatConversations, blankShellCollapsedChatConversations),
     [blankShellCollapsedChatConversations, chatConversations],
