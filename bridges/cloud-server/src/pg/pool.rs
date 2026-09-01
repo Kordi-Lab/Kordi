@@ -357,6 +357,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "group space preferences",
         sql: include_str!("../../migrations/0074_group_space_preferences.sql"),
     },
+    EmbeddedMigration {
+        version: 75,
+        description: "chat group catalog",
+        sql: include_str!("../../migrations/0075_chat_group_catalog.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
