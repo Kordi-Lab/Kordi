@@ -13,43 +13,71 @@ import {
 import type {
   CanonicalSessionState,
 } from '@/kordi-app/types';
+import {
+  cloudConversationKindFromConversationId,
+  cloudDirectPersonSessionId,
+  cloudPeerAccountIdFromConversationId,
+  cloudSessionIdFromConversationId,
+} from '@/features/collaboration/conversationIds';
 import type {
   CloudAccount,
+  CloudAuthClient,
 } from './authClient';
-import {
-  isSharedCloudSessionId,
-} from './cloudSelfAgentCanonicalSync';
+import { loadSession } from './session';
+
+export function canonicalActiveSessionId(
+  activeConversationId: string | null | undefined,
+  accountId: string,
+): string {
+  const activeId = activeConversationId?.trim() ?? '';
+  const explicitSessionId = cloudSessionIdFromConversationId(activeId);
+  if (explicitSessionId) return explicitSessionId;
+  const peerAccountId = cloudPeerAccountIdFromConversationId(activeId);
+  return peerAccountId
+    && cloudConversationKindFromConversationId(activeId) === 'person'
+    ? cloudDirectPersonSessionId(accountId, peerAccountId)
+    : activeId;
+}
 
 export function useCanonicalActiveSessionRead({
   account,
   activeConversationId,
   canMarkActiveConversationRead,
   canonicalState,
+  client,
   setCanonicalState,
 }: {
   account: CloudAccount | null;
   activeConversationId: string | null | undefined;
   canMarkActiveConversationRead: boolean;
   canonicalState: CanonicalSessionState | null | undefined;
+  client: CloudAuthClient;
   setCanonicalState?: Dispatch<
     SetStateAction<CanonicalSessionState | null>
   >;
 }) {
   const persistedReadSignatureRef = useRef<string | null>(null);
+  const accountId = account?.accountId ?? '';
 
   useEffect(() => {
     persistedReadSignatureRef.current = null;
-  }, [account?.accountId]);
+  }, [accountId]);
 
   useEffect(() => {
-    const sessionId = activeConversationId?.trim() ?? '';
+    const sessionId = canonicalActiveSessionId(
+      activeConversationId,
+      accountId,
+    );
     if (
-      !account
+      !accountId
       || !canMarkActiveConversationRead
       || !sessionId
-      || !isSharedCloudSessionId(sessionId)
       || !canonicalState
     ) return;
+    const canonicalSession = canonicalState.sessions.find(
+      (session) => session.id === sessionId,
+    );
+    if (!canonicalSession) return;
     const latestMessages = canonicalState.messages
       .filter((message) => (
         message.sessionId === sessionId
@@ -67,7 +95,6 @@ export function useCanonicalActiveSessionRead({
       );
     const latestMessage =
       latestMessages[latestMessages.length - 1];
-    if (!latestMessage) return;
     const selfParticipant = canonicalState.participants.find(
       (participant) => (
         participant.sessionId === sessionId
@@ -83,19 +110,28 @@ export function useCanonicalActiveSessionRead({
         participant.sessionId === sessionId
         && participant.role === 'self',
     );
-    if (
-      selfParticipant?.lastReadMessageId === latestMessage.id
-    ) return;
-
+    const readTarget = latestMessage?.id
+      ?? `${canonicalSession?.lastMessageAtMs ?? 0}:${canonicalSession?.updatedAtMs ?? 0}`;
     const signature =
-      `${account.accountId}:${sessionId}:${latestMessage.id}`;
+      `${accountId}:${sessionId}:${readTarget}`;
     if (persistedReadSignatureRef.current === signature) return;
     persistedReadSignatureRef.current = signature;
-    void markCanonicalSessionRead({
-      sessionId,
-      messageId: latestMessage.id,
-    })
-      .then((delta) => {
+    const localRead = !latestMessage
+      || selfParticipant?.lastReadMessageId === latestMessage.id
+      ? Promise.resolve(null)
+      : markCanonicalSessionRead({
+          sessionId,
+          messageId: latestMessage.id,
+        });
+    const cloudRead = loadSession().then((session) => {
+      if (!session?.token || session.accountId !== accountId) {
+        throw new Error('Cloud session is unavailable.');
+      }
+      return client.markSessionMessagesRead(session.token, sessionId);
+    });
+    void Promise.all([localRead, cloudRead])
+      .then(([delta]) => {
+        if (!delta) return;
         setCanonicalState?.((current) =>
           mergeCanonicalReadCursorDelta(current, delta)
         );
@@ -104,10 +140,11 @@ export function useCanonicalActiveSessionRead({
         persistedReadSignatureRef.current = null;
       });
   }, [
-    account,
+    accountId,
     activeConversationId,
     canMarkActiveConversationRead,
     canonicalState,
+    client,
     setCanonicalState,
   ]);
 }

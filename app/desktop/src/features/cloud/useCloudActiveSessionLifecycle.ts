@@ -29,6 +29,7 @@ export function useCloudActiveSessionLifecycle({
     activeConversationId,
     canMarkActiveConversationRead,
     canonicalState,
+    client,
     setCanonicalState,
   });
   useCloudActiveSessionPin({

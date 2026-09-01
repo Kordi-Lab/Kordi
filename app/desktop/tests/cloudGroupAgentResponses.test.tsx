@@ -311,7 +311,7 @@ test('cloud group read helper marks inbound controls read when their group sessi
   }), ['acct_peer']);
 });
 
-test('cloud group read helper returns active session ids for durable Cloud read receipts', () => {
+test('cloud group read helper returns only the exact active session for durable Cloud read receipts', () => {
   const body = encodeCloudGroupControl({
     kind: 'group-message',
     groupId: 'session:group:child',
@@ -325,9 +325,16 @@ test('cloud group read helper returns active session ids for durable Cloud read 
 
   assert.deepEqual(cloudGroupMessageReadTargets({
     accountId: 'acct_me',
-    activeConversationIds: ['ui-row-id', 'group:session:group:space'],
+    activeConversationIds: ['ui-row-id', 'group:session:group:child'],
     messages: [
       { messageId: 'cloud_1', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
     ],
   }), { peerIds: ['acct_peer'], sessionIds: ['session:group:child'] });
+  assert.deepEqual(cloudGroupMessageReadTargets({
+    accountId: 'acct_me',
+    activeConversationIds: ['ui-row-id', 'group:session:group:space'],
+    messages: [
+      { messageId: 'cloud_1', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
+    ],
+  }), { peerIds: [], sessionIds: [] });
 });

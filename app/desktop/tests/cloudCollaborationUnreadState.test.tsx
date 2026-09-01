@@ -286,7 +286,7 @@ test('direct Cloud contact conversations do not render group fanout control payl
   assert.equal(state.conversations[0].messages.some((item) => item.text.startsWith('kordi-cloud-group:')), false);
 });
 
-test('active cloud conversations clear unread while inactive conversations keep unread', () => {
+test('active cloud selection keeps unread until presentation commits read state', () => {
   const activeState = buildCloudDesktopCollaborationState({
     account,
     contacts: [peer],
@@ -300,7 +300,7 @@ test('active cloud conversations clear unread while inactive conversations keep 
     activeConversationId: null,
   });
 
-  assert.equal(activeState.conversations[0].unreadCount, 0);
+  assert.equal(activeState.conversations[0].unreadCount, 1);
   assert.equal(inactiveState.conversations[0].unreadCount, 1);
 });
 

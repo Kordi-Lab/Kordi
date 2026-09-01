@@ -219,7 +219,7 @@ test('reliable group cursors override stale optimistic read timestamps', () => {
   }), {});
 });
 
-test('switching unread sessions keeps the previous optimistic read hidden until native sync catches up', () => {
+test('switching sessions keeps the previous optimistic read hidden without clearing the selected unread', () => {
   const firstSessionId = 'session:direct-person:acct_me:acct_first';
   const secondSessionId = 'session:direct-person:acct_me:acct_second';
   const firstMessage: CloudMessage = {
@@ -239,7 +239,6 @@ test('switching unread sessions keeps the previous optimistic read hidden until 
   });
 
   const counts = mergeNativeCloudUnreadCounts({
-    activeConversationIds: [secondSessionId],
     nativeHeadsBySessionId: {
       [firstSessionId]: { lastReadSequence: 4, unreadCount: 1 },
       [secondSessionId]: { lastReadSequence: 7, unreadCount: 1 },
@@ -248,9 +247,8 @@ test('switching unread sessions keeps the previous optimistic read hidden until 
     projectedUnreadBySessionId: {},
   });
 
-  assert.deepEqual(counts, { [firstSessionId]: 0, [secondSessionId]: 0 });
+  assert.deepEqual(counts, { [firstSessionId]: 0, [secondSessionId]: 1 });
   assert.equal(mergeNativeCloudUnreadCounts({
-    activeConversationIds: [secondSessionId],
     nativeHeadsBySessionId: {
       [firstSessionId]: { lastReadSequence: 4, unreadCount: 1 },
       [secondSessionId]: { lastReadSequence: 7, unreadCount: 1 },

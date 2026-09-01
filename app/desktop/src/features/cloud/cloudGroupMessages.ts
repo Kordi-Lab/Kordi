@@ -775,7 +775,6 @@ export function shouldCountCloudGroupMessageUnread(input: {
   activeConversationId?: string | null;
   activeConversationIds?: Array<string | null | undefined>;
   groupId: string;
-  groupSpaceId?: string | null;
   forkSnapshot?: boolean | null;
 }): boolean {
   if (input.forkSnapshot === true) return false;
@@ -784,10 +783,9 @@ export function shouldCountCloudGroupMessageUnread(input: {
     ...(input.activeConversationIds ?? []),
   ].map((value) => cleanText(value)).filter(Boolean));
   const sessionId = cleanText(input.groupId);
-  const spaceId = cleanText(input.groupSpaceId) || sessionId;
   if (activeIds.size === 0) return true;
   for (const active of activeIds) {
-    if (active === sessionId || active === spaceId || active === `group:${spaceId}`) return false;
+    if (active === sessionId || active === `group:${sessionId}`) return false;
   }
   return true;
 }
@@ -1046,7 +1044,6 @@ export function cloudGroupMessageReadTargets(input: {
       activeConversationId: input.activeConversationId,
       activeConversationIds: input.activeConversationIds,
       groupId: envelope.groupId,
-      groupSpaceId: envelope.groupSpaceId,
       forkSnapshot: envelope.message?.forkSnapshot,
     })) continue;
     const peerId = cleanText(message.fromAccountId);
@@ -1095,8 +1092,6 @@ function cloudGroupMessageIsAtOrBeforeReadCursor(message: CloudMessage, envelope
 
 export function cloudGroupUnreadCountsBySessionId(input: {
   accountId: string;
-  activeConversationId?: string | null;
-  activeConversationIds?: Array<string | null | undefined>;
   readCursorsBySessionId?: Record<string, CloudGroupReadCursor | null | undefined>;
   messages?: CloudMessage[];
   groupRows?: readonly IndexedCloudGroupRow[];
@@ -1111,13 +1106,7 @@ export function cloudGroupUnreadCountsBySessionId(input: {
   });
   for (const { wire: message, envelope } of rows) {
     if (!cloudGroupMessageIsUnreadForAccount(message, envelope, accountId)) continue;
-    if (!shouldCountCloudGroupMessageUnread({
-      activeConversationId: input.activeConversationId,
-      activeConversationIds: input.activeConversationIds,
-      groupId: envelope.groupId,
-      groupSpaceId: envelope.groupSpaceId,
-      forkSnapshot: envelope.message?.forkSnapshot,
-    })) continue;
+    if (envelope.message?.forkSnapshot === true) continue;
     const sessionId = cleanText(envelope.groupId);
     if (!sessionId) continue;
     if (cloudGroupMessageIsAtOrBeforeReadCursor(message, envelope, input.readCursorsBySessionId?.[sessionId])) continue;
