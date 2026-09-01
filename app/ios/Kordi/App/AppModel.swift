@@ -2178,6 +2178,7 @@ final class AppModel: ObservableObject {
                     conversationSequence: message.conversationSequence,
                     author: message.author,
                     authorName: message.authorName,
+                    senderOwnerName: message.senderOwnerName,
                     text: message.text,
                     createdAt: message.createdAt,
                     editedAt: message.editedAt,

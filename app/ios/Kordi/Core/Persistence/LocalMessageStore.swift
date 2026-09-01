@@ -109,6 +109,7 @@ final class CachedMessageRecord {
     var conversationSequence: Int64?
     var author: String
     var authorName: String
+    var senderOwnerName: String?
     var text: String
     var createdAt: Date
     var editedAt: Date?
@@ -136,6 +137,7 @@ final class CachedMessageRecord {
         conversationSequence = message.conversationSequence
         author = message.author.rawValue
         authorName = message.authorName
+        senderOwnerName = message.senderOwnerName
         text = message.text
         createdAt = message.createdAt
         editedAt = message.editedAt
@@ -161,6 +163,7 @@ final class CachedMessageRecord {
         conversationSequence = message.conversationSequence
         author = message.author.rawValue
         authorName = message.authorName
+        senderOwnerName = message.senderOwnerName
         text = message.text
         createdAt = message.createdAt
         editedAt = message.editedAt
@@ -191,6 +194,7 @@ final class CachedMessageRecord {
             conversationSequence: conversationSequence,
             author: author,
             authorName: authorName,
+            senderOwnerName: senderOwnerName,
             text: text,
             createdAt: createdAt,
             editedAt: editedAt,
