@@ -7,6 +7,7 @@ import {
 import type { CloudAccount } from '@/features/cloud/authClient';
 import type { SendCloudGroupControlInput } from '@/features/cloud/cloudGroupControl.types';
 import {
+  cloudGroupManualSessionTitleSnapshot,
   cloudGroupParticipantsForCollaborationSession,
   cloudGroupTargetAccountIds,
 } from '@/features/cloud/cloudGroupMessages';
@@ -169,6 +170,10 @@ export function useKordiChatSessionActions({
         participants,
         adminIdentityIds: activeGroupAdminIds(state, sessionId),
       });
+    const sessionTitle = cloudGroupManualSessionTitleSnapshot({
+      session: state.sessions.find((session) => session.id === sessionId),
+      identities: state.identities,
+    });
     const currentMetadata = sessionMetadataRecord(state, sessionId);
     const parentGroupSpaceId =
       metadataGroupSpaceId(currentMetadata) || sessionId;
@@ -180,6 +185,7 @@ export function useKordiChatSessionActions({
         groupId: sessionId,
         groupSpaceId: parentGroupSpaceId,
         groupTitle: title,
+        sessionTitle,
         participants: cloudGroupParticipantsForCollaborationSession(
           account,
           updateParticipants,
