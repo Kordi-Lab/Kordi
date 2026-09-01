@@ -360,6 +360,28 @@ test('canonical session state adapter preserves the store for functional no-op u
   assert.equal(next, store);
 });
 
+test('functional deletion removes a message from a ready transcript cache', () => {
+  let store = mergeCanonicalCatalog(createCanonicalStore(), catalog());
+  store = mergeCanonicalMessagePage(store, {
+    sessionId: 'session:one',
+    messages: [
+      message('m1', 'session:one', 1),
+      message('m2', 'session:one', 2),
+      message('m3', 'session:one', 3),
+    ],
+    oldestSequenceNum: 1,
+    newestSequenceNum: 3,
+    hasOlder: false,
+  });
+
+  store = applyCanonicalSessionStateAction(store, (current) => current && ({
+    ...current,
+    messages: current.messages.filter((item) => item.id !== 'm3'),
+  }));
+
+  assert.deepEqual(store.messagesBySessionId['session:one']?.map((item) => item.id), ['m1', 'm2']);
+});
+
 test('equivalent native catalog refresh preserves the complete store reference', () => {
   const firstCatalog = catalog();
   const store = mergeCanonicalCatalog(createCanonicalStore(), firstCatalog);

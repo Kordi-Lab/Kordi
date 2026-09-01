@@ -45,6 +45,7 @@ import {
   loadChatSyncCursor,
   loadChatSyncLocalState,
 } from '@/lib/desktopChatSync';
+import { pruneMissingCanonicalCloudMessages } from '@/features/canonical/canonicalMessageSources';
 
 // Realtime uses the Cloud WebSocket; this interval repairs missed frames and
 // temporary disconnects without polling several times per second.
@@ -90,6 +91,7 @@ export type UseCloudMessageSyncInput = {
   stores: CloudMessageSyncStores;
   setUnreadReadiness: Dispatch<SetStateAction<CloudUnreadReadinessSnapshot>>;
   refreshCloudAgents: (generation?: number) => Promise<void>; onMessagesDeleted?: (messageIds: string[]) => Promise<void> | void;
+  onCanonicalMessagesPruned?: (messageIds: string[]) => Promise<void> | void;
 };
 
 export type CloudMessageSyncController = {
@@ -109,7 +111,7 @@ export function useCloudMessageSync({
   cancelledRef,
   stores,
   setUnreadReadiness,
-  refreshCloudAgents, onMessagesDeleted,
+  refreshCloudAgents, onMessagesDeleted, onCanonicalMessagesPruned,
 }: UseCloudMessageSyncInput): CloudMessageSyncController {
   const {
     stateRef: messagesRef,
@@ -447,7 +449,10 @@ export function useCloudMessageSync({
         beforeSequence = next;
       }
     }
-  }, [account, client, coordinator]);
+    const prunedMessageIds = await pruneMissingCanonicalCloudMessages(account.accountId); // Full hydration above makes absence authoritative.
+    if (!coordinator.isCurrentGeneration(generation)) return;
+    if (prunedMessageIds.length > 0) await onCanonicalMessagesPruned?.(prunedMessageIds);
+  }, [account, client, coordinator, onCanonicalMessagesPruned]);
   const runCoordinatedSync = useCallback(async (generation: number) => {
     const request = pendingRequestRef.current;
     pendingRequestRef.current = null;
