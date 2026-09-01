@@ -2878,7 +2878,7 @@ private struct LatestMessageButton: View {
 /// identity-based scroll command can also be deferred while UIScrollView is
 /// decelerating, so the button cancels momentum before moving to the true bottom.
 /// Thread returns use the same bridge to restore the exact prior content offset.
-struct ConversationScrollRestoreRequest: Equatable {
+private struct ConversationScrollRestoreRequest: Equatable {
     let id: Int
     let contentOffsetY: CGFloat
 }
@@ -2917,19 +2917,28 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
                 guard coordinator.lastHandledRestoreRequestID != restoreRequest.id else { return }
                 coordinator.lastHandledRestoreRequestID = restoreRequest.id
                 scrollView.layer.removeAllAnimations()
+                let targetY = ConversationTimelineScrollBehavior.clampedContentOffsetY(
+                    restoreRequest.contentOffsetY,
+                    contentHeight: scrollView.contentSize.height,
+                    containerHeight: scrollView.bounds.height,
+                    topInset: scrollView.adjustedContentInset.top,
+                    bottomInset: scrollView.adjustedContentInset.bottom
+                )
                 scrollView.setContentOffset(
                     CGPoint(
                         x: scrollView.contentOffset.x,
-                        y: ConversationTimelineScrollBehavior.clampedContentOffsetY(
-                            restoreRequest.contentOffsetY,
-                            contentHeight: scrollView.contentSize.height,
-                            containerHeight: scrollView.bounds.height,
-                            topInset: scrollView.adjustedContentInset.top,
-                            bottomInset: scrollView.adjustedContentInset.bottom
-                        )
+                        y: targetY
                     ),
                     animated: false
                 )
+                DispatchQueue.main.async {
+                    guard exactRestoreRequest?.id == restoreRequest.id,
+                          ConversationTimelineScrollBehavior.didRestoreContentOffset(
+                              observed: scrollView.contentOffset.y,
+                              target: targetY
+                          ) else { return }
+                    exactRestoreRequest = nil
+                }
                 return
             }
             guard shouldScrollToBottom else { return }
