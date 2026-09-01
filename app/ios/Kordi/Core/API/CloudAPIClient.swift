@@ -848,6 +848,16 @@ actor CloudAPIClient {
         )
     }
 
+    func setSessionUnread(token: String, sessionId: String, unread: Bool) async throws {
+        let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/sessions/\(escaped)/unread",
+            method: unread ? "PUT" : "DELETE",
+            token: token,
+            fallback: unread ? "Could not mark this chat unread." : "Could not mark this chat read."
+        )
+    }
+
     func sessionPin(token: String, sessionId: String) async throws -> CloudSessionPin {
         let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
         let response: SessionPinResponse = try await send(
@@ -2118,7 +2128,8 @@ actor CloudAPIClient {
         }
         let sessionListEvents: Set<String> = [
             "session.hidden", "session.unhidden", "session.deleted",
-            "session.pinned", "session.unpinned", "session.muted", "session.unmuted"
+            "session.pinned", "session.unpinned", "session.muted", "session.unmuted",
+            "session.marked_unread", "session.unmarked_unread"
         ]
         if sessionListEvents.contains(event.eventType),
            let sessionId = event.payload.sessionId?.nonEmpty {

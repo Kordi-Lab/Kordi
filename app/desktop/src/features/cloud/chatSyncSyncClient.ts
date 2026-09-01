@@ -344,6 +344,8 @@ export class ChatSyncSyncClient {
       'session.unpinned',
       'session.muted',
       'session.unmuted',
+      'session.marked_unread',
+      'session.unmarked_unread',
       'session-forked',
       'device.added',
       'device.confirmed',

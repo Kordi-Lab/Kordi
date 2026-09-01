@@ -64,11 +64,12 @@ final class CloudModelDecodingTests: XCTestCase {
     }
 
     func testCloudSessionVisibilityDecodesMacHiddenAndDeletedSessions() throws {
-        let payload = Data(#"{"hiddenSessionIds":["session:hidden"],"deletedSessionIds":["session:deleted"]}"#.utf8)
+        let payload = Data(#"{"hiddenSessionIds":["session:hidden"],"deletedSessionIds":["session:deleted"],"unreadSessionIds":["session:unread"]}"#.utf8)
         let visibility = try JSONDecoder().decode(CloudSessionVisibility.self, from: payload)
 
         XCTAssertEqual(visibility.hiddenSessionIds, ["session:hidden"])
         XCTAssertEqual(visibility.deletedSessionIds, ["session:deleted"])
+        XCTAssertEqual(visibility.unreadSessionIds, ["session:unread"])
     }
 
     func testExpressiveMediaLibraryResponseDecodesCrossDeviceItems() throws {

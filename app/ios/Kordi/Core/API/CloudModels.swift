@@ -1314,6 +1314,7 @@ struct CloudSessionVisibility: Codable, Hashable {
     let deletedSessionIds: [String]
     let pinnedSessionIds: [String]?
     let mutedSessionIds: [String]?
+    let unreadSessionIds: [String]?
 }
 
 struct CloudSessionForkSummary: Codable, Hashable {

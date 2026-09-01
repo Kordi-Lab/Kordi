@@ -598,6 +598,23 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(didMute)
         XCTAssertTrue(model.mutedSessionIds.contains(conversation.sessionId))
 
+        let readConversation = try XCTUnwrap(
+            model.conversations.first { $0.id == "person:acct_ethan" }
+        )
+        let didMarkUnread = await model.setConversationUnread(readConversation, unread: true)
+        XCTAssertTrue(didMarkUnread)
+        XCTAssertTrue(model.markedUnreadSessionIds.contains(readConversation.sessionId))
+        XCTAssertEqual(
+            model.conversations.first { $0.id == readConversation.id }?.unreadCount,
+            1
+        )
+        await model.markConversationRead(readConversation)
+        XCTAssertFalse(model.markedUnreadSessionIds.contains(readConversation.sessionId))
+        XCTAssertEqual(
+            model.conversations.first { $0.id == readConversation.id }?.unreadCount,
+            0
+        )
+
         let didArchive = await model.archiveConversation(conversation)
         XCTAssertTrue(didArchive)
         XCTAssertFalse(model.conversations.contains { $0.sessionId == conversation.sessionId })

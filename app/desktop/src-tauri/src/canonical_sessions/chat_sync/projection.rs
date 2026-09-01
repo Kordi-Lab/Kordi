@@ -197,6 +197,8 @@ pub(super) fn apply_event(
             | "session.unpinned"
             | "session.muted"
             | "session.unmuted"
+            | "session.marked_unread"
+            | "session.unmarked_unread"
             | "session-forked"
             | "call.created"
             | "call.updated"

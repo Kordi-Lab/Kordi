@@ -33,7 +33,7 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
     .expect("create AI conversation");
     let path = format!("/v1/cloud/sessions/{session_id}");
 
-    for suffix in ["pinned", "muted"] {
+    for suffix in ["pinned", "muted", "unread"] {
         let response = router
             .clone()
             .oneshot(put_with_token(&format!("{path}/{suffix}"), &token))
@@ -51,6 +51,7 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
     .await;
     assert_eq!(visibility["pinnedSessionIds"], json!([session_id.clone()]));
     assert_eq!(visibility["mutedSessionIds"], json!([session_id.clone()]));
+    assert_eq!(visibility["unreadSessionIds"], json!([session_id.clone()]));
 
     let archived = router
         .clone()
@@ -69,6 +70,7 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
     assert_eq!(visibility["hiddenSessionIds"], json!([session_id.clone()]));
     assert_eq!(visibility["pinnedSessionIds"], json!([]));
     assert_eq!(visibility["mutedSessionIds"], json!([session_id.clone()]));
+    assert_eq!(visibility["unreadSessionIds"], json!([session_id.clone()]));
 
     let deleted = router
         .clone()
@@ -86,4 +88,5 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
     assert_eq!(visibility["deletedSessionIds"], json!([session_id]));
     assert_eq!(visibility["pinnedSessionIds"], json!([]));
     assert_eq!(visibility["mutedSessionIds"], json!([]));
+    assert_eq!(visibility["unreadSessionIds"], json!([]));
 }

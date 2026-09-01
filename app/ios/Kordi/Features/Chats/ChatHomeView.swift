@@ -322,6 +322,7 @@ struct ChatHomeView: View {
                 }
             }
         }
+        .id(model.pinnedSessionIds)
         .accessibilityLabel("Contact chats")
     }
 
@@ -398,6 +399,7 @@ struct ChatHomeView: View {
                 }
             }
         }
+        .id(model.pinnedSessionIds)
         .accessibilityLabel("Agent chats")
     }
 
@@ -435,6 +437,9 @@ struct ChatHomeView: View {
         }
         .accessibilityAction(named: model.mutedSessionIds.contains(conversation.sessionId) ? "Unmute" : "Mute notifications") {
             toggleMuted(conversation)
+        }
+        .accessibilityAction(named: conversation.hasUnreadAttention ? "Mark as read" : "Mark as unread") {
+            toggleUnread(conversation)
         }
         .accessibilityAction(named: "Archive") {
             Task { _ = await model.archiveConversation(conversation) }
@@ -479,6 +484,9 @@ struct ChatHomeView: View {
         }
         .accessibilityAction(named: model.mutedSessionIds.contains(item.conversation.sessionId) ? "Unmute" : "Mute notifications") {
             toggleMuted(item.conversation)
+        }
+        .accessibilityAction(named: item.conversation.hasUnreadAttention ? "Mark as read" : "Mark as unread") {
+            toggleUnread(item.conversation)
         }
         .accessibilityAction(named: "Archive") {
             Task { _ = await model.archiveConversation(item.conversation) }
@@ -537,9 +545,12 @@ struct ChatHomeView: View {
             Label("Rename", systemImage: "pencil")
         }
         Button {
-            Task { await model.markConversationRead(conversation) }
+            toggleUnread(conversation)
         } label: {
-            Label("Mark as read", systemImage: "checkmark.circle")
+            Label(
+                conversation.hasUnreadAttention ? "Mark as read" : "Mark as unread",
+                systemImage: conversation.hasUnreadAttention ? "checkmark.circle" : "envelope.badge"
+            )
         }
         Divider()
         Button {
@@ -574,6 +585,7 @@ struct ChatHomeView: View {
     @ViewBuilder
     private func sessionLeadingSwipeActions(for conversation: ConversationSummary) -> some View {
         let isPinned = model.pinnedSessionIds.contains(conversation.sessionId)
+        let isUnread = conversation.hasUnreadAttention
         Button {
             togglePinned(conversation)
         } label: {
@@ -582,15 +594,13 @@ struct ChatHomeView: View {
         .tint(.green)
         .accessibilityLabel(isPinned ? "Unpin" : "Pin")
 
-        if conversation.hasUnreadAttention {
-            Button {
-                Task { await model.markConversationRead(conversation) }
-            } label: {
-                Image(systemName: "checkmark.message")
-            }
-            .tint(KordiTheme.signalBlue)
-            .accessibilityLabel("Mark as read")
+        Button {
+            toggleUnread(conversation)
+        } label: {
+            Image(systemName: isUnread ? "checkmark.message" : "envelope.badge")
         }
+        .tint(KordiTheme.signalBlue)
+        .accessibilityLabel(isUnread ? "Mark as read" : "Mark as unread")
     }
 
     @ViewBuilder
@@ -628,6 +638,16 @@ struct ChatHomeView: View {
     private func toggleMuted(_ conversation: ConversationSummary) {
         let muted = !model.mutedSessionIds.contains(conversation.sessionId)
         Task { _ = await model.setConversationMuted(conversation, muted: muted) }
+    }
+
+    private func toggleUnread(_ conversation: ConversationSummary) {
+        Task {
+            if conversation.hasUnreadAttention {
+                await model.markConversationRead(conversation)
+            } else {
+                _ = await model.setConversationUnread(conversation, unread: true)
+            }
+        }
     }
 
     private func groupIsExpanded(_ space: GroupSpaceSummary) -> Bool {

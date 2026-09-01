@@ -34,15 +34,16 @@ pub(super) async fn list_cloud_session_visibility(
         }
     }
 
-    let preferences: Vec<(String, bool, bool)> = match query_as(
+    let preferences: Vec<(String, bool, bool, bool)> = match query_as(
         "SELECT COALESCE(conversation.legacy_session_id, conversation.conversation_id::text), \
                 member.pinned_at IS NOT NULL, \
-                member.muted_until IS NOT NULL AND member.muted_until > NOW() \
+                member.muted_until IS NOT NULL AND member.muted_until > NOW(), \
+                member.marked_unread_at IS NOT NULL \
          FROM cloud_chat_conversation_members member \
          JOIN cloud_chat_conversations conversation \
            ON conversation.conversation_id = member.conversation_id \
          WHERE member.account_id = $1 AND member.membership_state = 'active' \
-           AND (member.pinned_at IS NOT NULL OR \
+           AND (member.pinned_at IS NOT NULL OR member.marked_unread_at IS NOT NULL OR \
                 (member.muted_until IS NOT NULL AND member.muted_until > NOW())) \
          ORDER BY conversation.updated_at DESC, conversation.conversation_id ASC",
     )
@@ -61,12 +62,16 @@ pub(super) async fn list_cloud_session_visibility(
     };
     let mut pinned_session_ids = Vec::new();
     let mut muted_session_ids = Vec::new();
-    for (session_id, pinned, muted) in preferences {
+    let mut unread_session_ids = Vec::new();
+    for (session_id, pinned, muted, unread) in preferences {
         if pinned {
             pinned_session_ids.push(session_id.clone());
         }
         if muted {
-            muted_session_ids.push(session_id);
+            muted_session_ids.push(session_id.clone());
+        }
+        if unread {
+            unread_session_ids.push(session_id);
         }
     }
 
@@ -75,6 +80,7 @@ pub(super) async fn list_cloud_session_visibility(
         deleted_session_ids,
         pinned_session_ids,
         muted_session_ids,
+        unread_session_ids,
     })
     .into_response()
 }
@@ -283,7 +289,7 @@ pub(super) async fn delete_cloud_session(
 
     if query(
         "UPDATE cloud_chat_conversation_members member \
-         SET pinned_at = NULL, muted_until = NULL \
+         SET pinned_at = NULL, muted_until = NULL, marked_unread_at = NULL \
          FROM cloud_chat_conversations conversation \
          WHERE member.conversation_id = conversation.conversation_id \
            AND member.account_id = $1 AND member.membership_state = 'active' \
@@ -352,6 +358,7 @@ pub(super) async fn delete_cloud_session(
 enum SessionListPreference {
     Pinned,
     Muted,
+    Unread,
 }
 
 async fn set_cloud_session_list_preference(
@@ -400,6 +407,21 @@ async fn set_cloud_session_list_preference(
             .execute(pool)
             .await
         }
+        SessionListPreference::Unread => {
+            query(
+                "UPDATE cloud_chat_conversation_members member \
+                 SET marked_unread_at = CASE WHEN $3 THEN NOW() ELSE NULL END \
+                 FROM cloud_chat_conversations conversation \
+                 WHERE member.conversation_id = conversation.conversation_id \
+                   AND member.account_id = $1 AND member.membership_state = 'active' \
+                   AND (conversation.legacy_session_id = $2 OR conversation.conversation_id::text = $2)",
+            )
+            .bind(&session.account_id)
+            .bind(&session_id)
+            .bind(enabled)
+            .execute(pool)
+            .await
+        }
     };
     let rows_affected = match result {
         Ok(result) => result.rows_affected(),
@@ -424,6 +446,8 @@ async fn set_cloud_session_list_preference(
         (SessionListPreference::Pinned, false) => "session.unpinned",
         (SessionListPreference::Muted, true) => "session.muted",
         (SessionListPreference::Muted, false) => "session.unmuted",
+        (SessionListPreference::Unread, true) => "session.marked_unread",
+        (SessionListPreference::Unread, false) => "session.unmarked_unread",
     };
     let now = Utc::now().to_rfc3339();
     if publish_chat_event(
@@ -502,6 +526,36 @@ pub(super) async fn unmute_cloud_session(
         session,
         session_id,
         SessionListPreference::Muted,
+        false,
+    )
+    .await
+}
+
+pub(super) async fn mark_cloud_session_unread(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Response {
+    set_cloud_session_list_preference(
+        state,
+        session,
+        session_id,
+        SessionListPreference::Unread,
+        true,
+    )
+    .await
+}
+
+pub(super) async fn unmark_cloud_session_unread(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+) -> Response {
+    set_cloud_session_list_preference(
+        state,
+        session,
+        session_id,
+        SessionListPreference::Unread,
         false,
     )
     .await

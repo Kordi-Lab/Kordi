@@ -122,9 +122,12 @@ struct GroupSessionRow: View {
                 .padding(.vertical, 5)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(sessionTitle)
-                    .font(.body.weight(.semibold))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(sessionTitle)
+                        .font(.body.weight(.semibold))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
+                }
 
                 BlobEmojiPreviewText(text: session.lastMessage.nonEmpty ?? "No messages yet")
                     .font(.subheadline)
@@ -145,7 +148,6 @@ struct GroupSessionRow: View {
                         isMuted: isMuted
                     )
                 }
-                ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
             }
         }
         .padding(.leading, dynamicTypeSize.isAccessibilitySize ? 0 : 28)

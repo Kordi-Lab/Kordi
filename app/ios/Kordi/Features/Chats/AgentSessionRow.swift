@@ -69,7 +69,6 @@ struct AgentSessionRow: View {
                 if conversation.hasUnreadAttention {
                     attentionBadge
                 }
-                ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
             }
         }
         .padding(.vertical, 8)
@@ -93,7 +92,6 @@ struct AgentSessionRow: View {
                           activity != .ready {
                     AgentSessionActivityLabel(activity: activity, compact: true)
                 }
-                ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
             }
         }
     }
@@ -111,6 +109,7 @@ struct AgentSessionRow: View {
                 .foregroundStyle(.primary)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
                 .layoutPriority(1)
+            ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
         }
     }
 

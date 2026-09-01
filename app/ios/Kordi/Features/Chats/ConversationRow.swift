@@ -51,7 +51,6 @@ struct ConversationRow: View {
                         .font(.caption)
                         .foregroundStyle(attentionTint)
                     attentionBadge
-                    ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
                 }
             }
         }
@@ -95,6 +94,7 @@ struct ConversationRow: View {
                         .foregroundStyle(KordiTheme.agentViolet)
                         .accessibilityHidden(true)
                 }
+                ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
             }
 
             if let activity = conversation.agentActivity {
@@ -155,7 +155,6 @@ struct ConversationRow: View {
                 .foregroundStyle(attentionTint)
                 .lineLimit(1)
             attentionBadge
-            ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
         }
     }
 
