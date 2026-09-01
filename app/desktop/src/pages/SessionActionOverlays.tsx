@@ -64,7 +64,7 @@ export function SessionContextMenu({
         {target.canRename !== false ? (
           <button
             type="button"
-            className="app-transient-flat-action app-transient-action-row w-full rounded-[12px] px-3 py-2 text-left transition"
+            className="app-transient-flat-action app-transient-action-row w-full whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
             onClick={() => {
               onClose();
               onRename({
@@ -81,7 +81,7 @@ export function SessionContextMenu({
           <button
             type="button"
             data-session-context-action="pin"
-            className="app-transient-flat-action app-transient-action-row w-full rounded-[12px] px-3 py-2 text-left transition"
+            className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
             onClick={() => run(() => onSetPinned(target.sessionId, !target.pinned))}
           >
             <Pin className="app-transient-action-icon" aria-hidden="true" />
@@ -91,7 +91,7 @@ export function SessionContextMenu({
         <button
           type="button"
           data-session-context-action="mute"
-          className="app-transient-flat-action app-transient-action-row w-full rounded-[12px] px-3 py-2 text-left transition"
+          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
           onClick={() => run(() => onSetMuted(target.sessionId, !target.muted))}
         >
           <BellOff className="app-transient-action-icon" aria-hidden="true" />
@@ -100,7 +100,7 @@ export function SessionContextMenu({
         <button
           type="button"
           data-session-context-action={target.archived ? 'restore' : 'archive'}
-          className="app-transient-flat-action app-transient-action-row w-full rounded-[12px] px-3 py-2 text-left transition"
+          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
           onClick={() => run(() => (
             target.archived
               ? onRestore(target.sessionId)
@@ -114,7 +114,7 @@ export function SessionContextMenu({
         </button>
         <button
           type="button"
-          className="app-transient-row app-transient-row-danger app-transient-action-row mt-1 w-full rounded-[12px] px-3 py-2 text-left transition"
+          className="app-transient-row app-transient-row-danger app-transient-action-row mt-1 flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
           onClick={() => {
             onClose();
             onDelete({

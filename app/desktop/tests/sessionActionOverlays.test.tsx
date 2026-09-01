@@ -49,6 +49,7 @@ test('SessionContextMenu exposes pin, mute, archive, and reversible delete actio
   assert.match(markup, />Mute notifications</);
   assert.match(markup, />Archive</);
   assert.match(markup, /Delete chat…/);
+  assert.equal((markup.match(/items-center gap-2\.5 whitespace-nowrap/g) ?? []).length, 4);
 });
 
 test('SessionContextMenu keeps available actions flat and omits the removed project action', () => {
