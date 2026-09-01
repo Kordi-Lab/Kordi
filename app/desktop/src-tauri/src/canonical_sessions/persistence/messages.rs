@@ -326,11 +326,20 @@ fn upsert_message_in_transaction(
     if !can_apply_cloud_agent_turn_transition(&existing_message, &request, &status) {
         return Ok(existing_message);
     }
-    let created_at_ms = request
-        .created_at_ms
-        .unwrap_or(existing_message.created_at_ms);
-    let sequence_num =
-        chat_sync_sequence_num(conn, &request)?.unwrap_or(existing_message.sequence_num);
+    let stable_agent_turn =
+        existing_message.message_kind == "agent-turn" || request.message_kind == "agent-turn";
+    let created_at_ms = if stable_agent_turn {
+        existing_message.created_at_ms
+    } else {
+        request
+            .created_at_ms
+            .unwrap_or(existing_message.created_at_ms)
+    };
+    let sequence_num = if stable_agent_turn {
+        existing_message.sequence_num
+    } else {
+        chat_sync_sequence_num(conn, &request)?.unwrap_or(existing_message.sequence_num)
+    };
     let content_value = request.content;
     let content = json_to_db(&content_value)?;
     let content_hash = hash_hex(
