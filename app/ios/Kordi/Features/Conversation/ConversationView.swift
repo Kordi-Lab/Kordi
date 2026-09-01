@@ -1530,6 +1530,13 @@ struct ConversationView: View {
         await Task.yield()
         await Task.yield()
         guard !Task.isCancelled else { return }
+        if initialViewport == .latest {
+            withTransaction(transaction) {
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+            }
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+        }
         withTransaction(transaction) {
             hasPositionedInitialTimeline = true
             hasRevealedInitialViewport = true
