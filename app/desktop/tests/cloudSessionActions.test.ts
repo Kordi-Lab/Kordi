@@ -21,6 +21,7 @@ const cloudGroupAgentPublicationSource = () => readFileSync(new URL('../src/feat
 const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
 const cloudGroupControlSenderSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlSender.ts', import.meta.url), 'utf8');
+const chatSessionActionsSource = () => readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
 
 test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {
   assert.equal(shouldUseCloudSessionAction('session:direct-person:acct_a:acct_b'), true);
@@ -89,11 +90,18 @@ test('canonical mapping treats a self-owned cloud agent as My Kordi', () => {
 });
 
 test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {
-  const source = readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
+  const source = chatSessionActionsSource();
   const deleteBranchStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const deleteSession'));
   const deleteBranchEnd = source.indexOf('} catch (error) {', deleteBranchStart);
   const cloudDeleteBranch = source.slice(deleteBranchStart, deleteBranchEnd);
   assert.match(cloudDeleteBranch, /await deleteCloudSession\(trimmedSessionId\);[\s\S]*archiveDesktopChatSession\(\s*trimmedSessionId,\s*desktopActiveSessionId/);
+});
+
+test('group session rename forwards the manual title from the returned canonical state', () => {
+  assert.match(
+    chatSessionActionsSource(),
+    /const sessionTitle = cloudGroupManualSessionTitleSnapshot\(\{[\s\S]*?session: state\.sessions\.find[\s\S]*?kind: 'session-title-update',[\s\S]*?sessionTitle,/,
+  );
 });
 
 test('local cloud self-agent no-provider errors become failed agent replies in canonical chat', () => {

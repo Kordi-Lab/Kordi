@@ -162,12 +162,13 @@ export function useCloudGroupControlSender({
       ),
     });
     const currentCanonicalState = canonicalStateRef.current;
-    const sessionTitle = cloudGroupManualSessionTitleSnapshot({
-      session: currentCanonicalState?.sessions.find(
-        (candidate) => candidate.id === input.groupId,
-      ),
-      identities: currentCanonicalState?.identities,
-    });
+    const sessionTitle = input.sessionTitle
+      ?? cloudGroupManualSessionTitleSnapshot({
+        session: currentCanonicalState?.sessions.find(
+          (candidate) => candidate.id === input.groupId,
+        ),
+        identities: currentCanonicalState?.identities,
+      });
     const reliableSessionTitle = reliableCloudGroupSessionTitle({ input, messageIndex, manualTitle: sessionTitle, accountId: account.accountId });
     const syncReliableSessionTitle = () => persistReliableCloudGroupSessionTitle({ client, token: session.token, input, title: reliableSessionTitle, reportWarning });
     const forkFromSessionMetadata = input.kind === 'group-message'
