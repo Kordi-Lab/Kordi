@@ -1158,6 +1158,14 @@ final class KordiMarkdownParserTests: XCTestCase {
             topInset: 12,
             bottomInset: 20
         ), 820)
+        XCTAssertTrue(ConversationTimelineScrollBehavior.didRestoreContentOffset(
+            observed: 419.5,
+            target: 420
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.didRestoreContentOffset(
+            observed: 800,
+            target: 420
+        ))
     }
 
     func testConversationFollowsViewportResizeOnlyWhileAlreadyAtLatest() {

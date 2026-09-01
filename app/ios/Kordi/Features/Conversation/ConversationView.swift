@@ -193,6 +193,7 @@ struct ConversationView: View {
     @State private var threadReturnMessageID: String?
     @State private var currentScrollOffsetY: CGFloat?
     @State private var threadReturnScrollOffsetY: CGFloat?
+    @State private var threadReturnWasAtBottom = false
     @State private var exactScrollRestoreRequest: ConversationScrollRestoreRequest?
     @State private var nextScrollRestoreRequest = 0
     @State private var isRestoringThreadPosition = false
@@ -434,14 +435,6 @@ struct ConversationView: View {
                                                 exactRestoreRequest: $exactScrollRestoreRequest
                                             )
                                         )
-                                        .onAppear {
-                                            guard hasRevealedInitialViewport else { return }
-                                            isAtBottom = true
-                                        }
-                                        .onDisappear {
-                                            guard hasRevealedInitialViewport else { return }
-                                            isAtBottom = false
-                                        }
                                 }
                                 .scrollTargetLayout()
                                 .frame(
@@ -456,12 +449,20 @@ struct ConversationView: View {
                             }
                             .defaultScrollAnchor(.bottom)
                             .scrollPosition(id: $trackedMessageID, anchor: initialViewport.scrollAnchor)
+                            .onChange(of: trackedMessageID) { _, currentMessageID in
+                                if #unavailable(iOS 18.0) {
+                                    guard hasRevealedInitialViewport,
+                                          threadReturnMessageID == nil else { return }
+                                    isAtBottom = currentMessageID == bottomAnchorID
+                                }
+                            }
                             .scrollDisabled(messageActionMessage != nil)
                             .modifier(
                                 ConversationBottomTrackingModifier(
                                     isAtBottom: $isAtBottom,
                                     hasPositionedInitialTimeline: $hasPositionedInitialTimeline,
                                     contentOffsetY: $currentScrollOffsetY,
+                                    exactRestoreRequest: $exactScrollRestoreRequest,
                                     isEnabled: hasRevealedInitialViewport,
                                     hasMessages: !timeline.isEmpty
                                 )
@@ -507,7 +508,8 @@ struct ConversationView: View {
                                 hasRevealedInitialViewport: hasRevealedInitialViewport,
                                 wasAtLatest: wasAtLatest,
                                 isMessageActionPresented: messageActionMessage != nil,
-                                isNavigationReturnPending: threadReturnMessageID != nil,
+                                isNavigationReturnPending: threadReturnMessageID != nil
+                                    || threadReturnScrollOffsetY != nil,
                                 previousViewportSize: previousViewportSize,
                                 currentViewportSize: currentViewportSize
                             ) else { return }
@@ -677,6 +679,7 @@ struct ConversationView: View {
                     previousLatestMessageID: previousLatestMessageID,
                     currentLatestMessageID: currentLatestMessageID,
                     isNavigationReturnPending: threadReturnMessageID != nil
+                        || threadReturnScrollOffsetY != nil
                 ) {
                     let identityChanged = previousLatestMessageID != currentLatestMessageID
                     scrollToBottom(animated: identityChanged)
@@ -714,6 +717,7 @@ struct ConversationView: View {
                 guard previousRequest != nil, currentRequest == nil else { return }
                 threadReturnMessageID = nil
                 threadReturnScrollOffsetY = nil
+                threadReturnWasAtBottom = false
                 isRestoringThreadPosition = false
             }
             observedTimeline
@@ -1747,34 +1751,44 @@ struct ConversationView: View {
     private func openThread(rootMessageID: String) {
         threadReturnMessageID = trackedMessageID ?? (isAtBottom ? bottomAnchorID : nil)
         threadReturnScrollOffsetY = currentScrollOffsetY
+        threadReturnWasAtBottom = isAtBottom
         rememberViewport(in: messages)
         activeThreadRootMessageID = rootMessageID
     }
 
     private func restoreThreadReturnPosition(using proxy: ScrollViewProxy) {
         guard !isRestoringThreadPosition,
-              let returnMessageID = threadReturnMessageID else { return }
+              threadReturnMessageID != nil || threadReturnScrollOffsetY != nil else { return }
         isRestoringThreadPosition = true
+        let returnMessageID = threadReturnMessageID
         let returnScrollOffsetY = threadReturnScrollOffsetY
         Task { @MainActor in
             await Task.yield()
             await Task.yield()
             var transaction = Transaction(animation: nil)
             transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                isAtBottom = returnMessageID == bottomAnchorID
-                trackedMessageID = returnMessageID
-                proxy.scrollTo(returnMessageID, anchor: initialViewport.scrollAnchor)
-            }
             if let returnScrollOffsetY {
+                withTransaction(transaction) {
+                    isAtBottom = threadReturnWasAtBottom
+                    trackedMessageID = nil
+                }
                 nextScrollRestoreRequest &+= 1
                 exactScrollRestoreRequest = ConversationScrollRestoreRequest(
                     id: nextScrollRestoreRequest,
                     contentOffsetY: returnScrollOffsetY
                 )
-            } else {
+            } else if let returnMessageID {
+                withTransaction(transaction) {
+                    isAtBottom = returnMessageID == bottomAnchorID
+                    trackedMessageID = returnMessageID
+                    proxy.scrollTo(returnMessageID, anchor: initialViewport.scrollAnchor)
+                }
                 threadReturnMessageID = nil
                 threadReturnScrollOffsetY = nil
+                threadReturnWasAtBottom = false
+                isRestoringThreadPosition = false
+            } else {
+                threadReturnWasAtBottom = false
                 isRestoringThreadPosition = false
             }
         }
@@ -2518,6 +2532,14 @@ enum ConversationTimelineScrollBehavior {
         return min(max(contentOffsetY, minimum), maximum)
     }
 
+    static func didRestoreContentOffset(
+        observed: CGFloat,
+        target: CGFloat,
+        tolerance: CGFloat = 2
+    ) -> Bool {
+        abs(observed - target) <= tolerance
+    }
+
     static func shouldKeepLatestVisibleAfterViewportChange(
         hasRevealedInitialViewport: Bool,
         wasAtLatest: Bool,
@@ -2855,6 +2877,7 @@ private struct LatestMessageButton: View {
 /// Keeps keyboard dismissal on UIKit's native on-drag path. SwiftUI's
 /// identity-based scroll command can also be deferred while UIScrollView is
 /// decelerating, so the button cancels momentum before moving to the true bottom.
+/// Thread returns use the same bridge to restore the exact prior content offset.
 struct ConversationScrollRestoreRequest: Equatable {
     let id: Int
     let contentOffsetY: CGFloat
@@ -2907,7 +2930,6 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
                     ),
                     animated: false
                 )
-                exactRestoreRequest = nil
                 return
             }
             guard shouldScrollToBottom else { return }
@@ -2957,6 +2979,7 @@ private struct ConversationBottomTrackingModifier: ViewModifier {
     @Binding var isAtBottom: Bool
     @Binding var hasPositionedInitialTimeline: Bool
     @Binding var contentOffsetY: CGFloat?
+    @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
     let isEnabled: Bool
     let hasMessages: Bool
 
@@ -2976,6 +2999,13 @@ private struct ConversationBottomTrackingModifier: ViewModifier {
                 } action: { _, snapshot in
                     guard isEnabled else { return }
                     contentOffsetY = snapshot.contentOffsetY
+                    if let restoreRequest = exactRestoreRequest,
+                       ConversationTimelineScrollBehavior.didRestoreContentOffset(
+                           observed: snapshot.contentOffsetY,
+                           target: restoreRequest.contentOffsetY
+                       ) {
+                        exactRestoreRequest = nil
+                    }
                     isAtBottom = snapshot.isAtLatest
                     if snapshot.isAtLatest, hasMessages {
                         hasPositionedInitialTimeline = true
