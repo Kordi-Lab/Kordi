@@ -42,12 +42,15 @@ type CloudSessionActionStores = {
   };
   visibility: {
     setHiddenIds: Dispatch<SetStateAction<Set<string>>>;
+    hiddenIdsRef: MutableRefObject<Set<string>>;
     setDeletedIds: Dispatch<SetStateAction<Set<string>>>;
     setUnreadIds: Dispatch<SetStateAction<Set<string>>>;
     setLocallyReadIds: Dispatch<SetStateAction<Set<string>>>;
     setPinnedIds: Dispatch<SetStateAction<Set<string>>>;
+    pinnedIdsRef: MutableRefObject<Set<string>>;
     setMutedIds: Dispatch<SetStateAction<Set<string>>>;
     setPinnedGroupSpaceIds: Dispatch<SetStateAction<Set<string>>>;
+    pinnedGroupSpaceIdsRef: MutableRefObject<Set<string>>;
   };
   messages: {
     setByPeer: Dispatch<
@@ -55,6 +58,29 @@ type CloudSessionActionStores = {
     >;
   };
 };
+
+type IdPresenceMutation = {
+  valueRef: MutableRefObject<Set<string>>;
+  setValue: Dispatch<SetStateAction<Set<string>>>;
+  id: string;
+  present: boolean;
+};
+
+function setIdPresence(
+  valueRef: MutableRefObject<Set<string>>,
+  setValue: Dispatch<SetStateAction<Set<string>>>,
+  id: string,
+  present: boolean,
+) {
+  const previous = valueRef.current.has(id);
+  if (previous === present) return previous;
+  const next = new Set(valueRef.current);
+  if (present) next.add(id);
+  else next.delete(id);
+  valueRef.current = next;
+  setValue(next);
+  return previous;
+}
 
 export function useCloudSessionActions({
   account,
@@ -72,14 +98,25 @@ export function useCloudSessionActions({
   const setForksById = stores.forks.setById;
   const setPinsById = stores.pins.setById;
   const setHiddenIds = stores.visibility.setHiddenIds;
+  const hiddenIdsRef = stores.visibility.hiddenIdsRef;
   const setDeletedIds = stores.visibility.setDeletedIds;
   const setUnreadIds = stores.visibility.setUnreadIds;
   const setLocallyReadIds = stores.visibility.setLocallyReadIds;
   const setPinnedIds = stores.visibility.setPinnedIds;
+  const pinnedIdsRef = stores.visibility.pinnedIdsRef;
   const setMutedIds = stores.visibility.setMutedIds;
   const setPinnedGroupSpaceIds = stores.visibility.setPinnedGroupSpaceIds;
+  const pinnedGroupSpaceIdsRef = stores.visibility.pinnedGroupSpaceIdsRef;
   const setMessagesByPeer = stores.messages.setByPeer;
   const visibilityRefreshGenerationRef = useRef(0);
+  const visibilityMutationRevisionRef = useRef(new Map<string, number>());
+
+  const beginVisibilityMutation = useCallback((key: string) => {
+    const revision = (visibilityMutationRevisionRef.current.get(key) ?? 0) + 1;
+    visibilityMutationRevisionRef.current.set(key, revision);
+    visibilityRefreshGenerationRef.current += 1;
+    return revision;
+  }, []);
 
   const refreshVisibility = useCallback(async (token: string) => {
     const generation = ++visibilityRefreshGenerationRef.current;
@@ -97,6 +134,36 @@ export function useCloudSessionActions({
       // The local mutation remains valid; the normal sync loop retries.
     }
   }, [client, setDeletedIds, setHiddenIds, setMutedIds, setPinnedGroupSpaceIds, setPinnedIds, setUnreadIds]);
+
+  const runOptimisticVisibilityMutation = useCallback(async (
+    mutationKey: string,
+    mutations: IdPresenceMutation[],
+    commit: (token: string) => Promise<void>,
+  ) => {
+    const revision = beginVisibilityMutation(mutationKey);
+    const previous = mutations.map((mutation) => setIdPresence(
+      mutation.valueRef,
+      mutation.setValue,
+      mutation.id,
+      mutation.present,
+    ));
+    try {
+      const session = await loadSession();
+      if (!session?.token) throw new Error('Not signed in.');
+      await commit(session.token);
+      void refreshVisibility(session.token);
+    } catch (error) {
+      if (visibilityMutationRevisionRef.current.get(mutationKey) === revision) {
+        mutations.forEach((mutation, index) => setIdPresence(
+          mutation.valueRef,
+          mutation.setValue,
+          mutation.id,
+          previous[index] ?? false,
+        ));
+      }
+      throw error;
+    }
+  }, [beginVisibilityMutation, refreshVisibility]);
 
   const refreshActivity = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
@@ -223,19 +290,11 @@ export function useCloudSessionActions({
   const hide = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
     if (!trimmedSessionId) return;
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    await client.hideCloudSession(session.token, trimmedSessionId);
-    setHiddenIds((current) =>
-      new Set(current).add(trimmedSessionId)
-    );
-    setPinnedIds((current) => {
-      if (!current.has(trimmedSessionId)) return current;
-      const next = new Set(current);
-      next.delete(trimmedSessionId);
-      return next;
-    });
-  }, [client, setHiddenIds, setPinnedIds]);
+    await runOptimisticVisibilityMutation(`hidden:${trimmedSessionId}`, [
+      { valueRef: hiddenIdsRef, setValue: setHiddenIds, id: trimmedSessionId, present: true },
+      { valueRef: pinnedIdsRef, setValue: setPinnedIds, id: trimmedSessionId, present: false },
+    ], (token) => client.hideCloudSession(token, trimmedSessionId));
+  }, [client, hiddenIdsRef, pinnedIdsRef, runOptimisticVisibilityMutation, setHiddenIds, setPinnedIds]);
 
   const unhide = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
@@ -260,17 +319,10 @@ export function useCloudSessionActions({
   const setPinned = useCallback(async (sessionId: string, pinned: boolean) => {
     const trimmedSessionId = sessionId.trim();
     if (!trimmedSessionId) return;
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    await client.setCloudSessionPinned(session.token, trimmedSessionId, pinned);
-    setPinnedIds((current) => {
-      const next = new Set(current);
-      if (pinned) next.add(trimmedSessionId);
-      else next.delete(trimmedSessionId);
-      return next;
-    });
-    void refreshVisibility(session.token);
-  }, [client, refreshVisibility, setPinnedIds]);
+    await runOptimisticVisibilityMutation(`pinned:${trimmedSessionId}`, [
+      { valueRef: pinnedIdsRef, setValue: setPinnedIds, id: trimmedSessionId, present: pinned },
+    ], (token) => client.setCloudSessionPinned(token, trimmedSessionId, pinned));
+  }, [client, pinnedIdsRef, runOptimisticVisibilityMutation, setPinnedIds]);
 
   const setMuted = useCallback(async (sessionId: string, muted: boolean) => {
     const trimmedSessionId = sessionId.trim();
@@ -347,17 +399,13 @@ export function useCloudSessionActions({
   const setGroupPinned = useCallback(async (groupSpaceId: string, pinned: boolean) => {
     const trimmedGroupSpaceId = groupSpaceId.trim();
     if (!trimmedGroupSpaceId) return;
-    const session = await loadSession();
-    if (!session?.token) throw new Error('Not signed in.');
-    await client.setCloudGroupSpacePinned(session.token, trimmedGroupSpaceId, pinned);
-    setPinnedGroupSpaceIds((current) => {
-      const next = new Set(current);
-      if (pinned) next.add(trimmedGroupSpaceId);
-      else next.delete(trimmedGroupSpaceId);
-      return next;
-    });
-    void refreshVisibility(session.token);
-  }, [client, refreshVisibility, setPinnedGroupSpaceIds]);
+    await runOptimisticVisibilityMutation(`group-pinned:${trimmedGroupSpaceId}`, [{
+      valueRef: pinnedGroupSpaceIdsRef,
+      setValue: setPinnedGroupSpaceIds,
+      id: trimmedGroupSpaceId,
+      present: pinned,
+    }], (token) => client.setCloudGroupSpacePinned(token, trimmedGroupSpaceId, pinned));
+  }, [client, pinnedGroupSpaceIdsRef, runOptimisticVisibilityMutation, setPinnedGroupSpaceIds]);
 
   const remove = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();

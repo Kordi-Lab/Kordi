@@ -116,6 +116,23 @@ test('preference refresh ignores stale snapshots from overlapping actions', () =
   assert.match(source, /if \(generation !== visibilityRefreshGenerationRef\.current\) return;/);
 });
 
+test('archive and pin mutations update local visibility before the network', () => {
+  const source = cloudSessionActionsSource();
+  const optimisticMutation = source.slice(
+    source.indexOf('const runOptimisticVisibilityMutation ='),
+    source.indexOf('const refreshActivity ='),
+  );
+  const hide = source.slice(source.indexOf('const hide ='), source.indexOf('const unhide ='));
+  const pin = source.slice(source.indexOf('const setPinned ='), source.indexOf('const setMuted ='));
+  const groupPin = source.slice(source.indexOf('const setGroupPinned ='), source.indexOf('const remove ='));
+
+  assert.match(optimisticMutation, /setIdPresence\([\s\S]*await commit\(session\.token\)/);
+  assert.match(optimisticMutation, /catch \(error\)[\s\S]*setIdPresence\(/);
+  assert.match(hide, /hiddenIdsRef[\s\S]*client\.hideCloudSession/);
+  assert.match(pin, /pinnedIdsRef[\s\S]*client\.setCloudSessionPinned/);
+  assert.match(groupPin, /pinnedGroupSpaceIdsRef[\s\S]*client\.setCloudGroupSpacePinned/);
+});
+
 test('chat list mutations surface action failures without unhandled rejections', () => {
   const source = chatSessionActionsSource();
   assert.match(source, /const runChatListAction = useCallback/);
