@@ -180,6 +180,7 @@ type MessageRow = (
     DateTime<Utc>,
     Option<DateTime<Utc>>,
     Option<DateTime<Utc>>,
+    String,
 );
 
 type SyncEventRow = (
