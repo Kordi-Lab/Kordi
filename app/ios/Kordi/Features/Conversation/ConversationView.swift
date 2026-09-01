@@ -9,13 +9,13 @@ private struct ConversationTimelineRow: Identifiable {
     let message: ChatMessage
 }
 
-private struct ConversationThreadInspectorModifier: ViewModifier {
+private struct ConversationThreadSheetModifier: ViewModifier {
     @Binding var activeRootMessageID: String?
     let conversation: ConversationSummary
     let onReplyInConversation: (MessageActionSource) -> Void
 
     func body(content: Content) -> some View {
-        content.inspector(isPresented: Binding(
+        content.sheet(isPresented: Binding(
             get: { activeRootMessageID != nil },
             set: { if !$0 { activeRootMessageID = nil } }
         )) {
@@ -41,7 +41,6 @@ private struct ConversationThreadInspectorModifier: ViewModifier {
                 }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
-                .inspectorColumnWidth(min: 320, ideal: 390, max: 480)
             }
         }
     }
@@ -917,7 +916,7 @@ struct ConversationView: View {
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
         }
-        .modifier(ConversationThreadInspectorModifier(
+        .modifier(ConversationThreadSheetModifier(
             activeRootMessageID: $activeThreadRootMessageID,
             conversation: conversation,
             onReplyInConversation: { replySource = $0 }
