@@ -159,7 +159,10 @@ final class KordiNotificationCoordinator: ObservableObject {
 
     func synchronizeBadge() {
         let count = badgeEnabled
-            ? MainTabUnreadCounts.build(conversations: model?.conversations ?? []).total
+            ? MainTabUnreadCounts.build(
+                conversations: model?.conversations ?? [],
+                mutedSessionIds: model?.mutedSessionIds ?? []
+            ).total
             : 0
         Task { await setBadgeCount(count) }
     }

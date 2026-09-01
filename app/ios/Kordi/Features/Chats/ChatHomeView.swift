@@ -335,7 +335,11 @@ struct ChatHomeView: View {
             Button {
                 toggleGroupSpace(space)
             } label: {
-                GroupSpaceRow(space: space, isExpanded: isExpanded)
+                GroupSpaceRow(
+                    space: space,
+                    isExpanded: isExpanded,
+                    mutedSessionIds: model.mutedSessionIds
+                )
             }
             .buttonStyle(.plain)
             .contextMenu {
@@ -420,8 +424,11 @@ struct ChatHomeView: View {
         .contextMenu {
             sessionContextMenu(for: conversation)
         }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            sessionLeadingSwipeActions(for: conversation)
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            sessionSwipeActions(for: conversation)
+            sessionTrailingSwipeActions(for: conversation)
         }
         .accessibilityAction(named: model.pinnedSessionIds.contains(conversation.sessionId) ? "Unpin" : "Pin") {
             togglePinned(conversation)
@@ -435,7 +442,7 @@ struct ChatHomeView: View {
         .accessibilityAction(named: "Delete chat") {
             deleteTarget = conversation
         }
-        .accessibilityHint("Double-tap to open. Touch and hold for session actions.")
+        .accessibilityHint("Double-tap to open. Swipe right to pin. Swipe left to mute, delete, or archive.")
         .chatHomeRow(separatorLeading: 71)
     }
 
@@ -461,8 +468,11 @@ struct ChatHomeView: View {
         .contextMenu {
             sessionContextMenu(for: item.conversation)
         }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            sessionLeadingSwipeActions(for: item.conversation)
+        }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            sessionSwipeActions(for: item.conversation)
+            sessionTrailingSwipeActions(for: item.conversation)
         }
         .accessibilityAction(named: model.pinnedSessionIds.contains(item.conversation.sessionId) ? "Unpin" : "Pin") {
             togglePinned(item.conversation)
@@ -476,7 +486,7 @@ struct ChatHomeView: View {
         .accessibilityAction(named: "Delete chat") {
             deleteTarget = item.conversation
         }
-        .accessibilityHint("Double-tap to open. Touch and hold for session actions.")
+        .accessibilityHint("Double-tap to open. Swipe right to pin. Swipe left to mute, delete, or archive.")
         .chatHomeRow(separatorLeading: 16)
     }
 
@@ -562,29 +572,52 @@ struct ChatHomeView: View {
     }
 
     @ViewBuilder
-    private func sessionSwipeActions(for conversation: ConversationSummary) -> some View {
+    private func sessionLeadingSwipeActions(for conversation: ConversationSummary) -> some View {
+        let isPinned = model.pinnedSessionIds.contains(conversation.sessionId)
+        Button {
+            togglePinned(conversation)
+        } label: {
+            Image(systemName: isPinned ? "pin.slash" : "pin")
+        }
+        .tint(.green)
+        .accessibilityLabel(isPinned ? "Unpin" : "Pin")
+
+        if conversation.hasUnreadAttention {
+            Button {
+                Task { await model.markConversationRead(conversation) }
+            } label: {
+                Image(systemName: "checkmark.message")
+            }
+            .tint(KordiTheme.signalBlue)
+            .accessibilityLabel("Mark as read")
+        }
+    }
+
+    @ViewBuilder
+    private func sessionTrailingSwipeActions(for conversation: ConversationSummary) -> some View {
+        let isMuted = model.mutedSessionIds.contains(conversation.sessionId)
         Button {
             toggleMuted(conversation)
         } label: {
-            Label(
-                model.mutedSessionIds.contains(conversation.sessionId) ? "Unmute" : "Mute",
-                systemImage: model.mutedSessionIds.contains(conversation.sessionId) ? "bell" : "bell.slash"
-            )
+            Image(systemName: isMuted ? "bell" : "bell.slash")
         }
         .tint(.orange)
+        .accessibilityLabel(isMuted ? "Unmute" : "Mute")
 
         Button(role: .destructive) {
             deleteTarget = conversation
         } label: {
-            Label("Delete", systemImage: "trash")
+            Image(systemName: "trash")
         }
+        .accessibilityLabel("Delete")
 
         Button {
             Task { _ = await model.archiveConversation(conversation) }
         } label: {
-            Label("Archive", systemImage: "archivebox")
+            Image(systemName: "archivebox")
         }
         .tint(.gray)
+        .accessibilityLabel("Archive")
     }
 
     private func togglePinned(_ conversation: ConversationSummary) {
@@ -674,14 +707,16 @@ private struct ArchivedChatsView: View {
                         Button(role: .destructive) {
                             deleteTarget = conversation
                         } label: {
-                            Label("Delete", systemImage: "trash")
+                            Image(systemName: "trash")
                         }
+                        .accessibilityLabel("Delete")
                         Button {
                             Task { _ = await model.restoreConversation(conversation) }
                         } label: {
-                            Label("Restore", systemImage: "archivebox.fill")
+                            Image(systemName: "archivebox.fill")
                         }
                         .tint(.blue)
+                        .accessibilityLabel("Restore")
                     }
                     .accessibilityAction(named: "Restore") {
                         Task { _ = await model.restoreConversation(conversation) }

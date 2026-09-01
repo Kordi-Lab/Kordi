@@ -3278,6 +3278,14 @@ final class AppModel: ObservableObject {
     }
 
     func setConversationPinned(_ conversation: ConversationSummary, pinned: Bool) async -> Bool {
+        if previewMode {
+            if pinned {
+                pinnedSessionIds.insert(conversation.sessionId)
+            } else {
+                pinnedSessionIds.remove(conversation.sessionId)
+            }
+            return true
+        }
         guard let token else { return false }
         do {
             try await api.setSessionPinned(
@@ -3298,6 +3306,14 @@ final class AppModel: ObservableObject {
     }
 
     func setConversationMuted(_ conversation: ConversationSummary, muted: Bool) async -> Bool {
+        if previewMode {
+            if muted {
+                mutedSessionIds.insert(conversation.sessionId)
+            } else {
+                mutedSessionIds.remove(conversation.sessionId)
+            }
+            return true
+        }
         guard let token else { return false }
         do {
             try await api.setSessionMuted(
@@ -3318,6 +3334,16 @@ final class AppModel: ObservableObject {
     }
 
     func archiveConversation(_ conversation: ConversationSummary) async -> Bool {
+        if previewMode {
+            hiddenCloudSessionIds.insert(conversation.sessionId)
+            pinnedSessionIds.remove(conversation.sessionId)
+            conversations.removeAll { $0.sessionId == conversation.sessionId }
+            if !archivedConversations.contains(where: { $0.sessionId == conversation.sessionId }) {
+                archivedConversations.append(conversation)
+                archivedConversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+            }
+            return true
+        }
         guard let token else { return false }
         do {
             try await api.setSessionArchived(
@@ -3336,6 +3362,16 @@ final class AppModel: ObservableObject {
     }
 
     func restoreConversation(_ conversation: ConversationSummary) async -> Bool {
+        if previewMode {
+            hiddenCloudSessionIds.remove(conversation.sessionId)
+            deletedCloudSessionIds.remove(conversation.sessionId)
+            archivedConversations.removeAll { $0.sessionId == conversation.sessionId }
+            if !conversations.contains(where: { $0.sessionId == conversation.sessionId }) {
+                conversations.append(conversation)
+                conversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+            }
+            return true
+        }
         guard let token else { return false }
         do {
             try await api.setSessionArchived(
@@ -3354,24 +3390,32 @@ final class AppModel: ObservableObject {
     }
 
     func deleteConversation(_ conversation: ConversationSummary) async -> Bool {
+        if previewMode {
+            removeConversationLocally(conversation)
+            return true
+        }
         guard let token else { return false }
         do {
             try await api.deleteSession(token: token, sessionId: conversation.sessionId)
-            deletedCloudSessionIds.insert(conversation.sessionId)
-            hiddenCloudSessionIds.remove(conversation.sessionId)
-            pinnedSessionIds.remove(conversation.sessionId)
-            mutedSessionIds.remove(conversation.sessionId)
-            sessionTitleOverrides.removeValue(forKey: conversation.sessionId)
-            UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
-            conversations.removeAll { $0.sessionId == conversation.sessionId }
-            archivedConversations.removeAll { $0.sessionId == conversation.sessionId }
-            messagesByConversation.removeValue(forKey: conversation.id)
-            sessionActivityByID.removeValue(forKey: conversation.sessionId)
+            removeConversationLocally(conversation)
             return true
         } catch {
             errorMessage = userFacing(error, fallback: "Could not delete this session.")
             return false
         }
+    }
+
+    private func removeConversationLocally(_ conversation: ConversationSummary) {
+        deletedCloudSessionIds.insert(conversation.sessionId)
+        hiddenCloudSessionIds.remove(conversation.sessionId)
+        pinnedSessionIds.remove(conversation.sessionId)
+        mutedSessionIds.remove(conversation.sessionId)
+        sessionTitleOverrides.removeValue(forKey: conversation.sessionId)
+        UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
+        conversations.removeAll { $0.sessionId == conversation.sessionId }
+        archivedConversations.removeAll { $0.sessionId == conversation.sessionId }
+        messagesByConversation.removeValue(forKey: conversation.id)
+        sessionActivityByID.removeValue(forKey: conversation.sessionId)
     }
 
     func ownedAgent(for conversation: ConversationSummary) -> CloudAgent? {

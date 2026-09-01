@@ -130,14 +130,15 @@ struct AgentSessionRow: View {
     private var timestamp: some View {
         Text(relativeTimestamp)
             .font(.caption)
-            .foregroundStyle(conversation.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
+            .foregroundStyle(conversation.hasUnreadAttention && !isMuted ? KordiTheme.signalBlue : .secondary)
             .lineLimit(1)
     }
 
     private var attentionBadge: some View {
         ConversationAttentionBadge(
             unreadCount: conversation.unreadCount,
-            mentionCount: conversation.unreadMentionCount
+            mentionCount: conversation.unreadMentionCount,
+            isMuted: isMuted
         )
     }
 

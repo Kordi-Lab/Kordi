@@ -574,7 +574,44 @@ final class ConversationReadPresentationTests: XCTestCase {
             MainTabUnreadCounts(chats: 6, agents: 4)
         )
         XCTAssertEqual(MainTabUnreadCounts.build(conversations: conversations).total, 10)
+        XCTAssertEqual(
+            MainTabUnreadCounts.build(
+                conversations: conversations,
+                mutedSessionIds: ["session:group-main", "session:agent-session"]
+            ),
+            MainTabUnreadCounts(chats: 3, agents: 0)
+        )
         XCTAssertEqual(ConversationAttentionBadge.countLabel(120), "99+")
+    }
+
+    @MainActor
+    func testPreviewChatListActionsUpdateVisibleState() async throws {
+        let model = AppModel(previewMode: true)
+        let conversation = try XCTUnwrap(
+            model.conversations.first { $0.id == "person:acct_maya" }
+        )
+
+        let didPin = await model.setConversationPinned(conversation, pinned: true)
+        XCTAssertTrue(didPin)
+        XCTAssertTrue(model.pinnedSessionIds.contains(conversation.sessionId))
+        let didMute = await model.setConversationMuted(conversation, muted: true)
+        XCTAssertTrue(didMute)
+        XCTAssertTrue(model.mutedSessionIds.contains(conversation.sessionId))
+
+        let didArchive = await model.archiveConversation(conversation)
+        XCTAssertTrue(didArchive)
+        XCTAssertFalse(model.conversations.contains { $0.sessionId == conversation.sessionId })
+        XCTAssertTrue(model.archivedConversations.contains { $0.sessionId == conversation.sessionId })
+
+        let didRestore = await model.restoreConversation(conversation)
+        XCTAssertTrue(didRestore)
+        XCTAssertTrue(model.conversations.contains { $0.sessionId == conversation.sessionId })
+        XCTAssertFalse(model.archivedConversations.contains { $0.sessionId == conversation.sessionId })
+
+        let didDelete = await model.deleteConversation(conversation)
+        XCTAssertTrue(didDelete)
+        XCTAssertFalse(model.conversations.contains { $0.sessionId == conversation.sessionId })
+        XCTAssertFalse(model.mutedSessionIds.contains(conversation.sessionId))
     }
 
     @MainActor

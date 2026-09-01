@@ -49,7 +49,7 @@ struct ConversationRow: View {
                 HStack(spacing: 10) {
                     Text(relativeTimestamp)
                         .font(.caption)
-                        .foregroundStyle(conversation.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
+                        .foregroundStyle(attentionTint)
                     attentionBadge
                     ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
                 }
@@ -152,7 +152,7 @@ struct ConversationRow: View {
         VStack(alignment: .trailing, spacing: 4) {
             Text(relativeTimestamp)
                 .font(.caption)
-                .foregroundStyle(conversation.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
+                .foregroundStyle(attentionTint)
                 .lineLimit(1)
             attentionBadge
             ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
@@ -163,8 +163,13 @@ struct ConversationRow: View {
     private var attentionBadge: some View {
         ConversationAttentionBadge(
             unreadCount: conversation.unreadCount,
-            mentionCount: conversation.unreadMentionCount
+            mentionCount: conversation.unreadMentionCount,
+            isMuted: isMuted
         )
+    }
+
+    private var attentionTint: Color {
+        conversation.hasUnreadAttention && !isMuted ? KordiTheme.signalBlue : .secondary
     }
 
     private func contactAgentStatus(ownerName: String, activity: AgentActivity) -> Text {
@@ -254,6 +259,7 @@ private struct ConversationAttachmentThumbnail: View {
 struct ConversationAttentionBadge: View {
     let unreadCount: Int
     let mentionCount: Int
+    var isMuted = false
 
     var body: some View {
         let displayUnreadCount = max(unreadCount, mentionCount)
@@ -262,14 +268,14 @@ struct ConversationAttentionBadge: View {
                 if mentionCount > 0 {
                     Text("@")
                         .font(.caption.bold())
-                        .foregroundStyle(KordiTheme.signalBlue)
+                        .foregroundStyle(isMuted ? Color.secondary : KordiTheme.signalBlue)
                 }
                 Text(Self.countLabel(displayUnreadCount))
                     .font(.caption2.bold())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
                     .frame(minWidth: 20, minHeight: 20)
-                    .background(KordiTheme.signalBlue, in: Capsule())
+                    .background(isMuted ? Color.secondary : KordiTheme.signalBlue, in: Capsule())
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
@@ -277,6 +283,7 @@ struct ConversationAttentionBadge: View {
                     ? "\(displayUnreadCount) unread messages, \(mentionCount) mention\(mentionCount == 1 ? "" : "s") for you"
                     : "\(displayUnreadCount) unread messages"
             )
+            .accessibilityHint(isMuted ? "Muted and not included in the app unread total" : "")
         }
     }
 
