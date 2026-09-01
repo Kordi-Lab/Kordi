@@ -23,10 +23,10 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertTrue(ConversationKind.group.supportsThreadedReplies)
     }
 
-    func testThreadsPushOnCompactLayoutsAndUseAnInspectorOnWideLayouts() {
+    func testThreadsUseASheetOnCompactLayoutsAndAnInspectorOnWideLayouts() {
         XCTAssertEqual(
             ConversationThreadPresentationMode.resolve(horizontalSizeClass: .compact),
-            .navigation
+            .sheet
         )
         XCTAssertEqual(
             ConversationThreadPresentationMode.resolve(horizontalSizeClass: .regular),

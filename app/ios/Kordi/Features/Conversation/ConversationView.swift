@@ -10,11 +10,11 @@ private struct ConversationTimelineRow: Identifiable {
 }
 
 enum ConversationThreadPresentationMode: Equatable {
-    case navigation
+    case sheet
     case inspector
 
     static func resolve(horizontalSizeClass: UserInterfaceSizeClass?) -> Self {
-        horizontalSizeClass == .compact ? .navigation : .inspector
+        horizontalSizeClass == .compact ? .sheet : .inspector
     }
 }
 
@@ -35,30 +35,40 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
         switch ConversationThreadPresentationMode.resolve(
             horizontalSizeClass: horizontalSizeClass
         ) {
-        case .navigation:
-            content.navigationDestination(item: $activeRootMessageID) { threadRootID in
-                threadDestination(rootID: threadRootID)
+        case .sheet:
+            content.sheet(isPresented: threadIsPresented) {
+                if let threadRootID = activeRootMessageID {
+                    threadContainer(rootID: threadRootID)
+                }
             }
         case .inspector:
-            content.inspector(isPresented: Binding(
-                get: { activeRootMessageID != nil },
-                set: { if !$0 { activeRootMessageID = nil } }
-            )) {
+            content.inspector(isPresented: threadIsPresented) {
                 if let threadRootID = activeRootMessageID {
-                    NavigationStack {
-                        threadDestination(rootID: threadRootID)
-                            .toolbar {
-                                ToolbarItem(placement: .confirmationAction) {
-                                    Button("Done") { activeRootMessageID = nil }
-                                }
-                            }
-                    }
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .inspectorColumnWidth(min: 320, ideal: 390, max: 480)
+                    threadContainer(rootID: threadRootID)
+                        .inspectorColumnWidth(min: 320, ideal: 390, max: 480)
                 }
             }
         }
+    }
+
+    private var threadIsPresented: Binding<Bool> {
+        Binding(
+            get: { activeRootMessageID != nil },
+            set: { if !$0 { activeRootMessageID = nil } }
+        )
+    }
+
+    private func threadContainer(rootID: String) -> some View {
+        NavigationStack {
+            threadDestination(rootID: rootID)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { activeRootMessageID = nil }
+                    }
+                }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
     }
 
     private func threadDestination(rootID: String) -> some View {

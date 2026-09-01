@@ -197,6 +197,8 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(bubbleSource.contains("!message.reactions.isEmpty || threadReplyCount > 0"))
         XCTAssertTrue(conversationSource.contains("allowsQuotedReplies: scopedThreadRootMessageID == nil"))
         XCTAssertTrue(conversationSource.contains("allowsThreadReply: scopedThreadRootMessageID == nil"))
+        XCTAssertTrue(conversationSource.contains("content.sheet(isPresented: threadIsPresented)"))
+        XCTAssertFalse(conversationSource.contains("content.navigationDestination(item: $activeRootMessageID)"))
         XCTAssertTrue(actionSource.contains("actionButton(\"Reply in conversation\""))
         XCTAssertTrue(actionSource.contains("actionButton(\"Reply in thread\""))
         XCTAssertFalse(actionSource.contains("showsReplyDestinations"))
