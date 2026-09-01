@@ -5,6 +5,8 @@ struct GroupSpaceRow: View {
     let space: GroupSpaceSummary
     let isExpanded: Bool
     var mutedSessionIds: Set<String> = []
+    var isPinned = false
+    var isMuted = false
 
     var body: some View {
         HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 11) {
@@ -14,10 +16,13 @@ struct GroupSpaceRow: View {
             )
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(space.displayName)
-                    .font(.headline)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .layoutPriority(1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(space.displayName)
+                        .font(.headline)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                        .layoutPriority(1)
+                    ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
+                }
 
                 BlobEmojiPreviewText(text: space.lastMessage)
                     .font(.subheadline)
@@ -60,7 +65,10 @@ struct GroupSpaceRow: View {
         .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 64 : 48)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(space.accessibilitySummary)
+        .accessibilityLabel(
+            space.accessibilitySummary
+                + ChatListStateIndicators.accessibilitySuffix(isPinned: isPinned, isMuted: isMuted)
+        )
         .accessibilityHint(isExpanded ? "Collapse sessions" : "Expand sessions")
     }
 

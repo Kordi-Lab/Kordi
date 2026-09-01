@@ -79,8 +79,8 @@ struct ChatHomeView: View {
                 .map(ContactListItem.conversation)
         return (people + groupSpaces.map(ContactListItem.group))
             .sorted {
-                let leftPinned = $0.pinnedSessionID.map(model.pinnedSessionIds.contains) == true
-                let rightPinned = $1.pinnedSessionID.map(model.pinnedSessionIds.contains) == true
+                let leftPinned = $0.isPinned(in: model.pinnedSessionIds)
+                let rightPinned = $1.isPinned(in: model.pinnedSessionIds)
                 if leftPinned != rightPinned { return leftPinned }
                 return ChatListOrdering.precedes(
                     id: $0.id,
@@ -339,7 +339,9 @@ struct ChatHomeView: View {
                 GroupSpaceRow(
                     space: space,
                     isExpanded: isExpanded,
-                    mutedSessionIds: model.mutedSessionIds
+                    mutedSessionIds: model.mutedSessionIds,
+                    isPinned: groupIsPinned(space),
+                    isMuted: groupIsMuted(space)
                 )
             }
             .buttonStyle(.plain)
@@ -365,6 +367,46 @@ struct ChatHomeView: View {
                 } label: {
                     Label("Mark as read", systemImage: "checkmark.circle")
                 }
+                Divider()
+                Button {
+                    toggleGroupPinned(space)
+                } label: {
+                    Label(
+                        groupIsPinned(space) ? "Unpin group" : "Pin group",
+                        systemImage: groupIsPinned(space) ? "pin.slash" : "pin"
+                    )
+                }
+                Button {
+                    toggleGroupMuted(space)
+                } label: {
+                    Label(
+                        groupIsMuted(space) ? "Unmute group" : "Mute group",
+                        systemImage: groupIsMuted(space) ? "bell" : "bell.slash"
+                    )
+                }
+                Button {
+                    Task { _ = await model.archiveGroupSpace(space) }
+                } label: {
+                    Label("Archive group", systemImage: "archivebox")
+                }
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                groupLeadingSwipeActions(for: space)
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                groupTrailingSwipeActions(for: space)
+            }
+            .accessibilityAction(named: groupIsPinned(space) ? "Unpin group" : "Pin group") {
+                toggleGroupPinned(space)
+            }
+            .accessibilityAction(named: "Mark group as read") {
+                Task { await model.markGroupSpaceRead(space) }
+            }
+            .accessibilityAction(named: groupIsMuted(space) ? "Unmute group" : "Mute group") {
+                toggleGroupMuted(space)
+            }
+            .accessibilityAction(named: "Archive group") {
+                Task { _ = await model.archiveGroupSpace(space) }
             }
             .accessibilityHint("Double-tap to show sessions. Touch and hold to manage or invite people.")
             .chatHomeRow(separatorLeading: 71)
@@ -650,6 +692,62 @@ struct ChatHomeView: View {
         }
     }
 
+    @ViewBuilder
+    private func groupLeadingSwipeActions(for space: GroupSpaceSummary) -> some View {
+        Button {
+            toggleGroupPinned(space)
+        } label: {
+            Image(systemName: groupIsPinned(space) ? "pin.slash" : "pin")
+        }
+        .tint(.green)
+        .accessibilityLabel(groupIsPinned(space) ? "Unpin group" : "Pin group")
+
+        Button {
+            Task { await model.markGroupSpaceRead(space) }
+        } label: {
+            Image(systemName: "checkmark.message")
+        }
+        .tint(KordiTheme.signalBlue)
+        .accessibilityLabel("Mark group as read")
+    }
+
+    @ViewBuilder
+    private func groupTrailingSwipeActions(for space: GroupSpaceSummary) -> some View {
+        Button {
+            toggleGroupMuted(space)
+        } label: {
+            Image(systemName: groupIsMuted(space) ? "bell" : "bell.slash")
+        }
+        .tint(.orange)
+        .accessibilityLabel(groupIsMuted(space) ? "Unmute group" : "Mute group")
+
+        Button {
+            Task { _ = await model.archiveGroupSpace(space) }
+        } label: {
+            Image(systemName: "archivebox")
+        }
+        .tint(.gray)
+        .accessibilityLabel("Archive group")
+    }
+
+    private func toggleGroupPinned(_ space: GroupSpaceSummary) {
+        Task { _ = await model.setGroupSpacePinned(space, pinned: !groupIsPinned(space)) }
+    }
+
+    private func toggleGroupMuted(_ space: GroupSpaceSummary) {
+        Task { _ = await model.setGroupSpaceMuted(space, muted: !groupIsMuted(space)) }
+    }
+
+    private func groupIsPinned(_ space: GroupSpaceSummary) -> Bool {
+        !space.sessions.isEmpty
+            && space.sessions.allSatisfy { model.pinnedSessionIds.contains($0.sessionId) }
+    }
+
+    private func groupIsMuted(_ space: GroupSpaceSummary) -> Bool {
+        !space.sessions.isEmpty
+            && space.sessions.allSatisfy { model.mutedSessionIds.contains($0.sessionId) }
+    }
+
     private func groupIsExpanded(_ space: GroupSpaceSummary) -> Bool {
         ProcessInfo.processInfo.arguments.contains("--preview-expanded-groups")
             || !searchQuery.isEmpty
@@ -915,10 +1013,13 @@ private enum ContactListItem: Identifiable {
         }
     }
 
-    var pinnedSessionID: String? {
+    func isPinned(in pinnedSessionIds: Set<String>) -> Bool {
         switch self {
-        case let .conversation(conversation): conversation.sessionId
-        case .group: nil
+        case let .conversation(conversation):
+            pinnedSessionIds.contains(conversation.sessionId)
+        case let .group(space):
+            !space.sessions.isEmpty
+                && space.sessions.allSatisfy { pinnedSessionIds.contains($0.sessionId) }
         }
     }
 }

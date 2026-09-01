@@ -632,6 +632,42 @@ final class ConversationReadPresentationTests: XCTestCase {
     }
 
     @MainActor
+    func testPreviewGroupActionsApplyToEverySessionAtomically() async throws {
+        let model = AppModel(previewMode: true)
+        let space = try XCTUnwrap(
+            GroupSpaceCatalog.build(
+                conversations: model.conversations,
+                ownAccountId: model.account?.accountId ?? "",
+                pinnedSessionIds: model.pinnedSessionIds
+            ).first { $0.displayName == "Mobile builders" }
+        )
+        let sessionIds = Set(space.sessions.map(\.sessionId))
+
+        let didPin = await model.setGroupSpacePinned(space, pinned: true)
+        XCTAssertTrue(didPin)
+        XCTAssertTrue(sessionIds.isSubset(of: model.pinnedSessionIds))
+        let didMute = await model.setGroupSpaceMuted(space, muted: true)
+        XCTAssertTrue(didMute)
+        XCTAssertTrue(sessionIds.isSubset(of: model.mutedSessionIds))
+
+        await model.markGroupSpaceRead(space)
+        XCTAssertTrue(
+            model.conversations
+                .filter { sessionIds.contains($0.sessionId) }
+                .allSatisfy { !$0.hasUnreadAttention }
+        )
+
+        let didArchive = await model.archiveGroupSpace(space)
+        XCTAssertTrue(didArchive)
+        XCTAssertFalse(model.conversations.contains { sessionIds.contains($0.sessionId) })
+        XCTAssertEqual(
+            Set(model.archivedConversations.map(\.sessionId)).intersection(sessionIds),
+            sessionIds
+        )
+        XCTAssertTrue(model.pinnedSessionIds.isDisjoint(with: sessionIds))
+    }
+
+    @MainActor
     func testMessageNotificationPreferencesPersistPerDevice() throws {
         let suiteName = "KordiNotificationPreferencesTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

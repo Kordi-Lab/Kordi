@@ -3385,6 +3385,111 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    func setGroupSpacePinned(_ space: GroupSpaceSummary, pinned: Bool) async -> Bool {
+        let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
+        guard !sessionIds.isEmpty else { return false }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for sessionId in sessionIds {
+                        group.addTask { [api] in
+                            try await api.setSessionPinned(
+                                token: token,
+                                sessionId: sessionId,
+                                pinned: pinned
+                            )
+                        }
+                    }
+                    try await group.waitForAll()
+                }
+            } catch {
+                errorMessage = userFacing(
+                    error,
+                    fallback: pinned ? "Could not pin this group." : "Could not unpin this group."
+                )
+                return false
+            }
+        }
+        if pinned {
+            pinnedSessionIds.formUnion(sessionIds)
+        } else {
+            pinnedSessionIds.subtract(sessionIds)
+        }
+        return true
+    }
+
+    func setGroupSpaceMuted(_ space: GroupSpaceSummary, muted: Bool) async -> Bool {
+        let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
+        guard !sessionIds.isEmpty else { return false }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for sessionId in sessionIds {
+                        group.addTask { [api] in
+                            try await api.setSessionMuted(
+                                token: token,
+                                sessionId: sessionId,
+                                muted: muted
+                            )
+                        }
+                    }
+                    try await group.waitForAll()
+                }
+            } catch {
+                errorMessage = userFacing(
+                    error,
+                    fallback: muted ? "Could not mute this group." : "Could not unmute this group."
+                )
+                return false
+            }
+        }
+        if muted {
+            mutedSessionIds.formUnion(sessionIds)
+        } else {
+            mutedSessionIds.subtract(sessionIds)
+        }
+        return true
+    }
+
+    func archiveGroupSpace(_ space: GroupSpaceSummary) async -> Bool {
+        let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
+        guard !sessionIds.isEmpty else { return false }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for sessionId in sessionIds {
+                        group.addTask { [api] in
+                            try await api.setSessionArchived(
+                                token: token,
+                                sessionId: sessionId,
+                                archived: true
+                            )
+                        }
+                    }
+                    try await group.waitForAll()
+                }
+            } catch {
+                errorMessage = userFacing(error, fallback: "Could not archive this group.")
+                return false
+            }
+        }
+        hiddenCloudSessionIds.formUnion(sessionIds)
+        pinnedSessionIds.subtract(sessionIds)
+        if previewMode {
+            let archived = conversations.filter { sessionIds.contains($0.sessionId) }
+            conversations.removeAll { sessionIds.contains($0.sessionId) }
+            archivedConversations.removeAll { sessionIds.contains($0.sessionId) }
+            archivedConversations.append(contentsOf: archived)
+            archivedConversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+        } else {
+            await rebuildConversationCatalog()
+        }
+        return true
+    }
+
     func archiveConversation(_ conversation: ConversationSummary) async -> Bool {
         if previewMode {
             hiddenCloudSessionIds.insert(conversation.sessionId)
