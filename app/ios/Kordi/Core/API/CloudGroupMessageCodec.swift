@@ -57,6 +57,8 @@ struct CloudGroupMessagePayload: Codable, Hashable {
     let createdAtMs: Double
     let senderKind: String?
     let senderAgentId: String?
+    let senderOwnerAccountId: String?
+    let senderOwnerName: String?
     let senderDisplayName: String?
     let deliveryState: String?
     let replyToMessageId: String?
@@ -80,6 +82,8 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         createdAtMs: Double,
         senderKind: String?,
         senderAgentId: String? = nil,
+        senderOwnerAccountId: String? = nil,
+        senderOwnerName: String? = nil,
         senderDisplayName: String?,
         deliveryState: String?,
         replyToMessageId: String?,
@@ -106,6 +110,8 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         self.createdAtMs = createdAtMs.rounded(.towardZero)
         self.senderKind = senderKind
         self.senderAgentId = senderAgentId
+        self.senderOwnerAccountId = senderOwnerAccountId
+        self.senderOwnerName = senderOwnerName
         self.senderDisplayName = senderDisplayName
         self.deliveryState = deliveryState
         self.replyToMessageId = replyToMessageId

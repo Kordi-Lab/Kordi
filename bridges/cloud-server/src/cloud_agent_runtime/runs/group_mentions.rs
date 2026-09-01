@@ -422,6 +422,8 @@ mod tests {
                 created_at_ms: 1,
                 sender_kind: Some("human".to_string()),
                 sender_agent_id: None,
+                sender_owner_account_id: None,
+                sender_owner_name: None,
                 sender_display_name: None,
                 delivery_state: None,
                 reply_to_message_id: None,

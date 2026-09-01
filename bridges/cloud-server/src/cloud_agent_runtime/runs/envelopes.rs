@@ -48,6 +48,13 @@ pub(super) struct CloudGroupMessage {
     pub(super) sender_kind: Option<String>,
     #[serde(rename = "senderAgentId", skip_serializing_if = "Option::is_none")]
     pub(super) sender_agent_id: Option<String>,
+    #[serde(
+        rename = "senderOwnerAccountId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) sender_owner_account_id: Option<String>,
+    #[serde(rename = "senderOwnerName", skip_serializing_if = "Option::is_none")]
+    pub(super) sender_owner_name: Option<String>,
     #[serde(rename = "senderDisplayName", skip_serializing_if = "Option::is_none")]
     pub(super) sender_display_name: Option<String>,
     #[serde(rename = "deliveryState", skip_serializing_if = "Option::is_none")]
@@ -214,6 +221,7 @@ pub(super) fn cloud_group_response_body(
         .as_ref()
         .map(|target| target.display_name.clone());
     let agent_mention_depth = mentioned_agent.as_ref().map(|_| request_mention_depth + 1);
+    let sender_owner_name = owner.display_name.clone();
     encode_cloud_group_envelope(&CloudGroupEnvelope {
         kind: "group-message".to_string(),
         group_id: request_envelope.group_id.clone(),
@@ -226,6 +234,8 @@ pub(super) fn cloud_group_response_body(
             id: response_message_id.to_string(),
             sender_account_id: owner_account_id.to_string(),
             sender_agent_id: Some(sender_agent_id),
+            sender_owner_account_id: Some(owner_account_id.to_string()),
+            sender_owner_name: Some(sender_owner_name),
             text: response_text.to_string(),
             created_at_ms,
             sender_kind: Some("agent".to_string()),

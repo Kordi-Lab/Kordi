@@ -181,6 +181,7 @@ type MessageRow = (
     Option<DateTime<Utc>>,
     Option<DateTime<Utc>>,
     String,
+    Option<String>,
 );
 
 type SyncEventRow = (

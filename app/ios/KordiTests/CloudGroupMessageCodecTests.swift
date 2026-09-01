@@ -201,6 +201,8 @@ final class CloudGroupMessageCodecTests: XCTestCase {
                 text: "Background session started",
                 createdAtMs: 1_000,
                 senderKind: "agent",
+                senderOwnerAccountId: "acct_me",
+                senderOwnerName: "Alex",
                 senderDisplayName: "Kordi",
                 deliveryState: "complete",
                 replyToMessageId: "request",
@@ -237,6 +239,7 @@ final class CloudGroupMessageCodecTests: XCTestCase {
         )
         XCTAssertEqual(projected.first?.backgroundAgentSessions.first?.sessionId, "session-child")
         XCTAssertEqual(projected.first?.backgroundAgentSessions.first?.state, .running)
+        XCTAssertEqual(projected.first?.senderOwnerName, "Alex")
     }
 
     func testGroupMemberJoinsRoundTripProjectAndDeduplicateReplay() throws {

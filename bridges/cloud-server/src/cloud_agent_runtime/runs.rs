@@ -100,6 +100,8 @@ mod tests {
                 created_at_ms: 1,
                 sender_kind: Some("human".to_string()),
                 sender_agent_id: None,
+                sender_owner_account_id: None,
+                sender_owner_name: None,
                 sender_display_name: None,
                 delivery_state: None,
                 reply_to_message_id: None,
@@ -133,6 +135,11 @@ mod tests {
             message.sender_agent_id.as_deref(),
             Some("cloud-agent:acct_owner")
         );
+        assert_eq!(
+            message.sender_owner_account_id.as_deref(),
+            Some("acct_owner")
+        );
+        assert_eq!(message.sender_owner_name.as_deref(), Some("Owner"));
         assert_eq!(message.request_id.as_deref(), Some("msg:ui:request"));
         assert_eq!(message.delivery_state.as_deref(), Some("complete"));
         assert_eq!(message.text, "@KordiRequester Hello everyone!");
@@ -215,6 +222,8 @@ mod tests {
                 created_at_ms: 1,
                 sender_kind: Some("human".to_string()),
                 sender_agent_id: None,
+                sender_owner_account_id: None,
+                sender_owner_name: None,
                 sender_display_name: None,
                 delivery_state: None,
                 reply_to_message_id: None,

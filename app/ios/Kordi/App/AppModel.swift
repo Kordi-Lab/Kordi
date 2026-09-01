@@ -251,6 +251,7 @@ final class AppModel: ObservableObject {
     private var pendingAgentRequestIds: [String: String] = [:]
     private var pendingAgentRequestStartedAt: [String: Date] = [:]
     private var pendingAgentDisplayNames: [String: String] = [:]
+    private var pendingAgentOwnerNames: [String: String] = [:]
     private var agentRequestPresentationIds: [String: String] = [:]
     private var pendingProviderAuthBindingsBySessionID: [String: String] = [:]
     private var providerAuthenticationSyncTask: Task<Void, Never>?
@@ -541,6 +542,7 @@ final class AppModel: ObservableObject {
         pendingAgentRequestIds = [:]
         pendingAgentRequestStartedAt = [:]
         pendingAgentDisplayNames = [:]
+        pendingAgentOwnerNames = [:]
         agentRequestPresentationIds = [:]
         pendingProviderAuthBindingsBySessionID = [:]
         providerAuthenticationSyncTask?.cancel()
@@ -1435,7 +1437,8 @@ final class AppModel: ObservableObject {
                 startedAt: optimistic.createdAt,
                 agentDisplayName: routedAgent?.displayName
                     ?? conversation.agentDisplayName?.nonEmpty
-                    ?? "Kordi"
+                    ?? "Kordi",
+                agentOwnerName: routedAgent?.ownerName
             )
         }
         cacheCurrentMessages(conversation.id)
@@ -2023,6 +2026,7 @@ final class AppModel: ObservableObject {
             conversationId: conversation.id,
             author: .agent,
             authorName: pendingAgentDisplayNames[conversation.id] ?? "Kordi",
+            senderOwnerName: pendingAgentOwnerNames[conversation.id],
             text: "processing...",
             createdAt: placeholderCreatedAt,
             deliveryState: .delivered,
@@ -3847,7 +3851,8 @@ final class AppModel: ObservableObject {
                 conversationId: conversation.id,
                 requestMessageId: requestMessageId,
                 startedAt: Date(),
-                agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "Kordi"
+                agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "Kordi",
+                agentOwnerName: conversation.kind == .agent ? conversation.ownerDisplayName : nil
             )
         }
         if ownerAccountId == account.accountId {
@@ -4542,6 +4547,7 @@ final class AppModel: ObservableObject {
                 authorName: author == .me
                     ? "You"
                     : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
+                senderOwnerName: author == .agent ? payload.senderOwnerName?.nonEmpty : nil,
                 text: payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (
@@ -5535,11 +5541,13 @@ final class AppModel: ObservableObject {
         conversationId: String,
         requestMessageId: String,
         startedAt: Date,
-        agentDisplayName: String
+        agentDisplayName: String,
+        agentOwnerName: String? = nil
     ) {
         pendingAgentRequestIds[conversationId] = requestMessageId
         pendingAgentRequestStartedAt[conversationId] = startedAt
         pendingAgentDisplayNames[conversationId] = agentDisplayName
+        pendingAgentOwnerNames[conversationId] = agentOwnerName?.nonEmpty
         agentRequestPresentationIds[requestMessageId] = agentRequestPresentationIds[requestMessageId]
             ?? requestMessageId
         setAgentActivity(.replying, conversationId: conversationId)
@@ -5561,6 +5569,7 @@ final class AppModel: ObservableObject {
         pendingAgentRequestIds[conversationId] = nil
         pendingAgentRequestStartedAt[conversationId] = nil
         pendingAgentDisplayNames[conversationId] = nil
+        pendingAgentOwnerNames[conversationId] = nil
     }
 
     private func completeAgentRequest(conversationId: String) {

@@ -41,7 +41,12 @@ pub(super) fn message_from_row(
     reactions: Vec<ReactionSnapshot>,
 ) -> MessageSnapshot {
     let mut content = row.6;
-    message::normalize_stored_group_agent_identity(&mut content, &row.4, &row.14);
+    message::normalize_stored_group_agent_identity(
+        &mut content,
+        &row.4,
+        &row.14,
+        row.15.as_deref(),
+    );
     MessageSnapshot {
         id: row.0,
         client_message_id: row.1,
@@ -253,9 +258,10 @@ pub(super) async fn load_message(
                 message.conversation_sequence, message.sender_account_id, message.message_kind, \
                 message.content, message.reply_to_message_id, message.version, \
                 message.generation_status, message.provider_response_id, message.created_at, \
-                message.edited_at, message.deleted_at, agent.display_name \
+                message.edited_at, message.deleted_at, agent.display_name, account.display_name \
          FROM cloud_chat_messages message \
          JOIN cloud_default_agent_profiles agent ON agent.owner_account_id = message.sender_account_id \
+         JOIN cloud_accounts account ON account.account_id = message.sender_account_id \
          WHERE message.message_id = $1",
     )
     .bind(message_id)
