@@ -38,10 +38,10 @@ struct ChatHomeView: View {
         ChatHomeSearch.normalized(searchText)
     }
 
-    private var pinLayoutIdentity: [String] {
-        (model.pinnedSessionIds.map { "session:\($0)" }
+    private var listLayoutIdentity: [String] {
+        ((model.pinnedSessionIds.map { "session:\($0)" }
             + model.pinnedGroupSpaceIds.map { "group:\($0)" }
-        ).sorted()
+        ) + [deleteTarget.map { "delete:\($0.sessionId)" } ?? "delete:none"]).sorted()
     }
 
     private var agentSessions: [AgentSessionListItem] {
@@ -220,13 +220,12 @@ struct ChatHomeView: View {
         } message: {
             Text("This name is used for the session, matching Kordi on macOS.")
         }
-        .confirmationDialog(
+        .alert(
             "Delete this chat from your list?",
             isPresented: Binding(
                 get: { deleteTarget != nil },
                 set: { if !$0 { deleteTarget = nil } }
-            ),
-            titleVisibility: .visible
+            )
         ) {
             Button("Delete chat", role: .destructive) {
                 guard let target = deleteTarget else { return }
@@ -334,7 +333,7 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .id(pinLayoutIdentity)
+        .id(listLayoutIdentity)
         .accessibilityLabel("Contact chats")
     }
 
@@ -453,7 +452,7 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .id(pinLayoutIdentity)
+        .id(listLayoutIdentity)
         .accessibilityLabel("Agent chats")
     }
 
@@ -499,7 +498,7 @@ struct ChatHomeView: View {
             Task { _ = await model.archiveConversation(conversation) }
         }
         .accessibilityAction(named: "Delete chat") {
-            deleteTarget = conversation
+            requestDelete(conversation)
         }
         .accessibilityHint("Double-tap to open. Swipe right to pin. Swipe left to mute, delete, or archive.")
         .chatHomeRow(separatorLeading: 71)
@@ -546,7 +545,7 @@ struct ChatHomeView: View {
             Task { _ = await model.archiveConversation(item.conversation) }
         }
         .accessibilityAction(named: "Delete chat") {
-            deleteTarget = item.conversation
+            requestDelete(item.conversation)
         }
         .accessibilityHint("Double-tap to open. Swipe right to pin. Swipe left to mute, delete, or archive.")
         .chatHomeRow(separatorLeading: 16)
@@ -630,7 +629,7 @@ struct ChatHomeView: View {
         }
         Divider()
         Button(role: .destructive) {
-            deleteTarget = conversation
+            requestDelete(conversation)
         } label: {
             Label("Delete", systemImage: "trash")
         }
@@ -669,7 +668,7 @@ struct ChatHomeView: View {
         .accessibilityLabel(isMuted ? "Unmute" : "Mute")
 
         Button(role: .destructive) {
-            deleteTarget = conversation
+            requestDelete(conversation)
         } label: {
             Image(systemName: "trash")
         }
@@ -701,6 +700,14 @@ struct ChatHomeView: View {
             } else {
                 _ = await model.setConversationUnread(conversation, unread: true)
             }
+        }
+    }
+
+    private func requestDelete(_ conversation: ConversationSummary) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard deleteTarget == nil else { return }
+            deleteTarget = conversation
         }
     }
 
@@ -827,14 +834,14 @@ private struct ArchivedChatsView: View {
                             )
                         }
                         Button(role: .destructive) {
-                            deleteTarget = conversation
+                            requestDelete(conversation)
                         } label: {
                             Label("Delete chat", systemImage: "trash")
                         }
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {
-                            deleteTarget = conversation
+                            requestDelete(conversation)
                         } label: {
                             Image(systemName: "trash")
                         }
@@ -851,11 +858,12 @@ private struct ArchivedChatsView: View {
                         Task { _ = await model.restoreConversation(conversation) }
                     }
                     .accessibilityAction(named: "Delete chat") {
-                        deleteTarget = conversation
+                        requestDelete(conversation)
                     }
                     .chatHomeRow(separatorLeading: 71)
             }
         }
+        .id(deleteTarget?.sessionId ?? "delete:none")
         .listStyle(.plain)
         .navigationTitle("Archived Chats")
         .overlay {
@@ -867,13 +875,12 @@ private struct ArchivedChatsView: View {
                 )
             }
         }
-        .confirmationDialog(
+        .alert(
             "Delete this chat from your list?",
             isPresented: Binding(
                 get: { deleteTarget != nil },
                 set: { if !$0 { deleteTarget = nil } }
-            ),
-            titleVisibility: .visible
+            )
         ) {
             Button("Delete chat", role: .destructive) {
                 guard let target = deleteTarget else { return }
@@ -883,6 +890,14 @@ private struct ArchivedChatsView: View {
             Button("Cancel", role: .cancel) { deleteTarget = nil }
         } message: {
             Text("This does not delete it for other participants. It will return if someone sends a new message.")
+        }
+    }
+
+    private func requestDelete(_ conversation: ConversationSummary) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(180))
+            guard deleteTarget == nil else { return }
+            deleteTarget = conversation
         }
     }
 

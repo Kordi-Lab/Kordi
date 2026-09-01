@@ -4,6 +4,21 @@ import XCTest
 @testable import Kordi
 
 final class ConversationReadPresentationTests: XCTestCase {
+    func testChatDeleteWaitsForSwipeClosureAndUsesStableAlertPresentation() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Chats/ChatHomeView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("Task.sleep(for: .milliseconds(180))"))
+        XCTAssertTrue(source.contains(".alert(\n            \"Delete this chat from your list?\""))
+        XCTAssertTrue(source.contains("deleteTarget.map { \"delete:"))
+        XCTAssertFalse(source.contains(".confirmationDialog(\n            \"Delete this chat from your list?\""))
+    }
+
     func testGroupSessionRowsShowOnlyTheLatestMessagePreview() throws {
         let chatsDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
