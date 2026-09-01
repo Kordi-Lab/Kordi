@@ -146,6 +146,20 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(appSource.contains("ForEach(AppAppearance.allCases)"))
     }
 
+    func testDeleteResurrectionPreviewAddsFreshUnreadMayaMessage() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/App/PreviewData.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("--preview-delete-resurrection"))
+        XCTAssertTrue(source.contains("maya-delete-resurrection"))
+        XCTAssertTrue(source.contains("New message after deletion — this chat is back."))
+    }
+
     func testReactionChipsMatchTheAvatarEdgeAndMacOSSurface() throws {
         let source = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
