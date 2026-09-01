@@ -29,10 +29,15 @@ pub struct AccountPresenceSummary {
     pub updated_at: String,
     #[serde(rename = "lastSeenAt")]
     pub last_seen_at: Option<String>,
+    #[serde(rename = "desktopOnline")]
+    pub desktop_online: bool,
+    #[serde(rename = "desktopLastSeenAt")]
+    pub desktop_last_seen_at: Option<String>,
 }
 
 pub const DEFAULT_PRESENCE_TIMEOUT_SECONDS: i64 = 35;
 pub const DEFAULT_PRESENCE_SWEEP_SECONDS: u64 = 5;
+type DevicePresenceRow = (String, Option<String>, Option<String>, Option<String>);
 
 pub fn presence_timeout() -> ChronoDuration {
     let seconds = std::env::var("KORDI_CLOUD_PRESENCE_TIMEOUT_SECONDS")
@@ -88,14 +93,24 @@ where
     timestamps.into_iter().filter_map(parse_rfc3339).max()
 }
 
+fn is_desktop_platform(platform: Option<&str>) -> bool {
+    matches!(
+        platform
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("macos" | "desktop")
+    )
+}
+
 pub async fn account_presence_status(
     pool: &PgPool,
     account_id: &str,
     now: DateTime<Utc>,
     timeout: ChronoDuration,
 ) -> Result<AccountPresenceSummary, sqlx_core::Error> {
-    let rows: Vec<(String, Option<String>, Option<String>)> = query_as(
-        "SELECT p.state, p.last_heartbeat_at, p.last_offline_at \
+    let rows: Vec<DevicePresenceRow> = query_as(
+        "SELECT p.state, p.last_heartbeat_at, p.last_offline_at, d.device_platform \
          FROM cloud_device_presence p \
          JOIN cloud_devices d ON d.device_id = p.device_id \
          WHERE p.account_id = $1 AND d.revoked_at IS NULL",
@@ -103,22 +118,43 @@ pub async fn account_presence_status(
     .bind(account_id)
     .fetch_all(pool)
     .await?;
-    let status = rollup_account_presence(rows.iter().map(|(state, heartbeat, _)| {
+    let status = rollup_account_presence(rows.iter().map(|(state, heartbeat, _, _)| {
         device_presence_is_currently_online(state, parse_rfc3339(heartbeat.clone()), now, timeout)
     }));
+    let desktop_online = rows.iter().any(|(state, heartbeat, _, platform)| {
+        is_desktop_platform(platform.as_deref())
+            && device_presence_is_currently_online(
+                state,
+                parse_rfc3339(heartbeat.clone()),
+                now,
+                timeout,
+            )
+    });
     let last_seen_at = match status {
         AccountPresenceStatus::Online => None,
         AccountPresenceStatus::Offline => latest_presence_activity(
-            rows.into_iter()
-                .flat_map(|(_, heartbeat, offline)| [heartbeat, offline]),
+            rows.iter()
+                .flat_map(|(_, heartbeat, offline, _)| [heartbeat.clone(), offline.clone()]),
         )
         .map(|timestamp| timestamp.to_rfc3339()),
+    };
+    let desktop_last_seen_at = if desktop_online {
+        None
+    } else {
+        latest_presence_activity(
+            rows.iter()
+                .filter(|(_, _, _, platform)| is_desktop_platform(platform.as_deref()))
+                .flat_map(|(_, heartbeat, offline, _)| [heartbeat.clone(), offline.clone()]),
+        )
+        .map(|timestamp| timestamp.to_rfc3339())
     };
     Ok(AccountPresenceSummary {
         account_id: account_id.to_string(),
         status,
         updated_at: now.to_rfc3339(),
         last_seen_at,
+        desktop_online,
+        desktop_last_seen_at,
     })
 }
 
@@ -128,25 +164,9 @@ pub async fn account_has_online_desktop(
     now: DateTime<Utc>,
     timeout: ChronoDuration,
 ) -> Result<bool, sqlx_core::Error> {
-    let rows: Vec<(String, Option<String>, Option<String>)> = query_as(
-        "SELECT p.state, p.last_heartbeat_at, d.device_platform
-         FROM cloud_device_presence p
-         JOIN cloud_devices d ON d.device_id = p.device_id
-         WHERE p.account_id = $1 AND d.revoked_at IS NULL",
-    )
-    .bind(account_id)
-    .fetch_all(pool)
-    .await?;
-    Ok(rows.into_iter().any(|(state, heartbeat, platform)| {
-        matches!(
-            platform
-                .as_deref()
-                .map(str::trim)
-                .map(str::to_ascii_lowercase)
-                .as_deref(),
-            Some("macos" | "desktop")
-        ) && device_presence_is_currently_online(&state, parse_rfc3339(heartbeat), now, timeout)
-    }))
+    account_presence_status(pool, account_id, now, timeout)
+        .await
+        .map(|summary| summary.desktop_online)
 }
 
 pub async fn mark_device_online(
@@ -265,6 +285,8 @@ pub async fn publish_presence_to_observers(
                 &observer,
                 presence.status.as_str(),
                 presence.last_seen_at.as_deref(),
+                presence.desktop_online,
+                presence.desktop_last_seen_at.as_deref(),
             )
             .await;
     }
@@ -309,7 +331,6 @@ pub async fn sweep_stale_presence(
     .await?;
     let mut changed = Vec::new();
     for (account_id,) in account_rows {
-        let before = account_presence_status(pool, &account_id, now, timeout).await?;
         query(
             "UPDATE cloud_device_presence \
              SET state = 'offline', last_offline_at = $2, updated_at = $2 \
@@ -321,10 +342,8 @@ pub async fn sweep_stale_presence(
         .execute(pool)
         .await?;
         let after = account_presence_status(pool, &account_id, now, timeout).await?;
-        if before.status != after.status {
-            publish_presence_to_observers(pool, events, &account_id, &after).await?;
-            changed.push(after);
-        }
+        publish_presence_to_observers(pool, events, &account_id, &after).await?;
+        changed.push(after);
     }
     Ok(changed)
 }

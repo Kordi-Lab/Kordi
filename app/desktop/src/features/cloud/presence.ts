@@ -5,6 +5,8 @@ export type CloudPresenceAccount = {
   status: CloudPresenceStatus;
   updatedAt: string;
   lastSeenAt: string | null;
+  desktopOnline?: boolean;
+  desktopLastSeenAt?: string | null;
 };
 
 export type CloudPresenceContactsResponse = {
@@ -70,6 +72,18 @@ export function contactPresenceLabel(
   return `last seen ${calendarDate} at ${time}`;
 }
 
+export function agentRuntimePresence(
+  presence: CloudPresenceAccount | null | undefined,
+): CloudPresenceAccount | null | undefined {
+  if (!presence) return presence;
+  const desktopOnline = presence.desktopOnline === true;
+  return {
+    ...presence,
+    status: desktopOnline ? 'online' : 'offline',
+    lastSeenAt: desktopOnline ? null : presence.desktopLastSeenAt ?? null,
+  };
+}
+
 export function normalizePresenceStatus(value: unknown): CloudPresenceStatus {
   return cleanText(value).toLowerCase() === 'online' ? 'online' : 'offline';
 }
@@ -87,11 +101,19 @@ export function applyPresenceSnapshot(current: CloudPresenceStore, response: Clo
         || previous?.updatedAt
         || new Date().toISOString(),
       lastSeenAt: cleanText(account.lastSeenAt) || null,
+      desktopOnline: typeof account.desktopOnline === 'boolean'
+        ? account.desktopOnline
+        : previous?.desktopOnline,
+      desktopLastSeenAt: account.desktopLastSeenAt === undefined
+        ? previous?.desktopLastSeenAt
+        : cleanText(account.desktopLastSeenAt) || null,
     };
-    // Online heartbeat timestamps are not a visible presence change. Keep the
-    // existing object unless status changes or an offline last-seen value moves.
+    // Heartbeats are not visible changes. Keep the object unless either
+    // availability status changes or an offline last-seen value moves.
     if (previous?.status === normalized.status
-      && (normalized.status === 'online' || previous.lastSeenAt === normalized.lastSeenAt)) continue;
+      && previous.desktopOnline === normalized.desktopOnline
+      && (normalized.status === 'online' || previous.lastSeenAt === normalized.lastSeenAt)
+      && (normalized.desktopOnline || previous.desktopLastSeenAt === normalized.desktopLastSeenAt)) continue;
     if (next === current) next = { ...current };
     next[accountId] = normalized;
   }
@@ -103,6 +125,9 @@ export function mergePresenceEvent(current: CloudPresenceStore, event: CloudPres
   if (!accountId) return current;
   const previous = current[accountId];
   const status = normalizePresenceStatus(event.status);
+  const desktopOnline = typeof event.desktopOnline === 'boolean'
+    ? event.desktopOnline
+    : previous?.desktopOnline;
   const normalized = {
     accountId,
     status,
@@ -112,9 +137,17 @@ export function mergePresenceEvent(current: CloudPresenceStore, event: CloudPres
     lastSeenAt: status === 'online'
       ? null
       : cleanText(event.lastSeenAt) || previous?.lastSeenAt || null,
+    desktopOnline,
+    desktopLastSeenAt: desktopOnline
+      ? null
+      : event.desktopLastSeenAt === undefined
+        ? previous?.desktopLastSeenAt
+        : cleanText(event.desktopLastSeenAt) || null,
   };
   if (previous?.status === normalized.status
-    && (normalized.status === 'online' || previous.lastSeenAt === normalized.lastSeenAt)) return current;
+    && previous.desktopOnline === normalized.desktopOnline
+    && (normalized.status === 'online' || previous.lastSeenAt === normalized.lastSeenAt)
+    && (normalized.desktopOnline || previous.desktopLastSeenAt === normalized.desktopLastSeenAt)) return current;
   return {
     ...current,
     [accountId]: normalized,
@@ -136,11 +169,21 @@ export function cloudPresenceChangedFromWsPayload(payload: unknown): CloudPresen
   const record = payload as Record<string, unknown>;
   const accountId = cleanText(record.account_id ?? record.accountId);
   if (!accountId) return null;
+  const desktopOnline = 'desktop_online' in record
+    ? record.desktop_online
+    : record.desktopOnline;
+  const desktopLastSeenAt = 'desktop_last_seen_at' in record
+    ? record.desktop_last_seen_at
+    : record.desktopLastSeenAt;
   return {
     accountId,
     status: normalizePresenceStatus(record.status),
     updatedAt: cleanText(record.occurred_at ?? record.updatedAt) || new Date().toISOString(),
     lastSeenAt: cleanText(record.last_seen_at ?? record.lastSeenAt) || null,
+    desktopOnline: typeof desktopOnline === 'boolean' ? desktopOnline : undefined,
+    desktopLastSeenAt: desktopLastSeenAt === undefined
+      ? undefined
+      : cleanText(desktopLastSeenAt) || null,
   };
 }
 import { formatDesktopDate } from '@/lib/time';

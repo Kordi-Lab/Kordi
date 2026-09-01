@@ -1,5 +1,5 @@
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
-import type { CloudPresenceAccount } from '@/features/cloud/presence';
+import { agentRuntimePresence, type CloudPresenceAccount } from '@/features/cloud/presence';
 import { useContactPresenceLabel } from '@/features/cloud/useCloudPresence';
 import {
   chatHeaderSubtitle,
@@ -45,7 +45,9 @@ export function useChatHeaderModel({
   const isDraft = activeConv.id === LOCAL_DRAFT_CHAT_CONVERSATION_ID
     || activeConv.canonicalSessionId === LOCAL_DRAFT_CHAT_CONVERSATION_ID;
   const isStarting = isDraft && isSending;
-  const contactPresenceSubtitle = useContactPresenceLabel(contactPresence);
+  const contactPresenceSubtitle = useContactPresenceLabel(
+    activeConv.type === 'person' ? contactPresence : agentRuntimePresence(contactPresence),
+  );
   const canRename = isNativeShell
     && activeConv.type === 'owned-agent'
     && (Boolean(selfAgentSessionId) || isDraft)
