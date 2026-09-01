@@ -56,6 +56,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
     let text: String
     let createdAtMs: Double
     let senderKind: String?
+    let senderAgentId: String?
     let senderDisplayName: String?
     let deliveryState: String?
     let replyToMessageId: String?
@@ -78,6 +79,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         text: String,
         createdAtMs: Double,
         senderKind: String?,
+        senderAgentId: String? = nil,
         senderDisplayName: String?,
         deliveryState: String?,
         replyToMessageId: String?,
@@ -103,6 +105,7 @@ struct CloudGroupMessagePayload: Codable, Hashable {
         // constructing an outbound group message.
         self.createdAtMs = createdAtMs.rounded(.towardZero)
         self.senderKind = senderKind
+        self.senderAgentId = senderAgentId
         self.senderDisplayName = senderDisplayName
         self.deliveryState = deliveryState
         self.replyToMessageId = replyToMessageId

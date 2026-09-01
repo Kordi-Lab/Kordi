@@ -4432,6 +4432,35 @@ final class AppModel: ObservableObject {
         )
     }
 
+    nonisolated private static func groupMessageAuthorName(
+        payload: CloudGroupMessagePayload,
+        request: CloudGroupMessagePayload?,
+        participant: CloudGroupParticipant?
+    ) -> String {
+        let wireName = payload.senderDisplayName?.nonEmpty
+        guard payload.senderKind == "agent" else {
+            return wireName ?? participant?.displayName ?? "Participant"
+        }
+        let senderAgentId = payload.senderAgentId?.nonEmpty
+            ?? request?.targetCloudAgentId?.nonEmpty
+        if senderAgentId == participant?.agentId?.nonEmpty,
+           let canonicalName = participant?.agentDisplayName?.nonEmpty {
+            return canonicalName
+        }
+        if let requestName = request?.targetCloudAgentName?.nonEmpty {
+            return requestName
+        }
+        let legacyName = wireName?.lowercased() ?? ""
+        if legacyName == "kordi"
+            || legacyName == "my kordi"
+            || legacyName.hasSuffix("'s kordi")
+            || legacyName.hasSuffix("’s kordi"),
+           let canonicalName = participant?.agentDisplayName?.nonEmpty {
+            return canonicalName
+        }
+        return wireName ?? participant?.agentDisplayName?.nonEmpty ?? "Kordi"
+    }
+
     nonisolated static func mapGroupMessages(
         _ messages: [CloudMessageDTO],
         conversation: ConversationSummary,
@@ -4440,7 +4469,10 @@ final class AppModel: ObservableObject {
         var rowsByMessageId: [String: [(CloudMessageDTO, CloudGroupMessagePayload)]] = [:]
         var memberJoinMessagesByID: [String: ChatMessage] = [:]
         var canonicalMessagesByID: [String: ChatMessage] = [:]
-        let participantNames = Dictionary(uniqueKeysWithValues: conversation.groupParticipants.map { ($0.accountId, $0.displayName) })
+        let participantsByAccountId = Dictionary(
+            uniqueKeysWithValues: conversation.groupParticipants.map { ($0.accountId, $0) }
+        )
+        let participantNames = participantsByAccountId.mapValues(\.displayName)
         for wire in messages {
             guard let envelope = CloudGroupMessageCodec.parse(wire.body) else {
                 guard ChatCallActivity(messageKind: wire.messageKind) == nil else { continue }
@@ -4517,6 +4549,9 @@ final class AppModel: ObservableObject {
         let visibleMessageIds = CloudGroupAgentLifecycleProjector.visibleMessageIds(
             in: representativePayloads
         )
+        let payloadByMessageId = Dictionary(
+            uniqueKeysWithValues: representativePayloads.map { ($0.id, $0) }
+        )
         let createdAtByMessageId = Dictionary(
             uniqueKeysWithValues: representativePayloads.map { ($0.id, $0.createdAtMs) }
         )
@@ -4541,7 +4576,11 @@ final class AppModel: ObservableObject {
                 author: author,
                 authorName: author == .me
                     ? "You"
-                    : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
+                    : groupMessageAuthorName(
+                        payload: payload,
+                        request: payload.requestId.flatMap { payloadByMessageId[$0] },
+                        participant: participantsByAccountId[payload.senderAccountId]
+                    ),
                 text: payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (
