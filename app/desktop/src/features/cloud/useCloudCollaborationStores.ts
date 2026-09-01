@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   Dispatch,
   MutableRefObject,
@@ -30,6 +30,8 @@ import type {
 import type { CloudUnreadReadinessSnapshot } from './cloudMessageSyncState';
 import { useCloudAccountLifecycleState } from './useCloudAccountLifecycleState';
 import { useCloudSessionVisibilityRefresh } from './useCloudSessionVisibilityRefresh';
+
+const EMPTY_LOCAL_READ_SESSION_IDS = new Set<string>();
 
 export type CloudCollaborationMessageStore = {
   value: Record<string, CloudMessage[]>;
@@ -103,6 +105,23 @@ export function useCloudCollaborationStores({
     readInboundMessageIdsByPeer,
     setReadInboundMessageIdsByPeer,
   ] = useState<Record<string, Set<string>>>({});
+  const localReadAccountId = account?.accountId ?? null;
+  const [locallyReadState, setLocallyReadState] = useState<{
+    accountId: string | null;
+    sessionIds: Set<string>;
+  }>({ accountId: localReadAccountId, sessionIds: new Set() });
+  const locallyReadSessionIds = locallyReadState.accountId === localReadAccountId
+    ? locallyReadState.sessionIds
+    : EMPTY_LOCAL_READ_SESSION_IDS;
+  const setLocallyReadSessionIds = useCallback<Dispatch<SetStateAction<Set<string>>>>((value) => {
+    setLocallyReadState((current) => {
+      const currentIds = current.accountId === localReadAccountId
+        ? current.sessionIds
+        : new Set<string>();
+      const sessionIds = typeof value === 'function' ? value(currentIds) : value;
+      return { accountId: localReadAccountId, sessionIds };
+    });
+  }, [localReadAccountId]);
   const [
     localAgentTurnsByRequestId,
     setLocalAgentTurnsByRequestId,
@@ -194,6 +213,8 @@ export function useCloudCollaborationStores({
       setPublishedContextKey: setPublishedUnreadContextKey,
       readInboundMessageIdsByPeer,
       setReadInboundMessageIdsByPeer,
+      locallyReadSessionIds,
+      setLocallyReadSessionIds,
     },
     canonicalStateRef,
     profileCacheRef,

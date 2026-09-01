@@ -237,6 +237,8 @@ export function useCloudCollaborationState({
       readiness: cloudUnreadReadiness,
       publishedContextKey: publishedCloudUnreadContextKey,
       setPublishedContextKey: setPublishedCloudUnreadContextKey,
+      locallyReadSessionIds,
+      setLocallyReadSessionIds,
       readInboundMessageIdsByPeer,
       setReadInboundMessageIdsByPeer,
     },
@@ -416,7 +418,9 @@ export function useCloudCollaborationState({
     messages: { fullByPeer: messagesBelongToCurrentAccount ? fullCurrentAccountMessagesByPeer : null, index: cloudMessageIndex, authoritative: authoritativeMessagesReady },
     unread: {
       contextKey: cloudUnreadContextKey,
+      locallyReadSessionIds,
       readInboundMessageIdsByPeer,
+      setLocallyReadSessionIds,
       setPublishedContextKey:
         setPublishedCloudUnreadContextKey,
     },
@@ -608,6 +612,7 @@ export function useCloudCollaborationState({
       },
       visibility: {
         setHiddenIds: setCloudHiddenSessionIds, setDeletedIds: setCloudDeletedSessionIds, setUnreadIds: setCloudUnreadSessionIds,
+        setLocallyReadIds: setLocallyReadSessionIds,
         setPinnedIds: setCloudPinnedSessionIds, setMutedIds: setCloudMutedSessionIds, setPinnedGroupSpaceIds: setCloudPinnedGroupSpaceIds,
       },
       messages: {
@@ -617,14 +622,7 @@ export function useCloudCollaborationState({
     syncCollaborationDiff: syncCloudCollaborationDiff,
   });
 
-  useCloudActiveSessionLifecycle({
-    account, activeConversationId, canMarkActiveConversationRead,
-    canonicalState: canonicalSessionState,
-    setCanonicalState: setCanonicalSessionState,
-    client,
-    markRead: markCloudSessionsRead,
-    setPinsBySessionId: setCloudSessionPinsById,
-  });
+  useCloudActiveSessionLifecycle({ account, activeConversationId, canMarkActiveConversationRead, canonicalState: canonicalSessionState, setCanonicalState: setCanonicalSessionState, client, markRead: markCloudSessionsRead, setPinsBySessionId: setCloudSessionPinsById });
   const cancelCloudAgentRequest = useCloudAgentRequestCancellation({
     account,
     client,

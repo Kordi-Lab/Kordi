@@ -69,7 +69,9 @@ export function useCloudCanonicalReconciliation({
   };
   unread: {
     contextKey: string | null;
+    locallyReadSessionIds: ReadonlySet<string>;
     readInboundMessageIdsByPeer: Record<string, Set<string>>;
+    setLocallyReadSessionIds: Dispatch<SetStateAction<Set<string>>>;
     setPublishedContextKey: Dispatch<
       SetStateAction<string | null>
     >;
@@ -84,7 +86,9 @@ export function useCloudCanonicalReconciliation({
   } = messages;
   const {
     contextKey: unreadContextKey,
+    locallyReadSessionIds,
     readInboundMessageIdsByPeer,
+    setLocallyReadSessionIds,
     setPublishedContextKey,
   } = unread;
   const nativeShell = isNativeDesktopShell();
@@ -157,16 +161,31 @@ export function useCloudCanonicalReconciliation({
     if (!account || nativeUnreadSnapshot?.accountId !== account.accountId) return null;
     return mergeNativeCloudUnreadCounts({
       nativeHeadsBySessionId: nativeUnreadSnapshot.headsBySessionId,
+      locallyReadSessionIds,
       optimisticSessionIds: optimisticReadSessionIds,
       projectedUnreadBySessionId,
     });
   }, [
     account,
+    locallyReadSessionIds,
     nativeShell,
     nativeUnreadSnapshot,
     optimisticReadSessionIds,
     projectedUnreadBySessionId,
   ]);
+
+  useEffect(() => {
+    if (!nativeShell || !nativeUnreadSnapshot) return;
+    setLocallyReadSessionIds((current) => {
+      const next = new Set(current);
+      for (const sessionId of current) {
+        if (nativeUnreadSnapshot.headsBySessionId[sessionId]?.unreadCount === 0) {
+          next.delete(sessionId);
+        }
+      }
+      return next.size === current.size ? current : next;
+    });
+  }, [nativeShell, nativeUnreadSnapshot, setLocallyReadSessionIds]);
 
   useEffect(() => {
     if (!account || !setCanonicalState) return;
