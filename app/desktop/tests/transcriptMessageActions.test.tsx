@@ -87,7 +87,7 @@ test('thread count changes invalidate the memoized message bubble', () => {
   const message: Message = {
     id: 'thread-root',
     role: 'person',
-    sender: 'Shenzhe Zhu',
+    sender: 'Peer',
     text: 'what',
     time: '07:35',
     threadSummary: { replyCount: 1 },
