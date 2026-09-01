@@ -994,6 +994,25 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertLessThan(composer.lowerBound, rootModifiers.lowerBound)
     }
 
+    func testConversationRepositionsLatestAfterLazyTimelineLayout() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private func positionAndRevealInitialViewport"))
+        let end = try XCTUnwrap(source.range(
+            of: "private func loadAndRevealInitialConversation",
+            range: start.upperBound..<source.endIndex
+        ))
+        let positioning = source[start.lowerBound..<end.lowerBound]
+
+        XCTAssertEqual(
+            positioning.components(separatedBy: "proxy.scrollTo(bottomAnchorID, anchor: .bottom)").count - 1,
+            2
+        )
+    }
+
     func testConversationShowsLatestButtonWhenInitialScrollHasNotCompleted() {
         XCTAssertTrue(ConversationTimelineScrollBehavior.shouldShowLatestButton(
             isAtBottom: false,
