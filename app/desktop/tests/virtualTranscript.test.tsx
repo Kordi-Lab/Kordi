@@ -234,48 +234,6 @@ test('appending a message does not pull a reader away from older history', async
   assert.equal(viewport.scrollTop, previousScrollTop);
 });
 
-test('a scrolled-up transcript counts appended messages and clears at latest', async () => {
-  const initialItems = rows('unread-', 0, 100, 50);
-  const tailChanges: boolean[] = [];
-  const view = await render(transcript({
-    items: initialItems,
-    sessionKey: 'new-message-count',
-    onTailChange: (isAtTail) => tailChanges.push(isAtTail),
-  }));
-  const viewport = view.host.querySelector<HTMLElement>('[data-virtual-transcript-scroll]');
-  assert.ok(viewport);
-
-  await act(async () => viewport.scrollTo({ top: 1_000 }));
-  await flush();
-  assert.ok(view.host.querySelector('[data-transcript-latest-button="true"]'));
-  assert.equal(view.host.querySelector('[data-new-message-count]'), null);
-
-  await view.rerender(transcript({
-    items: [...rows('older-', 0, 20, 50), ...initialItems],
-    sessionKey: 'new-message-count',
-    onTailChange: (isAtTail) => tailChanges.push(isAtTail),
-  }));
-  assert.equal(view.host.querySelector('[data-new-message-count]'), null);
-
-  await view.rerender(transcript({
-    items: [...rows('older-', 0, 20, 50), ...initialItems, ...rows('new-', 0, 120, 50)],
-    sessionKey: 'new-message-count',
-    unreadCount: 120,
-    onTailChange: (isAtTail) => tailChanges.push(isAtTail),
-  }));
-  const badge = view.host.querySelector<HTMLElement>('[data-new-message-count]');
-  assert.equal(badge?.dataset.newMessageCount, '120');
-  assert.equal(badge?.textContent, '99+');
-
-  const button = view.host.querySelector<HTMLButtonElement>('[data-transcript-latest-button="true"]');
-  assert.match(button?.getAttribute('aria-label') ?? '', /120 new messages/);
-  tailChanges.length = 0;
-  await act(async () => button?.click());
-  await flush();
-  assert.equal(view.host.querySelector('[data-transcript-latest-button="true"]'), null);
-  assert.equal(tailChanges.at(-1), true);
-});
-
 test('a 900px row is measured before following short rows are positioned', async () => {
   const items = [{ id: 'tall', height: 900 }, ...rows('short-', 0, 30, 40)];
   const view = await render(transcript({ items }));

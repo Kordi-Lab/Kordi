@@ -96,6 +96,7 @@ export function cloudOptimisticallyReadSessionIds({
 
 export function mergeNativeCloudUnreadCounts({
   nativeHeadsBySessionId,
+  locallyReadSessionIds,
   optimisticSessionIds,
   projectedUnreadBySessionId,
 }: {
@@ -103,6 +104,7 @@ export function mergeNativeCloudUnreadCounts({
     lastReadSequence: number;
     unreadCount: number;
   }>>;
+  locallyReadSessionIds?: ReadonlySet<string>;
   optimisticSessionIds: ReadonlySet<string>;
   projectedUnreadBySessionId: Readonly<Record<string, number>> | null;
 }): Record<string, number> {
@@ -118,6 +120,7 @@ export function mergeNativeCloudUnreadCounts({
   for (const sessionId of optimisticSessionIds) {
     if ((projectedUnreadBySessionId?.[sessionId] ?? 0) === 0) counts[sessionId] = 0;
   }
+  for (const sessionId of locallyReadSessionIds ?? []) counts[sessionId] = 0;
   return counts;
 }
 

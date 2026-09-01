@@ -4,14 +4,10 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-  type RefObject,
   type UIEvent,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { ChevronDown } from 'lucide-react';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -30,7 +26,7 @@ import {
   completeSessionClickToFirstMessage,
   finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
-import { useTranscriptSelectionViewportProps, type TranscriptSelectionProps } from './transcriptSelection';
+import { useTranscriptSelectionViewportProps } from './transcriptSelection';
 import {
   clearTranscriptDisclosureConstraint,
   constrainTranscriptDisclosureBody,
@@ -39,44 +35,14 @@ import {
   transcriptDisclosureDirection,
   type TranscriptDisclosureDirection,
 } from './transcriptStableDisclosure';
+import { TranscriptLatestButton } from './TranscriptLatestButton';
+import type {
+  StableDisclosureAnchor,
+  VirtualTranscriptProps,
+} from './virtualTranscriptTypes';
 
 export type { VirtualTranscriptNavigationRequest } from '@/features/chat/useVirtualTranscriptNavigation';
-export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
-  items: readonly Item[];
-  sessionKey: string;
-  getItemKey: (item: Item, index: number) => string | number;
-  renderItem: (item: Item, index: number) => ReactNode;
-  scrollRef?: RefObject<HTMLDivElement | null>;
-  scrollClassName?: string;
-  scrollStyle?: CSSProperties;
-  onScroll?: (event: UIEvent<HTMLDivElement>) => void;
-  onTailChange?: (isAtTail: boolean) => void;
-  navigationRequest?: VirtualTranscriptNavigationRequest | null;
-  findNavigationIndex?: (item: Item, messageId: string, index: number) => boolean;
-  onNavigationReady?: (messageId: string) => void;
-  onNavigationHandled?: (request: VirtualTranscriptNavigationRequest) => void;
-  hasOlder?: boolean;
-  onLoadOlder?: () => Promise<void> | void;
-  emptyState?: ReactNode;
-  tail?: ReactNode;
-  tailKey?: string | number;
-  unreadCount?: number;
-  animateLatestAppend?: boolean;
-  estimateSize?: (item: Item, index: number) => number;
-  gap?: number;
-};
-
-type StableDisclosureAnchor = {
-  sessionKey: string;
-  initialScrollTop: number;
-  targetScrollTop: number;
-  initialHeight: number;
-  availableAbove: number;
-  availableBelow: number;
-  opening: boolean;
-  direction: TranscriptDisclosureDirection | null;
-  forcedDirection: TranscriptDisclosureDirection | null;
-};
+export type { VirtualTranscriptProps } from './virtualTranscriptTypes';
 
 export function VirtualTranscript<Item>({
   items,
@@ -586,8 +552,6 @@ export function VirtualTranscript<Item>({
     }
   }, [items.length, renderPerformanceSpan, sessionKey, virtualItems.length]);
 
-  const newMessageCount = Math.max(0, Math.floor(unreadCount));
-  const displayNewMessageCount = newMessageCount > 99 ? '99+' : newMessageCount;
   return (
     <div className="relative flex min-h-0 flex-1 overflow-hidden" data-virtual-transcript-shell="true">
       <ScrollArea
@@ -634,28 +598,10 @@ export function VirtualTranscript<Item>({
         {tail}
       </ScrollArea>
       {!isAtTail && items.length > 0 ? (
-        <button
-          type="button"
+        <TranscriptLatestButton
+          count={Math.max(0, Math.floor(unreadCount))}
           onClick={scrollToLatest}
-          className="absolute bottom-4 right-8 z-20 grid h-11 w-11 place-items-center rounded-full text-[color:var(--utility-foreground)] outline-none transition-transform duration-200 ease-out hover:scale-105 focus-visible:ring-2 focus-visible:ring-[color:var(--app-chat-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--app-main-bg)] active:scale-95"
-          aria-label={newMessageCount > 0
-            ? `Go to latest message, ${newMessageCount} new message${newMessageCount === 1 ? '' : 's'}`
-            : 'Go to latest message'}
-          data-transcript-latest-button="true"
-        >
-          <span className="grid h-[38px] w-[38px] place-items-center rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-main-raised-bg)] shadow-[var(--app-shadow-soft)] backdrop-blur-xl">
-            <ChevronDown className="h-4 w-4" aria-hidden="true" />
-          </span>
-          {newMessageCount > 0 ? (
-            <span
-              className="absolute -right-0.5 -top-0.5 grid min-h-5 min-w-5 place-items-center rounded-full bg-[color:var(--app-chat-accent)] px-1 text-[10px] font-bold leading-none text-[color:var(--app-chat-accent-text)]"
-              data-new-message-count={newMessageCount}
-              aria-hidden="true"
-            >
-              {displayNewMessageCount}
-            </span>
-          ) : null}
-        </button>
+        />
       ) : null}
     </div>
   );
