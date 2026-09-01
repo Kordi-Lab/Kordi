@@ -54,6 +54,8 @@ pub struct ConversationSnapshot {
     pub version: i32,
     pub created_by_account_id: String,
     pub legacy_session_id: Option<String>,
+    pub group_space_id: Option<String>,
+    pub group_title: Option<String>,
     pub forked_from_session_id: Option<String>,
     pub forked_from_message_id: Option<String>,
     pub latest_message_sequence: i64,

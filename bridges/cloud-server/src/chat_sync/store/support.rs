@@ -130,6 +130,7 @@ pub(super) async fn load_conversation(
         "SELECT conversation.conversation_id, conversation.kind, \
                 conversation.shared_title, conversation.version, \
                 conversation.created_by_account_id, conversation.legacy_session_id, \
+                conversation.group_space_id, conversation.group_title, \
                 fork.parent_session_id, fork.parent_message_id, \
                 conversation.latest_message_sequence, conversation.created_at, \
                 conversation.updated_at \
@@ -159,11 +160,13 @@ pub(super) async fn load_conversation(
         version: row.3,
         created_by_account_id: row.4,
         legacy_session_id: row.5,
-        forked_from_session_id: row.6,
-        forked_from_message_id: row.7,
-        latest_message_sequence: row.8,
-        created_at: row.9,
-        updated_at: row.10,
+        group_space_id: row.6,
+        group_title: row.7,
+        forked_from_session_id: row.8,
+        forked_from_message_id: row.9,
+        latest_message_sequence: row.10,
+        created_at: row.11,
+        updated_at: row.12,
         members: member_rows(transaction, conversation_id).await?,
         preferences: ConversationPreferencesSnapshot {
             conversation_id,
@@ -182,6 +185,7 @@ pub(super) async fn load_active_conversation_projections(
         "SELECT conversation.conversation_id, conversation.kind, \
                 conversation.shared_title, conversation.version, \
                 conversation.created_by_account_id, conversation.legacy_session_id, \
+                conversation.group_space_id, conversation.group_title, \
                 fork.parent_session_id, fork.parent_message_id, \
                 conversation.latest_message_sequence, conversation.created_at, \
                 conversation.updated_at \
@@ -217,11 +221,13 @@ pub(super) async fn load_active_conversation_projections(
                     version: row.3,
                     created_by_account_id: row.4.clone(),
                     legacy_session_id: row.5.clone(),
-                    forked_from_session_id: row.6.clone(),
-                    forked_from_message_id: row.7.clone(),
-                    latest_message_sequence: row.8,
-                    created_at: row.9,
-                    updated_at: row.10,
+                    group_space_id: row.6.clone(),
+                    group_title: row.7.clone(),
+                    forked_from_session_id: row.8.clone(),
+                    forked_from_message_id: row.9.clone(),
+                    latest_message_sequence: row.10,
+                    created_at: row.11,
+                    updated_at: row.12,
                     members: members.clone(),
                     preferences: ConversationPreferencesSnapshot {
                         conversation_id,

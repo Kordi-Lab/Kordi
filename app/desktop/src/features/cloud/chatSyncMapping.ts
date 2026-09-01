@@ -187,6 +187,8 @@ function groupMessageBody(
       ? encodeCloudGroupControl({
           ...envelope,
           groupId,
+          groupSpaceId: envelope.groupSpaceId ?? conversation.group_space_id ?? null,
+          groupTitle: envelope.groupTitle ?? conversation.group_title ?? null,
           message: { ...envelope.message, createdAtMs },
         })
       : null;
@@ -219,8 +221,8 @@ function groupMessageBody(
   return encodeCloudGroupControl({
     kind: 'group-message',
     groupId,
-    groupSpaceId: null,
-    groupTitle: conversation.shared_title,
+    groupSpaceId: conversation.group_space_id ?? null,
+    groupTitle: conversation.group_title ?? conversation.shared_title,
     createdByAccountId: conversation.created_by_account_id,
     actor,
     participants,

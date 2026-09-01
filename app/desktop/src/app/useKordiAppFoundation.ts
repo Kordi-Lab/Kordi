@@ -306,6 +306,7 @@ export function useKordiAppFoundation({
     canMarkActiveConversationRead: canMarkRead,
     canonicalSessionState,
     setCanonicalSessionState,
+    hydrateCanonicalSessionPage,
     localTurnsBySessionId: desktopLiveTurnsBySession,
     cloudAgentRuntimeRoutesBySessionId,
     defaultCloudAgentRuntimeRoute,
