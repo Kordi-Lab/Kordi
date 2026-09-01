@@ -229,6 +229,10 @@ pub fn routes_with_config(
             put(mark_cloud_session_unread).delete(unmark_cloud_session_unread),
         )
         .route(
+            "/v1/cloud/group-spaces/:group_space_id/pinned",
+            put(pin_group_space).delete(unpin_group_space),
+        )
+        .route(
             "/v1/cloud/sessions/:source_session_id/pin",
             get(get_cloud_session_pin).put(update_cloud_session_pin),
         )

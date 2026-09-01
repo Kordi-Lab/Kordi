@@ -342,6 +342,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "chat manual unread preference",
         sql: include_str!("../../migrations/0073_chat_manual_unread.sql"),
     },
+    EmbeddedMigration {
+        version: 74,
+        description: "group space preferences",
+        sql: include_str!("../../migrations/0074_group_space_preferences.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

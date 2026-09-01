@@ -645,7 +645,21 @@ final class ConversationReadPresentationTests: XCTestCase {
 
         let didPin = await model.setGroupSpacePinned(space, pinned: true)
         XCTAssertTrue(didPin)
-        XCTAssertTrue(sessionIds.isSubset(of: model.pinnedSessionIds))
+        XCTAssertTrue(model.pinnedGroupSpaceIds.contains(space.id))
+        XCTAssertTrue(model.pinnedSessionIds.isDisjoint(with: sessionIds))
+
+        let pinnedSession = try XCTUnwrap(space.sessions.first)
+        let didPinSession = await model.setConversationPinned(pinnedSession, pinned: true)
+        XCTAssertTrue(didPinSession)
+        XCTAssertTrue(model.pinnedSessionIds.contains(pinnedSession.sessionId))
+        XCTAssertTrue(model.pinnedGroupSpaceIds.contains(space.id))
+
+        let didUnpinGroup = await model.setGroupSpacePinned(space, pinned: false)
+        XCTAssertTrue(didUnpinGroup)
+        XCTAssertFalse(model.pinnedGroupSpaceIds.contains(space.id))
+        XCTAssertTrue(model.pinnedSessionIds.contains(pinnedSession.sessionId))
+        let didRepinGroup = await model.setGroupSpacePinned(space, pinned: true)
+        XCTAssertTrue(didRepinGroup)
         let didMute = await model.setGroupSpaceMuted(space, muted: true)
         XCTAssertTrue(didMute)
         XCTAssertTrue(sessionIds.isSubset(of: model.mutedSessionIds))
@@ -665,6 +679,7 @@ final class ConversationReadPresentationTests: XCTestCase {
             sessionIds
         )
         XCTAssertTrue(model.pinnedSessionIds.isDisjoint(with: sessionIds))
+        XCTAssertFalse(model.pinnedGroupSpaceIds.contains(space.id))
     }
 
     @MainActor

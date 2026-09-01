@@ -858,6 +858,17 @@ actor CloudAPIClient {
         )
     }
 
+    func setGroupSpacePinned(token: String, groupSpaceId: String, pinned: Bool) async throws {
+        let escaped = groupSpaceId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? groupSpaceId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/group-spaces/\(escaped)/pinned",
+            method: pinned ? "PUT" : "DELETE",
+            token: token,
+            fallback: pinned ? "Could not pin this group." : "Could not unpin this group."
+        )
+    }
+
     func sessionPin(token: String, sessionId: String) async throws -> CloudSessionPin {
         let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
         let response: SessionPinResponse = try await send(
@@ -2129,7 +2140,8 @@ actor CloudAPIClient {
         let sessionListEvents: Set<String> = [
             "session.hidden", "session.unhidden", "session.deleted",
             "session.pinned", "session.unpinned", "session.muted", "session.unmuted",
-            "session.marked_unread", "session.unmarked_unread"
+            "session.marked_unread", "session.unmarked_unread",
+            "group_space.pinned", "group_space.unpinned"
         ]
         if sessionListEvents.contains(event.eventType),
            let sessionId = event.payload.sessionId?.nonEmpty {

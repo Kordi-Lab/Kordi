@@ -38,6 +38,12 @@ struct ChatHomeView: View {
         ChatHomeSearch.normalized(searchText)
     }
 
+    private var pinLayoutIdentity: [String] {
+        (model.pinnedSessionIds.map { "session:\($0)" }
+            + model.pinnedGroupSpaceIds.map { "group:\($0)" }
+        ).sorted()
+    }
+
     private var agentSessions: [AgentSessionListItem] {
         AgentSessionTimelineCatalog.build(
             conversations: model.conversations,
@@ -79,8 +85,14 @@ struct ChatHomeView: View {
                 .map(ContactListItem.conversation)
         return (people + groupSpaces.map(ContactListItem.group))
             .sorted {
-                let leftPinned = $0.isPinned(in: model.pinnedSessionIds)
-                let rightPinned = $1.isPinned(in: model.pinnedSessionIds)
+                let leftPinned = $0.isPinned(
+                    sessionIds: model.pinnedSessionIds,
+                    groupSpaceIds: model.pinnedGroupSpaceIds
+                )
+                let rightPinned = $1.isPinned(
+                    sessionIds: model.pinnedSessionIds,
+                    groupSpaceIds: model.pinnedGroupSpaceIds
+                )
                 if leftPinned != rightPinned { return leftPinned }
                 return ChatListOrdering.precedes(
                     id: $0.id,
@@ -322,7 +334,7 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .id(model.pinnedSessionIds)
+        .id(pinLayoutIdentity)
         .accessibilityLabel("Contact chats")
     }
 
@@ -441,7 +453,7 @@ struct ChatHomeView: View {
                 }
             }
         }
-        .id(model.pinnedSessionIds)
+        .id(pinLayoutIdentity)
         .accessibilityLabel("Agent chats")
     }
 
@@ -739,8 +751,7 @@ struct ChatHomeView: View {
     }
 
     private func groupIsPinned(_ space: GroupSpaceSummary) -> Bool {
-        !space.sessions.isEmpty
-            && space.sessions.allSatisfy { model.pinnedSessionIds.contains($0.sessionId) }
+        model.pinnedGroupSpaceIds.contains(space.id)
     }
 
     private func groupIsMuted(_ space: GroupSpaceSummary) -> Bool {
@@ -1013,13 +1024,15 @@ private enum ContactListItem: Identifiable {
         }
     }
 
-    func isPinned(in pinnedSessionIds: Set<String>) -> Bool {
+    func isPinned(
+        sessionIds: Set<String>,
+        groupSpaceIds: Set<String>
+    ) -> Bool {
         switch self {
         case let .conversation(conversation):
-            pinnedSessionIds.contains(conversation.sessionId)
+            sessionIds.contains(conversation.sessionId)
         case let .group(space):
-            !space.sessions.isEmpty
-                && space.sessions.allSatisfy { pinnedSessionIds.contains($0.sessionId) }
+            groupSpaceIds.contains(space.id)
         }
     }
 }

@@ -32,6 +32,8 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
     .await
     .expect("create AI conversation");
     let path = format!("/v1/cloud/sessions/{session_id}");
+    let group_space_id = format!("group:space:{}", uuid::Uuid::now_v7());
+    let group_pin_path = format!("/v1/cloud/group-spaces/{group_space_id}/pinned");
 
     for suffix in ["pinned", "muted", "unread"] {
         let response = router
@@ -41,6 +43,12 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
             .unwrap();
         assert_eq!(response.status(), StatusCode::NO_CONTENT);
     }
+    let group_pinned = router
+        .clone()
+        .oneshot(put_with_token(&group_pin_path, &token))
+        .await
+        .unwrap();
+    assert_eq!(group_pinned.status(), StatusCode::NO_CONTENT);
     let visibility = read_json(
         router
             .clone()
@@ -52,6 +60,10 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
     assert_eq!(visibility["pinnedSessionIds"], json!([session_id.clone()]));
     assert_eq!(visibility["mutedSessionIds"], json!([session_id.clone()]));
     assert_eq!(visibility["unreadSessionIds"], json!([session_id.clone()]));
+    assert_eq!(
+        visibility["pinnedGroupSpaceIds"],
+        json!([group_space_id.clone()])
+    );
 
     let archived = router
         .clone()
@@ -80,6 +92,7 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
     assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
     let visibility = read_json(
         router
+            .clone()
             .oneshot(get_with_token("/v1/cloud/sessions/visibility", &token))
             .await
             .unwrap(),
@@ -89,4 +102,19 @@ async fn chat_list_preferences_are_account_scoped_and_archive_delete_clear_pin()
     assert_eq!(visibility["pinnedSessionIds"], json!([]));
     assert_eq!(visibility["mutedSessionIds"], json!([]));
     assert_eq!(visibility["unreadSessionIds"], json!([]));
+
+    let group_unpinned = router
+        .clone()
+        .oneshot(delete_with_token(&group_pin_path, &token))
+        .await
+        .unwrap();
+    assert_eq!(group_unpinned.status(), StatusCode::NO_CONTENT);
+    let visibility = read_json(
+        router
+            .oneshot(get_with_token("/v1/cloud/sessions/visibility", &token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(visibility["pinnedGroupSpaceIds"], json!([]));
 }

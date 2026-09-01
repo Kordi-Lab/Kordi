@@ -74,6 +74,27 @@ pub(super) async fn list_cloud_session_visibility(
             unread_session_ids.push(session_id);
         }
     }
+    let pinned_group_space_ids: Vec<String> = match query_as::<_, (String,)>(
+        "SELECT group_space_id FROM cloud_account_group_space_preferences \
+         WHERE account_id = $1 AND pinned_at IS NOT NULL \
+         ORDER BY updated_at DESC, group_space_id ASC",
+    )
+    .bind(&session.account_id)
+    .fetch_all(state.db_pool())
+    .await
+    {
+        Ok(rows) => rows
+            .into_iter()
+            .map(|(group_space_id,)| group_space_id)
+            .collect(),
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
 
     Json(CloudSessionVisibilityResponse {
         hidden_session_ids,
@@ -81,6 +102,7 @@ pub(super) async fn list_cloud_session_visibility(
         pinned_session_ids,
         muted_session_ids,
         unread_session_ids,
+        pinned_group_space_ids,
     })
     .into_response()
 }
@@ -559,4 +581,80 @@ pub(super) async fn unmark_cloud_session_unread(
         false,
     )
     .await
+}
+
+async fn set_group_space_pinned(
+    state: Arc<ServerState>,
+    session: CloudSession,
+    source_group_space_id: String,
+    pinned: bool,
+) -> Response {
+    let Some(group_space_id) = normalized_source_session_id(&source_group_space_id) else {
+        return err(
+            "invalid_group_space",
+            "groupSpaceId is required.",
+            StatusCode::BAD_REQUEST,
+        );
+    };
+    let now = Utc::now().to_rfc3339();
+    if query(
+        "INSERT INTO cloud_account_group_space_preferences \
+         (account_id, group_space_id, pinned_at, updated_at) \
+         VALUES ($1, $2, CASE WHEN $3 THEN NOW() ELSE NULL END, NOW()) \
+         ON CONFLICT (account_id, group_space_id) DO UPDATE SET \
+           pinned_at = EXCLUDED.pinned_at, updated_at = EXCLUDED.updated_at",
+    )
+    .bind(&session.account_id)
+    .bind(&group_space_id)
+    .bind(pinned)
+    .execute(state.db_pool())
+    .await
+    .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not update group preferences.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+    let event_type = if pinned {
+        "group_space.pinned"
+    } else {
+        "group_space.unpinned"
+    };
+    if publish_chat_event(
+        state.db_pool(),
+        &session.account_id,
+        event_type,
+        Some(&group_space_id),
+        None,
+        serde_json::json!({ "sessionId": &group_space_id, "updatedAt": &now }),
+        &now,
+    )
+    .await
+    .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not record group preference sync event.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+    StatusCode::NO_CONTENT.into_response()
+}
+
+pub(super) async fn pin_group_space(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    axum::extract::Path(group_space_id): axum::extract::Path<String>,
+) -> Response {
+    set_group_space_pinned(state, session, group_space_id, true).await
+}
+
+pub(super) async fn unpin_group_space(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    axum::extract::Path(group_space_id): axum::extract::Path<String>,
+) -> Response {
+    set_group_space_pinned(state, session, group_space_id, false).await
 }

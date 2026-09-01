@@ -190,6 +190,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var pinnedSessionIds = Set<String>()
     @Published private(set) var mutedSessionIds = Set<String>()
     @Published private(set) var markedUnreadSessionIds = Set<String>()
+    @Published private(set) var pinnedGroupSpaceIds = Set<String>()
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
     @Published private(set) var callsByConversationID: [String: CloudCall] = [:]
     @Published private(set) var latestCallSnapshot: CloudCall?
@@ -534,6 +535,7 @@ final class AppModel: ObservableObject {
         pinnedSessionIds = []
         mutedSessionIds = []
         markedUnreadSessionIds = []
+        pinnedGroupSpaceIds = []
         archivedConversations = []
         agentRunState = [:]
         agentExecutionLocation = [:]
@@ -636,6 +638,7 @@ final class AppModel: ObservableObject {
             pinnedSessionIds = Set((visibility.pinnedSessionIds ?? []).compactMap(\.nonEmpty))
             mutedSessionIds = Set((visibility.mutedSessionIds ?? []).compactMap(\.nonEmpty))
             markedUnreadSessionIds = Set((visibility.unreadSessionIds ?? []).compactMap(\.nonEmpty))
+            pinnedGroupSpaceIds = Set((visibility.pinnedGroupSpaceIds ?? []).compactMap(\.nonEmpty))
             for message in latestCanonical { mergeCloudMessage(message, peerHint: nil) }
             if let activeCalls {
                 applyActiveCallSnapshot(
@@ -3386,23 +3389,15 @@ final class AppModel: ObservableObject {
     }
 
     func setGroupSpacePinned(_ space: GroupSpaceSummary, pinned: Bool) async -> Bool {
-        let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
-        guard !sessionIds.isEmpty else { return false }
+        guard !space.id.isEmpty else { return false }
         if !previewMode {
             guard let token else { return false }
             do {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    for sessionId in sessionIds {
-                        group.addTask { [api] in
-                            try await api.setSessionPinned(
-                                token: token,
-                                sessionId: sessionId,
-                                pinned: pinned
-                            )
-                        }
-                    }
-                    try await group.waitForAll()
-                }
+                try await api.setGroupSpacePinned(
+                    token: token,
+                    groupSpaceId: space.id,
+                    pinned: pinned
+                )
             } catch {
                 errorMessage = userFacing(
                     error,
@@ -3412,9 +3407,9 @@ final class AppModel: ObservableObject {
             }
         }
         if pinned {
-            pinnedSessionIds.formUnion(sessionIds)
+            pinnedGroupSpaceIds.insert(space.id)
         } else {
-            pinnedSessionIds.subtract(sessionIds)
+            pinnedGroupSpaceIds.remove(space.id)
         }
         return true
     }
@@ -3469,6 +3464,13 @@ final class AppModel: ObservableObject {
                             )
                         }
                     }
+                    group.addTask { [api] in
+                        try await api.setGroupSpacePinned(
+                            token: token,
+                            groupSpaceId: space.id,
+                            pinned: false
+                        )
+                    }
                     try await group.waitForAll()
                 }
             } catch {
@@ -3478,6 +3480,7 @@ final class AppModel: ObservableObject {
         }
         hiddenCloudSessionIds.formUnion(sessionIds)
         pinnedSessionIds.subtract(sessionIds)
+        pinnedGroupSpaceIds.remove(space.id)
         if previewMode {
             let archived = conversations.filter { sessionIds.contains($0.sessionId) }
             conversations.removeAll { sessionIds.contains($0.sessionId) }
@@ -5663,6 +5666,15 @@ final class AppModel: ObservableObject {
             if event.eventType == "message.deleted", let messageId = event.messageId?.nonEmpty {
                 deletedMessageIds.insert(messageId)
                 removeCloudMessage(messageId)
+                continue
+            }
+            if ["group_space.pinned", "group_space.unpinned"].contains(event.eventType),
+               let groupSpaceId = event.payload?.sessionId?.nonEmpty ?? event.peerAccountId?.nonEmpty {
+                if event.eventType == "group_space.pinned" {
+                    pinnedGroupSpaceIds.insert(groupSpaceId)
+                } else {
+                    pinnedGroupSpaceIds.remove(groupSpaceId)
+                }
                 continue
             }
             if [
