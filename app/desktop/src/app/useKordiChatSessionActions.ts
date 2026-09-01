@@ -164,6 +164,18 @@ export function useKordiChatSessionActions({
     setLocallyHiddenSessionIds,
   ]);
 
+  const runChatListAction = useCallback(async (
+    action: () => Promise<void>,
+    fallbackMessage: string,
+  ) => {
+    setDesktopError(null);
+    try {
+      await action();
+    } catch (error) {
+      setDesktopError(error instanceof Error ? error.message : fallbackMessage);
+    }
+  }, [setDesktopError]);
+
   const syncGroupSessionTitleRename = useCallback(async (
     state: CanonicalSessionState,
     sessionId: string,
@@ -312,7 +324,6 @@ export function useKordiChatSessionActions({
       const message =
         error instanceof Error ? error.message : 'Unable to hide session';
       setDesktopError(message.startsWith('Session not found') ? null : message);
-      if (shouldUseCloudSessionAction(trimmedSessionId)) throw error;
     }
   }, [
     activeConversationId,
@@ -392,19 +403,20 @@ export function useKordiChatSessionActions({
   const restoreSession = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
     if (!isNativeShell || !trimmedSessionId) return;
-    setDesktopError(null);
-    await unhideCloudSession(trimmedSessionId);
-    setLocallyHiddenSessionIds((current) => {
-      if (!current.has(trimmedSessionId)) return current;
-      const next = new Set(current);
-      next.delete(trimmedSessionId);
-      return next;
-    });
-    await refreshCanonicalState();
+    await runChatListAction(async () => {
+      await unhideCloudSession(trimmedSessionId);
+      setLocallyHiddenSessionIds((current) => {
+        if (!current.has(trimmedSessionId)) return current;
+        const next = new Set(current);
+        next.delete(trimmedSessionId);
+        return next;
+      });
+      await refreshCanonicalState();
+    }, 'Unable to restore chat');
   }, [
     isNativeShell,
     refreshCanonicalState,
-    setDesktopError,
+    runChatListAction,
     setLocallyHiddenSessionIds,
     unhideCloudSession,
   ]);
@@ -412,37 +424,48 @@ export function useKordiChatSessionActions({
   const setSessionPinned = useCallback(async (sessionId: string, pinned: boolean) => {
     const trimmedSessionId = sessionId.trim();
     if (!isNativeShell || !trimmedSessionId) return;
-    setDesktopError(null);
-    await setCloudSessionPinned(trimmedSessionId, pinned);
-  }, [isNativeShell, setCloudSessionPinned, setDesktopError]);
+    await runChatListAction(
+      () => setCloudSessionPinned(trimmedSessionId, pinned),
+      pinned ? 'Unable to pin chat' : 'Unable to unpin chat',
+    );
+  }, [isNativeShell, runChatListAction, setCloudSessionPinned]);
 
   const setSessionMuted = useCallback(async (sessionId: string, muted: boolean) => {
     const trimmedSessionId = sessionId.trim();
     if (!isNativeShell || !trimmedSessionId) return;
-    setDesktopError(null);
-    await setCloudSessionMuted(trimmedSessionId, muted);
-  }, [isNativeShell, setCloudSessionMuted, setDesktopError]);
+    await runChatListAction(
+      () => setCloudSessionMuted(trimmedSessionId, muted),
+      muted ? 'Unable to mute chat' : 'Unable to unmute chat',
+    );
+  }, [isNativeShell, runChatListAction, setCloudSessionMuted]);
 
   const setSessionUnread = useCallback(async (sessionId: string, unread: boolean) => {
     const trimmedSessionId = sessionId.trim();
     if (!isNativeShell || !trimmedSessionId) return;
-    setDesktopError(null);
-    if (unread) await setCloudSessionUnread(trimmedSessionId, true);
-    else await markCloudSessionsRead([trimmedSessionId]);
-  }, [isNativeShell, markCloudSessionsRead, setCloudSessionUnread, setDesktopError]);
+    await runChatListAction(
+      () => unread
+        ? setCloudSessionUnread(trimmedSessionId, true)
+        : markCloudSessionsRead([trimmedSessionId]),
+      unread ? 'Unable to mark chat unread' : 'Unable to mark chat read',
+    );
+  }, [isNativeShell, markCloudSessionsRead, runChatListAction, setCloudSessionUnread]);
 
   const markSessionsRead = useCallback(async (sessionIds: string[]) => {
     if (!isNativeShell) return;
-    setDesktopError(null);
-    await markCloudSessionsRead(sessionIds);
-  }, [isNativeShell, markCloudSessionsRead, setDesktopError]);
+    await runChatListAction(
+      () => markCloudSessionsRead(sessionIds),
+      'Unable to mark group read',
+    );
+  }, [isNativeShell, markCloudSessionsRead, runChatListAction]);
 
   const setGroupPinned = useCallback(async (groupSpaceId: string, pinned: boolean) => {
     const trimmedGroupSpaceId = groupSpaceId.trim();
     if (!isNativeShell || !trimmedGroupSpaceId) return;
-    setDesktopError(null);
-    await setCloudGroupSpacePinned(trimmedGroupSpaceId, pinned);
-  }, [isNativeShell, setCloudGroupSpacePinned, setDesktopError]);
+    await runChatListAction(
+      () => setCloudGroupSpacePinned(trimmedGroupSpaceId, pinned),
+      pinned ? 'Unable to pin group' : 'Unable to unpin group',
+    );
+  }, [isNativeShell, runChatListAction, setCloudGroupSpacePinned]);
 
   return {
     renameSession,

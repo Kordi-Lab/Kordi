@@ -13,7 +13,6 @@ import type {
 } from '@/kordi-app/types';
 import type {
   CloudAccount,
-  CloudAuthClient,
   CloudMessage,
   CloudSessionForkSummary,
 } from './authClient';
@@ -57,9 +56,6 @@ import {
 import {
   resetCloudAttachmentPreviewLoader,
 } from './cloudAttachments';
-import {
-  loadSession,
-} from './session';
 
 type CloudAccountMessageStore = {
   cache: CloudMessageCache;
@@ -495,92 +491,4 @@ export function useCloudAccountLifecycleState({
     cancelledRef,
     resetAccountState,
   };
-}
-
-export function useCloudSessionVisibilityRefresh({
-  account,
-  client,
-  setHiddenSessionIds,
-  setDeletedSessionIds,
-  setUnreadSessionIds,
-  setPinnedSessionIds,
-  setMutedSessionIds,
-  setPinnedGroupSpaceIds,
-}: {
-  account: CloudAccount | null;
-  client: CloudAuthClient;
-  setHiddenSessionIds: Dispatch<SetStateAction<Set<string>>>;
-  setDeletedSessionIds: Dispatch<SetStateAction<Set<string>>>;
-  setUnreadSessionIds: Dispatch<SetStateAction<Set<string>>>;
-  setPinnedSessionIds: Dispatch<SetStateAction<Set<string>>>;
-  setMutedSessionIds: Dispatch<SetStateAction<Set<string>>>;
-  setPinnedGroupSpaceIds: Dispatch<SetStateAction<Set<string>>>;
-}) {
-  useEffect(() => {
-    if (!account) return;
-    let cancelled = false;
-    void loadSession()
-      .then(async (session) => {
-        if (!session?.token) return null;
-        return client.listSessionVisibility(session.token);
-      })
-      .then((visibility) => {
-        if (cancelled || !visibility) return;
-        const nextVisibility = {
-          hiddenSessionIds: new Set(
-            visibility.hiddenSessionIds
-              .map((value) => value.trim())
-              .filter(Boolean),
-          ),
-          deletedSessionIds: new Set(
-            visibility.deletedSessionIds
-              .map((value) => value.trim())
-              .filter(Boolean),
-          ),
-          unreadSessionIds: new Set(
-            visibility.unreadSessionIds
-              .map((value) => value.trim())
-              .filter(Boolean),
-          ),
-          pinnedSessionIds: new Set(
-            visibility.pinnedSessionIds
-              .map((value) => value.trim())
-              .filter(Boolean),
-          ),
-          mutedSessionIds: new Set(
-            visibility.mutedSessionIds
-              .map((value) => value.trim())
-              .filter(Boolean),
-          ),
-          pinnedGroupSpaceIds: new Set(
-            visibility.pinnedGroupSpaceIds
-              .map((value) => value.trim())
-              .filter(Boolean),
-          ),
-        };
-        saveCloudSessionVisibility(account.accountId, nextVisibility);
-        setHiddenSessionIds(nextVisibility.hiddenSessionIds);
-        setDeletedSessionIds(nextVisibility.deletedSessionIds);
-        setUnreadSessionIds(nextVisibility.unreadSessionIds);
-        setPinnedSessionIds(nextVisibility.pinnedSessionIds);
-        setMutedSessionIds(nextVisibility.mutedSessionIds);
-        setPinnedGroupSpaceIds(nextVisibility.pinnedGroupSpaceIds);
-      })
-      .catch(() => {
-        // A visibility refresh failure should not block message bootstrap;
-        // the next diff/full refresh can recover.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    account,
-    client,
-    setDeletedSessionIds,
-    setHiddenSessionIds,
-    setMutedSessionIds,
-    setPinnedGroupSpaceIds,
-    setPinnedSessionIds,
-    setUnreadSessionIds,
-  ]);
 }

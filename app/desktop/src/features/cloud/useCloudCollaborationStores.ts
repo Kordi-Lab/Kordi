@@ -28,10 +28,8 @@ import type {
   CloudSyncCoordinator,
 } from './cloudSyncCoordinator';
 import type { CloudUnreadReadinessSnapshot } from './cloudMessageSyncState';
-import {
-  useCloudAccountLifecycleState,
-  useCloudSessionVisibilityRefresh,
-} from './useCloudAccountLifecycleState';
+import { useCloudAccountLifecycleState } from './useCloudAccountLifecycleState';
+import { useCloudSessionVisibilityRefresh } from './useCloudSessionVisibilityRefresh';
 
 export type CloudCollaborationMessageStore = {
   value: Record<string, CloudMessage[]>;

@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -76,16 +77,23 @@ export function useCloudSessionActions({
   const setMutedIds = stores.visibility.setMutedIds;
   const setPinnedGroupSpaceIds = stores.visibility.setPinnedGroupSpaceIds;
   const setMessagesByPeer = stores.messages.setByPeer;
+  const visibilityRefreshGenerationRef = useRef(0);
 
   const refreshVisibility = useCallback(async (token: string) => {
-    const visibility = await client.listSessionVisibility(token);
-    const ids = (values: string[]) => new Set(values.map((value) => value.trim()).filter(Boolean));
-    setHiddenIds(ids(visibility.hiddenSessionIds));
-    setDeletedIds(ids(visibility.deletedSessionIds));
-    setUnreadIds(ids(visibility.unreadSessionIds));
-    setPinnedIds(ids(visibility.pinnedSessionIds));
-    setMutedIds(ids(visibility.mutedSessionIds));
-    setPinnedGroupSpaceIds(ids(visibility.pinnedGroupSpaceIds));
+    const generation = ++visibilityRefreshGenerationRef.current;
+    try {
+      const visibility = await client.listSessionVisibility(token);
+      if (generation !== visibilityRefreshGenerationRef.current) return;
+      const ids = (values: string[]) => new Set(values.map((value) => value.trim()).filter(Boolean));
+      setHiddenIds(ids(visibility.hiddenSessionIds));
+      setDeletedIds(ids(visibility.deletedSessionIds));
+      setUnreadIds(ids(visibility.unreadSessionIds));
+      setPinnedIds(ids(visibility.pinnedSessionIds));
+      setMutedIds(ids(visibility.mutedSessionIds));
+      setPinnedGroupSpaceIds(ids(visibility.pinnedGroupSpaceIds));
+    } catch {
+      // The local mutation remains valid; the normal sync loop retries.
+    }
   }, [client, setDeletedIds, setHiddenIds, setMutedIds, setPinnedGroupSpaceIds, setPinnedIds, setUnreadIds]);
 
   const refreshActivity = useCallback(async (sessionId: string) => {

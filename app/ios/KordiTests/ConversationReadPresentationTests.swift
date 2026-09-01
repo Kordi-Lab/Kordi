@@ -37,7 +37,7 @@ final class ConversationReadPresentationTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(source.contains("Text(session.lastMessage.nonEmpty ?? \"No messages yet\")"))
+        XCTAssertTrue(source.contains("BlobEmojiPreviewText(text: session.lastMessage.nonEmpty ?? \"No messages yet\")"))
         XCTAssertFalse(source.contains("messageCountText"))
     }
 

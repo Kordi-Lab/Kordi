@@ -8,7 +8,7 @@ use super::{
 
 #[test]
 fn unread_counts_cover_history_omitted_from_the_startup_projection() {
-    let mut conn = super::tests::test_connection();
+    let mut conn = super::test_support::test_connection();
     let messages = (1..=100)
         .map(|sequence| {
             json!({
@@ -55,7 +55,7 @@ fn unread_counts_cover_history_omitted_from_the_startup_projection() {
 
 #[test]
 fn authoritative_message_resolves_its_pending_outbox_operation() {
-    let mut conn = super::tests::test_connection();
+    let mut conn = super::test_support::test_connection();
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS chat_sync_pending_operations (
             account_id TEXT, operation_id TEXT,
@@ -92,7 +92,7 @@ fn authoritative_message_resolves_its_pending_outbox_operation() {
 
 #[test]
 fn apply_result_stays_bounded_as_unrelated_history_grows() {
-    let mut conn = super::tests::test_connection();
+    let mut conn = super::test_support::test_connection();
     let unrelated_messages = (1..=100)
         .map(|sequence| {
             json!({
@@ -211,7 +211,7 @@ fn apply_result_stays_bounded_as_unrelated_history_grows() {
 
 #[test]
 fn local_state_pages_backfilled_group_history_for_replay() {
-    let mut conn = super::tests::test_connection();
+    let mut conn = super::test_support::test_connection();
     let message = |sequence| {
         json!({
             "id": format!("group-{sequence}"),
@@ -288,7 +288,7 @@ fn local_state_pages_backfilled_group_history_for_replay() {
 
 #[test]
 fn local_state_keeps_one_terminal_agent_response_without_deleting_history() {
-    let mut conn = super::tests::test_connection();
+    let mut conn = super::test_support::test_connection();
     let response = |sequence: i64, delivery_state: &str, text: &str| {
         let envelope = json!({
             "kind": "agent-response",
@@ -353,7 +353,7 @@ fn local_state_keeps_one_terminal_agent_response_without_deleting_history() {
 
 #[test]
 fn startup_projection_stays_under_scale_row_and_payload_budgets() {
-    let mut conn = super::tests::test_connection();
+    let mut conn = super::test_support::test_connection();
     let conversations = (0..200)
         .map(|conversation| {
             json!({
@@ -401,7 +401,7 @@ fn startup_projection_stays_under_scale_row_and_payload_budgets() {
 
 #[test]
 fn startup_projection_keeps_latest_route_beside_conversation_head() {
-    let mut conn = super::tests::test_connection();
+    let mut conn = super::test_support::test_connection();
     apply_on_connection(
         &mut conn,
         ChatSyncApplyRequest {
@@ -449,7 +449,7 @@ fn startup_projection_keeps_latest_route_beside_conversation_head() {
 
 #[test]
 fn startup_projection_keeps_a_bounded_direct_transcript() {
-    let mut conn = super::tests::test_connection();
+    let mut conn = super::test_support::test_connection();
     apply_on_connection(
         &mut conn,
         ChatSyncApplyRequest {

@@ -47,7 +47,7 @@ export type CreateChatGroupRequest = {
   name?: string | null;
   contactIds: string[];
 };
-export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
+export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./chatListShellArgs.types').ChatListShellArgs & {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
@@ -71,13 +71,8 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   chatConversations: Conversation[];
   companionConversations: Conversation[];
   participantSpaces: ParticipantSpaceViewModel[];
-  archivedParticipantSpaces: ParticipantSpaceViewModel[];
   contactParticipantSpaces: ParticipantSpaceViewModel[];
   agentParticipantSpaces: ParticipantSpaceViewModel[];
-  pinnedChatSessionIds: ReadonlySet<string>;
-  mutedChatSessionIds: ReadonlySet<string>;
-  unreadChatSessionIds: ReadonlySet<string>;
-  pinnedChatGroupSpaceIds: ReadonlySet<string>;
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   filteredConversations: Conversation[];
@@ -119,12 +114,6 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   handleRemoveChatGroupMember: (sessionIds: string[], identityId: string) => Promise<void>;
   handleSetChatGroupAdmin: (sessionIds: string[], identityId: string, isAdmin: boolean) => Promise<void>;
   handleArchiveChatSession: (sessionId: string) => Promise<void>;
-  handleRestoreChatSession: (sessionId: string) => Promise<void>;
-  handleSetChatSessionPinned: (sessionId: string, pinned: boolean) => Promise<void>;
-  handleSetChatSessionMuted: (sessionId: string, muted: boolean) => Promise<void>;
-  handleSetChatSessionUnread: (sessionId: string, unread: boolean) => Promise<void>;
-  handleMarkChatSessionsRead: (sessionIds: string[]) => Promise<void>;
-  handleSetChatGroupPinned: (groupSpaceId: string, pinned: boolean) => Promise<void>;
   handleDeleteChatSession: (sessionId: string) => Promise<void>;
   handleMoveChatSessionToProject: (sessionId: string, projectRoot: string) => Promise<void>;
   handleCreateProjectFromFolder: (folderPath: string, name?: string) => Promise<void>;
@@ -341,13 +330,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'cloudSession'
   | 'chatConversations'
   | 'participantSpaces'
-  | 'archivedParticipantSpaces'
   | 'contactParticipantSpaces'
   | 'agentParticipantSpaces'
-  | 'pinnedChatSessionIds'
-  | 'mutedChatSessionIds'
-  | 'unreadChatSessionIds'
-  | 'pinnedChatGroupSpaceIds'
   | 'handleCreateChatSession'
   | 'chatSearch'
   | 'setChatSearch'
@@ -367,12 +351,6 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleRemoveChatGroupMember'
   | 'handleSetChatGroupAdmin'
   | 'handleArchiveChatSession'
-  | 'handleRestoreChatSession'
-  | 'handleSetChatSessionPinned'
-  | 'handleSetChatSessionMuted'
-  | 'handleSetChatSessionUnread'
-  | 'handleMarkChatSessionsRead'
-  | 'handleSetChatGroupPinned'
   | 'handleDeleteChatSession'
   | 'handleMoveChatSessionToProject'
   | 'handleCreateProjectFromFolder'
@@ -418,7 +396,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'themeMode'
   | 'setThemeMode'
   | 'isCollaborationSyncing'
->;
+> & import('./chatListShellArgs.types').ChatListShellArgs;
 
 export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeNav'

@@ -111,6 +111,7 @@ test('WorkspaceSidebar places the updater in the global rail above the profile',
   }) as never));
   const source = [
     readFileSync(new URL('../src/pages/WorkspaceSidebar.tsx', import.meta.url), 'utf8'),
+    readFileSync(new URL('../src/pages/workspaceSidebar.chrome.tsx', import.meta.url), 'utf8'),
     readFileSync(new URL('../src/pages/workspaceSidebar.navigation.tsx', import.meta.url), 'utf8'),
     readFileSync(new URL('../src/pages/workspaceSidebar.update.tsx', import.meta.url), 'utf8'),
   ].join('\n');

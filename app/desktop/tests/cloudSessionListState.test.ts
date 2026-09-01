@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import {
@@ -6,6 +7,9 @@ import {
   type CloudSessionVisibilityState,
 } from '../src/features/cloud/cloudDiffSync';
 import type { CloudSyncEvent } from '../src/features/cloud/authClient';
+
+const chatSessionActionsSource = () => readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
+const cloudSessionActionsSource = () => readFileSync(new URL('../src/features/cloud/useCloudSessionActions.ts', import.meta.url), 'utf8');
 
 function event(eventType: string, sessionId: string): CloudSyncEvent {
   return {
@@ -91,4 +95,33 @@ test('unpin, unmute, and restore events clear their synchronized state', () => {
   assert.deepEqual([...cleared.pinnedSessionIds], []);
   assert.deepEqual([...cleared.mutedSessionIds], []);
   assert.deepEqual([...cleared.pinnedGroupSpaceIds], []);
+});
+
+test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {
+  const source = chatSessionActionsSource();
+  const deleteStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const deleteSession'));
+  const cloudDeleteBranch = source.slice(deleteStart, source.indexOf('} catch (error) {', deleteStart));
+  assert.match(cloudDeleteBranch, /await deleteCloudSession\(trimmedSessionId\);[\s\S]*archiveDesktopChatSession\(\s*trimmedSessionId,\s*desktopActiveSessionId/);
+  assert.match(cloudDeleteBranch, /optimisticallyRemoveSession\(trimmedSessionId, false\)/);
+  const archiveStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const archiveSession'));
+  assert.match(
+    source.slice(archiveStart, source.indexOf('}', archiveStart)),
+    /optimisticallyRemoveSession\(trimmedSessionId, false\)/,
+  );
+});
+
+test('preference refresh ignores stale snapshots from overlapping actions', () => {
+  const source = cloudSessionActionsSource();
+  assert.match(source, /const generation = \+\+visibilityRefreshGenerationRef\.current;/);
+  assert.match(source, /if \(generation !== visibilityRefreshGenerationRef\.current\) return;/);
+});
+
+test('chat list mutations surface action failures without unhandled rejections', () => {
+  const source = chatSessionActionsSource();
+  assert.match(source, /const runChatListAction = useCallback/);
+  assert.match(source, /setDesktopError\(error instanceof Error \? error\.message : fallbackMessage\)/);
+  assert.doesNotMatch(
+    source.slice(source.indexOf('const archiveSession'), source.indexOf('const deleteSession')),
+    /throw error/,
+  );
 });

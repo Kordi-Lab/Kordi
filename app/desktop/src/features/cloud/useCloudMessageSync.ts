@@ -2,18 +2,9 @@ import {
   useCallback,
   useEffect,
   useRef,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
 } from 'react';
-import type {
-  CloudAccount,
-  CloudAuthClient,
-  CloudMessage,
-  CloudSessionForkSummary,
-} from './authClient';
 import { chatSyncSessionTitle, cloudMessageFromChatSync } from './authClient';
-import type { CloudAgentDefinition } from './cloudAgents';
+import type { CloudMessage } from './authClient';
 import { chatEventsRequireDirectoryBootstrap, publishCloudDeviceEvents } from './cloudDeviceEvents';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { compareCloudMessages } from './cloudMessageMerge';
@@ -24,19 +15,21 @@ import {
   cloudUnreadReadinessContextKey,
   mergeCloudMessagesByPeerSnapshot,
   transitionCloudUnreadReadiness,
-  type CloudUnreadReadinessSnapshot,
   type CloudUnreadReadinessStatus,
 } from './cloudMessageSyncState';
-import {
-  syncCloudDiffOnce,
-  type CloudSessionPinsById,
-  type CloudSessionTitlesById,
-} from './cloudDiffSync';
-import {
-  mergeCloudSessionActivity,
-  type CloudSessionActivityStore,
-} from './cloudSessionActivity';
-import { CloudSyncCoordinator } from './cloudSyncCoordinator';
+import { syncCloudDiffOnce } from './cloudDiffSync';
+import type { CloudSessionTitlesById } from './cloudDiffSync';
+import { mergeCloudSessionActivity } from './cloudSessionActivity';
+import type {
+  CloudMessageSyncController,
+  PendingCloudSyncRequest,
+  UseCloudMessageSyncInput,
+} from './cloudMessageSync.types';
+export type {
+  CloudMessageSyncController,
+  CloudMessageSyncStores,
+  UseCloudMessageSyncInput,
+} from './cloudMessageSync.types';
 import { loadSession } from './session';
 import {
   applyChatSyncLocalBatch,
@@ -51,55 +44,6 @@ import { pruneMissingCanonicalCloudMessages } from '@/features/canonical/canonic
 // temporary disconnects without polling several times per second.
 export const CLOUD_MESSAGES_REFRESH_MS = 15_000;
 const CLOUD_SYNC_EVENT_PAGE_LIMIT = 1_000;
-
-type PendingCloudSyncRequest = {
-  mode: 'diff' | 'full' | 'bootstrap';
-  settleInitialMessages: boolean;
-};
-
-type CloudSyncStore<T> = {
-  stateRef: MutableRefObject<T>;
-  setState: Dispatch<SetStateAction<T>>;
-};
-
-export type CloudMessageSyncStores = {
-  messages: CloudSyncStore<Record<string, CloudMessage[]>> & {
-    peerReadAtByPeerRef: MutableRefObject<Record<string, string>>;
-  };
-  activity: CloudSyncStore<CloudSessionActivityStore>;
-  forks: CloudSyncStore<Record<string, CloudSessionForkSummary>>;
-  pins: CloudSyncStore<CloudSessionPinsById>;
-  titles: CloudSyncStore<CloudSessionTitlesById>;
-  agents: CloudSyncStore<Record<string, CloudAgentDefinition>>;
-  hiddenSessionIds: CloudSyncStore<Set<string>>;
-  deletedSessionIds: CloudSyncStore<Set<string>>;
-  unreadSessionIds: CloudSyncStore<Set<string>>;
-  pinnedSessionIds: CloudSyncStore<Set<string>>;
-  mutedSessionIds: CloudSyncStore<Set<string>>;
-  pinnedGroupSpaceIds: CloudSyncStore<Set<string>>;
-};
-
-export type UseCloudMessageSyncInput = {
-  account: CloudAccount | null;
-  bootstrapPeerIds: string[];
-  bootstrapPeerKey: string;
-  cloudUnreadContextKey: string | null;
-  contactsSettled: boolean;
-  client: CloudAuthClient;
-  coordinator: CloudSyncCoordinator;
-  cancelledRef: MutableRefObject<boolean>;
-  stores: CloudMessageSyncStores;
-  setUnreadReadiness: Dispatch<SetStateAction<CloudUnreadReadinessSnapshot>>;
-  refreshCloudAgents: (generation?: number) => Promise<void>; onMessagesDeleted?: (messageIds: string[]) => Promise<void> | void;
-  onCanonicalMessagesPruned?: (messageIds: string[]) => Promise<void> | void;
-};
-
-export type CloudMessageSyncController = {
-  refreshCloudMessages: () => Promise<void>;
-  syncCloudCollaborationDiff: (
-    options?: { settleInitialMessages?: boolean },
-  ) => Promise<void>;
-};
 
 export function useCloudMessageSync({
   account,
