@@ -1137,6 +1137,27 @@ final class KordiMarkdownParserTests: XCTestCase {
             contentHeight: 1_400,
             containerHeight: 600
         ))
+        XCTAssertEqual(ConversationTimelineScrollBehavior.clampedContentOffsetY(
+            420,
+            contentHeight: 1_400,
+            containerHeight: 600,
+            topInset: 12,
+            bottomInset: 20
+        ), 420)
+        XCTAssertEqual(ConversationTimelineScrollBehavior.clampedContentOffsetY(
+            -100,
+            contentHeight: 1_400,
+            containerHeight: 600,
+            topInset: 12,
+            bottomInset: 20
+        ), -12)
+        XCTAssertEqual(ConversationTimelineScrollBehavior.clampedContentOffsetY(
+            1_000,
+            contentHeight: 1_400,
+            containerHeight: 600,
+            topInset: 12,
+            bottomInset: 20
+        ), 820)
     }
 
     func testConversationFollowsViewportResizeOnlyWhileAlreadyAtLatest() {
