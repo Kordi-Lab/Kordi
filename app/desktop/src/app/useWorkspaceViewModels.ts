@@ -32,7 +32,7 @@ import { collapseBlankConversationShells } from '@/features/chat/participantSpac
 import {
   createTranscriptReferenceStabilizer,
 } from '@/features/chat/transcriptReferenceStability';
-import { buildWorkspaceChatListViewModels } from '@/app/workspaceChatListViewModels';
+import { buildWorkspaceChatListViewModels, workspaceArchivedSessionIds } from '@/app/workspaceChatListViewModels';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
@@ -445,17 +445,12 @@ export function useWorkspaceViewModels({
   } = useMemo(() => buildWorkspaceChatListViewModels({
     activeConversationId: activeConvId,
     allConversations: blankShellCollapsedChatConversations,
-    archivedSessionIds: new Set([
-      ...archivedSessionIds,
-      ...(canonicalSessionState?.sessions ?? [])
-        .filter((session) => session.status === 'archived')
-        .map((session) => session.id),
-    ]),
+    archivedSessionIds: workspaceArchivedSessionIds(canonicalSessionState, archivedSessionIds),
     avatarSeed: getLocalProfileAvatarSeed(),
     chatSearch,
     hiddenSessionIds,
     localAgentReachoutSessionIds: localAgentCollaborationReachoutSessionIds,
-  }), [activeConvId, archivedSessionIds, blankShellCollapsedChatConversations, canonicalSessionState?.sessions, chatSearch, hiddenSessionIds, localAgentCollaborationReachoutSessionIds]);
+  }), [activeConvId, archivedSessionIds, blankShellCollapsedChatConversations, canonicalSessionState, chatSearch, hiddenSessionIds, localAgentCollaborationReachoutSessionIds]);
   const companionConversations = useMemo(
     () => companionConversationList(chatConversations, blankShellCollapsedChatConversations),
     [blankShellCollapsedChatConversations, chatConversations],

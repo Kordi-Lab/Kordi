@@ -8,7 +8,7 @@ import {
 } from '../src/features/cloud/cloudDiffSync';
 import type { CloudSyncEvent } from '../src/features/cloud/authClient';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
-import { buildWorkspaceChatListViewModels } from '../src/app/workspaceChatListViewModels';
+import { buildWorkspaceChatListViewModels, workspaceArchivedSessionIds } from '../src/app/workspaceChatListViewModels';
 
 const chatSessionActionsSource = () => readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
 const cloudSessionActionsSource = () => readFileSync(new URL('../src/features/cloud/useCloudSessionActions.ts', import.meta.url), 'utf8');
@@ -166,7 +166,8 @@ test('archived local agent sessions remain available only in archived chats', ()
     ),
     true,
   );
-  assert.match(workspaceViewModelsSource(), /session\.status === 'archived'/);
+  assert.deepEqual([...workspaceArchivedSessionIds(canonicalState, new Set())], [sessionId]);
+  assert.match(workspaceViewModelsSource(), /workspaceArchivedSessionIds\(canonicalSessionState, archivedSessionIds\)/);
 });
 
 test('preference refresh ignores stale snapshots from overlapping actions', () => {
