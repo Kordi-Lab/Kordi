@@ -142,6 +142,14 @@ test('shared Agent session pane and composer include transcript, attachments, fo
   }
 });
 
+test('thread panel keeps conversation reply but cannot open a nested thread', () => {
+  const source = readFileSync(new URL('../src/pages/ChatsPage.tsx', import.meta.url), 'utf8');
+  const threadPanel = blockBetween(source, '<ChatThreadPanel', '/>');
+
+  assert.match(threadPanel, /onReplyMessage: handleReplyMessage/);
+  assert.doesNotMatch(threadPanel, /onOpenMessageThread/);
+});
+
 test('side-panel Agent composer exposes the same visible attachment trigger and aligned composer controls as main chat', () => {
   const source = chatsPageSource();
   const side = sidePanelBlock(source);

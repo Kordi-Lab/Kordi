@@ -175,6 +175,45 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(source.contains("KordiTheme.agentViolet.opacity(0.14)"))
     }
 
+    func testThreadRepliesShareOneAccessoryRowAndCannotNest() throws {
+        let conversationDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation")
+        let bubbleSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageBubble.swift"),
+            encoding: .utf8
+        )
+        let conversationSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("ConversationView.swift"),
+            encoding: .utf8
+        )
+        let actionSource = try String(
+            contentsOf: conversationDirectory.appendingPathComponent("MessageActionSheets.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(bubbleSource.contains("MessageBubbleAccessoryRow("))
+        XCTAssertTrue(bubbleSource.contains("!message.reactions.isEmpty || threadReplyCount > 0"))
+        XCTAssertTrue(conversationSource.contains("allowsQuotedReplies: scopedThreadRootMessageID == nil"))
+        XCTAssertTrue(conversationSource.contains("allowsThreadReply: scopedThreadRootMessageID == nil"))
+        XCTAssertTrue(conversationSource.contains("content.navigationDestination(item: $activeRootMessageID)"))
+        XCTAssertTrue(conversationSource.contains("threadReturnMessageID = trackedMessageID ??"))
+        XCTAssertTrue(conversationSource.contains("rememberViewport(in: messages)"))
+        XCTAssertTrue(conversationSource.contains("proxy.scrollTo(returnMessageID, anchor: initialViewport.scrollAnchor)"))
+        XCTAssertTrue(conversationSource.contains("isNavigationReturnPending: threadReturnMessageID != nil"))
+        XCTAssertTrue(conversationSource.contains("contentOffsetY: geometry.contentOffset.y"))
+        XCTAssertTrue(conversationSource.contains("exactRestoreRequest = ConversationScrollRestoreRequest("))
+        XCTAssertTrue(conversationSource.contains("restoreThreadReturnPosition(using: proxy)"))
+        XCTAssertTrue(conversationSource.contains("threadReturnMessageID != nil || threadReturnScrollOffsetY != nil"))
+        XCTAssertTrue(conversationSource.contains("trackedMessageID = nil"))
+        XCTAssertTrue(conversationSource.contains("didRestoreContentOffset("))
+        XCTAssertTrue(conversationSource.contains("scopedThreadRootMessageID.map"))
+        XCTAssertTrue(actionSource.contains("actionButton(\"Reply in conversation\""))
+        XCTAssertTrue(actionSource.contains("actionButton(\"Reply in thread\""))
+        XCTAssertFalse(actionSource.contains("showsReplyDestinations"))
+    }
+
     func testMessageActionsStopConversationPanningAfterTheHoldWins() {
         XCTAssertFalse(MessageGestureArbitration.allowsSimultaneousRecognition(
             with: UIPanGestureRecognizer()
@@ -297,6 +336,21 @@ final class ConversationReadPresentationTests: XCTestCase {
         ))
     }
 
+    func testCachedThreadTimelineRendersWithoutAnotherConversationLoad() {
+        XCTAssertTrue(ConversationThreadLoadPolicy.usesCachedTimeline(
+            rootMessageID: "root",
+            messageCount: 1
+        ))
+        XCTAssertFalse(ConversationThreadLoadPolicy.usesCachedTimeline(
+            rootMessageID: "root",
+            messageCount: 0
+        ))
+        XCTAssertFalse(ConversationThreadLoadPolicy.usesCachedTimeline(
+            rootMessageID: nil,
+            messageCount: 1
+        ))
+    }
+
     func testBlobEmojiCatalogAndRecentsAreSharedDeduplicatedAndBounded() throws {
         XCTAssertEqual(BlobEmojiCatalog.all.count, 547)
         XCTAssertEqual(BlobEmojiCatalog.all.filter(\.animated).count, 173)
@@ -322,6 +376,28 @@ final class ConversationReadPresentationTests: XCTestCase {
             maximumPixelSize: 64
         ))
         XCTAssertGreaterThan(decoded.images?.count ?? 1, 1)
+    }
+
+    func testQuickReactionImagesAreBundledAndPrewarmed() async throws {
+        let animated = try XCTUnwrap(BlobEmojiCatalog.all.first(where: \.animated))
+        let storedRecents = BlobEmojiRecentStore.recording(animated.id, in: "[]")
+        let reactions = BlobEmojiCatalog.quickReactions(
+            storedRecentEmojiIDs: storedRecents
+        )
+
+        XCTAssertEqual(reactions.count, 6)
+        XCTAssertEqual(reactions.first, animated)
+        XCTAssertTrue(reactions.allSatisfy {
+            BlobEmojiCatalog.assetURL(for: $0) != nil
+        })
+
+        await BlobEmojiCatalog.prewarmQuickReactions(
+            storedRecentEmojiIDs: storedRecents
+        )
+
+        XCTAssertTrue(reactions.allSatisfy {
+            BlobEmojiCatalog.cachedImage(for: $0, animated: false) != nil
+        })
     }
 
     func testReactionMutationAddsTogglesAndRemovesWithoutDuplicates() {

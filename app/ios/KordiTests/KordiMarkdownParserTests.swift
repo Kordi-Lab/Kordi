@@ -942,6 +942,13 @@ final class KordiMarkdownParserTests: XCTestCase {
             isAtBottom: false,
             messageCount: 13
         ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true,
+            isAtBottom: true,
+            previousLatestMessageID: "message-12",
+            currentLatestMessageID: "message-13",
+            isNavigationReturnPending: true
+        ))
     }
 
     func testLocalOutgoingMessagesRequestTheBottomBeforeSending() throws {
@@ -1130,6 +1137,35 @@ final class KordiMarkdownParserTests: XCTestCase {
             contentHeight: 1_400,
             containerHeight: 600
         ))
+        XCTAssertEqual(ConversationTimelineScrollBehavior.clampedContentOffsetY(
+            420,
+            contentHeight: 1_400,
+            containerHeight: 600,
+            topInset: 12,
+            bottomInset: 20
+        ), 420)
+        XCTAssertEqual(ConversationTimelineScrollBehavior.clampedContentOffsetY(
+            -100,
+            contentHeight: 1_400,
+            containerHeight: 600,
+            topInset: 12,
+            bottomInset: 20
+        ), -12)
+        XCTAssertEqual(ConversationTimelineScrollBehavior.clampedContentOffsetY(
+            1_000,
+            contentHeight: 1_400,
+            containerHeight: 600,
+            topInset: 12,
+            bottomInset: 20
+        ), 820)
+        XCTAssertTrue(ConversationTimelineScrollBehavior.didRestoreContentOffset(
+            observed: 419.5,
+            target: 420
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.didRestoreContentOffset(
+            observed: 800,
+            target: 420
+        ))
     }
 
     func testConversationFollowsViewportResizeOnlyWhileAlreadyAtLatest() {
@@ -1153,6 +1189,13 @@ final class KordiMarkdownParserTests: XCTestCase {
             wasAtLatest: true,
             previousViewportSize: .zero,
             currentViewportSize: fullViewport
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
+            hasRevealedInitialViewport: true,
+            wasAtLatest: true,
+            isNavigationReturnPending: true,
+            previousViewportSize: fullViewport,
+            currentViewportSize: reducedViewport
         ))
 
         XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatestWhenPresentingInputSurface(
@@ -1183,6 +1226,33 @@ final class KordiMarkdownParserTests: XCTestCase {
                 latestMessageID: "message-9",
                 availableMessageIDs: ["message-4", "message-9"],
                 now: leftAt.addingTimeInterval(119)
+            ),
+            "message-4"
+        )
+    }
+
+    func testThreadViewportDoesNotClearParentConversationPosition() {
+        let memory = ConversationViewportMemory()
+        let leftAt = Date(timeIntervalSince1970: 1_000)
+        memory.remember(
+            key: "account:session:conversation",
+            messageID: "message-4",
+            latestMessageID: "message-9",
+            at: leftAt
+        )
+        memory.remember(
+            key: "account:session:thread:root",
+            messageID: nil,
+            latestMessageID: "thread-reply",
+            at: leftAt.addingTimeInterval(1)
+        )
+
+        XCTAssertEqual(
+            memory.resumedMessageID(
+                for: "account:session:conversation",
+                latestMessageID: "message-9",
+                availableMessageIDs: ["message-4", "message-9"],
+                now: leftAt.addingTimeInterval(2)
             ),
             "message-4"
         )

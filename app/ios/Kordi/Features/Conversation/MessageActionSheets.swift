@@ -524,13 +524,13 @@ struct MessageActionOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(BlobEmojiRecentStore.key) private var storedRecentEmojiIDs = "[]"
     @State private var showsAllReactions = false
-    @State private var showsReplyDestinations = false
     @State private var didSchedulePreviewExpansion = false
     let message: ChatMessage
     let sourceFrame: CGRect
     let usableFrame: CGRect
     let ownAccountId: String?
-    let allowsReply: Bool
+    let allowsConversationReply: Bool
+    let allowsThreadReply: Bool
     let allowsReactions: Bool
     let allowsEdit: Bool
     let allowsDelete: Bool
@@ -554,15 +554,12 @@ struct MessageActionOverlay: View {
     let onSelect: () -> Void
 
     private var quickReactions: [BlobEmoji] {
-        let recent = BlobEmojiRecentStore.ids(from: storedRecentEmojiIDs)
-            .compactMap { BlobEmojiCatalog.byID[$0] }
-        let fallback = BlobEmojiCatalog.all.filter { !$0.animated }
-        return Array((recent + fallback.filter { !recent.contains($0) }).prefix(6))
+        BlobEmojiCatalog.quickReactions(storedRecentEmojiIDs: storedRecentEmojiIDs)
     }
 
     private var actionCount: Int {
-        if showsReplyDestinations { return 3 }
-        return (allowsReply ? 1 : 0)
+        (allowsConversationReply ? 1 : 0)
+            + (allowsThreadReply ? 1 : 0)
             + (!message.text.isEmpty ? 2 : 0)
             + 3
             + (allowsEdit ? 1 : 0)
@@ -767,20 +764,6 @@ struct MessageActionOverlay: View {
     private var actionMenu: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
-                if showsReplyDestinations {
-                    actionButton("Reply", systemImage: "chevron.left") {
-                        withAnimation(.easeOut(duration: 0.16)) {
-                            showsReplyDestinations = false
-                        }
-                    }
-                    Divider().padding(.horizontal, 14)
-                    actionButton("Reply in conversation", systemImage: "message") {
-                        onReply(.conversation)
-                    }
-                    actionButton("Reply in thread", systemImage: "sidebar.right") {
-                        onReply(.thread)
-                    }
-                } else {
                 if mediaAttachment != nil {
                     actionButton("Review", systemImage: "eye", action: onReviewAttachment)
                     actionButton(
@@ -797,11 +780,14 @@ struct MessageActionOverlay: View {
                     }
                     Divider().padding(.horizontal, 14)
                 }
-                if allowsReply {
-                    actionButton("Reply", systemImage: "arrowshape.turn.up.left") {
-                        withAnimation(.easeOut(duration: 0.16)) {
-                            showsReplyDestinations = true
-                        }
+                if allowsConversationReply {
+                    actionButton("Reply in conversation", systemImage: "message") {
+                        onReply(.conversation)
+                    }
+                }
+                if allowsThreadReply {
+                    actionButton("Reply in thread", systemImage: "sidebar.right") {
+                        onReply(.thread)
                     }
                 }
                 if !message.text.isEmpty {
@@ -848,7 +834,6 @@ struct MessageActionOverlay: View {
                     label: readReceiptLabel,
                     readers: readReceiptReaders
                 )
-                }
             }
             .padding(.vertical, 4)
         }

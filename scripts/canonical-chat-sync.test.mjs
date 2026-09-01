@@ -149,7 +149,15 @@ test("iOS conversation taps navigate before bounded asynchronous hydration", asy
   );
   assert.match(
     conversation,
-    /if !hasRevealedInitialViewport \{[\s\S]*ConversationInitialFailureView[\s\S]*ConversationInitialLoadingView/,
+    /let showsTimeline = hasRevealedInitialViewport \|\| usesCachedThreadTimeline/,
+  );
+  assert.match(
+    conversation,
+    /if !showsTimeline \{[\s\S]*ConversationInitialFailureView[\s\S]*ConversationInitialLoadingView/,
+  );
+  assert.match(
+    conversation,
+    /ConversationThreadLoadPolicy\.usesCachedTimeline\([\s\S]*return[\s\S]*model\.loadConversation/,
   );
   assert.match(conversation, /Button\("Try again", action: retry\)/);
   assert.match(model, /func loadConversation\(_ conversation: ConversationSummary\) async -> Bool/);

@@ -9,38 +9,85 @@ private struct ConversationTimelineRow: Identifiable {
     let message: ChatMessage
 }
 
-private struct ConversationThreadSheetModifier: ViewModifier {
+enum ConversationThreadPresentationMode: Equatable {
+    case navigation
+    case inspector
+
+    static func resolve(horizontalSizeClass: UserInterfaceSizeClass?) -> Self {
+        horizontalSizeClass == .compact ? .navigation : .inspector
+    }
+}
+
+enum ConversationThreadLoadPolicy {
+    static func usesCachedTimeline(rootMessageID: String?, messageCount: Int) -> Bool {
+        rootMessageID != nil && messageCount > 0
+    }
+}
+
+private struct ConversationThreadPresentationModifier: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var activeRootMessageID: String?
     let conversation: ConversationSummary
     let onReplyInConversation: (MessageActionSource) -> Void
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        content.sheet(isPresented: Binding(
+        switch ConversationThreadPresentationMode.resolve(
+            horizontalSizeClass: horizontalSizeClass
+        ) {
+        case .navigation:
+            content.navigationDestination(item: $activeRootMessageID) { threadRootID in
+                threadDestination(rootID: threadRootID)
+            }
+        case .inspector:
+            content.inspector(isPresented: threadIsPresented) {
+                if let threadRootID = activeRootMessageID {
+                    threadContainer(rootID: threadRootID)
+                        .inspectorColumnWidth(min: 320, ideal: 390, max: 480)
+                }
+            }
+        }
+    }
+
+    private var threadIsPresented: Binding<Bool> {
+        Binding(
             get: { activeRootMessageID != nil },
             set: { if !$0 { activeRootMessageID = nil } }
-        )) {
-            if let threadRootID = activeRootMessageID {
-                NavigationStack {
-                    ConversationView(
-                        conversation: conversation,
-                        allowsCompanionPanel: false,
-                        showsNavigationChrome: false,
-                        scopedThreadRootMessageID: threadRootID,
-                        onReplyInConversation: { source in
-                            onReplyInConversation(source)
-                            activeRootMessageID = nil
-                        }
-                    )
-                    .navigationTitle("Thread")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { activeRootMessageID = nil }
-                        }
+        )
+    }
+
+    private func threadContainer(rootID: String) -> some View {
+        NavigationStack {
+            threadDestination(rootID: rootID)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { activeRootMessageID = nil }
                     }
                 }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func threadDestination(rootID: String) -> some View {
+        ConversationView(
+            conversation: conversation,
+            allowsCompanionPanel: false,
+            showsNavigationChrome: false,
+            scopedThreadRootMessageID: rootID,
+            onReplyInConversation: { source in
+                onReplyInConversation(source)
+                activeRootMessageID = nil
+            }
+        )
+        .navigationTitle("Thread")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Thread")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
             }
         }
     }
@@ -143,6 +190,13 @@ struct ConversationView: View {
     @State private var isReadPresentationVisible = false
     @State private var isNavigatingToMention = false
     @State private var activeThreadRootMessageID: String?
+    @State private var threadReturnMessageID: String?
+    @State private var currentScrollOffsetY: CGFloat?
+    @State private var threadReturnScrollOffsetY: CGFloat?
+    @State private var threadReturnWasAtBottom = false
+    @State private var exactScrollRestoreRequest: ConversationScrollRestoreRequest?
+    @State private var nextScrollRestoreRequest = 0
+    @State private var isRestoringThreadPosition = false
 
     init(
         conversation: ConversationSummary,
@@ -214,6 +268,11 @@ struct ConversationView: View {
         } else {
             timeline = projection.mainMessages
         }
+        let usesCachedThreadTimeline = ConversationThreadLoadPolicy.usesCachedTimeline(
+            rootMessageID: scopedThreadRootMessageID,
+            messageCount: timeline.count
+        )
+        let showsTimeline = hasRevealedInitialViewport || usesCachedThreadTimeline
         let visibleTimeline = ConversationTimelineWindow.visibleMessages(
             in: timeline,
             limit: visibleMessageLimit
@@ -306,7 +365,7 @@ struct ConversationView: View {
                         }
                     )
                 }
-                if hasPreparedInitialViewport {
+                if hasPreparedInitialViewport || usesCachedThreadTimeline {
                     ZStack {
                         GeometryReader { viewport in
                             ZStack(alignment: .bottomTrailing) {
@@ -372,17 +431,10 @@ struct ConversationView: View {
                                         .id(bottomAnchorID)
                                         .background(
                                             ConversationScrollCommandBridge(
-                                                scrollToBottomRequest: immediateBottomRequest
+                                                scrollToBottomRequest: immediateBottomRequest,
+                                                exactRestoreRequest: $exactScrollRestoreRequest
                                             )
                                         )
-                                        .onAppear {
-                                            guard hasRevealedInitialViewport else { return }
-                                            isAtBottom = true
-                                        }
-                                        .onDisappear {
-                                            guard hasRevealedInitialViewport else { return }
-                                            isAtBottom = false
-                                        }
                                 }
                                 .scrollTargetLayout()
                                 .frame(
@@ -397,11 +449,20 @@ struct ConversationView: View {
                             }
                             .defaultScrollAnchor(.bottom)
                             .scrollPosition(id: $trackedMessageID, anchor: initialViewport.scrollAnchor)
+                            .onChange(of: trackedMessageID) { _, currentMessageID in
+                                if #unavailable(iOS 18.0) {
+                                    guard hasRevealedInitialViewport,
+                                          threadReturnMessageID == nil else { return }
+                                    isAtBottom = currentMessageID == bottomAnchorID
+                                }
+                            }
                             .scrollDisabled(messageActionMessage != nil)
                             .modifier(
                                 ConversationBottomTrackingModifier(
                                     isAtBottom: $isAtBottom,
                                     hasPositionedInitialTimeline: $hasPositionedInitialTimeline,
+                                    contentOffsetY: $currentScrollOffsetY,
+                                    exactRestoreRequest: $exactScrollRestoreRequest,
                                     isEnabled: hasRevealedInitialViewport,
                                     hasMessages: !timeline.isEmpty
                                 )
@@ -447,6 +508,8 @@ struct ConversationView: View {
                                 hasRevealedInitialViewport: hasRevealedInitialViewport,
                                 wasAtLatest: wasAtLatest,
                                 isMessageActionPresented: messageActionMessage != nil,
+                                isNavigationReturnPending: threadReturnMessageID != nil
+                                    || threadReturnScrollOffsetY != nil,
                                 previousViewportSize: previousViewportSize,
                                 currentViewportSize: currentViewportSize
                             ) else { return }
@@ -457,11 +520,11 @@ struct ConversationView: View {
                                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                             }
                         }
-                            .opacity(hasRevealedInitialViewport ? 1 : 0)
-                            .allowsHitTesting(hasRevealedInitialViewport)
-                            .accessibilityHidden(!hasRevealedInitialViewport)
+                            .opacity(showsTimeline ? 1 : 0)
+                            .allowsHitTesting(showsTimeline)
+                            .accessibilityHidden(!showsTimeline)
                         }
-                        if !hasRevealedInitialViewport {
+                        if !showsTimeline {
                             if initialLoadFailed {
                                 ConversationInitialFailureView {
                                     initialLoadFailed = false
@@ -614,7 +677,9 @@ struct ConversationView: View {
                     hasPositionedInitialTimeline: hasPositionedInitialTimeline,
                     isAtBottom: isFollowingLatest,
                     previousLatestMessageID: previousLatestMessageID,
-                    currentLatestMessageID: currentLatestMessageID
+                    currentLatestMessageID: currentLatestMessageID,
+                    isNavigationReturnPending: threadReturnMessageID != nil
+                        || threadReturnScrollOffsetY != nil
                 ) {
                     let identityChanged = previousLatestMessageID != currentLatestMessageID
                     scrollToBottom(animated: identityChanged)
@@ -644,7 +709,21 @@ struct ConversationView: View {
                     shouldFollowLatestAfterInputSurfaceChange = false
                 }
             }
+            .onChange(of: activeThreadRootMessageID) { previousRootID, currentRootID in
+                guard previousRootID != nil, currentRootID == nil else { return }
+                restoreThreadReturnPosition(using: proxy)
+            }
+            .onChange(of: exactScrollRestoreRequest) { previousRequest, currentRequest in
+                guard previousRequest != nil, currentRequest == nil else { return }
+                threadReturnMessageID = nil
+                threadReturnScrollOffsetY = nil
+                threadReturnWasAtBottom = false
+                isRestoringThreadPosition = false
+            }
             observedTimeline
+            .onAppear {
+                restoreThreadReturnPosition(using: proxy)
+            }
             .task(id: ConversationIdentityResolver.loadingTaskID(for: conversation)) {
                 await loadAndRevealInitialConversation(using: proxy)
                 await model.refreshActiveCall(in: conversation)
@@ -916,7 +995,7 @@ struct ConversationView: View {
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
         }
-        .modifier(ConversationThreadSheetModifier(
+        .modifier(ConversationThreadPresentationModifier(
             activeRootMessageID: $activeThreadRootMessageID,
             conversation: conversation,
             onReplyInConversation: { replySource = $0 }
@@ -978,7 +1057,8 @@ struct ConversationView: View {
                     isPinned: pinnedMessageIDs.contains(message.id),
                     selectionMode: !selectedMessageIDs.isEmpty,
                     isSelected: selectedMessageIDs.contains(message.id),
-                    allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
+                    allowsQuotedReplies: scopedThreadRootMessageID == nil
+                        && conversation.kind.supportsQuotedReplies,
                     threadReplyCount: threadReplyCount,
                     showsAvatarSlot: message.author != .agent,
                     authorAvatarName: avatar.name,
@@ -1026,7 +1106,7 @@ struct ConversationView: View {
                         navigateToMessage(messageId, in: timeline, proxy: proxy)
                     },
                     onOpenThread: {
-                        activeThreadRootMessageID = message.id
+                        openThread(rootMessageID: message.id)
                     },
                     onOpenAttachment: { attachment, previewImage in
                         openAttachment(
@@ -1126,7 +1206,10 @@ struct ConversationView: View {
                 sourceFrame: messageActionFrame,
                 usableFrame: usableFrame,
                 ownAccountId: model.account?.accountId,
-                allowsReply: conversation.kind.supportsQuotedReplies,
+                allowsConversationReply: conversation.kind.supportsQuotedReplies,
+                allowsThreadReply: scopedThreadRootMessageID == nil
+                    && conversation.kind.supportsThreadedReplies
+                    && !message.isSystemNotice,
                 allowsReactions: MessageBubble.allowsReactions(
                     for: message,
                     isPreviewMode: model.isPreviewMode
@@ -1182,7 +1265,12 @@ struct ConversationView: View {
                         onReplyInConversation(source)
                     } else if destination == .thread,
                               scopedThreadRootMessageID == nil {
-                        activeThreadRootMessageID = source.sourceMessageId
+                        dismissMessageActions()
+                        Task { @MainActor in
+                            await Task.yield()
+                            openThread(rootMessageID: source.sourceMessageId)
+                        }
+                        return
                     } else {
                         replySource = source
                     }
@@ -1556,6 +1644,14 @@ struct ConversationView: View {
             await positionAndRevealInitialViewport(using: proxy)
         }
 
+        if ConversationThreadLoadPolicy.usesCachedTimeline(
+            rootMessageID: scopedThreadRootMessageID,
+            messageCount: messages.count
+        ) {
+            initialLoadFailed = false
+            return
+        }
+
         let didLoad = await model.loadConversation(conversation)
         guard !Task.isCancelled else { return }
         if !didLoad, messages.isEmpty {
@@ -1648,7 +1744,54 @@ struct ConversationView: View {
     }
 
     private var viewportMemoryKey: String {
-        "\(model.account?.accountId.nonEmpty ?? "anonymous"):\(conversation.id)"
+        let surface = scopedThreadRootMessageID.map { "thread:\($0)" } ?? "conversation"
+        return "\(model.account?.accountId.nonEmpty ?? "anonymous"):\(conversation.id):\(surface)"
+    }
+
+    private func openThread(rootMessageID: String) {
+        threadReturnMessageID = trackedMessageID ?? (isAtBottom ? bottomAnchorID : nil)
+        threadReturnScrollOffsetY = currentScrollOffsetY
+        threadReturnWasAtBottom = isAtBottom
+        rememberViewport(in: messages)
+        activeThreadRootMessageID = rootMessageID
+    }
+
+    private func restoreThreadReturnPosition(using proxy: ScrollViewProxy) {
+        guard !isRestoringThreadPosition,
+              threadReturnMessageID != nil || threadReturnScrollOffsetY != nil else { return }
+        isRestoringThreadPosition = true
+        let returnMessageID = threadReturnMessageID
+        let returnScrollOffsetY = threadReturnScrollOffsetY
+        Task { @MainActor in
+            await Task.yield()
+            await Task.yield()
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            if let returnScrollOffsetY {
+                withTransaction(transaction) {
+                    isAtBottom = threadReturnWasAtBottom
+                    trackedMessageID = nil
+                }
+                nextScrollRestoreRequest &+= 1
+                exactScrollRestoreRequest = ConversationScrollRestoreRequest(
+                    id: nextScrollRestoreRequest,
+                    contentOffsetY: returnScrollOffsetY
+                )
+            } else if let returnMessageID {
+                withTransaction(transaction) {
+                    isAtBottom = returnMessageID == bottomAnchorID
+                    trackedMessageID = returnMessageID
+                    proxy.scrollTo(returnMessageID, anchor: initialViewport.scrollAnchor)
+                }
+                threadReturnMessageID = nil
+                threadReturnScrollOffsetY = nil
+                threadReturnWasAtBottom = false
+                isRestoringThreadPosition = false
+            } else {
+                threadReturnWasAtBottom = false
+                isRestoringThreadPosition = false
+            }
+        }
     }
 
     private func timelineIdentity(for messageID: String, in timeline: [ChatMessage]) -> String {
@@ -2349,9 +2492,11 @@ enum ConversationTimelineScrollBehavior {
         hasPositionedInitialTimeline: Bool,
         isAtBottom: Bool,
         previousLatestMessageID: String?,
-        currentLatestMessageID: String?
+        currentLatestMessageID: String?,
+        isNavigationReturnPending: Bool = false
     ) -> Bool {
-        guard hasPositionedInitialTimeline,
+        guard !isNavigationReturnPending,
+              hasPositionedInitialTimeline,
               isAtBottom,
               previousLatestMessageID != nil,
               currentLatestMessageID != nil else { return false }
@@ -2375,16 +2520,38 @@ enum ConversationTimelineScrollBehavior {
             || visibleMaxY >= contentHeight - tolerance
     }
 
+    static func clampedContentOffsetY(
+        _ contentOffsetY: CGFloat,
+        contentHeight: CGFloat,
+        containerHeight: CGFloat,
+        topInset: CGFloat,
+        bottomInset: CGFloat
+    ) -> CGFloat {
+        let minimum = -topInset
+        let maximum = max(minimum, contentHeight - containerHeight + bottomInset)
+        return min(max(contentOffsetY, minimum), maximum)
+    }
+
+    static func didRestoreContentOffset(
+        observed: CGFloat,
+        target: CGFloat,
+        tolerance: CGFloat = 2
+    ) -> Bool {
+        abs(observed - target) <= tolerance
+    }
+
     static func shouldKeepLatestVisibleAfterViewportChange(
         hasRevealedInitialViewport: Bool,
         wasAtLatest: Bool,
         isMessageActionPresented: Bool = false,
+        isNavigationReturnPending: Bool = false,
         previousViewportSize: CGSize,
         currentViewportSize: CGSize
     ) -> Bool {
         hasRevealedInitialViewport
             && wasAtLatest
             && !isMessageActionPresented
+            && !isNavigationReturnPending
             && previousViewportSize != .zero
             && previousViewportSize != currentViewportSize
     }
@@ -2710,8 +2877,15 @@ private struct LatestMessageButton: View {
 /// Keeps keyboard dismissal on UIKit's native on-drag path. SwiftUI's
 /// identity-based scroll command can also be deferred while UIScrollView is
 /// decelerating, so the button cancels momentum before moving to the true bottom.
+/// Thread returns use the same bridge to restore the exact prior content offset.
+private struct ConversationScrollRestoreRequest: Equatable {
+    let id: Int
+    let contentOffsetY: CGFloat
+}
+
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let scrollToBottomRequest: Int
+    @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -2730,11 +2904,43 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         if shouldScrollToBottom {
             context.coordinator.lastHandledRequest = scrollToBottomRequest
         }
+        let restoreRequest = exactRestoreRequest.flatMap { request in
+            context.coordinator.lastHandledRestoreRequestID == request.id ? nil : request
+        }
+        let coordinator = context.coordinator
 
         DispatchQueue.main.async { [weak view] in
             guard let view,
                   let scrollView = enclosingScrollView(from: view) else { return }
             scrollView.keyboardDismissMode = .onDrag
+            if let restoreRequest {
+                guard coordinator.lastHandledRestoreRequestID != restoreRequest.id else { return }
+                coordinator.lastHandledRestoreRequestID = restoreRequest.id
+                scrollView.layer.removeAllAnimations()
+                let targetY = ConversationTimelineScrollBehavior.clampedContentOffsetY(
+                    restoreRequest.contentOffsetY,
+                    contentHeight: scrollView.contentSize.height,
+                    containerHeight: scrollView.bounds.height,
+                    topInset: scrollView.adjustedContentInset.top,
+                    bottomInset: scrollView.adjustedContentInset.bottom
+                )
+                scrollView.setContentOffset(
+                    CGPoint(
+                        x: scrollView.contentOffset.x,
+                        y: targetY
+                    ),
+                    animated: false
+                )
+                DispatchQueue.main.async {
+                    guard exactRestoreRequest?.id == restoreRequest.id,
+                          ConversationTimelineScrollBehavior.didRestoreContentOffset(
+                              observed: scrollView.contentOffset.y,
+                              target: targetY
+                          ) else { return }
+                    exactRestoreRequest = nil
+                }
+                return
+            }
             guard shouldScrollToBottom else { return }
             scrollView.layer.removeAllAnimations()
             scrollView.setContentOffset(scrollView.contentOffset, animated: false)
@@ -2769,12 +2975,20 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
 
     final class Coordinator {
         var lastHandledRequest = 0
+        var lastHandledRestoreRequestID = 0
     }
+}
+
+private struct ConversationScrollGeometrySnapshot: Equatable {
+    let isAtLatest: Bool
+    let contentOffsetY: CGFloat
 }
 
 private struct ConversationBottomTrackingModifier: ViewModifier {
     @Binding var isAtBottom: Bool
     @Binding var hasPositionedInitialTimeline: Bool
+    @Binding var contentOffsetY: CGFloat?
+    @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
     let isEnabled: Bool
     let hasMessages: Bool
 
@@ -2782,16 +2996,27 @@ private struct ConversationBottomTrackingModifier: ViewModifier {
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
             content
-                .onScrollGeometryChange(for: Bool.self) { geometry in
-                    ConversationTimelineScrollBehavior.isAtLatest(
-                        visibleMaxY: geometry.visibleRect.maxY,
-                        contentHeight: geometry.contentSize.height,
-                        containerHeight: geometry.containerSize.height
+                .onScrollGeometryChange(for: ConversationScrollGeometrySnapshot.self) { geometry in
+                    ConversationScrollGeometrySnapshot(
+                        isAtLatest: ConversationTimelineScrollBehavior.isAtLatest(
+                            visibleMaxY: geometry.visibleRect.maxY,
+                            contentHeight: geometry.contentSize.height,
+                            containerHeight: geometry.containerSize.height
+                        ),
+                        contentOffsetY: geometry.contentOffset.y
                     )
-                } action: { _, reachedLatest in
+                } action: { _, snapshot in
                     guard isEnabled else { return }
-                    isAtBottom = reachedLatest
-                    if reachedLatest, hasMessages {
+                    contentOffsetY = snapshot.contentOffsetY
+                    if let restoreRequest = exactRestoreRequest,
+                       ConversationTimelineScrollBehavior.didRestoreContentOffset(
+                           observed: snapshot.contentOffsetY,
+                           target: restoreRequest.contentOffsetY
+                       ) {
+                        exactRestoreRequest = nil
+                    }
+                    isAtBottom = snapshot.isAtLatest
+                    if snapshot.isAtLatest, hasMessages {
                         hasPositionedInitialTimeline = true
                     }
                 }

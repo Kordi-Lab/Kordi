@@ -248,31 +248,17 @@ struct MessageBubble: View, Equatable {
                         isRequestingActionFrame = true
                     }
 
-                if !message.reactions.isEmpty {
-                    MessageReactionChips(
+                if !message.reactions.isEmpty || threadReplyCount > 0 {
+                    MessageBubbleAccessoryRow(
                         reactions: message.reactions,
+                        threadReplyCount: threadReplyCount,
                         ownAccountId: ownAccountId,
                         scrollAnchor: message.author == .me ? .trailing : .leading,
-                        onReact: onReact
+                        onReact: onReact,
+                        onOpenThread: onOpenThread
                     )
                     .offset(y: -Self.reactionChipVerticalLift)
                     .padding(.bottom, -Self.reactionChipVerticalLift)
-                }
-
-                if threadReplyCount > 0 {
-                    Button(action: onOpenThread) {
-                        Label(
-                            "\(threadReplyCount) discussed in thread",
-                            systemImage: "bubble.left.and.bubble.right"
-                        )
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(chatTheme.accent)
-                        .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        "Open thread with \(threadReplyCount) discussed in thread"
-                    )
                 }
 
                 if !backgroundSessions.isEmpty {
@@ -823,15 +809,21 @@ struct MessageBubble: View, Equatable {
 
 }
 
-private struct MessageReactionChips: View {
+private struct MessageBubbleAccessoryRow: View {
+    @Environment(\.kordiChatTheme) private var chatTheme
     let reactions: [MessageReaction]
+    let threadReplyCount: Int
     let ownAccountId: String?
     let scrollAnchor: UnitPoint
     let onReact: (String) -> Void
+    let onOpenThread: () -> Void
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 4) {
+                if scrollAnchor == .leading {
+                    threadButton
+                }
                 ForEach(reactions) { reaction in
                     Button {
                         onReact(reaction.value)
@@ -862,10 +854,32 @@ private struct MessageReactionChips: View {
                     )
                     .accessibilityHint("Double tap to toggle this reaction")
                 }
+                if scrollAnchor == .trailing {
+                    threadButton
+                }
             }
         }
         .defaultScrollAnchor(scrollAnchor)
         .frame(maxWidth: 310)
+    }
+
+    @ViewBuilder
+    private var threadButton: some View {
+        if threadReplyCount > 0 {
+            Button(action: onOpenThread) {
+                Label(
+                    "\(threadReplyCount) discussed in thread",
+                    systemImage: "bubble.left.and.bubble.right"
+                )
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(chatTheme.accent)
+                .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                "Open thread with \(threadReplyCount) discussed in thread"
+            )
+        }
     }
 
     private func reactionAccessibilityName(_ value: String) -> String {

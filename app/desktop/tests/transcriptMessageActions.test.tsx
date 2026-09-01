@@ -428,18 +428,18 @@ test('message context menu exposes only wired actions for eligible messages', ()
     onRequestPinMessage: () => undefined,
   }));
 
-  assert.match(markup, />Reply</);
+  assert.match(markup, />Reply in conversation</);
   assert.match(markup, />Forward</);
   assert.match(markup, />Select</);
   assert.match(markup, />Pin</);
-  assert.match(markup, /data-message-context-menu-action="reply"/);
+  assert.match(markup, /data-message-context-menu-action="reply-conversation"/);
+  assert.doesNotMatch(markup, /data-message-context-menu-action="reply-thread"/);
   assert.match(markup, /data-message-context-menu-action="forward"/);
   assert.match(markup, /data-message-context-menu-action="select"/);
   assert.match(markup, /data-message-context-menu-action="pin"/);
   assert.doesNotMatch(markup, /data-message-context-menu-reactions="true"/);
   assert.doesNotMatch(markup, />Edit</);
   assert.doesNotMatch(markup, />Delete</);
-  assert.doesNotMatch(markup, />View 1 Reply/);
 });
 
 test('message context menu exposes Unpin for pinned messages', () => {
