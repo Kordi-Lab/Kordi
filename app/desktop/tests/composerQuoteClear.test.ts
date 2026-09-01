@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { sendChatMessageWithImmediateQuoteClear } from '../src/features/chat/composerQuoteClear';
+import { chatSendShouldAutoFollowMain } from '../src/features/chat/messageActions/chatMessages';
 import type { ComposerQuoteState } from '../src/kordi-app/types';
 
 const quote: ComposerQuoteState = {
@@ -16,6 +17,12 @@ const quote: ComposerQuoteState = {
     timeLabel: '13:56',
   },
 };
+
+test('thread sends do not request main transcript auto-follow', () => {
+  assert.equal(chatSendShouldAutoFollowMain(), true);
+  assert.equal(chatSendShouldAutoFollowMain(quote), true);
+  assert.equal(chatSendShouldAutoFollowMain({ ...quote, action: 'thread' }), false);
+});
 
 test('sendChatMessageWithImmediateQuoteClear clears active quote immediately after a quoted send starts', async () => {
   let resolveSend: (() => void) | null = null;

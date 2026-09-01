@@ -2,7 +2,7 @@ import { messageMentionsForText } from './messageMentions';
 import { attachmentOnlyMessagePreview } from './participantConversationState';
 import type { Message, MessageAttachment, MessageMention, MessageVoice } from '../../kordi-app/types/message';
 
-export type MessageActionKind = 'quote' | 'forward';
+export type MessageActionKind = 'quote' | 'forward' | 'thread';
 
 export type MessageActionSource = {
   sourceSessionId: string;
@@ -115,6 +115,18 @@ export function forwardMessageAction(source: MessageActionSource): MessageAction
   return { schemaVersion: 1, kind: 'forward', source: persistedMessageActionSource(source) };
 }
 
+export function threadMessageAction(source: MessageActionSource): MessageActionMetadata {
+  return { schemaVersion: 1, kind: 'thread', source: persistedMessageActionSource(source) };
+}
+
+export function composerMessageAction(
+  quote: { action: 'quote' | 'thread'; source: MessageActionSource },
+): MessageActionMetadata {
+  return quote.action === 'thread'
+    ? threadMessageAction(quote.source)
+    : quoteMessageAction(quote.source);
+}
+
 export function isMessageActionMetadata(value: unknown): value is MessageActionMetadata {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return false;
@@ -122,7 +134,7 @@ export function isMessageActionMetadata(value: unknown): value is MessageActionM
   const record = value as Record<string, unknown>;
   const source = record.source as Record<string, unknown> | undefined;
   return record.schemaVersion === 1
-    && (record.kind === 'quote' || record.kind === 'forward')
+    && (record.kind === 'quote' || record.kind === 'forward' || record.kind === 'thread')
     && Boolean(source)
     && typeof source?.sourceSessionId === 'string'
     && typeof source.sourceMessageId === 'string'

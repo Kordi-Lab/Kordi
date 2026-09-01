@@ -168,7 +168,11 @@ export function mapDesktopMessagesForTranscript(
         return mapped;
       }),
       mentions: message.mentions,
-      replyToMessageId: message.replyToMessageId ?? (message.messageAction?.kind === 'quote' ? message.messageAction.source.sourceMessageId : undefined),
+      replyToMessageId: message.replyToMessageId ?? (
+        message.messageAction?.kind === 'quote' || message.messageAction?.kind === 'thread'
+          ? message.messageAction.source.sourceMessageId
+          : undefined
+      ),
       messageAction: message.messageAction ?? null,
       sourceMessage: desktopMessageActionSource(message),
       turn:

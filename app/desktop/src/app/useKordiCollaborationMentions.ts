@@ -140,6 +140,10 @@ export function useKordiCollaborationMentions({
     () => filterMentionTargets(targetsByScope.chat, chatMentionQuery),
     [chatMentionQuery, targetsByScope.chat],
   );
+  const chatMentionTargetsForText = useCallback(
+    (text: string) => filterMentionTargets(targetsByScope.chat, currentMentionQuery(text)),
+    [targetsByScope.chat],
+  );
   const filteredProjectMentionTargets = useMemo(
     () => filterMentionTargets(targetsByScope.project, projectMentionQuery),
     [projectMentionQuery, targetsByScope.project],
@@ -147,6 +151,7 @@ export function useKordiCollaborationMentions({
 
   return {
     activeConversationScope,
+    chatMentionTargetsForText,
     filteredChatMentionTargets,
     filteredProjectMentionTargets,
     mentionableCloudAgents,

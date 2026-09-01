@@ -8,6 +8,7 @@ import {
   MessageContextMenuContent,
 } from '../src/kordi-app/components/transcript';
 import type { Message } from '../src/kordi-app/types';
+import { messageSnapshotKey } from '../src/kordi-app/components/transcriptMessageSnapshot';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 test('forwarded human messages render Telegram-style forwarded header instead of quote block', () => {
@@ -80,6 +81,22 @@ test('quoted human messages still render source quote instead of forwarded heade
 
   assert.match(markup, /app-source-message-quote/);
   assert.doesNotMatch(markup, /data-message-forwarded-header="true"/);
+});
+
+test('thread count changes invalidate the memoized message bubble', () => {
+  const message: Message = {
+    id: 'thread-root',
+    role: 'person',
+    sender: 'Shenzhe Zhu',
+    text: 'what',
+    time: '07:35',
+    threadSummary: { replyCount: 1 },
+  };
+
+  assert.notEqual(
+    messageSnapshotKey(message),
+    messageSnapshotKey({ ...message, threadSummary: { replyCount: 2 } }),
+  );
 });
 
 test('forwarded message reveal uses reduced-motion-safe highlight styling', () => {
@@ -252,7 +269,10 @@ test('message context menu content lists read receipts when available', () => {
       ],
     },
   };
-  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: message,
+    onReplyMessage: () => undefined,
+  }));
 
   assert.match(markup, /data-message-context-menu-content="true"/);
   assert.match(markup, /w-\[13\.5rem\]/);

@@ -35,6 +35,7 @@ import type {
   Message,
   MessageEditState,
   MessageSourceReference,
+  MessageReplyDestination,
   ParticipantSpaceViewModel,
   QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
@@ -114,6 +115,7 @@ export type ChatsPageTranscript = {
 
 export type ChatsPageComposer = {
   filteredChatSlashCommands: DesktopChatSlashCommand[];
+  chatMentionTargetsForText: (text: string) => ComposerMentionOption[];
   filteredChatMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
@@ -140,7 +142,8 @@ export type ChatsPageComposer = {
   setChatComposerTextForSession: (sessionId: string, value: string) => void;
   activeChatQuote?: ComposerQuoteState | null;
   onClearChatQuote?: () => void;
-  onReplyMessage?: (message: Message) => void;
+  onReplyMessage?: (message: Message, destination: MessageReplyDestination) => void;
+  onOpenMessageThread?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
   onEditMessage?: (message: Message) => void;
   onDeleteMessage?: (message: Message) => void;
@@ -221,6 +224,7 @@ export type ChatsPageRuntime = {
     targetSessionId?: string,
     contextMessages?: DesktopChatContextMessage[],
     attachmentOverride?: AttachmentItem[],
+    quoteOverride?: ComposerQuoteState | null,
   ) => Promise<void> | void;
   onCreateAgentSession?: () => string | null | Promise<string | null>;
 };
@@ -299,7 +303,8 @@ export type ChatSessionPaneActions = {
   >['onOpenSenderProfile'];
   onForkMessage?: (entryId: string) => void;
   onOpenForkSession?: (sessionId: string) => void;
-  onReplyMessage?: (message: Message) => void;
+  onReplyMessage?: (message: Message, destination: MessageReplyDestination) => void;
+  onOpenMessageThread?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
   onEditMessage?: (message: Message) => void;
   onDeleteMessage?: (message: Message) => void;

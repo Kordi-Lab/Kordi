@@ -23,6 +23,7 @@ export function messageSnapshotKey(msg: Message) {
     msg.replyToMessageId ?? '',
     msg.replyAliasIds?.join('|') ?? '',
     msg.replySummary ? [msg.replySummary.replyCount, msg.replySummary.pending ? 'pending' : 'done', msg.replySummary.targetMessageId ?? ''].join(':') : '',
+    msg.threadSummary?.replyCount ?? '',
     msg.readReceiptSummary ? [msg.readReceiptSummary.count, msg.readReceiptSummary.participants.map((participant) => [participant.id, participant.name, participant.readAt ?? ''].join(':')).join('|')].join(':') : '',
     msg.reactionConversationId ?? '',
     msg.reactionTargetMessageId ?? '',

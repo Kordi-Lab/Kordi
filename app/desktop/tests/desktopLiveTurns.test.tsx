@@ -136,6 +136,7 @@ test('completed desktop assistant messages fall back to error text and failed st
     succeeded: false,
     startedAtMs: 1_725_000_000_000,
     completedAtMs: 1_725_000_010_000,
+    replyToMessageId: 'thread-request',
   });
   const completed = buildCompletedDesktopAssistantMessage(failedTurn, 1_725_000_020_000);
 
@@ -147,6 +148,14 @@ test('completed desktop assistant messages fall back to error text and failed st
   assert.equal(completed.tools?.length, 1);
   assert.equal(completed.timestampMs, failedTurn.startedAtMs);
   assert.equal(completed.transcriptRenderId, failedTurn.id);
+  assert.equal(completed.replyToMessageId, 'thread-request');
+});
+
+test('live turn refresh preserves its thread request link', () => {
+  const current = turn({ replyToMessageId: 'thread-request' });
+  const refreshed = mergeDesktopTurnSnapshot(current, turn({ assistantText: 'Streaming reply' }));
+
+  assert.equal(refreshed.replyToMessageId, 'thread-request');
 });
 
 test('completed cancelled turns retain explicit cancellation metadata without fake reply text', () => {

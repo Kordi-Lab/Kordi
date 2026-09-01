@@ -564,6 +564,30 @@ final class CloudGroupMessageCodecTests: XCTestCase {
         )
     }
 
+    func testThreadProjectionKeepsRepliesOutOfMainTimeline() {
+        let root = timelineMessage(id: "root", text: "Root", date: Date(timeIntervalSince1970: 1))
+        let source = root.actionSource(sessionId: "session:group:mobile")
+        let reply = timelineMessage(
+            id: "reply",
+            text: "Thread reply",
+            date: Date(timeIntervalSince1970: 2),
+            messageAction: .thread(source)
+        )
+        let agentResponse = timelineMessage(
+            id: "agent-reply",
+            text: "Agent response",
+            date: Date(timeIntervalSince1970: 3),
+            replyToMessageID: "reply"
+        )
+
+        let projection = MessageThreadProjection(messages: [root, agentResponse, reply])
+
+        XCTAssertEqual(projection.mainMessages.map(\.id), ["root"])
+        XCTAssertEqual(projection.replyCount(rootID: "root"), 2)
+        XCTAssertEqual(projection.thread(rootID: "root")?.messages.map(\.id), ["root", "reply", "agent-reply"])
+        XCTAssertEqual(MessageThreadProjection.rootSource(for: reply, sessionID: "ignored"), source)
+    }
+
     private func agentPayload(
         id: String,
         text: String,
@@ -601,7 +625,9 @@ final class CloudGroupMessageCodecTests: XCTestCase {
         id: String,
         text: String,
         date: Date,
-        messageKind: String? = nil
+        messageKind: String? = nil,
+        messageAction: MessageActionMetadata? = nil,
+        replyToMessageID: String? = nil
     ) -> ChatMessage {
         ChatMessage(
             id: id,
@@ -613,6 +639,8 @@ final class CloudGroupMessageCodecTests: XCTestCase {
             deliveryState: .delivered,
             errorMessage: nil,
             requestMessageId: nil,
+            replyToMessageId: replyToMessageID,
+            messageAction: messageAction,
             messageKind: messageKind
         )
     }

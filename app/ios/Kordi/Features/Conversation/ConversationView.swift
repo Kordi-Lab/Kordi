@@ -9,6 +9,44 @@ private struct ConversationTimelineRow: Identifiable {
     let message: ChatMessage
 }
 
+private struct ConversationThreadInspectorModifier: ViewModifier {
+    @Binding var activeRootMessageID: String?
+    let conversation: ConversationSummary
+    let onReplyInConversation: (MessageActionSource) -> Void
+
+    func body(content: Content) -> some View {
+        content.inspector(isPresented: Binding(
+            get: { activeRootMessageID != nil },
+            set: { if !$0 { activeRootMessageID = nil } }
+        )) {
+            if let threadRootID = activeRootMessageID {
+                NavigationStack {
+                    ConversationView(
+                        conversation: conversation,
+                        allowsCompanionPanel: false,
+                        showsNavigationChrome: false,
+                        scopedThreadRootMessageID: threadRootID,
+                        onReplyInConversation: { source in
+                            onReplyInConversation(source)
+                            activeRootMessageID = nil
+                        }
+                    )
+                    .navigationTitle("Thread")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { activeRootMessageID = nil }
+                        }
+                    }
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .inspectorColumnWidth(min: 320, ideal: 390, max: 480)
+            }
+        }
+    }
+}
+
 enum ConversationIdentityResolver {
     static func current(
         _ initial: ConversationSummary,
@@ -36,6 +74,8 @@ struct ConversationView: View {
     private let linkedBackgroundSession: BackgroundAgentSession?
     private let allowsCompanionPanel: Bool
     private let showsNavigationChrome: Bool
+    private let scopedThreadRootMessageID: String?
+    private let onReplyInConversation: ((MessageActionSource) -> Void)?
     @State private var draft = ""
     @State private var isSending = false
     @State private var visibleMessageLimit = ConversationTimelineWindow.initialLimit
@@ -103,6 +143,7 @@ struct ConversationView: View {
     @State private var readPresentationID = UUID()
     @State private var isReadPresentationVisible = false
     @State private var isNavigatingToMention = false
+    @State private var activeThreadRootMessageID: String?
 
     init(
         conversation: ConversationSummary,
@@ -110,7 +151,9 @@ struct ConversationView: View {
         companionContext: CompanionChatContext? = nil,
         linkedBackgroundSession: BackgroundAgentSession? = nil,
         allowsCompanionPanel: Bool = true,
-        showsNavigationChrome: Bool = true
+        showsNavigationChrome: Bool = true,
+        scopedThreadRootMessageID: String? = nil,
+        onReplyInConversation: ((MessageActionSource) -> Void)? = nil
     ) {
         initialConversation = conversation
         self.initialMessageID = initialMessageID
@@ -118,6 +161,8 @@ struct ConversationView: View {
         self.linkedBackgroundSession = linkedBackgroundSession
         self.allowsCompanionPanel = allowsCompanionPanel
         self.showsNavigationChrome = showsNavigationChrome
+        self.scopedThreadRootMessageID = scopedThreadRootMessageID
+        self.onReplyInConversation = onReplyInConversation
     }
 
     /// Navigation can outlive a sync pass. Resolve the current summary by its
@@ -130,8 +175,22 @@ struct ConversationView: View {
         )
     }
 
-    private var messages: [ChatMessage] {
+    private var allMessages: [ChatMessage] {
         ChatCallActivityTimeline.collapsingStatuses(in: model.messages(for: conversation))
+    }
+    private var threadProjection: MessageThreadProjection {
+        MessageThreadProjection(messages: allMessages)
+    }
+    private var messages: [ChatMessage] {
+        guard let scopedThreadRootMessageID else { return threadProjection.mainMessages }
+        return threadProjection.thread(rootID: scopedThreadRootMessageID)?.messages ?? []
+    }
+    private var scopedThreadMessageAction: MessageActionMetadata? {
+        guard let scopedThreadRootMessageID,
+              let root = threadProjection.thread(rootID: scopedThreadRootMessageID)?.root else {
+            return nil
+        }
+        return .thread(root.actionSource(sessionId: conversation.sessionId))
     }
     private var linkedBackgroundSessionState: BackgroundAgentSession.State? {
         linkedBackgroundSession?.resolvedState(in: model.conversations)
@@ -149,7 +208,13 @@ struct ConversationView: View {
     private let timelineVerticalInset: CGFloat = 14
 
     var body: some View {
-        let timeline = messages
+        let projection = threadProjection
+        let timeline: [ChatMessage]
+        if let scopedThreadRootMessageID {
+            timeline = projection.thread(rootID: scopedThreadRootMessageID)?.messages ?? []
+        } else {
+            timeline = projection.mainMessages
+        }
         let visibleTimeline = ConversationTimelineWindow.visibleMessages(
             in: timeline,
             limit: visibleMessageLimit
@@ -184,14 +249,19 @@ struct ConversationView: View {
         }
         let pinnedMessageIDs = Set(pinnedMessages.map(\.message.id))
         let pinActivityText = sessionPin.flatMap { pinActivityText(for: $0) }
+        let pinActivityID = "pin-activity:\(sessionPin?.lastAction?.updatedAt ?? pinActivityText ?? "")"
         let activeConversationCall = model.activeCall(for: conversation)
         let coordinatorOwnsConversationCall = callCoordinator.activeCall?.call.id
             == activeConversationCall?.id
             && (callCoordinator.isCallScreenPresented || callCoordinator.isAwaitingIncomingAnswer)
         let mentionTargets = model.mentionTargets(for: conversation)
         let pendingMentionCount = model.pendingMentionCount(for: conversation)
-        ScrollViewReader { proxy in
-            VStack(spacing: 0) {
+        let pinTargetPresentation = Binding(
+            get: { pinTarget != nil },
+            set: { if !$0 { pinTarget = nil } }
+        )
+        let conversationTimeline = ScrollViewReader { proxy in
+            let timelineContent = VStack(spacing: 0) {
                 if !coordinatorOwnsConversationCall,
                    let activeCall = activeConversationCall,
                    activeCall.kind == .meeting {
@@ -264,160 +334,34 @@ struct ConversationView: View {
                                                             proxy: proxy
                                                         )
                                                     }
-                                            }
+                                        }
                                         ForEach(visibleTimelineRows) { row in
                                             let message = row.message
                                             let index = visibleStartIndex + row.offset
                                             let presentation = timelinePresentation[index - presentationStartIndex]
-                                            let avatar = avatarIdentity(for: message)
-                                            let backgroundSessions = message.backgroundAgentSessions.map {
-                                                BackgroundAgentSessionPresentation(
-                                                    session: $0,
-                                                    state: $0.resolvedState(in: model.conversations)
-                                                )
-                                            }
-
-                                            VStack(spacing: 0) {
-                                                if presentation.showsTimestamp {
-                                                    ConversationTimestampDivider(date: message.createdAt)
-                                                }
-
-                                                if message.isSystemNotice {
-                                                    SystemNoticeRow(text: message.text)
-                                                        .padding(.vertical, 8)
-                                                } else {
-                                                    MessageBubble(
-                                                        message: message,
-                                                        mentionTargets: mentionTargets,
-                                                        showAuthor: message.author == .agent
-                                                            || (conversation.kind == .group
-                                                                && message.author == .person
-                                                                && !presentation.groupedWithPrevious),
-                                                        showAvatar: presentation.showsAvatar,
-                                                        replySourceMessage: message.replyToMessageId.flatMap { messagesById[$0] },
-                                                        isHighlighted: highlightedMessageID == message.id,
-                                                        isActionPresented: messageActionMessage?.id == message.id,
-                                                        isPinned: pinnedMessageIDs.contains(message.id),
-                                                        selectionMode: !selectedMessageIDs.isEmpty,
-                                                        isSelected: selectedMessageIDs.contains(message.id),
-                                                        allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
-                                                        showsAvatarSlot: message.author != .agent,
-                                                        authorAvatarName: avatar.name,
-                                                        authorAvatarSource: avatar.source,
-                                                        authorAvatarSeed: avatar.seed,
-                                                        ownAccountId: model.account?.accountId,
-                                                        automaticallyPresentsActions: ProcessInfo.processInfo.arguments.contains("--preview-message-actions")
-                                                            && message.id == previewActionMessageID,
-                                                        backgroundSessions: backgroundSessions,
-                                                        fullScreenVideoAttachmentID: message.attachments.contains {
-                                                            $0.id == fullScreenVideoAttachmentID
-                                                        } ? fullScreenVideoAttachmentID : nil,
-                                                        onOpenAuthorProfile: {
-                                                            authorProfileConversation = ConversationAuthorProfileResolver.destination(
-                                                                currentConversation: conversation,
-                                                                message: message,
-                                                                selfAccountID: model.account?.accountId,
-                                                                contacts: model.contacts,
-                                                                conversations: model.conversations
-                                                            )
-                                                        },
-                                                        onOpenMentionProfile: openMentionProfile,
-                                                        onRetry: {
-                                                            await model.retry(message, in: conversation)
-                                                        },
-                                                        onSelect: { toggleSelection(message.id) },
-                                                        onOpenActions: { frame, attachment in
-                                                            presentMessageActions(
-                                                                message,
-                                                                attachment: attachment,
-                                                                frame: frame
-                                                            )
-                                                        },
-                                                        onSelectedTextChange: { selectedMessageText = $0 },
-                                                        onReact: { reaction in
-                                                            Task {
-                                                                _ = await model.toggleReaction(
-                                                                    reaction,
-                                                                    on: message,
-                                                                    in: conversation
-                                                                )
-                                                            }
-                                                        },
-                                                        onNavigateToReply: { messageId in
-                                                            navigateToMessage(messageId, in: timeline, proxy: proxy)
-                                                        },
-                                                        onOpenAttachment: { attachment, previewImage in
-                                                            openAttachment(
-                                                                attachment,
-                                                                from: message,
-                                                                in: timeline,
-                                                                previewImage: previewImage
-                                                            )
-                                                        },
-                                                        onShareAttachment: { attachment in
-                                                            prepare(attachment, forSharing: true)
-                                                        },
-                                                        onPrepareVoiceMessage: { voiceMessage in
-                                                            await model.prepareVoiceMessageForPresentation(voiceMessage)
-                                                        },
-                                                        onPrepareAttachment: { attachment in
-                                                            await model.prepareAttachmentForPresentation(attachment)
-                                                        },
-                                                        onPrepareAttachmentPreview: { attachment in
-                                                            await model.prepareAttachmentPreviewImage(attachment)
-                                                        },
-                                                        onOpenVideo: { attachment, player, poster in
-                                                            let presentation = VideoPreviewPresentation(
-                                                                attachment: attachment,
-                                                                inlinePlayer: player,
-                                                                poster: poster
-                                                            )
-                                                            player.pause()
-                                                            fullScreenVideoAttachmentID = attachment.id
-                                                            Task { @MainActor in
-                                                                await Task.yield()
-                                                                guard fullScreenVideoAttachmentID == attachment.id else {
-                                                                    return
-                                                                }
-                                                                videoPreview = presentation
-                                                            }
-                                                        },
-                                                        onAddAttachmentToMediaLibrary: { attachment in
-                                                            await model.addAttachmentToExpressiveMediaLibrary(attachment)
-                                                        },
-                                                        onOpenBackgroundSession: { session in
-                                                            selectedBackgroundSession = session
-                                                            backgroundConversation = session.destination(
-                                                                from: conversation,
-                                                                conversations: model.conversations,
-                                                                ownAccountId: model.account?.accountId ?? "",
-                                                                ownDisplayName: model.account?.preferredName ?? "Me",
-                                                                createdAt: message.createdAt
-                                                            )
-                                                        },
-                                                        onAgentExecutionExpansionChange: { expanded in
-                                                            guard expanded else { return }
-                                                            revealExpandedAgentExecution(
-                                                                row.id,
-                                                                using: proxy
-                                                            )
-                                                        }
-                                                    )
-                                                    .equatable()
-                                                    .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
-                                                    .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
-                                                }
-                                            }
-                                            .id(row.id)
+                                            let threadReplyCount = scopedThreadRootMessageID == nil
+                                                ? projection.replyCount(rootID: message.id)
+                                                : 0
+                                            timelineMessageRow(
+                                                row: row,
+                                                presentation: presentation,
+                                                timeline: timeline,
+                                                messagesByID: messagesById,
+                                                mentionTargets: mentionTargets,
+                                                pinnedMessageIDs: pinnedMessageIDs,
+                                                previewActionMessageID: previewActionMessageID,
+                                                threadReplyCount: threadReplyCount,
+                                                proxy: proxy
+                                            )
                                         }
                                         }
                                     }
 
-                                    if let pinActivityText {
-                                        SystemNoticeRow(text: pinActivityText)
-                                            .padding(.vertical, 8)
-                                            .id("pin-activity:\(sessionPin?.lastAction?.updatedAt ?? pinActivityText)")
-                                    }
+                                        if let pinActivityText {
+                                            SystemNoticeRow(text: pinActivityText)
+                                                .padding(.vertical, 8)
+                                                .id(pinActivityID)
+                                        }
 
                                     Color.clear
                                         .frame(height: 1)
@@ -602,6 +546,7 @@ struct ConversationView: View {
                     )
                 }
             }
+            let presentedTimeline = timelineContent
             .background(
                 KordiChatWallpaper(theme: chatTheme)
                     .ignoresSafeArea(edges: .bottom)
@@ -631,10 +576,7 @@ struct ConversationView: View {
             .sensoryFeedback(.selection, trigger: messageActionFeedback)
             .confirmationDialog(
                 "Pin this message?",
-                isPresented: Binding(
-                    get: { pinTarget != nil },
-                    set: { if !$0 { pinTarget = nil } }
-                ),
+                isPresented: pinTargetPresentation,
                 titleVisibility: .visible,
                 presenting: pinTarget
             ) { target in
@@ -650,16 +592,9 @@ struct ConversationView: View {
             } message: { _ in
                 Text("Pinned messages stay visible above this session on synced Kordi devices.")
             }
+            let observedTimeline = presentedTimeline
             .onChange(of: timeline.count) { oldCount, newCount in
-                visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(
-                    currentLimit: visibleMessageLimit,
-                    oldCount: oldCount,
-                    newCount: newCount,
-                    isInitialViewportRevealed: hasRevealedInitialViewport
-                )
-                if oldCount == 0, newCount > 0, !hasRevealedInitialViewport {
-                    Task { await positionAndRevealInitialViewport(using: proxy) }
-                }
+                handleTimelineCountChange(oldCount: oldCount, newCount: newCount, proxy: proxy)
             }
             .onChange(of: pendingMentionCount) {
                 synchronizeReadPresentation()
@@ -705,11 +640,13 @@ struct ConversationView: View {
                     shouldFollowLatestAfterInputSurfaceChange = false
                 }
             }
+            observedTimeline
             .task(id: ConversationIdentityResolver.loadingTaskID(for: conversation)) {
                 await loadAndRevealInitialConversation(using: proxy)
                 await model.refreshActiveCall(in: conversation)
             }
         }
+        return conversationTimeline
         .navigationTitle(showsNavigationChrome && messageActionMessage == nil ? conversation.displayName : "")
         .navigationBarTitleDisplayMode(.inline)
         .tint(chatTheme.accent)
@@ -975,6 +912,11 @@ struct ConversationView: View {
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
         }
+        .modifier(ConversationThreadInspectorModifier(
+            activeRootMessageID: $activeThreadRootMessageID,
+            conversation: conversation,
+            onReplyInConversation: { replySource = $0 }
+        ))
         .inspector(isPresented: $showsCompanionPanel) {
             CompanionChatPanel(
                 isPresented: $showsCompanionPanel,
@@ -984,6 +926,176 @@ struct ConversationView: View {
         }
         .navigationDestination(item: $forwardedDestination) { destination in
             ConversationView(conversation: destination)
+        }
+    }
+
+    @ViewBuilder
+    private func timelineMessageRow(
+        row: ConversationTimelineRow,
+        presentation: ConversationMessagePresentation,
+        timeline: [ChatMessage],
+        messagesByID: [String: ChatMessage],
+        mentionTargets: [ComposerMentionTarget],
+        pinnedMessageIDs: Set<String>,
+        previewActionMessageID: String?,
+        threadReplyCount: Int,
+        proxy: ScrollViewProxy
+    ) -> some View {
+        let message = row.message
+        let avatar = avatarIdentity(for: message)
+        let backgroundSessions = message.backgroundAgentSessions.map {
+            BackgroundAgentSessionPresentation(
+                session: $0,
+                state: $0.resolvedState(in: model.conversations)
+            )
+        }
+
+        VStack(spacing: 0) {
+            if presentation.showsTimestamp {
+                ConversationTimestampDivider(date: message.createdAt)
+            }
+
+            if message.isSystemNotice {
+                SystemNoticeRow(text: message.text)
+                    .padding(.vertical, 8)
+            } else {
+                MessageBubble(
+                    message: message,
+                    mentionTargets: mentionTargets,
+                    showAuthor: message.author == .agent
+                        || (conversation.kind == .group
+                            && message.author == .person
+                            && !presentation.groupedWithPrevious),
+                    showAvatar: presentation.showsAvatar,
+                    replySourceMessage: message.replyToMessageId.flatMap { messagesByID[$0] },
+                    isHighlighted: highlightedMessageID == message.id,
+                    isActionPresented: messageActionMessage?.id == message.id,
+                    isPinned: pinnedMessageIDs.contains(message.id),
+                    selectionMode: !selectedMessageIDs.isEmpty,
+                    isSelected: selectedMessageIDs.contains(message.id),
+                    allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
+                    threadReplyCount: threadReplyCount,
+                    showsAvatarSlot: message.author != .agent,
+                    authorAvatarName: avatar.name,
+                    authorAvatarSource: avatar.source,
+                    authorAvatarSeed: avatar.seed,
+                    ownAccountId: model.account?.accountId,
+                    automaticallyPresentsActions: ProcessInfo.processInfo.arguments.contains("--preview-message-actions")
+                        && message.id == previewActionMessageID,
+                    backgroundSessions: backgroundSessions,
+                    fullScreenVideoAttachmentID: message.attachments.contains {
+                        $0.id == fullScreenVideoAttachmentID
+                    } ? fullScreenVideoAttachmentID : nil,
+                    onOpenAuthorProfile: {
+                        authorProfileConversation = ConversationAuthorProfileResolver.destination(
+                            currentConversation: conversation,
+                            message: message,
+                            selfAccountID: model.account?.accountId,
+                            contacts: model.contacts,
+                            conversations: model.conversations
+                        )
+                    },
+                    onOpenMentionProfile: openMentionProfile,
+                    onRetry: {
+                        await model.retry(message, in: conversation)
+                    },
+                    onSelect: { toggleSelection(message.id) },
+                    onOpenActions: { frame, attachment in
+                        presentMessageActions(
+                            message,
+                            attachment: attachment,
+                            frame: frame
+                        )
+                    },
+                    onSelectedTextChange: { selectedMessageText = $0 },
+                    onReact: { reaction in
+                        Task {
+                            _ = await model.toggleReaction(
+                                reaction,
+                                on: message,
+                                in: conversation
+                            )
+                        }
+                    },
+                    onNavigateToReply: { messageId in
+                        navigateToMessage(messageId, in: timeline, proxy: proxy)
+                    },
+                    onOpenThread: {
+                        activeThreadRootMessageID = message.id
+                    },
+                    onOpenAttachment: { attachment, previewImage in
+                        openAttachment(
+                            attachment,
+                            from: message,
+                            in: timeline,
+                            previewImage: previewImage
+                        )
+                    },
+                    onShareAttachment: { attachment in
+                        prepare(attachment, forSharing: true)
+                    },
+                    onPrepareVoiceMessage: { voiceMessage in
+                        await model.prepareVoiceMessageForPresentation(voiceMessage)
+                    },
+                    onPrepareAttachment: { attachment in
+                        await model.prepareAttachmentForPresentation(attachment)
+                    },
+                    onPrepareAttachmentPreview: { attachment in
+                        await model.prepareAttachmentPreviewImage(attachment)
+                    },
+                    onOpenVideo: { attachment, player, poster in
+                        let videoPresentation = VideoPreviewPresentation(
+                            attachment: attachment,
+                            inlinePlayer: player,
+                            poster: poster
+                        )
+                        player.pause()
+                        fullScreenVideoAttachmentID = attachment.id
+                        Task { @MainActor in
+                            await Task.yield()
+                            guard fullScreenVideoAttachmentID == attachment.id else { return }
+                            videoPreview = videoPresentation
+                        }
+                    },
+                    onAddAttachmentToMediaLibrary: { attachment in
+                        await model.addAttachmentToExpressiveMediaLibrary(attachment)
+                    },
+                    onOpenBackgroundSession: { session in
+                        selectedBackgroundSession = session
+                        backgroundConversation = session.destination(
+                            from: conversation,
+                            conversations: model.conversations,
+                            ownAccountId: model.account?.accountId ?? "",
+                            ownDisplayName: model.account?.preferredName ?? "Me",
+                            createdAt: message.createdAt
+                        )
+                    },
+                    onAgentExecutionExpansionChange: { expanded in
+                        guard expanded else { return }
+                        revealExpandedAgentExecution(row.id, using: proxy)
+                    }
+                )
+                .equatable()
+                .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
+                .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
+            }
+        }
+        .id(row.id)
+    }
+
+    private func handleTimelineCountChange(
+        oldCount: Int,
+        newCount: Int,
+        proxy: ScrollViewProxy
+    ) {
+        visibleMessageLimit = ConversationTimelineWindow.limitAfterAppending(
+            currentLimit: visibleMessageLimit,
+            oldCount: oldCount,
+            newCount: newCount,
+            isInitialViewportRevealed: hasRevealedInitialViewport
+        )
+        if oldCount == 0, newCount > 0, !hasRevealedInitialViewport {
+            Task { await positionAndRevealInitialViewport(using: proxy) }
         }
     }
 
@@ -1049,8 +1161,23 @@ struct ConversationView: View {
                     dismissMessageActions()
                     Task { _ = await model.toggleReaction(reaction, on: message, in: conversation) }
                 },
-                onReply: {
-                    replySource = message.actionSource(sessionId: conversation.sessionId)
+                onReply: { destination in
+                    let source = destination == .thread
+                        ? MessageThreadProjection.rootSource(
+                            for: message,
+                            sessionID: conversation.sessionId
+                        )
+                        : message.actionSource(sessionId: conversation.sessionId)
+                    if destination == .conversation,
+                       scopedThreadRootMessageID != nil,
+                       let onReplyInConversation {
+                        onReplyInConversation(source)
+                    } else if destination == .thread,
+                              scopedThreadRootMessageID == nil {
+                        activeThreadRootMessageID = source.sourceMessageId
+                    } else {
+                        replySource = source
+                    }
                     dismissMessageActions()
                 },
                 onPin: {
@@ -1773,6 +1900,7 @@ struct ConversationView: View {
             resolvedVoiceMessage: resolvedVoiceMessage,
             replyingTo: outgoingReply,
             mentioning: outgoingMention,
+            messageAction: scopedThreadMessageAction,
             agentContext: companionContext?.referenceText,
             to: conversation
         )
@@ -1857,6 +1985,7 @@ struct ConversationView: View {
                 attachments: batch,
                 replyingTo: index == 0 ? reply : nil,
                 mentioning: index == 0 ? mention : nil,
+                messageAction: index == 0 ? scopedThreadMessageAction : nil,
                 agentContext: index == 0 ? companionContext?.referenceText : nil,
                 to: conversation
             )

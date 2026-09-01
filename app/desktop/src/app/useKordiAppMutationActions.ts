@@ -16,6 +16,7 @@ import { buildChatCreatePeopleContactLookup } from '@/features/chat/chatCreateFl
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { sendChatMessageWithImmediateQuoteClear } from '@/features/chat/composerQuoteClear';
 import { authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
+import type { ComposerQuoteState } from '@/kordi-app/types';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 
 export function useKordiAppMutationActions({
@@ -242,7 +243,14 @@ export function useKordiAppMutationActions({
     targetSessionId?: string,
     contextMessages?: DesktopChatContextMessage[],
     attachmentOverride?: AttachmentItem[],
-  ) => sendChatMessageWithImmediateQuoteClear({
+    quoteOverride?: ComposerQuoteState | null,
+  ) => quoteOverride ? runtime.composer.handleSendChatMessage(
+    draftOverride,
+    targetSessionId,
+    contextMessages,
+    attachmentOverride,
+    quoteOverride,
+  ) : sendChatMessageWithImmediateQuoteClear({
     draftOverride,
     targetSessionId,
     contextMessages,
@@ -258,6 +266,7 @@ export function useKordiAppMutationActions({
     composerUi.chatComposerAttachments.length,
     handleSendChatMessageAfterMaterializingDraft,
     onClearChatQuote,
+    runtime.composer,
   ]);
 
   return {

@@ -122,6 +122,10 @@ export type MessageReplySummary = {
   targetMessageId?: string | null;
 };
 
+export type MessageThreadSummary = {
+  replyCount: number;
+};
+
 export type MessageReadReceiptParticipant = {
   id: string;
   name: string;
@@ -154,9 +158,11 @@ export type MessageActionSource = {
 
 export type MessageActionMetadata = {
   schemaVersion: 1;
-  kind: 'quote' | 'forward';
+  kind: 'quote' | 'forward' | 'thread';
   source: MessageActionSource;
 };
+
+export type MessageReplyDestination = 'conversation' | 'thread';
 
 export type MessageCallActivity = {
   callId: string;
@@ -186,7 +192,7 @@ export type TranscriptLoadingPlaceholder = {
 };
 
 export type ComposerQuoteState = {
-  action: 'quote';
+  action: 'quote' | 'thread';
   source: MessageActionSource;
 };
 
@@ -246,6 +252,7 @@ export type Message = {
   replyToMessageId?: string | null;
   replyAliasIds?: string[];
   replySummary?: MessageReplySummary;
+  threadSummary?: MessageThreadSummary;
   readReceiptSummary?: MessageReadReceiptSummary | null;
   messageAction?: MessageActionMetadata | null;
   reactionConversationId?: string | null;
@@ -293,6 +300,7 @@ export type QueuedDesktopChatMessage = {
   attachments: (MessageAttachment & { id: string; path: string })[];
   contextMessages?: DesktopChatContextMessage[];
   runtimeRoute?: DesktopChatMessageRoute | null;
+  messageAction?: MessageActionMetadata | null;
 };
 
 export type CollaborationAgentRequestControl = {

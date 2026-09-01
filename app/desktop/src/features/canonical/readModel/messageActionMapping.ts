@@ -17,7 +17,7 @@ function numberValue(value: unknown) {
 
 export function canonicalMessageAction(value: unknown): MessageActionMetadata | null {
   const record = recordValue(value);
-  if (record.schemaVersion !== 1 || (record.kind !== 'quote' && record.kind !== 'forward')) return null;
+  if (record.schemaVersion !== 1 || !['quote', 'forward', 'thread'].includes(String(record.kind))) return null;
   const source = recordValue(record.source);
   const sourceSessionId = stringValue(source.sourceSessionId)?.trim();
   const sourceMessageId = stringValue(source.sourceMessageId)?.trim();
@@ -26,7 +26,7 @@ export function canonicalMessageAction(value: unknown): MessageActionMetadata | 
   const mentions = canonicalMentions(source.mentions);
   return {
     schemaVersion: 1,
-    kind: record.kind,
+    kind: record.kind as MessageActionMetadata['kind'],
     source: {
       sourceSessionId,
       sourceMessageId,

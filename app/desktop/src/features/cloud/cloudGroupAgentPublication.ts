@@ -107,6 +107,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
           deliveryState: responseDeliveryState,
           replyToMessageId: message.id,
           requestId: message.id,
+          ...(message.messageAction?.kind === 'thread' ? { messageAction: message.messageAction } : {}),
           structuredContent: responseTools.length > 0
             ? { tools: responseTools }
             : null,

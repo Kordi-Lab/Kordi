@@ -524,6 +524,7 @@ struct MessageActionOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(BlobEmojiRecentStore.key) private var storedRecentEmojiIDs = "[]"
     @State private var showsAllReactions = false
+    @State private var showsReplyDestinations = false
     @State private var didSchedulePreviewExpansion = false
     let message: ChatMessage
     let sourceFrame: CGRect
@@ -542,7 +543,7 @@ struct MessageActionOverlay: View {
     let onShareAttachment: () -> Void
     let onAddAttachmentToMediaLibrary: () -> Void
     let onReact: (String) -> Void
-    let onReply: () -> Void
+    let onReply: (MessageReplyDestination) -> Void
     let onPin: () -> Void
     let onCopy: () -> Void
     let onShareMessage: () -> Void
@@ -560,7 +561,8 @@ struct MessageActionOverlay: View {
     }
 
     private var actionCount: Int {
-        (allowsReply ? 1 : 0)
+        if showsReplyDestinations { return 3 }
+        return (allowsReply ? 1 : 0)
             + (!message.text.isEmpty ? 2 : 0)
             + 3
             + (allowsEdit ? 1 : 0)
@@ -765,6 +767,20 @@ struct MessageActionOverlay: View {
     private var actionMenu: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
+                if showsReplyDestinations {
+                    actionButton("Reply", systemImage: "chevron.left") {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            showsReplyDestinations = false
+                        }
+                    }
+                    Divider().padding(.horizontal, 14)
+                    actionButton("Reply in conversation", systemImage: "message") {
+                        onReply(.conversation)
+                    }
+                    actionButton("Reply in thread", systemImage: "sidebar.right") {
+                        onReply(.thread)
+                    }
+                } else {
                 if mediaAttachment != nil {
                     actionButton("Review", systemImage: "eye", action: onReviewAttachment)
                     actionButton(
@@ -782,7 +798,11 @@ struct MessageActionOverlay: View {
                     Divider().padding(.horizontal, 14)
                 }
                 if allowsReply {
-                    actionButton("Reply", systemImage: "arrowshape.turn.up.left", action: onReply)
+                    actionButton("Reply", systemImage: "arrowshape.turn.up.left") {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            showsReplyDestinations = true
+                        }
+                    }
                 }
                 if !message.text.isEmpty {
                     actionButton("Copy", systemImage: "doc.on.doc", action: onCopy)
@@ -828,6 +848,7 @@ struct MessageActionOverlay: View {
                     label: readReceiptLabel,
                     readers: readReceiptReaders
                 )
+                }
             }
             .padding(.vertical, 4)
         }

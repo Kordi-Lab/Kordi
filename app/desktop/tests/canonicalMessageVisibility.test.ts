@@ -5,9 +5,11 @@ import { canonicalMessageCountsForLastActive } from '../src/features/canonical/r
 import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import {
   canonicalMessageCountsAsReadable,
+  isInternalCloudAgentControlMessage,
   isPlaceholderSessionTitleNotice,
   isSynchronizationOnlyCloudGroupTitleNotice,
 } from '../src/features/canonical/readModel/messageVisibility';
+import { encodeCloudAgentCancel } from '../src/features/cloud/cloudAgentMessages';
 import type { CanonicalSessionMessage } from '../src/kordi-app/types';
 
 function sessionTitleNotice(title: string): CanonicalSessionMessage {
@@ -65,4 +67,26 @@ test('invite-derived group title notices stay hidden while genuine renames remai
   assert.equal(mapCanonicalMessage(inviteCopy, new Map()), null);
   assert.equal(isSynchronizationOnlyCloudGroupTitleNotice(genuineRename), false);
   assert.ok(mapCanonicalMessage(genuineRename, new Map()));
+});
+
+test('persisted cloud-agent cancel controls stay out of transcripts and activity', () => {
+  const control: CanonicalSessionMessage = {
+    id: 'cloud-agent-cancel-control',
+    sessionId: 'session:group:one',
+    senderIdentityId: 'human:peer',
+    senderRole: 'person',
+    messageKind: 'text',
+    contentText: encodeCloudAgentCancel({ requestId: 'message:request' }),
+    content: null,
+    status: 'received',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+    sourceTransport: 'cloud-group',
+  };
+
+  assert.equal(isInternalCloudAgentControlMessage(control), true);
+  assert.equal(canonicalMessageCountsAsReadable(control), false);
+  assert.equal(canonicalMessageCountsForLastActive(control), false);
+  assert.equal(mapCanonicalMessage(control, new Map()), null);
 });

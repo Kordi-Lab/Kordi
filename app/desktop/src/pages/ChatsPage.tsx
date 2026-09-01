@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
-import { suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
+import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import type { Conversation, Message } from '@/kordi-app/types';
 import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
+import { messagesWithThreadReplyCounts, projectMessageThreads, projectQueuedThreadMessages, threadRootSource } from '@/features/chat/messageThreads';
+import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
@@ -15,6 +17,8 @@ import {
   ChatCompanionWorkspace,
 } from '@/pages/chatsPage.companionWorkspace';
 import { ChatMainWorkspace } from '@/pages/chatsPage.mainWorkspace';
+import { ChatThreadPanel } from '@/pages/ChatThreadPanel';
+import { useChatThreadSelection } from '@/pages/useChatThreadSelection';
 import { useChatCollaborationRouting } from '@/pages/useChatCollaborationRouting';
 import { useChatCompanionLayout } from '@/pages/useChatCompanionLayout';
 import { useChatCompanionSession } from '@/pages/useChatCompanionSession';
@@ -96,7 +100,12 @@ export function ChatsPage({
     onClearSourcePreview,
     desktopLiveTurn,
   } = transcript;
-  const { setChatComposerTextForSession } = composer;
+  const {
+    setChatComposerTextForSession,
+    onReplyMessage: routeReplyMessage,
+    activeChatQuote,
+    onClearChatQuote,
+  } = composer;
   const {
     composerSelection,
     openComposerSelector,
@@ -243,10 +252,79 @@ export function ChatsPage({
       setOpenSelector: setCompanionOpenComposerSelector,
     },
   });
-  const transcriptMessages = collapseAdjacentSessionConfigNotices(
-    suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
+  const transcriptMessages = useMemo(
+    () => collapseAdjacentSessionConfigNotices(
+      suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
+    ),
+    [activeConv.messages, activeTranscriptLiveTurn],
   );
-  const attributedTranscriptMessages = transcriptMessages;
+  const inferLatestHumanRequest = shouldInferLatestHumanReplyTarget(activeConv);
+  const locatedTranscript = useMemo(
+    () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
+      inferLatestHumanRequest,
+    }),
+    [activeTranscriptLiveTurn, inferLatestHumanRequest, transcriptMessages],
+  );
+  const locatedLiveTurn = locatedTranscript.liveTurn ?? activeTranscriptLiveTurn;
+  const threadProjection = useMemo(
+    () => projectMessageThreads(locatedTranscript.messages),
+    [locatedTranscript.messages],
+  );
+  const {
+    activeThreadRootId,
+    closeThread,
+    openThread,
+    openThreadState,
+    replyToMessage: handleReplyMessage,
+    setOpenThreadState,
+  } = useChatThreadSelection({
+    conversationId: activeConv.id,
+    sessionId: activeSessionId,
+    activeReplyAction: activeChatQuote?.action,
+    isNativeShell,
+    routeReplyMessage,
+    clearReply: onClearChatQuote,
+  });
+  const activeLiveTurnThreadRootId = locatedLiveTurn && !locatedLiveTurn.completed
+    ? threadProjection.threadRootIdByMessageId.get(locatedLiveTurn.replyToMessageId?.trim() ?? '') ?? null
+    : null;
+  const optimisticThreadConversationId = openThreadState?.conversationId;
+  const optimisticThreadRootId = openThreadState?.rootId;
+  const optimisticThreadReplyCount = openThreadState?.optimisticReplyCount;
+  const attributedTranscriptMessages = useMemo(
+    () => messagesWithThreadReplyCounts(
+      threadProjection.mainMessages,
+      activeConv.id,
+      activeLiveTurnThreadRootId,
+      optimisticThreadConversationId,
+      optimisticThreadRootId,
+      optimisticThreadReplyCount,
+    ),
+    [
+      activeConv.id,
+      activeLiveTurnThreadRootId,
+      optimisticThreadConversationId,
+      optimisticThreadReplyCount,
+      optimisticThreadRootId,
+      threadProjection.mainMessages,
+    ],
+  );
+  const [threadPanelWidth, setThreadPanelWidth] = useState(384);
+  const activeThread = useMemo(() => {
+    if (!activeThreadRootId) return null;
+    const existing = threadProjection.threads.get(activeThreadRootId);
+    if (existing) return existing;
+    const root = attributedTranscriptMessages.find((message) => (
+      message.id === activeThreadRootId || message.entryId === activeThreadRootId
+    ));
+    return root ? { root, replies: [] } : null;
+  }, [activeThreadRootId, attributedTranscriptMessages, threadProjection.threads]);
+  const queuedThreadProjection = useMemo(
+    () => projectQueuedThreadMessages(transcript.queuedDesktopMessages, activeThreadRootId),
+    [activeThreadRootId, transcript.queuedDesktopMessages],
+  );
+  const mainQueuedMessages = queuedThreadProjection.mainMessages;
+  const activeThreadQueuedMessages = queuedThreadProjection.activeThreadMessages;
   const chatForkModel = useChatForkModel({
     conversation: activeConv,
     messages: attributedTranscriptMessages,
@@ -369,8 +447,13 @@ export function ChatsPage({
           <ChatMainWorkspace
             layout={layout}
             session={session}
-            transcript={transcript}
-            composer={composer}
+            transcript={{ ...transcript, queuedDesktopMessages: mainQueuedMessages }}
+            composer={{
+              ...composer,
+              activeChatQuote: activeChatQuote?.action === 'thread' ? null : activeChatQuote,
+              onReplyMessage: handleReplyMessage,
+              onOpenMessageThread: openThread,
+            }}
             runtime={runtime}
             auth={auth}
             models={{
@@ -384,7 +467,7 @@ export function ChatsPage({
             }}
             presentation={{
               messages: attributedTranscriptMessages,
-              liveTurn: activeTranscriptLiveTurn,
+              liveTurn: activeLiveTurnThreadRootId ? undefined : locatedLiveTurn,
               isCompressionActive,
               activeLiveTurnIsRunning,
               prefersReducedMotion,
@@ -398,6 +481,82 @@ export function ChatsPage({
               open: openSideAgentPanel,
               openSession: openRelatedAgentSession,
             }}
+            threadPanel={activeThread ? (
+              <ChatThreadPanel
+                conversation={activeConv}
+                thread={activeThread}
+                replyCount={Math.max(
+                  activeThread.replies.length + Number(activeLiveTurnThreadRootId === activeThreadRootId),
+                  activeThreadQueuedMessages.length,
+                  openThreadState?.optimisticReplyCount ?? 0,
+                )}
+                liveTurn={activeLiveTurnThreadRootId === activeThreadRootId ? locatedLiveTurn : null}
+                liveTurnSender={localOwnedAgentSenderLabel(activeConv)}
+                onClose={closeThread}
+                onSendStart={() => setOpenThreadState((current) => current ? ({
+                  ...current,
+                  optimisticReplyCount: Math.max(
+                    current.optimisticReplyCount ?? 0,
+                    activeThread.replies.length + activeThreadQueuedMessages.length + 1,
+                  ),
+                }) : current)}
+                onSendSettled={() => setOpenThreadState((current) => current ? ({
+                  ...current,
+                  optimisticReplyCount: undefined,
+                }) : current)}
+                onSend={(text, attachments) => {
+                  const source = threadRootSource(activeThread.root, activeSessionId);
+                  if (!source) return;
+                  return runtime.onSendChatMessage(
+                    text,
+                    undefined,
+                    undefined,
+                    attachments,
+                    { action: 'thread', source },
+                  );
+                }}
+                saveAttachments={composer.saveDesktopAttachments}
+                removeStagedAttachment={composer.removeChatComposerAttachment}
+                accountId={cloudAccount?.accountId}
+                queuedMessages={activeThreadQueuedMessages}
+                onCancelQueuedMessage={transcript.onCancelQueuedMessage}
+                width={threadPanelWidth}
+                onWidthChange={setThreadPanelWidth}
+                compactModelMenu={{
+                  selection: collaborationRouting.main.enabled && collaborationRouting.main.selectedAgent
+                    ? collaborationRouting.main.selection ?? composerSelection
+                    : composerSelection,
+                  providerOptions: composerProviderOptions,
+                  modelOptions: chatModelOptions && chatModelOptions.length > 0
+                    ? chatModelOptions
+                    : undefined,
+                  onSave: collaborationRouting.main.saveCompactRoute,
+                }}
+                chatMentionTargetsForText={composer.chatMentionTargetsForText}
+                actions={{
+                  onOpenSource: transcript.onOpenSource,
+                  onOpenArtifact: transcript.onOpenArtifact,
+                  onOpenAuthSettings: openAuthentication,
+                  onNavigateToMessage: transcriptNavigation.main.navigate,
+                  onOpenMessageDetail: composer.onSelectMessage,
+                  onStopCollaborationAgentRequest: runtime.onStopCollaborationAgentRequest,
+                  onStopActiveTurn: runtime.onStopDesktopChatTurn,
+                  onRequestCollaborationContact: runtime.onRequestCollaborationContact,
+                  onOpenSenderProfile: senderProfiles.openActive,
+                  onOpenForkSession: openRelatedAgentSession,
+                  onReplyMessage: handleReplyMessage,
+                  onOpenMessageThread: openThread,
+                  onForwardMessage: composer.onForwardMessage,
+                  onEditMessage: composer.onEditMessage,
+                  onDeleteMessage: composer.onDeleteMessage,
+                  onReactMessage: composer.onReactMessage,
+                  onRetryMessage: runtime.onRetryChatMessage,
+                  onSelectMessage: composer.onSelectMessage,
+                  onRequestPinMessage: chatPins.requestPin,
+                  onRequestUnpinMessage: chatPins.requestUnpin,
+                }}
+              />
+            ) : null}
           />
           {showCompanionPane && companionSide === 'right' ? splitDivider : null}
           {showCompanionPane && companionSide === 'right' ? companionPane : null}
