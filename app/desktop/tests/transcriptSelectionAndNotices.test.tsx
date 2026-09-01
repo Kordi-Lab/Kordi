@@ -208,7 +208,10 @@ test('messages without read receipts still expose the Telegram-style message con
   };
 
   const bubbleMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
-  const menuMarkup = renderToStaticMarkup(createElement(MessageContextMenuContent, { msg: message }));
+  const menuMarkup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: message,
+    onReplyMessage: () => undefined,
+  }));
 
   assert.match(bubbleMarkup, /data-message-context-menu-target="true"/);
   assert.match(bubbleMarkup, /data-message-context-menu-anchor="true"/);

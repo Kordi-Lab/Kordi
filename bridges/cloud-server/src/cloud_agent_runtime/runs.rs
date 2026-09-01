@@ -58,6 +58,17 @@ mod tests {
 
     #[test]
     fn cloud_group_response_body_links_to_group_request() {
+        let thread_message_action = serde_json::json!({
+            "schemaVersion": 1,
+            "kind": "thread",
+            "source": {
+                "sourceSessionId": "session:group:one",
+                "sourceMessageId": "msg:ui:root",
+                "senderLabel": "Requester",
+                "textPreview": "Root",
+                "attachmentCount": 0
+            }
+        });
         let mut request = super::CloudGroupEnvelope {
             kind: "group-message".to_string(),
             group_id: "session:group:one".to_string(),
@@ -94,7 +105,7 @@ mod tests {
                 delivery_state: None,
                 reply_to_message_id: None,
                 request_id: None,
-                message_action: None,
+                message_action: Some(thread_message_action.clone()),
                 target_cloud_agent_id: None,
                 target_cloud_agent_name: None,
                 target_cloud_agent_owner_account_id: None,
@@ -124,6 +135,7 @@ mod tests {
         );
         assert_eq!(message.request_id.as_deref(), Some("msg:ui:request"));
         assert_eq!(message.delivery_state.as_deref(), Some("complete"));
+        assert_eq!(message.message_action, Some(thread_message_action));
         assert_eq!(message.text, "@RequestersKordi Hello everyone!");
         assert_eq!(
             message.target_cloud_agent_owner_account_id.as_deref(),
@@ -154,6 +166,25 @@ mod tests {
             .expect("chained group response message");
         assert_eq!(chained_message.target_cloud_agent_owner_account_id, None);
         assert_eq!(chained_message.agent_mention_depth, None);
+
+        request
+            .message
+            .as_mut()
+            .expect("request message")
+            .message_action = Some(serde_json::json!({ "kind": "quote" }));
+        let ordinary_body = super::cloud_group_response_body(
+            &request,
+            "acct_owner",
+            "msg:ui:request",
+            "cloudrunmsg_ordinary_response",
+            "Ordinary response",
+            "complete",
+            4,
+        );
+        let ordinary_message = super::parse_cloud_group_envelope(&ordinary_body)
+            .and_then(|envelope| envelope.message)
+            .expect("ordinary group response message");
+        assert_eq!(ordinary_message.message_action, None);
     }
 
     #[test]

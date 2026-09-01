@@ -611,3 +611,32 @@ test('keeps a completed external-agent reply visible alongside an active live tu
     [user, completedRemoteReply],
   );
 });
+
+test('starting a new agent turn keeps older owned-agent replies sorted after the trigger', () => {
+  const currentRequest: Message = {
+    id: 'msg:current-request',
+    role: 'user',
+    text: '@CUFishAIsKordi test again',
+    time: '20:50',
+  };
+  const previousReply = agentMessage('My Kordi', turn({
+    id: 'turn:previous',
+    prompt: '@MyKordi hi',
+    assistantText: 'Earlier reply.',
+    replyToMessageId: 'msg:previous-request',
+  }));
+  const liveTurn = turn({
+    id: 'turn:current',
+    prompt: '@CUFishAIsKordi test again',
+    assistantText: '',
+    thinkingText: '',
+    tools: [],
+    completed: false,
+    replyToMessageId: 'msg:current-request',
+  });
+
+  assert.deepEqual(
+    suppressLiveTurnEchoMessages([currentRequest, previousReply], liveTurn),
+    [currentRequest, previousReply],
+  );
+});

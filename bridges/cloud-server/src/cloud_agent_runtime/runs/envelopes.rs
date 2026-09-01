@@ -196,6 +196,12 @@ pub(super) fn cloud_group_response_body(
         .as_ref()
         .map(|target| target.display_name.clone());
     let agent_mention_depth = mentioned_agent.as_ref().map(|_| request_mention_depth + 1);
+    let thread_message_action = request_envelope
+        .message
+        .as_ref()
+        .and_then(|message| message.message_action.as_ref())
+        .filter(|action| action.get("kind").and_then(serde_json::Value::as_str) == Some("thread"))
+        .cloned();
     encode_cloud_group_envelope(&CloudGroupEnvelope {
         kind: "group-message".to_string(),
         group_id: request_envelope.group_id.clone(),
@@ -214,7 +220,7 @@ pub(super) fn cloud_group_response_body(
             delivery_state: Some(delivery_state.to_string()),
             reply_to_message_id: Some(request_message_id.to_string()),
             request_id: Some(request_message_id.to_string()),
-            message_action: None,
+            message_action: thread_message_action,
             target_cloud_agent_id: None,
             target_cloud_agent_name: None,
             target_cloud_agent_owner_account_id,

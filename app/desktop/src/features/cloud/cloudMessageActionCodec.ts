@@ -14,7 +14,7 @@ function cleanText(value: unknown) {
 
 export function cloudMessageActionFromRecord(value: unknown): MessageActionMetadata | null {
   const record = recordValue(value);
-  if (record.schemaVersion !== 1 || (record.kind !== 'quote' && record.kind !== 'forward')) return null;
+  if (record.schemaVersion !== 1 || !['quote', 'forward', 'thread'].includes(String(record.kind))) return null;
   const source = recordValue(record.source);
   const sourceSessionId = cleanText(source.sourceSessionId);
   const sourceMessageId = cleanText(source.sourceMessageId);
@@ -26,7 +26,7 @@ export function cloudMessageActionFromRecord(value: unknown): MessageActionMetad
   const mentions = normalizedMessageMentions(source.mentions);
   return {
     schemaVersion: 1,
-    kind: record.kind,
+    kind: record.kind as MessageActionMetadata['kind'],
     source: {
       sourceSessionId,
       sourceMessageId,

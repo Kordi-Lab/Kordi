@@ -10,7 +10,7 @@ export type SendChatMessageWithImmediateQuoteClearArgs = {
   currentDraft: string;
   attachmentCount: number;
   activeChatQuote?: ComposerQuoteState | null;
-  send: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
+  send: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[], quoteOverride?: ComposerQuoteState | null) => Promise<void> | void;
   clearQuote: () => void;
 };
 

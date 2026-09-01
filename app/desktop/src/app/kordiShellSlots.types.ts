@@ -233,6 +233,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
   filteredChatSlashCommands: DesktopChatSlashCommand[];
   filteredProjectMentionTargets: ComposerMentionOption[];
+  chatMentionTargetsForText: (text: string) => ComposerMentionOption[];
   filteredChatMentionTargets: ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
@@ -249,7 +250,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   setChatComposerTextForSession: (sessionId: string, value: string) => void;
   activeChatQuote: ComposerQuoteState | null;
   onClearChatQuote: () => void;
-  onReplyMessage: (message: Message) => void;
+  onReplyMessage: (message: Message, destination: 'conversation' | 'thread') => void;
   onForwardMessage: (message: Message) => void; onEditMessage: (message: Message) => void; onDeleteMessage: (message: Message) => void; onReactMessage: (message: Message, reaction: string) => Promise<void> | void;
   onSelectMessage: (message: Message) => void;
   messageSelectionMode: boolean;
@@ -286,7 +287,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   handleStopDesktopChatTurn: () => void;
   handleStopCollaborationAgentRequest: (request: CollaborationAgentRequestControl) => void | Promise<void>;
   handleSendProjectMessage: (draftOverride?: string) => void;
-  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
+  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[], quoteOverride?: ComposerQuoteState | null) => Promise<void> | void;
   handleRetryChatMessage: (message: Message) => Promise<void> | void;
   handleForkChatMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
   showChatDetailRail: boolean;
@@ -539,6 +540,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeConversationUsesCollaboration'
   | 'onChatTranscriptScroll'
   | 'filteredChatSlashCommands'
+  | 'chatMentionTargetsForText'
   | 'filteredChatMentionTargets'
   | 'acceptChatSlashCommand'
   | 'acceptChatMentionTarget'

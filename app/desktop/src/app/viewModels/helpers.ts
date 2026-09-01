@@ -339,26 +339,39 @@ function transcriptToolKey(tool: DesktopChatTurnSnapshot['tools'][number]) {
   return tool.id?.trim() || [tool.name, tool.status, tool.arguments, tool.resultText ?? '', tool.isError ? 'error' : 'ok'].join('\u0000');
 }
 
+function messageMatchesActiveLiveTurn(message: Message, turn: DesktopChatTurnSnapshot) {
+  if (!message.turn || (message.role !== 'owned-agent' && message.role !== 'external-agent')) return false;
+  if (message.id === turn.id || message.turn.id === turn.id) return true;
+  const messageReplyId = explicitAgentReplyTarget(message);
+  const turnReplyId = cleanComparableText(turn.replyToMessageId) || cleanComparableText(turn.sourceMessage?.messageId);
+  if (messageReplyId && turnReplyId) return messageReplyId === turnReplyId;
+
+  const promptMatches = Boolean(
+    cleanComparableText(message.turn.prompt)
+    && cleanComparableText(message.turn.prompt) === cleanComparableText(turn.prompt),
+  );
+  const messageText = cleanComparableText(message.turn.assistantText) || cleanComparableText(message.text);
+  const turnText = cleanComparableText(turn.assistantText);
+  const textMatches = Boolean(
+    messageText
+    && turnText
+    && (messageText.startsWith(turnText) || turnText.startsWith(messageText)),
+  );
+  const messageThinking = cleanComparableText(message.turn.thinkingText);
+  const turnThinking = cleanComparableText(turn.thinkingText);
+  const thinkingMatches = Boolean(messageThinking && turnThinking && messageThinking === turnThinking);
+  const turnToolIds = new Set(turn.tools.map(transcriptToolKey));
+  const toolsMatch = turnToolIds.size > 0
+    && message.turn.tools.some((tool) => turnToolIds.has(transcriptToolKey(tool)));
+  const contentMatches = textMatches
+    || thinkingMatches
+    || (!messageText && !messageThinking && toolsMatch);
+  return message.turn.completed ? promptMatches && contentMatches : promptMatches || contentMatches;
+}
+
 export function suppressLiveTurnEchoMessages(messages: Message[], turn?: DesktopChatTurnSnapshot) {
   if (!turn || turn.completed) return messages;
-
-  const lastUserIndex = (() => {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (messages[index].role === 'user') return index;
-    }
-    return -1;
-  })();
-
-  const filtered = messages.filter((message, index) => {
-    if (index <= lastUserIndex) return true;
-    if (message.role === 'owned-agent') return false;
-    // The legacy collaboration placeholder for an inbound ASK on the agent owner's instance
-    // surfaces as an external-agent agent-turn with an in-flight `turn`; the live turn
-    // overlay already represents that work. Drop in-flight external-agent rows so the
-    // viewer doesn't see a redundant "Processing…" row underneath the live turn.
-    if (message.role === 'external-agent' && message.turn && !message.turn.completed) return false;
-    return true;
-  });
+  const filtered = messages.filter((message) => !messageMatchesActiveLiveTurn(message, turn));
 
   return filtered.length === messages.length ? messages : filtered;
 }

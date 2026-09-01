@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, CornerDownLeft } from 'lucide-react';
+import { ChevronDown, ChevronUp, CornerDownLeft, MessagesSquare } from 'lucide-react';
 
 import { replyStatusText } from '@/features/chat/replyAttribution';
 import { navigateToTranscriptMessage } from '@/features/chat/transcriptNavigation';
@@ -116,6 +116,38 @@ export function RequestReplyLine({
     >
       <CornerDownLeft className="app-message-reply-line-icon h-2.5 w-2.5 shrink-0" aria-hidden="true" />
       <span className="app-message-reply-count">{visibleCount}</span>
+    </button>
+  );
+}
+
+export function ThreadReplyLine({
+  count,
+  own,
+  inline = false,
+  onOpen,
+}: {
+  count?: number;
+  own: boolean;
+  inline?: boolean;
+  onOpen?: () => void;
+}) {
+  const visibleCount = Math.max(0, Math.floor(count ?? 0));
+  if (visibleCount <= 0) return null;
+  const label = `${visibleCount} discussed in thread`;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      disabled={!onOpen}
+      className={cn(
+        'app-message-reply-line inline-flex w-fit items-center gap-[3px] px-0 text-[9.5px] font-medium leading-none transition',
+        inline ? 'align-baseline' : 'mt-0.5',
+        own ? 'self-end' : 'self-start',
+      )}
+      aria-label={`Open thread with ${label}`}
+    >
+      <MessagesSquare className="app-message-reply-line-icon h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+      <span className="app-message-reply-count">{label}</span>
     </button>
   );
 }

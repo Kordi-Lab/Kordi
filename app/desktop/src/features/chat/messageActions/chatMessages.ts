@@ -12,10 +12,12 @@ import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSession
 import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
+  ComposerQuoteState,
   ComposerScope,
   Conversation,
   ConversationCollaborationTarget,
   Message,
+  MessageActionMetadata,
   DesktopChatState,
   DesktopCollaborationState,
   DesktopChatTurnSnapshot,
@@ -79,7 +81,7 @@ import type {
   PendingCollaborationOutreach,
   UseChatMessageActionsArgs,
 } from './types';
-import { quoteMessageAction } from '../messageActionMetadata';
+import { composerMessageAction } from '../messageActionMetadata';
 import { memeAttachmentDraftError } from '../memeAttachments';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
 import { prefetchNativeVideoRetry, terminalCollaborationRetryFailure } from './collaborationRetry';
@@ -243,6 +245,7 @@ export function queuedDesktopChatMessageFromDraft({
   scope = 'chat',
   contextMessages,
   runtimeRoute,
+  messageAction,
 }: {
   sessionId: string;
   text: string;
@@ -251,6 +254,7 @@ export function queuedDesktopChatMessageFromDraft({
   scope?: QueuedDesktopChatMessage['scope'];
   contextMessages?: DesktopChatContextMessage[];
   runtimeRoute?: QueuedDesktopChatMessage['runtimeRoute'];
+  messageAction?: MessageActionMetadata | null;
 }): QueuedDesktopChatMessage {
   const timestamp = Date.now();
   const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -265,7 +269,22 @@ export function queuedDesktopChatMessageFromDraft({
     attachments,
     ...(contextMessages && contextMessages.length > 0 ? { contextMessages } : null),
     ...(runtimeRoute ? { runtimeRoute } : null),
+    ...(messageAction ? { messageAction } : null),
   };
+}
+
+export function chatSendShouldAutoFollowMain(
+  quote?: ComposerQuoteState | null,
+  retryMessage?: Message,
+) {
+  return quote?.action !== 'thread' && retryMessage?.messageAction?.kind !== 'thread';
+}
+
+function composerQuoteFromMessageAction(
+  action?: MessageActionMetadata | null,
+): ComposerQuoteState | null {
+  if (action?.kind !== 'quote' && action?.kind !== 'thread') return null;
+  return { action: action.kind, source: action.source };
 }
 
 export function chatSendIsBusy({
@@ -542,7 +561,7 @@ export function useChatMessageActions({
     return message;
   }, [setQueuedDesktopMessagesBySessionNow]);
 
-  const queueLocalDraftForSession = useCallback((sessionId: string, draftText: string, attachments: QueuedDesktopChatMessage['attachments'], contextMessages: DesktopChatContextMessage[] = []) => {
+  const queueLocalDraftForSession = useCallback((sessionId: string, draftText: string, attachments: QueuedDesktopChatMessage['attachments'], contextMessages: DesktopChatContextMessage[] = [], quote: ComposerQuoteState | null = null) => {
     const queuedMessage = queuedDesktopChatMessageFromDraft({
       sessionId,
       text: draftText,
@@ -550,9 +569,10 @@ export function useChatMessageActions({
       attachments,
       contextMessages,
       runtimeRoute: resolveChatRuntimeRoute(sessionId),
+      messageAction: quote?.source ? composerMessageAction(quote) : null,
     });
     enqueueLocalQueuedMessage(queuedMessage);
-    shouldAutoFollowChatRef.current = true;
+    if (chatSendShouldAutoFollowMain(quote)) shouldAutoFollowChatRef.current = true;
     setDesktopChatError(null);
     setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', sessionId, ''));
     setChatComposerAttachments([]);
@@ -605,6 +625,7 @@ export function useChatMessageActions({
       const materializedState = await materializeLocalChatTarget(message.sessionId);
       const attachmentPaths = message.attachments.map((item) => item.path);
       const previewText = attachmentSummaryText(message.text);
+      const quote = composerQuoteFromMessageAction(message.messageAction);
       const turn = await startDesktopChatMessage(
         message.sessionId,
         message.text,
@@ -621,6 +642,8 @@ export function useChatMessageActions({
           message.time,
           'desktop-chat-ui',
           'sending',
+          [],
+          quote,
         ),
       );
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
@@ -629,13 +652,15 @@ export function useChatMessageActions({
           && current.activeSession.id === message.sessionId;
         const baseState = materializedState && !currentTargetsSession ? materializedState : current;
         return baseState
-          ? appendOptimisticOutboundMessage(baseState, message.sessionId, previewText, message.text, message.attachments, message.time)
+          ? appendOptimisticOutboundMessage(baseState, message.sessionId, previewText, message.text, message.attachments, message.time, [], quote)
           : current;
       });
       await persistCanonicalUserMessage(preparedCanonicalMessage).catch((error: unknown) => {
         setDesktopChatError(error instanceof Error ? error.message : 'Unable to save queued message');
       });
-      watchLocalTurnAndFlushQueue(turn);
+      watchLocalTurnAndFlushQueue(preparedCanonicalMessage
+        ? { ...turn, replyToMessageId: preparedCanonicalMessage.messageId }
+        : turn);
     } catch (error) {
       if (localChatSendInFlightRef.current?.sessionId === message.sessionId) {
         localChatSendInFlightRef.current = null;
@@ -704,7 +729,7 @@ export function useChatMessageActions({
     runtimeRoute?: QueuedDesktopChatMessage['runtimeRoute'];
   }) => {
     if (setSendingState) setIsDesktopChatSending(true);
-    shouldAutoFollowChatRef.current = true;
+    if (chatSendShouldAutoFollowMain(quote)) shouldAutoFollowChatRef.current = true;
     setDesktopChatError(null);
     setPendingUserChatMessage(null);
     const attachmentPaths = attachments.map((item) => item.path);
@@ -744,6 +769,9 @@ export function useChatMessageActions({
         runtimeRoute ?? resolveChatRuntimeRoute(canonicalSessionId),
         contextMessages,
       );
+      const linkedTurn = preparedCanonicalMessage
+        ? { ...turn, replyToMessageId: preparedCanonicalMessage.messageId }
+        : turn;
       const sentCanonicalMessage = sentPreparedCanonicalUserMessage(preparedCanonicalMessage);
       if (sentCanonicalMessage) {
         setCanonicalSessionState((current) => markOptimisticCanonicalMessageSent(
@@ -755,7 +783,7 @@ export function useChatMessageActions({
           setDesktopChatError(error instanceof Error ? error.message : 'Unable to update message delivery status');
         });
       }
-      watchLocalTurnAndFlushQueue(turn, async (finalTurn) => {
+      watchLocalTurnAndFlushQueue(linkedTurn, async (finalTurn) => {
         const noProviderFailure = isCloudAgentNoProviderConfiguredError(finalTurn.error || finalTurn.message || finalTurn.assistantText);
         if (!noProviderFailure || !preparedCanonicalMessage) return;
         const sentUserRequest = {
@@ -977,7 +1005,7 @@ export function useChatMessageActions({
       desktopLiveTurn: null,
     });
     if (delayReason === 'same-session-running') {
-      queueLocalDraftForSession(targetConversation.id, text, attachments, contextMessages);
+      queueLocalDraftForSession(targetConversation.id, text, attachments, contextMessages, activeChatQuote);
       return;
     }
     if (delayReason === 'session-starting') {
@@ -1027,6 +1055,7 @@ export function useChatMessageActions({
     sideTargetSessionId?: string,
     contextMessages: DesktopChatContextMessage[] = [],
     attachmentOverride?: AttachmentItem[],
+    quoteOverride?: ComposerQuoteState | null,
     retryMessage?: Message,
   ) => {
     if (!isNativeShell) return;
@@ -1040,6 +1069,8 @@ export function useChatMessageActions({
       return;
     }
     const rawText = retryMessage?.text ?? draftOverride ?? composerDrafts.chat;
+    const quoteForSend = quoteOverride ?? activeChatQuote;
+    const followMainTranscript = chatSendShouldAutoFollowMain(quoteForSend, retryMessage);
     const text = rawText.trim();
     const attachmentsToSend = retryAttachments ?? attachmentOverride ?? chatComposerAttachments; const voiceFields = voiceMessageSendFields(attachmentsToSend);
     const preserveComposer = attachmentOverride !== undefined;
@@ -1120,7 +1151,7 @@ export function useChatMessageActions({
         && sendCloudGroupControl
       ) {
         try {
-          shouldAutoFollowChatRef.current = true;
+          if (followMainTranscript) shouldAutoFollowChatRef.current = true;
           setIsDesktopChatSending(true);
           setDesktopChatError(null);
           setCanonicalSessionState((current) => markOptimisticCanonicalMessageSending(
@@ -1186,7 +1217,7 @@ export function useChatMessageActions({
         && setCloudCollaborationState
       ) {
         try {
-          shouldAutoFollowChatRef.current = true;
+          if (followMainTranscript) shouldAutoFollowChatRef.current = true;
           setIsDesktopChatSending(true);
           setDesktopChatError(null);
           setCloudCollaborationState((current) => markOptimisticCollaborationMessageSending(
@@ -1241,7 +1272,7 @@ export function useChatMessageActions({
         setDesktopChatError('Commands are unavailable while this session is running. Your draft is preserved.');
         return;
       }
-      queueLocalDraftForSession(activeConvId, text, attachmentsToSend);
+      queueLocalDraftForSession(activeConvId, text, attachmentsToSend, [], quoteForSend);
       return;
     }
 
@@ -1274,7 +1305,7 @@ export function useChatMessageActions({
         'cloud-group-ui',
         'sending',
         messageMentions,
-        activeChatQuote,
+        quoteForSend,
       );
       if (preparedCanonicalMessage) {
         preparedCanonicalMessage.request.content = {
@@ -1283,7 +1314,7 @@ export function useChatMessageActions({
         };
       }
       try {
-        shouldAutoFollowChatRef.current = true;
+        if (followMainTranscript) shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
         if (!preserveComposer) clearComposerAfterSend([activeConvId]);
@@ -1302,7 +1333,7 @@ export function useChatMessageActions({
             text,
             mentions: messageMentions,
             createdAtMs: Date.now(),
-            messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null,
+            messageAction: quoteForSend?.source ? composerMessageAction(quoteForSend) : null,
             targetCloudAgentId,
             targetCloudAgentName: targetCloudAgentId ? mentionedTarget?.displayLabel ?? null : null,
             targetCloudAgentOwnerAccountId: targetCloudAgentId ? mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null : null,
@@ -1352,7 +1383,7 @@ export function useChatMessageActions({
         'cloud-group-ui',
         'sending',
         messageMentions,
-        activeChatQuote,
+        quoteForSend,
       );
       if (preparedCanonicalMessage) {
         preparedCanonicalMessage.request.content = {
@@ -1361,7 +1392,7 @@ export function useChatMessageActions({
         };
       }
       try {
-        shouldAutoFollowChatRef.current = true;
+        if (followMainTranscript) shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
         if (!preserveComposer) clearComposerAfterSend([activeConvId]);
@@ -1380,7 +1411,7 @@ export function useChatMessageActions({
             text,
             mentions: messageMentions,
             createdAtMs: Date.now(),
-            messageAction: activeChatQuote?.source ? quoteMessageAction(activeChatQuote.source) : null, ...voiceFields,
+            messageAction: quoteForSend?.source ? composerMessageAction(quoteForSend) : null, ...voiceFields,
           },
           attachments: attachmentsToSend,
         });
@@ -1415,12 +1446,12 @@ export function useChatMessageActions({
       const optimisticMessageId = createCloudCollaborationClientMessageId();
       const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeCloudConversationId);
       try {
-        shouldAutoFollowChatRef.current = true;
+        if (followMainTranscript) shouldAutoFollowChatRef.current = true;
         setIsDesktopChatSending(true);
         setDesktopChatError(null);
         if (!preserveComposer) clearComposerAfterSend([activeConvId]);
         if (appendedOptimisticCollaborationMessage) {
-          setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeCloudConversationId, text, sentAt, optimisticMessageId, attachmentsToSend, attachmentSummaryText(text, attachmentsToSend), activeChatQuote, messageMentions));
+          setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeCloudConversationId, text, sentAt, optimisticMessageId, attachmentsToSend, attachmentSummaryText(text, attachmentsToSend), quoteForSend, messageMentions));
         }
         const directHostedAgentTarget = resolveDirectHostedAgentTarget({
           mentionedAgentId: targetCloudAgentId,
@@ -1428,7 +1459,7 @@ export function useChatMessageActions({
           activeTarget: activeConvCollaborationTarget,
           lockedTarget: lockedSupportAgentTarget,
         });
-        const shouldEncodeDirectEnvelope = Boolean(activeChatQuote?.source || directHostedAgentTarget || messageMentions.length);
+        const shouldEncodeDirectEnvelope = Boolean(quoteForSend?.source || directHostedAgentTarget || messageMentions.length);
         const cloudBody = shouldEncodeDirectEnvelope
           ? encodeCloudDirectMessageEnvelope({
               schemaVersion: 1,
@@ -1440,7 +1471,7 @@ export function useChatMessageActions({
                   activeConvCanonicalSessionId ?? activeConvId,
                 ),
               } : {}),
-              ...(activeChatQuote?.source ? { messageAction: quoteMessageAction(activeChatQuote.source) } : {}),
+              ...(quoteForSend?.source ? { messageAction: composerMessageAction(quoteForSend) } : {}),
               ...(directHostedAgentTarget ?? {}),
             })
           : text;
@@ -1505,7 +1536,7 @@ export function useChatMessageActions({
       desktopLiveTurn,
     });
     if (localSendDelayReason === 'same-session-running' && localTargetSessionId) {
-      queueLocalDraftForSession(localTargetSessionId, text, attachmentsToSend);
+      queueLocalDraftForSession(localTargetSessionId, text, attachmentsToSend, [], quoteForSend);
       return;
     }
     if (localSendDelayReason === 'session-starting') {
@@ -1522,7 +1553,7 @@ export function useChatMessageActions({
       hasAnyDesktopAuth,
     })) {
       localChatSendInFlightRef.current = { sessionId: localTargetSessionId };
-      shouldAutoFollowChatRef.current = true;
+      if (followMainTranscript) shouldAutoFollowChatRef.current = true;
       setIsDesktopChatSending(true);
       setDesktopChatError(null);
       const sentAt = formatDesktopEventTime();
@@ -1563,7 +1594,7 @@ export function useChatMessageActions({
         'desktop-chat-ui',
         'sent',
         [],
-        activeChatQuote,
+        quoteForSend,
       );
       const failedReplyRequest = preparedCanonicalMessage
         ? canonicalNoProviderFailedAgentMessageRequest({
@@ -1664,7 +1695,7 @@ export function useChatMessageActions({
     localChatSendInFlightRef.current = { sessionId: localTargetSessionId };
 
     try {
-      shouldAutoFollowChatRef.current = true;
+      if (followMainTranscript) shouldAutoFollowChatRef.current = true;
       setIsDesktopChatSending(true);
       setDesktopChatError(null);
       const resolvedSessionId = await ensureLocalSessionId();
@@ -1684,7 +1715,7 @@ export function useChatMessageActions({
         'desktop-chat-ui',
         'sending',
         [],
-        activeChatQuote,
+        quoteForSend,
       );
       const noProviderLocalShortcut = shouldUseNoProviderSelfAgentShortcut({
         activeConversationUsesCollaborationRouting,
@@ -1750,7 +1781,7 @@ export function useChatMessageActions({
             ? materializedState
             : current;
           return baseState
-            ? appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, attachmentsToSend, sentAt, [], activeChatQuote)
+            ? appendOptimisticOutboundMessage(baseState, resolvedSessionId, previewText, text, attachmentsToSend, sentAt, [], quoteForSend)
             : current;
         });
         if (!preserveComposer) {
@@ -1780,7 +1811,7 @@ export function useChatMessageActions({
         text,
         attachments: attachmentsToSend,
         sentAt,
-        quote: activeChatQuote,
+        quote: quoteForSend,
         contextMessages: [
           ...cloudAgentContextMessagesFromConversation(activeConvMentionScope ?? { metadata: null }),
           ...restoredContextMessages,
@@ -1845,7 +1876,7 @@ export function useChatMessageActions({
     watchLocalTurnAndFlushQueue,
   ]);
   const handleRetryChatMessage = useCallback((message: Message) => (
-    handleSendChatMessage(message.text, undefined, [], undefined, message)
+    handleSendChatMessage(message.text, undefined, [], undefined, undefined, message)
   ), [handleSendChatMessage]);
   return { handleSendChatMessage, handleRetryChatMessage };
 }

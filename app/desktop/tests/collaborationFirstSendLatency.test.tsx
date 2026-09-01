@@ -103,6 +103,17 @@ test('queued local chat messages preserve draft text and attachments', () => {
     time: '12:34',
     attachments: [{ id: 'att-1', path: '/tmp/report.png', kind: 'image', name: 'report.png' }],
     runtimeRoute,
+    messageAction: {
+      schemaVersion: 1,
+      kind: 'thread',
+      source: {
+        sourceSessionId: 'session-a',
+        sourceMessageId: 'thread-root',
+        senderLabel: 'Peer',
+        textPreview: 'Root',
+        attachmentCount: 0,
+      },
+    },
   });
 
   assert.equal(queued.sessionId, 'session-a');
@@ -111,6 +122,8 @@ test('queued local chat messages preserve draft text and attachments', () => {
   assert.equal(queued.time, '12:34');
   assert.deepEqual(queued.attachments, [{ id: 'att-1', path: '/tmp/report.png', kind: 'image', name: 'report.png' }]);
   assert.deepEqual(queued.runtimeRoute, runtimeRoute);
+  assert.equal(queued.messageAction?.kind, 'thread');
+  assert.equal(queued.messageAction?.source.sourceMessageId, 'thread-root');
 });
 
 test('new agent sessions receive a stable first-message title across devices', () => {

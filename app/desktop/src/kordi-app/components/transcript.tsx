@@ -41,7 +41,7 @@ import { MessageContextMenuHost } from './messageContextMenuHost';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
 import { AttachmentPreview } from './transcriptAttachments';
 import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
-import { RequestReplyLine, SourceMessageQuote } from './transcriptReplyAttribution';
+import { RequestReplyLine, SourceMessageQuote, ThreadReplyLine } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
 import { VoiceMessageContent } from './voiceMessage';
@@ -299,6 +299,7 @@ function MessageBubbleView({
   onOpenForkSession,
   relatedAgentSessionStatusById,
   onReplyMessage,
+  onOpenMessageThread,
   onForwardMessage, onEditMessage, onDeleteMessage,
   onRetryMessage,
   onOpenMessageDetail,
@@ -333,7 +334,8 @@ function MessageBubbleView({
   imageGallery?: readonly MessageAttachment[];
   onOpenForkSession?: (sessionId: string) => void;
   relatedAgentSessionStatusById?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
-  onReplyMessage?: (message: Message) => void;
+  onReplyMessage?: (message: Message, destination: 'conversation' | 'thread') => void;
+  onOpenMessageThread?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void; onEditMessage?: (message: Message) => void; onDeleteMessage?: (message: Message) => void;
   onRetryMessage?: (message: Message) => Promise<void> | void;
   onOpenMessageDetail?: (message: Message) => void;
@@ -352,7 +354,7 @@ function MessageBubbleView({
   const currentLocalAgentAvatarSeed = useLocalAgentAvatarSeed();
   const selectionId = messageSelectionId(msg);
   const isPinned = Boolean(selectionId && pinnedMessageIds?.includes(selectionId));
-  const menuActionHandlers = { onReplyMessage, onForwardMessage, onEditMessage, onDeleteMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, onReactMessage, isPinned, imageGallery };
+  const menuActionHandlers = { onReplyMessage, onOpenMessageThread, onForwardMessage, onEditMessage, onDeleteMessage, onOpenMessageDetail, onSelectMessage, onRequestPinMessage, onRequestUnpinMessage, onReactMessage, isPinned, imageGallery };
   const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
@@ -982,6 +984,18 @@ function MessageBubbleView({
         onReactMessage={onReactMessage}
         side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'standalone'}
       />
+      {msg.threadSummary?.replyCount ? (
+        <div className={cn(
+          'flex min-h-7 items-center',
+          isOwnHumanMessage ? 'justify-end pr-10' : showAvatarSlot ? 'justify-start pl-10' : 'justify-start',
+        )}>
+          <ThreadReplyLine
+            count={msg.threadSummary.replyCount}
+            own={isOwnHumanMessage}
+            onOpen={onOpenMessageThread ? () => onOpenMessageThread(msg) : undefined}
+          />
+        </div>
+      ) : null}
       {showContactRequestAction && onRequestCollaborationContact ? (
         <div className="self-center">
           <ContactRequestFailureNotice detail={msg.detail} onRequestCollaborationContact={onRequestCollaborationContact} />

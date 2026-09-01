@@ -18,6 +18,58 @@ test('canonical read model keeps existing local transcript when canonical has eq
   assert.equal(shouldUseCanonicalMessages(existingMessages, canonicalMessages), false);
 });
 
+test('canonical read model restores a missing error-only agent reply', () => {
+  const trigger: Message = {
+    id: 'thread-trigger',
+    role: 'user',
+    text: '@MyKordi hi',
+    time: '20:55',
+  };
+  const laterMessage: Message = {
+    id: 'later-message',
+    role: 'user',
+    text: 'continue',
+    time: '20:57',
+  };
+  const failure: Message = {
+    id: 'agent-failure',
+    role: 'external-agent',
+    text: '',
+    time: '20:55',
+    replyToMessageId: trigger.id,
+    turn: {
+      id: 'agent-failure-turn',
+      sessionId: 'session:group:test',
+      prompt: '',
+      status: 'failed',
+      message: 'Failed',
+      assistantText: '',
+      thinkingText: '',
+      tools: [],
+      completed: true,
+      succeeded: false,
+      error: 'No provider configured yet.',
+      replyToMessageId: trigger.id,
+    },
+  };
+
+  const staleExternalFailure: Message = {
+    ...failure,
+    id: 'stale-external-failure',
+    role: 'external-agent',
+  };
+  const canonicalOwnedFailure: Message = {
+    ...failure,
+    id: 'canonical-owned-failure',
+    role: 'owned-agent',
+  };
+
+  assert.equal(shouldUseCanonicalMessages(
+    [trigger, staleExternalFailure, laterMessage],
+    [trigger, canonicalOwnedFailure, laterMessage],
+  ), true);
+});
+
 test('canonical read receipts enrich an equal-length runtime transcript', () => {
   const runtime: Message = {
     id: 'message-1',

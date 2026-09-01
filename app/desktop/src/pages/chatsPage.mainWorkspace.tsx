@@ -13,6 +13,7 @@ import type {
   DesktopChatTurnSnapshot,
   Message,
 } from '@/kordi-app/types';
+import type { ReactNode } from 'react';
 import { ContactInfoPopover } from '@/pages/ContactInfoPopover';
 import { MainComposer } from '@/pages/chatsPage.mainComposer';
 import { MainChatHeader } from '@/pages/chatsPage.mainHeader';
@@ -89,6 +90,7 @@ type ChatMainWorkspaceProps = {
     open: (initialPrompt?: string) => Promise<boolean>;
     openSession: (sessionId: string) => void;
   };
+  threadPanel?: ReactNode;
 };
 
 export function ChatMainWorkspace({
@@ -101,6 +103,7 @@ export function ChatMainWorkspace({
   models,
   presentation,
   companion,
+  threadPanel,
 }: ChatMainWorkspaceProps) {
   const { activeConv } = session;
   const openAuthentication =
@@ -168,8 +171,9 @@ export function ChatMainWorkspace({
 
   return (
     <>
+      <div className="flex h-full min-h-0 min-w-0 overflow-hidden">
       <section
-        className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-white/[0.025]"
+        className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-white/[0.025]"
         data-active-side={presentation.activeSide}
       >
         {!isEmptySelection ? <MainChatHeader
@@ -286,6 +290,7 @@ export function ChatMainWorkspace({
                 onForkMessage: models.fork.forkMessage,
                 onOpenForkSession: companion.openSession,
                 onReplyMessage: composer.onReplyMessage,
+                onOpenMessageThread: composer.onOpenMessageThread,
                 onForwardMessage: composer.onForwardMessage,
                 onEditMessage: composer.onEditMessage,
                 onDeleteMessage: composer.onDeleteMessage,
@@ -417,6 +422,8 @@ export function ChatMainWorkspace({
           </div>
         )}
       </section>
+      {threadPanel}
+      </div>
 
       {models.senderProfiles.target ? (
         <ContactInfoPopover

@@ -12,7 +12,7 @@ import { isSelfReferenceName, possessiveScopedLabel, rewriteLeadingFirstPersonAg
 import { formatDesktopClockTime } from '@/lib/time';
 import { canonicalCallActivity } from './callActivity';
 import { canonicalAttachments } from './attachmentMapping';
-import { isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
+import { isInternalCloudAgentControlMessage, isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
 import { canonicalMentions } from './mentionMapping';
 import { canonicalMessageAction, canonicalMessageActionSourceReference } from './messageActionMapping';
 import { canonicalMessageReactionMetadata } from './messageReactionMetadata';
@@ -194,9 +194,18 @@ function agentLabelForHumanIdentity(
     .find((candidate) => candidate.kind === 'agent' && candidate.ownerIdentityId === identity.id)
     ?.displayName ?? 'Kordi';
 }
-export function canonicalMessageRole(message: CanonicalSessionMessage, identity?: CanonicalIdentity): Message['role'] {
+export function canonicalMessageRole(
+  message: CanonicalSessionMessage,
+  identity?: CanonicalIdentity,
+  profileHumanIdentityId?: string | null,
+): Message['role'] {
   if (message.messageKind === 'agent-model-change') return 'system';
   if (['system', 'user', 'owned-agent', 'external-agent', 'person'].includes(message.senderRole)) {
+    if (
+      message.senderRole === 'external-agent'
+      && identity?.kind === 'agent'
+      && identity.ownerIdentityId === profileHumanIdentityId?.trim()
+    ) return 'owned-agent';
     return message.senderRole as Message['role'];
   }
   if (identity?.kind === 'agent') return identity.source === 'local' ? 'owned-agent' : 'external-agent';
@@ -351,12 +360,12 @@ export function mapCanonicalMessage(
   profileHumanIdentityId?: string | null,
   context: MapCanonicalMessageContext = {},
 ): Message | null {
-  if (isPlaceholderSessionTitleNotice(message) || isSynchronizationOnlyCloudGroupTitleNotice(message)) return null;
+  if (isPlaceholderSessionTitleNotice(message) || isSynchronizationOnlyCloudGroupTitleNotice(message) || isInternalCloudAgentControlMessage(message)) return null;
   const content = contentRecord(message.content);
   const sourceTransport = message.sourceTransport?.trim() ?? '';
   if (stringValue(content.kind) === 'delegation-join-event') return null;
   const identity = identityById.get(message.senderIdentityId);
-  const role = canonicalMessageRole(message, identity);
+  const role = canonicalMessageRole(message, identity, profileHumanIdentityId);
   const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
   const completed = canonicalMessageIsComplete(message, content);
   const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();

@@ -4,12 +4,12 @@ import { test } from 'node:test';
 
 import { shouldUseCloudSessionAction } from '../src/app/useKordiAppModelHelpers';
 import { buildCanonicalIndexes } from '../src/features/canonical/readModel/indexes';
-import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
+import { canonicalMessageRole, mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import {
   canonicalNoProviderFailedAgentMessageRequest,
 } from '../src/features/chat/messageActions/chatMessages';
 import { shouldUseNoProviderSelfAgentShortcut } from '../src/features/chat/messageActions/localAgentSessionTarget';
-import type { CanonicalSessionState } from '../src/kordi-app/types';
+import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
 const cloudAgentAvailabilitySource = () => readFileSync(new URL('../src/features/cloud/useCloudAgentAvailability.ts', import.meta.url), 'utf8');
@@ -51,6 +51,41 @@ test('canonical group participants retain the public Kordi ID from identity meta
 
   const participants = buildCanonicalIndexes(state).canonicalParticipantsBySessionId.get('session:group:kordi-id') ?? [];
   assert.equal(participants.find((participant) => participant.id === 'human:peer')?.kordiId, '123456789');
+});
+
+test('canonical mapping treats a self-owned cloud agent as My Kordi', () => {
+  const identity = {
+    id: 'agent:cloud:me',
+    kind: 'agent' as const,
+    displayName: "Shu Yang's Kordi",
+    ownerIdentityId: 'human:me',
+    source: 'cloud',
+    sourceHostId: 'cloud',
+    sourceIdentityId: 'cloud-agent:me',
+    humanId: 'me',
+    agentId: 'cloud-agent:me',
+    avatarKey: 'cloud-agent:me',
+    profileImageUrl: null,
+    metadata: {},
+    createdAtMs: 1,
+    updatedAtMs: 1,
+  };
+  const message: CanonicalSessionMessage = {
+    id: 'agent-failure',
+    sessionId: 'session:group:test',
+    senderIdentityId: identity.id,
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: '',
+    content: { deliveryState: 'failed', error: 'No provider configured yet.' },
+    status: 'failed',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+  };
+
+  assert.equal(canonicalMessageRole(message, identity, 'human:me'), 'owned-agent');
+  assert.equal(canonicalMessageRole(message, identity, 'human:someone-else'), 'external-agent');
 });
 
 test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {

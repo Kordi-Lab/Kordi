@@ -34,17 +34,25 @@ function normalizedMessageResponseText(message: Message) {
 }
 
 function canonicalHasMissingCompletedAgentResponse(existingMessages: Message[], canonicalMessages: Message[]) {
-  const existingTexts = new Set(
-    existingMessages
-      .map(normalizedMessageResponseText)
-      .filter(Boolean),
-  );
+  const existingAgentResponses = existingMessages.filter((message) => (
+    message.turn?.completed !== false
+    && (message.role === 'owned-agent' || message.role === 'external-agent')
+    && Boolean(messageResponseText(message))
+  ));
 
   return canonicalMessages.some((message) => {
-    if (!message.turn?.assistantText.trim()) return false;
+    if (!message.turn || !messageResponseText(message)) return false;
     if (message.turn.completed === false) return false;
     if (message.role !== 'owned-agent' && message.role !== 'external-agent') return false;
-    return !existingTexts.has(normalizedMessageResponseText(message));
+    const responseText = normalizedMessageResponseText(message);
+    const replyTargetId = agentReplyTargetId(message);
+    const senderId = message.senderIdentityId?.trim() || message.sender?.trim() || '';
+    return !existingAgentResponses.some((existing) => (
+      existing.role === message.role
+      && normalizedMessageResponseText(existing) === responseText
+      && agentReplyTargetId(existing) === replyTargetId
+      && (existing.senderIdentityId?.trim() || existing.sender?.trim() || '') === senderId
+    ));
   });
 }
 

@@ -288,6 +288,7 @@ export function useKordiAppShellComposition({
       filteredProjectSlashCommands: composer.filteredProjectSlashCommands,
       filteredChatSlashCommands: composer.filteredChatSlashCommands,
       filteredProjectMentionTargets: mentions.filteredProjectMentionTargets,
+      chatMentionTargetsForText: mentions.chatMentionTargetsForText,
       filteredChatMentionTargets: mentions.filteredChatMentionTargets,
       chatSlashMenuIndex: ui.composerUi.chatSlashMenuIndex,
       setChatSlashMenuIndex: ui.composerUi.setChatSlashMenuIndex,

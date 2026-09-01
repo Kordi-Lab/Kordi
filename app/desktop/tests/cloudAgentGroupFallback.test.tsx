@@ -15,6 +15,7 @@ import {
   cloudFallbackRunClaimsForMessages,
 } from '../src/features/cloud/useCloudCollaborationState';
 import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
+import { cloudGroupAgentCanonicalRole } from '../src/features/cloud/cloudGroupMessageControl';
 import type { CanonicalSessionMessage } from '../src/kordi-app/types';
 
 const account: CloudAccount = {
@@ -45,6 +46,11 @@ const message: CloudMessage = {
   readAt: null,
   direction: 'incoming',
 };
+
+test('cloud group ingestion preserves self-owned versus remote agent roles', () => {
+  assert.equal(cloudGroupAgentCanonicalRole('acct_me', 'acct_me'), 'owned-agent');
+  assert.equal(cloudGroupAgentCanonicalRole('acct_peer', 'acct_me'), 'external-agent');
+});
 
 test('cloud outgoing group remote-agent mentions produce Cloud fallback run claims', () => {
   const groupId = 'session:group:one';

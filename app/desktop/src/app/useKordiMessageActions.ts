@@ -18,6 +18,7 @@ import {
   messageActionSourceFromMessage,
   type ForwardMessageSource,
 } from '@/features/chat/messageActionMetadata';
+import { threadRootSource } from '@/features/chat/messageThreads';
 import {
   formatSelectedMessagesForCopy,
 } from '@/features/chat/messageSelection';
@@ -123,22 +124,24 @@ export function useKordiMessageActions({
     }
   }, [setDesktopChatError]);
 
-  const onReplyMessage = useCallback((message: Message) => {
-    const source = messageActionSourceFromMessage(
-      message,
-      activeConversation.canonicalSessionId
-        ?? activeConversation.id
-        ?? draftSessionId,
-    );
+  const onReplyMessage = useCallback((message: Message, destination: 'conversation' | 'thread') => {
+    const sessionId = activeConversation.canonicalSessionId
+      ?? activeConversation.id
+      ?? draftSessionId;
+    const source = destination === 'thread'
+      ? threadRootSource(message, sessionId)
+      : messageActionSourceFromMessage(message, sessionId);
     if (!source) return;
     setChatQuoteBySessionId((current) => ({
       ...current,
-      [draftSessionId]: { action: 'quote', source },
+      [draftSessionId]: { action: destination === 'thread' ? 'thread' : 'quote', source },
     }));
-    focusComposerTextareaForNativeInput(
-      CHAT_COMPOSER_TEXTAREA_SELECTOR,
-      isNativeShell,
-    );
+    if (destination === 'conversation') {
+      focusComposerTextareaForNativeInput(
+        CHAT_COMPOSER_TEXTAREA_SELECTOR,
+        isNativeShell,
+      );
+    }
   }, [
     activeConversation.canonicalSessionId,
     activeConversation.id,

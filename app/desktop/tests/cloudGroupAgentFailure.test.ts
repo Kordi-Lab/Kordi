@@ -26,16 +26,29 @@ test('generic invocation failure terminates the stable processing slot', () => {
 });
 
 test('no-provider failure uses the actionable provider notice', () => {
+  const messageAction = {
+    schemaVersion: 1 as const,
+    kind: 'thread' as const,
+    source: {
+      sourceSessionId: 'group:one',
+      sourceMessageId: 'thread:root',
+      senderLabel: 'Me',
+      textPreview: 'Root',
+      attachmentCount: 0,
+    },
+  };
   const request = cloudGroupAgentFailureNoticeRequest({
     accountId: 'acct_me',
     groupId: 'group:one',
     requestId: 'request:one',
     agentDisplayName: 'My Kordi',
     error: new Error('No provider configured yet.'),
+    messageAction,
   });
 
   assert.equal(request.status, 'failed');
   assert.match(String(request.content.error), /provider/i);
+  assert.deepEqual(request.content.messageAction, messageAction);
   assert.match(request.sourceEventId ?? '', /no-provider/);
 });
 
