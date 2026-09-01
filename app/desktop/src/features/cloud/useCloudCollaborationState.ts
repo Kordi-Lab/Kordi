@@ -187,8 +187,7 @@ function reportCloudAgentExecutionWarning(message: string, error: unknown) {
 }
 export function useCloudCollaborationState({
   account, activeConversationId, canMarkActiveConversationRead,
-  canonicalSessionState,
-  setCanonicalSessionState,
+  canonicalSessionState, setCanonicalSessionState, hydrateCanonicalSessionPage,
   localTurnsBySessionId,
   cloudAgentRuntimeRoutesBySessionId,
   defaultCloudAgentRuntimeRoute, localAgentLabel,
@@ -429,8 +428,7 @@ export function useCloudCollaborationState({
   useRecoveredCloudGroupReplay({
     account, activeConversationId, client,
     humanIdentityId: canonicalSessionState?.profile.humanIdentityId,
-    canonicalStateRef: canonicalSessionStateRef,
-    setCanonicalState: setCanonicalSessionState,
+    canonicalStateRef: canonicalSessionStateRef, setCanonicalState: setCanonicalSessionState, hydrateCanonicalSessionPage,
     initialMessagesSettled: recoveryMessagesReady,
     processedRequestIdsRef: processedCloudAgentMentionIdsRef,
     coordinator: cloudGroupReplayCoordinator,

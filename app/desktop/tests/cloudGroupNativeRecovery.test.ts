@@ -159,7 +159,7 @@ function mockNativeHistory(messages: ChatSyncMessage[]) {
   };
 }
 
-test('cold native recovery publishes the latest page before older history', async () => {
+test('cold native recovery publishes the latest group page before older history', async () => {
   const native = mockNativeHistory(
     Array.from({ length: 201 }, (_, index) => message(index + 1)),
   );
@@ -184,13 +184,13 @@ test('cold native recovery publishes the latest page before older history', asyn
 
     assert.equal(recovered, true);
     assert.equal(native.pageRequests(), 4);
-    assert.equal(applied[0], 201);
+    assert.equal(applied[0], 102);
     assert.equal(applied.at(-1), 201);
     assert.deepEqual(
       new Set(applied.slice(0, -1)),
       new Set(Array.from({ length: 201 }, (_, index) => index + 1)),
     );
-    assert.deepEqual(flushAfter, [1, 11, 21, 31, 41, 51, 61, 71, 81, 91, 100, 202]);
+    assert.deepEqual(flushAfter, [100, 202]);
     assert.equal(events.at(-1), `settled:${SESSION_ID}`);
   } finally {
     native.restore();

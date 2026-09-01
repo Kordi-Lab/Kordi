@@ -2,22 +2,6 @@ use super::support::*;
 use super::*;
 use std::collections::HashMap;
 
-type BootstrapConversationRow = (
-    Uuid,
-    String,
-    Option<String>,
-    i32,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    i64,
-    DateTime<Utc>,
-    DateTime<Utc>,
-    Option<String>,
-    i32,
-);
-
 type BootstrapMemberRow = (
     Uuid,
     String,
@@ -354,6 +338,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
         "SELECT conversation.conversation_id, conversation.kind, \
                 conversation.shared_title, conversation.version, \
                 conversation.created_by_account_id, conversation.legacy_session_id, \
+                conversation.group_space_id, conversation.group_title, \
                 fork.parent_session_id, fork.parent_message_id, \
                 conversation.latest_message_sequence, conversation.created_at, \
                 conversation.updated_at, viewer.personal_title, viewer.preferences_version \
@@ -414,17 +399,19 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 version: row.3,
                 created_by_account_id: row.4,
                 legacy_session_id: row.5,
-                forked_from_session_id: row.6,
-                forked_from_message_id: row.7,
-                latest_message_sequence: row.8,
-                created_at: row.9,
-                updated_at: row.10,
+                group_space_id: row.6,
+                group_title: row.7,
+                forked_from_session_id: row.8,
+                forked_from_message_id: row.9,
+                latest_message_sequence: row.10,
+                created_at: row.11,
+                updated_at: row.12,
                 members: members_by_conversation.remove(&row.0).unwrap_or_default(),
                 preferences: ConversationPreferencesSnapshot {
                     conversation_id: row.0,
                     account_id: account_id.to_string(),
-                    personal_title: row.11,
-                    version: row.12,
+                    personal_title: row.13,
+                    version: row.14,
                 },
             })
         })

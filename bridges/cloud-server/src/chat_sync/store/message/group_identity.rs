@@ -13,6 +13,12 @@ const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
 
 type ParticipantProfile = (DateTime<Utc>, Option<String>, String);
 
+pub(super) struct GroupEnvelopeProjection {
+    pub kind: String,
+    pub group_space_id: String,
+    pub group_title: Option<String>,
+}
+
 fn default_agent_id(account_id: &str) -> String {
     format!("cloud-agent:{}", account_id.trim())
 }
@@ -79,9 +85,9 @@ pub(super) async fn normalize_group_envelope(
     transaction: &mut Transaction<'_, Postgres>,
     conversation_id: uuid::Uuid,
     content: &mut Value,
-) -> Result<(), StoreError> {
+) -> Result<Option<GroupEnvelopeProjection>, StoreError> {
     let Some((mut envelope, text)) = decode_group_envelope(content) else {
-        return Ok(());
+        return Ok(None);
     };
     let rows: Vec<(String, DateTime<Utc>, Option<String>, String)> = query_as(
         "SELECT member.account_id, member.joined_at, account.display_name, agent.display_name \
@@ -183,8 +189,40 @@ pub(super) async fn normalize_group_envelope(
             }
         }
     }
+    let kind = object
+        .get("kind")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default()
+        .to_string();
+    let group_space_id = object
+        .get("groupSpaceId")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            object
+                .get("groupId")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_default()
+        .to_string();
+    let group_title = object
+        .get("groupTitle")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
     *text = Value::String(encode_group_envelope(&envelope)?);
-    Ok(())
+    Ok(
+        (!kind.is_empty() && !group_space_id.is_empty()).then_some(GroupEnvelopeProjection {
+            kind,
+            group_space_id,
+            group_title,
+        }),
+    )
 }
 
 fn is_legacy_default_agent_name(value: &str) -> bool {

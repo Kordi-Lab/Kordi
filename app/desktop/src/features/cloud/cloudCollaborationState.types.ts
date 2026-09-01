@@ -42,6 +42,10 @@ export type UseCloudCollaborationStateArgs = {
   setCanonicalSessionState?: Dispatch<
     SetStateAction<CanonicalSessionState | null>
   >;
+  hydrateCanonicalSessionPage?: (
+    sessionId: string,
+    options?: { beforeSequenceNum?: number | null; force?: boolean },
+  ) => Promise<unknown>;
   localTurnsBySessionId?: Record<string, DesktopChatTurnSnapshot>;
   cloudAgentRuntimeRoutesBySessionId?: Record<
     string,

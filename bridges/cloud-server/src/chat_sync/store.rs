@@ -145,9 +145,29 @@ type ConversationRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<String>,
+    Option<String>,
     i64,
     DateTime<Utc>,
     DateTime<Utc>,
+);
+
+type BootstrapConversationRow = (
+    Uuid,
+    String,
+    Option<String>,
+    i32,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    i64,
+    DateTime<Utc>,
+    DateTime<Utc>,
+    Option<String>,
+    i32,
 );
 
 type MemberRow = (

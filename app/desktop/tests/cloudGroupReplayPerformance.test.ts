@@ -8,6 +8,7 @@ const cloudGroupSessionControlSource = () => readFileSync(new URL('../src/featur
 const cloudGroupControlApplicationSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlApplication.ts', import.meta.url), 'utf8');
 const cloudGroupReplaySource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupReplay.ts', import.meta.url), 'utf8');
 const cloudGroupNativeRecoverySource = () => readFileSync(new URL('../src/features/cloud/cloudGroupNativeRecovery.ts', import.meta.url), 'utf8');
+const recoveredCloudGroupReplaySource = () => readFileSync(new URL('../src/features/cloud/useRecoveredCloudGroupReplay.ts', import.meta.url), 'utf8');
 const legacyGroupTitleRecoverySource = () => readFileSync(new URL('../src/features/cloud/useLegacyCloudGroupTitleNoticeRecovery.ts', import.meta.url), 'utf8');
 const groupMemberRolesSource = () => readFileSync(
   new URL('../src/app/useKordiGroupMemberRoles.ts', import.meta.url),
@@ -77,6 +78,27 @@ test('cloud group replay publishes one coherent React snapshot after each conver
   );
 });
 
+test('native group history recovery has one owner and no orphaned timeout work', () => {
+  const ownerSource = recoveredCloudGroupReplaySource();
+  const replaySource = cloudGroupReplaySource();
+  const recoverySource = cloudGroupNativeRecoverySource();
+
+  assert.doesNotMatch(ownerSource, /recoverNativeCloudGroupHistory/);
+  assert.match(ownerSource, /bootstrapChatSync/);
+  assert.match(ownerSource, /bootstrap\.latest_messages/);
+  assert.match(ownerSource, /listChatConversationHistoryPage\([\s\S]*100/);
+  assert.match(ownerSource, /applyChatSyncLocalBatch\(\{[\s\S]*messages: page\.messages/);
+  assert.match(ownerSource, /hydrateCanonicalSessionPage\?\.\([\s\S]*force: true/);
+  assert.match(ownerSource, /backgroundReplayEnabled = replayEnabled && remoteCatalogReady && activePageReady/);
+  assert.match(ownerSource, /accountId: account\?\.accountId \?\? null/);
+  assert.match(ownerSource, /prioritySessionId: activeGroupSessionId \|\| null/);
+  assert.equal((replaySource.match(/recoverNativeCloudGroupHistory\(/g) ?? []).length, 1);
+  assert.match(replaySource, /const recoveryContextKey = contextKey[\s\S]*prioritySessionId/);
+  assert.match(replaySource, /recoveryContextKeyRef\.current !== cache\.contextKey/);
+  assert.doesNotMatch(replaySource, /Promise\.race/);
+  assert.doesNotMatch(recoverySource, /Promise\.race/);
+});
+
 test('cloud group replay skips durable message history before entering the coordinator', () => {
   const replaySource = cloudGroupReplaySource();
 
@@ -110,7 +132,7 @@ test('cloud group replay does not restart native lookups when callback identitie
     'overlapping data refreshes should share an in-flight durability lookup',
   );
   assert.doesNotMatch(dependencyList, /applyControl|flushCanonicalState|reportWarning/);
-  assert.match(dependencyList, /coordinator[\s\S]*contextKey[\s\S]*enabled[\s\S]*messageIndex/);
+  assert.match(dependencyList, /coordinator[\s\S]*enabled[\s\S]*messageIndex[\s\S]*recoveryContextKey/);
 });
 
 test('legacy group-title repair is local-only and cannot reintroduce v1 transport', () => {

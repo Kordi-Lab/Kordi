@@ -198,9 +198,13 @@ fn migration_embeds_canonical_ordering_idempotency_and_title_state() {
 fn bootstrap_reads_titles_only_from_canonical_state() {
     let root = repository_root();
     let cursors = read(root.join("bridges/cloud-server/src/chat_sync/store/cursors.rs"));
+    let migration = read(root.join("bridges/cloud-server/migrations/0075_chat_group_catalog.sql"));
 
     assert!(cursors.contains("conversation.updated_at, viewer.personal_title"));
+    assert!(cursors.contains("conversation.group_space_id, conversation.group_title"));
     assert!(!cursors.contains("cloud_session_titles"));
+    assert!(migration.contains("group-title-update"));
+    assert!(migration.contains("SET group_title = latest_title.group_title"));
 }
 
 #[test]

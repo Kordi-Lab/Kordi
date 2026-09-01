@@ -9,16 +9,17 @@ import { cloudMessageMetadataOnly } from './cloudMessageCache';
 
 const PAGE_SIZE = 100;
 const CHUNK_SIZE = 10;
-const BATCH_TIMEOUT_MS = 5_000;
 
 export async function recoverNativeCloudGroupHistory({
   accountId,
+  prioritySessionId,
   applyControl,
   flushCanonicalState,
   onSessionSettled,
   shouldContinue,
 }: {
   accountId: string;
+  prioritySessionId?: string | null;
   applyControl: (
     wire: CloudMessage,
     envelope: CloudGroupControlEnvelope,
@@ -63,23 +64,6 @@ export async function recoverNativeCloudGroupHistory({
     }
     return applied;
   };
-  const applyStartupSnapshots = async (
-    conversation: ChatSyncConversation,
-    snapshots: ChatSyncMessage[],
-    force = false,
-  ) => {
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    try {
-      return await Promise.race([
-        applySnapshots(conversation, snapshots, force),
-        new Promise<false>((resolve) => {
-          timeoutId = globalThis.setTimeout(() => resolve(false), BATCH_TIMEOUT_MS);
-        }),
-      ]);
-    } finally {
-      if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
-    }
-  };
   type GroupHistory = {
     conversation: ChatSyncConversation;
     sessionId: string;
@@ -87,6 +71,17 @@ export async function recoverNativeCloudGroupHistory({
     latest: ChatSyncMessage[];
     head: ChatSyncMessage[];
   };
+  const normalizedPrioritySessionId = prioritySessionId?.trim() ?? '';
+  const conversationSessionId = (conversation: ChatSyncConversation) => (
+    conversation.legacy_session_id?.trim() || conversation.id.trim()
+  );
+  const prioritizeConversations = (conversations: ChatSyncConversation[]) => (
+    [...conversations].sort((left, right) => (
+      Number(conversationSessionId(right) === normalizedPrioritySessionId)
+      - Number(conversationSessionId(left) === normalizedPrioritySessionId)
+      || Date.parse(right.updated_at) - Date.parse(left.updated_at)
+    ))
+  );
   const loadLatest = async (conversations: ChatSyncConversation[]) => {
     const histories: GroupHistory[] = [];
     for (const conversation of conversations) {
@@ -104,7 +99,7 @@ export async function recoverNativeCloudGroupHistory({
       if (!page || !shouldContinue()) return null;
       histories.push({
         conversation,
-        sessionId: conversation.legacy_session_id?.trim() || conversation.id.trim(),
+        sessionId: conversationSessionId(conversation),
         olderThroughSequence,
         latest: page.messages,
         head: page.messages.slice(-1),
@@ -112,30 +107,46 @@ export async function recoverNativeCloudGroupHistory({
     }
     return histories;
   };
-  const initialConversations = (await loadChatSyncConversations(accountId))
-    .filter((conversation) => conversation.kind === 'group');
+  const initialConversations = prioritizeConversations(
+    (await loadChatSyncConversations(accountId))
+      .filter((conversation) => conversation.kind === 'group'),
+  );
   const initialHistories = await loadLatest(initialConversations);
   if (!initialHistories) return false;
-  for (const history of initialHistories) {
-    const applied = await applyStartupSnapshots(history.conversation, history.head, true);
+  const priorityHistory = initialHistories.find(
+    (history) => history.sessionId === normalizedPrioritySessionId,
+  ) ?? initialHistories[0] ?? null;
+  if (priorityHistory) {
+    const applied = await applySnapshots(
+      priorityHistory.conversation,
+      priorityHistory.latest,
+    );
+    if (!shouldContinue()) return false;
+    if (applied) flushCanonicalState();
+  }
+  const backgroundHistories = initialHistories.filter(
+    (history) => history !== priorityHistory,
+  );
+  for (const history of backgroundHistories) {
+    const applied = await applySnapshots(history.conversation, history.head, true);
     if (!shouldContinue()) return false;
     if (applied) flushCanonicalState();
   }
   const initialRemainderCount = Math.max(
     0,
-    ...initialHistories.map((history) => history.latest.length - 1),
+    ...backgroundHistories.map((history) => history.latest.length - 1),
   );
   for (let offset = 0; offset < initialRemainderCount; offset += CHUNK_SIZE) {
     let cursor = 0;
     await Promise.all(Array.from(
-      { length: Math.min(2, initialHistories.length) },
+      { length: Math.min(2, backgroundHistories.length) },
       async () => {
-        while (cursor < initialHistories.length) {
-          const history = initialHistories[cursor];
+        while (cursor < backgroundHistories.length) {
+          const history = backgroundHistories[cursor];
           cursor += 1;
           const end = Math.max(0, history.latest.length - 1 - offset);
           const start = Math.max(0, end - CHUNK_SIZE);
-          const applied = await applyStartupSnapshots(
+          const applied = await applySnapshots(
             history.conversation,
             history.latest.slice(start, end),
           );
@@ -154,8 +165,8 @@ export async function recoverNativeCloudGroupHistory({
   );
   const durableConversations = await waitForCompleteChatSyncHistory(accountId, shouldContinue);
   if (!durableConversations) return false;
-  const histories = await loadLatest(durableConversations.filter(
-    (conversation) => conversation.kind === 'group',
+  const histories = await loadLatest(prioritizeConversations(
+    durableConversations.filter((conversation) => conversation.kind === 'group'),
   ));
   if (!histories) return false;
   for (const history of histories) {

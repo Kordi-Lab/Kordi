@@ -28,6 +28,8 @@ export type ChatSyncConversation = {
   version: number;
   created_by_account_id: string;
   legacy_session_id: string | null;
+  group_space_id?: string | null;
+  group_title?: string | null;
   forked_from_session_id?: string | null;
   forked_from_message_id?: string | null;
   latest_message_sequence: number;
