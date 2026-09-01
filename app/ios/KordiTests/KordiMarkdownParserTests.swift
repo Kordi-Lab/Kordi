@@ -1188,6 +1188,33 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
+    func testThreadViewportDoesNotClearParentConversationPosition() {
+        let memory = ConversationViewportMemory()
+        let leftAt = Date(timeIntervalSince1970: 1_000)
+        memory.remember(
+            key: "account:session:conversation",
+            messageID: "message-4",
+            latestMessageID: "message-9",
+            at: leftAt
+        )
+        memory.remember(
+            key: "account:session:thread:root",
+            messageID: nil,
+            latestMessageID: "thread-reply",
+            at: leftAt.addingTimeInterval(1)
+        )
+
+        XCTAssertEqual(
+            memory.resumedMessageID(
+                for: "account:session:conversation",
+                latestMessageID: "message-9",
+                availableMessageIDs: ["message-4", "message-9"],
+                now: leftAt.addingTimeInterval(2)
+            ),
+            "message-4"
+        )
+    }
+
     func testConversationStartsAtLatestAfterTwoMinutes() {
         let memory = ConversationViewportMemory()
         let leftAt = Date(timeIntervalSince1970: 1_000)

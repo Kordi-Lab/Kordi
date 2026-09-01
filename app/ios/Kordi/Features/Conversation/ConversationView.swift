@@ -10,11 +10,11 @@ private struct ConversationTimelineRow: Identifiable {
 }
 
 enum ConversationThreadPresentationMode: Equatable {
-    case sheet
+    case navigation
     case inspector
 
     static func resolve(horizontalSizeClass: UserInterfaceSizeClass?) -> Self {
-        horizontalSizeClass == .compact ? .sheet : .inspector
+        horizontalSizeClass == .compact ? .navigation : .inspector
     }
 }
 
@@ -35,11 +35,9 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
         switch ConversationThreadPresentationMode.resolve(
             horizontalSizeClass: horizontalSizeClass
         ) {
-        case .sheet:
-            content.sheet(isPresented: threadIsPresented) {
-                if let threadRootID = activeRootMessageID {
-                    threadContainer(rootID: threadRootID)
-                }
+        case .navigation:
+            content.navigationDestination(item: $activeRootMessageID) { threadRootID in
+                threadDestination(rootID: threadRootID)
             }
         case .inspector:
             content.inspector(isPresented: threadIsPresented) {
@@ -192,6 +190,7 @@ struct ConversationView: View {
     @State private var isReadPresentationVisible = false
     @State private var isNavigatingToMention = false
     @State private var activeThreadRootMessageID: String?
+    @State private var threadReturnMessageID: String?
 
     init(
         conversation: ConversationSummary,
@@ -698,6 +697,23 @@ struct ConversationView: View {
                     shouldFollowLatestAfterInputSurfaceChange = false
                 }
             }
+            .onChange(of: activeThreadRootMessageID) { previousRootID, currentRootID in
+                guard previousRootID != nil,
+                      currentRootID == nil,
+                      let returnMessageID = threadReturnMessageID else { return }
+                threadReturnMessageID = nil
+                Task { @MainActor in
+                    await Task.yield()
+                    await Task.yield()
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        isAtBottom = returnMessageID == bottomAnchorID
+                        trackedMessageID = returnMessageID
+                        proxy.scrollTo(returnMessageID, anchor: initialViewport.scrollAnchor)
+                    }
+                }
+            }
             observedTimeline
             .task(id: ConversationIdentityResolver.loadingTaskID(for: conversation)) {
                 await loadAndRevealInitialConversation(using: proxy)
@@ -1081,7 +1097,7 @@ struct ConversationView: View {
                         navigateToMessage(messageId, in: timeline, proxy: proxy)
                     },
                     onOpenThread: {
-                        activeThreadRootMessageID = message.id
+                        openThread(rootMessageID: message.id)
                     },
                     onOpenAttachment: { attachment, previewImage in
                         openAttachment(
@@ -1243,7 +1259,7 @@ struct ConversationView: View {
                         dismissMessageActions()
                         Task { @MainActor in
                             await Task.yield()
-                            activeThreadRootMessageID = source.sourceMessageId
+                            openThread(rootMessageID: source.sourceMessageId)
                         }
                         return
                     } else {
@@ -1719,7 +1735,14 @@ struct ConversationView: View {
     }
 
     private var viewportMemoryKey: String {
-        "\(model.account?.accountId.nonEmpty ?? "anonymous"):\(conversation.id)"
+        let surface = scopedThreadRootMessageID.map { "thread:\($0)" } ?? "conversation"
+        return "\(model.account?.accountId.nonEmpty ?? "anonymous"):\(conversation.id):\(surface)"
+    }
+
+    private func openThread(rootMessageID: String) {
+        threadReturnMessageID = trackedMessageID ?? (isAtBottom ? bottomAnchorID : nil)
+        rememberViewport(in: messages)
+        activeThreadRootMessageID = rootMessageID
     }
 
     private func timelineIdentity(for messageID: String, in timeline: [ChatMessage]) -> String {
