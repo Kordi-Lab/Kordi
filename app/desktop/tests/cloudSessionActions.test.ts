@@ -90,14 +90,6 @@ test('canonical mapping treats a self-owned cloud agent as My Kordi', () => {
   assert.equal(canonicalMessageRole(message, identity, 'human:someone-else'), 'external-agent');
 });
 
-test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {
-  const source = chatSessionActionsSource();
-  const deleteBranchStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const deleteSession'));
-  const deleteBranchEnd = source.indexOf('} catch (error) {', deleteBranchStart);
-  const cloudDeleteBranch = source.slice(deleteBranchStart, deleteBranchEnd);
-  assert.match(cloudDeleteBranch, /await deleteCloudSession\(trimmedSessionId\);[\s\S]*archiveDesktopChatSession\(\s*trimmedSessionId,\s*desktopActiveSessionId/);
-});
-
 test('group session rename forwards the manual title from the returned canonical state', () => {
   assert.match(
     chatSessionActionsSource(),

@@ -28,10 +28,8 @@ import type {
   CloudSyncCoordinator,
 } from './cloudSyncCoordinator';
 import type { CloudUnreadReadinessSnapshot } from './cloudMessageSyncState';
-import {
-  useCloudAccountLifecycleState,
-  useCloudSessionVisibilityRefresh,
-} from './useCloudAccountLifecycleState';
+import { useCloudAccountLifecycleState } from './useCloudAccountLifecycleState';
+import { useCloudSessionVisibilityRefresh } from './useCloudSessionVisibilityRefresh';
 
 export type CloudCollaborationMessageStore = {
   value: Record<string, CloudMessage[]>;
@@ -167,6 +165,14 @@ export function useCloudCollaborationStores({
       lifecycle.visibility.setHiddenSessionIds,
     setDeletedSessionIds:
       lifecycle.visibility.setDeletedSessionIds,
+    setUnreadSessionIds:
+      lifecycle.visibility.setUnreadSessionIds,
+    setPinnedSessionIds:
+      lifecycle.visibility.setPinnedSessionIds,
+    setMutedSessionIds:
+      lifecycle.visibility.setMutedSessionIds,
+    setPinnedGroupSpaceIds:
+      lifecycle.visibility.setPinnedGroupSpaceIds,
   });
 
   return {

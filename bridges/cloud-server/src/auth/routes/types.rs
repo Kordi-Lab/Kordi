@@ -394,6 +394,14 @@ pub struct CloudSessionVisibilityResponse {
     pub hidden_session_ids: Vec<String>,
     #[serde(rename = "deletedSessionIds")]
     pub deleted_session_ids: Vec<String>,
+    #[serde(rename = "pinnedSessionIds")]
+    pub pinned_session_ids: Vec<String>,
+    #[serde(rename = "mutedSessionIds")]
+    pub muted_session_ids: Vec<String>,
+    #[serde(rename = "unreadSessionIds")]
+    pub unread_session_ids: Vec<String>,
+    #[serde(rename = "pinnedGroupSpaceIds")]
+    pub pinned_group_space_ids: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

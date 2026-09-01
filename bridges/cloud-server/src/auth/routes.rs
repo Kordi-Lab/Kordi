@@ -219,6 +219,22 @@ pub fn routes_with_config(
             put(hide_cloud_session).delete(unhide_cloud_session),
         )
         .route(
+            "/v1/cloud/sessions/:source_session_id/pinned",
+            put(pin_cloud_session).delete(unpin_cloud_session),
+        )
+        .route(
+            "/v1/cloud/sessions/:source_session_id/muted",
+            put(mute_cloud_session).delete(unmute_cloud_session),
+        )
+        .route(
+            "/v1/cloud/sessions/:source_session_id/unread",
+            put(mark_cloud_session_unread).delete(unmark_cloud_session_unread),
+        )
+        .route(
+            "/v1/cloud/group-spaces/:group_space_id/pinned",
+            put(pin_group_space).delete(unpin_group_space),
+        )
+        .route(
             "/v1/cloud/sessions/:source_session_id/pin",
             get(get_cloud_session_pin).put(update_cloud_session_pin),
         )

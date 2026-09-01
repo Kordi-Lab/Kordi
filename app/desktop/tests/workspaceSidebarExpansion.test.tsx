@@ -49,6 +49,78 @@ test('contact and group spaces share one latest-activity order', () => {
   );
 });
 
+test('WorkspaceSidebar exposes archived chats and account-scoped row indicators', () => {
+  const active = conversation({
+    id: 'session:direct-person:active',
+    canonicalSessionId: 'session:direct-person:active',
+    name: 'Active chat',
+  });
+  const archived = conversation({
+    id: 'session:direct-person:archived',
+    canonicalSessionId: 'session:direct-person:archived',
+    name: 'Archived chat',
+  });
+  const participantSpaces = buildParticipantSpaces([active]);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations: [active],
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    archivedParticipantSpaces: buildParticipantSpaces([archived]),
+    pinnedSessionIds: new Set([active.id]),
+    mutedSessionIds: new Set([active.id]),
+    activeConvId: active.id,
+  }) as never));
+
+  assert.match(markup, /Archived chats/);
+  assert.ok(markup.indexOf('Search contacts, groups, sessions') < markup.indexOf('Archived chats'));
+  assert.ok(markup.indexOf('>Contact<') < markup.indexOf('Archived chats'));
+  assert.match(markup, /aria-label="Pinned"/);
+  assert.match(markup, /aria-label="Muted"/);
+  assert.match(markup, />Bob<\/div><svg[^>]*aria-label="Pinned"[\s\S]*?<\/svg><svg[^>]*aria-label="Muted"/);
+});
+
+test('WorkspaceSidebar counts archived chats inside the selected channel', () => {
+  const archivedContacts = [
+    conversation({ id: 'session:direct-person:archived-one', canonicalSessionId: 'session:direct-person:archived-one', name: 'Archived one' }),
+    conversation({ id: 'session:direct-person:archived-two', canonicalSessionId: 'session:direct-person:archived-two', name: 'Archived two' }),
+  ];
+  const archivedAgent = conversation({
+    id: 'session:self-agent:archived',
+    canonicalSessionId: 'session:self-agent:archived',
+    name: 'Archived agent',
+    type: 'owned-agent',
+    participants: ['Me', 'My Kordi'],
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
+      { id: 'agent:mine', name: 'My Kordi', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'mine' },
+    ],
+  });
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    archivedParticipantSpaces: buildParticipantSpaces([...archivedContacts, archivedAgent]),
+    initialChatChannel: 'agent',
+  }) as never));
+
+  assert.match(markup, /Archived chats<\/span><span[^>]*>1<\/span>/);
+});
+
+test('WorkspaceSidebar matches direct-chat preference icons by canonical session id', () => {
+  const maya = conversation({
+    id: 'person:acct_maya',
+    canonicalSessionId: 'session:direct-person:acct_maya:acct_me',
+    name: 'Maya Chen',
+  });
+  const participantSpaces = buildParticipantSpaces([maya]);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations: [maya],
+    participantSpaces,
+    contactParticipantSpaces: participantSpaces,
+    pinnedSessionIds: new Set([maya.canonicalSessionId]),
+    activeConvId: '',
+  }) as never));
+
+  assert.match(markup, /aria-label="Pinned"/);
+});
+
 test('WorkspaceSidebar auto-expands an active space without replacing its other sessions', () => {
   const chatConversations = [
     conversation({

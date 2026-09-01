@@ -194,6 +194,34 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertEqual(rows.map(\.childCount), [1, 0, 0])
     }
 
+    func testTimelineOrdersPinnedRootBeforeNewerUnpinnedRoot() {
+        let pinned = conversation(
+            id: "pinned",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Pinned work",
+            preview: "Older",
+            date: Date(timeIntervalSince1970: 10)
+        )
+        let newer = conversation(
+            id: "newer",
+            peerAccountId: "acct_me",
+            agentId: "agent_writer",
+            agentName: "Writer",
+            title: "Newer work",
+            preview: "Newer",
+            date: Date(timeIntervalSince1970: 20)
+        )
+
+        let rows = AgentSessionTimelineCatalog.build(
+            conversations: [newer, pinned],
+            pinnedSessionIds: [pinned.sessionId]
+        )
+
+        XCTAssertEqual(rows.map(\.conversation.sessionId), [pinned.sessionId, newer.sessionId])
+    }
+
     func testTimelineCollapsesForksAndExcludesSupportAndContactForks() {
         let root = conversation(
             id: "root",

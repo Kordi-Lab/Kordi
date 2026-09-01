@@ -264,6 +264,11 @@
   box-shadow: none;
 }
 
+.app-workspace-sidebar .app-sidebar-unread-badge[data-muted='true'] {
+  background: var(--utility-muted-text);
+  color: var(--app-sidebar-accent-text);
+}
+
 .app-workspace-sidebar .app-sidebar-mention-indicator {
   color: var(--app-sidebar-accent);
   font-size: 0.75rem;

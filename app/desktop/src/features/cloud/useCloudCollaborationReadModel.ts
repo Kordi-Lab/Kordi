@@ -204,7 +204,6 @@ export function useCloudCollaborationReadModel({
   defaultRoute,
   localAgentLabel,
   contacts,
-  hiddenSessionIds,
   deletedSessionIds,
   accountContextKey,
   override,
@@ -227,7 +226,6 @@ export function useCloudCollaborationReadModel({
   defaultRoute?: DesktopChatMessageRoute | null;
   localAgentLabel?: string | null;
   contacts: Contact[];
-  hiddenSessionIds: Set<string>;
   deletedSessionIds: Set<string>;
   accountContextKey: string | null;
   override: DesktopCollaborationState | null;
@@ -265,7 +263,6 @@ export function useCloudCollaborationReadModel({
       ...canonicalSelfAgentSessions
         .map((session) => session.id.trim())
         .filter(Boolean),
-      ...hiddenSessionIds,
       ...deletedSessionIds,
     ]);
     const canonicalSelfAgentSessionIds = new Set(
@@ -319,7 +316,6 @@ export function useCloudCollaborationReadModel({
     canonicalState,
     contacts,
     deletedSessionIds,
-    hiddenSessionIds,
     localAgentTurnsByRequestId,
     localAgentLabel,
     messageIndex,

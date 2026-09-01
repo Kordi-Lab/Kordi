@@ -204,6 +204,39 @@ pub(crate) async fn send_message_in_transaction(
         .await?;
     }
     let message = load_message(transaction, message_id).await?;
+    let resurrect_sender = crate::notifications::is_agent_authored_message(&message);
+    let restored: Vec<(String, String)> = query_as(
+        "DELETE FROM cloud_account_session_visibility visibility \
+         USING cloud_chat_conversation_members member, cloud_chat_conversations conversation \
+         WHERE conversation.conversation_id = $1 \
+           AND member.conversation_id = conversation.conversation_id \
+           AND member.membership_state = 'active' \
+           AND visibility.account_id = member.account_id \
+           AND visibility.deleted_at IS NOT NULL \
+           AND (visibility.session_id = conversation.legacy_session_id \
+                OR visibility.session_id = conversation.conversation_id::text) \
+           AND (member.account_id <> $2 OR $3) \
+         RETURNING visibility.account_id, visibility.session_id",
+    )
+    .bind(conversation_id)
+    .bind(account_id)
+    .bind(resurrect_sender)
+    .fetch_all(&mut **transaction)
+    .await?;
+    if !restored.is_empty() {
+        insert_sync_event_fanout(
+            transaction,
+            "session.unhidden",
+            Some(conversation_id),
+            None,
+            None,
+            restored
+                .into_iter()
+                .map(|(account_id, session_id)| (account_id, json!({ "sessionId": session_id })))
+                .collect(),
+        )
+        .await?;
+    }
     fanout_message_sync_event(transaction, "message.created", &message).await?;
     Ok(InsertOutcome {
         value: message,
@@ -355,7 +388,7 @@ pub async fn conversation_id_for_session(
          FROM cloud_chat_conversations conversation \
          JOIN cloud_chat_conversation_members member \
            ON member.conversation_id = conversation.conversation_id \
-         WHERE conversation.legacy_session_id = $1 \
+         WHERE (conversation.legacy_session_id = $1 OR conversation.conversation_id::text = $1) \
            AND member.account_id = $2 \
            AND member.membership_state = 'active'",
     )

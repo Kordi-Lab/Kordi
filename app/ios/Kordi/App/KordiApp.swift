@@ -608,7 +608,10 @@ struct MainTabView: View {
     }
 
     private var unreadTabCounts: MainTabUnreadCounts {
-        MainTabUnreadCounts.build(conversations: model.conversations)
+        MainTabUnreadCounts.build(
+            conversations: model.conversations,
+            mutedSessionIds: model.mutedSessionIds
+        )
     }
 
     private func badgeLabel(_ count: Int) -> Text? {
@@ -623,16 +626,22 @@ struct MainTabUnreadCounts: Equatable {
 
     var total: Int { chats + agents }
 
-    static func build(conversations: [ConversationSummary]) -> MainTabUnreadCounts {
+    static func build(
+        conversations: [ConversationSummary],
+        mutedSessionIds: Set<String> = []
+    ) -> MainTabUnreadCounts {
         let people = conversations.lazy.filter {
-            $0.kind == .person
+            $0.kind == .person && !mutedSessionIds.contains($0.sessionId)
         }.reduce(0) { $0 + max(0, $1.unreadCount) }
         let groups = conversations.lazy.filter {
             $0.kind == .group
                 && $0.forkedFromSessionId == nil
+                && !mutedSessionIds.contains($0.sessionId)
         }.reduce(0) { $0 + max(0, $1.unreadCount) }
         let agents = conversations.lazy.filter {
-            $0.kind == .agent && !$0.isAgentLaunchTemplate
+            $0.kind == .agent
+                && !$0.isAgentLaunchTemplate
+                && !mutedSessionIds.contains($0.sessionId)
         }.reduce(0) { $0 + max(0, $1.unreadCount) }
         return MainTabUnreadCounts(chats: people + groups, agents: agents)
     }

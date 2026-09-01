@@ -2,18 +2,9 @@ import {
   useCallback,
   useEffect,
   useRef,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
 } from 'react';
-import type {
-  CloudAccount,
-  CloudAuthClient,
-  CloudMessage,
-  CloudSessionForkSummary,
-} from './authClient';
 import { chatSyncSessionTitle, cloudMessageFromChatSync } from './authClient';
-import type { CloudAgentDefinition } from './cloudAgents';
+import type { CloudMessage } from './authClient';
 import { chatEventsRequireDirectoryBootstrap, publishCloudDeviceEvents } from './cloudDeviceEvents';
 import { cloudMessageMetadataOnly } from './cloudMessageCache';
 import { compareCloudMessages } from './cloudMessageMerge';
@@ -24,19 +15,21 @@ import {
   cloudUnreadReadinessContextKey,
   mergeCloudMessagesByPeerSnapshot,
   transitionCloudUnreadReadiness,
-  type CloudUnreadReadinessSnapshot,
   type CloudUnreadReadinessStatus,
 } from './cloudMessageSyncState';
-import {
-  syncCloudDiffOnce,
-  type CloudSessionPinsById,
-  type CloudSessionTitlesById,
-} from './cloudDiffSync';
-import {
-  mergeCloudSessionActivity,
-  type CloudSessionActivityStore,
-} from './cloudSessionActivity';
-import { CloudSyncCoordinator } from './cloudSyncCoordinator';
+import { syncCloudDiffOnce } from './cloudDiffSync';
+import type { CloudSessionTitlesById } from './cloudDiffSync';
+import { mergeCloudSessionActivity } from './cloudSessionActivity';
+import type {
+  CloudMessageSyncController,
+  PendingCloudSyncRequest,
+  UseCloudMessageSyncInput,
+} from './cloudMessageSync.types';
+export type {
+  CloudMessageSyncController,
+  CloudMessageSyncStores,
+  UseCloudMessageSyncInput,
+} from './cloudMessageSync.types';
 import { loadSession } from './session';
 import {
   applyChatSyncLocalBatch,
@@ -51,51 +44,6 @@ import { pruneMissingCanonicalCloudMessages } from '@/features/canonical/canonic
 // temporary disconnects without polling several times per second.
 export const CLOUD_MESSAGES_REFRESH_MS = 15_000;
 const CLOUD_SYNC_EVENT_PAGE_LIMIT = 1_000;
-
-type PendingCloudSyncRequest = {
-  mode: 'diff' | 'full' | 'bootstrap';
-  settleInitialMessages: boolean;
-};
-
-type CloudSyncStore<T> = {
-  stateRef: MutableRefObject<T>;
-  setState: Dispatch<SetStateAction<T>>;
-};
-
-export type CloudMessageSyncStores = {
-  messages: CloudSyncStore<Record<string, CloudMessage[]>> & {
-    peerReadAtByPeerRef: MutableRefObject<Record<string, string>>;
-  };
-  activity: CloudSyncStore<CloudSessionActivityStore>;
-  forks: CloudSyncStore<Record<string, CloudSessionForkSummary>>;
-  pins: CloudSyncStore<CloudSessionPinsById>;
-  titles: CloudSyncStore<CloudSessionTitlesById>;
-  agents: CloudSyncStore<Record<string, CloudAgentDefinition>>;
-  hiddenSessionIds: CloudSyncStore<Set<string>>;
-  deletedSessionIds: CloudSyncStore<Set<string>>;
-};
-
-export type UseCloudMessageSyncInput = {
-  account: CloudAccount | null;
-  bootstrapPeerIds: string[];
-  bootstrapPeerKey: string;
-  cloudUnreadContextKey: string | null;
-  contactsSettled: boolean;
-  client: CloudAuthClient;
-  coordinator: CloudSyncCoordinator;
-  cancelledRef: MutableRefObject<boolean>;
-  stores: CloudMessageSyncStores;
-  setUnreadReadiness: Dispatch<SetStateAction<CloudUnreadReadinessSnapshot>>;
-  refreshCloudAgents: (generation?: number) => Promise<void>; onMessagesDeleted?: (messageIds: string[]) => Promise<void> | void;
-  onCanonicalMessagesPruned?: (messageIds: string[]) => Promise<void> | void;
-};
-
-export type CloudMessageSyncController = {
-  refreshCloudMessages: () => Promise<void>;
-  syncCloudCollaborationDiff: (
-    options?: { settleInitialMessages?: boolean },
-  ) => Promise<void>;
-};
 
 export function useCloudMessageSync({
   account,
@@ -126,6 +74,22 @@ export function useCloudMessageSync({
     stateRef: deletedSessionIdsRef,
     setState: setDeletedSessionIds,
   } = stores.deletedSessionIds;
+  const {
+    stateRef: unreadSessionIdsRef,
+    setState: setUnreadSessionIds,
+  } = stores.unreadSessionIds;
+  const {
+    stateRef: pinnedSessionIdsRef,
+    setState: setPinnedSessionIds,
+  } = stores.pinnedSessionIds;
+  const {
+    stateRef: mutedSessionIdsRef,
+    setState: setMutedSessionIds,
+  } = stores.mutedSessionIds;
+  const {
+    stateRef: pinnedGroupSpaceIdsRef,
+    setState: setPinnedGroupSpaceIds,
+  } = stores.pinnedGroupSpaceIds;
   const pendingRequestRef = useRef<PendingCloudSyncRequest | null>(null);
   const startupSnapshotContextRef = useRef<string | null>(null);
 
@@ -169,6 +133,10 @@ export function useCloudMessageSync({
     let cloudAgentsById = agentsRef.current;
     let hiddenSessionIds = hiddenSessionIdsRef.current;
     let deletedSessionIds = deletedSessionIdsRef.current;
+    let unreadSessionIds = unreadSessionIdsRef.current;
+    let pinnedSessionIds = pinnedSessionIdsRef.current;
+    let mutedSessionIds = mutedSessionIdsRef.current;
+    let pinnedGroupSpaceIds = pinnedGroupSpaceIdsRef.current;
     let directoryBootstrapPending = false;
     let cursorOverride = forceBootstrap ? '0' : null;
     let bootstrapRecoveryAttempted = forceBootstrap;
@@ -188,6 +156,10 @@ export function useCloudMessageSync({
         cloudAgentsById,
         hiddenSessionIds,
         deletedSessionIds,
+        unreadSessionIds,
+        pinnedSessionIds,
+        mutedSessionIds,
+        pinnedGroupSpaceIds,
         shouldSaveCursor: () => coordinator.isCurrentGeneration(generation),
         loadCursor: async () => {
           if (cursorOverride) {
@@ -247,6 +219,10 @@ export function useCloudMessageSync({
       cloudAgentsById = result.cloudAgentsById;
       hiddenSessionIds = result.hiddenSessionIds;
       deletedSessionIds = result.deletedSessionIds;
+      unreadSessionIds = result.unreadSessionIds;
+      pinnedSessionIds = result.pinnedSessionIds;
+      mutedSessionIds = result.mutedSessionIds;
+      pinnedGroupSpaceIds = result.pinnedGroupSpaceIds;
       if (!result.hasMore && directoryBootstrapPending) {
         directoryBootstrapPending = false;
         cursorOverride = '0';
@@ -281,6 +257,18 @@ export function useCloudMessageSync({
     setDeletedSessionIds((current) => (
       cloudSetsEqual(current, deletedSessionIds) ? current : new Set(deletedSessionIds)
     ));
+    setUnreadSessionIds((current) => (
+      cloudSetsEqual(current, unreadSessionIds) ? current : new Set(unreadSessionIds)
+    ));
+    setPinnedSessionIds((current) => (
+      cloudSetsEqual(current, pinnedSessionIds) ? current : new Set(pinnedSessionIds)
+    ));
+    setMutedSessionIds((current) => (
+      cloudSetsEqual(current, mutedSessionIds) ? current : new Set(mutedSessionIds)
+    ));
+    setPinnedGroupSpaceIds((current) => (
+      cloudSetsEqual(current, pinnedGroupSpaceIds) ? current : new Set(pinnedGroupSpaceIds)
+    ));
     if (deletedMessageIds.size > 0) await onMessagesDeleted?.([...deletedMessageIds]);
   }, [
     account,
@@ -292,15 +280,23 @@ export function useCloudMessageSync({
     deletedSessionIdsRef,
     forksRef,
     hiddenSessionIdsRef,
+    mutedSessionIdsRef,
+    pinnedGroupSpaceIdsRef,
     messagesRef, onMessagesDeleted,
     pinsRef,
+    pinnedSessionIdsRef,
+    unreadSessionIdsRef,
     setActivity,
     setAgents,
     setDeletedSessionIds,
     setForks,
     setHiddenSessionIds,
     setMessages,
+    setMutedSessionIds,
+    setPinnedGroupSpaceIds,
     setPins,
+    setPinnedSessionIds,
+    setUnreadSessionIds,
     setTitles,
     titlesRef,
   ]);

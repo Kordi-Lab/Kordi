@@ -19,6 +19,8 @@ mod message_mutations;
 mod reactions;
 #[path = "chat_sync_e2e/session_pins.rs"]
 mod session_pins;
+#[path = "chat_sync_e2e/session_visibility.rs"]
+mod session_visibility;
 #[path = "chat_sync_e2e/support_migration.rs"]
 mod support_migration;
 async fn try_pool() -> Option<PgPool> {

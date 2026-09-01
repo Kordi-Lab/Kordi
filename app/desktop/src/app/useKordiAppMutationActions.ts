@@ -77,6 +77,12 @@ export function useKordiAppMutationActions({
     cloud: {
       sendCloudGroupControl,
       hideCloudSession,
+      unhideCloudSession,
+      setCloudSessionPinned,
+      setCloudSessionMuted,
+      setCloudSessionUnread,
+      markCloudSessionsRead,
+      setCloudGroupSpacePinned,
       deleteCloudSession,
     },
   } = foundation;
@@ -95,6 +101,12 @@ export function useKordiAppMutationActions({
   const {
     renameSession: handleRenameChatSession,
     archiveSession: handleArchiveChatSession,
+    restoreSession: handleRestoreChatSession,
+    setSessionPinned: handleSetChatSessionPinned,
+    setSessionMuted: handleSetChatSessionMuted,
+    setSessionUnread: handleSetChatSessionUnread,
+    markSessionsRead: handleMarkChatSessionsRead,
+    setGroupPinned: handleSetChatGroupPinned,
     deleteSession: handleDeleteChatSession,
   } = useKordiChatSessionActions({
     account: cloudSession.account,
@@ -104,6 +116,12 @@ export function useKordiAppMutationActions({
     isNativeShell,
     deleteCloudSession,
     hideCloudSession,
+    unhideCloudSession,
+    setCloudSessionPinned,
+    setCloudSessionMuted,
+    setCloudSessionUnread,
+    markCloudSessionsRead,
+    setCloudGroupSpacePinned,
     refreshCanonicalState,
     refreshDesktopChat,
     sendCloudGroupControl,
@@ -276,6 +294,12 @@ export function useKordiAppMutationActions({
     chatSession: {
       handleRenameChatSession,
       handleArchiveChatSession,
+      handleRestoreChatSession,
+      handleSetChatSessionPinned,
+      handleSetChatSessionMuted,
+      handleSetChatSessionUnread,
+      handleMarkChatSessionsRead,
+      handleSetChatGroupPinned,
       handleDeleteChatSession,
     },
     project: {

@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, MoreHorizontal, Paperclip, Plus, Split } from 'lucide-react';
+import { BellOff, ChevronDown, ChevronRight, MoreHorizontal, Paperclip, Pin, Plus, Split } from 'lucide-react';
 
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
 import { isBlankParticipantSpaceSession } from '@/features/chat/participantSpaces';
@@ -10,21 +10,24 @@ import {
   participantSpaceKindText,
   participantSpacePreviewAttachment,
   participantSpaceSessionIdLabel,
+  participantSpaceSessionPreferenceId,
   participantSpaceSessionPreviewText,
   participantSpaceSessionRowTitle,
+  groupSpacePreferenceId,
   sessionContextMenuTargetForConversation,
 } from '@/pages/workspaceSidebar.chatHelpers';
 import type { WorkspaceChatSidebarModel } from '@/pages/workspaceSidebar.chatModel';
 import { ParticipantSpaceAvatarStack } from '@/pages/workspaceSidebar.chatPrimitives';
 import { SidebarSessionMetaColumn } from '@/pages/workspaceSidebar.shared';
 import type { WorkspaceSidebarParticipantSpace as ParticipantSpaceItem } from '@/pages/workspaceSidebar.types';
-import type { SessionContextMenuTarget } from '@/pages/SessionActionOverlays';
+import type { GroupContextMenuTarget, SessionContextMenuTarget } from '@/pages/SessionActionOverlays';
 import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
 
 export type ContactSidebarRowActions = {
   onPrefetchChatSession?: (sessionId: string) => void;
   onSelectChatSession: (sessionId: string) => void;
   onOpenSessionContextMenu: (target: SessionContextMenuTarget) => void;
+  onOpenGroupContextMenu: (target: GroupContextMenuTarget) => void;
   onOpenGroupDetails: (
     space: ParticipantSpaceItem,
     anchor: GroupManagementPopoverAnchor,
@@ -58,6 +61,7 @@ function ParticipantSpaceSessionRow({
     participantSpaceSessionPreviewText(session.preview) || 'No messages yet';
   const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
   const sessionIdLabel = participantSpaceSessionIdLabel(session);
+  const preferenceSessionId = participantSpaceSessionPreferenceId(session);
   const isFork = depth > 0;
   const childForks =
     model.globalForkLineage.forksByParentSessionId.get(session.id) ?? [];
@@ -88,7 +92,13 @@ function ParticipantSpaceSessionRow({
           conversation,
           event.clientX,
           event.clientY,
-          { canRename: participantSpaceCanRenameSessions(space) },
+          {
+            canRename: participantSpaceCanRenameSessions(space),
+            archived: model.showArchived,
+            pinned: model.pinnedSessionIds.has(preferenceSessionId),
+            muted: model.mutedSessionIds.has(preferenceSessionId),
+            unread: rowUnreadCount > 0,
+          },
         );
         if (!target) return;
         event.preventDefault();
@@ -104,9 +114,15 @@ function ParticipantSpaceSessionRow({
     >
       <div className="app-participant-space-session-main min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="app-session-row-title app-participant-space-session-title min-w-0 flex-1 truncate text-[12px] font-medium">
+          <span className="app-session-row-title app-participant-space-session-title min-w-0 truncate text-[12px] font-medium">
             {sessionRowTitle}
           </span>
+          {model.pinnedSessionIds.has(preferenceSessionId) ? (
+            <Pin className="h-3 w-3 shrink-0 text-slate-400" aria-label="Pinned" />
+          ) : null}
+          {model.mutedSessionIds.has(preferenceSessionId) ? (
+            <BellOff className="h-3 w-3 shrink-0 text-slate-400" aria-label="Muted" />
+          ) : null}
         </div>
         <div
           className={cn(
@@ -127,6 +143,7 @@ function ParticipantSpaceSessionRow({
           unreadScope="participant-session"
           indicator={session.statusIndicator}
           active={isActive}
+          muted={model.mutedSessionIds.has(preferenceSessionId)}
         />
         {hasForks ? (
           <>
@@ -211,6 +228,12 @@ function ParticipantSpaceRow({
     (sum, session) => sum + (session.unread > 0 ? session.conversation.unreadMentions ?? 0 : 0),
     0,
   );
+  const groupSpaceId = groupSpacePreferenceId(space.id);
+  const groupIsPinned = space.kind === 'group'
+    && model.pinnedGroupSpaceIds.has(groupSpaceId);
+  const groupIsMuted = space.kind === 'group'
+    && space.sessions.length > 0
+    && space.sessions.every((session) => model.mutedSessionIds.has(participantSpaceSessionPreferenceId(session)));
   const previewAttachment = participantSpacePreviewAttachment(space);
   const previewThumbnailUrl = previewAttachment?.kind === 'image'
     ? attachmentPreviewUrl(previewAttachment.attachment)
@@ -250,15 +273,57 @@ function ParticipantSpaceRow({
           data-participant-space-toggle={isDirectHuman ? undefined : 'true'}
           aria-expanded={isDirectHuman ? undefined : isExpanded}
           onClick={selectPrimarySession}
+          onContextMenu={(event) => {
+            if (!latestSession) return;
+            if (!isDirectHuman) {
+              if (space.kind !== 'group') return;
+              event.preventDefault();
+              event.stopPropagation();
+              actions.onOpenGroupContextMenu({
+                groupSpaceId,
+                groupName: space.title,
+                sessionIds: space.sessions.map(participantSpaceSessionPreferenceId),
+                x: event.clientX,
+                y: event.clientY,
+                archived: model.showArchived,
+                pinned: groupIsPinned,
+                muted: groupIsMuted,
+              });
+              return;
+            }
+            const target = sessionContextMenuTargetForConversation(
+              latestSession.conversation,
+              event.clientX,
+              event.clientY,
+              {
+                archived: model.showArchived,
+                pinned: model.pinnedSessionIds.has(participantSpaceSessionPreferenceId(latestSession)),
+                muted: model.mutedSessionIds.has(participantSpaceSessionPreferenceId(latestSession)),
+                unread: spaceUnreadCount > 0,
+              },
+            );
+            if (!target) return;
+            event.preventDefault();
+            event.stopPropagation();
+            actions.onOpenSessionContextMenu(target);
+          }}
           className="app-session-row app-participant-space-row-button w-full min-w-0 text-left text-white"
         >
           <ParticipantSpaceAvatarStack space={space} />
           <div className="min-w-0">
-            <div
-              className="app-participant-space-row-title truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100"
-              title={space.title}
-            >
-              {space.title}
+            <div className="flex min-w-0 items-center gap-1.5">
+              <div
+                className="app-participant-space-row-title min-w-0 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100"
+                title={space.title}
+              >
+                {space.title}
+              </div>
+              {(groupIsPinned || (isDirectHuman && latestSession && model.pinnedSessionIds.has(participantSpaceSessionPreferenceId(latestSession)))) ? (
+                <Pin className="h-3 w-3 shrink-0 text-slate-400" aria-label="Pinned" />
+              ) : null}
+              {(groupIsMuted || (isDirectHuman && latestSession && model.mutedSessionIds.has(participantSpaceSessionPreferenceId(latestSession)))) ? (
+                <BellOff className="h-3 w-3 shrink-0 text-slate-400" aria-label="Muted" />
+              ) : null}
             </div>
             <div
               className={cn(
@@ -372,6 +437,7 @@ function ParticipantSpaceRow({
               indicator={isExpanded ? undefined : latestSession?.statusIndicator}
               active={isDirectHuman && isPrimarySessionActive}
               reserveStatusSpace={false}
+              muted={groupIsMuted || Boolean(isDirectHuman && latestSession && model.mutedSessionIds.has(participantSpaceSessionPreferenceId(latestSession)))}
             />
           </div>
         </div>

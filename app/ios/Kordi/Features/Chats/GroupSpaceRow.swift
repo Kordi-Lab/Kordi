@@ -4,6 +4,9 @@ struct GroupSpaceRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let space: GroupSpaceSummary
     let isExpanded: Bool
+    var mutedSessionIds: Set<String> = []
+    var isPinned = false
+    var isMuted = false
 
     var body: some View {
         HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 11) {
@@ -13,10 +16,13 @@ struct GroupSpaceRow: View {
             )
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(space.displayName)
-                    .font(.headline)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .layoutPriority(1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(space.displayName)
+                        .font(.headline)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                        .layoutPriority(1)
+                    ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
+                }
 
                 BlobEmojiPreviewText(text: space.lastMessage)
                     .font(.subheadline)
@@ -37,15 +43,16 @@ struct GroupSpaceRow: View {
                 Text(relativeTimestamp(space.lastActivityAt))
                     .font(.caption)
                     .foregroundStyle(
-                        space.unreadCount > 0 || space.unreadMentionCount > 0
+                        unmutedUnreadCount > 0 || unmutedMentionCount > 0
                             ? KordiTheme.signalBlue
                             : .secondary
                     )
                 HStack(spacing: 5) {
                     if !isExpanded {
                         ConversationAttentionBadge(
-                            unreadCount: space.unreadCount,
-                            mentionCount: space.unreadMentionCount
+                            unreadCount: displayedUnreadCount,
+                            mentionCount: displayedMentionCount,
+                            isMuted: showsOnlyMutedAttention
                         )
                     }
                     Image(systemName: "chevron.down")
@@ -58,7 +65,10 @@ struct GroupSpaceRow: View {
         .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 64 : 48)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(space.accessibilitySummary)
+        .accessibilityLabel(
+            space.accessibilitySummary
+                + ChatListStateIndicators.accessibilitySuffix(isPinned: isPinned, isMuted: isMuted)
+        )
         .accessibilityHint(isExpanded ? "Collapse sessions" : "Expand sessions")
     }
 
@@ -67,11 +77,50 @@ struct GroupSpaceRow: View {
         let sessions = space.sessions.count == 1 ? "1 session" : "\(space.sessions.count) sessions"
         return "Group · \(people) · \(sessions)"
     }
+
+    private var unmutedUnreadCount: Int {
+        space.sessions.lazy
+            .filter { !mutedSessionIds.contains($0.sessionId) }
+            .reduce(0) { $0 + $1.unreadCount }
+    }
+
+    private var unmutedMentionCount: Int {
+        space.sessions.lazy
+            .filter { !mutedSessionIds.contains($0.sessionId) }
+            .reduce(0) { $0 + $1.unreadMentionCount }
+    }
+
+    private var mutedUnreadCount: Int {
+        space.sessions.lazy
+            .filter { mutedSessionIds.contains($0.sessionId) }
+            .reduce(0) { $0 + $1.unreadCount }
+    }
+
+    private var mutedMentionCount: Int {
+        space.sessions.lazy
+            .filter { mutedSessionIds.contains($0.sessionId) }
+            .reduce(0) { $0 + $1.unreadMentionCount }
+    }
+
+    private var showsOnlyMutedAttention: Bool {
+        unmutedUnreadCount == 0 && unmutedMentionCount == 0
+            && (mutedUnreadCount > 0 || mutedMentionCount > 0)
+    }
+
+    private var displayedUnreadCount: Int {
+        showsOnlyMutedAttention ? mutedUnreadCount : unmutedUnreadCount
+    }
+
+    private var displayedMentionCount: Int {
+        showsOnlyMutedAttention ? mutedMentionCount : unmutedMentionCount
+    }
 }
 
 struct GroupSessionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let session: ConversationSummary
+    var isPinned = false
+    var isMuted = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -81,9 +130,12 @@ struct GroupSessionRow: View {
                 .padding(.vertical, 5)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(sessionTitle)
-                    .font(.body.weight(.semibold))
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(sessionTitle)
+                        .font(.body.weight(.semibold))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
+                }
 
                 BlobEmojiPreviewText(text: session.lastMessage.nonEmpty ?? "No messages yet")
                     .font(.subheadline)
@@ -96,11 +148,12 @@ struct GroupSessionRow: View {
             VStack(alignment: .trailing, spacing: 4) {
                 Text(relativeTimestamp(session.lastActivityAt))
                     .font(.caption)
-                    .foregroundStyle(session.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
+                    .foregroundStyle(session.hasUnreadAttention && !isMuted ? KordiTheme.signalBlue : .secondary)
                 if session.hasUnreadAttention {
                     ConversationAttentionBadge(
                         unreadCount: session.unreadCount,
-                        mentionCount: session.unreadMentionCount
+                        mentionCount: session.unreadMentionCount,
+                        isMuted: isMuted
                     )
                 }
             }
@@ -109,7 +162,10 @@ struct GroupSessionRow: View {
         .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 58 : 46)
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(session.accessibilitySummary)
+        .accessibilityLabel(
+            session.accessibilitySummary
+                + ChatListStateIndicators.accessibilitySuffix(isPinned: isPinned, isMuted: isMuted)
+        )
     }
 
     private var sessionTitle: String {

@@ -5,6 +5,7 @@ import test from 'node:test';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
 const workspaceViewModelSource = () => readFileSync(new URL('../src/app/useWorkspaceViewModels.ts', import.meta.url), 'utf8');
+const workspaceChatListSource = () => readFileSync(new URL('../src/app/workspaceChatListViewModels.ts', import.meta.url), 'utf8');
 const appModelSource = readKordiAppModelImplementationSource;
 const canonicalStoreSource = () => readFileSync(new URL('../src/app/useKordiCanonicalSessionStore.ts', import.meta.url), 'utf8');
 const uiEffectsSource = () => readFileSync(new URL('../src/app/useKordiUiEffects.ts', import.meta.url), 'utf8');
@@ -70,11 +71,11 @@ test('chat session changes reset transcript auto-follow before message hydration
 test('canonical chat hydration is cached independently from active session selection', () => {
   const source = workspaceViewModelSource();
   const warmedStart = source.indexOf('const hydratedChatConversations = useMemo(() => {');
-  const visibleStart = source.indexOf('const chatConversations = useMemo(() => {', warmedStart);
+  const visibleStart = source.indexOf('} = useMemo(() => buildWorkspaceChatListViewModels({', warmedStart);
   assert.notEqual(warmedStart, -1, 'expected warmed canonical chat conversation cache');
   assert.notEqual(visibleStart, -1, 'expected cheap selected-session visibility memo after warmed cache');
 
-  const warmedEnd = source.indexOf('\n\n  const chatConversations = useMemo', warmedStart);
+  const warmedEnd = visibleStart;
   const warmedMemo = source.slice(warmedStart, warmedEnd);
   const warmedDeps = warmedMemo.slice(warmedMemo.lastIndexOf('}, ['));
 
@@ -82,14 +83,15 @@ test('canonical chat hydration is cached independently from active session selec
   assert.doesNotMatch(warmedDeps, /activeConvId/, 'switching sessions must not rebuild expensive canonical hydration');
 
   const visibleMemo = source.slice(visibleStart, source.indexOf('\n\n  const activeConv', visibleStart));
-  assert.match(visibleMemo, /blankShellCollapsedChatConversations/, 'visible conversations should reuse the stable decorated and blank-collapsed list');
-  assert.match(visibleMemo, /activeConvId/, 'only the cheap visibility layer should depend on active selection');
+  assert.match(visibleMemo, /allConversations: blankShellCollapsedChatConversations/, 'visible conversations should reuse the stable decorated and blank-collapsed list');
+  assert.match(visibleMemo, /activeConversationId: activeConvId/, 'only the cheap visibility layer should depend on active selection');
 });
 
 test('session selection does not redecorate or regroup the complete conversation list', () => {
   const source = workspaceViewModelSource();
+  const chatListSource = workspaceChatListSource();
   const decoratedStart = source.indexOf('const decoratedChatConversations = useMemo(() => {');
-  const visibleStart = source.indexOf('const chatConversations = useMemo(() => {', decoratedStart);
+  const visibleStart = source.indexOf('} = useMemo(() => buildWorkspaceChatListViewModels({', decoratedStart);
   assert.notEqual(decoratedStart, -1, 'expected stable conversation decoration memo');
   assert.notEqual(visibleStart, -1, 'expected selected-session visibility memo');
 
@@ -98,13 +100,9 @@ test('session selection does not redecorate or regroup the complete conversation
   assert.match(decoratedMemo, /hideRawConversationIds/);
   assert.doesNotMatch(decoratedMemo, /activeConvId/);
 
-  const visibleMemo = source.slice(
-    visibleStart,
-    source.indexOf('\n\n  const nativeChatPlaceholder', visibleStart),
-  );
-  assert.match(visibleMemo, /if \(hiddenIds\.size === 0\) return blankShellCollapsedChatConversations/);
+  assert.match(chatListSource, /hiddenIds\.size === 0\s*\? allConversations/);
   assert.match(decoratedMemo, /collapseBlankConversationShells\(decoratedChatConversations\)/);
-  assert.doesNotMatch(visibleMemo, /applyCloudPresenceToConversations|hideRawConversationIds/);
+  assert.doesNotMatch(chatListSource, /applyCloudPresenceToConversations|hideRawConversationIds/);
 });
 
 test('canonical hydration status does not rebuild the complete session read model', () => {

@@ -1,5 +1,12 @@
 use super::*;
 
+mod preferences;
+use preferences::{clear_session_pin, clear_session_preferences, load_session_list_preferences};
+pub(super) use preferences::{
+    mark_cloud_session_unread, mute_cloud_session, pin_cloud_session, pin_group_space,
+    unmark_cloud_session_unread, unmute_cloud_session, unpin_cloud_session, unpin_group_space,
+};
+
 pub(super) async fn list_cloud_session_visibility(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -34,9 +41,25 @@ pub(super) async fn list_cloud_session_visibility(
         }
     }
 
+    let preferences =
+        match load_session_list_preferences(state.db_pool(), &session.account_id).await {
+            Ok(preferences) => preferences,
+            Err(_) => {
+                return err(
+                    "server_error",
+                    "Database error.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                );
+            }
+        };
+
     Json(CloudSessionVisibilityResponse {
         hidden_session_ids,
         deleted_session_ids,
+        pinned_session_ids: preferences.pinned_session_ids,
+        muted_session_ids: preferences.muted_session_ids,
+        unread_session_ids: preferences.unread_session_ids,
+        pinned_group_space_ids: preferences.pinned_group_space_ids,
     })
     .into_response()
 }
@@ -93,6 +116,17 @@ pub(super) async fn hide_cloud_session(
         return err(
             "server_error",
             "Could not hide cloud session.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    if clear_session_pin(pool, &session.account_id, &session_id)
+        .await
+        .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not clear pinned state.",
             StatusCode::INTERNAL_SERVER_ERROR,
         );
     }
@@ -154,29 +188,10 @@ pub(super) async fn unhide_cloud_session(
     let now = Utc::now().to_rfc3339();
     if query(
         "DELETE FROM cloud_account_session_visibility \
-         WHERE account_id = $1 AND session_id = $2 AND deleted_at IS NULL",
+         WHERE account_id = $1 AND session_id = $2",
     )
     .bind(&session.account_id)
     .bind(&session_id)
-    .execute(pool)
-    .await
-    .is_err()
-    {
-        return err(
-            "server_error",
-            "Could not unhide cloud session.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
-
-    if query(
-        "UPDATE cloud_account_session_visibility \
-         SET hidden_at = NULL, updated_at = $3 \
-         WHERE account_id = $1 AND session_id = $2 AND deleted_at IS NOT NULL",
-    )
-    .bind(&session.account_id)
-    .bind(&session_id)
-    .bind(&now)
     .execute(pool)
     .await
     .is_err()
@@ -240,6 +255,17 @@ pub(super) async fn delete_cloud_session(
                 StatusCode::INTERNAL_SERVER_ERROR,
             );
         }
+    }
+
+    if clear_session_preferences(pool, &session.account_id, &session_id)
+        .await
+        .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not clear session preferences.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
     }
 
     let now = Utc::now().to_rfc3339();

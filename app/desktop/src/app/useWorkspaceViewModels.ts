@@ -28,15 +28,11 @@ import {
   isProjectDraftSessionId,
 } from '@/features/chat/draftSessions';
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
-import {
-  buildParticipantSpaces,
-  collapseBlankConversationShells,
-  ensureSelfParticipantSpace,
-  filterParticipantSpaces,
-} from '@/features/chat/participantSpaces';
+import { collapseBlankConversationShells } from '@/features/chat/participantSpaces';
 import {
   createTranscriptReferenceStabilizer,
 } from '@/features/chat/transcriptReferenceStability';
+import { buildWorkspaceChatListViewModels } from '@/app/workspaceChatListViewModels';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
@@ -124,6 +120,7 @@ type UseWorkspaceViewModelsArgs = {
   canonicalSessionState: CanonicalSessionState | null;
   canonicalSessionSummaries?: CanonicalSessionSummary[];
   hiddenSessionIds: Set<string>;
+  archivedSessionIds?: ReadonlySet<string>;
   projectWorkspaces: Project[];
   projectSelectedSessionIds: Record<string, string>;
   activeNav: NavId;
@@ -158,6 +155,7 @@ export function useWorkspaceViewModels({
   canonicalSessionState,
   canonicalSessionSummaries = [],
   hiddenSessionIds,
+  archivedSessionIds = EMPTY_DESKTOP_SESSION_IDS,
   projectWorkspaces,
   projectSelectedSessionIds,
   activeNav,
@@ -438,23 +436,21 @@ export function useWorkspaceViewModels({
   }, [stableChatConversations, transcriptReferenceStabilizer]);
   const blankShellCollapsedChatConversations = stableChatConversations.conversations;
 
-  const chatConversations = useMemo(() => {
-    const hiddenIds = new Set([
-      ...hiddenSessionIds,
-      ...localAgentCollaborationReachoutSessionIds,
-    ]);
-    if (hiddenIds.size === 0) return blankShellCollapsedChatConversations;
-    return blankShellCollapsedChatConversations.filter((conversation) => {
-      const canonicalId = conversation.canonicalSessionId ?? conversation.id;
-      if (activeConvId === conversation.id || activeConvId === canonicalId) return true;
-      return !hiddenIds.has(canonicalId) && !hiddenIds.has(conversation.id);
-    });
-  }, [
-    activeConvId,
-    blankShellCollapsedChatConversations,
+  const {
+    chatConversations,
+    participantSpaces,
+    archivedParticipantSpaces,
+    contactParticipantSpaces,
+    agentParticipantSpaces,
+  } = useMemo(() => buildWorkspaceChatListViewModels({
+    activeConversationId: activeConvId,
+    allConversations: blankShellCollapsedChatConversations,
+    archivedSessionIds,
+    avatarSeed: getLocalProfileAvatarSeed(),
+    chatSearch,
     hiddenSessionIds,
-    localAgentCollaborationReachoutSessionIds,
-  ]);
+    localAgentReachoutSessionIds: localAgentCollaborationReachoutSessionIds,
+  }), [activeConvId, archivedSessionIds, blankShellCollapsedChatConversations, chatSearch, hiddenSessionIds, localAgentCollaborationReachoutSessionIds]);
   const companionConversations = useMemo(
     () => companionConversationList(chatConversations, blankShellCollapsedChatConversations),
     [blankShellCollapsedChatConversations, chatConversations],
@@ -494,19 +490,6 @@ export function useWorkspaceViewModels({
         .some((value) => value.toLowerCase().includes(normalizedSearch))
     ));
   }, [chatConversations, chatSearch]);
-
-  const participantSpaces = useMemo(
-    () => ensureSelfParticipantSpace(buildParticipantSpaces(chatConversations), { avatarSeed: getLocalProfileAvatarSeed() }),
-    [chatConversations],
-  );
-  const contactParticipantSpaces = useMemo(
-    () => filterParticipantSpaces(participantSpaces, chatSearch, 'contact'),
-    [chatSearch, participantSpaces],
-  );
-  const agentParticipantSpaces = useMemo(
-    () => filterParticipantSpaces(participantSpaces, chatSearch, 'agent'),
-    [chatSearch, participantSpaces],
-  );
 
   const displayedContacts = useMemo<Contact[]>(() => {
     if (!isNativeShell) return contacts;
@@ -1088,6 +1071,7 @@ export function useWorkspaceViewModels({
     companionConversations,
     filteredConversations,
     participantSpaces,
+    archivedParticipantSpaces,
     contactParticipantSpaces,
     agentParticipantSpaces,
     activeConv,
