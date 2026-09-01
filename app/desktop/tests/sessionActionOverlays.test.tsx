@@ -240,7 +240,7 @@ test('DeleteSessionDialog explains account-scoped soft deletion', () => {
   assert.match(removeMarkup, />Cancel</);
   assert.match(removeMarkup, />Delete chat</);
   assert.match(removeMarkup, /does not delete it for other participants/);
-  assert.match(removeMarkup, /return if someone sends a new message/);
+  assert.match(removeMarkup, /return only when a new visible message arrives/);
   assert.doesNotMatch(removeMarkup, /permanently removed/);
   assert.doesNotMatch(removeMarkup, /cannot be recovered/);
   assert.doesNotMatch(removeMarkup, /Trip planning/);

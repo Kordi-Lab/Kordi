@@ -4,7 +4,7 @@ import XCTest
 @testable import Kordi
 
 final class ConversationReadPresentationTests: XCTestCase {
-    func testChatDeleteWaitsForSwipeClosureAndUsesStableAlertPresentation() throws {
+    func testChatDeleteShowsImmediateStableAlertPresentation() throws {
         let source = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent()
@@ -13,8 +13,10 @@ final class ConversationReadPresentationTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(source.contains("Task.sleep(for: .milliseconds(180))"))
+        XCTAssertFalse(source.contains("Task.sleep(for: .milliseconds(180))"))
+        XCTAssertEqual(source.components(separatedBy: "deleteTarget = conversation").count - 1, 2)
         XCTAssertTrue(source.contains(".alert(\n            \"Delete this chat from your list?\""))
+        XCTAssertTrue(source.contains("It will return only when a new visible message arrives."))
         XCTAssertTrue(source.contains("deleteTarget.map { \"delete:"))
         XCTAssertFalse(source.contains(".confirmationDialog(\n            \"Delete this chat from your list?\""))
         XCTAssertEqual(
@@ -25,6 +27,123 @@ final class ConversationReadPresentationTests: XCTestCase {
             2,
             "Only context-menu delete actions may be destructive before confirmation"
         )
+    }
+
+    func testArchivedChatsRemainOpenableAndGroupSessionsStayGrouped() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Chats/ChatHomeView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("@State private var selectedConversation: ConversationSummary?"))
+        XCTAssertTrue(source.contains(".navigationDestination(item: $selectedConversation)"))
+        XCTAssertTrue(source.contains("GroupSpaceCatalog.build(\n            conversations: conversations"))
+        XCTAssertTrue(source.contains("Task { _ = await model.restoreGroupSpace(space) }"))
+    }
+
+    func testArchiveAndRestoreUpdateTheListBeforeWaitingForCloud() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/App/AppModel.swift"),
+            encoding: .utf8
+        )
+        let boundaries = [
+            ("func archiveGroupSpace", "func restoreGroupSpace"),
+            ("func restoreGroupSpace", "func archiveConversation"),
+            ("func archiveConversation", "func restoreConversation"),
+            ("func restoreConversation", "private func moveConversations"),
+        ]
+
+        for (startMarker, endMarker) in boundaries {
+            let start = try XCTUnwrap(source.range(of: startMarker))
+            let end = try XCTUnwrap(source.range(
+                of: endMarker,
+                range: start.upperBound..<source.endIndex
+            ))
+            let action = source[start.lowerBound..<end.lowerBound]
+            let beginMutation = try XCTUnwrap(action.range(of: "beginSessionVisibilityMutation()"))
+            let localUpdate = try XCTUnwrap(action.range(of: "moveConversations("))
+            let cloudRequest = try XCTUnwrap(action.range(of: "try await"))
+            XCTAssertTrue(action.contains("defer { endSessionVisibilityMutation() }"))
+            XCTAssertLessThan(beginMutation.lowerBound, localUpdate.lowerBound)
+            XCTAssertLessThan(localUpdate.lowerBound, cloudRequest.lowerBound)
+        }
+    }
+
+    func testPinUpdatesTheListBeforeWaitingForCloud() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/App/AppModel.swift"),
+            encoding: .utf8
+        )
+        let boundaries = [
+            ("func setConversationPinned", "func setConversationMuted"),
+            ("func setGroupSpacePinned", "func setGroupSpaceMuted"),
+        ]
+
+        for (startMarker, endMarker) in boundaries {
+            let start = try XCTUnwrap(source.range(of: startMarker))
+            let end = try XCTUnwrap(source.range(
+                of: endMarker,
+                range: start.upperBound..<source.endIndex
+            ))
+            let action = source[start.lowerBound..<end.lowerBound]
+            let beginMutation = try XCTUnwrap(action.range(of: "beginSessionVisibilityMutation()"))
+            let localUpdate = try XCTUnwrap(action.range(of: "if pinned {"))
+            let cloudRequest = try XCTUnwrap(action.range(of: "try await"))
+            XCTAssertTrue(action.contains("defer { endSessionVisibilityMutation() }"))
+            XCTAssertEqual(action.components(separatedBy: "if pinned {").count - 1, 1)
+            XCTAssertLessThan(beginMutation.lowerBound, localUpdate.lowerBound)
+            XCTAssertLessThan(localUpdate.lowerBound, cloudRequest.lowerBound)
+        }
+    }
+
+    func testVisibilitySnapshotCannotOverwriteAnOverlappingOptimisticMutation() {
+        XCTAssertTrue(SessionVisibilitySnapshotPolicy.shouldApply(
+            startRevision: 4,
+            currentRevision: 4,
+            pendingMutationCount: 0
+        ))
+        XCTAssertFalse(SessionVisibilitySnapshotPolicy.shouldApply(
+            startRevision: 4,
+            currentRevision: 6,
+            pendingMutationCount: 0
+        ))
+        XCTAssertFalse(SessionVisibilitySnapshotPolicy.shouldApply(
+            startRevision: 4,
+            currentRevision: 4,
+            pendingMutationCount: 1
+        ))
+    }
+
+    func testDeleteKeepsTheVisibilityMutationOpenUntilLocalRemoval() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/App/AppModel.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: "func deleteConversation"))
+        let end = try XCTUnwrap(source.range(
+            of: "private func removeConversationLocally",
+            range: start.upperBound..<source.endIndex
+        ))
+        let action = source[start.lowerBound..<end.lowerBound]
+        let beginMutation = try XCTUnwrap(action.range(of: "beginSessionVisibilityMutation()"))
+        let cloudRequest = try XCTUnwrap(action.range(of: "try await api.deleteSession"))
+        let localRemoval = try XCTUnwrap(action.range(of: "removeConversationLocally(conversation)"))
+
+        XCTAssertTrue(action.contains("defer { endSessionVisibilityMutation() }"))
+        XCTAssertLessThan(beginMutation.lowerBound, cloudRequest.lowerBound)
+        XCTAssertLessThan(cloudRequest.lowerBound, localRemoval.lowerBound)
     }
 
     func testGroupSessionRowsShowOnlyTheLatestMessagePreview() throws {
@@ -39,6 +158,34 @@ final class ConversationReadPresentationTests: XCTestCase {
 
         XCTAssertTrue(source.contains("BlobEmojiPreviewText(text: session.lastMessage.nonEmpty ?? \"No messages yet\")"))
         XCTAssertFalse(source.contains("messageCountText"))
+    }
+
+    func testContactsRemainVisibleWithoutAChatAndProfileUsesDirectChatAction() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features")
+        let contacts = try String(
+            contentsOf: root.appendingPathComponent("Contacts/ContactsView.swift"),
+            encoding: .utf8
+        )
+        let details = try String(
+            contentsOf: root.appendingPathComponent("Conversation/SessionDetailSheet.swift"),
+            encoding: .utf8
+        )
+        let app = try String(
+            contentsOf: root.deletingLastPathComponent().appendingPathComponent("App/KordiApp.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertFalse(contacts.contains("if let conversation = model.conversations.first"))
+        XCTAssertTrue(contacts.contains("onOpenConversation(conversation)"))
+        XCTAssertTrue(contacts.contains("Task { _ = await model.restoreConversationIfNeeded(conversation) }"))
+        XCTAssertTrue(contacts.contains(".navigationDestination(for: ConversationSummary.self)"))
+        XCTAssertTrue(contacts.contains(".navigationDestination(item: $selectedConversation)"))
+        XCTAssertTrue(app.contains("ContactsView(onOpenConversation: { contactsPath.append($0) })"))
+        XCTAssertTrue(details.contains("case .person: [.call, .video, .mute, .chat]"))
+        XCTAssertFalse(details.contains("case .person: [.call, .video, .mute, .more]"))
     }
 
     func testReactionChipOverlapsTheBubbleWithoutShrinkingItsTouchTarget() {
@@ -203,7 +350,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(conversationSource.contains("proxy.scrollTo(returnMessageID, anchor: initialViewport.scrollAnchor)"))
         XCTAssertTrue(conversationSource.contains("isNavigationReturnPending: threadReturnMessageID != nil"))
         XCTAssertTrue(conversationSource.contains("contentOffsetY: geometry.contentOffset.y"))
-        XCTAssertTrue(conversationSource.contains("exactRestoreRequest = ConversationScrollRestoreRequest("))
+        XCTAssertTrue(conversationSource.contains("exactScrollRestoreRequest = ConversationScrollRestoreRequest("))
         XCTAssertTrue(conversationSource.contains("restoreThreadReturnPosition(using: proxy)"))
         XCTAssertTrue(conversationSource.contains("threadReturnMessageID != nil || threadReturnScrollOffsetY != nil"))
         XCTAssertTrue(conversationSource.contains("trackedMessageID = nil"))
@@ -769,6 +916,28 @@ final class ConversationReadPresentationTests: XCTestCase {
     }
 
     @MainActor
+    func testDeletingAChatKeepsTheContactAndAllowsStartingChatAgain() async throws {
+        let model = AppModel(previewMode: true)
+        let contact = try XCTUnwrap(model.contacts.first { $0.accountId == "acct_maya" })
+        let conversation = try XCTUnwrap(
+            model.conversations.first { $0.kind == .person && $0.peerAccountId == contact.accountId }
+        )
+
+        let didDelete = await model.deleteConversation(conversation)
+        XCTAssertTrue(didDelete)
+        XCTAssertTrue(model.contacts.contains { $0.accountId == contact.accountId })
+        XCTAssertFalse(model.conversations.contains { $0.sessionId == conversation.sessionId })
+
+        let reopenedConversation = model.conversationForContact(contact)
+        let reopened = try XCTUnwrap(reopenedConversation)
+        XCTAssertEqual(reopened.peerAccountId, contact.accountId)
+
+        let didRestore = await model.restoreConversationIfNeeded(reopened)
+        XCTAssertTrue(didRestore)
+        XCTAssertTrue(model.conversations.contains { $0.sessionId == reopened.sessionId })
+    }
+
+    @MainActor
     func testPreviewGroupActionsApplyToEverySessionAtomically() async throws {
         let model = AppModel(previewMode: true)
         let space = try XCTUnwrap(
@@ -818,6 +987,19 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
         XCTAssertTrue(model.pinnedSessionIds.isDisjoint(with: sessionIds))
         XCTAssertFalse(model.pinnedGroupSpaceIds.contains(space.preferenceId))
+
+        let archivedSpace = try XCTUnwrap(
+            GroupSpaceCatalog.build(
+                conversations: model.archivedConversations,
+                ownAccountId: model.account?.accountId ?? ""
+            ).first { $0.id == space.id }
+        )
+        XCTAssertEqual(Set(archivedSpace.sessions.map(\.sessionId)), sessionIds)
+
+        let didRestore = await model.restoreGroupSpace(archivedSpace)
+        XCTAssertTrue(didRestore)
+        XCTAssertTrue(sessionIds.isSubset(of: Set(model.conversations.map(\.sessionId))))
+        XCTAssertTrue(model.archivedConversations.allSatisfy { !sessionIds.contains($0.sessionId) })
     }
 
     @MainActor

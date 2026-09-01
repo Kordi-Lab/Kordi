@@ -211,6 +211,23 @@ fn bootstrap_reads_titles_only_from_canonical_state() {
 }
 
 #[test]
+fn only_frontend_visible_messages_resurrect_deleted_sessions() {
+    let root = repository_root();
+    let message_store = read(root.join("bridges/cloud-server/src/chat_sync/store/message.rs"));
+
+    let visibility_guard = message_store
+        .find("if crate::notifications::is_frontend_visible_message(&message)")
+        .expect("frontend visibility guard");
+    let resurrection = message_store
+        .find("DELETE FROM cloud_account_session_visibility visibility")
+        .expect("deleted-session resurrection");
+    let event = message_store
+        .find("\"session.unhidden\"")
+        .expect("session restoration event");
+    assert!(visibility_guard < resurrection && resurrection < event);
+}
+
+#[test]
 fn canonical_routes_are_exclusive_for_chat_and_require_signed_cursors() {
     let root = repository_root();
     let routes = format!(

@@ -335,7 +335,7 @@ export function DeleteSessionDialog({ target, onCancel, onConfirm }: DeleteSessi
     >
       <AppDialogTitle id="remove-chat-dialog-title" className="text-[13px] leading-5">Delete this chat from your list?</AppDialogTitle>
       <p className="app-transient-muted mt-2 text-[11px] leading-4">
-        This does not delete it for other participants. It will return if someone sends a new message.
+        This does not delete it for other participants. It will return only when a new visible message arrives.
       </p>
       {error ? (
         <div className="app-error-text mt-2 text-[11px] leading-4 text-rose-500" role="alert">

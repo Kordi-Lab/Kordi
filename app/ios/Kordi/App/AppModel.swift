@@ -66,6 +66,16 @@ enum MessageSyncState: Equatable {
     case offline
 }
 
+enum SessionVisibilitySnapshotPolicy {
+    static func shouldApply(
+        startRevision: Int,
+        currentRevision: Int,
+        pendingMutationCount: Int
+    ) -> Bool {
+        startRevision == currentRevision && pendingMutationCount == 0
+    }
+}
+
 struct ConversationReadPresentation: Equatable {
     let conversationID: String
     let isPresented: Bool
@@ -253,6 +263,8 @@ final class AppModel: ObservableObject {
     @Published private var sharedCloudAgents: [CloudAgent] = []
     private var hiddenCloudSessionIds = Set<String>()
     private var deletedCloudSessionIds = Set<String>()
+    private var sessionVisibilityMutationRevision = 0
+    private var pendingSessionVisibilityMutationCount = 0
     private var pendingAgentRequestIds: [String: String] = [:]
     private var pendingAgentRequestStartedAt: [String: Date] = [:]
     private var pendingAgentDisplayNames: [String: String] = [:]
@@ -533,6 +545,8 @@ final class AppModel: ObservableObject {
         sharedCloudAgents = []
         hiddenCloudSessionIds = []
         deletedCloudSessionIds = []
+        sessionVisibilityMutationRevision = 0
+        pendingSessionVisibilityMutationCount = 0
         pinnedSessionIds = []
         mutedSessionIds = []
         markedUnreadSessionIds = []
@@ -578,6 +592,7 @@ final class AppModel: ObservableObject {
     func refreshWorkspace(showSyncActivity: Bool = true) async {
         guard let token, let account, !isRefreshing else { return }
         let callSnapshotGenerationAtStart = callSnapshotGeneration
+        let sessionVisibilityRevisionAtStart = sessionVisibilityMutationRevision
         let previousOwnedAgents = Dictionary(
             uniqueKeysWithValues: ownedCloudAgents.map { ($0.agentId, $0) }
         )
@@ -635,12 +650,18 @@ final class AppModel: ObservableObject {
                 providerAuthSnapshots[ProviderAuthenticationDefinition.canonicalID(authSnapshot.provider)] = authSnapshot
             }
             sharedCloudAgents = normalizedSharedCloudAgents(shared)
-            hiddenCloudSessionIds = Set(visibility.hiddenSessionIds.compactMap(\.nonEmpty))
-            deletedCloudSessionIds = Set(visibility.deletedSessionIds.compactMap(\.nonEmpty))
-            pinnedSessionIds = Set((visibility.pinnedSessionIds ?? []).compactMap(\.nonEmpty))
-            mutedSessionIds = Set((visibility.mutedSessionIds ?? []).compactMap(\.nonEmpty))
-            markedUnreadSessionIds = Set((visibility.unreadSessionIds ?? []).compactMap(\.nonEmpty))
-            pinnedGroupSpaceIds = Set((visibility.pinnedGroupSpaceIds ?? []).compactMap(\.nonEmpty))
+            if SessionVisibilitySnapshotPolicy.shouldApply(
+                startRevision: sessionVisibilityRevisionAtStart,
+                currentRevision: sessionVisibilityMutationRevision,
+                pendingMutationCount: pendingSessionVisibilityMutationCount
+            ) {
+                hiddenCloudSessionIds = Set(visibility.hiddenSessionIds.compactMap(\.nonEmpty))
+                deletedCloudSessionIds = Set(visibility.deletedSessionIds.compactMap(\.nonEmpty))
+                pinnedSessionIds = Set((visibility.pinnedSessionIds ?? []).compactMap(\.nonEmpty))
+                mutedSessionIds = Set((visibility.mutedSessionIds ?? []).compactMap(\.nonEmpty))
+                markedUnreadSessionIds = Set((visibility.unreadSessionIds ?? []).compactMap(\.nonEmpty))
+                pinnedGroupSpaceIds = Set((visibility.pinnedGroupSpaceIds ?? []).compactMap(\.nonEmpty))
+            }
             for message in latestCanonical { mergeCloudMessage(message, peerHint: nil) }
             if let activeCalls {
                 applyActiveCallSnapshot(
@@ -3310,14 +3331,16 @@ final class AppModel: ObservableObject {
     }
 
     func setConversationPinned(_ conversation: ConversationSummary, pinned: Bool) async -> Bool {
-        if previewMode {
-            if pinned {
-                pinnedSessionIds.insert(conversation.sessionId)
-            } else {
-                pinnedSessionIds.remove(conversation.sessionId)
-            }
-            return true
+        let wasPinned = pinnedSessionIds.contains(conversation.sessionId)
+        if !previewMode, token == nil { return false }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        if pinned {
+            pinnedSessionIds.insert(conversation.sessionId)
+        } else {
+            pinnedSessionIds.remove(conversation.sessionId)
         }
+        if previewMode { return true }
         guard let token else { return false }
         do {
             try await api.setSessionPinned(
@@ -3325,13 +3348,13 @@ final class AppModel: ObservableObject {
                 sessionId: conversation.sessionId,
                 pinned: pinned
             )
-            if pinned {
+            return true
+        } catch {
+            if wasPinned {
                 pinnedSessionIds.insert(conversation.sessionId)
             } else {
                 pinnedSessionIds.remove(conversation.sessionId)
             }
-            return true
-        } catch {
             errorMessage = userFacing(error, fallback: pinned ? "Could not pin this chat." : "Could not unpin this chat.")
             return false
         }
@@ -3402,6 +3425,15 @@ final class AppModel: ObservableObject {
     func setGroupSpacePinned(_ space: GroupSpaceSummary, pinned: Bool) async -> Bool {
         let groupSpaceId = space.preferenceId
         guard !groupSpaceId.isEmpty else { return false }
+        let wasPinned = pinnedGroupSpaceIds.contains(groupSpaceId)
+        if !previewMode, token == nil { return false }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        if pinned {
+            pinnedGroupSpaceIds.insert(groupSpaceId)
+        } else {
+            pinnedGroupSpaceIds.remove(groupSpaceId)
+        }
         if !previewMode {
             guard let token else { return false }
             do {
@@ -3415,13 +3447,13 @@ final class AppModel: ObservableObject {
                     error,
                     fallback: pinned ? "Could not pin this group." : "Could not unpin this group."
                 )
+                if wasPinned {
+                    pinnedGroupSpaceIds.insert(groupSpaceId)
+                } else {
+                    pinnedGroupSpaceIds.remove(groupSpaceId)
+                }
                 return false
             }
-        }
-        if pinned {
-            pinnedGroupSpaceIds.insert(groupSpaceId)
-        } else {
-            pinnedGroupSpaceIds.remove(groupSpaceId)
         }
         return true
     }
@@ -3463,6 +3495,15 @@ final class AppModel: ObservableObject {
     func archiveGroupSpace(_ space: GroupSpaceSummary) async -> Bool {
         let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
         guard !sessionIds.isEmpty else { return false }
+        let pinnedSessionIdsBeforeArchive = pinnedSessionIds.intersection(sessionIds)
+        let groupWasPinned = pinnedGroupSpaceIds.contains(space.preferenceId)
+        if !previewMode, token == nil { return false }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        hiddenCloudSessionIds.formUnion(sessionIds)
+        pinnedSessionIds.subtract(sessionIds)
+        pinnedGroupSpaceIds.remove(space.preferenceId)
+        moveConversations(sessionIds: sessionIds, toArchive: true)
         if !previewMode {
             guard let token else { return false }
             do {
@@ -3486,36 +3527,70 @@ final class AppModel: ObservableObject {
                     try await group.waitForAll()
                 }
             } catch {
+                hiddenCloudSessionIds.subtract(sessionIds)
+                pinnedSessionIds.formUnion(pinnedSessionIdsBeforeArchive)
+                if groupWasPinned { pinnedGroupSpaceIds.insert(space.preferenceId) }
+                moveConversations(sessionIds: sessionIds, toArchive: false)
                 errorMessage = userFacing(error, fallback: "Could not archive this group.")
                 return false
             }
         }
-        hiddenCloudSessionIds.formUnion(sessionIds)
-        pinnedSessionIds.subtract(sessionIds)
-        pinnedGroupSpaceIds.remove(space.preferenceId)
-        if previewMode {
-            let archived = conversations.filter { sessionIds.contains($0.sessionId) }
-            conversations.removeAll { sessionIds.contains($0.sessionId) }
-            archivedConversations.removeAll { sessionIds.contains($0.sessionId) }
-            archivedConversations.append(contentsOf: archived)
-            archivedConversations.sort { $0.lastActivityAt > $1.lastActivityAt }
-        } else {
+        if !previewMode {
+            await rebuildConversationCatalog()
+        }
+        return true
+    }
+
+    func restoreGroupSpace(_ space: GroupSpaceSummary) async -> Bool {
+        let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
+        guard !sessionIds.isEmpty else { return false }
+        let hiddenSessionIdsBeforeRestore = hiddenCloudSessionIds.intersection(sessionIds)
+        let deletedSessionIdsBeforeRestore = deletedCloudSessionIds.intersection(sessionIds)
+        if !previewMode, token == nil { return false }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        hiddenCloudSessionIds.subtract(sessionIds)
+        deletedCloudSessionIds.subtract(sessionIds)
+        moveConversations(sessionIds: sessionIds, toArchive: false)
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for sessionId in sessionIds {
+                        group.addTask { [api] in
+                            try await api.setSessionArchived(
+                                token: token,
+                                sessionId: sessionId,
+                                archived: false
+                            )
+                        }
+                    }
+                    try await group.waitForAll()
+                }
+            } catch {
+                hiddenCloudSessionIds.formUnion(hiddenSessionIdsBeforeRestore)
+                deletedCloudSessionIds.formUnion(deletedSessionIdsBeforeRestore)
+                moveConversations(sessionIds: sessionIds, toArchive: true)
+                errorMessage = userFacing(error, fallback: "Could not restore this group.")
+                return false
+            }
+        }
+        if !previewMode {
             await rebuildConversationCatalog()
         }
         return true
     }
 
     func archiveConversation(_ conversation: ConversationSummary) async -> Bool {
-        if previewMode {
-            hiddenCloudSessionIds.insert(conversation.sessionId)
-            pinnedSessionIds.remove(conversation.sessionId)
-            conversations.removeAll { $0.sessionId == conversation.sessionId }
-            if !archivedConversations.contains(where: { $0.sessionId == conversation.sessionId }) {
-                archivedConversations.append(conversation)
-                archivedConversations.sort { $0.lastActivityAt > $1.lastActivityAt }
-            }
-            return true
-        }
+        let sessionIds = Set([conversation.sessionId])
+        let wasPinned = pinnedSessionIds.contains(conversation.sessionId)
+        if !previewMode, token == nil { return false }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        hiddenCloudSessionIds.insert(conversation.sessionId)
+        pinnedSessionIds.remove(conversation.sessionId)
+        moveConversations(sessionIds: sessionIds, toArchive: true)
+        if previewMode { return true }
         guard let token else { return false }
         do {
             try await api.setSessionArchived(
@@ -3523,27 +3598,28 @@ final class AppModel: ObservableObject {
                 sessionId: conversation.sessionId,
                 archived: true
             )
-            hiddenCloudSessionIds.insert(conversation.sessionId)
-            pinnedSessionIds.remove(conversation.sessionId)
             await rebuildConversationCatalog()
             return true
         } catch {
+            hiddenCloudSessionIds.remove(conversation.sessionId)
+            if wasPinned { pinnedSessionIds.insert(conversation.sessionId) }
+            moveConversations(sessionIds: sessionIds, toArchive: false)
             errorMessage = userFacing(error, fallback: "Could not archive this chat.")
             return false
         }
     }
 
     func restoreConversation(_ conversation: ConversationSummary) async -> Bool {
-        if previewMode {
-            hiddenCloudSessionIds.remove(conversation.sessionId)
-            deletedCloudSessionIds.remove(conversation.sessionId)
-            archivedConversations.removeAll { $0.sessionId == conversation.sessionId }
-            if !conversations.contains(where: { $0.sessionId == conversation.sessionId }) {
-                conversations.append(conversation)
-                conversations.sort { $0.lastActivityAt > $1.lastActivityAt }
-            }
-            return true
-        }
+        let sessionIds = Set([conversation.sessionId])
+        let wasHidden = hiddenCloudSessionIds.contains(conversation.sessionId)
+        let wasDeleted = deletedCloudSessionIds.contains(conversation.sessionId)
+        if !previewMode, token == nil { return false }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        hiddenCloudSessionIds.remove(conversation.sessionId)
+        deletedCloudSessionIds.remove(conversation.sessionId)
+        moveConversations(sessionIds: sessionIds, toArchive: false)
+        if previewMode { return true }
         guard let token else { return false }
         do {
             try await api.setSessionArchived(
@@ -3551,30 +3627,104 @@ final class AppModel: ObservableObject {
                 sessionId: conversation.sessionId,
                 archived: false
             )
-            hiddenCloudSessionIds.remove(conversation.sessionId)
-            deletedCloudSessionIds.remove(conversation.sessionId)
             await rebuildConversationCatalog()
             return true
         } catch {
+            if wasHidden { hiddenCloudSessionIds.insert(conversation.sessionId) }
+            if wasDeleted { deletedCloudSessionIds.insert(conversation.sessionId) }
+            moveConversations(sessionIds: sessionIds, toArchive: true)
             errorMessage = userFacing(error, fallback: "Could not restore this chat.")
             return false
         }
     }
 
+    func conversationForContact(_ contact: CloudContact) -> ConversationSummary? {
+        if let conversation = conversations.first(where: {
+            $0.kind == .person && $0.peerAccountId == contact.accountId
+        }) {
+            return conversation
+        }
+
+        let archived = archivedConversations.first(where: {
+            $0.kind == .person && $0.peerAccountId == contact.accountId
+        })
+        let target: ConversationSummary?
+        if let archived {
+            target = archived
+        } else if let account {
+            target = CloudConversationCatalog.build(
+                account: account,
+                contacts: [contact],
+                ownedAgents: [],
+                sharedAgents: [],
+                messagesByPeer: cloudMessagesByPeer
+            ).first { $0.kind == .person && $0.peerAccountId == contact.accountId }
+        } else {
+            target = nil
+        }
+        return target
+    }
+
+    func restoreConversationIfNeeded(_ conversation: ConversationSummary) async -> Bool {
+        if conversations.contains(where: { $0.sessionId == conversation.sessionId }) {
+            return true
+        }
+        if archivedConversations.contains(where: { $0.sessionId == conversation.sessionId })
+            || hiddenCloudSessionIds.contains(conversation.sessionId)
+            || deletedCloudSessionIds.contains(conversation.sessionId) {
+            guard await restoreConversation(conversation) else { return false }
+            if conversations.contains(where: { $0.sessionId == conversation.sessionId }) {
+                return true
+            }
+        }
+        conversations.append(conversation)
+        conversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+        cacheCurrentConversations()
+        return true
+    }
+
+    private func moveConversations(sessionIds: Set<String>, toArchive: Bool) {
+        if toArchive {
+            let moved = conversations.filter { sessionIds.contains($0.sessionId) }
+            conversations.removeAll { sessionIds.contains($0.sessionId) }
+            archivedConversations.removeAll { sessionIds.contains($0.sessionId) }
+            archivedConversations.append(contentsOf: moved)
+            archivedConversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+        } else {
+            let moved = archivedConversations.filter { sessionIds.contains($0.sessionId) }
+            archivedConversations.removeAll { sessionIds.contains($0.sessionId) }
+            conversations.removeAll { sessionIds.contains($0.sessionId) }
+            conversations.append(contentsOf: moved)
+            conversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+        }
+    }
+
+    private func beginSessionVisibilityMutation() {
+        pendingSessionVisibilityMutationCount += 1
+        sessionVisibilityMutationRevision &+= 1
+    }
+
+    private func endSessionVisibilityMutation() {
+        precondition(pendingSessionVisibilityMutationCount > 0)
+        pendingSessionVisibilityMutationCount -= 1
+        sessionVisibilityMutationRevision &+= 1
+    }
+
     func deleteConversation(_ conversation: ConversationSummary) async -> Bool {
-        if previewMode {
-            removeConversationLocally(conversation)
-            return true
+        if !previewMode, token == nil { return false }
+        beginSessionVisibilityMutation()
+        defer { endSessionVisibilityMutation() }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await api.deleteSession(token: token, sessionId: conversation.sessionId)
+            } catch {
+                errorMessage = userFacing(error, fallback: "Could not delete this session.")
+                return false
+            }
         }
-        guard let token else { return false }
-        do {
-            try await api.deleteSession(token: token, sessionId: conversation.sessionId)
-            removeConversationLocally(conversation)
-            return true
-        } catch {
-            errorMessage = userFacing(error, fallback: "Could not delete this session.")
-            return false
-        }
+        removeConversationLocally(conversation)
+        return true
     }
 
     private func removeConversationLocally(_ conversation: ConversationSummary) {

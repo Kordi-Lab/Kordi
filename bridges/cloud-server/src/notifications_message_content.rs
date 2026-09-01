@@ -21,17 +21,28 @@ pub(super) fn message_event_id(recipient: &str, message_id: Uuid) -> Uuid {
     )
 }
 
-pub(super) fn is_notifiable_message(message: &MessageSnapshot) -> bool {
+pub(crate) fn is_frontend_visible_message(message: &MessageSnapshot) -> bool {
     if message.deleted_at.is_some() {
         return false;
     }
     let kind = message.kind.trim().to_ascii_lowercase();
-    !kind.is_empty()
-        && !kind.contains("control")
-        && !kind.contains("snapshot")
-        && !kind.contains("cursor")
-        && !kind.contains("presence")
-        && message_notification_content(message) != MessageNotificationContent::Hidden
+    if kind.is_empty()
+        || kind.contains("control")
+        || kind.contains("snapshot")
+        || kind.contains("cursor")
+        || kind.contains("presence")
+    {
+        return false;
+    }
+    match message_notification_content(message) {
+        MessageNotificationContent::Hidden => false,
+        MessageNotificationContent::Visible(Some(_)) => true,
+        MessageNotificationContent::Visible(None) => !message.attachment_ids.is_empty(),
+    }
+}
+
+pub(super) fn is_notifiable_message(message: &MessageSnapshot) -> bool {
+    is_frontend_visible_message(message)
 }
 
 fn raw_message_text(message: &MessageSnapshot) -> Option<&str> {
