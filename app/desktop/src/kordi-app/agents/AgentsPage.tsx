@@ -349,6 +349,7 @@ export function AgentsPage({
   const studioChanges = routingChanged
     ? [...studioChangesWithAccess, { key: 'routing' as const, label: 'Model routing updated', detail: selectedRouting.defaultModel || 'Runtime default' }]
     : studioChangesWithAccess;
+  const publishWithoutModelTest = Boolean(!creating && selectedAgent && !selectedAgent.cloudAgentId && usesDefaultLocalAgentSession(selectedAgent));
   const publishDisabled = Boolean(publishing
     || builder.opening
     || builder.testing
@@ -443,9 +444,9 @@ export function AgentsPage({
           ? 'Publishing the Cloud Agent…'
           : `Publishing ${selectedAgent?.name ?? 'agent'}…`;
     setPublishing(true);
-    setPublishFeedback({ tone: 'info', text: builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…' });
+    setPublishFeedback({ tone: 'info', text: publishWithoutModelTest || builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…' });
     try {
-      const status = await readyFactoryBuildForPublish(builder.status, builder.testDraft);
+      const status = publishWithoutModelTest ? builder.status! : await readyFactoryBuildForPublish(builder.status, builder.testDraft);
       setPublishFeedback({ tone: 'info', text: publishingText });
       if (creating) {
         if (creatingSkill) {
@@ -565,7 +566,7 @@ export function AgentsPage({
           loadedPlugins: activePersistedConfig.loadedPlugins,
         }, 'Published Factory runtime changes');
       }
-      await builder.markPublished();
+      if (!publishWithoutModelTest) await builder.markPublished();
       factoryAvatar.clearAvatar();
       setPublishFeedback({ tone: 'success', text: `${builderDraft?.name.trim() || selectedAgent.name} is published and ready.` });
     } catch (error) {
@@ -663,10 +664,10 @@ export function AgentsPage({
       ? 'Published'
       : !builder.status?.draft || !builder.status.validation.valid
         ? 'Needs setup'
-        : !builder.status.testReport || builder.status.testReport.fingerprint !== builder.status.validation.fingerprint || !builder.status.testReport.passed
-          ? 'Needs testing'
-          : builder.status.publishReady
-            ? 'Ready to publish'
+        : publishWithoutModelTest || builder.status.publishReady
+          ? 'Ready to publish'
+          : !builder.status.testReport || builder.status.testReport.fingerprint !== builder.status.validation.fingerprint || !builder.status.testReport.passed
+            ? 'Needs testing'
             : 'Private draft';
   const returnFromBuild = () => {
     const context = buildRoute?.returnContext;

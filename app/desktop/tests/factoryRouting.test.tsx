@@ -129,6 +129,13 @@ test('publishing tests an untested draft once and continues only when it passes'
   assert.doesNotMatch(shellSource, /runDesktopChatSkillCommand/);
 });
 
+test('default Kordi profile changes publish without model credentials', () => {
+  const source = readFileSync(new URL('../src/kordi-app/agents/AgentsPage.tsx', import.meta.url), 'utf8');
+  assert.match(source, /const publishWithoutModelTest = Boolean\(!creating[\s\S]*usesDefaultLocalAgentSession\(selectedAgent\)\)/);
+  assert.match(source, /publishWithoutModelTest \? builder\.status! : await readyFactoryBuildForPublish/);
+  assert.match(source, /if \(!publishWithoutModelTest\) await builder\.markPublished\(\)/);
+});
+
 test('local Kordi publication ignores stale file-only changes without blocking identity updates', () => {
   const changes = [
     { key: 'prompt' as const, label: 'System prompt updated', detail: 'prompt' },
