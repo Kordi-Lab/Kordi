@@ -56,11 +56,9 @@ export function useCloudCollaborationTransport({
     error: unknown,
   ) => void;
 }) {
-  const onMessagesDeleted = useCallback(async (messageIds: string[]) => {
-    if (messageIds.length === 0) return;
-    const deletedCanonicalIds = new Set((await Promise.all(
-      messageIds.map((messageId) => deleteCanonicalCloudMessage(messageId)),
-    )).flat());
+  const publishCanonicalDeletion = useCallback(async (deletedMessageIds: string[]) => {
+    if (deletedMessageIds.length === 0) return;
+    const deletedCanonicalIds = new Set(deletedMessageIds);
     if (setCanonicalState) {
       const refreshed = await fetchCanonicalSessionState().catch(() => null);
       if (refreshed) {
@@ -70,18 +68,16 @@ export function useCloudCollaborationTransport({
     }
     setCanonicalState?.((current) => {
       if (!current) return current;
-      const messages = current.messages.filter((message) => {
-        if (deletedCanonicalIds.has(message.id)) return false;
-        const sourceTransport = message.sourceTransport?.trim() ?? '';
-        const sourceEventId = message.sourceEventId?.trim() ?? '';
-        return !sourceTransport.startsWith('cloud-group') || !messageIds.some((messageId) => {
-          const prefix = `${sourceTransport}:${messageId}`;
-          return sourceEventId === prefix || sourceEventId.startsWith(`${prefix}:`);
-        });
-      });
+      const messages = current.messages.filter((message) => !deletedCanonicalIds.has(message.id));
       return messages.length === current.messages.length ? current : { ...current, messages };
     });
   }, [setCanonicalState]);
+  const onMessagesDeleted = useCallback(async (messageIds: string[]) => {
+    if (messageIds.length === 0) return;
+    await publishCanonicalDeletion((await Promise.all(
+      messageIds.map((messageId) => deleteCanonicalCloudMessage(messageId)),
+    )).flat());
+  }, [publishCanonicalDeletion]);
   const catalog = useCloudAgentCatalog({
     account,
     client: agentsClient,
@@ -143,6 +139,7 @@ export function useCloudCollaborationTransport({
       setUnreadReadiness: stores.unread.setReadiness,
       refreshCloudAgents: catalog.refreshDefinitions,
       onMessagesDeleted,
+      onCanonicalMessagesPruned: publishCanonicalDeletion,
     });
   const claimCloudFallbackRun = useCloudAgentAvailability({
     account,

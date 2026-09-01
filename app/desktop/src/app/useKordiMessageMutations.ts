@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
 import type { UseCloudCollaborationStateResult } from '@/features/cloud/useCloudCollaborationState';
+import { deleteCanonicalCloudMessage } from '@/features/canonical/canonicalMessageSources';
 import type { CanonicalSessionState, ComposerQuoteState, Conversation, Message, MessageEditState } from '@/kordi-app/types';
 import { MessageDeleteDialog } from '@/pages/MessageDeleteDialog';
 
@@ -97,8 +98,9 @@ export function useKordiMessageMutations({
 
   const onDeleteMessage = useCallback((message: Message) => {
     if (!message.reactionConversationId?.trim() || !message.reactionTargetMessageId?.trim()) return;
+    setDesktopChatError(null);
     setDeleteTarget(message);
-  }, []);
+  }, [setDesktopChatError]);
 
   const messageDeleteDialog = deleteTarget
     ? createElement(MessageDeleteDialog, {
@@ -134,6 +136,13 @@ export function useKordiMessageMutations({
           if (messageEdit?.messageId === messageId) setMessageEdit(null);
           try {
             await deletion;
+            const deletedCanonicalIds = new Set(await deleteCanonicalCloudMessage(messageId));
+            if (deletedCanonicalIds.size > 0) {
+              setCanonicalState((current) => current && ({
+                ...current,
+                messages: current.messages.filter((message) => !deletedCanonicalIds.has(message.id)),
+              }));
+            }
           } catch (error) {
             setCanonicalState((current) => {
               if (!current || removedCanonicalMessages.length === 0) return current;

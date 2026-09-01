@@ -16,6 +16,10 @@ test('cursor and history repair reads stay bounded as unrelated history grows', 
   assert.match(sync, /local\.changedConversationHeads\.map/);
   assert.match(repair, /loadChatSyncConversations\(account\.accountId\)/);
   assert.match(repair, /loadChatSyncCoverage\(account\.accountId\)/);
+  assert.ok(
+    repair.indexOf('if (!page.hasMore) break')
+      < repair.indexOf('pruneMissingCanonicalCloudMessages(account.accountId)'),
+  );
   assert.doesNotMatch(repair, /hydrateChatLocalState|loadChatSyncLocalState|storedSequences|local\.messages/);
 });
 

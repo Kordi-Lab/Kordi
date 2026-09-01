@@ -4097,6 +4097,12 @@ final class AppModel: ObservableObject {
     ) async -> Int {
         let existing = messagesByConversation[conversation.id, default: []]
         let existingIDs = Set(existing.map(\.id))
+        removeCloudMessages(Self.cloudMessageIDsMissingFromHistoryPage(
+            cloudMessagesByPeer.values.flatMap { $0 },
+            page: page,
+            sessionId: conversation.sessionId,
+            beforeSequence: requestedBeforeSequence
+        ))
         for message in page.messages { mergeCloudMessage(message, peerHint: nil) }
         let accumulatedWireMessages = conversation.kind == .group
             ? Self.groupWireMessages(
@@ -4137,7 +4143,29 @@ final class AppModel: ObservableObject {
                 fullyHydratedCanonicalGroupSessionIds.insert(conversation.sessionId)
             }
         }
+        await persistCloudSnapshot(accountId: account.accountId)
         return projection.lazy.filter { !existingIDs.contains($0.id) }.count
+    }
+
+    nonisolated static func cloudMessageIDsMissingFromHistoryPage(
+        _ existing: [CloudMessageDTO],
+        page: CloudConversationMessagePage,
+        sessionId: String,
+        beforeSequence: Int64?
+    ) -> Set<String> {
+        if page.hasMore && page.nextBeforeSequence == nil { return [] }
+        let pageIDs = Set(page.messages.map(\.messageId))
+        let lowerBound = page.hasMore ? page.nextBeforeSequence : nil
+        return Set(existing.compactMap { message in
+            guard !pageIDs.contains(message.messageId),
+                  CloudMessageStateProjector.sessionKeys(for: message).contains(sessionId),
+                  let sequence = message.conversationSequence,
+                  lowerBound.map({ sequence >= $0 }) ?? true,
+                  beforeSequence.map({ sequence < $0 }) ?? true else {
+                return nil
+            }
+            return message.messageId
+        })
     }
 
     nonisolated private static func projectHistoryMessages(
@@ -4216,6 +4244,16 @@ final class AppModel: ObservableObject {
                     complete = false
                     continue
                 }
+                removeCloudMessages(Self.cloudMessageIDsMissingFromHistoryPage(
+                    cloudMessagesByPeer.values.flatMap { $0 },
+                    page: CloudConversationMessagePage(
+                        messages: messages,
+                        nextBeforeSequence: nil,
+                        hasMore: false
+                    ),
+                    sessionId: page.sessionId,
+                    beforeSequence: nil
+                ))
                 for message in messages { mergeCloudMessage(message, peerHint: nil) }
                 fullyHydratedCanonicalGroupSessionIds.insert(page.sessionId)
             }
@@ -5285,20 +5323,29 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func removeCloudMessage(_ messageId: String) {
+    private func removeCloudMessages(_ messageIds: Set<String>) {
+        guard !messageIds.isEmpty else { return }
         cloudMessagesByPeer = cloudMessagesByPeer.mapValues { messages in
-            messages.filter { $0.messageId != messageId }
+            messages.filter { !messageIds.contains($0.messageId) }
         }
         rebuildCloudMessageIndices()
+        if let accountId = account?.accountId {
+            cache?.deleteMessages(messageIds, accountId: accountId)
+        }
         for conversationId in Array(messagesByConversation.keys) {
             guard let messages = messagesByConversation[conversationId] else { continue }
             let filtered = messages.filter {
-                $0.id != messageId && $0.reactionTargetMessageId != messageId
+                !messageIds.contains($0.id)
+                    && !messageIds.contains($0.reactionTargetMessageId ?? "")
             }
             guard filtered.count != messages.count else { continue }
             messagesByConversation[conversationId] = filtered
             cacheCurrentMessages(conversationId)
         }
+    }
+
+    private func removeCloudMessage(_ messageId: String) {
+        removeCloudMessages([messageId])
     }
 
     private func mergeCloudMessage(_ message: CloudMessageDTO, peerHint: String?) {
