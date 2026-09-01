@@ -258,6 +258,7 @@ struct ConversationView: View {
             model.pendingMentionMessages(for: conversation).map(\.id)
         )
         let pendingMentionCount = model.pendingMentionCount(for: conversation)
+        let newMessageCount = max(0, conversation.unreadCount)
         let pinTargetPresentation = Binding(
             get: { pinTarget != nil },
             set: { if !$0 { pinTarget = nil } }
@@ -426,7 +427,7 @@ struct ConversationView: View {
                                     isAtBottom: isAtBottom,
                                     messageCount: timeline.count
                                 ) {
-                                    LatestMessageButton {
+                                    LatestMessageButton(count: newMessageCount) {
                                         scrollToBottom(animated: true)
                                     }
                                     .transition(.scale(scale: 0.82).combined(with: .opacity))
@@ -605,13 +606,14 @@ struct ConversationView: View {
             .onChange(of: timeline.last) { previousLatestMessage, currentLatestMessage in
                 let previousLatestMessageID = previousLatestMessage.map(model.timelineIdentity(for:))
                 let currentLatestMessageID = currentLatestMessage.map(model.timelineIdentity(for:))
+                let isFollowingLatest = ConversationTimelineScrollBehavior.isFollowingLatest(
+                    isAtBottom: isAtBottom,
+                    trackedMessageID: trackedMessageID,
+                    bottomAnchorID: bottomAnchorID
+                )
                 if ConversationTimelineScrollBehavior.shouldFollowLatest(
                     hasPositionedInitialTimeline: hasPositionedInitialTimeline,
-                    isAtBottom: ConversationTimelineScrollBehavior.isFollowingLatest(
-                        isAtBottom: isAtBottom,
-                        trackedMessageID: trackedMessageID,
-                        bottomAnchorID: bottomAnchorID
-                    ),
+                    isAtBottom: isFollowingLatest,
                     previousLatestMessageID: previousLatestMessageID,
                     currentLatestMessageID: currentLatestMessageID
                 ) {
@@ -2660,6 +2662,7 @@ private struct MentionNavigationButton: View {
 }
 
 private struct LatestMessageButton: View {
+    let count: Int
     let action: () -> Void
     @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 38
 
@@ -2673,6 +2676,17 @@ private struct LatestMessageButton: View {
                     Circle()
                         .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
                 }
+                .overlay(alignment: .topTrailing) {
+                    if count > 0 {
+                        Text(ConversationAttentionBadge.countLabel(count))
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .frame(minWidth: 20, minHeight: 20)
+                            .background(KordiTheme.signalBlue, in: Capsule())
+                            .offset(x: 7, y: -6)
+                    }
+                }
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
                 .frame(width: max(44, diameter), height: max(44, diameter))
                 .contentShape(Circle())
@@ -2680,6 +2694,9 @@ private struct LatestMessageButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
         .accessibilityLabel("Go to latest message")
+        .accessibilityValue(count > 0
+            ? "\(count) new message\(count == 1 ? "" : "s")"
+            : "No new messages")
         .accessibilityHint("Moves to the bottom of the conversation")
     }
 }

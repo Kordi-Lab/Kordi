@@ -157,6 +157,8 @@ export function transcript(props: {
   onLoadOlder?: () => Promise<void> | void;
   tailHeight?: number;
   tailKey?: string;
+  unreadCount?: number;
+  onTailChange?: (isAtTail: boolean) => void;
   animateLatestAppend?: boolean;
   selectionMode?: boolean;
   onSelectAllMessages?: () => void;
@@ -185,6 +187,8 @@ export function transcript(props: {
       onSelectAllMessages={props.onSelectAllMessages}
       onCancelMessageSelection={props.onCancelMessageSelection}
       tailKey={props.tailKey}
+      unreadCount={props.unreadCount}
+      onTailChange={props.onTailChange}
       animateLatestAppend={props.animateLatestAppend}
       tail={props.tailHeight ? (
         <div data-test-transcript-tail data-test-row-height={props.tailHeight}>tail</div>

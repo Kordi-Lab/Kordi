@@ -55,18 +55,18 @@ export function useKordiShellViewModel({
 
   const rootThemeClass = themeMode === 'light' ? 'theme-light' : 'theme-dark';
 
-  const onProjectTranscriptScroll = useCallback(() => {
+  const onProjectTranscriptScroll = useCallback((isAtLatestOverride?: boolean) => {
     const container = chatTranscriptScrollRef.current;
     if (!container) return;
-    const isAtLatest = transcriptIsAtLatest(container);
+    const isAtLatest = isAtLatestOverride ?? transcriptIsAtLatest(container);
     shouldAutoFollowChatRef.current = isAtLatest;
     setChatTranscriptAtLatest(isAtLatest);
   }, [chatTranscriptScrollRef, setChatTranscriptAtLatest, shouldAutoFollowChatRef]);
 
-  const onChatTranscriptScroll = useCallback(() => {
+  const onChatTranscriptScroll = useCallback((isAtLatestOverride?: boolean) => {
     const container = chatTranscriptScrollRef.current;
     if (!container) return;
-    const isAtLatest = transcriptIsAtLatest(container);
+    const isAtLatest = isAtLatestOverride ?? transcriptIsAtLatest(container);
     shouldAutoFollowChatRef.current = isAtLatest;
     setChatTranscriptAtLatest(isAtLatest);
   }, [chatTranscriptScrollRef, setChatTranscriptAtLatest, shouldAutoFollowChatRef]);

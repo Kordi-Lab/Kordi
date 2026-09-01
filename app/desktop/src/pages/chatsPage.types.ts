@@ -102,7 +102,7 @@ export type ChatsPageTranscript = {
   chatTranscriptScrollRef: RefObject<HTMLDivElement | null>;
   canonicalHasOlderBySessionId?: Record<string, boolean>;
   onLoadOlderCanonicalSessionMessages?: (sessionId: string) => Promise<void>;
-  onTranscriptScroll: () => void;
+  onTranscriptScroll: (isAtLatest?: boolean) => void;
   onOpenSource: (file: EditFilePreview) => void;
   onClearSourcePreview?: () => void;
   onOpenArtifact: (artifactId: string) => void;
@@ -249,7 +249,8 @@ export type ChatSessionPaneViewport = {
   messages: readonly Message[];
   scrollRef: RefObject<HTMLDivElement | null>;
   scrollClassName: string;
-  onTranscriptScroll?: () => void;
+  unreadCount?: number;
+  onTranscriptScroll?: (isAtLatest?: boolean) => void;
   hasOlderMessages?: boolean;
   onLoadOlderMessages?: () => Promise<void> | void;
   navigationRequest?: VirtualTranscriptNavigationRequest | null;

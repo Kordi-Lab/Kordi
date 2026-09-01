@@ -48,6 +48,10 @@ const canonicalReadSource = () => readFileSync(
   new URL('../src/features/cloud/useCanonicalActiveSessionRead.ts', import.meta.url),
   'utf8',
 );
+const cloudSessionActionsSource = () => readFileSync(
+  new URL('../src/features/cloud/useCloudSessionActions.ts', import.meta.url),
+  'utf8',
+);
 const account: CloudAccount = {
   accountId: 'acct_me',
   displayName: 'Me Cloud',
@@ -147,7 +151,7 @@ test('canonical Cloud sessions persist local and server read cursors together', 
   );
   assert.match(
     source,
-    /client\.markSessionMessagesRead\(session\.token, sessionId\)/,
+    /markRead\(\[sessionId\]\)/,
   );
   assert.doesNotMatch(
     source,
@@ -158,6 +162,11 @@ test('canonical Cloud sessions persist local and server read cursors together', 
     source,
     /if \(!latestMessage\) return/,
     'missing local message projection must not suppress Cloud cursor repair',
+  );
+  assert.doesNotMatch(
+    source,
+    /if \(!canonicalSession\) return/,
+    'missing local session projection must not suppress Cloud cursor repair',
   );
   assert.doesNotMatch(
     source,
@@ -173,6 +182,14 @@ test('Cloud read receipts never fall through to a peer-wide read mutation', () =
   assert.match(
     source,
     /groupReadTargets\.sessionIds\.map\([\s\S]*client\.markSessionMessagesRead/,
+  );
+});
+
+test('read cursors do not depend on optional manual-unread preferences', () => {
+  const source = cloudSessionActionsSource();
+  assert.match(
+    source,
+    /await client\.markSessionMessagesRead\(session\.token, sessionId\);[\s\S]*try \{[\s\S]*client\.setCloudSessionUnread[\s\S]*catch/,
   );
 });
 

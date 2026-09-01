@@ -11,6 +11,7 @@ import {
   type UIEvent,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
+import { ChevronDown } from 'lucide-react';
 
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -49,6 +50,7 @@ export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
   scrollClassName?: string;
   scrollStyle?: CSSProperties;
   onScroll?: (event: UIEvent<HTMLDivElement>) => void;
+  onTailChange?: (isAtTail: boolean) => void;
   navigationRequest?: VirtualTranscriptNavigationRequest | null;
   findNavigationIndex?: (item: Item, messageId: string, index: number) => boolean;
   onNavigationReady?: (messageId: string) => void;
@@ -58,6 +60,7 @@ export type VirtualTranscriptProps<Item> = TranscriptSelectionProps & {
   emptyState?: ReactNode;
   tail?: ReactNode;
   tailKey?: string | number;
+  unreadCount?: number;
   animateLatestAppend?: boolean;
   estimateSize?: (item: Item, index: number) => number;
   gap?: number;
@@ -84,6 +87,7 @@ export function VirtualTranscript<Item>({
   scrollClassName,
   scrollStyle,
   onScroll,
+  onTailChange,
   navigationRequest,
   findNavigationIndex,
   onNavigationReady,
@@ -93,6 +97,7 @@ export function VirtualTranscript<Item>({
   emptyState,
   tail,
   tailKey,
+  unreadCount = 0,
   animateLatestAppend = false,
   estimateSize,
   gap = 4, selectionMode = false, onSelectAllMessages, onCancelMessageSelection,
@@ -100,6 +105,7 @@ export function VirtualTranscript<Item>({
   const renderPerformanceSpan = beginChatPerformanceSpan('transcript-virtual-render');
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const [isAtTail, setIsAtTail] = useState(true);
   const [stableDisclosureActive, setStableDisclosureActive] = useState(false);
   const loadAttemptSignatureRef = useRef<string | null>(null);
   const olderLoadPromiseRef = useRef<Promise<void> | null>(null);
@@ -230,7 +236,9 @@ export function VirtualTranscript<Item>({
     tailAlignmentTargetRef.current = target;
     element.scrollTop = target;
     viewportWasAtTailRef.current = true;
-  }, []);
+    setIsAtTail(true);
+    onTailChange?.(true);
+  }, [onTailChange]);
 
   const scheduleTailAlignment = useCallback((revealFromIndex?: number) => {
     if (tailAlignmentFrameRef.current !== null) {
@@ -331,8 +339,10 @@ export function VirtualTranscript<Item>({
       && Math.abs(element.scrollTop - tailAlignmentTargetRef.current) <= 1;
     if (isAtTail) {
       viewportWasAtTailRef.current = true;
+      setIsAtTail(true);
     } else if (!matchesAlignmentTarget) {
       viewportWasAtTailRef.current = false;
+      setIsAtTail(false);
       cancelTailAlignment();
     }
     onScroll?.(event);
@@ -494,11 +504,14 @@ export function VirtualTranscript<Item>({
       if (element) {
         element.scrollTop = stableDisclosureAnchor.targetScrollTop;
         const distanceFromTail = element.scrollHeight - (element.scrollTop + element.clientHeight);
-        viewportWasAtTailRef.current = distanceFromTail <= Math.max(4, gap);
+        const reachedTail = distanceFromTail <= Math.max(4, gap);
+        viewportWasAtTailRef.current = reachedTail;
+        setIsAtTail(reachedTail);
       }
       scheduleStableDisclosureRelease(stableDisclosureAnchor);
     } else if (shouldAlign) {
       viewportWasAtTailRef.current = true;
+      setIsAtTail(true);
       tailAlignmentActiveRef.current = true;
       if (items.length > 0) {
         virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
@@ -515,6 +528,13 @@ export function VirtualTranscript<Item>({
       scrollTop: internalScrollRef.current?.scrollTop ?? 0,
     };
   }, [animateLatestAppend, cancelTailAlignment, cancelTailLiftAnimation, gap, items.length, newestItemKey, normalizedTailKey, scheduleStableDisclosureRelease, scheduleTailAlignment, sessionKey, totalSize, viewportSize, virtualizer]);
+
+  const scrollToLatest = useCallback(() => {
+    viewportWasAtTailRef.current = true;
+    setIsAtTail(true);
+    if (items.length > 0) virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
+    scheduleTailAlignment();
+  }, [items.length, scheduleTailAlignment, virtualizer]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const sessionRevealed = useStableTranscriptSessionReveal({
@@ -566,49 +586,77 @@ export function VirtualTranscript<Item>({
     }
   }, [items.length, renderPerformanceSpan, sessionKey, virtualItems.length]);
 
+  const newMessageCount = Math.max(0, Math.floor(unreadCount));
+  const displayNewMessageCount = newMessageCount > 99 ? '99+' : newMessageCount;
   return (
-    <ScrollArea
-      ref={setScrollElement}
-      className={scrollClassName}
-      style={scrollStyle}
-      onScroll={handleScroll}
-      onClickCapture={handleClickCapture}
-      onWheelCapture={cancelTailAlignment}
-      {...selectionViewportProps}
-      onTouchStartCapture={cancelTailAlignment}
-      data-virtual-transcript-scroll="true"
-      data-transcript-loading-older={isLoadingOlder ? 'true' : undefined}
-      aria-busy={isLoadingOlder || undefined}
-    >
-      {items.length > 0 ? (
-        <div
-          ref={setSizeContainer}
-          data-virtual-transcript-size="true"
-          data-virtual-transcript-session-ready={sessionRevealed ? 'true' : 'false'}
-          className="relative w-full"
+    <div className="relative flex min-h-0 flex-1 overflow-hidden" data-virtual-transcript-shell="true">
+      <ScrollArea
+        ref={setScrollElement}
+        className={`${scrollClassName ?? ''} h-full w-full`}
+        style={scrollStyle}
+        onScroll={handleScroll}
+        onClickCapture={handleClickCapture}
+        onWheelCapture={cancelTailAlignment}
+        {...selectionViewportProps}
+        onTouchStartCapture={cancelTailAlignment}
+        data-virtual-transcript-scroll="true"
+        data-transcript-loading-older={isLoadingOlder ? 'true' : undefined}
+        aria-busy={isLoadingOlder || undefined}
+      >
+        {items.length > 0 ? (
+          <div
+            ref={setSizeContainer}
+            data-virtual-transcript-size="true"
+            data-virtual-transcript-session-ready={sessionRevealed ? 'true' : 'false'}
+            className="relative w-full"
+          >
+            {virtualItems.map((virtualItem) => {
+              const item = items[virtualItem.index];
+              if (item === undefined) return null;
+              return (
+                <div
+                  key={virtualItem.key}
+                  ref={virtualizer.measureElement}
+                  data-index={virtualItem.index}
+                  data-transcript-window-item="true"
+                  className={`absolute left-0 top-0 w-full${
+                    virtualItem.index === navigationTargetIndex
+                      ? ` ${TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS}`
+                      : ''
+                  }`}
+                >
+                  {renderItem(item, virtualItem.index)}
+                </div>
+              );
+            })}
+          </div>
+        ) : emptyState}
+        {tail}
+      </ScrollArea>
+      {!isAtTail && items.length > 0 ? (
+        <button
+          type="button"
+          onClick={scrollToLatest}
+          className="absolute bottom-4 right-8 z-20 grid h-11 w-11 place-items-center rounded-full text-[color:var(--utility-foreground)] outline-none transition-transform duration-200 ease-out hover:scale-105 focus-visible:ring-2 focus-visible:ring-[color:var(--app-chat-accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--app-main-bg)] active:scale-95"
+          aria-label={newMessageCount > 0
+            ? `Go to latest message, ${newMessageCount} new message${newMessageCount === 1 ? '' : 's'}`
+            : 'Go to latest message'}
+          data-transcript-latest-button="true"
         >
-          {virtualItems.map((virtualItem) => {
-            const item = items[virtualItem.index];
-            if (item === undefined) return null;
-            return (
-              <div
-                key={virtualItem.key}
-                ref={virtualizer.measureElement}
-                data-index={virtualItem.index}
-                data-transcript-window-item="true"
-                className={`absolute left-0 top-0 w-full${
-                  virtualItem.index === navigationTargetIndex
-                    ? ` ${TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS}`
-                    : ''
-                }`}
-              >
-                {renderItem(item, virtualItem.index)}
-              </div>
-            );
-          })}
-        </div>
-      ) : emptyState}
-      {tail}
-    </ScrollArea>
+          <span className="grid h-[38px] w-[38px] place-items-center rounded-full border border-[color:var(--app-divider)] bg-[color:var(--app-main-raised-bg)] shadow-[var(--app-shadow-soft)] backdrop-blur-xl">
+            <ChevronDown className="h-4 w-4" aria-hidden="true" />
+          </span>
+          {newMessageCount > 0 ? (
+            <span
+              className="absolute -right-0.5 -top-0.5 grid min-h-5 min-w-5 place-items-center rounded-full bg-[color:var(--app-chat-accent)] px-1 text-[10px] font-bold leading-none text-[color:var(--app-chat-accent-text)]"
+              data-new-message-count={newMessageCount}
+              aria-hidden="true"
+            >
+              {displayNewMessageCount}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
+    </div>
   );
 }

@@ -290,14 +290,6 @@ export function useCloudCollaborationState({
     cancelledRef,
   } = stores;
 
-  useCloudActiveSessionLifecycle({
-    account, activeConversationId, canMarkActiveConversationRead,
-    canonicalState: canonicalSessionState,
-    setCanonicalState: setCanonicalSessionState,
-    client,
-    setPinsBySessionId: setCloudSessionPinsById,
-  });
-
   const {
     bootstrapPeerIds,
     bootstrapPeerKey,
@@ -359,6 +351,7 @@ export function useCloudCollaborationState({
     reportAvailabilityWarning:
       reportCloudAgentAvailabilityWarning,
   });
+
   useCloudSelfAgentForwardSync({
     account,
     canonicalState: canonicalSessionState,
@@ -622,6 +615,15 @@ export function useCloudCollaborationState({
       },
     },
     syncCollaborationDiff: syncCloudCollaborationDiff,
+  });
+
+  useCloudActiveSessionLifecycle({
+    account, activeConversationId, canMarkActiveConversationRead,
+    canonicalState: canonicalSessionState,
+    setCanonicalState: setCanonicalSessionState,
+    client,
+    markRead: markCloudSessionsRead,
+    setPinsBySessionId: setCloudSessionPinsById,
   });
   const cancelCloudAgentRequest = useCloudAgentRequestCancellation({
     account,
