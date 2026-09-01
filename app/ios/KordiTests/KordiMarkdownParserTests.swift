@@ -942,6 +942,13 @@ final class KordiMarkdownParserTests: XCTestCase {
             isAtBottom: false,
             messageCount: 13
         ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldFollowLatest(
+            hasPositionedInitialTimeline: true,
+            isAtBottom: true,
+            previousLatestMessageID: "message-12",
+            currentLatestMessageID: "message-13",
+            isNavigationReturnPending: true
+        ))
     }
 
     func testLocalOutgoingMessagesRequestTheBottomBeforeSending() throws {
@@ -1153,6 +1160,13 @@ final class KordiMarkdownParserTests: XCTestCase {
             wasAtLatest: true,
             previousViewportSize: .zero,
             currentViewportSize: fullViewport
+        ))
+        XCTAssertFalse(ConversationTimelineScrollBehavior.shouldKeepLatestVisibleAfterViewportChange(
+            hasRevealedInitialViewport: true,
+            wasAtLatest: true,
+            isNavigationReturnPending: true,
+            previousViewportSize: fullViewport,
+            currentViewportSize: reducedViewport
         ))
 
         XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatestWhenPresentingInputSurface(

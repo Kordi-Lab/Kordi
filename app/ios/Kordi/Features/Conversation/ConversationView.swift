@@ -500,6 +500,7 @@ struct ConversationView: View {
                                 hasRevealedInitialViewport: hasRevealedInitialViewport,
                                 wasAtLatest: wasAtLatest,
                                 isMessageActionPresented: messageActionMessage != nil,
+                                isNavigationReturnPending: threadReturnMessageID != nil,
                                 previousViewportSize: previousViewportSize,
                                 currentViewportSize: currentViewportSize
                             ) else { return }
@@ -667,7 +668,8 @@ struct ConversationView: View {
                     hasPositionedInitialTimeline: hasPositionedInitialTimeline,
                     isAtBottom: isFollowingLatest,
                     previousLatestMessageID: previousLatestMessageID,
-                    currentLatestMessageID: currentLatestMessageID
+                    currentLatestMessageID: currentLatestMessageID,
+                    isNavigationReturnPending: threadReturnMessageID != nil
                 ) {
                     let identityChanged = previousLatestMessageID != currentLatestMessageID
                     scrollToBottom(animated: identityChanged)
@@ -701,7 +703,6 @@ struct ConversationView: View {
                 guard previousRootID != nil,
                       currentRootID == nil,
                       let returnMessageID = threadReturnMessageID else { return }
-                threadReturnMessageID = nil
                 Task { @MainActor in
                     await Task.yield()
                     await Task.yield()
@@ -712,6 +713,7 @@ struct ConversationView: View {
                         trackedMessageID = returnMessageID
                         proxy.scrollTo(returnMessageID, anchor: initialViewport.scrollAnchor)
                     }
+                    threadReturnMessageID = nil
                 }
             }
             observedTimeline
@@ -2443,9 +2445,11 @@ enum ConversationTimelineScrollBehavior {
         hasPositionedInitialTimeline: Bool,
         isAtBottom: Bool,
         previousLatestMessageID: String?,
-        currentLatestMessageID: String?
+        currentLatestMessageID: String?,
+        isNavigationReturnPending: Bool = false
     ) -> Bool {
-        guard hasPositionedInitialTimeline,
+        guard !isNavigationReturnPending,
+              hasPositionedInitialTimeline,
               isAtBottom,
               previousLatestMessageID != nil,
               currentLatestMessageID != nil else { return false }
@@ -2473,12 +2477,14 @@ enum ConversationTimelineScrollBehavior {
         hasRevealedInitialViewport: Bool,
         wasAtLatest: Bool,
         isMessageActionPresented: Bool = false,
+        isNavigationReturnPending: Bool = false,
         previousViewportSize: CGSize,
         currentViewportSize: CGSize
     ) -> Bool {
         hasRevealedInitialViewport
             && wasAtLatest
             && !isMessageActionPresented
+            && !isNavigationReturnPending
             && previousViewportSize != .zero
             && previousViewportSize != currentViewportSize
     }

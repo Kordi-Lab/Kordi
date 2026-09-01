@@ -201,6 +201,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(conversationSource.contains("threadReturnMessageID = trackedMessageID ??"))
         XCTAssertTrue(conversationSource.contains("rememberViewport(in: messages)"))
         XCTAssertTrue(conversationSource.contains("proxy.scrollTo(returnMessageID, anchor: initialViewport.scrollAnchor)"))
+        XCTAssertTrue(conversationSource.contains("isNavigationReturnPending: threadReturnMessageID != nil"))
         XCTAssertTrue(conversationSource.contains("scopedThreadRootMessageID.map"))
         XCTAssertTrue(actionSource.contains("actionButton(\"Reply in conversation\""))
         XCTAssertTrue(actionSource.contains("actionButton(\"Reply in thread\""))
