@@ -86,6 +86,8 @@ test('native group history recovery has one owner and no orphaned timeout work',
   assert.doesNotMatch(ownerSource, /recoverNativeCloudGroupHistory/);
   assert.match(ownerSource, /bootstrapChatSync/);
   assert.match(ownerSource, /bootstrap\.latest_messages/);
+  assert.match(ownerSource, /!humanIdentityId\?\.trim\(\)/);
+  assert.match(ownerSource, /catalogGroupTitle: row\.conversation\.group_title/);
   assert.match(ownerSource, /listChatConversationHistoryPage\([\s\S]*100/);
   assert.match(ownerSource, /applyChatSyncLocalBatch\(\{[\s\S]*messages: page\.messages/);
   assert.match(ownerSource, /hydrateCanonicalSessionPage\?\.\([\s\S]*force: true/);
