@@ -33,6 +33,7 @@ test('Factory loads on demand in a dedicated production bundle', () => {
   assert.match(switchSource, /<Suspense fallback=/);
   assert.doesNotMatch(pagesSource, /export \{ AgentsPage \}/);
   assert.ok(viteSource.indexOf("name: 'agent-studio'") < viteSource.indexOf("name: 'agent-factory'"));
+  assert.match(viteSource, /AgentStudio\(\?!Conversation\)/);
   assert.match(viteSource, /name: 'agent-factory'/);
 });
 
