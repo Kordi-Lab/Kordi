@@ -99,11 +99,11 @@ test('unpin, unmute, and restore events clear their synchronized state', () => {
 
 test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {
   const source = chatSessionActionsSource();
-  const deleteStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const deleteSession'));
+  const deleteStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) {', source.indexOf('const deleteSession'));
   const cloudDeleteBranch = source.slice(deleteStart, source.indexOf('} catch (error) {', deleteStart));
   assert.match(cloudDeleteBranch, /await deleteCloudSession\(trimmedSessionId\);[\s\S]*archiveDesktopChatSession\(\s*trimmedSessionId,\s*desktopActiveSessionId/);
   assert.match(cloudDeleteBranch, /optimisticallyRemoveSession\(trimmedSessionId, false\)/);
-  const archiveStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const archiveSession'));
+  const archiveStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId, canonicalState)) {', source.indexOf('const archiveSession'));
   assert.match(
     source.slice(archiveStart, source.indexOf('}', archiveStart)),
     /optimisticallyRemoveSession\(trimmedSessionId, false\)/,

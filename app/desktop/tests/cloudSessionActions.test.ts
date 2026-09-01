@@ -24,10 +24,17 @@ const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/featur
 const cloudGroupControlSenderSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlSender.ts', import.meta.url), 'utf8');
 const chatSessionActionsSource = () => readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
 
-test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {
+test('shouldUseCloudSessionAction routes synchronized UUID agent sessions but leaves local-only UUIDs alone', () => {
+  const state = {
+    sessions: [{
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      metadata: { cloudSelfAgentSession: true },
+    }],
+  } as CanonicalSessionState;
   assert.equal(shouldUseCloudSessionAction('session:direct-person:acct_a:acct_b'), true);
   assert.equal(shouldUseCloudSessionAction('session:group:abc'), true);
   assert.equal(shouldUseCloudSessionAction('bridge:cloud:acct_peer:person'), true);
+  assert.equal(shouldUseCloudSessionAction('550e8400-e29b-41d4-a716-446655440000', state), true);
   assert.equal(shouldUseCloudSessionAction('550e8400-e29b-41d4-a716-446655440000'), false);
 });
 
