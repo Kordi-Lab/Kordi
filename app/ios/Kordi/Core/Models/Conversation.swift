@@ -8,6 +8,10 @@ enum ConversationKind: String, Codable, Hashable {
     var supportsQuotedReplies: Bool {
         self != .agent
     }
+
+    var supportsThreadedReplies: Bool {
+        true
+    }
 }
 
 enum AgentActivity: String, Codable, Hashable {

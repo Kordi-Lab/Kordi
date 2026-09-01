@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Kordi
 
 final class AgentSessionPresentationTests: XCTestCase {
@@ -17,6 +18,24 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertFalse(ConversationKind.agent.supportsQuotedReplies)
         XCTAssertTrue(ConversationKind.person.supportsQuotedReplies)
         XCTAssertTrue(ConversationKind.group.supportsQuotedReplies)
+        XCTAssertTrue(ConversationKind.agent.supportsThreadedReplies)
+        XCTAssertTrue(ConversationKind.person.supportsThreadedReplies)
+        XCTAssertTrue(ConversationKind.group.supportsThreadedReplies)
+    }
+
+    func testThreadsPushOnCompactLayoutsAndUseAnInspectorOnWideLayouts() {
+        XCTAssertEqual(
+            ConversationThreadPresentationMode.resolve(horizontalSizeClass: .compact),
+            .navigation
+        )
+        XCTAssertEqual(
+            ConversationThreadPresentationMode.resolve(horizontalSizeClass: .regular),
+            .inspector
+        )
+        XCTAssertEqual(
+            ConversationThreadPresentationMode.resolve(horizontalSizeClass: nil),
+            .inspector
+        )
     }
 
     func testAgentChoicesIncludeOwnedAndSharedAgentsButNeverKordiSupport() {

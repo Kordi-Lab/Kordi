@@ -9,39 +9,77 @@ private struct ConversationTimelineRow: Identifiable {
     let message: ChatMessage
 }
 
-private struct ConversationThreadInspectorModifier: ViewModifier {
+enum ConversationThreadPresentationMode: Equatable {
+    case navigation
+    case inspector
+
+    static func resolve(horizontalSizeClass: UserInterfaceSizeClass?) -> Self {
+        horizontalSizeClass == .compact ? .navigation : .inspector
+    }
+}
+
+enum ConversationThreadLoadPolicy {
+    static func usesCachedTimeline(rootMessageID: String?, messageCount: Int) -> Bool {
+        rootMessageID != nil && messageCount > 0
+    }
+}
+
+private struct ConversationThreadPresentationModifier: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var activeRootMessageID: String?
     let conversation: ConversationSummary
     let onReplyInConversation: (MessageActionSource) -> Void
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        content.inspector(isPresented: Binding(
-            get: { activeRootMessageID != nil },
-            set: { if !$0 { activeRootMessageID = nil } }
-        )) {
-            if let threadRootID = activeRootMessageID {
-                NavigationStack {
-                    ConversationView(
-                        conversation: conversation,
-                        allowsCompanionPanel: false,
-                        showsNavigationChrome: false,
-                        scopedThreadRootMessageID: threadRootID,
-                        onReplyInConversation: { source in
-                            onReplyInConversation(source)
-                            activeRootMessageID = nil
-                        }
-                    )
-                    .navigationTitle("Thread")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { activeRootMessageID = nil }
-                        }
+        switch ConversationThreadPresentationMode.resolve(
+            horizontalSizeClass: horizontalSizeClass
+        ) {
+        case .navigation:
+            content.navigationDestination(item: $activeRootMessageID) { threadRootID in
+                threadDestination(rootID: threadRootID)
+            }
+        case .inspector:
+            content.inspector(isPresented: Binding(
+                get: { activeRootMessageID != nil },
+                set: { if !$0 { activeRootMessageID = nil } }
+            )) {
+                if let threadRootID = activeRootMessageID {
+                    NavigationStack {
+                        threadDestination(rootID: threadRootID)
+                            .toolbar {
+                                ToolbarItem(placement: .confirmationAction) {
+                                    Button("Done") { activeRootMessageID = nil }
+                                }
+                            }
                     }
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .inspectorColumnWidth(min: 320, ideal: 390, max: 480)
                 }
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .inspectorColumnWidth(min: 320, ideal: 390, max: 480)
+            }
+        }
+    }
+
+    private func threadDestination(rootID: String) -> some View {
+        ConversationView(
+            conversation: conversation,
+            allowsCompanionPanel: false,
+            showsNavigationChrome: false,
+            scopedThreadRootMessageID: rootID,
+            onReplyInConversation: { source in
+                onReplyInConversation(source)
+                activeRootMessageID = nil
+            }
+        )
+        .navigationTitle("Thread")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Thread")
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
             }
         }
     }
@@ -215,6 +253,11 @@ struct ConversationView: View {
         } else {
             timeline = projection.mainMessages
         }
+        let usesCachedThreadTimeline = ConversationThreadLoadPolicy.usesCachedTimeline(
+            rootMessageID: scopedThreadRootMessageID,
+            messageCount: timeline.count
+        )
+        let showsTimeline = hasRevealedInitialViewport || usesCachedThreadTimeline
         let visibleTimeline = ConversationTimelineWindow.visibleMessages(
             in: timeline,
             limit: visibleMessageLimit
@@ -303,7 +346,7 @@ struct ConversationView: View {
                         }
                     )
                 }
-                if hasPreparedInitialViewport {
+                if hasPreparedInitialViewport || usesCachedThreadTimeline {
                     ZStack {
                         GeometryReader { viewport in
                             ZStack(alignment: .bottomTrailing) {
@@ -453,11 +496,11 @@ struct ConversationView: View {
                                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                             }
                         }
-                            .opacity(hasRevealedInitialViewport ? 1 : 0)
-                            .allowsHitTesting(hasRevealedInitialViewport)
-                            .accessibilityHidden(!hasRevealedInitialViewport)
+                            .opacity(showsTimeline ? 1 : 0)
+                            .allowsHitTesting(showsTimeline)
+                            .accessibilityHidden(!showsTimeline)
                         }
-                        if !hasRevealedInitialViewport {
+                        if !showsTimeline {
                             if initialLoadFailed {
                                 ConversationInitialFailureView {
                                     initialLoadFailed = false
@@ -911,7 +954,7 @@ struct ConversationView: View {
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
         }
-        .modifier(ConversationThreadInspectorModifier(
+        .modifier(ConversationThreadPresentationModifier(
             activeRootMessageID: $activeThreadRootMessageID,
             conversation: conversation,
             onReplyInConversation: { replySource = $0 }
@@ -972,7 +1015,8 @@ struct ConversationView: View {
                     isPinned: pinnedMessageIDs.contains(message.id),
                     selectionMode: !selectedMessageIDs.isEmpty,
                     isSelected: selectedMessageIDs.contains(message.id),
-                    allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
+                    allowsQuotedReplies: scopedThreadRootMessageID == nil
+                        && conversation.kind.supportsQuotedReplies,
                     threadReplyCount: threadReplyCount,
                     showsAvatarSlot: message.author != .agent,
                     authorAvatarName: avatar.name,
@@ -1117,7 +1161,10 @@ struct ConversationView: View {
                 sourceFrame: messageActionFrame,
                 usableFrame: usableFrame,
                 ownAccountId: model.account?.accountId,
-                allowsReply: conversation.kind.supportsQuotedReplies,
+                allowsConversationReply: conversation.kind.supportsQuotedReplies,
+                allowsThreadReply: scopedThreadRootMessageID == nil
+                    && conversation.kind.supportsThreadedReplies
+                    && !message.isSystemNotice,
                 allowsReactions: MessageBubble.allowsReactions(
                     for: message,
                     isPreviewMode: model.isPreviewMode
@@ -1173,7 +1220,12 @@ struct ConversationView: View {
                         onReplyInConversation(source)
                     } else if destination == .thread,
                               scopedThreadRootMessageID == nil {
-                        activeThreadRootMessageID = source.sourceMessageId
+                        dismissMessageActions()
+                        Task { @MainActor in
+                            await Task.yield()
+                            activeThreadRootMessageID = source.sourceMessageId
+                        }
+                        return
                     } else {
                         replySource = source
                     }
@@ -1538,6 +1590,14 @@ struct ConversationView: View {
 
         if !messages.isEmpty {
             await positionAndRevealInitialViewport(using: proxy)
+        }
+
+        if ConversationThreadLoadPolicy.usesCachedTimeline(
+            rootMessageID: scopedThreadRootMessageID,
+            messageCount: messages.count
+        ) {
+            initialLoadFailed = false
+            return
         }
 
         let didLoad = await model.loadConversation(conversation)

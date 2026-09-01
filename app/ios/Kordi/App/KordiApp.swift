@@ -129,7 +129,14 @@ struct KordiApp: App {
                     appDelegate.attachNotificationCoordinator(notificationCoordinator)
                     callCoordinator.configure(model: model)
                     notificationCoordinator.configure(model: model)
+                    let recentEmojiIDs = UserDefaults.standard.string(
+                        forKey: BlobEmojiRecentStore.key
+                    ) ?? "[]"
+                    async let emojiWarmup: Void = BlobEmojiCatalog.prewarmQuickReactions(
+                        storedRecentEmojiIDs: recentEmojiIDs
+                    )
                     await model.start()
+                    await emojiWarmup
                     callCoordinator.configure(model: model)
                     notificationCoordinator.accountDidChange()
                     notificationCoordinator.synchronizeBadge()

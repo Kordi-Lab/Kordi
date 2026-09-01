@@ -545,7 +545,6 @@ export function ChatsPage({
                   onOpenSenderProfile: senderProfiles.openActive,
                   onOpenForkSession: openRelatedAgentSession,
                   onReplyMessage: handleReplyMessage,
-                  onOpenMessageThread: openThread,
                   onForwardMessage: composer.onForwardMessage,
                   onEditMessage: composer.onEditMessage,
                   onDeleteMessage: composer.onDeleteMessage,

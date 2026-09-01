@@ -428,11 +428,12 @@ test('message context menu exposes only wired actions for eligible messages', ()
     onRequestPinMessage: () => undefined,
   }));
 
-  assert.match(markup, />Reply</);
+  assert.match(markup, />Reply in conversation</);
   assert.match(markup, />Forward</);
   assert.match(markup, />Select</);
   assert.match(markup, />Pin</);
-  assert.match(markup, /data-message-context-menu-action="reply"/);
+  assert.match(markup, /data-message-context-menu-action="reply-conversation"/);
+  assert.doesNotMatch(markup, /data-message-context-menu-action="reply-thread"/);
   assert.match(markup, /data-message-context-menu-action="forward"/);
   assert.match(markup, /data-message-context-menu-action="select"/);
   assert.match(markup, /data-message-context-menu-action="pin"/);
@@ -440,6 +441,28 @@ test('message context menu exposes only wired actions for eligible messages', ()
   assert.doesNotMatch(markup, />Edit</);
   assert.doesNotMatch(markup, />Delete</);
   assert.doesNotMatch(markup, />View 1 Reply/);
+});
+
+test('message context menu shows conversation and thread replies directly', () => {
+  const message: Message = {
+    id: 'msg:thread-target',
+    role: 'owned-agent',
+    sender: 'My Kordi',
+    senderType: 'agent',
+    text: 'Choose where to reply',
+    time: '10:42',
+  };
+  const markup = renderToStaticMarkup(createElement(MessageContextMenuContent, {
+    msg: message,
+    onReplyMessage: () => undefined,
+    onOpenMessageThread: () => undefined,
+  }));
+
+  assert.match(markup, /data-message-context-menu-action="reply-conversation"/);
+  assert.match(markup, /data-message-context-menu-action="reply-thread"/);
+  assert.match(markup, />Reply in conversation</);
+  assert.match(markup, />Reply in thread</);
+  assert.doesNotMatch(markup, /data-message-context-menu-action="reply"/);
 });
 
 test('message context menu exposes Unpin for pinned messages', () => {
