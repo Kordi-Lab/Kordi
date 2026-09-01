@@ -9,6 +9,8 @@ type SystemContactMetadata = {
   targetCloudAgentName?: string | null;
   targetCloudAgentOwnerAccountId?: string | null;
   targetCloudAgentOwnerName?: string | null;
+  targetCloudAgentAvatarUrl?: string | null;
+  targetCloudAgentAvatarSeed?: string | null;
 };
 
 export type Contact = SystemContactMetadata & {

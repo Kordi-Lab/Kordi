@@ -317,9 +317,23 @@ export function sessionConversationDisplayTitle(
   fallback: string,
   options: { preferFallback?: boolean } = {},
 ) {
+  const selfAgent = session.kind === 'self-agent'
+    ? participants.find((participant) => (
+        participant.kind === 'agent'
+        && (
+          participant.id === session.primaryIdentityId
+          || participant.role === 'owned-agent'
+          || participant.role === 'delegate'
+        )
+      ))
+    : null;
+  const identityFallback = selfAgent?.name.trim()
+    && /^(?:my\s+)?kordi$/iu.test(fallback.trim())
+    ? selfAgent.name.trim()
+    : fallback;
   return directPersonContactTitle(session, participants)
     ?? ((session.kind === 'self-agent' || session.kind === 'project')
-      ? sessionDisplayTitle(messages, fallback, options)
+      ? sessionDisplayTitle(messages, identityFallback, options)
       : (options.preferFallback && fallback.trim()) || legacyFirstMessageTitle(messages) || fallback);
 }
 

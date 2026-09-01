@@ -2,6 +2,7 @@ import {
   publicPersonMentionHandle,
   publicScopedAgentMentionHandle,
 } from '@/lib/identityLabels';
+import { cloudAgentId, defaultCloudAgentId } from './cloudAgentIdentity';
 import type {
   CloudGroupControlEnvelope,
   CloudGroupParticipant,
@@ -11,13 +12,16 @@ export const CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH = 1;
 
 export type CloudGroupMentionCatalogEntry = {
   accountId: string;
+  agentId: string | null;
   displayName: string;
+  ownerDisplayName: string;
   handle: string;
   targetKind: 'person' | 'agent';
 };
 
 export type CloudGroupAgentHandoff = Pick<
   NonNullable<CloudGroupControlEnvelope['message']>,
+  | 'targetCloudAgentId'
   | 'targetCloudAgentOwnerAccountId'
   | 'targetCloudAgentOwnerName'
   | 'agentMentionDepth'
@@ -54,13 +58,20 @@ export function cloudGroupMentionCatalog(
       if (!accountId || !displayName) return [];
       return [{
         accountId,
+        agentId: null,
         displayName,
+        ownerDisplayName: displayName,
         handle: publicPersonMentionHandle(displayName),
         targetKind: 'person',
       }, {
         accountId,
-        displayName,
-        handle: publicScopedAgentMentionHandle(displayName, 'Kordi'),
+        agentId: participant.agentId?.trim() || defaultCloudAgentId(accountId),
+        displayName: participant.agentDisplayName?.trim() || 'Kordi',
+        ownerDisplayName: displayName,
+        handle: publicScopedAgentMentionHandle(
+          displayName,
+          participant.agentDisplayName?.trim() || 'Kordi',
+        ),
         targetKind: 'agent',
       }];
     },
@@ -89,16 +100,22 @@ export function cloudGroupAgentMentionDepth(
 export function cloudGroupMentionInstruction({
   participants,
   respondingAccountId,
+  respondingAgentId,
   requesterAccountId,
   requesterKind,
   allowAgentMentions,
 }: {
   participants: readonly CloudGroupParticipant[];
   respondingAccountId: string;
+  respondingAgentId?: string | null;
   requesterAccountId?: string | null;
   requesterKind?: 'human' | 'agent' | null;
   allowAgentMentions: boolean;
 }): string | null {
+  const currentAgentId = cloudAgentId(
+    respondingAgentId,
+    respondingAccountId,
+  );
   const catalog = cloudGroupMentionCatalog(participants);
   const people = catalog
     .filter((entry) => entry.targetKind === 'person')
@@ -107,9 +124,9 @@ export function cloudGroupMentionInstruction({
     ? catalog
       .filter((entry) => (
         entry.targetKind === 'agent'
-        && entry.accountId !== respondingAccountId.trim()
+        && entry.agentId !== currentAgentId
       ))
-      .map((entry) => `@${entry.handle} (${entry.displayName}'s Kordi)`)
+      .map((entry) => `@${entry.handle} (${entry.displayName}; owner: ${entry.ownerDisplayName})`)
     : [];
   const requesterPerson = catalog.find((entry) => (
     entry.targetKind === 'person'
@@ -120,10 +137,10 @@ export function cloudGroupMentionInstruction({
     && entry.accountId === requesterAccountId?.trim()
   ));
   const requesterDescription = requesterKind === 'agent' && requesterAgent
-    ? `Current requester: @${requesterAgent.handle} (${requesterAgent.displayName}'s Kordi).`
+    ? `Current requester: @${requesterAgent.handle} (${requesterAgent.displayName}; owner: ${requesterAgent.ownerDisplayName}).`
     : requesterPerson
       ? `Current requester: @${requesterPerson.handle} (${requesterPerson.displayName}).`
-        + (requesterAgent
+        + (requesterAgent && requesterAgent.agentId !== currentAgentId
           ? ` In this request, "my Kordi" means @${requesterAgent.handle}.`
           : '')
       : null;
@@ -143,20 +160,62 @@ export function cloudGroupMentionInstruction({
   ].join('\n');
 }
 
+export function cloudGroupAgentPersonaInstruction({
+  respondingAgentDisplayName,
+  respondingAgentId,
+  respondingAccountId,
+  requesterAccountId,
+  requesterKind,
+  allowAgentMentions,
+}: {
+  respondingAgentDisplayName?: string | null;
+  respondingAgentId?: string | null;
+  respondingAccountId: string;
+  requesterAccountId?: string | null;
+  requesterKind?: 'human' | 'agent' | null;
+  allowAgentMentions: boolean;
+}): string {
+  const currentAgentId = cloudAgentId(
+    respondingAgentId,
+    respondingAccountId,
+  );
+  const requesterAgentId = defaultCloudAgentId(
+    requesterAccountId?.trim() ?? '',
+  );
+  const relationship = requesterKind === 'agent'
+    ? 'This request came from another agent. Do not delegate to another agent.'
+    : requesterAgentId && requesterAgentId === currentAgentId
+      ? 'The human requester owns you. In this request, "my Kordi" means you. Perform the request directly and never mention or delegate to your own public handle.'
+      : 'The current human requester does not own you. In this request, "my Kordi" means the requester\'s default Kordi, not you.';
+  return [
+    `You are ${respondingAgentDisplayName?.trim() || 'Kordi'}, the currently responding agent in this Kordi group conversation.`,
+    relationship,
+    allowAgentMentions
+      ? 'You may delegate once only to a different agent through an exact handle supplied in the group mention directory.'
+      : 'Do not delegate to another agent in this response.',
+  ].join('\n');
+}
+
 export function resolveCloudGroupAgentMention({
   text,
   participants,
   respondingAccountId,
+  respondingAgentId,
 }: {
   text: string;
   participants: readonly CloudGroupParticipant[];
   respondingAccountId: string;
+  respondingAgentId?: string | null;
 }): CloudGroupMentionCatalogEntry | null {
+  const currentAgentId = cloudAgentId(
+    respondingAgentId,
+    respondingAccountId,
+  );
   const agentsByHandle = new Map(
     cloudGroupMentionCatalog(participants)
       .filter((entry) => (
         entry.targetKind === 'agent'
-        && entry.accountId !== respondingAccountId.trim()
+        && entry.agentId !== currentAgentId
       ))
       .map((entry) => [normalizedMentionHandle(entry.handle), entry]),
   );
@@ -173,11 +232,13 @@ export function cloudGroupAgentHandoffForResponse({
   responseText,
   participants,
   respondingAccountId,
+  respondingAgentId,
   requestMessage,
 }: {
   responseText: string;
   participants: readonly CloudGroupParticipant[];
   respondingAccountId: string;
+  respondingAgentId?: string | null;
   requestMessage: CloudGroupControlEnvelope['message'];
 }): CloudGroupAgentHandoff | null {
   const requestDepth = cloudGroupAgentMentionDepth(requestMessage);
@@ -186,10 +247,12 @@ export function cloudGroupAgentHandoffForResponse({
     text: responseText,
     participants,
     respondingAccountId,
+    respondingAgentId,
   });
   return target ? {
+    targetCloudAgentId: target.agentId,
     targetCloudAgentOwnerAccountId: target.accountId,
-    targetCloudAgentOwnerName: target.displayName,
+    targetCloudAgentOwnerName: target.ownerDisplayName,
     agentMentionDepth: requestDepth + 1,
   } : null;
 }
@@ -203,7 +266,6 @@ export function cloudGroupAgentHandoffTarget(
     || message.senderKind !== 'agent'
     || cloudGroupAgentMentionDepth(message)
       !== CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH
-    || message.targetCloudAgentId?.trim()
   ) return null;
   const targetOwnerAccountId = message.targetCloudAgentOwnerAccountId?.trim();
   if (!targetOwnerAccountId) return null;
@@ -211,8 +273,13 @@ export function cloudGroupAgentHandoffTarget(
     text: message.text,
     participants: envelope.participants,
     respondingAccountId: message.senderAccountId,
+    respondingAgentId: message.senderAgentId,
   });
-  return target?.accountId === targetOwnerAccountId ? target : null;
+  const targetAgentId = message.targetCloudAgentId?.trim();
+  return target?.accountId === targetOwnerAccountId
+    && (!targetAgentId || target.agentId === targetAgentId)
+    ? target
+    : null;
 }
 
 export function cloudGroupAgentHandoffTargetsAccount(

@@ -104,6 +104,7 @@ test('profile update websocket subjects target the signed-in account session', (
 test('cloud account refresh equality ignores object identity but detects visible changes', () => {
   const account = {
     accountId: 'acct_1',
+    kordiId: '123456789',
     displayName: 'Name',
     primaryEmail: 'name@example.com',
     avatarUrl: null,
@@ -118,15 +119,43 @@ test('cloud account refresh equality ignores object identity but detects visible
       version: 1,
       updatedAt: '2026-08-19T00:00:00Z',
     },
+    defaultAgent: {
+      agentId: 'cloud-agent:acct_1',
+      displayName: 'Kordi',
+      avatarUrl: null,
+      avatar: {
+        entityType: 'agent',
+        entityId: 'cloud-agent:acct_1',
+        source: 'generated' as const,
+        style: 'bottts-neutral' as const,
+        seed: 'agent_seed',
+        rendererVersion: 'dicebear-rust-10.6.0-styles-10.5.0',
+        uploadedAsset: null,
+        version: 1,
+        updatedAt: '2026-08-19T00:00:00Z',
+      },
+    },
     nodeId: 'node_1',
     passwordSet: true,
   };
 
   assert.equal(cloudAccountsEqual(account, { ...account }), true);
+  assert.equal(cloudAccountsEqual(account, { ...account, kordiId: '987654321' }), false);
   assert.equal(cloudAccountsEqual(account, { ...account, displayName: 'Changed' }), false);
   assert.equal(cloudAccountsEqual(account, {
     ...account,
     avatar: { ...account.avatar, seed: 'another_seed' },
+  }), false);
+  assert.equal(cloudAccountsEqual(account, {
+    ...account,
+    defaultAgent: { ...account.defaultAgent, displayName: 'Renamed agent' },
+  }), false);
+  assert.equal(cloudAccountsEqual(account, {
+    ...account,
+    defaultAgent: {
+      ...account.defaultAgent,
+      avatar: { ...account.defaultAgent.avatar, seed: 'another_agent_seed' },
+    },
   }), false);
 });
 

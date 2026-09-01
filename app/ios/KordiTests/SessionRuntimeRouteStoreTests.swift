@@ -43,6 +43,17 @@ final class SessionRuntimeRouteStoreTests: XCTestCase {
         XCTAssertTrue(model.canChangeRuntimeRouting(for: defaultAgent))
         XCTAssertTrue(model.runtimeRoutingIsSessionScoped(for: defaultAgent))
 
+        let canonicalDefaultAgent = try XCTUnwrap(
+            CloudConversationCatalog.build(
+                account: PreviewData.make().account,
+                contacts: [],
+                ownedAgents: [],
+                sharedAgents: [],
+                messagesByPeer: [:]
+            ).first { $0.agentId == "cloud-agent:acct_me" }
+        )
+        XCTAssertTrue(model.canChangeRuntimeRouting(for: canonicalDefaultAgent))
+
         let saved = await model.updateRuntimeRouting(
             for: contact,
             provider: "anthropic",

@@ -99,7 +99,7 @@ enum PreviewData {
             "--preview-delete-resurrection"
         )
         let conversations = [
-            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: CanonicalAvatarSystem.defaultAgentId, ownerDisplayName: "Alex", displayName: showsToolFailure ? "Tool failure recovery" : "Plan the mobile release", lastMessage: showsToolFailure ? "The useful result is ready." : "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
+            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: CanonicalAvatarSystem.defaultAgentId, ownerDisplayName: "Alex", displayName: showsToolFailure ? "Tool failure recovery" : "Plan the mobile release", lastMessage: showsToolFailure ? "The useful result is ready." : "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "BabyTREE"),
             ConversationSummary(id: "agent:research", kind: .agent, peerAccountId: "acct_me", agentId: "cloud_agent_research", ownerDisplayName: "Alex", displayName: "Review the TestFlight checklist", lastMessage: "Comparing the latest sources…", lastActivityAt: now.addingTimeInterval(-160), unreadCount: 0, avatarSource: nil, agentActivity: .replying, sessionId: "session:self-agent:cloud_agent_research", agentDisplayName: "Research Agent", forkedFromSessionId: "session:self-agent:default"),
             ConversationSummary(id: "agent:support", kind: .agent, peerAccountId: "acct_maya", agentId: "cloud_agent_support", ownerDisplayName: "Maya Chen", displayName: "Support Agent", lastMessage: "I can help with that.", lastActivityAt: now.addingTimeInterval(-300), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:direct-agent:acct_maya:cloud_agent_support"),
             ConversationSummary(id: "group:mobile", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Mobile builders", displayName: "main", lastMessage: showsMentionAttention ? "@Alex Please review the notification copy." : "@all I also added the device matrix.", lastActivityAt: now.addingTimeInterval(-120), unreadCount: showsMentionAttention ? 2 : 1, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile", groupParticipants: [
@@ -230,7 +230,7 @@ enum PreviewData {
                 id: "agent-history-\(index)",
                 conversationId: conversationId,
                 author: isAgent ? .agent : .me,
-                authorName: isAgent ? "My Kordi" : "You",
+                authorName: isAgent ? "BabyTREE" : "You",
                 text: sampleTurns[index % sampleTurns.count],
                 createdAt: now.addingTimeInterval(-80_000 + Double(index) * 600),
                 deliveryState: .read,
@@ -244,7 +244,7 @@ enum PreviewData {
                 id: "m2",
                 conversationId: conversationId,
                 author: .agent,
-                authorName: "My Kordi",
+                authorName: "BabyTREE",
                 text: """
                 ## Mobile release
 
@@ -312,7 +312,7 @@ enum PreviewData {
                 id: "preview-tool-failure-response",
                 conversationId: conversationId,
                 author: .agent,
-                authorName: "My Kordi",
+                authorName: "BabyTREE",
                 text: "The repository check completed and the useful result is ready.",
                 createdAt: now,
                 deliveryState: .delivered,

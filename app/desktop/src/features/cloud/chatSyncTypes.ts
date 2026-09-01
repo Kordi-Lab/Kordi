@@ -2,6 +2,9 @@ export type ChatSyncMember = {
   account_id: string;
   display_name?: string | null;
   avatar_url?: string | null;
+  default_agent_id?: string | null;
+  default_agent_display_name?: string | null;
+  default_agent_avatar_url?: string | null;
   role: string;
   membership_state: string;
   version: number;

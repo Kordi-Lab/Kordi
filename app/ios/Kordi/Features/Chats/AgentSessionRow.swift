@@ -115,7 +115,7 @@ struct AgentSessionRow: View {
 
     private var preview: some View {
         HStack(spacing: 0) {
-            Text(conversation.agentDisplayName?.nonEmpty ?? "My Kordi")
+            Text(conversation.agentDisplayName?.nonEmpty ?? "Kordi")
                 .foregroundStyle(KordiTheme.agentViolet)
             Text(" · ")
                 .foregroundStyle(.secondary)

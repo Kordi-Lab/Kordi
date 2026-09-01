@@ -256,6 +256,7 @@ final class AppModel: ObservableObject {
     private var pendingAgentRequestIds: [String: String] = [:]
     private var pendingAgentRequestStartedAt: [String: Date] = [:]
     private var pendingAgentDisplayNames: [String: String] = [:]
+    private var pendingAgentOwnerNames: [String: String] = [:]
     private var agentRequestPresentationIds: [String: String] = [:]
     private var pendingProviderAuthBindingsBySessionID: [String: String] = [:]
     private var providerAuthenticationSyncTask: Task<Void, Never>?
@@ -551,6 +552,7 @@ final class AppModel: ObservableObject {
         pendingAgentRequestIds = [:]
         pendingAgentRequestStartedAt = [:]
         pendingAgentDisplayNames = [:]
+        pendingAgentOwnerNames = [:]
         agentRequestPresentationIds = [:]
         pendingProviderAuthBindingsBySessionID = [:]
         providerAuthenticationSyncTask?.cancel()
@@ -1169,7 +1171,6 @@ final class AppModel: ObservableObject {
         }), let conversation = conversations.first(where: { $0.id == conversationID }) else {
             return
         }
-        guard pendingMentionCount(for: conversation) == 0 else { return }
         markConversationOpened(conversation)
         Task { [weak self] in
             await self?.reconcileVisibleConversationReadState()
@@ -1461,7 +1462,8 @@ final class AppModel: ObservableObject {
                 startedAt: optimistic.createdAt,
                 agentDisplayName: routedAgent?.displayName
                     ?? conversation.agentDisplayName?.nonEmpty
-                    ?? "My Kordi"
+                    ?? "Kordi",
+                agentOwnerName: routedAgent?.ownerName
             )
         }
         cacheCurrentMessages(conversation.id)
@@ -2040,7 +2042,8 @@ final class AppModel: ObservableObject {
             id: "local-agent-progress:\(conversation.id)",
             conversationId: conversation.id,
             author: .agent,
-            authorName: pendingAgentDisplayNames[conversation.id] ?? "My Kordi",
+            authorName: pendingAgentDisplayNames[conversation.id] ?? "Kordi",
+            senderOwnerName: pendingAgentOwnerNames[conversation.id],
             text: "processing...",
             createdAt: placeholderCreatedAt,
             deliveryState: .delivered,
@@ -2084,23 +2087,21 @@ final class AppModel: ObservableObject {
     ) async {
         let current = conversations.first(where: { $0.id == conversation.id }) ?? conversation
         guard let accountId = account?.accountId,
-              message.author != .me,
-              MentionAttention.messageTargetsPerson(
-                message,
+              !MentionAttention.pendingMessages(
+                in: [message],
                 accountId: accountId,
+                lastReadSequence: current.lastReadSequence,
                 groupSessionId: current.kind == .group ? current.sessionId : nil
-              ),
-              let sequence = message.conversationSequence else { return }
-        guard sequence > current.lastReadSequence,
+              ).isEmpty,
               let messageID = await applyConversationReadLocally(
                 current,
-                throughSequence: sequence
+                throughSequence: message.conversationSequence
               ) else { return }
         guard !previewMode else { return }
         do {
             try await persistConversationRead(
                 current,
-                throughSequence: sequence
+                throughSequence: message.conversationSequence
             )
             persistedVisibleReadMessageBySessionID[current.sessionId] = messageID
             cloudConnectionState = .connected
@@ -2200,6 +2201,7 @@ final class AppModel: ObservableObject {
                     conversationSequence: message.conversationSequence,
                     author: message.author,
                     authorName: message.authorName,
+                    senderOwnerName: message.senderOwnerName,
                     text: message.text,
                     createdAt: message.createdAt,
                     editedAt: message.editedAt,
@@ -3162,6 +3164,9 @@ final class AppModel: ObservableObject {
                 accountId: contact.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl,
+                agentId: contact.defaultAgent?.agentId,
+                agentDisplayName: contact.defaultAgent?.displayName,
+                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource,
                 role: "person"
             )
         }
@@ -3250,6 +3255,9 @@ final class AppModel: ObservableObject {
                 accountId: account.accountId,
                 displayName: account.preferredName,
                 avatarUrl: account.avatar.imageSource,
+                agentId: account.defaultAgent?.agentId,
+                agentDisplayName: account.defaultAgent?.displayName,
+                agentAvatarUrl: account.defaultAgent?.avatar.imageSource,
                 role: "self"
             )
         ] + contacts.map { contact in
@@ -3257,6 +3265,9 @@ final class AppModel: ObservableObject {
                 accountId: contact.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl,
+                agentId: contact.defaultAgent?.agentId,
+                agentDisplayName: contact.defaultAgent?.displayName,
+                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource,
                 role: "person"
             )
         }
@@ -3636,8 +3647,12 @@ final class AppModel: ObservableObject {
     }
 
     func canChangeRuntimeRouting(for conversation: ConversationSummary) -> Bool {
-        conversation.kind != .agent
+        let canonicalDefaultAgentID = account.map {
+            $0.defaultAgent?.agentId.nonEmpty ?? "cloud-agent:\($0.accountId)"
+        }
+        return conversation.kind != .agent
             || conversation.agentId == CanonicalAvatarSystem.defaultAgentId
+            || conversation.agentId == canonicalDefaultAgentID
             || ownedAgent(for: conversation) != nil
     }
 
@@ -3984,7 +3999,7 @@ final class AppModel: ObservableObject {
             id: messageID,
             conversationId: conversation.id,
             author: .agent,
-            authorName: ownedAgent(for: conversation)?.name ?? "My Kordi",
+            authorName: ownedAgent(for: conversation)?.name ?? "Kordi",
             text: noticeText,
             createdAt: revisionDate == .distantPast ? Date() : revisionDate,
             deliveryState: .delivered,
@@ -4128,7 +4143,8 @@ final class AppModel: ObservableObject {
                 conversationId: conversation.id,
                 requestMessageId: requestMessageId,
                 startedAt: Date(),
-                agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "My Kordi"
+                agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "Kordi",
+                agentOwnerName: conversation.kind == .agent ? conversation.ownerDisplayName : nil
             )
         }
         if ownerAccountId == account.accountId {
@@ -4638,6 +4654,9 @@ final class AppModel: ObservableObject {
                 accountId: participant.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl?.nonEmpty ?? participant.avatarUrl,
+                agentId: contact.defaultAgent?.agentId ?? participant.agentId,
+                agentDisplayName: contact.defaultAgent?.displayName ?? participant.agentDisplayName,
+                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource ?? participant.agentAvatarUrl,
                 role: participant.role,
                 joinedAt: participant.joinedAt
             )
@@ -4646,6 +4665,9 @@ final class AppModel: ObservableObject {
             accountId: account.accountId,
             displayName: account.preferredName,
             avatarUrl: account.avatar.imageSource,
+            agentId: account.defaultAgent?.agentId,
+            agentDisplayName: account.defaultAgent?.displayName,
+            agentAvatarUrl: account.defaultAgent?.avatar.imageSource,
             role: byAccountID[account.accountId]?.role.nonEmpty ?? "self",
             joinedAt: byAccountID[account.accountId]?.joinedAt
         )
@@ -4855,6 +4877,7 @@ final class AppModel: ObservableObject {
                 authorName: author == .me
                     ? "You"
                     : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
+                senderOwnerName: author == .agent ? payload.senderOwnerName?.nonEmpty : nil,
                 text: payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (
@@ -5307,7 +5330,6 @@ final class AppModel: ObservableObject {
 
         let readableConversations = conversations.filter {
             readableConversationIDs.contains($0.id)
-                && pendingMentionCount(for: $0) == 0
         }
         for conversation in readableConversations {
             guard let latestIncomingMessageID =
@@ -5383,20 +5405,21 @@ final class AppModel: ObservableObject {
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else {
             return
         }
-        conversations[index].lastReadSequence = max(
+        let lastReadSequence = max(
             conversations[index].lastReadSequence,
             throughSequence
         )
+        conversations[index].lastReadSequence = lastReadSequence
         let remaining = messagesByConversation[conversationID, default: []].filter { message in
             message.author != .me
                 && !message.isSystemNotice
-                && message.conversationSequence.map { $0 > throughSequence } == true
+                && message.conversationSequence.map { $0 > lastReadSequence } == true
         }
         conversations[index].unreadCount = remaining.count
         conversations[index].unreadMentionCount = MentionAttention.pendingMessages(
             in: remaining,
             accountId: accountId,
-            lastReadSequence: throughSequence,
+            lastReadSequence: lastReadSequence,
             groupSessionId: conversations[index].kind == .group
                 ? conversations[index].sessionId
                 : nil
@@ -5896,11 +5919,13 @@ final class AppModel: ObservableObject {
         conversationId: String,
         requestMessageId: String,
         startedAt: Date,
-        agentDisplayName: String
+        agentDisplayName: String,
+        agentOwnerName: String? = nil
     ) {
         pendingAgentRequestIds[conversationId] = requestMessageId
         pendingAgentRequestStartedAt[conversationId] = startedAt
         pendingAgentDisplayNames[conversationId] = agentDisplayName
+        pendingAgentOwnerNames[conversationId] = agentOwnerName?.nonEmpty
         agentRequestPresentationIds[requestMessageId] = agentRequestPresentationIds[requestMessageId]
             ?? requestMessageId
         setAgentActivity(.replying, conversationId: conversationId)
@@ -5922,6 +5947,7 @@ final class AppModel: ObservableObject {
         pendingAgentRequestIds[conversationId] = nil
         pendingAgentRequestStartedAt[conversationId] = nil
         pendingAgentDisplayNames[conversationId] = nil
+        pendingAgentOwnerNames[conversationId] = nil
     }
 
     private func completeAgentRequest(conversationId: String) {

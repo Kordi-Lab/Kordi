@@ -331,6 +331,7 @@ final class LocalMessageStoreTests: XCTestCase {
             conversationId: "person:shared-contact",
             author: .agent,
             authorName: "My Kordi",
+            senderOwnerName: "Shu Yang",
             text: "Background session started",
             createdAt: Date(timeIntervalSince1970: 2),
             deliveryState: .delivered,
@@ -345,13 +346,12 @@ final class LocalMessageStoreTests: XCTestCase {
             accountId: "account-a"
         )
 
-        XCTAssertEqual(
-            store.loadMessages(
-                accountId: "account-a",
-                conversationId: message.conversationId
-            ).first?.backgroundAgentSessions,
-            [session]
-        )
+        let restored = store.loadMessages(
+            accountId: "account-a",
+            conversationId: message.conversationId
+        ).first
+        XCTAssertEqual(restored?.senderOwnerName, "Shu Yang")
+        XCTAssertEqual(restored?.backgroundAgentSessions, [session])
     }
 
     func testCacheRoundTripsMentionAttentionStateAndEntities() throws {
@@ -432,7 +432,9 @@ final class LocalMessageStoreTests: XCTestCase {
         var cachedMessage = message(
             id: "history",
             conversationID: cachedConversation.id,
-            text: "Persisted history"
+            text: "Persisted history",
+            author: .agent,
+            senderOwnerName: "Shu Yang"
         )
         cachedMessage.reactionTargetMessageId = "018f47c2-9f4c-7a5e-b001-000000000001"
         cachedMessage.reactions = [MessageReaction(value: "blob:blobwave", accountIds: ["account-a"])]
@@ -455,6 +457,7 @@ final class LocalMessageStoreTests: XCTestCase {
         XCTAssertEqual(rebased.map(\.conversationId), [canonicalConversation.id])
         XCTAssertEqual(rebased.first?.reactionTargetMessageId, cachedMessage.reactionTargetMessageId)
         XCTAssertEqual(rebased.first?.reactions, cachedMessage.reactions)
+        XCTAssertEqual(rebased.first?.senderOwnerName, cachedMessage.senderOwnerName)
         XCTAssertEqual(
             store.loadMessages(accountId: "account-a", conversationId: canonicalConversation.id),
             rebased
@@ -483,13 +486,15 @@ final class LocalMessageStoreTests: XCTestCase {
         conversationID: String,
         text: String,
         author: MessageAuthor = .person,
-        requestMessageID: String? = nil
+        requestMessageID: String? = nil,
+        senderOwnerName: String? = nil
     ) -> ChatMessage {
         ChatMessage(
             id: id,
             conversationId: conversationID,
             author: author,
             authorName: author == .agent ? "My Kordi" : "Shared contact",
+            senderOwnerName: senderOwnerName,
             text: text,
             createdAt: Date(timeIntervalSince1970: id == "earlier" ? 1 : 2),
             deliveryState: .delivered,

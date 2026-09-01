@@ -191,7 +191,7 @@ export function useCloudCollaborationState({
   setCanonicalSessionState,
   localTurnsBySessionId,
   cloudAgentRuntimeRoutesBySessionId,
-  defaultCloudAgentRuntimeRoute,
+  defaultCloudAgentRuntimeRoute, localAgentLabel,
   defaultCloudAgentRuntimeReady = true,
   desktopAuthState,
 }: UseCloudCollaborationStateArgs): UseCloudCollaborationStateResult {
@@ -416,7 +416,6 @@ export function useCloudCollaborationState({
 
   const fullUnreadCountsBySessionId = useCloudCanonicalReconciliation({
     account,
-    activeConversationId,
     canonical: {
       state: canonicalSessionState,
       setState: setCanonicalSessionState,
@@ -467,7 +466,7 @@ export function useCloudCollaborationState({
   });
 
   useCloudSelfAgentExecution({
-    account,
+    account, canonicalState: canonicalSessionState,
     client,
     messageIndex: cloudMessageIndex,
     initialMessagesSettled,
@@ -509,7 +508,6 @@ export function useCloudCollaborationState({
       setState: setCanonicalSessionState,
     },
     messages: {
-      byPeer: messagesByPeer,
       setByPeer: setMessagesByPeer,
       index: cloudMessageIndex,
       sync: syncCloudCollaborationDiff,
@@ -530,7 +528,7 @@ export function useCloudCollaborationState({
   });
 
   useCloudSelfAgentCanonicalSync({
-    account,
+    account, agentDisplayName: localAgentLabel,
     canonicalState: canonicalSessionState,
     setCanonicalState: setCanonicalSessionState,
     messagesByPeer,
@@ -554,7 +552,7 @@ export function useCloudCollaborationState({
     activeConversationId,
     canonicalState: canonicalSessionState,
     routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
-    defaultRoute: defaultCloudAgentRuntimeRoute,
+    defaultRoute: defaultCloudAgentRuntimeRoute, localAgentLabel,
     contacts: cloudContacts,
     deletedSessionIds: cloudDeletedSessionIds,
     accountContextKey: cloudCollaborationAccountContextKey,

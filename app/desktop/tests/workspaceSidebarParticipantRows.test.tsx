@@ -9,7 +9,7 @@ import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 import { conversation, baseSidebarProps, countMatches } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
-test('WorkspaceSidebar moves participant-space unread totals between folded parent and unread child sessions', () => {
+test('WorkspaceSidebar keeps unread on the selected child until presentation commits read state', () => {
   const chatConversations = [
     conversation({
       id: 'session:group:one',
@@ -61,7 +61,7 @@ test('WorkspaceSidebar moves participant-space unread totals between folded pare
   }) as never));
   assert.doesNotMatch(expandedMarkup, /data-unread-scope="participant-space"/);
   assert.match(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="2"/);
-  assert.doesNotMatch(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="3"/);
+  assert.match(expandedMarkup, /data-unread-scope="participant-session"[^>]*data-unread-count="3"/);
 });
 
 test('WorkspaceSidebar shows a separate @ indicator beside the total unread count', () => {

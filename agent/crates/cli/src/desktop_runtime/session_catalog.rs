@@ -488,7 +488,7 @@ pub(super) fn fallback_session_display_title(row: &kordi_session::store::Session
     let date = chrono::DateTime::parse_from_rfc3339(&row.created_at)
         .map(|value| value.with_timezone(&Local).format("%b %-d").to_string())
         .unwrap_or_else(|_| "recently".to_string());
-    format!("Chat with My Kordi · {date}")
+    format!("Chat with Kordi · {date}")
 }
 
 pub(super) fn truncate_chars(value: &str, max_chars: usize) -> String {
@@ -602,7 +602,7 @@ mod tests {
         };
 
         let title = fallback_session_display_title(&row);
-        assert!(title.starts_with("Chat with My Kordi · "));
+        assert!(title.starts_with("Chat with Kordi · "));
         assert!(!title.contains(&row.session_id));
     }
 

@@ -114,7 +114,7 @@ struct ConversationRow: View {
                 } else {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 5) {
-                            Text(conversation.agentDisplayName?.nonEmpty ?? "My Kordi")
+                            Text(conversation.agentDisplayName?.nonEmpty ?? "Kordi")
                                 .foregroundStyle(KordiTheme.agentViolet)
                                 .lineLimit(1)
                             Text("·")

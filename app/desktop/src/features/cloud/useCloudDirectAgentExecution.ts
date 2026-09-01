@@ -144,8 +144,8 @@ export function useCloudDirectAgentExecution({
             localHumanName:
               account.displayName || account.primaryEmail || 'Me',
             peerHumanName,
-            localAgentName: 'My Kordi',
-            peerAgentName: `${peerHumanName}'s Kordi`,
+            localAgentName: account.defaultAgent?.displayName || 'Kordi',
+            peerAgentName: contact?.targetCloudAgentName || 'Kordi',
           }),
         ];
         const visibleTaskRecords = activitySessionId

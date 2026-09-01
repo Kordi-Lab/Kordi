@@ -21,6 +21,11 @@ import {
 } from './cloudGroupMessages';
 import { loadSession } from './session';
 import { cloudAgentLocalFailureMessage } from './cloudAgentLocalExecution';
+import {
+  cloudAgentCanonicalIdentityId,
+  cloudAgentDisplayName,
+  cloudAgentId,
+} from './cloudAgentIdentity';
 import type {
   CanonicalSessionStateSetter,
   CloudGroupAgentRuntime,
@@ -50,17 +55,21 @@ export type HandleCloudGroupAgentFailureInput = {
 
 export function cloudGroupAgentFailureNoticeRequest({
   accountId,
+  agentId,
   groupId,
   requestId,
   agentDisplayName,
+  ownerDisplayName,
   error,
   messageAction = null,
   now = Date.now(),
 }: {
   accountId: string;
+  agentId?: string | null;
   groupId: string;
   requestId: string;
   agentDisplayName: string;
+  ownerDisplayName?: string | null;
   error: unknown;
   messageAction?: MessageActionMetadata | null;
   now?: number;
@@ -74,12 +83,14 @@ export function cloudGroupAgentFailureNoticeRequest({
   return {
     id: processingMessageId,
     sessionId: groupId,
-    senderIdentityId: `agent:cloud:${accountId}`,
+    senderIdentityId: cloudAgentCanonicalIdentityId(agentId, accountId),
     senderRole: 'owned-agent',
     messageKind: 'agent-turn',
     contentText: '',
     content: {
       sender: agentDisplayName,
+      senderOwnerAccountId: accountId,
+      senderOwnerName: ownerDisplayName?.trim() || null,
       timestampMs: now,
       deliveryState: 'failed',
       sourceConversationId: cloudGroupAgentConversationId(groupId),
@@ -123,15 +134,18 @@ export async function handleCloudGroupAgentFailure(
     || stateOps.cleanText(account.displayName)
     || stateOps.cleanText(account.primaryEmail)
     || 'Cloud user';
-  const agentDisplayName = hostedAgentName || `${hostedAgentOwnerName}'s Kordi`;
+  const agentId = cloudAgentId(message.targetCloudAgentId, account.accountId);
+  const agentDisplayName = cloudAgentDisplayName(hostedAgentName);
   const failureText = noProvider
     ? cloudAgentNoProviderNoticeText()
     : cloudAgentLocalFailureMessage(error);
   const failedResponseRequest = cloudGroupAgentFailureNoticeRequest({
     accountId: account.accountId,
+    agentId,
     groupId: envelope.groupId,
     requestId: message.id,
     agentDisplayName,
+    ownerDisplayName: hostedAgentOwnerName,
     error,
     messageAction: message.messageAction,
     now: responseCreatedAtMs,
@@ -178,6 +192,7 @@ export async function handleCloudGroupAgentFailure(
     responseCreatedAtMs,
     failureText,
     agentDisplayName,
+    agentId,
     signal,
   }).catch((fanoutError) => {
     runtime.reportFailure(
@@ -194,6 +209,7 @@ async function publishCloudGroupAgentFailure({
   responseCreatedAtMs,
   failureText,
   agentDisplayName,
+  agentId,
   signal,
 }: {
   context: CloudGroupMessageControlContext;
@@ -202,6 +218,7 @@ async function publishCloudGroupAgentFailure({
   responseCreatedAtMs: number;
   failureText: string;
   agentDisplayName: string;
+  agentId: string;
   signal?: AbortSignal;
 }): Promise<void> {
   if (signal?.aborted) return;
@@ -232,6 +249,7 @@ async function publishCloudGroupAgentFailure({
     message: {
       id: responseMessageId,
       senderAccountId: account.accountId,
+      senderAgentId: agentId,
       text: failureText,
       createdAtMs: responseCreatedAtMs,
       senderKind: 'agent',

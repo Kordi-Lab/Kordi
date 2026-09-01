@@ -621,6 +621,30 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(ConversationAttentionBadge.countLabel(120), "99+")
     }
 
+    func testVisibleAndLegacyMentionsAdvanceUnreadState() throws {
+        let iosDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi")
+        let viewSource = try String(
+            contentsOf: iosDirectory
+                .appendingPathComponent("Features/Conversation/ConversationView.swift"),
+            encoding: .utf8
+        )
+        let modelSource = try String(
+            contentsOf: iosDirectory.appendingPathComponent("App/AppModel.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(viewSource.contains("onScrollVisibilityChange(threshold: 0.5)"))
+        XCTAssertTrue(viewSource.contains("isPendingMention: pendingMentionMessageIDs.contains(message.id)"))
+        XCTAssertTrue(modelSource.contains("throughSequence: message.conversationSequence"))
+        XCTAssertTrue(modelSource.contains("let lastReadSequence = max("))
+        XCTAssertTrue(modelSource.contains("$0 > lastReadSequence"))
+        XCTAssertFalse(modelSource.contains("guard pendingMentionCount(for: conversation) == 0"))
+        XCTAssertFalse(modelSource.contains("&& pendingMentionCount(for: $0) == 0"))
+    }
+
     @MainActor
     func testPreviewChatListActionsUpdateVisibleState() async throws {
         let model = AppModel(previewMode: true)

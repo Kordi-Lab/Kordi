@@ -254,6 +254,9 @@ struct ConversationView: View {
         let coordinatorOwnsConversationCall = callCoordinator.activeCall?.call.id
             == activeConversationCall?.id
         let mentionTargets = model.mentionTargets(for: conversation)
+        let pendingMentionMessageIDs = Set(
+            model.pendingMentionMessages(for: conversation).map(\.id)
+        )
         let pendingMentionCount = model.pendingMentionCount(for: conversation)
         let pinTargetPresentation = Binding(
             get: { pinTarget != nil },
@@ -347,6 +350,7 @@ struct ConversationView: View {
                                                 timeline: timeline,
                                                 messagesByID: messagesById,
                                                 mentionTargets: mentionTargets,
+                                                isPendingMention: pendingMentionMessageIDs.contains(message.id),
                                                 pinnedMessageIDs: pinnedMessageIDs,
                                                 previewActionMessageID: previewActionMessageID,
                                                 threadReplyCount: threadReplyCount,
@@ -935,6 +939,7 @@ struct ConversationView: View {
         timeline: [ChatMessage],
         messagesByID: [String: ChatMessage],
         mentionTargets: [ComposerMentionTarget],
+        isPendingMention: Bool,
         pinnedMessageIDs: Set<String>,
         previewActionMessageID: String?,
         threadReplyCount: Int,
@@ -1080,6 +1085,9 @@ struct ConversationView: View {
             }
         }
         .id(row.id)
+        .modifier(MentionPresentationModifier(isPending: isPendingMention) {
+            Task { await model.markMentionPresented(message, in: conversation) }
+        })
     }
 
     private func handleTimelineCountChange(
@@ -2592,6 +2600,26 @@ private struct EarlierMessagesLoader: View {
     }
 }
 
+private struct MentionPresentationModifier: ViewModifier {
+    let isPending: Bool
+    let action: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollVisibilityChange(threshold: 0.5) { isVisible in
+                guard isPending, isVisible else { return }
+                action()
+            }
+        } else {
+            content.onAppear {
+                guard isPending else { return }
+                action()
+            }
+        }
+    }
+}
+
 private struct MentionNavigationButton: View {
     let count: Int
     let isLoading: Bool
@@ -2812,7 +2840,7 @@ private struct EmptyConversation: View {
             return conversation.displayName
         }
         if conversation.kind == .agent {
-            return conversation.agentDisplayName?.nonEmpty ?? "My Kordi"
+            return conversation.agentDisplayName?.nonEmpty ?? "Kordi"
         }
         return conversation.displayName
     }

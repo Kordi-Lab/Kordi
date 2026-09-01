@@ -13,6 +13,7 @@ use kordi_cli::desktop_runtime::{
 };
 
 pub(crate) mod agent_builder;
+pub(crate) mod agent_identity;
 pub(crate) mod agent_prompt_runner;
 pub(crate) mod artifacts;
 pub(crate) mod attachments;
@@ -28,6 +29,11 @@ pub(crate) mod session_observation;
 pub(crate) mod session_preparation;
 mod transient_drafts;
 pub(crate) mod turns;
+
+#[cfg(test)]
+use agent_identity::normalized_agent_name;
+#[cfg(test)]
+use session_lifecycle::is_missing_session_error;
 
 pub(crate) use attachments::allow_attachment_asset_scope;
 
@@ -128,30 +134,7 @@ pub struct DesktopChatManager {
 
 impl DesktopChatManager {
     pub(crate) async fn reload_skill_resources(&self) -> Result<(), String> {
-        let sessions = self
-            .sessions
-            .lock()
-            .await
-            .iter()
-            .filter(|(session_id, _)| !agent_builder::is_agent_builder_session_id(session_id))
-            .map(|(_, session)| session.clone())
-            .collect::<Vec<_>>();
-        let mut errors = Vec::new();
-        for session in sessions {
-            if let Err(error) = session.lock().await.reload_resources().await {
-                errors.push(error.to_string());
-            }
-        }
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(format!(
-                "Skills were updated, but {} open session{} could not reload: {}",
-                errors.len(),
-                if errors.len() == 1 { "" } else { "s" },
-                errors.join("; ")
-            ))
-        }
+        session_lifecycle::reload_skill_resources(self).await
     }
 }
 

@@ -187,7 +187,7 @@ export function CloudLoginPage({
   const canSubmit = useMemo(() => {
     if (submitting) return false;
     if (!EMAIL_PATTERN.test(email)) return false;
-    if (password.length < PASSWORD_MIN_LENGTH) return false;
+    if (password.length === 0 || (isSignup && password.length < PASSWORD_MIN_LENGTH)) return false;
     if (isSignup && password !== confirmPassword) return false;
     return true;
   }, [confirmPassword, email, isSignup, password, submitting]);

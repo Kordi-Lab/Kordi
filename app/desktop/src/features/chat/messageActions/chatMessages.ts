@@ -40,10 +40,7 @@ import type { AttachmentItem } from '../composerController.types';
 import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
 import { messageMentionsForSend } from '../messageMentions';
-import {
-  mentionsLocalAgent,
-  resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh,
-} from './mentions';
+import { mentionsLocalAgent } from './mentions';
 import {
   appendOptimisticCollaborationMessage,
   appendOptimisticCanonicalMessage,
@@ -58,7 +55,7 @@ import {
   retryAttachmentItemsFromMessage, voiceMessageSendFields,
   type PreparedCanonicalUserMessage,
 } from './optimistic';
-import { activeConversationMatchesSendScope } from './messageSendScope';
+import { activeConversationMatchesSendScope, claimConversationSend, releaseConversationSend } from './messageSendScope';
 import { reconcileOptimisticCollaborationMessageUpdater } from './optimisticReconciliation';
 import {
   markOptimisticCanonicalMessageSent,
@@ -72,6 +69,7 @@ import {
   terminalCollaborationSendFailure,
 } from './collaborationSendLifecycle';
 import {
+  appendOptimisticLocalDraftMessage,
   fetchMaterializedLocalChatTarget,
   generatedSelfAgentSessionId,
   shouldUseNoProviderSelfAgentShortcut,
@@ -84,6 +82,7 @@ import type {
 import { composerMessageAction } from '../messageActionMetadata';
 import { memeAttachmentDraftError } from '../memeAttachments';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
+import { cloudAgentMentionIdentity, resolveCloudAgentMentionTargetIds, resolvePreferredAgentMentionTarget } from './cloudAgentMentionTarget';
 import { prefetchNativeVideoRetry, terminalCollaborationRetryFailure } from './collaborationRetry';
 import {
   collaborationDirectSessionParticipants,
@@ -360,10 +359,6 @@ export function collaborationConversationSendPlan({
     canAppendCollaborationOptimisticMessage: Boolean(targetConversationId),
   };
 }
-function cleanText(value?: string | null) {
-  return value?.trim() || null;
-}
-
 export function activeLocalTurnShouldDelayChatSend({
   activeConversationUsesCollaborationRouting,
   activeConvId,
@@ -445,7 +440,7 @@ export function restoredSelfAgentContextMessages(messages: readonly Message[]): 
     const authorKind = messageAuthorKind(message);
     return [{
       id,
-      authorName: message.sender?.trim() || (authorKind === 'agent' ? 'My Kordi' : 'Me'),
+      authorName: message.sender?.trim() || (authorKind === 'agent' ? 'Kordi' : 'Me'),
       authorKind,
       text,
       createdAtMs: null,
@@ -479,6 +474,7 @@ export function useChatMessageActions({
   handleLocalSlashCommand,
   isNativeShell,
   queuedDesktopMessagesBySession,
+  collaborationSendInFlightConversationIdsRef,
   localChatSendInFlightRef,
   refreshDesktopChat,
   setActiveConvId,
@@ -1083,28 +1079,26 @@ export function useChatMessageActions({
       setDesktopChatError(memeValidationError);
       return;
     }
-    const mentionedTarget = await resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh(
-      text, desktopCollaborationState, activeConvMentionScope,
-      sharedCloudAgents, resolveSharedCloudAgentsForMention,
-    );
-    const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);
-    const targetCloudAgentId = mentionedTarget?.peer.agentId?.startsWith('cloud_agent_') ? mentionedTarget.peer.agentId : null;
-    const mentionedCloudSharedAgentOwnerAccountId = targetCloudAgentId
-      ? cleanText(mentionedTarget?.peer.humanId) || cleanText(mentionedTarget?.peer.nodeId)
-      : null;
+    const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);
     const activeGroupSessionScope = {
       canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
       participantSpaceId: activeConvMentionScope?.participantSpaceId,
       directness: activeConvMentionScope?.directness,
       canonicalParticipants: activeConvMentionScope?.canonicalParticipants,
     };
+    const activeGroupSessionIsGroup = isCollaborationGroupSession(activeGroupSessionScope);
+    const localAgentMentioned = mentionsLocalAgent(text, desktopChatState, desktopCollaborationState);
+    const mentionedTarget = await resolvePreferredAgentMentionTarget(
+      text, desktopChatState, desktopCollaborationState, activeConvMentionScope, sharedCloudAgents, resolveSharedCloudAgentsForMention, isTransientDraftConversation,
+      activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person',
+    );
+    const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);
+    const { targetCloudAgentId, targetCloudAgentName, ownerAccountId: mentionedCloudSharedAgentOwnerAccountId } = cloudAgentMentionIdentity(mentionedTarget);
     const localCollaborationNodeIds = new Set(
       (desktopCollaborationState?.hosts ?? [])
         .map((host) => host.nodeId?.trim())
         .filter((value): value is string => Boolean(value)),
     );
-    const activeGroupSessionIsGroup = isCollaborationGroupSession(activeGroupSessionScope);
-    const localAgentMentioned = mentionsLocalAgent(text, desktopChatState, desktopCollaborationState);
     const activeConversationUsesCollaborationRouting = shouldUseCollaborationConversationRouting({
       activeConversationUsesCollaboration,
       activeConvCollaborationTarget,
@@ -1126,10 +1120,7 @@ export function useChatMessageActions({
       ? collaborationGroupSessionSendTargets(activeGroupSessionScope, activeConvCollaborationTarget, localCollaborationNodeIds)
       : [];
     const cloudGroupTargetIds = cloudGroupTargetAccountIds(allGroupSendTargets);
-    const directCloudSharedAgentTargetIds = !activeGroupSessionIsGroup && mentionedCloudSharedAgentOwnerAccountId
-      ? [mentionedCloudSharedAgentOwnerAccountId]
-      : [];
-    const cloudAgentMentionTargetIds = activeGroupSessionIsGroup ? cloudGroupTargetIds : directCloudSharedAgentTargetIds;
+    const cloudAgentMentionTargetIds = resolveCloudAgentMentionTargetIds(activeGroupSessionIsGroup, cloudGroupTargetIds, mentionedCloudSharedAgentOwnerAccountId);
     const cloudAgentMentionParticipants = activeGroupSessionIsGroup
       ? activeGroupSessionParticipants
       : collaborationDirectSessionParticipants(activeGroupSessionScope, activeCollaborationHost, activeConvCollaborationTarget, { selfPublicName: selfPublicCollaborationName });
@@ -1295,6 +1286,7 @@ export function useChatMessageActions({
         setDesktopChatError('Unable to resolve group recipients.');
         return;
       }
+      if (!claimConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId)) return;
       const sentAt = formatDesktopEventTime();
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         activeConvCanonicalSessionId,
@@ -1335,7 +1327,7 @@ export function useChatMessageActions({
             createdAtMs: Date.now(),
             messageAction: quoteForSend?.source ? composerMessageAction(quoteForSend) : null,
             targetCloudAgentId,
-            targetCloudAgentName: targetCloudAgentId ? mentionedTarget?.displayLabel ?? null : null,
+            targetCloudAgentName,
             targetCloudAgentOwnerAccountId: targetCloudAgentId ? mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null : null,
             targetCloudAgentOwnerName: targetCloudAgentId ? mentionedTarget?.peer.ownerName ?? null : null,
             agentRuntimeRoute: resolveChatRuntimeRoute(cloudAgentMentionSessionId), ...voiceFields,
@@ -1359,6 +1351,7 @@ export function useChatMessageActions({
           setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
         });
       } finally {
+        releaseConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId);
         setIsDesktopChatSending(false);
       }
       return;
@@ -1373,6 +1366,7 @@ export function useChatMessageActions({
         setDesktopChatError('Group chat is still loading. Try again in a moment.');
         return;
       }
+      if (!claimConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId)) return;
       const sentAt = formatDesktopEventTime();
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         activeConvCanonicalSessionId,
@@ -1432,6 +1426,7 @@ export function useChatMessageActions({
           setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
         });
       } finally {
+        releaseConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId);
         setIsDesktopChatSending(false);
       }
       return;
@@ -1442,6 +1437,7 @@ export function useChatMessageActions({
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
+      if (!claimConversationSend(collaborationSendInFlightConversationIdsRef.current, activeCloudConversationId)) return;
       const sentAt = formatDesktopEventTime();
       const optimisticMessageId = createCloudCollaborationClientMessageId();
       const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeCloudConversationId);
@@ -1491,6 +1487,7 @@ export function useChatMessageActions({
           setDesktopChatError(failure.detail);
         }
       } finally {
+        releaseConversationSend(collaborationSendInFlightConversationIdsRef.current, activeCloudConversationId);
         setIsDesktopChatSending(false);
       }
       return;
@@ -1511,7 +1508,6 @@ export function useChatMessageActions({
       return;
     }
 
-    const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);
     let targetSessionId = localChatTargetSessionIdForActiveConversation({
       activeConvId,
       activeConvCanonicalSessionId,
@@ -1675,7 +1671,7 @@ export function useChatMessageActions({
       materializedState = await createDesktopChatSession();
       targetSessionId = materializedState.activeSessionId;
       if (runtimeRouteForSend?.model && publishCloudAgentRuntimeRouteChange) {
-        await publishCloudAgentRuntimeRouteChange({
+        void publishCloudAgentRuntimeRouteChange({
           sessionId: targetSessionId,
           model: runtimeRouteForSend.model,
           authProvider: runtimeRouteForSend.authProvider,
@@ -1685,7 +1681,7 @@ export function useChatMessageActions({
             text,
             chatComposerAttachments.length,
           ),
-        });
+        }).catch((error: unknown) => setDesktopChatError(error instanceof Error ? error.message : 'Unable to sync session model'));
       }
       setDesktopChatState(materializedState);
       setActiveConvId(targetSessionId);
@@ -1698,6 +1694,9 @@ export function useChatMessageActions({
       if (followMainTranscript) shouldAutoFollowChatRef.current = true;
       setIsDesktopChatSending(true);
       setDesktopChatError(null);
+      if (isTransientDraftConversation) {
+        setDesktopChatState((current) => appendOptimisticLocalDraftMessage(current, attachmentSummaryText(text, attachmentsToSend), text, attachmentsToSend, formatDesktopEventTime(), activeChatQuote));
+      }
       const resolvedSessionId = await ensureLocalSessionId();
       localChatSendInFlightRef.current = { sessionId: resolvedSessionId };
 
@@ -1853,6 +1852,7 @@ export function useChatMessageActions({
     hasAnyDesktopAuth,
     desktopLiveTurn,
     clearComposerAfterSend,
+    collaborationSendInFlightConversationIdsRef,
     handleLocalSlashCommand,
     isNativeShell,
     localChatSendInFlightRef,

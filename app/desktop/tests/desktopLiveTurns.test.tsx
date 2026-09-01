@@ -141,7 +141,7 @@ test('completed desktop assistant messages fall back to error text and failed st
   const completed = buildCompletedDesktopAssistantMessage(failedTurn, 1_725_000_020_000);
 
   assert.equal(completed.role, 'assistant');
-  assert.equal(completed.sender, 'My Kordi');
+  assert.equal(completed.sender, 'Kordi');
   assert.equal(completed.text, 'request failed');
   assert.equal(completed.failed, true);
   assert.equal(completed.thinkingText, 'thoughts');
@@ -205,6 +205,7 @@ test('live, synthetic completion, and canonical hydration keep one render identi
   );
 
   assert.equal(liveMessage.id, completedTurn.id);
+  assert.equal(liveMessage.senderOwnerName, 'You');
   assert.equal(synthetic.transcriptRenderId, liveMessage.id);
   assert.equal(synthetic.entryId, completedTurn.transcriptEntryId);
   assert.equal(canonical.transcriptRenderId, liveMessage.id);

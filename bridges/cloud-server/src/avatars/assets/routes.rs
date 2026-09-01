@@ -165,6 +165,9 @@ async fn upload_is_authorized(
     if entity_type != "agent" {
         return false;
     }
+    if entity_id == format!("cloud-agent:{owner_account_id}") {
+        return true;
+    }
     query_as::<_, (i32,)>(
         "SELECT 1 FROM cloud_agent_definitions \
          WHERE agent_id = $1 AND owner_account_id = $2 AND status = 'active' \

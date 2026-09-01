@@ -238,6 +238,7 @@ export function normalizedCloudAgentMention(value: string): string {
 }
 
 function localAgentMentionKeys(account: CloudAccount, options: { allowFirstPerson?: boolean } = {}): Set<string> {
+  const agentName = normalizedCloudAgentMention(account.defaultAgent?.displayName ?? '');
   const names = [
     account.displayName,
     account.primaryEmail?.split('@')[0],
@@ -245,6 +246,7 @@ function localAgentMentionKeys(account: CloudAccount, options: { allowFirstPerso
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
   const keys = new Set<string>();
+  if (agentName) keys.add(agentName);
   if (options.allowFirstPerson !== false) {
     keys.add('kordi');
     keys.add('mykordi');
@@ -324,6 +326,7 @@ export type CloudAgentNativeContextMessage = {
   id: string;
   authorName: string;
   authorKind: 'human' | 'agent';
+  contextRole?: 'history' | 'system';
   text: string;
   createdAtMs: number;
 };
@@ -334,8 +337,8 @@ export function cloudAgentNativeContextMessagesFromDirectCloudSession({
   localAccountId,
   localHumanName = 'Me',
   peerHumanName = 'Peer',
-  localAgentName = 'My Kordi',
-  peerAgentName = "Peer's Kordi",
+  localAgentName = 'Kordi',
+  peerAgentName = 'Kordi',
 }: {
   messages: readonly CloudMessage[];
   requestMessage: CloudMessage;

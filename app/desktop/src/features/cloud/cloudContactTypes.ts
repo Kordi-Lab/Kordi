@@ -6,6 +6,7 @@ export type CloudContactSummary = {
   displayName: string | null;
   subtitle?: string | null;
   avatarUrl: string | null;
+  defaultAgent?: import('./cloudIdentityTypes').CloudDefaultAgentProfile | null;
   nodeId: string | null;
   createdAt: string;
   locked?: boolean;

@@ -44,8 +44,9 @@ pub async fn validate_agent_authored_group_handoff_claim(
     if message.sender_account_id.trim() != input.requester_account_id.trim() {
         return Ok(false);
     }
-    Ok(agent_handoff_target(&envelope)
-        .is_some_and(|target| target.account_id.trim() == input.owner_account_id.trim()))
+    Ok(agent_handoff_target(&envelope).is_some_and(|target| {
+        target.participant.account_id.trim() == input.owner_account_id.trim()
+    }))
 }
 
 #[derive(Debug, Clone)]

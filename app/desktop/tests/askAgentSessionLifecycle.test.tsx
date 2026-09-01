@@ -256,3 +256,28 @@ test('opening Ask Agent reports and renders authoritative transcript hydration',
   assert.doesNotMatch(transcriptCache, /if \(sourceCacheRef\.current\[normalizedSessionId\]\) return Promise\.resolve\(true\)/);
   assert.match(workspaceViewModels, /desktopRuntimeTranscriptLoaded: hydratedDesktopSessionIds\.has\(session\.id\)/);
 });
+
+test('new local sessions expose centered progress and coalesce duplicate first sends', () => {
+  const chatsSource = [
+    source('../src/pages/useChatHeaderModel.ts'),
+    source('../src/pages/chatsPage.mainWorkspace.tsx'),
+  ].join('\n');
+  const actionsSource = source('../src/features/chat/messageActions/chatMessages.ts');
+  const mentionTargetSource = source('../src/features/chat/messageActions/cloudAgentMentionTarget.ts');
+  const activeSendBlock = actionsSource.slice(actionsSource.indexOf('const handleSendChatMessage = useCallback'));
+  const delayGuardIndex = activeSendBlock.indexOf("if (localSendDelayReason === 'session-starting')");
+  const draftDetectionIndex = activeSendBlock.indexOf('const isTransientDraftConversation');
+  const mentionResolutionIndex = activeSendBlock.indexOf('resolvePreferredAgentMentionTarget');
+  const noProviderShortcutIndex = activeSendBlock.indexOf('const noProviderShortcutSessionId');
+
+  assert.match(chatsSource, /const isStarting = isDraft && isSending;/);
+  assert.match(chatsSource, /emptyState: isEmptySelection[\s\S]*: models\.header\.isStarting[\s\S]*\? <SessionStartingState \/>[\s\S]*: null/);
+  assert.match(activeSendBlock, /if \(localSendDelayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/);
+  assert.ok(delayGuardIndex >= 0 && delayGuardIndex < noProviderShortcutIndex);
+  assert.ok(draftDetectionIndex >= 0 && draftDetectionIndex < mentionResolutionIndex);
+  assert.match(activeSendBlock, /resolvePreferredAgentMentionTarget\([\s\S]*isTransientDraftConversation/);
+  assert.match(mentionTargetSource, /return cachedRemoteTarget \?\? localTarget \?\? \(skip \? null : resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh/);
+  assert.ok(activeSendBlock.indexOf('setIsDesktopChatSending(true);', noProviderShortcutIndex) < activeSendBlock.indexOf('await openOrCreateCanonicalSession({', noProviderShortcutIndex));
+  assert.ok(activeSendBlock.indexOf('appendOptimisticLocalDraftMessage(current') < activeSendBlock.indexOf('const resolvedSessionId = await ensureLocalSessionId()'));
+  assert.doesNotMatch(activeSendBlock, /await publishCloudAgentRuntimeRouteChange\(\{/);
+});

@@ -323,6 +323,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         sql: include_str!("../../migrations/0067_quarantine_invalid_support_conversations.sql"),
     },
     EmbeddedMigration {
+        version: 68,
+        description: "cloud agent fallback system prompts",
+        sql: include_str!("../../migrations/0068_cloud_agent_system_prompts.sql"),
+    },
+    EmbeddedMigration {
+        version: 69,
+        description: "account default agent profiles",
+        sql: include_str!("../../migrations/0069_default_agent_profiles.sql"),
+    },
+    EmbeddedMigration {
         version: 70,
         description: "expressive media deletion tombstones",
         sql: include_str!("../../migrations/0070_expressive_media_deletions.sql"),

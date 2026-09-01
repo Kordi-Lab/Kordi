@@ -16,6 +16,9 @@ export function cloudGroupSessionPreparationSignature(
     kordiId: string | null;
     displayName: string;
     avatarUrl: string | null;
+    agentId: string | null;
+    agentDisplayName: string | null;
+    agentAvatarUrl: string | null;
     role: string | null;
   }>();
   for (const participant of [
@@ -30,6 +33,9 @@ export function cloudGroupSessionPreparationSignature(
       kordiId: participant.kordiId?.trim() || null,
       displayName: participant.displayName.trim(),
       avatarUrl: participant.avatarUrl?.trim() || null,
+      agentId: participant.agentId?.trim() || null,
+      agentDisplayName: participant.agentDisplayName?.trim() || null,
+      agentAvatarUrl: participant.agentAvatarUrl?.trim() || null,
       role: participant.role?.trim() || null,
     });
   }

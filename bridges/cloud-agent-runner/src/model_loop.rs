@@ -64,8 +64,13 @@ where
     auth.apply_runtime_route(&run.runtime_route, &auth_material.provider);
     let tools = prompt::tool_catalog();
     let executor = CloudToolExecutor::new(sandbox.clone());
+    let system_prompt = [run.system_prompt.trim(), cloud_sandbox_system_prompt()]
+        .into_iter()
+        .filter(|section| !section.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
     let mut messages = vec![
-        json!({ "role": "system", "content": cloud_sandbox_system_prompt() }),
+        json!({ "role": "system", "content": system_prompt }),
         json!({ "role": "user", "content": run.prompt }),
     ];
     let mut tool_calls_used = 0usize;

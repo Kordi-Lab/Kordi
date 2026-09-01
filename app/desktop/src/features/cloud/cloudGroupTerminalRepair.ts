@@ -48,10 +48,17 @@ function processingSlotCoordinatesKey(
 ): string | null {
   const senderIdentityPrefix = 'agent:cloud:';
   if (
-    !message.senderIdentityId.startsWith(senderIdentityPrefix)
-    || !message.sourceTransport?.startsWith('cloud-group-agent')
+    !message.sourceTransport?.startsWith('cloud-group-agent')
   ) return null;
   const content = contentRecord(message.content);
+  const senderAccountId = cleanText(content.senderOwnerAccountId)
+    || (
+      message.senderIdentityId.startsWith(senderIdentityPrefix)
+      && !message.senderIdentityId.startsWith('agent:cloud-agent:')
+        ? message.senderIdentityId.slice(senderIdentityPrefix.length)
+        : ''
+    );
+  if (!senderAccountId) return null;
   const linkedRequestId = cleanText(message.parentMessageId)
     || cleanText(content.requestId)
     || cleanText(content.replyToMessageId);
@@ -65,7 +72,7 @@ function processingSlotCoordinatesKey(
   return coordinatesKey({
     groupId: message.sessionId,
     requestId: linkedRequestId,
-    senderAccountId: message.senderIdentityId.slice(senderIdentityPrefix.length),
+    senderAccountId,
   });
 }
 

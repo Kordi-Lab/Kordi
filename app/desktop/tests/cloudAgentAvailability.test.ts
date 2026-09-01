@@ -69,7 +69,7 @@ test('shared cloud agent mention candidates require owner participant', () => {
   assert.equal(withOwner[0]?.handle, 'ProjectDriver');
   assert.equal(withOwner[0]?.targetAgentId, 'cloud_agent_project');
   assert.equal(withOwner[0]?.targetOwnerAccountId, 'acct_owner');
-  assert.equal(withOwner[0]?.detailLabel, "Alex's Agent");
+  assert.equal(withOwner[0]?.detailLabel, 'Owner · Alex');
 
   const withoutOwner = sharedCloudAgentMentionCandidatesForConversation(
     [sharedAgent],

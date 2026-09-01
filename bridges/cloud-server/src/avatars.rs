@@ -398,6 +398,8 @@ async fn canonical_avatar_render_key_exists(
             OR EXISTS (SELECT 1 FROM cloud_accounts
                        WHERE avatar_renderer_version = $1 AND avatar_style = $2 AND avatar_seed = $3)
             OR EXISTS (SELECT 1 FROM cloud_agent_definitions
+                       WHERE avatar_renderer_version = $1 AND avatar_style = $2 AND avatar_seed = $3)
+            OR EXISTS (SELECT 1 FROM cloud_default_agent_profiles
                        WHERE avatar_renderer_version = $1 AND avatar_style = $2 AND avatar_seed = $3)",
     )
     .bind(renderer)

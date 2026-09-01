@@ -13,3 +13,14 @@ export function activeConversationMatchesSendScope(
   return isKordiSupportConversation({ id: selectedId })
     && isKordiSupportConversation(scope);
 }
+
+export function claimConversationSend(inFlightConversationIds: Set<string>, conversationId: string) {
+  const id = conversationId.trim();
+  if (!id || inFlightConversationIds.has(id)) return false;
+  inFlightConversationIds.add(id);
+  return true;
+}
+
+export function releaseConversationSend(inFlightConversationIds: Set<string>, conversationId: string) {
+  inFlightConversationIds.delete(conversationId.trim());
+}

@@ -2,7 +2,10 @@ use super::meme_validation::{meme_attachment_metadata, validate_meme_attachment_
 use super::support::*;
 use super::*;
 
+mod group_identity;
 mod mutations;
+use group_identity::normalize_group_envelope;
+pub(super) use group_identity::normalize_stored_group_agent_identity;
 pub use mutations::{delete_message, edit_message};
 
 pub(super) async fn fanout_message_sync_event(
@@ -73,7 +76,7 @@ pub(crate) async fn send_message_in_transaction(
         }
         attachment_ids.push(attachment_id.to_string());
     }
-    normalize_group_participant_order(transaction, conversation_id, &mut request.content).await?;
+    normalize_group_envelope(transaction, conversation_id, &mut request.content).await?;
     let meme_attachments = meme_attachment_metadata(&request.content, &attachment_ids)?;
     let request_fingerprint = fingerprint(&MessageIntent {
         conversation_id,
@@ -239,104 +242,6 @@ pub(crate) async fn send_message_in_transaction(
         value: message,
         inserted: true,
     })
-}
-
-async fn normalize_group_participant_order(
-    transaction: &mut Transaction<'_, Postgres>,
-    conversation_id: Uuid,
-    content: &mut Value,
-) -> Result<(), StoreError> {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-
-    let Some(text) = content
-        .get_mut("blocks")
-        .and_then(Value::as_array_mut)
-        .and_then(|blocks| blocks.first_mut())
-        .and_then(Value::as_object_mut)
-        .and_then(|block| block.get_mut("text"))
-    else {
-        return Ok(());
-    };
-    let Some(body) = text.as_str() else {
-        return Ok(());
-    };
-    let Some(encoded) = body.strip_prefix("kordi-cloud-group:") else {
-        return Ok(());
-    };
-    let decoded = URL_SAFE_NO_PAD
-        .decode(encoded)
-        .map_err(|_| StoreError::InvalidInput("group message envelope is invalid"))?;
-    let mut envelope: Value = serde_json::from_slice(&decoded)
-        .map_err(|_| StoreError::InvalidInput("group message envelope is invalid"))?;
-    let rows: Vec<(String, chrono::DateTime<chrono::Utc>)> = query_as(
-        "SELECT account_id, joined_at FROM cloud_chat_conversation_members \
-         WHERE conversation_id = $1 AND membership_state = 'active' \
-         ORDER BY joined_at ASC, account_id ASC",
-    )
-    .bind(conversation_id)
-    .fetch_all(&mut **transaction)
-    .await?;
-    let joined_at = rows
-        .into_iter()
-        .map(|(account_id, value)| (account_id, value.to_rfc3339()))
-        .collect::<std::collections::HashMap<_, _>>();
-    let object = envelope.as_object_mut().ok_or(StoreError::InvalidInput(
-        "group message envelope is invalid",
-    ))?;
-    if let Some(actor) = object.get_mut("actor").and_then(Value::as_object_mut) {
-        if let Some(value) = actor
-            .get("accountId")
-            .and_then(Value::as_str)
-            .and_then(|account_id| joined_at.get(account_id))
-        {
-            actor.insert("joinedAt".to_string(), Value::String(value.clone()));
-        }
-    }
-    if let Some(participants) = object.get_mut("participants").and_then(Value::as_array_mut) {
-        for participant in participants.iter_mut() {
-            let Some(record) = participant.as_object_mut() else {
-                continue;
-            };
-            if let Some(value) = record
-                .get("accountId")
-                .and_then(Value::as_str)
-                .and_then(|account_id| joined_at.get(account_id))
-            {
-                record.insert("joinedAt".to_string(), Value::String(value.clone()));
-            }
-        }
-        participants.sort_by(|left, right| {
-            let left_object = left.as_object();
-            let right_object = right.as_object();
-            let left_joined_at = left_object
-                .and_then(|record| record.get("joinedAt"))
-                .and_then(Value::as_str)
-                .unwrap_or("9999");
-            let right_joined_at = right_object
-                .and_then(|record| record.get("joinedAt"))
-                .and_then(Value::as_str)
-                .unwrap_or("9999");
-            left_joined_at.cmp(right_joined_at).then_with(|| {
-                let left_account_id = left_object
-                    .and_then(|record| record.get("accountId"))
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let right_account_id = right_object
-                    .and_then(|record| record.get("accountId"))
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                left_account_id.cmp(right_account_id)
-            })
-        });
-    }
-    *text = Value::String(format!(
-        "kordi-cloud-group:{}",
-        URL_SAFE_NO_PAD.encode(
-            serde_json::to_vec(&envelope)
-                .map_err(|_| StoreError::InvalidInput("group message envelope is invalid"))?
-        )
-    ));
-    Ok(())
 }
 
 /// Replace the kind and content of a trusted server-authored message while

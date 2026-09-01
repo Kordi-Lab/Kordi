@@ -198,6 +198,9 @@ function groupMessageBody(
       accountId: member.account_id,
       displayName: member.display_name?.trim() || member.account_id,
       avatarUrl: member.avatar_url?.trim() || null,
+      agentId: member.default_agent_id?.trim() || `cloud-agent:${member.account_id}`,
+      agentDisplayName: member.default_agent_display_name?.trim() || 'Kordi',
+      agentAvatarUrl: member.default_agent_avatar_url?.trim() || null,
       role: member.role,
       joinedAt: member.joined_at,
     }));

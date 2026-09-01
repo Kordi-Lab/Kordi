@@ -11,6 +11,7 @@ import {
   type DesktopAgentBuilderSummary,
 } from '@/lib/desktopAgentBuilderCatalog';
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
+import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { Agent } from '../types';
 import { AgentInspectionView } from './AgentInspectionView';
 import { AgentStudioConversation } from './AgentStudioConversation';
@@ -32,8 +33,7 @@ import {
   cloudAgentAccessLabel,
   factoryArtifactTargetKey,
   factoryBuildIdentityFromTarget,
-  getAgentConfigPath,
-  isRepoFilePath,
+  publishableLocalAgentConfigChanges,
   type AgentSaveFeedback,
   type AgentStudioCapabilityKind,
   type FactoryBuildRoute,
@@ -48,10 +48,7 @@ import { useAgentsPageModel } from './useAgentsPageModel';
 import { useFactoryBuildRouting } from './useFactoryBuildRouting';
 import { useSkillLibrary } from './useSkillLibrary';
 import { useFactoryCreationAvatar } from './useFactoryCreationAvatar';
-
-function isNativeDesktopShell() {
-  return typeof window !== 'undefined' && typeof window.__TAURI_INTERNALS__ !== 'undefined';
-}
+import { cloudAgentDefinitionChanges, factoryAgentAvatarPresentation, factoryAgentIdentityChanges, factoryLocalAgentCapabilities, publishDefaultAgentIdentity } from './factoryAgentIdentity';
 
 export function AgentsPage({
   agents,
@@ -70,6 +67,8 @@ export function AgentsPage({
   onOpenAuthSettings,
   onCreateCloudAgent,
   onUpdateCloudAgent,
+  onRenameLocalAgent,
+  onUpdateLocalAgentAvatar,
   onSetAgentSkillEnabled,
 }: AgentsPageProps) {
   const [factorySection, setFactorySection] = useState<FactorySection>('agents');
@@ -100,7 +99,8 @@ export function AgentsPage({
   const selectedAgent = selectedAgentSource && publishedAccessByAgentId[selectedAgentSource.id]
     ? { ...selectedAgentSource, cloudAgentAccessScope: publishedAccessByAgentId[selectedAgentSource.id] }
     : selectedAgentSource;
-  const creatorAgent = agents.find((agent) => agent.id === 'desktop:local-agent')
+  const { avatarKey: selectedAvatarKey, avatarUrl: selectedAvatarUrl } = factoryAgentAvatarPresentation(selectedAgent);
+  const creatorAgent = agents.find(usesDefaultLocalAgentSession)
     ?? agents.find((agent) => agent.name.trim().toLocaleLowerCase() === 'kordi' && !agent.cloudAgentId)
     ?? agents.find((agent) => agent.isOwned && !agent.cloudAgentId)
     ?? null;
@@ -276,7 +276,7 @@ export function AgentsPage({
     ? shapeDraftFromBuilder(builder.status.draft)
     : null;
   const creationDraftId = builder.status?.draftId ?? null;
-  const creationAvatar = useFactoryCreationAvatar(creationDraftId);
+  const factoryAvatar = useFactoryCreationAvatar(creationDraftId, creating ? undefined : selectedAvatarUrl);
   const creationAccessScope: CloudAgentAccessScope = builder.status?.draft?.access === 'participant-conversations'
     ? 'participant_conversations'
     : 'private';
@@ -286,7 +286,7 @@ export function AgentsPage({
     loadedTools: builder.status.draft.tools,
     loadedPlugins: builder.status.draft.plugins,
   } : modelActiveAgentConfig;
-  const activeDraftChanges = activeAgentConfig && activePersistedConfig
+  const rawActiveDraftChanges = activeAgentConfig && activePersistedConfig
     ? agentStudioConfigChanges(activeAgentConfig, activePersistedConfig)
     : modelActiveDraftChanges;
   useEffect(() => {
@@ -294,19 +294,13 @@ export function AgentsPage({
     void fetchDesktopAgentBuilderList().then(setBuilds).catch(() => undefined);
   }, [builder.status?.lifecycle, builder.status?.sessionId, builder.status?.validation.fingerprint]);
 
-  const selectedConfigPath = selectedAgent ? getAgentConfigPath(selectedAgent) : null;
-  const hasLocalConfig = Boolean(
-    selectedAgent
-      && isNativeDesktopShell()
-      && selectedConfigPath
-      && isRepoFilePath(selectedConfigPath),
+  const { hasLocalConfig, canToggleRuntimeSkills } = factoryLocalAgentCapabilities(selectedAgent, Boolean(onSetAgentSkillEnabled));
+  const canEditPrompt = Boolean(
+    builder.status?.draft && (creating || selectedAgent?.cloudAgentId || hasLocalConfig),
   );
-  const canToggleRuntimeSkills = Boolean(
-    selectedAgent?.isOwned
-      && (selectedAgent.id === 'desktop:local-agent' || selectedAgent.isCollaborationActive)
-      && onSetAgentSkillEnabled,
-  );
-  const canEditPrompt = Boolean(builder.status?.draft);
+  const activeDraftChanges = selectedAgent?.cloudAgentId
+    ? rawActiveDraftChanges
+    : publishableLocalAgentConfigChanges(rawActiveDraftChanges, hasLocalConfig, canToggleRuntimeSkills);
   const editableCapabilityKinds = useMemo(() => {
     const kinds = new Set<AgentStudioCapabilityKind>();
     if (buildingStandaloneArtifact) {
@@ -337,13 +331,8 @@ export function AgentsPage({
     selectedAgent && selectedAccessScope !== publishedAccessScope,
   );
   const builderDraft = builder.status?.draft;
-  const cloudDefinitionChanges = selectedAgent?.cloudAgentId && builderDraft ? [
-    builderDraft.name !== selectedAgent.name ? { key: 'definition' as const, label: 'Agent name updated', detail: builderDraft.name } : null,
-    builderDraft.role !== selectedAgent.role ? { key: 'definition' as const, label: 'Agent role updated', detail: builderDraft.role } : null,
-    builderDraft.description !== (selectedAgent.cloudAgentDescription ?? '') ? { key: 'definition' as const, label: 'Agent description updated', detail: builderDraft.description || 'Cleared' } : null,
-    builderDraft.sourceSummary !== (selectedAgent.cloudAgentSourceSummary ?? '') ? { key: 'definition' as const, label: 'Source summary updated', detail: builderDraft.sourceSummary || 'Cleared' } : null,
-    JSON.stringify(builderDraft.boundaries) !== JSON.stringify(selectedAgent.cloudAgentBoundaries ?? []) ? { key: 'definition' as const, label: 'Agent boundaries updated', detail: `${builderDraft.boundaries.length} configured` } : null,
-  ].filter((change): change is NonNullable<typeof change> => Boolean(change)) : [];
+  const identityChanges = factoryAgentIdentityChanges(selectedAgent, builderDraft, factoryAvatar.mutation);
+  const definitionChanges = cloudAgentDefinitionChanges(selectedAgent, builderDraft);
   const publishedRouting = modelRoutingForAgent(selectedAgent);
   const builderRouting = builder.status?.draft ? {
     ...publishedRouting,
@@ -353,13 +342,14 @@ export function AgentsPage({
   } : publishedRouting;
   const selectedRouting = selectedAgent ? routingDraftByAgentId[selectedAgent.id] ?? builderRouting : publishedRouting;
   const routingChanged = Boolean(selectedAgent && !sameModelRouting(selectedRouting, publishedRouting));
-  const studioChangesWithDefinition = [...activeDraftChanges, ...cloudDefinitionChanges];
+  const studioChangesWithDefinition = [...activeDraftChanges, ...identityChanges, ...definitionChanges];
   const studioChangesWithAccess = accessChanged
     ? [...studioChangesWithDefinition, { key: 'access' as const, label: 'Access policy updated', detail: cloudAgentAccessLabel(selectedAccessScope) }]
     : studioChangesWithDefinition;
   const studioChanges = routingChanged
     ? [...studioChangesWithAccess, { key: 'routing' as const, label: 'Model routing updated', detail: selectedRouting.defaultModel || 'Runtime default' }]
     : studioChangesWithAccess;
+  const publishWithoutModelTest = Boolean(!creating && selectedAgent && !selectedAgent.cloudAgentId && usesDefaultLocalAgentSession(selectedAgent));
   const publishDisabled = Boolean(publishing
     || builder.opening
     || builder.testing
@@ -370,10 +360,7 @@ export function AgentsPage({
       ? !creationDraft || (creatingSkill
         ? !builder.status?.draft?.skills[0]
         : routeKind === 'agent' && !onCreateCloudAgent)
-      : !selectedAgent || !activeAgentConfig || studioChanges.length === 0)
-    || (!creating && selectedAgent && !selectedAgent.cloudAgentId && activeDraftChanges.some((change) => (
-      change.key === 'skills' ? !canToggleRuntimeSkills && !hasLocalConfig : !hasLocalConfig
-    ))));
+      : !selectedAgent || !activeAgentConfig || studioChanges.length === 0));
 
   const persistBuilderDraft = async (update: DesktopAgentBuilderDraft | ((current: DesktopAgentBuilderDraft) => DesktopAgentBuilderDraft)) => {
     const result = await builder.updateDraft(update);
@@ -457,12 +444,9 @@ export function AgentsPage({
           ? 'Publishing the Cloud Agent…'
           : `Publishing ${selectedAgent?.name ?? 'agent'}…`;
     setPublishing(true);
-    setPublishFeedback({
-      tone: 'info',
-      text: builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…',
-    });
+    setPublishFeedback({ tone: 'info', text: publishWithoutModelTest || builder.status?.publishReady ? publishingText : 'Testing the draft before publishing…' });
     try {
-      const status = await readyFactoryBuildForPublish(builder.status, builder.testDraft);
+      const status = publishWithoutModelTest ? builder.status! : await readyFactoryBuildForPublish(builder.status, builder.testDraft);
       setPublishFeedback({ tone: 'info', text: publishingText });
       if (creating) {
         if (creatingSkill) {
@@ -499,9 +483,9 @@ export function AgentsPage({
         if (!creationDraft || !onCreateCloudAgent) return;
         const created = await onCreateCloudAgent(factoryAgentCreateInput({
           draft: creationDraft, runtime: status.draft, accessScope: creationAccessScope,
-          creatorAgent, avatarMutation: creationAvatar.mutation,
+          creatorAgent, avatarMutation: factoryAvatar.mutation,
         }));
-        creationAvatar.clearAvatar();
+        factoryAvatar.clearAvatar();
         const targetKey = factoryArtifactTargetKey(cloudAccountId, 'agent', created.id);
         await builder.retarget(targetKey);
         await builder.markPublished();
@@ -532,6 +516,12 @@ export function AgentsPage({
             tools: status.draft?.tools ?? activeAgentConfig.loadedTools,
             plugins: status.draft?.plugins ?? activeAgentConfig.loadedPlugins,
           },
+          ...(factoryAvatar.mutation ? {
+            avatarMutation: {
+              ...factoryAvatar.mutation,
+              expectedVersion: selectedAgent.cloudAgentAvatarVersion,
+            },
+          } : {}),
           ...(accessChanged ? { accessScope: selectedAccessScope } : {}),
         });
         markAgentDraftPublished(selectedAgent, activeAgentConfig);
@@ -556,6 +546,7 @@ export function AgentsPage({
           if (!onUpdateAgentModelRouting) throw new Error('Model routing updates are unavailable for this runtime.');
           await onUpdateAgentModelRouting(selectedAgent, selectedRouting);
         }
+        await publishDefaultAgentIdentity({ agent: selectedAgent, draft: builderDraft, mutation: factoryAvatar.mutation, avatarKey: selectedAvatarKey, onRenameLocalAgent, onUpdateLocalAgentAvatar });
         const hasFileBackedChange = activeDraftChanges.some((change) => (
           change.key !== 'skills' || !canToggleRuntimeSkills
         ));
@@ -568,10 +559,16 @@ export function AgentsPage({
             return next;
           });
         }
-        markAgentDraftPublished(selectedAgent, activeAgentConfig, 'Published Factory runtime changes');
+        markAgentDraftPublished(selectedAgent, hasLocalConfig ? activeAgentConfig : {
+          ...activeAgentConfig,
+          systemPrompt: activePersistedConfig.systemPrompt,
+          loadedTools: activePersistedConfig.loadedTools,
+          loadedPlugins: activePersistedConfig.loadedPlugins,
+        }, 'Published Factory runtime changes');
       }
-      await builder.markPublished();
-      setPublishFeedback({ tone: 'success', text: `${selectedAgent.name} is published and ready.` });
+      if (!publishWithoutModelTest) await builder.markPublished();
+      factoryAvatar.clearAvatar();
+      setPublishFeedback({ tone: 'success', text: `${builderDraft?.name.trim() || selectedAgent.name} is published and ready.` });
     } catch (error) {
       setPublishFeedback({ tone: 'error', text: error instanceof Error ? error.message : `Kordi could not ${creatingSkill ? 'install this skill' : 'publish this agent draft'}.` });
     } finally {
@@ -581,6 +578,7 @@ export function AgentsPage({
   const discard = async () => {
     const discarded = await builder.discard();
     if (!discarded) return;
+    factoryAvatar.clearAvatar();
     if (selectedAgent) resetAgentDraft(selectedAgent);
     if (selectedAgent) {
       setAccessDraftByAgentId((current) => {
@@ -644,7 +642,7 @@ export function AgentsPage({
         ? builder.status?.draft?.plugins[0] ?? creationDraft?.name ?? 'New plugin'
         : creating
           ? creationDraft?.name ?? 'New agent'
-          : selectedAgent?.name ?? 'Kordi Factory';
+          : builder.status?.draft?.name ?? selectedAgent?.name ?? 'Kordi Factory';
   const routedAgent = selectedAgent ? {
     ...selectedAgent,
     defaultModel: selectedRouting.defaultModel ?? selectedAgent.defaultModel,
@@ -666,10 +664,10 @@ export function AgentsPage({
       ? 'Published'
       : !builder.status?.draft || !builder.status.validation.valid
         ? 'Needs setup'
-        : !builder.status.testReport || builder.status.testReport.fingerprint !== builder.status.validation.fingerprint || !builder.status.testReport.passed
-          ? 'Needs testing'
-          : builder.status.publishReady
-            ? 'Ready to publish'
+        : publishWithoutModelTest || builder.status.publishReady
+          ? 'Ready to publish'
+          : !builder.status.testReport || builder.status.testReport.fingerprint !== builder.status.validation.fingerprint || !builder.status.testReport.passed
+            ? 'Needs testing'
             : 'Private draft';
   const returnFromBuild = () => {
     const context = buildRoute?.returnContext;
@@ -778,10 +776,11 @@ export function AgentsPage({
               allowCapabilityCreation={creating || Boolean(selectedAgent?.cloudAgentId) || hasLocalConfig}
               canEditPrompt={canEditPrompt}
               onPromptChange={updateBuilderPrompt}
+              onNameChange={(value) => { void persistBuilderDraft((draft) => ({ ...draft, name: value })); }}
               onCreationDraftChange={updateBuilderShapeDraft}
-              creationAvatarUrl={creationAvatar.imageUrl}
-              onCreationAvatarUpload={creationAvatar.upload}
-              onCreationAvatarRandomize={creationAvatar.randomize}
+              creationAvatarUrl={factoryAvatar.imageUrl}
+              onCreationAvatarUpload={factoryAvatar.upload}
+              onCreationAvatarRandomize={factoryAvatar.randomize}
               onCreationModelRoutingChange={stageCreationModelRouting}
               onToggleCapability={(kind, name, selected) => {
                 updateBuilderCapability(kind, name, selected);

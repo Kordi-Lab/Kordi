@@ -120,6 +120,7 @@ export function useComposerMessageActions({
   const [pendingCollaborationOutreach, setPendingCollaborationOutreach] = useState<PendingCollaborationOutreach | null>(null);
   const pendingCollaborationOutreachRef = useRef<PendingCollaborationOutreach | null>(null);
   const pendingCollaborationCancelRequestedRef = useRef(false);
+  const collaborationSendInFlightConversationIdsRef = useRef(new Set<string>());
   const localChatSendInFlightRef = useRef<LocalChatSendInFlight | null>(null);
   const userCancelledTurnIdsRef = useRef<Set<string>>(new Set());
 
@@ -208,6 +209,7 @@ export function useComposerMessageActions({
     isDesktopChatSending,
     isNativeShell,
     pendingCollaborationCancelRequestedRef,
+    collaborationSendInFlightConversationIdsRef,
     localChatSendInFlightRef,
     userCancelledTurnIdsRef,
     refreshDesktopChat,

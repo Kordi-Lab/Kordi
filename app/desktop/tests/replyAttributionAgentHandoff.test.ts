@@ -81,3 +81,20 @@ test('agent handoff replies quote the preceding agent instead of a stale human r
   );
   assert.notEqual(handoffResponse?.messageId, 'msg:stale-local-request');
 });
+
+test('a terminal agent reply suppresses a stale pending projection for the same request', () => {
+  const request = humanRequest('msg:request', '@Kordirename11 which model are you using?');
+  const completed: Message = {
+    id: 'msg:complete', role: 'owned-agent', sender: 'Kordirename11', senderType: 'agent', text: '', time: '20:28', replyToMessageId: request.id,
+    turn: turn({ id: 'turn:complete', assistantText: 'I am an OpenAI model.', replyToMessageId: request.id }),
+  };
+  const stalePending: Message = {
+    id: 'msg:pending', role: 'owned-agent', sender: 'Kordirename11', senderType: 'agent', text: '', time: '20:28', replyToMessageId: request.id,
+    turn: turn({ id: 'turn:pending', status: 'processing', message: 'Processing…', assistantText: '', completed: false, succeeded: false, replyToMessageId: request.id }),
+  };
+
+  const result = buildReplyAttribution([request, completed, stalePending]);
+  assert.deepEqual(result.messages.map((message) => message.id), ['msg:request', 'msg:complete']);
+  assert.equal(result.messages[0]?.replySummary?.replyCount, 1);
+  assert.equal(result.messages[0]?.replySummary?.pending, false);
+});

@@ -395,6 +395,9 @@ actor CloudAPIClient {
                         accountId: member.accountId,
                         displayName: member.displayName?.nonEmpty ?? "Kordi user",
                         avatarUrl: member.avatarUrl?.nonEmpty,
+                        agentId: member.defaultAgentId?.nonEmpty,
+                        agentDisplayName: member.defaultAgentDisplayName?.nonEmpty,
+                        agentAvatarUrl: member.defaultAgentAvatarUrl?.nonEmpty,
                         role: member.role.nonEmpty,
                         joinedAt: member.joinedAt.nonEmpty
                     )
@@ -2820,6 +2823,9 @@ private extension CloudChatConversation {
                     accountId: member.accountId,
                     displayName: member.displayName,
                     avatarUrl: member.avatarUrl,
+                    defaultAgentId: member.defaultAgentId,
+                    defaultAgentDisplayName: member.defaultAgentDisplayName,
+                    defaultAgentAvatarUrl: member.defaultAgentAvatarUrl,
                     role: member.role,
                     membershipState: member.membershipState,
                     version: member.version,

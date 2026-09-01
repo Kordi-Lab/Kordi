@@ -1,5 +1,22 @@
 use super::*;
 
+#[test]
+fn agent_names_are_trimmed_and_bounded() {
+    assert_eq!(
+        normalized_agent_name("  Release Scout  ").as_deref(),
+        Ok("Release Scout")
+    );
+    assert!(normalized_agent_name("   ").is_err());
+    assert!(normalized_agent_name(&"a".repeat(121)).is_err());
+    assert!(normalized_agent_name("line\nbreak").is_err());
+}
+
+#[test]
+fn missing_sessions_do_not_block_global_resource_updates() {
+    assert!(is_missing_session_error("No session matching 'stale-id'"));
+    assert!(!is_missing_session_error("Session database is unavailable"));
+}
+
 fn test_summary(title: &str, message_count: usize, draft: bool) -> DesktopChatSessionSummary {
     DesktopChatSessionSummary {
         id: format!("session:{title}:{message_count}:{draft}"),

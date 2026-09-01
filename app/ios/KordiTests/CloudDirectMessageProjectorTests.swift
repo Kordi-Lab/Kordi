@@ -397,6 +397,7 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         )
 
         XCTAssertEqual(projected.map(\.text), ["Prepare the rollout", "The rollout is ready."])
+        XCTAssertEqual(projected.last?.senderOwnerName, "Alex")
         XCTAssertEqual(
             CloudAgentLifecycleProjector.activity(in: [
                 wire(id: "msg_processing", body: processing, createdAt: "2026-08-08T10:00:01Z"),
