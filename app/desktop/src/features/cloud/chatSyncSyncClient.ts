@@ -399,19 +399,40 @@ export class ChatSyncSyncClient {
           last_delivered_sequence?: number;
           last_read_sequence?: number;
         };
+        const previousMember = conversation.members.find(
+          (member) => member.account_id === value.account_id,
+        );
+        if (!previousMember) return [];
+        const lastDeliveredSequence = Math.max(
+          previousMember.last_delivered_sequence,
+          value.last_delivered_sequence ?? previousMember.last_delivered_sequence,
+        );
+        const lastReadSequence = Math.max(
+          previousMember.last_read_sequence,
+          value.last_read_sequence ?? previousMember.last_read_sequence,
+        );
         const updated = {
           ...conversation,
           members: conversation.members.map((member) => member.account_id === value.account_id
             ? {
               ...member,
-              last_delivered_sequence: value.last_delivered_sequence ?? member.last_delivered_sequence,
-              last_read_sequence: value.last_read_sequence ?? member.last_read_sequence,
+              last_delivered_sequence: lastDeliveredSequence,
+              last_read_sequence: lastReadSequence,
             }
             : member),
         };
         this.state.rememberConversation(updated);
         return [...this.state.messageById.values()]
-          .filter((message) => message.conversation_id === updated.id)
+          .filter((message) => message.conversation_id === updated.id && (
+            (
+              message.conversation_sequence > previousMember.last_delivered_sequence
+              && message.conversation_sequence <= lastDeliveredSequence
+            )
+            || (
+              message.conversation_sequence > previousMember.last_read_sequence
+              && message.conversation_sequence <= lastReadSequence
+            )
+          ))
           .map((message) => ({
             ...base,
             eventId: `${event.event_id}:${message.id}`,

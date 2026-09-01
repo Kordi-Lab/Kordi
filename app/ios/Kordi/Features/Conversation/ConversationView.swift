@@ -253,7 +253,6 @@ struct ConversationView: View {
         let activeConversationCall = model.activeCall(for: conversation)
         let coordinatorOwnsConversationCall = callCoordinator.activeCall?.call.id
             == activeConversationCall?.id
-            && (callCoordinator.isCallScreenPresented || callCoordinator.isAwaitingIncomingAnswer)
         let mentionTargets = model.mentionTargets(for: conversation)
         let pendingMentionCount = model.pendingMentionCount(for: conversation)
         let pinTargetPresentation = Binding(

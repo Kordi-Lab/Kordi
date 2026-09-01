@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import KordiApp from './KordiApp.tsx'
 import AuthPopup from './AuthPopup.tsx'
 import AttachmentMediaWindow from './AttachmentMediaWindow.tsx'
+import CallWindow from './CallWindow.tsx'
 
 function isNativeDesktopShell() {
   if (typeof window === 'undefined') return false
@@ -27,6 +28,9 @@ function App() {
     }
     if (params.get('mediaPreview') === '1') {
       return <AttachmentMediaWindow />
+    }
+    if (params.get('callWindow') === '1') {
+      return <CallWindow />
     }
   }
 

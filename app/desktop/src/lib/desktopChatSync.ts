@@ -17,7 +17,10 @@ export type ChatSyncCursorState = {
 
 export type ChatSyncConversationHead = {
   conversationId: string;
+  sessionId: string;
   latestMessageSequence: number;
+  lastReadSequence: number;
+  unreadCount: number;
 };
 
 export type ChatSyncApplyResult = ChatSyncCursorState & {
@@ -73,6 +76,16 @@ export type ChatSyncPendingOperation = {
   lastError: string | null;
 };
 
+export const CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT =
+  'kordi.chat-sync.local-state-changed';
+
+export function publishChatSyncLocalStateChanged(
+  target: Pick<EventTarget, 'dispatchEvent'> | null =
+    typeof window === 'undefined' ? null : window,
+) {
+  target?.dispatchEvent(new Event(CHAT_SYNC_LOCAL_STATE_CHANGED_EVENT));
+}
+
 export async function loadChatSyncLocalState(accountId: string) {
   if (!isNativeDesktopShell()) return null;
   return invokeDesktop<ChatSyncLocalState>('desktop_chat_sync_load', { accountId });
@@ -127,6 +140,11 @@ export async function loadChatSyncConversations(accountId: string) {
   return invokeDesktop<ChatSyncConversation[]>('desktop_chat_sync_conversations', { accountId });
 }
 
+export async function loadChatSyncUnreadCounts(accountId: string) {
+  if (!isNativeDesktopShell()) return [];
+  return invokeDesktop<ChatSyncConversationHead[]>('desktop_chat_sync_unread_counts', { accountId });
+}
+
 export async function loadChatSyncMessageRefs(accountId: string, conversationIds: string[]) {
   if (!isNativeDesktopShell() || conversationIds.length === 0) return [];
   return invokeDesktop<ChatSyncMessageRef[]>('desktop_chat_sync_message_refs', {
@@ -163,7 +181,9 @@ export async function loadChatSyncRecoveryMessageIds(
 
 export async function applyChatSyncLocalBatch(request: ApplyChatSyncRequest) {
   if (!isNativeDesktopShell()) return null;
-  return invokeDesktop<ChatSyncApplyResult>('desktop_chat_sync_apply', { request });
+  const result = await invokeDesktop<ChatSyncApplyResult>('desktop_chat_sync_apply', { request });
+  publishChatSyncLocalStateChanged();
+  return result;
 }
 
 export async function enqueueChatSyncOutbox(

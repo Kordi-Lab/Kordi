@@ -220,7 +220,6 @@ export function CallDeviceMenu({
     <div className="app-call-device-menu" role="dialog" aria-label="Call devices">
       <div className="app-call-device-menu-heading">
         <strong>Call devices</strong>
-        <span>Changes apply immediately</span>
       </div>
       <CallDeviceGroup
         kind="audioinput"

@@ -46,13 +46,6 @@ pub struct ChatSyncCursorState {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ChatSyncConversationHead {
-    pub conversation_id: String,
-    pub latest_message_sequence: i64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ChatSyncApplyResult {
     pub account_id: String,
     pub cursor: Option<String>,
@@ -125,7 +118,9 @@ mod compaction;
 mod message_reads;
 mod outbox;
 mod projection;
+pub mod unread;
 
+pub use apply::ChatSyncConversationHead;
 use apply::*;
 use message_reads::*;
 use outbox::*;

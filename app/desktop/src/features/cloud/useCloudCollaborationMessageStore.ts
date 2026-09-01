@@ -226,6 +226,9 @@ export function useCloudCollaborationMessageStore(
       activeSessionId,
     );
   }, [activeSessionId, belongsToCurrentAccount, messageState, messagesByPeer, nativeShell]);
+  const fullCurrentAccountMessagesByPeer = belongsToCurrentAccount
+    ? messageState.fullMessagesByPeer
+    : EMPTY_CLOUD_MESSAGES_BY_PEER;
   const indexRef = useRef<CloudMessageIndex>(null!);
   const index = useMemo(
     () => buildCloudMessageIndex(
@@ -261,6 +264,7 @@ export function useCloudCollaborationMessageStore(
     onSelfAgentRecoverySettled,
     pendingGroupProjectionSessionIds,
     currentAccountValue: currentAccountMessagesByPeer,
+    fullCurrentAccountValue: fullCurrentAccountMessagesByPeer,
     belongsToCurrentAccount,
     index,
     indexRef,

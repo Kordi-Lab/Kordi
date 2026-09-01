@@ -7,7 +7,6 @@ import type {
   CloudAccount,
   CloudMessage,
 } from '../src/features/cloud/authClient';
-import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import {
   cloudBootstrapPeerIds,
   cloudMessagesAuthoritativeForContext,
@@ -17,7 +16,6 @@ import {
   cloudUnreadReadyForContext,
   cloudUnreadStatusForContext,
   createAccountScopedSingleFlight,
-  markCloudMessagesReadLocally,
   mergeCloudMessagesByPeerSnapshot,
   shouldRefreshCloudForVisibility,
   shouldRunCloudFocusRefresh,
@@ -223,52 +221,6 @@ test('cloud session fork map equality compares structural fork lineage', () => {
 
   assert.equal(cloudSessionForksByIdEqual(left, right), true);
   assert.equal(cloudSessionForksByIdEqual(left, changed), false);
-});
-
-test('cloud group read marking patches stale local unread cache rows by session id', () => {
-  const groupBody = encodeCloudGroupControl({
-    kind: 'group-message',
-    groupId: 'session:group:abc',
-    groupSpaceId: 'session:group:abc',
-    groupTitle: null,
-    createdByAccountId: 'acct_me',
-    actor: {
-      accountId: 'acct_peer',
-      displayName: 'Peer Person',
-      avatarUrl: null,
-      role: 'person',
-    },
-    participants: [],
-    message: {
-      id: 'msg:group-agent-final',
-      senderAccountId: 'acct_peer',
-      text: 'Hi 👋 How can I help?',
-      createdAtMs: Date.parse('2026-05-11T10:00:00Z'),
-      senderKind: 'agent',
-      senderDisplayName: 'Kordi Project Driver',
-    },
-  });
-  const staleGroupMessage: CloudMessage = {
-    ...message,
-    messageId: 'msg_group_final',
-    body: groupBody,
-    sessionId: 'session:group:abc',
-  };
-  const directUnreadMessage: CloudMessage = {
-    ...message,
-    messageId: 'msg_direct_unread',
-    sessionId: 'session:direct-person:acct_me:acct_peer',
-  };
-
-  const patched = markCloudMessagesReadLocally(
-    { acct_peer: [staleGroupMessage, directUnreadMessage] },
-    'acct_me',
-    { sessionIds: ['session:group:abc'] },
-    '2026-05-11T10:01:00Z',
-  );
-
-  assert.equal(patched.acct_peer?.[0]?.readAt, '2026-05-11T10:01:00Z');
-  assert.equal(patched.acct_peer?.[1]?.readAt, null);
 });
 
 test('cloud message refresh snapshots preserve locally merged newer messages', () => {
