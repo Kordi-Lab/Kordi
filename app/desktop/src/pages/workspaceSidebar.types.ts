@@ -86,6 +86,8 @@ export type WorkspaceSidebarChats = {
   agentParticipantSpaces: WorkspaceSidebarParticipantSpace[];
   pinnedSessionIds: ReadonlySet<string>;
   mutedSessionIds: ReadonlySet<string>;
+  unreadSessionIds: ReadonlySet<string>;
+  pinnedGroupSpaceIds: ReadonlySet<string>;
   initialSelectedParticipantSpaceId?: string | null;
   initialChatChannel?: ChatChannel;
   activeConvId: string;
@@ -117,6 +119,9 @@ export type WorkspaceSidebarChats = {
   onRestoreChatSession: (sessionId: string) => void | Promise<void>;
   onSetChatSessionPinned: (sessionId: string, pinned: boolean) => void | Promise<void>;
   onSetChatSessionMuted: (sessionId: string, muted: boolean) => void | Promise<void>;
+  onSetChatSessionUnread: (sessionId: string, unread: boolean) => void | Promise<void>;
+  onMarkChatSessionsRead: (sessionIds: string[]) => void | Promise<void>;
+  onSetChatGroupPinned: (groupSpaceId: string, pinned: boolean) => void | Promise<void>;
   isCollaborationSyncing: boolean;
   isCollaborationSyncUnavailable?: boolean;
 };

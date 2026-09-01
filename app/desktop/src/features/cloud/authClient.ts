@@ -251,8 +251,10 @@ export type CloudSessionActivity = {
 export type CloudSessionVisibility = {
   hiddenSessionIds: string[];
   deletedSessionIds: string[];
+  unreadSessionIds: string[];
   pinnedSessionIds: string[];
   mutedSessionIds: string[];
+  pinnedGroupSpaceIds: string[];
 };
 
 export type CloudSessionTitle = {
@@ -859,8 +861,10 @@ export class CloudAuthClient {
     return {
       hiddenSessionIds: response?.hiddenSessionIds ?? [],
       deletedSessionIds: response?.deletedSessionIds ?? [],
+      unreadSessionIds: response?.unreadSessionIds ?? [],
       pinnedSessionIds: response?.pinnedSessionIds ?? [],
       mutedSessionIds: response?.mutedSessionIds ?? [],
+      pinnedGroupSpaceIds: response?.pinnedGroupSpaceIds ?? [],
     };
   }
 
@@ -945,6 +949,28 @@ export class CloudAuthClient {
         headers: { authorization: `Bearer ${token}` },
       },
       muted ? 'Could not mute cloud chat.' : 'Could not unmute cloud chat.',
+    );
+  }
+
+  async setCloudSessionUnread(token: string, sessionId: string, unread: boolean): Promise<void> {
+    await this.send<void>(
+      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/unread`,
+      {
+        method: unread ? 'PUT' : 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      unread ? 'Could not mark cloud chat unread.' : 'Could not mark cloud chat read.',
+    );
+  }
+
+  async setCloudGroupSpacePinned(token: string, groupSpaceId: string, pinned: boolean): Promise<void> {
+    await this.send<void>(
+      `/v1/cloud/group-spaces/${encodeURIComponent(groupSpaceId)}/pinned`,
+      {
+        method: pinned ? 'PUT' : 'DELETE',
+        headers: { authorization: `Bearer ${token}` },
+      },
+      pinned ? 'Could not pin cloud group.' : 'Could not unpin cloud group.',
     );
   }
 

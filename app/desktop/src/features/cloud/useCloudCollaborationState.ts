@@ -283,8 +283,9 @@ export function useCloudCollaborationState({
     visibility: {
       hiddenSessionIds: cloudHiddenSessionIds, setHiddenSessionIds: setCloudHiddenSessionIds,
       deletedSessionIds: cloudDeletedSessionIds, setDeletedSessionIds: setCloudDeletedSessionIds,
-      pinnedSessionIds: cloudPinnedSessionIds, setPinnedSessionIds: setCloudPinnedSessionIds,
+      unreadSessionIds: cloudUnreadSessionIds, setUnreadSessionIds: setCloudUnreadSessionIds, pinnedSessionIds: cloudPinnedSessionIds, setPinnedSessionIds: setCloudPinnedSessionIds,
       mutedSessionIds: cloudMutedSessionIds, setMutedSessionIds: setCloudMutedSessionIds,
+      pinnedGroupSpaceIds: cloudPinnedGroupSpaceIds, setPinnedGroupSpaceIds: setCloudPinnedGroupSpaceIds,
     },
     cancelledRef,
   } = stores;
@@ -598,6 +599,7 @@ export function useCloudCollaborationState({
     updatePin: updateCloudSessionPin,
     hide: hideCloudSession, unhide: unhideCloudSession,
     setPinned: setCloudSessionPinned, setMuted: setCloudSessionMuted,
+    setUnread: setCloudSessionUnread, markRead: markCloudSessionsRead, setGroupPinned: setCloudGroupSpacePinned,
     remove: deleteCloudSession,
   } = useCloudSessionActions({
     account,
@@ -614,8 +616,8 @@ export function useCloudCollaborationState({
         setById: setCloudSessionPinsById,
       },
       visibility: {
-        setHiddenIds: setCloudHiddenSessionIds, setDeletedIds: setCloudDeletedSessionIds,
-        setPinnedIds: setCloudPinnedSessionIds, setMutedIds: setCloudMutedSessionIds,
+        setHiddenIds: setCloudHiddenSessionIds, setDeletedIds: setCloudDeletedSessionIds, setUnreadIds: setCloudUnreadSessionIds,
+        setPinnedIds: setCloudPinnedSessionIds, setMutedIds: setCloudMutedSessionIds, setPinnedGroupSpaceIds: setCloudPinnedGroupSpaceIds,
       },
       messages: {
         setByPeer: setMessagesByPeer,
@@ -655,7 +657,7 @@ export function useCloudCollaborationState({
     recordCloudSessionFork,
     updateCloudSessionPin,
     hideCloudSession, unhideCloudSession,
-    setCloudSessionPinned, setCloudSessionMuted, deleteCloudSession,
+    setCloudSessionPinned, setCloudSessionMuted, setCloudSessionUnread, markCloudSessionsRead, setCloudGroupSpacePinned, deleteCloudSession,
     cancelCloudAgentRequest,
     refreshCloudMessages,
     refreshCloudAgents,
@@ -675,7 +677,8 @@ export function useCloudCollaborationState({
     initialMessagesSettled,
     cloudUnreadReadinessStatus,
     cachedMessagesReady: messagesBelongToCurrentAccount && cloudMessageIndex.allMessages.length > 0, pendingGroupProjectionSessionIds: messageStore.pendingGroupProjectionSessionIds,
-    cloudHiddenSessionIds, cloudDeletedSessionIds, cloudPinnedSessionIds, cloudMutedSessionIds,
+    cloudHiddenSessionIds, cloudDeletedSessionIds, cloudUnreadSessionIds,
+    cloudPinnedSessionIds, cloudMutedSessionIds, cloudPinnedGroupSpaceIds,
     cloudSessionPinsById, cloudCanonicalReactionState,
     cloudLegacyGroupSessionTitlesById: cloudGroupSessionTitles, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs: cloudReliableGroupActivity,
   };

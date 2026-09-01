@@ -72,6 +72,8 @@ test('WorkspaceSidebar exposes archived chats and account-scoped row indicators'
   }) as never));
 
   assert.match(markup, /Archived chats/);
+  assert.ok(markup.indexOf('Search contacts, groups, sessions') < markup.indexOf('Archived chats'));
+  assert.ok(markup.indexOf('Archived chats') < markup.indexOf('>Contact<'));
   assert.match(markup, /aria-label="Pinned"/);
   assert.match(markup, /aria-label="Muted"/);
 });

@@ -70,6 +70,10 @@ export function AgentSidebarRow({
   const depth = Math.min(descriptor.depth, 4);
   const indentPaddingLeft =
     depth > 0 ? `${0.625 + depth * 0.875}rem` : undefined;
+  const unreadCount = Math.max(
+    model.unreadSessionIds.has(session.id) ? 1 : 0,
+    session.unread,
+  );
 
   return (
     <div
@@ -108,6 +112,7 @@ export function AgentSidebarRow({
               archived: model.showArchived,
               pinned: model.pinnedSessionIds.has(session.id),
               muted: model.mutedSessionIds.has(session.id),
+              unread: unreadCount > 0,
             },
           );
           if (!target) return;
@@ -138,6 +143,12 @@ export function AgentSidebarRow({
             >
               {rowTitle}
             </span>
+            {model.pinnedSessionIds.has(session.id) ? (
+              <Pin className="h-3 w-3 shrink-0 text-slate-400" aria-label="Pinned" />
+            ) : null}
+            {model.mutedSessionIds.has(session.id) ? (
+              <BellOff className="h-3 w-3 shrink-0 text-slate-400" aria-label="Muted" />
+            ) : null}
           </div>
           <div
             className={cn(
@@ -165,18 +176,13 @@ export function AgentSidebarRow({
         <div className="app-agent-session-side">
           <SidebarSessionMetaColumn
             timeLabel={rowTimeLabel}
-            unreadCount={session.unread}
+            unreadCount={unreadCount}
             unreadScope="agent-session"
             indicator={session.statusIndicator}
             active={isActive}
             reserveStatusSpace={!isSavedMessages}
+            muted={model.mutedSessionIds.has(session.id)}
           />
-          {model.pinnedSessionIds.has(session.id) ? (
-            <Pin className="h-3 w-3 text-slate-400" aria-label="Pinned" />
-          ) : null}
-          {model.mutedSessionIds.has(session.id) ? (
-            <BellOff className="h-3 w-3 text-slate-400" aria-label="Muted" />
-          ) : null}
           {isSavedMessages ? (
             <Pin className="app-saved-messages-pin h-3 w-3" aria-label="Pinned" />
           ) : null}

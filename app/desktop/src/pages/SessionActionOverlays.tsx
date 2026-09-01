@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Archive, ArchiveRestore, BellOff, LoaderCircle, Pin, Trash2 } from 'lucide-react';
+import { Archive, ArchiveRestore, BellOff, CheckCircle2, LoaderCircle, Mail, Pin, Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -15,6 +15,18 @@ export type SessionContextMenuTarget = {
   x: number;
   y: number;
   canRename?: boolean;
+  archived?: boolean;
+  pinned?: boolean;
+  muted?: boolean;
+  unread?: boolean;
+};
+
+export type GroupContextMenuTarget = {
+  groupSpaceId: string;
+  groupName: string;
+  sessionIds: string[];
+  x: number;
+  y: number;
   archived?: boolean;
   pinned?: boolean;
   muted?: boolean;
@@ -34,6 +46,7 @@ type SessionContextMenuProps = {
   onRestore: (sessionId: string) => void;
   onSetPinned: (sessionId: string, pinned: boolean) => void;
   onSetMuted: (sessionId: string, muted: boolean) => void;
+  onSetUnread: (sessionId: string, unread: boolean) => void;
   onDelete: (target: SessionActionTarget) => void;
 };
 
@@ -45,6 +58,7 @@ export function SessionContextMenu({
   onRestore,
   onSetPinned,
   onSetMuted,
+  onSetUnread,
   onDelete,
 }: SessionContextMenuProps) {
   const run = (action: () => void) => {
@@ -90,6 +104,17 @@ export function SessionContextMenu({
         ) : null}
         <button
           type="button"
+          data-session-context-action={target.unread ? 'read' : 'unread'}
+          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          onClick={() => run(() => onSetUnread(target.sessionId, !target.unread))}
+        >
+          {target.unread
+            ? <CheckCircle2 className="app-transient-action-icon" aria-hidden="true" />
+            : <Mail className="app-transient-action-icon" aria-hidden="true" />}
+          {target.unread ? 'Mark as read' : 'Mark as unread'}
+        </button>
+        <button
+          type="button"
           data-session-context-action="mute"
           className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
           onClick={() => run(() => onSetMuted(target.sessionId, !target.muted))}
@@ -126,6 +151,85 @@ export function SessionContextMenu({
         >
           <Trash2 className="app-transient-action-icon" aria-hidden="true" />
           Delete chat…
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function GroupContextMenu({
+  target,
+  onClose,
+  onSetPinned,
+  onSetMuted,
+  onMarkRead,
+  onArchive,
+  onRestore,
+}: {
+  target: GroupContextMenuTarget;
+  onClose: () => void;
+  onSetPinned: (groupSpaceId: string, pinned: boolean) => void;
+  onSetMuted: (sessionIds: string[], muted: boolean) => void;
+  onMarkRead: (sessionIds: string[]) => void;
+  onArchive: (sessionIds: string[]) => void;
+  onRestore: (sessionIds: string[]) => void;
+}) {
+  const run = (action: () => void) => {
+    onClose();
+    action();
+  };
+  return (
+    <div className="fixed inset-0 z-50" onMouseDown={onClose}>
+      <div
+        className="app-transient-surface app-modal-panel absolute w-[220px] rounded-[18px] border p-1.5"
+        style={{
+          left: Math.max(12, Math.min(target.x, window.innerWidth - 232)),
+          top: Math.max(12, Math.min(target.y, window.innerHeight - 260)),
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+        aria-label={`Actions for ${target.groupName}`}
+      >
+        {!target.archived ? (
+          <button
+            type="button"
+            data-group-context-action="pin"
+            className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+            onClick={() => run(() => onSetPinned(target.groupSpaceId, !target.pinned))}
+          >
+            <Pin className="app-transient-action-icon" aria-hidden="true" />
+            {target.pinned ? 'Unpin group' : 'Pin group'}
+          </button>
+        ) : null}
+        <button
+          type="button"
+          data-group-context-action="read"
+          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          onClick={() => run(() => onMarkRead(target.sessionIds))}
+        >
+          <CheckCircle2 className="app-transient-action-icon" aria-hidden="true" />
+          Mark group as read
+        </button>
+        <button
+          type="button"
+          data-group-context-action="mute"
+          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          onClick={() => run(() => onSetMuted(target.sessionIds, !target.muted))}
+        >
+          <BellOff className="app-transient-action-icon" aria-hidden="true" />
+          {target.muted ? 'Unmute group' : 'Mute group'}
+        </button>
+        <button
+          type="button"
+          data-group-context-action={target.archived ? 'restore' : 'archive'}
+          className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
+          onClick={() => run(() => (
+            target.archived ? onRestore(target.sessionIds) : onArchive(target.sessionIds)
+          ))}
+        >
+          {target.archived
+            ? <ArchiveRestore className="app-transient-action-icon" aria-hidden="true" />
+            : <Archive className="app-transient-action-icon" aria-hidden="true" />}
+          {target.archived ? 'Restore group' : 'Archive group'}
         </button>
       </div>
     </div>

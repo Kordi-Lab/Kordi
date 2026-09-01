@@ -81,6 +81,9 @@ type UseKordiChatSessionActionsArgs = {
   unhideCloudSession: (sessionId: string) => Promise<void>;
   setCloudSessionPinned: (sessionId: string, pinned: boolean) => Promise<void>;
   setCloudSessionMuted: (sessionId: string, muted: boolean) => Promise<void>;
+  setCloudSessionUnread: (sessionId: string, unread: boolean) => Promise<void>;
+  markCloudSessionsRead: (sessionIds: string[]) => Promise<void>;
+  setCloudGroupSpacePinned: (groupSpaceId: string, pinned: boolean) => Promise<void>;
   refreshCanonicalState: () => Promise<void>;
   refreshDesktopChat: (activeSessionId?: string) => Promise<void>;
   sendCloudGroupControl: (
@@ -107,6 +110,9 @@ export function useKordiChatSessionActions({
   unhideCloudSession,
   setCloudSessionPinned,
   setCloudSessionMuted,
+  setCloudSessionUnread,
+  markCloudSessionsRead,
+  setCloudGroupSpacePinned,
   refreshCanonicalState,
   refreshDesktopChat,
   sendCloudGroupControl,
@@ -417,12 +423,36 @@ export function useKordiChatSessionActions({
     await setCloudSessionMuted(trimmedSessionId, muted);
   }, [isNativeShell, setCloudSessionMuted, setDesktopError]);
 
+  const setSessionUnread = useCallback(async (sessionId: string, unread: boolean) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!isNativeShell || !trimmedSessionId) return;
+    setDesktopError(null);
+    if (unread) await setCloudSessionUnread(trimmedSessionId, true);
+    else await markCloudSessionsRead([trimmedSessionId]);
+  }, [isNativeShell, markCloudSessionsRead, setCloudSessionUnread, setDesktopError]);
+
+  const markSessionsRead = useCallback(async (sessionIds: string[]) => {
+    if (!isNativeShell) return;
+    setDesktopError(null);
+    await markCloudSessionsRead(sessionIds);
+  }, [isNativeShell, markCloudSessionsRead, setDesktopError]);
+
+  const setGroupPinned = useCallback(async (groupSpaceId: string, pinned: boolean) => {
+    const trimmedGroupSpaceId = groupSpaceId.trim();
+    if (!isNativeShell || !trimmedGroupSpaceId) return;
+    setDesktopError(null);
+    await setCloudGroupSpacePinned(trimmedGroupSpaceId, pinned);
+  }, [isNativeShell, setCloudGroupSpacePinned, setDesktopError]);
+
   return {
     renameSession,
     archiveSession,
     restoreSession,
     setSessionPinned,
     setSessionMuted,
+    setSessionUnread,
+    markSessionsRead,
+    setGroupPinned,
     deleteSession,
   };
 }

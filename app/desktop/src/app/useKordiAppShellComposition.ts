@@ -136,6 +136,8 @@ export function useKordiAppShellComposition({
       agentParticipantSpaces: conversations.agentParticipantSpaces,
       pinnedChatSessionIds: conversations.pinnedSessionIds,
       mutedChatSessionIds: conversations.mutedSessionIds,
+      unreadChatSessionIds: conversations.unreadSessionIds,
+      pinnedChatGroupSpaceIds: conversations.pinnedGroupSpaceIds,
       isDesktopChatLoading: chat.isDesktopChatLoading,
       desktopChatError: chat.desktopChatError,
       filteredConversations: conversations.filteredConversations,
@@ -185,6 +187,9 @@ export function useKordiAppShellComposition({
       handleRestoreChatSession: chatSession.handleRestoreChatSession,
       handleSetChatSessionPinned: chatSession.handleSetChatSessionPinned,
       handleSetChatSessionMuted: chatSession.handleSetChatSessionMuted,
+      handleSetChatSessionUnread: chatSession.handleSetChatSessionUnread,
+      handleMarkChatSessionsRead: chatSession.handleMarkChatSessionsRead,
+      handleSetChatGroupPinned: chatSession.handleSetChatGroupPinned,
       handleDeleteChatSession: chatSession.handleDeleteChatSession,
       handleMoveChatSessionToProject:
         projectActions.handleMoveChatSessionToProject,

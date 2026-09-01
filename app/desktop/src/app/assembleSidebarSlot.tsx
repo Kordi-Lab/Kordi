@@ -145,11 +145,16 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         agentParticipantSpaces: args.agentParticipantSpaces,
         pinnedSessionIds: args.pinnedChatSessionIds,
         mutedSessionIds: args.mutedChatSessionIds,
+        unreadSessionIds: args.unreadChatSessionIds,
+        pinnedGroupSpaceIds: args.pinnedChatGroupSpaceIds,
         activeConvId: args.activeConvId,
         onPrefetchChatSession: (sessionId) => {
           void args.handlePrefetchChatSession(sessionId);
         },
         onSelectChatSession: (sessionId) => {
+          if (args.unreadChatSessionIds.has(sessionId)) {
+            void args.handleSetChatSessionUnread(sessionId, false);
+          }
           void args.handleSelectChatSession(sessionId);
         },
         onStartChatWithPerson: chatActions.onStartChatWithPerson,
@@ -180,6 +185,15 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         },
         onSetChatSessionMuted: (sessionId, muted) => {
           void args.handleSetChatSessionMuted(sessionId, muted);
+        },
+        onSetChatSessionUnread: (sessionId, unread) => {
+          void args.handleSetChatSessionUnread(sessionId, unread);
+        },
+        onMarkChatSessionsRead: (sessionIds) => {
+          void args.handleMarkChatSessionsRead(sessionIds);
+        },
+        onSetChatGroupPinned: (groupSpaceId, pinned) => {
+          void args.handleSetChatGroupPinned(groupSpaceId, pinned);
         },
         isCollaborationSyncing: args.isCollaborationSyncing,
       }}

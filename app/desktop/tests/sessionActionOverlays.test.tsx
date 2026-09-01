@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
   DeleteSessionDialog,
+  GroupContextMenu,
   ProjectCreateDialog,
   RenameSessionDialog,
   SessionContextMenu,
@@ -29,10 +30,11 @@ const menuActions = {
   onRestore: () => {},
   onSetPinned: () => {},
   onSetMuted: () => {},
+  onSetUnread: () => {},
   onDelete: () => {},
 };
 
-test('SessionContextMenu exposes pin, mute, archive, and reversible delete actions', () => {
+test('SessionContextMenu exposes unread, pin, mute, archive, and reversible delete actions', () => {
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: { innerWidth: 1024, innerHeight: 768 },
@@ -47,9 +49,37 @@ test('SessionContextMenu exposes pin, mute, archive, and reversible delete actio
   assert.doesNotMatch(markup, /Delete forever/);
   assert.match(markup, />Pin</);
   assert.match(markup, />Mute notifications</);
+  assert.match(markup, />Mark as unread</);
   assert.match(markup, />Archive</);
   assert.match(markup, /Delete chat…/);
-  assert.equal((markup.match(/items-center gap-2\.5 whitespace-nowrap/g) ?? []).length, 4);
+  assert.equal((markup.match(/items-center gap-2\.5 whitespace-nowrap/g) ?? []).length, 5);
+});
+
+test('GroupContextMenu exposes whole-group chat actions', () => {
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { innerWidth: 1024, innerHeight: 768 },
+  });
+  const markup = renderToStaticMarkup(createElement(GroupContextMenu, {
+    target: {
+      groupSpaceId: 'session:group:mobile',
+      groupName: 'Mobile builders',
+      sessionIds: ['session:group:mobile', 'session:group:mobile-release'],
+      x: 120,
+      y: 120,
+    },
+    onClose: () => {},
+    onSetPinned: () => {},
+    onSetMuted: () => {},
+    onMarkRead: () => {},
+    onArchive: () => {},
+    onRestore: () => {},
+  }));
+
+  assert.match(markup, />Pin group</);
+  assert.match(markup, />Mark group as read</);
+  assert.match(markup, />Mute group</);
+  assert.match(markup, />Archive group</);
 });
 
 test('SessionContextMenu keeps available actions flat and omits the removed project action', () => {

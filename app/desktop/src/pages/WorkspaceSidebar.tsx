@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
-import { Archive, ChevronLeft, Plus, Search } from 'lucide-react';
+import { Archive, Plus, Search } from 'lucide-react';
 
 import type { ChatChannel } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
@@ -13,12 +13,14 @@ import { GroupDetailsDialog } from '@/pages/GroupDetailsDialog';
 import type { GroupManagementPopoverAnchor } from '@/pages/GroupDetailsDialog';
 import {
   DeleteSessionDialog,
+  GroupContextMenu,
   ProjectCreateDialog,
   RenameSessionDialog,
   SessionContextMenu,
 } from '@/pages/SessionActionOverlays';
 import type {
   SessionActionTarget,
+  GroupContextMenuTarget,
   SessionContextMenuTarget,
 } from '@/pages/SessionActionOverlays';
 import { WorkspaceChatLists } from '@/pages/workspaceSidebar.chatLists';
@@ -171,6 +173,9 @@ export function WorkspaceSidebar({
     onRestoreChatSession,
     onSetChatSessionPinned,
     onSetChatSessionMuted,
+    onSetChatSessionUnread,
+    onMarkChatSessionsRead,
+    onSetChatGroupPinned,
     onDeleteChatSession,
   } = chats;
   const {
@@ -198,6 +203,8 @@ export function WorkspaceSidebar({
 
   const [sessionContextMenu, setSessionContextMenu] =
     useState<SessionContextMenuTarget | null>(null);
+  const [groupContextMenu, setGroupContextMenu] =
+    useState<GroupContextMenuTarget | null>(null);
   const [removeSessionTarget, setRemoveSessionTarget] =
     useState<SessionActionTarget | null>(null);
   const [renameSessionTarget, setRenameSessionTarget] =
@@ -228,13 +235,16 @@ export function WorkspaceSidebar({
   };
 
   useEffect(() => {
-    if (!sessionContextMenu) return;
+    if (!sessionContextMenu && !groupContextMenu) return;
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSessionContextMenu(null);
+      if (event.key === 'Escape') {
+        setSessionContextMenu(null);
+        setGroupContextMenu(null);
+      }
     };
     window.addEventListener('keydown', handleEscape);
     return () => window.removeEventListener('keydown', handleEscape);
-  }, [sessionContextMenu]);
+  }, [groupContextMenu, sessionContextMenu]);
 
   const closeSessionDialogs = () => {
     setRemoveSessionTarget(null);
@@ -287,19 +297,8 @@ export function WorkspaceSidebar({
                   <div className="flex h-full flex-col p-2.5">
                     <div className="app-chat-sidebar-header mb-2 flex items-center justify-between gap-2.5">
                       <div className="flex min-w-0 items-center gap-1">
-                        {chatModel.showArchived ? (
-                          <button
-                            type="button"
-                            className="app-icon-button grid h-7 w-7 place-items-center rounded-[9px]"
-                            onClick={() => chatModel.setShowArchived(false)}
-                            title="Back to chats"
-                            aria-label="Back to chats"
-                          >
-                            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                          </button>
-                        ) : null}
                         <div className="shrink-0 text-[15px] font-semibold text-white">
-                          {chatModel.showArchived ? 'Archived chats' : 'Chats'}
+                          Chats
                         </div>
                         <CollaborationSyncIndicator
                           status={chatModel.collaborationSyncStatus}
@@ -335,6 +334,19 @@ export function WorkspaceSidebar({
                         className="w-full bg-transparent text-[13px] text-white outline-none placeholder:text-slate-400"
                       />
                     </div>
+
+                    {chatModel.archivedSessionCount > 0 ? (
+                      <button
+                        type="button"
+                        className="app-transient-flat-action mb-2 flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[11px] text-slate-300"
+                        onClick={() => chatModel.setShowArchived(!chatModel.showArchived)}
+                        aria-pressed={chatModel.showArchived}
+                      >
+                        <Archive className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span className="flex-1">Archived chats</span>
+                        <span className="tabular-nums text-slate-500">{chatModel.archivedSessionCount}</span>
+                      </button>
+                    ) : null}
 
                     <div className="mb-2 space-y-1.5">
                       <div className="app-filter-tabs w-full">
@@ -380,18 +392,6 @@ export function WorkspaceSidebar({
                       </div>
                     </div>
 
-                    {!chatModel.showArchived && chatModel.archivedSessionCount > 0 ? (
-                      <button
-                        type="button"
-                        className="app-transient-flat-action mb-2 flex h-8 w-full items-center gap-2 rounded-[10px] px-2.5 text-left text-[11px] text-slate-300"
-                        onClick={() => chatModel.setShowArchived(true)}
-                      >
-                        <Archive className="h-3.5 w-3.5" aria-hidden="true" />
-                        <span className="flex-1">Archived chats</span>
-                        <span className="tabular-nums text-slate-500">{chatModel.archivedSessionCount}</span>
-                      </button>
-                    ) : null}
-
                     {desktopChatError ? (
                       <div className="app-error-text mb-2 rounded-[14px] border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
                         {desktopChatError}
@@ -405,6 +405,7 @@ export function WorkspaceSidebar({
                         onPrefetchChatSession,
                         onSelectChatSession,
                         onOpenSessionContextMenu: setSessionContextMenu,
+                        onOpenGroupContextMenu: setGroupContextMenu,
                         onOpenGroupDetails: (space, anchor) => {
                           chatModel.setParticipantSpaceExpanded(space.id, true);
                           setGroupDetailsAnchor(anchor);
@@ -445,7 +446,31 @@ export function WorkspaceSidebar({
           onRestore={(sessionId) => { void onRestoreChatSession(sessionId); }}
           onSetPinned={(sessionId, pinned) => { void onSetChatSessionPinned(sessionId, pinned); }}
           onSetMuted={(sessionId, muted) => { void onSetChatSessionMuted(sessionId, muted); }}
+          onSetUnread={(sessionId, unread) => { void onSetChatSessionUnread(sessionId, unread); }}
           onDelete={setRemoveSessionTarget}
+        />
+      ) : null}
+      {groupContextMenu ? (
+        <GroupContextMenu
+          target={groupContextMenu}
+          onClose={() => setGroupContextMenu(null)}
+          onSetPinned={(groupSpaceId, pinned) => { void onSetChatGroupPinned(groupSpaceId, pinned); }}
+          onSetMuted={(sessionIds, muted) => {
+            void (async () => {
+              for (const sessionId of sessionIds) await onSetChatSessionMuted(sessionId, muted);
+            })();
+          }}
+          onMarkRead={(sessionIds) => { void onMarkChatSessionsRead(sessionIds); }}
+          onArchive={(sessionIds) => {
+            void (async () => {
+              for (const sessionId of sessionIds) await onArchiveChatSession(sessionId);
+            })();
+          }}
+          onRestore={(sessionIds) => {
+            void (async () => {
+              for (const sessionId of sessionIds) await onRestoreChatSession(sessionId);
+            })();
+          }}
         />
       ) : null}
       {renameSessionTarget ? (

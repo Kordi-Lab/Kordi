@@ -7,7 +7,7 @@ import {
   buildChatSidebarRows,
   type ChatSidebarSessionInput,
 } from '@/pages/sidebar/chatSidebarRows';
-import { filterGroupForkSessionsFromSpaces } from '@/pages/workspaceSidebar.chatHelpers';
+import { filterGroupForkSessionsFromSpaces, groupSpacePreferenceId } from '@/pages/workspaceSidebar.chatHelpers';
 import type {
   WorkspaceSidebarChats,
   WorkspaceSidebarParticipantSpace as ParticipantSpaceItem,
@@ -24,6 +24,7 @@ const EMPTY_SESSION_IDS: ReadonlySet<string> = new Set();
 function orderPinnedSessions(
   spaces: ParticipantSpaceItem[],
   pinnedSessionIds: ReadonlySet<string>,
+  pinnedGroupSpaceIds: ReadonlySet<string>,
 ) {
   return spaces.map((space) => ({
     ...space,
@@ -32,10 +33,12 @@ function orderPinnedSessions(
       || right.updatedAtMs - left.updatedAtMs
     )),
   })).sort((left, right) => {
-    const leftPinned = left.kind !== 'group'
-      && left.sessions.some((session) => pinnedSessionIds.has(session.id));
-    const rightPinned = right.kind !== 'group'
-      && right.sessions.some((session) => pinnedSessionIds.has(session.id));
+    const leftPinned = left.kind === 'group'
+      ? pinnedGroupSpaceIds.has(groupSpacePreferenceId(left.id))
+      : left.sessions.some((session) => pinnedSessionIds.has(session.id));
+    const rightPinned = right.kind === 'group'
+      ? pinnedGroupSpaceIds.has(groupSpacePreferenceId(right.id))
+      : right.sessions.some((session) => pinnedSessionIds.has(session.id));
     return Number(rightPinned) - Number(leftPinned);
   });
 }
@@ -63,6 +66,8 @@ export function useWorkspaceChatSidebarModel(
     agentParticipantSpaces,
     pinnedSessionIds = EMPTY_SESSION_IDS,
     mutedSessionIds = EMPTY_SESSION_IDS,
+    unreadSessionIds = EMPTY_SESSION_IDS,
+    pinnedGroupSpaceIds = EMPTY_SESSION_IDS,
     chatSearch,
     initialSelectedParticipantSpaceId = null,
     initialChatChannel = 'contact',
@@ -81,20 +86,20 @@ export function useWorkspaceChatSidebarModel(
   );
   const [showArchived, setShowArchived] = useState(false);
   const orderedParticipantSpaces = useMemo(
-    () => orderPinnedSessions(participantSpaces, pinnedSessionIds),
-    [participantSpaces, pinnedSessionIds],
+    () => orderPinnedSessions(participantSpaces, pinnedSessionIds, pinnedGroupSpaceIds),
+    [participantSpaces, pinnedGroupSpaceIds, pinnedSessionIds],
   );
   const orderedContactParticipantSpaces = useMemo(
-    () => orderPinnedSessions(contactParticipantSpaces, pinnedSessionIds),
-    [contactParticipantSpaces, pinnedSessionIds],
+    () => orderPinnedSessions(contactParticipantSpaces, pinnedSessionIds, pinnedGroupSpaceIds),
+    [contactParticipantSpaces, pinnedGroupSpaceIds, pinnedSessionIds],
   );
   const orderedAgentParticipantSpaces = useMemo(
-    () => orderPinnedSessions(agentParticipantSpaces, pinnedSessionIds),
-    [agentParticipantSpaces, pinnedSessionIds],
+    () => orderPinnedSessions(agentParticipantSpaces, pinnedSessionIds, pinnedGroupSpaceIds),
+    [agentParticipantSpaces, pinnedGroupSpaceIds, pinnedSessionIds],
   );
   const orderedArchivedSpaces = useMemo(
-    () => orderPinnedSessions(archivedParticipantSpaces, pinnedSessionIds),
-    [archivedParticipantSpaces, pinnedSessionIds],
+    () => orderPinnedSessions(archivedParticipantSpaces, pinnedSessionIds, pinnedGroupSpaceIds),
+    [archivedParticipantSpaces, pinnedGroupSpaceIds, pinnedSessionIds],
   );
   const sourceParticipantSpaces = showArchived
     ? orderedArchivedSpaces
@@ -203,7 +208,7 @@ export function useWorkspaceChatSidebarModel(
       const rowSession = allSidebarSessionRowsById.get(sessionId)?.session;
       const ownUnread = sidebarSessionIsActive(rowSession)
         ? 0
-        : Math.max(0, rowSession?.unread ?? 0);
+        : Math.max(unreadSessionIds.has(sessionId) ? 1 : 0, rowSession?.unread ?? 0);
       const forkUnread = (
         globalForkLineage.forksByParentSessionId.get(sessionId) ?? []
       ).reduce((sum, fork) => sum + visit(fork.id, nextSeen), 0);
@@ -215,7 +220,7 @@ export function useWorkspaceChatSidebarModel(
       visit(sessionId, new Set());
     }
     return cache;
-  }, [allSidebarSessionRowsById, globalForkLineage, sidebarSessionIsActive]);
+  }, [allSidebarSessionRowsById, globalForkLineage, sidebarSessionIsActive, unreadSessionIds]);
   const unreadByParticipantSpaceIdWithForkDescendants = useMemo(() => {
     const collect = (sessionId: string, target: Set<string>, seen: Set<string>) => {
       if (seen.has(sessionId)) return;
@@ -237,7 +242,7 @@ export function useWorkspaceChatSidebarModel(
           sum
           + (sidebarSessionIsActive(rowSession)
             ? 0
-            : Math.max(0, rowSession?.unread ?? 0))
+            : Math.max(unreadSessionIds.has(sessionId) ? 1 : 0, rowSession?.unread ?? 0))
         );
       }, 0);
       unreadBySpaceId.set(space.id, unread);
@@ -248,14 +253,17 @@ export function useWorkspaceChatSidebarModel(
     globalForkLineage,
     visibleParticipantSpaces,
     sidebarSessionIsActive,
+    unreadSessionIds,
   ]);
   const contactUnread = visibleContactParticipantSpaces.reduce(
     (sum, space) =>
       sum
-      + Math.max(
-        0,
-        unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread,
-      ),
+      + (space.sessions.every((session) => mutedSessionIds.has(session.id))
+        ? 0
+        : Math.max(
+          0,
+          unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread,
+        )),
     0,
   );
   const flatAgentSessions = useMemo(
@@ -305,7 +313,9 @@ export function useWorkspaceChatSidebarModel(
   const agentUnread = flatAgentSessions.reduce(
     (sum, { session }) =>
       renderableAgentSessionIds.has(session.id)
-        ? sum + Math.max(0, session.unread)
+        ? sum + (mutedSessionIds.has(session.id)
+          ? 0
+          : Math.max(unreadSessionIds.has(session.id) ? 1 : 0, session.unread))
         : sum,
     0,
   );
@@ -400,9 +410,12 @@ export function useWorkspaceChatSidebarModel(
   );
   const totalUnread = chatConversations.reduce(
     (sum, conversation) =>
-      isGroupForkSession(conversation)
+      isGroupForkSession(conversation) || mutedSessionIds.has(conversation.canonicalSessionId || conversation.id)
         ? sum
-        : sum + Math.max(0, conversation.unread ?? 0),
+        : sum + Math.max(
+          unreadSessionIds.has(conversation.canonicalSessionId || conversation.id) ? 1 : 0,
+          conversation.unread ?? 0,
+        ),
     0,
   );
   const collaborationSyncStatus: CollaborationSyncStatus =
@@ -453,6 +466,8 @@ export function useWorkspaceChatSidebarModel(
     ),
     pinnedSessionIds,
     mutedSessionIds,
+    unreadSessionIds,
+    pinnedGroupSpaceIds,
   };
 }
 

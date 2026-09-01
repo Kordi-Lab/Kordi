@@ -20,6 +20,11 @@ export function filterGroupForkSessionsFromSpaces(
     .filter((space) => space.sessions.length > 0);
 }
 
+export function groupSpacePreferenceId(spaceId: string) {
+  const id = spaceId.trim();
+  return id.startsWith('group:') ? id.slice('group:'.length) : id;
+}
+
 export function participantSpaceSessionRowTitle(title: string) {
   const trimmed = title.trim();
   if (!trimmed) return '# Untitled session';
@@ -72,6 +77,7 @@ export function sessionContextMenuTargetForConversation(
     archived?: boolean;
     pinned?: boolean;
     muted?: boolean;
+    unread?: boolean;
   } = {},
 ): SessionContextMenuTarget | null {
   const sessionId = sessionActionIdForConversation(conversation);
@@ -86,6 +92,7 @@ export function sessionContextMenuTargetForConversation(
     ...(options.archived ? { archived: true } : {}),
     ...(options.pinned ? { pinned: true } : {}),
     ...(options.muted ? { muted: true } : {}),
+    ...(options.unread ? { unread: true } : {}),
   };
 }
 

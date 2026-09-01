@@ -164,11 +164,17 @@ export function useCloudAccountLifecycleState({
   const [deletedSessionIds, setDeletedSessionIds] = useState<Set<string>>(
     () => loadCloudSessionVisibility(account?.accountId).deletedSessionIds,
   );
+  const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(
+    () => loadCloudSessionVisibility(account?.accountId).unreadSessionIds,
+  );
   const [pinnedSessionIds, setPinnedSessionIds] = useState<Set<string>>(
     () => loadCloudSessionVisibility(account?.accountId).pinnedSessionIds,
   );
   const [mutedSessionIds, setMutedSessionIds] = useState<Set<string>>(
     () => loadCloudSessionVisibility(account?.accountId).mutedSessionIds,
+  );
+  const [pinnedGroupSpaceIds, setPinnedGroupSpaceIds] = useState<Set<string>>(
+    () => loadCloudSessionVisibility(account?.accountId).pinnedGroupSpaceIds,
   );
 
   const sessionActivityRef =
@@ -184,8 +190,10 @@ export function useCloudAccountLifecycleState({
     useRef<Record<string, CloudAgentDefinition>>(agentDefinitionsById);
   const hiddenSessionIdsRef = useRef<Set<string>>(hiddenSessionIds);
   const deletedSessionIdsRef = useRef<Set<string>>(deletedSessionIds);
+  const unreadSessionIdsRef = useRef<Set<string>>(unreadSessionIds);
   const pinnedSessionIdsRef = useRef<Set<string>>(pinnedSessionIds);
   const mutedSessionIdsRef = useRef<Set<string>>(mutedSessionIds);
+  const pinnedGroupSpaceIdsRef = useRef<Set<string>>(pinnedGroupSpaceIds);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -263,12 +271,20 @@ export function useCloudAccountLifecycleState({
   }, [deletedSessionIds]);
 
   useEffect(() => {
+    unreadSessionIdsRef.current = unreadSessionIds;
+  }, [unreadSessionIds]);
+
+  useEffect(() => {
     pinnedSessionIdsRef.current = pinnedSessionIds;
   }, [pinnedSessionIds]);
 
   useEffect(() => {
     mutedSessionIdsRef.current = mutedSessionIds;
   }, [mutedSessionIds]);
+
+  useEffect(() => {
+    pinnedGroupSpaceIdsRef.current = pinnedGroupSpaceIds;
+  }, [pinnedGroupSpaceIds]);
 
   useEffect(() => {
     if (
@@ -278,8 +294,10 @@ export function useCloudAccountLifecycleState({
     saveCloudSessionVisibility(account.accountId, {
       hiddenSessionIds,
       deletedSessionIds,
+      unreadSessionIds,
       pinnedSessionIds,
       mutedSessionIds,
+      pinnedGroupSpaceIds,
     });
   }, [
     account,
@@ -287,7 +305,9 @@ export function useCloudAccountLifecycleState({
     hiddenSessionIds,
     mutedSessionIds,
     messagesCacheAccountRef,
+    pinnedGroupSpaceIds,
     pinnedSessionIds,
+    unreadSessionIds,
   ]);
 
   useEffect(() => () => {
@@ -366,12 +386,16 @@ export function useCloudAccountLifecycleState({
     const visibility = loadCloudSessionVisibility(accountId);
     hiddenSessionIdsRef.current = visibility.hiddenSessionIds;
     deletedSessionIdsRef.current = visibility.deletedSessionIds;
+    unreadSessionIdsRef.current = visibility.unreadSessionIds;
     pinnedSessionIdsRef.current = visibility.pinnedSessionIds;
     mutedSessionIdsRef.current = visibility.mutedSessionIds;
+    pinnedGroupSpaceIdsRef.current = visibility.pinnedGroupSpaceIds;
     setHiddenSessionIds(visibility.hiddenSessionIds);
     setDeletedSessionIds(visibility.deletedSessionIds);
+    setUnreadSessionIds(visibility.unreadSessionIds);
     setPinnedSessionIds(visibility.pinnedSessionIds);
     setMutedSessionIds(visibility.mutedSessionIds);
+    setPinnedGroupSpaceIds(visibility.pinnedGroupSpaceIds);
 
     return () => {
       cancelled = true;
@@ -386,6 +410,7 @@ export function useCloudAccountLifecycleState({
     groupSessionTitleBackfillsRef,
     hiddenSessionIdsRef,
     mutedSessionIdsRef,
+    pinnedGroupSpaceIdsRef,
     hydratedCacheAccountRef,
     peerReadAtByPeerRef,
     messageCache,
@@ -396,12 +421,14 @@ export function useCloudAccountLifecycleState({
     sessionPinsByIdRef,
     sessionTitlesByIdRef,
     pinnedSessionIdsRef,
+    unreadSessionIdsRef,
     setAgentDefinitionsById,
     setCollaborationOverride,
     setCollaborationOverrideContextKey,
     setDeletedSessionIds,
     setHiddenSessionIds,
     setMutedSessionIds,
+    setPinnedGroupSpaceIds,
     setLocalAgentTurnsByRequestId,
     setMessagesByPeer,
     setPublishedContextKey,
@@ -411,6 +438,7 @@ export function useCloudAccountLifecycleState({
     setSessionPinsById,
     setSessionTitlesById,
     setPinnedSessionIds,
+    setUnreadSessionIds,
     setUnreadReadiness,
     syncCoordinator,
   ]);
@@ -451,12 +479,18 @@ export function useCloudAccountLifecycleState({
       deletedSessionIds,
       setDeletedSessionIds,
       deletedSessionIdsRef,
+      unreadSessionIds,
+      setUnreadSessionIds,
+      unreadSessionIdsRef,
       pinnedSessionIds,
       setPinnedSessionIds,
       pinnedSessionIdsRef,
       mutedSessionIds,
       setMutedSessionIds,
       mutedSessionIdsRef,
+      pinnedGroupSpaceIds,
+      setPinnedGroupSpaceIds,
+      pinnedGroupSpaceIdsRef,
     },
     cancelledRef,
     resetAccountState,
@@ -468,15 +502,19 @@ export function useCloudSessionVisibilityRefresh({
   client,
   setHiddenSessionIds,
   setDeletedSessionIds,
+  setUnreadSessionIds,
   setPinnedSessionIds,
   setMutedSessionIds,
+  setPinnedGroupSpaceIds,
 }: {
   account: CloudAccount | null;
   client: CloudAuthClient;
   setHiddenSessionIds: Dispatch<SetStateAction<Set<string>>>;
   setDeletedSessionIds: Dispatch<SetStateAction<Set<string>>>;
+  setUnreadSessionIds: Dispatch<SetStateAction<Set<string>>>;
   setPinnedSessionIds: Dispatch<SetStateAction<Set<string>>>;
   setMutedSessionIds: Dispatch<SetStateAction<Set<string>>>;
+  setPinnedGroupSpaceIds: Dispatch<SetStateAction<Set<string>>>;
 }) {
   useEffect(() => {
     if (!account) return;
@@ -499,6 +537,11 @@ export function useCloudSessionVisibilityRefresh({
               .map((value) => value.trim())
               .filter(Boolean),
           ),
+          unreadSessionIds: new Set(
+            visibility.unreadSessionIds
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
           pinnedSessionIds: new Set(
             visibility.pinnedSessionIds
               .map((value) => value.trim())
@@ -509,12 +552,19 @@ export function useCloudSessionVisibilityRefresh({
               .map((value) => value.trim())
               .filter(Boolean),
           ),
+          pinnedGroupSpaceIds: new Set(
+            visibility.pinnedGroupSpaceIds
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
         };
         saveCloudSessionVisibility(account.accountId, nextVisibility);
         setHiddenSessionIds(nextVisibility.hiddenSessionIds);
         setDeletedSessionIds(nextVisibility.deletedSessionIds);
+        setUnreadSessionIds(nextVisibility.unreadSessionIds);
         setPinnedSessionIds(nextVisibility.pinnedSessionIds);
         setMutedSessionIds(nextVisibility.mutedSessionIds);
+        setPinnedGroupSpaceIds(nextVisibility.pinnedGroupSpaceIds);
       })
       .catch(() => {
         // A visibility refresh failure should not block message bootstrap;
@@ -529,6 +579,8 @@ export function useCloudSessionVisibilityRefresh({
     setDeletedSessionIds,
     setHiddenSessionIds,
     setMutedSessionIds,
+    setPinnedGroupSpaceIds,
     setPinnedSessionIds,
+    setUnreadSessionIds,
   ]);
 }

@@ -246,8 +246,10 @@ test('listSessionVisibility loads account-scoped chat list state', async () => {
   const { calls, fetchImpl } = recordingFetch(() => jsonResponse(200, {
     hiddenSessionIds: ['session:hidden'],
     deletedSessionIds: ['session:deleted'],
+    unreadSessionIds: ['session:unread'],
     pinnedSessionIds: ['session:pinned'],
     mutedSessionIds: ['session:muted'],
+    pinnedGroupSpaceIds: ['session:group:mobile'],
   }));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
 
@@ -260,22 +262,30 @@ test('listSessionVisibility loads account-scoped chat list state', async () => {
   assert.deepEqual(visibility, {
     hiddenSessionIds: ['session:hidden'],
     deletedSessionIds: ['session:deleted'],
+    unreadSessionIds: ['session:unread'],
     pinnedSessionIds: ['session:pinned'],
     mutedSessionIds: ['session:muted'],
+    pinnedGroupSpaceIds: ['session:group:mobile'],
   });
 });
 
-test('chat list pin and mute methods use the account preference routes', async () => {
+test('chat list preference methods use the account and group routes', async () => {
   const { calls, fetchImpl } = recordingFetch(() => new Response(null, { status: 204 }));
   const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
 
   await client.setCloudSessionPinned('kordi_cs_xyz', 'session:one', true);
   await client.setCloudSessionMuted('kordi_cs_xyz', 'session:one', false);
+  await client.setCloudSessionUnread('kordi_cs_xyz', 'session:one', true);
+  await client.setCloudGroupSpacePinned('kordi_cs_xyz', 'session:group:mobile', true);
 
   assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/session%3Aone/pinned');
   assert.equal(calls[0].init?.method, 'PUT');
   assert.equal(calls[1].url, 'http://srv/v1/cloud/sessions/session%3Aone/muted');
   assert.equal(calls[1].init?.method, 'DELETE');
+  assert.equal(calls[2].url, 'http://srv/v1/cloud/sessions/session%3Aone/unread');
+  assert.equal(calls[2].init?.method, 'PUT');
+  assert.equal(calls[3].url, 'http://srv/v1/cloud/group-spaces/session%3Agroup%3Amobile/pinned');
+  assert.equal(calls[3].init?.method, 'PUT');
 });
 
 test('hideCloudSession sends an authenticated PUT to the hidden route', async () => {

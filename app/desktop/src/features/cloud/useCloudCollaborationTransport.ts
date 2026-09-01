@@ -139,6 +139,10 @@ export function useCloudCollaborationTransport({
           stateRef: stores.visibility.deletedSessionIdsRef,
           setState: stores.visibility.setDeletedSessionIds,
         },
+        unreadSessionIds: {
+          stateRef: stores.visibility.unreadSessionIdsRef,
+          setState: stores.visibility.setUnreadSessionIds,
+        },
         pinnedSessionIds: {
           stateRef: stores.visibility.pinnedSessionIdsRef,
           setState: stores.visibility.setPinnedSessionIds,
@@ -146,6 +150,10 @@ export function useCloudCollaborationTransport({
         mutedSessionIds: {
           stateRef: stores.visibility.mutedSessionIdsRef,
           setState: stores.visibility.setMutedSessionIds,
+        },
+        pinnedGroupSpaceIds: {
+          stateRef: stores.visibility.pinnedGroupSpaceIdsRef,
+          setState: stores.visibility.setPinnedGroupSpaceIds,
         },
       },
       setUnreadReadiness: stores.unread.setReadiness,

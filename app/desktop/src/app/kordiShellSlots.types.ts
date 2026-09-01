@@ -76,6 +76,8 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   agentParticipantSpaces: ParticipantSpaceViewModel[];
   pinnedChatSessionIds: ReadonlySet<string>;
   mutedChatSessionIds: ReadonlySet<string>;
+  unreadChatSessionIds: ReadonlySet<string>;
+  pinnedChatGroupSpaceIds: ReadonlySet<string>;
   isDesktopChatLoading: boolean;
   desktopChatError: string | null;
   filteredConversations: Conversation[];
@@ -120,6 +122,9 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
   handleRestoreChatSession: (sessionId: string) => Promise<void>;
   handleSetChatSessionPinned: (sessionId: string, pinned: boolean) => Promise<void>;
   handleSetChatSessionMuted: (sessionId: string, muted: boolean) => Promise<void>;
+  handleSetChatSessionUnread: (sessionId: string, unread: boolean) => Promise<void>;
+  handleMarkChatSessionsRead: (sessionIds: string[]) => Promise<void>;
+  handleSetChatGroupPinned: (groupSpaceId: string, pinned: boolean) => Promise<void>;
   handleDeleteChatSession: (sessionId: string) => Promise<void>;
   handleMoveChatSessionToProject: (sessionId: string, projectRoot: string) => Promise<void>;
   handleCreateProjectFromFolder: (folderPath: string, name?: string) => Promise<void>;
@@ -341,6 +346,8 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'agentParticipantSpaces'
   | 'pinnedChatSessionIds'
   | 'mutedChatSessionIds'
+  | 'unreadChatSessionIds'
+  | 'pinnedChatGroupSpaceIds'
   | 'handleCreateChatSession'
   | 'chatSearch'
   | 'setChatSearch'
@@ -363,6 +370,9 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'handleRestoreChatSession'
   | 'handleSetChatSessionPinned'
   | 'handleSetChatSessionMuted'
+  | 'handleSetChatSessionUnread'
+  | 'handleMarkChatSessionsRead'
+  | 'handleSetChatGroupPinned'
   | 'handleDeleteChatSession'
   | 'handleMoveChatSessionToProject'
   | 'handleCreateProjectFromFolder'
