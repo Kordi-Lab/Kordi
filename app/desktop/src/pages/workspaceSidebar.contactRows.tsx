@@ -63,9 +63,7 @@ function ParticipantSpaceSessionRow({
     model.globalForkLineage.forksByParentSessionId.get(session.id) ?? [];
   const hasForks = childForks.length > 0;
   const expanded = hasForks && model.isForkListExpanded(session.id);
-  const ownSessionUnreadCount = model.sidebarSessionIsActive(session)
-    ? 0
-    : session.unread;
+  const ownSessionUnreadCount = session.unread;
   const rowUnreadCount = expanded
     ? ownSessionUnreadCount
     : (model.unreadBySessionIdWithForkDescendants.get(session.id)

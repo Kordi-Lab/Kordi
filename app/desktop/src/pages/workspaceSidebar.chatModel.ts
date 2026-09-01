@@ -149,9 +149,7 @@ export function useWorkspaceChatSidebarModel(
       const nextSeen = new Set(seen);
       nextSeen.add(sessionId);
       const rowSession = allSidebarSessionRowsById.get(sessionId)?.session;
-      const ownUnread = sidebarSessionIsActive(rowSession)
-        ? 0
-        : Math.max(0, rowSession?.unread ?? 0);
+      const ownUnread = Math.max(0, rowSession?.unread ?? 0);
       const forkUnread = (
         globalForkLineage.forksByParentSessionId.get(sessionId) ?? []
       ).reduce((sum, fork) => sum + visit(fork.id, nextSeen), 0);
@@ -163,7 +161,7 @@ export function useWorkspaceChatSidebarModel(
       visit(sessionId, new Set());
     }
     return cache;
-  }, [allSidebarSessionRowsById, globalForkLineage, sidebarSessionIsActive]);
+  }, [allSidebarSessionRowsById, globalForkLineage]);
   const unreadByParticipantSpaceIdWithForkDescendants = useMemo(() => {
     const collect = (sessionId: string, target: Set<string>, seen: Set<string>) => {
       if (seen.has(sessionId)) return;
@@ -181,12 +179,7 @@ export function useWorkspaceChatSidebarModel(
       }
       const unread = [...sessionIds].reduce((sum, sessionId) => {
         const rowSession = allSidebarSessionRowsById.get(sessionId)?.session;
-        return (
-          sum
-          + (sidebarSessionIsActive(rowSession)
-            ? 0
-            : Math.max(0, rowSession?.unread ?? 0))
-        );
+        return sum + Math.max(0, rowSession?.unread ?? 0);
       }, 0);
       unreadBySpaceId.set(space.id, unread);
     }
@@ -195,7 +188,6 @@ export function useWorkspaceChatSidebarModel(
     allSidebarSessionRowsById,
     globalForkLineage,
     visibleParticipantSpaces,
-    sidebarSessionIsActive,
   ]);
   const contactUnread = visibleContactParticipantSpaces.reduce(
     (sum, space) =>

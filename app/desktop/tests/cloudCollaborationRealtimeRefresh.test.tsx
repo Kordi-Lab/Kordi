@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import { CLOUD_MESSAGES_REFRESH_MS } from '../src/features/cloud/useCloudCollaborationState';
@@ -10,6 +11,18 @@ import {
 
 test('cloud bridge message polling is a low-frequency WebSocket repair path', () => {
   assert.equal(CLOUD_MESSAGES_REFRESH_MS, 15_000);
+});
+
+test('macOS keeps the realtime WebSocket alive while its window is hidden', () => {
+  const config = JSON.parse(readFileSync(
+    new URL('../src-tauri/tauri.conf.json', import.meta.url),
+    'utf8',
+  )) as {
+    app?: { windows?: Array<{ label?: string; backgroundThrottling?: string }> };
+  };
+  const mainWindow = config.app?.windows?.find((window) => window.label === 'main');
+
+  assert.equal(mainWindow?.backgroundThrottling, 'disabled');
 });
 
 test('cloud realtime reconnect backs off and remains bounded', () => {

@@ -415,7 +415,6 @@ export function useCloudCollaborationState({
 
   const fullUnreadCountsBySessionId = useCloudCanonicalReconciliation({
     account,
-    activeConversationId,
     canonical: {
       state: canonicalSessionState,
       setState: setCanonicalSessionState,
@@ -508,7 +507,6 @@ export function useCloudCollaborationState({
       setState: setCanonicalSessionState,
     },
     messages: {
-      byPeer: messagesByPeer,
       setByPeer: setMessagesByPeer,
       index: cloudMessageIndex,
       sync: syncCloudCollaborationDiff,

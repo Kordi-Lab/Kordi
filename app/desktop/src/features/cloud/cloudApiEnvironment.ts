@@ -92,7 +92,6 @@ export function cloudRealtimeWebSocketEnabled(
     ? (import.meta as ImportMeta & { env?: CloudApiEnvironment }).env
     : undefined;
   const activeEnv = env ?? meta;
-  if (activeEnv?.DEV && operatorProductionDebugIsEnabled(activeEnv)) return false;
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
     const loopback = host === '127.0.0.1' || host === 'localhost' || host === '::1';
