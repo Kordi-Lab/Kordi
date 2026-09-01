@@ -234,6 +234,8 @@ impl EventBus {
         observer_account_id: &str,
         status: &str,
         last_seen_at: Option<&str>,
+        desktop_online: bool,
+        desktop_last_seen_at: Option<&str>,
     ) {
         if self.inner.is_none() {
             return;
@@ -243,6 +245,8 @@ impl EventBus {
             account_id,
             status,
             last_seen_at,
+            desktop_online,
+            desktop_last_seen_at,
             occurred_at: chrono::Utc::now().to_rfc3339(),
         };
         let body = match serde_json::to_vec(&payload) {
@@ -346,5 +350,7 @@ struct PresenceAccountChanged<'a> {
     account_id: &'a str,
     status: &'a str,
     last_seen_at: Option<&'a str>,
+    desktop_online: bool,
+    desktop_last_seen_at: Option<&'a str>,
     occurred_at: String,
 }

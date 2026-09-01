@@ -3,10 +3,10 @@ use super::*;
 pub(super) async fn publish_presence_change_if_needed(
     state: &Arc<ServerState>,
     account_id: &str,
-    before: crate::presence::AccountPresenceStatus,
+    before: (crate::presence::AccountPresenceStatus, bool),
     after: &crate::presence::AccountPresenceSummary,
 ) {
-    if before == after.status {
+    if before == (after.status, after.desktop_online) {
         return;
     }
     let _ = crate::presence::publish_presence_to_observers(
@@ -29,8 +29,8 @@ pub(super) async fn publish_current_device_online(
         crate::presence::presence_timeout(),
     )
     .await
-    .map(|summary| summary.status)
-    .unwrap_or(crate::presence::AccountPresenceStatus::Offline);
+    .map(|summary| (summary.status, summary.desktop_online))
+    .unwrap_or((crate::presence::AccountPresenceStatus::Offline, false));
     match crate::presence::mark_device_online(
         state.db_pool(),
         &session.account_id,
@@ -68,8 +68,8 @@ pub(super) async fn publish_current_device_offline(
         crate::presence::presence_timeout(),
     )
     .await
-    .map(|summary| summary.status)
-    .unwrap_or(crate::presence::AccountPresenceStatus::Offline);
+    .map(|summary| (summary.status, summary.desktop_online))
+    .unwrap_or((crate::presence::AccountPresenceStatus::Offline, false));
     match crate::presence::mark_device_offline(
         state.db_pool(),
         &session.account_id,

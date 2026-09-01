@@ -9,6 +9,7 @@ import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/feat
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
+import { agentRuntimePresence } from '@/features/cloud/presence';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import { cn } from '@/lib/utils';
 import type { ChatsPageProps } from '@/pages/chatsPage.types';
@@ -137,11 +138,13 @@ export function ChatsPage({
   const activePresenceTarget = cloudAccount
     ? cloudCallTargetForConversation(cloudAccount, activeConv)
     : null;
-  const activeContactPresence = activePresenceTarget?.kind === 'direct'
+  const activeAccountPresence = activePresenceTarget?.kind === 'direct'
     ? cloudPresence.snapshot[activePresenceTarget.peerAccountId] ?? null
     : undefined;
   const chatHeader = useChatHeaderModel({
-    contactPresence: activeContactPresence,
+    contactPresence: activeConv.type === 'person'
+      ? activeAccountPresence
+      : agentRuntimePresence(activeAccountPresence),
     isNativeShell,
     isSending: isDesktopChatSending,
     session,
