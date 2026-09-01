@@ -88,7 +88,11 @@ struct SessionDetailView: View {
     private var statusText: String {
         switch currentConversation.kind {
         case .person:
-            return currentConversation.representsKordiSupport ? "Official Kordi support" : "Kordi contact"
+            return currentConversation.representsKordiSupport
+                ? "Official Kordi support"
+                : ContactPresencePresentation.label(
+                    for: model.contactPresenceByAccountID[currentConversation.peerAccountId]
+                )
         case .agent:
             return model.agentStatusText(for: currentConversation)
         case .group:
