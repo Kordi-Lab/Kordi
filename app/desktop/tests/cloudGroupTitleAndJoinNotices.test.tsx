@@ -8,6 +8,7 @@ test('history replay preserves an existing group session shell', () => {
   assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, true), true);
   assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, false), false);
   assert.equal(cloudGroupHistoryReplayPreservesSessionShell(false, true), false);
+  assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, true, true), false);
 });
 
 test('legacy session rename controls become administrator-authored title snapshots', () => {
