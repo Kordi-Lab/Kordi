@@ -79,6 +79,17 @@ test('cloud group cancel notices record sender or agent owner role', () => {
       sender: "Peer's Kordi",
       requestId: 'msg_request',
       deliveryState: 'processing',
+      messageAction: {
+        schemaVersion: 1,
+        kind: 'thread',
+        source: {
+          sourceSessionId: 'session:group',
+          sourceMessageId: 'thread:root',
+          senderLabel: 'Me',
+          textPreview: 'Root',
+          attachmentCount: 0,
+        },
+      },
     },
     parentMessageId: 'msg_request',
     status: 'processing',
@@ -177,6 +188,7 @@ test('cloud group cancel notices record sender or agent owner role', () => {
     sourceConversationId: 'cloud-group-agent:session:group',
     requestId: 'msg_request',
     replyToMessageId: 'msg_request',
+    messageAction: processing.content.messageAction,
     cancelledByAccountId: 'acct_me',
     cancelledByRole: 'sender',
   });

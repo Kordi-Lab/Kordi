@@ -73,6 +73,15 @@ function isPendingAgentDeliveryState(
   return state === 'queued' || state === 'processing';
 }
 
+export function cloudGroupAgentCanonicalRole(
+  senderAccountId: string,
+  localAccountId: string,
+) {
+  return senderAccountId.trim() === localAccountId.trim()
+    ? 'owned-agent' as const
+    : 'external-agent' as const;
+}
+
 export async function applyCloudGroupMessageControl({
   context,
   setCanonicalState,
@@ -302,7 +311,7 @@ export async function applyCloudGroupMessageControl({
       sessionId: envelope.groupId,
       senderIdentityId,
       senderRole: senderIsAgent
-        ? 'external-agent'
+        ? cloudGroupAgentCanonicalRole(message.senderAccountId, account.accountId)
         : (message.senderAccountId === account.accountId ? 'user' : 'person'),
       messageKind: stateOps.cleanText(message.messageKind)
         || (senderIsAgent ? 'agent-turn' : 'text'),
@@ -321,6 +330,7 @@ export async function applyCloudGroupMessageControl({
         sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
         requestId: messageReplyToId,
         replyToMessageId: messageReplyToId,
+        ...(message.messageAction?.kind === 'thread' ? { messageAction: message.messageAction } : {}),
         ...(agentDeliveryState === 'failed' ? { error: message.text || 'Message failed' } : {}),
       } : (Object.keys(structuredContent).length > 0 || mappedAttachments.length > 0 || message.voiceMessage?.mediaId || message.mentions?.length || message.messageAction) ? {
         ...structuredContent,
@@ -336,7 +346,7 @@ export async function applyCloudGroupMessageControl({
         ...(message.mentions?.length ? { mentions: message.mentions } : {}),
         ...(message.messageAction ? {
           messageAction: message.messageAction,
-          replyToMessageId: message.messageAction.kind === 'quote'
+          replyToMessageId: message.messageAction.kind === 'quote' || message.messageAction.kind === 'thread'
             ? message.messageAction.source.sourceMessageId
             : undefined,
         } : {}),
@@ -347,7 +357,7 @@ export async function applyCloudGroupMessageControl({
       createdAtMs: message.createdAtMs,
       parentMessageId: senderIsAgent
         ? messageReplyToId
-        : (message.messageAction?.kind === 'quote'
+        : (message.messageAction?.kind === 'quote' || message.messageAction?.kind === 'thread'
             ? message.messageAction.source.sourceMessageId
             : null),
       status: messageStatus,

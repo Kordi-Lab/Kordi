@@ -113,7 +113,7 @@ function collaborationMessageActionWithRealSourceLabel(
 }
 
 function collaborationMessageActionSourceReference(action: Message['messageAction']): Message['sourceMessage'] {
-  if (!action) return null;
+  if (!action || action.kind === 'thread') return null;
   return {
     messageId: action.source.sourceMessageId,
     senderLabel: action.source.senderLabel,
@@ -371,7 +371,7 @@ export function mapCollaborationConversationToViewModel(
         text: '',
         time: message.timeLabel,
         timestampMs: message.timestampMs,
-        replyToMessageId, reactionConversationId: message.reactionConversationId, reactionTargetMessageId: message.reactionTargetMessageId, cloudMessageVersion: message.cloudMessageVersion, editedAt: message.editedAt, reactions: message.reactions,
+        replyToMessageId, messageAction, sourceMessage, reactionConversationId: message.reactionConversationId, reactionTargetMessageId: message.reactionTargetMessageId, cloudMessageVersion: message.cloudMessageVersion, editedAt: message.editedAt, reactions: message.reactions,
         turn: {
           id: localTurn?.id ?? `collaboration-live-turn:${conversation.id}:${message.id}`,
           sessionId: conversation.id,
@@ -428,7 +428,9 @@ export function mapCollaborationConversationToViewModel(
       attachments,
       messageAction, readReceiptSummary: message.readReceiptSummary, reactionConversationId: message.reactionConversationId, reactionTargetMessageId: message.reactionTargetMessageId, cloudMessageVersion: message.cloudMessageVersion, editedAt: message.editedAt, reactions: message.reactions,
       sourceMessage,
-      replyToMessageId: message.messageAction?.kind === 'quote' ? sourceMessage?.messageId ?? null : undefined,
+      replyToMessageId: message.messageAction?.kind === 'quote' || message.messageAction?.kind === 'thread'
+        ? message.messageAction.source.sourceMessageId
+        : undefined,
       detail: message.detail ?? undefined,
     };
     if (isAgent && isOutboundHuman && isCancelledCollaborationState(message.deliveryState)) {

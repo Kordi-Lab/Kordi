@@ -38,6 +38,7 @@ export type {
   MessageReadReceiptParticipant,
   MessageReadReceiptSummary,
   MessageReplySummary,
+  MessageReplyDestination,
   MessageSourceReference,
   QueuedDesktopChatMessage,
   SessionArtifact,

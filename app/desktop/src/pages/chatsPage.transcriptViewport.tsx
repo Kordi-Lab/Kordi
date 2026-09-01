@@ -111,6 +111,7 @@ export function useChatTranscriptViewport({
     onForkMessage,
     onOpenForkSession,
     onReplyMessage,
+    onOpenMessageThread,
     onForwardMessage,
     onEditMessage,
     onDeleteMessage,
@@ -202,6 +203,7 @@ export function useChatTranscriptViewport({
             onOpenForkSession={onOpenForkSession}
             relatedAgentSessionStatusById={relatedAgentSessionStatusById}
             onReplyMessage={onReplyMessage}
+            onOpenMessageThread={onOpenMessageThread}
             onForwardMessage={onForwardMessage}
             onEditMessage={onEditMessage}
             onDeleteMessage={onDeleteMessage}
@@ -290,6 +292,7 @@ export function useChatTranscriptViewport({
     onOpenSenderProfile,
     onOpenSource,
     onReplyMessage,
+    onOpenMessageThread,
     onReactMessage,
     onRequestCollaborationContact,
     onRequestPinMessage,

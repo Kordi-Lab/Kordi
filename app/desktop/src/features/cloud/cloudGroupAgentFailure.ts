@@ -2,6 +2,7 @@ import { upsertCanonicalMessageFast } from '@/lib/desktop';
 import type {
   AppendCanonicalMessageRequest,
   CanonicalSessionState,
+  MessageActionMetadata,
 } from '@/kordi-app/types';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import {
@@ -60,6 +61,7 @@ export function cloudGroupAgentFailureNoticeRequest({
   agentDisplayName,
   ownerDisplayName,
   error,
+  messageAction = null,
   now = Date.now(),
 }: {
   accountId: string;
@@ -69,6 +71,7 @@ export function cloudGroupAgentFailureNoticeRequest({
   agentDisplayName: string;
   ownerDisplayName?: string | null;
   error: unknown;
+  messageAction?: MessageActionMetadata | null;
   now?: number;
 }): AppendCanonicalMessageRequest {
   const noProvider = isCloudAgentNoProviderConfiguredError(error);
@@ -93,6 +96,7 @@ export function cloudGroupAgentFailureNoticeRequest({
       sourceConversationId: cloudGroupAgentConversationId(groupId),
       requestId,
       replyToMessageId: requestId,
+      ...(messageAction?.kind === 'thread' ? { messageAction } : {}),
       error: failureText,
     },
     createdAtMs: now,
@@ -143,6 +147,7 @@ export async function handleCloudGroupAgentFailure(
     agentDisplayName,
     ownerDisplayName: hostedAgentOwnerName,
     error,
+    messageAction: message.messageAction,
     now: responseCreatedAtMs,
   });
   const terminalUpsertSpan = beginChatPerformanceSpan(
@@ -252,6 +257,7 @@ async function publishCloudGroupAgentFailure({
       deliveryState: 'failed',
       replyToMessageId: message.id,
       requestId: message.id,
+      ...(message.messageAction?.kind === 'thread' ? { messageAction: message.messageAction } : {}),
     },
   });
   const fanoutSpan = beginChatPerformanceSpan(

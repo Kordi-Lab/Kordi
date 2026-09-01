@@ -401,13 +401,7 @@ private struct MediaPreviewPage: View {
             image = preview
         }
 
-        if item.attachment.previewURL?.lowercased().hasPrefix("data:image/") == true {
-            loadFailed = image == nil
-            return
-        }
-
-        guard !item.attachment.attachmentId.hasPrefix("pending:"),
-              let url = await model.prepareAttachmentForPresentation(item.attachment) else {
+        guard let url = await model.prepareAttachmentForSharing(item.attachment) else {
             guard !Task.isCancelled else { return }
             loadFailed = image == nil
             return

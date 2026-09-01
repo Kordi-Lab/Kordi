@@ -189,7 +189,7 @@ async fn presence_contacts_returns_self_and_accepted_contacts_only() {
 }
 
 #[tokio::test]
-async fn presence_rollup_stays_online_until_all_devices_offline() {
+async fn presence_separates_frontend_and_desktop_runtime_activity() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = fast_router(state);
@@ -199,13 +199,18 @@ async fn presence_rollup_stays_online_until_all_devices_offline() {
             .clone()
             .oneshot(post(
                 "/v1/cloud/auth/signup",
-                signup_body(&email, "correct horse"),
+                signup_body_with_device(
+                    &email,
+                    "correct horse",
+                    device_registration(41, "Test iPhone", "ios"),
+                ),
             ))
             .await
             .unwrap(),
     )
     .await;
     let token = signup["session"]["token"].as_str().unwrap();
+    let device_id = signup["session"]["deviceId"].as_str().unwrap();
 
     assert_eq!(
         router
@@ -226,6 +231,41 @@ async fn presence_rollup_stays_online_until_all_devices_offline() {
     .await;
     assert_eq!(online["accounts"][0]["status"], "online");
     assert_eq!(online["accounts"][0]["lastSeenAt"], serde_json::Value::Null);
+    assert_eq!(online["accounts"][0]["desktopOnline"], false);
+    assert_eq!(
+        online["accounts"][0]["desktopLastSeenAt"],
+        serde_json::Value::Null
+    );
+
+    sqlx_core::query::query(
+        "UPDATE cloud_devices SET device_platform = 'macos' WHERE device_id = $1",
+    )
+    .bind(device_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(post_with_token("/v1/cloud/presence/heartbeat", token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let desktop_online = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/presence/contacts", token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(desktop_online["accounts"][0]["desktopOnline"], true);
+    assert_eq!(
+        desktop_online["accounts"][0]["desktopLastSeenAt"],
+        serde_json::Value::Null
+    );
 
     assert_eq!(
         router
@@ -246,4 +286,8 @@ async fn presence_rollup_stays_online_until_all_devices_offline() {
     .await;
     assert_eq!(offline["accounts"][0]["status"], "offline");
     assert!(offline["accounts"][0]["lastSeenAt"].as_str().is_some());
+    assert_eq!(offline["accounts"][0]["desktopOnline"], false);
+    assert!(offline["accounts"][0]["desktopLastSeenAt"]
+        .as_str()
+        .is_some());
 }

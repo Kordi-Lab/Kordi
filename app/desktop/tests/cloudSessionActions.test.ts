@@ -4,7 +4,7 @@ import { test } from 'node:test';
 
 import { shouldUseCloudSessionAction } from '../src/app/useKordiAppModelHelpers';
 import { buildCanonicalIndexes } from '../src/features/canonical/readModel/indexes';
-import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
+import { canonicalMessageRole, mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
 import {
   canonicalNoProviderFailedAgentMessageRequest,
 } from '../src/features/chat/messageActions/chatMessages';
@@ -15,7 +15,7 @@ import {
   markLegacyDefaultAgentProfileMigrated,
   shouldMigrateLegacyDefaultAgentProfile,
 } from '../src/features/cloud/cloudAgentIdentity';
-import type { CanonicalSessionState } from '../src/kordi-app/types';
+import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
 const cloudAgentAvailabilitySource = () => readFileSync(new URL('../src/features/cloud/useCloudAgentAvailability.ts', import.meta.url), 'utf8');
@@ -28,6 +28,7 @@ const cloudGroupAgentPublicationSource = () => readFileSync(new URL('../src/feat
 const cloudGroupAgentFailureSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentFailure.ts', import.meta.url), 'utf8');
 const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupMessageControl.ts', import.meta.url), 'utf8');
 const cloudGroupControlSenderSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlSender.ts', import.meta.url), 'utf8');
+const chatSessionActionsSource = () => readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
 
 test('legacy local default-agent identity migrates once into the cloud profile', () => {
   assert.deepEqual(legacyDefaultAgentProfileUpdate({
@@ -96,12 +97,54 @@ test('canonical group participants retain the public Kordi ID from identity meta
   assert.equal(participants.find((participant) => participant.id === 'human:peer')?.kordiId, '123456789');
 });
 
+test('canonical mapping treats a self-owned cloud agent as My Kordi', () => {
+  const identity = {
+    id: 'agent:cloud:me',
+    kind: 'agent' as const,
+    displayName: "Shu Yang's Kordi",
+    ownerIdentityId: 'human:me',
+    source: 'cloud',
+    sourceHostId: 'cloud',
+    sourceIdentityId: 'cloud-agent:me',
+    humanId: 'me',
+    agentId: 'cloud-agent:me',
+    avatarKey: 'cloud-agent:me',
+    profileImageUrl: null,
+    metadata: {},
+    createdAtMs: 1,
+    updatedAtMs: 1,
+  };
+  const message: CanonicalSessionMessage = {
+    id: 'agent-failure',
+    sessionId: 'session:group:test',
+    senderIdentityId: identity.id,
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    contentText: '',
+    content: { deliveryState: 'failed', error: 'No provider configured yet.' },
+    status: 'failed',
+    sequenceNum: 2,
+    createdAtMs: 2,
+    updatedAtMs: 2,
+  };
+
+  assert.equal(canonicalMessageRole(message, identity, 'human:me'), 'owned-agent');
+  assert.equal(canonicalMessageRole(message, identity, 'human:someone-else'), 'external-agent');
+});
+
 test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {
-  const source = readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
+  const source = chatSessionActionsSource();
   const deleteBranchStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const deleteSession'));
   const deleteBranchEnd = source.indexOf('} catch (error) {', deleteBranchStart);
   const cloudDeleteBranch = source.slice(deleteBranchStart, deleteBranchEnd);
   assert.match(cloudDeleteBranch, /await deleteCloudSession\(trimmedSessionId\);[\s\S]*archiveDesktopChatSession\(\s*trimmedSessionId,\s*desktopActiveSessionId/);
+});
+
+test('group session rename forwards the manual title from the returned canonical state', () => {
+  assert.match(
+    chatSessionActionsSource(),
+    /const sessionTitle = cloudGroupManualSessionTitleSnapshot\(\{[\s\S]*?session: state\.sessions\.find[\s\S]*?kind: 'session-title-update',[\s\S]*?sessionTitle,/,
+  );
 });
 
 test('local cloud self-agent no-provider errors become failed agent replies in canonical chat', () => {

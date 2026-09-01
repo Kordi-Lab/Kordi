@@ -69,6 +69,9 @@ export async function respondToCloudGroupAgentMention(
     participantByAccount,
   } = context;
   const message = envelope.message!;
+  const threadMessageAction = message.messageAction?.kind === 'thread'
+    ? message.messageAction
+    : null;
   const session = await loadSession();
   if (!session?.token) throw new Error('Not signed in.');
   throwIfCloudAgentTurnAborted(signal);
@@ -128,6 +131,7 @@ export async function respondToCloudGroupAgentMention(
       sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
       requestId: message.id,
       replyToMessageId: message.id,
+      ...(threadMessageAction ? { messageAction: threadMessageAction } : {}),
     },
     createdAtMs: processingCreatedAtMs,
     parentMessageId: message.id,
@@ -169,6 +173,7 @@ export async function respondToCloudGroupAgentMention(
         deliveryState: 'processing',
         replyToMessageId: message.id,
         requestId: message.id,
+        ...(threadMessageAction ? { messageAction: threadMessageAction } : {}),
       },
     }),
     sessionId: envelope.groupId,
@@ -284,6 +289,7 @@ export async function respondToCloudGroupAgentMention(
       sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
       requestId: message.id,
       replyToMessageId: message.id,
+      ...(threadMessageAction ? { messageAction: threadMessageAction } : {}),
       ...(finalTurn.tools.length > 0 ? { tools: finalTurn.tools } : {}),
       ...(failureMessage ? { error: failureMessage } : {}),
     },

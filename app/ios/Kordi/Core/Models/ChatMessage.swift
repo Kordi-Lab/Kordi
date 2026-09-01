@@ -481,8 +481,97 @@ struct MessageActionMetadata: Codable, Hashable {
         MessageActionMetadata(schemaVersion: 1, kind: "forward", source: source)
     }
 
+    static func thread(_ source: MessageActionSource) -> MessageActionMetadata {
+        MessageActionMetadata(schemaVersion: 1, kind: "thread", source: source)
+    }
+
     var replyToMessageId: String? {
-        kind == "quote" ? source.sourceMessageId : nil
+        kind == "quote" || kind == "thread" ? source.sourceMessageId : nil
+    }
+}
+
+enum MessageReplyDestination: Hashable {
+    case conversation
+    case thread
+}
+
+struct MessageThread: Identifiable, Equatable {
+    let root: ChatMessage
+    let replies: [ChatMessage]
+
+    var id: String { root.id }
+    var messages: [ChatMessage] { [root] + replies }
+}
+
+struct MessageThreadProjection: Equatable {
+    let mainMessages: [ChatMessage]
+    let threadsByRootID: [String: MessageThread]
+
+    init(messages: [ChatMessage]) {
+        var rootsByID: [String: ChatMessage] = [:]
+        for message in messages {
+            rootsByID[message.id] = message
+        }
+        var rootIDByThreadMessageID: [String: String] = [:]
+        var resolvingMessageIDs = Set<String>()
+
+        func resolveRootID(for message: ChatMessage) -> String? {
+            if let cached = rootIDByThreadMessageID[message.id] { return cached }
+            guard resolvingMessageIDs.insert(message.id).inserted else { return nil }
+            defer { resolvingMessageIDs.remove(message.id) }
+            let explicitRootID = message.messageAction?.kind == "thread"
+                ? message.messageAction?.source.sourceMessageId.nonEmpty
+                : nil
+            let inheritedRootID = message.replyToMessageId.flatMap { parentID in
+                rootIDByThreadMessageID[parentID]
+                    ?? rootsByID[parentID].flatMap { resolveRootID(for: $0) }
+            }
+            guard let rootID = explicitRootID ?? inheritedRootID else { return nil }
+            rootIDByThreadMessageID[message.id] = rootID
+            return rootID
+        }
+
+        var repliesByRootID: [String: [ChatMessage]] = [:]
+        var appendingMessageIDs = Set<String>()
+        var appendedMessageIDs = Set<String>()
+
+        func appendThreadMessage(_ message: ChatMessage) {
+            guard !appendedMessageIDs.contains(message.id),
+                  appendingMessageIDs.insert(message.id).inserted else { return }
+            defer { appendingMessageIDs.remove(message.id) }
+            guard let rootID = resolveRootID(for: message) else { return }
+            if let parentID = message.replyToMessageId,
+               let parent = rootsByID[parentID],
+               resolveRootID(for: parent) == rootID {
+                appendThreadMessage(parent)
+            }
+            guard appendedMessageIDs.insert(message.id).inserted else { return }
+            repliesByRootID[rootID, default: []].append(message)
+        }
+        messages.forEach(appendThreadMessage)
+
+        threadsByRootID = repliesByRootID.reduce(into: [:]) { result, entry in
+            guard let root = rootsByID[entry.key] else { return }
+            result[entry.key] = MessageThread(root: root, replies: entry.value)
+        }
+        mainMessages = messages.filter { rootIDByThreadMessageID[$0.id] == nil }
+    }
+
+    func thread(rootID: String) -> MessageThread? {
+        if let thread = threadsByRootID[rootID] { return thread }
+        guard let root = mainMessages.first(where: { $0.id == rootID }) else { return nil }
+        return MessageThread(root: root, replies: [])
+    }
+
+    func replyCount(rootID: String) -> Int {
+        threadsByRootID[rootID]?.replies.count ?? 0
+    }
+
+    static func rootSource(for message: ChatMessage, sessionID: String) -> MessageActionSource {
+        if let action = message.messageAction, action.kind == "thread" {
+            return action.source
+        }
+        return message.actionSource(sessionId: sessionID)
     }
 }
 

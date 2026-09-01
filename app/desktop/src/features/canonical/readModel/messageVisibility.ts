@@ -1,5 +1,6 @@
 import type { CanonicalSessionMessage } from '@/kordi-app/types';
 import { isExplicitPlaceholderSessionTitle } from '@/features/chat/sessionTitlePolicy';
+import { isCloudAgentControlMessage } from '@/features/cloud/cloudAgentMessages';
 
 function contentRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -25,9 +26,14 @@ export function isSynchronizationOnlyCloudGroupTitleNotice(message: CanonicalSes
     && (content.sourceControlKind === 'group-invite' || content.sourceControlKind === 'group-update');
 }
 
+export function isInternalCloudAgentControlMessage(message: CanonicalSessionMessage) {
+  return isCloudAgentControlMessage(message.contentText.trim());
+}
+
 export function canonicalMessageCountsAsReadable(message: CanonicalSessionMessage) {
   if (['canonical-fork-snapshot', 'cloud-group-fork-snapshot'].includes(message.sourceTransport ?? '')) return false;
   if (['sending', 'processing'].includes(message.status.trim().toLowerCase())) return false;
   return !isPlaceholderSessionTitleNotice(message)
-    && !isSynchronizationOnlyCloudGroupTitleNotice(message);
+    && !isSynchronizationOnlyCloudGroupTitleNotice(message)
+    && !isInternalCloudAgentControlMessage(message);
 }

@@ -597,3 +597,31 @@ test('bridge transcript preserves full outreach mention labels with spaces and p
   assert.equal(view.messages[0]?.text, "@Ethan's Kordi hi");
   assert.deepEqual(view.messages[0]?.mentions?.map((mention) => mention.label), ["Ethan's Kordi"]);
 });
+
+test('thread replies keep their thread link without rendering a quote card', () => {
+  const view = mapCollaborationConversationToViewModel(conversation({
+    messages: [{
+      id: 'thread-reply',
+      direction: 'outbound',
+      sender: 'Me',
+      text: 'hi',
+      timeLabel: '19:53',
+      timestampMs: 1,
+      messageAction: {
+        schemaVersion: 1,
+        kind: 'thread',
+        source: {
+          sourceSessionId: 'session:bridge:humans:peer',
+          sourceMessageId: 'thread-root',
+          senderLabel: 'Ethan',
+          textPreview: 'The video call ended.',
+          attachmentCount: 0,
+        },
+      },
+    }],
+  }), host(), 'My Kordi');
+
+  assert.equal(view.messages[0]?.messageAction?.kind, 'thread');
+  assert.equal(view.messages[0]?.replyToMessageId, 'thread-root');
+  assert.equal(view.messages[0]?.sourceMessage, null);
+});

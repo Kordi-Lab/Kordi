@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { ComposerModelOption, ComposerProviderOption } from '@/kordi-app/components';
-import type { ComposerScope, Conversation, DesktopChatState, Message, ResolvedThemeMode } from '@/kordi-app/types';
+import type { ComposerQuoteState, ComposerScope, Conversation, DesktopChatState, Message, ResolvedThemeMode } from '@/kordi-app/types';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
 import { formatDesktopClockTime } from '@/lib/time';
 import type {
@@ -26,7 +26,7 @@ type UseKordiShellViewModelArgs = {
   selectComposerProviderChoice: (scope: ComposerScope, option: ComposerProviderOption, configTargetOverride?: ComposerConfigTargetOverride) => Promise<void>;
   handleStopDesktopChatTurn: () => Promise<void> | void;
   handleSendProjectMessage: (draftOverride?: string) => Promise<void> | void;
-  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[]) => Promise<void> | void;
+  handleSendChatMessage: (draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[], quoteOverride?: ComposerQuoteState | null) => Promise<void> | void;
   handleRetryChatMessage: (message: Message) => Promise<void> | void;
 };
 
@@ -91,8 +91,8 @@ export function useKordiShellViewModel({
     void handleSendProjectMessage(draftOverride);
   }, [handleSendProjectMessage]);
 
-  const wrappedSendChatMessage = useCallback((draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[]) => {
-    return handleSendChatMessage(draftOverride, targetSessionId, contextMessages, attachmentOverride);
+  const wrappedSendChatMessage = useCallback((draftOverride?: string, targetSessionId?: string, contextMessages?: DesktopChatContextMessage[], attachmentOverride?: AttachmentItem[], quoteOverride?: ComposerQuoteState | null) => {
+    return handleSendChatMessage(draftOverride, targetSessionId, contextMessages, attachmentOverride, quoteOverride);
   }, [handleSendChatMessage]);
 
   const wrappedRetryChatMessage = useCallback((message: Message) => {

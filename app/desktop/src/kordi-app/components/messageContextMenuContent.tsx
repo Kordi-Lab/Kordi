@@ -1,5 +1,5 @@
 import { useState, type CSSProperties, type ReactNode } from 'react';
-import { CheckCheck, CheckCircle2, Copy, Eye, Forward, Pencil, Pin, Reply, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCheck, CheckCircle2, Copy, Eye, Forward, MessageCircle, PanelRightOpen, Pencil, Pin, Reply, Trash2 } from 'lucide-react';
 
 import {
   attachmentMediaGalleryIndex,
@@ -7,7 +7,7 @@ import {
 } from '@/features/chat/attachmentMediaGallery';
 import { openAttachmentMediaWindow } from '@/features/chat/attachmentMediaWindow';
 import { cn } from '@/lib/utils';
-import type { Message, MessageAttachment } from '../types';
+import type { Message, MessageAttachment, MessageReplyDestination } from '../types';
 import { AddAttachmentToMediaLibraryAction } from './addAttachmentToMediaLibraryAction';
 import { IdentityAvatar } from './IdentityAvatar';
 import { MessageReactionSurface } from './messageReactions';
@@ -74,7 +74,8 @@ function Action({ icon, label, action, onClick, destructive = false }: { icon: R
 }
 
 export type MessageContextMenuActionHandlers = {
-  onReplyMessage?: (message: Message) => void;
+  onReplyMessage?: (message: Message, destination: MessageReplyDestination) => void;
+  onOpenMessageThread?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;
   onEditMessage?: (message: Message) => void;
   onDeleteMessage?: (message: Message) => void;
@@ -116,6 +117,7 @@ export function MessageContextMenuContent({
   msg,
   onClose,
   onReplyMessage,
+  onOpenMessageThread,
   onForwardMessage,
   onEditMessage,
   onDeleteMessage,
@@ -133,6 +135,7 @@ export function MessageContextMenuContent({
   mediaGallery?: readonly MessageAttachment[];
 } & MessageContextMenuActionHandlers) {
   const [showsAllReactions, setShowsAllReactions] = useState(false);
+  const [showsReplyDestinations, setShowsReplyDestinations] = useState(false);
   const copyableText = msg.text.trim() || msg.turn?.assistantText?.trim() || msg.detail?.trim() || '';
   const stickerAttachment = messageStickerAttachment(msg);
   const actionEligible = isActionEligible(msg);
@@ -142,6 +145,11 @@ export function MessageContextMenuContent({
     && Boolean(msg.reactionConversationId && msg.reactionTargetMessageId && onReactMessage);
   const closeAfter = (action?: (message: Message) => void) => {
     action?.(msg);
+    onClose?.();
+  };
+  const closeAfterReply = (destination: MessageReplyDestination) => {
+    if (destination === 'thread') onOpenMessageThread?.(msg);
+    else onReplyMessage?.(msg, destination);
     onClose?.();
   };
   const copyText = async () => {
@@ -187,6 +195,24 @@ export function MessageContextMenuContent({
         />
       ) : null}
       {!showsAllReactions ? <div className="app-transient-surface overflow-hidden rounded-[14px] w-[13.5rem] border p-1">
+        {showsReplyDestinations ? (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 rounded-[10px] px-3 py-1.5 text-left font-semibold transition"
+              style={textStyle}
+              onClick={() => setShowsReplyDestinations(false)}
+              aria-label="Back to message actions"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              <span>Reply</span>
+            </button>
+            <div className="app-transient-divider mx-3 my-1 border-t" role="separator" />
+            <Action action="reply-conversation" icon={<MessageCircle className="h-4 w-4" />} label="Reply in conversation" onClick={() => closeAfterReply('conversation')} />
+            {onOpenMessageThread ? <Action action="reply-thread" icon={<PanelRightOpen className="h-4 w-4" />} label="Reply in thread" onClick={() => closeAfterReply('thread')} /> : null}
+          </>
+        ) : <>
         {mediaAttachment ? (
           <>
             <Action action="review-attachment" icon={<Eye className="h-4 w-4" />} label="Review" onClick={reviewMediaAttachment} />
@@ -195,7 +221,10 @@ export function MessageContextMenuContent({
             <div className="app-transient-divider mx-3 my-1 border-t" role="separator" />
           </>
         ) : null}
-        {actionEligible ? <Action action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={() => closeAfter(onReplyMessage)} /> : null}
+        {actionEligible && onReplyMessage ? <Action action="reply" icon={<Reply className="h-4 w-4" />} label="Reply" onClick={() => {
+          if (onOpenMessageThread) setShowsReplyDestinations(true);
+          else closeAfterReply('conversation');
+        }} /> : null}
         {canEdit ? <Action action="edit" icon={<Pencil className="h-4 w-4" />} label="Edit" onClick={() => closeAfter(onEditMessage)} /> : null}
         {copyableText ? <Action action="copy-text" icon={<Copy className="h-4 w-4" />} label="Copy" onClick={() => void copyText()} /> : null}
         {actionEligible ? <Action action="forward" icon={<Forward className="h-4 w-4" />} label="Forward" onClick={() => closeAfter(onForwardMessage)} /> : null}
@@ -209,6 +238,7 @@ export function MessageContextMenuContent({
         {actionEligible ? <Action action="select" icon={<CheckCircle2 className="h-4 w-4" />} label="Select" onClick={() => closeAfter(onSelectMessage)} /> : null}
         {canDelete ? <Action action="delete" icon={<Trash2 className="h-4 w-4" />} label="Delete" destructive onClick={() => closeAfter(onDeleteMessage)} /> : null}
         <SeenRow summary={msg.readReceiptSummary} />
+        </>}
       </div> : null}
     </div>
   );

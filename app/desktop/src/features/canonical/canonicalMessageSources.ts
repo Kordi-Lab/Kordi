@@ -21,3 +21,10 @@ export async function deleteCanonicalCloudMessage(cloudMessageId: string) {
     cloudMessageId,
   });
 }
+
+export async function pruneMissingCanonicalCloudMessages(accountId: string) {
+  if (!isNativeDesktopShell()) return [];
+  return invokeDesktop<string[]>('desktop_canonical_prune_missing_cloud_messages', {
+    accountId,
+  });
+}

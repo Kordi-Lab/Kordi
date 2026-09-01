@@ -9,6 +9,7 @@ import type {
   CloudGroupMemberJoin,
   CloudGroupMemberLeave,
   CloudGroupParticipant,
+  CloudGroupSessionTitleSnapshot,
 } from './cloudGroupMessages';
 
 export type SendCloudGroupControlInput = {
@@ -22,6 +23,7 @@ export type SendCloudGroupControlInput = {
   participants?: CloudGroupParticipant[];
   memberJoins?: CloudGroupMemberJoin[];
   memberLeaves?: CloudGroupMemberLeave[];
+  sessionTitle?: CloudGroupSessionTitleSnapshot | null;
   sessionTitleSyncOnly?: boolean;
   collaborationParticipants?: DesktopCollaborationSessionParticipant[];
   fork?: CloudGroupControlEnvelope['fork'];

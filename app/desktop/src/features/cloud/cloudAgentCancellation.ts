@@ -131,6 +131,7 @@ export function cloudGroupAgentCancelledNoticeRequest({
       sourceConversationId: conversationId,
       requestId: trimmedRequestId,
       replyToMessageId: trimmedRequestId,
+      ...(content.messageAction ? { messageAction: content.messageAction } : {}),
       cancelledByAccountId: trimmedCancelledByAccountId,
       cancelledByRole: role,
     },

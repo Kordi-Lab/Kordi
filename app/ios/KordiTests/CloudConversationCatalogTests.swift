@@ -1121,6 +1121,64 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(catalog.first { $0.kind == .group }?.displayName, "hiiiii")
     }
 
+    func testCanonicalGroupTitleWinsWhenLoadedMessagesOmitTitleMetadata() throws {
+        let sessionId = "session:group:english"
+        let participants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
+        ]
+        let message = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+            kind: "group-message",
+            groupId: sessionId,
+            groupSpaceId: sessionId,
+            groupTitle: nil,
+            createdByAccountId: "acct_maya",
+            actor: participants[1],
+            participants: participants,
+            message: CloudGroupMessagePayload(
+                id: "first-loaded-message",
+                senderAccountId: "acct_maya",
+                text: "@Taylor Have you participated in any study group activities recently?",
+                createdAtMs: 1_786_180_800_000,
+                senderKind: "human",
+                senderDisplayName: "Maya",
+                deliveryState: "complete",
+                replyToMessageId: nil,
+                requestId: nil
+            )
+        ))
+        let canonical = canonicalConversation(
+            id: "conversation-english",
+            kind: "group",
+            sessionId: sessionId,
+            latestSequence: 1,
+            lastReadSequence: 1,
+            sharedTitle: "English study group"
+        )
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [contact],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: [
+                "acct_maya": [
+                    wire(
+                        id: "ordinary-group-message",
+                        body: message,
+                        sessionId: sessionId,
+                        createdAt: "2026-08-08T12:00:00Z",
+                        from: "acct_maya",
+                        to: "acct_me"
+                    )
+                ]
+            ],
+            canonicalConversations: [canonical]
+        )
+
+        XCTAssertEqual(catalog.first { $0.kind == .group }?.displayName, "English study group")
+    }
+
     func testGroupParticipantAvatarsAreEnrichedFromCurrentProfiles() throws {
         let staleParticipants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Old me", avatarUrl: "https://old.example/me.png", role: "self"),

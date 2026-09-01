@@ -39,8 +39,9 @@ pub(crate) use self::lifecycle::{archive_session, delete_session, session_exists
 pub(super) use self::lifecycle::{
     desktop_canonical_adopt_cloud_profile_identity, desktop_canonical_delete_cloud_message,
     desktop_canonical_mark_session_read, desktop_canonical_open_or_create_session,
-    desktop_canonical_open_or_create_session_fast, desktop_canonical_update_presence,
-    desktop_canonical_upsert_identity, desktop_canonical_upsert_identity_fast,
+    desktop_canonical_open_or_create_session_fast, desktop_canonical_prune_missing_cloud_messages,
+    desktop_canonical_update_presence, desktop_canonical_upsert_identity,
+    desktop_canonical_upsert_identity_fast,
 };
 pub(super) use self::message_mirror::desktop_canonical_reconcile_message_mirror;
 pub(crate) use self::message_mirror::reconcile_canonical_message_mirror_in_db;

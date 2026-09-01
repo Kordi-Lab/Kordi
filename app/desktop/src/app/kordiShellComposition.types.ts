@@ -170,6 +170,7 @@ export type KordiShellCompositionArgs = {
     | 'filteredProjectSlashCommands'
     | 'filteredChatSlashCommands'
     | 'filteredProjectMentionTargets'
+    | 'chatMentionTargetsForText'
     | 'filteredChatMentionTargets'
     | 'chatSlashMenuIndex'
     | 'setChatSlashMenuIndex'

@@ -50,6 +50,7 @@ function sourceReferenceForMessage(message: Message, messageId: string): Message
 }
 
 function explicitReplyTargetForMessage(message: Message) {
+  if (message.messageAction?.kind === 'thread') return null;
   const explicitReplyId = cleanText(message.replyToMessageId)
     || cleanText(message.turn?.replyToMessageId);
   if (explicitReplyId) return explicitReplyId;

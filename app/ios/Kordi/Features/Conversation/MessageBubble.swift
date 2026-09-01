@@ -32,6 +32,7 @@ struct MessageBubble: View, Equatable {
     let selectionMode: Bool
     let isSelected: Bool
     let allowsQuotedReplies: Bool
+    let threadReplyCount: Int
     let showsAvatarSlot: Bool
     let authorAvatarName: String
     let authorAvatarSource: String?
@@ -48,6 +49,7 @@ struct MessageBubble: View, Equatable {
     let onSelectedTextChange: (String?) -> Void
     let onReact: (String) -> Void
     let onNavigateToReply: (String) -> Void
+    let onOpenThread: () -> Void
     let onOpenAttachment: (ChatAttachment, UIImage?) -> Void
     let onShareAttachment: (ChatAttachment) -> Void
     let onPrepareVoiceMessage: (VoiceMessage) async -> URL?
@@ -81,6 +83,7 @@ struct MessageBubble: View, Equatable {
             && lhs.selectionMode == rhs.selectionMode
             && lhs.isSelected == rhs.isSelected
             && lhs.allowsQuotedReplies == rhs.allowsQuotedReplies
+            && lhs.threadReplyCount == rhs.threadReplyCount
             && lhs.showsAvatarSlot == rhs.showsAvatarSlot
             && lhs.authorAvatarName == rhs.authorAvatarName
             && lhs.authorAvatarSource == rhs.authorAvatarSource
@@ -254,6 +257,22 @@ struct MessageBubble: View, Equatable {
                     )
                     .offset(y: -Self.reactionChipVerticalLift)
                     .padding(.bottom, -Self.reactionChipVerticalLift)
+                }
+
+                if threadReplyCount > 0 {
+                    Button(action: onOpenThread) {
+                        Label(
+                            "\(threadReplyCount) discussed in thread",
+                            systemImage: "bubble.left.and.bubble.right"
+                        )
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(chatTheme.accent)
+                        .frame(minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        "Open thread with \(threadReplyCount) discussed in thread"
+                    )
                 }
 
                 if !backgroundSessions.isEmpty {
@@ -2587,7 +2606,6 @@ private struct MessageImageAttachment: View {
         isLoading = image == nil
         loadFailed = false
 
-        let isAnimatedGIF = MessageImageInteraction.isAnimatedGIF(attachment)
         if MessageImageInteraction.usesInlinePreview(for: attachment),
            let source = attachment.previewURL,
            let preview = await AvatarImageLoader.image(from: source) {
@@ -2606,16 +2624,11 @@ private struct MessageImageAttachment: View {
             return
         }
 
-        let shouldAnimateGIF = !reduceMotion
-        let loaded = await Task.detached(priority: .utility) {
-            isAnimatedGIF
-                ? AnimatedImageDecoder.image(
-                    at: url,
-                    animated: shouldAnimateGIF,
-                    maximumPixelSize: 512
-                )
-                : AttachmentImageDecoder.downsampledImage(at: url, maximumPixelSize: 1_200)
-        }.value
+        let loaded = await MessageAttachmentImageLoader.image(
+            at: url,
+            attachment: attachment,
+            reduceMotion: reduceMotion
+        )
         guard !Task.isCancelled else { return }
         if let loaded {
             image = loaded

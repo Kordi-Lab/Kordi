@@ -15,7 +15,7 @@ import type {
 import { appendCanonicalMessageFast } from '@/lib/desktop';
 
 import type { AttachmentItem } from '../composerController.types';
-import { quoteMessageAction } from '../messageActionMetadata';
+import { composerMessageAction } from '../messageActionMetadata';
 import { optimisticSessionTitle } from '../sessionTitlePolicy';
 import { optimisticAttachmentContent } from './optimisticAttachments';
 
@@ -42,7 +42,7 @@ export function appendOptimisticOutboundMessage(
   mentions: MessageMention[] = [],
   quote: ComposerQuoteState | null = null,
 ) {
-  const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
+  const quoteAction = quote?.source ? composerMessageAction(quote) : null;
   const updatedAtMs = Date.now();
   const attachmentContent = optimisticAttachmentContent(attachments);
   const optimisticMessage = {
@@ -146,7 +146,7 @@ export function appendOptimisticCollaborationMessage(
   if (!current) return current;
 
   const timestampMs = Date.now();
-  const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
+  const quoteAction = quote?.source ? composerMessageAction(quote) : null;
   const attachmentContent = optimisticAttachmentContent(attachments);
   const nextConversations = current.conversations.map((conversation) => {
     if (conversation.id !== conversationId) return conversation;
@@ -368,7 +368,7 @@ export function prepareCanonicalUserMessage(
     ? crypto.randomUUID()
     : `${timestampMs}-${Math.random().toString(16).slice(2)}`;
   const messageId = `msg:ui:${randomId}`;
-  const quoteAction = quote?.source ? quoteMessageAction(quote.source) : null;
+  const quoteAction = quote?.source ? composerMessageAction(quote) : null;
   const attachmentContent = optimisticAttachmentContent(attachments);
   const quoteSourceMessageId = quoteAction?.source.sourceMessageId ?? null;
   const quoteMatchesSession = quoteAction?.source.sourceSessionId === sessionId;

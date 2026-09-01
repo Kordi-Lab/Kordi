@@ -328,7 +328,7 @@ export function planCloudSelfAgentCanonicalSync({
         message.messageId,
       );
     }
-    const quoteSourceMessageId = messageAction?.kind === 'quote'
+    const quoteSourceMessageId = messageAction?.kind === 'quote' || messageAction?.kind === 'thread'
       ? cleanText(messageAction.source.sourceMessageId)
       : null;
     const parentMessageId = responseRequestId

@@ -103,6 +103,7 @@ export function buildCompletedDesktopAssistantMessage(
     turnStartedAtMs: turn.startedAtMs ?? null,
     turnCompletedAtMs: turn.completedAtMs ?? null,
     transcriptRenderId: turn.id,
+    replyToMessageId: turn.replyToMessageId ?? null,
   };
 }
 

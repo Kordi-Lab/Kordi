@@ -235,6 +235,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
 
   const {
     activeConversationScope: activeConvMentionScope,
+    chatMentionTargetsForText,
     filteredChatMentionTargets,
     filteredProjectMentionTargets,
     mentionableCloudAgents,
@@ -461,6 +462,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     },
     mentions: {
       activeConvMentionScope,
+      chatMentionTargetsForText,
       filteredChatMentionTargets,
       filteredProjectMentionTargets,
       mentionableCloudAgents,

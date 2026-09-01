@@ -417,7 +417,7 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
   assert.notEqual(targetedStart, -1, 'targeted side-panel send path should exist');
   assert.notEqual(activeStart, -1, 'active send path should exist after targeted send path');
   const targetedSendBlock = actionsSource.slice(targetedStart, activeStart);
-  assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*queueLocalDraftForSession\(targetConversation\.id, text, attachments, contextMessages\)/, 'side-panel local sends should queue while the target session is running instead of showing the preparing error');
+  assert.match(targetedSendBlock, /if \(delayReason === 'same-session-running'\) \{[\s\S]*queueLocalDraftForSession\(targetConversation\.id, text, attachments, contextMessages, activeChatQuote\)/, 'side-panel local sends should queue while the target session is running instead of showing the preparing error');
   assert.match(targetedSendBlock, /if \(delayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'side-panel duplicate sends should wait for the in-flight session without promoting normal preparation to an error');
   assert.doesNotMatch(targetedSendBlock, /Kordi is still preparing this session/, 'normal session preparation should not render through the sidebar-wide error channel');
   assert.match(actionsSource, /message\.runtimeRoute \?\? resolveChatRuntimeRoute\(message\.sessionId\)[\s\S]*message\.contextMessages \?\? \[\]/, 'flushing queued side messages should preserve the selected runtime route and reference context');
