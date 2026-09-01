@@ -1511,17 +1511,9 @@ final class AppModel: ObservableObject {
                 }
             }
             let uploadedAttachments = try await attachmentUpload
-            if outgoingAttachments.count == 1,
-               let draft = outgoingAttachments.first,
-               let uploaded = uploadedAttachments.first,
-               draft.isMP4Video,
-               let fileURL = draft.fileURL {
-                _ = try? await attachmentFileStore.store(
-                    fileAt: fileURL,
-                    attachment: uploaded.chatAttachment,
-                    accountId: account.accountId
-                )
-            }
+            await attachmentFileStore.cacheUploadedOriginals(
+                drafts: outgoingAttachments, uploaded: uploadedAttachments, accountId: account.accountId
+            )
             let uploadedVoiceMessage = resolvedVoiceMessage.flatMap { draft in
                 uploadedAttachments.first.map { draft.voiceMessage(mediaId: $0.attachmentId) }
             }
@@ -2771,12 +2763,14 @@ final class AppModel: ObservableObject {
 
     private func performExpressiveMediaLibrarySync(token: String, accountId: String) async {
         await refreshLoadedConversationProjections()
+        async let thumbnailWarmup: Void = expressiveMediaLibrary.prewarmThumbnails(accountId: accountId)
         let remoteItems: [CloudExpressiveMediaItem]
         do {
             remoteItems = try await api.listExpressiveMedia(token: token)
         } catch {
             return
         }
+        await thumbnailWarmup
         guard !Task.isCancelled, account?.accountId == accountId else { return }
 
         var cloudByAttachmentId = Dictionary(
@@ -2861,6 +2855,7 @@ final class AppModel: ObservableObject {
                 if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
             }
         }
+        await expressiveMediaLibrary.prewarmThumbnails(accountId: accountId)
         await refreshLoadedConversationProjections()
     }
 
@@ -2894,9 +2889,12 @@ final class AppModel: ObservableObject {
             for: attachment,
             prefersOriginal: prefersOriginal
         )
-        if let cached = await attachmentFileStore.cachedURL(for: attachment, accountId: accountId),
-           attachment.isMP4Video || usesImagePreview || (MessageImageInteraction.isAnimatedGIF(attachment)
-            && AnimatedImageDecoder.isAnimated(at: cached)) {
+        let cacheVariant: AttachmentCacheVariant = usesImagePreview ? .preview : .original
+        if let cached = await attachmentFileStore.bestCachedURL(
+            for: attachment,
+            accountId: accountId,
+            preferredVariant: cacheVariant
+        ) {
             return cached
         }
         guard let token else {
@@ -2946,7 +2944,8 @@ final class AppModel: ObservableObject {
             let url = try await attachmentFileStore.store(
                 data,
                 attachment: attachment,
-                accountId: accountId
+                accountId: accountId,
+                variant: cacheVariant
             )
             cloudConnectionState = .connected
             return url
@@ -2999,7 +2998,8 @@ final class AppModel: ObservableObject {
         return try? await attachmentFileStore.store(
             data,
             attachment: attachment,
-            accountId: accountId
+            accountId: accountId,
+            variant: .preview
         )
     }
 
