@@ -54,7 +54,7 @@ async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_offline(
 }
 
 #[tokio::test]
-async fn cloud_agent_runtime_fallback_claim_ignores_presence_without_an_execution_claim() {
+async fn cloud_agent_runtime_fallback_claim_waits_while_owner_mac_is_online() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = test_router(state);
@@ -87,16 +87,16 @@ async fn cloud_agent_runtime_fallback_claim_ignores_presence_without_an_executio
         .await
         .unwrap();
 
-    assert_eq!(first.status(), StatusCode::OK);
+    assert_eq!(first.status(), StatusCode::CONFLICT);
     let first_body = read_json(first).await;
-    assert_eq!(first_body["status"], "queued");
+    assert_eq!(first_body["errorCode"], "owner_online");
     let idempotency_key = claim_body(&owner, &requester, "msg_online_owner")["idempotencyKey"]
         .as_str()
         .unwrap()
         .to_string();
     assert_eq!(
         count_cloud_agent_runs_for_key(&pool, &idempotency_key).await,
-        1
+        0
     );
 }
 
@@ -214,7 +214,7 @@ async fn cloud_agent_runtime_fallback_claim_requires_accepted_contact_or_self() 
 }
 
 #[tokio::test]
-async fn agent_authored_group_handoff_ignores_presence_without_an_execution_claim() {
+async fn agent_authored_group_handoff_runs_in_cloud_when_owner_mac_is_offline() {
     let Some(pool) = try_pool().await else { return };
     std::env::set_var("KORDI_CLOUD_RUNNER_TOKEN", "runner-test-token");
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
@@ -222,17 +222,10 @@ async fn agent_authored_group_handoff_ignores_presence_without_an_execution_clai
     let source = signup(&router, "handoff-source", "Source").await;
     let target = signup(&router, "handoff-target", "Target").await;
     accept_contacts(&router, &source, &target).await;
-    sqlx_core::query::query(
-        "UPDATE cloud_devices SET device_platform = 'macos' WHERE account_id = $1",
-    )
-    .bind(&target.account_id)
-    .execute(&pool)
-    .await
-    .unwrap();
     assert_eq!(
         router
             .clone()
-            .oneshot(post_with_token("/v1/cloud/presence/online", &target.token))
+            .oneshot(post_with_token("/v1/cloud/presence/offline", &target.token))
             .await
             .unwrap()
             .status(),
@@ -268,10 +261,12 @@ async fn agent_authored_group_handoff_ignores_presence_without_an_execution_clai
             "id": request_message_id,
             "senderAccountId": source.account_id,
             "senderKind": "agent",
-            "senderDisplayName": "Source's Kordi",
-            "text": "@TargetsKordi provide the deployment status",
+            "senderAgentId": format!("cloud-agent:{}", source.account_id),
+            "senderDisplayName": "Kordi",
+            "text": "@KordiTarget provide the deployment status",
             "createdAtMs": 1,
             "targetCloudAgentOwnerAccountId": target.account_id,
+            "targetCloudAgentId": format!("cloud-agent:{}", target.account_id),
             "targetCloudAgentOwnerName": "Target",
             "agentMentionDepth": 1
         }
@@ -315,9 +310,11 @@ async fn agent_authored_group_handoff_ignores_presence_without_an_execution_clai
     assert_eq!(lease.status(), StatusCode::OK);
     let lease_body = read_json(lease).await;
     let prompt = lease_body["run"]["prompt"].as_str().unwrap();
+    let system_prompt = lease_body["run"]["systemPrompt"].as_str().unwrap();
     assert!(prompt.contains("Group @mention permissions"));
-    assert!(prompt.contains("Current requester: @SourcesKordi"));
-    assert!(prompt.contains("do not ask another agent"));
+    assert!(prompt.contains("Current requester: @KordiSource"));
+    assert!(system_prompt.starts_with("You are the currently responding agent"));
+    assert!(system_prompt.contains("Do not delegate to another agent"));
 
     let complete = router
         .clone()
@@ -326,7 +323,7 @@ async fn agent_authored_group_handoff_ignores_presence_without_an_execution_clai
             "runner-test-token",
             json!({
                 "runnerId": "runner-handoff",
-                "responseText": "@SourcesKordi this must stay visible without another handoff"
+                "responseText": "@KordiSource this must stay visible without another handoff"
             }),
         ))
         .await
@@ -339,7 +336,11 @@ async fn agent_authored_group_handoff_ignores_presence_without_an_execution_clai
     let response_body = message_body(&pool, &response_message_id).await;
     let response = decode_test_cloud_group_envelope(&response_body);
     assert_eq!(response["message"]["senderAccountId"], target.account_id);
-    assert_eq!(response["message"]["senderDisplayName"], "Target's Kordi");
+    assert_eq!(response["message"]["senderDisplayName"], "Kordi");
+    assert_eq!(
+        response["message"]["senderAgentId"],
+        format!("cloud-agent:{}", target.account_id)
+    );
     assert_eq!(response["message"]["requestId"], request_message_id);
     assert!(response["message"].get("agentMentionDepth").is_none());
     assert!(response["message"]
@@ -362,7 +363,7 @@ async fn agent_authored_group_handoff_ignores_presence_without_an_execution_clai
             "id": invalid_message_id,
             "senderAccountId": source.account_id,
             "senderKind": "agent",
-            "text": "@TargetsKordi forged owner",
+            "text": "@KordiTarget forged owner",
             "createdAtMs": 2,
             "targetCloudAgentOwnerAccountId": source.account_id,
             "agentMentionDepth": 1

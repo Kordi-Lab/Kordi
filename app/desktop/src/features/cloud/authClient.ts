@@ -13,6 +13,8 @@ import { downloadCloudAttachmentBlob } from './cloudAttachmentDownloadClient';
 import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
 import type { CloudAuthErrorCode } from './cloudAuthError';
 import { CloudExpressiveMediaClient } from './cloudExpressiveMediaClient';
+import { CloudSessionListClient } from './cloudSessionListClient';
+import type { CloudSessionVisibility } from './cloudSessionListClient';
 import { CloudDeviceClient } from './cloudDeviceClient';
 import type {
   CloudDeviceListResponse,
@@ -70,6 +72,7 @@ export type {
 } from './chatSyncTypes';
 export type { CloudAuthErrorCode } from './cloudAuthError';
 export type { CloudSessionPin } from './cloudSessionPinTypes';
+export type { CloudSessionVisibility } from './cloudSessionListClient';
 export type {
   CloudAccount,
   CloudAppInvitation,
@@ -114,8 +117,8 @@ export type CloudOAuthStartResponse = {
 };
 
 export type CloudProfileUpdateInput = {
-  displayName?: string;
-  avatarMutation?: import('./canonicalAvatar').CanonicalAvatarMutation;
+  displayName?: string; avatarMutation?: import('./canonicalAvatar').CanonicalAvatarMutation;
+  agentDisplayName?: string; agentAvatarMutation?: import('./canonicalAvatar').CanonicalAvatarMutation;
 };
 
 export type CloudContactRequestDirection = 'incoming' | 'outgoing';
@@ -248,11 +251,6 @@ export type CloudSessionActivity = {
   artifacts: CloudArtifactActivity[];
 };
 
-export type CloudSessionVisibility = {
-  hiddenSessionIds: string[];
-  deletedSessionIds: string[];
-};
-
 export type CloudSessionTitle = {
   sessionId: string;
   title: string;
@@ -359,6 +357,7 @@ export class CloudAuthClient {
   private readonly devices: CloudDeviceClient;
   private readonly expressiveMedia: CloudExpressiveMediaClient;
   private readonly identity: CloudIdentityAuthClient;
+  private readonly sessionList: CloudSessionListClient;
 
   constructor(options: CloudAuthClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? cloudApiBaseUrl();
@@ -375,6 +374,9 @@ export class CloudAuthClient {
       deviceRegistration,
     );
     this.expressiveMedia = new CloudExpressiveMediaClient(
+      (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
+    );
+    this.sessionList = new CloudSessionListClient(
       (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
     );
     this.chat = new ChatSyncClient({
@@ -846,18 +848,7 @@ export class CloudAuthClient {
   async acknowledgeChatDelivery(token: string, conversationId: string, sequence: number): Promise<void> { return this.chat.acknowledgeDelivery(token, conversationId, sequence); }
 
   async listSessionVisibility(token: string): Promise<CloudSessionVisibility> {
-    const response = await this.send<CloudSessionVisibility>(
-      '/v1/cloud/sessions/visibility',
-      {
-        method: 'GET',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not load hidden cloud chats.',
-    );
-    return {
-      hiddenSessionIds: response?.hiddenSessionIds ?? [],
-      deletedSessionIds: response?.deletedSessionIds ?? [],
-    };
+    return this.sessionList.list(token);
   }
 
   async getCloudSessionPin(token: string, sessionId: string): Promise<CloudSessionPin> {
@@ -890,36 +881,37 @@ export class CloudAuthClient {
   async updateCloudSessionTitle(token: string, sessionId: string, input: UpdateCloudSessionTitleInput): Promise<CloudSessionTitle> { return this.chat.updateTitle(token, sessionId, input); }
 
   async hideCloudSession(token: string, sessionId: string): Promise<void> {
-    await this.send<void>(
-      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/hidden`,
-      {
-        method: 'PUT',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not hide cloud chat.',
-    );
+    await this.sessionList.setArchived(token, sessionId, true);
   }
 
   async unhideCloudSession(token: string, sessionId: string): Promise<void> {
-    await this.send<void>(
-      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}/hidden`,
-      {
-        method: 'DELETE',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not unhide cloud chat.',
-    );
+    await this.sessionList.setArchived(token, sessionId, false);
   }
 
   async deleteCloudSession(token: string, sessionId: string): Promise<void> {
-    await this.send<void>(
-      `/v1/cloud/sessions/${encodeURIComponent(sessionId)}`,
-      {
-        method: 'DELETE',
-        headers: { authorization: `Bearer ${token}` },
-      },
-      'Could not remove cloud chat.',
+    await this.sessionList.delete(token, sessionId);
+  }
+
+  async setCloudSessionPinned(token: string, sessionId: string, pinned: boolean): Promise<void> {
+    await this.sessionList.setSessionPreference(token, sessionId, 'pinned', pinned,
+      pinned ? 'Could not pin cloud chat.' : 'Could not unpin cloud chat.',
     );
+  }
+
+  async setCloudSessionMuted(token: string, sessionId: string, muted: boolean): Promise<void> {
+    await this.sessionList.setSessionPreference(token, sessionId, 'muted', muted,
+      muted ? 'Could not mute cloud chat.' : 'Could not unmute cloud chat.',
+    );
+  }
+
+  async setCloudSessionUnread(token: string, sessionId: string, unread: boolean): Promise<void> {
+    await this.sessionList.setSessionPreference(token, sessionId, 'unread', unread,
+      unread ? 'Could not mark cloud chat unread.' : 'Could not mark cloud chat read.',
+    );
+  }
+
+  async setCloudGroupSpacePinned(token: string, groupSpaceId: string, pinned: boolean): Promise<void> {
+    await this.sessionList.setGroupPinned(token, groupSpaceId, pinned);
   }
 
   async listSessionForks(token: string, sourceSessionId: string): Promise<CloudSessionForkSummary[]> {

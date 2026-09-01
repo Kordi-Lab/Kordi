@@ -1,9 +1,9 @@
-import { useEffect } from 'react';
 import type {
   Dispatch,
   MutableRefObject,
   SetStateAction,
 } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CanonicalSessionState } from '@/kordi-app/types';
 import type { CloudAccount, CloudAuthClient, CloudMessage } from './authClient';
 import { cloudSessionIdFromConversationId } from '@/features/collaboration/conversationIds';
@@ -17,10 +17,10 @@ import type {
 } from './cloudMessageIndex';
 import type { CloudGroupReplayCoordinator } from './cloudGroupReplayCoordinator';
 import { useCloudAgentTurnRecovery } from './useCloudAgentTurnRecovery';
-import { recoverNativeCloudGroupHistory } from './cloudGroupNativeRecovery';
 import { useCloudGroupReplay } from './useCloudGroupReplay';
 import { useLegacyCloudGroupTitleNoticeRecovery } from './useLegacyCloudGroupTitleNoticeRecovery';
 import { isNativeDesktopShell } from '@/lib/desktop';
+import { applyChatSyncLocalBatch } from '@/lib/desktopChatSync';
 
 export function useRecoveredCloudGroupReplay({
   account,
@@ -29,6 +29,7 @@ export function useRecoveredCloudGroupReplay({
   humanIdentityId,
   canonicalStateRef,
   setCanonicalState,
+  hydrateCanonicalSessionPage,
   initialMessagesSettled,
   processedRequestIdsRef,
   coordinator,
@@ -46,6 +47,10 @@ export function useRecoveredCloudGroupReplay({
   humanIdentityId?: string | null;
   canonicalStateRef: MutableRefObject<CanonicalSessionState | null>;
   setCanonicalState?: Dispatch<SetStateAction<CanonicalSessionState | null>>;
+  hydrateCanonicalSessionPage?: (
+    sessionId: string,
+    options?: { beforeSequenceNum?: number | null; force?: boolean },
+  ) => Promise<unknown>;
   initialMessagesSettled: boolean;
   processedRequestIdsRef: MutableRefObject<Set<string>>;
   coordinator: CloudGroupReplayCoordinator<IndexedCloudGroupRow>;
@@ -81,90 +86,160 @@ export function useRecoveredCloudGroupReplay({
       || (initialMessagesSettled && recoverySettled)
     )
   );
-  const activeGroupSessionId = cloudSessionIdFromConversationId(
+  const activeSessionId = cloudSessionIdFromConversationId(
     activeConversationId ?? '',
   ) ?? activeConversationId?.trim() ?? '';
+  const activeGroupSessionId = activeSessionId.startsWith('session:group:')
+    ? activeSessionId
+    : '';
+  const accountId = account?.accountId ?? null;
+  const replayCallbacksRef = useRef({
+    applyControl,
+    flushCanonicalState,
+    reportWarning,
+  });
+  const bootstrapRef = useRef<{
+    accountId: string;
+    value: Awaited<ReturnType<CloudAuthClient['bootstrapChatSync']>>;
+  } | null>(null);
+  const [remoteCatalogAccountId, setRemoteCatalogAccountId] = useState<string | null>(null);
+  const [activePageKey, setActivePageKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!account || !activeGroupSessionId.startsWith('session:group:')) return;
+    replayCallbacksRef.current = {
+      applyControl,
+      flushCanonicalState,
+      reportWarning,
+    };
+  }, [applyControl, flushCanonicalState, reportWarning]);
+
+  useEffect(() => {
+    if (!nativeShell || !accountId || !setCanonicalState || !initialMessagesSettled) return;
+    let active = true;
+    bootstrapRef.current = null;
+    void (async () => {
+      try {
+        const cloudSession = await loadSession();
+        if (!cloudSession?.token || !active) return;
+        const bootstrap = await client.bootstrapChatSync(cloudSession.token);
+        if (!active) return;
+        bootstrapRef.current = { accountId, value: bootstrap };
+        const groupConversations = bootstrap.conversations.filter(
+          (conversation) => conversation.kind === 'group',
+        );
+        const conversationById = new Map(
+          groupConversations.map((conversation) => [conversation.id, conversation]),
+        );
+        const headRows = bootstrap.latest_messages.flatMap((snapshot) => {
+          const conversation = conversationById.get(snapshot.conversation_id);
+          if (!conversation) return [];
+          const wire = cloudMessageMetadataOnly(
+            cloudMessageFromChatSync(snapshot, conversation, accountId),
+          );
+          const envelope = parseCloudGroupControl(wire.body);
+          if (!envelope) return [];
+          return [{ wire, envelope, conversation }];
+        }).sort((left, right) => (
+          Number(right.envelope.groupId === right.envelope.groupSpaceId)
+          - Number(left.envelope.groupId === left.envelope.groupSpaceId)
+        ));
+        if (active) setRemoteCatalogAccountId(accountId);
+        for (const row of headRows) {
+          if (!active) return;
+          await replayCallbacksRef.current.applyControl(row.wire, row.envelope, {
+            deferPublish: true,
+            historyReplay: true,
+          });
+          replayCallbacksRef.current.flushCanonicalState();
+        }
+      } catch (error) {
+        if (active) {
+          replayCallbacksRef.current.reportWarning(
+            '[cloud-group] remote catalog recovery failed',
+            error,
+          );
+        }
+      } finally {
+        if (active) {
+          setRemoteCatalogAccountId(accountId);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [accountId, client, initialMessagesSettled, nativeShell, setCanonicalState]);
+
+  const requestedActivePageKey = accountId && activeSessionId.startsWith('session:')
+    ? `${accountId}:${activeSessionId}`
+    : null;
+  useEffect(() => {
+    if (!accountId || !requestedActivePageKey || remoteCatalogAccountId !== accountId) return;
+    if (activePageKey === requestedActivePageKey) return;
     let active = true;
     void (async () => {
-      const cloudSession = await loadSession();
-      if (!cloudSession?.token || !active) return;
-      const bootstrap = await client.bootstrapChatSync(cloudSession.token);
-      const conversation = bootstrap.conversations.find((candidate) => (
-        (candidate.legacy_session_id ?? candidate.id) === activeGroupSessionId
-      ));
-      if (!conversation || conversation.latest_message_sequence === 0) return;
-      const page = await client.listChatConversationHistoryPage(
-        cloudSession.token,
-        conversation.id,
-        undefined,
-        50,
-      );
-      for (const snapshot of [...page.messages].reverse()) {
-        if (!active) return;
-        const wire = cloudMessageMetadataOnly(
-          cloudMessageFromChatSync(snapshot, conversation, account.accountId),
+      try {
+        const bootstrap = bootstrapRef.current?.accountId === accountId
+          ? bootstrapRef.current.value
+          : null;
+        const conversation = bootstrap?.conversations.find((candidate) => (
+          (candidate.legacy_session_id ?? candidate.id) === activeSessionId
+        ));
+        const cloudSession = await loadSession();
+        if (!conversation || !cloudSession?.token || !active) return;
+        const page = await client.listChatConversationHistoryPage(
+          cloudSession.token,
+          conversation.id,
+          undefined,
+          100,
         );
-        const envelope = parseCloudGroupControl(wire.body);
-        if (envelope) {
-          await applyControl(wire, envelope, {
+        await applyChatSyncLocalBatch({
+          accountId,
+          bootstrap: false,
+          conversations: [conversation],
+          messages: page.messages,
+        });
+        for (const snapshot of [...page.messages].reverse()) {
+          if (!active) return;
+          const wire = cloudMessageMetadataOnly(
+            cloudMessageFromChatSync(snapshot, conversation, accountId),
+          );
+          const envelope = parseCloudGroupControl(wire.body);
+          if (!envelope) continue;
+          await replayCallbacksRef.current.applyControl(wire, envelope, {
             deferPublish: true,
             historyReplay: true,
           });
         }
-      }
-      if (active) flushCanonicalState();
-    })().catch((error) => {
-      if (active) reportWarning('[cloud-group] selected history recovery failed', error);
-    });
-    return () => {
-      active = false;
-    };
-  }, [account, activeGroupSessionId, applyControl, client, flushCanonicalState, reportWarning]);
-
-  useEffect(() => {
-    if (!account || !setCanonicalState) return;
-    let active = true;
-    let inFlight = false;
-    let settled = false;
-    const run = async () => {
-      if (!active || inFlight || settled) return;
-      inFlight = true;
-      try {
-        const recovered = await Promise.race([
-          recoverNativeCloudGroupHistory({
-            accountId: account.accountId,
-            applyControl,
-            flushCanonicalState,
-            onSessionSettled: (sessionId) => onSessionSettled?.(sessionId),
-            shouldContinue: () => active,
-          }),
-          new Promise<false>((resolve) => {
-            globalThis.setTimeout(() => resolve(false), 15_000);
-          }),
-        ]);
-        if (recovered && active) {
-          settled = true;
-          onNativeHistorySettled?.();
-          onSettled?.();
+        if (active) replayCallbacksRef.current.flushCanonicalState();
+        if (active) {
+          await hydrateCanonicalSessionPage?.(
+            activeSessionId,
+            { force: true },
+          );
         }
       } catch (error) {
-        if (active) reportWarning('[cloud-group] native history recovery failed', error);
+        if (active) {
+          replayCallbacksRef.current.reportWarning(
+            '[cloud-group] active history recovery failed',
+            error,
+          );
+        }
       } finally {
-        inFlight = false;
+        if (active) setActivePageKey(requestedActivePageKey);
       }
-    };
-    void run();
-    const intervalId = globalThis.setInterval(() => void run(), 16_000);
+    })();
     return () => {
       active = false;
-      globalThis.clearInterval(intervalId);
     };
-  }, [account, applyControl, flushCanonicalState, onNativeHistorySettled, onSessionSettled, onSettled, reportWarning, setCanonicalState]);
+  }, [accountId, activePageKey, activeSessionId, client, hydrateCanonicalSessionPage, remoteCatalogAccountId, requestedActivePageKey]);
+
+  const remoteCatalogReady = !nativeShell || remoteCatalogAccountId === accountId;
+  const activePageReady = !requestedActivePageKey || activePageKey === requestedActivePageKey;
+  const backgroundReplayEnabled = replayEnabled && remoteCatalogReady && activePageReady;
+
   useLegacyCloudGroupTitleNoticeRecovery({
-    enabled: replayEnabled,
+    enabled: backgroundReplayEnabled,
     contextKey,
     canonicalStateRef,
     setCanonicalState,
@@ -173,8 +248,9 @@ export function useRecoveredCloudGroupReplay({
   });
 
   useCloudGroupReplay({
-    enabled: replayEnabled,
-    accountId: null,
+    enabled: backgroundReplayEnabled,
+    accountId: account?.accountId ?? null,
+    prioritySessionId: activeGroupSessionId || null,
     contextKey,
     coordinator,
     messageIndex,

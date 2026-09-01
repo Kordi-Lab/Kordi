@@ -59,6 +59,7 @@ export type CloudGroupAgentPolicy = {
     requestMessageId: string;
     requestCreatedAtMs: number;
     respondingAccountId: string;
+    respondingAgentId?: string | null;
   }): DesktopChatContextMessage[];
   waitForTurn(
     turnId: string,
@@ -85,6 +86,8 @@ export type ApplyCloudGroupAgentControlInput = {
 };
 
 export type CloudGroupAgentPresentation = {
+  agentId: string;
   identityId: string;
   displayName: string;
+  ownerDisplayName: string;
 };

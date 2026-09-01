@@ -109,6 +109,7 @@ final class CachedMessageRecord {
     var conversationSequence: Int64?
     var author: String
     var authorName: String
+    var senderOwnerName: String?
     var text: String
     var createdAt: Date
     var editedAt: Date?
@@ -136,6 +137,7 @@ final class CachedMessageRecord {
         conversationSequence = message.conversationSequence
         author = message.author.rawValue
         authorName = message.authorName
+        senderOwnerName = message.senderOwnerName
         text = message.text
         createdAt = message.createdAt
         editedAt = message.editedAt
@@ -161,6 +163,7 @@ final class CachedMessageRecord {
         conversationSequence = message.conversationSequence
         author = message.author.rawValue
         authorName = message.authorName
+        senderOwnerName = message.senderOwnerName
         text = message.text
         createdAt = message.createdAt
         editedAt = message.editedAt
@@ -191,6 +194,7 @@ final class CachedMessageRecord {
             conversationSequence: conversationSequence,
             author: author,
             authorName: authorName,
+            senderOwnerName: senderOwnerName,
             text: text,
             createdAt: createdAt,
             editedAt: editedAt,
@@ -248,6 +252,14 @@ final class CachedMessagePageRecord {
     func update(messages: [ChatMessage], hasMore: Bool) throws {
         messagesData = try JSONEncoder().encode(messages)
         self.hasMore = hasMore
+    }
+
+    func removeMessages(withIDs messageIDs: Set<String>) throws -> Bool {
+        let messages = try JSONDecoder().decode([ChatMessage].self, from: messagesData)
+        let filtered = messages.filter { !messageIDs.contains($0.id) }
+        guard filtered.count != messages.count else { return false }
+        messagesData = try JSONEncoder().encode(filtered)
+        return true
     }
 
     func page(limit: Int) -> LocalMessagePage? {
@@ -508,6 +520,33 @@ final class LocalMessageStore {
             messageFingerprints[accountId, default: [:]][conversationId] = nextFingerprint
             if let hasEarlier {
                 messageHasEarlier[accountId, default: [:]][conversationId] = hasEarlier
+            }
+        } catch {
+            context.rollback()
+        }
+    }
+
+    func deleteMessages(_ messageIds: Set<String>, accountId: String) {
+        guard !accountId.isEmpty, !messageIds.isEmpty else { return }
+        do {
+            let recordIDs = messageIds.map {
+                scopedCacheRecordID(accountId: accountId, entityId: $0)
+            }
+            let records = try context.fetch(FetchDescriptor<CachedMessageRecord>(
+                predicate: #Predicate { recordIDs.contains($0.id) }
+            ))
+            var conversationIDs = Set(records.map(\.conversationId))
+            records.forEach(context.delete)
+            let scope = accountId
+            let pages = try context.fetch(FetchDescriptor<CachedMessagePageRecord>(
+                predicate: #Predicate { $0.accountId == scope }
+            ))
+            for page in pages where try page.removeMessages(withIDs: messageIds) {
+                conversationIDs.insert(page.conversationId)
+            }
+            try context.save()
+            for conversationID in conversationIDs {
+                messageFingerprints[accountId]?[conversationID] = nil
             }
         } catch {
             context.rollback()

@@ -51,6 +51,8 @@ pub struct RunnerRunResponse {
     pub run_id: String,
     pub status: String,
     pub prompt: String,
+    #[serde(rename = "systemPrompt")]
+    pub system_prompt: String,
     #[serde(rename = "ownerAccountId")]
     pub owner_account_id: String,
     #[serde(rename = "requesterAccountId")]
@@ -83,6 +85,7 @@ pub(super) type RunnerRunRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    String,
 );
 
 pub async fn lease_next_run(
@@ -106,7 +109,7 @@ pub async fn lease_next_run(
              LIMIT 1 \
              FOR UPDATE SKIP LOCKED \
          ) \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message, system_prompt",
     )
     .bind(runner_id)
     .bind(&lease_expires_at)
@@ -137,7 +140,7 @@ pub async fn lease_canary_run(
                  AND lease_expires_at <= $3 \
              ) \
          ) \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message, system_prompt",
     )
     .bind(runner_id)
     .bind(&lease_expires_at)
@@ -162,7 +165,7 @@ pub async fn mark_run_running(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'running', lease_expires_at = $3, updated_at = $4 \
          WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message",
+         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message, system_prompt",
     )
     .bind(run_id)
     .bind(runner_id)
@@ -192,6 +195,7 @@ pub(super) async fn runner_response_from_row(
         run_id: row.0,
         status: row.1,
         prompt: row.2,
+        system_prompt: row.11,
         owner_account_id: row.3,
         requester_account_id: row.4,
         session_id: row.5,

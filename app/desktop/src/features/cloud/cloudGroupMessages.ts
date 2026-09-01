@@ -26,6 +26,9 @@ import { cloudAccountIdOrNull, isCloudAccountId, rejectNonCloudCollaborationTarg
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import { normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
+import { cloudAgentCanonicalIdentityId } from './cloudAgentIdentity';
+export { cloudGroupAgentMentionHasResponse, cloudGroupAgentMentionResponseState } from './cloudGroupAgentResponseState';
+export type { CloudGroupAgentMentionResponseState } from './cloudGroupAgentResponseState';
 import { cloudGroupTransportParticipant, type CloudGroupActor, type CloudGroupParticipant } from './cloudGroupParticipantTypes';
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:'; const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
@@ -81,6 +84,7 @@ export type CloudGroupControlEnvelope = {
     text: string;
     createdAtMs: number;
     senderKind?: 'human' | 'agent' | null;
+    senderAgentId?: string | null;
     senderDisplayName?: string | null;
     deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled' | string | null;
     replyToMessageId?: string | null;
@@ -341,7 +345,7 @@ export function cloudGroupOutgoingParticipantSnapshot(input: {
 
 export function cloudGroupParticipantsWithProfiles(
   participants: CloudGroupParticipant[],
-  profiles: Pick<CloudPublicProfile, 'accountId' | 'kordiId' | 'displayName' | 'avatarUrl'>[],
+  profiles: Pick<CloudPublicProfile, 'accountId' | 'kordiId' | 'displayName' | 'avatarUrl' | 'defaultAgent'>[],
 ): CloudGroupParticipant[] {
   const profileByAccountId = new Map(profiles.map((profile) => [profile.accountId, profile]));
   return uniqueByAccount(participants.map((participant) => {
@@ -353,6 +357,10 @@ export function cloudGroupParticipantsWithProfiles(
       ...(kordiId ? { kordiId } : {}),
       displayName: cleanText(profile.displayName) || participant.displayName,
       avatarUrl: storedCloudProfileAvatarUrl(profile.avatarUrl) || participant.avatarUrl,
+      agentId: profile.defaultAgent?.agentId ?? participant.agentId,
+      agentDisplayName: profile.defaultAgent?.displayName ?? participant.agentDisplayName,
+      agentAvatarUrl: storedCloudProfileAvatarUrl(profile.defaultAgent?.avatarUrl) || participant.agentAvatarUrl,
+      agentAvatarSeed: profile.defaultAgent?.avatar.seed ?? participant.agentAvatarSeed,
     };
   }), storedCloudProfileAvatarUrl);
 }
@@ -615,6 +623,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         text: candidate.text,
         createdAtMs,
         senderKind: candidate.senderKind === 'agent' ? 'agent' : 'human',
+        senderAgentId: cleanText(typeof candidate.senderAgentId === 'string' ? candidate.senderAgentId : null) || null,
         senderDisplayName: typeof candidate.senderDisplayName === 'string' && candidate.senderDisplayName.trim() ? candidate.senderDisplayName.trim() : null,
         deliveryState: typeof candidate.deliveryState === 'string' && candidate.deliveryState.trim() ? candidate.deliveryState.trim() : null,
         replyToMessageId: typeof candidate.replyToMessageId === 'string' && candidate.replyToMessageId.trim() ? candidate.replyToMessageId.trim() : null,
@@ -679,6 +688,10 @@ export function cloudGroupNormalizeParticipant(participant: CloudGroupParticipan
     ...(kordiId ? { kordiId } : {}),
     displayName: cleanText(participant.displayName) || accountId || 'Cloud user',
     avatarUrl: syncableCloudGroupAvatarUrl(participant.avatarUrl),
+    agentId: cleanText(participant.agentId) || `cloud-agent:${accountId}`,
+    agentDisplayName: cleanText(participant.agentDisplayName) || 'Kordi',
+    agentAvatarUrl: syncableCloudGroupAvatarUrl(participant.agentAvatarUrl),
+    agentAvatarSeed: cleanText(participant.agentAvatarSeed) || cleanText(participant.agentId) || `cloud-agent:${accountId}`,
     role: participant.role ?? 'person',
   };
 }
@@ -690,6 +703,10 @@ export function cloudGroupSelfParticipant(account: CloudAccount, role: CloudGrou
     ...(kordiId ? { kordiId } : {}),
     displayName: cleanText(account.displayName) || cleanText(account.primaryEmail) || account.accountId,
     avatarUrl: syncableCloudGroupAvatarUrl(canonicalAvatarImageSource(account.avatar)),
+    agentId: account.defaultAgent?.agentId ?? `cloud-agent:${account.accountId}`,
+    agentDisplayName: account.defaultAgent?.displayName ?? 'Kordi',
+    agentAvatarUrl: syncableCloudGroupAvatarUrl(account.defaultAgent ? canonicalAvatarImageSource(account.defaultAgent.avatar) : null),
+    agentAvatarSeed: account.defaultAgent?.avatar.seed ?? `cloud-agent:${account.accountId}`,
     role,
   };
 }
@@ -703,6 +720,10 @@ export function cloudGroupParticipantFromContact(contact: Contact, role: CloudGr
     ...(kordiId ? { kordiId } : {}),
     displayName: cleanText(contact.name) || cleanText(contact.owner) || accountId,
     avatarUrl: syncableCloudGroupAvatarUrl(contact.profileImageUrl),
+    agentId: contact.targetCloudAgentId ?? `cloud-agent:${accountId}`,
+    agentDisplayName: contact.targetCloudAgentName ?? 'Kordi',
+    agentAvatarUrl: syncableCloudGroupAvatarUrl(contact.targetCloudAgentAvatarUrl),
+    agentAvatarSeed: contact.targetCloudAgentAvatarSeed ?? contact.targetCloudAgentId ?? `cloud-agent:${accountId}`,
     role,
   };
 }
@@ -721,6 +742,10 @@ export function cloudGroupParticipantFromConversationParticipant(
     ...(kordiId ? { kordiId } : {}),
     displayName: cleanText(participant.name) || accountId,
     avatarUrl: syncableCloudGroupAvatarUrl(participant.profileImageUrl),
+    agentId: cleanText(participant.defaultAgentId) || `cloud-agent:${accountId}`,
+    agentDisplayName: cleanText(participant.defaultAgentDisplayName) || 'Kordi',
+    agentAvatarUrl: syncableCloudGroupAvatarUrl(participant.defaultAgentAvatarUrl),
+    agentAvatarSeed: cleanText(participant.defaultAgentAvatarSeed) || `cloud-agent:${accountId}`,
     role: participant.role || 'person',
   };
 }
@@ -775,7 +800,6 @@ export function shouldCountCloudGroupMessageUnread(input: {
   activeConversationId?: string | null;
   activeConversationIds?: Array<string | null | undefined>;
   groupId: string;
-  groupSpaceId?: string | null;
   forkSnapshot?: boolean | null;
 }): boolean {
   if (input.forkSnapshot === true) return false;
@@ -784,10 +808,9 @@ export function shouldCountCloudGroupMessageUnread(input: {
     ...(input.activeConversationIds ?? []),
   ].map((value) => cleanText(value)).filter(Boolean));
   const sessionId = cleanText(input.groupId);
-  const spaceId = cleanText(input.groupSpaceId) || sessionId;
   if (activeIds.size === 0) return true;
   for (const active of activeIds) {
-    if (active === sessionId || active === spaceId || active === `group:${spaceId}`) return false;
+    if (active === sessionId || active === `group:${sessionId}`) return false;
   }
   return true;
 }
@@ -843,48 +866,12 @@ export function cloudGroupControlReplayKey(message: CloudMessage): string | null
   return `${envelope.kind}:${envelope.groupId}:${message.body}`;
 }
 
-export type CloudGroupAgentMentionResponseState = 'processing' | 'terminal';
-
-export function cloudGroupAgentMentionResponseState(input: {
-  requestMessageId: string;
-  targetAccountId: string;
-  messages: CanonicalSessionMessage[];
-}): CloudGroupAgentMentionResponseState | null {
-  const requestMessageId = cleanText(input.requestMessageId);
-  const targetAccountId = cleanText(input.targetAccountId);
-  if (!requestMessageId || !targetAccountId) return null;
-  const targetAgentIdentityId = `agent:cloud:${targetAccountId}`;
-  let sawProcessing = false;
-  for (const message of input.messages) {
-    if (message.senderIdentityId !== targetAgentIdentityId) continue;
-    if (message.sourceTransport !== 'cloud-group-agent') continue;
-    const content = objectRecord(message.content);
-    const linkedRequestId = cleanText(message.parentMessageId)
-      || cleanText(typeof content.requestId === 'string' ? content.requestId : null)
-      || cleanText(typeof content.replyToMessageId === 'string' ? content.replyToMessageId : null);
-    if (linkedRequestId !== requestMessageId) continue;
-    const deliveryState = cleanText(typeof content.deliveryState === 'string' ? content.deliveryState : null).toLowerCase();
-    if (message.status === 'processing' || deliveryState === 'processing') {
-      sawProcessing = true;
-      continue;
-    }
-    return 'terminal';
-  }
-  return sawProcessing ? 'processing' : null;
-}
-
-export function cloudGroupAgentMentionHasResponse(input: {
-  requestMessageId: string;
-  targetAccountId: string;
-  messages: CanonicalSessionMessage[];
-}): boolean {
-  return cloudGroupAgentMentionResponseState(input) !== null;
-}
 
 export function cloudGroupAgentRequestingNoticeRequest(input: {
   sessionId: string;
   requestMessageId: string;
   targetAccountId: string;
+  targetAgentId?: string | null;
   targetAgentDisplayName?: string | null;
   createdAtMs?: number | null;
 }): AppendCanonicalMessageRequest {
@@ -898,12 +885,13 @@ export function cloudGroupAgentRequestingNoticeRequest(input: {
   return {
     id: `msg:cloud-agent-processing:${requestMessageId}:${targetAccountId}`,
     sessionId,
-    senderIdentityId: `agent:cloud:${targetAccountId}`,
+    senderIdentityId: cloudAgentCanonicalIdentityId(input.targetAgentId, targetAccountId),
     senderRole: 'external-agent',
     messageKind: 'agent-turn',
     contentText: 'processing...',
     content: {
       sender: targetAgentDisplayName,
+      senderOwnerAccountId: targetAccountId,
       timestampMs: createdAtMs,
       deliveryState: 'processing',
       requestId: requestMessageId,
@@ -921,6 +909,7 @@ export function cloudGroupAgentRequestingNoticeMessage(input: {
   sessionId: string;
   requestMessageId: string;
   targetAccountId: string;
+  targetAgentId?: string | null;
   targetAgentDisplayName?: string | null;
   createdAtMs?: number | null;
   sequenceNum?: number | null;
@@ -950,6 +939,7 @@ export function cloudGroupAgentOfflineNoticeRequest(input: {
   sessionId: string;
   requestMessageId: string;
   targetAccountId: string;
+  targetAgentId?: string | null;
   targetHumanDisplayName?: string | null;
   targetAgentDisplayName?: string | null;
   createdAtMs?: number | null;
@@ -958,7 +948,7 @@ export function cloudGroupAgentOfflineNoticeRequest(input: {
   const requestMessageId = cleanText(input.requestMessageId);
   const targetAccountId = cleanText(input.targetAccountId);
   const targetHumanDisplayName = cleanText(input.targetHumanDisplayName) || 'The user';
-  const targetAgentDisplayName = cleanText(input.targetAgentDisplayName) || `${targetHumanDisplayName}'s Kordi`;
+  const targetAgentDisplayName = cleanText(input.targetAgentDisplayName) || 'Kordi';
   const createdAtMs = typeof input.createdAtMs === 'number' && Number.isFinite(input.createdAtMs)
     ? input.createdAtMs
     : Date.now();
@@ -966,12 +956,13 @@ export function cloudGroupAgentOfflineNoticeRequest(input: {
   return {
     id: `msg:cloud-agent-offline:${requestMessageId}:${targetAccountId}`,
     sessionId,
-    senderIdentityId: `agent:cloud:${targetAccountId}`,
+    senderIdentityId: cloudAgentCanonicalIdentityId(input.targetAgentId, targetAccountId),
     senderRole: 'external-agent',
     messageKind: 'agent-turn',
     contentText: '',
     content: {
       sender: targetAgentDisplayName,
+      senderOwnerAccountId: targetAccountId,
       timestampMs: createdAtMs,
       deliveryState: 'failed',
       requestId: requestMessageId,
@@ -1046,7 +1037,6 @@ export function cloudGroupMessageReadTargets(input: {
       activeConversationId: input.activeConversationId,
       activeConversationIds: input.activeConversationIds,
       groupId: envelope.groupId,
-      groupSpaceId: envelope.groupSpaceId,
       forkSnapshot: envelope.message?.forkSnapshot,
     })) continue;
     const peerId = cleanText(message.fromAccountId);
@@ -1095,8 +1085,6 @@ function cloudGroupMessageIsAtOrBeforeReadCursor(message: CloudMessage, envelope
 
 export function cloudGroupUnreadCountsBySessionId(input: {
   accountId: string;
-  activeConversationId?: string | null;
-  activeConversationIds?: Array<string | null | undefined>;
   readCursorsBySessionId?: Record<string, CloudGroupReadCursor | null | undefined>;
   messages?: CloudMessage[];
   groupRows?: readonly IndexedCloudGroupRow[];
@@ -1111,13 +1099,7 @@ export function cloudGroupUnreadCountsBySessionId(input: {
   });
   for (const { wire: message, envelope } of rows) {
     if (!cloudGroupMessageIsUnreadForAccount(message, envelope, accountId)) continue;
-    if (!shouldCountCloudGroupMessageUnread({
-      activeConversationId: input.activeConversationId,
-      activeConversationIds: input.activeConversationIds,
-      groupId: envelope.groupId,
-      groupSpaceId: envelope.groupSpaceId,
-      forkSnapshot: envelope.message?.forkSnapshot,
-    })) continue;
+    if (envelope.message?.forkSnapshot === true) continue;
     const sessionId = cleanText(envelope.groupId);
     if (!sessionId) continue;
     if (cloudGroupMessageIsAtOrBeforeReadCursor(message, envelope, input.readCursorsBySessionId?.[sessionId])) continue;

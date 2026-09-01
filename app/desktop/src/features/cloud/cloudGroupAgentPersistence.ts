@@ -9,6 +9,11 @@ import type {
   ApplyCloudGroupAgentControlInput,
   CloudGroupAgentPresentation,
 } from './cloudGroupAgentControl.types';
+import {
+  cloudAgentCanonicalIdentityId,
+  cloudAgentDisplayName,
+  cloudAgentId,
+} from './cloudAgentIdentity';
 
 function cloudGroupAgentPresentation(
   input: ApplyCloudGroupAgentControlInput,
@@ -24,9 +29,15 @@ function cloudGroupAgentPresentation(
     || input.stateOps.cleanText(account.displayName)
     || input.stateOps.cleanText(account.primaryEmail)
     || 'Cloud user';
+  const agentId = cloudAgentId(
+    message.targetCloudAgentId,
+    account.accountId,
+  );
   return {
-    identityId: `agent:cloud:${account.accountId}`,
-    displayName: hostedAgentName || `${hostedAgentOwnerName}'s Kordi`,
+    agentId,
+    identityId: cloudAgentCanonicalIdentityId(agentId, account.accountId),
+    displayName: cloudAgentDisplayName(hostedAgentName),
+    ownerDisplayName: hostedAgentOwnerName,
   };
 }
 
@@ -43,10 +54,10 @@ export async function ensureCloudGroupAgentIdentity(
     ownerIdentityId: localHumanIdentityId,
     source: 'local',
     sourceHostId: 'cloud',
-    sourceIdentityId: `cloud-agent:${account.accountId}`,
+    sourceIdentityId: presentation.agentId,
     humanId: account.accountId,
-    agentId: `cloud-agent:${account.accountId}`,
-    avatarKey: `cloud-agent:${account.accountId}`,
+    agentId: presentation.agentId,
+    avatarKey: presentation.agentId,
     profileImageUrl: null,
     metadata: { accountId: account.accountId, cloudGroupAgent: true },
   });
@@ -79,6 +90,8 @@ export async function persistQueuedCloudGroupAgentTurn(
     contentText: 'queued...',
     content: {
       sender: presentation.displayName,
+      senderOwnerAccountId: account.accountId,
+      senderOwnerName: presentation.ownerDisplayName,
       timestampMs: createdAtMs,
       deliveryState: 'queued',
       sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),

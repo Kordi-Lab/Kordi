@@ -77,6 +77,21 @@ pub struct UpdateProfileRequest {
     pub display_name: Option<String>,
     #[serde(rename = "avatarMutation")]
     pub avatar_mutation: Option<AvatarMutationRequest>,
+    #[serde(rename = "agentDisplayName")]
+    pub agent_display_name: Option<String>,
+    #[serde(rename = "agentAvatarMutation")]
+    pub agent_avatar_mutation: Option<AvatarMutationRequest>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DefaultAgentProfileResponse {
+    #[serde(rename = "agentId")]
+    pub agent_id: String,
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+    #[serde(rename = "avatarUrl")]
+    pub avatar_url: Option<String>,
+    pub avatar: AvatarDescriptor,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -92,6 +107,8 @@ pub struct AccountResponse {
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
     pub avatar: AvatarDescriptor,
+    #[serde(rename = "defaultAgent")]
+    pub default_agent: DefaultAgentProfileResponse,
     #[serde(rename = "nodeId")]
     pub node_id: Option<String>,
     #[serde(rename = "passwordSet")]
@@ -123,6 +140,8 @@ pub struct PublicProfileResponse {
     pub display_name: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
+    #[serde(rename = "defaultAgent")]
+    pub default_agent: DefaultAgentProfileResponse,
     #[serde(rename = "nodeId")]
     pub node_id: Option<String>,
     #[serde(rename = "isContact")]
@@ -153,6 +172,8 @@ pub struct ContactSummary {
     pub subtitle: Option<String>,
     #[serde(rename = "avatarUrl")]
     pub avatar_url: Option<String>,
+    #[serde(rename = "defaultAgent", skip_serializing_if = "Option::is_none")]
+    pub default_agent: Option<DefaultAgentProfileResponse>,
     #[serde(rename = "nodeId")]
     pub node_id: Option<String>,
     #[serde(rename = "createdAt")]
@@ -373,6 +394,14 @@ pub struct CloudSessionVisibilityResponse {
     pub hidden_session_ids: Vec<String>,
     #[serde(rename = "deletedSessionIds")]
     pub deleted_session_ids: Vec<String>,
+    #[serde(rename = "pinnedSessionIds")]
+    pub pinned_session_ids: Vec<String>,
+    #[serde(rename = "mutedSessionIds")]
+    pub muted_session_ids: Vec<String>,
+    #[serde(rename = "unreadSessionIds")]
+    pub unread_session_ids: Vec<String>,
+    #[serde(rename = "pinnedGroupSpaceIds")]
+    pub pinned_group_space_ids: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

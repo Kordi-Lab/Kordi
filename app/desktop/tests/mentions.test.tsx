@@ -227,8 +227,8 @@ test('bridge mention option text shows display names with product-facing detail 
       detail: 'Person',
     },
     {
-      label: "Alice's Kordi",
-      detail: 'Agent',
+      label: 'Kordi',
+      detail: 'Owner · Alice',
     },
   ]);
   assert.equal(options.some((option) => option.detail.includes('Host One')), false);
@@ -308,7 +308,7 @@ test('group mention candidates include group people and approved agents, not out
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', "agent:Alice's Kordi", 'person:Bob'],
+    ['person:Alice', 'agent:Kordi', 'person:Bob'],
   );
 });
 
@@ -369,7 +369,7 @@ test('direct person mention candidates include only the contact and their agents
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Bob', "agent:Bob's Kordi"],
+    ['person:Bob', 'agent:Kordi'],
   );
 });
 
@@ -409,7 +409,7 @@ test('group mention candidates fall back to participant names when canonical det
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', "agent:Alice's Kordi", 'person:Bob', "agent:Bob's Kordi"],
+    ['person:Alice', 'agent:Kordi', 'person:Bob', 'agent:Kordi'],
   );
 });
 
@@ -467,7 +467,7 @@ test('group mention scope uses root group participants for legacy child continua
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', "agent:Alice's Kordi", 'person:Bob', "agent:Bob's Kordi"],
+    ['person:Alice', 'agent:Kordi', 'person:Bob', 'agent:Kordi'],
   );
 });
 
@@ -544,7 +544,7 @@ test('group mention candidates include server-reachable agents even without cont
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Bob', "agent:Bob's Kordi"],
+    ['person:Bob', 'agent:Kordi'],
   );
 });
 
@@ -577,7 +577,7 @@ test('mention candidates hide active host person and agent duplicates', () => {
 
   assert.deepEqual(
     candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', "agent:Alice's Kordi"],
+    ['person:Alice', 'agent:Kordi'],
   );
 });
 
@@ -700,7 +700,7 @@ test('buildCollaborationMentionCandidates does not expose node id duplicates whe
 
   assert.deepEqual(
     candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', "agent:Alice's Kordi"],
+    ['person:Alice', 'agent:Kordi'],
   );
   assert.equal(candidates.some((candidate) => candidate.displayLabel === 'kd_remote_node_123'), false);
 });
@@ -731,7 +731,7 @@ test('buildCollaborationMentionCandidates does not duplicate a person from their
 
   assert.deepEqual(
     candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', "agent:Alice's Kordi"],
+    ['person:Alice', 'agent:Kordi'],
   );
 });
 
@@ -801,9 +801,9 @@ test('outreach identity preserves display label while mention metadata stores sa
 
   const target = resolveMentionedCollaborationTarget('@AlicesKordi summarize this', collaborationState);
   assert.ok(target);
-  assert.equal(target.label, 'AlicesKordi');
-  assert.equal(target.displayLabel, "Alice's Kordi");
-  assert.equal(outreachIdentityForCollaborationTarget(target).targetDisplayName, "Alice's Kordi");
+  assert.equal(target.label, 'KordiAlice');
+  assert.equal(target.displayLabel, 'Kordi');
+  assert.equal(outreachIdentityForCollaborationTarget(target).targetDisplayName, 'Kordi');
 });
 
 test('legacy display-label matching works only when unambiguous', () => {
@@ -851,11 +851,11 @@ test('legacy display-label matching works only when unambiguous', () => {
 test('publicLocalAgentMentionText rewrites first-person agent mentions for remote viewers', () => {
   assert.equal(
     publicLocalAgentMentionText('@MyKordi show me the diskusage', bridgeStateWithPeers([])),
-    '@HostOwnersKordi show me the diskusage',
+    '@KordiHostOwner show me the diskusage',
   );
   assert.equal(
     publicLocalAgentMentionText('@Kordi: summarize this', bridgeStateWithPeers([])),
-    '@HostOwnersKordi summarize this',
+    '@KordiHostOwner summarize this',
   );
 });
 

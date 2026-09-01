@@ -178,6 +178,26 @@ fn validates_materialized_workspace_and_invalidates_changed_fingerprint() {
 }
 
 #[test]
+fn rejects_agent_names_longer_than_the_publish_contract() {
+    let workspace =
+        std::env::temp_dir().join(format!("kordi-agent-builder-test-{}", uuid::Uuid::new_v4()));
+    let seed = DesktopAgentBuilderSeed {
+        name: "a".repeat(MAX_AGENT_NAME_CHARS + 1),
+        role: "Test agent".to_string(),
+        access: "only-me".to_string(),
+        ..DesktopAgentBuilderSeed::default()
+    };
+    materialize_seed(&workspace, Some(&seed)).expect("materialize builder workspace");
+    let (_, validation) = validate_workspace(&workspace);
+    assert!(!validation.valid);
+    assert!(validation
+        .errors
+        .iter()
+        .any(|error| error.contains("name may contain at most")));
+    let _ = fs::remove_dir_all(workspace);
+}
+
+#[test]
 fn rejects_skill_paths_that_do_not_match_the_skill_name() {
     let skill = DesktopAgentBuilderSkillFile {
         name: "repository-review".to_string(),

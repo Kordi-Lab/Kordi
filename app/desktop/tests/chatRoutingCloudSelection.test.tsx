@@ -146,6 +146,61 @@ test('workspace uses a neutral empty selection when the runtime contains only a 
   );
 });
 
+test('workspace uses the authoritative name for runtime-only viewer-owned agent replies', () => {
+  let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
+  function Probe() {
+    viewModels = useWorkspaceViewModels({
+      isNativeShell: true,
+      isDesktopChatLoading: false,
+      desktopChatState: null,
+      localAgentDisplayName: 'Babytang',
+      desktopCollaborationState: null,
+      canonicalSessionState: null,
+      hiddenSessionIds: new Set(),
+      projectWorkspaces: [],
+      projectSelectedSessionIds: {},
+      activeNav: 'chats',
+      activeConvId: 'runtime-only-agent-chat',
+      activeProjectId: '',
+      activeProjectSessionId: '',
+      chatSearch: '',
+      projectSearch: '',
+      contactSearch: '',
+      activeContactId: '',
+      activeAgentId: '',
+      cachedChatSessionMessages: {},
+      cachedProjectSessionMessages: {},
+      localSessionUnreadCounts: {},
+      desktopLiveTurnsBySession: {},
+      mapDesktopMessages: () => [],
+      transientChatConversations: [{
+        id: 'runtime-only-agent-chat',
+        name: 'Runtime agent chat',
+        type: 'owned-agent',
+        subtitle: '',
+        unread: 0,
+        collaborationSources: ['Cloud'],
+        trust: 'Owned',
+        directness: 'Agent chat',
+        participants: ['Me', 'Babytang'],
+        messages: [{
+          role: 'external-agent',
+          sender: 'Kordi',
+          senderOwnerName: 'You',
+          text: 'I am Babytang.',
+          time: '21:29',
+        }],
+      }],
+    });
+    return null;
+  }
+
+  renderToStaticMarkup(createElement(Probe));
+
+  assert.equal(viewModels?.activeConv.messages[0]?.sender, 'Babytang');
+  assert.equal(viewModels?.activeConv.messages[0]?.senderOwnerName, 'You');
+});
+
 test('workspace active conversation does not fall back to a local UUID while a Cloud contact opens', () => {
   let viewModels: ReturnType<typeof useWorkspaceViewModels> | null = null;
   function Probe() {

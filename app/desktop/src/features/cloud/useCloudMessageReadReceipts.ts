@@ -1,6 +1,5 @@
 import {
   useEffect,
-  useRef,
   type Dispatch,
   type SetStateAction,
 } from 'react';
@@ -19,7 +18,6 @@ import type {
   CloudMessage,
 } from './authClient';
 import {
-  cloudPeerAccountIdFromConversationId,
   cloudSessionIdFromConversationId,
 } from './cloudCollaborationState';
 import {
@@ -79,7 +77,6 @@ export function useCloudMessageReadReceipts({
     >;
   };
   messages: {
-    byPeer: Record<string, CloudMessage[]>;
     setByPeer: Dispatch<
       SetStateAction<Record<string, CloudMessage[]>>
     >;
@@ -90,18 +87,12 @@ export function useCloudMessageReadReceipts({
     SetStateAction<Record<string, Set<string>>>
   >;
 }) {
-  const readReceiptRequestRef = useRef<string | null>(null);
   const { setState: setCanonicalState } = canonical;
   const {
-    byPeer: messagesByPeer,
     setByPeer: setMessagesByPeer,
     index: messageIndex,
     sync,
   } = messages;
-
-  useEffect(() => {
-    readReceiptRequestRef.current = null;
-  }, [account?.accountId]);
 
   useEffect(() => {
     if (!account || !activeConversationId || !canMarkActiveConversationRead) {
@@ -187,17 +178,12 @@ export function useCloudMessageReadReceipts({
       void loadSession()
         .then((session) => {
           if (!session?.token) throw new Error('Cloud session is unavailable.');
-          const readRequests =
-            groupReadTargets.sessionIds.length > 0
-              ? groupReadTargets.sessionIds.map((sessionId) =>
-                  client.markSessionMessagesRead(
-                    session.token,
-                    sessionId,
-                  )
-                )
-              : groupReadTargets.peerIds.map((peerId) =>
-                  client.markMessagesRead(session.token, peerId)
-                );
+          const readRequests = groupReadTargets.sessionIds.map((sessionId) =>
+            client.markSessionMessagesRead(
+              session.token,
+              sessionId,
+            )
+          );
           return Promise.all(readRequests);
         })
         .then(() => {
@@ -213,60 +199,12 @@ export function useCloudMessageReadReceipts({
           });
         });
     }
-
-    const peerId =
-      cloudPeerAccountIdFromConversationId(activeConversationId);
-    if (!peerId) return;
-    const inboundIds = (messagesByPeer[peerId] ?? [])
-      .filter(
-        (message) => message.toAccountId === account.accountId,
-      )
-      .map((message) => message.messageId)
-      .filter(Boolean);
-    if (inboundIds.length === 0) return;
-    setReadInboundMessageIdsByPeer((current) => {
-      const existing = current[peerId] ?? new Set<string>();
-      const next = new Set(existing);
-      for (const id of inboundIds) next.add(id);
-      if (next.size === existing.size) return current;
-      return { ...current, [peerId]: next };
-    });
-    const readSignature =
-      `${peerId}:${inboundIds.slice().sort().join(',')}`;
-    if (readReceiptRequestRef.current === readSignature) return;
-    readReceiptRequestRef.current = readSignature;
-    const rollbackOptimisticRead = () => {
-      setReadInboundMessageIdsByPeer((current) =>
-        rollbackReadInboundMessageIds(current, peerId, inboundIds)
-      );
-    };
-    void loadSession()
-      .then((session) => {
-        if (!session?.token) throw new Error('Cloud session is unavailable.');
-        return client.markMessagesRead(session.token, peerId);
-      })
-      .then(() => {
-        setMessagesByPeer((current) => {
-          const next = markCloudMessagesReadLocally(
-            current,
-            account.accountId,
-            { peerIds: [peerId] },
-          );
-          return next;
-        });
-        void sync();
-      })
-      .catch(() => {
-        rollbackOptimisticRead();
-        readReceiptRequestRef.current = null;
-      });
   }, [
     account,
     activeConversationId,
     canMarkActiveConversationRead,
     client,
     messageIndex,
-    messagesByPeer,
     setCanonicalState,
     setMessagesByPeer,
     setReadInboundMessageIdsByPeer,

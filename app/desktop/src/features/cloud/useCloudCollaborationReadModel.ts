@@ -62,7 +62,7 @@ export function applyCloudAgentRuntimeRouteToState(
     if (!isCloudCollaborationHostId(host.id)) return host;
     let agentsChanged = false;
     const agents = host.agents.map((agent) => {
-      if (agent.id !== 'cloud-local-agent') return agent;
+      if (!agent.isDefault) return agent;
       if (
         agent.defaultModel === defaultModel
         && agent.defaultAuthProvider === defaultAuthProvider
@@ -202,8 +202,8 @@ export function useCloudCollaborationReadModel({
   canonicalState,
   routesBySessionId,
   defaultRoute,
+  localAgentLabel,
   contacts,
-  hiddenSessionIds,
   deletedSessionIds,
   accountContextKey,
   override,
@@ -224,8 +224,8 @@ export function useCloudCollaborationReadModel({
   canonicalState?: CanonicalSessionState | null;
   routesBySessionId?: Record<string, DesktopChatMessageRoute>;
   defaultRoute?: DesktopChatMessageRoute | null;
+  localAgentLabel?: string | null;
   contacts: Contact[];
-  hiddenSessionIds: Set<string>;
   deletedSessionIds: Set<string>;
   accountContextKey: string | null;
   override: DesktopCollaborationState | null;
@@ -263,7 +263,6 @@ export function useCloudCollaborationReadModel({
       ...canonicalSelfAgentSessions
         .map((session) => session.id.trim())
         .filter(Boolean),
-      ...hiddenSessionIds,
       ...deletedSessionIds,
     ]);
     const canonicalSelfAgentSessionIds = new Set(
@@ -296,6 +295,7 @@ export function useCloudCollaborationReadModel({
         cloudGroupReadCursorsBySessionId(canonicalState),
       localAgentTurnsByRequestId,
       localAgentRuntimeRoute: null,
+      localAgentLabel,
       cloudSessionTitlesById,
       hiddenCloudSessionIds,
       suppressUnscopedSelfAgentConversation,
@@ -316,8 +316,8 @@ export function useCloudCollaborationReadModel({
     canonicalState,
     contacts,
     deletedSessionIds,
-    hiddenSessionIds,
     localAgentTurnsByRequestId,
+    localAgentLabel,
     messageIndex,
     messagesByPeer,
     override,

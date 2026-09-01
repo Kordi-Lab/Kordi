@@ -60,7 +60,7 @@ export function messageActionSourceFromMessage(
     return null;
   }
   const senderLabel = clean(message.sourceSenderLabel) || clean(message.sender)
-    || (message.isOwnMessage ? 'You' : message.role === 'owned-agent' ? 'My Kordi' : message.role);
+    || (message.isOwnMessage ? 'You' : message.role === 'owned-agent' ? 'Kordi' : message.role);
   const textPreview = messageActionPreviewText(message);
   const mentions = messageMentionsForText(textPreview, message.mentions);
   return {

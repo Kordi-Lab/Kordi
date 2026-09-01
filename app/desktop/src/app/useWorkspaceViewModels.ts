@@ -21,22 +21,18 @@ import {
   projectRootFromCanonicalProjectGroupId,
   resolveProjectSelection,
 } from '@/features/canonical/sessionResolver';
-import { createCanonicalSessionReadModel } from '@/features/canonical/sessionReadModel';
+import { createCanonicalSessionReadModel, presentLocalAgentMessages } from '@/features/canonical/sessionReadModel';
 import { canonicalLocalAgentAvatarSeed } from '@/features/canonical/avatarIdentity';
 import {
   isLocalDraftChatConversationId,
   isProjectDraftSessionId,
 } from '@/features/chat/draftSessions';
 import { buildTaskActivityDashboard } from '@/features/chat/taskActivityDashboard';
-import {
-  buildParticipantSpaces,
-  collapseBlankConversationShells,
-  ensureSelfParticipantSpace,
-  filterParticipantSpaces,
-} from '@/features/chat/participantSpaces';
+import { collapseBlankConversationShells } from '@/features/chat/participantSpaces';
 import {
   createTranscriptReferenceStabilizer,
 } from '@/features/chat/transcriptReferenceStability';
+import { buildWorkspaceChatListViewModels } from '@/app/workspaceChatListViewModels';
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
 import { contactGroups, contacts, conversations } from '@/kordi-app/data';
 import type {
@@ -119,11 +115,12 @@ export function collaborationChatConversationIsVisible(
 type UseWorkspaceViewModelsArgs = {
   isNativeShell: boolean;
   isDesktopChatLoading: boolean;
-  desktopChatState: DesktopChatState | null;
+  desktopChatState: DesktopChatState | null; localAgentDisplayName?: string | null;
   desktopCollaborationState: DesktopCollaborationState | null;
   canonicalSessionState: CanonicalSessionState | null;
   canonicalSessionSummaries?: CanonicalSessionSummary[];
   hiddenSessionIds: Set<string>;
+  archivedSessionIds?: ReadonlySet<string>;
   projectWorkspaces: Project[];
   projectSelectedSessionIds: Record<string, string>;
   activeNav: NavId;
@@ -153,11 +150,12 @@ type UseWorkspaceViewModelsArgs = {
 export function useWorkspaceViewModels({
   isNativeShell,
   isDesktopChatLoading: _isDesktopChatLoading,
-  desktopChatState,
+  desktopChatState, localAgentDisplayName = null,
   desktopCollaborationState,
   canonicalSessionState,
   canonicalSessionSummaries = [],
   hiddenSessionIds,
+  archivedSessionIds = EMPTY_DESKTOP_SESSION_IDS,
   projectWorkspaces,
   projectSelectedSessionIds,
   activeNav,
@@ -186,11 +184,11 @@ export function useWorkspaceViewModels({
   const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
   const canonicalReadModel = useMemo(
     () => createCanonicalSessionReadModel(canonicalSessionState, {
-      summaries: canonicalSessionSummaries,
+      summaries: canonicalSessionSummaries, localAgentDisplayName,
       cloudUnreadReady, pendingGroupProjectionSessionIds,
       legacyGroupSessionTitlesById: cloudLegacyGroupSessionTitlesById, reliableGroupSessionTitleIds: cloudReliableGroupSessionTitleIds, reliableGroupSessionActivityAtMs: cloudReliableGroupSessionActivityAtMs,
     }),
-    [canonicalSessionState, canonicalSessionSummaries, cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionActivityAtMs, cloudReliableGroupSessionTitleIds, cloudUnreadReady, pendingGroupProjectionSessionIds],
+    [canonicalSessionState, canonicalSessionSummaries, cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionActivityAtMs, cloudReliableGroupSessionTitleIds, cloudUnreadReady, localAgentDisplayName, pendingGroupProjectionSessionIds],
   );
   const desktopLiveTurnViewModelKey = liveTurnsViewModelSignature(desktopLiveTurnsBySession);
   const desktopLiveTurnsForViewModelRef = useRef({
@@ -333,7 +331,7 @@ export function useWorkspaceViewModels({
         collaborationSources: ['Local'],
         trust: 'Owned',
         directness: session.draft ? 'Draft' : 'Agent chat',
-        participants: ['Me', 'My Kordi'],
+        participants: ['Me', localAgentLabel],
         participantAvatarSeeds: {
           Me: localHumanAvatarSeed,
           You: localHumanAvatarSeed,
@@ -399,9 +397,9 @@ export function useWorkspaceViewModels({
       : merged;
     const conversationsWithStableOrder = [...hydrated]
       .sort((a, b) => (b._updatedAtMs ?? 0) - (a._updatedAtMs ?? 0))
-      .map(({ _updatedAtMs, ...conversation }) => conversation);
+      .map(({ _updatedAtMs, ...conversation }) => ({ ...conversation, messages: presentLocalAgentMessages(conversation.messages, localAgentDisplayName) }));
     return conversationsWithStableOrder;
-  }, [collaborationChatConversations, canonicalReadModel, isNativeShell, localChatConversations, transientChatConversations, visibleCollaborationChatConversations]);
+  }, [collaborationChatConversations, canonicalReadModel, isNativeShell, localAgentDisplayName, localChatConversations, transientChatConversations, visibleCollaborationChatConversations]);
 
   const decoratedChatConversations = useMemo(() => {
     const withCloudPresence = applyCloudPresenceToConversations(
@@ -438,23 +436,21 @@ export function useWorkspaceViewModels({
   }, [stableChatConversations, transcriptReferenceStabilizer]);
   const blankShellCollapsedChatConversations = stableChatConversations.conversations;
 
-  const chatConversations = useMemo(() => {
-    const hiddenIds = new Set([
-      ...hiddenSessionIds,
-      ...localAgentCollaborationReachoutSessionIds,
-    ]);
-    if (hiddenIds.size === 0) return blankShellCollapsedChatConversations;
-    return blankShellCollapsedChatConversations.filter((conversation) => {
-      const canonicalId = conversation.canonicalSessionId ?? conversation.id;
-      if (activeConvId === conversation.id || activeConvId === canonicalId) return true;
-      return !hiddenIds.has(canonicalId) && !hiddenIds.has(conversation.id);
-    });
-  }, [
-    activeConvId,
-    blankShellCollapsedChatConversations,
+  const {
+    chatConversations,
+    participantSpaces,
+    archivedParticipantSpaces,
+    contactParticipantSpaces,
+    agentParticipantSpaces,
+  } = useMemo(() => buildWorkspaceChatListViewModels({
+    activeConversationId: activeConvId,
+    allConversations: blankShellCollapsedChatConversations,
+    archivedSessionIds,
+    avatarSeed: getLocalProfileAvatarSeed(),
+    chatSearch,
     hiddenSessionIds,
-    localAgentCollaborationReachoutSessionIds,
-  ]);
+    localAgentReachoutSessionIds: localAgentCollaborationReachoutSessionIds,
+  }), [activeConvId, archivedSessionIds, blankShellCollapsedChatConversations, chatSearch, hiddenSessionIds, localAgentCollaborationReachoutSessionIds]);
   const companionConversations = useMemo(
     () => companionConversationList(chatConversations, blankShellCollapsedChatConversations),
     [blankShellCollapsedChatConversations, chatConversations],
@@ -494,19 +490,6 @@ export function useWorkspaceViewModels({
         .some((value) => value.toLowerCase().includes(normalizedSearch))
     ));
   }, [chatConversations, chatSearch]);
-
-  const participantSpaces = useMemo(
-    () => ensureSelfParticipantSpace(buildParticipantSpaces(chatConversations), { avatarSeed: getLocalProfileAvatarSeed() }),
-    [chatConversations],
-  );
-  const contactParticipantSpaces = useMemo(
-    () => filterParticipantSpaces(participantSpaces, chatSearch, 'contact'),
-    [chatSearch, participantSpaces],
-  );
-  const agentParticipantSpaces = useMemo(
-    () => filterParticipantSpaces(participantSpaces, chatSearch, 'agent'),
-    [chatSearch, participantSpaces],
-  );
 
   const displayedContacts = useMemo<Contact[]>(() => {
     if (!isNativeShell) return contacts;
@@ -722,7 +705,7 @@ export function useWorkspaceViewModels({
           ...(agent.nodeId ? localAgentCollaborationReachoutsByAgentId.get(agent.nodeId) ?? [] : []),
         ].filter((reachout, index, list) => list.findIndex((candidate) => candidate.sessionId === reachout.sessionId) === index);
         items.push({
-          name: agent.label,
+          name: agent.isDefault ? localAgentDisplayName?.trim() || runtimeAgent?.label || agent.label : runtimeAgent?.label ?? agent.label,
           id: agent.id,
           role: 'My agent',
           messaging: 'Direct local chat',
@@ -777,7 +760,7 @@ export function useWorkspaceViewModels({
     if (items.length === 0 && localAgent) {
       const localAgentRouting = desktopCollaborationState?.localAgentRouting;
       items.push({
-        name: localAgent.label,
+        name: localAgentDisplayName?.trim() || localAgent.label,
         id: 'desktop:local-agent',
         role: 'Local desktop agent',
         messaging: 'Local runtime',
@@ -820,7 +803,7 @@ export function useWorkspaceViewModels({
     }
 
     return items;
-  }, [cloudAgentDefinitionsById, desktopCollaborationState?.hosts, desktopCollaborationState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentCollaborationReachoutsByAgentId]);
+  }, [cloudAgentDefinitionsById, desktopCollaborationState?.hosts, desktopCollaborationState?.localAgentRouting, desktopChatState?.localAgent, isNativeShell, localAgentCollaborationReachoutsByAgentId, localAgentDisplayName]);
 
   const groupedContacts = useMemo(
     () =>
@@ -953,7 +936,7 @@ export function useWorkspaceViewModels({
           const canonicalParticipants = canonicalReadModel?.participantDetails(sessionId) ?? [];
           const participants = canonicalParticipants.length > 0
             ? canonicalParticipants.map((participant) => participant.name)
-            : ['Me', 'My Kordi'];
+            : ['Me', desktopChatState?.localAgent.label?.trim() || 'Kordi'];
 
           const unreadCount = isVisibleSession ? 0 : (localSessionUnreadCounts[sessionId] ?? 0);
           const taskActivities = sessionTaskActivitiesById.get(sessionId) ?? [];
@@ -1027,7 +1010,7 @@ export function useWorkspaceViewModels({
       summary: 'Write below or create a session to persist work under this project.',
       lastActive: '--:--',
       status: 'Draft',
-      participants: ['Me', 'My Kordi'],
+      participants: ['Me', desktopChatState?.localAgent.label?.trim() || 'Kordi'],
       artifacts: 0,
       tasks: 0,
       unread: 0,
@@ -1051,7 +1034,7 @@ export function useWorkspaceViewModels({
     summary: 'Blank project drafts stay local until the first real send.',
     lastActive: 'Draft',
     status: 'Draft',
-    participants: ['Me', 'My Kordi'],
+    participants: ['Me', desktopChatState?.localAgent.label?.trim() || 'Kordi'],
     artifacts: activeProject.artifacts,
     tasks: activeProject.tasks,
     taskActivities: [],
@@ -1088,6 +1071,7 @@ export function useWorkspaceViewModels({
     companionConversations,
     filteredConversations,
     participantSpaces,
+    archivedParticipantSpaces,
     contactParticipantSpaces,
     agentParticipantSpaces,
     activeConv,

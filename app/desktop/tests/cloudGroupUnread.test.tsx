@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cloudGroupUnreadCountsBySessionId, encodeCloudGroupControl, shouldCountCloudGroupMessageUnread } from '../src/features/cloud/cloudGroupMessages';
 
-test('cloud group unread helper counts only hidden sessions', () => {
-  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:child', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
-  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:space', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
-  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationIds: ['ui-row-id', 'group:session:group:space'], groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), false);
-  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:other', groupId: 'session:group:child', groupSpaceId: 'session:group:space' }), true);
+test('cloud group read targeting matches only the exact active session', () => {
+  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:child', groupId: 'session:group:child' }), false);
+  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'group:session:group:child', groupId: 'session:group:child' }), false);
+  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:space', groupId: 'session:group:child' }), true);
+  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationIds: ['ui-row-id', 'group:session:group:space'], groupId: 'session:group:child' }), true);
+  assert.equal(shouldCountCloudGroupMessageUnread({ activeConversationId: 'session:group:other', groupId: 'session:group:child' }), true);
 });
 
 test('cloud group unread count helper ignores messages at or before local read cursor', () => {
@@ -53,7 +54,6 @@ test('cloud group unread count helper ignores messages at or before local read c
 
   assert.deepEqual(cloudGroupUnreadCountsBySessionId({
     accountId: 'acct_me',
-    activeConversationId: 'session:outside',
     readCursorsBySessionId: {
       'session:group:child': { lastReadMessageId: 'msg:read', lastReadCreatedAtMs: 10 },
     },
@@ -65,7 +65,6 @@ test('cloud group unread count helper ignores messages at or before local read c
 
   assert.deepEqual(cloudGroupUnreadCountsBySessionId({
     accountId: 'acct_me',
-    activeConversationId: 'session:outside',
     readCursorsBySessionId: {
       'session:group:child': { lastReadMessageId: 'msg:unread', lastReadCreatedAtMs: 11 },
     },
@@ -146,12 +145,10 @@ test('cloud group unread helper counts self-agent replies until the local read c
 
   assert.deepEqual(cloudGroupUnreadCountsBySessionId({
     accountId,
-    activeConversationId: 'session:outside',
     messages,
   }), { 'session:group:self-agent': 1 });
   assert.deepEqual(cloudGroupUnreadCountsBySessionId({
     accountId,
-    activeConversationId: 'session:outside',
     readCursorsBySessionId: {
       'session:group:self-agent': {
         lastReadMessageId: 'msg_self_agent_group',
@@ -162,7 +159,7 @@ test('cloud group unread helper counts self-agent replies until the local read c
   }), {});
 });
 
-test('cloud group unread count helper deduplicates inbound unread controls per hidden session', () => {
+test('cloud group unread count helper deduplicates inbound controls without hiding selected unread', () => {
   const groupMessage = encodeCloudGroupControl({
     kind: 'group-message',
     groupId: 'session:group:child',
@@ -206,7 +203,6 @@ test('cloud group unread count helper deduplicates inbound unread controls per h
 
   assert.deepEqual(cloudGroupUnreadCountsBySessionId({
     accountId: 'acct_me',
-    activeConversationId: 'session:outside',
     messages: [
       { messageId: 'cloud_1', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: groupMessage, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
       { messageId: 'cloud_1_duplicate', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: groupMessage, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
@@ -217,11 +213,10 @@ test('cloud group unread count helper deduplicates inbound unread controls per h
 
   assert.deepEqual(cloudGroupUnreadCountsBySessionId({
     accountId: 'acct_me',
-    activeConversationId: 'session:group:space',
     messages: [
       { messageId: 'cloud_1', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: groupMessage, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
     ],
-  }), {});
+  }), { 'session:group:child': 1 });
 });
 
 test('cloud group unread count helper ignores inherited fork snapshots and counts only new fork messages', () => {
@@ -281,7 +276,6 @@ test('cloud group unread count helper ignores inherited fork snapshots and count
 
   assert.deepEqual(cloudGroupUnreadCountsBySessionId({
     accountId: 'acct_me',
-    activeConversationId: 'session:outside',
     messages: [
       { messageId: 'cloud_snapshot', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: forkSnapshotMessage, createdAt: '2026-05-11T00:00:00Z', deliveredAt: null, readAt: null, direction: 'incoming' },
       { messageId: 'cloud_new', fromAccountId: 'acct_peer', toAccountId: 'acct_me', body: newForkMessage, createdAt: '2026-05-11T00:00:01Z', deliveredAt: null, readAt: null, direction: 'incoming' },

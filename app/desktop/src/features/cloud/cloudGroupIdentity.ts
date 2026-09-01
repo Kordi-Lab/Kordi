@@ -28,6 +28,10 @@ export function cloudGroupIdentityRequest(
       accountId: participant.accountId,
       kordiId: normalizeKordiId(participant.kordiId),
       cloudGroupParticipant: true,
+      defaultAgentId: participant.agentId ?? `cloud-agent:${participant.accountId}`,
+      defaultAgentDisplayName: participant.agentDisplayName ?? 'Kordi',
+      defaultAgentAvatarUrl: participant.agentAvatarUrl ?? null,
+      defaultAgentAvatarSeed: participant.agentAvatarSeed ?? participant.agentId ?? `cloud-agent:${participant.accountId}`,
     },
   };
 }

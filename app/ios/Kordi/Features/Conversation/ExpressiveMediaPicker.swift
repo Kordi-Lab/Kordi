@@ -745,7 +745,7 @@ private struct LocalExpressiveMediaThumbnail: View {
 
     var body: some View {
         Group {
-            if let image {
+            if let image = image ?? ExpressiveMediaThumbnailLoader.cachedImage(at: url) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
@@ -758,9 +758,7 @@ private struct LocalExpressiveMediaThumbnail: View {
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .clipped()
         .task(id: url) {
-            image = await Task.detached(priority: .utility) {
-                AttachmentImageDecoder.downsampledImage(at: url, maximumPixelSize: 240)
-            }.value
+            image = await ExpressiveMediaThumbnailLoader.shared.image(at: url)
         }
     }
 }

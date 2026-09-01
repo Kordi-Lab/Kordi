@@ -21,7 +21,7 @@ export function cloudAgentDisplayName(contact: Contact): string {
   if (isSystemCloudAgentContact(contact)) {
     return contact.targetCloudAgentName?.trim() || contact.name.trim();
   }
-  return `${cloudPeerDisplayName(contact)}'s Kordi`;
+  return contact.targetCloudAgentName?.trim() || 'Kordi';
 }
 
 export function cloudContactToPersonPeer(contact: Contact): DesktopCollaborationPeer {
@@ -62,7 +62,7 @@ export function cloudContactToAgentPeer(contact: Contact): DesktopCollaborationP
     createdAt: null,
     sharedProjects: [],
     humanId: accountId,
-    agentId: contact.sourceAgentId?.trim() || `cloud-agent:${accountId}`,
+    agentId: contact.targetCloudAgentId?.trim() || contact.sourceAgentId?.trim() || `cloud-agent:${accountId}`,
     isDefaultAgent: true,
     discoveryMode: 'contacts',
     humanVisibilityPolicy: 'server-approval',
@@ -71,13 +71,19 @@ export function cloudContactToAgentPeer(contact: Contact): DesktopCollaborationP
     isContact: true,
     contactRequestStatus: 'accepted',
     contactRequestDirection: 'outgoing',
-    profileImageUrl: contact.profileImageUrl,
-    avatarSeed: contact.avatarSeed ?? accountId,
+    profileImageUrl: contact.targetCloudAgentAvatarUrl ?? null,
+    avatarSeed: contact.targetCloudAgentAvatarSeed ?? contact.targetCloudAgentId ?? `cloud-agent:${accountId}`,
   };
 }
 
 export function cloudSelfContact(account: CloudAccount): Contact {
   const displayName = account.displayName?.trim() || account.primaryEmail?.trim() || 'Me';
+  const agentName = account.defaultAgent?.displayName?.trim() || 'Kordi';
+  const agentId = account.defaultAgent?.agentId?.trim() || `cloud-agent:${account.accountId}`;
+  const agentAvatarUrl = account.defaultAgent
+    ? cloudAvatarImageUrl(canonicalAvatarImageSource(account.defaultAgent.avatar))
+    : null;
+  const agentAvatarSeed = account.defaultAgent?.avatar.seed?.trim() || agentId;
   return {
     id: `cloud:${account.accountId}`,
     name: displayName,
@@ -88,16 +94,22 @@ export function cloudSelfContact(account: CloudAccount): Contact {
     collaborationSources: [CLOUD_HOST_SENTINEL],
     status: 'Owned',
     discoverableOn: [CLOUD_HOST_SENTINEL],
-    detail: 'Chat privately with My Kordi',
+    detail: `Chat privately with ${agentName}`,
     owner: 'Me',
     sourceHostId: CLOUD_HOST_SENTINEL,
     sourceParticipantId: account.accountId,
     sourceRuntime: CLOUD_AGENT_RUNTIME,
     sourceHumanId: account.accountId,
-    sourceAgentId: 'cloud-local-agent',
+    sourceAgentId: agentId,
     contactStatus: 'self',
     contactRequestDirection: null,
-    avatarSeed: account.accountId,
-    profileImageUrl: cloudAvatarImageUrl(canonicalAvatarImageSource(account.avatar)),
+    avatarSeed: agentAvatarSeed,
+    profileImageUrl: agentAvatarUrl,
+    targetCloudAgentId: agentId,
+    targetCloudAgentName: agentName,
+    targetCloudAgentOwnerAccountId: account.accountId,
+    targetCloudAgentOwnerName: displayName,
+    targetCloudAgentAvatarUrl: agentAvatarUrl,
+    targetCloudAgentAvatarSeed: agentAvatarSeed,
   };
 }

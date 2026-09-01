@@ -187,6 +187,8 @@ function groupMessageBody(
       ? encodeCloudGroupControl({
           ...envelope,
           groupId,
+          groupSpaceId: envelope.groupSpaceId ?? conversation.group_space_id ?? null,
+          groupTitle: envelope.groupTitle ?? conversation.group_title ?? null,
           message: { ...envelope.message, createdAtMs },
         })
       : null;
@@ -198,6 +200,9 @@ function groupMessageBody(
       accountId: member.account_id,
       displayName: member.display_name?.trim() || member.account_id,
       avatarUrl: member.avatar_url?.trim() || null,
+      agentId: member.default_agent_id?.trim() || `cloud-agent:${member.account_id}`,
+      agentDisplayName: member.default_agent_display_name?.trim() || 'Kordi',
+      agentAvatarUrl: member.default_agent_avatar_url?.trim() || null,
       role: member.role,
       joinedAt: member.joined_at,
     }));
@@ -216,8 +221,8 @@ function groupMessageBody(
   return encodeCloudGroupControl({
     kind: 'group-message',
     groupId,
-    groupSpaceId: null,
-    groupTitle: conversation.shared_title,
+    groupSpaceId: conversation.group_space_id ?? null,
+    groupTitle: conversation.group_title ?? conversation.shared_title,
     createdByAccountId: conversation.created_by_account_id,
     actor,
     participants,

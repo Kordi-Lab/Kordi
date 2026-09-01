@@ -42,12 +42,17 @@ export type UseCloudCollaborationStateArgs = {
   setCanonicalSessionState?: Dispatch<
     SetStateAction<CanonicalSessionState | null>
   >;
+  hydrateCanonicalSessionPage?: (
+    sessionId: string,
+    options?: { beforeSequenceNum?: number | null; force?: boolean },
+  ) => Promise<unknown>;
   localTurnsBySessionId?: Record<string, DesktopChatTurnSnapshot>;
   cloudAgentRuntimeRoutesBySessionId?: Record<
     string,
     DesktopChatMessageRoute
   >;
   defaultCloudAgentRuntimeRoute?: DesktopChatMessageRoute | null;
+  localAgentLabel?: string | null;
   defaultCloudAgentRuntimeReady?: boolean;
   desktopAuthState?: DesktopAuthState | null;
 };
@@ -100,6 +105,11 @@ export type UseCloudCollaborationStateResult = {
   }) => Promise<CloudSessionPin>;
   hideCloudSession: (sessionId: string) => Promise<void>;
   unhideCloudSession: (sessionId: string) => Promise<void>;
+  setCloudSessionPinned: (sessionId: string, pinned: boolean) => Promise<void>;
+  setCloudSessionMuted: (sessionId: string, muted: boolean) => Promise<void>;
+  setCloudSessionUnread: (sessionId: string, unread: boolean) => Promise<void>;
+  markCloudSessionsRead: (sessionIds: string[]) => Promise<void>;
+  setCloudGroupSpacePinned: (groupSpaceId: string, pinned: boolean) => Promise<void>;
   deleteCloudSession: (sessionId: string) => Promise<void>;
   cancelCloudAgentRequest:
     (conversationId: string, requestId: string) => Promise<void>;
@@ -132,6 +142,10 @@ export type UseCloudCollaborationStateResult = {
   pendingGroupProjectionSessionIds: ReadonlySet<string>;
   cloudHiddenSessionIds: Set<string>;
   cloudDeletedSessionIds: Set<string>;
+  cloudUnreadSessionIds: Set<string>;
+  cloudPinnedSessionIds: Set<string>;
+  cloudMutedSessionIds: Set<string>;
+  cloudPinnedGroupSpaceIds: Set<string>;
   cloudSessionPinsById: CloudSessionPinsById;
   cloudCanonicalReactionState: CanonicalSessionState | null;
   cloudLegacyGroupSessionTitlesById: ReadonlyMap<string, string>;

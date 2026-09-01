@@ -2,7 +2,10 @@ use super::meme_validation::{meme_attachment_metadata, validate_meme_attachment_
 use super::support::*;
 use super::*;
 
+mod group_identity;
 mod mutations;
+use group_identity::normalize_group_envelope;
+pub(super) use group_identity::normalize_stored_group_agent_identity;
 pub use mutations::{delete_message, edit_message};
 
 pub(super) async fn fanout_message_sync_event(
@@ -73,7 +76,8 @@ pub(crate) async fn send_message_in_transaction(
         }
         attachment_ids.push(attachment_id.to_string());
     }
-    normalize_group_participant_order(transaction, conversation_id, &mut request.content).await?;
+    let group_projection =
+        normalize_group_envelope(transaction, conversation_id, &mut request.content).await?;
     let meme_attachments = meme_attachment_metadata(&request.content, &attachment_ids)?;
     let request_fingerprint = fingerprint(&MessageIntent {
         conversation_id,
@@ -104,6 +108,43 @@ pub(crate) async fn send_message_in_transaction(
     }
 
     require_active_member(transaction, conversation_id, account_id).await?;
+    if let Some(projection) = &group_projection {
+        let group_title = matches!(
+            projection.kind.as_str(),
+            "group-invite" | "group-update" | "group-title-update"
+        )
+        .then(|| projection.group_title.as_deref())
+        .flatten();
+        query(
+            "UPDATE cloud_chat_conversations conversation \
+             SET group_space_id = $2, \
+                 group_title = COALESCE( \
+                   $3, conversation.group_title, ( \
+                     SELECT sibling.group_title \
+                     FROM cloud_chat_conversations sibling \
+                     WHERE sibling.group_space_id = $2 AND sibling.group_title IS NOT NULL \
+                     ORDER BY sibling.updated_at DESC LIMIT 1 \
+                   ) \
+                 ) \
+             WHERE conversation.conversation_id = $1",
+        )
+        .bind(conversation_id)
+        .bind(&projection.group_space_id)
+        .bind(group_title)
+        .execute(&mut **transaction)
+        .await?;
+        if let Some(group_title) = group_title {
+            query(
+                "UPDATE cloud_chat_conversations \
+                 SET group_title = $2 \
+                 WHERE group_space_id = $1",
+            )
+            .bind(&projection.group_space_id)
+            .bind(group_title)
+            .execute(&mut **transaction)
+            .await?;
+        }
+    }
     if let Some(reply_to_message_id) = request.reply_to_message_id {
         let reply: Option<(i32,)> = query_as(
             "SELECT 1 FROM cloud_chat_messages \
@@ -201,109 +242,44 @@ pub(crate) async fn send_message_in_transaction(
         .await?;
     }
     let message = load_message(transaction, message_id).await?;
+    let resurrect_sender = crate::notifications::is_agent_authored_message(&message);
+    let restored: Vec<(String, String)> = query_as(
+        "DELETE FROM cloud_account_session_visibility visibility \
+         USING cloud_chat_conversation_members member, cloud_chat_conversations conversation \
+         WHERE conversation.conversation_id = $1 \
+           AND member.conversation_id = conversation.conversation_id \
+           AND member.membership_state = 'active' \
+           AND visibility.account_id = member.account_id \
+           AND visibility.deleted_at IS NOT NULL \
+           AND (visibility.session_id = conversation.legacy_session_id \
+                OR visibility.session_id = conversation.conversation_id::text) \
+           AND (member.account_id <> $2 OR $3) \
+         RETURNING visibility.account_id, visibility.session_id",
+    )
+    .bind(conversation_id)
+    .bind(account_id)
+    .bind(resurrect_sender)
+    .fetch_all(&mut **transaction)
+    .await?;
+    if !restored.is_empty() {
+        insert_sync_event_fanout(
+            transaction,
+            "session.unhidden",
+            Some(conversation_id),
+            None,
+            None,
+            restored
+                .into_iter()
+                .map(|(account_id, session_id)| (account_id, json!({ "sessionId": session_id })))
+                .collect(),
+        )
+        .await?;
+    }
     fanout_message_sync_event(transaction, "message.created", &message).await?;
     Ok(InsertOutcome {
         value: message,
         inserted: true,
     })
-}
-
-async fn normalize_group_participant_order(
-    transaction: &mut Transaction<'_, Postgres>,
-    conversation_id: Uuid,
-    content: &mut Value,
-) -> Result<(), StoreError> {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
-
-    let Some(text) = content
-        .get_mut("blocks")
-        .and_then(Value::as_array_mut)
-        .and_then(|blocks| blocks.first_mut())
-        .and_then(Value::as_object_mut)
-        .and_then(|block| block.get_mut("text"))
-    else {
-        return Ok(());
-    };
-    let Some(body) = text.as_str() else {
-        return Ok(());
-    };
-    let Some(encoded) = body.strip_prefix("kordi-cloud-group:") else {
-        return Ok(());
-    };
-    let decoded = URL_SAFE_NO_PAD
-        .decode(encoded)
-        .map_err(|_| StoreError::InvalidInput("group message envelope is invalid"))?;
-    let mut envelope: Value = serde_json::from_slice(&decoded)
-        .map_err(|_| StoreError::InvalidInput("group message envelope is invalid"))?;
-    let rows: Vec<(String, chrono::DateTime<chrono::Utc>)> = query_as(
-        "SELECT account_id, joined_at FROM cloud_chat_conversation_members \
-         WHERE conversation_id = $1 AND membership_state = 'active' \
-         ORDER BY joined_at ASC, account_id ASC",
-    )
-    .bind(conversation_id)
-    .fetch_all(&mut **transaction)
-    .await?;
-    let joined_at = rows
-        .into_iter()
-        .map(|(account_id, value)| (account_id, value.to_rfc3339()))
-        .collect::<std::collections::HashMap<_, _>>();
-    let object = envelope.as_object_mut().ok_or(StoreError::InvalidInput(
-        "group message envelope is invalid",
-    ))?;
-    if let Some(actor) = object.get_mut("actor").and_then(Value::as_object_mut) {
-        if let Some(value) = actor
-            .get("accountId")
-            .and_then(Value::as_str)
-            .and_then(|account_id| joined_at.get(account_id))
-        {
-            actor.insert("joinedAt".to_string(), Value::String(value.clone()));
-        }
-    }
-    if let Some(participants) = object.get_mut("participants").and_then(Value::as_array_mut) {
-        for participant in participants.iter_mut() {
-            let Some(record) = participant.as_object_mut() else {
-                continue;
-            };
-            if let Some(value) = record
-                .get("accountId")
-                .and_then(Value::as_str)
-                .and_then(|account_id| joined_at.get(account_id))
-            {
-                record.insert("joinedAt".to_string(), Value::String(value.clone()));
-            }
-        }
-        participants.sort_by(|left, right| {
-            let left_object = left.as_object();
-            let right_object = right.as_object();
-            let left_joined_at = left_object
-                .and_then(|record| record.get("joinedAt"))
-                .and_then(Value::as_str)
-                .unwrap_or("9999");
-            let right_joined_at = right_object
-                .and_then(|record| record.get("joinedAt"))
-                .and_then(Value::as_str)
-                .unwrap_or("9999");
-            left_joined_at.cmp(right_joined_at).then_with(|| {
-                let left_account_id = left_object
-                    .and_then(|record| record.get("accountId"))
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                let right_account_id = right_object
-                    .and_then(|record| record.get("accountId"))
-                    .and_then(Value::as_str)
-                    .unwrap_or_default();
-                left_account_id.cmp(right_account_id)
-            })
-        });
-    }
-    *text = Value::String(format!(
-        "kordi-cloud-group:{}",
-        URL_SAFE_NO_PAD.encode(
-            serde_json::to_vec(&envelope)
-                .map_err(|_| StoreError::InvalidInput("group message envelope is invalid"))?
-        )
-    ));
-    Ok(())
 }
 
 /// Replace the kind and content of a trusted server-authored message while
@@ -450,7 +426,7 @@ pub async fn conversation_id_for_session(
          FROM cloud_chat_conversations conversation \
          JOIN cloud_chat_conversation_members member \
            ON member.conversation_id = conversation.conversation_id \
-         WHERE conversation.legacy_session_id = $1 \
+         WHERE (conversation.legacy_session_id = $1 OR conversation.conversation_id::text = $1) \
            AND member.account_id = $2 \
            AND member.membership_state = 'active'",
     )

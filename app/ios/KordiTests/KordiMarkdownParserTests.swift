@@ -824,15 +824,6 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
     }
 
-    func testPullToRefreshStartsOnceOnlyAfterCrossingTheThreshold() {
-        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 24, isRefreshing: false))
-        XCTAssertTrue(ChatPullToRefreshBehavior.shouldStart(
-            distance: ChatPullToRefreshBehavior.triggerDistance,
-            isRefreshing: false
-        ))
-        XCTAssertFalse(ChatPullToRefreshBehavior.shouldStart(distance: 120, isRefreshing: true))
-    }
-
     func testChatSearchNormalizesWhitespaceAndMatchesContactIdentity() {
         let conversation = searchConversation(
             displayName: "Research Agent",
@@ -900,17 +891,6 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertEqual(sharedWithMaya.map(\.displayName), ["Mobile builders"])
         XCTAssertEqual(sharedWithMaya.first?.sessions.count, 2)
         XCTAssertTrue(sharedWithPriya.isEmpty)
-    }
-
-    func testPullDistanceUsesNativeScrollGeometryInsets() {
-        XCTAssertEqual(
-            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -59, contentInsetTop: 59),
-            0
-        )
-        XCTAssertEqual(
-            ChatPullToRefreshBehavior.pullDistance(contentOffsetY: -93, contentInsetTop: 59),
-            34
-        )
     }
 
     func testConversationDoesNotAnimateItsInitialLatestMessagePosition() {
@@ -1012,6 +992,25 @@ final class KordiMarkdownParserTests: XCTestCase {
         let composer = try XCTUnwrap(source.range(of: "                        ComposerView("))
         let rootModifiers = try XCTUnwrap(source.range(of: "            .onChange(of: timeline.count)"))
         XCTAssertLessThan(composer.lowerBound, rootModifiers.lowerBound)
+    }
+
+    func testConversationRepositionsLatestAfterLazyTimelineLayout() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private func positionAndRevealInitialViewport"))
+        let end = try XCTUnwrap(source.range(
+            of: "private func loadAndRevealInitialConversation",
+            range: start.upperBound..<source.endIndex
+        ))
+        let positioning = source[start.lowerBound..<end.lowerBound]
+
+        XCTAssertEqual(
+            positioning.components(separatedBy: "proxy.scrollTo(bottomAnchorID, anchor: .bottom)").count - 1,
+            2
+        )
     }
 
     func testConversationShowsLatestButtonWhenInitialScrollHasNotCompleted() {

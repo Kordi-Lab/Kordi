@@ -397,7 +397,7 @@ test('direct person bridge transcript rewrites remote first-person agent mention
     }],
   }), host(), 'My Kordi');
 
-  assert.equal(view.messages[0]?.text, '@EthansKordi show me the diskusage');
+  assert.equal(view.messages[0]?.text, '@KordiEthan show me the diskusage');
 });
 
 test('direct person bridge transcript renders local agent responses as agent turns', () => {
@@ -442,7 +442,7 @@ test('direct person bridge transcript renders remote agent responses as agent tu
   const message = view.messages[0];
   assert.equal(message?.role, 'external-agent');
   assert.equal(message?.senderType, 'agent');
-  assert.equal(message?.sender, "Ethan's Kordi");
+  assert.equal(message?.sender, "Ethan's Kordi"); assert.equal(message?.senderOwnerName, 'Ethan');
   assert.equal(message?.text, '');
   assert.equal(message?.turn?.assistantText, 'The answer is ready.');
   assert.deepEqual(message?.turn?.tools, []);

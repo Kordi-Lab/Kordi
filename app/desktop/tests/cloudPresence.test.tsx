@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
+  agentRuntimePresence,
   applyPresenceSnapshot,
   cloudPresenceChangedFromWsPayload,
   contactPresenceLabel,
@@ -51,6 +52,34 @@ test('contact presence labels cover online and locale-aware last-seen tiers', ()
   assert.equal(label('offline', '2026-08-17T12:55:00Z'), 'last seen today at 12:55');
   assert.equal(label('offline', '2026-08-16T12:55:00Z'), 'last seen yesterday at 12:55');
   assert.equal(label('offline', '2026-08-10T12:55:00Z'), 'last seen 10 Aug at 12:55');
+  assert.equal(contactPresenceLabel({
+    accountId: 'acct_1',
+    status: 'offline',
+    updatedAt: now.toISOString(),
+    lastSeenAt: '2026-08-17T12:55:00Z',
+  }, { now, locales: 'en-GB', timeZone: 'Asia/Riyadh' }), 'last seen today at 15:55');
+});
+
+test('agent presence follows the Mac runtime instead of frontend activity', () => {
+  const iosOnly = {
+    accountId: 'acct_1',
+    status: 'online' as const,
+    updatedAt: '2026-08-17T13:00:00Z',
+    lastSeenAt: null,
+    desktopOnline: false,
+    desktopLastSeenAt: '2026-08-17T09:00:00Z',
+  };
+  assert.equal(contactPresenceLabel(iosOnly), 'online');
+  assert.deepEqual(agentRuntimePresence(iosOnly), {
+    ...iosOnly,
+    status: 'offline',
+    lastSeenAt: '2026-08-17T09:00:00Z',
+  });
+  assert.equal(agentRuntimePresence({
+    ...iosOnly,
+    desktopOnline: true,
+    desktopLastSeenAt: null,
+  })?.status, 'online');
 });
 
 test('unchanged presence data preserves store identity', () => {
@@ -117,6 +146,22 @@ test('presence subject and payload parser recognize account changes', () => {
     status: 'online',
     updatedAt: 'now',
     lastSeenAt: null,
+    desktopOnline: undefined,
+    desktopLastSeenAt: undefined,
+  });
+  assert.deepEqual(cloudPresenceChangedFromWsPayload({
+    account_id: 'acct_1',
+    status: 'online',
+    desktop_online: false,
+    desktop_last_seen_at: '2026-05-23T00:00:00Z',
+    occurred_at: 'now',
+  }), {
+    accountId: 'acct_1',
+    status: 'online',
+    updatedAt: 'now',
+    lastSeenAt: null,
+    desktopOnline: false,
+    desktopLastSeenAt: '2026-05-23T00:00:00Z',
   });
   assert.equal(cloudPresenceChangedFromWsPayload({
     account_id: 'acct_1',

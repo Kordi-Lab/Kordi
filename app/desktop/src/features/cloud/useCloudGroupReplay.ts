@@ -26,10 +26,9 @@ import type {
   CloudGroupReplayCoordinator,
 } from './cloudGroupReplayCoordinator';
 
-const NATIVE_GROUP_RECOVERY_ATTEMPT_TIMEOUT_MS = 15_000;
-
 export function useCloudGroupReplay({
   accountId,
+  prioritySessionId,
   enabled,
   contextKey,
   coordinator,
@@ -43,6 +42,7 @@ export function useCloudGroupReplay({
   reportWarning,
 }: {
   accountId: string | null;
+  prioritySessionId?: string | null;
   enabled: boolean;
   contextKey: string | null;
   coordinator: CloudGroupReplayCoordinator<IndexedCloudGroupRow>;
@@ -84,7 +84,10 @@ export function useCloudGroupReplay({
   const reportWarningRef = useRef(reportWarning);
   const mountedRef = useRef(false);
   const enabledRef = useRef(enabled);
-  const contextKeyRef = useRef(contextKey);
+  const recoveryContextKey = contextKey
+    ? `${contextKey}\u0000${prioritySessionId?.trim() ?? ''}`
+    : null;
+  const recoveryContextKeyRef = useRef(recoveryContextKey);
   const [nativeRecoveryRevision, retryNativeRecovery] = useReducer(
     (revision: number) => revision + 1,
     0,
@@ -97,8 +100,8 @@ export function useCloudGroupReplay({
   }, []);
   useEffect(() => {
     enabledRef.current = enabled;
-    contextKeyRef.current = contextKey;
-  }, [contextKey, enabled]);
+    recoveryContextKeyRef.current = recoveryContextKey;
+  }, [enabled, recoveryContextKey]);
   useEffect(() => {
     applyControlRef.current = applyControl;
     flushCanonicalStateRef.current = flushCanonicalState;
@@ -110,10 +113,10 @@ export function useCloudGroupReplay({
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    const cache = durableSourceCacheRef.current.contextKey === contextKey
+    const cache = durableSourceCacheRef.current.contextKey === recoveryContextKey
       ? durableSourceCacheRef.current
       : {
-          contextKey,
+          contextKey: recoveryContextKey,
           checked: new Set<string>(),
           existing: new Set<string>(),
           inFlightBySource: new Map<string, Promise<void>>(),
@@ -134,7 +137,7 @@ export function useCloudGroupReplay({
         if (
           !mountedRef.current
           || !enabledRef.current
-          || contextKeyRef.current !== cache.contextKey
+          || recoveryContextKeyRef.current !== cache.contextKey
           || durableSourceCacheRef.current !== cache
         ) return;
         flushCanonicalStateRef.current();
@@ -143,8 +146,17 @@ export function useCloudGroupReplay({
         if (!nativeShell) return true;
         if (!accountId) return false;
         if (!cache.nativeHistoryRecovered) {
+          const retry = () => {
+            if (durableSourceCacheRef.current !== cache) return;
+            globalThis.setTimeout(() => {
+              if (mountedRef.current && durableSourceCacheRef.current === cache) {
+                retryNativeRecovery();
+              }
+            }, 1_000);
+          };
           const recovery = recoverNativeCloudGroupHistory({
               accountId,
+              prioritySessionId,
               applyControl: (wire, envelope, options) => (
                 applyControlRef.current(wire, envelope, options)
               ),
@@ -157,29 +169,23 @@ export function useCloudGroupReplay({
               shouldContinue: () => (
                 mountedRef.current
                 && enabledRef.current
-                && contextKeyRef.current === cache.contextKey
+                && recoveryContextKeyRef.current === cache.contextKey
                 && durableSourceCacheRef.current === cache
               ),
             });
-          cache.nativeHistoryRecovery ??= Promise.race([
-            recovery,
-            new Promise<false>((resolve) => {
-              globalThis.setTimeout(
-                () => resolve(false),
-                NATIVE_GROUP_RECOVERY_ATTEMPT_TIMEOUT_MS,
-              );
-            }),
-          ]).then((recovered) => {
+          cache.nativeHistoryRecovery ??= recovery.then((recovered) => {
             if (recovered && durableSourceCacheRef.current === cache) {
               cache.nativeHistoryRecovered = true;
               onNativeHistorySettledRef.current?.();
-            } else if (durableSourceCacheRef.current === cache) {
-              globalThis.setTimeout(() => {
-                if (mountedRef.current && durableSourceCacheRef.current === cache) {
-                  retryNativeRecovery();
-                }
-              }, 1_000);
+            } else {
+              retry();
             }
+          }).catch((error) => {
+            reportWarningRef.current(
+              '[cloud-group] native history recovery failed',
+              error,
+            );
+            retry();
           }).finally(() => {
             if (durableSourceCacheRef.current === cache) {
               cache.nativeHistoryRecovery = null;
@@ -290,7 +296,7 @@ export function useCloudGroupReplay({
       if (
         mountedRef.current
         && enabledRef.current
-        && contextKeyRef.current === cache.contextKey
+        && recoveryContextKeyRef.current === cache.contextKey
         && durableSourceCacheRef.current === cache
       ) {
         cache.lastReplaySignature = replaySignature;
@@ -310,9 +316,10 @@ export function useCloudGroupReplay({
     coordinator,
     canonicalStateRef,
     accountId,
-    contextKey,
     enabled,
     messageIndex,
     nativeRecoveryRevision,
+    prioritySessionId,
+    recoveryContextKey,
   ]);
 }

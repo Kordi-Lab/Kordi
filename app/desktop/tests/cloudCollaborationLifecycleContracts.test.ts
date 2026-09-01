@@ -101,8 +101,8 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   const recoveredReplay = recoveredReplaySource();
   assert.match(recoveredReplay, /useCloudAgentTurnRecovery\(\{[\s\S]*initialMessagesSettled/);
   assert.match(recoveredReplay, /const replayEnabled = Boolean\([\s\S]*recoverySettled/);
-  assert.match(recoveredReplay, /useLegacyCloudGroupTitleNoticeRecovery\(\{\s*enabled: replayEnabled/);
-  assert.match(recoveredReplay, /useCloudGroupReplay\(\{\s*enabled: replayEnabled/);
+  assert.match(recoveredReplay, /useLegacyCloudGroupTitleNoticeRecovery\(\{\s*enabled: backgroundReplayEnabled/);
+  assert.match(recoveredReplay, /useCloudGroupReplay\(\{\s*enabled: backgroundReplayEnabled/);
   assert.match(
     recoveredReplay,
     /useCloudAgentTurnRecovery\(\{[\s\S]*processedRequestIdsRef,\s*reportWarning,\s*\}\);/,

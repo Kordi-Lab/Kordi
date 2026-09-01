@@ -41,7 +41,9 @@ use crate::auth::password::{
     PasswordHasherConfig, PasswordPolicyError, PASSWORD_ALGORITHM_ID,
 };
 use crate::auth::rate_limit::{CloudRateLimiter, RateLimitDecision};
-use crate::auth::rows::{AccountRecordRow, ContactListRow, ContactRequestRow};
+use crate::auth::rows::{
+    AccountRecordRow, ContactListRow, ContactRequestRow, DefaultAgentProfileRow,
+};
 use crate::auth::session::{
     bump_expiry, issue_session, lookup_session, revoke_session, touch_device_activity,
     DEFAULT_SESSION_LIFETIME_DAYS, SESSION_TOKEN_PREFIX,
@@ -215,6 +217,22 @@ pub fn routes_with_config(
         .route(
             "/v1/cloud/sessions/:source_session_id/hidden",
             put(hide_cloud_session).delete(unhide_cloud_session),
+        )
+        .route(
+            "/v1/cloud/sessions/:source_session_id/pinned",
+            put(pin_cloud_session).delete(unpin_cloud_session),
+        )
+        .route(
+            "/v1/cloud/sessions/:source_session_id/muted",
+            put(mute_cloud_session).delete(unmute_cloud_session),
+        )
+        .route(
+            "/v1/cloud/sessions/:source_session_id/unread",
+            put(mark_cloud_session_unread).delete(unmark_cloud_session_unread),
+        )
+        .route(
+            "/v1/cloud/group-spaces/:group_space_id/pinned",
+            put(pin_group_space).delete(unpin_group_space),
         )
         .route(
             "/v1/cloud/sessions/:source_session_id/pin",

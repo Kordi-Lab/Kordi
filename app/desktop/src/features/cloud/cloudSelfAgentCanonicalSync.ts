@@ -54,6 +54,7 @@ export type CloudSelfAgentCanonicalSyncPlan = {
 
 export function planCloudSelfAgentCanonicalSync({
   account,
+  agentDisplayName,
   messages,
   state,
   forksBySessionId = {},
@@ -62,6 +63,7 @@ export function planCloudSelfAgentCanonicalSync({
   durableSourceEventIds,
 }: {
   account: CloudAccount;
+  agentDisplayName?: string | null;
   messages: CloudMessage[];
   state: CanonicalSessionState;
   forksBySessionId?: Record<string, CloudSessionForkSummary>;
@@ -436,7 +438,7 @@ export function planCloudSelfAgentCanonicalSync({
     agentIdentityRequest: {
       id: agentIdentityId,
       kind: 'agent',
-      displayName: 'My Kordi',
+      displayName: cleanText(agentDisplayName) || 'Kordi',
       ownerIdentityId: localHumanIdentityId,
       source: 'local',
       sourceHostId: null,

@@ -323,6 +323,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         sql: include_str!("../../migrations/0067_quarantine_invalid_support_conversations.sql"),
     },
     EmbeddedMigration {
+        version: 68,
+        description: "cloud agent fallback system prompts",
+        sql: include_str!("../../migrations/0068_cloud_agent_system_prompts.sql"),
+    },
+    EmbeddedMigration {
+        version: 69,
+        description: "account default agent profiles",
+        sql: include_str!("../../migrations/0069_default_agent_profiles.sql"),
+    },
+    EmbeddedMigration {
         version: 70,
         description: "expressive media deletion tombstones",
         sql: include_str!("../../migrations/0070_expressive_media_deletions.sql"),
@@ -331,6 +341,26 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         version: 71,
         description: "chat message edit and deletion",
         sql: include_str!("../../migrations/0071_chat_message_mutations.sql"),
+    },
+    EmbeddedMigration {
+        version: 72,
+        description: "chat list preferences",
+        sql: include_str!("../../migrations/0072_chat_list_preferences.sql"),
+    },
+    EmbeddedMigration {
+        version: 73,
+        description: "chat manual unread preference",
+        sql: include_str!("../../migrations/0073_chat_manual_unread.sql"),
+    },
+    EmbeddedMigration {
+        version: 74,
+        description: "group space preferences",
+        sql: include_str!("../../migrations/0074_group_space_preferences.sql"),
+    },
+    EmbeddedMigration {
+        version: 75,
+        description: "chat group catalog",
+        sql: include_str!("../../migrations/0075_chat_group_catalog.sql"),
     },
 ];
 

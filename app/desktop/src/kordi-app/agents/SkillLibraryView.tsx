@@ -633,7 +633,7 @@ export function CommunitySkillView({
               {detail.skill.version ? <span>v{detail.skill.version}</span> : null}
             </div>
             <div className="app-skill-community-install">
-              <span className="app-skill-community-install-note">Installs to My Kordi and stays disabled until you enable it.</span>
+              <span className="app-skill-community-install-note">Installs to your default agent and stays disabled until you enable it.</span>
               {installedSkill ? (
                 agentTargets.length > 0 ? <AddToAgentControl skill={installedSkill} content={detail.skillMd} agentTargets={agentTargets} onAddToAgent={onAddToAgent} />
                   : <span className="app-agent-studio-state-pill is-enabled"><Check className="h-3.5 w-3.5" />Installed</span>

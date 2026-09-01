@@ -1,8 +1,4 @@
-import {
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import { useAppLayoutState } from '@/app/useAppLayoutState';
 import { useActiveConversationReadPresentation } from '@/app/useActiveConversationReadPresentation';
@@ -42,6 +38,7 @@ import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import type { ComposerScope } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { CloudAccountSettingsTabId } from '@/pages/CloudAccountSettingsDialog';
+import { useDefaultAgentProfileSync } from '@/app/useDefaultAgentProfileSync';
 import { useWorkspaceController } from '@/app/useWorkspaceController';
 import { useRefreshCompletedCanonicalSession } from '@/app/useRefreshCompletedCanonicalSession';
 export function useKordiAppFoundation({
@@ -156,6 +153,7 @@ export function useKordiAppFoundation({
     mapDesktopMessages,
     refreshCanonicalSession: refreshCompletedCanonicalSession,
   });
+  useDefaultAgentProfileSync(cloudSession, desktopChatState?.localAgent.label, refreshDesktopChat);
   const projectRoutingGroups = useMemo(
     () => buildProjectRoutingGroups(desktopChatState?.projects, canonicalSessionState),
     [canonicalSessionState, desktopChatState?.projects],
@@ -280,12 +278,10 @@ export function useKordiAppFoundation({
     prepareCloudForwardAttachments, sendCloudCollaborationMessage, editCloudMessage, deleteCloudMessage,
     updateCloudCollaborationSessionTitle,
     sendCloudGroupControl,
-    setCloudMessageReaction,
-    recordCloudSessionFork,
-    updateCloudSessionPin,
-    hideCloudSession,
-    deleteCloudSession,
-    cancelCloudAgentRequest,
+    setCloudMessageReaction, recordCloudSessionFork, updateCloudSessionPin,
+    hideCloudSession, unhideCloudSession, setCloudSessionPinned, setCloudSessionMuted,
+    setCloudSessionUnread, markCloudSessionsRead, setCloudGroupSpacePinned,
+    deleteCloudSession, cancelCloudAgentRequest,
     refreshCloudMessages,
     refreshCloudAgents,
     createCloudAgentDefinition,
@@ -300,8 +296,8 @@ export function useKordiAppFoundation({
     initialContactsSettled,
     initialMessagesSettled,
     cachedMessagesReady, pendingGroupProjectionSessionIds,
-    cloudHiddenSessionIds,
-    cloudDeletedSessionIds,
+    cloudHiddenSessionIds, cloudDeletedSessionIds, cloudUnreadSessionIds, cloudPinnedSessionIds,
+    cloudMutedSessionIds, cloudPinnedGroupSpaceIds,
     cloudSessionPinsById, cloudCanonicalReactionState,
     cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs,
   } = useCloudCollaborationState({
@@ -310,9 +306,11 @@ export function useKordiAppFoundation({
     canMarkActiveConversationRead: canMarkRead,
     canonicalSessionState,
     setCanonicalSessionState,
+    hydrateCanonicalSessionPage,
     localTurnsBySessionId: desktopLiveTurnsBySession,
     cloudAgentRuntimeRoutesBySessionId,
     defaultCloudAgentRuntimeRoute,
+    localAgentLabel: desktopChatState?.localAgent.label,
     defaultCloudAgentRuntimeReady:
       !isDesktopAuthLoading && Boolean(defaultCloudAgentRuntimeRoute),
     desktopAuthState,
@@ -470,11 +468,13 @@ export function useKordiAppFoundation({
       prepareCloudForwardAttachments, sendCloudCollaborationMessage,
       editCloudMessage, deleteCloudMessage,
       sendCloudGroupControl, setCloudMessageReaction, recordCloudSessionFork, updateCloudSessionPin,
-      hideCloudSession, deleteCloudSession, cancelCloudAgentRequest,
+      hideCloudSession, unhideCloudSession, setCloudSessionPinned, setCloudSessionMuted, setCloudSessionUnread,
+      markCloudSessionsRead, setCloudGroupSpacePinned, deleteCloudSession, cancelCloudAgentRequest,
       refreshCloudMessages, refreshSharedCloudAgents, sharedCloudAgents,
       cloudAgentDefinitionsById, refreshCloudContacts, cloudContacts,
       cloudSessionActivity, initialContactsSettled, initialMessagesSettled,
       cachedMessagesReady, pendingGroupProjectionSessionIds, cloudHiddenSessionIds, cloudDeletedSessionIds,
+      cloudUnreadSessionIds, cloudPinnedSessionIds, cloudMutedSessionIds, cloudPinnedGroupSpaceIds,
       cloudSessionPinsById, cloudCanonicalReactionState, cloudLegacyGroupSessionTitlesById, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs,
       isCollaborationSyncing, lastCollaborationSyncAt,
       unsupportedLegacyCollaborationAction,

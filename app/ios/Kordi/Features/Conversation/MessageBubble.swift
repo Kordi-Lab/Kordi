@@ -139,10 +139,18 @@ struct MessageBubble: View, Equatable {
 
             VStack(alignment: message.author == .me ? .trailing : .leading, spacing: 4) {
                 if showAuthor && message.author == .agent {
-                    Text(message.authorName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(KordiTheme.agentViolet)
-                        .padding(.horizontal, 4)
+                    HStack(spacing: 6) {
+                        Text(message.authorName)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(KordiTheme.agentViolet)
+                        if let ownerName = message.senderOwnerName?.nonEmpty {
+                            Text("Owner · \(ownerName)")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 4)
+                    .accessibilityElement(children: .combine)
                 }
 
                 messageSurface
@@ -2612,7 +2620,6 @@ private struct MessageImageAttachment: View {
         isLoading = image == nil
         loadFailed = false
 
-        let isAnimatedGIF = MessageImageInteraction.isAnimatedGIF(attachment)
         if MessageImageInteraction.usesInlinePreview(for: attachment),
            let source = attachment.previewURL,
            let preview = await AvatarImageLoader.image(from: source) {
@@ -2631,16 +2638,11 @@ private struct MessageImageAttachment: View {
             return
         }
 
-        let shouldAnimateGIF = !reduceMotion
-        let loaded = await Task.detached(priority: .utility) {
-            isAnimatedGIF
-                ? AnimatedImageDecoder.image(
-                    at: url,
-                    animated: shouldAnimateGIF,
-                    maximumPixelSize: 512
-                )
-                : AttachmentImageDecoder.downsampledImage(at: url, maximumPixelSize: 1_200)
-        }.value
+        let loaded = await MessageAttachmentImageLoader.image(
+            at: url,
+            attachment: attachment,
+            reduceMotion: reduceMotion
+        )
         guard !Task.isCancelled else { return }
         if let loaded {
             image = loaded

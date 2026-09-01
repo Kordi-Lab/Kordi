@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { Bot, Check, FileCode2, LockKeyhole, Pencil, Puzzle, Settings2, Wrench, X } from 'lucide-react';
 import type { CloudAgentAccessScope } from '@/features/cloud/cloudAgentsClient';
+import { usesDefaultLocalAgentSession } from '@/features/chat/agentSessionRouting';
 import type { DesktopAgentBuilderStatus } from '@/lib/desktop';
 import { cn } from '@/lib/utils';
 import { CloudSignupAvatarPicker } from '../cloud/CloudSignupAvatarPicker';
@@ -48,6 +49,31 @@ function PromptEditor({ value, onChange, onClose }: { value: string; onChange: (
   );
 }
 
+function NameEditor({ value, onChange, onClose }: { value: string; onChange: (value: string) => void; onClose: () => void }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <form className="app-agent-studio-popover" role="dialog" aria-label="Edit agent name" onSubmit={(event) => {
+      event.preventDefault();
+      const name = inputRef.current?.value.trim() ?? '';
+      if (!name) return;
+      onChange(name);
+      onClose();
+    }}>
+      <div className="app-agent-studio-popover-head">
+        <div><strong>Agent name</strong><p>This is the name people see in chats, mentions, and replies.</p></div>
+        <button type="button" className="app-button-quiet app-agent-studio-icon-button" onClick={onClose} aria-label="Close agent name editor"><X className="h-4 w-4" /></button>
+      </div>
+      <label className="app-agent-studio-field">
+        <span>Name</span>
+        <input ref={inputRef} maxLength={120} defaultValue={value} placeholder="Kordi" required />
+      </label>
+      <div className="app-agent-studio-popover-actions">
+        <button type="submit" className="app-button-quiet app-agent-studio-button is-primary is-small">Keep in draft</button>
+      </div>
+    </form>
+  );
+}
+
 export function AgentStudioBlueprintView({
   agent,
   creating,
@@ -58,6 +84,7 @@ export function AgentStudioBlueprintView({
   onAccessScopeChange,
   canEditPrompt,
   onPromptChange,
+  onNameChange,
   onCreationDraftChange,
   creationAvatarUrl,
   onCreationAvatarUpload,
@@ -75,6 +102,7 @@ export function AgentStudioBlueprintView({
   onAccessScopeChange: (scope: CloudAgentAccessScope) => void;
   canEditPrompt: boolean;
   onPromptChange: (value: string) => void;
+  onNameChange?: (value: string) => void;
   onCreationDraftChange: (draft: ShapeAgentDraft) => void;
   creationAvatarUrl?: string | null;
   onCreationAvatarUpload?: (avatar: string) => void;
@@ -84,10 +112,24 @@ export function AgentStudioBlueprintView({
   builderStatus?: DesktopAgentBuilderStatus | null;
 }) {
   const [promptEditorOpen, setPromptEditorOpen] = useState(false);
+  const [nameEditorOpen, setNameEditorOpen] = useState(false);
   const [accessMenuOpen, setAccessMenuOpen] = useState(false);
   const accessControlRef = useRef<HTMLDivElement | null>(null);
   const accessTriggerRef = useRef<HTMLButtonElement | null>(null);
   const prompt = creating ? creationDraft?.systemPrompt ?? '' : config?.systemPrompt ?? '';
+  const name = creating ? creationDraft?.name ?? '' : builderStatus?.draft?.name ?? agent?.name ?? '';
+  const canEditName = Boolean(onNameChange && (
+    (creating && creationDraft)
+    || (builderStatus?.draft && agent && (agent.cloudAgentId || usesDefaultLocalAgentSession(agent)))
+  ));
+  const canEditAvatar = Boolean(
+    onCreationAvatarUpload
+    && onCreationAvatarRandomize
+    && (
+      (creating && creationDraft)
+      || (builderStatus?.draft && agent && (agent.cloudAgentId || usesDefaultLocalAgentSession(agent)))
+    ),
+  );
   const skills = creating ? creationDraft?.skills.map((skill) => skill.name) ?? [] : config?.loadedSkills ?? [];
   const tools = creating ? builderStatus?.draft?.tools ?? [] : config?.loadedTools ?? [];
   const totalChanges = creating ? (creationDraft ? 1 : 0) : changes.length;
@@ -125,7 +167,14 @@ export function AgentStudioBlueprintView({
   return (
     <div className="app-agent-studio-view-scroll is-blueprint-view">
       <section className="app-agent-studio-blueprint" aria-label="Agent configuration">
-        {creating ? (
+        <BlueprintRow
+          icon={Bot}
+          label="Name"
+          value={name || 'Unnamed agent'}
+          detail="Shown in chats, mentions, and replies."
+          onEdit={canEditName ? () => setNameEditorOpen(true) : undefined}
+        />
+        {canEditAvatar ? (
           <BlueprintRow
             icon={Bot}
             label="Avatar"
@@ -176,7 +225,7 @@ export function AgentStudioBlueprintView({
         {totalChanges > 0 ? (
           <div className="app-agent-studio-draft-summary"><div>
             <strong>{creating ? 'Build ready to review' : `${totalChanges} change${totalChanges === 1 ? '' : 's'} ready to review`}</strong>
-            <span>{builderStatus?.publishReady ? 'Validation and runtime test passed. Nothing is live until you publish.' : builderStatus?.validation.valid ? 'Publishing runs a quick test first.' : builderStatus?.validation.errors[0] ?? 'Nothing is live until you publish.'}</span>
+            <span>{builderStatus?.validation.valid ? 'Validation passed. Nothing is live until you publish.' : builderStatus?.validation.errors[0] ?? 'Nothing is live until you publish.'}</span>
           </div></div>
         ) : null}
         {!creating && changes.length > 0 ? (
@@ -186,6 +235,7 @@ export function AgentStudioBlueprintView({
         ) : null}
       </section>
       {promptEditorOpen ? <PromptEditor value={prompt} onChange={(value) => { if (creating && creationDraft) onCreationDraftChange({ ...creationDraft, systemPrompt: value }); else onPromptChange(value); }} onClose={() => setPromptEditorOpen(false)} /> : null}
+      {nameEditorOpen && onNameChange ? <NameEditor value={name} onChange={onNameChange} onClose={() => setNameEditorOpen(false)} /> : null}
     </div>
   );
 }

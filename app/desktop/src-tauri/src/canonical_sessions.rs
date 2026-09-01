@@ -317,6 +317,16 @@ pub async fn desktop_canonical_delete_cloud_message(
 }
 
 #[tauri::command]
+pub async fn desktop_canonical_prune_missing_cloud_messages(
+    account_id: String,
+) -> Result<Vec<String>, String> {
+    run_canonical_blocking(move || {
+        commands::desktop_canonical_prune_missing_cloud_messages(&account_id)
+    })
+    .await
+}
+
+#[tauri::command]
 pub async fn desktop_canonical_upsert_identity(
     request: UpsertCanonicalIdentityRequest,
 ) -> Result<CanonicalSessionState, String> {

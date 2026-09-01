@@ -53,6 +53,10 @@ function cloudContactSummariesEqual(left: CloudContactSummary, right: CloudConta
     && left.displayName === right.displayName
     && left.subtitle === right.subtitle
     && left.avatarUrl === right.avatarUrl
+    && left.defaultAgent?.agentId === right.defaultAgent?.agentId
+    && left.defaultAgent?.displayName === right.defaultAgent?.displayName
+    && left.defaultAgent?.avatarUrl === right.defaultAgent?.avatarUrl
+    && left.defaultAgent?.avatar.version === right.defaultAgent?.avatar.version
     && left.nodeId === right.nodeId
     && left.createdAt === right.createdAt
     && left.locked === right.locked

@@ -41,17 +41,22 @@ export function interruptedCloudGroupAgentTurnRecovery({
   now?: number;
 }): { requestId: string; request: AppendCanonicalMessageRequest } | null {
   const localAccountId = accountId.trim();
+  const content = objectContent(message.content);
+  const senderOwnerAccountId = cleanText(content.senderOwnerAccountId);
   if (
     !localAccountId
     || message.messageKind !== 'agent-turn'
     || message.senderRole !== 'owned-agent'
-    || message.senderIdentityId !== `agent:cloud:${localAccountId}`
+    || (
+      senderOwnerAccountId
+        ? senderOwnerAccountId !== localAccountId
+        : message.senderIdentityId !== `agent:cloud:${localAccountId}`
+    )
     || message.sourceTransport !== 'cloud-group-agent'
   ) return null;
   const lifecycle = cloudAgentTurnLifecycleState(message);
   if (lifecycle !== 'queued' && lifecycle !== 'processing') return null;
 
-  const content = objectContent(message.content);
   const requestId = cleanText(message.parentMessageId)
     || cleanText(content.requestId)
     || cleanText(content.replyToMessageId);

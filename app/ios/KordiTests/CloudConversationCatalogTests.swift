@@ -1402,6 +1402,15 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(spaces[0].displayName, "Mobile builders")
         XCTAssertEqual(spaces[0].sessions.map(\.sessionId), ["session:group:followup", "session:group:root"])
         XCTAssertEqual(spaces[0].lastMessage, "Follow-up message")
+
+        let pinned = GroupSpaceCatalog.build(
+            conversations: [root, followup],
+            ownAccountId: "acct_me",
+            pinnedSessionIds: [root.sessionId]
+        )
+        XCTAssertEqual(pinned[0].sessions.map(\.sessionId), [root.sessionId, followup.sessionId])
+        XCTAssertEqual(pinned[0].lastMessage, "Follow-up message")
+        XCTAssertEqual(pinned[0].lastActivityAt, followup.lastActivityAt)
     }
 
     func testGroupSpaceCatalogKeepsMembershipChangesInOneCanonicalSpace() {
@@ -1830,6 +1839,9 @@ final class CloudConversationCatalogTests: XCTestCase {
                 accountId: "acct_me",
                 displayName: "Alex",
                 avatarUrl: nil,
+                defaultAgentId: nil,
+                defaultAgentDisplayName: nil,
+                defaultAgentAvatarUrl: nil,
                 role: "owner",
                 membershipState: "active",
                 version: 1,

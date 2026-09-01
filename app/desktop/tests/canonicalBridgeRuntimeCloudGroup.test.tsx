@@ -247,9 +247,9 @@ test('created-agent sessions keep their selected identity while hiding My Kordi 
     ],
     messages: [
       { id: 'msg:desktop-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'who are you', content: { sender: 'Me' }, status: 'sent', sequenceNum: 1, createdAtMs: requestAt, updatedAtMs: requestAt, contentHash: null, sourceTransport: 'desktop-chat-ui', sourceEventId: 'desktop-request' },
-      { id: 'msg:desktop-answer', sessionId, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'I am US Stock Paper Trader.', content: { sender: 'My Kordi' }, parentMessageId: 'msg:desktop-request', status: 'complete', sequenceNum: 2, createdAtMs: responseAt, updatedAtMs: responseAt, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-answer' },
-      { id: 'msg:cloud-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'who are you', content: null, status: 'sent', sequenceNum: 3, createdAtMs: requestAt, updatedAtMs: requestAt, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-request' },
-      { id: 'msg:cloud-answer', sessionId, senderIdentityId: 'agent:cloud-self:acct_me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'I am US Stock Paper Trader.', content: { cloudRequestMessageId: 'cloud-request' }, parentMessageId: 'msg:cloud-request', status: 'complete', sequenceNum: 4, createdAtMs: requestAt + 1, updatedAtMs: requestAt + 1, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-answer' },
+      { id: 'msg:cloud-request', sessionId, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'who are you', content: null, status: 'sent', sequenceNum: 2, createdAtMs: requestAt, updatedAtMs: requestAt, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-request' },
+      { id: 'msg:cloud-processing', sessionId, senderIdentityId: 'agent:cloud-self:acct_me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'I am US Stock', content: { cloudRequestMessageId: 'cloud-request', deliveryState: 'processing' }, parentMessageId: 'msg:cloud-request', status: 'processing', sequenceNum: 3, createdAtMs: requestAt + 1, updatedAtMs: requestAt + 1, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-processing' },
+      { id: 'msg:cloud-answer', sessionId, senderIdentityId: 'agent:cloud-self:acct_me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'I am US Stock Paper Trader.', content: { cloudRequestMessageId: 'cloud-request', deliveryState: 'complete' }, parentMessageId: 'msg:cloud-request', status: 'complete', sequenceNum: 4, createdAtMs: requestAt + 2, updatedAtMs: requestAt + 2, contentHash: null, sourceTransport: 'cloud-self-agent', sourceEventId: 'cloud-answer' },
     ],
     delegatedExchanges: [],
     presence: [],
@@ -263,8 +263,25 @@ test('created-agent sessions keep their selected identity while hiding My Kordi 
     'who are you',
     'I am US Stock Paper Trader.',
   ]);
-  assert.equal(messages[1]?.sender, 'My US Stock Paper Trader');
+  assert.equal(messages[1]?.sender, 'US Stock Paper Trader');
+  assert.equal(messages[1]?.senderOwnerName, 'You');
   assert.notEqual(messages[1]?.sender, 'My Kordi');
+
+  const hydrated = readModel.applyConversation({
+    id: sessionId,
+    canonicalSessionId: sessionId,
+    desktopRuntimeBacked: true,
+    desktopRuntimeTranscriptLoaded: true,
+    messages: [
+      { id: 'runtime-request', entryId: 'msg:desktop-request', role: 'user', text: 'who are you', time: '00:00', timestampMs: requestAt },
+      { id: 'runtime-answer', role: 'owned-agent', sender: 'US Stock Paper Trader', text: '', time: '00:00', timestampMs: responseAt, turn: { id: 'runtime-turn', sessionId, prompt: 'who are you', status: 'complete', message: 'Complete', assistantText: 'I am US Stock Paper Trader.', thinkingText: '', tools: [], completed: true, succeeded: true, error: null } },
+    ],
+  } as never, (items, fallback) => items.at(-1)?.turn?.message ?? fallback ?? '');
+  assert.deepEqual(hydrated.messages.map((message) => message.text || message.turn?.assistantText), [
+    'who are you',
+    'I am US Stock Paper Trader.',
+  ]);
+  assert.equal(hydrated.messages[1]?.senderOwnerName, 'You');
 });
 
 test('canonical read model shows one error when local and Cloud self-agent failures repeat for one request', () => {

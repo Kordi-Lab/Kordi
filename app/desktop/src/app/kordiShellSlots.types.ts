@@ -47,7 +47,7 @@ export type CreateChatGroupRequest = {
   name?: string | null;
   contactIds: string[];
 };
-export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & {
+export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./chatListShellArgs.types').ChatListShellArgs & {
   isNativeShell: boolean;
   desktopChatState: DesktopChatState | null;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;
@@ -396,7 +396,7 @@ export type SidebarShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'themeMode'
   | 'setThemeMode'
   | 'isCollaborationSyncing'
->;
+> & import('./chatListShellArgs.types').ChatListShellArgs;
 
 export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'activeNav'

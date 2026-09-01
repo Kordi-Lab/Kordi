@@ -33,9 +33,9 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             conversation: conversation(kind: .person, peerAccountID: "acct_peer"),
             ownedAgents: [],
             sharedAgents: []
-        ).first { $0.id == "agent:\(CanonicalAvatarSystem.defaultAgentId)" })
+        ).first { $0.id == "agent:cloud-agent:acct_me" })
 
-        XCTAssertEqual(target.agentId, CanonicalAvatarSystem.defaultAgentId)
+        XCTAssertEqual(target.agentId, "cloud-agent:acct_me")
         XCTAssertNil(target.avatarSource)
     }
 
@@ -82,7 +82,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
 
         XCTAssertEqual(
             Set(targets.map(\.id)),
-            ["agent:cloud-local-agent", "agent:agent_owned", "agent:agent_peer"]
+            ["agent:cloud-agent:acct_me", "agent:agent_owned", "agent:agent_peer"]
         )
     }
 
@@ -117,6 +117,32 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         XCTAssertEqual(targets.filter { $0.kind == .agent }.count, 8)
         XCTAssertEqual(targets.filter { $0.kind == .person }.map(\.accountId), ["acct_group_only"])
         XCTAssertFalse(targets.contains { $0.accountId == "acct_outside" })
+    }
+
+    func testGroupMemberDefaultAgentUsesSyncedNameAndAvatar() throws {
+        let participants = [
+            CloudGroupParticipant(
+                accountId: "acct_peer",
+                displayName: "Peer",
+                avatarUrl: nil,
+                agentId: "cloud-agent:acct_peer",
+                agentDisplayName: "BabyTREE",
+                agentAvatarUrl: "https://example.com/babytree.jpg",
+                role: "member"
+            )
+        ]
+        let targets = ComposerMentionTargetCatalog.targets(
+            account: account,
+            conversation: conversation(kind: .group, peerAccountID: "acct_peer", participants: participants),
+            ownedAgents: [],
+            sharedAgents: [],
+            contacts: [contact(accountID: "acct_peer", name: "Peer")]
+        )
+        let target = try XCTUnwrap(targets.first { $0.agentId == "cloud-agent:acct_peer" })
+
+        XCTAssertEqual(target.displayName, "BabyTREE")
+        XCTAssertEqual(target.mentionText, "@BabyTREE")
+        XCTAssertEqual(target.avatarSource, "https://example.com/babytree.jpg")
     }
 
     func testGroupAllTargetCreatesOneHumanBroadcastMention() throws {
@@ -500,7 +526,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
 
         XCTAssertEqual(
             Set(targets.filter { $0.kind == .agent }.map(\.id)),
-            ["agent:cloud-local-agent", "agent:cloud-agent:acct_contact"]
+            ["agent:cloud-agent:acct_me", "agent:cloud-agent:acct_contact"]
         )
         XCTAssertFalse(targets.contains { $0.agentId == "cloud-agent:acct_group_only" })
     }

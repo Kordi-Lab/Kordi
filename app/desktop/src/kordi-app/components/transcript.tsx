@@ -51,6 +51,7 @@ import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
 import { ContactRequestTime, MessageEditedLabel, MessageHoverTime } from './transcriptMessageTime';
 import type { MessageForkSummary } from './transcriptMessageForks';
 import { TranscriptMessageSurface } from './transcriptMessageSurface';
+import { AgentHeaderMeta, AgentOwnerTag } from './AgentOwnerTag';
 export { LiveChatTurnCard, LiveChatTurnMessage };
 export { MessageContextMenuContent } from './messageContextMenuContent';
 export type { MessageContextMenuActionHandlers } from './messageContextMenuContent';
@@ -87,7 +88,6 @@ function compactionTokenLabel(detail?: string) {
   const match = detail?.match(/Conversation compressed\s*•\s*([^•]+?)\s+tokens before/i);
   return match?.[1]?.trim() ? `${match[1].trim()} tokens before` : null;
 }
-
 export function TypeBadge({ type, compact = false }: { type: ConversationType; compact?: boolean }) {
   const sizeClassName = compact
     ? 'gap-1 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] leading-none [&_svg]:h-2.5 [&_svg]:w-2.5'
@@ -124,7 +124,6 @@ export function StatusPill({ children, className }: { children: ReactNode; class
     </div>
   );
 }
-
 function primaryMessageStatus(msg: Message) {
   return msg.statusChips?.[0]?.trim().toLowerCase() ?? null;
 }
@@ -141,7 +140,6 @@ function contactRequestFailureCanBeRetried(detail?: string | null) {
 }
 
 type ContactRequestActionState = 'idle' | 'sending' | 'sent' | 'error';
-
 function ContactRequestFailureNotice({
   detail,
   onRequestCollaborationContact,
@@ -242,7 +240,7 @@ function CompactionSummaryMessage({ msg }: { msg: Message }) {
 
   return (
     <div className="flex w-full max-w-[min(100%,58rem)] flex-col items-start gap-0.5 py-1.5">
-      <div className="app-message-meta">My Kordi • {msg.time}</div>
+      <div className="app-message-meta">{msg.sender?.trim() || 'Kordi'} • {msg.time}</div>
       <div className="app-detail-sheet w-full">
         <div className="flex items-start gap-3 px-3.5 py-3">
           <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-400/10 text-emerald-200">
@@ -358,6 +356,7 @@ function MessageBubbleView({
   const canDragSelectMessage = Boolean(selectionId && (isMessageSelectable?.(msg) ?? true));
   const selectableInSelectionMode = Boolean(selectionMode && canDragSelectMessage);
   const isSelectedForAction = Boolean(selectionId && selectedMessageIds?.has(selectionId));
+  const agentOwnerName = msg.senderOwnerName?.trim() || (msg.role === 'owned-agent' ? 'You' : null);
   const selectionClickSuppressedRef = useRef(false);
   const rowSelectionDragRef = useRef<{
     pointerId: number;
@@ -717,6 +716,7 @@ function MessageBubbleView({
               <div className="app-message-meta">
                 {msg.sender}
               </div>
+              <AgentOwnerTag name={agentOwnerName} />
               {forkButton}
               {forkChip}
             </div>
@@ -879,7 +879,7 @@ function MessageBubbleView({
       )}
       data-transcript-density={compactDensity}
     >
-      {showHeaderMeta ? <div className="app-message-meta px-1">{msg.sender}</div> : null}
+      {showHeaderMeta ? <AgentHeaderMeta sender={msg.sender} ownerName={agentOwnerName} /> : null}
       <div className={cn(
         'flex w-full max-w-full',
         hasOnlyBorderlessMediaAttachments ? 'items-start' : 'items-end',

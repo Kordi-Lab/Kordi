@@ -247,6 +247,7 @@ test('canonical read model titles private self-agent forks from the first new tu
   assert.equal(forkConversation?.name, 'hello');
 });
 
+
 test('canonical read model ignores inherited manual title metadata when session title is still New session', () => {
   const sessionId = 'session:group:new-child';
   const readModel = createCanonicalSessionReadModel({

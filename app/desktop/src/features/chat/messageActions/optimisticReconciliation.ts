@@ -20,6 +20,9 @@ export function reconcileOptimisticCollaborationMessage(
               clientMessageId: canonicalMessage.clientMessageId
                 ?? message.clientMessageId
                 ?? optimisticMessageId,
+              requestId: message.requestId === optimisticMessageId
+                ? canonicalMessage.messageId
+                : message.requestId,
               deliveryState: 'delivered',
               detail: undefined,
             }

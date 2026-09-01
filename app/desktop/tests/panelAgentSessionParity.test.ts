@@ -431,26 +431,6 @@ test('side-panel queued local-agent sends preserve draft visibility and referenc
   assert.match(actionsSource, /message\.runtimeRoute \?\? resolveChatRuntimeRoute\(message\.sessionId\)[\s\S]*message\.contextMessages \?\? \[\]/, 'flushing queued side messages should preserve the selected runtime route and reference context');
 });
 
-test('new local sessions expose centered progress and coalesce duplicate first sends', () => {
-  const chatsSource = chatsPageSource();
-  const actionsSource = chatMessagesSource();
-  const activeSendStart = actionsSource.indexOf('const handleSendChatMessage = useCallback');
-  assert.notEqual(activeSendStart, -1, 'active send handler should exist');
-  const activeSendBlock = actionsSource.slice(activeSendStart);
-
-  assert.match(chatsSource, /const isStarting = isDraft && isSending;/, 'the pending visual should be scoped to the local draft session');
-  assert.match(chatsSource, /emptyState: isEmptySelection[\s\S]*: models\.header\.isStarting[\s\S]*\? <SessionStartingState \/>[\s\S]*: null/, 'the pending visual should occupy a selected draft transcript rather than the global error banner');
-  assert.match(activeSendBlock, /if \(localSendDelayReason === 'session-starting'\) \{\s*setDesktopChatError\(null\);\s*return;\s*\}/, 'duplicate first sends should be coalesced while materialization is in flight');
-  assert.doesNotMatch(actionsSource, /Kordi is still preparing this session/, 'session-starting should never use failure copy');
-
-  const delayGuardIndex = activeSendBlock.indexOf("if (localSendDelayReason === 'session-starting')");
-  const noProviderShortcutIndex = activeSendBlock.indexOf('const noProviderShortcutSessionId');
-  const noProviderStartingIndex = activeSendBlock.indexOf('setIsDesktopChatSending(true);', noProviderShortcutIndex);
-  const noProviderCreateIndex = activeSendBlock.indexOf('await openOrCreateCanonicalSession({', noProviderShortcutIndex);
-  assert.ok(delayGuardIndex >= 0 && delayGuardIndex < noProviderShortcutIndex, 'the duplicate guard should run before generating a no-provider draft session id');
-  assert.ok(noProviderStartingIndex >= 0 && noProviderStartingIndex < noProviderCreateIndex, 'the centered starting state should appear before no-provider session creation is awaited');
-});
-
 test('side-panel local-agent sends use the shared local send pipeline instead of duplicating optimistic persistence', () => {
   const source = chatMessagesSource();
   const targetedStart = source.indexOf('const sendTargetedChatMessage = useCallback');

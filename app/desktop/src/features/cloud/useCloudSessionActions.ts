@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type SetStateAction,
@@ -42,6 +43,11 @@ type CloudSessionActionStores = {
   visibility: {
     setHiddenIds: Dispatch<SetStateAction<Set<string>>>;
     setDeletedIds: Dispatch<SetStateAction<Set<string>>>;
+    setUnreadIds: Dispatch<SetStateAction<Set<string>>>;
+    setLocallyReadIds: Dispatch<SetStateAction<Set<string>>>;
+    setPinnedIds: Dispatch<SetStateAction<Set<string>>>;
+    setMutedIds: Dispatch<SetStateAction<Set<string>>>;
+    setPinnedGroupSpaceIds: Dispatch<SetStateAction<Set<string>>>;
   };
   messages: {
     setByPeer: Dispatch<
@@ -67,7 +73,30 @@ export function useCloudSessionActions({
   const setPinsById = stores.pins.setById;
   const setHiddenIds = stores.visibility.setHiddenIds;
   const setDeletedIds = stores.visibility.setDeletedIds;
+  const setUnreadIds = stores.visibility.setUnreadIds;
+  const setLocallyReadIds = stores.visibility.setLocallyReadIds;
+  const setPinnedIds = stores.visibility.setPinnedIds;
+  const setMutedIds = stores.visibility.setMutedIds;
+  const setPinnedGroupSpaceIds = stores.visibility.setPinnedGroupSpaceIds;
   const setMessagesByPeer = stores.messages.setByPeer;
+  const visibilityRefreshGenerationRef = useRef(0);
+
+  const refreshVisibility = useCallback(async (token: string) => {
+    const generation = ++visibilityRefreshGenerationRef.current;
+    try {
+      const visibility = await client.listSessionVisibility(token);
+      if (generation !== visibilityRefreshGenerationRef.current) return;
+      const ids = (values: string[]) => new Set(values.map((value) => value.trim()).filter(Boolean));
+      setHiddenIds(ids(visibility.hiddenSessionIds));
+      setDeletedIds(ids(visibility.deletedSessionIds));
+      setUnreadIds(ids(visibility.unreadSessionIds));
+      setPinnedIds(ids(visibility.pinnedSessionIds));
+      setMutedIds(ids(visibility.mutedSessionIds));
+      setPinnedGroupSpaceIds(ids(visibility.pinnedGroupSpaceIds));
+    } catch {
+      // The local mutation remains valid; the normal sync loop retries.
+    }
+  }, [client, setDeletedIds, setHiddenIds, setMutedIds, setPinnedGroupSpaceIds, setPinnedIds, setUnreadIds]);
 
   const refreshActivity = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
@@ -200,7 +229,13 @@ export function useCloudSessionActions({
     setHiddenIds((current) =>
       new Set(current).add(trimmedSessionId)
     );
-  }, [client, setHiddenIds]);
+    setPinnedIds((current) => {
+      if (!current.has(trimmedSessionId)) return current;
+      const next = new Set(current);
+      next.delete(trimmedSessionId);
+      return next;
+    });
+  }, [client, setHiddenIds, setPinnedIds]);
 
   const unhide = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
@@ -214,7 +249,115 @@ export function useCloudSessionActions({
       next.delete(trimmedSessionId);
       return next;
     });
-  }, [client, setHiddenIds]);
+    setDeletedIds((current) => {
+      if (!current.has(trimmedSessionId)) return current;
+      const next = new Set(current);
+      next.delete(trimmedSessionId);
+      return next;
+    });
+  }, [client, setDeletedIds, setHiddenIds]);
+
+  const setPinned = useCallback(async (sessionId: string, pinned: boolean) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!trimmedSessionId) return;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    await client.setCloudSessionPinned(session.token, trimmedSessionId, pinned);
+    setPinnedIds((current) => {
+      const next = new Set(current);
+      if (pinned) next.add(trimmedSessionId);
+      else next.delete(trimmedSessionId);
+      return next;
+    });
+    void refreshVisibility(session.token);
+  }, [client, refreshVisibility, setPinnedIds]);
+
+  const setMuted = useCallback(async (sessionId: string, muted: boolean) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!trimmedSessionId) return;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    await client.setCloudSessionMuted(session.token, trimmedSessionId, muted);
+    setMutedIds((current) => {
+      const next = new Set(current);
+      if (muted) next.add(trimmedSessionId);
+      else next.delete(trimmedSessionId);
+      return next;
+    });
+    void refreshVisibility(session.token);
+  }, [client, refreshVisibility, setMutedIds]);
+
+  const setUnread = useCallback(async (sessionId: string, unread: boolean) => {
+    const trimmedSessionId = sessionId.trim();
+    if (!trimmedSessionId) return;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    await client.setCloudSessionUnread(session.token, trimmedSessionId, unread);
+    if (unread) {
+      setLocallyReadIds((current) => {
+        if (!current.has(trimmedSessionId)) return current;
+        const next = new Set(current);
+        next.delete(trimmedSessionId);
+        return next;
+      });
+    }
+    setUnreadIds((current) => {
+      const next = new Set(current);
+      if (unread) next.add(trimmedSessionId);
+      else next.delete(trimmedSessionId);
+      return next;
+    });
+    void refreshVisibility(session.token);
+  }, [client, refreshVisibility, setLocallyReadIds, setUnreadIds]);
+
+  const markRead = useCallback(async (sessionIds: string[]) => {
+    const normalizedIds = [...new Set(sessionIds.map((value) => value.trim()).filter(Boolean))];
+    if (normalizedIds.length === 0) return;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    setLocallyReadIds((current) => {
+      const next = new Set(current);
+      for (const sessionId of normalizedIds) next.add(sessionId);
+      return next;
+    });
+    try {
+      await Promise.all(normalizedIds.map(async (sessionId) => {
+        await client.markSessionMessagesRead(session.token, sessionId);
+        try {
+          await client.setCloudSessionUnread(session.token, sessionId, false);
+        } catch {
+          // ponytail: preference cleanup is best-effort until every product server exposes chat-list actions.
+        }
+      }));
+    } catch (error) {
+      setLocallyReadIds((current) => new Set(
+        [...current].filter((sessionId) => !normalizedIds.includes(sessionId)),
+      ));
+      throw error;
+    }
+    setUnreadIds((current) => {
+      const next = new Set(current);
+      for (const sessionId of normalizedIds) next.delete(sessionId);
+      return next;
+    });
+    void refreshVisibility(session.token);
+    void syncCollaborationDiff();
+  }, [client, refreshVisibility, setLocallyReadIds, setUnreadIds, syncCollaborationDiff]);
+
+  const setGroupPinned = useCallback(async (groupSpaceId: string, pinned: boolean) => {
+    const trimmedGroupSpaceId = groupSpaceId.trim();
+    if (!trimmedGroupSpaceId) return;
+    const session = await loadSession();
+    if (!session?.token) throw new Error('Not signed in.');
+    await client.setCloudGroupSpacePinned(session.token, trimmedGroupSpaceId, pinned);
+    setPinnedGroupSpaceIds((current) => {
+      const next = new Set(current);
+      if (pinned) next.add(trimmedGroupSpaceId);
+      else next.delete(trimmedGroupSpaceId);
+      return next;
+    });
+    void refreshVisibility(session.token);
+  }, [client, refreshVisibility, setPinnedGroupSpaceIds]);
 
   const remove = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
@@ -231,6 +374,21 @@ export function useCloudSessionActions({
     setDeletedIds((current) =>
       new Set(current).add(trimmedSessionId)
     );
+    setPinnedIds((current) => {
+      const next = new Set(current);
+      next.delete(trimmedSessionId);
+      return next;
+    });
+    setMutedIds((current) => {
+      const next = new Set(current);
+      next.delete(trimmedSessionId);
+      return next;
+    });
+    setUnreadIds((current) => {
+      const next = new Set(current);
+      next.delete(trimmedSessionId);
+      return next;
+    });
     if (account) {
       setMessagesByPeer((current) =>
         removeCloudSessionMessages(
@@ -246,6 +404,9 @@ export function useCloudSessionActions({
     setDeletedIds,
     setHiddenIds,
     setMessagesByPeer,
+    setMutedIds,
+    setPinnedIds,
+    setUnreadIds,
   ]);
 
   return {
@@ -256,6 +417,11 @@ export function useCloudSessionActions({
     updatePin,
     hide,
     unhide,
+    setPinned,
+    setMuted,
+    setUnread,
+    markRead,
+    setGroupPinned,
     remove,
   };
 }

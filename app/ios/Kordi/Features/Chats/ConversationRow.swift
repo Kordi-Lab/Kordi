@@ -10,6 +10,8 @@ struct ConversationRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let conversation: ConversationSummary
     var presentation: ConversationRowPresentation = .standard
+    var isPinned = false
+    var isMuted = false
 
     var body: some View {
         Group {
@@ -22,7 +24,10 @@ struct ConversationRow: View {
         .contentShape(Rectangle())
         .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 64 : 48)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(conversation.accessibilitySummary)
+        .accessibilityLabel(
+            conversation.accessibilitySummary
+                + ChatListStateIndicators.accessibilitySuffix(isPinned: isPinned, isMuted: isMuted)
+        )
     }
 
     private var compactLayout: some View {
@@ -44,7 +49,7 @@ struct ConversationRow: View {
                 HStack(spacing: 10) {
                     Text(relativeTimestamp)
                         .font(.caption)
-                        .foregroundStyle(conversation.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
+                        .foregroundStyle(attentionTint)
                     attentionBadge
                 }
             }
@@ -89,6 +94,7 @@ struct ConversationRow: View {
                         .foregroundStyle(KordiTheme.agentViolet)
                         .accessibilityHidden(true)
                 }
+                ChatListStateIndicators(isPinned: isPinned, isMuted: isMuted)
             }
 
             if let activity = conversation.agentActivity {
@@ -108,7 +114,7 @@ struct ConversationRow: View {
                 } else {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 5) {
-                            Text(conversation.agentDisplayName?.nonEmpty ?? "My Kordi")
+                            Text(conversation.agentDisplayName?.nonEmpty ?? "Kordi")
                                 .foregroundStyle(KordiTheme.agentViolet)
                                 .lineLimit(1)
                             Text("·")
@@ -146,7 +152,7 @@ struct ConversationRow: View {
         VStack(alignment: .trailing, spacing: 4) {
             Text(relativeTimestamp)
                 .font(.caption)
-                .foregroundStyle(conversation.hasUnreadAttention ? KordiTheme.signalBlue : .secondary)
+                .foregroundStyle(attentionTint)
                 .lineLimit(1)
             attentionBadge
         }
@@ -156,8 +162,13 @@ struct ConversationRow: View {
     private var attentionBadge: some View {
         ConversationAttentionBadge(
             unreadCount: conversation.unreadCount,
-            mentionCount: conversation.unreadMentionCount
+            mentionCount: conversation.unreadMentionCount,
+            isMuted: isMuted
         )
+    }
+
+    private var attentionTint: Color {
+        conversation.hasUnreadAttention && !isMuted ? KordiTheme.signalBlue : .secondary
     }
 
     private func contactAgentStatus(ownerName: String, activity: AgentActivity) -> Text {
@@ -187,6 +198,33 @@ struct ConversationRow: View {
 
     private func shortOwnerName(_ name: String) -> String {
         name.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? name
+    }
+}
+
+struct ChatListStateIndicators: View {
+    let isPinned: Bool
+    let isMuted: Bool
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if isPinned {
+                Image(systemName: "pin.fill")
+                    .accessibilityLabel("Pinned")
+            }
+            if isMuted {
+                Image(systemName: "bell.slash.fill")
+                    .accessibilityLabel("Muted")
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(.tertiary)
+    }
+
+    static func accessibilitySuffix(isPinned: Bool, isMuted: Bool) -> String {
+        [isPinned ? "Pinned" : nil, isMuted ? "Muted" : nil]
+            .compactMap { $0 }
+            .map { ", \($0)" }
+            .joined()
     }
 }
 
@@ -220,6 +258,7 @@ private struct ConversationAttachmentThumbnail: View {
 struct ConversationAttentionBadge: View {
     let unreadCount: Int
     let mentionCount: Int
+    var isMuted = false
 
     var body: some View {
         let displayUnreadCount = max(unreadCount, mentionCount)
@@ -228,14 +267,14 @@ struct ConversationAttentionBadge: View {
                 if mentionCount > 0 {
                     Text("@")
                         .font(.caption.bold())
-                        .foregroundStyle(KordiTheme.signalBlue)
+                        .foregroundStyle(isMuted ? Color.secondary : KordiTheme.signalBlue)
                 }
                 Text(Self.countLabel(displayUnreadCount))
                     .font(.caption2.bold())
                     .foregroundStyle(.white)
                     .padding(.horizontal, 5)
                     .frame(minWidth: 20, minHeight: 20)
-                    .background(KordiTheme.signalBlue, in: Capsule())
+                    .background(isMuted ? Color.secondary : KordiTheme.signalBlue, in: Capsule())
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(
@@ -243,6 +282,7 @@ struct ConversationAttentionBadge: View {
                     ? "\(displayUnreadCount) unread messages, \(mentionCount) mention\(mentionCount == 1 ? "" : "s") for you"
                     : "\(displayUnreadCount) unread messages"
             )
+            .accessibilityHint(isMuted ? "Muted and not included in the app unread total" : "")
         }
     }
 

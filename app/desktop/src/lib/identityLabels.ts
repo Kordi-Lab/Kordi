@@ -91,8 +91,8 @@ export function publicPersonMentionHandle(
 
 export function publicScopedAgentMentionHandle(ownerName: string | null | undefined, agentLabel: string | null | undefined = 'Kordi') {
   const unscopedAgent = (stripSelfPossessivePrefix(agentLabel, ownerName).replace(/^[^'’]+['’]s\s+/u, '').trim()) || 'Kordi';
-  const scoped = possessiveScopedLabel(ownerName, unscopedAgent) || unscopedAgent;
-  return (safeMentionCharacters(scoped) || safeMentionCharacters(unscopedAgent) || 'Kordi').slice(0, 64);
+  const handle = `${safeMentionCharacters(unscopedAgent)}${safeMentionCharacters(cleanLabel(ownerName))}`;
+  return (handle || safeMentionCharacters(unscopedAgent) || 'Kordi').slice(0, 64);
 }
 
 export function rewriteLeadingFirstPersonAgentMention(

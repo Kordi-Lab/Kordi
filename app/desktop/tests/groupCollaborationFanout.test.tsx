@@ -11,7 +11,7 @@ import {
   isCollaborationGroupSession,
   shouldUseCollaborationConversationRouting,
 } from '../src/features/chat/messageActions/chatMessages';
-import { activeConversationMatchesSendScope } from '../src/features/chat/messageActions/messageSendScope';
+import { activeConversationMatchesSendScope, claimConversationSend, releaseConversationSend } from '../src/features/chat/messageActions/messageSendScope';
 import type { Conversation, ConversationCollaborationTarget } from '../src/kordi-app/types';
 
 function groupConversation(): Conversation {
@@ -52,6 +52,15 @@ test('composer refuses a fallback group scope for a different selected chat', ()
   assert.equal(activeConversationMatchesSendScope(group.id, group), true);
   assert.equal(activeConversationMatchesSendScope(group.canonicalSessionId!, group), true);
   assert.equal(activeConversationMatchesSendScope('local-session', null), true);
+});
+
+test('composer coalesces repeated sends only while the same conversation send is pending', () => {
+  const inFlight = new Set<string>();
+  assert.equal(claimConversationSend(inFlight, 'conversation:a'), true);
+  assert.equal(claimConversationSend(inFlight, 'conversation:a'), false);
+  assert.equal(claimConversationSend(inFlight, 'conversation:b'), true);
+  releaseConversationSend(inFlight, 'conversation:a');
+  assert.equal(claimConversationSend(inFlight, 'conversation:a'), true);
 });
 
 test('composer accepts hydrated aliases for the one built-in Support chat', () => {

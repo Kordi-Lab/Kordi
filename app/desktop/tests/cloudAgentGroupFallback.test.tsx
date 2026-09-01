@@ -218,9 +218,11 @@ test('cloud forwarded group mentions do not produce fallback run claims', () => 
     requestCreatedAtMs: 3_000,
     respondingAccountId: 'acct_peer',
   });
-  assert.equal(nativeContext.length, 1);
-  assert.equal(nativeContext[0]?.authorName, 'Group mention permissions');
-  assert.doesNotMatch(nativeContext[0]?.text ?? '', /PeerPersonKordi test/);
+  assert.equal(nativeContext.length, 2);
+  assert.equal(nativeContext[0]?.authorName, 'Group agent identity');
+  assert.equal(nativeContext[0]?.contextRole, 'system');
+  assert.equal(nativeContext[1]?.authorName, 'Group mention directory');
+  assert.doesNotMatch(nativeContext[1]?.text ?? '', /PeerPersonKordi test/);
 });
 
 test('cloud outgoing remote-agent mention claims include prior direct chat history', () => {
@@ -262,7 +264,7 @@ test('cloud outgoing remote-agent mention claims include prior direct chat histo
   assert.equal(claims[0].requestMessageId, 'msg_check_again');
   assert.match(claims[0].prompt, /Conversation history:/);
   assert.match(claims[0].prompt, /Me: what is xuzhu city weather/);
-  assert.match(claims[0].prompt, /Peer Person's Kordi: I think you mean Xuzhou city, China\./);
+  assert.match(claims[0].prompt, /Kordi \(owner: Peer Person\): I think you mean Xuzhou city, China\./);
   assert.match(claims[0].prompt, /Current request:\ncheck ahain$/);
 });
 

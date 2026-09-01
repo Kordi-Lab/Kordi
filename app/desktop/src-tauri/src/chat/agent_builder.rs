@@ -19,6 +19,7 @@ const MAX_SKILL_BYTES: u64 = 96 * 1024;
 const MAX_SKILL_SUPPORT_FILE_BYTES: u64 = 512 * 1024;
 const MAX_SKILL_BUNDLE_FILES: usize = 64;
 const MAX_SKILLS: usize = 24;
+const MAX_AGENT_NAME_CHARS: usize = 120;
 const MAX_TOOLS: usize = 48;
 const MAX_PLUGINS: usize = 24;
 const MAX_FINGERPRINT_FILES: usize = 128;

@@ -8,7 +8,7 @@ import {
 
 type FactoryCreationAvatar = {
   imageUrl: string;
-  mutation: CanonicalAvatarMutation;
+  mutation?: CanonicalAvatarMutation;
 };
 
 export function randomFactoryCreationAvatar(seed = newCanonicalAvatarSeed()): FactoryCreationAvatar | null {
@@ -16,7 +16,7 @@ export function randomFactoryCreationAvatar(seed = newCanonicalAvatarSeed()): Fa
   return imageUrl ? { imageUrl, mutation: { action: 'regenerate', seed } } : null;
 }
 
-export function useFactoryCreationAvatar(draftId: string | null) {
+export function useFactoryCreationAvatar(draftId: string | null, existingImageUrl?: string | null) {
   const [avatars, setAvatars] = useState<Record<string, FactoryCreationAvatar>>({});
   const setAvatar = (avatar: FactoryCreationAvatar) => {
     if (draftId) setAvatars((current) => ({ ...current, [draftId]: avatar }));
@@ -37,6 +37,10 @@ export function useFactoryCreationAvatar(draftId: string | null) {
       return next;
     });
   };
-  const avatar = draftId ? avatars[draftId] ?? randomFactoryCreationAvatar(draftId) : null;
+  const avatar = draftId
+    ? avatars[draftId] ?? (existingImageUrl === undefined
+      ? randomFactoryCreationAvatar(draftId)
+      : { imageUrl: existingImageUrl ?? '' })
+    : null;
   return { imageUrl: avatar?.imageUrl ?? null, mutation: avatar?.mutation, upload, randomize, clearAvatar };
 }

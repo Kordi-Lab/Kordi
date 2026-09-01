@@ -4,6 +4,29 @@ import XCTest
 @testable import Kordi
 
 final class ConversationReadPresentationTests: XCTestCase {
+    func testChatDeleteWaitsForSwipeClosureAndUsesStableAlertPresentation() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Chats/ChatHomeView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("Task.sleep(for: .milliseconds(180))"))
+        XCTAssertTrue(source.contains(".alert(\n            \"Delete this chat from your list?\""))
+        XCTAssertTrue(source.contains("deleteTarget.map { \"delete:"))
+        XCTAssertFalse(source.contains(".confirmationDialog(\n            \"Delete this chat from your list?\""))
+        XCTAssertEqual(
+            source.components(separatedBy: "Button(role: .destructive) {")
+                .dropFirst()
+                .filter { $0.prefix(160).contains("requestDelete") }
+                .count,
+            2,
+            "Only context-menu delete actions may be destructive before confirmation"
+        )
+    }
+
     func testGroupSessionRowsShowOnlyTheLatestMessagePreview() throws {
         let chatsDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -14,7 +37,7 @@ final class ConversationReadPresentationTests: XCTestCase {
             encoding: .utf8
         )
 
-        XCTAssertTrue(source.contains("Text(session.lastMessage.nonEmpty ?? \"No messages yet\")"))
+        XCTAssertTrue(source.contains("BlobEmojiPreviewText(text: session.lastMessage.nonEmpty ?? \"No messages yet\")"))
         XCTAssertFalse(source.contains("messageCountText"))
     }
 
@@ -121,6 +144,20 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(appSource.contains("PreviewThemeControls("))
         XCTAssertTrue(appSource.contains("ForEach(KordiChatTheme.allCases)"))
         XCTAssertTrue(appSource.contains("ForEach(AppAppearance.allCases)"))
+    }
+
+    func testDeleteResurrectionPreviewAddsFreshUnreadMayaMessage() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/App/PreviewData.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("--preview-delete-resurrection"))
+        XCTAssertTrue(source.contains("maya-delete-resurrection"))
+        XCTAssertTrue(source.contains("New message after deletion — this chat is back."))
     }
 
     func testReactionChipsMatchTheAvatarEdgeAndMacOSSurface() throws {
@@ -638,7 +675,137 @@ final class ConversationReadPresentationTests: XCTestCase {
             MainTabUnreadCounts(chats: 6, agents: 4)
         )
         XCTAssertEqual(MainTabUnreadCounts.build(conversations: conversations).total, 10)
+        XCTAssertEqual(
+            MainTabUnreadCounts.build(
+                conversations: conversations,
+                mutedSessionIds: ["session:group-main", "session:agent-session"]
+            ),
+            MainTabUnreadCounts(chats: 3, agents: 0)
+        )
         XCTAssertEqual(ConversationAttentionBadge.countLabel(120), "99+")
+    }
+
+    func testVisibleAndLegacyMentionsAdvanceUnreadState() throws {
+        let iosDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi")
+        let viewSource = try String(
+            contentsOf: iosDirectory
+                .appendingPathComponent("Features/Conversation/ConversationView.swift"),
+            encoding: .utf8
+        )
+        let modelSource = try String(
+            contentsOf: iosDirectory.appendingPathComponent("App/AppModel.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(viewSource.contains("onScrollVisibilityChange(threshold: 0.5)"))
+        XCTAssertTrue(viewSource.contains("isPendingMention: pendingMentionMessageIDs.contains(message.id)"))
+        XCTAssertTrue(modelSource.contains("throughSequence: message.conversationSequence"))
+        XCTAssertTrue(modelSource.contains("let lastReadSequence = max("))
+        XCTAssertTrue(modelSource.contains("$0 > lastReadSequence"))
+        XCTAssertFalse(modelSource.contains("guard pendingMentionCount(for: conversation) == 0"))
+        XCTAssertFalse(modelSource.contains("&& pendingMentionCount(for: $0) == 0"))
+    }
+
+    @MainActor
+    func testPreviewChatListActionsUpdateVisibleState() async throws {
+        let model = AppModel(previewMode: true)
+        let conversation = try XCTUnwrap(
+            model.conversations.first { $0.id == "person:acct_maya" }
+        )
+
+        let didPin = await model.setConversationPinned(conversation, pinned: true)
+        XCTAssertTrue(didPin)
+        XCTAssertTrue(model.pinnedSessionIds.contains(conversation.sessionId))
+        let didMute = await model.setConversationMuted(conversation, muted: true)
+        XCTAssertTrue(didMute)
+        XCTAssertTrue(model.mutedSessionIds.contains(conversation.sessionId))
+
+        let readConversation = try XCTUnwrap(
+            model.conversations.first { $0.id == "person:acct_ethan" }
+        )
+        let didMarkUnread = await model.setConversationUnread(readConversation, unread: true)
+        XCTAssertTrue(didMarkUnread)
+        XCTAssertTrue(model.markedUnreadSessionIds.contains(readConversation.sessionId))
+        XCTAssertEqual(
+            model.conversations.first { $0.id == readConversation.id }?.unreadCount,
+            1
+        )
+        await model.markConversationRead(readConversation)
+        XCTAssertFalse(model.markedUnreadSessionIds.contains(readConversation.sessionId))
+        XCTAssertEqual(
+            model.conversations.first { $0.id == readConversation.id }?.unreadCount,
+            0
+        )
+
+        let didArchive = await model.archiveConversation(conversation)
+        XCTAssertTrue(didArchive)
+        XCTAssertFalse(model.conversations.contains { $0.sessionId == conversation.sessionId })
+        XCTAssertTrue(model.archivedConversations.contains { $0.sessionId == conversation.sessionId })
+
+        let didRestore = await model.restoreConversation(conversation)
+        XCTAssertTrue(didRestore)
+        XCTAssertTrue(model.conversations.contains { $0.sessionId == conversation.sessionId })
+        XCTAssertFalse(model.archivedConversations.contains { $0.sessionId == conversation.sessionId })
+
+        let didDelete = await model.deleteConversation(conversation)
+        XCTAssertTrue(didDelete)
+        XCTAssertFalse(model.conversations.contains { $0.sessionId == conversation.sessionId })
+        XCTAssertFalse(model.mutedSessionIds.contains(conversation.sessionId))
+    }
+
+    @MainActor
+    func testPreviewGroupActionsApplyToEverySessionAtomically() async throws {
+        let model = AppModel(previewMode: true)
+        let space = try XCTUnwrap(
+            GroupSpaceCatalog.build(
+                conversations: model.conversations,
+                ownAccountId: model.account?.accountId ?? "",
+                pinnedSessionIds: model.pinnedSessionIds
+            ).first { $0.displayName == "Mobile builders" }
+        )
+        let sessionIds = Set(space.sessions.map(\.sessionId))
+        XCTAssertEqual(space.preferenceId, "session:group:mobile")
+
+        let didPin = await model.setGroupSpacePinned(space, pinned: true)
+        XCTAssertTrue(didPin)
+        XCTAssertTrue(model.pinnedGroupSpaceIds.contains(space.preferenceId))
+        XCTAssertTrue(model.pinnedSessionIds.isDisjoint(with: sessionIds))
+
+        let pinnedSession = try XCTUnwrap(space.sessions.first)
+        let didPinSession = await model.setConversationPinned(pinnedSession, pinned: true)
+        XCTAssertTrue(didPinSession)
+        XCTAssertTrue(model.pinnedSessionIds.contains(pinnedSession.sessionId))
+        XCTAssertTrue(model.pinnedGroupSpaceIds.contains(space.preferenceId))
+
+        let didUnpinGroup = await model.setGroupSpacePinned(space, pinned: false)
+        XCTAssertTrue(didUnpinGroup)
+        XCTAssertFalse(model.pinnedGroupSpaceIds.contains(space.preferenceId))
+        XCTAssertTrue(model.pinnedSessionIds.contains(pinnedSession.sessionId))
+        let didRepinGroup = await model.setGroupSpacePinned(space, pinned: true)
+        XCTAssertTrue(didRepinGroup)
+        let didMute = await model.setGroupSpaceMuted(space, muted: true)
+        XCTAssertTrue(didMute)
+        XCTAssertTrue(sessionIds.isSubset(of: model.mutedSessionIds))
+
+        await model.markGroupSpaceRead(space)
+        XCTAssertTrue(
+            model.conversations
+                .filter { sessionIds.contains($0.sessionId) }
+                .allSatisfy { !$0.hasUnreadAttention }
+        )
+
+        let didArchive = await model.archiveGroupSpace(space)
+        XCTAssertTrue(didArchive)
+        XCTAssertFalse(model.conversations.contains { sessionIds.contains($0.sessionId) })
+        XCTAssertEqual(
+            Set(model.archivedConversations.map(\.sessionId)).intersection(sessionIds),
+            sessionIds
+        )
+        XCTAssertTrue(model.pinnedSessionIds.isDisjoint(with: sessionIds))
+        XCTAssertFalse(model.pinnedGroupSpaceIds.contains(space.preferenceId))
     }
 
     @MainActor

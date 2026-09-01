@@ -21,6 +21,12 @@ import {
   shouldRunCloudFocusRefresh,
   transitionCloudUnreadReadiness,
 } from '../src/features/cloud/cloudMessageSyncState';
+import {
+  cloudCollaborationConversationId,
+} from '../src/features/collaboration/conversationIds';
+import {
+  canonicalActiveSessionId,
+} from '../src/features/cloud/useCanonicalActiveSessionRead';
 
 const cloudCollaborationSource = () => readFileSync(
   new URL('../src/features/cloud/useCloudCollaborationState.ts', import.meta.url),
@@ -36,6 +42,10 @@ const cloudFocusRefreshSource = () => readFileSync(
 );
 const cloudReadReceiptsSource = () => readFileSync(
   new URL('../src/features/cloud/useCloudMessageReadReceipts.ts', import.meta.url),
+  'utf8',
+);
+const canonicalReadSource = () => readFileSync(
+  new URL('../src/features/cloud/useCanonicalActiveSessionRead.ts', import.meta.url),
   'utf8',
 );
 const account: CloudAccount = {
@@ -125,6 +135,73 @@ test('normal Cloud events request diff sync instead of full snapshots', () => {
   assert.match(
     readSource,
     /markSessionMessagesRead[\s\S]*void sync\(\)/,
+  );
+});
+
+test('canonical Cloud sessions persist local and server read cursors together', () => {
+  const source = canonicalReadSource();
+
+  assert.match(
+    source,
+    /Promise\.all\(\[localRead, cloudRead\]\)/,
+  );
+  assert.match(
+    source,
+    /markRead\(\[sessionId\]\)/,
+  );
+  assert.doesNotMatch(
+    source,
+    /selfParticipant\?\.lastReadMessageId === latestMessage\.id\s*\) return/,
+    'a local read cursor must not suppress Cloud cursor repair after restart',
+  );
+  assert.doesNotMatch(
+    source,
+    /if \(!latestMessage\) return/,
+    'missing local message projection must not suppress Cloud cursor repair',
+  );
+  assert.doesNotMatch(
+    source,
+    /isSharedCloudSessionId/,
+    'every materialized canonical session must use its exact read cursor',
+  );
+});
+
+test('Cloud read receipts never fall through to a peer-wide read mutation', () => {
+  const source = cloudReadReceiptsSource();
+
+  assert.doesNotMatch(source, /client\.markMessagesRead\(/);
+  assert.match(
+    source,
+    /groupReadTargets\.sessionIds\.map\([\s\S]*client\.markSessionMessagesRead/,
+  );
+});
+
+test('canonical read persistence resolves sidebar Cloud conversation ids', () => {
+  const accountId = 'acct_me';
+  const peerAccountId = 'acct_peer';
+  const groupSessionId = 'session:group:one';
+
+  assert.equal(
+    canonicalActiveSessionId(
+      cloudCollaborationConversationId(peerAccountId, 'person'),
+      accountId,
+    ),
+    'session:direct-person:acct_me:acct_peer',
+  );
+  assert.equal(
+    canonicalActiveSessionId(
+      cloudCollaborationConversationId(
+        peerAccountId,
+        'person',
+        groupSessionId,
+      ),
+      accountId,
+    ),
+    groupSessionId,
+  );
+  assert.equal(
+    canonicalActiveSessionId(groupSessionId, accountId),
+    groupSessionId,
   );
 });
 

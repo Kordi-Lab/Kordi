@@ -2,26 +2,12 @@ use super::support::*;
 use super::*;
 use std::collections::HashMap;
 
-type BootstrapConversationRow = (
-    Uuid,
-    String,
-    Option<String>,
-    i32,
-    String,
-    Option<String>,
-    Option<String>,
-    Option<String>,
-    i64,
-    DateTime<Utc>,
-    DateTime<Utc>,
-    Option<String>,
-    i32,
-);
-
 type BootstrapMemberRow = (
     Uuid,
     String,
     Option<String>,
+    Option<String>,
+    String,
     Option<String>,
     String,
     String,
@@ -211,10 +197,11 @@ pub async fn history(
         .await?;
     require_active_member(&mut transaction, conversation_id, account_id).await?;
     let rows: Vec<MessageRow> = query_as(
-        "SELECT message_id, client_message_id, conversation_id, conversation_sequence, \
-                sender_account_id, message_kind, content, reply_to_message_id, version, \
-                generation_status, provider_response_id, created_at, edited_at, deleted_at \
+        "SELECT message.message_id, message.client_message_id, message.conversation_id, message.conversation_sequence, \
+                message.sender_account_id, message.message_kind, message.content, message.reply_to_message_id, message.version, \
+                message.generation_status, message.provider_response_id, message.created_at, message.edited_at, message.deleted_at, agent.display_name, account.display_name \
          FROM cloud_chat_messages message \
+         JOIN cloud_default_agent_profiles agent ON agent.owner_account_id = message.sender_account_id JOIN cloud_accounts account ON account.account_id = message.sender_account_id \
          WHERE conversation_id = $1 AND conversation_sequence < $2 \
            AND deleted_at IS NULL \
            AND NOT EXISTS ( \
@@ -351,6 +338,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
         "SELECT conversation.conversation_id, conversation.kind, \
                 conversation.shared_title, conversation.version, \
                 conversation.created_by_account_id, conversation.legacy_session_id, \
+                conversation.group_space_id, conversation.group_title, \
                 fork.parent_session_id, fork.parent_message_id, \
                 conversation.latest_message_sequence, conversation.created_at, \
                 conversation.updated_at, viewer.personal_title, viewer.preferences_version \
@@ -378,11 +366,13 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             .await?;
     let member_rows: Vec<BootstrapMemberRow> = query_as(
         "SELECT member.conversation_id, member.account_id, account.display_name, \
-                account.avatar_url, member.role, member.membership_state, member.version, \
+                account.avatar_url, agent.display_name, agent.avatar_url, \
+                member.role, member.membership_state, member.version, \
                 member.last_delivered_sequence, member.last_read_sequence, \
                 member.joined_at, member.left_at \
          FROM cloud_chat_conversation_members member \
          JOIN cloud_accounts account ON account.account_id = member.account_id \
+         JOIN cloud_default_agent_profiles agent ON agent.owner_account_id = member.account_id \
          WHERE member.conversation_id = ANY($1) \
          ORDER BY member.conversation_id ASC, member.account_id ASC",
     )
@@ -395,7 +385,8 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
             .entry(row.0)
             .or_default()
             .push(member_from_row((
-                row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9, row.10,
+                row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8, row.9, row.10, row.11,
+                row.12,
             )));
     }
     let conversations = conversation_rows
@@ -408,17 +399,19 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
                 version: row.3,
                 created_by_account_id: row.4,
                 legacy_session_id: row.5,
-                forked_from_session_id: row.6,
-                forked_from_message_id: row.7,
-                latest_message_sequence: row.8,
-                created_at: row.9,
-                updated_at: row.10,
+                group_space_id: row.6,
+                group_title: row.7,
+                forked_from_session_id: row.8,
+                forked_from_message_id: row.9,
+                latest_message_sequence: row.10,
+                created_at: row.11,
+                updated_at: row.12,
                 members: members_by_conversation.remove(&row.0).unwrap_or_default(),
                 preferences: ConversationPreferencesSnapshot {
                     conversation_id: row.0,
                     account_id: account_id.to_string(),
-                    personal_title: row.11,
-                    version: row.12,
+                    personal_title: row.13,
+                    version: row.14,
                 },
             })
         })
@@ -426,10 +419,10 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
 
     let latest_rows: Vec<MessageRow> = query_as(
         "SELECT message.message_id, message.client_message_id, message.conversation_id, \
-                message.conversation_sequence, message.sender_account_id, message.message_kind, \
-                message.content, message.reply_to_message_id, message.version, \
+                message.conversation_sequence, message.sender_account_id, message.message_kind, message.content, \
+                message.reply_to_message_id, message.version, \
                 message.generation_status, message.provider_response_id, message.created_at, \
-                message.edited_at, message.deleted_at \
+                message.edited_at, message.deleted_at, agent.display_name, account.display_name \
          FROM cloud_chat_conversations conversation \
          JOIN LATERAL ( \
            SELECT candidate.* FROM cloud_chat_messages candidate \
@@ -442,7 +435,7 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
              ) \
            ORDER BY candidate.conversation_sequence DESC \
            LIMIT 1 \
-         ) message ON TRUE \
+         ) message ON TRUE JOIN cloud_default_agent_profiles agent ON agent.owner_account_id = message.sender_account_id JOIN cloud_accounts account ON account.account_id = message.sender_account_id \
          WHERE conversation.conversation_id = ANY($1) \
          ORDER BY message.conversation_id ASC",
     )

@@ -1,4 +1,4 @@
-import { Bookmark, ChevronRight, Paperclip, Pin, Split } from 'lucide-react';
+import { BellOff, Bookmark, ChevronRight, Paperclip, Pin, Split } from 'lucide-react';
 
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
 import { attachmentOnlyMessagePreview } from '@/features/chat/participantConversationState';
@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import type { ChatSidebarRow } from '@/pages/sidebar/chatSidebarRows';
 import {
   participantSpaceSessionPreviewText,
+  participantSpaceSessionPreferenceId,
   participantSpaceSessionRowTitle,
   sessionContextMenuTargetForConversation,
 } from '@/pages/workspaceSidebar.chatHelpers';
@@ -70,6 +71,11 @@ export function AgentSidebarRow({
   const depth = Math.min(descriptor.depth, 4);
   const indentPaddingLeft =
     depth > 0 ? `${0.625 + depth * 0.875}rem` : undefined;
+  const preferenceSessionId = participantSpaceSessionPreferenceId(session);
+  const unreadCount = Math.max(
+    model.unreadSessionIds.has(preferenceSessionId) ? 1 : 0,
+    session.unread,
+  );
 
   return (
     <div
@@ -104,6 +110,12 @@ export function AgentSidebarRow({
             conversation,
             event.clientX,
             event.clientY,
+            {
+              archived: model.showArchived,
+              pinned: model.pinnedSessionIds.has(preferenceSessionId),
+              muted: model.mutedSessionIds.has(preferenceSessionId),
+              unread: unreadCount > 0,
+            },
           );
           if (!target) return;
           event.preventDefault();
@@ -128,11 +140,17 @@ export function AgentSidebarRow({
         <div className="app-agent-session-main min-w-0">
           <div className="flex items-center gap-1.5">
             <span
-              className="app-session-row-title min-w-0 flex-1 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100"
+              className="app-session-row-title min-w-0 truncate text-[12px] font-semibold tracking-[-0.01em] text-slate-100"
               title={rowTitle}
             >
               {rowTitle}
             </span>
+            {model.pinnedSessionIds.has(preferenceSessionId) ? (
+              <Pin className="h-3 w-3 shrink-0 text-slate-400" aria-label="Pinned" />
+            ) : null}
+            {model.mutedSessionIds.has(preferenceSessionId) ? (
+              <BellOff className="h-3 w-3 shrink-0 text-slate-400" aria-label="Muted" />
+            ) : null}
           </div>
           <div
             className={cn(
@@ -160,11 +178,12 @@ export function AgentSidebarRow({
         <div className="app-agent-session-side">
           <SidebarSessionMetaColumn
             timeLabel={rowTimeLabel}
-            unreadCount={session.unread}
+            unreadCount={unreadCount}
             unreadScope="agent-session"
             indicator={session.statusIndicator}
             active={isActive}
             reserveStatusSpace={!isSavedMessages}
+            muted={model.mutedSessionIds.has(preferenceSessionId)}
           />
           {isSavedMessages ? (
             <Pin className="app-saved-messages-pin h-3 w-3" aria-label="Pinned" />

@@ -297,7 +297,11 @@ struct ConversationView: View {
         let coordinatorOwnsConversationCall = callCoordinator.activeCall?.call.id
             == activeConversationCall?.id
         let mentionTargets = model.mentionTargets(for: conversation)
+        let pendingMentionMessageIDs = Set(
+            model.pendingMentionMessages(for: conversation).map(\.id)
+        )
         let pendingMentionCount = model.pendingMentionCount(for: conversation)
+        let newMessageCount = max(0, conversation.unreadCount)
         let pinTargetPresentation = Binding(
             get: { pinTarget != nil },
             set: { if !$0 { pinTarget = nil } }
@@ -390,6 +394,7 @@ struct ConversationView: View {
                                                 timeline: timeline,
                                                 messagesByID: messagesById,
                                                 mentionTargets: mentionTargets,
+                                                isPendingMention: pendingMentionMessageIDs.contains(message.id),
                                                 pinnedMessageIDs: pinnedMessageIDs,
                                                 previewActionMessageID: previewActionMessageID,
                                                 threadReplyCount: threadReplyCount,
@@ -465,7 +470,7 @@ struct ConversationView: View {
                                     isAtBottom: isAtBottom,
                                     messageCount: timeline.count
                                 ) {
-                                    LatestMessageButton {
+                                    LatestMessageButton(count: newMessageCount) {
                                         scrollToBottom(animated: true)
                                     }
                                     .transition(.scale(scale: 0.82).combined(with: .opacity))
@@ -644,13 +649,14 @@ struct ConversationView: View {
             .onChange(of: timeline.last) { previousLatestMessage, currentLatestMessage in
                 let previousLatestMessageID = previousLatestMessage.map(model.timelineIdentity(for:))
                 let currentLatestMessageID = currentLatestMessage.map(model.timelineIdentity(for:))
+                let isFollowingLatest = ConversationTimelineScrollBehavior.isFollowingLatest(
+                    isAtBottom: isAtBottom,
+                    trackedMessageID: trackedMessageID,
+                    bottomAnchorID: bottomAnchorID
+                )
                 if ConversationTimelineScrollBehavior.shouldFollowLatest(
                     hasPositionedInitialTimeline: hasPositionedInitialTimeline,
-                    isAtBottom: ConversationTimelineScrollBehavior.isFollowingLatest(
-                        isAtBottom: isAtBottom,
-                        trackedMessageID: trackedMessageID,
-                        bottomAnchorID: bottomAnchorID
-                    ),
+                    isAtBottom: isFollowingLatest,
                     previousLatestMessageID: previousLatestMessageID,
                     currentLatestMessageID: currentLatestMessageID
                 ) {
@@ -978,6 +984,7 @@ struct ConversationView: View {
         timeline: [ChatMessage],
         messagesByID: [String: ChatMessage],
         mentionTargets: [ComposerMentionTarget],
+        isPendingMention: Bool,
         pinnedMessageIDs: Set<String>,
         previewActionMessageID: String?,
         threadReplyCount: Int,
@@ -1124,6 +1131,9 @@ struct ConversationView: View {
             }
         }
         .id(row.id)
+        .modifier(MentionPresentationModifier(isPending: isPendingMention) {
+            Task { await model.markMentionPresented(message, in: conversation) }
+        })
     }
 
     private func handleTimelineCountChange(
@@ -1572,6 +1582,13 @@ struct ConversationView: View {
         await Task.yield()
         await Task.yield()
         guard !Task.isCancelled else { return }
+        if initialViewport == .latest {
+            withTransaction(transaction) {
+                proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+            }
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+        }
         withTransaction(transaction) {
             hasPositionedInitialTimeline = true
             hasRevealedInitialViewport = true
@@ -2652,6 +2669,26 @@ private struct EarlierMessagesLoader: View {
     }
 }
 
+private struct MentionPresentationModifier: ViewModifier {
+    let isPending: Bool
+    let action: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollVisibilityChange(threshold: 0.5) { isVisible in
+                guard isPending, isVisible else { return }
+                action()
+            }
+        } else {
+            content.onAppear {
+                guard isPending else { return }
+                action()
+            }
+        }
+    }
+}
+
 private struct MentionNavigationButton: View {
     let count: Int
     let isLoading: Bool
@@ -2692,6 +2729,7 @@ private struct MentionNavigationButton: View {
 }
 
 private struct LatestMessageButton: View {
+    let count: Int
     let action: () -> Void
     @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 38
 
@@ -2705,6 +2743,17 @@ private struct LatestMessageButton: View {
                     Circle()
                         .stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5)
                 }
+                .overlay(alignment: .topTrailing) {
+                    if count > 0 {
+                        Text(ConversationAttentionBadge.countLabel(count))
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .frame(minWidth: 20, minHeight: 20)
+                            .background(KordiTheme.signalBlue, in: Capsule())
+                            .offset(x: 7, y: -6)
+                    }
+                }
                 .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
                 .frame(width: max(44, diameter), height: max(44, diameter))
                 .contentShape(Circle())
@@ -2712,6 +2761,9 @@ private struct LatestMessageButton: View {
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
         .accessibilityLabel("Go to latest message")
+        .accessibilityValue(count > 0
+            ? "\(count) new message\(count == 1 ? "" : "s")"
+            : "No new messages")
         .accessibilityHint("Moves to the bottom of the conversation")
     }
 }
@@ -2872,7 +2924,7 @@ private struct EmptyConversation: View {
             return conversation.displayName
         }
         if conversation.kind == .agent {
-            return conversation.agentDisplayName?.nonEmpty ?? "My Kordi"
+            return conversation.agentDisplayName?.nonEmpty ?? "Kordi"
         }
         return conversation.displayName
     }

@@ -50,6 +50,10 @@ import {
 } from './readModel/runtimeMessageMatching';
 import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
 import { mergeCanonicalReadReceipts, mergedMessageReactionMetadata } from './readModel/messageReactionMetadata';
+import { presentCanonicalParticipants, presentLocalAgentMessages } from './readModel/localAgentPresentation';
+import { mergedUnreadBySessionId, withMergedUnreadForSession } from './readModel/conversationUnread';
+
+export { presentLocalAgentMessages } from './readModel/localAgentPresentation';
 
 const EMPTY_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map(); const EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS: ReadonlySet<string> = new Set(); const EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY: ReadonlyMap<string, number> = new Map();
 
@@ -130,11 +134,13 @@ export function mergeCanonicalHistoryIntoRuntime(
       ...canonicalAliasIds,
     ])];
     const reactionMetadata = mergedMessageReactionMetadata(message, canonicalMessage);
-    if (!canonicalMessage.isForkSnapshot && replyAliasIds.length === (message.replyAliasIds?.length ?? 0) && !reactionMetadata.changed) {
+    const senderOwnerName = canonicalMessage.senderOwnerName ?? message.senderOwnerName;
+    if (!canonicalMessage.isForkSnapshot && replyAliasIds.length === (message.replyAliasIds?.length ?? 0) && !reactionMetadata.changed && senderOwnerName === message.senderOwnerName) {
       return message;
     }
     return {
       ...message,
+      senderOwnerName,
       ...(canonicalMessage.isForkSnapshot ? { isForkSnapshot: true } : {}),
       ...(replyAliasIds.length > 0 ? { replyAliasIds } : {}),
       ...reactionMetadata.values,
@@ -400,40 +406,6 @@ function legacyCollaborationTargetForSession(
   return null;
 }
 
-function addUnreadForSession(unreadBySessionId: Map<string, number>, sessionId: string | null | undefined, count: number | null | undefined) {
-  const normalizedSessionId = sessionId?.trim();
-  const unread = Math.max(0, count ?? 0);
-  if (!normalizedSessionId || unread <= 0) return;
-  unreadBySessionId.set(normalizedSessionId, (unreadBySessionId.get(normalizedSessionId) ?? 0) + unread);
-}
-
-function mergedUnreadBySessionId(conversations: Conversation[]) {
-  const unreadBySessionId = new Map<string, number>();
-  for (const conversation of conversations) {
-    const scopedUnread = conversation.collaborationUnreadByParentSessionId ?? {};
-    const scopedEntries = Object.entries(scopedUnread);
-    if (scopedEntries.length > 0) {
-      for (const [sessionId, unread] of scopedEntries) {
-        addUnreadForSession(unreadBySessionId, sessionId, unread);
-      }
-      continue;
-    }
-    addUnreadForSession(unreadBySessionId, conversation.canonicalSessionId ?? conversation.id, conversation.unread);
-  }
-  return unreadBySessionId;
-}
-
-function withMergedUnreadForSession<T extends Conversation>(conversation: T, sessionId: string, unread: number): T {
-  return {
-    ...conversation,
-    unread,
-    collaborationUnreadByParentSessionId: {
-      ...(conversation.collaborationUnreadByParentSessionId ?? {}),
-      [sessionId]: unread,
-    },
-  };
-}
-
 export type CanonicalSessionReadModel = {
   sessionTitle: (sessionId: string, fallback: string) => string;
   participantNames: (sessionId: string, fallback: string[]) => string[];
@@ -452,6 +424,7 @@ export function createCanonicalSessionReadModel(
   canonicalState: CanonicalSessionState | null,
   options: {
     summaries?: CanonicalSessionSummary[];
+    localAgentDisplayName?: string | null;
     cloudUnreadReady?: boolean; pendingGroupProjectionSessionIds?: ReadonlySet<string>;
     legacyGroupSessionTitlesById?: ReadonlyMap<string, string>; reliableGroupSessionTitleIds?: ReadonlySet<string>; reliableGroupSessionActivityAtMs?: ReadonlyMap<string, number>;
   } = {},
@@ -493,20 +466,27 @@ export function createCanonicalSessionReadModel(
       return indexes.sessionById.get(sessionId)?.title || fallback;
     },
     participantNames(sessionId, fallback) {
-      const names = (indexes.canonicalParticipantsBySessionId.get(sessionId) ?? []).map((participant) => participant.name);
+      const names = this.participantDetails(sessionId).map((participant) => participant.name);
       return names.length > 0 ? names : fallback;
     },
     participantDetails(sessionId) {
-      return indexes.canonicalParticipantsBySessionId.get(sessionId) ?? [];
+      return presentCanonicalParticipants(
+        indexes.canonicalParticipantsBySessionId.get(sessionId) ?? [],
+        indexes.profileHumanIdentityId,
+        options.localAgentDisplayName,
+      );
     },
     taskActivities(sessionId) {
       return indexes.taskActivitiesBySessionId.get(sessionId) ?? [];
     },
     messages(sessionId) {
-      return indexes.canonicalMessagesBySessionId.get(sessionId) ?? [];
+      return presentLocalAgentMessages(
+        indexes.canonicalMessagesBySessionId.get(sessionId) ?? [],
+        options.localAgentDisplayName,
+      );
     },
     preferMessages(sessionId, existingMessages) {
-      const canonicalMessages = indexes.canonicalMessagesBySessionId.get(sessionId) ?? [];
+      const canonicalMessages = this.messages(sessionId);
       return shouldUseCanonicalMessages(existingMessages, canonicalMessages) ? canonicalMessages : existingMessages;
     },
     applyConversation(conversation, buildSubtitle) {
@@ -529,7 +509,10 @@ export function createCanonicalSessionReadModel(
           : mergeLocalOwnedAgentRuntimeStatus(canonicalMessages, conversation.messages)
         : this.preferMessages(sessionId, conversation.messages);
       const hydratedWithReceipts = mergeCanonicalReadReceipts(hydratedMessages, canonicalMessages);
-      const messages = dedupeRepeatedFailedAgentTurns(isSupportContact ? normalizeSupportContactMessages(hydratedWithReceipts) : hydratedWithReceipts);
+      const messages = presentLocalAgentMessages(
+        dedupeRepeatedFailedAgentTurns(isSupportContact ? normalizeSupportContactMessages(hydratedWithReceipts) : hydratedWithReceipts),
+        options.localAgentDisplayName,
+      );
       const rawCanonicalParticipants = this.participantDetails(sessionId);
       const canonicalParticipants = visibleParticipantsForSession(session, rawCanonicalParticipants);
       const participants = isSupportContact

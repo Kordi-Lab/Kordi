@@ -184,7 +184,7 @@ struct BackgroundAgentSession: Identifiable, Codable, Hashable {
             avatarSource: source.kind == .agent ? source.avatarSource : nil,
             agentActivity: state.agentActivity,
             sessionId: sessionId,
-            agentDisplayName: source.agentDisplayName ?? "My Kordi",
+            agentDisplayName: source.agentDisplayName ?? "Kordi",
             forkedFromSessionId: source.sessionId
         )
     }
@@ -1043,6 +1043,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     let conversationSequence: Int64?
     let author: MessageAuthor
     let authorName: String
+    let senderOwnerName: String?
     var text: String
     let createdAt: Date
     let editedAt: Date?
@@ -1101,6 +1102,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         conversationSequence: Int64? = nil,
         author: MessageAuthor,
         authorName: String,
+        senderOwnerName: String? = nil,
         text: String,
         createdAt: Date,
         editedAt: Date? = nil,
@@ -1128,6 +1130,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         self.conversationSequence = conversationSequence
         self.author = author
         self.authorName = authorName
+        self.senderOwnerName = senderOwnerName
         self.text = text
         self.createdAt = createdAt
         self.editedAt = editedAt
@@ -1185,7 +1188,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, clientMessageId, conversationId, conversationSequence, author, authorName, text, createdAt, editedAt, cloudMessageVersion, deliveryState, errorMessage
+        case id, clientMessageId, conversationId, conversationSequence, author, authorName, senderOwnerName, text, createdAt, editedAt, cloudMessageVersion, deliveryState, errorMessage
         case requestMessageId, readByCount, readByAccountIds, attachments, replyToMessageId, reactionTargetMessageId, messageAction
         case messageKind, voiceMessage
         case agentExecution
@@ -1202,6 +1205,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         conversationSequence = try container.decodeIfPresent(Int64.self, forKey: .conversationSequence)
         author = try container.decode(MessageAuthor.self, forKey: .author)
         authorName = try container.decode(String.self, forKey: .authorName)
+        senderOwnerName = try container.decodeIfPresent(String.self, forKey: .senderOwnerName)
         text = try container.decode(String.self, forKey: .text)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         editedAt = try container.decodeIfPresent(Date.self, forKey: .editedAt)

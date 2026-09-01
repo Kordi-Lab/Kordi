@@ -145,14 +145,36 @@ type ConversationRow = (
     Option<String>,
     Option<String>,
     Option<String>,
+    Option<String>,
+    Option<String>,
     i64,
     DateTime<Utc>,
     DateTime<Utc>,
 );
 
+type BootstrapConversationRow = (
+    Uuid,
+    String,
+    Option<String>,
+    i32,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    i64,
+    DateTime<Utc>,
+    DateTime<Utc>,
+    Option<String>,
+    i32,
+);
+
 type MemberRow = (
     String,
     Option<String>,
+    Option<String>,
+    String,
     Option<String>,
     String,
     String,
@@ -178,6 +200,8 @@ type MessageRow = (
     DateTime<Utc>,
     Option<DateTime<Utc>>,
     Option<DateTime<Utc>>,
+    String,
+    Option<String>,
 );
 
 type SyncEventRow = (

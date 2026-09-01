@@ -2,6 +2,9 @@ export type ChatSyncMember = {
   account_id: string;
   display_name?: string | null;
   avatar_url?: string | null;
+  default_agent_id?: string | null;
+  default_agent_display_name?: string | null;
+  default_agent_avatar_url?: string | null;
   role: string;
   membership_state: string;
   version: number;
@@ -25,6 +28,8 @@ export type ChatSyncConversation = {
   version: number;
   created_by_account_id: string;
   legacy_session_id: string | null;
+  group_space_id?: string | null;
+  group_title?: string | null;
   forked_from_session_id?: string | null;
   forked_from_message_id?: string | null;
   latest_message_sequence: number;

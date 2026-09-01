@@ -22,18 +22,15 @@ function objectContent(value: unknown): Record<string, unknown> {
 
 export function cloudUnreadCountsBySessionId({
   accountId,
-  activeConversationIds = [],
   messagesByPeer,
   readInboundMessageIdsByPeer = {},
   readCursorsBySessionId = {},
 }: {
   accountId: string;
-  activeConversationIds?: Array<string | null | undefined>;
   messagesByPeer: Readonly<Record<string, readonly CloudMessage[]>>;
   readInboundMessageIdsByPeer?: Readonly<Record<string, ReadonlySet<string>>>;
   readCursorsBySessionId?: Readonly<Record<string, CloudGroupReadCursor | null | undefined>>;
 }): Record<string, number> {
-  const activeIds = new Set(activeConversationIds.map((value) => value?.trim()).filter(Boolean));
   const unreadBySessionId: Record<string, number> = {};
   const groupRows: IndexedCloudGroupRow[] = [];
 
@@ -59,8 +56,6 @@ export function cloudUnreadCountsBySessionId({
       if (
         !sessionId
         || isCloudGroupSessionId(sessionId)
-        || activeIds.has(sessionId)
-        || (message.conversationId && activeIds.has(message.conversationId))
         || locallyReadIds?.has(message.messageId)
         || !cloudDirectMessageIsUnreadForAccount(message, accountId)
       ) continue;
@@ -70,7 +65,6 @@ export function cloudUnreadCountsBySessionId({
 
   const groupUnread = cloudGroupUnreadCountsBySessionId({
     accountId,
-    activeConversationIds,
     readCursorsBySessionId,
     groupRows,
   });
@@ -101,16 +95,16 @@ export function cloudOptimisticallyReadSessionIds({
 }
 
 export function mergeNativeCloudUnreadCounts({
-  activeConversationIds,
   nativeHeadsBySessionId,
+  locallyReadSessionIds,
   optimisticSessionIds,
   projectedUnreadBySessionId,
 }: {
-  activeConversationIds: Array<string | null | undefined>;
   nativeHeadsBySessionId: Readonly<Record<string, {
     lastReadSequence: number;
     unreadCount: number;
   }>>;
+  locallyReadSessionIds?: ReadonlySet<string>;
   optimisticSessionIds: ReadonlySet<string>;
   projectedUnreadBySessionId: Readonly<Record<string, number>> | null;
 }): Record<string, number> {
@@ -126,9 +120,7 @@ export function mergeNativeCloudUnreadCounts({
   for (const sessionId of optimisticSessionIds) {
     if ((projectedUnreadBySessionId?.[sessionId] ?? 0) === 0) counts[sessionId] = 0;
   }
-  for (const sessionId of activeConversationIds) {
-    if (sessionId) counts[sessionId] = 0;
-  }
+  for (const sessionId of locallyReadSessionIds ?? []) counts[sessionId] = 0;
   return counts;
 }
 

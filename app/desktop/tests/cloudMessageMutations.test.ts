@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import type { CloudMessage } from '../src/features/cloud/authClient';
@@ -146,4 +147,9 @@ test('message edits and deletes apply immediately, preserve envelopes, and roll 
   const deleted = deleteCloudMessageOptimistically(initial, edit);
   assert.deepEqual(deleted.acct_peer, []);
   assert.deepEqual(rollbackCloudMessageDelete(deleted, initial, edit), initial);
+});
+
+test('successful message deletion durably removes the native projection', () => {
+  const source = readFileSync(new URL('../src/app/useKordiMessageMutations.ts', import.meta.url), 'utf8');
+  assert.match(source, /await deletion;[\s\S]*deleteCanonicalCloudMessage\(messageId\)/);
 });

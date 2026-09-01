@@ -186,6 +186,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var contactPresenceByAccountID: [String: CloudPresenceAccount] = [:]
     @Published private(set) var contactRequests: [CloudContactRequest] = []
     @Published private(set) var conversations: [ConversationSummary] = []
+    @Published private(set) var archivedConversations: [ConversationSummary] = []
+    @Published private(set) var pinnedSessionIds = Set<String>()
+    @Published private(set) var mutedSessionIds = Set<String>()
+    @Published private(set) var markedUnreadSessionIds = Set<String>()
+    @Published private(set) var pinnedGroupSpaceIds = Set<String>()
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
     @Published private(set) var callsByConversationID: [String: CloudCall] = [:]
     @Published private(set) var latestCallSnapshot: CloudCall?
@@ -251,6 +256,7 @@ final class AppModel: ObservableObject {
     private var pendingAgentRequestIds: [String: String] = [:]
     private var pendingAgentRequestStartedAt: [String: Date] = [:]
     private var pendingAgentDisplayNames: [String: String] = [:]
+    private var pendingAgentOwnerNames: [String: String] = [:]
     private var agentRequestPresentationIds: [String: String] = [:]
     private var pendingProviderAuthBindingsBySessionID: [String: String] = [:]
     private var providerAuthenticationSyncTask: Task<Void, Never>?
@@ -527,6 +533,11 @@ final class AppModel: ObservableObject {
         sharedCloudAgents = []
         hiddenCloudSessionIds = []
         deletedCloudSessionIds = []
+        pinnedSessionIds = []
+        mutedSessionIds = []
+        markedUnreadSessionIds = []
+        pinnedGroupSpaceIds = []
+        archivedConversations = []
         agentRunState = [:]
         agentExecutionLocation = [:]
         loadingConversationIDs = []
@@ -541,6 +552,7 @@ final class AppModel: ObservableObject {
         pendingAgentRequestIds = [:]
         pendingAgentRequestStartedAt = [:]
         pendingAgentDisplayNames = [:]
+        pendingAgentOwnerNames = [:]
         agentRequestPresentationIds = [:]
         pendingProviderAuthBindingsBySessionID = [:]
         providerAuthenticationSyncTask?.cancel()
@@ -625,6 +637,10 @@ final class AppModel: ObservableObject {
             sharedCloudAgents = normalizedSharedCloudAgents(shared)
             hiddenCloudSessionIds = Set(visibility.hiddenSessionIds.compactMap(\.nonEmpty))
             deletedCloudSessionIds = Set(visibility.deletedSessionIds.compactMap(\.nonEmpty))
+            pinnedSessionIds = Set((visibility.pinnedSessionIds ?? []).compactMap(\.nonEmpty))
+            mutedSessionIds = Set((visibility.mutedSessionIds ?? []).compactMap(\.nonEmpty))
+            markedUnreadSessionIds = Set((visibility.unreadSessionIds ?? []).compactMap(\.nonEmpty))
+            pinnedGroupSpaceIds = Set((visibility.pinnedGroupSpaceIds ?? []).compactMap(\.nonEmpty))
             for message in latestCanonical { mergeCloudMessage(message, peerHint: nil) }
             if let activeCalls {
                 applyActiveCallSnapshot(
@@ -1116,6 +1132,8 @@ final class AppModel: ObservableObject {
     func markConversationOpened(_ conversation: ConversationSummary) {
         guard let index = conversations.firstIndex(where: { $0.id == conversation.id }),
               conversations[index].hasUnreadAttention else { return }
+        let sessionId = conversations[index].sessionId
+        let clearedManualUnread = markedUnreadSessionIds.remove(sessionId) != nil
         conversations[index].unreadCount = 0
         conversations[index].unreadMentionCount = 0
         conversations[index].lastReadSequence = max(
@@ -1125,6 +1143,9 @@ final class AppModel: ObservableObject {
                 .max() ?? 0
         )
         cacheCurrentConversations()
+        if clearedManualUnread, !previewMode, let token {
+            Task { try? await api.setSessionUnread(token: token, sessionId: sessionId, unread: false) }
+        }
     }
 
     func updateConversationReadPresentation(
@@ -1150,7 +1171,6 @@ final class AppModel: ObservableObject {
         }), let conversation = conversations.first(where: { $0.id == conversationID }) else {
             return
         }
-        guard pendingMentionCount(for: conversation) == 0 else { return }
         markConversationOpened(conversation)
         Task { [weak self] in
             await self?.reconcileVisibleConversationReadState()
@@ -1285,6 +1305,9 @@ final class AppModel: ObservableObject {
     /// same session-scoped receipts to Cloud.
     func markGroupSpaceRead(_ space: GroupSpaceSummary) async {
         let conversationIds = Set(space.sessions.map(\.id))
+        let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
+        let manuallyMarkedSessionIds = sessionIds.intersection(markedUnreadSessionIds)
+        markedUnreadSessionIds.subtract(manuallyMarkedSessionIds)
         var changedUnreadState = false
         for index in conversations.indices
         where conversationIds.contains(conversations[index].id)
@@ -1304,7 +1327,6 @@ final class AppModel: ObservableObject {
         }
 
         guard !previewMode, let token, let account else { return }
-        let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
         guard !sessionIds.isEmpty else { return }
 
         let readAt = ISO8601DateFormatter().string(from: Date())
@@ -1330,6 +1352,11 @@ final class AppModel: ObservableObject {
                 for sessionId in sessionIds {
                     group.addTask { [api] in
                         try await api.markSessionMessagesRead(token: token, sessionId: sessionId)
+                    }
+                }
+                for sessionId in manuallyMarkedSessionIds {
+                    group.addTask { [api] in
+                        try await api.setSessionUnread(token: token, sessionId: sessionId, unread: false)
                     }
                 }
                 try await group.waitForAll()
@@ -1435,7 +1462,8 @@ final class AppModel: ObservableObject {
                 startedAt: optimistic.createdAt,
                 agentDisplayName: routedAgent?.displayName
                     ?? conversation.agentDisplayName?.nonEmpty
-                    ?? "My Kordi"
+                    ?? "Kordi",
+                agentOwnerName: routedAgent?.ownerName
             )
         }
         cacheCurrentMessages(conversation.id)
@@ -1485,17 +1513,9 @@ final class AppModel: ObservableObject {
                 }
             }
             let uploadedAttachments = try await attachmentUpload
-            if outgoingAttachments.count == 1,
-               let draft = outgoingAttachments.first,
-               let uploaded = uploadedAttachments.first,
-               draft.isMP4Video,
-               let fileURL = draft.fileURL {
-                _ = try? await attachmentFileStore.store(
-                    fileAt: fileURL,
-                    attachment: uploaded.chatAttachment,
-                    accountId: account.accountId
-                )
-            }
+            await attachmentFileStore.cacheUploadedOriginals(
+                drafts: outgoingAttachments, uploaded: uploadedAttachments, accountId: account.accountId
+            )
             let uploadedVoiceMessage = resolvedVoiceMessage.flatMap { draft in
                 uploadedAttachments.first.map { draft.voiceMessage(mediaId: $0.attachmentId) }
             }
@@ -2022,7 +2042,8 @@ final class AppModel: ObservableObject {
             id: "local-agent-progress:\(conversation.id)",
             conversationId: conversation.id,
             author: .agent,
-            authorName: pendingAgentDisplayNames[conversation.id] ?? "My Kordi",
+            authorName: pendingAgentDisplayNames[conversation.id] ?? "Kordi",
+            senderOwnerName: pendingAgentOwnerNames[conversation.id],
             text: "processing...",
             createdAt: placeholderCreatedAt,
             deliveryState: .delivered,
@@ -2066,23 +2087,21 @@ final class AppModel: ObservableObject {
     ) async {
         let current = conversations.first(where: { $0.id == conversation.id }) ?? conversation
         guard let accountId = account?.accountId,
-              message.author != .me,
-              MentionAttention.messageTargetsPerson(
-                message,
+              !MentionAttention.pendingMessages(
+                in: [message],
                 accountId: accountId,
+                lastReadSequence: current.lastReadSequence,
                 groupSessionId: current.kind == .group ? current.sessionId : nil
-              ),
-              let sequence = message.conversationSequence else { return }
-        guard sequence > current.lastReadSequence,
+              ).isEmpty,
               let messageID = await applyConversationReadLocally(
                 current,
-                throughSequence: sequence
+                throughSequence: message.conversationSequence
               ) else { return }
         guard !previewMode else { return }
         do {
             try await persistConversationRead(
                 current,
-                throughSequence: sequence
+                throughSequence: message.conversationSequence
             )
             persistedVisibleReadMessageBySessionID[current.sessionId] = messageID
             cloudConnectionState = .connected
@@ -2182,6 +2201,7 @@ final class AppModel: ObservableObject {
                     conversationSequence: message.conversationSequence,
                     author: message.author,
                     authorName: message.authorName,
+                    senderOwnerName: message.senderOwnerName,
                     text: message.text,
                     createdAt: message.createdAt,
                     editedAt: message.editedAt,
@@ -2745,12 +2765,14 @@ final class AppModel: ObservableObject {
 
     private func performExpressiveMediaLibrarySync(token: String, accountId: String) async {
         await refreshLoadedConversationProjections()
+        async let thumbnailWarmup: Void = expressiveMediaLibrary.prewarmThumbnails(accountId: accountId)
         let remoteItems: [CloudExpressiveMediaItem]
         do {
             remoteItems = try await api.listExpressiveMedia(token: token)
         } catch {
             return
         }
+        await thumbnailWarmup
         guard !Task.isCancelled, account?.accountId == accountId else { return }
 
         var cloudByAttachmentId = Dictionary(
@@ -2835,6 +2857,7 @@ final class AppModel: ObservableObject {
                 if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
             }
         }
+        await expressiveMediaLibrary.prewarmThumbnails(accountId: accountId)
         await refreshLoadedConversationProjections()
     }
 
@@ -2868,9 +2891,12 @@ final class AppModel: ObservableObject {
             for: attachment,
             prefersOriginal: prefersOriginal
         )
-        if let cached = await attachmentFileStore.cachedURL(for: attachment, accountId: accountId),
-           attachment.isMP4Video || usesImagePreview || (MessageImageInteraction.isAnimatedGIF(attachment)
-            && AnimatedImageDecoder.isAnimated(at: cached)) {
+        let cacheVariant: AttachmentCacheVariant = usesImagePreview ? .preview : .original
+        if let cached = await attachmentFileStore.bestCachedURL(
+            for: attachment,
+            accountId: accountId,
+            preferredVariant: cacheVariant
+        ) {
             return cached
         }
         guard let token else {
@@ -2920,7 +2946,8 @@ final class AppModel: ObservableObject {
             let url = try await attachmentFileStore.store(
                 data,
                 attachment: attachment,
-                accountId: accountId
+                accountId: accountId,
+                variant: cacheVariant
             )
             cloudConnectionState = .connected
             return url
@@ -2973,7 +3000,8 @@ final class AppModel: ObservableObject {
         return try? await attachmentFileStore.store(
             data,
             attachment: attachment,
-            accountId: accountId
+            accountId: accountId,
+            variant: .preview
         )
     }
 
@@ -2981,6 +3009,9 @@ final class AppModel: ObservableObject {
         await loadConversation(conversation)
         guard let current = conversations.first(where: { $0.id == conversation.id }) else {
             return
+        }
+        if markedUnreadSessionIds.contains(current.sessionId) {
+            _ = await setConversationUnread(current, unread: false)
         }
         _ = await applyConversationReadLocally(current)
         do {
@@ -3133,6 +3164,9 @@ final class AppModel: ObservableObject {
                 accountId: contact.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl,
+                agentId: contact.defaultAgent?.agentId,
+                agentDisplayName: contact.defaultAgent?.displayName,
+                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource,
                 role: "person"
             )
         }
@@ -3221,6 +3255,9 @@ final class AppModel: ObservableObject {
                 accountId: account.accountId,
                 displayName: account.preferredName,
                 avatarUrl: account.avatar.imageSource,
+                agentId: account.defaultAgent?.agentId,
+                agentDisplayName: account.defaultAgent?.displayName,
+                agentAvatarUrl: account.defaultAgent?.avatar.imageSource,
                 role: "self"
             )
         ] + contacts.map { contact in
@@ -3228,6 +3265,9 @@ final class AppModel: ObservableObject {
                 accountId: contact.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl,
+                agentId: contact.defaultAgent?.agentId,
+                agentDisplayName: contact.defaultAgent?.displayName,
+                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource,
                 role: "person"
             )
         }
@@ -3269,21 +3309,286 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func setConversationPinned(_ conversation: ConversationSummary, pinned: Bool) async -> Bool {
+        if previewMode {
+            if pinned {
+                pinnedSessionIds.insert(conversation.sessionId)
+            } else {
+                pinnedSessionIds.remove(conversation.sessionId)
+            }
+            return true
+        }
+        guard let token else { return false }
+        do {
+            try await api.setSessionPinned(
+                token: token,
+                sessionId: conversation.sessionId,
+                pinned: pinned
+            )
+            if pinned {
+                pinnedSessionIds.insert(conversation.sessionId)
+            } else {
+                pinnedSessionIds.remove(conversation.sessionId)
+            }
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: pinned ? "Could not pin this chat." : "Could not unpin this chat.")
+            return false
+        }
+    }
+
+    func setConversationMuted(_ conversation: ConversationSummary, muted: Bool) async -> Bool {
+        if previewMode {
+            if muted {
+                mutedSessionIds.insert(conversation.sessionId)
+            } else {
+                mutedSessionIds.remove(conversation.sessionId)
+            }
+            return true
+        }
+        guard let token else { return false }
+        do {
+            try await api.setSessionMuted(
+                token: token,
+                sessionId: conversation.sessionId,
+                muted: muted
+            )
+            if muted {
+                mutedSessionIds.insert(conversation.sessionId)
+            } else {
+                mutedSessionIds.remove(conversation.sessionId)
+            }
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: muted ? "Could not mute this chat." : "Could not unmute this chat.")
+            return false
+        }
+    }
+
+    func setConversationUnread(_ conversation: ConversationSummary, unread: Bool) async -> Bool {
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await api.setSessionUnread(
+                    token: token,
+                    sessionId: conversation.sessionId,
+                    unread: unread
+                )
+            } catch {
+                errorMessage = userFacing(
+                    error,
+                    fallback: unread ? "Could not mark this chat unread." : "Could not mark this chat read."
+                )
+                return false
+            }
+        }
+        if unread {
+            markedUnreadSessionIds.insert(conversation.sessionId)
+            for index in conversations.indices
+            where conversations[index].sessionId == conversation.sessionId {
+                conversations[index].unreadCount = max(1, conversations[index].unreadCount)
+            }
+            for index in archivedConversations.indices
+            where archivedConversations[index].sessionId == conversation.sessionId {
+                archivedConversations[index].unreadCount = max(1, archivedConversations[index].unreadCount)
+            }
+            cacheCurrentConversations()
+        } else {
+            markedUnreadSessionIds.remove(conversation.sessionId)
+        }
+        return true
+    }
+
+    func setGroupSpacePinned(_ space: GroupSpaceSummary, pinned: Bool) async -> Bool {
+        let groupSpaceId = space.preferenceId
+        guard !groupSpaceId.isEmpty else { return false }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await api.setGroupSpacePinned(
+                    token: token,
+                    groupSpaceId: groupSpaceId,
+                    pinned: pinned
+                )
+            } catch {
+                errorMessage = userFacing(
+                    error,
+                    fallback: pinned ? "Could not pin this group." : "Could not unpin this group."
+                )
+                return false
+            }
+        }
+        if pinned {
+            pinnedGroupSpaceIds.insert(groupSpaceId)
+        } else {
+            pinnedGroupSpaceIds.remove(groupSpaceId)
+        }
+        return true
+    }
+
+    func setGroupSpaceMuted(_ space: GroupSpaceSummary, muted: Bool) async -> Bool {
+        let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
+        guard !sessionIds.isEmpty else { return false }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for sessionId in sessionIds {
+                        group.addTask { [api] in
+                            try await api.setSessionMuted(
+                                token: token,
+                                sessionId: sessionId,
+                                muted: muted
+                            )
+                        }
+                    }
+                    try await group.waitForAll()
+                }
+            } catch {
+                errorMessage = userFacing(
+                    error,
+                    fallback: muted ? "Could not mute this group." : "Could not unmute this group."
+                )
+                return false
+            }
+        }
+        if muted {
+            mutedSessionIds.formUnion(sessionIds)
+        } else {
+            mutedSessionIds.subtract(sessionIds)
+        }
+        return true
+    }
+
+    func archiveGroupSpace(_ space: GroupSpaceSummary) async -> Bool {
+        let sessionIds = Set(space.sessions.map(\.sessionId).filter { !$0.isEmpty })
+        guard !sessionIds.isEmpty else { return false }
+        if !previewMode {
+            guard let token else { return false }
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    for sessionId in sessionIds {
+                        group.addTask { [api] in
+                            try await api.setSessionArchived(
+                                token: token,
+                                sessionId: sessionId,
+                                archived: true
+                            )
+                        }
+                    }
+                    group.addTask { [api] in
+                        try await api.setGroupSpacePinned(
+                            token: token,
+                            groupSpaceId: space.preferenceId,
+                            pinned: false
+                        )
+                    }
+                    try await group.waitForAll()
+                }
+            } catch {
+                errorMessage = userFacing(error, fallback: "Could not archive this group.")
+                return false
+            }
+        }
+        hiddenCloudSessionIds.formUnion(sessionIds)
+        pinnedSessionIds.subtract(sessionIds)
+        pinnedGroupSpaceIds.remove(space.preferenceId)
+        if previewMode {
+            let archived = conversations.filter { sessionIds.contains($0.sessionId) }
+            conversations.removeAll { sessionIds.contains($0.sessionId) }
+            archivedConversations.removeAll { sessionIds.contains($0.sessionId) }
+            archivedConversations.append(contentsOf: archived)
+            archivedConversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+        } else {
+            await rebuildConversationCatalog()
+        }
+        return true
+    }
+
+    func archiveConversation(_ conversation: ConversationSummary) async -> Bool {
+        if previewMode {
+            hiddenCloudSessionIds.insert(conversation.sessionId)
+            pinnedSessionIds.remove(conversation.sessionId)
+            conversations.removeAll { $0.sessionId == conversation.sessionId }
+            if !archivedConversations.contains(where: { $0.sessionId == conversation.sessionId }) {
+                archivedConversations.append(conversation)
+                archivedConversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+            }
+            return true
+        }
+        guard let token else { return false }
+        do {
+            try await api.setSessionArchived(
+                token: token,
+                sessionId: conversation.sessionId,
+                archived: true
+            )
+            hiddenCloudSessionIds.insert(conversation.sessionId)
+            pinnedSessionIds.remove(conversation.sessionId)
+            await rebuildConversationCatalog()
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not archive this chat.")
+            return false
+        }
+    }
+
+    func restoreConversation(_ conversation: ConversationSummary) async -> Bool {
+        if previewMode {
+            hiddenCloudSessionIds.remove(conversation.sessionId)
+            deletedCloudSessionIds.remove(conversation.sessionId)
+            archivedConversations.removeAll { $0.sessionId == conversation.sessionId }
+            if !conversations.contains(where: { $0.sessionId == conversation.sessionId }) {
+                conversations.append(conversation)
+                conversations.sort { $0.lastActivityAt > $1.lastActivityAt }
+            }
+            return true
+        }
+        guard let token else { return false }
+        do {
+            try await api.setSessionArchived(
+                token: token,
+                sessionId: conversation.sessionId,
+                archived: false
+            )
+            hiddenCloudSessionIds.remove(conversation.sessionId)
+            deletedCloudSessionIds.remove(conversation.sessionId)
+            await rebuildConversationCatalog()
+            return true
+        } catch {
+            errorMessage = userFacing(error, fallback: "Could not restore this chat.")
+            return false
+        }
+    }
+
     func deleteConversation(_ conversation: ConversationSummary) async -> Bool {
+        if previewMode {
+            removeConversationLocally(conversation)
+            return true
+        }
         guard let token else { return false }
         do {
             try await api.deleteSession(token: token, sessionId: conversation.sessionId)
-            deletedCloudSessionIds.insert(conversation.sessionId)
-            sessionTitleOverrides.removeValue(forKey: conversation.sessionId)
-            UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
-            conversations.removeAll { $0.sessionId == conversation.sessionId }
-            messagesByConversation.removeValue(forKey: conversation.id)
-            sessionActivityByID.removeValue(forKey: conversation.sessionId)
+            removeConversationLocally(conversation)
             return true
         } catch {
             errorMessage = userFacing(error, fallback: "Could not delete this session.")
             return false
         }
+    }
+
+    private func removeConversationLocally(_ conversation: ConversationSummary) {
+        deletedCloudSessionIds.insert(conversation.sessionId)
+        hiddenCloudSessionIds.remove(conversation.sessionId)
+        pinnedSessionIds.remove(conversation.sessionId)
+        mutedSessionIds.remove(conversation.sessionId)
+        markedUnreadSessionIds.remove(conversation.sessionId)
+        sessionTitleOverrides.removeValue(forKey: conversation.sessionId)
+        UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
+        conversations.removeAll { $0.sessionId == conversation.sessionId }
+        archivedConversations.removeAll { $0.sessionId == conversation.sessionId }
+        messagesByConversation.removeValue(forKey: conversation.id)
+        sessionActivityByID.removeValue(forKey: conversation.sessionId)
     }
 
     func ownedAgent(for conversation: ConversationSummary) -> CloudAgent? {
@@ -3342,8 +3647,12 @@ final class AppModel: ObservableObject {
     }
 
     func canChangeRuntimeRouting(for conversation: ConversationSummary) -> Bool {
-        conversation.kind != .agent
+        let canonicalDefaultAgentID = account.map {
+            $0.defaultAgent?.agentId.nonEmpty ?? "cloud-agent:\($0.accountId)"
+        }
+        return conversation.kind != .agent
             || conversation.agentId == CanonicalAvatarSystem.defaultAgentId
+            || conversation.agentId == canonicalDefaultAgentID
             || ownedAgent(for: conversation) != nil
     }
 
@@ -3690,7 +3999,7 @@ final class AppModel: ObservableObject {
             id: messageID,
             conversationId: conversation.id,
             author: .agent,
-            authorName: ownedAgent(for: conversation)?.name ?? "My Kordi",
+            authorName: ownedAgent(for: conversation)?.name ?? "Kordi",
             text: noticeText,
             createdAt: revisionDate == .distantPast ? Date() : revisionDate,
             deliveryState: .delivered,
@@ -3834,7 +4143,8 @@ final class AppModel: ObservableObject {
                 conversationId: conversation.id,
                 requestMessageId: requestMessageId,
                 startedAt: Date(),
-                agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "My Kordi"
+                agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "Kordi",
+                agentOwnerName: conversation.kind == .agent ? conversation.ownerDisplayName : nil
             )
         }
         if ownerAccountId == account.accountId {
@@ -4097,6 +4407,12 @@ final class AppModel: ObservableObject {
     ) async -> Int {
         let existing = messagesByConversation[conversation.id, default: []]
         let existingIDs = Set(existing.map(\.id))
+        removeCloudMessages(Self.cloudMessageIDsMissingFromHistoryPage(
+            cloudMessagesByPeer.values.flatMap { $0 },
+            page: page,
+            sessionId: conversation.sessionId,
+            beforeSequence: requestedBeforeSequence
+        ))
         for message in page.messages { mergeCloudMessage(message, peerHint: nil) }
         let accumulatedWireMessages = conversation.kind == .group
             ? Self.groupWireMessages(
@@ -4137,7 +4453,29 @@ final class AppModel: ObservableObject {
                 fullyHydratedCanonicalGroupSessionIds.insert(conversation.sessionId)
             }
         }
+        await persistCloudSnapshot(accountId: account.accountId)
         return projection.lazy.filter { !existingIDs.contains($0.id) }.count
+    }
+
+    nonisolated static func cloudMessageIDsMissingFromHistoryPage(
+        _ existing: [CloudMessageDTO],
+        page: CloudConversationMessagePage,
+        sessionId: String,
+        beforeSequence: Int64?
+    ) -> Set<String> {
+        if page.hasMore && page.nextBeforeSequence == nil { return [] }
+        let pageIDs = Set(page.messages.map(\.messageId))
+        let lowerBound = page.hasMore ? page.nextBeforeSequence : nil
+        return Set(existing.compactMap { message in
+            guard !pageIDs.contains(message.messageId),
+                  CloudMessageStateProjector.sessionKeys(for: message).contains(sessionId),
+                  let sequence = message.conversationSequence,
+                  lowerBound.map({ sequence >= $0 }) ?? true,
+                  beforeSequence.map({ sequence < $0 }) ?? true else {
+                return nil
+            }
+            return message.messageId
+        })
     }
 
     nonisolated private static func projectHistoryMessages(
@@ -4216,6 +4554,16 @@ final class AppModel: ObservableObject {
                     complete = false
                     continue
                 }
+                removeCloudMessages(Self.cloudMessageIDsMissingFromHistoryPage(
+                    cloudMessagesByPeer.values.flatMap { $0 },
+                    page: CloudConversationMessagePage(
+                        messages: messages,
+                        nextBeforeSequence: nil,
+                        hasMore: false
+                    ),
+                    sessionId: page.sessionId,
+                    beforeSequence: nil
+                ))
                 for message in messages { mergeCloudMessage(message, peerHint: nil) }
                 fullyHydratedCanonicalGroupSessionIds.insert(page.sessionId)
             }
@@ -4306,6 +4654,9 @@ final class AppModel: ObservableObject {
                 accountId: participant.accountId,
                 displayName: contact.preferredName,
                 avatarUrl: contact.avatarUrl?.nonEmpty ?? participant.avatarUrl,
+                agentId: contact.defaultAgent?.agentId ?? participant.agentId,
+                agentDisplayName: contact.defaultAgent?.displayName ?? participant.agentDisplayName,
+                agentAvatarUrl: contact.defaultAgent?.avatar.imageSource ?? participant.agentAvatarUrl,
                 role: participant.role,
                 joinedAt: participant.joinedAt
             )
@@ -4314,6 +4665,9 @@ final class AppModel: ObservableObject {
             accountId: account.accountId,
             displayName: account.preferredName,
             avatarUrl: account.avatar.imageSource,
+            agentId: account.defaultAgent?.agentId,
+            agentDisplayName: account.defaultAgent?.displayName,
+            agentAvatarUrl: account.defaultAgent?.avatar.imageSource,
             role: byAccountID[account.accountId]?.role.nonEmpty ?? "self",
             joinedAt: byAccountID[account.accountId]?.joinedAt
         )
@@ -4523,6 +4877,7 @@ final class AppModel: ObservableObject {
                 authorName: author == .me
                     ? "You"
                     : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
+                senderOwnerName: author == .agent ? payload.senderOwnerName?.nonEmpty : nil,
                 text: payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (
@@ -4911,6 +5266,7 @@ final class AppModel: ObservableObject {
         let forkSnapshot = sessionForksById
         let hiddenSnapshot = hiddenCloudSessionIds
         let deletedSnapshot = deletedCloudSessionIds
+        let markedUnreadSnapshot = markedUnreadSessionIds
         let rebuilt = await Task.detached(priority: .userInitiated) {
             CloudConversationCatalog.build(
                 account: account,
@@ -4920,9 +5276,7 @@ final class AppModel: ObservableObject {
                 messagesByPeer: wireSnapshot,
                 canonicalConversations: canonicalConversations,
                 canonicalParticipantsBySessionId: canonicalParticipantsBySessionId,
-                sessionForksById: forkSnapshot,
-                hiddenSessionIds: hiddenSnapshot,
-                deletedSessionIds: deletedSnapshot
+                sessionForksById: forkSnapshot
             )
         }.value
         guard self.account?.accountId == account.accountId else { return }
@@ -4930,6 +5284,9 @@ final class AppModel: ObservableObject {
             var copy = conversation
             if let override = sessionTitleOverrides[conversation.sessionId]?.nonEmpty {
                 copy.displayName = override
+            }
+            if markedUnreadSnapshot.contains(conversation.sessionId), !copy.hasUnreadAttention {
+                copy.unreadCount = 1
             }
             if conversation.kind == .agent {
                 if pendingAgentRequestIds[conversation.id] != nil {
@@ -4939,15 +5296,26 @@ final class AppModel: ObservableObject {
             }
             return copy
         }
+        let visible = titled.filter {
+            !hiddenSnapshot.contains($0.sessionId)
+                && !deletedSnapshot.contains($0.sessionId)
+        }
+        let archived = titled.filter {
+            hiddenSnapshot.contains($0.sessionId)
+                && !deletedSnapshot.contains($0.sessionId)
+        }
         let rekeyedConversationIDs = Self.rekeyMessages(
             &messagesByConversation,
-            from: conversations,
+            from: conversations + archivedConversations,
             to: titled
         )
         rekeyedConversationIDs.forEach(cacheCurrentMessages)
-        if titled != conversations {
-            conversations = titled
+        if visible != conversations {
+            conversations = visible
             cacheCurrentConversations()
+        }
+        if archived != archivedConversations {
+            archivedConversations = archived
         }
         await reconcileVisibleConversationReadState()
     }
@@ -4962,7 +5330,6 @@ final class AppModel: ObservableObject {
 
         let readableConversations = conversations.filter {
             readableConversationIDs.contains($0.id)
-                && pendingMentionCount(for: $0) == 0
         }
         for conversation in readableConversations {
             guard let latestIncomingMessageID =
@@ -5038,20 +5405,21 @@ final class AppModel: ObservableObject {
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else {
             return
         }
-        conversations[index].lastReadSequence = max(
+        let lastReadSequence = max(
             conversations[index].lastReadSequence,
             throughSequence
         )
+        conversations[index].lastReadSequence = lastReadSequence
         let remaining = messagesByConversation[conversationID, default: []].filter { message in
             message.author != .me
                 && !message.isSystemNotice
-                && message.conversationSequence.map { $0 > throughSequence } == true
+                && message.conversationSequence.map { $0 > lastReadSequence } == true
         }
         conversations[index].unreadCount = remaining.count
         conversations[index].unreadMentionCount = MentionAttention.pendingMessages(
             in: remaining,
             accountId: accountId,
-            lastReadSequence: throughSequence,
+            lastReadSequence: lastReadSequence,
             groupSessionId: conversations[index].kind == .group
                 ? conversations[index].sessionId
                 : nil
@@ -5285,20 +5653,29 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func removeCloudMessage(_ messageId: String) {
+    private func removeCloudMessages(_ messageIds: Set<String>) {
+        guard !messageIds.isEmpty else { return }
         cloudMessagesByPeer = cloudMessagesByPeer.mapValues { messages in
-            messages.filter { $0.messageId != messageId }
+            messages.filter { !messageIds.contains($0.messageId) }
         }
         rebuildCloudMessageIndices()
+        if let accountId = account?.accountId {
+            cache?.deleteMessages(messageIds, accountId: accountId)
+        }
         for conversationId in Array(messagesByConversation.keys) {
             guard let messages = messagesByConversation[conversationId] else { continue }
             let filtered = messages.filter {
-                $0.id != messageId && $0.reactionTargetMessageId != messageId
+                !messageIds.contains($0.id)
+                    && !messageIds.contains($0.reactionTargetMessageId ?? "")
             }
             guard filtered.count != messages.count else { continue }
             messagesByConversation[conversationId] = filtered
             cacheCurrentMessages(conversationId)
         }
+    }
+
+    private func removeCloudMessage(_ messageId: String) {
+        removeCloudMessages([messageId])
     }
 
     private func mergeCloudMessage(_ message: CloudMessageDTO, peerHint: String?) {
@@ -5352,10 +5729,6 @@ final class AppModel: ObservableObject {
                 continue
             }
             if event.eventType == "message.upsert", let message = event.payload?.message {
-                for sessionId in CloudMessageStateProjector.sessionKeys(for: message) {
-                    hiddenCloudSessionIds.remove(sessionId)
-                    deletedCloudSessionIds.remove(sessionId)
-                }
                 let peer = event.peerAccountId?.nonEmpty
                     ?? (message.fromAccountId == accountId ? message.toAccountId : message.fromAccountId).nonEmpty
                 if let peer { upsertsByPeer[peer, default: []].append(message) }
@@ -5366,20 +5739,50 @@ final class AppModel: ObservableObject {
                 removeCloudMessage(messageId)
                 continue
             }
-            if ["session.hidden", "session.unhidden", "session.deleted"].contains(event.eventType),
+            if ["group_space.pinned", "group_space.unpinned"].contains(event.eventType),
+               let groupSpaceId = event.payload?.sessionId?.nonEmpty ?? event.peerAccountId?.nonEmpty {
+                if event.eventType == "group_space.pinned" {
+                    pinnedGroupSpaceIds.insert(groupSpaceId)
+                } else {
+                    pinnedGroupSpaceIds.remove(groupSpaceId)
+                }
+                continue
+            }
+            if [
+                "session.hidden", "session.unhidden", "session.deleted",
+                "session.pinned", "session.unpinned", "session.muted", "session.unmuted",
+                "session.marked_unread", "session.unmarked_unread"
+            ].contains(event.eventType),
                let sessionId = event.payload?.sessionId?.nonEmpty ?? event.peerAccountId?.nonEmpty {
                 switch event.eventType {
                 case "session.hidden":
                     if !deletedCloudSessionIds.contains(sessionId) { hiddenCloudSessionIds.insert(sessionId) }
+                    pinnedSessionIds.remove(sessionId)
                 case "session.unhidden":
                     hiddenCloudSessionIds.remove(sessionId)
+                    deletedCloudSessionIds.remove(sessionId)
                 case "session.deleted":
                     hiddenCloudSessionIds.remove(sessionId)
                     deletedCloudSessionIds.insert(sessionId)
+                    pinnedSessionIds.remove(sessionId)
+                    mutedSessionIds.remove(sessionId)
+                    markedUnreadSessionIds.remove(sessionId)
                     cloudMessagesByPeer = cloudMessagesByPeer.mapValues { messages in
                         messages.filter { !CloudMessageStateProjector.sessionKeys(for: $0).contains(sessionId) }
                     }
                     rebuildCloudMessageIndices()
+                case "session.pinned":
+                    pinnedSessionIds.insert(sessionId)
+                case "session.unpinned":
+                    pinnedSessionIds.remove(sessionId)
+                case "session.muted":
+                    mutedSessionIds.insert(sessionId)
+                case "session.unmuted":
+                    mutedSessionIds.remove(sessionId)
+                case "session.marked_unread":
+                    markedUnreadSessionIds.insert(sessionId)
+                case "session.unmarked_unread":
+                    markedUnreadSessionIds.remove(sessionId)
                 default:
                     break
                 }
@@ -5516,11 +5919,13 @@ final class AppModel: ObservableObject {
         conversationId: String,
         requestMessageId: String,
         startedAt: Date,
-        agentDisplayName: String
+        agentDisplayName: String,
+        agentOwnerName: String? = nil
     ) {
         pendingAgentRequestIds[conversationId] = requestMessageId
         pendingAgentRequestStartedAt[conversationId] = startedAt
         pendingAgentDisplayNames[conversationId] = agentDisplayName
+        pendingAgentOwnerNames[conversationId] = agentOwnerName?.nonEmpty
         agentRequestPresentationIds[requestMessageId] = agentRequestPresentationIds[requestMessageId]
             ?? requestMessageId
         setAgentActivity(.replying, conversationId: conversationId)
@@ -5542,6 +5947,7 @@ final class AppModel: ObservableObject {
         pendingAgentRequestIds[conversationId] = nil
         pendingAgentRequestStartedAt[conversationId] = nil
         pendingAgentDisplayNames[conversationId] = nil
+        pendingAgentOwnerNames[conversationId] = nil
     }
 
     private func completeAgentRequest(conversationId: String) {

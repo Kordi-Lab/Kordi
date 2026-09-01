@@ -28,10 +28,12 @@ export function SidebarUnreadBadge({
   count,
   mentionCount,
   scope,
+  muted = false,
 }: {
   count?: number;
   mentionCount?: number;
   scope?: string;
+  muted?: boolean;
 }) {
   if (!count || count <= 0) return null;
 
@@ -53,6 +55,7 @@ export function SidebarUnreadBadge({
         data-unread-scope={scope}
         data-unread-count={displayCount}
         data-unread-mention-count={hasMention ? mentionCount : undefined}
+        data-muted={muted ? 'true' : undefined}
         aria-hidden="true"
       >
         {displayCount}
@@ -69,6 +72,7 @@ export function SidebarSessionMetaColumn({
   indicator,
   active = false,
   reserveStatusSpace = true,
+  muted = false,
 }: {
   timeLabel: string;
   unreadCount?: number;
@@ -77,6 +81,7 @@ export function SidebarSessionMetaColumn({
   indicator?: SessionStatusIndicator;
   active?: boolean;
   reserveStatusSpace?: boolean;
+  muted?: boolean;
 }) {
   const hasStatusLine = Boolean((unreadCount && unreadCount > 0) || indicator);
   return (
@@ -91,7 +96,7 @@ export function SidebarSessionMetaColumn({
       </span>
       {reserveStatusSpace || hasStatusLine ? (
         <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
-          <SidebarUnreadBadge count={unreadCount} mentionCount={unreadMentionCount} scope={unreadScope} />
+          <SidebarUnreadBadge count={unreadCount} mentionCount={unreadMentionCount} scope={unreadScope} muted={muted} />
           <SidebarSessionStatusIndicator indicator={indicator} />
         </div>
       ) : null}

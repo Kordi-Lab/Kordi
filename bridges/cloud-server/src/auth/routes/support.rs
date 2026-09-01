@@ -71,10 +71,73 @@ pub(super) async fn account_response_row(
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(account_response_from_row))
+    let default_agent = default_agent_profile_row(pool, account_id).await?;
+    Ok(row.map(|row| account_response_from_rows(row, default_agent)))
 }
 
-pub(super) fn account_response_from_row(row: AccountRecordRow) -> AccountResponse {
+pub(super) fn default_agent_id(account_id: &str) -> String {
+    format!("cloud-agent:{}", account_id.trim())
+}
+
+pub(super) async fn default_agent_profile_row(
+    pool: &PgPool,
+    account_id: &str,
+) -> Result<Option<DefaultAgentProfileRow>, sqlx_core::Error> {
+    query_as(
+        "SELECT owner_account_id, display_name, avatar_url, avatar_source, avatar_style, \
+            avatar_seed, avatar_renderer_version, avatar_version, avatar_updated_at \
+         FROM cloud_default_agent_profiles WHERE owner_account_id = $1",
+    )
+    .bind(account_id)
+    .fetch_optional(pool)
+    .await
+}
+
+pub(super) fn default_agent_profile_from_row(
+    account_id: &str,
+    row: Option<DefaultAgentProfileRow>,
+    fallback_updated_at: &str,
+) -> DefaultAgentProfileResponse {
+    let agent_id = default_agent_id(account_id);
+    let row = row.unwrap_or_else(|| {
+        let seed = format!("default-agent-{account_id}");
+        (
+            account_id.to_string(),
+            "Kordi".to_string(),
+            None,
+            "generated".to_string(),
+            crate::avatars::AGENT_AVATAR_STYLE.to_string(),
+            seed,
+            crate::avatars::AVATAR_RENDERER_VERSION.to_string(),
+            1,
+            fallback_updated_at.to_string(),
+        )
+    });
+    let avatar = descriptor_from_parts(
+        "agent".to_string(),
+        agent_id.clone(),
+        StoredAvatar {
+            source: row.3,
+            style: row.4,
+            seed: row.5,
+            renderer_version: row.6,
+            avatar_url: row.2,
+            version: row.7,
+            updated_at: row.8,
+        },
+    );
+    DefaultAgentProfileResponse {
+        agent_id,
+        display_name: row.1,
+        avatar_url: Some(avatar.image_url()),
+        avatar,
+    }
+}
+
+pub(super) fn account_response_from_rows(
+    row: AccountRecordRow,
+    default_agent_row: Option<DefaultAgentProfileRow>,
+) -> AccountResponse {
     let avatar = descriptor_from_parts(
         "human".to_string(),
         row.0.clone(),
@@ -85,9 +148,10 @@ pub(super) fn account_response_from_row(row: AccountRecordRow) -> AccountRespons
             renderer_version: row.9,
             avatar_url: row.4.clone(),
             version: row.10,
-            updated_at: row.11,
+            updated_at: row.11.clone(),
         },
     );
+    let default_agent = default_agent_profile_from_row(&row.0, default_agent_row, &row.11);
     AccountResponse {
         account_id: row.0,
         kordi_id: row.1.to_string(),
@@ -95,6 +159,7 @@ pub(super) fn account_response_from_row(row: AccountRecordRow) -> AccountRespons
         primary_email: row.3,
         avatar_url: Some(avatar.image_url()),
         avatar,
+        default_agent,
         node_id: None,
         password_set: row.5.is_some(),
     }

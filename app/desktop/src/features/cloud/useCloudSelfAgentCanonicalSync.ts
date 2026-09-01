@@ -40,6 +40,7 @@ const NATIVE_SELF_AGENT_RECOVERY_PAGE_SIZE = 200;
 
 export function useCloudSelfAgentCanonicalSync({
   account,
+  agentDisplayName,
   canonicalState,
   setCanonicalState,
   messagesByPeer,
@@ -51,6 +52,7 @@ export function useCloudSelfAgentCanonicalSync({
   reportWarning,
 }: {
   account: CloudAccount | null;
+  agentDisplayName?: string | null;
   canonicalState: CanonicalSessionState | null | undefined;
   setCanonicalState?: Dispatch<
     SetStateAction<CanonicalSessionState | null>
@@ -65,6 +67,7 @@ export function useCloudSelfAgentCanonicalSync({
 }) {
   const latestInputRef = useRef({
     account,
+    agentDisplayName,
     canonicalState,
     setCanonicalState,
     messagesByPeer,
@@ -114,6 +117,7 @@ export function useCloudSelfAgentCanonicalSync({
   useEffect(() => {
     latestInputRef.current = {
       account,
+      agentDisplayName,
       canonicalState,
       setCanonicalState,
       messagesByPeer,
@@ -126,6 +130,7 @@ export function useCloudSelfAgentCanonicalSync({
     };
   }, [
     account,
+    agentDisplayName,
     canonicalState,
     forksBySessionId,
     initialMessagesSettled,
@@ -154,26 +159,35 @@ export function useCloudSelfAgentCanonicalSync({
     };
     nativeHistoryRef.current = nativeHistory;
     const selfMessages = messagesByPeer[account.accountId] ?? [];
-    const headPlan = selfMessages.length > 0
-      ? planCloudSelfAgentCanonicalSync({
-          account,
-          messages: selfMessages,
-          state: canonicalState,
-          forksBySessionId,
-          groupRowByWireMessageId:
-            messageIndex.groupRowByWireMessageId,
-          cloudTitlesBySessionId: titlesBySessionId,
-        })
-      : null;
+    const headPlan = planCloudSelfAgentCanonicalSync({
+      account,
+      agentDisplayName,
+      messages: selfMessages,
+      state: canonicalState,
+      forksBySessionId,
+      groupRowByWireMessageId:
+        messageIndex.groupRowByWireMessageId,
+      cloudTitlesBySessionId: titlesBySessionId,
+    });
+    const currentAgentIdentity = canonicalState.identities.find((identity) => (
+      identity.id === headPlan.agentIdentityRequest.id
+    ));
+    const identityChanged = currentAgentIdentity?.displayName !== headPlan.agentIdentityRequest.displayName;
+    const syncPlan = identityChanged ? {
+      ...headPlan,
+      sessionRequests: [],
+      messageRequests: [],
+      mirrorReconciliations: [],
+    } : headPlan;
     if (
-      headPlan
-      && (
+      identityChanged
+      || (
         headPlan.sessionRequests.length > 0
         || headPlan.messageRequests.length > 0
         || headPlan.mirrorReconciliations.length > 0
       )
     ) {
-      const signature = cloudSelfAgentCanonicalSyncPlanSignature(headPlan);
+      const signature = cloudSelfAgentCanonicalSyncPlanSignature(syncPlan);
       if (inFlightRef.current) return;
       if (
         completedRef.current?.accountId === account.accountId
@@ -186,7 +200,7 @@ export function useCloudSelfAgentCanonicalSync({
 
       const accountId = account.accountId;
       inFlightRef.current = { accountId, signature };
-      void persistCloudSelfAgentCanonicalSyncPlan(headPlan, {
+      void persistCloudSelfAgentCanonicalSyncPlan(syncPlan, {
         shouldContinue: () => (
           mountedRef.current
           && latestInputRef.current.account?.accountId === accountId
@@ -244,6 +258,7 @@ export function useCloudSelfAgentCanonicalSync({
           const current = latestInputRef.current;
           const plan = planCloudSelfAgentCanonicalSync({
             account,
+            agentDisplayName: current.agentDisplayName,
             messages,
             state: workingState,
             forksBySessionId: current.forksBySessionId,
@@ -421,6 +436,7 @@ export function useCloudSelfAgentCanonicalSync({
     onSettled?.();
   }, [
     account,
+    agentDisplayName,
     canonicalState,
     forksBySessionId,
     initialMessagesSettled,

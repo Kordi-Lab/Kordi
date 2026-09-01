@@ -12,7 +12,6 @@ import type {
   CloudAccount,
   CloudMessage,
 } from './authClient';
-import { cloudSessionIdFromConversationId } from './cloudCollaborationState';
 import {
   patchCanonicalDeliverySummaries,
   type CloudMessageIndex,
@@ -52,13 +51,11 @@ function unreadHeadsEqual(
 
 export function useCloudCanonicalReconciliation({
   account,
-  activeConversationId,
   canonical,
   messages,
   unread,
 }: {
   account: CloudAccount | null;
-  activeConversationId: string | null | undefined;
   canonical: {
     state: CanonicalSessionState | null | undefined;
     setState?: Dispatch<
@@ -72,7 +69,9 @@ export function useCloudCanonicalReconciliation({
   };
   unread: {
     contextKey: string | null;
+    locallyReadSessionIds: ReadonlySet<string>;
     readInboundMessageIdsByPeer: Record<string, Set<string>>;
+    setLocallyReadSessionIds: Dispatch<SetStateAction<Set<string>>>;
     setPublishedContextKey: Dispatch<
       SetStateAction<string | null>
     >;
@@ -87,7 +86,9 @@ export function useCloudCanonicalReconciliation({
   } = messages;
   const {
     contextKey: unreadContextKey,
+    locallyReadSessionIds,
     readInboundMessageIdsByPeer,
+    setLocallyReadSessionIds,
     setPublishedContextKey,
   } = unread;
   const nativeShell = isNativeDesktopShell();
@@ -104,12 +105,6 @@ export function useCloudCanonicalReconciliation({
     if (!account || !fullMessagesByPeer) return null;
     return cloudUnreadCountsBySessionId({
       accountId: account.accountId,
-      activeConversationIds: [
-        activeConversationId,
-        activeConversationId
-          ? cloudSessionIdFromConversationId(activeConversationId)
-          : null,
-      ],
       messagesByPeer: fullMessagesByPeer,
       readInboundMessageIdsByPeer,
       readCursorsBySessionId:
@@ -117,7 +112,6 @@ export function useCloudCanonicalReconciliation({
     });
   }, [
     account,
-    activeConversationId,
     canonicalState,
     fullMessagesByPeer,
     readInboundMessageIdsByPeer,
@@ -165,23 +159,33 @@ export function useCloudCanonicalReconciliation({
   const unreadBySessionId = useMemo(() => {
     if (!nativeShell) return projectedUnreadBySessionId;
     if (!account || nativeUnreadSnapshot?.accountId !== account.accountId) return null;
-    const activeSessionId = activeConversationId
-      ? cloudSessionIdFromConversationId(activeConversationId)
-      : null;
     return mergeNativeCloudUnreadCounts({
-      activeConversationIds: [activeConversationId, activeSessionId],
       nativeHeadsBySessionId: nativeUnreadSnapshot.headsBySessionId,
+      locallyReadSessionIds,
       optimisticSessionIds: optimisticReadSessionIds,
       projectedUnreadBySessionId,
     });
   }, [
     account,
-    activeConversationId,
+    locallyReadSessionIds,
     nativeShell,
     nativeUnreadSnapshot,
     optimisticReadSessionIds,
     projectedUnreadBySessionId,
   ]);
+
+  useEffect(() => {
+    if (!nativeShell || !nativeUnreadSnapshot) return;
+    setLocallyReadSessionIds((current) => {
+      const next = new Set(current);
+      for (const sessionId of current) {
+        if (nativeUnreadSnapshot.headsBySessionId[sessionId]?.unreadCount === 0) {
+          next.delete(sessionId);
+        }
+      }
+      return next.size === current.size ? current : next;
+    });
+  }, [nativeShell, nativeUnreadSnapshot, setLocallyReadSessionIds]);
 
   useEffect(() => {
     if (!account || !setCanonicalState) return;

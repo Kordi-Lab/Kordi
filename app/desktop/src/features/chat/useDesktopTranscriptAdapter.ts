@@ -1,7 +1,7 @@
 import { useCallback, type MutableRefObject } from 'react';
 
 import { getLocalAgentAvatarSeed, getLocalProfileAvatarSeed } from '@/kordi-app/components/IdentityAvatar';
-import { firstPersonPossessiveLabel, selfDisplayName } from '@/lib/identityLabels';
+import { selfDisplayName, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type { DesktopChatMessage, Message } from '@/kordi-app/types';
 
 type LocalAvatarSeedsRef = MutableRefObject<{
@@ -72,10 +72,10 @@ function assistantSenderLabelForTranscript(
   explicitDisplayName?: string | null,
 ) {
   const displayName = explicitDisplayName?.trim();
-  if (displayName && !/^kordi$/iu.test(displayName)) return displayName;
-  const label = sender?.trim() || displayName || 'Kordi';
+  if (displayName) return stripSelfPossessivePrefix(displayName) || displayName;
+  const label = sender?.trim() || 'Kordi';
   if (/·\s+.+?'s Agent$/u.test(label)) return label;
-  return firstPersonPossessiveLabel(label);
+  return stripSelfPossessivePrefix(label) || label;
 }
 
 export function mapDesktopMessagesForTranscript(
@@ -131,6 +131,7 @@ export function mapDesktopMessagesForTranscript(
         : message.role === 'user'
           ? (avatarSeeds?.humanDisplayName?.trim() || selfDisplayName(message.sender ?? 'Me', true))
           : message.sender ?? null,
+      senderOwnerName: message.role === 'assistant' ? 'You' : null,
       text: message.text,
       time: message.timeLabel,
       timestampMs: message.timestampMs,

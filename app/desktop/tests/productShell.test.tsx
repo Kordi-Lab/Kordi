@@ -248,6 +248,8 @@ test('signup-mode submit button is the create-account variant', () => {
 test('signup submits the required preview seed without an upload path', () => {
   const source = readSource('src/kordi-app/cloud/CloudLoginPage.tsx');
 
+  assert.match(source, /password\.length === 0 \|\| \(isSignup && password\.length < PASSWORD_MIN_LENGTH\)/);
+  assert.doesNotMatch(source, /if \(password\.length < PASSWORD_MIN_LENGTH\) return false/);
   assert.doesNotMatch(source, /avatarPref|avatarUrl|Upload avatar/);
   assert.match(source, /avatarSeed,/);
   assert.doesNotMatch(source, /avatarStyle/);

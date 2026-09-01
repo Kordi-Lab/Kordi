@@ -272,7 +272,22 @@ export function applyCanonicalSessionStateAction(
 ): CanonicalStore {
   const currentState = canonicalStateFromStore(store);
   const nextState = typeof action === 'function' ? action(currentState) : action;
-  return nextState === currentState ? store : mergeCanonicalStateIntoStore(store, nextState);
+  if (nextState === currentState) return store;
+  const merged = mergeCanonicalStateIntoStore(store, nextState);
+  if (typeof action !== 'function' || !currentState || !nextState) return merged;
+  const nextIds = new Set(nextState.messages.map((message) => message.id));
+  const removedIds = new Set(currentState.messages
+    .filter((message) => !nextIds.has(message.id))
+    .map((message) => message.id));
+  if (removedIds.size === 0) return merged;
+  let changed = false;
+  const messagesBySessionId = Object.fromEntries(Object.entries(merged.messagesBySessionId)
+    .map(([sessionId, messages]) => {
+      const retained = messages.filter((message) => !removedIds.has(message.id));
+      changed ||= retained.length !== messages.length;
+      return [sessionId, retained.length === messages.length ? messages : retained];
+    }));
+  return changed ? { ...merged, messagesBySessionId } : merged;
 }
 
 function latestReadableMessage(messages: readonly CanonicalSessionMessage[]) {

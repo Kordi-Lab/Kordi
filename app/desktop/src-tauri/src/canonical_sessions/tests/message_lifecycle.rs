@@ -51,14 +51,13 @@ fn persisted_agent_turn_can_move_from_processing_to_complete() {
     )
     .expect("append processing turn");
 
-    let complete = upsert_message_in_db(
-        &conn,
-        agent_turn_request(&session.id, "complete", "Finished answer"),
-    )
-    .expect("complete turn");
+    let mut completion = agent_turn_request(&session.id, "complete", "Finished answer");
+    completion.created_at_ms = Some(5_000);
+    let complete = upsert_message_in_db(&conn, completion).expect("complete turn");
 
     assert_eq!(complete.status, "complete");
     assert_eq!(complete.content_text, "Finished answer");
+    assert_eq!(complete.created_at_ms, 1_000);
 }
 
 #[test]

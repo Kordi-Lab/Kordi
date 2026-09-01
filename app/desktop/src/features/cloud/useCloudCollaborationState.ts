@@ -187,11 +187,10 @@ function reportCloudAgentExecutionWarning(message: string, error: unknown) {
 }
 export function useCloudCollaborationState({
   account, activeConversationId, canMarkActiveConversationRead,
-  canonicalSessionState,
-  setCanonicalSessionState,
+  canonicalSessionState, setCanonicalSessionState, hydrateCanonicalSessionPage,
   localTurnsBySessionId,
   cloudAgentRuntimeRoutesBySessionId,
-  defaultCloudAgentRuntimeRoute,
+  defaultCloudAgentRuntimeRoute, localAgentLabel,
   defaultCloudAgentRuntimeReady = true,
   desktopAuthState,
 }: UseCloudCollaborationStateArgs): UseCloudCollaborationStateResult {
@@ -237,6 +236,8 @@ export function useCloudCollaborationState({
       readiness: cloudUnreadReadiness,
       publishedContextKey: publishedCloudUnreadContextKey,
       setPublishedContextKey: setPublishedCloudUnreadContextKey,
+      locallyReadSessionIds,
+      setLocallyReadSessionIds,
       readInboundMessageIdsByPeer,
       setReadInboundMessageIdsByPeer,
     },
@@ -281,21 +282,14 @@ export function useCloudCollaborationState({
       definitionsById: cloudAgentDefinitionsById,
     },
     visibility: {
-      hiddenSessionIds: cloudHiddenSessionIds,
-      setHiddenSessionIds: setCloudHiddenSessionIds,
-      deletedSessionIds: cloudDeletedSessionIds,
-      setDeletedSessionIds: setCloudDeletedSessionIds,
+      hiddenSessionIds: cloudHiddenSessionIds, setHiddenSessionIds: setCloudHiddenSessionIds,
+      deletedSessionIds: cloudDeletedSessionIds, setDeletedSessionIds: setCloudDeletedSessionIds,
+      unreadSessionIds: cloudUnreadSessionIds, setUnreadSessionIds: setCloudUnreadSessionIds, pinnedSessionIds: cloudPinnedSessionIds, setPinnedSessionIds: setCloudPinnedSessionIds,
+      mutedSessionIds: cloudMutedSessionIds, setMutedSessionIds: setCloudMutedSessionIds,
+      pinnedGroupSpaceIds: cloudPinnedGroupSpaceIds, setPinnedGroupSpaceIds: setCloudPinnedGroupSpaceIds,
     },
     cancelledRef,
   } = stores;
-
-  useCloudActiveSessionLifecycle({
-    account, activeConversationId, canMarkActiveConversationRead,
-    canonicalState: canonicalSessionState,
-    setCanonicalState: setCanonicalSessionState,
-    client,
-    setPinsBySessionId: setCloudSessionPinsById,
-  });
 
   const {
     bootstrapPeerIds,
@@ -358,6 +352,7 @@ export function useCloudCollaborationState({
     reportAvailabilityWarning:
       reportCloudAgentAvailabilityWarning,
   });
+
   useCloudSelfAgentForwardSync({
     account,
     canonicalState: canonicalSessionState,
@@ -415,7 +410,6 @@ export function useCloudCollaborationState({
 
   const fullUnreadCountsBySessionId = useCloudCanonicalReconciliation({
     account,
-    activeConversationId,
     canonical: {
       state: canonicalSessionState,
       setState: setCanonicalSessionState,
@@ -423,7 +417,9 @@ export function useCloudCollaborationState({
     messages: { fullByPeer: messagesBelongToCurrentAccount ? fullCurrentAccountMessagesByPeer : null, index: cloudMessageIndex, authoritative: authoritativeMessagesReady },
     unread: {
       contextKey: cloudUnreadContextKey,
+      locallyReadSessionIds,
       readInboundMessageIdsByPeer,
+      setLocallyReadSessionIds,
       setPublishedContextKey:
         setPublishedCloudUnreadContextKey,
     },
@@ -432,8 +428,7 @@ export function useCloudCollaborationState({
   useRecoveredCloudGroupReplay({
     account, activeConversationId, client,
     humanIdentityId: canonicalSessionState?.profile.humanIdentityId,
-    canonicalStateRef: canonicalSessionStateRef,
-    setCanonicalState: setCanonicalSessionState,
+    canonicalStateRef: canonicalSessionStateRef, setCanonicalState: setCanonicalSessionState, hydrateCanonicalSessionPage,
     initialMessagesSettled: recoveryMessagesReady,
     processedRequestIdsRef: processedCloudAgentMentionIdsRef,
     coordinator: cloudGroupReplayCoordinator,
@@ -466,7 +461,7 @@ export function useCloudCollaborationState({
   });
 
   useCloudSelfAgentExecution({
-    account,
+    account, canonicalState: canonicalSessionState,
     client,
     messageIndex: cloudMessageIndex,
     initialMessagesSettled,
@@ -508,7 +503,6 @@ export function useCloudCollaborationState({
       setState: setCanonicalSessionState,
     },
     messages: {
-      byPeer: messagesByPeer,
       setByPeer: setMessagesByPeer,
       index: cloudMessageIndex,
       sync: syncCloudCollaborationDiff,
@@ -529,7 +523,7 @@ export function useCloudCollaborationState({
   });
 
   useCloudSelfAgentCanonicalSync({
-    account,
+    account, agentDisplayName: localAgentLabel,
     canonicalState: canonicalSessionState,
     setCanonicalState: setCanonicalSessionState,
     messagesByPeer,
@@ -553,9 +547,8 @@ export function useCloudCollaborationState({
     activeConversationId,
     canonicalState: canonicalSessionState,
     routesBySessionId: cloudAgentRuntimeRoutesBySessionId,
-    defaultRoute: defaultCloudAgentRuntimeRoute,
+    defaultRoute: defaultCloudAgentRuntimeRoute, localAgentLabel,
     contacts: cloudContacts,
-    hiddenSessionIds: cloudHiddenSessionIds,
     deletedSessionIds: cloudDeletedSessionIds,
     accountContextKey: cloudCollaborationAccountContextKey,
     override: cloudCollaborationOverride,
@@ -597,8 +590,9 @@ export function useCloudCollaborationState({
     publishArtifact: publishCloudArtifactActivity,
     recordFork: recordCloudSessionFork,
     updatePin: updateCloudSessionPin,
-    hide: hideCloudSession,
-    unhide: unhideCloudSession,
+    hide: hideCloudSession, unhide: unhideCloudSession,
+    setPinned: setCloudSessionPinned, setMuted: setCloudSessionMuted,
+    setUnread: setCloudSessionUnread, markRead: markCloudSessionsRead, setGroupPinned: setCloudGroupSpacePinned,
     remove: deleteCloudSession,
   } = useCloudSessionActions({
     account,
@@ -615,8 +609,9 @@ export function useCloudCollaborationState({
         setById: setCloudSessionPinsById,
       },
       visibility: {
-        setHiddenIds: setCloudHiddenSessionIds,
-        setDeletedIds: setCloudDeletedSessionIds,
+        setHiddenIds: setCloudHiddenSessionIds, setDeletedIds: setCloudDeletedSessionIds, setUnreadIds: setCloudUnreadSessionIds,
+        setLocallyReadIds: setLocallyReadSessionIds,
+        setPinnedIds: setCloudPinnedSessionIds, setMutedIds: setCloudMutedSessionIds, setPinnedGroupSpaceIds: setCloudPinnedGroupSpaceIds,
       },
       messages: {
         setByPeer: setMessagesByPeer,
@@ -624,6 +619,8 @@ export function useCloudCollaborationState({
     },
     syncCollaborationDiff: syncCloudCollaborationDiff,
   });
+
+  useCloudActiveSessionLifecycle({ account, activeConversationId, canMarkActiveConversationRead, canonicalState: canonicalSessionState, setCanonicalState: setCanonicalSessionState, client, markRead: markCloudSessionsRead, setPinsBySessionId: setCloudSessionPinsById });
   const cancelCloudAgentRequest = useCloudAgentRequestCancellation({
     account,
     client,
@@ -655,9 +652,8 @@ export function useCloudCollaborationState({
     setCloudMessageReaction,
     recordCloudSessionFork,
     updateCloudSessionPin,
-    hideCloudSession,
-    unhideCloudSession,
-    deleteCloudSession,
+    hideCloudSession, unhideCloudSession,
+    setCloudSessionPinned, setCloudSessionMuted, setCloudSessionUnread, markCloudSessionsRead, setCloudGroupSpacePinned, deleteCloudSession,
     cancelCloudAgentRequest,
     refreshCloudMessages,
     refreshCloudAgents,
@@ -677,8 +673,8 @@ export function useCloudCollaborationState({
     initialMessagesSettled,
     cloudUnreadReadinessStatus,
     cachedMessagesReady: messagesBelongToCurrentAccount && cloudMessageIndex.allMessages.length > 0, pendingGroupProjectionSessionIds: messageStore.pendingGroupProjectionSessionIds,
-    cloudHiddenSessionIds,
-    cloudDeletedSessionIds,
+    cloudHiddenSessionIds, cloudDeletedSessionIds, cloudUnreadSessionIds,
+    cloudPinnedSessionIds, cloudMutedSessionIds, cloudPinnedGroupSpaceIds,
     cloudSessionPinsById, cloudCanonicalReactionState,
     cloudLegacyGroupSessionTitlesById: cloudGroupSessionTitles, cloudReliableGroupSessionTitleIds, cloudReliableGroupSessionActivityAtMs: cloudReliableGroupActivity,
   };

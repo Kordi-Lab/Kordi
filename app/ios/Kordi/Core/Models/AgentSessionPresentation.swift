@@ -36,7 +36,7 @@ enum AgentSessionPresentationCatalog {
             let sessions = candidates.filter {
                 !$0.isAgentLaunchTemplate && !isEmptyAgentSessionPlaceholder($0)
             }
-            let agentName = template.agentDisplayName?.nonEmpty ?? "My Kordi"
+            let agentName = template.agentDisplayName?.nonEmpty ?? "Kordi"
             let agentMatches = !query.isEmpty && agentName.localizedCaseInsensitiveContains(query)
             let visibleSessions = query.isEmpty || agentMatches
                 ? sessions
@@ -80,7 +80,8 @@ enum AgentSessionTimelineCatalog {
     static func build(
         conversations: [ConversationSummary],
         searchText: String = "",
-        collapsedForkParentIds: Set<String> = []
+        collapsedForkParentIds: Set<String> = [],
+        pinnedSessionIds: Set<String> = []
     ) -> [AgentSessionListItem] {
         let allSessions = conversations
             .filter {
@@ -89,7 +90,7 @@ enum AgentSessionTimelineCatalog {
                     && !$0.isAgentLaunchTemplate
                     && !isEmptyAgentSessionPlaceholder($0)
             }
-            .sorted(by: sessionSort)
+            .sorted { sessionSort($0, $1, pinnedSessionIds: pinnedSessionIds) }
         let bySessionId = Dictionary(uniqueKeysWithValues: allSessions.map { ($0.sessionId, $0) })
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -112,7 +113,9 @@ enum AgentSessionTimelineCatalog {
                   visibleBySessionId[parent] != nil else { return nil }
             return session
         }, by: { $0.forkedFromSessionId ?? "" })
-            .mapValues { $0.sorted(by: sessionSort) }
+            .mapValues { sessions in
+                sessions.sorted { sessionSort($0, $1, pinnedSessionIds: pinnedSessionIds) }
+            }
 
         let roots = sessions.filter { session in
             guard let parent = session.forkedFromSessionId?.nonEmpty else { return true }
@@ -130,7 +133,7 @@ enum AgentSessionTimelineCatalog {
             // remaining chain does not disappear from iOS.
             return true
         }
-        .sorted(by: sessionSort)
+        .sorted { sessionSort($0, $1, pinnedSessionIds: pinnedSessionIds) }
 
         var output: [AgentSessionListItem] = []
         var visited = Set<String>()
@@ -156,8 +159,15 @@ enum AgentSessionTimelineCatalog {
             || conversation.ownerDisplayName?.localizedCaseInsensitiveContains(query) == true
     }
 
-    private static func sessionSort(_ left: ConversationSummary, _ right: ConversationSummary) -> Bool {
-        left.lastActivityAt > right.lastActivityAt || (
+    private static func sessionSort(
+        _ left: ConversationSummary,
+        _ right: ConversationSummary,
+        pinnedSessionIds: Set<String>
+    ) -> Bool {
+        let leftPinned = pinnedSessionIds.contains(left.sessionId)
+        let rightPinned = pinnedSessionIds.contains(right.sessionId)
+        if leftPinned != rightPinned { return leftPinned }
+        return left.lastActivityAt > right.lastActivityAt || (
             left.lastActivityAt == right.lastActivityAt
                 && left.displayName.localizedCaseInsensitiveCompare(right.displayName) == .orderedAscending
         )
@@ -183,14 +193,14 @@ enum AgentSessionFactory {
                 peerAccountId: ownAccountId,
                 agentId: CanonicalAvatarSystem.defaultAgentId,
                 ownerDisplayName: nil,
-                displayName: "My Kordi",
+                displayName: "Kordi",
                 lastMessage: "Your private cloud agent",
                 lastActivityAt: now,
                 unreadCount: 0,
                 avatarSource: nil,
                 agentActivity: .ready,
                 sessionId: sessionId,
-                agentDisplayName: "My Kordi"
+                agentDisplayName: "Kordi"
             ),
             ownAccountId: ownAccountId,
             randomId: randomId,
@@ -209,7 +219,7 @@ enum AgentSessionFactory {
         let stableId = randomId.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
             ?? UUID().uuidString.lowercased()
         let sessionId = "session:\(sessionKind):\(stableId)"
-        let agentName = template.agentDisplayName?.nonEmpty ?? "My Kordi"
+        let agentName = template.agentDisplayName?.nonEmpty ?? "Kordi"
 
         return ConversationSummary(
             id: "agent-session:\(sessionId)",

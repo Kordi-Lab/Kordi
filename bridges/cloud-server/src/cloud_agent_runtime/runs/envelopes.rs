@@ -19,6 +19,20 @@ pub(super) struct CloudGroupParticipant {
     pub(super) display_name: String,
     #[serde(rename = "avatarUrl")]
     pub(super) avatar_url: Option<String>,
+    #[serde(rename = "agentId", default, skip_serializing_if = "Option::is_none")]
+    pub(super) agent_id: Option<String>,
+    #[serde(
+        rename = "agentDisplayName",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) agent_display_name: Option<String>,
+    #[serde(
+        rename = "agentAvatarUrl",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) agent_avatar_url: Option<String>,
     pub(super) role: Option<String>,
 }
 
@@ -32,6 +46,15 @@ pub(super) struct CloudGroupMessage {
     pub(super) created_at_ms: i64,
     #[serde(rename = "senderKind", skip_serializing_if = "Option::is_none")]
     pub(super) sender_kind: Option<String>,
+    #[serde(rename = "senderAgentId", skip_serializing_if = "Option::is_none")]
+    pub(super) sender_agent_id: Option<String>,
+    #[serde(
+        rename = "senderOwnerAccountId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(super) sender_owner_account_id: Option<String>,
+    #[serde(rename = "senderOwnerName", skip_serializing_if = "Option::is_none")]
+    pub(super) sender_owner_name: Option<String>,
     #[serde(rename = "senderDisplayName", skip_serializing_if = "Option::is_none")]
     pub(super) sender_display_name: Option<String>,
     #[serde(rename = "deliveryState", skip_serializing_if = "Option::is_none")]
@@ -148,6 +171,9 @@ pub(super) fn cloud_group_response_body(
             account_id: owner_account_id.to_string(),
             display_name: "Kordi".to_string(),
             avatar_url: None,
+            agent_id: None,
+            agent_display_name: None,
+            agent_avatar_url: None,
             role: Some("person".to_string()),
         });
     let shared_agent_label = request_envelope.message.as_ref().and_then(|message| {
@@ -155,25 +181,17 @@ pub(super) fn cloud_group_response_body(
         if agent_name.is_empty() {
             return None;
         }
-        let owner_name = message
-            .target_cloud_agent_owner_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| owner.display_name.trim());
-        if owner_name.is_empty() {
-            Some(agent_name.to_string())
-        } else {
-            Some(format!("{} · {}'s Agent", agent_name, owner_name))
-        }
+        Some(agent_name.to_string())
     });
-    let sender_display_name = shared_agent_label.unwrap_or_else(|| {
-        if owner.display_name.trim().is_empty() {
-            "Kordi".to_string()
-        } else {
-            format!("{}'s Kordi", owner.display_name.trim())
-        }
-    });
+    let sender_display_name = shared_agent_label.unwrap_or_else(|| "Kordi".to_string());
+    let sender_agent_id = request_envelope
+        .message
+        .as_ref()
+        .and_then(|message| message.target_cloud_agent_id.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| format!("cloud-agent:{}", owner_account_id.trim()));
     let request_mention_depth = request_envelope
         .message
         .as_ref()
@@ -186,16 +204,24 @@ pub(super) fn cloud_group_response_body(
                 response_text,
                 &request_envelope.participants,
                 owner_account_id,
+                &sender_agent_id,
             )
         })
         .flatten();
     let target_cloud_agent_owner_account_id = mentioned_agent
         .as_ref()
-        .map(|target| target.account_id.clone());
+        .map(|target| target.participant.account_id.clone());
     let target_cloud_agent_owner_name = mentioned_agent
+        .as_ref()
+        .map(|target| target.participant.display_name.clone());
+    let target_cloud_agent_id = mentioned_agent
+        .as_ref()
+        .map(|target| target.agent_id.clone());
+    let target_cloud_agent_name = mentioned_agent
         .as_ref()
         .map(|target| target.display_name.clone());
     let agent_mention_depth = mentioned_agent.as_ref().map(|_| request_mention_depth + 1);
+    let sender_owner_name = owner.display_name.clone();
     let thread_message_action = request_envelope
         .message
         .as_ref()
@@ -213,6 +239,9 @@ pub(super) fn cloud_group_response_body(
         message: Some(CloudGroupMessage {
             id: response_message_id.to_string(),
             sender_account_id: owner_account_id.to_string(),
+            sender_agent_id: Some(sender_agent_id),
+            sender_owner_account_id: Some(owner_account_id.to_string()),
+            sender_owner_name: Some(sender_owner_name),
             text: response_text.to_string(),
             created_at_ms,
             sender_kind: Some("agent".to_string()),
@@ -221,8 +250,8 @@ pub(super) fn cloud_group_response_body(
             reply_to_message_id: Some(request_message_id.to_string()),
             request_id: Some(request_message_id.to_string()),
             message_action: thread_message_action,
-            target_cloud_agent_id: None,
-            target_cloud_agent_name: None,
+            target_cloud_agent_id,
+            target_cloud_agent_name,
             target_cloud_agent_owner_account_id,
             target_cloud_agent_owner_name,
             agent_mention_depth,

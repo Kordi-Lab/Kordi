@@ -95,8 +95,11 @@ enum PreviewData {
         let showsToolFailure = ProcessInfo.processInfo.arguments.contains(
             "--preview-tool-failure"
         )
+        let showsDeleteResurrection = ProcessInfo.processInfo.arguments.contains(
+            "--preview-delete-resurrection"
+        )
         let conversations = [
-            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: CanonicalAvatarSystem.defaultAgentId, ownerDisplayName: "Alex", displayName: showsToolFailure ? "Tool failure recovery" : "Plan the mobile release", lastMessage: showsToolFailure ? "The useful result is ready." : "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "My Kordi"),
+            ConversationSummary(id: "agent:my-kordi", kind: .agent, peerAccountId: "acct_me", agentId: CanonicalAvatarSystem.defaultAgentId, ownerDisplayName: "Alex", displayName: showsToolFailure ? "Tool failure recovery" : "Plan the mobile release", lastMessage: showsToolFailure ? "The useful result is ready." : "Start with the mobile API contract.", lastActivityAt: now.addingTimeInterval(-80), unreadCount: 1, avatarSource: nil, agentActivity: .ready, sessionId: "session:self-agent:default", agentDisplayName: "BabyTREE"),
             ConversationSummary(id: "agent:research", kind: .agent, peerAccountId: "acct_me", agentId: "cloud_agent_research", ownerDisplayName: "Alex", displayName: "Review the TestFlight checklist", lastMessage: "Comparing the latest sources…", lastActivityAt: now.addingTimeInterval(-160), unreadCount: 0, avatarSource: nil, agentActivity: .replying, sessionId: "session:self-agent:cloud_agent_research", agentDisplayName: "Research Agent", forkedFromSessionId: "session:self-agent:default"),
             ConversationSummary(id: "agent:support", kind: .agent, peerAccountId: "acct_maya", agentId: "cloud_agent_support", ownerDisplayName: "Maya Chen", displayName: "Support Agent", lastMessage: "I can help with that.", lastActivityAt: now.addingTimeInterval(-300), unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "session:direct-agent:acct_maya:cloud_agent_support"),
             ConversationSummary(id: "group:mobile", kind: .group, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Mobile builders", displayName: "main", lastMessage: showsMentionAttention ? "@Alex Please review the notification copy." : "@all I also added the device matrix.", lastActivityAt: now.addingTimeInterval(-120), unreadCount: showsMentionAttention ? 2 : 1, avatarSource: nil, agentActivity: nil, sessionId: "session:group:mobile", groupSpaceId: "session:group:mobile", groupParticipants: [
@@ -110,7 +113,7 @@ enum PreviewData {
                 CloudGroupParticipant(accountId: "acct_ethan", displayName: "Ethan Park", avatarUrl: nil, role: "person")
             ], messageCount: 47),
             ConversationSummary(id: "person:acct_kordi_support", kind: .person, peerAccountId: KordiSupportIdentity.accountId, agentId: nil, ownerDisplayName: KordiSupportIdentity.displayName, displayName: KordiSupportIdentity.displayName, lastMessage: "Welcome to Kordi.", lastActivityAt: now.addingTimeInterval(-25), unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: "session:direct-person:acct_kordi_support:acct_me"),
-            ConversationSummary(id: "person:acct_maya", kind: .person, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Maya Chen", displayName: "Maya Chen", lastMessage: "Can you send the latest numbers?", lastActivityAt: now.addingTimeInterval(-60), unreadCount: 2, avatarSource: previewAvatarSource, agentActivity: nil, sessionId: "session:direct-person:acct_maya:acct_me"),
+            ConversationSummary(id: "person:acct_maya", kind: .person, peerAccountId: "acct_maya", agentId: nil, ownerDisplayName: "Maya Chen", displayName: "Maya Chen", lastMessage: showsDeleteResurrection ? "New message after deletion — this chat is back." : "Can you send the latest numbers?", lastActivityAt: showsDeleteResurrection ? now : now.addingTimeInterval(-60), unreadCount: showsDeleteResurrection ? 1 : 2, avatarSource: previewAvatarSource, agentActivity: nil, sessionId: "session:direct-person:acct_maya:acct_me"),
             ConversationSummary(id: "person:acct_ethan", kind: .person, peerAccountId: "acct_ethan", agentId: nil, ownerDisplayName: "Ethan Park", displayName: "Ethan Park", lastMessage: "Sounds good, let’s do it.", lastActivityAt: now.addingTimeInterval(-1_100), unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: "session:direct-person:acct_ethan:acct_me"),
             ConversationSummary(id: "person:acct_priya", kind: .person, peerAccountId: "acct_priya", agentId: nil, ownerDisplayName: "Priya Shah", displayName: "Priya Shah", lastMessage: "Perfect, I’ll update the deck.", lastActivityAt: now.addingTimeInterval(-82_000), unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: "session:direct-person:acct_me:acct_priya"),
             ConversationSummary(id: "person:acct_marcus", kind: .person, peerAccountId: "acct_marcus", agentId: nil, ownerDisplayName: "Marcus Johnson", displayName: "Marcus Johnson", lastMessage: "Thanks — that clears it up.", lastActivityAt: now.addingTimeInterval(-86_000), unreadCount: 1, avatarSource: nil, agentActivity: nil, sessionId: "session:direct-person:acct_marcus:acct_me")
@@ -147,7 +150,7 @@ enum PreviewData {
             "person:acct_kordi_support": [
                 ChatMessage(id: "support1", conversationId: "person:acct_kordi_support", author: .person, authorName: KordiSupportIdentity.displayName, text: "Welcome to Kordi.", createdAt: now.addingTimeInterval(-25), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
             ],
-            "person:acct_maya": mayaConversation(now: now),
+            "person:acct_maya": mayaConversation(now: now, resurrected: showsDeleteResurrection),
             "person:acct_ethan": [
                 ChatMessage(
                     id: "ethan1",
@@ -227,7 +230,7 @@ enum PreviewData {
                 id: "agent-history-\(index)",
                 conversationId: conversationId,
                 author: isAgent ? .agent : .me,
-                authorName: isAgent ? "My Kordi" : "You",
+                authorName: isAgent ? "BabyTREE" : "You",
                 text: sampleTurns[index % sampleTurns.count],
                 createdAt: now.addingTimeInterval(-80_000 + Double(index) * 600),
                 deliveryState: .read,
@@ -241,7 +244,7 @@ enum PreviewData {
                 id: "m2",
                 conversationId: conversationId,
                 author: .agent,
-                authorName: "My Kordi",
+                authorName: "BabyTREE",
                 text: """
                 ## Mobile release
 
@@ -309,7 +312,7 @@ enum PreviewData {
                 id: "preview-tool-failure-response",
                 conversationId: conversationId,
                 author: .agent,
-                authorName: "My Kordi",
+                authorName: "BabyTREE",
                 text: "The repository check completed and the useful result is ready.",
                 createdAt: now,
                 deliveryState: .delivered,
@@ -451,7 +454,7 @@ enum PreviewData {
         return messages
     }
 
-    private static func mayaConversation(now: Date) -> [ChatMessage] {
+    private static func mayaConversation(now: Date, resurrected: Bool = false) -> [ChatMessage] {
         if ProcessInfo.processInfo.arguments.contains("--preview-bubble-width") {
             return bubbleWidthRiskConversation(now: now)
         }
@@ -555,6 +558,19 @@ enum PreviewData {
             ),
         ])
         messages.append(contentsOf: previewMediaMessages(now: now))
+        if resurrected {
+            messages.append(ChatMessage(
+                id: "maya-delete-resurrection",
+                conversationId: conversationId,
+                author: .person,
+                authorName: "Maya Chen",
+                text: "New message after deletion — this chat is back.",
+                createdAt: now,
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: nil
+            ))
+        }
         return messages
     }
 

@@ -148,12 +148,23 @@ export class CloudIdentityAuthClient {
       entityId: accountId,
       mutation: input.avatarMutation,
     });
+    const agentAvatarMutation = await referenceBackedAvatarMutation({
+      request: this.request,
+      token,
+      entityType: 'agent',
+      entityId: accountId ? `cloud-agent:${accountId}` : null,
+      mutation: input.agentAvatarMutation,
+    });
     return this.request<CloudAccount>(
       '/v1/cloud/auth/me',
       {
         method: 'PATCH',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-        body: JSON.stringify({ ...input, ...(avatarMutation ? { avatarMutation } : {}) }),
+        body: JSON.stringify({
+          ...input,
+          ...(avatarMutation ? { avatarMutation } : {}),
+          ...(agentAvatarMutation ? { agentAvatarMutation } : {}),
+        }),
       },
       'Could not update profile.',
     );

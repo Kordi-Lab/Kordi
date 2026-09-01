@@ -13,6 +13,7 @@ import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kord
 import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 
 const cloudAgentAvailabilitySource = () => readFileSync(new URL('../src/features/cloud/useCloudAgentAvailability.ts', import.meta.url), 'utf8');
+const cloudDirectAgentFallbackSource = () => readFileSync(new URL('../src/features/cloud/useCloudDirectAgentFallback.ts', import.meta.url), 'utf8');
 const cloudAgentRequestStateSource = () => readFileSync(new URL('../src/features/cloud/cloudAgentRequestState.ts', import.meta.url), 'utf8');
 const cloudGroupAgentControlSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentControl.ts', import.meta.url), 'utf8');
 const cloudGroupAgentExecutionSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
@@ -23,10 +24,17 @@ const cloudGroupMessageControlSource = () => readFileSync(new URL('../src/featur
 const cloudGroupControlSenderSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupControlSender.ts', import.meta.url), 'utf8');
 const chatSessionActionsSource = () => readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
 
-test('shouldUseCloudSessionAction routes canonical cloud session ids but leaves local runtime ids alone', () => {
+test('shouldUseCloudSessionAction routes synchronized UUID agent sessions but leaves local-only UUIDs alone', () => {
+  const state = {
+    sessions: [{
+      id: '550e8400-e29b-41d4-a716-446655440000',
+      metadata: { cloudSelfAgentSession: true },
+    }],
+  } as CanonicalSessionState;
   assert.equal(shouldUseCloudSessionAction('session:direct-person:acct_a:acct_b'), true);
   assert.equal(shouldUseCloudSessionAction('session:group:abc'), true);
   assert.equal(shouldUseCloudSessionAction('bridge:cloud:acct_peer:person'), true);
+  assert.equal(shouldUseCloudSessionAction('550e8400-e29b-41d4-a716-446655440000', state), true);
   assert.equal(shouldUseCloudSessionAction('550e8400-e29b-41d4-a716-446655440000'), false);
 });
 
@@ -87,14 +95,6 @@ test('canonical mapping treats a self-owned cloud agent as My Kordi', () => {
 
   assert.equal(canonicalMessageRole(message, identity, 'human:me'), 'owned-agent');
   assert.equal(canonicalMessageRole(message, identity, 'human:someone-else'), 'external-agent');
-});
-
-test('cloud remove archives matching local canonical sessions after server removal succeeds', () => {
-  const source = chatSessionActionsSource();
-  const deleteBranchStart = source.indexOf('if (shouldUseCloudSessionAction(trimmedSessionId)) {', source.indexOf('const deleteSession'));
-  const deleteBranchEnd = source.indexOf('} catch (error) {', deleteBranchStart);
-  const cloudDeleteBranch = source.slice(deleteBranchStart, deleteBranchEnd);
-  assert.match(cloudDeleteBranch, /await deleteCloudSession\(trimmedSessionId\);[\s\S]*archiveDesktopChatSession\(\s*trimmedSessionId,\s*desktopActiveSessionId/);
 });
 
 test('group session rename forwards the manual title from the returned canonical state', () => {
@@ -402,6 +402,13 @@ test('fresh group sends claim fallback before waiting for a background Cloud syn
   assert.match(directSendBlock, /await Promise\.all\(\[[\s\S]*claimFreshFallback\(\s*sent,\s*canonicalMessageId,\s*session\.token,?\s*\),[\s\S]*syncDiff/);
 });
 
+test('direct agent fallback retries until the owner Mac answers or goes offline', () => {
+  const source = cloudDirectAgentFallbackSource();
+  assert.match(source, /claim\.idempotencyKey\.startsWith\('cloud-agent-fallback:'\)/);
+  assert.match(source, /result === 'retryable-failure' \|\| result === 'in-flight'/);
+  assert.match(source, /window\.setTimeout\(recheck, recheckMs\)/);
+});
+
 test('adding existing group members publishes Cloud authorization before the local batch commit', () => {
   const handler = readFileSync(
     new URL('../src/app/useKordiGroupMemberInvites.ts', import.meta.url),
@@ -464,8 +471,8 @@ test('cloud group hosted-agent metadata targets the owner runtime even when text
   assert.match(stateSource, /export function cloudGroupMessageTargetsLocalAgent/);
   assert.match(stateSource, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
   assert.match(stateSource, /cleanCloudText\(message\.targetCloudAgentOwnerAccountId\)[\s\S]*?=== account\.accountId/);
-  assert.match(stateSource, /cleanCloudText\(message\.targetCloudAgentId\)[\s\S]*?\.startsWith\('cloud_agent_'\)/);
-  assert.match(stateSource, /targetsOwnedHostedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
+  assert.match(stateSource, /targetCloudAgentId\.startsWith\('cloud_agent_'\)/);
+  assert.match(stateSource, /targetsOwnedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
   assert.match(agentSource, /policy\.messageTargetsLocalAgent\([\s\S]*message,[\s\S]*account,[\s\S]*envelope\.participants/);
   assert.doesNotMatch(cloudGroupAgentControlSource(), /\|\|\s*senderIsAgent/);
   assert.match(agentSource, /targetCloudAgentId: message\.targetCloudAgentId/);

@@ -24,6 +24,7 @@ import {
 } from './messageMapping';
 import { completedCallStartMessageIds } from './callActivity';
 import { applySessionAgentIdentity, canonicalMessageCountsForLastActive, isChatCreatedDirectAgentSession } from './conversationMapping';
+import { selfAgentMirrorDuplicateIds } from './selfAgentMirrorDedup';
 
 export type CanonicalIndexes = {
   storagePath: string;
@@ -362,158 +363,6 @@ function legacyCollaborationUiOptimisticEchoIds(messages: CanonicalSessionMessag
   return echoIds;
 }
 
-function selfAgentLogicalSenderKey(
-  message: CanonicalSessionMessage,
-  identityById: ReadonlyMap<string, CanonicalIdentity>,
-  profileHumanIdentityId?: string | null,
-  normalizeOwnedAgentIdentity = false,
-) {
-  if (message.senderRole !== 'owned-agent' || !normalizeOwnedAgentIdentity) {
-    return `${message.senderRole}:${message.senderIdentityId}`;
-  }
-  const identity = identityById.get(message.senderIdentityId);
-  const ownerIdentityId = identity?.ownerIdentityId?.trim() || profileHumanIdentityId?.trim() || '';
-  const ownerIdentity = ownerIdentityId ? identityById.get(ownerIdentityId) : null;
-  const identityMetadata = contentRecord(identity?.metadata);
-  const ownerAccountId = ownerIdentity?.humanId?.trim()
-    || ownerIdentity?.sourceIdentityId?.trim()
-    || ownerIdentityId
-    || stringValue(identityMetadata.accountId)?.trim();
-  return `owned-agent:${ownerAccountId || 'self'}`;
-}
-
-function selfAgentMirrorMessageRelationKey(
-  message: CanonicalSessionMessage,
-  messageById: ReadonlyMap<string, CanonicalSessionMessage>,
-  messageBySourceEventId: ReadonlyMap<string, CanonicalSessionMessage>,
-  identityById: ReadonlyMap<string, CanonicalIdentity>,
-  profileHumanIdentityId?: string | null,
-  normalizeOwnedAgentIdentity = false,
-) {
-  const content = contentRecord(message.content);
-  const parentReference = message.parentMessageId?.trim()
-    || stringValue(content.replyToMessageId)?.trim()
-    || stringValue(content.cloudRequestMessageId)?.trim()
-    || stringValue(content.requestId)?.trim()
-    || '';
-  if (!parentReference) return '';
-  const parent = messageById.get(parentReference) ?? messageBySourceEventId.get(parentReference);
-  if (!parent) return `reference:${parentReference}`;
-  return [
-    selfAgentLogicalSenderKey(
-      parent,
-      identityById,
-      profileHumanIdentityId,
-      normalizeOwnedAgentIdentity,
-    ),
-    parent.senderRole,
-    parent.messageKind,
-    parent.createdAtMs.toString(),
-    normalizedDuplicateText(parent.contentText),
-  ].join('\u001e');
-}
-
-function selfAgentMirrorDuplicateKey(
-  message: CanonicalSessionMessage,
-  messageById: ReadonlyMap<string, CanonicalSessionMessage>,
-  messageBySourceEventId: ReadonlyMap<string, CanonicalSessionMessage>,
-  identityById: ReadonlyMap<string, CanonicalIdentity>,
-  profileHumanIdentityId?: string | null,
-  normalizeOwnedAgentIdentity = false,
-) {
-  const text = normalizedDuplicateText(message.contentText);
-  if (!text) return null;
-  return [
-    message.sessionId,
-    selfAgentLogicalSenderKey(
-      message,
-      identityById,
-      profileHumanIdentityId,
-      normalizeOwnedAgentIdentity,
-    ),
-    message.senderRole,
-    message.messageKind,
-    normalizeOwnedAgentIdentity && message.senderRole === 'owned-agent' && message.parentMessageId?.trim() ? '' : message.createdAtMs.toString(),
-    text,
-    selfAgentMirrorMessageRelationKey(
-      message,
-      messageById,
-      messageBySourceEventId,
-      identityById,
-      profileHumanIdentityId,
-      normalizeOwnedAgentIdentity,
-    ),
-  ].join('\u001f');
-}
-
-function selfAgentMirrorTransportPriority(message: CanonicalSessionMessage) {
-  if (
-    message.sourceTransport === 'canonical-fork-snapshot'
-    && message.sourceEventId?.startsWith('fork-snapshot:')
-  ) return 0;
-  if (message.sourceTransport === 'canonical-fork-snapshot') return 1;
-  if (message.sourceTransport === 'desktop-chat-ui') return 2;
-  if (message.sourceTransport === 'desktop-chat') return 3;
-  if (message.sourceTransport === 'cloud-self-agent') return 4;
-  return Number.MAX_SAFE_INTEGER;
-}
-
-function selfAgentMirrorDuplicateIds(
-  messages: CanonicalSessionMessage[],
-  identityById: ReadonlyMap<string, CanonicalIdentity>,
-  profileHumanIdentityId?: string | null,
-  normalizeOwnedAgentIdentity = false,
-) {
-  const duplicateIds = new Set<string>();
-  const messageById = new Map(messages.map((message) => [message.id, message]));
-  const messageBySourceEventId = new Map(
-    messages.flatMap((message) => message.sourceEventId ? [[message.sourceEventId, message] as const] : []),
-  );
-  const candidatesByKey = new Map<string, CanonicalSessionMessage[]>();
-  for (const message of messages) {
-    if (
-      message.sourceTransport !== 'canonical-fork-snapshot'
-      && message.sourceTransport !== 'desktop-chat'
-      && message.sourceTransport !== 'desktop-chat-ui'
-      && message.sourceTransport !== 'cloud-self-agent'
-    ) continue;
-    const key = selfAgentMirrorDuplicateKey(
-      message,
-      messageById,
-      messageBySourceEventId,
-      identityById,
-      profileHumanIdentityId,
-      normalizeOwnedAgentIdentity,
-    );
-    if (!key) continue;
-    pushMapArray(candidatesByKey, key, message);
-  }
-
-  for (const candidates of candidatesByKey.values()) {
-    if (candidates.length < 2) continue;
-    const hasCloudMirror = candidates.some((message) => message.sourceTransport === 'cloud-self-agent');
-    const hasPreferredLocalCopy = candidates.some((message) => (
-      message.sourceTransport === 'canonical-fork-snapshot'
-      || message.sourceTransport === 'desktop-chat'
-      || message.sourceTransport === 'desktop-chat-ui'
-    ));
-    const hasCanonicalSnapshotOrigin = candidates.some((message) => (
-      message.sourceTransport === 'canonical-fork-snapshot'
-      && message.sourceEventId?.startsWith('fork-snapshot:')
-    ));
-    if ((!hasCloudMirror || !hasPreferredLocalCopy) && !hasCanonicalSnapshotOrigin) continue;
-
-    const preferred = [...candidates].sort((left, right) => (
-      selfAgentMirrorTransportPriority(left) - selfAgentMirrorTransportPriority(right)
-      || left.sequenceNum - right.sequenceNum
-      || left.id.localeCompare(right.id)
-    ))[0];
-    for (const candidate of candidates) {
-      if (candidate.id !== preferred.id) duplicateIds.add(candidate.id);
-    }
-  }
-  return duplicateIds;
-}
 
 function isOwnedAgentTurn(message: CanonicalSessionMessage) {
   return message.senderRole === 'owned-agent' && message.messageKind === 'agent-turn';
@@ -985,6 +834,10 @@ export function buildCanonicalIndexes(canonicalState: CanonicalSessionState | nu
         agentId: identity.agentId,
         avatarKey: canonicalIdentityAvatarSeed(identity) ?? identity.avatarKey,
         profileImageUrl: identity.profileImageUrl,
+        defaultAgentId: stringValue(contentRecord(identity.metadata).defaultAgentId)?.trim() || null,
+        defaultAgentDisplayName: stringValue(contentRecord(identity.metadata).defaultAgentDisplayName)?.trim() || null,
+        defaultAgentAvatarUrl: stringValue(contentRecord(identity.metadata).defaultAgentAvatarUrl)?.trim() || null,
+        defaultAgentAvatarSeed: stringValue(contentRecord(identity.metadata).defaultAgentAvatarSeed)?.trim() || null,
         presenceStatus: presence?.status ?? null,
         presenceDetail: presence?.detail ?? null,
       }];

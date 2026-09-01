@@ -48,6 +48,16 @@ function requestMessage(
   };
 }
 
+test('cloud self-agent canonical identity uses the editable runtime name', () => {
+  const plan = planCloudSelfAgentCanonicalSync({
+    account,
+    agentDisplayName: 'BabyTREE',
+    messages: [],
+    state: emptyState(),
+  });
+  assert.equal(plan.agentIdentityRequest.displayName, 'BabyTREE');
+});
+
 test('cloud self-agent canonical sync preserves model changes as system events', () => {
   const modelChange: CloudMessage = {
     ...requestMessage('model-change-1', '', '2026-08-16T11:00:00.000Z', 'session:self-agent:model-sync'),

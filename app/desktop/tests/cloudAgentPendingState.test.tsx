@@ -112,7 +112,7 @@ test('cloud remote-agent responses render with the remote owner agent identity',
   });
   const view = mapCollaborationConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
   const agentMessage = view.messages.find((candidate) => candidate.role === 'external-agent');
-  assert.equal(agentMessage?.sender, "Peer Person's Kordi");
+  assert.equal(agentMessage?.sender, 'Kordi');
 });
 
 test('active cloud agent bridge placeholders are not materialized as duplicate sessions', () => {
@@ -216,7 +216,7 @@ test('cloud incoming local-agent mentions expose synced processing UI', () => {
   assert.equal(state.conversations[0].awaitingReply, true);
   assert.equal(state.conversations[0].outreach?.targetKind, 'agent');
   assert.equal(state.conversations[0].outreach?.sourceRequestId, 'msg_local_agent_request');
-  assert.equal(state.conversations[0].outreach?.targetAgentId, 'cloud-local-agent');
+  assert.equal(state.conversations[0].outreach?.targetAgentId, 'cloud-agent:acct_me');
 });
 
 test('cloud local agent runner ignores same-account self-agent sync messages', () => {
@@ -281,6 +281,72 @@ test('cloud local agent runner accepts iOS first-person envelopes', () => {
   }), true);
 });
 
+test('an explicit remote Kordi target never falls back to the local Kordi text alias', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_explicit_remote_kordi',
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_peer',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: '@Kordi hi',
+      targetCloudAgentId: 'cloud-agent:acct_peer',
+      targetCloudAgentName: 'Kordi',
+      targetCloudAgentOwnerAccountId: 'acct_peer',
+      targetCloudAgentOwnerName: 'Peer Person',
+    }),
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+  };
+
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: request,
+    peerMessages: [request],
+  }), false);
+});
+
+test('renamed default-agent envelopes keep processing visible after canonical sync', () => {
+  const request: CloudMessage = {
+    ...message,
+    messageId: 'msg_renamed_default_agent_request',
+    fromAccountId: account.accountId,
+    toAccountId: 'acct_peer',
+    body: encodeCloudDirectMessageEnvelope({
+      schemaVersion: 1,
+      kind: 'message',
+      text: '@Kordirename11 hihihihi',
+      targetCloudAgentId: `cloud-agent:${account.accountId}`,
+      targetCloudAgentName: 'Kordirename11',
+      targetCloudAgentOwnerAccountId: account.accountId,
+      targetCloudAgentOwnerName: account.displayName,
+    }),
+    direction: 'outgoing',
+    createdAt: new Date().toISOString(),
+  };
+  const state = buildCloudDesktopCollaborationState({
+    account,
+    contacts: [peer],
+    messagesByPeer: { acct_peer: [request] },
+    activeConversationId: 'bridge:cloud:acct_peer:person',
+  });
+
+  assert.equal(state.conversations[0]?.awaitingReply, true);
+  assert.equal(state.conversations[0]?.outreach?.sourceRequestId, request.messageId);
+  assert.equal(state.conversations[0]?.messages.at(-1)?.deliveryState, 'processing');
+  const view = mapCollaborationConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
+  assert.equal(view.messages.at(-1)?.turn?.status, 'processing');
+  assert.equal(view.messages.at(-1)?.sender, 'Kordirename11');
+  assert.equal(shouldRunLocalCloudAgentForCloudMessage({
+    account,
+    peerId: 'acct_peer',
+    message: request,
+    peerMessages: [request],
+  }), true);
+});
+
 test('cloud outgoing self-agent mentions expose localhost-style local processing UI', () => {
   const request: CloudMessage = {
     ...message,
@@ -300,7 +366,7 @@ test('cloud outgoing self-agent mentions expose localhost-style local processing
   assert.equal(pendingState.conversations[0].awaitingReply, true);
   assert.equal(pendingState.conversations[0].outreach?.targetKind, 'agent');
   assert.equal(pendingState.conversations[0].outreach?.sourceRequestId, 'msg_self_agent_request');
-  assert.equal(pendingState.conversations[0].outreach?.targetAgentId, 'cloud-local-agent');
+  assert.equal(pendingState.conversations[0].outreach?.targetAgentId, 'cloud-agent:acct_me');
   assert.equal(pendingState.conversations[0].outreach?.targetNodeId, 'acct_me');
 
   const answeredState = buildCloudDesktopCollaborationState({
