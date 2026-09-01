@@ -1152,7 +1152,6 @@ final class AppModel: ObservableObject {
         }), let conversation = conversations.first(where: { $0.id == conversationID }) else {
             return
         }
-        guard pendingMentionCount(for: conversation) == 0 else { return }
         markConversationOpened(conversation)
         Task { [weak self] in
             await self?.reconcileVisibleConversationReadState()
@@ -2062,23 +2061,21 @@ final class AppModel: ObservableObject {
     ) async {
         let current = conversations.first(where: { $0.id == conversation.id }) ?? conversation
         guard let accountId = account?.accountId,
-              message.author != .me,
-              MentionAttention.messageTargetsPerson(
-                message,
+              !MentionAttention.pendingMessages(
+                in: [message],
                 accountId: accountId,
+                lastReadSequence: current.lastReadSequence,
                 groupSessionId: current.kind == .group ? current.sessionId : nil
-              ),
-              let sequence = message.conversationSequence else { return }
-        guard sequence > current.lastReadSequence,
+              ).isEmpty,
               let messageID = await applyConversationReadLocally(
                 current,
-                throughSequence: sequence
+                throughSequence: message.conversationSequence
               ) else { return }
         guard !previewMode else { return }
         do {
             try await persistConversationRead(
                 current,
-                throughSequence: sequence
+                throughSequence: message.conversationSequence
             )
             persistedVisibleReadMessageBySessionID[current.sessionId] = messageID
             cloudConnectionState = .connected
@@ -5026,7 +5023,6 @@ final class AppModel: ObservableObject {
 
         let readableConversations = conversations.filter {
             readableConversationIDs.contains($0.id)
-                && pendingMentionCount(for: $0) == 0
         }
         for conversation in readableConversations {
             guard let latestIncomingMessageID =
@@ -5102,20 +5098,21 @@ final class AppModel: ObservableObject {
         guard let index = conversations.firstIndex(where: { $0.id == conversationID }) else {
             return
         }
-        conversations[index].lastReadSequence = max(
+        let lastReadSequence = max(
             conversations[index].lastReadSequence,
             throughSequence
         )
+        conversations[index].lastReadSequence = lastReadSequence
         let remaining = messagesByConversation[conversationID, default: []].filter { message in
             message.author != .me
                 && !message.isSystemNotice
-                && message.conversationSequence.map { $0 > throughSequence } == true
+                && message.conversationSequence.map { $0 > lastReadSequence } == true
         }
         conversations[index].unreadCount = remaining.count
         conversations[index].unreadMentionCount = MentionAttention.pendingMessages(
             in: remaining,
             accountId: accountId,
-            lastReadSequence: throughSequence,
+            lastReadSequence: lastReadSequence,
             groupSessionId: conversations[index].kind == .group
                 ? conversations[index].sessionId
                 : nil

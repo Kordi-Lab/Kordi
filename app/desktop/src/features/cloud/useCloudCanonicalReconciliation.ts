@@ -12,7 +12,6 @@ import type {
   CloudAccount,
   CloudMessage,
 } from './authClient';
-import { cloudSessionIdFromConversationId } from './cloudCollaborationState';
 import {
   patchCanonicalDeliverySummaries,
   type CloudMessageIndex,
@@ -52,13 +51,11 @@ function unreadHeadsEqual(
 
 export function useCloudCanonicalReconciliation({
   account,
-  activeConversationId,
   canonical,
   messages,
   unread,
 }: {
   account: CloudAccount | null;
-  activeConversationId: string | null | undefined;
   canonical: {
     state: CanonicalSessionState | null | undefined;
     setState?: Dispatch<
@@ -104,12 +101,6 @@ export function useCloudCanonicalReconciliation({
     if (!account || !fullMessagesByPeer) return null;
     return cloudUnreadCountsBySessionId({
       accountId: account.accountId,
-      activeConversationIds: [
-        activeConversationId,
-        activeConversationId
-          ? cloudSessionIdFromConversationId(activeConversationId)
-          : null,
-      ],
       messagesByPeer: fullMessagesByPeer,
       readInboundMessageIdsByPeer,
       readCursorsBySessionId:
@@ -117,7 +108,6 @@ export function useCloudCanonicalReconciliation({
     });
   }, [
     account,
-    activeConversationId,
     canonicalState,
     fullMessagesByPeer,
     readInboundMessageIdsByPeer,
@@ -165,18 +155,13 @@ export function useCloudCanonicalReconciliation({
   const unreadBySessionId = useMemo(() => {
     if (!nativeShell) return projectedUnreadBySessionId;
     if (!account || nativeUnreadSnapshot?.accountId !== account.accountId) return null;
-    const activeSessionId = activeConversationId
-      ? cloudSessionIdFromConversationId(activeConversationId)
-      : null;
     return mergeNativeCloudUnreadCounts({
-      activeConversationIds: [activeConversationId, activeSessionId],
       nativeHeadsBySessionId: nativeUnreadSnapshot.headsBySessionId,
       optimisticSessionIds: optimisticReadSessionIds,
       projectedUnreadBySessionId,
     });
   }, [
     account,
-    activeConversationId,
     nativeShell,
     nativeUnreadSnapshot,
     optimisticReadSessionIds,

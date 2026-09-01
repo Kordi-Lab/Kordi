@@ -503,7 +503,6 @@ export function buildCloudCollaborationConversation({
   runtime = CLOUD_PERSON_RUNTIME,
   readInboundMessageIds,
   readCursorsBySessionId = {},
-  forceRead = false,
   localAgentTurnsByRequestId = {},
   cloudSessionId = null,
   cloudSessionTitle = null,
@@ -515,7 +514,6 @@ export function buildCloudCollaborationConversation({
   runtime?: string;
   readInboundMessageIds?: Set<string>;
   readCursorsBySessionId?: Record<string, CloudGroupReadCursor | null | undefined>;
-  forceRead?: boolean;
   localAgentTurnsByRequestId?: Record<string, DesktopChatTurnSnapshot>;
   cloudSessionId?: string | null;
   cloudSessionTitle?: string | null;
@@ -727,13 +725,11 @@ export function buildCloudCollaborationConversation({
     projectName: null,
     title,
     subtitle: last?.text || (isPerson ? 'Person chat' : 'Remote agent chat'),
-    unreadCount: forceRead
-      ? 0
-      : visibleCloudMessages.filter((message) => (
-          cloudDirectMessageIsUnreadForAccount(message, account.accountId)
-          && !readInboundMessageIds?.has(message.messageId)
-          && !cloudMessageIsAtOrBeforeReadCursor(message, readCursorSessionId ? readCursorsBySessionId[readCursorSessionId] : null)
-        )).length,
+    unreadCount: visibleCloudMessages.filter((message) => (
+      cloudDirectMessageIsUnreadForAccount(message, account.accountId)
+      && !readInboundMessageIds?.has(message.messageId)
+      && !cloudMessageIsAtOrBeforeReadCursor(message, readCursorSessionId ? readCursorsBySessionId[readCursorSessionId] : null)
+    )).length,
     updatedAtMs,
     updatedAtLabel: last ? formatDesktopLastActiveLabel(updatedAtMs) : '',
     awaitingReply: Boolean(pendingAgentOutreach),
@@ -807,7 +803,6 @@ export function buildCloudDesktopCollaborationState({
     baseRevision,
     cloudSessionId,
     contact,
-    forceRead,
     messages,
     runtime,
     title,
@@ -815,7 +810,6 @@ export function buildCloudDesktopCollaborationState({
     baseRevision: string;
     cloudSessionId?: string | null;
     contact: Contact;
-    forceRead: boolean;
     messages: readonly CloudMessage[];
     runtime: string;
     title?: string | null;
@@ -835,7 +829,6 @@ export function buildCloudDesktopCollaborationState({
       canonicalAvatarImageSource(account.avatar) ?? '',
       runtime,
       cleanCloudSessionId(cloudSessionId) ?? '',
-      forceRead ? 'read' : 'unread',
       contact.name,
       contact.owner,
       contact.systemContact ? 'system' : 'contact',
@@ -883,7 +876,6 @@ export function buildCloudDesktopCollaborationState({
             conversationRevision({
               baseRevision: index.peerRevisionByPeerId.get(peerId) ?? '0::',
               contact,
-              forceRead: isActivePeer,
               messages: directPersonMessages,
               runtime: CLOUD_PERSON_RUNTIME,
             }),
@@ -894,25 +886,21 @@ export function buildCloudDesktopCollaborationState({
               runtime: CLOUD_PERSON_RUNTIME,
               readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
               readCursorsBySessionId,
-              forceRead: isActivePeer,
               localAgentTurnsByRequestId,
               groupControlMessageIds,
             }),
           )]
         : [];
-      const activeCloudSessionId = activeConversationId ? cloudSessionIdFromConversationId(activeConversationId) : null;
       const agentConversation = (() => {
         if (isSystemAgent) {
           const cloudSessionId = cloudSystemAgentSessionId(account.accountId, contact.sourceAgentId ?? '');
           const conversationId = cloudCollaborationConversationId(peerId, CLOUD_AGENT_RUNTIME, cloudSessionId);
-          const forceRead = activeConversationId === conversationId;
           return [reuseConversation(
             conversationId,
             conversationRevision({
               baseRevision: index.peerRevisionByPeerId.get(peerId) ?? '0::',
               cloudSessionId,
               contact,
-              forceRead,
               messages,
               runtime: CLOUD_AGENT_RUNTIME,
             }),
@@ -923,7 +911,6 @@ export function buildCloudDesktopCollaborationState({
               runtime: CLOUD_AGENT_RUNTIME,
               readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
               readCursorsBySessionId,
-              forceRead,
               localAgentTurnsByRequestId,
               cloudSessionId,
               groupControlMessageIds,
@@ -936,7 +923,6 @@ export function buildCloudDesktopCollaborationState({
             if (cloudSessionId?.startsWith('draft:')) return [];
             if (cloudSessionId && hiddenCloudSessionIds.has(cloudSessionId)) return [];
             if ((hasSessionScopedMessages || suppressUnscopedSelfAgentConversation) && !cloudSessionId) return [];
-            const forceRead = isActivePeer && (!activeCloudSessionId || activeCloudSessionId === cloudSessionId);
             const cloudSessionTitle = cloudSessionId ? cloudSessionTitlesById[cloudSessionId] : null;
             const conversationId = cloudCollaborationConversationId(peerId, CLOUD_AGENT_RUNTIME, cloudSessionId);
             return [reuseConversation(
@@ -947,7 +933,6 @@ export function buildCloudDesktopCollaborationState({
                   : index.peerRevisionByPeerId.get(peerId) ?? '0::',
                 cloudSessionId,
                 contact,
-                forceRead,
                 messages: sessionMessages,
                 runtime: CLOUD_AGENT_RUNTIME,
                 title: cloudSessionTitle,
@@ -959,7 +944,6 @@ export function buildCloudDesktopCollaborationState({
                 runtime: CLOUD_AGENT_RUNTIME,
                 readInboundMessageIds: readInboundMessageIdsByPeer[peerId],
                 readCursorsBySessionId,
-                forceRead,
                 localAgentTurnsByRequestId,
                 cloudSessionId,
                 cloudSessionTitle,

@@ -23,6 +23,7 @@
         "fullscreen": false,
         "transparent": true,
         "backgroundColor": "#00000000",
+        "backgroundThrottling": "disabled",
         "windowEffects": {
           "effects": [
             "sidebar"
