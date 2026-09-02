@@ -145,8 +145,8 @@ Record each state independently:
 Record safe values before the release-preparation PR:
 
 ```text
-Desktop version: 0.0.1-beta.N
-Desktop tag: V0.0.1.betaN
+Desktop version: 0.0.1-beta.N or 0.0.1-beta.N.P
+Desktop tag: V0.0.1.betaN or V0.0.1.betaN.P
 Previous desktop tag: V0.0.1.betaM
 iOS marketing version: X.Y.Z
 iOS build number: N

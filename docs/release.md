@@ -64,10 +64,11 @@ This command:
 
 ## Hosted Desktop beta releases
 
-Signed Hosted Desktop beta releases use two different version strings:
+Signed Hosted Desktop beta releases use two different version strings. A
+corrective candidate may append one numeric prerelease component:
 
-- App/package version: `0.0.1-beta.N`
-- Git tag and GitHub prerelease: `V0.0.1.betaN`
+- App/package version: `0.0.1-beta.N` or `0.0.1-beta.N.P`
+- Git tag and GitHub prerelease: `V0.0.1.betaN` or `V0.0.1.betaN.P`
 
 For a normal macOS beta and iOS TestFlight release from one source commit, start
 with the [standard dual-platform release runbook](development/dual-platform-release-runbook.md).

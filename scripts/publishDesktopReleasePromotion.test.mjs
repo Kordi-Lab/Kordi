@@ -48,6 +48,30 @@ test('failed post-promotion verification restores exact prior pointer bytes', as
   assert.ok(publicHttp.actions.some((action) => action.method === 'GET' && action.url === previous.urls.updaterArchive));
 });
 
+test('publisher reads a corrective beta prior pointer before promotion', async (t) => {
+  const version = '0.0.1-beta.19.2';
+  const previousVersion = '0.0.1-beta.19.1';
+  const fixture = await makeFixture(version);
+  const previousFixture = await makeFixture(previousVersion);
+  t.after(() => Promise.all([
+    rm(fixture.root, { recursive: true, force: true }),
+    rm(previousFixture.root, { recursive: true, force: true }),
+  ]));
+  const prepared = await preparedFixture(fixture, { version });
+  const previous = await preparedFixture(previousFixture, { version: previousVersion });
+  const store = new MemoryStore(storedReleaseEntries(previous));
+
+  const result = await publishDesktopRelease(optionsFor(fixture, { version }), {
+    verifier: passingVerifier(),
+    updaterPublicKey: TEST_PUBLIC_KEY,
+    store,
+    publicHttp: makePublicHttp(prepared),
+  });
+
+  assert.equal(result.published, true);
+  assert.deepEqual(store.bytes(prepared.pointerKey), prepared.pointerBytes);
+});
+
 test('promotion waits for transient public pointer convergence before rollback', async (t) => {
   const fixture = await makeFixture();
   t.after(() => rm(fixture.root, { recursive: true, force: true }));
