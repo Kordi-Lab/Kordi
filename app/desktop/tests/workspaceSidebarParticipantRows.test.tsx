@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
 import { WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
+import { SidebarSessionMetaColumn } from '../src/pages/workspaceSidebar.shared';
 import { conversation, baseSidebarProps, countMatches } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
 test('WorkspaceSidebar keeps unread on the selected child until presentation commits read state', () => {
@@ -82,6 +83,18 @@ test('WorkspaceSidebar shows a separate @ indicator beside the total unread coun
   }) as never));
 
   assert.match(markup, /app-sidebar-mention-indicator[^>]*>@<\/span><span[^>]*data-unread-scope="participant-space"[^>]*data-unread-count="3"[^>]*data-unread-mention-count="1"[^>]*>3<\/span>/);
+});
+
+test('sidebar unread badges share one metadata line with the timestamp', () => {
+  const markup = renderToStaticMarkup(createElement(SidebarSessionMetaColumn, {
+    timeLabel: '10:35',
+    unreadCount: 1,
+    unreadScope: 'participant-space',
+  }));
+
+  assert.match(markup, /app-session-meta-inline[^\"]*items-center[^\"]*justify-end/);
+  assert.doesNotMatch(markup, /app-session-meta-inline[^\"]*flex-col/);
+  assert.ok(markup.indexOf('10:35') < markup.indexOf('data-unread-count="1"'));
 });
 
 test('WorkspaceSidebar moves participant-space running light from expanded parent to child session', () => {

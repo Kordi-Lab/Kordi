@@ -85,7 +85,12 @@ export function SidebarSessionMetaColumn({
 }) {
   const hasStatusLine = Boolean((unreadCount && unreadCount > 0) || indicator);
   return (
-    <div className="flex min-w-[2.9rem] shrink-0 flex-col items-end gap-[0.3rem] pt-px">
+    <div
+      className={cn(
+        'app-session-meta-inline flex min-w-[2.9rem] shrink-0 items-center justify-end pt-px',
+        hasStatusLine && 'gap-1.5',
+      )}
+    >
       <span
         className={cn(
           'app-session-meta-time whitespace-nowrap text-right text-[10px] font-medium leading-none tabular-nums',
@@ -95,7 +100,12 @@ export function SidebarSessionMetaColumn({
         {timeLabel}
       </span>
       {reserveStatusSpace || hasStatusLine ? (
-        <div className="flex h-2.5 items-center justify-end gap-1.5 self-end">
+        <div
+          className={cn(
+            'flex h-2.5 shrink-0 items-center justify-end gap-1.5',
+            hasStatusLine ? 'w-auto' : 'w-0',
+          )}
+        >
           <SidebarUnreadBadge count={unreadCount} mentionCount={unreadMentionCount} scope={unreadScope} muted={muted} />
           <SidebarSessionStatusIndicator indicator={indicator} />
         </div>
