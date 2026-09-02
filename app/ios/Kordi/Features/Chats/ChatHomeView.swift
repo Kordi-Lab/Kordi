@@ -38,6 +38,12 @@ struct ChatHomeView: View {
         ChatHomeSearch.normalized(searchText)
     }
 
+    private var pinLayoutIdentity: [String] {
+        (model.pinnedSessionIds.map { "session:\($0)" }
+            + model.pinnedGroupSpaceIds.map { "group:\($0)" }
+        ).sorted()
+    }
+
     private var agentSessions: [AgentSessionListItem] {
         AgentSessionTimelineCatalog.build(
             conversations: model.conversations,
@@ -333,6 +339,7 @@ struct ChatHomeView: View {
                 }
             }
         }
+        .id(pinLayoutIdentity)
         .accessibilityLabel("Contact chats")
     }
 
@@ -451,6 +458,7 @@ struct ChatHomeView: View {
                 }
             }
         }
+        .id(pinLayoutIdentity)
         .accessibilityLabel("Agent chats")
     }
 

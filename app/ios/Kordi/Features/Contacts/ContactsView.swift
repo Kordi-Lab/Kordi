@@ -4,12 +4,6 @@ struct ContactsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var showAddContact = false
-    @State private var selectedConversation: ConversationSummary?
-    private let onOpenConversation: ((ConversationSummary) -> Void)?
-
-    init(onOpenConversation: ((ConversationSummary) -> Void)? = nil) {
-        self.onOpenConversation = onOpenConversation
-    }
 
     private var contacts: [CloudContact] {
         guard !searchText.isEmpty else { return model.contacts }
@@ -58,13 +52,12 @@ struct ContactsView: View {
                     .listRowSeparator(.hidden)
                 } else {
                     ForEach(contacts) { contact in
-                        Button {
-                            open(contact)
-                        } label: {
-                            ContactIdentityRow(contact: contact)
+                        if let conversation = model.conversationForContact(contact) {
+                            NavigationLink(value: conversation) {
+                                ContactIdentityRow(contact: contact)
+                            }
+                            .kordiListRow()
                         }
-                        .buttonStyle(.plain)
-                        .kordiListRow()
                     }
                 }
             }
@@ -76,9 +69,7 @@ struct ContactsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: ConversationSummary.self) { conversation in
             ConversationView(conversation: conversation)
-        }
-        .navigationDestination(item: $selectedConversation) { conversation in
-            ConversationView(conversation: conversation)
+                .task { _ = await model.restoreConversationIfNeeded(conversation) }
         }
         .toolbar {
             if #available(iOS 26.0, *) {
@@ -94,16 +85,6 @@ struct ContactsView: View {
         }
         .sheet(isPresented: $showAddContact) { AddContactSheet() }
         .task { await model.refreshContactRequests() }
-    }
-
-    private func open(_ contact: CloudContact) {
-        guard let conversation = model.conversationForContact(contact) else { return }
-        if let onOpenConversation {
-            onOpenConversation(conversation)
-        } else {
-            selectedConversation = conversation
-        }
-        Task { _ = await model.restoreConversationIfNeeded(conversation) }
     }
 
     private var addContactButton: some View {

@@ -192,6 +192,22 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(rowSource.contains("value: isExpanded"))
     }
 
+    func testPinRebuildsOnlyTheActiveChatListLayouts() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Chats/ChatHomeView.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(source.contains("private var pinLayoutIdentity: [String]"))
+        XCTAssertTrue(source.contains("model.pinnedSessionIds.map { \"session:"))
+        XCTAssertTrue(source.contains("model.pinnedGroupSpaceIds.map { \"group:"))
+        XCTAssertEqual(source.components(separatedBy: ".id(pinLayoutIdentity)").count - 1, 2)
+        XCTAssertFalse(source.contains("listLayoutIdentity"))
+    }
+
     func testContactsRemainVisibleWithoutAChatAndProfileUsesDirectChatAction() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -211,11 +227,12 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
 
         XCTAssertFalse(contacts.contains("if let conversation = model.conversations.first"))
-        XCTAssertTrue(contacts.contains("onOpenConversation(conversation)"))
-        XCTAssertTrue(contacts.contains("Task { _ = await model.restoreConversationIfNeeded(conversation) }"))
+        XCTAssertTrue(contacts.contains("if let conversation = model.conversationForContact(contact)"))
+        XCTAssertTrue(contacts.contains("NavigationLink(value: conversation)"))
+        XCTAssertTrue(contacts.contains(".task { _ = await model.restoreConversationIfNeeded(conversation) }"))
         XCTAssertTrue(contacts.contains(".navigationDestination(for: ConversationSummary.self)"))
-        XCTAssertTrue(contacts.contains(".navigationDestination(item: $selectedConversation)"))
-        XCTAssertTrue(app.contains("ContactsView(onOpenConversation: { contactsPath.append($0) })"))
+        XCTAssertFalse(contacts.contains("selectedConversation"))
+        XCTAssertTrue(app.contains("ContactsView()"))
         XCTAssertTrue(details.contains("case .person: [.call, .video, .mute, .chat]"))
         XCTAssertFalse(details.contains("case .person: [.call, .video, .mute, .more]"))
     }
