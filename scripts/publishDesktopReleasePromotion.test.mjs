@@ -72,7 +72,7 @@ test('publisher reads a corrective beta prior pointer before promotion', async (
   assert.deepEqual(store.bytes(prepared.pointerKey), prepared.pointerBytes);
 });
 
-test('promotion waits for transient public pointer convergence before rollback', async (t) => {
+test('promotion waits through the full public pointer convergence window before rollback', async (t) => {
   const fixture = await makeFixture();
   t.after(() => rm(fixture.root, { recursive: true, force: true }));
   const prepared = await preparedFixture(fixture);
@@ -83,7 +83,7 @@ test('promotion waits for transient public pointer convergence before rollback',
   const publicHttp = {
     head: (...args) => baseHttp.head(...args),
     async get(url, options) {
-      if (url === prepared.urls.updaterEndpoint && attempts++ < 2) {
+      if (url === prepared.urls.updaterEndpoint && attempts++ < 9) {
         return { status: 503, headers: {}, body: Buffer.from('not converged') };
       }
       return baseHttp.get(url, options);
@@ -98,8 +98,8 @@ test('promotion waits for transient public pointer convergence before rollback',
   });
 
   assert.equal(result.published, true);
-  assert.equal(attempts, 3);
-  assert.equal(waits, 2);
+  assert.equal(attempts, 10);
+  assert.equal(waits, 9);
   assert.deepEqual(store.bytes(prepared.pointerKey), prepared.pointerBytes);
   assert.equal(
     store.actions.filter((action) => action.type === 'put' && action.key === prepared.pointerKey).length,

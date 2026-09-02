@@ -36,7 +36,7 @@ function sha256(bytes) {
 
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const CACHEABLE_CDN_STATUSES = new Set(['hit', 'miss', 'revalidated', 'stale']);
-const PUBLIC_CONVERGENCE_ATTEMPTS = 7;
+const PUBLIC_CONVERGENCE_ATTEMPTS = 10;
 const PUBLIC_CONVERGENCE_DELAY_MS = 2_000;
 
 export async function verifyPublicConvergence(verification, publicHttp) {
