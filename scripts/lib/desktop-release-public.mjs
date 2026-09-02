@@ -36,6 +36,7 @@ function sha256(bytes) {
 
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const CACHEABLE_CDN_STATUSES = new Set(['hit', 'miss', 'revalidated', 'stale']);
+const NO_STORE_CDN_STATUSES = new Set(['uncacheable', 'miss']);
 const PUBLIC_CONVERGENCE_ATTEMPTS = 10;
 const PUBLIC_CONVERGENCE_DELAY_MS = 2_000;
 
@@ -111,7 +112,7 @@ function verifyPublicAssetHeaders(response, {
   const cdnStatus = headerValue(response, 'x-kordi-cdn-cache');
   let invalidCdnStatus = !cdnStatus || cdnStatus === 'disabled';
   if (cacheable === true) invalidCdnStatus = !CACHEABLE_CDN_STATUSES.has(cdnStatus);
-  if (cacheable === false) invalidCdnStatus = cdnStatus !== 'uncacheable';
+  if (cacheable === false) invalidCdnStatus = !NO_STORE_CDN_STATUSES.has(cdnStatus);
   if (invalidCdnStatus) {
     throw new Error('Public response did not traverse the expected CDN cache policy');
   }
