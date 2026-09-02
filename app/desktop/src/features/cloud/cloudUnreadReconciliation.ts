@@ -120,7 +120,9 @@ export function mergeNativeCloudUnreadCounts({
   for (const sessionId of optimisticSessionIds) {
     if ((projectedUnreadBySessionId?.[sessionId] ?? 0) === 0) counts[sessionId] = 0;
   }
-  for (const sessionId of locallyReadSessionIds ?? []) counts[sessionId] = 0;
+  for (const sessionId of locallyReadSessionIds ?? []) {
+    if ((projectedUnreadBySessionId?.[sessionId] ?? 0) === 0) counts[sessionId] = 0;
+  }
   return counts;
 }
 

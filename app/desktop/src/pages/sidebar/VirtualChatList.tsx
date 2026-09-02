@@ -68,6 +68,7 @@ export function VirtualChatList({
 }) {
   const renderPerformanceSpan = beginChatPerformanceSpan('sidebar-virtual-render');
   const internalScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrolledActiveSessionIdRef = useRef<string | null>(null);
   const renderRowRef = useRef(renderRow);
   renderRowRef.current = renderRow;
   const renderStableRow = useCallback((row: ChatSidebarRow) => renderRowRef.current(row), []);
@@ -92,9 +93,18 @@ export function VirtualChatList({
   }, [activeSessionId, rows]);
 
   useLayoutEffect(() => {
-    if (activeRowIndex < 0) return;
+    const normalizedActiveId = activeSessionId?.trim() || null;
+    if (!normalizedActiveId) {
+      scrolledActiveSessionIdRef.current = null;
+      return;
+    }
+    if (
+      activeRowIndex < 0
+      || scrolledActiveSessionIdRef.current === normalizedActiveId
+    ) return;
+    scrolledActiveSessionIdRef.current = normalizedActiveId;
     virtualizer.scrollToIndex(activeRowIndex, { align: 'auto' });
-  }, [activeRowIndex, virtualizer]);
+  }, [activeRowIndex, activeSessionId, virtualizer]);
 
   const virtualRows = virtualizer.getVirtualItems();
   const renderedVirtualRows = useMemo(() => {

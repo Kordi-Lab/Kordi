@@ -263,6 +263,45 @@ test('500 sidebar descriptors mount at most 80 rows and scroll the active row in
   assert.ok(mountedUnread < allUnread, 'offscreen rows must remain part of data totals without mounting');
 });
 
+test('activity reordering preserves scroll until the active session changes', async () => {
+  const rows: ChatSidebarRow[] = Array.from({ length: 100 }, (_, index) => ({
+    kind: 'session',
+    key: `session:s${index}`,
+    sessionId: `s${index}`,
+    spaceId: `space:s${index}`,
+    depth: 0,
+    activePath: false,
+  }));
+  const host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  const render = async (nextRows: ChatSidebarRow[], activeSessionId: string) => {
+    await act(async () => root?.render(
+      <VirtualChatList
+        rows={nextRows}
+        activeSessionId={activeSessionId}
+        scrollStyle={{ height: 200 }}
+        renderRow={(row) => <div data-test-row-height="48">{row.key}</div>}
+      />,
+    ));
+    await flush();
+  };
+
+  await render(rows, 's5');
+  const viewport = host.querySelector<HTMLElement>('[data-virtual-chat-list="true"]');
+  assert.ok(viewport);
+  await act(async () => viewport.scrollTo({ top: 0 }));
+  await flush();
+
+  const reordered = rows.filter((row) => row.key !== 'session:s5');
+  reordered.splice(80, 0, rows[5]!);
+  await render(reordered, 's5');
+  assert.equal(viewport.scrollTop, 0);
+
+  await render(reordered, 's90');
+  assert.ok(viewport.scrollTop > 0);
+});
+
 test('ordinary session lists stay fully mounted while scrolling', async () => {
   const rows: ChatSidebarRow[] = Array.from({ length: 45 }, (_, index) => ({
     kind: 'session',
