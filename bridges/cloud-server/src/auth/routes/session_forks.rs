@@ -48,16 +48,18 @@ pub(crate) async fn cloud_session_participants(
     pool: &PgPool,
     session_id: &str,
 ) -> Result<Vec<String>, sqlx_core::error::Error> {
+    let canonical_id = uuid::Uuid::parse_str(session_id.trim()).ok();
     let participants: Vec<(String,)> = query_as(
         "SELECT member.account_id
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_conversation_members member
            ON member.conversation_id = conversation.conversation_id
-         WHERE conversation.legacy_session_id = $1
+         WHERE (conversation.legacy_session_id = $1 OR conversation.conversation_id = $2)
            AND member.membership_state = 'active'
          ORDER BY member.account_id ASC",
     )
-    .bind(session_id)
+    .bind(session_id.trim())
+    .bind(canonical_id)
     .fetch_all(pool)
     .await?;
     Ok(participants

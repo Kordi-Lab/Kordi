@@ -425,17 +425,19 @@ pub async fn conversation_id_for_session(
     account_id: &str,
     session_id: &str,
 ) -> Result<Option<Uuid>, StoreError> {
+    let canonical_id = Uuid::parse_str(session_id.trim()).ok();
     let row: Option<(Uuid,)> = query_as(
         "SELECT conversation.conversation_id \
          FROM cloud_chat_conversations conversation \
          JOIN cloud_chat_conversation_members member \
            ON member.conversation_id = conversation.conversation_id \
-         WHERE (conversation.legacy_session_id = $1 OR conversation.conversation_id::text = $1) \
+         WHERE (conversation.legacy_session_id = $1 OR conversation.conversation_id = $3) \
            AND member.account_id = $2 \
            AND member.membership_state = 'active'",
     )
     .bind(session_id.trim())
     .bind(account_id)
+    .bind(canonical_id)
     .fetch_optional(pool)
     .await?;
     Ok(row.map(|(conversation_id,)| conversation_id))

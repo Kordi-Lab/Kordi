@@ -5,32 +5,29 @@ pub(super) async fn cloud_session_pin_summary(
     account_id: &str,
     session_id: &str,
 ) -> Result<CloudSessionPinSummary, sqlx_core::error::Error> {
-    let shared: Option<(String, String)> = query_as(
-        "SELECT message_id, updated_at FROM cloud_session_shared_pins WHERE session_id = $1",
-    )
-    .bind(session_id)
-    .fetch_optional(pool)
-    .await?;
-    let private: Option<(String, String)> = query_as(
-        "SELECT message_id, updated_at FROM cloud_account_session_pins WHERE account_id = $1 AND session_id = $2",
+    let (shared_message_id, shared_updated_at, private_message_id, private_updated_at): (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) = query_as(
+        "SELECT shared.message_id, shared.updated_at, private.message_id, private.updated_at \
+         FROM (SELECT 1) seed \
+         LEFT JOIN cloud_session_shared_pins shared ON shared.session_id = $2 \
+         LEFT JOIN cloud_account_session_pins private \
+           ON private.account_id = $1 AND private.session_id = $2",
     )
     .bind(account_id)
     .bind(session_id)
-    .fetch_optional(pool)
+    .fetch_one(pool)
     .await?;
 
-    let shared_message_id = shared.as_ref().map(|row| row.0.clone());
-    let private_message_id = private.as_ref().map(|row| row.0.clone());
-    let updated_at = private
-        .as_ref()
-        .map(|row| row.1.clone())
-        .or_else(|| shared.as_ref().map(|row| row.1.clone()));
     Ok(CloudSessionPinSummary {
         session_id: session_id.to_string(),
         shared_message_id: shared_message_id.clone(),
         private_message_id: private_message_id.clone(),
         effective_message_id: private_message_id.or(shared_message_id),
-        updated_at,
+        updated_at: private_updated_at.or(shared_updated_at),
     })
 }
 
@@ -67,9 +64,15 @@ pub(super) async fn get_cloud_session_pin(
         );
     };
     let pool = state.db_pool();
-    match caller_can_access_cloud_session(pool, &session.account_id, &session_id).await {
-        Ok(true) => {}
-        Ok(false) => {
+    match crate::chat_sync::store::conversation_id_for_session(
+        pool,
+        &session.account_id,
+        &session_id,
+    )
+    .await
+    {
+        Ok(Some(_)) => {}
+        Ok(None) => {
             return err(
                 "not_a_participant",
                 "You can only inspect pins for sessions you participate in.",
@@ -120,7 +123,45 @@ pub(super) async fn update_cloud_session_pin(
         Err(response) => return *response,
     };
     let pool = state.db_pool();
-    let participants = match cloud_session_participants(pool, &session_id).await {
+    let mut transaction = match pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let conversation_id = match conversation_id_for_session_in_transaction(
+        &mut transaction,
+        &session.account_id,
+        &session_id,
+    )
+    .await
+    {
+        Ok(Some(conversation_id)) => conversation_id,
+        Ok(None) => {
+            return err(
+                "not_a_participant",
+                "You can only pin messages in sessions you participate in.",
+                StatusCode::FORBIDDEN,
+            );
+        }
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let participants = match active_conversation_member_ids_in_transaction(
+        &mut transaction,
+        conversation_id,
+    )
+    .await
+    {
         Ok(participants) => participants,
         Err(_) => {
             return err(
@@ -130,13 +171,6 @@ pub(super) async fn update_cloud_session_pin(
             );
         }
     };
-    if !participants.iter().any(|id| id == &session.account_id) {
-        return err(
-            "not_a_participant",
-            "You can only pin messages in sessions you participate in.",
-            StatusCode::FORBIDDEN,
-        );
-    }
 
     let updated_at = Utc::now().to_rfc3339();
     let write_result = if scope == "shared" {
@@ -147,18 +181,19 @@ pub(super) async fn update_cloud_session_pin(
                  ON CONFLICT (session_id) DO UPDATE SET \
                    message_id = EXCLUDED.message_id, \
                    updated_by_account_id = EXCLUDED.updated_by_account_id, \
-                   updated_at = EXCLUDED.updated_at",
+                   updated_at = EXCLUDED.updated_at \
+                 WHERE cloud_session_shared_pins.message_id IS DISTINCT FROM EXCLUDED.message_id",
             )
             .bind(&session_id)
             .bind(message_id)
             .bind(&session.account_id)
             .bind(&updated_at)
-            .execute(pool)
+            .execute(&mut *transaction)
             .await
         } else {
             query("DELETE FROM cloud_session_shared_pins WHERE session_id = $1")
                 .bind(&session_id)
-                .execute(pool)
+                .execute(&mut *transaction)
                 .await
         }
     } else if let Some(message_id) = message_id.as_deref() {
@@ -167,28 +202,49 @@ pub(super) async fn update_cloud_session_pin(
              VALUES ($1, $2, $3, $4) \
              ON CONFLICT (account_id, session_id) DO UPDATE SET \
                message_id = EXCLUDED.message_id, \
-               updated_at = EXCLUDED.updated_at",
+               updated_at = EXCLUDED.updated_at \
+             WHERE cloud_account_session_pins.message_id IS DISTINCT FROM EXCLUDED.message_id",
         )
         .bind(&session.account_id)
         .bind(&session_id)
         .bind(message_id)
         .bind(&updated_at)
-        .execute(pool)
+        .execute(&mut *transaction)
         .await
     } else {
         query("DELETE FROM cloud_account_session_pins WHERE account_id = $1 AND session_id = $2")
             .bind(&session.account_id)
             .bind(&session_id)
-            .execute(pool)
+            .execute(&mut *transaction)
             .await
     };
 
-    if write_result.is_err() {
-        return err(
-            "server_error",
-            "Could not update pinned message.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
+    let changed = match write_result {
+        Ok(result) => result.rows_affected() > 0,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not update pinned message.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    if !changed {
+        if transaction.commit().await.is_err() {
+            return err(
+                "server_error",
+                "Could not update pinned message.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+        return match cloud_session_pin_summary(pool, &session.account_id, &session_id).await {
+            Ok(pin) => Json(CloudSessionPinResponse { pin }).into_response(),
+            Err(_) => err(
+                "server_error",
+                "Could not load pinned message.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        };
     }
 
     let event_payload = serde_json::json!({
@@ -203,22 +259,23 @@ pub(super) async fn update_cloud_session_pin(
     } else {
         vec![session.account_id.clone()]
     };
-    let conversation_id = crate::chat_sync::store::conversation_id_for_session(
-        pool,
-        &session.account_id,
-        &session_id,
-    )
-    .await
-    .ok()
-    .flatten();
-    let _ = crate::chat_sync::store::publish_user_sync_events(
-        pool,
+    if crate::chat_sync::store::append_user_sync_events_in_transaction(
+        &mut transaction,
         &recipients,
         "session.pin.updated",
-        conversation_id,
-        event_payload,
+        Some(conversation_id),
+        &event_payload,
     )
-    .await;
+    .await
+    .is_err()
+        || transaction.commit().await.is_err()
+    {
+        return err(
+            "server_error",
+            "Could not record pinned message sync event.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
 
     match cloud_session_pin_summary(pool, &session.account_id, &session_id).await {
         Ok(pin) => Json(CloudSessionPinResponse { pin }).into_response(),
