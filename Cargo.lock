@@ -3516,7 +3516,7 @@ dependencies = [
 
 [[package]]
 name = "kordi-desktop"
-version = "0.0.1-beta.19.2"
+version = "0.0.1-beta.19.3"
 dependencies = [
  "anyhow",
  "async-trait",
