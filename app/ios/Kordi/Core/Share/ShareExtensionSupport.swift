@@ -210,6 +210,7 @@ struct KordiShareConfiguration: Equatable, Sendable {
                 && service == "ai.kordi.share-session"
                 && scheme == "kordi"
         case "beta":
+            #if BETA
             return baseURL.scheme?.lowercased() == "http"
                 && baseURL.host?.lowercased() == "127.0.0.1"
                 && baseURL.port != nil
@@ -217,6 +218,9 @@ struct KordiShareConfiguration: Equatable, Sendable {
                 && appGroup == "group.ai.kordi.beta.share"
                 && service == "ai.kordi.beta.share-session"
                 && scheme == "kordi-beta"
+            #else
+            return false
+            #endif
         default:
             return false
         }

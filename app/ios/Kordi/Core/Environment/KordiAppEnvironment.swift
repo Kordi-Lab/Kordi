@@ -23,7 +23,9 @@ struct KordiAppEnvironment: Equatable {
     static let productionBundleIdentifier = "ai.kordi.ios"
     static let betaBundleIdentifier = "ai.kordi.ios.beta"
     static let productionBaseURL = URL(string: "https://kordi.ai")!
+    #if BETA
     static let betaBaseURL = URL(string: "http://127.0.0.1:17081")!
+    #endif
 
     let channel: KordiDistributionChannel
     let bundleIdentifier: String
@@ -76,6 +78,7 @@ struct KordiAppEnvironment: Equatable {
                 throw KordiAppEnvironmentError.invalidSetting("KordiCloudBaseURL")
             }
         case .beta:
+            #if BETA
             guard bundleIdentifier == betaBundleIdentifier else {
                 throw KordiAppEnvironmentError.invalidSetting("CFBundleIdentifier")
             }
@@ -85,6 +88,9 @@ struct KordiAppEnvironment: Equatable {
             guard isLoopbackBetaURL(baseURL) || isTemporaryPhysicalDeviceRelayURL(baseURL) else {
                 throw KordiAppEnvironmentError.invalidSetting("KordiCloudBaseURL")
             }
+            #else
+            throw KordiAppEnvironmentError.invalidSetting("KordiDistributionChannel")
+            #endif
         }
 
         return KordiAppEnvironment(
@@ -96,11 +102,15 @@ struct KordiAppEnvironment: Equatable {
     }
 
     static func permitsAPIBaseURL(_ url: URL) -> Bool {
+        #if BETA
         if url.scheme?.lowercased() == "https" {
             return true
         }
         return url.scheme?.lowercased() == "http"
             && ["127.0.0.1", "localhost"].contains(url.host?.lowercased() ?? "")
+        #else
+        return url.scheme?.lowercased() == "https"
+        #endif
     }
 
     private static func setting(_ key: String, in dictionary: [String: Any]) throws -> String {
@@ -121,12 +131,14 @@ struct KordiAppEnvironment: Equatable {
             && hasNoExtraURLComponents(url)
     }
 
+    #if BETA
     private static func isLoopbackBetaURL(_ url: URL) -> Bool {
         url.scheme?.lowercased() == "http"
             && url.host?.lowercased() == "127.0.0.1"
             && url.port != nil
             && hasNoExtraURLComponents(url)
     }
+    #endif
 
     private static func isTemporaryPhysicalDeviceRelayURL(_ url: URL) -> Bool {
         #if KORDI_PHYSICAL_DEVICE_RELAY
