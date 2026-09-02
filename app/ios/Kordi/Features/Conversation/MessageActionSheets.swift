@@ -406,13 +406,15 @@ struct MessageActionOverlayLayout: Equatable {
     let menuHeight: CGFloat
     let pickerWidth: CGFloat
     let pickerHeight: CGFloat
+    let menuIsBelow: Bool
 
     static func make(
         sourceFrame: CGRect,
         containerSize: CGSize,
         showsReactions: Bool,
         reactionCount: Int,
-        actionCount: Int
+        actionCount: Int,
+        forcedMenuIsBelow: Bool? = nil
     ) -> Self {
         let margin: CGFloat = 12
         let reactionHeight: CGFloat = showsReactions ? 52 : 0
@@ -426,9 +428,11 @@ struct MessageActionOverlayLayout: Equatable {
             0,
             sourceFrame.minY - margin - reactionHeight - (showsReactions ? 16 : 8)
         )
-        let placeMenuBelow = availableMenuHeightBelow >= preferredMenuHeight
-            || (availableMenuHeightAbove < preferredMenuHeight
-                && availableMenuHeightBelow > availableMenuHeightAbove)
+        let placeMenuBelow = forcedMenuIsBelow ?? (
+            availableMenuHeightBelow >= preferredMenuHeight
+                || (availableMenuHeightAbove < preferredMenuHeight
+                    && availableMenuHeightBelow > availableMenuHeightAbove)
+        )
         let availableMenuHeight = placeMenuBelow
             ? availableMenuHeightBelow
             : availableMenuHeightAbove
@@ -494,7 +498,8 @@ struct MessageActionOverlayLayout: Equatable {
             menuWidth: menuWidth,
             menuHeight: menuHeight,
             pickerWidth: pickerWidth,
-            pickerHeight: pickerHeight
+            pickerHeight: pickerHeight,
+            menuIsBelow: placeMenuBelow
         )
     }
 
@@ -524,6 +529,7 @@ struct MessageActionOverlay: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(BlobEmojiRecentStore.key) private var storedRecentEmojiIDs = "[]"
     @State private var showsAllReactions = false
+    @State private var isConfirmingDelete = false
     @State private var didSchedulePreviewExpansion = false
     let message: ChatMessage
     let sourceFrame: CGRect
@@ -534,6 +540,7 @@ struct MessageActionOverlay: View {
     let allowsReactions: Bool
     let allowsEdit: Bool
     let allowsDelete: Bool
+    let deleteForEveryoneLabel: String
     let isPinned: Bool
     let mediaAttachment: ChatAttachment?
     let readReceiptLabel: String?
@@ -549,7 +556,7 @@ struct MessageActionOverlay: View {
     let onShareMessage: () -> Void
     let onForward: () -> Void
     let onEdit: () -> Void
-    let onDelete: () -> Void
+    let onDelete: (Bool) -> Void
     let onSaveSticker: (ChatAttachment) -> Void
     let onSelect: () -> Void
 
@@ -557,7 +564,7 @@ struct MessageActionOverlay: View {
         BlobEmojiCatalog.quickReactions(storedRecentEmojiIDs: storedRecentEmojiIDs)
     }
 
-    private var actionCount: Int {
+    private var regularActionCount: Int {
         (allowsConversationReply ? 1 : 0)
             + (allowsThreadReply ? 1 : 0)
             + (!message.text.isEmpty ? 2 : 0)
@@ -567,6 +574,10 @@ struct MessageActionOverlay: View {
             + mediaActionCount
             + (stickerAttachment == nil ? 0 : 1)
             + (readReceiptLabel == nil ? 0 : 1)
+    }
+
+    private var actionCount: Int {
+        isConfirmingDelete ? (message.author == .me ? 2 : 1) : regularActionCount
     }
 
     private var mediaKind: ExpressiveMediaLibraryKind? {
@@ -606,17 +617,26 @@ struct MessageActionOverlay: View {
                 width: layoutFrame.minX - containerFrame.minX,
                 height: layoutFrame.minY - containerFrame.minY
             )
-            let layout = MessageActionOverlayLayout.make(
+            let regularLayout = MessageActionOverlayLayout.make(
                 sourceFrame: sourceFrameInLayout,
                 containerSize: layoutFrame.size,
                 showsReactions: allowsReactions,
                 reactionCount: allowsReactions ? quickReactions.count : 0,
-                actionCount: actionCount
+                actionCount: regularActionCount
+            )
+            let showsReactionSurface = allowsReactions && !isConfirmingDelete
+            let layout = MessageActionOverlayLayout.make(
+                sourceFrame: sourceFrameInLayout,
+                containerSize: layoutFrame.size,
+                showsReactions: showsReactionSurface,
+                reactionCount: showsReactionSurface ? quickReactions.count : 0,
+                actionCount: actionCount,
+                forcedMenuIsBelow: regularLayout.menuIsBelow
             )
             ZStack {
                 dismissalBackdrop(cutout: localSourceFrame)
 
-                if allowsReactions {
+                if showsReactionSurface {
                     reactionSurface
                         .frame(
                             width: showsAllReactions ? layout.pickerWidth : layout.reactionWidth,
@@ -641,9 +661,10 @@ struct MessageActionOverlay: View {
                             showsAllReactions ? layout.pickerCenter : layout.reactionCenter
                         )
                         .offset(layoutOffset)
+                        .transition(.scale(scale: 0.96).combined(with: .opacity))
                 }
 
-                if !showsAllReactions || !allowsReactions {
+                if isConfirmingDelete || !showsAllReactions || !allowsReactions {
                     actionMenu
                         .frame(
                             width: layout.menuWidth,
@@ -655,6 +676,10 @@ struct MessageActionOverlay: View {
                         .transition(.scale(scale: 0.96).combined(with: .opacity))
                 }
             }
+            .animation(
+                reduceMotion ? nil : .smooth(duration: 0.22),
+                value: isConfirmingDelete
+            )
         }
         .ignoresSafeArea()
         .accessibilityElement(children: .contain)
@@ -764,76 +789,88 @@ struct MessageActionOverlay: View {
     private var actionMenu: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: 0) {
-                if mediaAttachment != nil {
-                    actionButton("Review", systemImage: "eye", action: onReviewAttachment)
-                    actionButton(
-                        "Download / Save to Files",
-                        systemImage: "arrow.down.circle",
-                        action: onShareAttachment
-                    )
-                    if let mediaKind {
+                if isConfirmingDelete {
+                    if message.author == .me {
+                        deleteChoiceButton(deleteForEveryoneLabel) { onDelete(true) }
+                        Divider().padding(.horizontal, 14)
+                    }
+                    deleteChoiceButton("Delete for me") { onDelete(false) }
+                } else {
+                    if mediaAttachment != nil {
+                        actionButton("Review", systemImage: "eye", action: onReviewAttachment)
                         actionButton(
-                            "Add to \(mediaKind.libraryName)",
-                            systemImage: "square.stack.3d.up",
-                            action: onAddAttachmentToMediaLibrary
+                            "Download / Save to Files",
+                            systemImage: "arrow.down.circle",
+                            action: onShareAttachment
+                        )
+                        if let mediaKind {
+                            actionButton(
+                                "Add to \(mediaKind.libraryName)",
+                                systemImage: "square.stack.3d.up",
+                                action: onAddAttachmentToMediaLibrary
+                            )
+                        }
+                        Divider().padding(.horizontal, 14)
+                    }
+                    if allowsConversationReply {
+                        actionButton("Reply in conversation", systemImage: "message") {
+                            onReply(.conversation)
+                        }
+                    }
+                    if allowsThreadReply {
+                        actionButton("Reply in thread", systemImage: "sidebar.right") {
+                            onReply(.thread)
+                        }
+                    }
+                    if !message.text.isEmpty {
+                        actionButton("Copy", systemImage: "doc.on.doc", action: onCopy)
+                        actionButton(
+                            "Share",
+                            systemImage: "square.and.arrow.up",
+                            action: onShareMessage
                         )
                     }
+                    if allowsEdit {
+                        actionButton("Edit", systemImage: "pencil", action: onEdit)
+                    }
+                    actionButton(
+                        "Forward",
+                        systemImage: "arrowshape.turn.up.right",
+                        disabled: message.deliveryState == .sending || message.deliveryState == .failed,
+                        action: onForward
+                    )
+                    if let stickerAttachment {
+                        actionButton(
+                            "Save to My Stickers",
+                            systemImage: "square.stack.3d.up",
+                            action: { onSaveSticker(stickerAttachment) }
+                        )
+                    }
+                    actionButton(
+                        isPinned ? "Unpin" : "Pin",
+                        systemImage: "pin",
+                        disabled: message.deliveryState == .sending || message.deliveryState == .failed,
+                        action: onPin
+                    )
                     Divider().padding(.horizontal, 14)
-                }
-                if allowsConversationReply {
-                    actionButton("Reply in conversation", systemImage: "message") {
-                        onReply(.conversation)
+                    actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
+                    if allowsDelete {
+                        actionButton(
+                            "Delete",
+                            systemImage: "trash",
+                            role: .destructive,
+                            action: {
+                                withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+                                    isConfirmingDelete = true
+                                }
+                            }
+                        )
                     }
-                }
-                if allowsThreadReply {
-                    actionButton("Reply in thread", systemImage: "sidebar.right") {
-                        onReply(.thread)
-                    }
-                }
-                if !message.text.isEmpty {
-                    actionButton("Copy", systemImage: "doc.on.doc", action: onCopy)
-                    actionButton(
-                        "Share",
-                        systemImage: "square.and.arrow.up",
-                        action: onShareMessage
+                    MessageActionReadReceiptRow(
+                        label: readReceiptLabel,
+                        readers: readReceiptReaders
                     )
                 }
-                if allowsEdit {
-                    actionButton("Edit", systemImage: "pencil", action: onEdit)
-                }
-                actionButton(
-                    "Forward",
-                    systemImage: "arrowshape.turn.up.right",
-                    disabled: message.deliveryState == .sending || message.deliveryState == .failed,
-                    action: onForward
-                )
-                if let stickerAttachment {
-                    actionButton(
-                        "Save to My Stickers",
-                        systemImage: "square.stack.3d.up",
-                        action: { onSaveSticker(stickerAttachment) }
-                    )
-                }
-                actionButton(
-                    isPinned ? "Unpin" : "Pin",
-                    systemImage: "pin",
-                    disabled: message.deliveryState == .sending || message.deliveryState == .failed,
-                    action: onPin
-                )
-                Divider().padding(.horizontal, 14)
-                actionButton("Select", systemImage: "checkmark.circle", action: onSelect)
-                if allowsDelete {
-                    actionButton(
-                        "Delete",
-                        systemImage: "trash",
-                        role: .destructive,
-                        action: onDelete
-                    )
-                }
-                MessageActionReadReceiptRow(
-                    label: readReceiptLabel,
-                    readers: readReceiptReaders
-                )
             }
             .padding(.vertical, 4)
         }
@@ -848,6 +885,23 @@ struct MessageActionOverlay: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .shadow(color: .black.opacity(0.12), radius: 18, y: 10)
+    }
+
+    private func deleteChoiceButton(
+        _ title: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(role: .destructive, action: action) {
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.red)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func actionButton(
