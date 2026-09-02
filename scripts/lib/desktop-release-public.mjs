@@ -36,6 +36,45 @@ function sha256(bytes) {
 
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 const CACHEABLE_CDN_STATUSES = new Set(['hit', 'miss', 'revalidated', 'stale']);
+const PUBLIC_CONVERGENCE_ATTEMPTS = 7;
+const PUBLIC_CONVERGENCE_DELAY_MS = 2_000;
+
+export async function verifyPublicConvergence(verification, publicHttp) {
+  let lastError;
+  for (let attempt = 0; attempt < PUBLIC_CONVERGENCE_ATTEMPTS; attempt += 1) {
+    try {
+      return await verification();
+    } catch (error) {
+      lastError = error;
+      if (attempt + 1 < PUBLIC_CONVERGENCE_ATTEMPTS) {
+        await publicHttp.waitForPropagation?.(PUBLIC_CONVERGENCE_DELAY_MS);
+      }
+    }
+  }
+  throw lastError;
+}
+
+export function verifyPromotedReleaseWithConvergence(prepared, publicHttp) {
+  return verifyPublicConvergence(
+    () => verifyPromotedRelease(prepared, publicHttp),
+    publicHttp,
+  );
+}
+
+export function verifyUnpublishedChannelWithConvergence(
+  channel,
+  publicHttp,
+  versionPattern,
+) {
+  return verifyPublicConvergence(
+    () => verifyUnpublishedChannel(
+      channel,
+      publicHttp,
+      (version) => typeof version === 'string' && versionPattern.test(version),
+    ),
+    publicHttp,
+  );
+}
 
 function verifyPublicAssetHeaders(response, {
   contentLength,

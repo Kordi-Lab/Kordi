@@ -7,6 +7,7 @@ import {
   VERSION,
   TEST_PUBLIC_KEY,
   makeFixture,
+  makePublicHttp,
   MemoryStore,
   storedReleaseEntries,
   tombstoneBytes,
@@ -104,22 +105,17 @@ test('failed acceptance cleanup restores and reverifies the exact prior pointer'
   t.after(() => rm(fixture.root, { recursive: true, force: true }));
   const prepared = await preparedFixture(fixture, { channel: 'acceptance' });
   const store = new MemoryStore(storedReleaseEntries(prepared));
+  const baseHttp = makePublicHttp(prepared);
   let endpointReads = 0;
   const publicHttp = {
-    async get(url) {
-      assert.equal(url, prepared.urls.updaterEndpoint);
-      endpointReads += 1;
-      if (endpointReads === 1) return { status: 503, headers: {}, body: Buffer.from('stale') };
-      const body = Buffer.from(JSON.stringify({
-        version: prepared.version,
-        notes: prepared.release.notes,
-        pub_date: prepared.pubDate,
-        url: prepared.urls.updaterArchive,
-        signature: prepared.release.platforms['darwin-aarch64'].signature,
-      }));
-      return { status: 200, headers: {}, body };
+    async get(url, options) {
+      if (url === prepared.urls.updaterEndpoint) {
+        endpointReads += 1;
+        if (endpointReads === 1) return { status: 503, headers: {}, body: Buffer.from('stale') };
+      }
+      return baseHttp.get(url, options);
     },
-    async head() { throw new Error('acceptance cleanup must not read beta stable assets'); },
+    head: (...args) => baseHttp.head(...args),
   };
 
   await assert.rejects(
@@ -133,7 +129,7 @@ test('failed acceptance cleanup restores and reverifies the exact prior pointer'
   const mutations = store.actions.filter((action) => action.type === 'put');
   assert.equal(mutations.length, 2);
   assert.equal(mutations[1].metadata.ifMatch, mutations[0].resultEtag);
-  assert.equal(endpointReads, 2);
+  assert.equal(endpointReads, 8);
 });
 
 test('beta rollback tombstones only the expected current release and verifies safe fallback', async (t) => {

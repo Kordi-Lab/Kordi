@@ -157,6 +157,9 @@ export function createPublicHttpAdapter({ fetchImpl = globalThis.fetch } = {}) {
     get(url, options = {}) {
       return request(url, 'GET', options.range ? { Range: options.range } : {});
     },
+    waitForPropagation(delayMs) {
+      return new Promise((resolve) => setTimeout(resolve, delayMs));
+    },
   };
 }
 
