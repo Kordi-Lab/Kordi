@@ -72,6 +72,22 @@ test('publisher reads a corrective beta prior pointer before promotion', async (
   assert.deepEqual(store.bytes(prepared.pointerKey), prepared.pointerBytes);
 });
 
+test('beta stable DMG accepts a no-store CDN miss without weakening byte checks', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture);
+  const store = new MemoryStore();
+
+  const result = await publishDesktopRelease(optionsFor(fixture), {
+    verifier: passingVerifier(),
+    store,
+    publicHttp: makePublicHttp(prepared, { stableCdnStatus: 'miss' }),
+  });
+
+  assert.equal(result.published, true);
+  assert.deepEqual(store.bytes(prepared.pointerKey), prepared.pointerBytes);
+});
+
 test('promotion waits through the full public pointer convergence window before rollback', async (t) => {
   const fixture = await makeFixture();
   t.after(() => rm(fixture.root, { recursive: true, force: true }));

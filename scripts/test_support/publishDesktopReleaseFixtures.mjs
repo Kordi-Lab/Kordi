@@ -286,6 +286,7 @@ export function responseFor(bytes, digest, {
   contentType = 'application/octet-stream',
   cacheControl = 'public, max-age=31536000, immutable',
   contentRange,
+  cdnStatus,
 } = {}) {
   return {
     status,
@@ -297,7 +298,7 @@ export function responseFor(bytes, digest, {
       'last-modified': 'Mon, 13 Jul 2026 00:00:00 GMT',
       'accept-ranges': 'bytes',
       'cache-control': cacheControl,
-      'x-kordi-cdn-cache': cacheControl === 'no-store' ? 'uncacheable' : 'miss',
+      'x-kordi-cdn-cache': cdnStatus ?? (cacheControl === 'no-store' ? 'uncacheable' : 'miss'),
       ...(contentRange ? { 'content-range': contentRange } : {}),
     },
     body: Buffer.from(bytes),
@@ -309,6 +310,7 @@ export function makePublicHttp(prepared, {
   wrongArchive = false,
   previousPrepared = null,
   onPostPromotionFailure = null,
+  stableCdnStatus,
 } = {}) {
   const actions = [];
   const byUrl = new Map();
@@ -343,11 +345,12 @@ export function makePublicHttp(prepared, {
     signature: release.release.platforms['darwin-aarch64'].signature,
   }));
   const stableAsset = () => (postPromotionFailed ? previousPrepared?.artifacts.manual : prepared.artifacts.manual);
-  const assetResponse = (found, { range, cacheControl } = {}) => {
+  const assetResponse = (found, { range, cacheControl, cdnStatus } = {}) => {
     if (!range) {
       return responseFor(found.bytes, found.digest ?? found.sha256, {
         contentType: found.contentType ?? prepared.release.manual.contentType,
         cacheControl,
+        cdnStatus,
       });
     }
     const match = /^bytes=(\d+)-(\d+)$/.exec(range);
@@ -359,6 +362,7 @@ export function makePublicHttp(prepared, {
       contentType: found.contentType ?? prepared.release.manual.contentType,
       cacheControl,
       contentRange: `bytes ${start}-${end}/${found.bytes.length}`,
+      cdnStatus,
     });
   };
   return {
@@ -367,7 +371,7 @@ export function makePublicHttp(prepared, {
       actions.push({ method: 'HEAD', url, range: null });
       if (url === prepared.urls.stableManual) {
         const found = stableAsset();
-        return found ? assetResponse(found, { cacheControl: 'no-store' }) : { status: 404, headers: {}, body: Buffer.alloc(0) };
+        return found ? assetResponse(found, { cacheControl: 'no-store', cdnStatus: stableCdnStatus }) : { status: 404, headers: {}, body: Buffer.alloc(0) };
       }
       const found = byUrl.get(url);
       return found ? assetResponse(found) : { status: 404, headers: {}, body: Buffer.alloc(0) };
@@ -402,7 +406,7 @@ export function makePublicHttp(prepared, {
       }
       if (url === prepared.urls.stableManual) {
         const found = stableAsset();
-        return found ? assetResponse(found, { range: options.range, cacheControl: 'no-store' }) : { status: 404, headers: {}, body: Buffer.alloc(0) };
+        return found ? assetResponse(found, { range: options.range, cacheControl: 'no-store', cdnStatus: stableCdnStatus }) : { status: 404, headers: {}, body: Buffer.alloc(0) };
       }
       const found = byUrl.get(url);
       return found ? assetResponse(found, { range: options.range }) : { status: 404, headers: {}, body: Buffer.alloc(0) };
