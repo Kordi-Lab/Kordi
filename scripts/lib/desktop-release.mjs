@@ -31,6 +31,7 @@ import {
   PRODUCT_ORIGIN,
   releaseUrlsForOrigin,
   verifyPromotedRelease,
+  verifyPublicConvergence,
   verifyPublicReleaseArtifacts,
   verifyUnpublishedChannel as verifyUnpublishedReleaseChannel,
 } from './desktop-release-public.mjs';
@@ -618,10 +619,20 @@ async function loadChannelSnapshot(store, channel, updaterPublicKey = TAURI_UPDA
 }
 
 function verifyUnpublishedChannel(channel, publicHttp) {
-  return verifyUnpublishedReleaseChannel(
-    channel,
+  return verifyPublicConvergence(
+    () => verifyUnpublishedReleaseChannel(
+      channel,
+      publicHttp,
+      (version) => typeof version === 'string' && VERSION_PATTERN.test(version),
+    ),
     publicHttp,
-    (version) => typeof version === 'string' && VERSION_PATTERN.test(version),
+  );
+}
+
+function verifyPromotedChannel(prepared, publicHttp) {
+  return verifyPublicConvergence(
+    () => verifyPromotedRelease(prepared, publicHttp),
+    publicHttp,
   );
 }
 
@@ -683,7 +694,7 @@ export async function clearDesktopReleaseChannel(options, dependencies = {}) {
         restored,
         'Restored acceptance channel pointer',
       );
-      await verifyPromotedRelease(previous, publicHttp);
+      await verifyPromotedChannel(previous, publicHttp);
     } catch (rollbackError) {
       throw new Error('Acceptance cleanup verification failed and pointer restoration also failed', {
         cause: new AggregateError([error, rollbackError]),
@@ -755,7 +766,7 @@ export async function rollbackDesktopBetaChannel(options, dependencies = {}) {
         restored,
         'Restored beta channel pointer',
       );
-      await verifyPromotedRelease(previous, publicHttp);
+      await verifyPromotedChannel(previous, publicHttp);
     } catch (rollbackError) {
       throw new Error('Beta rollback verification failed and pointer restoration also failed', {
         cause: new AggregateError([error, rollbackError]),
@@ -823,7 +834,7 @@ export async function publishDesktopRelease(options, dependencies = {}) {
       promotion,
       'Promoted channel pointer',
     );
-    await verifyPromotedRelease(prepared, publicHttp);
+    await verifyPromotedChannel(prepared, publicHttp);
   } catch (error) {
     if (!promotion) throw error;
     try {
@@ -840,7 +851,7 @@ export async function publishDesktopRelease(options, dependencies = {}) {
       });
       await requireCurrentPointer(store, prepared.pointerKey, restored, 'Restored channel pointer');
       if (previous && !previous.unpublished) {
-        await verifyPromotedRelease(previous, publicHttp);
+        await verifyPromotedChannel(previous, publicHttp);
       } else {
         await verifyUnpublishedChannel(prepared.channel, publicHttp);
       }

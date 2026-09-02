@@ -48,6 +48,41 @@ test('failed post-promotion verification restores exact prior pointer bytes', as
   assert.ok(publicHttp.actions.some((action) => action.method === 'GET' && action.url === previous.urls.updaterArchive));
 });
 
+test('promotion waits for transient public pointer convergence before rollback', async (t) => {
+  const fixture = await makeFixture();
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+  const prepared = await preparedFixture(fixture);
+  const store = new MemoryStore();
+  const baseHttp = makePublicHttp(prepared);
+  let attempts = 0;
+  let waits = 0;
+  const publicHttp = {
+    head: (...args) => baseHttp.head(...args),
+    async get(url, options) {
+      if (url === prepared.urls.updaterEndpoint && attempts++ < 2) {
+        return { status: 503, headers: {}, body: Buffer.from('not converged') };
+      }
+      return baseHttp.get(url, options);
+    },
+    async waitForPropagation() { waits += 1; },
+  };
+
+  const result = await publishDesktopRelease(optionsFor(fixture), {
+    verifier: passingVerifier(),
+    store,
+    publicHttp,
+  });
+
+  assert.equal(result.published, true);
+  assert.equal(attempts, 3);
+  assert.equal(waits, 2);
+  assert.deepEqual(store.bytes(prepared.pointerKey), prepared.pointerBytes);
+  assert.equal(
+    store.actions.filter((action) => action.type === 'put' && action.key === prepared.pointerKey).length,
+    1,
+  );
+});
+
 test('failed first promotion atomically replaces the pointer with an unpublished tombstone', async (t) => {
   const fixture = await makeFixture();
   t.after(() => rm(fixture.root, { recursive: true, force: true }));
