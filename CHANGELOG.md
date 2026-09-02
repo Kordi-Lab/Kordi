@@ -4,7 +4,7 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
-## [0.0.1-beta.19] - 2026-09-01
+## [0.0.1-beta.19] - 2026-09-02
 
 ### Added
 
@@ -46,6 +46,8 @@ This file records notable user-facing changes to Kordi Desktop.
   [#1355], [#1358])
 - Corrected sidebar activity timestamps, Support classification, and expanded
   row measurement. ([#1312], [#1352])
+- Preserved sidebar position when group activity reorders chats and kept newer
+  incoming messages unread after an earlier message is read. ([#1363])
 
 ## [0.0.1-beta.18] - 2026-08-31
 
@@ -585,3 +587,4 @@ This release is the comparison baseline for beta.8. See the
 [#1354]: https://github.com/Kordi-Lab/Kordi/pull/1354
 [#1355]: https://github.com/Kordi-Lab/Kordi/pull/1355
 [#1358]: https://github.com/Kordi-Lab/Kordi/pull/1358
+[#1363]: https://github.com/Kordi-Lab/Kordi/pull/1363
