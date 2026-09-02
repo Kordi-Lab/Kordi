@@ -189,8 +189,10 @@ may be forbidden from listing or monitoring iOS builds.
    build number at the start of the iOS phase.
 9. Merge the release PR through the repository's normal protection.
 
-The preparation PR changes source metadata only. It does not deploy, compile,
-publish, tag, or upload an artifact.
+The preparation PR changes source metadata only and reuses validation recorded
+by merged implementation PRs. It does not repeat feature suites, authenticate
+to product or distribution services, deploy, compile, publish, tag, or upload
+an artifact.
 
 ## Phase 1: pin and preflight the merged candidate
 

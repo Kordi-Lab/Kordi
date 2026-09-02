@@ -578,13 +578,9 @@ strings "$DMG" | rg -F 'https://kordi.ai'
 
 8. Only after promotion passes, create the annotated `V0.0.1.betaN` tag at `RELEASE_COMMIT`, push it, and create the GitHub prerelease mirror. Include the merge commit, artifact hashes/sizes, deployed image tag, backup identifier, schema/health results, endpoint matrix, acceptance evidence, and rollback pointer digest.
 
-From two external regions, including the operator route, record cold and warm
-full-download `time_total`, `speed_download`, response size, SHA-256, and
-`X-Kordi-CDN-Cache` for both immutable assets. Also record a 1 MiB range probe.
-The operator-route warm download for an approximately 25 MB updater archive
-must complete in under 30 seconds and materially exceed the prior 183 KB/s
-baseline. Keep credentials, host identifiers, and unredacted logs out of the
-release record.
+CDN and range performance qualification belongs to the updater deployment
+checklist. Standard releases verify exact range behavior and bytes through the
+publisher without repeating geographic performance benchmarks.
 
 ## Validation before release
 
