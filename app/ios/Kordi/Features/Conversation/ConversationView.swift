@@ -170,6 +170,8 @@ struct ConversationView: View {
     @State private var draftBeforeEditing = ""
     @State private var isEditingMessage = false
     @State private var deleteTarget: ChatMessage?
+    @State private var deleteParticleCapture: MessageDeleteParticleCapture?
+    @State private var activeDeleteParticle: MessageDeleteParticlePresentation?
     @State private var isDeletingMessage = false
     @State private var messageMutationError: String?
     @State private var messageActionMessage: ChatMessage?
@@ -180,6 +182,23 @@ struct ConversationView: View {
 
     private var navigationBarVisibility: Visibility {
         showsNavigationChrome ? .visible : .hidden
+    }
+    private var deleteMessagePresented: Binding<Bool> {
+        Binding(
+            get: { deleteTarget != nil },
+            set: {
+                if !$0 {
+                    deleteTarget = nil
+                    deleteParticleCapture = nil
+                }
+            }
+        )
+    }
+    private var messageMutationErrorPresented: Binding<Bool> {
+        Binding(
+            get: { messageMutationError != nil },
+            set: { if !$0 { messageMutationError = nil } }
+        )
     }
     @State private var forwardedDestination: ConversationSummary?
     @State private var selectedCompanionConversation: ConversationSummary?
@@ -417,6 +436,12 @@ struct ConversationView: View {
                                             )
                                         }
                                         }
+                                        .animation(
+                                            reduceMotion || (deleteParticleCapture == nil && activeDeleteParticle == nil)
+                                                ? nil
+                                                : .timingCurve(0.77, 0, 0.175, 1, duration: 0.8),
+                                            value: visibleTimelineRows.map(\.id)
+                                        )
                                     }
 
                                         if let pinActivityText {
@@ -618,6 +643,13 @@ struct ConversationView: View {
                     .ignoresSafeArea(edges: .bottom)
             )
             .overlay {
+                if let activeDeleteParticle {
+                    WindowOverlayPresenter(passthroughFrame: nil) { _ in
+                        MessageDeleteParticleOverlay(presentation: activeDeleteParticle)
+                    }
+                }
+            }
+            .overlay {
                 if let messageActionMessage, !messageActionFrame.isEmpty {
                     messageActionsOverlay(
                         for: messageActionMessage,
@@ -786,6 +818,8 @@ struct ConversationView: View {
             callJoinTask?.cancel()
             callJoinTask = nil
             callCoordinator.cancelUnadmittedStart()
+            deleteParticleCapture = nil
+            activeDeleteParticle = nil
             isReadPresentationVisible = false
             synchronizeReadPresentation()
             rememberViewport(in: messages)
@@ -959,10 +993,7 @@ struct ConversationView: View {
         }
         .alert(
             "Delete this message?",
-            isPresented: Binding(
-                get: { deleteTarget != nil },
-                set: { if !$0 { deleteTarget = nil } }
-            ),
+            isPresented: deleteMessagePresented,
             presenting: deleteTarget
         ) { message in
             Button("Delete for me", role: .destructive) {
@@ -973,7 +1004,10 @@ struct ConversationView: View {
                     deleteMessage(message, forEveryone: true)
                 }
             }
-            Button("Cancel", role: .cancel) { deleteTarget = nil }
+            Button("Cancel", role: .cancel) {
+                deleteTarget = nil
+                deleteParticleCapture = nil
+            }
         } message: { message in
             if message.author == .me {
                 Text("Delete only for you, or remove it for everyone in the conversation.")
@@ -983,10 +1017,7 @@ struct ConversationView: View {
         }
         .alert(
             "Message action failed",
-            isPresented: Binding(
-                get: { messageMutationError != nil },
-                set: { if !$0 { messageMutationError = nil } }
-            )
+            isPresented: messageMutationErrorPresented
         ) {
             Button("OK") { messageMutationError = nil }
         } message: {
@@ -1309,6 +1340,9 @@ struct ConversationView: View {
                     dismissMessageActions()
                 },
                 onDelete: {
+                    deleteParticleCapture = reduceMotion
+                        ? nil
+                        : MessageDeleteParticleCapture.capture(frame: messageActionFrame)
                     deleteTarget = message
                     dismissMessageActions()
                 },
@@ -1508,9 +1542,20 @@ struct ConversationView: View {
                 in: conversation
             )
             isDeletingMessage = false
+            let capture = deleteParticleCapture
+            deleteParticleCapture = nil
             if succeeded,
                editTarget?.reactionTargetMessageId == target.reactionTargetMessageId {
                 cancelMessageEdit()
+            }
+            if succeeded, let capture, !reduceMotion {
+                let presentation = capture.startingNow()
+                activeDeleteParticle = presentation
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(800))
+                    guard activeDeleteParticle?.id == presentation.id else { return }
+                    activeDeleteParticle = nil
+                }
             }
             if !succeeded {
                 messageMutationError = model.errorMessage ?? "Could not delete this message."
@@ -3112,6 +3157,216 @@ private struct EmptyConversation: View {
         case .person: "Send the first message from your iPhone."
         }
     }
+}
+
+private struct MessageDeleteParticleCapture {
+    let image: UIImage
+    let frame: CGRect
+
+    @MainActor
+    static func capture(frame: CGRect) -> Self? {
+        guard !frame.isEmpty,
+              let window = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .flatMap(\.windows)
+                .first(where: \.isKeyWindow) else { return nil }
+        let clippedFrame = frame.intersection(window.bounds)
+        guard !clippedFrame.isEmpty else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(
+            bounds: CGRect(origin: .zero, size: clippedFrame.size),
+            format: format
+        )
+        let image = renderer.image { rendererContext in
+            rendererContext.cgContext.translateBy(
+                x: -clippedFrame.minX,
+                y: -clippedFrame.minY
+            )
+            window.layer.render(in: rendererContext.cgContext)
+        }
+        return Self(
+            image: pixelated(image, size: clippedFrame.size),
+            frame: clippedFrame
+        )
+    }
+
+    func startingNow() -> MessageDeleteParticlePresentation {
+        MessageDeleteParticlePresentation(
+            image: image,
+            frame: frame
+        )
+    }
+
+    private static func pixelated(_ image: UIImage, size: CGSize) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        format.scale = 1
+        let reducedSize = CGSize(
+            width: max(1, ceil(size.width / 2)),
+            height: max(1, ceil(size.height / 2))
+        )
+        let reduced = UIGraphicsImageRenderer(size: reducedSize, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: reducedSize))
+        }
+        return UIGraphicsImageRenderer(size: size, format: format).image { context in
+            context.cgContext.interpolationQuality = .none
+            reduced.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+}
+
+private struct MessageDeleteParticlePresentation: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let frame: CGRect
+}
+
+private struct MessageDeleteParticleOverlay: View {
+    let presentation: MessageDeleteParticlePresentation
+
+    var body: some View {
+        MessageDeleteParticleView(image: presentation.image)
+            .frame(width: presentation.frame.width, height: presentation.frame.height)
+            .position(x: presentation.frame.midX, y: presentation.frame.midY)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct MessageDeleteParticleView: UIViewRepresentable {
+    let image: UIImage
+
+    func makeUIView(context: Context) -> MessageDeleteParticleUIView {
+        MessageDeleteParticleUIView(image: image)
+    }
+
+    func updateUIView(_ view: MessageDeleteParticleUIView, context: Context) {}
+}
+
+private final class MessageDeleteParticleUIView: UIView {
+    private static let dissolveDuration: CFTimeInterval = 0.8
+    private static let waveDuration: CFTimeInterval = 0.6
+
+    init(image: UIImage) {
+        super.init(frame: CGRect(origin: .zero, size: image.size))
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+
+        let snapshot = CALayer()
+        snapshot.frame = bounds
+        snapshot.contents = image.cgImage
+        snapshot.contentsGravity = .resize
+        snapshot.magnificationFilter = .nearest
+        layer.addSublayer(snapshot)
+
+        let mask = CAGradientLayer()
+        mask.frame = bounds
+        mask.startPoint = CGPoint(x: 0.5, y: 0)
+        mask.endPoint = CGPoint(x: 0.5, y: 1)
+        mask.colors = [UIColor.clear.cgColor, UIColor.black.cgColor]
+        mask.locations = [1, 1.14]
+        snapshot.mask = mask
+
+        let emitter = CAEmitterLayer()
+        emitter.frame = bounds
+        emitter.emitterShape = .line
+        emitter.emitterMode = .outline
+        emitter.renderMode = .unordered
+        emitter.emitterPosition = CGPoint(x: bounds.midX, y: bounds.maxY)
+        emitter.emitterSize = CGSize(width: bounds.width, height: 1)
+        emitter.emitterCells = Self.sampleColors(from: image).map(Self.emitterCell)
+        emitter.beginTime = CACurrentMediaTime()
+        layer.addSublayer(emitter)
+
+        let maskAnimation = CABasicAnimation(keyPath: "locations")
+        maskAnimation.fromValue = [-0.14, 0]
+        maskAnimation.toValue = [1, 1.14]
+        maskAnimation.duration = Self.waveDuration
+        maskAnimation.timingFunction = CAMediaTimingFunction(name: .linear)
+        maskAnimation.fillMode = .forwards
+        maskAnimation.isRemovedOnCompletion = false
+        mask.add(maskAnimation, forKey: "message-delete-mask")
+
+        let emitterAnimation = CABasicAnimation(keyPath: "emitterPosition")
+        emitterAnimation.fromValue = CGPoint(x: bounds.midX, y: bounds.minY)
+        emitterAnimation.toValue = CGPoint(x: bounds.midX, y: bounds.maxY)
+        emitterAnimation.duration = Self.waveDuration
+        emitterAnimation.timingFunction = CAMediaTimingFunction(name: .linear)
+        emitterAnimation.fillMode = .forwards
+        emitterAnimation.isRemovedOnCompletion = false
+        emitter.add(emitterAnimation, forKey: "message-delete-wave")
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("MessageDeleteParticleUIView does not support initialization from a coder.")
+    }
+
+    private static func emitterCell(color: UIColor) -> CAEmitterCell {
+        let cell = CAEmitterCell()
+        cell.contents = particleImage(color: color).cgImage
+        cell.birthRate = 34
+        cell.beginTime = 0
+        cell.duration = waveDuration
+        cell.lifetime = Float(dissolveDuration - waveDuration + 0.2)
+        cell.lifetimeRange = 0.12
+        cell.velocity = 42
+        cell.velocityRange = 34
+        cell.emissionRange = .pi * 2
+        cell.yAcceleration = -58
+        cell.scale = 0.72
+        cell.scaleRange = 0.28
+        cell.scaleSpeed = -0.9
+        cell.alphaSpeed = -2.2
+        return cell
+    }
+
+    private static func particleImage(color: UIColor) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.opaque = false
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: 3, height: 3), format: format).image { context in
+            context.cgContext.setFillColor(color.cgColor)
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 3, height: 3))
+        }
+    }
+
+    private static func sampleColors(from image: UIImage) -> [UIColor] {
+        guard let source = image.cgImage else { return [.secondaryLabel] }
+        let width = 8
+        let height = 8
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        bytes.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(
+                data: buffer.baseAddress,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                    | CGBitmapInfo.byteOrder32Big.rawValue
+            ) else { return }
+            context.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
+        }
+        let colors = stride(from: 0, to: bytes.count, by: 4).compactMap { offset -> UIColor? in
+            let alpha = bytes[offset + 3]
+            guard alpha >= 32 else { return nil }
+            return UIColor(
+                red: CGFloat(bytes[offset]) / 255,
+                green: CGFloat(bytes[offset + 1]) / 255,
+                blue: CGFloat(bytes[offset + 2]) / 255,
+                alpha: CGFloat(alpha) / 255
+            )
+        }
+        let sampled = Array(colors.prefix(12))
+        return sampled.isEmpty ? [.secondaryLabel] : sampled
+    }
+
 }
 
 #Preview("Agent conversation") {
