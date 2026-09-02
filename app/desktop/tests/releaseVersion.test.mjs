@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const releaseName = 'V0.0.1.beta19.2';
-const appVersion = '0.0.1-beta.19.2';
+const releaseName = 'V0.0.1.beta19.3';
+const appVersion = '0.0.1-beta.19.3';
 
 function readJson(path) {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
@@ -17,7 +17,7 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-test('desktop release metadata is set for V0.0.1.beta19.2 and iOS build 42', () => {
+test('desktop release metadata is set for V0.0.1.beta19.3 and iOS build 42', () => {
   const pkg = readJson('../package.json');
   const packageLock = readJson('../package-lock.json');
   const tauri = readJson('../src-tauri/tauri.conf.json');
@@ -34,7 +34,7 @@ test('desktop release metadata is set for V0.0.1.beta19.2 and iOS build 42', () 
     'm',
   ));
 
-  assert.equal(releaseName, 'V0.0.1.beta19.2');
+  assert.equal(releaseName, 'V0.0.1.beta19.3');
   assert.equal(pkg.version, appVersion);
   assert.equal(packageLock.version, appVersion);
   assert.equal(packageLock.packages[''].version, appVersion);
@@ -42,9 +42,9 @@ test('desktop release metadata is set for V0.0.1.beta19.2 and iOS build 42', () 
   assert.equal(tauri.productName, 'Kordi');
   assert.equal(tauri.bundle.macOS.minimumSystemVersion, '12.0');
   assert.equal(cloudTauri.productName, 'Kordi');
-  assert.match(cargoToml, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.19\.2"/);
-  assert.match(cargoLock, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.19\.2"/);
-  assert.match(workspaceCargoLock, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.19\.2"/);
+  assert.match(cargoToml, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.19\.3"/);
+  assert.match(cargoLock, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.19\.3"/);
+  assert.match(workspaceCargoLock, /name = "kordi-desktop"\nversion = "0\.0\.1-beta\.19\.3"/);
   assert.match(iosProject, /deploymentTarget:\n    iOS: "17\.0"/);
   assert.match(iosProject, /IPHONEOS_DEPLOYMENT_TARGET: 17\.0/);
   assert.match(iosProject, /MARKETING_VERSION: 0\.0\.1/);

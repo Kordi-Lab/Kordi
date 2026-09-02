@@ -1,7 +1,7 @@
 {
   "name": "kordi-desktop",
   "private": true,
-  "version": "0.0.1-beta.19.2",
+  "version": "0.0.1-beta.19.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
