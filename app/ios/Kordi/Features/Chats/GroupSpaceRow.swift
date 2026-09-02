@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct GroupSpaceRow: View {
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let space: GroupSpaceSummary
     let isExpanded: Bool
@@ -59,6 +60,10 @@ struct GroupSpaceRow: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                        .animation(
+                            accessibilityReduceMotion ? nil : .snappy(duration: 0.22),
+                            value: isExpanded
+                        )
                 }
             }
         }

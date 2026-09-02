@@ -168,6 +168,30 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(source.contains("messageCountText"))
     }
 
+    func testGroupExpansionScopesAnimationToTheChevron() throws {
+        let chatsDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Chats")
+        let homeSource = try String(
+            contentsOf: chatsDirectory.appendingPathComponent("ChatHomeView.swift"),
+            encoding: .utf8
+        )
+        let rowSource = try String(
+            contentsOf: chatsDirectory.appendingPathComponent("GroupSpaceRow.swift"),
+            encoding: .utf8
+        )
+        let groupToggles = homeSource.components(separatedBy: "private func toggleGroupSpace").dropFirst()
+
+        XCTAssertEqual(groupToggles.count, 2)
+        for suffix in groupToggles {
+            let end = suffix.range(of: "\n    private func ")?.lowerBound ?? suffix.endIndex
+            XCTAssertFalse(suffix[..<end].contains("withAnimation"))
+        }
+        XCTAssertTrue(rowSource.contains("accessibilityReduceMotion ? nil : .snappy(duration: 0.22)"))
+        XCTAssertTrue(rowSource.contains("value: isExpanded"))
+    }
+
     func testContactsRemainVisibleWithoutAChatAndProfileUsesDirectChatAction() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

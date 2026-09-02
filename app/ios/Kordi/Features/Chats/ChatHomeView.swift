@@ -770,12 +770,10 @@ struct ChatHomeView: View {
 
     private func toggleGroupSpace(_ space: GroupSpaceSummary) {
         let willExpand = !expandedGroupSpaceIds.contains(space.id)
-        withAnimation(.snappy(duration: 0.22)) {
-            if willExpand {
-                expandedGroupSpaceIds.insert(space.id)
-            } else {
-                expandedGroupSpaceIds.remove(space.id)
-            }
+        if willExpand {
+            expandedGroupSpaceIds.insert(space.id)
+        } else {
+            expandedGroupSpaceIds.remove(space.id)
         }
     }
 
@@ -1010,12 +1008,10 @@ private struct ArchivedChatsView: View {
     }
 
     private func toggleGroupSpace(_ space: GroupSpaceSummary) {
-        withAnimation(.snappy(duration: 0.22)) {
-            if groupIsExpanded(space) {
-                expandedGroupSpaceIds.remove(space.id)
-            } else {
-                expandedGroupSpaceIds.insert(space.id)
-            }
+        if groupIsExpanded(space) {
+            expandedGroupSpaceIds.remove(space.id)
+        } else {
+            expandedGroupSpaceIds.insert(space.id)
         }
     }
 
