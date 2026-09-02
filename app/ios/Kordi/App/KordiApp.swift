@@ -565,7 +565,7 @@ struct MainTabView: View {
 
     private var contactsRoot: some View {
         NavigationStack(path: $contactsPath) {
-            ContactsView(onOpenConversation: { contactsPath.append($0) })
+            ContactsView()
         }
         .kordiTabBarVisibility(isRoot: contactsPath.isEmpty)
     }
