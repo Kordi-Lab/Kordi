@@ -4,7 +4,7 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
-## [0.0.1-beta.19.1] - 2026-09-02
+## [0.0.1-beta.19.2] - 2026-09-02
 
 ### Added
 
@@ -394,8 +394,8 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta19.1...HEAD
-[0.0.1-beta.19.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta18...V0.0.1.beta19.1
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta19.2...HEAD
+[0.0.1-beta.19.2]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta18...V0.0.1.beta19.2
 [0.0.1-beta.18]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta17...V0.0.1.beta18
 [0.0.1-beta.17]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta16...V0.0.1.beta17
 [0.0.1-beta.16]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta15...V0.0.1.beta16
