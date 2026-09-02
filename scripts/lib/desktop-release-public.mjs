@@ -54,6 +54,28 @@ export async function verifyPublicConvergence(verification, publicHttp) {
   throw lastError;
 }
 
+export function verifyPromotedReleaseWithConvergence(prepared, publicHttp) {
+  return verifyPublicConvergence(
+    () => verifyPromotedRelease(prepared, publicHttp),
+    publicHttp,
+  );
+}
+
+export function verifyUnpublishedChannelWithConvergence(
+  channel,
+  publicHttp,
+  versionPattern,
+) {
+  return verifyPublicConvergence(
+    () => verifyUnpublishedChannel(
+      channel,
+      publicHttp,
+      (version) => typeof version === 'string' && versionPattern.test(version),
+    ),
+    publicHttp,
+  );
+}
+
 function verifyPublicAssetHeaders(response, {
   contentLength,
   contentType,

@@ -30,10 +30,9 @@ import { assertMacOSNotificationBundleContract } from './macos-notification-rele
 import {
   PRODUCT_ORIGIN,
   releaseUrlsForOrigin,
-  verifyPromotedRelease,
-  verifyPublicConvergence,
+  verifyPromotedReleaseWithConvergence as verifyPromotedChannel,
   verifyPublicReleaseArtifacts,
-  verifyUnpublishedChannel as verifyUnpublishedReleaseChannel,
+  verifyUnpublishedChannelWithConvergence as verifyUnpublishedChannel,
 } from './desktop-release-public.mjs';
 import { releaseNotesForPublication } from './desktop-release-notes.mjs';
 
@@ -618,24 +617,6 @@ async function loadChannelSnapshot(store, channel, updaterPublicKey = TAURI_UPDA
   };
 }
 
-function verifyUnpublishedChannel(channel, publicHttp) {
-  return verifyPublicConvergence(
-    () => verifyUnpublishedReleaseChannel(
-      channel,
-      publicHttp,
-      (version) => typeof version === 'string' && VERSION_PATTERN.test(version),
-    ),
-    publicHttp,
-  );
-}
-
-function verifyPromotedChannel(prepared, publicHttp) {
-  return verifyPublicConvergence(
-    () => verifyPromotedRelease(prepared, publicHttp),
-    publicHttp,
-  );
-}
-
 export async function clearDesktopReleaseChannel(options, dependencies = {}) {
   const channel = requireString(options?.channel, '--channel');
   if (channel !== 'acceptance') {
@@ -655,7 +636,7 @@ export async function clearDesktopReleaseChannel(options, dependencies = {}) {
     dependencies.updaterPublicKey ?? TAURI_UPDATER_PUBLIC_KEY,
   );
   if (!previous || previous.unpublished) {
-    await verifyUnpublishedChannel(channel, publicHttp);
+    await verifyUnpublishedChannel(channel, publicHttp, VERSION_PATTERN);
     logger.info('[release] acceptance channel already unpublished');
     return { channel, removed: false };
   }
@@ -675,7 +656,7 @@ export async function clearDesktopReleaseChannel(options, dependencies = {}) {
       tombstone,
       'Acceptance channel tombstone',
     );
-    await verifyUnpublishedChannel(channel, publicHttp);
+    await verifyUnpublishedChannel(channel, publicHttp, VERSION_PATTERN);
   } catch (error) {
     if (!tombstone) throw error;
     try {
@@ -747,7 +728,7 @@ export async function rollbackDesktopBetaChannel(options, dependencies = {}) {
       label: 'Beta channel tombstone',
     });
     await requireCurrentPointer(store, previous.pointerKey, tombstone, 'Beta channel tombstone');
-    await verifyUnpublishedChannel('beta', publicHttp);
+    await verifyUnpublishedChannel('beta', publicHttp, VERSION_PATTERN);
   } catch (error) {
     if (!tombstone) throw error;
     try {
@@ -853,7 +834,7 @@ export async function publishDesktopRelease(options, dependencies = {}) {
       if (previous && !previous.unpublished) {
         await verifyPromotedChannel(previous, publicHttp);
       } else {
-        await verifyUnpublishedChannel(prepared.channel, publicHttp);
+        await verifyUnpublishedChannel(prepared.channel, publicHttp, VERSION_PATTERN);
       }
     } catch (rollbackError) {
       throw new Error('Post-promotion verification failed and channel rollback also failed', {
