@@ -57,6 +57,18 @@ test('generates deterministic beta.6 metadata, keys, checksums, and product URLs
   assert.deepEqual(await readFile(join(fixture.releaseDir, 'channel-beta-latest.json')), first.pointerBytes);
 });
 
+test('accepts a corrective beta suffix in metadata and immutable object keys', async (t) => {
+  const version = '0.0.1-beta.19.1';
+  const fixture = await makeFixture(version);
+  t.after(() => rm(fixture.root, { recursive: true, force: true }));
+
+  const prepared = await preparedFixture(fixture, { version });
+
+  assert.equal(prepared.release.version, version);
+  assert.equal(prepared.pointer.releaseManifestKey, `desktop/releases/${version}/release.json`);
+  assert.ok(prepared.immutableObjects.every(({ key }) => key.includes(`/releases/${version}/`)));
+});
+
 test('extracts the exact classified changelog entry and rejects missing release notes', () => {
   const changelog = [
     '# Changelog',
@@ -93,6 +105,16 @@ test('extracts the exact classified changelog entry and rejects missing release 
   assert.throws(
     () => releaseNotesFromChangelog(changelog, '1.2.3-beta.5'),
     /does not contain classified release notes/,
+  );
+
+  const correctiveChangelog = changelog.replaceAll('1.2.3-beta.4', '1.2.3-beta.19.1');
+  assert.match(
+    releaseNotesFromChangelog(correctiveChangelog, '1.2.3-beta.19.1'),
+    /Added a focused first-launch summary/,
+  );
+  assert.throws(
+    () => releaseNotesFromChangelog(correctiveChangelog, '1.2.3-beta.19.01'),
+    /beta semantic version/,
   );
 });
 
