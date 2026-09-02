@@ -1,7 +1,9 @@
 import { createElement, useCallback, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
+import { flushSync } from 'react-dom';
 
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
+import { prepareMessageDeleteAnimation } from '@/features/chat/messageDeleteAnimation';
 import type { UseCloudCollaborationStateResult } from '@/features/cloud/useCloudCollaborationState';
 import { deleteCanonicalCloudMessage } from '@/features/canonical/canonicalMessageSources';
 import type { CanonicalSessionState, ComposerQuoteState, Conversation, Message, MessageEditState } from '@/kordi-app/types';
@@ -117,23 +119,27 @@ export function useKordiMessageMutations({
             deleteTarget.entryId?.trim(),
             messageId,
           ].filter((value): value is string => Boolean(value)));
+          const deletionAnimation = await prepareMessageDeleteAnimation(localMessageIds).catch(() => null);
           const removedCanonicalMessages = canonicalState?.messages.filter((message) => (
             localMessageIds.has(message.id)
             || localMessageIds.has(message.sourceEventId?.trim() ?? '')
           )) ?? [];
           const deletion = deleteCloudMessage({ conversationId, messageId, forEveryone });
-          setCanonicalState((current) => {
-            if (!current) return current;
-            const messages = current.messages.filter((message) => (
-              !localMessageIds.has(message.id)
-              && !localMessageIds.has(message.sourceEventId?.trim() ?? '')
-            ));
-            return messages.length === current.messages.length
-              ? current
-              : { ...current, messages };
+          flushSync(() => {
+            setCanonicalState((current) => {
+              if (!current) return current;
+              const messages = current.messages.filter((message) => (
+                !localMessageIds.has(message.id)
+                && !localMessageIds.has(message.sourceEventId?.trim() ?? '')
+              ));
+              return messages.length === current.messages.length
+                ? current
+                : { ...current, messages };
+            });
+            setDeleteTarget(null);
+            if (messageEdit?.messageId === messageId) setMessageEdit(null);
           });
-          setDeleteTarget(null);
-          if (messageEdit?.messageId === messageId) setMessageEdit(null);
+          const animation = deletionAnimation?.play();
           try {
             await deletion;
             const deletedCanonicalIds = new Set(await deleteCanonicalCloudMessage(messageId));
@@ -144,6 +150,7 @@ export function useKordiMessageMutations({
               }));
             }
           } catch (error) {
+            deletionAnimation?.cancel();
             setCanonicalState((current) => {
               if (!current || removedCanonicalMessages.length === 0) return current;
               const currentIds = new Set(current.messages.map((message) => message.id));
@@ -160,6 +167,7 @@ export function useKordiMessageMutations({
             setDesktopChatError(error instanceof Error ? error.message : 'Could not delete message.');
             return;
           }
+          await animation;
         },
       })
     : null;
