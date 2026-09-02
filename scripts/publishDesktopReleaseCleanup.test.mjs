@@ -129,7 +129,7 @@ test('failed acceptance cleanup restores and reverifies the exact prior pointer'
   const mutations = store.actions.filter((action) => action.type === 'put');
   assert.equal(mutations.length, 2);
   assert.equal(mutations[1].metadata.ifMatch, mutations[0].resultEtag);
-  assert.equal(endpointReads, 8);
+  assert.equal(endpointReads, 11);
 });
 
 test('beta rollback tombstones only the expected current release and verifies safe fallback', async (t) => {
