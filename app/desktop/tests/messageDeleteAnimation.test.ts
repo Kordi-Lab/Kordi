@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -20,4 +21,12 @@ test('message delete reflow starts surviving rows at their previous screen posit
   assert.equal(messageDeleteReflowOffset(120, 168), -48);
   assert.equal(messageDeleteReflowOffset(168, 120), 48);
   assert.equal(messageDeleteReflowOffset(120, 120), 0);
+});
+
+test('reduced motion fades the snapshot without translating transcript rows', () => {
+  const source = readFileSync(
+    new URL('../src/features/chat/messageDeleteAnimation.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /animations = reduceMotion \? \[\] : prepareReflow\(before, duration\)/);
 });

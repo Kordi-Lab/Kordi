@@ -367,7 +367,7 @@ export async function prepareMessageDeleteAnimation(
     },
     async play() {
       if (cancelled) return;
-      animations = prepareReflow(before, duration);
+      animations = reduceMotion ? [] : prepareReflow(before, duration);
       renderer = createParticleRenderer(texture, reduceMotion);
       renderer.draw(0);
       await new Promise<void>((resolve) => {
