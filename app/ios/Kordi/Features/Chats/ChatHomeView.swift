@@ -1,8 +1,12 @@
 import SwiftUI
 
-enum ChatChannel {
+enum ChatChannel: Hashable {
     case contact
     case agent
+}
+
+struct ArchivedChatsRoute: Hashable {
+    let channel: ChatChannel
 }
 
 struct ChatHomeView: View {
@@ -22,16 +26,19 @@ struct ChatHomeView: View {
     @State private var pullRefreshState: ChatPullRefreshVisualState = .idle
     private let onOpenConversation: ((ConversationSummary) -> Void)?
     private let onOpenNewChat: ((NewChatMode) -> Void)?
+    private let onOpenArchivedChats: (() -> Void)?
 
     init(
         channel: ChatChannel,
         onOpenConversation: ((ConversationSummary) -> Void)? = nil,
-        onOpenNewChat: ((NewChatMode) -> Void)? = nil
+        onOpenNewChat: ((NewChatMode) -> Void)? = nil,
+        onOpenArchivedChats: (() -> Void)? = nil
     ) {
         self.channel = channel
         _newChatMode = State(initialValue: NewChatMode.previewMode(arguments: ProcessInfo.processInfo.arguments))
         self.onOpenConversation = onOpenConversation
         self.onOpenNewChat = onOpenNewChat
+        self.onOpenArchivedChats = onOpenArchivedChats
     }
 
     private var searchQuery: String {
@@ -178,6 +185,12 @@ struct ChatHomeView: View {
         .navigationDestination(isPresented: $showingArchivedChats) {
             ArchivedChatsView(channel: channel)
         }
+        .navigationDestination(for: ArchivedChatsRoute.self) { route in
+            ArchivedChatsView(
+                channel: route.channel,
+                onOpenConversation: onOpenConversation
+            )
+        }
         .toolbar {
             if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .principal) {
@@ -295,7 +308,11 @@ struct ChatHomeView: View {
     private var archivedChatsEntry: some View {
         if archivedForChannelCount > 0 {
             Button {
-                showingArchivedChats = true
+                if let onOpenArchivedChats {
+                    onOpenArchivedChats()
+                } else {
+                    showingArchivedChats = true
+                }
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "archivebox")
@@ -808,9 +825,18 @@ struct ChatHomeView: View {
 private struct ArchivedChatsView: View {
     @EnvironmentObject private var model: AppModel
     let channel: ChatChannel
+    private let onOpenConversation: ((ConversationSummary) -> Void)?
     @State private var deleteTarget: ConversationSummary?
     @State private var selectedConversation: ConversationSummary?
     @State private var expandedGroupSpaceIds = Set<String>()
+
+    init(
+        channel: ChatChannel,
+        onOpenConversation: ((ConversationSummary) -> Void)? = nil
+    ) {
+        self.channel = channel
+        self.onOpenConversation = onOpenConversation
+    }
 
     private var conversations: [ConversationSummary] {
         model.archivedConversations.filter {
@@ -905,7 +931,11 @@ private struct ArchivedChatsView: View {
 
     private func archivedSessionActionRow(_ conversation: ConversationSummary) -> some View {
         Button {
-            selectedConversation = conversation
+            if let onOpenConversation {
+                onOpenConversation(conversation)
+            } else {
+                selectedConversation = conversation
+            }
         } label: {
             archivedConversationRow(conversation)
         }
