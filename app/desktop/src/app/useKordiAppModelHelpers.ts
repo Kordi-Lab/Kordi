@@ -3,7 +3,6 @@ import {
   buildChatGroupCollaborationUpdateParticipants,
 } from '@/features/chat/chatCreateFlows';
 import { sharedGroupCustomTitle } from '@/features/chat/groupTitle';
-import type { ComposerMentionOption } from '@/kordi-app/components';
 import type {
   CanonicalSessionMessage,
   CanonicalSessionState,
@@ -15,10 +14,14 @@ import type {
 } from '@/kordi-app/types';
 
 export { canonicalLocalAgentAvatarSeed } from '@/features/canonical/avatarIdentity';
-
-export function normalizeMentionSearch(value: string) {
-  return value.toLowerCase().replace(/\s+/g, ' ').trim();
-}
+export {
+  currentMentionQuery,
+  filterMentionTargets,
+  insertComposerMention,
+  mentionTargetMatchesExactly,
+  normalizeMentionSearch,
+} from '@/kordi-app/components/composerMentionOptions';
+export type { MentionQuery } from '@/kordi-app/components/composerMentionOptions';
 
 export function shouldUseCloudSessionAction(sessionId: string, state: CanonicalSessionState | null = null) {
   const trimmed = sessionId.trim();
@@ -35,45 +38,6 @@ export function canonicalProfileImageUrl(state: CanonicalSessionState | null | u
   const id = identityId?.trim();
   if (!state || !id) return null;
   return state.identities.find((identity) => identity.id === id)?.profileImageUrl?.trim() || null;
-}
-
-export type MentionQuery = {
-  normalized: string;
-  raw: string;
-  trailingWhitespace: boolean;
-};
-
-export function currentMentionQuery(text: string): MentionQuery | null {
-  const match = /(^|\s)@([^\s@\n\r]*)$/.exec(text);
-  if (!match) return null;
-  const raw = match[2];
-  if (raw.length > 96) return null;
-  return {
-    normalized: normalizeMentionSearch(raw),
-    raw,
-    trailingWhitespace: /\s$/.test(raw),
-  };
-}
-
-export function mentionTargetMatchesExactly(target: ComposerMentionOption, normalizedQuery: string) {
-  return [target.value, target.label]
-    .map(normalizeMentionSearch)
-    .some((value) => value === normalizedQuery);
-}
-
-export function filterMentionTargets(targets: ComposerMentionOption[], query: MentionQuery | null) {
-  if (query === null) return [];
-  if (!query.normalized) return targets.slice(0, 8);
-  if (query.trailingWhitespace && targets.some((target) => mentionTargetMatchesExactly(target, query.normalized))) {
-    return [];
-  }
-
-  return targets
-    .filter((target) => {
-      const haystack = normalizeMentionSearch(`${target.label} ${target.detail ?? ''} ${target.nodeId} ${target.runtime}`);
-      return haystack.includes(query.normalized);
-    })
-    .slice(0, 8);
 }
 
 export function removeSessionFromDesktopState(state: DesktopChatState | null, sessionId: string) {

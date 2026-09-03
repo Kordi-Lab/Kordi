@@ -41,6 +41,7 @@ import {
   VideoRecordingSurface,
 } from './chatsPage.videoComposer';
 import { useAttachedVideoReviews } from './chatsPage.videoAttachmentReviews';
+import { useComposerMentionMenu } from './useComposerReferenceOptions';
 import type { MainComposerProps } from './chatsPage.mainComposer.types';
 
 export type { MainComposerProps } from './chatsPage.mainComposer.types';
@@ -57,11 +58,10 @@ export function MainComposer({
 }: MainComposerProps) {
   const {
     filteredChatSlashCommands,
-    filteredChatMentionTargets,
+    chatMentionTargetsForText,
     chatSlashMenuIndex,
     setChatSlashMenuIndex,
     acceptChatSlashCommand,
-    acceptChatMentionTarget,
     chatAttachmentInputRef,
     chatComposerAttachments,
     saveDesktopAttachments,
@@ -102,6 +102,28 @@ export function MainComposer({
   const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
   const editingMessage = Boolean(activeMessageEdit);
   const composerText = activeMessageEdit?.text ?? chatComposerText;
+  const {
+    menuId: mentionMenuId,
+    items: filteredChatMentionTargets,
+    activeIndex: chatMentionIndex,
+    activeDescendant: chatMentionActiveDescendant,
+    change: updateMentionCursor,
+    select: acceptMentionTarget,
+    handleKeyDown: handleMentionKeyDown,
+  } = useComposerMentionMenu({
+    text: composerText,
+    resetKey: conversation.id,
+    enabled: !editingMessage,
+    isNativeShell: display.isNativeShell,
+    rootPath: conversation.localSessionCwd,
+    targetsForText: chatMentionTargetsForText,
+    onTextChange: setChatComposerText,
+    onPickFile: () => chatAttachmentInputRef.current?.click(),
+    onAttachPath: (path) => { void saveDesktopAttachmentPaths([path]); },
+    onFocus: (cursor) => composerInputRef.current?.focus({ start: cursor, end: cursor }),
+    selectedIndex: chatSlashMenuIndex,
+    setSelectedIndex: setChatSlashMenuIndex,
+  });
   const hasSendableDraft = Boolean(composerText.trim() || (!editingMessage && chatComposerAttachments.length > 0));
   const canSaveEdit = Boolean(
     activeMessageEdit
@@ -160,9 +182,10 @@ export function MainComposer({
             />
           ) : !editingMessage && filteredChatMentionTargets.length > 0 ? (
             <ComposerMentionMenu
+              id={mentionMenuId}
               items={filteredChatMentionTargets}
-              selectedIndex={Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)}
-              onSelect={acceptChatMentionTarget}
+              selectedIndex={chatMentionIndex}
+              onSelect={acceptMentionTarget}
             />
           ) : null}
           <div
@@ -233,6 +256,7 @@ export function MainComposer({
                   );
                 }}
                 onChange={(value, target) => {
+                  updateMentionCursor(composerInputRef.current?.selection().end ?? value.length);
                   if (editingMessage) updateMessageEditText?.(value);
                   else updateChatComposerDraft(value, target);
                 }}
@@ -287,42 +311,10 @@ export function MainComposer({
                       return;
                     }
                   }
-                  if (!editingMessage && filteredChatMentionTargets.length > 0) {
-                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      const delta = event.key === 'ArrowDown' ? 1 : -1;
-                      setChatSlashMenuIndex((current) => (
-                        current + delta + filteredChatMentionTargets.length
-                      ) % filteredChatMentionTargets.length);
-                      return;
-                    }
-                    if (
-                      ((event.key === 'Enter'
-                        && !event.metaKey
-                        && !event.ctrlKey
-                        && !event.shiftKey)
-                        || event.key === 'Tab')
-                      && !event.nativeEvent.isComposing
-                    ) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      acceptChatMentionTarget(
-                        filteredChatMentionTargets[
-                          Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)
-                        ]?.value ?? filteredChatMentionTargets[0].value,
-                      );
-                      return;
-                    }
-                  }
+                  if (!editingMessage && handleMentionKeyDown(event)) return;
                   if (!editingMessage && event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
                     event.preventDefault();
                     setChatComposerText('/');
-                    return;
-                  }
-                  if (!editingMessage && event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
-                    event.preventDefault();
-                    setChatComposerText(chatComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
                     return;
                   }
                   if (
@@ -338,6 +330,9 @@ export function MainComposer({
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
                 ariaDescribedBy={messageEditError ? editErrorMessageId : memeValidationError ? memeValidationMessageId : undefined}
+                ariaControls={filteredChatMentionTargets.length > 0 ? mentionMenuId : undefined}
+                ariaExpanded={filteredChatMentionTargets.length > 0}
+                ariaActiveDescendant={chatMentionActiveDescendant}
                 placeholder={editingMessage ? 'Edit message' : display.placeholder}
               />
             </div>}

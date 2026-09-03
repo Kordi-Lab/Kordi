@@ -5,12 +5,9 @@ import { isCloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMess
 import type { CollaborationAgentRequestControl, ComposerScope } from '@/kordi-app/types';
 import { cancelDesktopChatTurn } from '@/lib/desktop';
 
-import { CHAT_COMPOSER_TEXTAREA_SELECTOR, resizeComposerTextarea } from './composerController.shared';
 import type { UseComposerControllerArgs } from './composerController.types';
-import { updateScopeDraft, type ComposerDraftState } from './composerDrafts';
 import {
   appendDesktopSystemMessageToState,
-  insertMentionIntoDraft,
   runLocalSlashCommand,
   type LocalChatSendInFlight,
   type PendingCollaborationOutreach,
@@ -259,26 +256,6 @@ export function useComposerMessageActions({
     watchDesktopLiveTurn,
   });
 
-  const acceptChatMentionTarget = useCallback((label: string) => {
-    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(
-      current,
-      'chat',
-      activeConvId,
-      insertMentionIntoDraft(composerDrafts.chat, label),
-    ));
-    resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR, insertMentionIntoDraft(composerDrafts.chat, label));
-  }, [activeConvId, composerDrafts.chat, setComposerDrafts]);
-
-  const acceptProjectMentionTarget = useCallback((label: string) => {
-    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(
-      current,
-      'project',
-      activeProjectSessionId ?? '',
-      insertMentionIntoDraft(composerDrafts.project, label),
-    ));
-    resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]', insertMentionIntoDraft(composerDrafts.project, label));
-  }, [activeProjectSessionId, composerDrafts.project, setComposerDrafts]);
-
   const stopCollaborationOutreach = useCallback(async (conversationId: string, requestId?: string | null) => {
     setDesktopChatError(null);
     const pendingOutreach = pendingCollaborationOutreachRef.current;
@@ -352,7 +329,5 @@ export function useComposerMessageActions({
     handleStopCollaborationAgentRequest,
     acceptChatSlashCommand: appendChatDraft,
     acceptProjectSlashCommand: appendProjectDraft,
-    acceptChatMentionTarget,
-    acceptProjectMentionTarget,
   };
 }

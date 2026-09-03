@@ -14,7 +14,6 @@ import {
   Search,
   Settings2,
   Sparkles,
-  Users,
   Wrench,
   X,
 } from 'lucide-react';
@@ -30,6 +29,7 @@ export {
   fallbackComposerThinkingValue,
   normalizeComposerThinkingLevels,
 } from './composerThinking';
+export { ComposerMentionMenu } from './composerMentionMenu';
 import { IdentityAvatar } from './IdentityAvatar';
 import {
   normalizeComposerProviderId,
@@ -62,7 +62,7 @@ export type ComposerMentionOption = {
   value: string;
   label: string;
   detail?: string | null;
-  targetKind: 'agent' | 'person' | 'all';
+  targetKind: 'agent' | 'person' | 'all' | 'reference';
   sourceHostId: string;
   nodeId: string;
   runtime: string;
@@ -72,6 +72,10 @@ export type ComposerMentionOption = {
   avatarImageUrl?: string | null;
   avatarSeed?: string | null;
   unreadCount?: number;
+  referenceKind?: 'file' | 'directory' | 'url';
+  referencePath?: string | null;
+  referenceAction?: 'pick-file' | 'home-path';
+  keepMenuOpen?: boolean;
 };
 
 function slashCommandDisplayConfig(item: DesktopChatSlashCommand) {
@@ -162,125 +166,6 @@ export function ComposerSlashMenu({
         </div>
       </div>
     </div>
-  );
-}
-
-function initialComposerMentionMenuThemeClass() {
-  if (typeof document === 'undefined') return '';
-  return document.querySelector('.kordi-app.theme-light') ? 'app-composer-mention-menu-light' : '';
-}
-
-export function ComposerMentionMenu({
-  items,
-  selectedIndex,
-  onSelect,
-}: {
-  items: ComposerMentionOption[];
-  selectedIndex: number;
-  onSelect: (value: string) => void;
-}) {
-  const anchorRef = useRef<HTMLSpanElement | null>(null);
-  const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
-  const [menuThemeClass, setMenuThemeClass] = useState(initialComposerMentionMenuThemeClass);
-
-  const updateMenuPosition = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const anchor = anchorRef.current;
-    const container = anchor?.parentElement;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const viewportPadding = 24;
-    const menuWidth = Math.min(
-      Math.max(240, rect.width),
-      Math.max(240, window.innerWidth - (viewportPadding * 2)),
-    );
-    const appShell = anchor.closest('.kordi-app') ?? document.querySelector('.kordi-app.theme-light');
-    setMenuThemeClass(appShell?.classList.contains('theme-light') ? 'app-composer-mention-menu-light' : '');
-    const left = Math.min(
-      Math.max(viewportPadding, rect.left),
-      Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
-    );
-    const top = Math.max(viewportPadding, rect.top - 10);
-    const availableAbove = Math.max(160, top - viewportPadding);
-    setMenuStyle({
-      left: `${left}px`,
-      top: `${top}px`,
-      width: `${menuWidth}px`,
-      maxHeight: `min(18rem, ${availableAbove}px)`,
-      transform: 'translateY(-100%)',
-    });
-  }, []);
-
-  useEffect(() => {
-    if (items.length === 0) return undefined;
-    updateMenuPosition();
-    window.addEventListener('resize', updateMenuPosition);
-    window.addEventListener('scroll', updateMenuPosition, true);
-    return () => {
-      window.removeEventListener('resize', updateMenuPosition);
-      window.removeEventListener('scroll', updateMenuPosition, true);
-    };
-  }, [items.length, updateMenuPosition]);
-
-  if (items.length === 0) return null;
-
-  const renderMenu = () => (
-    <div className={cn('app-transient-surface app-composer-mention-menu app-composer-mention-menu-layer fixed overflow-hidden rounded-[18px] border px-2 py-2', menuThemeClass)} style={menuStyle}>
-      <div className="app-transient-scroll max-h-[inherit] overflow-y-auto pr-1">
-        <div className="space-y-0.5">
-          {items.map((item, index) => {
-            const active = index === selectedIndex;
-            const kindLabel = item.targetKind === 'all'
-              ? 'people'
-              : item.targetKind;
-            return (
-              <button
-                key={`${item.sourceHostId}-${item.nodeId}-${item.value}`}
-                type="button"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  onSelect(item.value);
-                }}
-                className={cn(
-                  'app-composer-mention-menu-item flex w-full items-center gap-2.5 rounded-[16px] px-2.5 py-2 text-left text-[13px] transition',
-                  active && 'app-composer-mention-menu-item-active',
-                )}
-                aria-label={item.targetKind === 'all' ? 'Mention all people in this group' : undefined}
-              >
-                {item.targetKind === 'all' ? (
-                  <span className="app-composer-mention-menu-icon grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[color:var(--app-composer-mention-menu-border)]" aria-hidden="true">
-                    <Users className="h-3.5 w-3.5" />
-                  </span>
-                ) : (
-                  <IdentityAvatar
-                    kind={item.targetKind === 'agent' ? 'agent' : 'human'}
-                    seed={item.avatarSeed ?? item.agentId ?? item.humanId ?? item.nodeId ?? item.label}
-                    name={item.label}
-                    imageUrl={item.avatarImageUrl}
-                    className="app-composer-mention-menu-icon h-7 w-7 shrink-0 border border-[color:var(--app-composer-mention-menu-border)]"
-                  />
-                )}
-                <div className="min-w-0 flex-1 overflow-hidden">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="app-composer-mention-menu-label truncate text-[13px] font-semibold leading-5"><span className="app-composer-mention-menu-at mr-px">@</span>{item.label}</span>
-                    <span className="app-composer-mention-menu-kind shrink-0 rounded-full px-1.5 py-0.5 text-[9px]">
-                      {kindLabel}
-                    </span>
-                  </div>
-                  {item.targetKind === 'agent' && item.detail ? <div className="app-composer-mention-menu-detail truncate text-[10.5px] leading-4">{item.detail}</div> : null}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-  return (
-    <Fragment>
-      <span ref={anchorRef} className="pointer-events-none absolute inset-x-0 top-0 h-0" aria-hidden="true" />
-      {typeof document !== 'undefined' ? createPortal(renderMenu(), document.body) : renderMenu()}
-    </Fragment>
   );
 }
 
