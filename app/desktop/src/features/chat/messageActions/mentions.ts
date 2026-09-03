@@ -639,15 +639,3 @@ export async function resolveMentionedCollaborationAgentTargetWithSharedCloudAge
   }
   return mentionedTarget;
 }
-
-export function insertMentionIntoDraft(current: string, label: string) {
-  const mention = `@${label}`;
-  const match = /(^|\s)@([^\s@\n\r]*)$/.exec(current);
-  if (match && typeof match.index === 'number') {
-    return `${current.slice(0, match.index)}${match[1]}${mention} `;
-  }
-  if (!current.trim()) {
-    return `${mention} `;
-  }
-  return `${mention} ${current}`;
-}

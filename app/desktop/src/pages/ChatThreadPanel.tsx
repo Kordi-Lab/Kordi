@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ComponentProps, type PointerEvent as ReactPointerEvent } from 'react';
 import { X } from 'lucide-react';
 
+import {
+  currentMentionQuery,
+  insertComposerMention,
+} from '@/app/useKordiAppModelHelpers';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
 import type { MessageThread } from '@/features/chat/messageThreads';
-import { insertMentionIntoDraft } from '@/features/chat/messageActions/mentions';
 import type { Conversation, DesktopChatTurnSnapshot, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import { CompactComposerModelMenu, ComposerMentionMenu, type ComposerMentionOption } from '@/kordi-app/components';
 import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
@@ -14,6 +17,10 @@ import { VoiceComposerControls, VoiceRecordingSurface } from '@/pages/chatsPage.
 import { chatTranscriptDensityMode } from '@/pages/chatsPage.model';
 import { ChatSessionPane } from '@/pages/chatsPage.sessionPane';
 import type { ChatSessionPaneActions } from '@/pages/chatsPage.types';
+import {
+  mergeComposerMentionOptions,
+  useComposerReferenceOptions,
+} from '@/pages/useComposerReferenceOptions';
 
 export function ChatThreadPanel({
   conversation,
@@ -27,7 +34,9 @@ export function ChatThreadPanel({
   onSendSettled,
   onSend,
   saveAttachments,
+  saveAttachmentPaths,
   removeStagedAttachment,
+  isNativeShell,
   accountId,
   queuedMessages,
   onCancelQueuedMessage,
@@ -47,29 +56,58 @@ export function ChatThreadPanel({
   onSendSettled: () => void;
   onSend: (text: string, attachments?: AttachmentItem[]) => Promise<void> | void;
   saveAttachments: (files: File[]) => Promise<AttachmentItem[]>;
+  saveAttachmentPaths: (paths?: string[]) => Promise<AttachmentItem[]>;
   removeStagedAttachment: (id: string) => void;
+  isNativeShell: boolean;
   accountId?: string | null;
   queuedMessages: QueuedDesktopChatMessage[];
   onCancelQueuedMessage: (sessionId: string, queuedMessageId: string) => void;
   width: number;
   onWidthChange: (width: number) => void;
   compactModelMenu: Omit<ComponentProps<typeof CompactComposerModelMenu>, 'scope'>;
-  chatMentionTargetsForText: (text: string) => ComposerMentionOption[];
+  chatMentionTargetsForText: (text: string, cursor?: number) => ComposerMentionOption[];
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const resizeCleanupRef = useRef<() => void>(() => {});
+  const mentionMenuId = useId();
   const rootId = thread.root.id?.trim() || thread.root.entryId?.trim() || '';
+  const previousRootIdRef = useRef(rootId);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [attachmentsByRoot, setAttachmentsByRoot] = useState<Record<string, AttachmentItem[]>>({});
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [mentionCursor, setMentionCursor] = useState(0);
+  const [dismissedMention, setDismissedMention] = useState<string | null>(null);
   const draft = drafts[rootId] ?? '';
   const attachments = attachmentsByRoot[rootId] ?? [];
-  const mentionTargets = useMemo(
-    () => chatMentionTargetsForText(draft),
-    [chatMentionTargetsForText, draft],
+  const mentionQuery = useMemo(
+    () => currentMentionQuery(draft, mentionCursor),
+    [draft, mentionCursor],
   );
+  const mentionKey = mentionQuery
+    ? `${mentionQuery.start}:${mentionQuery.end}:${mentionQuery.raw}`
+    : null;
+  const fileReferenceOptions = useComposerReferenceOptions({
+    isNativeShell,
+    query: mentionQuery,
+    rootPath: conversation.localSessionCwd,
+  });
+  const mentionTargets = useMemo(() => (
+    mentionKey && dismissedMention !== mentionKey
+      ? mergeComposerMentionOptions(
+        chatMentionTargetsForText(draft, mentionCursor),
+        fileReferenceOptions,
+      )
+      : []
+  ), [
+    chatMentionTargetsForText,
+    dismissedMention,
+    draft,
+    fileReferenceOptions,
+    mentionCursor,
+    mentionKey,
+  ]);
   const messages = useMemo(
     () => [{ ...thread.root, threadSummary: undefined }, ...thread.replies],
     [thread],
@@ -81,6 +119,12 @@ export function ChatThreadPanel({
     focusComposer: () => textareaRef.current?.focus(),
   });
   useEffect(() => () => resizeCleanupRef.current(), []);
+  useEffect(() => {
+    if (previousRootIdRef.current === rootId) return;
+    previousRootIdRef.current = rootId;
+    setMentionCursor(draft.length);
+    setDismissedMention(null);
+  }, [draft.length, rootId]);
   async function sendThread(text: string, nextAttachments?: AttachmentItem[]) {
     onSendStart();
     try {
@@ -101,12 +145,6 @@ export function ChatThreadPanel({
       setAttachmentsByRoot((current) => current[rootId]?.length ? current : ({ ...current, [rootId]: attachments }));
     }
   };
-  const acceptMention = (value: string) => {
-    const nextDraft = insertMentionIntoDraft(draft, value);
-    setDrafts((current) => ({ ...current, [rootId]: nextDraft }));
-    setMentionIndex(0);
-    requestAnimationFrame(() => textareaRef.current?.focus());
-  };
   const addAttachments = async (files: File[]) => {
     const saved = await saveAttachments(files);
     saved.forEach((attachment) => removeStagedAttachment(attachment.id));
@@ -114,6 +152,32 @@ export function ChatThreadPanel({
       ...current,
       [rootId]: [...(current[rootId] ?? []), ...saved],
     }));
+  };
+  const addAttachmentPaths = async (paths: string[]) => {
+    const saved = await saveAttachmentPaths(paths);
+    saved.forEach((attachment) => removeStagedAttachment(attachment.id));
+    setAttachmentsByRoot((current) => ({
+      ...current,
+      [rootId]: [...(current[rootId] ?? []), ...saved],
+    }));
+  };
+  const acceptMention = (item: ComposerMentionOption) => {
+    if (!mentionQuery) return;
+    const insertion = insertComposerMention(draft, mentionQuery, item);
+    setDrafts((current) => ({ ...current, [rootId]: insertion.value }));
+    setMentionCursor(insertion.cursor);
+    setDismissedMention(null);
+    setMentionIndex(0);
+    if (item.referenceAction === 'pick-file') {
+      inputRef.current?.click();
+    }
+    if (item.targetKind === 'reference' && item.referenceKind === 'file' && item.referencePath) {
+      void addAttachmentPaths([item.referencePath]);
+    }
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(insertion.cursor, insertion.cursor);
+    });
   };
   const editQueuedMessage = (sessionId: string, queuedMessageId: string) => {
     const queued = queuedMessages.find((message) => message.id === queuedMessageId);
@@ -196,6 +260,7 @@ export function ChatThreadPanel({
             <div className="shrink-0 px-3 pb-4 pt-3">
               <div className="app-composer-shell relative rounded-[26px] p-3">
                 <ComposerMentionMenu
+                  id={mentionMenuId}
                   items={mentionTargets}
                   selectedIndex={Math.min(mentionIndex, mentionTargets.length - 1)}
                   onSelect={acceptMention}
@@ -229,7 +294,12 @@ export function ChatThreadPanel({
                     <textarea
                       ref={textareaRef}
                       value={draft}
-                      onChange={(event) => setDrafts((current) => ({ ...current, [rootId]: event.target.value }))}
+                      onChange={(event) => {
+                        setMentionCursor(event.target.selectionStart);
+                        setDismissedMention(null);
+                        setMentionIndex(0);
+                        setDrafts((current) => ({ ...current, [rootId]: event.target.value }));
+                      }}
                       onKeyDown={(event) => {
                         if (mentionTargets.length > 0) {
                           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -241,12 +311,12 @@ export function ChatThreadPanel({
                           }
                           if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
                             event.preventDefault();
-                            acceptMention(mentionTargets[Math.min(mentionIndex, mentionTargets.length - 1)]?.value ?? mentionTargets[0].value);
+                            acceptMention(mentionTargets[Math.min(mentionIndex, mentionTargets.length - 1)] ?? mentionTargets[0]);
                             return;
                           }
                           if (event.key === 'Escape') {
                             event.preventDefault();
-                            setDrafts((current) => ({ ...current, [rootId]: draft.replace(/(^|\s)@([^\s@]*)$/, '$1') }));
+                            setDismissedMention(mentionKey);
                             return;
                           }
                         }
@@ -258,6 +328,12 @@ export function ChatThreadPanel({
                       className="min-h-6 max-h-40 w-full resize-none bg-transparent text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
                       placeholder="Reply in thread…"
                       aria-label="Reply in thread"
+                      aria-autocomplete="list"
+                      aria-controls={mentionTargets.length > 0 ? mentionMenuId : undefined}
+                      aria-expanded={mentionTargets.length > 0}
+                      aria-activedescendant={mentionTargets.length > 0
+                        ? `${mentionMenuId}-option-${Math.min(mentionIndex, mentionTargets.length - 1)}`
+                        : undefined}
                     />
                   </>}
                 </div>

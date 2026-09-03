@@ -76,11 +76,9 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     composer: {
     filteredChatSlashCommands: args.filteredChatSlashCommands,
     chatMentionTargetsForText: args.chatMentionTargetsForText,
-    filteredChatMentionTargets: args.filteredChatMentionTargets,
     chatSlashMenuIndex: args.chatSlashMenuIndex,
     setChatSlashMenuIndex: args.setChatSlashMenuIndex,
     acceptChatSlashCommand: args.acceptChatSlashCommand,
-    acceptChatMentionTarget: args.acceptChatMentionTarget,
     chatAttachmentInputRef: args.chatAttachmentInputRef,
     chatComposerAttachments: args.chatComposerAttachments,
     saveDesktopAttachments: args.saveDesktopAttachments,

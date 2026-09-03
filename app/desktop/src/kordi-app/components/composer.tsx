@@ -4,12 +4,17 @@ import {
   Check,
   ChevronDown,
   Copy,
+  File,
+  Folder,
   FolderOpen,
   HelpCircle,
+  House,
   ImagePlus,
+  Link,
   LogIn,
   LogOut,
   Menu,
+  Paperclip,
   RefreshCw,
   Search,
   Settings2,
@@ -25,6 +30,7 @@ import {
   composerThinkingLevelsIncludingCurrent,
   fallbackComposerThinkingValue,
 } from './composerThinking';
+import { orderedComposerMentionOptions } from './composerMentionOptions';
 
 export {
   fallbackComposerThinkingValue,
@@ -62,7 +68,7 @@ export type ComposerMentionOption = {
   value: string;
   label: string;
   detail?: string | null;
-  targetKind: 'agent' | 'person' | 'all';
+  targetKind: 'agent' | 'person' | 'all' | 'reference';
   sourceHostId: string;
   nodeId: string;
   runtime: string;
@@ -72,6 +78,10 @@ export type ComposerMentionOption = {
   avatarImageUrl?: string | null;
   avatarSeed?: string | null;
   unreadCount?: number;
+  referenceKind?: 'file' | 'directory' | 'url';
+  referencePath?: string | null;
+  referenceAction?: 'pick-file' | 'home-path';
+  keepMenuOpen?: boolean;
 };
 
 function slashCommandDisplayConfig(item: DesktopChatSlashCommand) {
@@ -171,13 +181,15 @@ function initialComposerMentionMenuThemeClass() {
 }
 
 export function ComposerMentionMenu({
+  id,
   items,
   selectedIndex,
   onSelect,
 }: {
+  id?: string;
   items: ComposerMentionOption[];
   selectedIndex: number;
-  onSelect: (value: string) => void;
+  onSelect: (item: ComposerMentionOption) => void;
 }) {
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
@@ -191,7 +203,8 @@ export function ComposerMentionMenu({
     const rect = container.getBoundingClientRect();
     const viewportPadding = 24;
     const menuWidth = Math.min(
-      Math.max(240, rect.width),
+      480,
+      Math.max(280, rect.width),
       Math.max(240, window.innerWidth - (viewportPadding * 2)),
     );
     const appShell = anchor.closest('.kordi-app') ?? document.querySelector('.kordi-app.theme-light');
@@ -206,7 +219,7 @@ export function ComposerMentionMenu({
       left: `${left}px`,
       top: `${top}px`,
       width: `${menuWidth}px`,
-      maxHeight: `min(18rem, ${availableAbove}px)`,
+      maxHeight: `min(26rem, ${availableAbove}px)`,
       transform: 'translateY(-100%)',
     });
   }, []);
@@ -222,56 +235,106 @@ export function ComposerMentionMenu({
     };
   }, [items.length, updateMenuPosition]);
 
+  useEffect(() => {
+    if (!id || items.length === 0) return;
+    document.getElementById(`${id}-option-${selectedIndex}`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [id, items.length, selectedIndex]);
+
   if (items.length === 0) return null;
 
+  const orderedItems = orderedComposerMentionOptions(items);
+  const sections = [
+    {
+      label: 'References',
+      items: orderedItems.filter((item) => item.targetKind === 'reference'),
+    },
+    {
+      label: 'Contacts',
+      items: orderedItems.filter((item) => item.targetKind === 'person' || item.targetKind === 'all'),
+    },
+    {
+      label: 'Agents',
+      items: orderedItems.filter((item) => item.targetKind === 'agent'),
+    },
+  ].filter((section) => section.items.length > 0);
+
   const renderMenu = () => (
-    <div className={cn('app-transient-surface app-composer-mention-menu app-composer-mention-menu-layer fixed overflow-hidden rounded-[18px] border px-2 py-2', menuThemeClass)} style={menuStyle}>
-      <div className="app-transient-scroll max-h-[inherit] overflow-y-auto pr-1">
-        <div className="space-y-0.5">
-          {items.map((item, index) => {
-            const active = index === selectedIndex;
-            const kindLabel = item.targetKind === 'all'
-              ? 'people'
-              : item.targetKind;
-            return (
-              <button
-                key={`${item.sourceHostId}-${item.nodeId}-${item.value}`}
-                type="button"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  onSelect(item.value);
-                }}
-                className={cn(
-                  'app-composer-mention-menu-item flex w-full items-center gap-2.5 rounded-[16px] px-2.5 py-2 text-left text-[13px] transition',
-                  active && 'app-composer-mention-menu-item-active',
-                )}
-                aria-label={item.targetKind === 'all' ? 'Mention all people in this group' : undefined}
-              >
-                {item.targetKind === 'all' ? (
-                  <span className="app-composer-mention-menu-icon grid h-7 w-7 shrink-0 place-items-center rounded-full border border-[color:var(--app-composer-mention-menu-border)]" aria-hidden="true">
-                    <Users className="h-3.5 w-3.5" />
-                  </span>
-                ) : (
-                  <IdentityAvatar
-                    kind={item.targetKind === 'agent' ? 'agent' : 'human'}
-                    seed={item.avatarSeed ?? item.agentId ?? item.humanId ?? item.nodeId ?? item.label}
-                    name={item.label}
-                    imageUrl={item.avatarImageUrl}
-                    className="app-composer-mention-menu-icon h-7 w-7 shrink-0 border border-[color:var(--app-composer-mention-menu-border)]"
-                  />
-                )}
-                <div className="min-w-0 flex-1 overflow-hidden">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="app-composer-mention-menu-label truncate text-[13px] font-semibold leading-5"><span className="app-composer-mention-menu-at mr-px">@</span>{item.label}</span>
-                    <span className="app-composer-mention-menu-kind shrink-0 rounded-full px-1.5 py-0.5 text-[9px]">
-                      {kindLabel}
-                    </span>
-                  </div>
-                  {item.targetKind === 'agent' && item.detail ? <div className="app-composer-mention-menu-detail truncate text-[10.5px] leading-4">{item.detail}</div> : null}
-                </div>
-              </button>
-            );
-          })}
+    <div
+      className={cn('app-transient-surface app-composer-mention-menu app-composer-mention-menu-layer fixed flex flex-col overflow-hidden rounded-[14px] border p-1.5', menuThemeClass)}
+      id={id}
+      role="listbox"
+      aria-label="Add a reference, contact, or agent"
+      style={menuStyle}
+    >
+      <div className="app-transient-scroll min-h-0 flex-1 overflow-y-auto pr-0.5">
+        <div className="space-y-1.5">
+          {sections.map((section) => (
+            <div key={section.label} role="group" aria-label={section.label}>
+              <div className="app-composer-mention-menu-section px-2 pb-1 pt-1 text-[10.5px] font-medium">
+                {section.label}
+              </div>
+              <div className="space-y-0.5">
+                {section.items.map((item) => {
+                  const index = orderedItems.indexOf(item);
+                  const active = index === selectedIndex;
+                  const ReferenceIcon = item.referenceAction === 'pick-file'
+                    ? Paperclip
+                    : item.referenceAction === 'home-path'
+                      ? House
+                    : item.referenceKind === 'url'
+                      ? Link
+                      : item.referenceKind === 'directory'
+                        ? Folder
+                        : File;
+                  return (
+                    <button
+                      id={id ? `${id}-option-${index}` : undefined}
+                      key={`${item.sourceHostId}-${item.nodeId}-${item.value}`}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        onSelect(item);
+                      }}
+                      className={cn(
+                        'app-composer-mention-menu-item flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left text-[13px] transition',
+                        active && 'app-composer-mention-menu-item-active',
+                      )}
+                      aria-label={item.targetKind === 'all' ? 'Mention all people in this group' : undefined}
+                    >
+                      {item.targetKind === 'reference' ? (
+                        <span className="app-composer-mention-menu-reference-icon grid h-6 w-6 shrink-0 place-items-center" aria-hidden="true">
+                          <ReferenceIcon className="h-3.5 w-3.5" />
+                        </span>
+                      ) : item.targetKind === 'all' ? (
+                        <span className="app-composer-mention-menu-icon grid h-6 w-6 shrink-0 place-items-center rounded-full border border-[color:var(--app-composer-mention-menu-border)]" aria-hidden="true">
+                          <Users className="h-3.5 w-3.5" />
+                        </span>
+                      ) : (
+                        <IdentityAvatar
+                          kind={item.targetKind === 'agent' ? 'agent' : 'human'}
+                          seed={item.avatarSeed ?? item.agentId ?? item.humanId ?? item.nodeId ?? item.label}
+                          name={item.label}
+                          imageUrl={item.avatarImageUrl}
+                          className="app-composer-mention-menu-icon h-6 w-6 shrink-0 border border-[color:var(--app-composer-mention-menu-border)]"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <div className="flex min-w-0 items-center">
+                          <span className="app-composer-mention-menu-label truncate text-[13px] font-medium leading-5">
+                            {item.targetKind === 'reference' ? null : <span className="app-composer-mention-menu-at mr-px">@</span>}
+                            {item.label}
+                          </span>
+                        </div>
+                        {item.detail && item.targetKind !== 'person' ? <div className="app-composer-mention-menu-detail truncate text-[10.5px] leading-4">{item.detail}</div> : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

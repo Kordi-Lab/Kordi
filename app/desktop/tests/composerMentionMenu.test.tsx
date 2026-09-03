@@ -40,6 +40,18 @@ const options: ComposerMentionOption[] = [
   } as ComposerMentionOption,
 ];
 
+const referenceOption: ComposerMentionOption = {
+  value: 'src/app.tsx',
+  label: 'app.tsx',
+  detail: 'Code file · src/',
+  targetKind: 'reference',
+  sourceHostId: 'local-files',
+  nodeId: '/workspace/src/app.tsx',
+  runtime: 'reference',
+  referenceKind: 'file',
+  referencePath: '/workspace/src/app.tsx',
+};
+
 test('mention participant menu uses the shared near-opaque transient surface', () => {
   const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
     items: options,
@@ -113,6 +125,35 @@ test('mention participant menu uses product-facing copy and correct avatars', ()
   assert.doesNotMatch(html, />Person</);
 });
 
+test('unified mention menu groups references, contacts, and agents without redundant chrome', () => {
+  const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
+    id: 'mention-menu',
+    items: [...options, referenceOption],
+    selectedIndex: 0,
+    onSelect: () => undefined,
+  }));
+
+  assert.match(html, /role="listbox"/);
+  assert.match(html, />References</);
+  assert.match(html, />Contacts</);
+  assert.match(html, />Agents</);
+  assert.match(html, /app-composer-mention-menu-reference-icon/);
+  assert.doesNotMatch(html, />File</);
+  assert.doesNotMatch(html, /app-composer-mention-menu-kind/);
+  assert.match(html, /mention-menu-option-0/);
+  assert.doesNotMatch(html, /Navigate|Esc Close|app-composer-mention-menu-footer/);
+});
+
+test('attach file mention action reuses each composer file input', () => {
+  const main = readFileSync(new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url), 'utf8');
+  const project = readFileSync(new URL('../src/pages/ProjectsPage.tsx', import.meta.url), 'utf8');
+  const thread = readFileSync(new URL('../src/pages/ChatThreadPanel.tsx', import.meta.url), 'utf8');
+
+  assert.match(main, /referenceAction === 'pick-file'[\s\S]*chatAttachmentInputRef\.current\?\.click\(\)/);
+  assert.match(project, /referenceAction === 'pick-file'[\s\S]*chatAttachmentInputRef\.current\?\.click\(\)/);
+  assert.match(thread, /referenceAction === 'pick-file'[\s\S]*inputRef\.current\?\.click\(\)/);
+});
+
 test('mention participant menu keeps owner metadata subordinate to the agent name', () => {
   const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
   const start = source.indexOf('export function ComposerMentionMenu');
@@ -120,14 +161,14 @@ test('mention participant menu keeps owner metadata subordinate to the agent nam
   assert.ok(start >= 0 && end > start, 'expected ComposerMentionMenu source block');
   const block = source.slice(start, end);
 
-  assert.match(block, /app-composer-mention-menu[^']*rounded-\[18px\][^']*px-2 py-2/);
-  assert.match(block, /app-composer-mention-menu-item[^']*rounded-\[16px\][^']*px-2\.5 py-2[^']*text-\[13px\]/);
-  assert.match(block, /app-composer-mention-menu-icon h-7 w-7/);
+  assert.match(block, /app-composer-mention-menu[^']*rounded-\[14px\][^']*p-1\.5/);
+  assert.match(block, /app-composer-mention-menu-item[^']*rounded-\[10px\][^']*px-2\.5 py-1\.5[^']*text-\[13px\]/);
+  assert.match(block, /app-composer-mention-menu-icon h-6 w-6/);
   assert.match(block, /app-composer-mention-menu-at/);
-  assert.match(block, /app-composer-mention-menu-label[^']*text-\[13px\][^']*font-semibold/);
-  assert.match(block, /Math\.min\(\s*Math\.max\(240, rect\.width\),/);
-  assert.doesNotMatch(block, /Math\.min\(\s*480,/);
+  assert.match(block, /app-composer-mention-menu-label[^']*text-\[13px\][^']*font-medium/);
+  assert.match(block, /Math\.min\(\s*480,/);
   assert.match(block, /app-composer-mention-menu-detail[^']*text-\[10\.5px\][^']*leading-4/);
+  assert.doesNotMatch(block, /app-composer-mention-menu-section[^']*uppercase/);
   assert.doesNotMatch(block, /<AtSign/);
   assert.doesNotMatch(block, /h-5 w-5/);
   assert.doesNotMatch(block, /px-2 py-1/);
@@ -144,7 +185,7 @@ test('mention participant menu does not render unread count badges', () => {
   assert.doesNotMatch(html, /tabular-nums/);
 });
 
-test('mention participant menu does not render a header or shortcut hint', () => {
+test('mention menu avoids a redundant title above its section labels', () => {
   const html = renderToStaticMarkup(createElement(ComposerMentionMenu, {
     items: options,
     selectedIndex: 0,
@@ -174,10 +215,10 @@ test('mention participant selected row uses a soft hover-like state in both them
   const hoverRule = cssRule(css, '.app-composer-mention-menu-item:not(.app-composer-mention-menu-item-active):hover');
 
   assert.match(darkRule, /--app-composer-mention-menu-item-hover-bg:\s*var\(--app-transient-hover-bg\);/);
-  assert.match(darkRule, /--app-composer-mention-menu-item-active-bg:\s*var\(--app-transient-selected-bg\);/);
+  assert.match(darkRule, /--app-composer-mention-menu-item-active-bg:\s*var\(--app-transient-hover-bg\);/);
   assert.match(lightClassRule, /color-scheme:\s*light;/);
   assert.match(lightShellRule, /--app-composer-mention-menu-item-hover-bg:\s*var\(--app-transient-hover-bg\);/);
-  assert.match(lightShellRule, /--app-composer-mention-menu-item-active-bg:\s*var\(--app-transient-selected-bg\);/);
+  assert.match(lightShellRule, /--app-composer-mention-menu-item-active-bg:\s*var\(--app-transient-hover-bg\);/);
   assert.match(activeRule, /background:\s*var\(--app-composer-mention-menu-item-active-bg\);/);
   assert.match(hoverRule, /background:\s*var\(--app-composer-mention-menu-item-hover-bg\);/);
   assert.doesNotMatch(`${darkRule}\n${lightClassRule}\n${lightShellRule}\n${activeRule}`, /indigo|purple|818cf8|99,\s*102,\s*241|226 232 240|35 43 57|53 63 82|203 213 225/i);

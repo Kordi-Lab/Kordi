@@ -516,7 +516,9 @@ export function ChatsPage({
                   );
                 }}
                 saveAttachments={composer.saveDesktopAttachments}
+                saveAttachmentPaths={composer.saveDesktopAttachmentPaths}
                 removeStagedAttachment={composer.removeChatComposerAttachment}
+                isNativeShell={isNativeShell}
                 accountId={cloudAccount?.accountId}
                 queuedMessages={activeThreadQueuedMessages}
                 onCancelQueuedMessage={transcript.onCancelQueuedMessage}

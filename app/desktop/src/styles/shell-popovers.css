@@ -157,9 +157,9 @@
   --app-composer-mention-menu-muted: var(--app-transient-muted-text);
   --app-composer-mention-menu-border: var(--app-transient-border);
   --app-composer-mention-menu-item-hover-bg: var(--app-transient-hover-bg);
-  --app-composer-mention-menu-item-active-bg: var(--app-transient-selected-bg);
+  --app-composer-mention-menu-item-active-bg: var(--app-transient-hover-bg);
   --app-composer-mention-menu-icon-bg: var(--app-transient-icon-bg);
-  --app-composer-mention-menu-kind-bg: var(--app-transient-icon-bg);
+  --app-transient-shadow: 0 12px 32px rgb(0 0 0 / 0.24);
   border-color: var(--app-composer-mention-menu-border);
   background: var(--app-composer-mention-menu-bg);
   color: var(--app-composer-mention-menu-text);
@@ -170,6 +170,7 @@
 }
 
 .app-composer-mention-menu-light {
+  --app-transient-shadow: 0 12px 28px rgb(15 23 42 / 0.12);
   color-scheme: light;
   transition: none;
 }
@@ -180,14 +181,22 @@
   --app-composer-mention-menu-muted: var(--app-transient-muted-text);
   --app-composer-mention-menu-border: var(--app-transient-border);
   --app-composer-mention-menu-item-hover-bg: var(--app-transient-hover-bg);
-  --app-composer-mention-menu-item-active-bg: var(--app-transient-selected-bg);
+  --app-composer-mention-menu-item-active-bg: var(--app-transient-hover-bg);
   --app-composer-mention-menu-icon-bg: var(--app-transient-icon-bg);
-  --app-composer-mention-menu-kind-bg: var(--app-transient-icon-bg);
+  --app-transient-shadow: 0 12px 28px rgb(15 23 42 / 0.12);
 }
 
 .app-composer-mention-menu-detail,
 .app-composer-mention-menu-at,
-.app-composer-mention-menu-kind {
+.app-composer-mention-menu-section {
+  color: var(--app-composer-mention-menu-muted);
+}
+
+.app-composer-mention-menu-section {
+  color: var(--app-transient-subtle-text);
+}
+
+.app-composer-mention-menu-reference-icon {
   color: var(--app-composer-mention-menu-muted);
 }
 
@@ -204,13 +213,8 @@
   color: var(--app-composer-mention-menu-text);
 }
 
-.app-composer-mention-menu-icon,
-.app-composer-mention-menu-kind {
-  background: var(--app-composer-mention-menu-kind-bg);
-  box-shadow: inset 0 0 0 1px var(--app-composer-mention-menu-border);
-}
-
 .app-composer-mention-menu-icon {
+  box-shadow: inset 0 0 0 1px var(--app-composer-mention-menu-border);
   background: var(--app-composer-mention-menu-icon-bg);
 }
 

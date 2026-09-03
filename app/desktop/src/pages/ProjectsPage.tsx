@@ -1,4 +1,13 @@
-import type { Dispatch, RefObject, SetStateAction } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from 'react';
 import { motion } from 'framer-motion';
 import {
   FolderOpen,
@@ -12,6 +21,10 @@ import {
 } from 'lucide-react';
 
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
+import {
+  currentMentionQuery,
+  insertComposerMention,
+} from '@/app/useKordiAppModelHelpers';
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -49,6 +62,10 @@ import type {
   Message,
 } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
+import {
+  mergeComposerMentionOptions,
+  useComposerReferenceOptions,
+} from '@/pages/useComposerReferenceOptions';
 
 type ProjectSession = {
   id: string;
@@ -101,11 +118,10 @@ type ProjectsPageProps = {
   onOpenArtifact: (artifactId: string) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
-  filteredProjectMentionTargets: ComposerMentionOption[];
+  projectMentionTargetsForText: (text: string, cursor?: number) => ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptProjectSlashCommand: (value: string) => void;
-  acceptProjectMentionTarget: (value: string) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: Attachment[];
   saveDesktopAttachments: (files: File[]) => Promise<Attachment[]>;
@@ -158,11 +174,10 @@ export function ProjectsPage({
   onOpenArtifact,
   desktopLiveTurn,
   filteredProjectSlashCommands,
-  filteredProjectMentionTargets,
+  projectMentionTargetsForText,
   chatSlashMenuIndex,
   setChatSlashMenuIndex,
   acceptProjectSlashCommand,
-  acceptProjectMentionTarget,
   chatAttachmentInputRef,
   chatComposerAttachments,
   saveDesktopAttachments,
@@ -193,6 +208,11 @@ export function ProjectsPage({
   onOpenAuthSettings,
   onOpenAccountAuthentication,
 }: ProjectsPageProps) {
+  const mentionMenuId = useId();
+  const previousSessionIdRef = useRef(activeProjectSession.id);
+  const projectComposerRef = useRef<HTMLTextAreaElement | null>(null);
+  const [mentionCursor, setMentionCursor] = useState(projectComposerText.length);
+  const [dismissedMention, setDismissedMention] = useState<string | null>(null);
   const openAuthentication = onOpenAccountAuthentication ?? onOpenAuthSettings;
   const authNoticeActionLabel = 'Open authentication';
   const canSubmitProjectMessage = projectComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
@@ -208,6 +228,58 @@ export function ProjectsPage({
     ? [...transcriptMessages, liveTurnMessage]
     : transcriptMessages;
   const projectImeCompositionGuard = useImeCompositionGuard();
+  const mentionQuery = useMemo(
+    () => currentMentionQuery(projectComposerText, mentionCursor),
+    [mentionCursor, projectComposerText],
+  );
+  const mentionKey = mentionQuery
+    ? `${mentionQuery.start}:${mentionQuery.end}:${mentionQuery.raw}`
+    : null;
+  const fileReferenceOptions = useComposerReferenceOptions({
+    isNativeShell,
+    query: mentionQuery,
+    rootPath: activeProject.root,
+  });
+  const projectMentionTargets = useMemo(() => {
+    if (!mentionKey || dismissedMention === mentionKey) return [];
+    return mergeComposerMentionOptions(
+      projectMentionTargetsForText(projectComposerText, mentionCursor),
+      fileReferenceOptions,
+    );
+  }, [
+    dismissedMention,
+    fileReferenceOptions,
+    mentionKey,
+    mentionCursor,
+    projectComposerText,
+    projectMentionTargetsForText,
+  ]);
+
+  useEffect(() => {
+    if (previousSessionIdRef.current === activeProjectSession.id) return;
+    previousSessionIdRef.current = activeProjectSession.id;
+    setMentionCursor(projectComposerText.length);
+    setDismissedMention(null);
+  }, [activeProjectSession.id, projectComposerText.length]);
+
+  function acceptMentionTarget(item: ComposerMentionOption) {
+    if (!mentionQuery) return;
+    const insertion = insertComposerMention(projectComposerText, mentionQuery, item);
+    setProjectComposerText(insertion.value);
+    setMentionCursor(insertion.cursor);
+    setDismissedMention(null);
+    setChatSlashMenuIndex(0);
+    if (item.referenceAction === 'pick-file') {
+      chatAttachmentInputRef.current?.click();
+    }
+    if (item.targetKind === 'reference' && item.referenceKind === 'file' && item.referencePath) {
+      void saveDesktopAttachmentPaths([item.referencePath]);
+    }
+    window.requestAnimationFrame(() => {
+      projectComposerRef.current?.focus();
+      projectComposerRef.current?.setSelectionRange(insertion.cursor, insertion.cursor);
+    });
+  }
 
   if (isNativeShell && !activeProject.id) {
     return (
@@ -368,11 +440,12 @@ export function ProjectsPage({
                 selectedIndex={Math.min(chatSlashMenuIndex, filteredProjectSlashCommands.length - 1)}
                 onSelect={acceptProjectSlashCommand}
               />
-            ) : filteredProjectMentionTargets.length > 0 ? (
+            ) : projectMentionTargets.length > 0 ? (
               <ComposerMentionMenu
-                items={filteredProjectMentionTargets}
-                selectedIndex={Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)}
-                onSelect={acceptProjectMentionTarget}
+                id={mentionMenuId}
+                items={projectMentionTargets}
+                selectedIndex={Math.min(chatSlashMenuIndex, projectMentionTargets.length - 1)}
+                onSelect={acceptMentionTarget}
               />
             ) : null}
             <div
@@ -400,9 +473,15 @@ export function ProjectsPage({
                 onReplace={updateChatComposerAttachment}
               />
               <textarea
+                ref={projectComposerRef}
                 rows={1}
                 value={projectComposerText}
-                onChange={(event) => updateProjectComposerDraft(event.target.value, event.target)}
+                onChange={(event) => {
+                  setMentionCursor(event.target.selectionStart);
+                  setDismissedMention(null);
+                  setChatSlashMenuIndex(0);
+                  updateProjectComposerDraft(event.target.value, event.target);
+                }}
                 onPaste={(event) => {
                   const files = extractClipboardFiles(event.clipboardData);
                   if (files.length > 0) {
@@ -441,23 +520,23 @@ export function ProjectsPage({
                       return;
                     }
                   }
-                  if (filteredProjectMentionTargets.length > 0) {
+                  if (projectMentionTargets.length > 0) {
                     if (event.key === 'ArrowDown') {
                       event.preventDefault();
                       event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current + 1) % filteredProjectMentionTargets.length);
+                      setChatSlashMenuIndex((current) => (current + 1) % projectMentionTargets.length);
                       return;
                     }
                     if (event.key === 'ArrowUp') {
                       event.preventDefault();
                       event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current - 1 + filteredProjectMentionTargets.length) % filteredProjectMentionTargets.length);
+                      setChatSlashMenuIndex((current) => (current - 1 + projectMentionTargets.length) % projectMentionTargets.length);
                       return;
                     }
                     if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
                       event.preventDefault();
                       event.stopPropagation();
-                      acceptProjectMentionTarget(filteredProjectMentionTargets[Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)]?.value ?? filteredProjectMentionTargets[0].value);
+                      acceptMentionTarget(projectMentionTargets[Math.min(chatSlashMenuIndex, projectMentionTargets.length - 1)] ?? projectMentionTargets[0]);
                       return;
                     }
                   }
@@ -466,9 +545,9 @@ export function ProjectsPage({
                     setProjectComposerText('/');
                     return;
                   }
-                  if (event.key === 'Escape' && filteredProjectMentionTargets.length > 0) {
+                  if (event.key === 'Escape' && projectMentionTargets.length > 0) {
                     event.preventDefault();
-                    setProjectComposerText(projectComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
+                    setDismissedMention(mentionKey);
                     return;
                   }
                   if (event.key === 'Enter' && !event.shiftKey) {
@@ -479,6 +558,12 @@ export function ProjectsPage({
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+                aria-autocomplete="list"
+                aria-controls={projectMentionTargets.length > 0 ? mentionMenuId : undefined}
+                aria-expanded={projectMentionTargets.length > 0}
+                aria-activedescendant={projectMentionTargets.length > 0
+                  ? `${mentionMenuId}-option-${Math.min(chatSlashMenuIndex, projectMentionTargets.length - 1)}`
+                  : undefined}
                 placeholder="Post to this project session, ask a member, or start a new topic…"
               />
             </div>

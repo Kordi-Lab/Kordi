@@ -1,5 +1,9 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
+import {
+  currentMentionQuery,
+  insertComposerMention,
+} from '@/app/useKordiAppModelHelpers';
 import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
@@ -41,6 +45,10 @@ import {
   VideoRecordingSurface,
 } from './chatsPage.videoComposer';
 import { useAttachedVideoReviews } from './chatsPage.videoAttachmentReviews';
+import {
+  mergeComposerMentionOptions,
+  useComposerReferenceOptions,
+} from './useComposerReferenceOptions';
 import type { MainComposerProps } from './chatsPage.mainComposer.types';
 
 export type { MainComposerProps } from './chatsPage.mainComposer.types';
@@ -57,11 +65,10 @@ export function MainComposer({
 }: MainComposerProps) {
   const {
     filteredChatSlashCommands,
-    filteredChatMentionTargets,
+    chatMentionTargetsForText,
     chatSlashMenuIndex,
     setChatSlashMenuIndex,
     acceptChatSlashCommand,
-    acceptChatMentionTarget,
     chatAttachmentInputRef,
     chatComposerAttachments,
     saveDesktopAttachments,
@@ -96,12 +103,43 @@ export function MainComposer({
   } = runtime;
   const imeCompositionGuard = useImeCompositionGuard();
   const composerInputRef = useRef<BlobEmojiComposerInputHandle | null>(null);
+  const previousConversationIdRef = useRef(conversation.id);
+  const mentionMenuId = useId();
   const [pastedImageEditId, setPastedImageEditId] = useState<string | null>(null);
+  const [mentionCursor, setMentionCursor] = useState(chatComposerText.length);
+  const [dismissedMention, setDismissedMention] = useState<string | null>(null);
   const memeValidationMessageId = useId();
   const editErrorMessageId = useId();
   const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
   const editingMessage = Boolean(activeMessageEdit);
   const composerText = activeMessageEdit?.text ?? chatComposerText;
+  const mentionQuery = useMemo(
+    () => editingMessage ? null : currentMentionQuery(composerText, mentionCursor),
+    [composerText, editingMessage, mentionCursor],
+  );
+  const mentionKey = mentionQuery
+    ? `${mentionQuery.start}:${mentionQuery.end}:${mentionQuery.raw}`
+    : null;
+  const fileReferenceOptions = useComposerReferenceOptions({
+    isNativeShell: display.isNativeShell,
+    query: mentionQuery,
+    rootPath: conversation.localSessionCwd,
+  });
+  const filteredChatMentionTargets = useMemo(() => (
+    mentionKey && dismissedMention !== mentionKey
+      ? mergeComposerMentionOptions(
+        chatMentionTargetsForText(composerText, mentionCursor),
+        fileReferenceOptions,
+      )
+      : []
+  ), [
+    chatMentionTargetsForText,
+    composerText,
+    dismissedMention,
+    fileReferenceOptions,
+    mentionCursor,
+    mentionKey,
+  ]);
   const hasSendableDraft = Boolean(composerText.trim() || (!editingMessage && chatComposerAttachments.length > 0));
   const canSaveEdit = Boolean(
     activeMessageEdit
@@ -131,10 +169,35 @@ export function MainComposer({
   const attachedVideoReview = videoReviews.current;
   const mediaSurfaceActive = voiceSurfaceActive || video.surfaceActive || Boolean(attachedVideoReview);
 
+  useEffect(() => {
+    if (previousConversationIdRef.current === conversation.id) return;
+    previousConversationIdRef.current = conversation.id;
+    setMentionCursor(chatComposerText.length);
+    setDismissedMention(null);
+  }, [chatComposerText.length, conversation.id]);
+
   function openPastedImageEditor(pendingAttachments: Promise<AttachmentItem[]>) {
     void pendingAttachments.then((saved) => {
       const image = saved.find((attachment) => attachment.kind === 'image');
       if (image) setPastedImageEditId(image.id);
+    });
+  }
+
+  function acceptMentionTarget(item: (typeof filteredChatMentionTargets)[number]) {
+    if (!mentionQuery) return;
+    const insertion = insertComposerMention(composerText, mentionQuery, item);
+    setChatComposerText(insertion.value);
+    setMentionCursor(insertion.cursor);
+    setDismissedMention(null);
+    setChatSlashMenuIndex(0);
+    if (item.referenceAction === 'pick-file') {
+      chatAttachmentInputRef.current?.click();
+    }
+    if (item.targetKind === 'reference' && item.referenceKind === 'file' && item.referencePath) {
+      void saveDesktopAttachmentPaths([item.referencePath]);
+    }
+    window.requestAnimationFrame(() => {
+      composerInputRef.current?.focus({ start: insertion.cursor, end: insertion.cursor });
     });
   }
 
@@ -160,9 +223,10 @@ export function MainComposer({
             />
           ) : !editingMessage && filteredChatMentionTargets.length > 0 ? (
             <ComposerMentionMenu
+              id={mentionMenuId}
               items={filteredChatMentionTargets}
               selectedIndex={Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)}
-              onSelect={acceptChatMentionTarget}
+              onSelect={acceptMentionTarget}
             />
           ) : null}
           <div
@@ -233,6 +297,9 @@ export function MainComposer({
                   );
                 }}
                 onChange={(value, target) => {
+                  setMentionCursor(composerInputRef.current?.selection().end ?? value.length);
+                  setDismissedMention(null);
+                  setChatSlashMenuIndex(0);
                   if (editingMessage) updateMessageEditText?.(value);
                   else updateChatComposerDraft(value, target);
                 }}
@@ -307,10 +374,10 @@ export function MainComposer({
                     ) {
                       event.preventDefault();
                       event.stopPropagation();
-                      acceptChatMentionTarget(
+                      acceptMentionTarget(
                         filteredChatMentionTargets[
                           Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)
-                        ]?.value ?? filteredChatMentionTargets[0].value,
+                        ] ?? filteredChatMentionTargets[0],
                       );
                       return;
                     }
@@ -322,7 +389,7 @@ export function MainComposer({
                   }
                   if (!editingMessage && event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
                     event.preventDefault();
-                    setChatComposerText(chatComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
+                    setDismissedMention(mentionKey);
                     return;
                   }
                   if (
@@ -338,6 +405,11 @@ export function MainComposer({
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
                 ariaDescribedBy={messageEditError ? editErrorMessageId : memeValidationError ? memeValidationMessageId : undefined}
+                ariaControls={filteredChatMentionTargets.length > 0 ? mentionMenuId : undefined}
+                ariaExpanded={filteredChatMentionTargets.length > 0}
+                ariaActiveDescendant={filteredChatMentionTargets.length > 0
+                  ? `${mentionMenuId}-option-${Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)}`
+                  : undefined}
                 placeholder={editingMessage ? 'Edit message' : display.placeholder}
               />
             </div>}
