@@ -1,9 +1,5 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Check, LoaderCircle } from 'lucide-react';
-import {
-  currentMentionQuery,
-  insertComposerMention,
-} from '@/app/useKordiAppModelHelpers';
 import { Button } from '@/components/ui/button';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { CHAT_COMPOSER_TEXTAREA_SELECTOR, focusComposerTextareaForNativeInput } from '@/features/chat/composerController.shared';
@@ -45,10 +41,7 @@ import {
   VideoRecordingSurface,
 } from './chatsPage.videoComposer';
 import { useAttachedVideoReviews } from './chatsPage.videoAttachmentReviews';
-import {
-  mergeComposerMentionOptions,
-  useComposerReferenceOptions,
-} from './useComposerReferenceOptions';
+import { useComposerMentionMenu } from './useComposerReferenceOptions';
 import type { MainComposerProps } from './chatsPage.mainComposer.types';
 
 export type { MainComposerProps } from './chatsPage.mainComposer.types';
@@ -103,43 +96,34 @@ export function MainComposer({
   } = runtime;
   const imeCompositionGuard = useImeCompositionGuard();
   const composerInputRef = useRef<BlobEmojiComposerInputHandle | null>(null);
-  const previousConversationIdRef = useRef(conversation.id);
-  const mentionMenuId = useId();
   const [pastedImageEditId, setPastedImageEditId] = useState<string | null>(null);
-  const [mentionCursor, setMentionCursor] = useState(chatComposerText.length);
-  const [dismissedMention, setDismissedMention] = useState<string | null>(null);
   const memeValidationMessageId = useId();
   const editErrorMessageId = useId();
   const memeValidationError = memeAttachmentDraftError(chatComposerAttachments);
   const editingMessage = Boolean(activeMessageEdit);
   const composerText = activeMessageEdit?.text ?? chatComposerText;
-  const mentionQuery = useMemo(
-    () => editingMessage ? null : currentMentionQuery(composerText, mentionCursor),
-    [composerText, editingMessage, mentionCursor],
-  );
-  const mentionKey = mentionQuery
-    ? `${mentionQuery.start}:${mentionQuery.end}:${mentionQuery.raw}`
-    : null;
-  const fileReferenceOptions = useComposerReferenceOptions({
+  const {
+    menuId: mentionMenuId,
+    items: filteredChatMentionTargets,
+    activeIndex: chatMentionIndex,
+    activeDescendant: chatMentionActiveDescendant,
+    change: updateMentionCursor,
+    select: acceptMentionTarget,
+    handleKeyDown: handleMentionKeyDown,
+  } = useComposerMentionMenu({
+    text: composerText,
+    resetKey: conversation.id,
+    enabled: !editingMessage,
     isNativeShell: display.isNativeShell,
-    query: mentionQuery,
     rootPath: conversation.localSessionCwd,
+    targetsForText: chatMentionTargetsForText,
+    onTextChange: setChatComposerText,
+    onPickFile: () => chatAttachmentInputRef.current?.click(),
+    onAttachPath: (path) => { void saveDesktopAttachmentPaths([path]); },
+    onFocus: (cursor) => composerInputRef.current?.focus({ start: cursor, end: cursor }),
+    selectedIndex: chatSlashMenuIndex,
+    setSelectedIndex: setChatSlashMenuIndex,
   });
-  const filteredChatMentionTargets = useMemo(() => (
-    mentionKey && dismissedMention !== mentionKey
-      ? mergeComposerMentionOptions(
-        chatMentionTargetsForText(composerText, mentionCursor),
-        fileReferenceOptions,
-      )
-      : []
-  ), [
-    chatMentionTargetsForText,
-    composerText,
-    dismissedMention,
-    fileReferenceOptions,
-    mentionCursor,
-    mentionKey,
-  ]);
   const hasSendableDraft = Boolean(composerText.trim() || (!editingMessage && chatComposerAttachments.length > 0));
   const canSaveEdit = Boolean(
     activeMessageEdit
@@ -169,35 +153,10 @@ export function MainComposer({
   const attachedVideoReview = videoReviews.current;
   const mediaSurfaceActive = voiceSurfaceActive || video.surfaceActive || Boolean(attachedVideoReview);
 
-  useEffect(() => {
-    if (previousConversationIdRef.current === conversation.id) return;
-    previousConversationIdRef.current = conversation.id;
-    setMentionCursor(chatComposerText.length);
-    setDismissedMention(null);
-  }, [chatComposerText.length, conversation.id]);
-
   function openPastedImageEditor(pendingAttachments: Promise<AttachmentItem[]>) {
     void pendingAttachments.then((saved) => {
       const image = saved.find((attachment) => attachment.kind === 'image');
       if (image) setPastedImageEditId(image.id);
-    });
-  }
-
-  function acceptMentionTarget(item: (typeof filteredChatMentionTargets)[number]) {
-    if (!mentionQuery) return;
-    const insertion = insertComposerMention(composerText, mentionQuery, item);
-    setChatComposerText(insertion.value);
-    setMentionCursor(insertion.cursor);
-    setDismissedMention(null);
-    setChatSlashMenuIndex(0);
-    if (item.referenceAction === 'pick-file') {
-      chatAttachmentInputRef.current?.click();
-    }
-    if (item.targetKind === 'reference' && item.referenceKind === 'file' && item.referencePath) {
-      void saveDesktopAttachmentPaths([item.referencePath]);
-    }
-    window.requestAnimationFrame(() => {
-      composerInputRef.current?.focus({ start: insertion.cursor, end: insertion.cursor });
     });
   }
 
@@ -225,7 +184,7 @@ export function MainComposer({
             <ComposerMentionMenu
               id={mentionMenuId}
               items={filteredChatMentionTargets}
-              selectedIndex={Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)}
+              selectedIndex={chatMentionIndex}
               onSelect={acceptMentionTarget}
             />
           ) : null}
@@ -297,9 +256,7 @@ export function MainComposer({
                   );
                 }}
                 onChange={(value, target) => {
-                  setMentionCursor(composerInputRef.current?.selection().end ?? value.length);
-                  setDismissedMention(null);
-                  setChatSlashMenuIndex(0);
+                  updateMentionCursor(composerInputRef.current?.selection().end ?? value.length);
                   if (editingMessage) updateMessageEditText?.(value);
                   else updateChatComposerDraft(value, target);
                 }}
@@ -354,42 +311,10 @@ export function MainComposer({
                       return;
                     }
                   }
-                  if (!editingMessage && filteredChatMentionTargets.length > 0) {
-                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      const delta = event.key === 'ArrowDown' ? 1 : -1;
-                      setChatSlashMenuIndex((current) => (
-                        current + delta + filteredChatMentionTargets.length
-                      ) % filteredChatMentionTargets.length);
-                      return;
-                    }
-                    if (
-                      ((event.key === 'Enter'
-                        && !event.metaKey
-                        && !event.ctrlKey
-                        && !event.shiftKey)
-                        || event.key === 'Tab')
-                      && !event.nativeEvent.isComposing
-                    ) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      acceptMentionTarget(
-                        filteredChatMentionTargets[
-                          Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)
-                        ] ?? filteredChatMentionTargets[0],
-                      );
-                      return;
-                    }
-                  }
+                  if (!editingMessage && handleMentionKeyDown(event)) return;
                   if (!editingMessage && event.key === 'Escape' && filteredChatSlashCommands.length > 0) {
                     event.preventDefault();
                     setChatComposerText('/');
-                    return;
-                  }
-                  if (!editingMessage && event.key === 'Escape' && filteredChatMentionTargets.length > 0) {
-                    event.preventDefault();
-                    setDismissedMention(mentionKey);
                     return;
                   }
                   if (
@@ -407,9 +332,7 @@ export function MainComposer({
                 ariaDescribedBy={messageEditError ? editErrorMessageId : memeValidationError ? memeValidationMessageId : undefined}
                 ariaControls={filteredChatMentionTargets.length > 0 ? mentionMenuId : undefined}
                 ariaExpanded={filteredChatMentionTargets.length > 0}
-                ariaActiveDescendant={filteredChatMentionTargets.length > 0
-                  ? `${mentionMenuId}-option-${Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)}`
-                  : undefined}
+                ariaActiveDescendant={chatMentionActiveDescendant}
                 placeholder={editingMessage ? 'Edit message' : display.placeholder}
               />
             </div>}

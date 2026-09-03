@@ -84,7 +84,7 @@ test('mention participant menu can carry light theme after portaling outside the
   assert.match(lightRule, /color-scheme:\s*light;/);
   assert.match(themeTokens, /\.app-composer-mention-menu-light\)\s*\{[\s\S]*--app-transient-surface-bg:\s*rgb\(252 252 253 \/ 0\.985\);/);
 
-  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/kordi-app/components/composerMentionMenu.tsx', import.meta.url), 'utf8');
   assert.match(source, /setMenuThemeClass/);
   assert.match(source, /app-composer-mention-menu-light/);
 });
@@ -102,8 +102,8 @@ test('mention participant menu is rendered on the foreground popover layer', () 
   const layerRule = cssRule(css, '.app-composer-mention-menu-layer');
   assert.match(layerRule, /z-index:\s*2147483000/);
 
-  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
-  assert.match(source, /createPortal\(renderMenu\(\), document\.body\)/);
+  const source = readFileSync(new URL('../src/kordi-app/components/composerMentionMenu.tsx', import.meta.url), 'utf8');
+  assert.match(source, /createPortal\(menu, document\.body\)/);
   assert.doesNotMatch(source, /app-composer-mention-menu[^"`]*z-30/);
 });
 
@@ -145,21 +145,22 @@ test('unified mention menu groups references, contacts, and agents without redun
 });
 
 test('attach file mention action reuses each composer file input', () => {
+  const shared = readFileSync(new URL('../src/pages/useComposerReferenceOptions.ts', import.meta.url), 'utf8');
   const main = readFileSync(new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url), 'utf8');
   const project = readFileSync(new URL('../src/pages/ProjectsPage.tsx', import.meta.url), 'utf8');
   const thread = readFileSync(new URL('../src/pages/ChatThreadPanel.tsx', import.meta.url), 'utf8');
 
-  assert.match(main, /referenceAction === 'pick-file'[\s\S]*chatAttachmentInputRef\.current\?\.click\(\)/);
-  assert.match(project, /referenceAction === 'pick-file'[\s\S]*chatAttachmentInputRef\.current\?\.click\(\)/);
-  assert.match(thread, /referenceAction === 'pick-file'[\s\S]*inputRef\.current\?\.click\(\)/);
+  assert.match(shared, /referenceAction === 'pick-file'[\s\S]*onPickFile\(\)/);
+  assert.match(main, /onPickFile: \(\) => chatAttachmentInputRef\.current\?\.click\(\)/);
+  assert.match(project, /onPickFile: \(\) => chatAttachmentInputRef\.current\?\.click\(\)/);
+  assert.match(thread, /onPickFile: \(\) => inputRef\.current\?\.click\(\)/);
 });
 
 test('mention participant menu keeps owner metadata subordinate to the agent name', () => {
-  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/kordi-app/components/composerMentionMenu.tsx', import.meta.url), 'utf8');
   const start = source.indexOf('export function ComposerMentionMenu');
-  const end = source.indexOf('export function composerThinkingLabel', start);
-  assert.ok(start >= 0 && end > start, 'expected ComposerMentionMenu source block');
-  const block = source.slice(start, end);
+  assert.ok(start >= 0, 'expected ComposerMentionMenu source block');
+  const block = source.slice(start);
 
   assert.match(block, /app-composer-mention-menu[^']*rounded-\[14px\][^']*p-1\.5/);
   assert.match(block, /app-composer-mention-menu-item[^']*rounded-\[10px\][^']*px-2\.5 py-1\.5[^']*text-\[13px\]/);

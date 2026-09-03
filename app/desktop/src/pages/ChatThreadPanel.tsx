@@ -1,10 +1,6 @@
-import { useEffect, useId, useMemo, useRef, useState, type ComponentProps, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ComponentProps, type PointerEvent as ReactPointerEvent } from 'react';
 import { X } from 'lucide-react';
 
-import {
-  currentMentionQuery,
-  insertComposerMention,
-} from '@/app/useKordiAppModelHelpers';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
@@ -17,10 +13,7 @@ import { VoiceComposerControls, VoiceRecordingSurface } from '@/pages/chatsPage.
 import { chatTranscriptDensityMode } from '@/pages/chatsPage.model';
 import { ChatSessionPane } from '@/pages/chatsPage.sessionPane';
 import type { ChatSessionPaneActions } from '@/pages/chatsPage.types';
-import {
-  mergeComposerMentionOptions,
-  useComposerReferenceOptions,
-} from '@/pages/useComposerReferenceOptions';
+import { useComposerMentionMenu } from '@/pages/useComposerReferenceOptions';
 
 export function ChatThreadPanel({
   conversation,
@@ -71,43 +64,36 @@ export function ChatThreadPanel({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const resizeCleanupRef = useRef<() => void>(() => {});
-  const mentionMenuId = useId();
   const rootId = thread.root.id?.trim() || thread.root.entryId?.trim() || '';
-  const previousRootIdRef = useRef(rootId);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [attachmentsByRoot, setAttachmentsByRoot] = useState<Record<string, AttachmentItem[]>>({});
   const [mentionIndex, setMentionIndex] = useState(0);
-  const [mentionCursor, setMentionCursor] = useState(0);
-  const [dismissedMention, setDismissedMention] = useState<string | null>(null);
   const draft = drafts[rootId] ?? '';
   const attachments = attachmentsByRoot[rootId] ?? [];
-  const mentionQuery = useMemo(
-    () => currentMentionQuery(draft, mentionCursor),
-    [draft, mentionCursor],
-  );
-  const mentionKey = mentionQuery
-    ? `${mentionQuery.start}:${mentionQuery.end}:${mentionQuery.raw}`
-    : null;
-  const fileReferenceOptions = useComposerReferenceOptions({
+  const {
+    menuId: mentionMenuId,
+    items: mentionTargets,
+    activeIndex: activeMentionIndex,
+    activeDescendant: mentionActiveDescendant,
+    change: updateMentionCursor,
+    select: acceptMention,
+    handleKeyDown: handleMentionKeyDown,
+  } = useComposerMentionMenu({
+    text: draft,
+    resetKey: rootId,
     isNativeShell,
-    query: mentionQuery,
     rootPath: conversation.localSessionCwd,
+    targetsForText: chatMentionTargetsForText,
+    onTextChange: (value) => setDrafts((current) => ({ ...current, [rootId]: value })),
+    onPickFile: () => inputRef.current?.click(),
+    onAttachPath: (path) => { void addAttachmentPaths([path]); },
+    onFocus: (cursor) => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(cursor, cursor);
+    },
+    selectedIndex: mentionIndex,
+    setSelectedIndex: setMentionIndex,
   });
-  const mentionTargets = useMemo(() => (
-    mentionKey && dismissedMention !== mentionKey
-      ? mergeComposerMentionOptions(
-        chatMentionTargetsForText(draft, mentionCursor),
-        fileReferenceOptions,
-      )
-      : []
-  ), [
-    chatMentionTargetsForText,
-    dismissedMention,
-    draft,
-    fileReferenceOptions,
-    mentionCursor,
-    mentionKey,
-  ]);
   const messages = useMemo(
     () => [{ ...thread.root, threadSummary: undefined }, ...thread.replies],
     [thread],
@@ -119,12 +105,6 @@ export function ChatThreadPanel({
     focusComposer: () => textareaRef.current?.focus(),
   });
   useEffect(() => () => resizeCleanupRef.current(), []);
-  useEffect(() => {
-    if (previousRootIdRef.current === rootId) return;
-    previousRootIdRef.current = rootId;
-    setMentionCursor(draft.length);
-    setDismissedMention(null);
-  }, [draft.length, rootId]);
   async function sendThread(text: string, nextAttachments?: AttachmentItem[]) {
     onSendStart();
     try {
@@ -160,24 +140,6 @@ export function ChatThreadPanel({
       ...current,
       [rootId]: [...(current[rootId] ?? []), ...saved],
     }));
-  };
-  const acceptMention = (item: ComposerMentionOption) => {
-    if (!mentionQuery) return;
-    const insertion = insertComposerMention(draft, mentionQuery, item);
-    setDrafts((current) => ({ ...current, [rootId]: insertion.value }));
-    setMentionCursor(insertion.cursor);
-    setDismissedMention(null);
-    setMentionIndex(0);
-    if (item.referenceAction === 'pick-file') {
-      inputRef.current?.click();
-    }
-    if (item.targetKind === 'reference' && item.referenceKind === 'file' && item.referencePath) {
-      void addAttachmentPaths([item.referencePath]);
-    }
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(insertion.cursor, insertion.cursor);
-    });
   };
   const editQueuedMessage = (sessionId: string, queuedMessageId: string) => {
     const queued = queuedMessages.find((message) => message.id === queuedMessageId);
@@ -262,7 +224,7 @@ export function ChatThreadPanel({
                 <ComposerMentionMenu
                   id={mentionMenuId}
                   items={mentionTargets}
-                  selectedIndex={Math.min(mentionIndex, mentionTargets.length - 1)}
+                  selectedIndex={activeMentionIndex}
                   onSelect={acceptMention}
                 />
                 <div className="app-composer-input rounded-[18px] px-4 py-2.5 transition">
@@ -295,31 +257,11 @@ export function ChatThreadPanel({
                       ref={textareaRef}
                       value={draft}
                       onChange={(event) => {
-                        setMentionCursor(event.target.selectionStart);
-                        setDismissedMention(null);
-                        setMentionIndex(0);
+                        updateMentionCursor(event.target.selectionStart);
                         setDrafts((current) => ({ ...current, [rootId]: event.target.value }));
                       }}
                       onKeyDown={(event) => {
-                        if (mentionTargets.length > 0) {
-                          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-                            event.preventDefault();
-                            setMentionIndex((current) => (
-                              current + (event.key === 'ArrowDown' ? 1 : -1) + mentionTargets.length
-                            ) % mentionTargets.length);
-                            return;
-                          }
-                          if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
-                            event.preventDefault();
-                            acceptMention(mentionTargets[Math.min(mentionIndex, mentionTargets.length - 1)] ?? mentionTargets[0]);
-                            return;
-                          }
-                          if (event.key === 'Escape') {
-                            event.preventDefault();
-                            setDismissedMention(mentionKey);
-                            return;
-                          }
-                        }
+                        if (handleMentionKeyDown(event)) return;
                         if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
                         event.preventDefault();
                         void send();
@@ -331,9 +273,7 @@ export function ChatThreadPanel({
                       aria-autocomplete="list"
                       aria-controls={mentionTargets.length > 0 ? mentionMenuId : undefined}
                       aria-expanded={mentionTargets.length > 0}
-                      aria-activedescendant={mentionTargets.length > 0
-                        ? `${mentionMenuId}-option-${Math.min(mentionIndex, mentionTargets.length - 1)}`
-                        : undefined}
+                      aria-activedescendant={mentionActiveDescendant}
                     />
                   </>}
                 </div>

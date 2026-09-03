@@ -1,6 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type SetStateAction,
+} from 'react';
 
-import type { MentionQuery } from '@/app/useKordiAppModelHelpers';
+import {
+  currentMentionQuery,
+  insertComposerMention,
+  type MentionQuery,
+} from '@/app/useKordiAppModelHelpers';
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { orderedComposerMentionOptions } from '@/kordi-app/components/composerMentionOptions';
 import type { DesktopArtifactDirectoryEntry } from '@/kordi-app/types';
@@ -114,4 +127,116 @@ export function useComposerReferenceOptions({
       ? composerFileReferenceOptions(result.entries, search)
       : []
   ), [requestKey, result, search]);
+}
+
+export function useComposerMentionMenu({
+  text,
+  resetKey,
+  enabled = true,
+  isNativeShell,
+  rootPath,
+  targetsForText,
+  onTextChange,
+  onPickFile,
+  onAttachPath,
+  onFocus,
+  selectedIndex,
+  setSelectedIndex,
+}: {
+  text: string;
+  resetKey: string;
+  enabled?: boolean;
+  isNativeShell: boolean;
+  rootPath?: string | null;
+  targetsForText: (text: string, cursor?: number) => ComposerMentionOption[];
+  onTextChange: (value: string) => void;
+  onPickFile: () => void;
+  onAttachPath: (path: string) => void;
+  onFocus: (cursor: number) => void;
+  selectedIndex: number;
+  setSelectedIndex: Dispatch<SetStateAction<number>>;
+}) {
+  const menuId = useId();
+  const previousResetKeyRef = useRef(resetKey);
+  const [cursor, setCursor] = useState(text.length);
+  const [dismissedMention, setDismissedMention] = useState<string | null>(null);
+  const query = useMemo(
+    () => enabled ? currentMentionQuery(text, cursor) : null,
+    [cursor, enabled, text],
+  );
+  const mentionKey = query ? `${query.start}:${query.end}:${query.raw}` : null;
+  const fileReferenceOptions = useComposerReferenceOptions({ isNativeShell, query, rootPath });
+  const items = useMemo(() => (
+    mentionKey && dismissedMention !== mentionKey
+      ? mergeComposerMentionOptions(targetsForText(text, cursor), fileReferenceOptions)
+      : []
+  ), [cursor, dismissedMention, fileReferenceOptions, mentionKey, targetsForText, text]);
+
+  useEffect(() => {
+    if (previousResetKeyRef.current === resetKey) return;
+    previousResetKeyRef.current = resetKey;
+    setCursor(text.length);
+    setDismissedMention(null);
+  }, [resetKey, text.length]);
+
+  const dismiss = () => {
+    setDismissedMention(mentionKey);
+  };
+
+  const select = (item: ComposerMentionOption) => {
+    if (!query) return;
+    const insertion = insertComposerMention(text, query, item);
+    onTextChange(insertion.value);
+    setCursor(insertion.cursor);
+    setDismissedMention(null);
+    setSelectedIndex(0);
+    if (item.referenceAction === 'pick-file') onPickFile();
+    if (item.targetKind === 'reference' && item.referenceKind === 'file' && item.referencePath) {
+      onAttachPath(item.referencePath);
+    }
+    window.requestAnimationFrame(() => onFocus(insertion.cursor));
+  };
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (items.length === 0) return false;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      event.stopPropagation();
+      const delta = event.key === 'ArrowDown' ? 1 : -1;
+      setSelectedIndex((current) => (current + delta + items.length) % items.length);
+      return true;
+    }
+    if (((event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) || event.key === 'Tab')
+      && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      event.stopPropagation();
+      select(items[Math.min(selectedIndex, items.length - 1)] ?? items[0]);
+      return true;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      dismiss();
+      return true;
+    }
+    return false;
+  };
+
+  const change = (nextCursor: number) => {
+    setCursor(nextCursor);
+    setDismissedMention(null);
+    setSelectedIndex(0);
+  };
+
+  return {
+    menuId,
+    items,
+    activeIndex: Math.min(selectedIndex, items.length - 1),
+    activeDescendant: items.length > 0
+      ? `${menuId}-option-${Math.min(selectedIndex, items.length - 1)}`
+      : undefined,
+    change,
+    dismiss,
+    select,
+    handleKeyDown,
+  };
 }

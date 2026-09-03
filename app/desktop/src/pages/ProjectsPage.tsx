@@ -1,9 +1,5 @@
 import {
-  useEffect,
-  useId,
-  useMemo,
   useRef,
-  useState,
   type Dispatch,
   type RefObject,
   type SetStateAction,
@@ -21,10 +17,6 @@ import {
 } from 'lucide-react';
 
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
-import {
-  currentMentionQuery,
-  insertComposerMention,
-} from '@/app/useKordiAppModelHelpers';
 import { AuthNoticeBanner } from '@/components/AuthNoticeBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -59,43 +51,11 @@ import type {
   DesktopChatSlashCommand,
   DesktopChatTurnSnapshot,
   EditFilePreview,
-  Message,
+  Project,
+  ProjectSession,
 } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
-import {
-  mergeComposerMentionOptions,
-  useComposerReferenceOptions,
-} from '@/pages/useComposerReferenceOptions';
-
-type ProjectSession = {
-  id: string;
-  name: string;
-  summary: string;
-  lastActive: string;
-  status: string;
-  participants: string[];
-  artifacts: number;
-  tasks: number;
-  messages: Message[];
-};
-type ProjectWorkspace = {
-  id: string;
-  name: string;
-  summary: string;
-  collaboration: string;
-  scope: string;
-  status: string;
-  people: Array<unknown>;
-  agents: Array<unknown>;
-  pendingInvites: Array<unknown>;
-  artifacts: number;
-  tasks: number;
-  root?: string;
-  sharedContext?: string;
-  backgroundSystem?: string;
-  sharedSources?: Array<{ label: string; path?: string | null; detail?: string | null }>;
-  sessions: ProjectSession[];
-};
+import { useComposerMentionMenu } from '@/pages/useComposerReferenceOptions';
 
 type ProjectsPageProps = {
   isNativeShell: boolean;
@@ -104,7 +64,7 @@ type ProjectsPageProps = {
   showRightDetailRail: boolean;
   isDetailPanelCollapsed: boolean;
   setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
-  activeProject: ProjectWorkspace;
+  activeProject: Project;
   activeProjectSession: ProjectSession;
   desktopSessionRenameDraft: string;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
@@ -208,11 +168,7 @@ export function ProjectsPage({
   onOpenAuthSettings,
   onOpenAccountAuthentication,
 }: ProjectsPageProps) {
-  const mentionMenuId = useId();
-  const previousSessionIdRef = useRef(activeProjectSession.id);
   const projectComposerRef = useRef<HTMLTextAreaElement | null>(null);
-  const [mentionCursor, setMentionCursor] = useState(projectComposerText.length);
-  const [dismissedMention, setDismissedMention] = useState<string | null>(null);
   const openAuthentication = onOpenAccountAuthentication ?? onOpenAuthSettings;
   const authNoticeActionLabel = 'Open authentication';
   const canSubmitProjectMessage = projectComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
@@ -228,58 +184,30 @@ export function ProjectsPage({
     ? [...transcriptMessages, liveTurnMessage]
     : transcriptMessages;
   const projectImeCompositionGuard = useImeCompositionGuard();
-  const mentionQuery = useMemo(
-    () => currentMentionQuery(projectComposerText, mentionCursor),
-    [mentionCursor, projectComposerText],
-  );
-  const mentionKey = mentionQuery
-    ? `${mentionQuery.start}:${mentionQuery.end}:${mentionQuery.raw}`
-    : null;
-  const fileReferenceOptions = useComposerReferenceOptions({
+  const {
+    menuId: mentionMenuId,
+    items: projectMentionTargets,
+    activeIndex: projectMentionIndex,
+    activeDescendant: projectMentionActiveDescendant,
+    change: updateMentionCursor,
+    select: acceptMentionTarget,
+    handleKeyDown: handleMentionKeyDown,
+  } = useComposerMentionMenu({
+    text: projectComposerText,
+    resetKey: activeProjectSession.id,
     isNativeShell,
-    query: mentionQuery,
     rootPath: activeProject.root,
-  });
-  const projectMentionTargets = useMemo(() => {
-    if (!mentionKey || dismissedMention === mentionKey) return [];
-    return mergeComposerMentionOptions(
-      projectMentionTargetsForText(projectComposerText, mentionCursor),
-      fileReferenceOptions,
-    );
-  }, [
-    dismissedMention,
-    fileReferenceOptions,
-    mentionKey,
-    mentionCursor,
-    projectComposerText,
-    projectMentionTargetsForText,
-  ]);
-
-  useEffect(() => {
-    if (previousSessionIdRef.current === activeProjectSession.id) return;
-    previousSessionIdRef.current = activeProjectSession.id;
-    setMentionCursor(projectComposerText.length);
-    setDismissedMention(null);
-  }, [activeProjectSession.id, projectComposerText.length]);
-
-  function acceptMentionTarget(item: ComposerMentionOption) {
-    if (!mentionQuery) return;
-    const insertion = insertComposerMention(projectComposerText, mentionQuery, item);
-    setProjectComposerText(insertion.value);
-    setMentionCursor(insertion.cursor);
-    setDismissedMention(null);
-    setChatSlashMenuIndex(0);
-    if (item.referenceAction === 'pick-file') {
-      chatAttachmentInputRef.current?.click();
-    }
-    if (item.targetKind === 'reference' && item.referenceKind === 'file' && item.referencePath) {
-      void saveDesktopAttachmentPaths([item.referencePath]);
-    }
-    window.requestAnimationFrame(() => {
+    targetsForText: projectMentionTargetsForText,
+    onTextChange: setProjectComposerText,
+    onPickFile: () => chatAttachmentInputRef.current?.click(),
+    onAttachPath: (path) => { void saveDesktopAttachmentPaths([path]); },
+    onFocus: (cursor) => {
       projectComposerRef.current?.focus();
-      projectComposerRef.current?.setSelectionRange(insertion.cursor, insertion.cursor);
-    });
-  }
+      projectComposerRef.current?.setSelectionRange(cursor, cursor);
+    },
+    selectedIndex: chatSlashMenuIndex,
+    setSelectedIndex: setChatSlashMenuIndex,
+  });
 
   if (isNativeShell && !activeProject.id) {
     return (
@@ -444,7 +372,7 @@ export function ProjectsPage({
               <ComposerMentionMenu
                 id={mentionMenuId}
                 items={projectMentionTargets}
-                selectedIndex={Math.min(chatSlashMenuIndex, projectMentionTargets.length - 1)}
+                selectedIndex={projectMentionIndex}
                 onSelect={acceptMentionTarget}
               />
             ) : null}
@@ -477,9 +405,7 @@ export function ProjectsPage({
                 rows={1}
                 value={projectComposerText}
                 onChange={(event) => {
-                  setMentionCursor(event.target.selectionStart);
-                  setDismissedMention(null);
-                  setChatSlashMenuIndex(0);
+                  updateMentionCursor(event.target.selectionStart);
                   updateProjectComposerDraft(event.target.value, event.target);
                 }}
                 onPaste={(event) => {
@@ -520,34 +446,10 @@ export function ProjectsPage({
                       return;
                     }
                   }
-                  if (projectMentionTargets.length > 0) {
-                    if (event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current + 1) % projectMentionTargets.length);
-                      return;
-                    }
-                    if (event.key === 'ArrowUp') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current - 1 + projectMentionTargets.length) % projectMentionTargets.length);
-                      return;
-                    }
-                    if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      acceptMentionTarget(projectMentionTargets[Math.min(chatSlashMenuIndex, projectMentionTargets.length - 1)] ?? projectMentionTargets[0]);
-                      return;
-                    }
-                  }
+                  if (handleMentionKeyDown(event)) return;
                   if (event.key === 'Escape' && filteredProjectSlashCommands.length > 0) {
                     event.preventDefault();
                     setProjectComposerText('/');
-                    return;
-                  }
-                  if (event.key === 'Escape' && projectMentionTargets.length > 0) {
-                    event.preventDefault();
-                    setDismissedMention(mentionKey);
                     return;
                   }
                   if (event.key === 'Enter' && !event.shiftKey) {
@@ -561,9 +463,7 @@ export function ProjectsPage({
                 aria-autocomplete="list"
                 aria-controls={projectMentionTargets.length > 0 ? mentionMenuId : undefined}
                 aria-expanded={projectMentionTargets.length > 0}
-                aria-activedescendant={projectMentionTargets.length > 0
-                  ? `${mentionMenuId}-option-${Math.min(chatSlashMenuIndex, projectMentionTargets.length - 1)}`
-                  : undefined}
+                aria-activedescendant={projectMentionActiveDescendant}
                 placeholder="Post to this project session, ask a member, or start a new topic…"
               />
             </div>
