@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Kordi animated emoji menu preview</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page:
+        radial-gradient(circle at 14% 12%, rgb(101 93 157 / 0.13), transparent 30%),
+        linear-gradient(160deg, #111318, #090b0f);
+      --shell: rgb(18 20 25 / 0.86);
+      --panel: rgb(20 22 27 / 0.985);
+      --raised: rgb(29 31 37 / 0.98);
+      --hover: rgb(35 38 45 / 0.98);
+      --selected: rgb(37 44 57 / 0.98);
+      --border: rgb(255 255 255 / 0.095);
+      --divider: rgb(255 255 255 / 0.075);
+      --text: rgb(244 246 249);
+      --muted: rgb(160 167 179);
+      --subtle: rgb(116 124 138);
+      --focus: rgb(96 165 250 / 0.82);
+      --bubble-peer: rgb(255 255 255 / 0.055);
+      --bubble-own: rgb(255 255 255 / 0.88);
+      --bubble-own-text: rgb(15 17 21);
+      --shadow: 0 22px 48px rgb(0 0 0 / 0.34), 0 0 0 1px rgb(255 255 255 / 0.025);
+      --composer: rgb(24 27 33 / 0.96);
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body.light {
+      color-scheme: light;
+      --page:
+        radial-gradient(circle at 14% 10%, rgb(255 203 218 / 0.4), transparent 33%),
+        radial-gradient(circle at 86% 16%, rgb(180 217 255 / 0.4), transparent 30%),
+        linear-gradient(160deg, #fbfbfc, #eceef2);
+      --shell: rgb(252 252 253 / 0.78);
+      --panel: rgb(252 252 253 / 0.985);
+      --raised: rgb(244 245 247 / 0.98);
+      --hover: rgb(238 240 243 / 0.99);
+      --selected: rgb(232 238 249 / 0.99);
+      --border: rgb(15 23 42 / 0.105);
+      --divider: rgb(15 23 42 / 0.075);
+      --text: rgb(23 32 51);
+      --muted: rgb(92 103 121);
+      --subtle: rgb(132 142 158);
+      --focus: rgb(37 99 235 / 0.72);
+      --bubble-peer: white;
+      --bubble-own: #e2ebf5;
+      --bubble-own-text: #1f3145;
+      --shadow: 0 20px 44px rgb(15 23 42 / 0.14), 0 4px 12px rgb(15 23 42 / 0.075);
+      --composer: rgb(255 255 255 / 0.92);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { min-width: 320px; min-height: 100%; }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    button, input { font: inherit; }
+    button { color: inherit; cursor: pointer; }
+    button:focus-visible, input:focus-visible, a:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    .review-bar {
+      position: fixed;
+      z-index: 20;
+      top: 14px;
+      left: 50%;
+      display: flex;
+      max-width: calc(100vw - 24px);
+      align-items: center;
+      gap: 8px;
+      padding: 7px 9px 7px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      color: var(--muted);
+      transform: translateX(-50%);
+      white-space: nowrap;
+    }
+
+    .review-bar strong { color: var(--text); font-size: 12px; }
+    .review-bar span { font-size: 11px; }
+    .review-actions { display: flex; gap: 4px; }
+
+    .review-action {
+      display: inline-flex;
+      min-height: 28px;
+      align-items: center;
+      gap: 6px;
+      padding: 0 9px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--raised);
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .review-action:hover { background: var(--hover); color: var(--text); }
+    .review-action svg { width: 13px; height: 13px; }
+
+    main {
+      display: grid;
+      min-height: 100vh;
+      place-items: center;
+      padding: 58px 18px 18px;
+    }
+
+    .app-shell {
+      display: grid;
+      width: min(980px, 100%);
+      height: min(700px, calc(100vh - 76px));
+      min-height: 570px;
+      grid-template-columns: 210px minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      background: var(--shell);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(18px);
+    }
+
+    .sidebar {
+      padding: 22px 14px;
+      border-right: 1px solid var(--divider);
+      background: color-mix(in oklab, var(--shell) 88%, transparent);
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; margin: 0 6px 24px; font-weight: 720; }
+    .brand-mark { width: 24px; height: 24px; border-radius: 8px; background: linear-gradient(135deg, #7b84ca, #e4a4b9 55%, #efc26c); }
+    .nav-label { margin: 0 8px 8px; color: var(--subtle); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    .chat-list { display: grid; gap: 4px; }
+    .chat-row { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: 13px; color: var(--muted); }
+    .chat-row.active { background: var(--selected); color: var(--text); }
+    .avatar { display: grid; width: 32px; height: 32px; flex: none; place-items: center; border-radius: 50%; background: linear-gradient(145deg, #7d83c7, #d79bb2); color: white; font-weight: 720; }
+    .chat-row strong { display: block; color: inherit; font-size: 12px; }
+    .chat-row small { display: block; max-width: 120px; overflow: hidden; color: var(--subtle); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+
+    .chat {
+      display: grid;
+      min-width: 0;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      background:
+        radial-gradient(circle at 1px 1px, color-mix(in oklab, var(--focus) 8%, transparent) 1px, transparent 1.2px),
+        color-mix(in oklab, var(--shell) 90%, transparent);
+      background-size: 18px 18px, auto;
+    }
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--divider);
+      background: color-mix(in oklab, var(--shell) 92%, transparent);
+    }
+
+    .chat-title { min-width: 0; }
+    .chat-title strong { display: block; font-size: 14px; }
+    .chat-title span { color: var(--muted); font-size: 10px; }
+    .messages { display: flex; min-height: 0; flex-direction: column; justify-content: flex-end; gap: 8px; padding: 22px 20px 18px; overflow: hidden; }
+    .message { width: fit-content; max-width: min(440px, 78%); padding: 9px 12px; border: 1px solid var(--border); border-radius: 15px 15px 15px 5px; background: var(--bubble-peer); line-height: 1.45; }
+    .message.own { align-self: flex-end; border: 0; border-radius: 15px 15px 5px; background: var(--bubble-own); color: var(--bubble-own-text); }
+    .message time { margin-left: 8px; color: var(--subtle); font-size: 9px; }
+
+    .composer-zone { position: relative; padding: 0 16px 16px; }
+    .composer {
+      display: flex;
+      min-height: 48px;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 7px 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--composer);
+      box-shadow: 0 8px 24px rgb(0 0 0 / 0.08);
+    }
+
+    .composer-value { display: flex; min-width: 0; flex: 1; align-items: center; gap: 8px; color: var(--subtle); }
+    .composer-value.has-emoji { color: var(--text); }
+    .selected-emoji { display: none; width: 30px; height: 30px; object-fit: contain; }
+    .composer-value.has-emoji .selected-emoji { display: block; }
+    .composer-value.has-emoji .composer-placeholder { color: var(--text); }
+    .composer-button { display: grid; width: 34px; height: 34px; flex: none; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); }
+    .composer-button:hover, .composer-button[aria-expanded="true"] { background: var(--hover); color: var(--text); }
+    .composer-button svg { width: 18px; height: 18px; }
+    .send { background: var(--text); color: var(--panel); }
+    .send:hover { background: color-mix(in oklab, var(--text) 88%, var(--panel)); color: var(--panel); }
+
+    .picker {
+      position: absolute;
+      z-index: 10;
+      left: 12px;
+      bottom: 74px;
+      display: grid;
+      width: min(400px, calc(100vw - 36px));
+      height: min(470px, calc(100vh - 140px));
+      min-height: 390px;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      transform-origin: left bottom;
+      animation: picker-in 160ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    .picker[hidden] { display: none; }
+    .media-tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--divider); }
+    .media-tab { position: relative; min-height: 45px; border: 0; background: transparent; color: var(--muted); font-size: 12px; font-weight: 650; }
+    .media-tab::after { position: absolute; right: 24px; bottom: 0; left: 24px; height: 3px; border-radius: 999px 999px 0 0; background: transparent; content: ""; }
+    .media-tab:hover, .media-tab[aria-selected="true"] { background: color-mix(in oklab, var(--hover) 55%, transparent); color: var(--text); }
+    .media-tab[aria-selected="true"]::after { background: var(--focus); }
+
+    .emoji-panel { display: grid; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto auto; }
+    .emoji-panel[hidden], .unchanged-panel[hidden] { display: none; }
+    .search { display: flex; align-items: center; gap: 8px; margin: 11px 11px 7px; padding: 0 10px; border-radius: 10px; background: var(--raised); color: var(--muted); }
+    .search:focus-within { box-shadow: 0 0 0 2px color-mix(in oklab, var(--focus) 60%, transparent); color: var(--text); }
+    .search svg { width: 15px; height: 15px; flex: none; }
+    .search input { width: 100%; min-height: 36px; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 12px; }
+    .search input::placeholder { color: var(--subtle); }
+
+    .emoji-scroll { min-height: 0; overflow-y: auto; padding: 2px 8px 9px; scrollbar-color: var(--border) transparent; scrollbar-width: thin; }
+    .emoji-section[hidden] { display: none; }
+    .section-heading { display: flex; min-height: 30px; align-items: center; justify-content: space-between; padding: 0 5px; color: var(--muted); font-size: 10px; font-weight: 700; }
+    .section-label { display: flex; align-items: center; gap: 7px; }
+    .section-badge { padding: 2px 6px; border-radius: 999px; background: var(--selected); color: var(--muted); font-size: 8px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .emoji-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; }
+    .emoji-option { position: relative; display: grid; aspect-ratio: 1; min-width: 44px; min-height: 44px; place-items: center; border: 0; border-radius: 11px; background: transparent; }
+    .emoji-option:hover, .emoji-option:focus-visible, .emoji-option.selected { background: var(--hover); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--focus) 36%, transparent); }
+    .emoji-option picture, .emoji-option img, .emoji-fallback { width: 39px; height: 39px; }
+    .emoji-option picture { position: relative; z-index: 1; display: block; }
+    .emoji-option img { display: block; object-fit: contain; transition: transform 140ms ease; }
+    .emoji-option:hover img { transform: scale(1.1); }
+    .emoji-fallback { position: absolute; display: grid; place-items: center; font-size: 27px; }
+    .blob-option img { position: relative; z-index: 1; }
+
+    .no-results { display: none; place-items: center; min-height: 160px; color: var(--muted); text-align: center; }
+    .no-results.visible { display: grid; }
+    .attribution { padding: 6px 12px; border-top: 1px solid var(--divider); color: var(--subtle); font-size: 9px; text-align: right; }
+    .attribution a { color: var(--muted); text-underline-offset: 2px; }
+
+    .categories { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; min-height: 47px; padding: 4px 8px; border-top: 1px solid var(--divider); }
+    .category { display: flex; min-height: 38px; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); }
+    .category:hover, .category[aria-selected="true"] { background: var(--selected); color: var(--text); }
+    .category svg { width: 16px; height: 16px; }
+    .category span { font-size: 10px; font-weight: 650; }
+
+    .unchanged-panel { display: grid; min-height: 0; place-items: center; padding: 30px; color: var(--muted); text-align: center; }
+    .unchanged-panel strong { display: block; margin-bottom: 5px; color: var(--text); }
+    .toast { position: fixed; z-index: 30; left: 50%; bottom: 24px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); box-shadow: var(--shadow); color: var(--text); font-size: 11px; opacity: 0; pointer-events: none; transform: translate(-50%, 8px); transition: 160ms ease; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    @keyframes picker-in {
+      from { opacity: 0; transform: translateY(6px) scale(0.985); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (max-width: 700px) {
+      .review-bar > span { display: none; }
+      .app-shell { height: calc(100vh - 76px); min-height: 520px; grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .messages { padding-inline: 14px; }
+      .composer-zone { padding-inline: 10px; }
+      .picker { left: 6px; bottom: 70px; }
+    }
+
+    @media (max-width: 430px) {
+      .review-bar strong { max-width: 124px; overflow: hidden; text-overflow: ellipsis; }
+      .picker { width: calc(100vw - 32px); }
+      .emoji-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+      .category span { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+      .emoji-option:hover img { transform: none; }
+    }
+  </style>
+</head>
+<body class="light">
+  <div class="review-bar" aria-label="Preview controls">
+    <strong>Animated Emoji menu</strong>
+    <span>Design preview · not shipped</span>
+    <div class="review-actions">
+      <button class="review-action" id="motion-toggle" type="button" aria-pressed="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 5v14l11-7z"/><path d="M4 5v14"/></svg>
+        <span>Pause</span>
+      </button>
+      <button class="review-action" id="theme-toggle" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+        <span>Dark</span>
+      </button>
+    </div>
+  </div>
+
+  <main>
+    <section class="app-shell" aria-label="Kordi chat preview">
+      <aside class="sidebar" aria-label="Chats">
+        <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Kordi</div>
+        <p class="nav-label">Chats</p>
+        <div class="chat-list">
+          <div class="chat-row active"><span class="avatar">D</span><div><strong>Design crew</strong><small>Which emoji feels right?</small></div></div>
+          <div class="chat-row"><span class="avatar" style="background:linear-gradient(145deg,#63a595,#8ab99c)">S</span><div><strong>Shipping</strong><small>Release notes are ready</small></div></div>
+          <div class="chat-row"><span class="avatar" style="background:linear-gradient(145deg,#d29c5d,#d36e7e)">M</span><div><strong>Mobile</strong><small>New build uploaded</small></div></div>
+        </div>
+      </aside>
+
+      <section class="chat" aria-label="Design crew conversation">
+        <header class="chat-header">
+          <span class="avatar">D</span>
+          <div class="chat-title"><strong>Design crew</strong><span>3 members · active now</span></div>
+        </header>
+
+        <div class="messages" aria-label="Messages">
+          <div class="message">The interaction finally feels light enough.<time>14:08</time></div>
+          <div class="message own">Let’s celebrate with the new animated emoji.<time>14:09</time></div>
+        </div>
+
+        <div class="composer-zone">
+          <section class="picker" id="picker" role="dialog" aria-label="Emoji, stickers, and GIF picker">
+            <div class="media-tabs" role="tablist" aria-label="Media type">
+              <button class="media-tab" type="button" role="tab" aria-selected="true" data-media="emoji">Emoji</button>
+              <button class="media-tab" type="button" role="tab" aria-selected="false" data-media="stickers">Stickers</button>
+              <button class="media-tab" type="button" role="tab" aria-selected="false" data-media="gifs">GIFs</button>
+            </div>
+
+            <div class="emoji-panel" id="emoji-panel" role="tabpanel">
+              <label class="search">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Search emoji</span>
+                <input id="emoji-search" type="search" placeholder="Search emoji" autocomplete="off" />
+              </label>
+
+              <div class="emoji-scroll" id="emoji-scroll">
+                <section class="emoji-section" id="recent-section" data-section="recent">
+                  <div class="section-heading"><span class="section-label">Recently used</span><span class="recent-count">6</span></div>
+                  <div class="emoji-grid" id="recent-grid"></div>
+                </section>
+
+                <section class="emoji-section" id="animated-section" data-section="animated">
+                  <div class="section-heading">
+                    <span class="section-label">Animated emoji <span class="section-badge">New</span></span>
+                    <span>24</span>
+                  </div>
+                  <div class="emoji-grid" id="animated-grid"></div>
+                </section>
+
+                <section class="emoji-section" id="blob-section" data-section="blob">
+                  <div class="section-heading"><span class="section-label">Blob Emoji</span><span>8</span></div>
+                  <div class="emoji-grid" id="blob-grid"></div>
+                </section>
+
+                <div class="no-results" id="no-results" role="status">No emoji match your search.</div>
+              </div>
+
+              <div class="attribution">
+                <a href="https://googlefonts.github.io/noto-emoji-animation/" target="_blank" rel="noreferrer">Noto Animated Emoji</a> by Google · CC BY 4.0
+              </div>
+
+              <div class="categories" role="tablist" aria-label="Emoji categories">
+                <button class="category" type="button" role="tab" aria-selected="false" data-category="recent" title="Recent">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Recent</span>
+                </button>
+                <button class="category" type="button" role="tab" aria-selected="true" data-category="all" title="All">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h5v5h-5z"/></svg><span>All</span>
+                </button>
+                <button class="category" type="button" role="tab" aria-selected="false" data-category="animated" title="Animated">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3 1.4 4.6L18 9l-4.6 1.4L12 15l-1.4-4.6L6 9l4.6-1.4zM18 15l.7 2.3L21 18l-2.3.7L18 21l-.7-2.3L15 18l2.3-.7z"/></svg><span>Animated</span>
+                </button>
+                <button class="category" type="button" role="tab" aria-selected="false" data-category="blob" title="Blob Emoji">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7.8 4.4c3.4-2 7.9-.7 9.9 2.7 2.2 3.7 1.6 9.6-2.4 11.8-4.2 2.3-10.4.5-11.4-4.1-.8-3.5.7-8.5 3.9-10.4Z"/><path d="M8.5 11h.01M15.5 11h.01M9 15c1.8 1.4 4.2 1.4 6 0"/></svg><span>Blob</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="unchanged-panel" id="unchanged-panel" role="tabpanel" hidden>
+              <p><strong id="unchanged-title">Stickers stay as they are</strong>This proposal changes only the Emoji tab.</p>
+            </div>
+          </section>
+
+          <div class="composer">
+            <div class="composer-value" id="composer-value" aria-live="polite">
+              <img class="selected-emoji" id="selected-emoji" alt="" />
+              <span class="composer-placeholder" id="composer-text">Message Design crew</span>
+            </div>
+            <button class="composer-button" id="picker-toggle" type="button" aria-label="Emoji, stickers, and GIFs" aria-haspopup="dialog" aria-expanded="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 10h.01M15.5 10h.01M8 14.5c2.4 2 5.6 2 8 0"/></svg>
+            </button>
+            <button class="composer-button send" id="send-button" type="button" aria-label="Send message">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m5 12 14-7-4 14-3-6z"/><path d="m12 13 7-8"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    const notoEmoji = [
+      ["1f600", "😀", "Grinning face", "smile happy"],
+      ["1f602", "😂", "Face with tears of joy", "laugh joy funny"],
+      ["1f923", "🤣", "Rolling on the floor laughing", "laugh rofl funny"],
+      ["1f60d", "😍", "Smiling face with heart-eyes", "love heart eyes"],
+      ["1f970", "🥰", "Smiling face with hearts", "love affection"],
+      ["1f973", "🥳", "Partying face", "party celebrate birthday"],
+      ["1fae0", "🫠", "Melting face", "melt awkward"],
+      ["1f914", "🤔", "Thinking face", "think hmm"],
+      ["1fae1", "🫡", "Saluting face", "salute yes"],
+      ["1f917", "🤗", "Hugging face", "hug thanks"],
+      ["1fae3", "🫣", "Face with peeking eye", "peek shy"],
+      ["1f631", "😱", "Face screaming in fear", "scream shocked"],
+      ["1f92f", "🤯", "Exploding head", "mind blown shocked"],
+      ["1f62d", "😭", "Loudly crying face", "cry sad tears"],
+      ["1f44b", "👋", "Waving hand", "wave hello goodbye"],
+      ["1f44d", "👍", "Thumbs up", "like approve yes"],
+      ["1f64f", "🙏", "Folded hands", "please thanks pray"],
+      ["1f440", "👀", "Eyes", "look watch"],
+      ["1f525", "🔥", "Fire", "hot lit"],
+      ["2728", "✨", "Sparkles", "stars magic"],
+      ["1f4af", "💯", "Hundred points", "perfect score"],
+      ["2764_fe0f", "❤️", "Red heart", "love heart"],
+      ["1f389", "🎉", "Party popper", "party celebrate confetti"],
+      ["1f680", "🚀", "Rocket", "launch ship"],
+    ];
+
+    const blobEmoji = [
+      ["😀", "Blob smile", "blobsmile.webp", "happy smile"],
+      ["😂", "Blob joy", "blobjoy.webp", "laugh joy"],
+      ["👋", "Blob wave", "blobwave.webp", "wave hello"],
+      ["🥳", "Blob party", "blobparty.webp", "party celebrate"],
+      ["🤔", "Blob thinking", "blobthinking.webp", "think hmm"],
+      ["❤️", "Blob heart", "blobheart.webp", "love heart"],
+      ["🤗", "Blob hug", "blobhug.webp", "hug"],
+      ["👍", "Blob thumbs up", "blobthumbsup.webp", "like approve"],
+    ];
+
+    console.assert(
+      notoEmoji.length === 24 && new Set(notoEmoji.map(([code]) => code)).size === 24,
+      "Animated emoji preview catalog must contain 24 unique CDN entries.",
+    );
+
+    const cdn = "https://fonts.gstatic.com/s/e/notoemoji/latest";
+    const animatedGrid = document.getElementById("animated-grid");
+    const blobGrid = document.getElementById("blob-grid");
+    const recentGrid = document.getElementById("recent-grid");
+    const search = document.getElementById("emoji-search");
+    const picker = document.getElementById("picker");
+    const pickerToggle = document.getElementById("picker-toggle");
+    const composerValue = document.getElementById("composer-value");
+    const composerText = document.getElementById("composer-text");
+    const selectedEmoji = document.getElementById("selected-emoji");
+    const toast = document.getElementById("toast");
+    const noResults = document.getElementById("no-results");
+    let category = "all";
+    let paused = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let toastTimer;
+
+    function notoUrl(code, format) {
+      return `${cdn}/${code}/512.${format}`;
+    }
+
+    function notoButton(item) {
+      const [code, glyph, name, keywords] = item;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "emoji-option";
+      button.dataset.kind = "animated";
+      button.dataset.search = `${name} ${keywords}`.toLowerCase();
+      button.dataset.glyph = glyph;
+      button.dataset.name = name;
+      button.dataset.animated = notoUrl(code, "webp");
+      button.dataset.static = notoUrl(code, "png");
+      button.title = name;
+      button.setAttribute("aria-label", name);
+      button.innerHTML = `<span class="emoji-fallback" aria-hidden="true">${glyph}</span><picture><source type="image/png" srcset="${notoUrl(code, "png")}"><img src="${notoUrl(code, "png")}" alt="" loading="lazy" decoding="async" draggable="false"></picture>`;
+      button.addEventListener("click", () => selectEmoji(button));
+      bindMotionPreview(button);
+      return button;
+    }
+
+    function blobButton(item) {
+      const [glyph, name, file, keywords] = item;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "emoji-option blob-option";
+      button.dataset.kind = "blob";
+      button.dataset.search = `${name} ${keywords}`.toLowerCase();
+      button.dataset.glyph = glyph;
+      button.dataset.name = name;
+      button.dataset.animated = `../../shared/blob-emoji/assets/${file}`;
+      button.dataset.static = button.dataset.animated;
+      button.title = name;
+      button.setAttribute("aria-label", name);
+      button.innerHTML = `<span class="emoji-fallback" aria-hidden="true">${glyph}</span><img src="${button.dataset.animated}" alt="" loading="lazy" decoding="async" draggable="false">`;
+      button.addEventListener("click", () => selectEmoji(button));
+      return button;
+    }
+
+    function cloneEmoji(button) {
+      const clone = button.cloneNode(true);
+      clone.addEventListener("click", () => selectEmoji(clone));
+      if (clone.dataset.kind === "animated") {
+        showButtonMotion(clone, false);
+        bindMotionPreview(clone);
+      }
+      return clone;
+    }
+
+    function showButtonMotion(button, animate) {
+      const source = button.querySelector("picture source");
+      const image = button.querySelector("picture img");
+      if (!source || !image) return;
+      source.type = animate ? "image/webp" : "image/png";
+      source.srcset = animate ? button.dataset.animated : button.dataset.static;
+      image.src = animate ? button.dataset.animated.replace(".webp", ".gif") : button.dataset.static;
+    }
+
+    function bindMotionPreview(button) {
+      button.addEventListener("pointerenter", () => showButtonMotion(button, !paused));
+      button.addEventListener("pointerleave", () => showButtonMotion(button, false));
+      button.addEventListener("focus", () => showButtonMotion(button, !paused));
+      button.addEventListener("blur", () => showButtonMotion(button, false));
+    }
+
+    function seedGrids() {
+      notoEmoji.forEach((item) => animatedGrid.append(notoButton(item)));
+      blobEmoji.forEach((item) => blobGrid.append(blobButton(item)));
+      [...animatedGrid.children].slice(0, 6).forEach((button) => recentGrid.append(cloneEmoji(button)));
+      document.querySelectorAll(".emoji-option img").forEach((image) => image.addEventListener("error", () => { image.closest("picture")?.setAttribute("hidden", ""); image.hidden = true; }));
+    }
+
+    function showToast(message) {
+      window.clearTimeout(toastTimer);
+      toast.textContent = message;
+      toast.classList.add("show");
+      toastTimer = window.setTimeout(() => toast.classList.remove("show"), 1500);
+    }
+
+    function selectEmoji(button) {
+      const src = paused ? button.dataset.static : button.dataset.animated;
+      recentGrid.querySelector(`[data-name="${CSS.escape(button.dataset.name)}"]`)?.remove();
+      recentGrid.prepend(cloneEmoji(button));
+      while (recentGrid.children.length > 6) recentGrid.lastElementChild.remove();
+      selectedEmoji.src = src;
+      selectedEmoji.alt = button.dataset.name;
+      composerText.textContent = button.dataset.name;
+      composerValue.classList.add("has-emoji");
+      document.querySelectorAll(".emoji-option").forEach((option) => option.classList.toggle("selected", option.dataset.name === button.dataset.name));
+      showToast(`Added ${button.dataset.name}`);
+    }
+
+    function applyFilter() {
+      const query = search.value.trim().toLowerCase();
+      let visible = 0;
+      document.querySelectorAll("#emoji-scroll .emoji-section").forEach((section) => {
+        const sectionKind = section.dataset.section;
+        const allowed = query ? sectionKind !== "recent" : category === "all" ? sectionKind !== "recent" : sectionKind === category;
+        let sectionMatches = 0;
+        section.querySelectorAll(".emoji-option").forEach((option) => {
+          const match = allowed && (!query || option.dataset.search.includes(query));
+          option.hidden = !match;
+          if (match) sectionMatches += 1;
+        });
+        section.hidden = sectionMatches === 0;
+        visible += sectionMatches;
+      });
+      noResults.classList.toggle("visible", visible === 0);
+    }
+
+    function applyMotion() {
+      document.querySelectorAll(".emoji-option[data-kind='animated']").forEach((button) => showButtonMotion(button, false));
+      const motionToggle = document.getElementById("motion-toggle");
+      motionToggle.setAttribute("aria-pressed", String(paused));
+      motionToggle.querySelector("span").textContent = paused ? "Play" : "Pause";
+      if (composerValue.classList.contains("has-emoji")) {
+        const selected = document.querySelector(".emoji-option.selected");
+        if (selected) selectedEmoji.src = paused ? selected.dataset.static : selected.dataset.animated;
+      }
+    }
+
+    seedGrids();
+    applyFilter();
+    applyMotion();
+
+    search.addEventListener("input", applyFilter);
+
+    document.querySelectorAll(".category").forEach((button) => button.addEventListener("click", () => {
+      category = button.dataset.category;
+      search.value = "";
+      document.querySelectorAll(".category").forEach((item) => item.setAttribute("aria-selected", String(item === button)));
+      applyFilter();
+      document.getElementById("emoji-scroll").scrollTop = 0;
+    }));
+
+    document.querySelectorAll(".media-tab").forEach((button) => button.addEventListener("click", () => {
+      const emoji = button.dataset.media === "emoji";
+      document.querySelectorAll(".media-tab").forEach((item) => item.setAttribute("aria-selected", String(item === button)));
+      document.getElementById("emoji-panel").hidden = !emoji;
+      document.getElementById("unchanged-panel").hidden = emoji;
+      if (!emoji) document.getElementById("unchanged-title").textContent = `${button.textContent} stay as they are`;
+    }));
+
+    pickerToggle.addEventListener("click", () => {
+      picker.hidden = !picker.hidden;
+      pickerToggle.setAttribute("aria-expanded", String(!picker.hidden));
+      if (!picker.hidden) search.focus();
+    });
+
+    document.getElementById("motion-toggle").addEventListener("click", () => { paused = !paused; applyMotion(); });
+
+    document.getElementById("theme-toggle").addEventListener("click", (event) => {
+      const light = document.body.classList.toggle("light");
+      event.currentTarget.querySelector("span").textContent = light ? "Dark" : "Light";
+    });
+
+    document.getElementById("send-button").addEventListener("click", () => {
+      if (!composerValue.classList.contains("has-emoji")) return showToast("Choose an emoji first");
+      showToast(`Sent ${composerText.textContent}`);
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || picker.hidden) return;
+      picker.hidden = true;
+      pickerToggle.setAttribute("aria-expanded", "false");
+      pickerToggle.focus();
+    });
+  </script>
+</body>
+</html>
