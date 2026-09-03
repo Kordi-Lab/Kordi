@@ -463,7 +463,7 @@ struct ComposerView: View {
             model: model,
             text: $text,
             selection: $textSelection,
-            highlightedMentionRange: mentionMenuItems.isEmpty ? nil : mentionQuery?.range,
+            mentionHighlights: mentionHighlights,
             isFocused: $isFocused,
             isExpressivePickerPresented: $isExpressivePickerPresented,
             keyboardFocusRequest: keyboardFocusRequest,
@@ -1128,6 +1128,15 @@ struct ComposerView: View {
         ComposerMentionMenuCatalog.items(for: mentionQuery, targets: mentionTargets)
     }
 
+    private var mentionHighlights: [ComposerMentionText.Highlight] {
+        ComposerMentionText.highlights(
+            in: text,
+            activeQuery: mentionQuery,
+            menuIsPresented: showsMentionPicker,
+            selectedTarget: selectedMention
+        )
+    }
+
     private func acceptMentionItem(_ item: ComposerMentionMenuItem) {
         guard let mentionQuery else { return }
         let replacement = ComposerMentionInsertion.replacing(
@@ -1218,7 +1227,7 @@ struct ComposerTextView: UIViewRepresentable {
     let model: AppModel
     @Binding var text: String
     @Binding var selection: ComposerTextSelection
-    var highlightedMentionRange: NSRange? = nil
+    var mentionHighlights: [ComposerMentionText.Highlight] = []
     @Binding var isFocused: Bool
     @Binding var isExpressivePickerPresented: Bool
     let keyboardFocusRequest: Int
@@ -1313,7 +1322,7 @@ struct ComposerTextView: UIViewRepresentable {
             textView.attributedText = ComposerMentionText.attributedString(
                 text,
                 font: font,
-                highlightedMentionRange: highlightedMentionRange
+                highlights: mentionHighlights
             )
             textView.invalidateIntrinsicContentSize()
             coordinator.latestEditorText = text
@@ -1322,10 +1331,10 @@ struct ComposerTextView: UIViewRepresentable {
         if !hasMarkedText,
            !coordinator.isComposingText,
            BlobEmojiComposerText.rawText(textView.attributedText) == text {
-            ComposerMentionText.applyHighlight(
+            ComposerMentionText.applyHighlights(
                 to: textView,
                 rawText: text,
-                highlightedMentionRange: highlightedMentionRange
+                highlights: mentionHighlights
             )
             let selectedRange = BlobEmojiComposerText.renderedSelection(
                 forRaw: NSRange(location: selection.location, length: selection.length),

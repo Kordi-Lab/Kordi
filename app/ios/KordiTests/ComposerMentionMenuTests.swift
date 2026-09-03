@@ -100,26 +100,54 @@ final class ComposerMentionMenuTests: XCTestCase {
         XCTAssertEqual(replacement.text, "Use https://example.com ")
     }
 
-    func testComposerHighlightsOnlyAnActiveAtSign() throws {
+    func testComposerHighlightsActiveAndSelectedMentionsOnly() throws {
+        let value = "Hello @Kordi"
+        let query = try XCTUnwrap(ComposerMentionQuery.current(
+            in: value,
+            selection: ComposerTextSelection(location: (value as NSString).length, length: 0)
+        ))
+        let activeHighlights = ComposerMentionText.highlights(
+            in: value,
+            activeQuery: query,
+            menuIsPresented: true,
+            selectedTarget: nil
+        )
+        let selectedHighlights = ComposerMentionText.highlights(
+            in: value,
+            activeQuery: query,
+            menuIsPresented: false,
+            selectedTarget: agent
+        )
+        XCTAssertEqual(activeHighlights, [.init(range: query.range, kind: .active)])
+        XCTAssertEqual(selectedHighlights, [
+            .init(range: NSRange(location: 6, length: 6), kind: .agent),
+        ])
+        XCTAssertTrue(ComposerMentionText.highlights(
+            in: value,
+            activeQuery: query,
+            menuIsPresented: false,
+            selectedTarget: nil
+        ).isEmpty)
+
         let active = ComposerMentionText.attributedString(
-            "Hello @Kordi",
+            value,
             font: .preferredFont(forTextStyle: .body),
-            highlightedMentionRange: NSRange(location: 6, length: 1)
+            highlights: selectedHighlights
         )
         let inactive = ComposerMentionText.attributedString(
-            "Hello @Kordi",
+            value,
             font: .preferredFont(forTextStyle: .body),
-            highlightedMentionRange: nil
+            highlights: []
         )
         let light = UITraitCollection(userInterfaceStyle: .light)
         let plain = try XCTUnwrap(
             active.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
         ).resolvedColor(with: light)
         let mention = try XCTUnwrap(
-            active.attribute(.foregroundColor, at: 6, effectiveRange: nil) as? UIColor
+            active.attribute(.foregroundColor, at: 7, effectiveRange: nil) as? UIColor
         ).resolvedColor(with: light)
         let inactiveMention = try XCTUnwrap(
-            inactive.attribute(.foregroundColor, at: 6, effectiveRange: nil) as? UIColor
+            inactive.attribute(.foregroundColor, at: 7, effectiveRange: nil) as? UIColor
         ).resolvedColor(with: light)
 
         XCTAssertNotEqual(plain, mention)

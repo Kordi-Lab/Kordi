@@ -204,36 +204,81 @@ enum ComposerMentionInsertion {
 }
 
 enum ComposerMentionText {
-    private static let highlightColor = UIColor { traits in
+    struct Highlight: Equatable {
+        enum Kind: Equatable {
+            case active
+            case agent
+            case person
+        }
+
+        let range: NSRange
+        let kind: Kind
+    }
+
+    private static let agentColor = UIColor { traits in
         traits.userInterfaceStyle == .dark
             ? UIColor(red: 96 / 255, green: 165 / 255, blue: 250 / 255, alpha: 1)
             : UIColor(red: 37 / 255, green: 99 / 255, blue: 235 / 255, alpha: 1)
+    }
+    private static let personColor = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 80 / 255, green: 210 / 255, blue: 154 / 255, alpha: 1)
+            : UIColor(red: 28 / 255, green: 122 / 255, blue: 82 / 255, alpha: 1)
+    }
+
+    static func highlights(
+        in text: String,
+        activeQuery: ComposerMentionQuery?,
+        menuIsPresented: Bool,
+        selectedTarget: ComposerMentionTarget?
+    ) -> [Highlight] {
+        var result: [Highlight] = []
+        if let selectedTarget {
+            let range = (text as NSString).range(
+                of: selectedTarget.mentionText,
+                options: [.caseInsensitive, .diacriticInsensitive]
+            )
+            if range.location != NSNotFound {
+                result.append(Highlight(
+                    range: range,
+                    kind: selectedTarget.kind == .agent ? .agent : .person
+                ))
+            }
+        }
+        if menuIsPresented, let activeQuery {
+            result.append(Highlight(range: activeQuery.range, kind: .active))
+        }
+        return result
     }
 
     static func attributedString(
         _ value: String,
         font: UIFont,
-        highlightedMentionRange: NSRange?
+        highlights: [Highlight]
     ) -> NSAttributedString {
         let result = NSMutableAttributedString(
             attributedString: BlobEmojiComposerText.attributedString(value, font: font)
         )
-        applyHighlight(
+        applyHighlights(
             to: result,
-            range: renderedHighlightRange(in: value, range: highlightedMentionRange)
+            rawText: value,
+            highlights: highlights,
+            font: font
         )
         return result
     }
 
-    static func applyHighlight(
+    static func applyHighlights(
         to textView: UITextView,
         rawText: String,
-        highlightedMentionRange: NSRange?
+        highlights: [Highlight]
     ) {
         let selection = textView.selectedRange
-        applyHighlight(
+        applyHighlights(
             to: textView.textStorage,
-            range: renderedHighlightRange(in: rawText, range: highlightedMentionRange)
+            rawText: rawText,
+            highlights: highlights,
+            font: textView.font ?? .preferredFont(forTextStyle: .body)
         )
         textView.selectedRange = selection
         BlobEmojiComposerText.resetTypingAttributes(of: textView)
@@ -241,30 +286,42 @@ enum ComposerMentionText {
 
     private static func renderedHighlightRange(
         in value: String,
-        range: NSRange?
+        range: NSRange
     ) -> NSRange? {
         let source = value as NSString
-        guard let range,
-              range.location >= 0,
+        guard range.location >= 0,
               range.location < source.length,
+              NSMaxRange(range) <= source.length,
               source.substring(with: NSRange(location: range.location, length: 1)) == "@" else {
             return nil
         }
         return BlobEmojiComposerText.renderedSelection(
-            forRaw: NSRange(location: range.location, length: 1),
+            forRaw: range,
             in: value
         )
     }
 
-    private static func applyHighlight(
+    private static func applyHighlights(
         to value: NSMutableAttributedString,
-        range: NSRange?
+        rawText: String,
+        highlights: [Highlight],
+        font: UIFont
     ) {
         guard value.length > 0 else { return }
         let fullRange = NSRange(location: 0, length: value.length)
-        value.addAttribute(.foregroundColor, value: UIColor.label, range: fullRange)
-        guard let range, NSMaxRange(range) <= value.length else { return }
-        value.addAttribute(.foregroundColor, value: highlightColor, range: range)
+        value.addAttributes([
+            .font: font,
+            .foregroundColor: UIColor.label,
+        ], range: fullRange)
+        let semibold = UIFont.systemFont(ofSize: font.pointSize, weight: .semibold)
+        for highlight in highlights {
+            guard let range = renderedHighlightRange(in: rawText, range: highlight.range),
+                  NSMaxRange(range) <= value.length else { continue }
+            value.addAttributes([
+                .font: semibold,
+                .foregroundColor: highlight.kind == .person ? personColor : agentColor,
+            ], range: range)
+        }
     }
 }
 
