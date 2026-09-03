@@ -33,20 +33,6 @@ func replacingComposerText(
     )
 }
 
-enum ComposerMentionPickerLayout {
-    static func height(
-        targetCount: Int,
-        rowHeight: CGFloat,
-        chromeHeight: CGFloat,
-        maximumHeight: CGFloat
-    ) -> CGFloat {
-        min(
-            maximumHeight,
-            chromeHeight + CGFloat(max(0, targetCount)) * rowHeight
-        )
-    }
-}
-
 enum ComposerFocusReconciliation {
     static func shouldApply(
         focused: Bool,
@@ -213,7 +199,7 @@ struct ComposerView: View {
     @ScaledMetric(relativeTo: .body) private var draftPaneExpansionThreshold: CGFloat = 84
     @ScaledMetric(relativeTo: .body) private var mentionPickerMaxHeight: CGFloat = 264
     @ScaledMetric(relativeTo: .body) private var mentionPickerRowHeight: CGFloat = 46
-    @ScaledMetric(relativeTo: .caption) private var mentionPickerChromeHeight: CGFloat = 36
+    @ScaledMetric(relativeTo: .caption) private var mentionPickerChromeHeight: CGFloat = 44
 
     var body: some View {
         composerContainer
@@ -861,65 +847,7 @@ struct ComposerView: View {
     }
 
     private var mentionPicker: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("MENTION")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(filteredMentionTargets) { target in
-                        Button {
-                            insertMention(target)
-                        } label: {
-                            HStack(spacing: 10) {
-                                if target.kind == .all {
-                                    Image(systemName: "person.2.fill")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(KordiTheme.signalBlue)
-                                        .frame(width: 30, height: 30)
-                                        .background(KordiTheme.signalBlue.opacity(0.14), in: Circle())
-                                        .accessibilityHidden(true)
-                                } else {
-                                    IdentityAvatar(
-                                        name: target.displayName,
-                                        imageSource: target.avatarSource,
-                                        kind: target.kind == .agent ? .agent : .person,
-                                        size: 30,
-                                        seed: target.agentId ?? target.accountId
-                                    )
-                                }
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(target.displayName)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Text(mentionSubtitle(target))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer(minLength: 8)
-                                Image(systemName: mentionIconName(target))
-                                    .foregroundStyle(target.kind == .agent ? KordiTheme.agentViolet : KordiTheme.signalBlue)
-                                    .accessibilityHidden(true)
-                            }
-                            .frame(minHeight: 44)
-                            .padding(.horizontal, 12)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(mentionAccessibilityLabel(target))
-                        .accessibilityHint("Inserts this mention")
-                    }
-                }
-            }
-            .scrollIndicators(filteredMentionTargets.count > 5 ? .visible : .hidden)
-        }
-        .padding(.bottom, 6)
+        ComposerMentionPicker(items: mentionMenuItems, onSelect: acceptMentionItem)
         .frame(height: mentionPickerHeight)
         .frame(maxWidth: .infinity)
         .modifier(ComposerFloatingPanelSurfaceModifier())
@@ -930,12 +858,12 @@ struct ComposerView: View {
             && isFocused
             && !isExpressivePickerPresented
             && !isAgentModelPickerPresented
-            && !filteredMentionTargets.isEmpty
+            && !mentionMenuItems.isEmpty
     }
 
     private var mentionPickerHeight: CGFloat {
         ComposerMentionPickerLayout.height(
-            targetCount: filteredMentionTargets.count,
+            targetCount: mentionMenuItems.count,
             rowHeight: mentionPickerRowHeight,
             chromeHeight: mentionPickerChromeHeight,
             maximumHeight: verticalSizeClass == .compact
@@ -1191,71 +1119,33 @@ struct ComposerView: View {
         }
     }
 
-    private var mentionQuery: String? {
-        guard let at = text.lastIndex(of: "@") else { return nil }
-        let before = text[..<at]
-        if let last = before.last, !last.isWhitespace { return nil }
-        let query = String(text[text.index(after: at)...])
-        guard !query.contains("\n"), query.count <= 80 else { return nil }
-        if query.last?.isWhitespace == true,
-           mentionTargets.contains(where: {
-               query.trimmingCharacters(in: .whitespacesAndNewlines)
-                   .localizedCaseInsensitiveCompare($0.displayName) == .orderedSame
-           }) {
-            return nil
-        }
-        return query.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var mentionQuery: ComposerMentionQuery? {
+        ComposerMentionQuery.current(in: text, selection: textSelection)
     }
 
-    private var filteredMentionTargets: [ComposerMentionTarget] {
-        guard let query = mentionQuery else { return [] }
-        if query.isEmpty { return mentionTargets }
-        return mentionTargets.filter {
-            $0.displayName.localizedCaseInsensitiveContains(query)
-                || $0.ownerName?.localizedCaseInsensitiveContains(query) == true
-        }
+    private var mentionMenuItems: [ComposerMentionMenuItem] {
+        ComposerMentionMenuCatalog.items(for: mentionQuery, targets: mentionTargets)
     }
 
-    private func insertMention(_ target: ComposerMentionTarget) {
-        guard let at = text.lastIndex(of: "@") else { return }
-        text = String(text[..<at]) + target.mentionText + " "
-        textSelection = ComposerTextSelection(
-            location: (text as NSString).length,
-            length: 0
+    private func acceptMentionItem(_ item: ComposerMentionMenuItem) {
+        guard let mentionQuery else { return }
+        let replacement = ComposerMentionInsertion.replacing(
+            text,
+            query: mentionQuery,
+            with: item
         )
-        selectedMention = target
-        isFocused = true
-    }
-
-    private func agentMentionSubtitle(_ target: ComposerMentionTarget) -> String {
-        guard let ownerName = target.ownerName?.nonEmpty else { return "Agent" }
-        return "\(ownerName)’s agent"
-    }
-
-    private func mentionSubtitle(_ target: ComposerMentionTarget) -> String {
-        switch target.kind {
-        case .all: "All people in this group"
-        case .agent: agentMentionSubtitle(target)
-        case .person: "Person"
+        text = replacement.text
+        textSelection = replacement.selection
+        if case .target(let target) = item.kind {
+            selectedMention = target
+        } else {
+            selectedMention = nil
         }
-    }
-
-    private func mentionIconName(_ target: ComposerMentionTarget) -> String {
-        switch target.kind {
-        case .all: "person.2.fill"
-        case .agent: "sparkles"
-        case .person: "at"
-        }
-    }
-
-    private func mentionAccessibilityLabel(_ target: ComposerMentionTarget) -> String {
-        switch target.kind {
-        case .all:
-            return "All people in this group"
-        case .agent:
-            return "\(target.displayName), \(agentMentionSubtitle(target))"
-        case .person:
-            return "\(target.displayName), person"
+        if item.kind == .pickFile {
+            isFocused = false
+            onChooseFiles()
+        } else {
+            isFocused = true
         }
     }
 
@@ -1418,7 +1308,7 @@ struct ComposerTextView: UIViewRepresentable {
            !coordinator.isComposingText,
            (shouldApplyBinding || needsTokenRendering || renderedFont != font),
            editorText != text || needsTokenRendering || renderedFont != font {
-            textView.attributedText = BlobEmojiComposerText.attributedString(
+            textView.attributedText = ComposerMentionText.attributedString(
                 text,
                 font: font
             )
@@ -1615,6 +1505,7 @@ struct ComposerTextView: UIViewRepresentable {
             if parent.selection != updatedSelection {
                 parent.selection = updatedSelection
             }
+            ComposerMentionText.applyHighlight(to: textView)
         }
     }
 }

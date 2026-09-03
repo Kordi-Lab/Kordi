@@ -39,7 +39,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         XCTAssertNil(target.avatarSource)
     }
 
-    func testDirectConversationIncludesOnlyParticipantScopedActiveAgents() {
+    func testDirectConversationIncludesPeerAndOnlyParticipantScopedActiveAgents() {
         let conversation = conversation(
             kind: .person,
             peerAccountID: "acct_peer"
@@ -82,7 +82,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
 
         XCTAssertEqual(
             Set(targets.map(\.id)),
-            ["agent:cloud-agent:acct_me", "agent:agent_owned", "agent:agent_peer"]
+            ["person:acct_peer", "agent:cloud-agent:acct_me", "agent:agent_owned", "agent:agent_peer"]
         )
     }
 
