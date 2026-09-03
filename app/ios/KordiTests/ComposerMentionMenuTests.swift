@@ -100,19 +100,29 @@ final class ComposerMentionMenuTests: XCTestCase {
         XCTAssertEqual(replacement.text, "Use https://example.com ")
     }
 
-    func testComposerHighlightsTheAtSign() throws {
-        let text = ComposerMentionText.attributedString(
+    func testComposerHighlightsOnlyAnActiveAtSign() throws {
+        let active = ComposerMentionText.attributedString(
             "Hello @Kordi",
-            font: .preferredFont(forTextStyle: .body)
+            font: .preferredFont(forTextStyle: .body),
+            highlightedMentionRange: NSRange(location: 6, length: 1)
+        )
+        let inactive = ComposerMentionText.attributedString(
+            "Hello @Kordi",
+            font: .preferredFont(forTextStyle: .body),
+            highlightedMentionRange: nil
         )
         let light = UITraitCollection(userInterfaceStyle: .light)
         let plain = try XCTUnwrap(
-            text.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
+            active.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
         ).resolvedColor(with: light)
         let mention = try XCTUnwrap(
-            text.attribute(.foregroundColor, at: 6, effectiveRange: nil) as? UIColor
+            active.attribute(.foregroundColor, at: 6, effectiveRange: nil) as? UIColor
+        ).resolvedColor(with: light)
+        let inactiveMention = try XCTUnwrap(
+            inactive.attribute(.foregroundColor, at: 6, effectiveRange: nil) as? UIColor
         ).resolvedColor(with: light)
 
         XCTAssertNotEqual(plain, mention)
+        XCTAssertEqual(plain, inactiveMention)
     }
 }

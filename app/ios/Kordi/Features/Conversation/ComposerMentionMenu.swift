@@ -210,34 +210,61 @@ enum ComposerMentionText {
             : UIColor(red: 37 / 255, green: 99 / 255, blue: 235 / 255, alpha: 1)
     }
 
-    static func attributedString(_ value: String, font: UIFont) -> NSAttributedString {
+    static func attributedString(
+        _ value: String,
+        font: UIFont,
+        highlightedMentionRange: NSRange?
+    ) -> NSAttributedString {
         let result = NSMutableAttributedString(
             attributedString: BlobEmojiComposerText.attributedString(value, font: font)
         )
-        applyHighlight(to: result)
+        applyHighlight(
+            to: result,
+            range: renderedHighlightRange(in: value, range: highlightedMentionRange)
+        )
         return result
     }
 
-    static func applyHighlight(to textView: UITextView) {
+    static func applyHighlight(
+        to textView: UITextView,
+        rawText: String,
+        highlightedMentionRange: NSRange?
+    ) {
         let selection = textView.selectedRange
-        applyHighlight(to: textView.textStorage)
+        applyHighlight(
+            to: textView.textStorage,
+            range: renderedHighlightRange(in: rawText, range: highlightedMentionRange)
+        )
         textView.selectedRange = selection
         BlobEmojiComposerText.resetTypingAttributes(of: textView)
     }
 
-    private static func applyHighlight(to value: NSMutableAttributedString) {
+    private static func renderedHighlightRange(
+        in value: String,
+        range: NSRange?
+    ) -> NSRange? {
+        let source = value as NSString
+        guard let range,
+              range.location >= 0,
+              range.location < source.length,
+              source.substring(with: NSRange(location: range.location, length: 1)) == "@" else {
+            return nil
+        }
+        return BlobEmojiComposerText.renderedSelection(
+            forRaw: NSRange(location: range.location, length: 1),
+            in: value
+        )
+    }
+
+    private static func applyHighlight(
+        to value: NSMutableAttributedString,
+        range: NSRange?
+    ) {
         guard value.length > 0 else { return }
         let fullRange = NSRange(location: 0, length: value.length)
         value.addAttribute(.foregroundColor, value: UIColor.label, range: fullRange)
-        let source = value.string as NSString
-        var searchRange = fullRange
-        while searchRange.length > 0 {
-            let range = source.range(of: "@", range: searchRange)
-            guard range.location != NSNotFound else { break }
-            value.addAttribute(.foregroundColor, value: highlightColor, range: range)
-            let next = NSMaxRange(range)
-            searchRange = NSRange(location: next, length: source.length - next)
-        }
+        guard let range, NSMaxRange(range) <= value.length else { return }
+        value.addAttribute(.foregroundColor, value: highlightColor, range: range)
     }
 }
 

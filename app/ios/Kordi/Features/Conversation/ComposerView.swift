@@ -463,6 +463,7 @@ struct ComposerView: View {
             model: model,
             text: $text,
             selection: $textSelection,
+            highlightedMentionRange: mentionMenuItems.isEmpty ? nil : mentionQuery?.range,
             isFocused: $isFocused,
             isExpressivePickerPresented: $isExpressivePickerPresented,
             keyboardFocusRequest: keyboardFocusRequest,
@@ -1217,6 +1218,7 @@ struct ComposerTextView: UIViewRepresentable {
     let model: AppModel
     @Binding var text: String
     @Binding var selection: ComposerTextSelection
+    var highlightedMentionRange: NSRange? = nil
     @Binding var isFocused: Bool
     @Binding var isExpressivePickerPresented: Bool
     let keyboardFocusRequest: Int
@@ -1310,7 +1312,8 @@ struct ComposerTextView: UIViewRepresentable {
            editorText != text || needsTokenRendering || renderedFont != font {
             textView.attributedText = ComposerMentionText.attributedString(
                 text,
-                font: font
+                font: font,
+                highlightedMentionRange: highlightedMentionRange
             )
             textView.invalidateIntrinsicContentSize()
             coordinator.latestEditorText = text
@@ -1319,6 +1322,11 @@ struct ComposerTextView: UIViewRepresentable {
         if !hasMarkedText,
            !coordinator.isComposingText,
            BlobEmojiComposerText.rawText(textView.attributedText) == text {
+            ComposerMentionText.applyHighlight(
+                to: textView,
+                rawText: text,
+                highlightedMentionRange: highlightedMentionRange
+            )
             let selectedRange = BlobEmojiComposerText.renderedSelection(
                 forRaw: NSRange(location: selection.location, length: selection.length),
                 in: text
@@ -1505,7 +1513,6 @@ struct ComposerTextView: UIViewRepresentable {
             if parent.selection != updatedSelection {
                 parent.selection = updatedSelection
             }
-            ComposerMentionText.applyHighlight(to: textView)
         }
     }
 }
