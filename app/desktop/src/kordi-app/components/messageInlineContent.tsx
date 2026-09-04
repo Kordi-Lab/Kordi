@@ -3,6 +3,7 @@ import { Globe2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { BlobEmojiImage } from '@/features/emoji/BlobEmojiImage';
+import { NotoEmojiImage } from '@/features/emoji/NotoEmojiImage';
 import type { MessageMention } from '../types';
 import {
   compactExternalLinkLabel,
@@ -101,6 +102,15 @@ export function MessageInlineContent({
       return (
         <BlobEmojiImage
           key={`blob-${part.start}`}
+          emoji={part.emoji}
+          className="app-inline-blob-emoji"
+        />
+      );
+    }
+    if (part.type === 'notoEmoji') {
+      return (
+        <NotoEmojiImage
+          key={`noto-${part.start}`}
           emoji={part.emoji}
           className="app-inline-blob-emoji"
         />

@@ -560,8 +560,8 @@ struct MessageActionOverlay: View {
     let onSaveSticker: (ChatAttachment) -> Void
     let onSelect: () -> Void
 
-    private var quickReactions: [BlobEmoji] {
-        BlobEmojiCatalog.quickReactions(storedRecentEmojiIDs: storedRecentEmojiIDs)
+    private var quickReactions: [EmojiPickerItem] {
+        EmojiRecentStore.quickReactions(from: storedRecentEmojiIDs)
     }
 
     private var regularActionCount: Int {
@@ -598,7 +598,7 @@ struct MessageActionOverlay: View {
     }
 
     private var hasRecentReactions: Bool {
-        !BlobEmojiRecentStore.ids(from: storedRecentEmojiIDs).isEmpty
+        !EmojiRecentStore.items(from: storedRecentEmojiIDs).isEmpty
     }
 
     var body: some View {
@@ -728,10 +728,10 @@ struct MessageActionOverlay: View {
 
             if showsAllReactions {
                 Divider()
-                BlobEmojiSelectionBoard(
-                    initialCategory: hasRecentReactions ? .recent : .all
-                ) { emoji in
-                    onReact(emoji.reactionValue)
+                EmojiSelectionBoard(
+                    initialCategory: hasRecentReactions ? .recent : .noto
+                ) { item in
+                    onReact(item.reactionValue)
                 }
                 .transition(.opacity)
             }
@@ -740,19 +740,19 @@ struct MessageActionOverlay: View {
 
     private var reactionButtons: some View {
         HStack(spacing: 2) {
-            ForEach(quickReactions, id: \.self) { reaction in
+            ForEach(quickReactions) { item in
                 Button {
-                    storedRecentEmojiIDs = BlobEmojiRecentStore.recording(
-                        reaction.id,
+                    storedRecentEmojiIDs = EmojiRecentStore.recording(
+                        item,
                         in: storedRecentEmojiIDs
                     )
-                    onReact(reaction.reactionValue)
+                    onReact(item.reactionValue)
                 } label: {
-                    BlobEmojiView(emoji: reaction, size: 30)
+                    reactionImage(item)
                         .frame(width: 44, height: 44)
                         .background(
                             message.reactions
-                                .first(where: { $0.value == reaction.reactionValue })?
+                                .first(where: { $0.value == item.reactionValue })?
                                 .includes(accountId: ownAccountId) == true
                                 ? KordiTheme.agentViolet.opacity(0.14)
                                 : .clear,
@@ -761,7 +761,7 @@ struct MessageActionOverlay: View {
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("React with \(reaction.accessibilityName)")
+                .accessibilityLabel("React with \(item.accessibilityName)")
             }
             Button {
                 let willExpand = !showsAllReactions
@@ -783,6 +783,16 @@ struct MessageActionOverlay: View {
             .accessibilityLabel(
                 showsAllReactions ? "Collapse reaction picker" : "Show all reactions"
             )
+        }
+    }
+
+    @ViewBuilder
+    private func reactionImage(_ item: EmojiPickerItem) -> some View {
+        switch item {
+        case .noto(let emoji):
+            NotoEmojiView(emoji: emoji, size: 30)
+        case .blob(let emoji):
+            BlobEmojiView(emoji: emoji, size: 30)
         }
     }
 

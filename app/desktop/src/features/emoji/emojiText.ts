@@ -24,18 +24,19 @@ function graphemeSegmenter(): SegmenterLike | null {
   return cachedSegmenter;
 }
 
-function graphemeBoundaries(value: string): number[] {
+export function emojiGraphemeSegments(value: string): Segment[] {
   const segmenter = graphemeSegmenter();
-  if (!segmenter) {
-    const boundaries = [0];
-    let offset = 0;
-    for (const character of Array.from(value)) {
-      offset += character.length;
-      boundaries.push(offset);
-    }
-    return boundaries;
-  }
-  const boundaries = Array.from(segmenter.segment(value), ({ index }) => index);
+  if (segmenter) return Array.from(segmenter.segment(value));
+  let index = 0;
+  return Array.from(value, (segment) => {
+    const result = { index, segment };
+    index += segment.length;
+    return result;
+  });
+}
+
+function graphemeBoundaries(value: string): number[] {
+  const boundaries = emojiGraphemeSegments(value).map(({ index }) => index);
   boundaries.push(value.length);
   return [...new Set(boundaries)].sort((left, right) => left - right);
 }

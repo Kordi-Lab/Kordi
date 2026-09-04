@@ -33,6 +33,7 @@ export default defineConfig(({ command, mode }) => {
             groups: [
               { name: 'calling-media', test: /(?:^|[\\/])node_modules[\\/](?:livekit-client|@livekit|webrtc-adapter|sdp-transform|jose)(?:[\\/]|$)/ },
               { name: 'vendor', test: /(?:^|[\\/])node_modules[\\/]/ },
+              { name: 'emoji-catalog', test: /[\\/]shared[\\/]noto-emoji[\\/]catalog\.json$/ },
               { name: 'agent-studio', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/](?:AgentStudio(?!Conversation)|factoryAgentUtils|shapeAgent|useAgentBuilderSession|useFactoryBuildRouting)/ },
               { name: 'agent-factory', test: /[\\/]src[\\/]kordi-app[\\/]agents[\\/]/ },
               { name: 'cloud-features', test: /[\\/]src[\\/]features[\\/]cloud[\\/]/ },

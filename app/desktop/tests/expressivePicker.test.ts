@@ -10,9 +10,22 @@ import {
   blobEmojiTextParts,
 } from '../src/features/emoji/blobEmoji';
 import {
+  blobEmojiItems,
+  emojiComposerValue,
+  emojiReactionValue,
+  notoEmojiItems,
+  quickReactionEmojiItems,
+  readRecentEmojiItems,
+  recordRecentEmojiItem,
+} from '../src/features/emoji/emojiCatalog';
+import {
   insertEmojiAtSelection,
   normalizeEmojiSelection,
 } from '../src/features/emoji/emojiText';
+import {
+  notoEmojiAssetUrl,
+  notoEmojiCatalog,
+} from '../src/features/emoji/notoEmoji';
 import {
   EXPRESSIVE_MEDIA_LIBRARY_STORAGE_KEY,
   EXPRESSIVE_MEDIA_MAX_BYTES,
@@ -59,7 +72,7 @@ test('emoji insertion does not split an existing grapheme cluster', () => {
   );
 });
 
-test('composer uses the complete Blob Emoji catalog and private sticker and GIF libraries', () => {
+test('composer uses the shared Emoji picker and private sticker and GIF libraries', () => {
   const picker = readFileSync(
     new URL('../src/features/emoji/ComposerExpressivePicker.tsx', import.meta.url),
     'utf8',
@@ -71,8 +84,8 @@ test('composer uses the complete Blob Emoji catalog and private sticker and GIF 
 
   assert.equal(catalog.emoji.length, 547);
   assert.equal(catalog.emoji.filter((emoji) => emoji.animated).length, 173);
-  assert.match(picker, /\['emoji', 'Blob Emoji'\]/);
-  assert.match(picker, /<BlobEmojiPicker/);
+  assert.match(picker, /\['emoji', 'Emoji'\]/);
+  assert.match(picker, /<EmojiPicker/);
   assert.match(picker, /\['stickers', 'Stickers'\]/);
   assert.match(picker, /\['gifs', 'GIFs'\]/);
   assert.match(picker, /My Stickers/);
@@ -83,6 +96,48 @@ test('composer uses the complete Blob Emoji catalog and private sticker and GIF 
   assert.match(picker, /async function sendMedia[\s\S]*?if \(mediaSendPendingRef\.current\) return;[\s\S]*?setIsOpen\(false\);[\s\S]*?await onSendMedia\(attachment\)/);
   assert.doesNotMatch(picker, /emoji-picker-react|EmojiStyle/);
   assert.doesNotMatch(picker, /PublicMemeGrid|PublicGifGrid|Public Stickers|Public GIFs/);
+});
+
+test('Noto Emoji catalog uses trusted Google Fonts CDN URLs without bundled image assets', () => {
+  const catalog = JSON.parse(readFileSync(
+    new URL('../../../shared/noto-emoji/catalog.json', import.meta.url),
+    'utf8',
+  )) as { sourceSha256: string; emoji: Array<{ id: string; value: string }> };
+
+  assert.equal(notoEmojiCatalog.length, 881);
+  assert.equal(new Set(notoEmojiCatalog.map((emoji) => emoji.id)).size, 881);
+  assert.equal(new Set(notoEmojiCatalog.map((emoji) => emoji.value)).size, 881);
+  assert.match(catalog.sourceSha256, /^[a-f0-9]{64}$/);
+  assert.equal(existsSync(new URL('../../../shared/noto-emoji/assets', import.meta.url)), false);
+  assert.equal(
+    notoEmojiAssetUrl(notoEmojiCatalog[0], 'webp'),
+    `https://fonts.gstatic.com/s/e/notoemoji/latest/${notoEmojiCatalog[0].id}/512.webp`,
+  );
+  assert.throws(
+    () => notoEmojiAssetUrl({ ...notoEmojiCatalog[0], id: '../avatar' }, 'png'),
+    /bundled catalog/,
+  );
+});
+
+test('Recent keeps existing Blob Emoji and records Noto selections in one bounded list', () => {
+  const values = new Map<string, string>([['kordi.blob-emoji.recents', '["blobwave"]']]);
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+  };
+  const noto = notoEmojiItems[0];
+  const blob = blobEmojiItems.find((item) => item.source === 'blob' && item.emoji.id === 'blobjoy');
+  assert.ok(noto);
+  assert.ok(blob);
+
+  recordRecentEmojiItem(noto, storage);
+  recordRecentEmojiItem(blob, storage);
+  const recent = readRecentEmojiItems(storage);
+
+  assert.deepEqual(recent.slice(0, 3).map((item) => item.key), [blob.key, noto.key, 'blob:blobwave']);
+  assert.equal(emojiComposerValue(noto), noto.source === 'noto' ? noto.emoji.value : '');
+  assert.equal(emojiReactionValue(noto), noto.source === 'noto' ? noto.emoji.value : '');
+  assert.equal(quickReactionEmojiItems(storage).length, 6);
 });
 
 test('Blob Emoji assets are content addressed and excluded from the desktop bundle', () => {

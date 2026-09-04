@@ -885,6 +885,7 @@ struct ConversationView: View {
             }
             if ProcessInfo.processInfo.arguments.contains("--preview-emoji-picker") {
                 isExpressivePickerPresented = true
+                isComposerFocused = true
             }
             openCompanionPreviewIfReady()
         }

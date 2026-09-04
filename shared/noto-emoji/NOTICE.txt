@@ -1,0 +1,9 @@
+Noto Animated Emoji
+Copyright Google LLC
+Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+
+Project: https://googlefonts.github.io/noto-emoji-animation/
+License: https://creativecommons.org/licenses/by/4.0/
+
+Kordi does not redistribute the animation assets. It stores catalog metadata
+and downloads selected assets at runtime from the official Google Fonts CDN.

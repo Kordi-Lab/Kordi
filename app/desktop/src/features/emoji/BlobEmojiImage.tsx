@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type RefObject } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 import {
@@ -7,39 +7,7 @@ import {
 } from '@/kordi-app/components/remoteAvatarImage';
 import { cn } from '@/lib/utils';
 import { blobEmojiAssetUrl, type BlobEmoji } from './blobEmoji';
-
-const nearViewportListeners = new Map<Element, () => void>();
-let nearViewportObserver: IntersectionObserver | null = null;
-
-function observeNearViewport(element: Element, listener: () => void) {
-  if (typeof IntersectionObserver === 'undefined') {
-    listener();
-    return () => {};
-  }
-  nearViewportObserver ??= new IntersectionObserver((entries) => {
-    for (const entry of entries) {
-      if (!entry.isIntersecting) continue;
-      nearViewportObserver?.unobserve(entry.target);
-      nearViewportListeners.get(entry.target)?.();
-      nearViewportListeners.delete(entry.target);
-    }
-  }, { rootMargin: '240px' });
-  nearViewportListeners.set(element, listener);
-  nearViewportObserver.observe(element);
-  return () => {
-    nearViewportObserver?.unobserve(element);
-    nearViewportListeners.delete(element);
-  };
-}
-
-function useNearViewport(ref: RefObject<Element | null>, enabled: boolean) {
-  const [nearViewport, setNearViewport] = useState(!enabled);
-  useEffect(() => {
-    if (!enabled || nearViewport || !ref.current) return;
-    return observeNearViewport(ref.current, () => setNearViewport(true));
-  }, [enabled, nearViewport, ref]);
-  return nearViewport;
-}
+import { useNearEmojiViewport } from './emojiViewport';
 
 function useBlobEmojiSource(emoji: BlobEmoji, nearViewport: boolean) {
   const remoteUrl = blobEmojiAssetUrl(emoji);
@@ -66,7 +34,7 @@ function ReducedMotionBlobEmoji({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const remoteUrl = blobEmojiAssetUrl(emoji);
   const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl, undefined, true);
-  const nearViewport = useNearViewport(canvasRef, native);
+  const nearViewport = useNearEmojiViewport(canvasRef, native);
   const { source } = useBlobEmojiSource(emoji, nearViewport);
 
   useEffect(() => {
@@ -134,7 +102,7 @@ function LoadedBlobEmojiImage({
   const imageRef = useRef<HTMLImageElement | null>(null);
   const remoteUrl = blobEmojiAssetUrl(emoji);
   const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl, undefined, true);
-  const nearViewport = useNearViewport(imageRef, native);
+  const nearViewport = useNearEmojiViewport(imageRef, native);
   const { source } = useBlobEmojiSource(emoji, nearViewport);
   return (
     <img

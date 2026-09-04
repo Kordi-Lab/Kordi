@@ -166,6 +166,30 @@ test('short peer messages shrink to their content while typing indicators keep a
   assert.match(compactTypingMarkup, /min-w-\[3\.25rem\]/);
 });
 
+test('a single emoji renders at its natural width without a message bubble', () => {
+  const message: Message = {
+    role: 'user',
+    sender: 'Me',
+    senderType: 'human',
+    isOwnMessage: true,
+    text: '😀',
+    time: '00:45',
+    statusChips: ['sent'],
+  };
+
+  const emojiMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+  const textMarkup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: { ...message, text: 'Look 😀' },
+  }));
+
+  assert.match(emojiMarkup, /app-standalone-emoji-message relative h-11 w-11/);
+  assert.match(emojiMarkup, /data-message-delivery-status="sent"/);
+  assert.doesNotMatch(emojiMarkup, /app-message-bubble-shape/);
+  assert.doesNotMatch(emojiMarkup, /px-4 py-2\.5/);
+  assert.doesNotMatch(textMarkup, /app-standalone-emoji-message/);
+  assert.match(textMarkup, /app-message-bubble-shape/);
+});
+
 test('sending own message renders a Telegram-style clock with moving hands in the stable delivery slot', () => {
   const message: Message = {
     role: 'user',
@@ -359,13 +383,13 @@ test('message context menu shows Blob Emoji reactions for synced messages', () =
   assert.doesNotMatch(markup, />Details</);
 });
 
-test('message reaction expansion chooses All when no Blob Emoji history exists', () => {
+test('message reaction expansion chooses Noto when no emoji history exists', () => {
   const source = readFileSync(
     new URL('../src/kordi-app/components/messageReactions.tsx', import.meta.url),
     'utf8',
   );
 
-  assert.match(source, /initialCategory=\{recentReactions\.length \? 'recent' : 'all'\}/);
+  assert.match(source, /initialCategory=\{recentItems\.length \? 'recent' : 'noto'\}/);
   assert.doesNotMatch(source, /initialCategory=\{quickReactions\.length/);
 });
 

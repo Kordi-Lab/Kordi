@@ -323,6 +323,8 @@ struct MessageBubble: View, Equatable {
     private var messageSurface: some View {
         if isCallActivity {
             ConversationCallActivityCard(message: message)
+        } else if let standaloneEmojiItem {
+            standaloneEmojiView(standaloneEmojiItem)
         } else if usesBorderlessImageSurface {
             imageCollection
         } else if usesDetachedImageGroup {
@@ -652,6 +654,41 @@ struct MessageBubble: View, Equatable {
         )
     }
 
+    static func emojiOnlyItem(in text: String) -> EmojiPickerItem? {
+        let parts = KordiMarkdownParser.parseInline(
+            text.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        guard parts.count == 1 else { return nil }
+        switch parts[0] {
+        case .notoEmoji(let emoji): return .noto(emoji)
+        case .blobEmoji(let emoji): return .blob(emoji)
+        default: return nil
+        }
+    }
+
+    private var standaloneEmojiItem: EmojiPickerItem? {
+        guard !showAuthor,
+              visibleForwardSource == nil,
+              visibleReplySource == nil,
+              message.agentExecution == nil,
+              message.voiceMessage == nil,
+              message.attachments.isEmpty,
+              !message.isEdited else {
+            return nil
+        }
+        return Self.emojiOnlyItem(in: message.text)
+    }
+
+    @ViewBuilder
+    private func standaloneEmojiView(_ item: EmojiPickerItem) -> some View {
+        switch item {
+        case .noto(let emoji):
+            NotoEmojiView(emoji: emoji, size: 44)
+        case .blob(let emoji):
+            BlobEmojiView(emoji: emoji, size: 44)
+        }
+    }
+
     static func hasVisibleAgentResponseText(_ responseText: String) -> Bool {
         let text = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
         return !text.isEmpty && !CloudMessageCodec.isAgentProcessingPlaceholder(text)
@@ -829,10 +866,8 @@ private struct MessageBubbleAccessoryRow: View {
                         onReact(reaction.value)
                     } label: {
                         HStack(spacing: 4) {
-                            if let emoji = BlobEmojiCatalog.emoji(
-                                forReactionValue: reaction.value
-                            ) {
-                                BlobEmojiView(emoji: emoji, size: 22)
+                            if let item = EmojiPickerItem(reactionValue: reaction.value) {
+                                reactionImage(item)
                             } else {
                                 Text(reaction.value)
                             }
@@ -883,7 +918,17 @@ private struct MessageBubbleAccessoryRow: View {
     }
 
     private func reactionAccessibilityName(_ value: String) -> String {
-        BlobEmojiCatalog.emoji(forReactionValue: value)?.accessibilityName ?? value
+        EmojiPickerItem(reactionValue: value)?.accessibilityName ?? value
+    }
+
+    @ViewBuilder
+    private func reactionImage(_ item: EmojiPickerItem) -> some View {
+        switch item {
+        case .noto(let emoji):
+            NotoEmojiView(emoji: emoji, size: 22)
+        case .blob(let emoji):
+            BlobEmojiView(emoji: emoji, size: 22)
+        }
     }
 }
 

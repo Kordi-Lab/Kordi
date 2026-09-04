@@ -340,8 +340,8 @@ struct ExpressiveMediaPicker: View {
             Group {
                 switch selectedTab {
                 case .emoji:
-                    BlobEmojiSelectionBoard(allowsSearch: allowsSearch) {
-                        onInsertEmoji($0.inlineToken)
+                    EmojiSelectionBoard(allowsSearch: allowsSearch) {
+                        onInsertEmoji($0.composerValue)
                     }
                 case .stickers:
                     ExpressiveMediaLibraryPanel(
@@ -379,35 +379,25 @@ struct ExpressiveMediaPicker: View {
     }
 }
 
-enum BlobEmojiPickerCategory: String, CaseIterable, Identifiable {
+enum EmojiPickerCategory: String, CaseIterable, Identifiable {
     case recent = "Recent"
-    case all = "All"
-    case animated = "Animated"
-    case staticImages = "Static"
+    case noto = "Noto Emoji"
+    case blob = "Blob Emoji"
 
     var id: String { rawValue }
-
-    var symbolName: String {
-        switch self {
-        case .recent: "clock"
-        case .all: "square.grid.3x3"
-        case .animated: "play.circle"
-        case .staticImages: "photo"
-        }
-    }
 }
 
-struct BlobEmojiSelectionBoard: View {
+struct EmojiSelectionBoard: View {
     @AppStorage(BlobEmojiRecentStore.key) private var storedRecentEmojiIDs = "[]"
-    @State private var category: BlobEmojiPickerCategory
+    @State private var category: EmojiPickerCategory
     @State private var query = ""
     let allowsSearch: Bool
-    let onSelect: (BlobEmoji) -> Void
+    let onSelect: (EmojiPickerItem) -> Void
 
     init(
-        initialCategory: BlobEmojiPickerCategory = .all,
+        initialCategory: EmojiPickerCategory = .noto,
         allowsSearch: Bool = true,
-        onSelect: @escaping (BlobEmoji) -> Void
+        onSelect: @escaping (EmojiPickerItem) -> Void
     ) {
         _category = State(initialValue: initialCategory)
         self.allowsSearch = allowsSearch
@@ -419,26 +409,25 @@ struct BlobEmojiSelectionBoard: View {
             if allowsSearch {
                 KordiPullDownSearchField(
                     text: $query,
-                    prompt: "Search Blob Emoji",
-                    accessibilityLabel: "Search Blob Emoji"
+                    prompt: "Search \(category.rawValue)",
+                    accessibilityLabel: "Search \(category.rawValue)"
                 )
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
             }
 
             HStack {
-                Text("\(category.rawValue) · \(displayedEmojis.count)")
+                Text(category.rawValue)
                     .font(.subheadline.weight(.semibold))
                 Spacer(minLength: 8)
-                Image(systemName: "slider.horizontal.3")
-                    .font(.caption.weight(.semibold))
+                Text("\(displayedItems.count)")
+                    .font(.caption.monospacedDigit())
                     .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 12)
             .frame(minHeight: 34)
 
-            if displayedEmojis.isEmpty {
+            if displayedItems.isEmpty {
                 ContentUnavailableView.search(text: query)
             } else {
                 ScrollView {
@@ -446,20 +435,20 @@ struct BlobEmojiSelectionBoard: View {
                         columns: [GridItem(.adaptive(minimum: 40, maximum: 46), spacing: 0)],
                         spacing: 0
                     ) {
-                        ForEach(displayedEmojis) { emoji in
+                        ForEach(displayedItems) { item in
                             Button {
-                                storedRecentEmojiIDs = BlobEmojiRecentStore.recording(
-                                    emoji.id,
+                                storedRecentEmojiIDs = EmojiRecentStore.recording(
+                                    item,
                                     in: storedRecentEmojiIDs
                                 )
-                                onSelect(emoji)
+                                onSelect(item)
                             } label: {
-                                BlobEmojiView(emoji: emoji, size: 34)
+                                emojiView(item, size: 34, animated: item.isBlob)
                                     .frame(minWidth: 44, minHeight: 44)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel(emoji.accessibilityName)
+                            .accessibilityLabel(item.accessibilityName)
                         }
                     }
                     .padding(.horizontal, 8)
@@ -476,28 +465,26 @@ struct BlobEmojiSelectionBoard: View {
     }
 
     private var categoryBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 2) {
-                ForEach(BlobEmojiPickerCategory.allCases) { category in
-                    categoryButton(category)
-                }
+        HStack(spacing: 2) {
+            Spacer(minLength: 0)
+            ForEach(EmojiPickerCategory.allCases) { category in
+                categoryButton(category)
             }
-            .padding(.horizontal, 8)
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 8)
         .frame(height: 44)
         .background(.bar)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Emoji categories")
+        .accessibilityLabel("Emoji collections")
     }
 
-    private func categoryButton(_ value: BlobEmojiPickerCategory) -> some View {
+    private func categoryButton(_ value: EmojiPickerCategory) -> some View {
         Button {
             query = ""
             category = value
         } label: {
-            Image(systemName: value.symbolName)
-                .font(.body)
-                .foregroundStyle(category == value ? KordiTheme.agentViolet : .secondary)
+            categoryIcon(value)
                 .frame(width: 44, height: 44)
                 .background(
                     category == value ? KordiTheme.agentViolet.opacity(0.12) : .clear,
@@ -510,20 +497,52 @@ struct BlobEmojiSelectionBoard: View {
         .accessibilityAddTraits(category == value ? .isSelected : [])
     }
 
-    private var displayedEmojis: [BlobEmoji] {
-        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !normalizedQuery.isEmpty { return BlobEmojiCatalog.matching(normalizedQuery) }
-        switch category {
+    @ViewBuilder
+    private func categoryIcon(_ value: EmojiPickerCategory) -> some View {
+        switch value {
         case .recent:
-            return BlobEmojiRecentStore.ids(from: storedRecentEmojiIDs)
-                .compactMap { BlobEmojiCatalog.byID[$0] }
-        case .all:
-            return BlobEmojiCatalog.all
-        case .animated:
-            return BlobEmojiCatalog.all.filter(\.animated)
-        case .staticImages:
-            return BlobEmojiCatalog.all.filter { !$0.animated }
+            Image(systemName: "clock")
+                .font(.body)
+                .foregroundStyle(category == value ? KordiTheme.agentViolet : .secondary)
+        case .noto:
+            if let emoji = NotoEmojiCatalog.representative {
+                NotoEmojiView(emoji: emoji, size: 30, animated: false)
+                    .accessibilityHidden(true)
+            } else {
+                Text(verbatim: "😀")
+            }
+        case .blob:
+            if let emoji = BlobEmojiCatalog.byID["blobsmile"] ?? BlobEmojiCatalog.all.first {
+                BlobEmojiView(emoji: emoji, size: 30)
+                    .accessibilityHidden(true)
+            } else {
+                Text(verbatim: "🙂")
+            }
         }
+    }
+
+    @ViewBuilder
+    private func emojiView(_ item: EmojiPickerItem, size: CGFloat, animated: Bool) -> some View {
+        switch item {
+        case .noto(let emoji):
+            NotoEmojiView(emoji: emoji, size: size, animated: animated)
+        case .blob(let emoji):
+            BlobEmojiView(emoji: emoji, size: size)
+        }
+    }
+
+    private var displayedItems: [EmojiPickerItem] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let items = switch category {
+        case .recent:
+            EmojiRecentStore.items(from: storedRecentEmojiIDs)
+        case .noto:
+            EmojiPickerItem.notoItems
+        case .blob:
+            EmojiPickerItem.blobItems
+        }
+        guard !normalizedQuery.isEmpty else { return items }
+        return items.filter { $0.searchText.localizedCaseInsensitiveContains(normalizedQuery) }
     }
 }
 
