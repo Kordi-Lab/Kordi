@@ -166,7 +166,7 @@ test('short peer messages shrink to their content while typing indicators keep a
   assert.match(compactTypingMarkup, /min-w-\[3\.25rem\]/);
 });
 
-test('a single emoji renders at its natural width without a message bubble', () => {
+test('a single emoji keeps its visible size without a message bubble', () => {
   const message: Message = {
     role: 'user',
     sender: 'Me',
@@ -178,11 +178,17 @@ test('a single emoji renders at its natural width without a message bubble', () 
   };
 
   const emojiMarkup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+  const peerMarkup = renderToStaticMarkup(createElement(MessageBubble, {
+    msg: { ...message, role: 'person', sender: 'Maya', isOwnMessage: false },
+  }));
   const textMarkup = renderToStaticMarkup(createElement(MessageBubble, {
     msg: { ...message, text: 'Look 😀' },
   }));
 
-  assert.match(emojiMarkup, /app-standalone-emoji-message relative h-11 w-11/);
+  assert.match(emojiMarkup, /app-standalone-emoji-message relative h-11 w-\[4\.5rem\]/);
+  assert.match(emojiMarkup, /app-noto-emoji h-11 w-11/);
+  assert.match(emojiMarkup, /absolute -bottom-0\.5 -right-2/);
+  assert.match(peerMarkup, /app-standalone-emoji-message relative h-11 w-11/);
   assert.match(emojiMarkup, /data-message-delivery-status="sent"/);
   assert.doesNotMatch(emojiMarkup, /app-message-bubble-shape/);
   assert.doesNotMatch(emojiMarkup, /px-4 py-2\.5/);

@@ -804,7 +804,10 @@ function MessageBubbleView({
         <div className={cn(hasText || hasAttachments || hasVoice ? 'mb-2' : '')}><SourceMessageQuote sourceMessage={msg.sourceMessage} compactReplyPreview={isOwnHumanMessage || isPeerHumanMessage} onNavigateToMessage={onNavigateToMessage} /></div>
       ) : null}
       {standaloneEmojiItem ? (
-        <div className="app-standalone-emoji-message relative h-11 w-11" data-kordi-copy-surface="message">
+        <div
+          className={cn('app-standalone-emoji-message relative h-11', isOwnHumanMessage ? 'w-[4.5rem]' : 'w-11')}
+          data-kordi-copy-surface="message"
+        >
           <EmojiPickerItemImage item={standaloneEmojiItem} className="h-11 w-11" />
           {isOwnHumanMessage ? (
             <span className="app-message-delivery-footer absolute -bottom-0.5 -right-2 inline-flex text-black/45">
