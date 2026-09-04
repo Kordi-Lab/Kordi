@@ -29,6 +29,21 @@ import {
 } from './blobEmojiComposerDom';
 import type { EmojiTextSelection } from './emojiText';
 
+const COMPOSER_MENTION_SIGIL_ATTRIBUTE = 'data-composer-mention-sigil';
+
+function appendComposerText(fragment: DocumentFragment, value: string) {
+  value.split('@').forEach((part, index) => {
+    if (index > 0) {
+      const sigil = document.createElement('span');
+      sigil.setAttribute(COMPOSER_MENTION_SIGIL_ATTRIBUTE, 'true');
+      sigil.className = 'app-composer-mention-sigil';
+      sigil.textContent = '@';
+      fragment.append(sigil);
+    }
+    if (part) fragment.append(document.createTextNode(part));
+  });
+}
+
 function setBlobEmojiSource(
   media: HTMLImageElement | HTMLCanvasElement,
   source: string,
@@ -90,9 +105,8 @@ function renderComposerValue(root: HTMLElement, value: string) {
   const fragment = document.createDocumentFragment();
   const parts = blobEmojiTextParts(value);
   for (const part of parts) {
-    fragment.append(part.type === 'emoji'
-      ? blobEmojiComposerNode(part.emoji, part.token)
-      : document.createTextNode(part.value));
+    if (part.type === 'emoji') fragment.append(blobEmojiComposerNode(part.emoji, part.token));
+    else appendComposerText(fragment, part.value);
   }
   if (parts[parts.length - 1]?.type === 'emoji') {
     const caretAnchor = document.createElement('span');
@@ -117,6 +131,12 @@ function expectsCaretAnchor(value: string) {
   return parts[parts.length - 1]?.type === 'emoji';
 }
 
+function hasValidMentionSigils(root: HTMLElement, value: string) {
+  const sigils = Array.from(root.querySelectorAll(`[${COMPOSER_MENTION_SIGIL_ATTRIBUTE}]`));
+  return sigils.length === value.split('@').length - 1
+    && sigils.every((sigil) => sigil.textContent === '@');
+}
+
 function hasValidCaretAnchor(root: HTMLElement) {
   const anchor = root.lastElementChild;
   return Boolean(
@@ -128,7 +148,8 @@ function hasValidCaretAnchor(root: HTMLElement) {
 function composerNeedsRender(root: HTMLElement, value: string) {
   return blobEmojiComposerValue(root) !== value
     || renderedBlobEmojiCount(root) !== expectedBlobEmojiCount(value)
-    || hasValidCaretAnchor(root) !== expectsCaretAnchor(value);
+    || hasValidCaretAnchor(root) !== expectsCaretAnchor(value)
+    || !hasValidMentionSigils(root, value);
 }
 
 function logicalLength(node: Node): number {
@@ -307,6 +328,9 @@ type Props = {
   readOnly?: boolean;
   ariaBusy?: boolean;
   ariaDescribedBy?: string;
+  ariaControls?: string;
+  ariaExpanded?: boolean;
+  ariaActiveDescendant?: string;
   onChange: (value: string, target: HTMLDivElement) => void;
   onPaste?: (event: ClipboardEvent<HTMLDivElement>) => void;
   onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
@@ -324,6 +348,9 @@ export const BlobEmojiComposerInput = forwardRef<BlobEmojiComposerInputHandle, P
     readOnly = false,
     ariaBusy,
     ariaDescribedBy,
+    ariaControls,
+    ariaExpanded,
+    ariaActiveDescendant,
     onChange,
     onPaste,
     onKeyDown,
@@ -383,6 +410,10 @@ export const BlobEmojiComposerInput = forwardRef<BlobEmojiComposerInputHandle, P
         aria-label={placeholder}
         aria-busy={ariaBusy || undefined}
         aria-describedby={ariaDescribedBy}
+        aria-controls={ariaControls}
+        aria-expanded={ariaExpanded}
+        aria-activedescendant={ariaActiveDescendant}
+        aria-autocomplete="list"
         contentEditable={!readOnly}
         spellCheck
         data-composer-scope="chat"

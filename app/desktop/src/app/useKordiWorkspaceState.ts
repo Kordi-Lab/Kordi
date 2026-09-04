@@ -85,7 +85,6 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     },
     composer: {
       chatDraftSessionId,
-      composerDraftsView,
       chatSlashQuery,
       projectSlashQuery,
       filteredChatSlashCommands,
@@ -242,8 +241,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
   const {
     activeConversationScope: activeConvMentionScope,
     chatMentionTargetsForText,
-    filteredChatMentionTargets,
-    filteredProjectMentionTargets,
+    projectMentionTargetsForText,
     mentionableCloudAgents,
     resolveSharedCloudAgentsForMention,
   } = useKordiCollaborationMentions({
@@ -253,7 +251,6 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     collaborationState: desktopCollaborationState,
     conversations: chatConversations,
     desktopChatState,
-    drafts: composerDraftsView,
     isNativeShell,
     refreshSharedCloudAgents,
     sharedCloudAgents,
@@ -475,8 +472,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     mentions: {
       activeConvMentionScope,
       chatMentionTargetsForText,
-      filteredChatMentionTargets,
-      filteredProjectMentionTargets,
+      projectMentionTargetsForText,
       mentionableCloudAgents,
       resolveSharedCloudAgentsForMention,
     },

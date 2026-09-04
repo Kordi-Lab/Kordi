@@ -7,7 +7,6 @@ import {
   filterMentionTargets,
 } from '../../src/app/useKordiAppModelHelpers';
 import { buildParticipantSpaces } from '../../src/features/chat/participantSpaces';
-import { insertMentionIntoDraft } from '../../src/features/chat/messageActions/mentions';
 import type { ComposerMentionOption } from '../../src/kordi-app/components';
 import type { Conversation } from '../../src/kordi-app/types';
 import { ChatsPage } from '../../src/pages/ChatsPage';
@@ -245,14 +244,6 @@ function GroupMentionPreview() {
   useEffect(() => {
     document.body.dataset.kordiChatTheme = chatTheme;
   }, [chatTheme]);
-  const filteredMentionTargets = filterMentionTargets(
-    mentionTargets,
-    currentMentionQuery(draft),
-  );
-  const acceptMention = (value: string) => {
-    setDraft((current) => insertMentionIntoDraft(current, value));
-    setMentionIndex(0);
-  };
   const pageProps = {
     isNativeShell: true,
     showChatDetailRail: false,
@@ -289,11 +280,13 @@ function GroupMentionPreview() {
     onEditQueuedMessage: () => undefined,
     onCancelQueuedMessage: () => undefined,
     filteredChatSlashCommands: [],
-    filteredChatMentionTargets: filteredMentionTargets,
+    chatMentionTargetsForText: (text: string, cursor?: number) => filterMentionTargets(
+      mentionTargets,
+      currentMentionQuery(text, cursor),
+    ),
     chatSlashMenuIndex: mentionIndex,
     setChatSlashMenuIndex: setMentionIndex,
     acceptChatSlashCommand: () => undefined,
-    acceptChatMentionTarget: acceptMention,
     chatAttachmentInputRef: { current: null },
     chatComposerAttachments: [],
     saveDesktopAttachments: async () => [],

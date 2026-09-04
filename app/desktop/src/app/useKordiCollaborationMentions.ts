@@ -29,10 +29,6 @@ type UseKordiCollaborationMentionsArgs = {
   collaborationState: DesktopCollaborationState | null;
   conversations: Conversation[];
   desktopChatState: DesktopChatState | null;
-  drafts: {
-    chat: string;
-    project: string;
-  };
   isNativeShell: boolean;
   refreshSharedCloudAgents:
     UseCloudCollaborationStateResult['refreshSharedCloudAgents'];
@@ -46,7 +42,6 @@ export function useKordiCollaborationMentions({
   collaborationState,
   conversations,
   desktopChatState,
-  drafts,
   isNativeShell,
   refreshSharedCloudAgents,
   sharedCloudAgents,
@@ -128,32 +123,26 @@ export function useKordiCollaborationMentions({
     ],
   );
 
-  const chatMentionQuery = useMemo(
-    () => currentMentionQuery(drafts.chat),
-    [drafts.chat],
-  );
-  const projectMentionQuery = useMemo(
-    () => currentMentionQuery(drafts.project),
-    [drafts.project],
-  );
-  const filteredChatMentionTargets = useMemo(
-    () => filterMentionTargets(targetsByScope.chat, chatMentionQuery),
-    [chatMentionQuery, targetsByScope.chat],
-  );
   const chatMentionTargetsForText = useCallback(
-    (text: string) => filterMentionTargets(targetsByScope.chat, currentMentionQuery(text)),
-    [targetsByScope.chat],
+    (text: string, cursor = text.length) => filterMentionTargets(
+      targetsByScope.chat,
+      currentMentionQuery(text, cursor),
+      { allowLocalFiles: isNativeShell },
+    ),
+    [isNativeShell, targetsByScope.chat],
   );
-  const filteredProjectMentionTargets = useMemo(
-    () => filterMentionTargets(targetsByScope.project, projectMentionQuery),
-    [projectMentionQuery, targetsByScope.project],
+  const projectMentionTargetsForText = useCallback(
+    (text: string, cursor = text.length) => filterMentionTargets(
+      targetsByScope.project,
+      currentMentionQuery(text, cursor),
+      { allowLocalFiles: isNativeShell },
+    ),
+    [isNativeShell, targetsByScope.project],
   );
-
   return {
     activeConversationScope,
     chatMentionTargetsForText,
-    filteredChatMentionTargets,
-    filteredProjectMentionTargets,
+    projectMentionTargetsForText,
     mentionableCloudAgents,
     resolveSharedCloudAgentsForMention,
   };

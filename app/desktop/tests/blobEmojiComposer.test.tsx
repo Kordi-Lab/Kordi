@@ -70,6 +70,15 @@ test('typing or pasting a known token rehydrates it as an inline image', async (
     await act(async () => root.render(<Harness />));
     const editor = host.querySelector('[contenteditable="true"]') as HTMLDivElement;
     await act(async () => {
+      editor.textContent = 'Ask @Kordi';
+      editor.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    });
+    const mentionSigil = editor.querySelector('[data-composer-mention-sigil]');
+    assert.equal(mentionSigil?.textContent, '@');
+    assert.equal(mentionSigil?.className, 'app-composer-mention-sigil');
+    assert.equal(blobEmojiComposerValue(editor), 'Ask @Kordi');
+
+    await act(async () => {
       editor.textContent = 'Hi :blob:blobwave:';
       editor.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     });

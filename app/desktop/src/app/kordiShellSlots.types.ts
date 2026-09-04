@@ -232,15 +232,12 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
   filteredChatSlashCommands: DesktopChatSlashCommand[];
-  filteredProjectMentionTargets: ComposerMentionOption[];
-  chatMentionTargetsForText: (text: string) => ComposerMentionOption[];
-  filteredChatMentionTargets: ComposerMentionOption[];
+  projectMentionTargetsForText: (text: string, cursor?: number) => ComposerMentionOption[];
+  chatMentionTargetsForText: (text: string, cursor?: number) => ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
-  acceptProjectSlashCommand: (value: string) => void;
-  acceptChatSlashCommand: (value: string) => void;
-  acceptProjectMentionTarget: (value: string) => void;
-  acceptChatMentionTarget: (value: string, option?: ComposerMentionOption) => void;
+  acceptProjectSlashCommand: (value: string) => void; acceptChatSlashCommand: (value: string) => void;
+  acceptChatMentionTarget: (option: ComposerMentionOption) => void;
   projectComposerText: string;
   chatComposerText: string;
   updateProjectComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
@@ -502,11 +499,9 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'setActiveDetailTab'
   | 'desktopLiveTurn'
   | 'filteredProjectSlashCommands'
-  | 'filteredProjectMentionTargets'
   | 'chatSlashMenuIndex'
   | 'setChatSlashMenuIndex'
   | 'acceptProjectSlashCommand'
-  | 'acceptProjectMentionTarget'
   | 'chatAttachmentInputRef'
   | 'chatComposerAttachments'
   | 'saveDesktopAttachments'
@@ -541,9 +536,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'onChatTranscriptScroll'
   | 'filteredChatSlashCommands'
   | 'chatMentionTargetsForText'
-  | 'filteredChatMentionTargets'
-  | 'acceptChatSlashCommand'
-  | 'acceptChatMentionTarget'
+  | 'acceptChatSlashCommand' | 'acceptChatMentionTarget'
   | 'chatComposerText'
   | 'updateChatComposerDraft'
   | 'setChatComposerText'

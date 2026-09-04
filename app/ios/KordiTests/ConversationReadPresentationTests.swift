@@ -293,14 +293,55 @@ final class ConversationReadPresentationTests: XCTestCase {
 
         XCTAssertTrue(actionSource.contains("actionButton(\"Edit\""))
         XCTAssertTrue(actionSource.contains("\"Delete\","))
-        XCTAssertTrue(conversationSource.contains("Button(\"Delete for me\", role: .destructive)"))
-        XCTAssertTrue(conversationSource.contains("Button(\"Delete for everyone\", role: .destructive)"))
-        XCTAssertTrue(conversationSource.contains("Delete only for you, or remove it for everyone"))
-        XCTAssertTrue(conversationSource.contains(".alert(\n            \"Delete this message?\""))
+        XCTAssertTrue(actionSource.contains("deleteChoiceButton(deleteForEveryoneLabel)"))
+        XCTAssertTrue(actionSource.contains("deleteChoiceButton(\"Delete for me\")"))
+        XCTAssertTrue(actionSource.contains("isConfirmingDelete = true"))
+        XCTAssertTrue(conversationSource.contains("? \"Delete for everyone\""))
+        XCTAssertTrue(conversationSource.contains(": \"Delete for me and \\(conversation.displayName)\""))
+        XCTAssertFalse(conversationSource.contains("\"Delete this message?\""))
+        XCTAssertTrue(conversationSource.contains("activeDeleteParticle = particlePresentation"))
+        XCTAssertTrue(conversationSource.contains("try? await Task.sleep(for: .milliseconds(34))"))
+        XCTAssertFalse(conversationSource.contains("value: visibleTimelineRows.map(\\.id)"))
         XCTAssertTrue(conversationSource.contains("editingMessage: editTarget"))
         XCTAssertTrue(composerSource.contains("editPreview(editingMessage)"))
         XCTAssertTrue(composerSource.contains("Text(\"Edit message\")"))
         XCTAssertFalse(conversationSource.contains("MessageEditSheet("))
+    }
+
+    func testMessageDeleteReflowMovesOnlyEarlierRowsByDeletedHeight() {
+        XCTAssertEqual(
+            MessageDeleteReflow.affectedIDs(
+                deleting: "third",
+                orderedIDs: ["first", "second", "third", "fourth"]
+            ),
+            ["first", "second"]
+        )
+        XCTAssertTrue(
+            MessageDeleteReflow.affectedIDs(
+                deleting: "missing",
+                orderedIDs: ["first", "second"]
+            ).isEmpty
+        )
+        XCTAssertEqual(
+            MessageDeleteReflow.offset(isAffected: false, distance: 48, progress: 0),
+            0
+        )
+        XCTAssertEqual(
+            MessageDeleteReflow.offset(isAffected: true, distance: 48, progress: 0),
+            -48
+        )
+        XCTAssertEqual(
+            MessageDeleteReflow.offset(isAffected: true, distance: 48, progress: 0.5),
+            -24
+        )
+        XCTAssertEqual(
+            MessageDeleteReflow.offset(isAffected: true, distance: 48, progress: 1),
+            0
+        )
+        XCTAssertEqual(
+            MessageDeleteReflow.offset(isAffected: true, distance: -48, progress: 0),
+            0
+        )
     }
 
     func testMessageBubblesUseThemeAwareContrastForRepliesLinksAndMentions() throws {
@@ -653,8 +694,16 @@ final class ConversationReadPresentationTests: XCTestCase {
             reactionCount: 6,
             actionCount: 7
         )
+        let deleteConfirmation = MessageActionOverlayLayout.make(
+            sourceFrame: CGRect(x: 190, y: 590, width: 180, height: 70),
+            containerSize: container,
+            showsReactions: false,
+            reactionCount: 0,
+            actionCount: 2,
+            forcedMenuIsBelow: bottom.menuIsBelow
+        )
 
-        for layout in [top, bottom, media] {
+        for layout in [top, bottom, media, deleteConfirmation] {
             XCTAssertGreaterThanOrEqual(layout.menuCenter.x - layout.menuWidth / 2, 12)
             XCTAssertLessThanOrEqual(layout.menuCenter.x + layout.menuWidth / 2, container.width - 12)
             XCTAssertGreaterThan(layout.menuCenter.y, 12)
@@ -689,6 +738,8 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
         XCTAssertEqual(visibleMedia.menuHeight, 318)
         XCTAssertEqual(visibleMedia.pickerHeight, 520)
+        XCTAssertEqual(deleteConfirmation.menuHeight, 98)
+        XCTAssertEqual(deleteConfirmation.menuIsBelow, bottom.menuIsBelow)
     }
 
     func testImageLongPressUsesTheFullMessageActionMenu() throws {

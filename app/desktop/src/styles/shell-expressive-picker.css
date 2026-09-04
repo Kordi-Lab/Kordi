@@ -185,6 +185,11 @@
   white-space: pre-wrap;
 }
 
+.app-composer-mention-sigil {
+  color: var(--app-sidebar-accent);
+  font-weight: 700;
+}
+
 .app-composer-blob-emoji {
   display: inline-block;
   width: 1.45em;

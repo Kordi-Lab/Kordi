@@ -1977,7 +1977,9 @@ final class AppModel: ObservableObject {
         forEveryone: Bool,
         in conversation: ConversationSummary
     ) async -> Bool {
-        guard let messageId = message.reactionTargetMessageId?.nonEmpty ?? message.id.nonEmpty else {
+        guard let messageId = previewMode
+            ? message.id.nonEmpty
+            : message.reactionTargetMessageId?.nonEmpty ?? message.id.nonEmpty else {
             errorMessage = "This message is no longer available to delete."
             return false
         }

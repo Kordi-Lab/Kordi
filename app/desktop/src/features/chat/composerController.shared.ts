@@ -32,8 +32,8 @@ const DESKTOP_HOTKEY_LINES = [
   'Enter — send message',
   'Shift+Enter — newline',
   '↑/↓ — navigate slash commands',
-  'Tab — accept slash command or @ mention',
-  'Esc — close slash command or @ mention menu',
+  'Tab — accept slash command or @ selection',
+  'Esc — close slash command or @ menu',
   '⌘/Ctrl+. — open settings',
 ].join('\n');
 
@@ -46,7 +46,7 @@ const CLOUD_SLASH_HELP_LINES = [
   '/reload    Refresh runtime-backed desktop state',
   '/skill     Manage loaded skills',
   '',
-  'Type @ to reach Cloud contacts or their Kordi agents.',
+  'Type @ to add a reference or mention a contact or agent.',
 ].join('\n');
 
 const CLOUD_HIDDEN_LOCAL_SLASH_COMMANDS = new Set(['/fork', '/tree']);

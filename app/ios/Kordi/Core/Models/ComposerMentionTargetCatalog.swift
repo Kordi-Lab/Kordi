@@ -47,7 +47,21 @@ enum ComposerMentionTargetCatalog {
         ))
         var targets: [ComposerMentionTarget] = []
 
-        if conversation.kind == .group {
+        if conversation.kind == .person {
+            let contact = contacts.first { $0.accountId == conversation.peerAccountId }
+            let name = contact?.preferredName.nonEmpty
+                ?? conversation.displayName.nonEmpty
+                ?? "Contact"
+            targets.append(ComposerMentionTarget(
+                id: "person:\(conversation.peerAccountId)",
+                displayName: name,
+                kind: .person,
+                accountId: conversation.peerAccountId,
+                agentId: nil,
+                ownerName: name,
+                avatarSource: contact?.avatarUrl.nonEmpty ?? conversation.avatarSource?.nonEmpty
+            ))
+        } else if conversation.kind == .group {
             targets.append(ComposerMentionTarget(
                 id: "group:\(conversation.sessionId)",
                 displayName: "All",

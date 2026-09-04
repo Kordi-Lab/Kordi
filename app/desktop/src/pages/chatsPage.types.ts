@@ -115,12 +115,11 @@ export type ChatsPageTranscript = {
 
 export type ChatsPageComposer = {
   filteredChatSlashCommands: DesktopChatSlashCommand[];
-  chatMentionTargetsForText: (text: string) => ComposerMentionOption[];
-  filteredChatMentionTargets: ComposerMentionOption[];
+  chatMentionTargetsForText: (text: string, cursor?: number) => ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptChatSlashCommand: (value: string) => void;
-  acceptChatMentionTarget: (value: string, option?: ComposerMentionOption) => void;
+  acceptChatMentionTarget: (option: ComposerMentionOption) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: ChatAttachment[];
   saveDesktopAttachments: (

@@ -6,12 +6,9 @@ import type { CollaborationAgentRequestControl, ComposerScope } from '@/kordi-ap
 import type { ComposerMentionOption } from '@/kordi-app/components';
 import { cancelDesktopChatTurn } from '@/lib/desktop';
 
-import { CHAT_COMPOSER_TEXTAREA_SELECTOR, resizeComposerTextarea } from './composerController.shared';
 import type { UseComposerControllerArgs } from './composerController.types';
-import { updateScopeDraft, type ComposerDraftState } from './composerDrafts';
 import {
   appendDesktopSystemMessageToState,
-  insertMentionIntoDraft,
   runLocalSlashCommand,
   type LocalChatSendInFlight,
   type PendingCollaborationOutreach,
@@ -266,27 +263,9 @@ export function useComposerMessageActions({
     watchDesktopLiveTurn,
   });
 
-  const acceptChatMentionTarget = useCallback((label: string, option?: ComposerMentionOption) => {
-    if (option?.targetKind === 'agent') selectedChatAgentMentionRef.current = option;
-    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(
-      current,
-      'chat',
-      activeConvId,
-      insertMentionIntoDraft(composerDrafts.chat, label),
-    ));
-    resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR, insertMentionIntoDraft(composerDrafts.chat, label));
-  }, [activeConvId, composerDrafts.chat, setComposerDrafts]);
-
-  const acceptProjectMentionTarget = useCallback((label: string) => {
-    setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(
-      current,
-      'project',
-      activeProjectSessionId ?? '',
-      insertMentionIntoDraft(composerDrafts.project, label),
-    ));
-    resizeComposerTextarea('textarea[placeholder="Post to this project session, ask a member, or start a new topic…"]', insertMentionIntoDraft(composerDrafts.project, label));
-  }, [activeProjectSessionId, composerDrafts.project, setComposerDrafts]);
-
+  const acceptChatMentionTarget = useCallback((option: ComposerMentionOption) => {
+    selectedChatAgentMentionRef.current = option.targetKind === 'agent' ? option : null;
+  }, []);
   const stopCollaborationOutreach = useCallback(async (conversationId: string, requestId?: string | null) => {
     setDesktopChatError(null);
     const pendingOutreach = pendingCollaborationOutreachRef.current;
@@ -361,6 +340,5 @@ export function useComposerMessageActions({
     acceptChatSlashCommand: appendChatDraft,
     acceptProjectSlashCommand: appendProjectDraft,
     acceptChatMentionTarget,
-    acceptProjectMentionTarget,
   };
 }

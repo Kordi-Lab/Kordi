@@ -129,10 +129,9 @@ test('compact reply indicator is inline icon plus count so it does not expand me
 });
 
 test('portaled mention menu resolves light theme before first paint', () => {
-  const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/kordi-app/components/composerMentionMenu.tsx', import.meta.url), 'utf8');
   const start = source.indexOf('export function ComposerMentionMenu');
-  const end = source.indexOf('export function composerThinkingLabel', start);
-  const block = source.slice(start, end);
+  const block = source.slice(start);
 
   assert.match(source, /function initialComposerMentionMenuThemeClass/);
   assert.match(block, /useState\(initialComposerMentionMenuThemeClass\)/);

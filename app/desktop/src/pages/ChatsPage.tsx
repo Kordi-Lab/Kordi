@@ -61,12 +61,10 @@ export {
   parseAskAgentTriggerCommand,
 } from '@/pages/chatsPage.model';
 export { transcriptHumanParticipant } from '@/pages/chatSenderProfileModel';
-
 export {
   COLLABORATION_ROUTING_NOTICE_AUTO_DISMISS_MS,
   COLLABORATION_ROUTING_NOTICE_EXIT_MS,
 } from '@/pages/chatsPage.constants';
-
 const EMPTY_CONVERSATIONS: Conversation[] = [];
 
 export function ChatsPage({
@@ -515,7 +513,9 @@ export function ChatsPage({
                   );
                 }}
                 saveAttachments={composer.saveDesktopAttachments}
+                saveAttachmentPaths={composer.saveDesktopAttachmentPaths}
                 removeStagedAttachment={composer.removeChatComposerAttachment}
+                isNativeShell={isNativeShell}
                 accountId={cloudAccount?.accountId}
                 queuedMessages={activeThreadQueuedMessages}
                 onCancelQueuedMessage={transcript.onCancelQueuedMessage}

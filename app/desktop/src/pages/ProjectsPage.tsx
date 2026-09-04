@@ -1,4 +1,9 @@
-import type { Dispatch, RefObject, SetStateAction } from 'react';
+import {
+  useRef,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from 'react';
 import { motion } from 'framer-motion';
 import {
   FolderOpen,
@@ -46,39 +51,11 @@ import type {
   DesktopChatSlashCommand,
   DesktopChatTurnSnapshot,
   EditFilePreview,
-  Message,
+  Project,
+  ProjectSession,
 } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
-
-type ProjectSession = {
-  id: string;
-  name: string;
-  summary: string;
-  lastActive: string;
-  status: string;
-  participants: string[];
-  artifacts: number;
-  tasks: number;
-  messages: Message[];
-};
-type ProjectWorkspace = {
-  id: string;
-  name: string;
-  summary: string;
-  collaboration: string;
-  scope: string;
-  status: string;
-  people: Array<unknown>;
-  agents: Array<unknown>;
-  pendingInvites: Array<unknown>;
-  artifacts: number;
-  tasks: number;
-  root?: string;
-  sharedContext?: string;
-  backgroundSystem?: string;
-  sharedSources?: Array<{ label: string; path?: string | null; detail?: string | null }>;
-  sessions: ProjectSession[];
-};
+import { useComposerMentionMenu } from '@/pages/useComposerReferenceOptions';
 
 type ProjectsPageProps = {
   isNativeShell: boolean;
@@ -87,7 +64,7 @@ type ProjectsPageProps = {
   showRightDetailRail: boolean;
   isDetailPanelCollapsed: boolean;
   setIsDetailPanelCollapsed: Dispatch<SetStateAction<boolean>>;
-  activeProject: ProjectWorkspace;
+  activeProject: Project;
   activeProjectSession: ProjectSession;
   desktopSessionRenameDraft: string;
   setDesktopSessionRenameDraft: Dispatch<SetStateAction<string>>;
@@ -101,11 +78,10 @@ type ProjectsPageProps = {
   onOpenArtifact: (artifactId: string) => void;
   desktopLiveTurn: DesktopChatTurnSnapshot | null;
   filteredProjectSlashCommands: DesktopChatSlashCommand[];
-  filteredProjectMentionTargets: ComposerMentionOption[];
+  projectMentionTargetsForText: (text: string, cursor?: number) => ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptProjectSlashCommand: (value: string) => void;
-  acceptProjectMentionTarget: (value: string) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: Attachment[];
   saveDesktopAttachments: (files: File[]) => Promise<Attachment[]>;
@@ -158,11 +134,10 @@ export function ProjectsPage({
   onOpenArtifact,
   desktopLiveTurn,
   filteredProjectSlashCommands,
-  filteredProjectMentionTargets,
+  projectMentionTargetsForText,
   chatSlashMenuIndex,
   setChatSlashMenuIndex,
   acceptProjectSlashCommand,
-  acceptProjectMentionTarget,
   chatAttachmentInputRef,
   chatComposerAttachments,
   saveDesktopAttachments,
@@ -193,6 +168,7 @@ export function ProjectsPage({
   onOpenAuthSettings,
   onOpenAccountAuthentication,
 }: ProjectsPageProps) {
+  const projectComposerRef = useRef<HTMLTextAreaElement | null>(null);
   const openAuthentication = onOpenAccountAuthentication ?? onOpenAuthSettings;
   const authNoticeActionLabel = 'Open authentication';
   const canSubmitProjectMessage = projectComposerText.trim().length > 0 || chatComposerAttachments.length > 0;
@@ -208,6 +184,30 @@ export function ProjectsPage({
     ? [...transcriptMessages, liveTurnMessage]
     : transcriptMessages;
   const projectImeCompositionGuard = useImeCompositionGuard();
+  const {
+    menuId: mentionMenuId,
+    items: projectMentionTargets,
+    activeIndex: projectMentionIndex,
+    activeDescendant: projectMentionActiveDescendant,
+    change: updateMentionCursor,
+    select: acceptMentionTarget,
+    handleKeyDown: handleMentionKeyDown,
+  } = useComposerMentionMenu({
+    text: projectComposerText,
+    resetKey: activeProjectSession.id,
+    isNativeShell,
+    rootPath: activeProject.root,
+    targetsForText: projectMentionTargetsForText,
+    onTextChange: setProjectComposerText,
+    onPickFile: () => chatAttachmentInputRef.current?.click(),
+    onAttachPath: (path) => { void saveDesktopAttachmentPaths([path]); },
+    onFocus: (cursor) => {
+      projectComposerRef.current?.focus();
+      projectComposerRef.current?.setSelectionRange(cursor, cursor);
+    },
+    selectedIndex: chatSlashMenuIndex,
+    setSelectedIndex: setChatSlashMenuIndex,
+  });
 
   if (isNativeShell && !activeProject.id) {
     return (
@@ -368,11 +368,12 @@ export function ProjectsPage({
                 selectedIndex={Math.min(chatSlashMenuIndex, filteredProjectSlashCommands.length - 1)}
                 onSelect={acceptProjectSlashCommand}
               />
-            ) : filteredProjectMentionTargets.length > 0 ? (
+            ) : projectMentionTargets.length > 0 ? (
               <ComposerMentionMenu
-                items={filteredProjectMentionTargets}
-                selectedIndex={Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)}
-                onSelect={acceptProjectMentionTarget}
+                id={mentionMenuId}
+                items={projectMentionTargets}
+                selectedIndex={projectMentionIndex}
+                onSelect={acceptMentionTarget}
               />
             ) : null}
             <div
@@ -400,9 +401,13 @@ export function ProjectsPage({
                 onReplace={updateChatComposerAttachment}
               />
               <textarea
+                ref={projectComposerRef}
                 rows={1}
                 value={projectComposerText}
-                onChange={(event) => updateProjectComposerDraft(event.target.value, event.target)}
+                onChange={(event) => {
+                  updateMentionCursor(event.target.selectionStart);
+                  updateProjectComposerDraft(event.target.value, event.target);
+                }}
                 onPaste={(event) => {
                   const files = extractClipboardFiles(event.clipboardData);
                   if (files.length > 0) {
@@ -441,34 +446,10 @@ export function ProjectsPage({
                       return;
                     }
                   }
-                  if (filteredProjectMentionTargets.length > 0) {
-                    if (event.key === 'ArrowDown') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current + 1) % filteredProjectMentionTargets.length);
-                      return;
-                    }
-                    if (event.key === 'ArrowUp') {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      setChatSlashMenuIndex((current) => (current - 1 + filteredProjectMentionTargets.length) % filteredProjectMentionTargets.length);
-                      return;
-                    }
-                    if (((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') && !event.nativeEvent.isComposing) {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      acceptProjectMentionTarget(filteredProjectMentionTargets[Math.min(chatSlashMenuIndex, filteredProjectMentionTargets.length - 1)]?.value ?? filteredProjectMentionTargets[0].value);
-                      return;
-                    }
-                  }
+                  if (handleMentionKeyDown(event)) return;
                   if (event.key === 'Escape' && filteredProjectSlashCommands.length > 0) {
                     event.preventDefault();
                     setProjectComposerText('/');
-                    return;
-                  }
-                  if (event.key === 'Escape' && filteredProjectMentionTargets.length > 0) {
-                    event.preventDefault();
-                    setProjectComposerText(projectComposerText.replace(/(^|\s)@([^\s@]*)$/, '$1'));
                     return;
                   }
                   if (event.key === 'Enter' && !event.shiftKey) {
@@ -479,6 +460,10 @@ export function ProjectsPage({
                   }
                 }}
                 className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
+                aria-autocomplete="list"
+                aria-controls={projectMentionTargets.length > 0 ? mentionMenuId : undefined}
+                aria-expanded={projectMentionTargets.length > 0}
+                aria-activedescendant={projectMentionActiveDescendant}
                 placeholder="Post to this project session, ask a member, or start a new topic…"
               />
             </div>
