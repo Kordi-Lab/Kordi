@@ -68,6 +68,8 @@ export function useKordiShellArgs(groups: KordiShellCompositionArgs): KordiShell
         handleSetChatSessionUnread: args.handleSetChatSessionUnread,
         handleMarkChatSessionsRead: args.handleMarkChatSessionsRead,
         handleSetChatGroupPinned: args.handleSetChatGroupPinned,
+        handleSetChatGroupMuted: args.handleSetChatGroupMuted,
+        handleSetChatGroupArchived: args.handleSetChatGroupArchived,
         handleDeleteChatSession: args.handleDeleteChatSession,
         handleMoveChatSessionToProject: args.handleMoveChatSessionToProject,
         handleCreateProjectFromFolder: args.handleCreateProjectFromFolder,

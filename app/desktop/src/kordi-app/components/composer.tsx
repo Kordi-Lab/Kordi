@@ -177,7 +177,7 @@ export function ComposerMentionMenu({
 }: {
   items: ComposerMentionOption[];
   selectedIndex: number;
-  onSelect: (value: string) => void;
+  onSelect: (value: string, item: ComposerMentionOption) => void;
 }) {
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
@@ -239,7 +239,7 @@ export function ComposerMentionMenu({
                 type="button"
                 onMouseDown={(event) => {
                   event.preventDefault();
-                  onSelect(item.value);
+                  onSelect(item.value, item);
                 }}
                 className={cn(
                   'app-composer-mention-menu-item flex w-full items-center gap-2.5 rounded-[16px] px-2.5 py-2 text-left text-[13px] transition',

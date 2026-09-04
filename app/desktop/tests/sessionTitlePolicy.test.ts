@@ -149,7 +149,7 @@ test('renamed default agent replaces a stale generic self-agent header', () => {
   ), 'Babytang');
 });
 
-test('meaningful persisted group titles remain stable while partial history hydrates', () => {
+test('automatic group titles never override the stable channel fallback', () => {
   const groupSession = {
     id: 'session:group:main',
     kind: 'group',
@@ -170,14 +170,14 @@ test('meaningful persisted group titles remain stable while partial history hydr
     timeLabel: '10:45',
   }];
 
-  assert.equal(sessionPrefersPersistedTitle(groupSession), true);
+  assert.equal(sessionPrefersPersistedTitle(groupSession), false);
   assert.equal(sessionConversationDisplayTitle(
     groupSession,
     [],
     latestWindow,
-    groupSession.title,
+    'Channel 1',
     { preferFallback: sessionPrefersPersistedTitle(groupSession) },
-  ), 'main');
+  ), 'Channel 1');
 });
 
 test('canonical external group titles win over message-derived fallbacks', () => {

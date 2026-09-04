@@ -280,6 +280,12 @@ fn resolve_session_id(
     let cwd_str = cwd.to_str().unwrap_or(".");
     if let Some(session_arg) = &cli.session {
         let all = store::list_sessions(conn, cwd_str)?;
+        if let Some(session) = all
+            .iter()
+            .find(|session| session.session_id == *session_arg)
+        {
+            return Ok(session.session_id.clone());
+        }
         let matches: Vec<_> = all
             .iter()
             .filter(|s| s.session_id.starts_with(session_arg.as_str()))

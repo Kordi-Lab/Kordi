@@ -998,6 +998,8 @@ struct MessageReaction: Identifiable, Codable, Hashable {
 struct ChatMessage: Identifiable, Codable, Hashable {
     static let agentModelChangeMessageKind = "agent-model-change"
     static let groupMemberJoinMessageKind = "group-member-joined"
+    static let groupTitleUpdateMessageKind = "group-title-update"
+    static let channelTitleUpdateMessageKind = "channel-title-update"
     private static let agentModelChangePrefix = "Switched model to "
     private static let agentRuntimeRouteNoticePrefix = "Model: "
     private static let agentRuntimeRouteNoticeSeparator = " · Thinking effort: "
@@ -1077,9 +1079,15 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         messageKind == Self.groupMemberJoinMessageKind
     }
 
+    var isTitleUpdateNotice: Bool {
+        messageKind == Self.groupTitleUpdateMessageKind
+            || messageKind == Self.channelTitleUpdateMessageKind
+    }
+
     var isSystemNotice: Bool {
         isAgentModelChangeNotice
             || isGroupMemberJoinNotice
+            || isTitleUpdateNotice
             || callActivity != nil
     }
 

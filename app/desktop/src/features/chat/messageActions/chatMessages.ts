@@ -82,7 +82,7 @@ import type {
 import { composerMessageAction } from '../messageActionMetadata';
 import { memeAttachmentDraftError } from '../memeAttachments';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
-import { cloudAgentMentionIdentity, resolveCloudAgentMentionTargetIds, resolvePreferredAgentMentionTarget } from './cloudAgentMentionTarget';
+import { cloudAgentMentionIdentity, resolveCloudAgentMentionTargetIds, resolvePreferredAgentMentionTarget, selectedComposerAgentMentionTarget } from './cloudAgentMentionTarget';
 import { prefetchNativeVideoRetry, terminalCollaborationRetryFailure } from './collaborationRetry';
 import {
   collaborationDirectSessionParticipants,
@@ -476,6 +476,7 @@ export function useChatMessageActions({
   queuedDesktopMessagesBySession,
   collaborationSendInFlightConversationIdsRef,
   localChatSendInFlightRef,
+  selectedChatAgentMentionRef,
   refreshDesktopChat,
   setActiveConvId,
   setCanonicalSessionState,
@@ -1088,10 +1089,9 @@ export function useChatMessageActions({
     };
     const activeGroupSessionIsGroup = isCollaborationGroupSession(activeGroupSessionScope);
     const localAgentMentioned = mentionsLocalAgent(text, desktopChatState, desktopCollaborationState);
-    const mentionedTarget = await resolvePreferredAgentMentionTarget(
-      text, desktopChatState, desktopCollaborationState, activeConvMentionScope, sharedCloudAgents, resolveSharedCloudAgentsForMention, isTransientDraftConversation,
-      activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person',
-    );
+    const selectedMentionTarget = selectedComposerAgentMentionTarget(text, selectedChatAgentMentionRef.current, desktopCollaborationState); selectedChatAgentMentionRef.current = null;
+    const mentionedTarget = selectedMentionTarget
+      ?? await resolvePreferredAgentMentionTarget(text, desktopChatState, desktopCollaborationState, activeConvMentionScope, sharedCloudAgents, resolveSharedCloudAgentsForMention, isTransientDraftConversation, activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person');
     const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);
     const { targetCloudAgentId, targetCloudAgentName, ownerAccountId: mentionedCloudSharedAgentOwnerAccountId } = cloudAgentMentionIdentity(mentionedTarget);
     const localCollaborationNodeIds = new Set(

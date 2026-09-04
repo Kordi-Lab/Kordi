@@ -110,7 +110,7 @@ test('call targets cover direct chats and group meetings but exclude forks', () 
   });
 
   assert.equal(cloudCallTargetForConversation(account, conversation({
-    forkedFromSessionId: 'session:group:friends',
+    forkedFromSessionId: 'session:self-agent:parent',
   })), null);
   assert.equal(cloudCallTargetForConversation(account, conversation({
     identity: {

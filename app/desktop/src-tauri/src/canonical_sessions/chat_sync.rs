@@ -476,3 +476,7 @@ mod bounded_tests;
 #[cfg(test)]
 #[path = "chat_sync/test_support.rs"]
 mod test_support;
+
+#[cfg(test)]
+#[path = "chat_sync/unread_tests.rs"]
+mod unread_tests;

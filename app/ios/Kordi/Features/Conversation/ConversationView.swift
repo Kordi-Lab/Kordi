@@ -2624,6 +2624,7 @@ enum ConversationTimelinePresentation {
             }
         }
         let timestampVisibility = messages.indices.map { index in
+            if messages[index].isSystemNotice { return true }
             guard index > messages.startIndex else { return true }
             let current = messages[index].createdAt
             let previous = messages[index - 1].createdAt

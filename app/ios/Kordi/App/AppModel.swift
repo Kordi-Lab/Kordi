@@ -287,7 +287,6 @@ final class AppModel: ObservableObject {
     private var conversationReadPresentations: [UUID: ConversationReadPresentation] = [:]
     private var pendingVisibleReadMessageBySessionID: [String: String] = [:]
     private var persistedVisibleReadMessageBySessionID: [String: String] = [:]
-    private var sessionTitleOverrides: [String: String] = UserDefaults.standard.dictionary(forKey: "kordi.session-title-overrides") as? [String: String] ?? [:]
     private let previewMode: Bool
     private let previewLaunchFlow: Bool
 
@@ -340,6 +339,7 @@ final class AppModel: ObservableObject {
         self.presencePublisher = CloudPresencePublisher(api: api)
         self.previewMode = previewMode
         self.previewLaunchFlow = previewLaunchFlow
+        UserDefaults.standard.removeObject(forKey: "kordi.session-title-overrides")
         if ProcessInfo.processInfo.arguments.contains("--preview-launching") {
             // Keep the initial phase so the network-free launch surface remains visible.
         } else if ProcessInfo.processInfo.arguments.contains("--preview-login")
@@ -676,7 +676,6 @@ final class AppModel: ObservableObject {
                 + shared.map(\.ownerAccountId)
             )
             let history = await loadMessageHistories(token: token, peerAccountIds: peerAccountIds)
-            applySyncedSessionTitles(await api.cachedChatSessionTitles())
             let canonicalGroupSessionIds = await api.cachedChatConversations()
                 .filter { $0.kind == "group" && $0.latestMessageSequence > 0 }
                 .compactMap { $0.legacySessionId?.nonEmpty ?? $0.id.nonEmpty }
@@ -3122,32 +3121,50 @@ final class AppModel: ObservableObject {
     func renameConversation(_ conversation: ConversationSummary, to title: String) async -> Bool {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, let token, let account else { return false }
-        sessionTitleOverrides[conversation.sessionId] = cleanTitle
-        UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
-        if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
-            conversations[index].displayName = cleanTitle
+        if conversation.kind == .group,
+           !conversation.canManageGroup(accountId: account.accountId) {
+            errorMessage = "Only a group admin can rename this channel."
+            return false
         }
         do {
-            let kind: String = conversation.kind == .group
-                ? "group"
-                : (conversation.peerAccountId == account.accountId ? "ai" : "direct")
-            let members = conversation.kind == .group
-                ? conversation.groupParticipants.map(\.accountId)
-                : [conversation.peerAccountId]
-            let synced = try await api.updateSessionTitle(
-                token: token,
-                sessionId: conversation.sessionId,
-                title: cleanTitle,
-                peerAccountId: conversation.peerAccountId,
-                conversationKind: kind,
-                memberAccountIds: members
-            )
-            sessionTitleOverrides[conversation.sessionId] = synced.title
-            UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
+            if conversation.kind == .group {
+                var renamedConversation = conversation
+                renamedConversation.displayName = cleanTitle
+                let participants = groupParticipantsIncludingSelf(
+                    renamedConversation,
+                    account: account
+                )
+                try await sendGroupControl(
+                    kind: "session-title-update",
+                    conversation: renamedConversation,
+                    participants: participants,
+                    groupTitle: conversation.ownerDisplayName,
+                    targetAccountIds: Set(participants.map(\.accountId))
+                        .subtracting([account.accountId]),
+                    token: token,
+                    account: account
+                )
+            } else {
+                _ = try await api.updateSessionTitle(
+                    token: token,
+                    sessionId: conversation.sessionId,
+                    title: cleanTitle,
+                    peerAccountId: conversation.peerAccountId,
+                    conversationKind: conversation.peerAccountId == account.accountId ? "ai" : "direct",
+                    memberAccountIds: [conversation.peerAccountId]
+                )
+            }
+            cloudConnectionState = .connected
             await rebuildConversationCatalog()
             return true
         } catch {
-            errorMessage = "Renamed on this iPhone, but title sync failed. Try again when connected."
+            recordCloudConnectionFailure(error)
+            errorMessage = userFacing(
+                error,
+                fallback: conversation.kind == .group
+                    ? "Could not rename this channel."
+                    : "Could not rename this session."
+            )
             return false
         }
     }
@@ -3155,6 +3172,10 @@ final class AppModel: ObservableObject {
     func renameGroupSpace(_ space: GroupSpaceSummary, to title: String) async -> Bool {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, let token, let account else { return false }
+        guard space.canManage(accountId: account.accountId) else {
+            errorMessage = "Only a group admin can rename this group."
+            return false
+        }
         do {
             for conversation in space.membershipSessions {
                 let participants = groupParticipantsIncludingSelf(conversation, account: account)
@@ -3464,18 +3485,11 @@ final class AppModel: ObservableObject {
         if !previewMode {
             guard let token else { return false }
             do {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    for sessionId in sessionIds {
-                        group.addTask { [api] in
-                            try await api.setSessionMuted(
-                                token: token,
-                                sessionId: sessionId,
-                                muted: muted
-                            )
-                        }
-                    }
-                    try await group.waitForAll()
-                }
+                try await api.setGroupSpaceMuted(
+                    token: token,
+                    groupSpaceId: space.preferenceId,
+                    muted: muted
+                )
             } catch {
                 errorMessage = userFacing(
                     error,
@@ -3507,25 +3521,11 @@ final class AppModel: ObservableObject {
         if !previewMode {
             guard let token else { return false }
             do {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    for sessionId in sessionIds {
-                        group.addTask { [api] in
-                            try await api.setSessionArchived(
-                                token: token,
-                                sessionId: sessionId,
-                                archived: true
-                            )
-                        }
-                    }
-                    group.addTask { [api] in
-                        try await api.setGroupSpacePinned(
-                            token: token,
-                            groupSpaceId: space.preferenceId,
-                            pinned: false
-                        )
-                    }
-                    try await group.waitForAll()
-                }
+                try await api.setGroupSpaceArchived(
+                    token: token,
+                    groupSpaceId: space.preferenceId,
+                    archived: true
+                )
             } catch {
                 hiddenCloudSessionIds.subtract(sessionIds)
                 pinnedSessionIds.formUnion(pinnedSessionIdsBeforeArchive)
@@ -3555,18 +3555,11 @@ final class AppModel: ObservableObject {
         if !previewMode {
             guard let token else { return false }
             do {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    for sessionId in sessionIds {
-                        group.addTask { [api] in
-                            try await api.setSessionArchived(
-                                token: token,
-                                sessionId: sessionId,
-                                archived: false
-                            )
-                        }
-                    }
-                    try await group.waitForAll()
-                }
+                try await api.setGroupSpaceArchived(
+                    token: token,
+                    groupSpaceId: space.preferenceId,
+                    archived: false
+                )
             } catch {
                 hiddenCloudSessionIds.formUnion(hiddenSessionIdsBeforeRestore)
                 deletedCloudSessionIds.formUnion(deletedSessionIdsBeforeRestore)
@@ -3719,7 +3712,6 @@ final class AppModel: ObservableObject {
         let wasPinned = pinnedSessionIds.contains(conversation.sessionId)
         let wasMuted = mutedSessionIds.contains(conversation.sessionId)
         let wasUnread = markedUnreadSessionIds.contains(conversation.sessionId)
-        let titleOverride = sessionTitleOverrides[conversation.sessionId]
         let messages = messagesByConversation[conversation.id]
         let activity = sessionActivityByID[conversation.sessionId]
         beginSessionVisibilityMutation()
@@ -3740,10 +3732,6 @@ final class AppModel: ObservableObject {
                 if wasPinned { pinnedSessionIds.insert(conversation.sessionId) }
                 if wasMuted { mutedSessionIds.insert(conversation.sessionId) }
                 if wasUnread { markedUnreadSessionIds.insert(conversation.sessionId) }
-                if let titleOverride {
-                    sessionTitleOverrides[conversation.sessionId] = titleOverride
-                }
-                UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
                 conversations.append(contentsOf: visibleRows)
                 conversations.sort { $0.lastActivityAt > $1.lastActivityAt }
                 archivedConversations.append(contentsOf: archivedRows)
@@ -3764,8 +3752,6 @@ final class AppModel: ObservableObject {
         pinnedSessionIds.remove(conversation.sessionId)
         mutedSessionIds.remove(conversation.sessionId)
         markedUnreadSessionIds.remove(conversation.sessionId)
-        sessionTitleOverrides.removeValue(forKey: conversation.sessionId)
-        UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
         conversations.removeAll { $0.sessionId == conversation.sessionId }
         archivedConversations.removeAll { $0.sessionId == conversation.sessionId }
         messagesByConversation.removeValue(forKey: conversation.id)
@@ -4955,6 +4941,7 @@ final class AppModel: ObservableObject {
     ) -> [ChatMessage] {
         var rowsByMessageId: [String: [(CloudMessageDTO, CloudGroupMessagePayload)]] = [:]
         var memberJoinMessagesByID: [String: ChatMessage] = [:]
+        var titleUpdateMessagesByID: [String: ChatMessage] = [:]
         var canonicalMessagesByID: [String: ChatMessage] = [:]
         let participantNames = Dictionary(uniqueKeysWithValues: conversation.groupParticipants.map { ($0.accountId, $0.displayName) })
         for wire in messages {
@@ -4993,6 +4980,27 @@ final class AppModel: ObservableObject {
                 continue
             }
             guard envelope.groupId == conversation.sessionId else { continue }
+            let titleUpdate = CloudGroupMessageCodec.titleUpdateNotice(for: envelope)
+            if let titleUpdate {
+                let messageID = "msg:title-update:\(wire.messageId)"
+                let actorName = envelope.actor.displayName.nonEmpty ?? "Someone"
+                titleUpdateMessagesByID[messageID] = ChatMessage(
+                    id: messageID,
+                    clientMessageId: wire.clientMessageId,
+                    conversationId: conversation.id,
+                    conversationSequence: wire.conversationSequence,
+                    author: envelope.actor.accountId == ownAccountId ? .me : .person,
+                    authorName: actorName,
+                    text: titleUpdate.text,
+                    createdAt: parseCloudDate(wire.createdAt),
+                    cloudMessageVersion: wire.version,
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    messageKind: titleUpdate.messageKind
+                )
+                continue
+            }
             if envelope.kind == "group-invite" {
                 let participantIDs = Set(envelope.participants.compactMap { $0.accountId.nonEmpty })
                 for join in envelope.memberJoins ?? [] {
@@ -5130,7 +5138,9 @@ final class AppModel: ObservableObject {
                 reactions: wire.reactions
             )
         }
-        for message in chatMessages + callMessages + Array(memberJoinMessagesByID.values) {
+        for message in chatMessages + callMessages
+            + Array(memberJoinMessagesByID.values)
+            + Array(titleUpdateMessagesByID.values) {
             canonicalMessagesByID[message.id] = message
         }
         return canonicalMessagesByID.values.sorted(by: ChatMessage.timelinePrecedes)
@@ -5461,11 +5471,8 @@ final class AppModel: ObservableObject {
             )
         }.value
         guard self.account?.accountId == account.accountId else { return }
-        let titled = rebuilt.map { conversation in
+        let projected = rebuilt.map { conversation in
             var copy = conversation
-            if let override = sessionTitleOverrides[conversation.sessionId]?.nonEmpty {
-                copy.displayName = override
-            }
             if markedUnreadSnapshot.contains(conversation.sessionId), !copy.hasUnreadAttention {
                 copy.unreadCount = 1
             }
@@ -5477,18 +5484,18 @@ final class AppModel: ObservableObject {
             }
             return copy
         }
-        let visible = titled.filter {
+        let visible = projected.filter {
             !hiddenSnapshot.contains($0.sessionId)
                 && !deletedSnapshot.contains($0.sessionId)
         }
-        let archived = titled.filter {
+        let archived = projected.filter {
             hiddenSnapshot.contains($0.sessionId)
                 && !deletedSnapshot.contains($0.sessionId)
         }
         let rekeyedConversationIDs = Self.rekeyMessages(
             &messagesByConversation,
             from: conversations + archivedConversations,
-            to: titled
+            to: projected
         )
         rekeyedConversationIDs.forEach(cacheCurrentMessages)
         if visible != conversations {
@@ -5890,11 +5897,6 @@ final class AppModel: ObservableObject {
                 }
                 continue
             }
-            if event.eventType == "session.title.updated",
-               let sessionTitle = event.payload?.sessionTitle {
-                applySyncedSessionTitles([sessionTitle])
-                continue
-            }
             if event.eventType == "session-forked",
                let payload = event.payload,
                let forkSessionId = payload.forkSessionId?.nonEmpty,
@@ -6062,22 +6064,6 @@ final class AppModel: ObservableObject {
             )
         }
         return pins
-    }
-
-    private func applySyncedSessionTitles(_ titles: [CloudSyncedSessionTitle]) {
-        var changed = false
-        for title in titles {
-            if let value = title.title.nonEmpty {
-                guard sessionTitleOverrides[title.sessionId] != value else { continue }
-                sessionTitleOverrides[title.sessionId] = value
-                changed = true
-            } else if sessionTitleOverrides.removeValue(forKey: title.sessionId) != nil {
-                changed = true
-            }
-        }
-        if changed {
-            UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
-        }
     }
 
     private func persistCloudSnapshot(accountId: String) async {

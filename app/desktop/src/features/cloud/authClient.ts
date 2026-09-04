@@ -897,22 +897,22 @@ export class CloudAuthClient {
       pinned ? 'Could not pin cloud chat.' : 'Could not unpin cloud chat.',
     );
   }
-
   async setCloudSessionMuted(token: string, sessionId: string, muted: boolean): Promise<void> {
     await this.sessionList.setSessionPreference(token, sessionId, 'muted', muted,
       muted ? 'Could not mute cloud chat.' : 'Could not unmute cloud chat.',
     );
   }
-
   async setCloudSessionUnread(token: string, sessionId: string, unread: boolean): Promise<void> {
     await this.sessionList.setSessionPreference(token, sessionId, 'unread', unread,
       unread ? 'Could not mark cloud chat unread.' : 'Could not mark cloud chat read.',
     );
   }
-
   async setCloudGroupSpacePinned(token: string, groupSpaceId: string, pinned: boolean): Promise<void> {
     await this.sessionList.setGroupPinned(token, groupSpaceId, pinned);
   }
+
+  async setCloudGroupSpaceMuted(token: string, groupSpaceId: string, muted: boolean): Promise<void> { await this.sessionList.setGroupMuted(token, groupSpaceId, muted); }
+  async setCloudGroupSpaceArchived(token: string, groupSpaceId: string, archived: boolean): Promise<void> { await this.sessionList.setGroupArchived(token, groupSpaceId, archived); }
 
   async listSessionForks(token: string, sourceSessionId: string): Promise<CloudSessionForkSummary[]> {
     const response = await this.send<{ forks: CloudSessionForkSummary[] }>(

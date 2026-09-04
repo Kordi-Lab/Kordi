@@ -139,7 +139,6 @@ test('ancillary snapshots reach the existing local projections through canonical
   assert.equal(result.events[0]?.payload.sessionId, conversation.legacy_session_id);
   assert.equal(result.chat?.events[0]?.type, 'session.pin.updated');
 });
-
 test('history backfill uses conversation sequences and preserves canonical snapshots', async () => {
   const calls: string[] = [];
   const older = { ...message, id: '019cb2c9-0a77-7d84-b81b-97042279ad30', conversation_sequence: 7 };
@@ -321,14 +320,15 @@ test('canonical group snapshots become read after any recipient reads without wa
   assert.equal(mapped.readAt, message.created_at);
 });
 
-test('group bootstrap does not replace the envelope title with a generated member title', async () => {
+test('group bootstrap uses the shared Cloud channel title and ignores personal titles', async () => {
   const groupConversation: ChatSyncConversation = {
     ...conversation,
     kind: 'group',
-    shared_title: 'Generated member fallback',
+    shared_title: 'Channel planning',
     legacy_session_id: 'session:group:title-safe',
+    preferences: { ...conversation.preferences, personal_title: 'Legacy local title' },
   };
-  assert.equal(chatSyncSessionTitle(groupConversation), '');
+  assert.equal(chatSyncSessionTitle(groupConversation), 'Channel planning');
 
   const client = new CloudAuthClient({
     baseUrl: 'http://srv',
@@ -343,10 +343,10 @@ test('group bootstrap does not replace the envelope title with a generated membe
   });
   const result = await client.syncCloudEvents('token', '0');
   const titleEvent = result.events.find((event) => event.eventType === 'session.title.updated');
-  assert.equal((titleEvent?.payload.sessionTitle as { title?: string })?.title, '');
+  assert.equal((titleEvent?.payload.sessionTitle as { title?: string })?.title, 'Channel planning');
 
   const sessionId = groupConversation.legacy_session_id!;
-  const cleared = applyCloudSyncEventsToSessionTitles({
+  const updated = applyCloudSyncEventsToSessionTitles({
     [sessionId]: {
       sessionId,
       title: 'Generated member fallback',
@@ -359,7 +359,7 @@ test('group bootstrap does not replace the envelope title with a generated membe
       updatedAt: '2026-08-10T07:00:00Z',
     },
   }, result.events);
-  assert.equal(cleared[sessionId], undefined);
+  assert.equal(updated[sessionId]?.title, 'Channel planning');
 });
 
 test('chat bootstrap snapshots reconstruct every historical My Kordi session', () => {

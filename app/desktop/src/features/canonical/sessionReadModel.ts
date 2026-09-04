@@ -52,11 +52,9 @@ import { dedupeRepeatedFailedAgentTurns } from './repeatedFailedAgentTurns';
 import { mergeCanonicalReadReceipts, mergedMessageReactionMetadata } from './readModel/messageReactionMetadata';
 import { presentCanonicalParticipants, presentLocalAgentMessages } from './readModel/localAgentPresentation';
 import { mergedUnreadBySessionId, withMergedUnreadForSession } from './readModel/conversationUnread';
-
+import { defaultGroupChannelTitles, groupChannelFallbackTitle } from './readModel/groupChannelTitles';
 export { presentLocalAgentMessages } from './readModel/localAgentPresentation';
-
 const EMPTY_LEGACY_GROUP_SESSION_TITLES: ReadonlyMap<string, string> = new Map(); const EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS: ReadonlySet<string> = new Set(); const EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY: ReadonlyMap<string, number> = new Map();
-
 export function mergeCanonicalHistoryIntoRuntime(
   canonicalMessages: Message[],
   runtimeMessages: Message[],
@@ -64,7 +62,6 @@ export function mergeCanonicalHistoryIntoRuntime(
   const runtimeMessageIds = new Set(runtimeMessages.flatMap((message) => (
     [message.id, message.entryId].filter((value): value is string => Boolean(value?.trim()))
   )));
-
   const canonicalIndexesById = new Map<string, number>();
   const canonicalIndexesByAnchor = new Map<string, number[]>();
   canonicalMessages.forEach((message, canonicalIndex) => {
@@ -430,11 +427,11 @@ export function createCanonicalSessionReadModel(
   } = {},
 ): CanonicalSessionReadModel | null {
   if (!canonicalState) return null;
-
   const indexes = buildCanonicalIndexes(canonicalState);
   const cloudUnreadReady = options.cloudUnreadReady ?? true; const pendingGroupProjectionSessionIds = options.pendingGroupProjectionSessionIds ?? EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS;
   const legacyGroupSessionTitlesById = options.legacyGroupSessionTitlesById ?? EMPTY_LEGACY_GROUP_SESSION_TITLES; const reliableGroupSessionTitleIds = options.reliableGroupSessionTitleIds ?? EMPTY_PENDING_GROUP_PROJECTION_SESSION_IDS; const reliableGroupSessionActivityAtMs = options.reliableGroupSessionActivityAtMs ?? EMPTY_RELIABLE_GROUP_SESSION_ACTIVITY;
   const summaryBySessionId = new Map((options.summaries ?? []).map((summary) => [summary.sessionId, summary]));
+  const defaultGroupChannelTitleBySessionId = defaultGroupChannelTitles(canonicalState.sessions);
   const sessionActivityAtMs = (session: CanonicalSessionState['sessions'][number]) => (
     indexes.latestActivityMessageBySessionId.get(session.id)?.createdAtMs
     || sessionChatActivityAtMs(session)
@@ -529,15 +526,18 @@ export function createCanonicalSessionReadModel(
               && (cloudUnreadReady || reliableGroupSessionTitleIds.has(sessionId))
               ? legacyGroupSessionTitlesById.get(sessionId)
               : undefined;
+            const groupFallback = groupChannelFallbackTitle(
+              session, preferPersistedTitle, legacyGroupTitle, defaultGroupChannelTitleBySessionId,
+            );
             return sessionConversationDisplayTitle(
               session,
               canonicalParticipants,
               messages,
-              legacyGroupTitle || session.title || conversation.name,
+              groupFallback || session.title || conversation.name,
               {
                 preferFallback: preferPersistedTitle
                   || Boolean(legacyGroupTitle)
-                  || (session.kind === 'group' && !cloudUnreadReady),
+                  || session.kind === 'group',
               },
             );
           })();

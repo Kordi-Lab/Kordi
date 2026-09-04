@@ -375,8 +375,8 @@ export function cloudMessageFromChatSync(
 }
 
 export function chatSyncSessionTitle(conversation: ChatSyncConversation): string {
+  if (conversation.kind === 'group') return conversation.shared_title?.trim() ?? '';
   const personalTitle = conversation.preferences.personal_title?.trim() ?? '';
   if (personalTitle) return personalTitle;
-  if (conversation.kind === 'group') return '';
   return conversation.shared_title?.trim() ?? '';
 }

@@ -224,11 +224,11 @@ struct ChatHomeView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
-        .alert("Rename session", isPresented: Binding(
+        .alert(renameTarget?.kind == .group ? "Rename channel" : "Rename session", isPresented: Binding(
             get: { renameTarget != nil },
             set: { if !$0 { renameTarget = nil } }
         )) {
-            TextField("Session name", text: $renameDraft)
+            TextField(renameTarget?.kind == .group ? "Channel name" : "Session name", text: $renameDraft)
             Button("Cancel", role: .cancel) { renameTarget = nil }
             Button("Rename") {
                 guard let target = renameTarget else { return }
@@ -237,7 +237,9 @@ struct ChatHomeView: View {
             }
             .disabled(renameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         } message: {
-            Text("This name is used for the session, matching Kordi on macOS.")
+            Text(renameTarget?.kind == .group
+                ? "This shared channel name is synchronized for every group member."
+                : "This name is synchronized with Kordi on macOS.")
         }
         .alert(
             "Delete this chat from your list?",
@@ -614,11 +616,14 @@ struct ChatHomeView: View {
 
     @ViewBuilder
     private func sessionContextMenu(for conversation: ConversationSummary) -> some View {
-        Button {
-            renameDraft = conversation.displayName
-            renameTarget = conversation
-        } label: {
-            Label("Rename", systemImage: "pencil")
+        if conversation.kind != .group
+            || conversation.canManageGroup(accountId: model.account?.accountId) {
+            Button {
+                renameDraft = conversation.displayName
+                renameTarget = conversation
+            } label: {
+                Label(conversation.kind == .group ? "Rename channel" : "Rename", systemImage: "pencil")
+            }
         }
         Button {
             toggleUnread(conversation)

@@ -307,11 +307,10 @@ export function MainComposer({
                     ) {
                       event.preventDefault();
                       event.stopPropagation();
-                      acceptChatMentionTarget(
-                        filteredChatMentionTargets[
-                          Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)
-                        ]?.value ?? filteredChatMentionTargets[0].value,
-                      );
+                      const target = filteredChatMentionTargets[
+                        Math.min(chatSlashMenuIndex, filteredChatMentionTargets.length - 1)
+                      ] ?? filteredChatMentionTargets[0];
+                      acceptChatMentionTarget(target.value, target);
                       return;
                     }
                   }

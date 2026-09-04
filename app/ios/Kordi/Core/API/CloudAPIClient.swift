@@ -780,18 +780,6 @@ actor CloudAPIClient {
         )
     }
 
-    func cachedChatSessionTitles() -> [CloudSyncedSessionTitle] {
-        chatConversationsById.values.map { conversation in
-            let title = conversation.preferences.personalTitle
-                ?? (conversation.kind == "group" ? nil : conversation.sharedTitle)
-                ?? ""
-            return CloudSyncedSessionTitle(
-                sessionId: conversation.legacySessionId ?? conversation.id,
-                title: title
-            )
-        }
-    }
-
     func listSessionVisibility(token: String) async throws -> CloudSessionVisibility {
         try await send(
             path: "/v1/cloud/sessions/visibility",
@@ -869,6 +857,28 @@ actor CloudAPIClient {
             method: pinned ? "PUT" : "DELETE",
             token: token,
             fallback: pinned ? "Could not pin this group." : "Could not unpin this group."
+        )
+    }
+
+    func setGroupSpaceMuted(token: String, groupSpaceId: String, muted: Bool) async throws {
+        let escaped = groupSpaceId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? groupSpaceId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/group-spaces/\(escaped)/muted",
+            method: muted ? "PUT" : "DELETE",
+            token: token,
+            fallback: muted ? "Could not mute this group." : "Could not unmute this group."
+        )
+    }
+
+    func setGroupSpaceArchived(token: String, groupSpaceId: String, archived: Bool) async throws {
+        let escaped = groupSpaceId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? groupSpaceId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/group-spaces/\(escaped)/hidden",
+            method: archived ? "PUT" : "DELETE",
+            token: token,
+            fallback: archived ? "Could not archive this group." : "Could not restore this group."
         )
     }
 
@@ -2227,9 +2237,9 @@ actor CloudAPIClient {
         conversation: CloudChatConversation,
         occurredAt: String
     ) -> CloudSyncEvent {
-        let title = conversation.preferences.personalTitle
-            ?? (conversation.kind == "group" ? nil : conversation.sharedTitle)
-            ?? ""
+        let title = conversation.kind == "group"
+            ? conversation.sharedTitle ?? ""
+            : conversation.preferences.personalTitle ?? conversation.sharedTitle ?? ""
         return CloudSyncEvent(
             eventId: id,
             eventType: "session.title.updated",

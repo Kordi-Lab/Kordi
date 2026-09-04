@@ -16,7 +16,6 @@ export function patchCanonicalCloudGroupSessionTitles(
       && !Array.isArray(session.metadata)
       ? session.metadata as Record<string, unknown>
       : {};
-    if (metadata.sessionTitleSource === 'manual') return session;
     if (
       session.title === title
       && metadata.sessionTitleSource === 'external'
@@ -66,7 +65,11 @@ export function reliableCloudGroupSessionActivityAtMs(
   const activity = new Map<string, number>();
   for (const [sessionId, rows] of rowsBySessionId) {
     for (const row of rows) {
-      if (row.envelope.kind !== 'group-message' || !row.envelope.message || row.envelope.message.forkSnapshot) continue;
+      const visibleMessage = row.envelope.kind === 'group-message'
+        && Boolean(row.envelope.message);
+      const visibleTitleChange = row.envelope.kind === 'group-title-update'
+        || (row.envelope.kind === 'session-title-update' && !row.envelope.sessionTitleSyncOnly);
+      if (!visibleMessage && !visibleTitleChange) continue;
       const createdAtMs = Date.parse(row.wire.createdAt);
       if (Number.isFinite(createdAtMs)) {
         activity.set(sessionId, Math.max(activity.get(sessionId) ?? 0, createdAtMs));

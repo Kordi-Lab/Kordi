@@ -1,6 +1,10 @@
 use super::*;
 
+mod group_spaces;
 mod preferences;
+pub(super) use group_spaces::{
+    hide_group_space, mute_group_space, unhide_group_space, unmute_group_space,
+};
 use preferences::{clear_session_pin, clear_session_preferences, load_session_list_preferences};
 pub(super) use preferences::{
     mark_cloud_session_unread, mute_cloud_session, pin_cloud_session, pin_group_space,

@@ -14,7 +14,6 @@ import {
   isCloudCollaborationConversationId,
 } from '../src/features/cloud/cloudCollaborationState';
 import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
-import { cloudGroupForkPayloadFromSessionMetadata } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { cloudAgentRuntimeRouteForSession } from '../src/features/cloud/cloudAgentRuntime';
 import { messageActionSourceFromMessage } from '../src/features/chat/messageActionMetadata';
@@ -257,21 +256,6 @@ test('cloud bridge messages preserve resolved attachment local paths for inline 
 
   assert.equal(mapped.attachments?.[0]?.attachmentId, 'att_1');
   assert.equal(mapped.attachments?.[0]?.localPath, '/tmp/kordi-cache/Screenshot.png');
-});
-
-test('cloud group fork payload is recovered from canonical fork metadata', () => {
-  assert.deepEqual(cloudGroupForkPayloadFromSessionMetadata({
-    fork: {
-      forkedFromSessionId: 'session:group:source',
-      forkedFromMessageId: 'msg:source',
-      createdAtMs: 1234,
-    },
-  }, 'session:fork:abc'), {
-    forkSessionId: 'session:fork:abc',
-    parentSessionId: 'session:group:source',
-    parentMessageId: 'msg:source',
-    createdAtMs: 1234,
-  });
 });
 
 test('Cloud collaboration ids are neutral while legacy Bridge ids remain readable', () => {

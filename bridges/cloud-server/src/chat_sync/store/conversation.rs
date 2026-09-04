@@ -20,6 +20,10 @@ fn account_scoped_client_session_id(
     Ok(format!("session:self-agent:{account_id}:default"))
 }
 
+fn fork_session_kind_allowed(is_registered_fork: bool, kind: ConversationKind) -> bool {
+    !is_registered_fork || kind == ConversationKind::Ai
+}
+
 pub async fn create_conversation(
     pool: &PgPool,
     account_id: &str,
@@ -94,6 +98,16 @@ async fn create_conversation_in_transaction_with_trusted_peer(
 
     advisory_operation_lock(transaction, account_id, request.client_operation_id).await?;
     advisory_session_lock(transaction, &client_session_id).await?;
+    let registered_fork: (bool,) =
+        query_as("SELECT EXISTS(SELECT 1 FROM cloud_session_forks WHERE fork_session_id = $1)")
+            .bind(&client_session_id)
+            .fetch_one(&mut **transaction)
+            .await?;
+    if !fork_session_kind_allowed(registered_fork.0, request.kind) {
+        return Err(StoreError::InvalidInput(
+            "fork sessions must be Agent conversations",
+        ));
+    }
     let existing: Option<(Uuid, String)> = query_as(
         "SELECT conversation_id, creation_fingerprint \
          FROM cloud_chat_conversations \
@@ -268,5 +282,13 @@ mod tests {
             ),
             Err(StoreError::InvalidInput(_))
         ));
+    }
+
+    #[test]
+    fn registered_fork_ids_allow_only_agent_conversations() {
+        assert!(fork_session_kind_allowed(true, ConversationKind::Ai));
+        assert!(!fork_session_kind_allowed(true, ConversationKind::Group));
+        assert!(!fork_session_kind_allowed(true, ConversationKind::Direct));
+        assert!(fork_session_kind_allowed(false, ConversationKind::Group));
     }
 }

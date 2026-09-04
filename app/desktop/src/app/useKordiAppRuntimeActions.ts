@@ -1,5 +1,5 @@
 import type { KordiAppFoundation } from '@/app/useKordiAppFoundation';
-import { useKordiCloudGroupFork } from '@/app/useKordiCloudGroupFork';
+import { useKordiCloudAgentFork } from '@/app/useKordiCloudAgentFork';
 import { useKordiCollaborationNavigationActions } from '@/app/useKordiCollaborationNavigationActions';
 import { useKordiProviderAutoSwitch } from '@/app/useKordiProviderAutoSwitch';
 import { useKordiQueuedMessageActions } from '@/app/useKordiQueuedMessageActions';
@@ -27,8 +27,6 @@ export function useKordiAppRuntimeActions({
       canonicalSessionState,
       setCanonicalSessionState,
       hydrateCanonicalSessionPage,
-      loadCanonicalSessionHistory,
-      refreshCanonicalState,
     },
     ui: {
       projectsUi,
@@ -130,12 +128,9 @@ export function useKordiAppRuntimeActions({
     unsupportedAction: unsupportedLegacyCollaborationAction,
   });
 
-  const syncCloudGroupFork = useKordiCloudGroupFork({
+  const syncCloudAgentFork = useKordiCloudAgentFork({
     account: cloudSession.account,
-    loadCanonicalSessionHistory,
     recordCloudSessionFork,
-    refreshCanonicalState,
-    sendCloudGroupControl,
   });
 
   const {
@@ -170,7 +165,7 @@ export function useKordiAppRuntimeActions({
       activeConv.canonicalSessionId || activeConvId,
       'draft:local-chat',
     ),
-    onForkCreated: syncCloudGroupFork,
+    onForkCreated: syncCloudAgentFork,
   });
 
   const {

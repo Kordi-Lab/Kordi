@@ -4,8 +4,11 @@ use super::*;
 
 mod group_identity;
 mod mutations;
-use group_identity::normalize_group_envelope;
 pub(super) use group_identity::normalize_stored_group_agent_identity;
+use group_identity::{
+    apply_group_control_title, load_existing_group_message, lock_group_message_fingerprint,
+    normalize_group_envelope,
+};
 pub use mutations::{delete_message, edit_message};
 
 pub(super) async fn fanout_message_sync_event(
@@ -88,6 +91,15 @@ pub(crate) async fn send_message_in_transaction(
     })?;
 
     advisory_operation_lock(transaction, account_id, request.client_message_id).await?;
+    if group_projection.is_some() {
+        lock_group_message_fingerprint(
+            transaction,
+            account_id,
+            conversation_id,
+            &request_fingerprint,
+        )
+        .await?;
+    }
     let existing: Option<(Uuid, String)> = query_as(
         "SELECT message_id, request_fingerprint FROM cloud_chat_messages \
          WHERE sender_account_id = $1 AND client_message_id = $2",
@@ -106,9 +118,25 @@ pub(crate) async fn send_message_in_transaction(
             inserted: false,
         });
     }
+    if group_projection.is_some() {
+        if let Some(message) = load_existing_group_message(
+            transaction,
+            account_id,
+            conversation_id,
+            &request_fingerprint,
+        )
+        .await?
+        {
+            return Ok(InsertOutcome {
+                value: message,
+                inserted: false,
+            });
+        }
+    }
 
     require_active_member(transaction, conversation_id, account_id).await?;
     if let Some(projection) = &group_projection {
+        apply_group_control_title(transaction, account_id, conversation_id, projection).await?;
         let group_title = matches!(
             projection.kind.as_str(),
             "group-invite" | "group-update" | "group-title-update"

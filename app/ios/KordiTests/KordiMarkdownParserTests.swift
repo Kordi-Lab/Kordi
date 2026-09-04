@@ -806,6 +806,35 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertFalse(presentation[2].groupedWithPrevious)
     }
 
+    func testTimelinePresentationGivesEverySystemEventItsOwnTimestamp() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let messages = [
+            timelineMessage(id: "peer", author: .person, name: "Maya", date: start),
+            timelineMessage(
+                id: "rename",
+                author: .person,
+                name: "Maya",
+                date: start.addingTimeInterval(20),
+                messageKind: ChatMessage.channelTitleUpdateMessageKind
+            ),
+            timelineMessage(
+                id: "join",
+                author: .person,
+                name: "Maya",
+                date: start.addingTimeInterval(40),
+                messageKind: ChatMessage.groupMemberJoinMessageKind
+            )
+        ]
+
+        let presentation = ConversationTimelinePresentation.make(
+            messages: messages,
+            selfAccountId: "acct_me",
+            participants: []
+        )
+
+        XCTAssertEqual(presentation.map(\.showsTimestamp), [true, true, true])
+    }
+
     @MainActor
     func testTimelineTimestampUsesAWeekdayForRecentHistoricalMessages() {
         var calendar = Calendar(identifier: .gregorian)
@@ -1411,7 +1440,8 @@ final class KordiMarkdownParserTests: XCTestCase {
         id: String,
         author: MessageAuthor,
         name: String,
-        date: Date
+        date: Date,
+        messageKind: String? = nil
     ) -> ChatMessage {
         ChatMessage(
             id: id,
@@ -1422,7 +1452,8 @@ final class KordiMarkdownParserTests: XCTestCase {
             createdAt: date,
             deliveryState: .delivered,
             errorMessage: nil,
-            requestMessageId: nil
+            requestMessageId: nil,
+            messageKind: messageKind
         )
     }
 

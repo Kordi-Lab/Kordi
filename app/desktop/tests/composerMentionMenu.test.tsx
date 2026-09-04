@@ -75,6 +75,7 @@ test('mention participant menu can carry light theme after portaling outside the
   const source = readFileSync(new URL('../src/kordi-app/components/composer.tsx', import.meta.url), 'utf8');
   assert.match(source, /setMenuThemeClass/);
   assert.match(source, /app-composer-mention-menu-light/);
+  assert.match(source, /onSelect\(item\.value, item\)/);
 });
 
 test('mention participant menu is rendered on the foreground popover layer', () => {

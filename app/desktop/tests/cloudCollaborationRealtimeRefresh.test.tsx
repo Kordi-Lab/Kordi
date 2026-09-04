@@ -9,8 +9,16 @@ import {
   realtimeCallSyncEvent,
 } from '../src/features/cloud/useCloudRealtimeMessages';
 
+const messageSyncSource = () => readFileSync(
+  new URL('../src/features/cloud/useCloudMessageSync.ts', import.meta.url),
+  'utf8',
+);
+
 test('cloud bridge message polling is a low-frequency WebSocket repair path', () => {
   assert.equal(CLOUD_MESSAGES_REFRESH_MS, 15_000);
+  const source = messageSyncSource();
+  const interval = source.slice(source.indexOf('const interval = window.setInterval'), source.indexOf('return () => window.clearInterval'));
+  assert.doesNotMatch(interval, /visibilityState/);
 });
 
 test('macOS keeps the realtime WebSocket alive while its window is hidden', () => {

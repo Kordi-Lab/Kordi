@@ -31,7 +31,7 @@ export function isInternalCloudAgentControlMessage(message: CanonicalSessionMess
 }
 
 export function canonicalMessageCountsAsReadable(message: CanonicalSessionMessage) {
-  if (['canonical-fork-snapshot', 'cloud-group-fork-snapshot'].includes(message.sourceTransport ?? '')) return false;
+  if (message.sourceTransport === 'canonical-fork-snapshot') return false;
   if (['sending', 'processing'].includes(message.status.trim().toLowerCase())) return false;
   return !isPlaceholderSessionTitleNotice(message)
     && !isSynchronizationOnlyCloudGroupTitleNotice(message)

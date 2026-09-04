@@ -28,6 +28,17 @@ pub(super) struct StartMessageInput {
     pub sync_session_at_start: bool,
 }
 
+async fn reserve_shared_request(
+    manager: &DesktopChatManager,
+    session_id: &str,
+    request_id: &str,
+) -> bool {
+    let key = format!("{}\0{}", session_id.trim(), request_id.trim());
+    // ponytail: request ids live for the process lifetime; add bounded eviction
+    // only if long-running desktop sessions show measurable growth.
+    manager.shared_request_ids.lock().await.insert(key)
+}
+
 pub(super) async fn start_shared_message(
     manager: &DesktopChatManager,
     request_id: String,
@@ -36,6 +47,9 @@ pub(super) async fn start_shared_message(
     let request_id = request_id.trim().to_string();
     if request_id.is_empty() {
         return start_message(manager, input).await;
+    }
+    if !reserve_shared_request(manager, &input.session_id, &request_id).await {
+        return Err("shared_request_already_started".to_string());
     }
     let cwd = chat_cwd()?;
     let decision = match super::background_tasks::classify_shared_task(
@@ -426,7 +440,7 @@ async fn sync_completed_session(
 
 #[cfg(test)]
 mod tests {
-    use super::latest_turn_assistant_entry_id;
+    use super::{latest_turn_assistant_entry_id, reserve_shared_request, DesktopChatManager};
     use kordi_cli::desktop_runtime::DesktopChatMessage;
 
     fn message(role: &str, entry_id: Option<&str>) -> DesktopChatMessage {
@@ -444,6 +458,15 @@ mod tests {
             tools: Vec::new(),
             entry_id: entry_id.map(str::to_string),
         }
+    }
+
+    #[tokio::test]
+    async fn shared_request_is_admitted_once_per_runtime() {
+        let manager = DesktopChatManager::default();
+
+        assert!(reserve_shared_request(&manager, "runtime-a", "request-1").await);
+        assert!(!reserve_shared_request(&manager, "runtime-a", "request-1").await);
+        assert!(reserve_shared_request(&manager, "runtime-b", "request-1").await);
     }
 
     #[test]

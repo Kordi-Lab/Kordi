@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cloudGroupAgentResponseTargetAccountIds, cloudGroupControlMessagesForAccount, cloudGroupMessageReadPeerIds, cloudGroupMessageReadTargets, encodeCloudGroupControl, parseCloudGroupControl, cloudGroupAgentMentionHasResponse, cloudGroupAgentMentionResponseState, cloudGroupAgentOfflineNoticeRequest, cloudGroupAgentRequestingNoticeMessage } from '../src/features/cloud/cloudGroupMessages';
+import { cloudGroupAgentResponseTargetAccountIds, cloudGroupControlMessagesForAccount, cloudGroupMessageReadPeerIds, cloudGroupMessageReadTargets, encodeCloudGroupControl, parseCloudGroupControl, cloudGroupAgentMentionHasResponse, cloudGroupAgentMentionResponseState, cloudGroupAgentMentionResponseStateFromRows, cloudGroupAgentOfflineNoticeRequest, cloudGroupAgentRequestingNoticeMessage } from '../src/features/cloud/cloudGroupMessages';
+import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
 import { cloudGroupLocalAgentRequestAlreadyHandled } from '../src/features/cloud/cloudGroupLocalAgentRequestState';
 import {
   upsertCanonicalRequestIntoLocalState,
@@ -157,6 +158,51 @@ test('cloud group agent response state prefers terminal rows over older processi
       { id: 'msg_processing', sessionId: groupId, senderIdentityId: 'agent:cloud:acct_target', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'processing...', content: { requestId, deliveryState: 'processing' }, parentMessageId: requestId, status: 'processing', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1, sourceTransport: 'cloud-group-agent' },
       { id: 'msg_final', sessionId: groupId, senderIdentityId: 'agent:cloud:acct_target', senderRole: 'external-agent', messageKind: 'agent-turn', contentText: 'final answer', content: { requestId, deliveryState: 'complete' }, parentMessageId: requestId, status: 'complete', sequenceNum: 2, createdAtMs: 2, updatedAtMs: 2, sourceTransport: 'cloud-group-agent' },
     ],
+  }), 'terminal');
+});
+
+test('cloud group agent response state uses durable Cloud rows before local history hydrates', () => {
+  const requestId = 'msg_request';
+  const targetAccountId = 'acct_target';
+  const body = encodeCloudGroupControl({
+    kind: 'group-message',
+    groupId: 'session:group:one',
+    groupTitle: 'Team',
+    createdByAccountId: 'acct_requester',
+    actor: { accountId: targetAccountId, displayName: 'Target', role: 'person' },
+    participants: [
+      { accountId: 'acct_requester', displayName: 'Requester', role: 'admin' },
+      { accountId: targetAccountId, displayName: 'Target', role: 'person' },
+    ],
+    message: {
+      id: 'agent-terminal',
+      senderAccountId: targetAccountId,
+      text: 'No provider configured yet.',
+      createdAtMs: 2,
+      senderKind: 'agent',
+      deliveryState: 'failed',
+      requestId,
+      replyToMessageId: requestId,
+    },
+  });
+  const rows = buildCloudMessageIndex('acct_requester', {
+    [targetAccountId]: [{
+      messageId: 'wire-terminal',
+      fromAccountId: targetAccountId,
+      toAccountId: 'acct_requester',
+      body,
+      direction: 'incoming',
+      createdAt: '2026-09-02T19:36:07Z',
+      deliveredAt: null,
+      readAt: null,
+      sessionId: 'session:group:one',
+    }],
+  }).groupRows;
+
+  assert.equal(cloudGroupAgentMentionResponseStateFromRows({
+    requestMessageId: requestId,
+    targetAccountId,
+    rows,
   }), 'terminal');
 });
 

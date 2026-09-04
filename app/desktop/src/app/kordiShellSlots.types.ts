@@ -240,7 +240,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   acceptProjectSlashCommand: (value: string) => void;
   acceptChatSlashCommand: (value: string) => void;
   acceptProjectMentionTarget: (value: string) => void;
-  acceptChatMentionTarget: (value: string) => void;
+  acceptChatMentionTarget: (value: string, option?: ComposerMentionOption) => void;
   projectComposerText: string;
   chatComposerText: string;
   updateProjectComposerDraft: (value: string, target: HTMLTextAreaElement) => void;

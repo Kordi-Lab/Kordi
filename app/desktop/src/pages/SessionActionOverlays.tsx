@@ -173,10 +173,10 @@ export function GroupContextMenu({
   target: GroupContextMenuTarget;
   onClose: () => void;
   onSetPinned: (groupSpaceId: string, pinned: boolean) => void;
-  onSetMuted: (sessionIds: string[], muted: boolean) => void;
+  onSetMuted: (groupSpaceId: string, sessionIds: string[], muted: boolean) => void;
   onMarkRead: (sessionIds: string[]) => void;
-  onArchive: (sessionIds: string[]) => void;
-  onRestore: (sessionIds: string[]) => void;
+  onArchive: (groupSpaceId: string, sessionIds: string[]) => void;
+  onRestore: (groupSpaceId: string, sessionIds: string[]) => void;
 }) {
   const run = (action: () => void) => {
     onClose();
@@ -219,7 +219,11 @@ export function GroupContextMenu({
           type="button"
           data-group-context-action="mute"
           className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
-          onClick={() => run(() => onSetMuted(target.sessionIds, !target.muted))}
+          onClick={() => run(() => onSetMuted(
+            target.groupSpaceId,
+            target.sessionIds,
+            !target.muted,
+          ))}
         >
           {target.muted
             ? <Bell className="app-transient-action-icon" aria-hidden="true" />
@@ -231,7 +235,9 @@ export function GroupContextMenu({
           data-group-context-action={target.archived ? 'restore' : 'archive'}
           className="app-transient-flat-action app-transient-action-row flex w-full items-center gap-2.5 whitespace-nowrap rounded-[12px] px-3 py-2 text-left transition"
           onClick={() => run(() => (
-            target.archived ? onRestore(target.sessionIds) : onArchive(target.sessionIds)
+            target.archived
+              ? onRestore(target.groupSpaceId, target.sessionIds)
+              : onArchive(target.groupSpaceId, target.sessionIds)
           ))}
         >
           {target.archived
