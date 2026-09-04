@@ -325,6 +325,7 @@ struct MessageBubble: View, Equatable {
             ConversationCallActivityCard(message: message)
         } else if let standaloneEmojiItem {
             standaloneEmojiView(standaloneEmojiItem)
+                .padding(.trailing, message.author == .me ? 28 : 0)
         } else if usesBorderlessImageSurface {
             imageCollection
         } else if usesDetachedImageGroup {
