@@ -26,6 +26,7 @@ import {
 import { cloudAgentPublicBackgroundToolsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   cloudAgentRuntimeRouteForTargetCloudAgent,
+  cloudGroupAgentRequestRuntimeSessionId,
 } from './cloudAgentRuntime';
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 import {
@@ -212,7 +213,7 @@ export async function respondToCloudGroupAgentMention(
   try {
     startedTurn = await startDesktopSharedChatMessage(
       message.id,
-      runtimeSessionId,
+      cloudGroupAgentRequestRuntimeSessionId(runtimeSessionId, message.id),
       promptTextForCloudAgentMention(message.text),
       mappedAttachments
         .map((attachment) => attachment.localPath?.trim() || '')

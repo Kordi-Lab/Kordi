@@ -1063,6 +1063,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var messageKind: String?
     var voiceMessage: VoiceMessage?
     var agentExecution: AgentExecutionSnapshot?
+    // Derived from pending requests, never from transport delivery receipts.
+    var agentQueuePosition: Int? = nil
     var backgroundAgentSessions: [BackgroundAgentSession]
     var mentions: [MessageMention]
     var reactions: [MessageReaction]
@@ -1243,6 +1245,42 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         ) ?? []
         mentions = try container.decodeIfPresent([MessageMention].self, forKey: .mentions) ?? []
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
+    }
+}
+
+enum AgentSessionQueuePresentation {
+    static func apply(to messages: [ChatMessage], kind: ConversationKind) -> [ChatMessage] {
+        guard kind == .agent else { return messages }
+        var activeRequests = Set<String>()
+        var terminalRequests = Set<String>()
+        for message in messages where message.author == .agent {
+            guard let requestID = message.requestMessageId else { continue }
+            if message.agentExecution?.completed == false
+                || (message.agentExecution == nil
+                    && CloudMessageCodec.isAgentProcessingPlaceholder(message.text)) {
+                activeRequests.insert(requestID)
+            } else {
+                terminalRequests.insert(requestID)
+            }
+        }
+        activeRequests.subtract(terminalRequests)
+        let requests = messages.filter {
+            $0.author == .me && !$0.isSystemNotice
+                && $0.deliveryState != .failed && $0.deliveryState != .cancelled
+        }.sorted(by: ChatMessage.timelinePrecedes)
+        guard let activeIndex = requests.firstIndex(where: { activeRequests.contains($0.id) }) else {
+            return messages
+        }
+        let queuedIDs = requests.dropFirst(activeIndex + 1)
+            .filter { !terminalRequests.contains($0.id) }.map(\.id)
+        let positions = Dictionary(uniqueKeysWithValues: queuedIDs.enumerated().map { ($0.element, $0.offset + 1) })
+        return messages.compactMap { message in
+            if message.author == .agent, let requestID = message.requestMessageId,
+               positions[requestID] != nil { return nil }
+            var copy = message
+            copy.agentQueuePosition = positions[message.id]
+            return copy
+        }
     }
 }
 

@@ -4,6 +4,63 @@ import XCTest
 @testable import Kordi
 
 final class ConversationReadPresentationTests: XCTestCase {
+    func testAgentSessionShowsQueuedRequestsWithoutRunningPlaceholders() {
+        let messages = agentQueueFixture()
+        let projected = AgentSessionQueuePresentation.apply(to: messages, kind: .agent)
+        XCTAssertNil(projected.first { $0.id == "request-1" }?.agentQueuePosition)
+        XCTAssertEqual(projected.first { $0.id == "request-2" }?.agentQueuePosition, 1)
+        XCTAssertEqual(projected.first { $0.id == "request-3" }?.agentQueuePosition, 2)
+        XCTAssertEqual(projected.filter { $0.author == .agent }.map(\.requestMessageId), ["request-1"])
+        XCTAssertEqual(messages.first { $0.id == "request-2" }?.deliveryState, .delivered)
+    }
+
+    func testAgentQueueAdvancesAfterSuccessFailureOrCancellation() {
+        for phase: AgentExecutionSnapshot.Phase in [.complete, .failed, .cancelled] {
+            var messages = agentQueueFixture()
+            var terminal = messages.first { $0.id == "response-1" }!
+            terminal.agentExecution = AgentExecutionSnapshot(
+                phase: phase, summary: "Finished", steps: [], thinkingText: nil,
+                tools: nil, startedAtMs: 1_000, updatedAtMs: 4_000, completed: true
+            )
+            messages.append(terminal)
+            let projected = AgentSessionQueuePresentation.apply(to: messages, kind: .agent)
+            XCTAssertNil(projected.first { $0.id == "request-2" }?.agentQueuePosition)
+            XCTAssertEqual(projected.first { $0.id == "request-3" }?.agentQueuePosition, 1)
+            XCTAssertTrue(projected.contains { $0.id == "response-2" })
+        }
+    }
+
+    func testGroupAndContactRequestsDoNotUseTheAgentSessionQueue() {
+        let messages = agentQueueFixture()
+        for kind: ConversationKind in [.group, .person] {
+            XCTAssertEqual(AgentSessionQueuePresentation.apply(to: messages, kind: kind), messages)
+        }
+    }
+
+    private func agentQueueFixture() -> [ChatMessage] {
+        (1...3).flatMap { index -> [ChatMessage] in
+            let createdAt = Date(timeIntervalSince1970: Double(index))
+            let request = ChatMessage(
+                id: "request-\(index)", conversationId: "agent-session:test",
+                author: .me, authorName: "You", text: "Message \(index)",
+                createdAt: createdAt, deliveryState: .delivered,
+                errorMessage: nil, requestMessageId: nil
+            )
+            let response = ChatMessage(
+                id: "response-\(index)", conversationId: request.conversationId,
+                author: .agent, authorName: "Kordi", text: "processing...",
+                createdAt: createdAt.addingTimeInterval(0.001), deliveryState: .delivered,
+                errorMessage: nil, requestMessageId: request.id,
+                agentExecution: AgentExecutionSnapshot(
+                    phase: .preparing, summary: "Preparing", steps: [], thinkingText: nil,
+                    tools: nil, startedAtMs: Double(index) * 1_000,
+                    updatedAtMs: Double(index) * 1_000, completed: false
+                )
+            )
+            return [request, response]
+        }
+    }
+
     func testAgentSendAcknowledgementDoesNotWaitForRuntimeCompletion() throws {
         let iosDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
