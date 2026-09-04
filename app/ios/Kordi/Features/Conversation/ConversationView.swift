@@ -518,6 +518,7 @@ struct ConversationView: View {
                                     messageCount: timeline.count
                                 ) {
                                     LatestMessageButton(count: newMessageCount) {
+                                        immediateBottomRequest &+= 1
                                         scrollToBottom(animated: true)
                                     }
                                     .transition(.scale(scale: 0.82).combined(with: .opacity))
@@ -720,11 +721,9 @@ struct ConversationView: View {
                 ) {
                     let identityChanged = previousLatestMessageID != currentLatestMessageID
                     scrollToBottom(animated: identityChanged)
-                    if !identityChanged {
-                        Task { @MainActor in
-                            await Task.yield()
-                            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
-                        }
+                    Task { @MainActor in
+                        await Task.yield()
+                        proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                     }
                 }
             }
@@ -1701,7 +1700,8 @@ struct ConversationView: View {
         initialViewport = .latest
         hasPositionedInitialTimeline = true
         if animated {
-            immediateBottomRequest &+= 1
+            // Appends follow SwiftUI's layout-aware anchor. The UIKit offset
+            // command is reserved for explicitly interrupting a manual scroll.
             withAnimation(.smooth(duration: 0.42)) {
                 trackedMessageID = bottomAnchorID
             }
@@ -2738,6 +2738,7 @@ enum ConversationTimelinePresentation {
             }
         }
         let timestampVisibility = messages.indices.map { index in
+            if messages[index].isSystemNotice { return true }
             guard index > messages.startIndex else { return true }
             let current = messages[index].createdAt
             let previous = messages[index - 1].createdAt

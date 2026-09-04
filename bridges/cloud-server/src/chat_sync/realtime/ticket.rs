@@ -43,11 +43,29 @@ fn allowed_origins() -> Vec<String> {
         .collect()
 }
 
+fn origin_matches_allowlist(origin: &str, allowed: &str) -> bool {
+    if origin == allowed {
+        return true;
+    }
+    let (Ok(origin), Ok(allowed)) = (url::Url::parse(origin), url::Url::parse(allowed)) else {
+        return false;
+    };
+    allowed.scheme() == "http"
+        && allowed.host_str() == Some("127.0.0.1")
+        && allowed.port().is_none()
+        && origin.scheme() == allowed.scheme()
+        && origin.host_str() == allowed.host_str()
+}
+
 fn bind_origin(origin: Option<&str>, allowlist: &[String]) -> Result<Option<String>, TicketError> {
     let Some(origin) = origin.map(str::trim).filter(|value| !value.is_empty()) else {
         return Ok(None);
     };
-    if origin == "null" || !allowlist.iter().any(|allowed| allowed == origin) {
+    if origin == "null"
+        || !allowlist
+            .iter()
+            .any(|allowed| origin_matches_allowlist(origin, allowed))
+    {
         return Err(TicketError::OriginNotAllowed);
     }
     Ok(Some(origin.to_string()))
@@ -159,12 +177,13 @@ mod tests {
     }
 
     #[test]
-    fn browser_origins_are_exactly_allowlisted_and_bound() {
+    fn browser_origins_are_allowlisted_and_bound() {
         let allowed = vec![
             "https://kordi.ai".to_string(),
             "tauri://localhost".to_string(),
             "http://tauri.localhost".to_string(),
             "http://127.0.0.1:1420".to_string(),
+            "http://127.0.0.1".to_string(),
         ];
         assert_eq!(
             bind_origin(Some("https://kordi.ai"), &allowed).unwrap(),
@@ -182,6 +201,14 @@ mod tests {
             bind_origin(Some("http://127.0.0.1:1420"), &allowed).unwrap(),
             Some("http://127.0.0.1:1420".to_string())
         );
+        assert_eq!(
+            bind_origin(Some("http://127.0.0.1:14391"), &allowed).unwrap(),
+            Some("http://127.0.0.1:14391".to_string())
+        );
+        assert!(matches!(
+            bind_origin(Some("http://localhost:14391"), &allowed),
+            Err(TicketError::OriginNotAllowed)
+        ));
         assert!(matches!(
             bind_origin(Some("https://kordi.ai.evil.example"), &allowed),
             Err(TicketError::OriginNotAllowed)

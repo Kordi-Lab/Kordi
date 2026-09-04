@@ -254,7 +254,6 @@ function shouldSkipSelfAgentForwardSyncMessage(
   recoverMissingChatSession = false,
 ): boolean {
   return message.sourceTransport === 'canonical-fork-snapshot'
-    || message.sourceTransport === 'cloud-group-fork-snapshot'
     || (!recoverMissingChatSession && (
       message.sourceTransport === 'cloud-self-agent'
       || message.id.startsWith('msg:cloud:self:')

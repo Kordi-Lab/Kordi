@@ -190,6 +190,8 @@ export function useKordiAppShellComposition({
       handleSetChatSessionUnread: chatSession.handleSetChatSessionUnread,
       handleMarkChatSessionsRead: chatSession.handleMarkChatSessionsRead,
       handleSetChatGroupPinned: chatSession.handleSetChatGroupPinned,
+      handleSetChatGroupMuted: chatSession.handleSetChatGroupMuted,
+      handleSetChatGroupArchived: chatSession.handleSetChatGroupArchived,
       handleDeleteChatSession: chatSession.handleDeleteChatSession,
       handleMoveChatSessionToProject:
         projectActions.handleMoveChatSessionToProject,
@@ -304,6 +306,7 @@ export function useKordiAppShellComposition({
       setChatSlashMenuIndex: ui.composerUi.setChatSlashMenuIndex,
       acceptProjectSlashCommand: composerActions.acceptProjectSlashCommand,
       acceptChatSlashCommand: composerActions.acceptChatSlashCommand,
+      acceptChatMentionTarget: composerActions.acceptChatMentionTarget,
       chatAttachmentInputRef: refs.chatAttachmentInputRef,
       chatComposerAttachments: ui.composerUi.chatComposerAttachments,
       saveDesktopAttachments: composerActions.saveDesktopAttachments,

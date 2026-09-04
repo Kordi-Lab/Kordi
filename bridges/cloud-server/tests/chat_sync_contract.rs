@@ -211,6 +211,36 @@ fn bootstrap_reads_titles_only_from_canonical_state() {
 }
 
 #[test]
+fn group_channel_titles_are_shared_and_admin_controlled() {
+    let root = repository_root();
+    let message_store = read(root.join("bridges/cloud-server/src/chat_sync/store/message.rs"))
+        + &read_runtime_sources(&root.join("bridges/cloud-server/src/chat_sync/store/message"));
+    let title_store = read(root.join("bridges/cloud-server/src/chat_sync/store/titles.rs"));
+    let cleanup =
+        read(root.join("bridges/cloud-server/migrations/0077_remove_group_personal_titles.sql"));
+    let group_space_cleanup =
+        read(root.join("bridges/cloud-server/migrations/0078_normalize_group_space_ids.sql"));
+    let channel_defaults =
+        read(root.join("bridges/cloud-server/migrations/0079_default_group_channel_titles.sql"));
+    let pool = read(root.join("bridges/cloud-server/src/pg/pool.rs"));
+
+    assert!(message_store.contains("\"group-title-update\" | \"session-title-update\""));
+    assert!(message_store.contains("role != \"owner\" && role != \"admin\""));
+    assert!(message_store.contains("SET shared_title = $2"));
+    assert!(message_store
+        .contains("group-message:{conversation_id}:{account_id}:{request_fingerprint}"));
+    assert!(message_store.contains("AND request_fingerprint = $3"));
+    assert!(title_store.contains("if conversation_kind == \"group\""));
+    assert!(cleanup.contains("conversation.kind = 'group'"));
+    assert!(cleanup.contains("SET personal_title = NULL"));
+    assert!(pool.contains("version: 77"));
+    assert!(group_space_cleanup.contains("regexp_replace(group_space_id, '^(group:)+', '')"));
+    assert!(pool.contains("version: 78"));
+    assert!(channel_defaults.contains("'Channel ' || ranked.channel_number"));
+    assert!(pool.contains("version: 79"));
+}
+
+#[test]
 fn only_frontend_visible_messages_resurrect_deleted_sessions() {
     let root = repository_root();
     let message_store = read(root.join("bridges/cloud-server/src/chat_sync/store/message.rs"));

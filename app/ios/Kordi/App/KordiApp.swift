@@ -575,7 +575,10 @@ struct MainTabView: View {
             ChatHomeView(
                 channel: .contact,
                 onOpenConversation: { chatsPath.append($0) },
-                onOpenNewChat: { chatsPath.append($0) }
+                onOpenNewChat: { chatsPath.append($0) },
+                onOpenArchivedChats: {
+                    chatsPath.append(ArchivedChatsRoute(channel: .contact))
+                }
             )
         }
         .kordiTabBarVisibility(isRoot: chatsPath.isEmpty)
@@ -586,7 +589,10 @@ struct MainTabView: View {
             ChatHomeView(
                 channel: .agent,
                 onOpenConversation: { agentsPath.append($0) },
-                onOpenNewChat: { agentsPath.append($0) }
+                onOpenNewChat: { agentsPath.append($0) },
+                onOpenArchivedChats: {
+                    agentsPath.append(ArchivedChatsRoute(channel: .agent))
+                }
             )
         }
         .kordiTabBarVisibility(isRoot: agentsPath.isEmpty)

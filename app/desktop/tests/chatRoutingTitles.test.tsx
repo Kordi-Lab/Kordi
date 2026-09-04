@@ -125,7 +125,7 @@ test('canonical read model sorts group latest by chat activity instead of metada
   assert.equal(emptyConversation?._updatedAtMs, 0);
 });
 
-test('canonical read model names chat-created direct and group sessions from the first user message', () => {
+test('canonical read model keeps direct titles while group channels use deterministic defaults', () => {
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
     profile: {
@@ -192,9 +192,9 @@ test('canonical read model names chat-created direct and group sessions from the
   const groupSpace = buildParticipantSpaces(conversations).find((space) => space.id === 'group:session:group:crew-root');
 
   assert.equal(directConversation?.name, 'Plan lunch tomorrow with the launch notes before');
-  assert.equal(groupConversation?.name, 'Review launch plan and assign owners before demo');
+  assert.equal(groupConversation?.name, 'Channel 1');
   assert.equal(groupSpace?.title, 'Design crew');
-  assert.equal(groupSpace?.sessions[0]?.title, 'Review launch plan and assign owners before demo');
+  assert.equal(groupSpace?.sessions[0]?.title, 'Channel 1');
 });
 
 test('canonical read model titles private self-agent forks from the first new turn, not inherited snapshots', () => {
@@ -248,7 +248,7 @@ test('canonical read model titles private self-agent forks from the first new tu
 });
 
 
-test('canonical read model ignores inherited manual title metadata when session title is still New session', () => {
+test('canonical read model replaces inherited placeholder group titles with deterministic defaults', () => {
   const sessionId = 'session:group:new-child';
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
@@ -303,9 +303,9 @@ test('canonical read model ignores inherited manual title metadata when session 
   const groupConversation = conversations.find((conversation) => conversation.id === sessionId);
   const groupSpace = buildParticipantSpaces(conversations).find((space) => space.id === 'group:session:group:root');
 
-  assert.equal(groupConversation?.name, 'HEY GUES');
+  assert.equal(groupConversation?.name, 'Channel 1');
   assert.equal(groupSpace?.title, 'Good group');
-  assert.equal(groupSpace?.sessions[0]?.title, 'HEY GUES');
+  assert.equal(groupSpace?.sessions[0]?.title, 'Channel 1');
 });
 
 test('canonical read model prefers a manually renamed session title over the first user message', () => {
@@ -358,7 +358,7 @@ test('canonical read model prefers a manually renamed session title over the fir
   assert.equal(space?.sessions[0]?.title, 'Renamed lunch thread');
 });
 
-test('canonical read model keeps group space names separate from first-message session titles after group rename', () => {
+test('canonical read model keeps group space names separate from deterministic channel titles after group rename', () => {
   const sessionId = 'session:group:renamed-space';
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
@@ -406,7 +406,7 @@ test('canonical read model keeps group space names separate from first-message s
   const space = buildParticipantSpaces(conversations).find((item) => item.id === `group:${sessionId}`);
 
   assert.equal(space?.title, 'Atestgroup');
-  assert.equal(space?.sessions[0]?.title, 'hello guys');
+  assert.equal(space?.sessions[0]?.title, 'Channel 1');
 });
 
 test('canonical read model can show a manually renamed group session without changing the group space name', () => {

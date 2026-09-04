@@ -23,7 +23,6 @@ import type {
   DesktopChatState,
 } from '@/kordi-app/types';
 import {
-  appendCanonicalMessage,
   archiveDesktopChatSession,
   renameCanonicalSession,
   renameDesktopChatSession,
@@ -32,43 +31,13 @@ import {
 import {
   activeGroupAdminIds,
   canonicalGroupParticipantsForSession,
-  canonicalIdentityDisplayName,
   metadataGroupSpaceId,
   removeSessionFromCanonicalState,
   removeSessionFromDesktopState,
   sessionMetadataRecord,
-  sessionRenameNoticeText,
   shouldUseCloudSessionAction,
 } from './useKordiAppModelHelpers';
-
-export async function appendCanonicalRenameNotice(
-  state: CanonicalSessionState,
-  sessionId: string,
-  title: string,
-  scope: 'group' | 'session',
-  actorIdentityId: string,
-) {
-  const actorName = canonicalIdentityDisplayName(state, actorIdentityId);
-  const now = Date.now();
-  return appendCanonicalMessage({
-    sessionId,
-    senderIdentityId: actorIdentityId,
-    senderRole: 'system',
-    messageKind: 'status',
-    contentText: sessionRenameNoticeText(actorName, title, scope),
-    content: {
-      kind: 'session-title-update',
-      scope,
-      title,
-      actorDisplayName: actorName,
-    },
-    createdAtMs: now,
-    status: 'complete',
-    sourceTransport: 'desktop-local-session-update',
-    sourceEventId:
-      `desktop-local-session-update:${sessionId}:${scope}:${now}`,
-  });
-}
+import { appendCanonicalRenameNotice } from './canonicalRenameNotice';
 
 type UseKordiChatSessionActionsArgs = {
   account: CloudAccount | null;
@@ -84,6 +53,16 @@ type UseKordiChatSessionActionsArgs = {
   setCloudSessionUnread: (sessionId: string, unread: boolean) => Promise<void>;
   markCloudSessionsRead: (sessionIds: string[]) => Promise<void>;
   setCloudGroupSpacePinned: (groupSpaceId: string, pinned: boolean) => Promise<void>;
+  setCloudGroupSpaceMuted: (
+    groupSpaceId: string,
+    sessionIds: string[],
+    muted: boolean,
+  ) => Promise<void>;
+  setCloudGroupSpaceArchived: (
+    groupSpaceId: string,
+    sessionIds: string[],
+    archived: boolean,
+  ) => Promise<void>;
   refreshCanonicalState: () => Promise<void>;
   refreshDesktopChat: (activeSessionId?: string) => Promise<void>;
   sendCloudGroupControl: (
@@ -113,6 +92,8 @@ export function useKordiChatSessionActions({
   setCloudSessionUnread,
   markCloudSessionsRead,
   setCloudGroupSpacePinned,
+  setCloudGroupSpaceMuted,
+  setCloudGroupSpaceArchived,
   refreshCanonicalState,
   refreshDesktopChat,
   sendCloudGroupControl,
@@ -469,6 +450,30 @@ export function useKordiChatSessionActions({
     );
   }, [isNativeShell, runChatListAction, setCloudGroupSpacePinned]);
 
+  const setGroupMuted = useCallback(async (
+    groupSpaceId: string,
+    sessionIds: string[],
+    muted: boolean,
+  ) => {
+    if (!isNativeShell) return;
+    await runChatListAction(
+      () => setCloudGroupSpaceMuted(groupSpaceId, sessionIds, muted),
+      muted ? 'Unable to mute group' : 'Unable to unmute group',
+    );
+  }, [isNativeShell, runChatListAction, setCloudGroupSpaceMuted]);
+
+  const setGroupArchived = useCallback(async (
+    groupSpaceId: string,
+    sessionIds: string[],
+    archived: boolean,
+  ) => {
+    if (!isNativeShell) return;
+    await runChatListAction(
+      () => setCloudGroupSpaceArchived(groupSpaceId, sessionIds, archived),
+      archived ? 'Unable to archive group' : 'Unable to restore group',
+    );
+  }, [isNativeShell, runChatListAction, setCloudGroupSpaceArchived]);
+
   return {
     renameSession,
     archiveSession,
@@ -478,6 +483,8 @@ export function useKordiChatSessionActions({
     setSessionUnread,
     markSessionsRead,
     setGroupPinned,
+    setGroupMuted,
+    setGroupArchived,
     deleteSession,
   };
 }

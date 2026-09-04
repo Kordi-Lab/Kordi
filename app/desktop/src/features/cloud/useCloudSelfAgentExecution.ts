@@ -41,6 +41,7 @@ import {
   cloudAgentRuntimeRouteAfterModelChange,
   cloudAgentRuntimeRouteForTargetCloudAgent,
   cloudAgentRuntimeSessionId,
+  cloudSelfAgentRuntimeSessionId,
   latestCloudAgentRuntimeRouteChangeBeforeRequest,
 } from './cloudAgentRuntime';
 import {
@@ -67,6 +68,8 @@ import {
   localSelfAgentRequestClientMessageIds,
 } from './cloudSelfAgentExecutionState';
 import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
+import { planCloudSelfAgentCanonicalSync } from './cloudSelfAgentCanonicalSync';
+import { persistCloudSelfAgentCanonicalSyncPlan } from './cloudSelfAgentCanonicalSyncExecution';
 export {
   cloudSelfAgentExecutionCanStart,
   cloudSelfAgentHasTerminalResponse,
@@ -173,6 +176,7 @@ export function useCloudSelfAgentExecution({
       runtimeReady,
     })) return;
     if (!account) return;
+    if (!canonicalState) return;
     const isInactive = () => (
       activeAccountIdRef.current !== account.accountId
     );
@@ -187,17 +191,15 @@ export function useCloudSelfAgentExecution({
     for (const request of candidates) {
       if (processedRequestIdsRef.current.has(request.messageId)) continue;
       const candidateSessionId = request.sessionId?.trim() ?? '';
-      const candidateRuntimeSessionId = cloudAgentRuntimeSessionId(
-        account.accountId,
-        candidateSessionId,
-      );
+      const candidateRuntimeSessionId = cloudSelfAgentRuntimeSessionId(candidateSessionId);
       if (!candidateRuntimeSessionId) continue;
       const latestSessionRoute = latestCloudAgentRuntimeRouteChangeBeforeRequest(
         selfMessages,
         request,
       );
       const requestRoute = cloudDirectMessageAgentRuntimeRoute(request.body);
-      const storedSessionRoute = routesBySessionId?.[candidateRuntimeSessionId];
+      const storedSessionRoute = routesBySessionId?.[candidateRuntimeSessionId]
+        ?? routesBySessionId?.[cloudAgentRuntimeSessionId(account.accountId, candidateSessionId) ?? ''];
       // Every cross-device request carries the immutable route selected when
       // it was sent. A model-change notice is transcript/UI state and may be
       // delayed or absent after a definition refresh; it must never block the
@@ -222,7 +224,6 @@ export function useCloudSelfAgentExecution({
             [candidateRuntimeSessionId]: eventConvergedSessionRoute,
           }
         : routesBySessionId;
-      processedRequestIdsRef.current.add(request.messageId);
       const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
         if (
           isInactive()
@@ -234,7 +235,7 @@ export function useCloudSelfAgentExecution({
         }));
       };
 
-      void (async () => {
+      const executeRequest = async () => {
         const session = await loadSession();
         const sessionId = request.sessionId?.trim() ?? '';
         if (!session?.token || !sessionId || isInactive()) {
@@ -261,15 +262,17 @@ export function useCloudSelfAgentExecution({
           await syncMessages();
           return;
         }
+        await persistCloudSelfAgentCanonicalSyncPlan(planCloudSelfAgentCanonicalSync({
+          account,
+          messages: [request, claim.message],
+          state: canonicalState,
+        }), { shouldContinue: () => !isInactive() });
         void syncMessages().catch((error) => reportWarning(
           '[cloud-self-agent-execution] claim sync failed',
           error,
         ));
 
-        const runtimeSessionId = cloudAgentRuntimeSessionId(
-          account.accountId,
-          sessionId,
-        );
+        const runtimeSessionId = cloudSelfAgentRuntimeSessionId(sessionId);
         if (!runtimeSessionId) {
           processedRequestIdsRef.current.delete(request.messageId);
           return;
@@ -305,8 +308,9 @@ export function useCloudSelfAgentExecution({
         ];
 
         let publishChain = Promise.resolve();
-        let lastPublishedAtMs = Date.now();
+        let lastPublishedAtMs = 0;
         let lastFingerprint = '';
+        let lastPublishedPhase: string | null = null;
         let revision = 0;
         const queueProgress = (turn: DesktopChatTurnSnapshot) => {
           rememberLocalTurn(turn);
@@ -321,9 +325,12 @@ export function useCloudSelfAgentExecution({
           const publishAfterMs = changed
             ? CLOUD_SELF_AGENT_EXECUTION_STREAM_MS
             : CLOUD_SELF_AGENT_HEARTBEAT_MS;
-          if (nowMs - lastPublishedAtMs < publishAfterMs) return;
+          const admissionChanged = lastPublishedPhase === null
+            || (lastPublishedPhase === 'queued') !== (execution.phase === 'queued');
+          if (!admissionChanged && nowMs - lastPublishedAtMs < publishAfterMs) return;
           lastPublishedAtMs = nowMs;
           lastFingerprint = fingerprint;
+          lastPublishedPhase = execution.phase;
           revision += 1;
           const publishRevision = revision;
           publishChain = publishChain.then(async () => {
@@ -386,8 +393,12 @@ export function useCloudSelfAgentExecution({
               requestRoute,
             }),
             contextMessages,
+            [],
+            null,
+            request.messageId,
           );
           rememberLocalTurn(startedTurn);
+          queueProgress(startedTurn);
           turnIdsByRequestIdRef.current.set(
             request.messageId,
             startedTurn.id,
@@ -469,12 +480,11 @@ export function useCloudSelfAgentExecution({
         if (isInactive()) return;
         mergeMessage(response);
         await syncMessages();
-      })().catch((error) => {
+      };
+      processedRequestIdsRef.current.add(request.messageId);
+      void executeRequest().catch((error) => {
         processedRequestIdsRef.current.delete(request.messageId);
-        reportWarning(
-          '[cloud-self-agent-execution] request failed',
-          error,
-        );
+        reportWarning('[cloud-self-agent-execution] request failed', error);
       });
     }
   }, [

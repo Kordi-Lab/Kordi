@@ -305,10 +305,10 @@ async fn sync(
             Ok(sequence) => sequence,
             Err(_) => {
                 return error_response(
-                    StatusCode::BAD_REQUEST,
-                    "INVALID_SYNC_CURSOR",
+                    StatusCode::CONFLICT,
+                    "SYNC_CURSOR_EXPIRED",
                     "The sync cursor is invalid for this account.",
-                    None,
+                    Some(json!({ "bootstrap_required": true })),
                 );
             }
         },

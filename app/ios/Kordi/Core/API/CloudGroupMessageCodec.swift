@@ -130,13 +130,6 @@ struct CloudGroupMessagePayload: Codable, Hashable {
     }
 }
 
-struct CloudGroupForkPayload: Codable, Hashable {
-    let forkSessionId: String
-    let parentSessionId: String
-    let parentMessageId: String?
-    let createdAtMs: Double?
-}
-
 struct CloudGroupMemberJoin: Codable, Hashable {
     let eventId: String
     let accountId: String
@@ -162,8 +155,8 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
     let actor: CloudGroupParticipant
     let participants: [CloudGroupParticipant]
     let sessionTitle: CloudGroupSessionTitleSnapshot?
+    let sessionTitleSyncOnly: Bool?
     let memberJoins: [CloudGroupMemberJoin]?
-    let fork: CloudGroupForkPayload?
     let message: CloudGroupMessagePayload?
 
     init(
@@ -175,8 +168,8 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         actor: CloudGroupParticipant,
         participants: [CloudGroupParticipant],
         sessionTitle: CloudGroupSessionTitleSnapshot? = nil,
+        sessionTitleSyncOnly: Bool? = nil,
         memberJoins: [CloudGroupMemberJoin]? = nil,
-        fork: CloudGroupForkPayload? = nil,
         message: CloudGroupMessagePayload?
     ) {
         self.kind = kind
@@ -187,8 +180,8 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         self.actor = actor
         self.participants = participants
         self.sessionTitle = sessionTitle
+        self.sessionTitleSyncOnly = sessionTitleSyncOnly
         self.memberJoins = memberJoins
-        self.fork = fork
         self.message = message
     }
 }
@@ -200,9 +193,31 @@ enum CloudGroupMessageCodec {
         "group-message",
         "group-update",
         "group-title-update",
-        "session-title-update",
-        "session-fork"
+        "session-title-update"
     ]
+
+    static func titleUpdateNotice(
+        for envelope: CloudGroupControlEnvelope
+    ) -> (text: String, messageKind: String)? {
+        let actorName = envelope.actor.displayName.nonEmpty ?? "Someone"
+        if envelope.kind == "group-title-update",
+           let title = envelope.groupTitle?.nonEmpty {
+            return (
+                "\(actorName) changed the group name to \(title)",
+                ChatMessage.groupTitleUpdateMessageKind
+            )
+        }
+        if envelope.kind == "session-title-update",
+           envelope.sessionTitleSyncOnly != true,
+           let title = envelope.sessionTitle?.title.nonEmpty
+            ?? envelope.groupTitle?.nonEmpty {
+            return (
+                "\(actorName) changed the channel name to \(title)",
+                ChatMessage.channelTitleUpdateMessageKind
+            )
+        }
+        return nil
+    }
     private final class ParsedEnvelopeBox: NSObject {
         let envelope: CloudGroupControlEnvelope?
 
@@ -226,9 +241,9 @@ enum CloudGroupMessageCodec {
             createdByAccountId: envelope.createdByAccountId,
             actor: transportParticipant(envelope.actor),
             participants: envelope.participants.map(transportParticipant),
-            sessionTitle: envelope.sessionTitle,
+            sessionTitle: envelope.kind == "group-title-update" ? nil : envelope.sessionTitle,
+            sessionTitleSyncOnly: envelope.sessionTitleSyncOnly,
             memberJoins: envelope.memberJoins,
-            fork: envelope.fork,
             message: envelope.message
         )
         return prefix + base64URL(try JSONEncoder().encode(normalized))

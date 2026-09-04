@@ -9,7 +9,10 @@ import {
   cancelDesktopChatTurn,
   upsertCanonicalMessageFast,
 } from '@/lib/desktop';
-import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
+import {
+  desktopSharedRequestAlreadyStarted,
+  startDesktopSharedChatMessage,
+} from '@/lib/desktopBackgroundSessions';
 import type {
   AppendCanonicalMessageRequest,
   DesktopChatTurnSnapshot,
@@ -23,6 +26,7 @@ import {
 import { cloudAgentPublicBackgroundToolsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   cloudAgentRuntimeRouteForTargetCloudAgent,
+  cloudGroupAgentRequestRuntimeSessionId,
 } from './cloudAgentRuntime';
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 import {
@@ -197,7 +201,10 @@ export async function respondToCloudGroupAgentMention(
   ];
   const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
     if (signal.aborted) return;
-    runtime.setLocalTurns((current) => ({ ...current, [message.id]: turn }));
+    runtime.setLocalTurns((current) => ({
+      ...current,
+      [message.id]: { ...turn, replyToMessageId: message.id },
+    }));
   };
   const runtimeStartSpan = beginChatPerformanceSpan(
     'cloud-agent-runtime-start',
@@ -206,7 +213,7 @@ export async function respondToCloudGroupAgentMention(
   try {
     startedTurn = await startDesktopSharedChatMessage(
       message.id,
-      runtimeSessionId,
+      cloudGroupAgentRequestRuntimeSessionId(runtimeSessionId, message.id),
       promptTextForCloudAgentMention(message.text),
       mappedAttachments
         .map((attachment) => attachment.localPath?.trim() || '')
@@ -229,6 +236,7 @@ export async function respondToCloudGroupAgentMention(
     finishChatPerformanceSpan(runtimeStartSpan, { resultClass: 'success' });
   } catch (error) {
     finishChatPerformanceSpan(runtimeStartSpan, { resultClass: 'failed' });
+    if (desktopSharedRequestAlreadyStarted(error)) return;
     throw error;
   }
   rememberLocalTurn(startedTurn);

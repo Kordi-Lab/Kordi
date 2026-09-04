@@ -29,10 +29,7 @@ export function cloudGroupMessageTargetsLocalAgent(
   account: CloudAccount,
   participants: readonly CloudGroupParticipant[] = [],
 ): boolean {
-  if (
-    message.forkSnapshot === true
-    || !cloudMessageActionAllowsAgentTrigger(message.messageAction)
-  ) return false;
+  if (!cloudMessageActionAllowsAgentTrigger(message.messageAction)) return false;
   if (message.senderKind === 'agent') {
     return cloudGroupAgentHandoffTargetsAccount(
       { message, participants: [...participants] },
@@ -40,14 +37,19 @@ export function cloudGroupMessageTargetsLocalAgent(
     );
   }
   const targetCloudAgentId = cleanCloudText(message.targetCloudAgentId);
+  const targetCloudAgentOwnerAccountId = cleanCloudText(
+    message.targetCloudAgentOwnerAccountId,
+  );
   const targetsOwnedCloudAgent = Boolean(
     (
       targetCloudAgentId.startsWith('cloud_agent_')
       || targetCloudAgentId === defaultCloudAgentId(account.accountId)
     )
-    && cleanCloudText(message.targetCloudAgentOwnerAccountId)
-      === account.accountId,
+    && targetCloudAgentOwnerAccountId === account.accountId,
   );
+  if (targetCloudAgentId || targetCloudAgentOwnerAccountId) {
+    return targetsOwnedCloudAgent;
+  }
   return targetsOwnedCloudAgent || cloudMessageMentionsLocalAgent(
     message.text,
     account,
@@ -83,7 +85,6 @@ export function cloudGroupNativeContextMessages({
       const message = envelope.message;
       if (message.id === requestMessageId) return [];
       if (message.createdAtMs > requestCreatedAtMs) return [];
-      if (message.forkSnapshot === true) return [];
       if (
         !cloudMessageActionAllowsAgentContext(message.messageAction)
       ) return [];

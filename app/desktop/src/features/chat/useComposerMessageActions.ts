@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { isCloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import type { CollaborationAgentRequestControl, ComposerScope } from '@/kordi-app/types';
+import type { ComposerMentionOption } from '@/kordi-app/components';
 import { cancelDesktopChatTurn } from '@/lib/desktop';
 
 import type { UseComposerControllerArgs } from './composerController.types';
@@ -119,11 +120,16 @@ export function useComposerMessageActions({
   const pendingCollaborationCancelRequestedRef = useRef(false);
   const collaborationSendInFlightConversationIdsRef = useRef(new Set<string>());
   const localChatSendInFlightRef = useRef<LocalChatSendInFlight | null>(null);
+  const selectedChatAgentMentionRef = useRef<ComposerMentionOption | null>(null);
   const userCancelledTurnIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     pendingCollaborationOutreachRef.current = pendingCollaborationOutreach;
   }, [pendingCollaborationOutreach]);
+
+  useEffect(() => {
+    selectedChatAgentMentionRef.current = null;
+  }, [activeConvId]);
 
   useEffect(() => {
     if (!pendingCollaborationOutreach) return;
@@ -208,6 +214,7 @@ export function useComposerMessageActions({
     pendingCollaborationCancelRequestedRef,
     collaborationSendInFlightConversationIdsRef,
     localChatSendInFlightRef,
+    selectedChatAgentMentionRef,
     userCancelledTurnIdsRef,
     refreshDesktopChat,
     setActiveConvId,
@@ -256,6 +263,9 @@ export function useComposerMessageActions({
     watchDesktopLiveTurn,
   });
 
+  const acceptChatMentionTarget = useCallback((option: ComposerMentionOption) => {
+    selectedChatAgentMentionRef.current = option.targetKind === 'agent' ? option : null;
+  }, []);
   const stopCollaborationOutreach = useCallback(async (conversationId: string, requestId?: string | null) => {
     setDesktopChatError(null);
     const pendingOutreach = pendingCollaborationOutreachRef.current;
@@ -329,5 +339,6 @@ export function useComposerMessageActions({
     handleStopCollaborationAgentRequest,
     acceptChatSlashCommand: appendChatDraft,
     acceptProjectSlashCommand: appendProjectDraft,
+    acceptChatMentionTarget,
   };
 }

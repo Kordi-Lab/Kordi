@@ -250,6 +250,24 @@ export class ChatSyncSyncClient {
       messageId: event.entity_id,
       occurredAt: event.occurred_at,
     };
+    const sessionTitleEvent = conversation ? {
+      ...base,
+      eventType: 'session.title.updated',
+      messageId: null,
+      payload: {
+        sessionTitle: {
+          sessionId: conversation.legacy_session_id ?? conversation.id,
+          title: chatSyncSessionTitle(conversation),
+          titleSource: conversation.preferences.personal_title ? 'manual' : 'external',
+          titleRevision: conversation.version,
+          titlePolicyVersion: 1,
+          titleGeneratedFromMessageId: null,
+          updatedAtMs: Date.parse(conversation.updated_at) || Date.now(),
+          updatedByAccountId: conversation.created_by_account_id,
+          updatedAt: conversation.updated_at,
+        },
+      },
+    } satisfies CloudSyncEvent : null;
     if (event.type === 'call.created' || event.type === 'call.updated') {
       return [{
         ...base,
@@ -290,7 +308,7 @@ export class ChatSyncSyncClient {
       const messageValue = event.payload.message;
       if (!messageValue || typeof messageValue !== 'object' || Array.isArray(messageValue)) return [];
       const message = messageValue as ChatSyncMessage;
-      return [{
+      const messageEvent = {
         ...base,
         eventType: 'message.upsert',
         peerAccountId: conversationPeer(
@@ -303,28 +321,15 @@ export class ChatSyncSyncClient {
           message: cloudMessageFromChatSync(message, conversation),
           ...(event.type === 'reaction.updated' ? { reactionStateConfirmed: true } : {}),
         },
-      }];
+      } satisfies CloudSyncEvent;
+      return event.type === 'message.created' && sessionTitleEvent
+        ? [messageEvent, sessionTitleEvent]
+        : [messageEvent];
     }
     if ((event.type === 'conversation.created'
       || event.type === 'conversation.updated'
       || event.type === 'membership.updated') && conversation) {
-      return [{
-        ...base,
-        eventType: 'session.title.updated',
-        payload: {
-          sessionTitle: {
-            sessionId: conversation.legacy_session_id ?? conversation.id,
-            title: chatSyncSessionTitle(conversation),
-            titleSource: conversation.preferences.personal_title ? 'manual' : 'external',
-            titleRevision: conversation.version,
-            titlePolicyVersion: 1,
-            titleGeneratedFromMessageId: null,
-            updatedAtMs: Date.parse(conversation.updated_at) || Date.now(),
-            updatedByAccountId: conversation.created_by_account_id,
-            updatedAt: conversation.updated_at,
-          },
-        },
-      }];
+      return [sessionTitleEvent!];
     }
     if ([
       'account.profile.updated',
