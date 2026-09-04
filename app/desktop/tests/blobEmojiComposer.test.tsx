@@ -70,13 +70,14 @@ test('typing or pasting a known token rehydrates it as an inline image', async (
     await act(async () => root.render(<Harness />));
     const editor = host.querySelector('[contenteditable="true"]') as HTMLDivElement;
     await act(async () => {
-      editor.textContent = 'Ask @Kordi';
+      editor.textContent = 'Ask @Kordi and @MayaChen via maya@example.com';
       editor.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
     });
-    const mentionSigil = editor.querySelector('[data-composer-mention-sigil]');
-    assert.equal(mentionSigil?.textContent, '@');
-    assert.equal(mentionSigil?.className, 'app-composer-mention-sigil');
-    assert.equal(blobEmojiComposerValue(editor), 'Ask @Kordi');
+    const mentions = Array.from(editor.querySelectorAll('[data-composer-mention]'));
+    assert.deepEqual(mentions.map((mention) => mention.textContent), ['@Kordi', '@MayaChen']);
+    assert.equal(mentions[0]?.classList.contains('app-message-mention-agent'), true);
+    assert.equal(mentions[1]?.classList.contains('app-message-mention-person'), true);
+    assert.equal(blobEmojiComposerValue(editor), 'Ask @Kordi and @MayaChen via maya@example.com');
 
     await act(async () => {
       editor.textContent = 'Hi :blob:blobwave:';
