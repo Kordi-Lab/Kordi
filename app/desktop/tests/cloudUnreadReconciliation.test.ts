@@ -259,6 +259,22 @@ test('switching sessions keeps the previous optimistic read hidden without clear
 
   assert.equal(mergeNativeCloudUnreadCounts({
     nativeHeadsBySessionId: {
+      [firstSessionId]: { lastReadSequence: 4, unreadCount: 2 },
+    },
+    optimisticSessionIds: new Set(),
+    projectedUnreadBySessionId: { [firstSessionId]: 1 },
+  })[firstSessionId], 2);
+
+  assert.equal(mergeNativeCloudUnreadCounts({
+    nativeHeadsBySessionId: {
+      [firstSessionId]: { lastReadSequence: 5, unreadCount: 0 },
+    },
+    optimisticSessionIds: new Set(),
+    projectedUnreadBySessionId: { [firstSessionId]: 1 },
+  })[firstSessionId], 0);
+
+  assert.equal(mergeNativeCloudUnreadCounts({
+    nativeHeadsBySessionId: {
       [firstSessionId]: { lastReadSequence: 4, unreadCount: 1 },
     },
     locallyReadSessionIds: new Set([firstSessionId]),

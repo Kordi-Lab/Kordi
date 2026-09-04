@@ -470,7 +470,8 @@ test('cloud group hosted-agent metadata targets the owner runtime even when text
   const agentSource = `${cloudGroupAgentControlSource()}\n${cloudGroupAgentExecutionSource()}`;
   assert.match(stateSource, /export function cloudGroupMessageTargetsLocalAgent/);
   assert.match(stateSource, /cloudMessageActionAllowsAgentTrigger\(message\.messageAction\)/);
-  assert.match(stateSource, /cleanCloudText\(message\.targetCloudAgentOwnerAccountId\)[\s\S]*?=== account\.accountId/);
+  assert.match(stateSource, /targetCloudAgentOwnerAccountId === account\.accountId/);
+  assert.match(stateSource, /if \(targetCloudAgentId \|\| targetCloudAgentOwnerAccountId\) \{\s*return targetsOwnedCloudAgent;/);
   assert.match(stateSource, /targetCloudAgentId\.startsWith\('cloud_agent_'\)/);
   assert.match(stateSource, /targetsOwnedCloudAgent \|\| cloudMessageMentionsLocalAgent/);
   assert.match(agentSource, /policy\.messageTargetsLocalAgent\([\s\S]*message,[\s\S]*account,[\s\S]*envelope\.participants/);

@@ -181,19 +181,7 @@ struct ConversationRow: View {
     }
 
     private var relativeTimestamp: String {
-        let elapsed = max(0, Date().timeIntervalSince(conversation.lastActivityAt))
-        switch elapsed {
-        case ..<60:
-            return "Now"
-        case ..<3_600:
-            return "\(Int(elapsed / 60))m"
-        case ..<86_400:
-            return "\(Int(elapsed / 3_600))h"
-        case ..<604_800:
-            return "\(Int(elapsed / 86_400))d"
-        default:
-            return conversation.lastActivityAt.formatted(.dateTime.month(.abbreviated).day())
-        }
+        chatListTimestamp(conversation.lastActivityAt)
     }
 
     private func shortOwnerName(_ name: String) -> String {

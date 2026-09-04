@@ -196,10 +196,7 @@ pub(super) fn mark_session_read_in_db(
                 FROM session_messages
                 WHERE id = ?2
                   AND session_id = ?3
-                  AND COALESCE(source_transport, '') NOT IN (
-                      'canonical-fork-snapshot',
-                      'cloud-group-fork-snapshot'
-                  )
+                  AND COALESCE(source_transport, '') != 'canonical-fork-snapshot'
                   AND LOWER(TRIM(status)) NOT IN ('sending', 'processing')
              )
              UPDATE session_participants AS participant

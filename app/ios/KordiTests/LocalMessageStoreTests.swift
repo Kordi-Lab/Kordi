@@ -149,6 +149,49 @@ final class LocalMessageStoreTests: XCTestCase {
         )
     }
 
+    func testDeletingSessionPurgesOnlyThatAccountsConversationAndMessages() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let obsolete = conversation(
+            id: "person:obsolete",
+            displayName: "Obsolete",
+            sessionId: "session:obsolete"
+        )
+        let retained = conversation(
+            id: "person:retained",
+            displayName: "Retained",
+            sessionId: "session:retained"
+        )
+        let obsoleteMessage = message(
+            id: "obsolete-message",
+            conversationID: obsolete.id,
+            text: "Obsolete"
+        )
+        let retainedMessage = message(
+            id: "retained-message",
+            conversationID: retained.id,
+            text: "Retained"
+        )
+        store.saveConversations([obsolete, retained], accountId: "account-a")
+        store.saveMessages([obsoleteMessage], conversationId: obsolete.id, accountId: "account-a")
+        store.saveMessages([retainedMessage], conversationId: retained.id, accountId: "account-a")
+        store.saveConversations([obsolete], accountId: "account-b")
+        store.saveMessages([obsoleteMessage], conversationId: obsolete.id, accountId: "account-b")
+
+        store.deleteSession(obsolete.sessionId, accountId: "account-a")
+
+        XCTAssertEqual(store.loadConversations(accountId: "account-a"), [retained])
+        XCTAssertTrue(store.loadMessages(accountId: "account-a", conversationId: obsolete.id).isEmpty)
+        XCTAssertEqual(
+            store.loadMessages(accountId: "account-a", conversationId: retained.id),
+            [retainedMessage]
+        )
+        XCTAssertEqual(store.loadConversations(accountId: "account-b"), [obsolete])
+        XCTAssertEqual(
+            store.loadMessages(accountId: "account-b", conversationId: obsolete.id),
+            [obsoleteMessage]
+        )
+    }
+
     func testCacheRoundTripsMessageReactions() throws {
         let store = try LocalMessageStore(inMemory: true)
         let conversationID = "person:reaction-contact"
@@ -464,7 +507,11 @@ final class LocalMessageStoreTests: XCTestCase {
         )
     }
 
-    private func conversation(id: String, displayName: String) -> ConversationSummary {
+    private func conversation(
+        id: String,
+        displayName: String,
+        sessionId: String = "session:shared-contact"
+    ) -> ConversationSummary {
         ConversationSummary(
             id: id,
             kind: .person,
@@ -477,7 +524,7 @@ final class LocalMessageStoreTests: XCTestCase {
             unreadCount: 0,
             avatarSource: nil,
             agentActivity: nil,
-            sessionId: "session:shared-contact"
+            sessionId: sessionId
         )
     }
 

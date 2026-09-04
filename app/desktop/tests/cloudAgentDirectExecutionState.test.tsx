@@ -225,6 +225,9 @@ test('shared direct and group requests route before reserving the parent runtime
 
   assert.match(directSource, /startDesktopSharedChatMessage\(\s*message\.messageId,/);
   assert.match(groupSource, /startDesktopSharedChatMessage\(\s*message\.id,/);
+  assert.match(groupSource, /\[message\.id\]: \{ \.\.\.turn, replyToMessageId: message\.id \}/);
+  assert.match(directSource, /desktopSharedRequestAlreadyStarted\(error\)\) return/);
+  assert.match(groupSource, /desktopSharedRequestAlreadyStarted\(error\)\) return/);
   assert.match(desktopSource, /desktop_chat_start_shared_message/);
 });
 

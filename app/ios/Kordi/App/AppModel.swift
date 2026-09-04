@@ -243,6 +243,7 @@ final class AppModel: ObservableObject {
     private var cloudRealtimeTask: Task<Void, Never>?
     private var cloudRealtimeSyncWakeTask: Task<Void, Never>?
     private var expressiveMediaSyncTask: Task<Void, Never>?
+    private var agentRunTasks: [String: Task<Void, Never>] = [:]
     private var expressiveMediaSyncTaskID: UUID?
     private var knownStickerAttachmentSignatures = Set<String>()
     private var cloudSyncCursor = "0"
@@ -265,7 +266,7 @@ final class AppModel: ObservableObject {
     private var deletedCloudSessionIds = Set<String>()
     private var sessionVisibilityMutationRevision = 0
     private var pendingSessionVisibilityMutationCount = 0
-    private var pendingAgentRequestIds: [String: String] = [:]
+    private var pendingAgentRequestIds: [String: [String]] = [:]
     private var pendingAgentRequestStartedAt: [String: Date] = [:]
     private var pendingAgentDisplayNames: [String: String] = [:]
     private var pendingAgentOwnerNames: [String: String] = [:]
@@ -287,7 +288,6 @@ final class AppModel: ObservableObject {
     private var conversationReadPresentations: [UUID: ConversationReadPresentation] = [:]
     private var pendingVisibleReadMessageBySessionID: [String: String] = [:]
     private var persistedVisibleReadMessageBySessionID: [String: String] = [:]
-    private var sessionTitleOverrides: [String: String] = UserDefaults.standard.dictionary(forKey: "kordi.session-title-overrides") as? [String: String] ?? [:]
     private let previewMode: Bool
     private let previewLaunchFlow: Bool
 
@@ -340,6 +340,7 @@ final class AppModel: ObservableObject {
         self.presencePublisher = CloudPresencePublisher(api: api)
         self.previewMode = previewMode
         self.previewLaunchFlow = previewLaunchFlow
+        UserDefaults.standard.removeObject(forKey: "kordi.session-title-overrides")
         if ProcessInfo.processInfo.arguments.contains("--preview-launching") {
             // Keep the initial phase so the network-free launch surface remains visible.
         } else if ProcessInfo.processInfo.arguments.contains("--preview-login")
@@ -355,6 +356,7 @@ final class AppModel: ObservableObject {
         cloudRealtimeTask?.cancel()
         cloudRealtimeSyncWakeTask?.cancel()
         expressiveMediaSyncTask?.cancel()
+        agentRunTasks.values.forEach { $0.cancel() }
     }
 
     func start() async {
@@ -564,6 +566,8 @@ final class AppModel: ObservableObject {
         pendingVisibleReadMessageBySessionID = [:]
         persistedVisibleReadMessageBySessionID = [:]
         pendingAgentRequestIds = [:]
+        agentRunTasks.values.forEach { $0.cancel() }
+        agentRunTasks = [:]
         pendingAgentRequestStartedAt = [:]
         pendingAgentDisplayNames = [:]
         pendingAgentOwnerNames = [:]
@@ -676,7 +680,6 @@ final class AppModel: ObservableObject {
                 + shared.map(\.ownerAccountId)
             )
             let history = await loadMessageHistories(token: token, peerAccountIds: peerAccountIds)
-            applySyncedSessionTitles(await api.cachedChatSessionTitles())
             let canonicalGroupSessionIds = await api.cachedChatConversations()
                 .filter { $0.kind == "group" && $0.latestMessageSequence > 0 }
                 .compactMap { $0.legacySessionId?.nonEmpty ?? $0.id.nonEmpty }
@@ -1485,6 +1488,7 @@ final class AppModel: ObservableObject {
                     ?? conversation.agentDisplayName?.nonEmpty
                     ?? "Kordi",
                 agentOwnerName: routedAgent?.ownerName
+                    ?? (conversation.kind == .agent ? conversation.ownerDisplayName : nil)
             )
         }
         cacheCurrentMessages(conversation.id)
@@ -1596,7 +1600,7 @@ final class AppModel: ObservableObject {
                 outgoingAttachments.forEach { $0.discardOwnedFile() }
                 clearPendingSendMetadata(localId)
                 if mentionTarget?.kind == .agent {
-                    await startAgentRun(
+                    startAgentRunInBackground(
                         conversation: conversation,
                         requestMessageId: localId,
                         ownerAccountId: mentionTarget?.accountId ?? conversation.peerAccountId,
@@ -1675,7 +1679,7 @@ final class AppModel: ObservableObject {
             clearPendingSendMetadata(localId)
 
             if conversation.kind == .agent || routedAgent != nil || routesToSupportAgent {
-                await startAgentRun(
+                startAgentRunInBackground(
                     conversation: conversation,
                     requestMessageId: sent.messageId,
                     ownerAccountId: routedAgent?.accountId ?? conversation.peerAccountId,
@@ -1695,9 +1699,8 @@ final class AppModel: ObservableObject {
                 }
             }
             recordCloudConnectionFailure(error)
-            if pendingAgentRequestIds[conversation.id] == localId {
-                clearPendingAgentRequest(conversationId: conversation.id)
-                setAgentActivity(.failed, conversationId: conversation.id)
+            if pendingAgentRequestIds[conversation.id, default: []].contains(localId) {
+                finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: localId, failed: true)
             }
             markMessageFailed(localId, error: userFacing(error, fallback: "Message not sent."))
         }
@@ -2048,44 +2051,44 @@ final class AppModel: ObservableObject {
     }
 
     func messages(for conversation: ConversationSummary) -> [ChatMessage] {
-        let messages = messagesByConversation[conversation.id] ?? []
-        guard let requestMessageId = pendingAgentRequestIds[conversation.id],
-              let startedAt = pendingAgentRequestStartedAt[conversation.id],
-              !messages.contains(where: {
-                  $0.author == .agent && $0.requestMessageId == requestMessageId
-              }) else {
-            return messages
-        }
+        var messages = messagesByConversation[conversation.id] ?? []
+        for requestMessageId in pendingAgentRequestIds[conversation.id, default: []] {
+            guard let startedAt = pendingAgentRequestStartedAt[requestMessageId],
+                  !messages.contains(where: {
+                      $0.author == .agent && $0.requestMessageId == requestMessageId
+                  }) else { continue }
 
-        let requestCreatedAt = messages.first(where: { $0.id == requestMessageId })?.createdAt
-            ?? startedAt
-        let placeholderCreatedAt = requestCreatedAt.addingTimeInterval(0.001)
-        let startedAtMs = startedAt.timeIntervalSince1970 * 1_000
-        let placeholder = ChatMessage(
-            id: "local-agent-progress:\(conversation.id)",
-            conversationId: conversation.id,
-            author: .agent,
-            authorName: pendingAgentDisplayNames[conversation.id] ?? "Kordi",
-            senderOwnerName: pendingAgentOwnerNames[conversation.id],
-            text: "processing...",
-            createdAt: placeholderCreatedAt,
-            deliveryState: .delivered,
-            errorMessage: nil,
-            requestMessageId: requestMessageId,
-            agentExecution: AgentExecutionSnapshot(
-                phase: .preparing,
-                summary: "Preparing the response",
-                steps: [],
-                thinkingText: nil,
-                tools: nil,
-                startedAtMs: startedAtMs,
-                updatedAtMs: startedAtMs,
-                completed: false
+            let requestCreatedAt = messages.first(where: { $0.id == requestMessageId })?.createdAt
+                ?? startedAt
+            let placeholderCreatedAt = requestCreatedAt.addingTimeInterval(0.001)
+            let startedAtMs = startedAt.timeIntervalSince1970 * 1_000
+            let placeholder = ChatMessage(
+                id: "local-agent-progress:\(conversation.id):\(requestMessageId)",
+                conversationId: conversation.id,
+                author: .agent,
+                authorName: pendingAgentDisplayNames[requestMessageId] ?? "Kordi",
+                senderOwnerName: pendingAgentOwnerNames[requestMessageId],
+                text: "processing...",
+                createdAt: placeholderCreatedAt,
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: requestMessageId,
+                agentExecution: AgentExecutionSnapshot(
+                    phase: .preparing,
+                    summary: "Preparing the response",
+                    steps: [],
+                    thinkingText: nil,
+                    tools: nil,
+                    startedAtMs: startedAtMs,
+                    updatedAtMs: startedAtMs,
+                    completed: false
+                )
             )
-        )
-        return (messages + [placeholder]).sorted {
-            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+            messages.append(placeholder)
         }
+        return AgentSessionQueuePresentation.apply(to: messages.sorted {
+            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+        }, kind: conversation.kind)
     }
 
     func pendingMentionMessages(for conversation: ConversationSummary) -> [ChatMessage] {
@@ -3124,32 +3127,50 @@ final class AppModel: ObservableObject {
     func renameConversation(_ conversation: ConversationSummary, to title: String) async -> Bool {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, let token, let account else { return false }
-        sessionTitleOverrides[conversation.sessionId] = cleanTitle
-        UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
-        if let index = conversations.firstIndex(where: { $0.id == conversation.id }) {
-            conversations[index].displayName = cleanTitle
+        if conversation.kind == .group,
+           !conversation.canManageGroup(accountId: account.accountId) {
+            errorMessage = "Only a group admin can rename this channel."
+            return false
         }
         do {
-            let kind: String = conversation.kind == .group
-                ? "group"
-                : (conversation.peerAccountId == account.accountId ? "ai" : "direct")
-            let members = conversation.kind == .group
-                ? conversation.groupParticipants.map(\.accountId)
-                : [conversation.peerAccountId]
-            let synced = try await api.updateSessionTitle(
-                token: token,
-                sessionId: conversation.sessionId,
-                title: cleanTitle,
-                peerAccountId: conversation.peerAccountId,
-                conversationKind: kind,
-                memberAccountIds: members
-            )
-            sessionTitleOverrides[conversation.sessionId] = synced.title
-            UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
+            if conversation.kind == .group {
+                var renamedConversation = conversation
+                renamedConversation.displayName = cleanTitle
+                let participants = groupParticipantsIncludingSelf(
+                    renamedConversation,
+                    account: account
+                )
+                try await sendGroupControl(
+                    kind: "session-title-update",
+                    conversation: renamedConversation,
+                    participants: participants,
+                    groupTitle: conversation.ownerDisplayName,
+                    targetAccountIds: Set(participants.map(\.accountId))
+                        .subtracting([account.accountId]),
+                    token: token,
+                    account: account
+                )
+            } else {
+                _ = try await api.updateSessionTitle(
+                    token: token,
+                    sessionId: conversation.sessionId,
+                    title: cleanTitle,
+                    peerAccountId: conversation.peerAccountId,
+                    conversationKind: conversation.peerAccountId == account.accountId ? "ai" : "direct",
+                    memberAccountIds: [conversation.peerAccountId]
+                )
+            }
+            cloudConnectionState = .connected
             await rebuildConversationCatalog()
             return true
         } catch {
-            errorMessage = "Renamed on this iPhone, but title sync failed. Try again when connected."
+            recordCloudConnectionFailure(error)
+            errorMessage = userFacing(
+                error,
+                fallback: conversation.kind == .group
+                    ? "Could not rename this channel."
+                    : "Could not rename this session."
+            )
             return false
         }
     }
@@ -3157,6 +3178,10 @@ final class AppModel: ObservableObject {
     func renameGroupSpace(_ space: GroupSpaceSummary, to title: String) async -> Bool {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanTitle.isEmpty, let token, let account else { return false }
+        guard space.canManage(accountId: account.accountId) else {
+            errorMessage = "Only a group admin can rename this group."
+            return false
+        }
         do {
             for conversation in space.membershipSessions {
                 let participants = groupParticipantsIncludingSelf(conversation, account: account)
@@ -3466,18 +3491,11 @@ final class AppModel: ObservableObject {
         if !previewMode {
             guard let token else { return false }
             do {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    for sessionId in sessionIds {
-                        group.addTask { [api] in
-                            try await api.setSessionMuted(
-                                token: token,
-                                sessionId: sessionId,
-                                muted: muted
-                            )
-                        }
-                    }
-                    try await group.waitForAll()
-                }
+                try await api.setGroupSpaceMuted(
+                    token: token,
+                    groupSpaceId: space.preferenceId,
+                    muted: muted
+                )
             } catch {
                 errorMessage = userFacing(
                     error,
@@ -3509,25 +3527,11 @@ final class AppModel: ObservableObject {
         if !previewMode {
             guard let token else { return false }
             do {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    for sessionId in sessionIds {
-                        group.addTask { [api] in
-                            try await api.setSessionArchived(
-                                token: token,
-                                sessionId: sessionId,
-                                archived: true
-                            )
-                        }
-                    }
-                    group.addTask { [api] in
-                        try await api.setGroupSpacePinned(
-                            token: token,
-                            groupSpaceId: space.preferenceId,
-                            pinned: false
-                        )
-                    }
-                    try await group.waitForAll()
-                }
+                try await api.setGroupSpaceArchived(
+                    token: token,
+                    groupSpaceId: space.preferenceId,
+                    archived: true
+                )
             } catch {
                 hiddenCloudSessionIds.subtract(sessionIds)
                 pinnedSessionIds.formUnion(pinnedSessionIdsBeforeArchive)
@@ -3557,18 +3561,11 @@ final class AppModel: ObservableObject {
         if !previewMode {
             guard let token else { return false }
             do {
-                try await withThrowingTaskGroup(of: Void.self) { group in
-                    for sessionId in sessionIds {
-                        group.addTask { [api] in
-                            try await api.setSessionArchived(
-                                token: token,
-                                sessionId: sessionId,
-                                archived: false
-                            )
-                        }
-                    }
-                    try await group.waitForAll()
-                }
+                try await api.setGroupSpaceArchived(
+                    token: token,
+                    groupSpaceId: space.preferenceId,
+                    archived: false
+                )
             } catch {
                 hiddenCloudSessionIds.formUnion(hiddenSessionIdsBeforeRestore)
                 deletedCloudSessionIds.formUnion(deletedSessionIdsBeforeRestore)
@@ -3721,7 +3718,6 @@ final class AppModel: ObservableObject {
         let wasPinned = pinnedSessionIds.contains(conversation.sessionId)
         let wasMuted = mutedSessionIds.contains(conversation.sessionId)
         let wasUnread = markedUnreadSessionIds.contains(conversation.sessionId)
-        let titleOverride = sessionTitleOverrides[conversation.sessionId]
         let messages = messagesByConversation[conversation.id]
         let activity = sessionActivityByID[conversation.sessionId]
         beginSessionVisibilityMutation()
@@ -3742,10 +3738,6 @@ final class AppModel: ObservableObject {
                 if wasPinned { pinnedSessionIds.insert(conversation.sessionId) }
                 if wasMuted { mutedSessionIds.insert(conversation.sessionId) }
                 if wasUnread { markedUnreadSessionIds.insert(conversation.sessionId) }
-                if let titleOverride {
-                    sessionTitleOverrides[conversation.sessionId] = titleOverride
-                }
-                UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
                 conversations.append(contentsOf: visibleRows)
                 conversations.sort { $0.lastActivityAt > $1.lastActivityAt }
                 archivedConversations.append(contentsOf: archivedRows)
@@ -3766,8 +3758,6 @@ final class AppModel: ObservableObject {
         pinnedSessionIds.remove(conversation.sessionId)
         mutedSessionIds.remove(conversation.sessionId)
         markedUnreadSessionIds.remove(conversation.sessionId)
-        sessionTitleOverrides.removeValue(forKey: conversation.sessionId)
-        UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
         conversations.removeAll { $0.sessionId == conversation.sessionId }
         archivedConversations.removeAll { $0.sessionId == conversation.sessionId }
         messagesByConversation.removeValue(forKey: conversation.id)
@@ -4312,6 +4302,31 @@ final class AppModel: ObservableObject {
         messagesByConversation[conversationId]?[index].attachmentUploadProgress = value
     }
 
+    private func startAgentRunInBackground(
+        conversation: ConversationSummary,
+        requestMessageId: String,
+        ownerAccountId: String,
+        prompt: String,
+        token: String,
+        account: CloudAccount,
+        runtimeRoute: CloudModelRouting?
+    ) {
+        guard agentRunTasks[requestMessageId] == nil else { return }
+        agentRunTasks[requestMessageId] = Task { [weak self] in
+            guard let self else { return }
+            await self.startAgentRun(
+                conversation: conversation,
+                requestMessageId: requestMessageId,
+                ownerAccountId: ownerAccountId,
+                prompt: prompt,
+                token: token,
+                account: account,
+                runtimeRoute: runtimeRoute
+            )
+            self.agentRunTasks[requestMessageId] = nil
+        }
+    }
+
     private func startAgentRun(
         conversation: ConversationSummary,
         requestMessageId: String,
@@ -4321,7 +4336,19 @@ final class AppModel: ObservableObject {
         account: CloudAccount,
         runtimeRoute: CloudModelRouting?
     ) async {
-        if pendingAgentRequestIds[conversation.id] != requestMessageId {
+        guard !Task.isCancelled, self.account?.accountId == account.accountId else { return }
+        if let state = CloudAgentLifecycleProjector.state(
+            forRequestId: requestMessageId,
+            in: Self.directWireMessages(for: conversation, in: cloudMessagesByPeer)
+        ), state.isTerminal {
+            finishPendingAgentRequest(
+                conversationId: conversation.id,
+                requestMessageId: requestMessageId,
+                failed: state == .failed
+            )
+            return
+        }
+        if !pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) {
             beginPendingAgentRequest(
                 conversationId: conversation.id,
                 requestMessageId: requestMessageId,
@@ -4329,6 +4356,15 @@ final class AppModel: ObservableObject {
                 agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "Kordi",
                 agentOwnerName: conversation.kind == .agent ? conversation.ownerDisplayName : nil
             )
+        }
+        // A queued Agent request must not race the executing Mac by claiming a
+        // fallback run while a previous request in this session is still active.
+        while conversation.kind == .agent,
+              messages(for: conversation).contains(where: {
+                  $0.id == requestMessageId && $0.agentQueuePosition != nil
+              }) {
+            do { try await Task.sleep(for: .seconds(1)) } catch { return }
+            guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else { return }
         }
         if ownerAccountId == account.accountId {
             agentExecutionLocation[conversation.id] = .mac(label: "your Mac")
@@ -4338,8 +4374,7 @@ final class AppModel: ObservableObject {
                 } catch {
                     return
                 }
-                await loadConversation(conversation)
-                guard pendingAgentRequestIds[conversation.id] == requestMessageId else {
+                guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else {
                     return
                 }
                 guard hasRecentDesktopExecutionHeartbeat(
@@ -4351,7 +4386,7 @@ final class AppModel: ObservableObject {
                         conversation,
                         requestMessageId: requestMessageId
                     )
-                    guard pendingAgentRequestIds[conversation.id] == requestMessageId else {
+                    guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else {
                         return
                     }
                 } while hasRecentDesktopExecutionHeartbeat(
@@ -4381,8 +4416,7 @@ final class AppModel: ObservableObject {
             await pollForAgentReply(conversation, requestMessageId: requestMessageId)
         } catch {
             recordCloudConnectionFailure(error)
-            setAgentActivity(.failed, conversationId: conversation.id)
-            clearPendingAgentRequest(conversationId: conversation.id)
+            finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: requestMessageId, failed: true)
             errorMessage = userFacing(error, fallback: "The agent could not start. Try again.")
         }
     }
@@ -4509,17 +4543,15 @@ final class AppModel: ObservableObject {
             } catch {
                 return
             }
-            await loadConversation(conversation)
-            guard pendingAgentRequestIds[conversation.id] == requestMessageId else { return }
+            guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else { return }
             if let token,
                let run = try? await api.lookupAgentRun(token: token, requestMessageId: requestMessageId) {
                 if run.status == "failed" {
-                    setAgentActivity(.failed, conversationId: conversation.id)
-                    clearPendingAgentRequest(conversationId: conversation.id)
+                    finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: requestMessageId, failed: true)
                     return
                 }
                 if run.status == "cancelled" {
-                    completeAgentRequest(conversationId: conversation.id)
+                    finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: requestMessageId)
                     return
                 }
             }
@@ -4957,6 +4989,7 @@ final class AppModel: ObservableObject {
     ) -> [ChatMessage] {
         var rowsByMessageId: [String: [(CloudMessageDTO, CloudGroupMessagePayload)]] = [:]
         var memberJoinMessagesByID: [String: ChatMessage] = [:]
+        var titleUpdateMessagesByID: [String: ChatMessage] = [:]
         var canonicalMessagesByID: [String: ChatMessage] = [:]
         let participantNames = Dictionary(uniqueKeysWithValues: conversation.groupParticipants.map { ($0.accountId, $0.displayName) })
         for wire in messages {
@@ -4995,6 +5028,27 @@ final class AppModel: ObservableObject {
                 continue
             }
             guard envelope.groupId == conversation.sessionId else { continue }
+            let titleUpdate = CloudGroupMessageCodec.titleUpdateNotice(for: envelope)
+            if let titleUpdate {
+                let messageID = "msg:title-update:\(wire.messageId)"
+                let actorName = envelope.actor.displayName.nonEmpty ?? "Someone"
+                titleUpdateMessagesByID[messageID] = ChatMessage(
+                    id: messageID,
+                    clientMessageId: wire.clientMessageId,
+                    conversationId: conversation.id,
+                    conversationSequence: wire.conversationSequence,
+                    author: envelope.actor.accountId == ownAccountId ? .me : .person,
+                    authorName: actorName,
+                    text: titleUpdate.text,
+                    createdAt: parseCloudDate(wire.createdAt),
+                    cloudMessageVersion: wire.version,
+                    deliveryState: .delivered,
+                    errorMessage: nil,
+                    requestMessageId: nil,
+                    messageKind: titleUpdate.messageKind
+                )
+                continue
+            }
             if envelope.kind == "group-invite" {
                 let participantIDs = Set(envelope.participants.compactMap { $0.accountId.nonEmpty })
                 for join in envelope.memberJoins ?? [] {
@@ -5132,7 +5186,9 @@ final class AppModel: ObservableObject {
                 reactions: wire.reactions
             )
         }
-        for message in chatMessages + callMessages + Array(memberJoinMessagesByID.values) {
+        for message in chatMessages + callMessages
+            + Array(memberJoinMessagesByID.values)
+            + Array(titleUpdateMessagesByID.values) {
             canonicalMessagesByID[message.id] = message
         }
         return canonicalMessagesByID.values.sorted(by: ChatMessage.timelinePrecedes)
@@ -5388,12 +5444,26 @@ final class AppModel: ObservableObject {
                 messagesByConversation[conversationId] = merged
                 cacheCurrentMessages(conversationId)
             }
-            if let conversation = loadedConversations.first(where: { $0.id == conversationId }),
-               conversation.kind != .group {
-                reconcilePendingAgentRequest(
-                    conversationId: conversationId,
-                    wireMessages: Self.directWireMessages(for: conversation, in: wireSnapshot)
-                )
+            if let conversation = loadedConversations.first(where: { $0.id == conversationId }) {
+                if conversation.kind == .group {
+                    for response in projected where response.author == .agent {
+                        guard let requestID = response.requestMessageId,
+                              pendingAgentRequestIds[conversationId, default: []].contains(requestID),
+                              response.agentExecution?.completed == true
+                                || (response.agentExecution == nil
+                                    && !CloudMessageCodec.isAgentProcessingPlaceholder(response.text)) else { continue }
+                        finishPendingAgentRequest(
+                            conversationId: conversationId,
+                            requestMessageId: requestID,
+                            failed: response.agentExecution?.phase == .failed || response.deliveryState == .failed
+                        )
+                    }
+                } else {
+                    reconcilePendingAgentRequest(
+                        conversationId: conversationId,
+                        wireMessages: Self.directWireMessages(for: conversation, in: wireSnapshot)
+                    )
+                }
             }
         }
     }
@@ -5463,11 +5533,8 @@ final class AppModel: ObservableObject {
             )
         }.value
         guard self.account?.accountId == account.accountId else { return }
-        let titled = rebuilt.map { conversation in
+        let projected = rebuilt.map { conversation in
             var copy = conversation
-            if let override = sessionTitleOverrides[conversation.sessionId]?.nonEmpty {
-                copy.displayName = override
-            }
             if markedUnreadSnapshot.contains(conversation.sessionId), !copy.hasUnreadAttention {
                 copy.unreadCount = 1
             }
@@ -5479,18 +5546,18 @@ final class AppModel: ObservableObject {
             }
             return copy
         }
-        let visible = titled.filter {
+        let visible = projected.filter {
             !hiddenSnapshot.contains($0.sessionId)
                 && !deletedSnapshot.contains($0.sessionId)
         }
-        let archived = titled.filter {
+        let archived = projected.filter {
             hiddenSnapshot.contains($0.sessionId)
                 && !deletedSnapshot.contains($0.sessionId)
         }
         let rekeyedConversationIDs = Self.rekeyMessages(
             &messagesByConversation,
             from: conversations + archivedConversations,
-            to: titled
+            to: projected
         )
         rekeyedConversationIDs.forEach(cacheCurrentMessages)
         if visible != conversations {
@@ -5892,11 +5959,6 @@ final class AppModel: ObservableObject {
                 }
                 continue
             }
-            if event.eventType == "session.title.updated",
-               let sessionTitle = event.payload?.sessionTitle {
-                applySyncedSessionTitles([sessionTitle])
-                continue
-            }
             if event.eventType == "session-forked",
                let payload = event.payload,
                let forkSessionId = payload.forkSessionId?.nonEmpty,
@@ -5950,6 +6012,7 @@ final class AppModel: ObservableObject {
                     pinnedSessionIds.remove(sessionId)
                     mutedSessionIds.remove(sessionId)
                     markedUnreadSessionIds.remove(sessionId)
+                    cache?.deleteSession(sessionId, accountId: accountId)
                     cloudMessagesByPeer = cloudMessagesByPeer.mapValues { messages in
                         messages.filter { !CloudMessageStateProjector.sessionKeys(for: $0).contains(sessionId) }
                     }
@@ -6066,22 +6129,6 @@ final class AppModel: ObservableObject {
         return pins
     }
 
-    private func applySyncedSessionTitles(_ titles: [CloudSyncedSessionTitle]) {
-        var changed = false
-        for title in titles {
-            if let value = title.title.nonEmpty {
-                guard sessionTitleOverrides[title.sessionId] != value else { continue }
-                sessionTitleOverrides[title.sessionId] = value
-                changed = true
-            } else if sessionTitleOverrides.removeValue(forKey: title.sessionId) != nil {
-                changed = true
-            }
-        }
-        if changed {
-            UserDefaults.standard.set(sessionTitleOverrides, forKey: "kordi.session-title-overrides")
-        }
-    }
-
     private func persistCloudSnapshot(accountId: String) async {
         await wireCache.save(
             accountId: accountId,
@@ -6105,10 +6152,12 @@ final class AppModel: ObservableObject {
         agentDisplayName: String,
         agentOwnerName: String? = nil
     ) {
-        pendingAgentRequestIds[conversationId] = requestMessageId
-        pendingAgentRequestStartedAt[conversationId] = startedAt
-        pendingAgentDisplayNames[conversationId] = agentDisplayName
-        pendingAgentOwnerNames[conversationId] = agentOwnerName?.nonEmpty
+        if !pendingAgentRequestIds[conversationId, default: []].contains(requestMessageId) {
+            pendingAgentRequestIds[conversationId, default: []].append(requestMessageId)
+        }
+        pendingAgentRequestStartedAt[requestMessageId] = startedAt
+        pendingAgentDisplayNames[requestMessageId] = agentDisplayName
+        pendingAgentOwnerNames[requestMessageId] = agentOwnerName?.nonEmpty
         agentRequestPresentationIds[requestMessageId] = agentRequestPresentationIds[requestMessageId]
             ?? requestMessageId
         setAgentActivity(.replying, conversationId: conversationId)
@@ -6119,18 +6168,23 @@ final class AppModel: ObservableObject {
         from localRequestMessageId: String,
         to serverRequestMessageId: String
     ) {
-        guard pendingAgentRequestIds[conversationId] == localRequestMessageId else { return }
+        guard let index = pendingAgentRequestIds[conversationId]?.firstIndex(of: localRequestMessageId) else { return }
         let presentationId = agentRequestPresentationIds[localRequestMessageId]
             ?? localRequestMessageId
         agentRequestPresentationIds[serverRequestMessageId] = presentationId
-        pendingAgentRequestIds[conversationId] = serverRequestMessageId
+        pendingAgentRequestIds[conversationId]?[index] = serverRequestMessageId
+        pendingAgentRequestStartedAt[serverRequestMessageId] = pendingAgentRequestStartedAt.removeValue(forKey: localRequestMessageId)
+        pendingAgentDisplayNames[serverRequestMessageId] = pendingAgentDisplayNames.removeValue(forKey: localRequestMessageId)
+        pendingAgentOwnerNames[serverRequestMessageId] = pendingAgentOwnerNames.removeValue(forKey: localRequestMessageId)
     }
 
     private func clearPendingAgentRequest(conversationId: String) {
+        for requestID in pendingAgentRequestIds[conversationId, default: []] {
+            pendingAgentRequestStartedAt[requestID] = nil
+            pendingAgentDisplayNames[requestID] = nil
+            pendingAgentOwnerNames[requestID] = nil
+        }
         pendingAgentRequestIds[conversationId] = nil
-        pendingAgentRequestStartedAt[conversationId] = nil
-        pendingAgentDisplayNames[conversationId] = nil
-        pendingAgentOwnerNames[conversationId] = nil
     }
 
     private func completeAgentRequest(conversationId: String) {
@@ -6138,23 +6192,39 @@ final class AppModel: ObservableObject {
         setAgentActivity(.ready, conversationId: conversationId)
     }
 
+    private func finishPendingAgentRequest(
+        conversationId: String,
+        requestMessageId: String,
+        failed: Bool = false
+    ) {
+        pendingAgentRequestIds[conversationId]?.removeAll { $0 == requestMessageId }
+        pendingAgentRequestStartedAt[requestMessageId] = nil
+        pendingAgentDisplayNames[requestMessageId] = nil
+        pendingAgentOwnerNames[requestMessageId] = nil
+        let hasPending = !pendingAgentRequestIds[conversationId, default: []].isEmpty
+        if !hasPending { pendingAgentRequestIds[conversationId] = nil }
+        setAgentActivity(hasPending ? .replying : (failed ? .failed : .ready), conversationId: conversationId)
+    }
+
     private func reconcilePendingAgentRequest(
         conversationId: String,
         wireMessages: [CloudMessageDTO]
     ) {
-        guard let requestId = pendingAgentRequestIds[conversationId],
-              let state = CloudAgentLifecycleProjector.state(
+        for requestId in pendingAgentRequestIds[conversationId, default: []] {
+            guard let state = CloudAgentLifecycleProjector.state(
                 forRequestId: requestId,
                 in: wireMessages
-              ) else { return }
-        switch state {
-        case .processing:
-            setAgentActivity(.replying, conversationId: conversationId)
-        case .failed:
-            clearPendingAgentRequest(conversationId: conversationId)
-            setAgentActivity(.failed, conversationId: conversationId)
-        case .complete, .cancelled:
-            completeAgentRequest(conversationId: conversationId)
+            ) else { continue }
+            switch state {
+            case .processing:
+                setAgentActivity(.replying, conversationId: conversationId)
+            case .failed, .complete, .cancelled:
+                finishPendingAgentRequest(
+                    conversationId: conversationId,
+                    requestMessageId: requestId,
+                    failed: state == .failed
+                )
+            }
         }
     }
 

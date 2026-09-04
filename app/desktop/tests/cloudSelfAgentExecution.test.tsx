@@ -1,5 +1,6 @@
 import { cloudAccountAvatarFixture } from './helpers/cloudAccountAvatarFixture';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 import type {
@@ -20,6 +21,15 @@ import {
   pendingCloudSelfAgentExecutionRequests,
   localSelfAgentRequestClientMessageIds,
 } from '../src/features/cloud/useCloudSelfAgentExecution';
+
+test('cross-device self-agent requests use the per-runtime FIFO coordinator', () => {
+  const source = readFileSync(
+    new URL('../src/features/cloud/useCloudSelfAgentExecution.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /turnCoordinator\.enqueue\(\{[\s\S]*runtimeSessionId: candidateRuntimeSessionId/);
+  assert.match(source, /requestId: request\.messageId,[\s\S]*run: executeRequest/);
+});
 import type {
   CanonicalSessionState,
   DesktopChatTurnSnapshot,

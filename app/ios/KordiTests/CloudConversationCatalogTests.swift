@@ -2,6 +2,221 @@ import XCTest
 @testable import Kordi
 
 final class CloudConversationCatalogTests: XCTestCase {
+    func testGroupPreviewUsesCanonicalSequenceWhenEmbeddedTimesTie() throws {
+        let sessionId = "session:group:sequence-preview"
+        let participants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "admin"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "person")
+        ]
+        func body(id: String, text: String) throws -> String {
+            try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+                kind: "group-message",
+                groupId: sessionId,
+                groupSpaceId: sessionId,
+                groupTitle: "Sequence preview",
+                createdByAccountId: "acct_me",
+                actor: participants[0],
+                participants: participants,
+                message: CloudGroupMessagePayload(
+                    id: id,
+                    senderAccountId: "acct_me",
+                    text: text,
+                    createdAtMs: 1_000,
+                    senderKind: "human",
+                    senderDisplayName: "Alex",
+                    deliveryState: "complete",
+                    replyToMessageId: nil,
+                    requestId: nil
+                )
+            ))
+        }
+        let older = wire(
+            id: "wire-older",
+            body: try body(id: "message-older", text: "Older"),
+            sessionId: sessionId,
+            createdAt: "2026-09-02T12:00:00Z",
+            conversationSequence: 1
+        )
+        let newer = wire(
+            id: "wire-newer",
+            body: try body(id: "message-newer", text: "Newer"),
+            sessionId: sessionId,
+            createdAt: "2026-09-02T12:00:00Z",
+            conversationSequence: 2
+        )
+
+        for messages in [[older, newer], [newer, older]] {
+            let catalog = CloudConversationCatalog.build(
+                account: account,
+                contacts: [contact],
+                ownedAgents: [],
+                sharedAgents: [],
+                messagesByPeer: ["acct_maya": messages]
+            )
+            XCTAssertEqual(
+                catalog.first { $0.sessionId == sessionId }?.lastMessage,
+                "Newer"
+            )
+        }
+    }
+
+    func testGroupAndChannelRenamesConvergeAcrossTheGroupAndBecomeNotices() throws {
+        let rootId = "session:group:rename-root"
+        let channelId = "session:group:rename-channel"
+        let participants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "admin"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "person")
+        ]
+        func control(
+            kind: String,
+            groupId: String,
+            groupTitle: String,
+            sessionTitle: CloudGroupSessionTitleSnapshot? = nil
+        ) throws -> String {
+            try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+                kind: kind,
+                groupId: groupId,
+                groupSpaceId: rootId,
+                groupTitle: groupTitle,
+                createdByAccountId: "acct_me",
+                actor: participants[0],
+                participants: participants,
+                sessionTitle: sessionTitle,
+                message: nil
+            ))
+        }
+        let root = wire(
+            id: "wire-root",
+            body: try control(kind: "group-invite", groupId: rootId, groupTitle: "Before rename"),
+            sessionId: rootId,
+            createdAt: "2026-09-03T06:00:00Z",
+            conversationSequence: 1
+        )
+        let groupRename = wire(
+            id: "wire-group-rename",
+            body: try control(kind: "group-title-update", groupId: channelId, groupTitle: "After rename"),
+            sessionId: channelId,
+            createdAt: "2026-09-03T06:01:00Z",
+            conversationSequence: 2
+        )
+        let channelRename = wire(
+            id: "wire-channel-rename",
+            body: try control(
+                kind: "session-title-update",
+                groupId: channelId,
+                groupTitle: "Renamed channel",
+                sessionTitle: CloudGroupSessionTitleSnapshot(
+                    title: "Renamed channel",
+                    titleSource: "manual",
+                    titleRevision: 2,
+                    titlePolicyVersion: 1,
+                    updatedAtMs: 1_788_415_320_000,
+                    updatedByAccountId: "acct_me"
+                )
+            ),
+            sessionId: channelId,
+            createdAt: "2026-09-03T06:02:00Z",
+            conversationSequence: 3
+        )
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [contact],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_maya": [root, groupRename, channelRename]]
+        )
+        let groups = catalog.filter { $0.kind == .group }
+        let space = try XCTUnwrap(
+            GroupSpaceCatalog.build(conversations: groups, ownAccountId: "acct_me").first
+        )
+        XCTAssertEqual(space.displayName, "After rename")
+        XCTAssertTrue(groups.allSatisfy { $0.ownerDisplayName == "After rename" })
+
+        let channel = try XCTUnwrap(groups.first { $0.sessionId == channelId })
+        XCTAssertEqual(channel.lastMessage, "Alex changed the channel name to Renamed channel")
+        XCTAssertEqual(space.lastMessage, "Alex changed the channel name to Renamed channel")
+        let notices = AppModel.mapGroupMessages(
+            [groupRename, channelRename],
+            conversation: channel,
+            ownAccountId: "acct_me"
+        )
+        XCTAssertEqual(notices.map(\.text), [
+            "Alex changed the group name to After rename",
+            "Alex changed the channel name to Renamed channel"
+        ])
+        XCTAssertTrue(notices.allSatisfy(\.isSystemNotice))
+    }
+
+    func testVisibleGroupRenameUsesCloudEventTimeForActivity() throws {
+        let sessionId = "session:group:rename-activity"
+        let participants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "admin"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "person")
+        ]
+        let message = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+            kind: "group-message",
+            groupId: sessionId,
+            groupSpaceId: sessionId,
+            groupTitle: "Before rename",
+            createdByAccountId: "acct_me",
+            actor: participants[0],
+            participants: participants,
+            message: CloudGroupMessagePayload(
+                id: "message-before-rename",
+                senderAccountId: "acct_me",
+                text: "Earlier message",
+                createdAtMs: 1_788_346_800_000,
+                senderKind: "human",
+                senderDisplayName: "Alex",
+                deliveryState: "complete",
+                replyToMessageId: nil,
+                requestId: nil
+            )
+        ))
+        let rename = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
+            kind: "group-title-update",
+            groupId: sessionId,
+            groupSpaceId: sessionId,
+            groupTitle: "After rename",
+            createdByAccountId: "acct_me",
+            actor: participants[0],
+            participants: participants,
+            message: nil
+        ))
+
+        let catalog = CloudConversationCatalog.build(
+            account: account,
+            contacts: [contact],
+            ownedAgents: [],
+            sharedAgents: [],
+            messagesByPeer: ["acct_maya": [
+                wire(id: "before-rename", body: message, sessionId: sessionId, createdAt: "2026-09-02T12:00:00Z"),
+                wire(id: "rename", body: rename, sessionId: sessionId, createdAt: "2026-09-02T19:07:00Z")
+            ]]
+        )
+
+        let group = try XCTUnwrap(catalog.first { $0.sessionId == sessionId })
+        XCTAssertEqual(group.displayName, "Channel 1")
+        XCTAssertEqual(group.lastMessage, "Alex changed the group name to After rename")
+        XCTAssertEqual(group.lastActivityAt, parseCloudDate("2026-09-02T19:07:00Z"))
+    }
+
+    func testChatListTimestampFormatsTheEventInTheViewerTimeZone() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Riyadh")!
+
+        XCTAssertEqual(
+            chatListTimestamp(
+                parseCloudDate("2026-09-02T19:07:00Z"),
+                now: parseCloudDate("2026-09-02T19:20:00Z"),
+                calendar: calendar,
+                locale: Locale(identifier: "en_GB")
+            ),
+            "22:07"
+        )
+        XCTAssertEqual(chatListTimestamp(.distantPast), "")
+    }
+
     func testDirectStickerKeepsSidebarLabelAndThumbnail() throws {
         let sessionId = directPersonSessionId("acct_me", "acct_maya")
         let attachment = CloudMessageAttachment(
@@ -869,7 +1084,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         let groups = catalog.filter { $0.kind == .group }
         XCTAssertEqual(groups.count, 1)
         XCTAssertEqual(groups[0].sessionId, "session:group:mobile")
-        XCTAssertEqual(groups[0].displayName, "Mobile builders")
+        XCTAssertEqual(groups[0].displayName, "Channel 1")
         XCTAssertEqual(groups[0].lastMessage, "@all The iPhone build is ready")
         XCTAssertEqual(groups[0].unreadCount, 1)
         XCTAssertEqual(groups[0].unreadMentionCount, 1)
@@ -1073,7 +1288,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(group.unreadCount, 1)
     }
 
-    func testGroupSessionWithoutAnExplicitTitleUsesItsFirstMessageLikeMac() throws {
+    func testGroupSessionWithoutAnExplicitTitleUsesAStableChannelDefault() throws {
         let participants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
@@ -1118,7 +1333,7 @@ final class CloudConversationCatalogTests: XCTestCase {
             ]
         )
 
-        XCTAssertEqual(catalog.first { $0.kind == .group }?.displayName, "hiiiii")
+        XCTAssertEqual(catalog.first { $0.kind == .group }?.displayName, "Channel 1")
     }
 
     func testCanonicalGroupTitleWinsWhenLoadedMessagesOmitTitleMetadata() throws {
@@ -1413,6 +1628,38 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(pinned[0].lastActivityAt, followup.lastActivityAt)
     }
 
+    func testGroupSpaceCatalogNormalizesPresentationPrefixes() {
+        let participants = [
+            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "owner"),
+            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "member")
+        ]
+        let root = groupConversation(
+            id: "session:group:root",
+            spaceId: "seed:v6:weekend-crew",
+            title: "Trip logistics",
+            preview: "Root",
+            date: Date(timeIntervalSince1970: 1),
+            participants: participants
+        )
+        let prefixed = groupConversation(
+            id: "session:group:followup",
+            spaceId: "group:seed:v6:weekend-crew",
+            title: "Photo ideas",
+            preview: "Follow-up",
+            date: Date(timeIntervalSince1970: 2),
+            participants: participants
+        )
+
+        let spaces = GroupSpaceCatalog.build(
+            conversations: [root, prefixed],
+            ownAccountId: "acct_me"
+        )
+
+        XCTAssertEqual(spaces.count, 1)
+        XCTAssertEqual(spaces[0].id, "group:seed:v6:weekend-crew")
+        XCTAssertEqual(Set(spaces[0].sessions.map(\.sessionId)), [root.sessionId, prefixed.sessionId])
+    }
+
     func testGroupSpaceCatalogKeepsMembershipChangesInOneCanonicalSpace() {
         let original = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
@@ -1499,7 +1746,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         )
     }
 
-    func testGroupSpaceCatalogMergesLegacyCloudRootsWithTheSameMembers() {
+    func testGroupSpaceCatalogKeepsAuthoritativeCloudRootsWithTheSameMembersSeparate() {
         let participants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
@@ -1523,8 +1770,8 @@ final class CloudConversationCatalogTests: XCTestCase {
 
         let spaces = GroupSpaceCatalog.build(conversations: [first, second], ownAccountId: "acct_me")
 
-        XCTAssertEqual(spaces.count, 1)
-        XCTAssertEqual(spaces[0].sessions.map(\.sessionId), ["session:group:second", "session:group:first"])
+        XCTAssertEqual(spaces.map(\.displayName), ["Second group", "First group"])
+        XCTAssertEqual(spaces.map(\.sessions.count), [1, 1])
     }
 
     func testGroupSpaceCatalogUsesStableIDsWhenActivityAndTitlesTie() {
@@ -1566,7 +1813,7 @@ final class CloudConversationCatalogTests: XCTestCase {
         XCTAssertEqual(forward.map(\.id), ["group:session:first", "group:session:second"])
     }
 
-    func testGroupSpaceCatalogHidesForksAndKeepsMembershipSessions() {
+    func testGroupSpaceCatalogKeepsEveryMembershipSession() {
         let participants = [
             CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
             CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
@@ -1598,98 +1845,14 @@ final class CloudConversationCatalogTests: XCTestCase {
             participants: participants,
             messageCount: 0
         )
-        let fork = groupConversation(
-            id: "session:fork:one",
-            spaceId: "session:group:root",
-            title: "Fork",
-            preview: "Fork message",
-            date: Date(timeIntervalSince1970: 5),
-            participants: participants,
-            messageCount: 22,
-            forkedFromSessionId: "session:group:root"
-        )
-
         let spaces = GroupSpaceCatalog.build(
-            conversations: [root, followup, placeholder, fork],
+            conversations: [root, followup, placeholder],
             ownAccountId: "acct_me"
         )
 
         XCTAssertEqual(spaces.count, 1)
         XCTAssertEqual(spaces[0].sessions.map(\.displayName), ["main", "hiiiii", "New chat"])
         XCTAssertEqual(spaces[0].sessions.map(\.messageCount), [341, 47, 0])
-    }
-
-    func testHistoricalForkLineageResolvesBackToTheRootGroupSpace() throws {
-        let participants = [
-            CloudGroupParticipant(accountId: "acct_me", displayName: "Alex", avatarUrl: nil, role: "self"),
-            CloudGroupParticipant(accountId: "acct_maya", displayName: "Maya", avatarUrl: nil, role: "admin")
-        ]
-        let rootId = "session:group:root"
-        let firstForkId = "session:fork:first"
-        let secondForkId = "session:fork:second"
-        let root = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
-            kind: "group-invite",
-            groupId: rootId,
-            groupSpaceId: rootId,
-            groupTitle: "Mobile builders",
-            createdByAccountId: "acct_maya",
-            actor: participants[1],
-            participants: participants,
-            message: nil
-        ))
-        let firstFork = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
-            kind: "session-fork",
-            groupId: firstForkId,
-            groupSpaceId: firstForkId,
-            groupTitle: "Release checklist",
-            createdByAccountId: "acct_me",
-            actor: participants[0],
-            participants: participants,
-            fork: CloudGroupForkPayload(
-                forkSessionId: firstForkId,
-                parentSessionId: rootId,
-                parentMessageId: "message:one",
-                createdAtMs: 2
-            ),
-            message: nil
-        ))
-        let secondFork = try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(
-            kind: "session-fork",
-            groupId: secondForkId,
-            groupSpaceId: secondForkId,
-            groupTitle: "QA follow-up",
-            createdByAccountId: "acct_me",
-            actor: participants[0],
-            participants: participants,
-            fork: CloudGroupForkPayload(
-                forkSessionId: secondForkId,
-                parentSessionId: firstForkId,
-                parentMessageId: "message:two",
-                createdAtMs: 3
-            ),
-            message: nil
-        ))
-        let catalog = CloudConversationCatalog.build(
-            account: account,
-            contacts: [contact],
-            ownedAgents: [],
-            sharedAgents: [],
-            messagesByPeer: [
-                "acct_maya": [
-                    wire(id: "root", body: root, sessionId: rootId, createdAt: "2026-08-08T09:00:00Z"),
-                    wire(id: "fork-one", body: firstFork, sessionId: firstForkId, createdAt: "2026-08-08T10:00:00Z"),
-                    wire(id: "fork-two", body: secondFork, sessionId: secondForkId, createdAt: "2026-08-08T11:00:00Z")
-                ]
-            ]
-        )
-        let groups = catalog.filter { $0.kind == .group }
-
-        XCTAssertEqual(groups.count, 3)
-        XCTAssertTrue(groups.allSatisfy { $0.groupSpaceId == rootId })
-        XCTAssertNil(groups.first { $0.sessionId == rootId }?.forkedFromSessionId)
-        XCTAssertEqual(groups.first { $0.sessionId == firstForkId }?.forkedFromSessionId, rootId)
-        XCTAssertEqual(groups.first { $0.sessionId == secondForkId }?.forkedFromSessionId, firstForkId)
-        XCTAssertEqual(GroupSpaceCatalog.build(conversations: groups, ownAccountId: "acct_me").count, 1)
     }
 
     private var account: CloudAccount {

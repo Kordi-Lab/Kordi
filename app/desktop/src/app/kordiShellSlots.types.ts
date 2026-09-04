@@ -236,8 +236,8 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   chatMentionTargetsForText: (text: string, cursor?: number) => ComposerMentionOption[];
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
-  acceptProjectSlashCommand: (value: string) => void;
-  acceptChatSlashCommand: (value: string) => void;
+  acceptProjectSlashCommand: (value: string) => void; acceptChatSlashCommand: (value: string) => void;
+  acceptChatMentionTarget: (option: ComposerMentionOption) => void;
   projectComposerText: string;
   chatComposerText: string;
   updateProjectComposerDraft: (value: string, target: HTMLTextAreaElement) => void;
@@ -536,7 +536,7 @@ export type MainContentShellArgs = Pick<AssembleKordiShellSlotsArgs,
   | 'onChatTranscriptScroll'
   | 'filteredChatSlashCommands'
   | 'chatMentionTargetsForText'
-  | 'acceptChatSlashCommand'
+  | 'acceptChatSlashCommand' | 'acceptChatMentionTarget'
   | 'chatComposerText'
   | 'updateChatComposerDraft'
   | 'setChatComposerText'

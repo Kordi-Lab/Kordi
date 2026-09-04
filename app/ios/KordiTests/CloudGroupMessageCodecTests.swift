@@ -2,6 +2,17 @@ import XCTest
 @testable import Kordi
 
 final class CloudGroupMessageCodecTests: XCTestCase {
+    func testLegacyGroupForkControlIsRejected() throws {
+        let json = #"{"kind":"session-fork","groupId":"session:group:old","createdByAccountId":"acct_me","actor":{"accountId":"acct_me","displayName":"Me"},"participants":[{"accountId":"acct_me","displayName":"Me"}]}"#
+        let encoded = try XCTUnwrap(json.data(using: .utf8))
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+
+        XCTAssertNil(CloudGroupMessageCodec.parse(CloudGroupMessageCodec.prefix + encoded))
+    }
+
     func testOutboundGroupControlsNeverTransportAvatarImageValues() throws {
         let actor = CloudGroupParticipant(
             accountId: "acct_me",
@@ -42,6 +53,38 @@ final class CloudGroupMessageCodecTests: XCTestCase {
         XCTAssertNil(decoded.actor.avatarUrl)
         XCTAssertTrue(decoded.participants.allSatisfy { $0.avatarUrl == nil })
         XCTAssertLessThan(body.utf8.count, 4_096)
+    }
+
+    func testGroupTitleUpdateNeverTransportsChannelTitleSnapshot() throws {
+        let actor = CloudGroupParticipant(
+            accountId: "acct_me",
+            displayName: "Me",
+            avatarUrl: nil,
+            role: "admin"
+        )
+        let envelope = CloudGroupControlEnvelope(
+            kind: "group-title-update",
+            groupId: "session:group:general",
+            groupSpaceId: "session:group:space",
+            groupTitle: "Renamed group",
+            createdByAccountId: actor.accountId,
+            actor: actor,
+            participants: [actor],
+            sessionTitle: CloudGroupSessionTitleSnapshot(
+                title: "stale local channel title",
+                titleSource: "manual",
+                titleRevision: 1,
+                titlePolicyVersion: 1,
+                updatedAtMs: 1,
+                updatedByAccountId: actor.accountId
+            ),
+            message: nil
+        )
+
+        let decoded = try XCTUnwrap(CloudGroupMessageCodec.parse(CloudGroupMessageCodec.encode(envelope)))
+
+        XCTAssertEqual(decoded.groupTitle, "Renamed group")
+        XCTAssertNil(decoded.sessionTitle)
     }
 
     func testGroupAvatarOrderUsesJoinTimeThenAccountIdentity() {

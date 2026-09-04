@@ -27,12 +27,12 @@ import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
 import { normalizeKordiId } from './kordiId';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
 import { cloudAgentCanonicalIdentityId } from './cloudAgentIdentity';
-export { cloudGroupAgentMentionHasResponse, cloudGroupAgentMentionResponseState } from './cloudGroupAgentResponseState';
+export { cloudGroupAgentMentionHasResponse, cloudGroupAgentMentionResponseState, cloudGroupAgentMentionResponseStateFromRows, cloudGroupAgentMentionResponseStateFromSources } from './cloudGroupAgentResponseState';
 export type { CloudGroupAgentMentionResponseState } from './cloudGroupAgentResponseState';
 import { cloudGroupTransportParticipant, type CloudGroupActor, type CloudGroupParticipant } from './cloudGroupParticipantTypes';
 const CLOUD_GROUP_PREFIX = 'kordi-cloud-group:'; const CLOUD_GROUP_MEMBER_JOIN_EVENT_ID_PATTERN = /^[A-Za-z0-9_-]{1,80}$/;
 export const CLOUD_GROUP_AGENT_CONVERSATION_PREFIX = 'cloud-group-agent:';
-export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update' | 'session-fork';
+export type CloudGroupControlKind = 'group-invite' | 'group-message' | 'group-update' | 'group-title-update' | 'session-title-update';
 
 export type { CloudGroupActor, CloudGroupParticipant } from './cloudGroupParticipantTypes';
 
@@ -72,12 +72,6 @@ export type CloudGroupControlEnvelope = {
   sessionTitleSyncOnly?: boolean;
   memberJoins?: CloudGroupMemberJoin[];
   memberLeaves?: CloudGroupMemberLeave[];
-  fork?: {
-    forkSessionId: string;
-    parentSessionId: string;
-    parentMessageId?: string | null;
-    createdAtMs?: number | null;
-  } | null;
   message?: ({
     id: string;
     senderAccountId: string;
@@ -89,7 +83,6 @@ export type CloudGroupControlEnvelope = {
     deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled' | string | null;
     replyToMessageId?: string | null;
     requestId?: string | null;
-    forkSnapshot?: boolean | null;
     attachments?: CloudMessageAttachment[];
     mentions?: MessageMention[];
     messageAction?: MessageActionMetadata | null;
@@ -234,24 +227,6 @@ function cloudGroupMemberLeaves(value: unknown): CloudGroupMemberLeave[] {
     leaves.push({ eventId, accountId, createdAtMs });
   });
   return leaves;
-}
-
-export function cloudGroupForkPayloadFromSessionMetadata(
-  metadata: unknown,
-  forkSessionId: string,
-): NonNullable<CloudGroupControlEnvelope['fork']> | null {
-  const forkSessionIdValue = cleanText(forkSessionId);
-  const forkRecord = objectRecord(objectRecord(metadata).fork);
-  const parentSessionId = cleanText(typeof forkRecord.forkedFromSessionId === 'string' ? forkRecord.forkedFromSessionId : null);
-  if (!forkSessionIdValue || !parentSessionId) return null;
-  const parentMessageId = cleanText(typeof forkRecord.forkedFromMessageId === 'string' ? forkRecord.forkedFromMessageId : null);
-  const createdAtMs = integerMilliseconds(forkRecord.createdAtMs);
-  return {
-    forkSessionId: forkSessionIdValue,
-    parentSessionId,
-    parentMessageId: parentMessageId || null,
-    createdAtMs,
-  };
 }
 
 export function isCloudGroupSessionId(value?: string | null): boolean {
@@ -421,8 +396,11 @@ export function cloudGroupAdminAccountIds(
   ].filter(Boolean))];
 }
 
-export function cloudSessionTitleUpdateTitle(input: Pick<CloudGroupControlEnvelope, 'kind' | 'groupTitle'>) {
-  return input.kind === 'session-title-update' ? cloudGroupNonGenericTitle(input.groupTitle) : null;
+export function cloudSessionTitleUpdateTitle(input: Pick<CloudGroupControlEnvelope, 'kind' | 'groupTitle' | 'sessionTitle'>) {
+  return input.kind === 'session-title-update'
+    ? normalizeCloudGroupSessionTitleSnapshot(input.sessionTitle)?.title
+      ?? cloudGroupNonGenericTitle(input.groupTitle)
+    : null;
 }
 
 export function cloudGroupSessionTitleSnapshotForControl(
@@ -459,13 +437,14 @@ function cloudTitleUpdateNoticeRequest(input: {
   const cloudMessageId = cleanText(input.cloudMessageId) || `${input.envelope.groupId}:${input.createdAtMs}`;
   const noticeKind = input.scope === 'group' ? 'group-title-update' : 'session-title-update';
   const transport = input.scope === 'group' ? 'cloud-group-title-update' : 'cloud-group-session-title-update';
+  const scopeLabel = input.scope === 'group' ? 'group' : 'channel';
   return {
     id: `cloud-${input.scope}-title-notice:${cloudMessageId}`,
     sessionId: input.envelope.groupId,
     senderIdentityId: actorIdentityId,
     senderRole: 'system',
     messageKind: 'status',
-    contentText: `${actorDisplayName} changed the ${input.scope} name to ${title}`,
+    contentText: `${actorDisplayName} changed the ${scopeLabel} name to ${title}`,
     content: {
       kind: noticeKind,
       scope: input.scope,
@@ -491,6 +470,27 @@ export function cloudGroupTitleUpdateNoticeRequest(input: {
     scope: 'group',
     title: input.envelope.kind === 'group-title-update' && cloudGroupNonGenericTitle(input.envelope.groupTitle) ? input.envelope.groupTitle : null,
   });
+}
+
+export function cloudTitleUpdateNoticeEquivalent(
+  existing: Pick<CanonicalSessionMessage, 'sessionId' | 'senderIdentityId' | 'content' | 'createdAtMs'>,
+  incoming: AppendCanonicalMessageRequest,
+) {
+  if (
+    existing.sessionId !== incoming.sessionId
+    || existing.senderIdentityId !== incoming.senderIdentityId
+    || incoming.createdAtMs == null
+    || Math.abs(existing.createdAtMs - incoming.createdAtMs) > 10_000
+  ) return false;
+  const existingContent = existing.content && typeof existing.content === 'object' && !Array.isArray(existing.content)
+    ? existing.content as Record<string, unknown>
+    : {};
+  const incomingContent = incoming.content && typeof incoming.content === 'object' && !Array.isArray(incoming.content)
+    ? incoming.content as Record<string, unknown>
+    : {};
+  return existingContent.kind === incomingContent.kind
+    && existingContent.scope === incomingContent.scope
+    && existingContent.title === incomingContent.title;
 }
 
 export function cloudSessionTitleUpdateNoticeRequest(input: {
@@ -567,7 +567,9 @@ function decodeBase64Url(value: string): string {
 export function encodeCloudGroupControl(input: CloudGroupControlEnvelope): string {
   const memberJoins = input.kind === 'group-invite' ? cloudGroupMemberJoins(input.memberJoins) : [];
   const memberLeaves = input.kind === 'group-update' ? cloudGroupMemberLeaves(input.memberLeaves) : [];
-  const sessionTitle = normalizeCloudGroupSessionTitleSnapshot(input.sessionTitle);
+  const sessionTitle = input.kind === 'group-title-update'
+    ? null
+    : normalizeCloudGroupSessionTitleSnapshot(input.sessionTitle);
   const envelope: CloudGroupControlEnvelope = {
     ...input,
     groupId: cleanText(input.groupId),
@@ -592,7 +594,7 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
   if (!body.startsWith(CLOUD_GROUP_PREFIX)) return null;
   try {
     const parsed = JSON.parse(decodeBase64Url(body.slice(CLOUD_GROUP_PREFIX.length))) as Partial<CloudGroupControlEnvelope>;
-    if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update', 'session-fork'].includes(parsed.kind ?? '')) return null;
+    if (!['group-invite', 'group-message', 'group-update', 'group-title-update', 'session-title-update'].includes(parsed.kind ?? '')) return null;
     const kind = parsed.kind as CloudGroupControlKind;
     if (typeof parsed.groupId !== 'string' || !parsed.groupId.trim()) return null;
     if (!isCloudGroupSessionId(parsed.groupId)) return null;
@@ -628,7 +630,6 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         deliveryState: typeof candidate.deliveryState === 'string' && candidate.deliveryState.trim() ? candidate.deliveryState.trim() : null,
         replyToMessageId: typeof candidate.replyToMessageId === 'string' && candidate.replyToMessageId.trim() ? candidate.replyToMessageId.trim() : null,
         requestId: typeof candidate.requestId === 'string' && candidate.requestId.trim() ? candidate.requestId.trim() : null,
-        forkSnapshot: candidate.forkSnapshot === true,
         attachments: cloudMessageAttachmentsFromRecord((candidate as { attachments?: unknown }).attachments),
         ...(mentions ? { mentions } : {}),
         messageAction: cloudMessageActionFromRecord((candidate as { messageAction?: unknown }).messageAction),
@@ -640,13 +641,6 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
         ...cloudGroupMessageRuntimeFields(candidate),
       };
     }
-    const forkRecord = objectRecord((parsed as { fork?: unknown }).fork);
-    const fork = forkRecord.forkSessionId && forkRecord.parentSessionId ? {
-      forkSessionId: cleanText(typeof forkRecord.forkSessionId === 'string' ? forkRecord.forkSessionId : null),
-      parentSessionId: cleanText(typeof forkRecord.parentSessionId === 'string' ? forkRecord.parentSessionId : null),
-      parentMessageId: cleanText(typeof forkRecord.parentMessageId === 'string' ? forkRecord.parentMessageId : null) || null,
-      createdAtMs: integerMilliseconds(forkRecord.createdAtMs),
-    } : null;
     const memberJoins = kind === 'group-invite'
       ? cloudGroupMemberJoins((parsed as { memberJoins?: unknown }).memberJoins)
       : [];
@@ -668,7 +662,6 @@ export function parseCloudGroupControl(body: string): CloudGroupControlEnvelope 
       ...(parsed.sessionTitleSyncOnly === true ? { sessionTitleSyncOnly: true } : {}),
       ...(memberJoins.length > 0 ? { memberJoins } : {}),
       ...(memberLeaves.length > 0 ? { memberLeaves } : {}),
-      fork,
       message,
     };
   } catch {
@@ -800,9 +793,7 @@ export function shouldCountCloudGroupMessageUnread(input: {
   activeConversationId?: string | null;
   activeConversationIds?: Array<string | null | undefined>;
   groupId: string;
-  forkSnapshot?: boolean | null;
 }): boolean {
-  if (input.forkSnapshot === true) return false;
   const activeIds = new Set([
     input.activeConversationId,
     ...(input.activeConversationIds ?? []),
@@ -1037,7 +1028,6 @@ export function cloudGroupMessageReadTargets(input: {
       activeConversationId: input.activeConversationId,
       activeConversationIds: input.activeConversationIds,
       groupId: envelope.groupId,
-      forkSnapshot: envelope.message?.forkSnapshot,
     })) continue;
     const peerId = cleanText(message.fromAccountId);
     if (peerId) peerIds.add(peerId);
@@ -1099,7 +1089,6 @@ export function cloudGroupUnreadCountsBySessionId(input: {
   });
   for (const { wire: message, envelope } of rows) {
     if (!cloudGroupMessageIsUnreadForAccount(message, envelope, accountId)) continue;
-    if (envelope.message?.forkSnapshot === true) continue;
     const sessionId = cleanText(envelope.groupId);
     if (!sessionId) continue;
     if (cloudGroupMessageIsAtOrBeforeReadCursor(message, envelope, input.readCursorsBySessionId?.[sessionId])) continue;
@@ -1209,26 +1198,4 @@ export function fulfilledCloudGroupSends<T>(results: PromiseSettledResult<T>[]):
 
 export function firstCloudGroupSendFailure(results: PromiseSettledResult<unknown>[]): unknown {
   return results.find((result): result is PromiseRejectedResult => result.status === 'rejected')?.reason;
-}
-
-export function requiredCloudGroupControlTargetAccountIds(input: {
-  kind: CloudGroupControlKind;
-  explicitTargetAccountIds: string[];
-  memberLeaves?: CloudGroupMemberLeave[];
-}): string[] {
-  const requiresEveryExplicitTarget = input.kind === 'group-invite'
-    || (input.kind === 'group-update' && (input.memberLeaves?.length ?? 0) > 0);
-  if (!requiresEveryExplicitTarget) return [];
-  return [...new Set(input.explicitTargetAccountIds.map(cleanText).filter(Boolean))];
-}
-
-export function firstRequiredCloudGroupSendFailure(
-  results: PromiseSettledResult<unknown>[],
-  recipientAccountIds: string[],
-  requiredAccountIds: string[],
-): PromiseRejectedResult | undefined {
-  const required = new Set(requiredAccountIds.map(cleanText).filter(Boolean));
-  return results.find((result, index): result is PromiseRejectedResult => (
-    result.status === 'rejected' && required.has(cleanText(recipientAccountIds[index]))
-  ));
 }

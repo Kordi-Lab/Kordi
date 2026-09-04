@@ -106,7 +106,7 @@ export function useKordiAppFoundation({
     isDesktopAuthLoading,
     desktopAuthError,
     clearDesktopAuthError,
-    activeLoginProviderId,
+    activeLoginProviderId, providerAuthSyncIntent,
     setActiveLoginProviderId,
     selectAuthProvider,
     refreshDesktopAuth,
@@ -281,6 +281,7 @@ export function useKordiAppFoundation({
     setCloudMessageReaction, recordCloudSessionFork, updateCloudSessionPin,
     hideCloudSession, unhideCloudSession, setCloudSessionPinned, setCloudSessionMuted,
     setCloudSessionUnread, markCloudSessionsRead, setCloudGroupSpacePinned,
+    setCloudGroupSpaceMuted, setCloudGroupSpaceArchived,
     deleteCloudSession, cancelCloudAgentRequest,
     refreshCloudMessages,
     refreshCloudAgents,
@@ -313,7 +314,7 @@ export function useKordiAppFoundation({
     localAgentLabel: desktopChatState?.localAgent.label,
     defaultCloudAgentRuntimeReady:
       !isDesktopAuthLoading && Boolean(defaultCloudAgentRuntimeRoute),
-    desktopAuthState,
+    desktopAuthState, providerAuthSyncIntent,
   });
 
   const {
@@ -469,7 +470,8 @@ export function useKordiAppFoundation({
       editCloudMessage, deleteCloudMessage,
       sendCloudGroupControl, setCloudMessageReaction, recordCloudSessionFork, updateCloudSessionPin,
       hideCloudSession, unhideCloudSession, setCloudSessionPinned, setCloudSessionMuted, setCloudSessionUnread,
-      markCloudSessionsRead, setCloudGroupSpacePinned, deleteCloudSession, cancelCloudAgentRequest,
+      markCloudSessionsRead, setCloudGroupSpacePinned, setCloudGroupSpaceMuted, setCloudGroupSpaceArchived,
+      deleteCloudSession, cancelCloudAgentRequest,
       refreshCloudMessages, refreshSharedCloudAgents, sharedCloudAgents,
       cloudAgentDefinitionsById, refreshCloudContacts, cloudContacts,
       cloudSessionActivity, initialContactsSettled, initialMessagesSettled,

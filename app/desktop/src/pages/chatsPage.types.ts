@@ -119,6 +119,7 @@ export type ChatsPageComposer = {
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptChatSlashCommand: (value: string) => void;
+  acceptChatMentionTarget: (option: ComposerMentionOption) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: ChatAttachment[];
   saveDesktopAttachments: (

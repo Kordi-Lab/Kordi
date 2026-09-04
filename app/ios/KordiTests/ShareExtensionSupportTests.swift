@@ -37,6 +37,7 @@ final class ShareExtensionSupportTests: XCTestCase {
             "KordiDistributionChannel": "production",
             "KordiShareAppGroup": "group.ai.kordi.share",
             "KordiShareCredentialService": "ai.kordi.share-session",
+            "KordiShareKeychainAccessGroup": "TEAM.ai.kordi.share-session",
             "KordiHostAppURLScheme": "kordi"
         ])
 
@@ -46,16 +47,19 @@ final class ShareExtensionSupportTests: XCTestCase {
             "KordiDistributionChannel": "production",
             "KordiShareAppGroup": "group.ai.kordi.share",
             "KordiShareCredentialService": "ai.kordi.share-session",
+            "KordiShareKeychainAccessGroup": "TEAM.ai.kordi.share-session",
             "KordiHostAppURLScheme": "kordi"
         ]))
     }
 
     func testShareCredentialRoundTripsInItsOwnKeychainService() throws {
+        let current = try KordiShareConfiguration.current()
         let configuration = KordiShareConfiguration(
             baseURL: try XCTUnwrap(URL(string: "https://kordi.ai")),
-            appGroupIdentifier: "group.ai.kordi.share",
+            appGroupIdentifier: current.appGroupIdentifier,
             credentialService: "ai.kordi.share-tests.\(UUID().uuidString)",
-            hostAppURLScheme: "kordi"
+            credentialAccessGroup: current.credentialAccessGroup,
+            hostAppURLScheme: current.hostAppURLScheme
         )
         let store = ShareExtensionCredentialStore(configuration: configuration)
         defer { try? store.delete() }

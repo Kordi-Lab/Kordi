@@ -11,7 +11,6 @@ const cloudGroupControlSenderSource = () => readFileSync(
   ),
   'utf8',
 );
-const reliableGroupTitleSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupReliableSessionTitle.ts', import.meta.url), 'utf8');
 const cloudGroupOutboxSource = () => readFileSync(new URL('../src/features/cloud/cloudGroupOutbox.ts', import.meta.url), 'utf8');
 const cloudOutboxDeliverySource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupOutboxDelivery.ts', import.meta.url), 'utf8');
 
@@ -104,14 +103,14 @@ test('cloud group image sends persist local sources before starting upload', () 
   const source = cloudGroupControlSenderSource();
   const start = source.indexOf('const sendCloudGroupControl = useCallback');
   const end = source.indexOf(
-    '\n\n  useCloudGroupSessionTitleSync({',
+    '\n\n  return sendCloudGroupControl;',
     start,
   );
   assert.notEqual(start, -1, 'expected the cloud group send closure');
   assert.notEqual(
     end,
     -1,
-    'expected title synchronization after cloud group sending',
+    'expected the end of the cloud group send closure',
   );
   const groupSend = source.slice(start, end);
 
@@ -126,13 +125,16 @@ test('cloud group image sends persist local sources before starting upload', () 
   assert.match(groupSend, /clientMessageId,/);
 });
 
-test('every successful group send persists its reliable session title', () => {
+test('group messages never derive or persist channel titles from chat text', () => {
   const source = cloudGroupControlSenderSource();
-  const titleSource = reliableGroupTitleSource();
-  assert.match(source, /reliableCloudGroupSessionTitle\(/);
-  assert.match(titleSource, /deriveSessionTitle\(input\.message\?\.text \?\? ''\)/);
-  assert.match(titleSource, /client\.updateCloudSessionTitle\(/);
-  assert.match(source, /if \(sent\.length > 0\) \{\s*await syncReliableSessionTitle\(\);/);
+  assert.doesNotMatch(source, /deriveSessionTitle|updateCloudSessionTitle|syncReliableSessionTitle/);
+});
+
+test('canonical group sends write one durable message for all members', () => {
+  const source = cloudGroupControlSenderSource();
+  assert.match(source, /const canonicalRecipientId = targetAccountIds\[0\]/);
+  assert.match(source, /pendingRecipientIds:\s*\[canonicalRecipientId\]/);
+  assert.doesNotMatch(source, /targetAccountIds\.map\(async \(peerId\)/);
 });
 
 test('group send failures upsert a durable failed canonical row with retry recipients', () => {

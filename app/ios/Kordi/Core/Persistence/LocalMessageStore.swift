@@ -553,6 +553,36 @@ final class LocalMessageStore {
         }
     }
 
+    func deleteSession(_ sessionId: String, accountId: String) {
+        guard !sessionId.isEmpty, !accountId.isEmpty else { return }
+        do {
+            let scope = accountId
+            let conversations = try context.fetch(FetchDescriptor<CachedConversationRecord>(
+                predicate: #Predicate { $0.accountId == scope }
+            ))
+            let removed = conversations.filter { $0.sessionId == sessionId }
+            let conversationIDs = Set(removed.map(\.conversationId))
+            guard !conversationIDs.isEmpty else { return }
+            removed.forEach(context.delete)
+            let messages = try context.fetch(FetchDescriptor<CachedMessageRecord>(
+                predicate: #Predicate { $0.accountId == scope }
+            ))
+            messages.filter { conversationIDs.contains($0.conversationId) }.forEach(context.delete)
+            let pages = try context.fetch(FetchDescriptor<CachedMessagePageRecord>(
+                predicate: #Predicate { $0.accountId == scope }
+            ))
+            pages.filter { conversationIDs.contains($0.conversationId) }.forEach(context.delete)
+            try context.save()
+            conversationFingerprints[accountId] = nil
+            for conversationID in conversationIDs {
+                messageFingerprints[accountId]?[conversationID] = nil
+                messageHasEarlier[accountId]?[conversationID] = nil
+            }
+        } catch {
+            context.rollback()
+        }
+    }
+
     private func saveLatestPageRecord(
         _ messages: [ChatMessage],
         conversationId: String,
