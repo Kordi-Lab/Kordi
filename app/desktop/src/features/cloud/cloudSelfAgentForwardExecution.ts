@@ -17,7 +17,7 @@ import { encodeCloudDirectMessageEnvelope } from './cloudDirectMessages';
 
 const PROCESSING_LEDGER_PREFIX = 'processing:';
 export const CLOUD_SELF_AGENT_HEARTBEAT_MS = 30_000;
-export const CLOUD_SELF_AGENT_EXECUTION_STREAM_MS = 1_000;
+export const CLOUD_SELF_AGENT_EXECUTION_STREAM_MS = 5_000;
 
 export async function publishCloudSelfAgentExecutionClaim({
   accountId,

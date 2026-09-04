@@ -243,6 +243,7 @@ final class AppModel: ObservableObject {
     private var cloudRealtimeTask: Task<Void, Never>?
     private var cloudRealtimeSyncWakeTask: Task<Void, Never>?
     private var expressiveMediaSyncTask: Task<Void, Never>?
+    private var agentRunTasks: [String: Task<Void, Never>] = [:]
     private var expressiveMediaSyncTaskID: UUID?
     private var knownStickerAttachmentSignatures = Set<String>()
     private var cloudSyncCursor = "0"
@@ -355,6 +356,7 @@ final class AppModel: ObservableObject {
         cloudRealtimeTask?.cancel()
         cloudRealtimeSyncWakeTask?.cancel()
         expressiveMediaSyncTask?.cancel()
+        agentRunTasks.values.forEach { $0.cancel() }
     }
 
     func start() async {
@@ -564,6 +566,8 @@ final class AppModel: ObservableObject {
         pendingVisibleReadMessageBySessionID = [:]
         persistedVisibleReadMessageBySessionID = [:]
         pendingAgentRequestIds = [:]
+        agentRunTasks.values.forEach { $0.cancel() }
+        agentRunTasks = [:]
         pendingAgentRequestStartedAt = [:]
         pendingAgentDisplayNames = [:]
         pendingAgentOwnerNames = [:]
@@ -1595,7 +1599,7 @@ final class AppModel: ObservableObject {
                 outgoingAttachments.forEach { $0.discardOwnedFile() }
                 clearPendingSendMetadata(localId)
                 if mentionTarget?.kind == .agent {
-                    await startAgentRun(
+                    startAgentRunInBackground(
                         conversation: conversation,
                         requestMessageId: localId,
                         ownerAccountId: mentionTarget?.accountId ?? conversation.peerAccountId,
@@ -1674,7 +1678,7 @@ final class AppModel: ObservableObject {
             clearPendingSendMetadata(localId)
 
             if conversation.kind == .agent || routedAgent != nil || routesToSupportAgent {
-                await startAgentRun(
+                startAgentRunInBackground(
                     conversation: conversation,
                     requestMessageId: sent.messageId,
                     ownerAccountId: routedAgent?.accountId ?? conversation.peerAccountId,
@@ -4298,6 +4302,31 @@ final class AppModel: ObservableObject {
         messagesByConversation[conversationId]?[index].attachmentUploadProgress = value
     }
 
+    private func startAgentRunInBackground(
+        conversation: ConversationSummary,
+        requestMessageId: String,
+        ownerAccountId: String,
+        prompt: String,
+        token: String,
+        account: CloudAccount,
+        runtimeRoute: CloudModelRouting?
+    ) {
+        guard agentRunTasks[requestMessageId] == nil else { return }
+        agentRunTasks[requestMessageId] = Task { [weak self] in
+            guard let self else { return }
+            await self.startAgentRun(
+                conversation: conversation,
+                requestMessageId: requestMessageId,
+                ownerAccountId: ownerAccountId,
+                prompt: prompt,
+                token: token,
+                account: account,
+                runtimeRoute: runtimeRoute
+            )
+            self.agentRunTasks[requestMessageId] = nil
+        }
+    }
+
     private func startAgentRun(
         conversation: ConversationSummary,
         requestMessageId: String,
@@ -4324,7 +4353,6 @@ final class AppModel: ObservableObject {
                 } catch {
                     return
                 }
-                await loadConversation(conversation)
                 guard pendingAgentRequestIds[conversation.id] == requestMessageId else {
                     return
                 }
@@ -4495,7 +4523,6 @@ final class AppModel: ObservableObject {
             } catch {
                 return
             }
-            await loadConversation(conversation)
             guard pendingAgentRequestIds[conversation.id] == requestMessageId else { return }
             if let token,
                let run = try? await api.lookupAgentRun(token: token, requestMessageId: requestMessageId) {

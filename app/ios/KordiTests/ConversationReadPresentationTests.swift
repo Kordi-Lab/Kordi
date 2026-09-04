@@ -4,6 +4,43 @@ import XCTest
 @testable import Kordi
 
 final class ConversationReadPresentationTests: XCTestCase {
+    func testAgentSendAcknowledgementDoesNotWaitForRuntimeCompletion() throws {
+        let iosDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi")
+        let source = try String(
+            contentsOf: iosDirectory.appendingPathComponent("App/AppModel.swift"),
+            encoding: .utf8
+        )
+        let sendStart = try XCTUnwrap(source.range(of: "    func send(\n"))
+        let sendEnd = try XCTUnwrap(source.range(
+            of: "    func retry(",
+            range: sendStart.upperBound..<source.endIndex
+        ))
+        let send = source[sendStart.lowerBound..<sendEnd.lowerBound]
+        XCTAssertTrue(send.contains("startAgentRunInBackground("))
+        XCTAssertFalse(send.contains("await startAgentRun("))
+
+        let pollStart = try XCTUnwrap(source.range(of: "    private func pollForAgentReply("))
+        let pollEnd = try XCTUnwrap(source.range(
+            of: "    private struct MessageHistoryLoadResult",
+            range: pollStart.upperBound..<source.endIndex
+        ))
+        XCTAssertFalse(source[pollStart.lowerBound..<pollEnd.lowerBound].contains("loadConversation("))
+    }
+
+    func testEmptyConversationLoadingHasVisibleProgress() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Conversation/ConversationInitialLoadingView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(source.contains("ProgressView(\"Loading conversation…\")"))
+    }
+
     func testChatDeleteShowsImmediateStableAlertPresentation() throws {
         let source = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
