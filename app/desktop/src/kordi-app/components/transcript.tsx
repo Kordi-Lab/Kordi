@@ -19,14 +19,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual, shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGallery';
-import { EmojiPickerItemImage } from '@/features/emoji/EmojiPicker';
-import { emojiItemFromComposerValue } from '@/features/emoji/emojiCatalog';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
-import {
-  relatedAgentSessionsFromTools,
-  type RelatedAgentSessionRunStatus,
-} from '@/features/chat/relatedAgentSessions';
+import { relatedAgentSessionsFromTools, type RelatedAgentSessionRunStatus } from '@/features/chat/relatedAgentSessions';
 import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
 import { selfDisplayName } from '@/lib/identityLabels';
 import { cn } from '@/lib/utils';
@@ -46,6 +41,8 @@ import { SupportContactAnswer, SupportContactTypingIndicator } from './transcrip
 import { RequestReplyLine, SourceMessageQuote, ThreadReplyLine } from './transcriptReplyAttribution';
 import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
+import { StandaloneEmojiMessage } from './transcriptEmojiMessage';
+import { standaloneEmojiItemForMessage } from './transcriptEmojiMessageEligibility';
 import { VoiceMessageContent } from './voiceMessage';
 import { transcriptMessageIsOwnHuman, transcriptMessageIsPeerHuman } from './transcriptMessageHumanRole';
 import { MessageDeliveryStatusSlot, TranscriptMessageTransferActions } from './transcriptMessageTransferActions';
@@ -780,20 +777,7 @@ function MessageBubbleView({
   );
   const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = !isAgentMessage; const showAvatar = showAvatarSlot && !isGroupedWithNext;
   const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode); const isForwardedMessage = msg.messageAction?.kind === 'forward'; const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
-  const standaloneEmojiItem = showCompactFooter
-    && !showInlineHumanSender
-    && !msg.messageAction
-    && !msg.sourceMessage
-    && !hasAttachments
-    && !hasVoice
-    && !hasLinkPreview
-    && !msg.supportContactResponse
-    && !msg.supportContactTyping
-    && !footerDetail
-    && !msg.replySummary
-    && !msg.editedAt
-    ? emojiItemFromComposerValue(msg.text)
-    : null;
+  const standaloneEmojiItem = standaloneEmojiItemForMessage(msg, { isHuman: showCompactFooter, showsSender: showInlineHumanSender, footerDetail });
   const messageSurfaceContent = (
     <>
       {showInlineHumanSender ? (
@@ -803,19 +787,7 @@ function MessageBubbleView({
       {msg.sourceMessage && !isForwardedMessage ? (
         <div className={cn(hasText || hasAttachments || hasVoice ? 'mb-2' : '')}><SourceMessageQuote sourceMessage={msg.sourceMessage} compactReplyPreview={isOwnHumanMessage || isPeerHumanMessage} onNavigateToMessage={onNavigateToMessage} /></div>
       ) : null}
-      {standaloneEmojiItem ? (
-        <div
-          className={cn('app-standalone-emoji-message relative h-11', isOwnHumanMessage ? 'w-[4.5rem]' : 'w-11')}
-          data-kordi-copy-surface="message"
-        >
-          <EmojiPickerItemImage item={standaloneEmojiItem} className="h-11 w-11" />
-          {isOwnHumanMessage ? (
-            <span className="app-message-delivery-footer absolute -bottom-0.5 -right-2 inline-flex text-black/45">
-              <MessageDeliveryStatusSlot status={bubbleDeliveryStatus} />
-            </span>
-          ) : null}
-        </div>
-      ) : showCompactFooter ? (
+      {standaloneEmojiItem ? <StandaloneEmojiMessage item={standaloneEmojiItem} own={isOwnHumanMessage} status={bubbleDeliveryStatus} /> : showCompactFooter ? (
         showInlineCompactFooter ? (
           <div className="leading-[1.45]">
             <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
