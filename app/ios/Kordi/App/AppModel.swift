@@ -5952,6 +5952,7 @@ final class AppModel: ObservableObject {
                     pinnedSessionIds.remove(sessionId)
                     mutedSessionIds.remove(sessionId)
                     markedUnreadSessionIds.remove(sessionId)
+                    cache?.deleteSession(sessionId, accountId: accountId)
                     cloudMessagesByPeer = cloudMessagesByPeer.mapValues { messages in
                         messages.filter { !CloudMessageStateProjector.sessionKeys(for: $0).contains(sessionId) }
                     }

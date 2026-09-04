@@ -7,6 +7,60 @@ use super::{
 };
 
 #[test]
+fn session_deletion_purges_the_durable_cloud_cache() {
+    let mut conn = super::test_support::test_connection();
+    apply_on_connection(
+        &mut conn,
+        ChatSyncApplyRequest {
+            account_id: "acct_test".to_string(),
+            bootstrap: true,
+            cursor: Some("cursor-0".to_string()),
+            last_stream_seq: Some(0),
+            conversations: vec![json!({
+                "id": "obsolete-conversation",
+                "kind": "direct",
+                "legacy_session_id": "session:seed:obsolete",
+                "version": 1,
+                "latest_message_sequence": 1
+            })],
+            messages: vec![json!({
+                "id": "obsolete-message",
+                "conversation_id": "obsolete-conversation",
+                "conversation_sequence": 1,
+                "client_message_id": "obsolete-client-message",
+                "version": 1
+            })],
+            events: vec![],
+        },
+    )
+    .unwrap();
+
+    apply_on_connection(
+        &mut conn,
+        ChatSyncApplyRequest {
+            account_id: "acct_test".to_string(),
+            bootstrap: false,
+            cursor: Some("cursor-1".to_string()),
+            last_stream_seq: Some(1),
+            conversations: vec![],
+            messages: vec![],
+            events: vec![json!({
+                "stream_seq": 1,
+                "protocol_version": 2,
+                "type": "session.deleted",
+                "critical": true,
+                "payload": { "sessionId": "session:seed:obsolete" }
+            })],
+        },
+    )
+    .unwrap();
+
+    let state = load_state(&conn, "acct_test").unwrap();
+    assert!(state.conversations.is_empty());
+    assert!(state.messages.is_empty());
+}
+
+#[test]
 fn authoritative_message_resolves_its_pending_outbox_operation() {
     let mut conn = super::test_support::test_connection();
     conn.execute_batch(

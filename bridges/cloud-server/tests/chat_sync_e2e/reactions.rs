@@ -17,7 +17,7 @@ async fn unicode_reactions_are_idempotent_authorized_and_synced() {
             client_operation_id: Uuid::now_v7(),
             kind: ConversationKind::Direct,
             shared_title: None,
-            client_session_id: format!("session:reaction:{}", Uuid::now_v7()),
+            client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer.clone()],
         },
     )

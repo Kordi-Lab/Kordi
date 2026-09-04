@@ -370,12 +370,17 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(index, event_type)| {
+                let payload = if *event_type == "session.deleted" {
+                    json!({ "sessionId": "session:obsolete" })
+                } else {
+                    json!({})
+                };
                 json!({
                     "stream_seq": index as i64 + 1,
                     "protocol_version": 2,
                     "type": event_type,
                     "critical": true,
-                    "payload": {}
+                    "payload": payload
                 })
             })
             .collect();

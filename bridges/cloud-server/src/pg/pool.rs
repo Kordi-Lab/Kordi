@@ -382,6 +382,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "default group channel titles",
         sql: include_str!("../../migrations/0079_default_group_channel_titles.sql"),
     },
+    EmbeddedMigration {
+        version: 80,
+        description: "enforce canonical direct conversation identity",
+        sql: include_str!("../../migrations/0080_enforce_direct_conversation_identity.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
