@@ -267,6 +267,7 @@ final class AppModel: ObservableObject {
     private var sessionVisibilityMutationRevision = 0
     private var pendingSessionVisibilityMutationCount = 0
     private var pendingAgentRequestIds: [String: [String]] = [:]
+    private var pendingAgentQueuedRequestIds = Set<String>()
     private var pendingAgentRequestStartedAt: [String: Date] = [:]
     private var pendingAgentDisplayNames: [String: String] = [:]
     private var pendingAgentOwnerNames: [String: String] = [:]
@@ -566,6 +567,7 @@ final class AppModel: ObservableObject {
         pendingVisibleReadMessageBySessionID = [:]
         persistedVisibleReadMessageBySessionID = [:]
         pendingAgentRequestIds = [:]
+        pendingAgentQueuedRequestIds = []
         agentRunTasks.values.forEach { $0.cancel() }
         agentRunTasks = [:]
         pendingAgentRequestStartedAt = [:]
@@ -1488,7 +1490,9 @@ final class AppModel: ObservableObject {
                     ?? conversation.agentDisplayName?.nonEmpty
                     ?? "Kordi",
                 agentOwnerName: routedAgent?.ownerName
-                    ?? (conversation.kind == .agent ? conversation.ownerDisplayName : nil)
+                    ?? (conversation.kind == .agent ? conversation.ownerDisplayName : nil),
+                queued: conversation.kind == .agent
+                    && !pendingAgentRequestIds[conversation.id, default: []].isEmpty
             )
         }
         cacheCurrentMessages(conversation.id)
@@ -2074,8 +2078,8 @@ final class AppModel: ObservableObject {
                 errorMessage: nil,
                 requestMessageId: requestMessageId,
                 agentExecution: AgentExecutionSnapshot(
-                    phase: .preparing,
-                    summary: "Preparing the response",
+                    phase: pendingAgentQueuedRequestIds.contains(requestMessageId) ? .queued : .preparing,
+                    summary: pendingAgentQueuedRequestIds.contains(requestMessageId) ? "Queued next" : "Preparing the response",
                     steps: [],
                     thinkingText: nil,
                     tools: nil,
@@ -4357,15 +4361,6 @@ final class AppModel: ObservableObject {
                 agentOwnerName: conversation.kind == .agent ? conversation.ownerDisplayName : nil
             )
         }
-        // A queued Agent request must not race the executing Mac by claiming a
-        // fallback run while a previous request in this session is still active.
-        while conversation.kind == .agent,
-              messages(for: conversation).contains(where: {
-                  $0.id == requestMessageId && $0.agentQueuePosition != nil
-              }) {
-            do { try await Task.sleep(for: .seconds(1)) } catch { return }
-            guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else { return }
-        }
         if ownerAccountId == account.accountId {
             agentExecutionLocation[conversation.id] = .mac(label: "your Mac")
             for _ in 0..<5 {
@@ -6150,7 +6145,8 @@ final class AppModel: ObservableObject {
         requestMessageId: String,
         startedAt: Date,
         agentDisplayName: String,
-        agentOwnerName: String? = nil
+        agentOwnerName: String? = nil,
+        queued: Bool = false
     ) {
         if !pendingAgentRequestIds[conversationId, default: []].contains(requestMessageId) {
             pendingAgentRequestIds[conversationId, default: []].append(requestMessageId)
@@ -6158,6 +6154,7 @@ final class AppModel: ObservableObject {
         pendingAgentRequestStartedAt[requestMessageId] = startedAt
         pendingAgentDisplayNames[requestMessageId] = agentDisplayName
         pendingAgentOwnerNames[requestMessageId] = agentOwnerName?.nonEmpty
+        if queued { pendingAgentQueuedRequestIds.insert(requestMessageId) }
         agentRequestPresentationIds[requestMessageId] = agentRequestPresentationIds[requestMessageId]
             ?? requestMessageId
         setAgentActivity(.replying, conversationId: conversationId)
@@ -6176,10 +6173,14 @@ final class AppModel: ObservableObject {
         pendingAgentRequestStartedAt[serverRequestMessageId] = pendingAgentRequestStartedAt.removeValue(forKey: localRequestMessageId)
         pendingAgentDisplayNames[serverRequestMessageId] = pendingAgentDisplayNames.removeValue(forKey: localRequestMessageId)
         pendingAgentOwnerNames[serverRequestMessageId] = pendingAgentOwnerNames.removeValue(forKey: localRequestMessageId)
+        if pendingAgentQueuedRequestIds.remove(localRequestMessageId) != nil {
+            pendingAgentQueuedRequestIds.insert(serverRequestMessageId)
+        }
     }
 
     private func clearPendingAgentRequest(conversationId: String) {
         for requestID in pendingAgentRequestIds[conversationId, default: []] {
+            pendingAgentQueuedRequestIds.remove(requestID)
             pendingAgentRequestStartedAt[requestID] = nil
             pendingAgentDisplayNames[requestID] = nil
             pendingAgentOwnerNames[requestID] = nil
@@ -6198,6 +6199,7 @@ final class AppModel: ObservableObject {
         failed: Bool = false
     ) {
         pendingAgentRequestIds[conversationId]?.removeAll { $0 == requestMessageId }
+        pendingAgentQueuedRequestIds.remove(requestMessageId)
         pendingAgentRequestStartedAt[requestMessageId] = nil
         pendingAgentDisplayNames[requestMessageId] = nil
         pendingAgentOwnerNames[requestMessageId] = nil
