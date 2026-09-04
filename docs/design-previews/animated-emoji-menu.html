@@ -253,11 +253,11 @@
     .attribution { padding: 6px 12px; border-top: 1px solid var(--divider); color: var(--subtle); font-size: 9px; text-align: right; }
     .attribution a { color: var(--muted); text-underline-offset: 2px; }
 
-    .categories { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; min-height: 47px; padding: 4px 8px; border-top: 1px solid var(--divider); }
-    .category { display: flex; min-height: 38px; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); }
+    .categories { display: flex; min-height: 54px; align-items: center; justify-content: center; gap: 6px; padding: 4px 8px; border-top: 1px solid var(--divider); }
+    .category { display: grid; width: 64px; min-height: 44px; place-items: center; border: 0; border-radius: 12px; background: transparent; color: var(--muted); }
     .category:hover, .category[aria-selected="true"] { background: var(--selected); color: var(--text); }
-    .category svg { width: 16px; height: 16px; }
-    .category span { font-size: 10px; font-weight: 650; }
+    .category img { width: 30px; height: 30px; object-fit: contain; }
+    .category svg { width: 18px; height: 18px; }
 
     .unchanged-panel { display: grid; min-height: 0; place-items: center; padding: 30px; color: var(--muted); text-align: center; }
     .unchanged-panel strong { display: block; margin-bottom: 5px; color: var(--text); }
@@ -282,7 +282,6 @@
       .review-bar strong { max-width: 124px; overflow: hidden; text-overflow: ellipsis; }
       .picker { width: calc(100vw - 32px); }
       .emoji-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-      .category span { display: none; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -347,16 +346,16 @@
 
               <div class="emoji-scroll" id="emoji-scroll">
                 <section class="emoji-section" id="recent-section" data-section="recent">
-                  <div class="section-heading"><span class="section-label">Recently used</span><span class="recent-count">6</span></div>
+                  <div class="section-heading"><span class="section-label">Recently used</span><span>6</span></div>
                   <div class="emoji-grid" id="recent-grid"></div>
                 </section>
 
-                <section class="emoji-section" id="animated-section" data-section="animated">
+                <section class="emoji-section" id="noto-section" data-section="noto">
                   <div class="section-heading">
-                    <span class="section-label">Animated emoji <span class="section-badge">New</span></span>
+                    <span class="section-label">Noto Emoji <span class="section-badge">New</span></span>
                     <span>24</span>
                   </div>
-                  <div class="emoji-grid" id="animated-grid"></div>
+                  <div class="emoji-grid" id="noto-grid"></div>
                 </section>
 
                 <section class="emoji-section" id="blob-section" data-section="blob">
@@ -371,18 +370,15 @@
                 <a href="https://googlefonts.github.io/noto-emoji-animation/" target="_blank" rel="noreferrer">Noto Animated Emoji</a> by Google · CC BY 4.0
               </div>
 
-              <div class="categories" role="tablist" aria-label="Emoji categories">
-                <button class="category" type="button" role="tab" aria-selected="false" data-category="recent" title="Recent">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span>Recent</span>
+              <div class="categories" role="tablist" aria-label="Emoji collections">
+                <button class="category" type="button" role="tab" aria-label="Recent" aria-selected="false" aria-controls="recent-section" data-category="recent" title="Recent">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
                 </button>
-                <button class="category" type="button" role="tab" aria-selected="true" data-category="all" title="All">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 5h5v5H5zM14 5h5v5h-5zM5 14h5v5H5zM14 14h5v5h-5z"/></svg><span>All</span>
+                <button class="category" type="button" role="tab" aria-label="Noto Emoji" aria-selected="true" aria-controls="noto-section" data-category="noto" title="Noto Emoji">
+                  <img src="https://fonts.gstatic.com/s/e/notoemoji/latest/1f600/512.png" alt="" aria-hidden="true" />
                 </button>
-                <button class="category" type="button" role="tab" aria-selected="false" data-category="animated" title="Animated">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3 1.4 4.6L18 9l-4.6 1.4L12 15l-1.4-4.6L6 9l4.6-1.4zM18 15l.7 2.3L21 18l-2.3.7L18 21l-.7-2.3L15 18l2.3-.7z"/></svg><span>Animated</span>
-                </button>
-                <button class="category" type="button" role="tab" aria-selected="false" data-category="blob" title="Blob Emoji">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7.8 4.4c3.4-2 7.9-.7 9.9 2.7 2.2 3.7 1.6 9.6-2.4 11.8-4.2 2.3-10.4.5-11.4-4.1-.8-3.5.7-8.5 3.9-10.4Z"/><path d="M8.5 11h.01M15.5 11h.01M9 15c1.8 1.4 4.2 1.4 6 0"/></svg><span>Blob</span>
+                <button class="category" type="button" role="tab" aria-label="Blob Emoji" aria-selected="false" aria-controls="blob-section" data-category="blob" title="Blob Emoji">
+                  <img src="../../shared/blob-emoji/assets/blobsmile.webp" alt="" aria-hidden="true" />
                 </button>
               </div>
             </div>
@@ -456,7 +452,7 @@
     );
 
     const cdn = "https://fonts.gstatic.com/s/e/notoemoji/latest";
-    const animatedGrid = document.getElementById("animated-grid");
+    const notoGrid = document.getElementById("noto-grid");
     const blobGrid = document.getElementById("blob-grid");
     const recentGrid = document.getElementById("recent-grid");
     const search = document.getElementById("emoji-search");
@@ -467,7 +463,7 @@
     const selectedEmoji = document.getElementById("selected-emoji");
     const toast = document.getElementById("toast");
     const noResults = document.getElementById("no-results");
-    let category = "all";
+    let category = "noto";
     let paused = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     let toastTimer;
 
@@ -480,7 +476,7 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "emoji-option";
-      button.dataset.kind = "animated";
+      button.dataset.kind = "noto";
       button.dataset.search = `${name} ${keywords}`.toLowerCase();
       button.dataset.glyph = glyph;
       button.dataset.name = name;
@@ -515,7 +511,7 @@
     function cloneEmoji(button) {
       const clone = button.cloneNode(true);
       clone.addEventListener("click", () => selectEmoji(clone));
-      if (clone.dataset.kind === "animated") {
+      if (clone.dataset.kind === "noto") {
         showButtonMotion(clone, false);
         bindMotionPreview(clone);
       }
@@ -539,9 +535,10 @@
     }
 
     function seedGrids() {
-      notoEmoji.forEach((item) => animatedGrid.append(notoButton(item)));
+      notoEmoji.forEach((item) => notoGrid.append(notoButton(item)));
       blobEmoji.forEach((item) => blobGrid.append(blobButton(item)));
-      [...animatedGrid.children].slice(0, 6).forEach((button) => recentGrid.append(cloneEmoji(button)));
+      [...notoGrid.children].slice(0, 4).forEach((button) => recentGrid.append(cloneEmoji(button)));
+      [...blobGrid.children].slice(0, 2).forEach((button) => recentGrid.append(cloneEmoji(button)));
       document.querySelectorAll(".emoji-option img").forEach((image) => image.addEventListener("error", () => { image.closest("picture")?.setAttribute("hidden", ""); image.hidden = true; }));
     }
 
@@ -570,7 +567,7 @@
       let visible = 0;
       document.querySelectorAll("#emoji-scroll .emoji-section").forEach((section) => {
         const sectionKind = section.dataset.section;
-        const allowed = query ? sectionKind !== "recent" : category === "all" ? sectionKind !== "recent" : sectionKind === category;
+        const allowed = sectionKind === category;
         let sectionMatches = 0;
         section.querySelectorAll(".emoji-option").forEach((option) => {
           const match = allowed && (!query || option.dataset.search.includes(query));
@@ -584,7 +581,7 @@
     }
 
     function applyMotion() {
-      document.querySelectorAll(".emoji-option[data-kind='animated']").forEach((button) => showButtonMotion(button, false));
+      document.querySelectorAll(".emoji-option[data-kind='noto']").forEach((button) => showButtonMotion(button, false));
       const motionToggle = document.getElementById("motion-toggle");
       motionToggle.setAttribute("aria-pressed", String(paused));
       motionToggle.querySelector("span").textContent = paused ? "Play" : "Pause";
