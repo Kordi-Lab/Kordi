@@ -190,6 +190,15 @@ test('a single emoji renders at its natural width without a message bubble', () 
   assert.match(textMarkup, /app-message-bubble-shape/);
 });
 
+test('inline emoji use the text baseline instead of hanging below it', () => {
+  const css = readFileSync(
+    new URL('../src/styles/shell-expressive-picker.css', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(css, /\.app-inline-blob-emoji\s*\{[^}]*vertical-align:\s*-0\.2em;/s);
+});
+
 test('sending own message renders a Telegram-style clock with moving hands in the stable delivery slot', () => {
   const message: Message = {
     role: 'user',
