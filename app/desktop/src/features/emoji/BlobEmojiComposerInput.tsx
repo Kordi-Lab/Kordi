@@ -32,9 +32,7 @@ import type { EmojiTextSelection } from './emojiText';
 
 const COMPOSER_MENTION_ATTRIBUTE = 'data-composer-mention';
 
-function composerMentions(value: string) {
-  return parseMessageInlineParts(value).filter((part) => part.type === 'mention');
-}
+const composerMentions = (value: string) => parseMessageInlineParts(value).filter((part) => part.type === 'mention');
 
 function appendComposerText(
   fragment: DocumentFragment,
