@@ -106,7 +106,7 @@ export function useKordiAppFoundation({
     isDesktopAuthLoading,
     desktopAuthError,
     clearDesktopAuthError,
-    activeLoginProviderId,
+    activeLoginProviderId, providerAuthSyncIntent,
     setActiveLoginProviderId,
     selectAuthProvider,
     refreshDesktopAuth,
@@ -314,7 +314,7 @@ export function useKordiAppFoundation({
     localAgentLabel: desktopChatState?.localAgent.label,
     defaultCloudAgentRuntimeReady:
       !isDesktopAuthLoading && Boolean(defaultCloudAgentRuntimeRoute),
-    desktopAuthState,
+    desktopAuthState, providerAuthSyncIntent,
   });
 
   const {

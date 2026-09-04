@@ -544,7 +544,7 @@ export class CloudAuthClient {
     input: CloudProviderAuthSnapshotInput,
   ): Promise<CloudProviderAuthSnapshot> {
     return this.send<CloudProviderAuthSnapshot>(
-      '/v1/cloud/agent-provider-auth/snapshots',
+      '/v1/cloud/agent-provider-auth/snapshots?intent=explicit',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -575,7 +575,7 @@ export class CloudAuthClient {
 
   async revokeProviderAuthSnapshot(token: string, snapshotId: string): Promise<CloudProviderAuthSnapshot> {
     return this.send<CloudProviderAuthSnapshot>(
-      `/v1/cloud/agent-provider-auth/snapshots/${encodeURIComponent(snapshotId)}`,
+      `/v1/cloud/agent-provider-auth/snapshots/${encodeURIComponent(snapshotId)}?intent=explicit`,
       {
         method: 'DELETE',
         headers: { authorization: `Bearer ${token}` },

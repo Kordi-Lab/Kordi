@@ -948,6 +948,7 @@ actor CloudAPIClient {
             path: "/v1/cloud/agent-provider-auth/snapshots",
             method: "POST",
             token: token,
+            query: [URLQueryItem(name: "intent", value: "explicit")],
             body: PublishProviderAuthSnapshotRequest(
                 provider: provider,
                 authChoice: authChoice,
@@ -962,6 +963,7 @@ actor CloudAPIClient {
             path: "/v1/cloud/agent-provider-auth/snapshots/\(snapshotId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? snapshotId)",
             method: "DELETE",
             token: token,
+            query: [URLQueryItem(name: "intent", value: "explicit")],
             fallback: "Could not remove provider authentication."
         )
     }

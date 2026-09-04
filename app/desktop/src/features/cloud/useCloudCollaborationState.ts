@@ -189,8 +189,7 @@ export function useCloudCollaborationState({
   localTurnsBySessionId,
   cloudAgentRuntimeRoutesBySessionId,
   defaultCloudAgentRuntimeRoute, localAgentLabel,
-  defaultCloudAgentRuntimeReady = true,
-  desktopAuthState,
+  defaultCloudAgentRuntimeReady = true, desktopAuthState, providerAuthSyncIntent,
 }: UseCloudCollaborationStateArgs): UseCloudCollaborationStateResult {
   const client = useMemo<CloudAuthClient>(() => defaultCloudAuthClient(), []);
   const cloudAgentsClient = useMemo(() => defaultCloudAgentsClient(), []);
@@ -440,8 +439,8 @@ export function useCloudCollaborationState({
   useCloudProviderAuthSnapshotSync({
     account,
     client,
-    route: defaultCloudAgentRuntimeRoute,
-    desktopAuthState,
+    route: defaultCloudAgentRuntimeRoute, desktopAuthState,
+    intent: providerAuthSyncIntent,
     initialMessagesSettled,
     reportWarning: reportCloudAgentExecutionWarning,
   });
