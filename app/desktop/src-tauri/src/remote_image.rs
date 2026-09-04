@@ -143,7 +143,10 @@ fn remote_image_client(url: &Url, addresses: &[SocketAddr]) -> Result<reqwest::C
     let host = url
         .host_str()
         .ok_or_else(|| "Avatar image URL is missing a host.".to_string())?;
-    let builder = reqwest::Client::builder().redirect(Policy::none());
+    // Some sites reject metadata and image requests without a User-Agent.
+    let builder = reqwest::Client::builder()
+        .user_agent(concat!("Kordi/", env!("CARGO_PKG_VERSION")))
+        .redirect(Policy::none());
     let builder = if host.parse::<IpAddr>().is_ok() {
         builder
     } else {
@@ -345,6 +348,48 @@ pub async fn desktop_fetch_blob_emoji_data_url(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn public_media_client_sends_a_user_agent() {
+        use tokio::{
+            io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+            net::TcpListener,
+        };
+
+        tokio::time::timeout(Duration::from_secs(5), async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let url = Url::parse(&format!("http://{address}/preview")).unwrap();
+            // Exercise the HTTP client locally without relaxing public URL validation.
+            let client = remote_image_client(&url, &[address]).unwrap();
+            let server = async {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut stream = BufReader::new(stream);
+                let mut headers = String::new();
+                loop {
+                    let mut line = String::new();
+                    assert!(stream.read_line(&mut line).await.unwrap() > 0);
+                    if line == "\r\n" {
+                        break;
+                    }
+                    headers.push_str(&line);
+                }
+                stream
+                    .get_mut()
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                    .await
+                    .unwrap();
+                headers
+            };
+            let (headers, response) = tokio::join!(server, client.get(url).send());
+            assert!(response.unwrap().status().is_success());
+            assert!(headers.lines().any(|line| {
+                line.eq_ignore_ascii_case(concat!("User-Agent: Kordi/", env!("CARGO_PKG_VERSION")))
+            }));
+        })
+        .await
+        .expect("local User-Agent check timed out");
+    }
 
     #[test]
     fn remote_avatar_urls_require_public_https_hosts() {
