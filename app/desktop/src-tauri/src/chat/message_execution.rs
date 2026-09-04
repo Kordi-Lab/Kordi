@@ -11,7 +11,7 @@ use super::{
     agent_builder, apply_desktop_chat_message_route, apply_desktop_turn_event,
     attach_cloud_scheduled_task_runtime_for_session, chat_cwd, desktop_task_tools_from_messages,
     ensure_loaded_or_create_explicit_session, ensure_provider_ready_for_send, now_millis,
-    prepare_desktop_session_for_send, reserve_turn_if_session_idle, snapshot_turn,
+    prepare_desktop_session_for_send, reserve_turn_in_session, snapshot_turn,
     sync_completed_desktop_session_to_canonical, turn_snapshot_has_model_task_tools, update_turn,
     DesktopChatManager, DesktopChatMessageRoute, DesktopChatToolSnapshot, DesktopChatTurnHandle,
     DesktopChatTurnSnapshot,
@@ -26,6 +26,7 @@ pub(super) struct StartMessageInput {
     pub visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
     pub scheduled_task_session_id: Option<String>,
     pub sync_session_at_start: bool,
+    pub request_message_id: Option<String>,
 }
 
 async fn reserve_shared_request(
@@ -172,6 +173,7 @@ pub(super) async fn start_message(
         visible_task_records,
         scheduled_task_session_id,
         sync_session_at_start,
+        request_message_id,
     } = input;
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
@@ -209,7 +211,7 @@ pub(super) async fn start_message(
     }));
     let cancel = tokio_util::sync::CancellationToken::new();
 
-    if !reserve_turn_if_session_idle(
+    let (previous_turn, turn_completion) = reserve_turn_in_session(
         manager,
         turn_id,
         DesktopChatTurnHandle {
@@ -217,18 +219,32 @@ pub(super) async fn start_message(
             cancel: cancel.clone(),
         },
     )
-    .await
-    {
-        return Err(
-            "This session already has a running task. Open another session to work concurrently."
-                .to_string(),
-        );
-    }
+    .await?;
     let snapshot_for_task = snapshot.clone();
     let is_agent_builder_session = agent_builder::is_agent_builder_session_id(&target_session_id);
     let manager_for_task = manager.clone();
 
     tokio::spawn(async move {
+        // Dropping the sender releases exactly the next admitted request,
+        // including on failure. A canceled queued turn still waits for its
+        // predecessor so cancellation cannot let later requests overtake it.
+        let _completion = turn_completion;
+        if let Some(previous_turn) = previous_turn {
+            let _ = previous_turn.await;
+        }
+        if cancel.is_cancelled() {
+            update_turn(&snapshot_for_task, |state| {
+                state.status = "cancelled".to_string();
+                state.completed = true;
+                state.completed_at_ms = Some(now_millis());
+            });
+            return;
+        }
+        update_turn(&snapshot_for_task, |state| {
+            state.status = "starting".to_string();
+            state.message = "Working…".to_string();
+            state.started_at_ms = now_millis();
+        });
         let (provider, model) = {
             let mut session = session_handle.lock().await;
             if let Err(error) = apply_desktop_chat_message_route(&mut session, route.as_ref()) {
@@ -283,7 +299,12 @@ pub(super) async fn start_message(
         let turn = {
             let mut session = session_handle.lock().await;
             match session
-                .begin_message_streaming(text, attachment_paths, cancel.clone())
+                .begin_message_streaming_with_request_id(
+                    text,
+                    attachment_paths,
+                    cancel.clone(),
+                    request_message_id,
+                )
                 .await
             {
                 Ok(turn) => turn,

@@ -108,7 +108,7 @@ use transient_drafts::{
 
 use turns::{
     apply_desktop_turn_event, cancel_turn_by_id, desktop_task_tools_from_messages,
-    reserve_turn_if_session_idle, session_has_running_turn, snapshot_turn, turn_snapshot_by_id,
+    reserve_turn_in_session, session_has_running_turn, snapshot_turn, turn_snapshot_by_id,
     turn_snapshot_has_model_task_tools, update_turn,
 };
 
@@ -129,6 +129,8 @@ struct DesktopChatTurnHandle {
 pub struct DesktopChatManager {
     sessions: Arc<tokio::sync::Mutex<HashMap<String, DesktopSessionHandle>>>,
     turns: Arc<tokio::sync::Mutex<HashMap<String, DesktopChatTurnHandle>>>,
+    session_turn_tails:
+        Arc<tokio::sync::Mutex<HashMap<String, tokio::sync::oneshot::Receiver<()>>>>,
     background_turn_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
     shared_request_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
 }
@@ -584,6 +586,7 @@ pub async fn desktop_chat_start_message(
     context_messages: Option<Vec<DesktopChatContextMessage>>,
     visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
     scheduled_task_session_id: Option<String>,
+    request_message_id: Option<String>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     message_execution::start_message(
         manager.inner(),
@@ -596,6 +599,7 @@ pub async fn desktop_chat_start_message(
             visible_task_records,
             scheduled_task_session_id,
             sync_session_at_start: false,
+            request_message_id,
         },
     )
     .await

@@ -291,7 +291,8 @@ export function useKordiAppRuntimeActions({
   });
 
   const activeQueuedDesktopMessages =
-    queuedDesktopMessagesBySession[activeConv.id]
+    queuedDesktopMessagesBySession[activeConv.canonicalSessionId ?? activeConv.id]
+    ?? queuedDesktopMessagesBySession[activeConv.id]
     ?? ('queuedMessages' in activeConv ? activeConv.queuedMessages : undefined)
     ?? [];
 

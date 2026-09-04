@@ -23,6 +23,14 @@ final class ConversationReadPresentationTests: XCTestCase {
                 tools: nil, startedAtMs: 1_000, updatedAtMs: 4_000, completed: true
             )
             messages.append(terminal)
+            let waiting = AgentSessionQueuePresentation.apply(to: messages, kind: .agent)
+            XCTAssertEqual(waiting.first { $0.id == "request-2" }?.agentQueuePosition, 1)
+            var started = messages.first { $0.id == "response-2" }!
+            started.agentExecution = AgentExecutionSnapshot(
+                phase: .preparing, summary: "Starting", steps: [], thinkingText: nil,
+                tools: nil, startedAtMs: 5_000, updatedAtMs: 5_000, completed: false
+            )
+            messages.append(started)
             let projected = AgentSessionQueuePresentation.apply(to: messages, kind: .agent)
             XCTAssertNil(projected.first { $0.id == "request-2" }?.agentQueuePosition)
             XCTAssertEqual(projected.first { $0.id == "request-3" }?.agentQueuePosition, 1)
@@ -35,6 +43,19 @@ final class ConversationReadPresentationTests: XCTestCase {
         for kind: ConversationKind in [.group, .person] {
             XCTAssertEqual(AgentSessionQueuePresentation.apply(to: messages, kind: kind), messages)
         }
+    }
+
+    func testHistoricalWritingDoesNotQueueAnAlreadyRunningRequest() {
+        var messages = agentQueueFixture()
+        for index in messages.indices where messages[index].author == .agent {
+            messages[index].agentExecution = AgentExecutionSnapshot(
+                phase: .writing, summary: "Writing", steps: [], thinkingText: nil,
+                tools: nil, startedAtMs: 1, updatedAtMs: 1, completed: false
+            )
+        }
+        let projected = AgentSessionQueuePresentation.apply(to: messages, kind: .agent)
+        XCTAssertTrue(projected.allSatisfy { $0.agentQueuePosition == nil })
+        XCTAssertEqual(projected.filter { $0.author == .agent }.count, 3)
     }
 
     private func agentQueueFixture() -> [ChatMessage] {
@@ -52,7 +73,8 @@ final class ConversationReadPresentationTests: XCTestCase {
                 createdAt: createdAt.addingTimeInterval(0.001), deliveryState: .delivered,
                 errorMessage: nil, requestMessageId: request.id,
                 agentExecution: AgentExecutionSnapshot(
-                    phase: .preparing, summary: "Preparing", steps: [], thinkingText: nil,
+                    phase: index == 1 ? .preparing : .queued,
+                    summary: index == 1 ? "Preparing" : "Queued next", steps: [], thinkingText: nil,
                     tools: nil, startedAtMs: Double(index) * 1_000,
                     updatedAtMs: Double(index) * 1_000, completed: false
                 )

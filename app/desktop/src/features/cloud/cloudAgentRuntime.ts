@@ -379,6 +379,10 @@ export function cloudAgentRuntimeSessionId(accountId?: string | null, cloudSessi
   return `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${localAccountId}:${runtimeTargetId}`;
 }
 
+export function cloudSelfAgentRuntimeSessionId(sessionId?: string | null): string | null {
+  return cleanText(sessionId);
+}
+
 export function cloudGroupAgentRuntimeSessionId(
   accountId?: string | null,
   groupId?: string | null,

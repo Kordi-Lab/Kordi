@@ -209,6 +209,7 @@ struct BackgroundAgentSessionPresentation: Identifiable, Hashable {
 
 struct AgentExecutionSnapshot: Codable, Hashable {
     enum Phase: String, Codable, Hashable {
+        case queued
         case preparing
         case analyzing
         case usingTool = "using-tool"
@@ -1251,28 +1252,23 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 enum AgentSessionQueuePresentation {
     static func apply(to messages: [ChatMessage], kind: ConversationKind) -> [ChatMessage] {
         guard kind == .agent else { return messages }
-        var activeRequests = Set<String>()
-        var terminalRequests = Set<String>()
+        var snapshots: [String: AgentExecutionSnapshot] = [:]
         for message in messages where message.author == .agent {
-            guard let requestID = message.requestMessageId else { continue }
-            if message.agentExecution?.completed == false
-                || (message.agentExecution == nil
-                    && CloudMessageCodec.isAgentProcessingPlaceholder(message.text)) {
-                activeRequests.insert(requestID)
-            } else {
-                terminalRequests.insert(requestID)
+            guard let requestID = message.requestMessageId,
+                  let execution = message.agentExecution else { continue }
+            if let existing = snapshots[requestID] {
+                if existing.completed && !execution.completed { continue }
+                if !execution.completed && execution.updatedAtMs < existing.updatedAtMs { continue }
             }
+            snapshots[requestID] = execution
         }
-        activeRequests.subtract(terminalRequests)
         let requests = messages.filter {
             $0.author == .me && !$0.isSystemNotice
                 && $0.deliveryState != .failed && $0.deliveryState != .cancelled
         }.sorted(by: ChatMessage.timelinePrecedes)
-        guard let activeIndex = requests.firstIndex(where: { activeRequests.contains($0.id) }) else {
-            return messages
-        }
-        let queuedIDs = requests.dropFirst(activeIndex + 1)
-            .filter { !terminalRequests.contains($0.id) }.map(\.id)
+        let queuedIDs = requests.filter {
+            snapshots[$0.id]?.phase == .queued && snapshots[$0.id]?.completed == false
+        }.map(\.id)
         let positions = Dictionary(uniqueKeysWithValues: queuedIDs.enumerated().map { ($0.element, $0.offset + 1) })
         return messages.compactMap { message in
             if message.author == .agent, let requestID = message.requestMessageId,
