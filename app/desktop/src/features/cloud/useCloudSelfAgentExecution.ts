@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useMemo,
   useRef,
   type Dispatch,
   type MutableRefObject,
@@ -49,6 +50,7 @@ import {
   cloudDirectMessageTargetCloudAgentId,
 } from './cloudDirectMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
+import { CloudAgentTurnCoordinator } from './cloudAgentTurnCoordinator';
 import { cloudAgentRunAlreadyOwnsRequest } from './cloudAgentRequestState';
 import {
   CLOUD_SELF_AGENT_EXECUTION_STREAM_MS,
@@ -127,6 +129,10 @@ export function useCloudSelfAgentExecution({
   const activeAccountIdRef = useRef<string | null>(
     account?.accountId ?? null,
   );
+  const turnCoordinator = useMemo(
+    () => new CloudAgentTurnCoordinator(),
+    [],
+  );
   useEffect(() => {
     const accountId = account?.accountId ?? null;
     activeAccountIdRef.current = accountId;
@@ -136,6 +142,10 @@ export function useCloudSelfAgentExecution({
       }
     };
   }, [account?.accountId]);
+  useEffect(() => {
+    turnCoordinator.changeAccount(account?.accountId ?? null);
+  }, [account?.accountId, turnCoordinator]);
+  useEffect(() => () => turnCoordinator.dispose(), [turnCoordinator]);
 
   useEffect(() => {
     if (!account) return;
@@ -222,7 +232,6 @@ export function useCloudSelfAgentExecution({
             [candidateRuntimeSessionId]: eventConvergedSessionRoute,
           }
         : routesBySessionId;
-      processedRequestIdsRef.current.add(request.messageId);
       const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
         if (
           isInactive()
@@ -234,7 +243,7 @@ export function useCloudSelfAgentExecution({
         }));
       };
 
-      void (async () => {
+      const executeRequest = async () => {
         const session = await loadSession();
         const sessionId = request.sessionId?.trim() ?? '';
         if (!session?.token || !sessionId || isInactive()) {
@@ -469,13 +478,22 @@ export function useCloudSelfAgentExecution({
         if (isInactive()) return;
         mergeMessage(response);
         await syncMessages();
-      })().catch((error) => {
-        processedRequestIdsRef.current.delete(request.messageId);
-        reportWarning(
-          '[cloud-self-agent-execution] request failed',
-          error,
-        );
+      };
+      const admission = turnCoordinator.enqueue({
+        runtimeSessionId: candidateRuntimeSessionId,
+        requestId: request.messageId,
+        run: executeRequest,
+        onError: (error) => {
+          processedRequestIdsRef.current.delete(request.messageId);
+          reportWarning(
+            '[cloud-self-agent-execution] request failed',
+            error,
+          );
+        },
       });
+      if (admission.accepted) {
+        processedRequestIdsRef.current.add(request.messageId);
+      }
     }
   }, [
     account,
@@ -492,6 +510,7 @@ export function useCloudSelfAgentExecution({
     runtimeReady,
     setLocalTurns,
     syncMessages,
+    turnCoordinator,
     turnIdsByRequestIdRef,
   ]);
 }

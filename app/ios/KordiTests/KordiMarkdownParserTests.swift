@@ -1009,6 +1009,24 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
     }
 
+    func testNewMessageScrollCorrectionRunsAfterKeyboardLayout() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: ".onChange(of: timeline.last)"))
+        let end = try XCTUnwrap(source.range(
+            of: ".onChange(of: isExpressivePickerPresented)",
+            range: start.upperBound..<source.endIndex
+        ))
+        let handler = source[start.lowerBound..<end.lowerBound]
+
+        XCTAssertTrue(handler.contains("await Task.yield()"))
+        XCTAssertTrue(handler.contains("proxy.scrollTo(bottomAnchorID, anchor: .bottom)"))
+        XCTAssertFalse(handler.contains("if !identityChanged"))
+    }
+
     func testConversationKeepsFollowingWhenLatestMessageStreamsInPlace() {
         XCTAssertTrue(ConversationTimelineScrollBehavior.shouldFollowLatest(
             hasPositionedInitialTimeline: true,
