@@ -860,30 +860,50 @@ private struct BlobEmojiInlineFlowLayout: Layout {
         subviews: Subviews
     ) -> (size: CGSize, origins: [CGPoint], sizes: [CGSize]) {
         let maximumWidth = max(1, proposal.width ?? .greatestFiniteMagnitude)
-        var origins: [CGPoint] = []
         var sizes: [CGSize] = []
-        var cursor = CGPoint.zero
-        var lineHeight: CGFloat = 0
-        var usedWidth: CGFloat = 0
+        var baselines: [CGFloat] = []
+        var rows: [Range<Int>] = []
+        var rowStart = 0
+        var rowWidth: CGFloat = 0
 
         for subview in subviews {
-            var size = subview.sizeThatFits(.unspecified)
-            if size.width > maximumWidth {
-                size = subview.sizeThatFits(ProposedViewSize(width: maximumWidth, height: nil))
+            var dimensions = subview.dimensions(in: .unspecified)
+            if dimensions.width > maximumWidth {
+                dimensions = subview.dimensions(
+                    in: ProposedViewSize(width: maximumWidth, height: nil)
+                )
             }
-            if cursor.x > 0, cursor.x + size.width > maximumWidth {
-                cursor.x = 0
-                cursor.y += lineHeight + spacing
-                lineHeight = 0
+            if rowWidth > 0, rowWidth + spacing + dimensions.width > maximumWidth {
+                rows.append(rowStart..<sizes.count)
+                rowStart = sizes.count
+                rowWidth = 0
             }
-            origins.append(cursor)
-            sizes.append(size)
-            cursor.x += size.width + spacing
-            lineHeight = max(lineHeight, size.height)
-            usedWidth = max(usedWidth, min(maximumWidth, cursor.x - spacing))
+            sizes.append(CGSize(width: dimensions.width, height: dimensions.height))
+            baselines.append(dimensions[.firstTextBaseline])
+            rowWidth += (rowWidth > 0 ? spacing : 0) + dimensions.width
+        }
+        if rowStart < sizes.count { rows.append(rowStart..<sizes.count) }
+
+        var origins = Array(repeating: CGPoint.zero, count: sizes.count)
+        var cursorY: CGFloat = 0
+        var usedWidth: CGFloat = 0
+
+        for row in rows {
+            let baseline = row.map { baselines[$0] }.max() ?? 0
+            let descent = row.map { sizes[$0].height - baselines[$0] }.max() ?? 0
+            var cursorX: CGFloat = 0
+            for index in row {
+                origins[index] = CGPoint(
+                    x: cursorX,
+                    y: cursorY + baseline - baselines[index]
+                )
+                cursorX += sizes[index].width + spacing
+            }
+            usedWidth = max(usedWidth, min(maximumWidth, cursorX - spacing))
+            cursorY += baseline + descent + spacing
         }
         return (
-            CGSize(width: usedWidth, height: cursor.y + lineHeight),
+            CGSize(width: usedWidth, height: max(0, cursorY - spacing)),
             origins,
             sizes
         )
