@@ -13,8 +13,8 @@ import { defaultCloudAuthClient } from '@/features/cloud/authClient';
 import { loadSession } from '@/features/cloud/session';
 import { cn } from '@/lib/utils';
 import type { EmojiTextSelection } from './emojiText';
-import { BlobEmojiPicker } from './BlobEmojiPicker';
-import { blobEmojiInlineToken } from './blobEmoji';
+import { EmojiPicker } from './EmojiPicker';
+import { emojiComposerValue } from './emojiCatalog';
 import {
   addFilesToExpressiveMediaLibrary,
   expressiveMediaAttachment,
@@ -231,8 +231,8 @@ export function ComposerExpressivePicker({
           }
           setIsOpen(opening);
         }}
-        title="Blob Emoji, stickers, and GIFs"
-        aria-label="Blob Emoji, stickers, and GIFs"
+        title="Emoji, stickers, and GIFs"
+        aria-label="Emoji, stickers, and GIFs"
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         data-expressive-picker-trigger="true"
@@ -244,13 +244,13 @@ export function ComposerExpressivePicker({
         <section
           className="app-expressive-picker app-composer-popover app-transient-surface"
           role="dialog"
-          aria-label="Blob Emoji, stickers, and GIF picker"
+          aria-label="Emoji, stickers, and GIF picker"
           aria-busy={isMediaBusy}
           data-expressive-picker="true"
         >
           <div className="app-expressive-picker-tabs" role="tablist" aria-label="Media type">
             {([
-              ['emoji', 'Blob Emoji'],
+              ['emoji', 'Emoji'],
               ['stickers', 'Stickers'],
               ['gifs', 'GIFs'],
             ] as const).map(([value, label]) => (
@@ -269,7 +269,7 @@ export function ComposerExpressivePicker({
 
           {tab === 'emoji' ? (
             <div className="app-expressive-picker-emoji-library" role="tabpanel">
-              <BlobEmojiPicker onSelect={(emoji) => selectText(blobEmojiInlineToken(emoji))} />
+              <EmojiPicker onSelect={(item) => selectText(emojiComposerValue(item))} />
             </div>
           ) : (
             <div className="app-expressive-picker-media-panel" role="tabpanel">

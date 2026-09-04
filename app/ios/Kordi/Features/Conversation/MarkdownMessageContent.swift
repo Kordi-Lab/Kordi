@@ -8,6 +8,7 @@ enum KordiMarkdownInlinePart: Equatable {
     case emphasis(String)
     case link(label: String, url: URL)
     case blobEmoji(BlobEmoji)
+    case notoEmoji(NotoEmoji)
 }
 
 struct KordiMarkdownListItem: Equatable {
@@ -153,6 +154,12 @@ enum KordiMarkdownParser {
                 remainder = remainder.dropFirst(link.length)
                 continue
             }
+            if let character = value.first,
+               let emoji = NotoEmojiCatalog.byValue[String(character)] {
+                parts.append(.notoEmoji(emoji))
+                remainder = remainder.dropFirst()
+                continue
+            }
             let patterns: [(String, ([String]) -> (part: KordiMarkdownInlinePart, suffix: String)?)] = [
                 ("^:blob:([A-Za-z0-9_-]+):", { captures in
                     BlobEmojiCatalog.byID[captures[1]].map { (.blobEmoji($0), "") }
@@ -185,7 +192,10 @@ enum KordiMarkdownParser {
             if matched { continue }
 
             let tokens = [":blob:", "[", "`", "*", "http://", "https://"]
-            let next = tokens.compactMap { value.range(of: $0)?.lowerBound }
+            let nextNotoEmoji = value.indices.first {
+                NotoEmojiCatalog.byValue[String(value[$0])] != nil
+            }
+            let next = (tokens.compactMap { value.range(of: $0)?.lowerBound } + [nextNotoEmoji].compactMap { $0 })
                 .min { value.distance(from: value.startIndex, to: $0) < value.distance(from: value.startIndex, to: $1) }
 
             guard let next else {
@@ -648,9 +658,12 @@ private struct InlineMarkdownText: View {
         case let .blobEmoji(emoji):
             BlobEmojiView(emoji: emoji, size: 22)
                 .accessibilityLabel(emoji.accessibilityName)
+        case let .notoEmoji(emoji):
+            NotoEmojiView(emoji: emoji, size: 22)
+                .accessibilityLabel(emoji.name)
         case let .link(label, url):
             let labelParts = KordiMarkdownParser.parseInline(label)
-            if containsBlobEmoji(labelParts) {
+            if containsRichEmoji(labelParts) {
                 Link(destination: url) {
                     BlobEmojiInlineFlowLayout(spacing: 2) {
                         ForEach(Array(labelParts.enumerated()), id: \.offset) { _, labelPart in
@@ -679,6 +692,9 @@ private struct InlineMarkdownText: View {
         case let .blobEmoji(emoji):
             BlobEmojiView(emoji: emoji, size: 22)
                 .accessibilityHidden(true)
+        case let .notoEmoji(emoji):
+            NotoEmojiView(emoji: emoji, size: 22)
+                .accessibilityHidden(true)
         case let .link(label, url):
             Text(KordiMarkdownParser.compactLinkLabel(label, url: url))
                 .font(font)
@@ -691,20 +707,22 @@ private struct InlineMarkdownText: View {
     private func requiresInlineFlow(_ parts: [KordiMarkdownInlinePart]) -> Bool {
         parts.contains { part in
             switch part {
-            case .blobEmoji:
+            case .blobEmoji, .notoEmoji:
                 return true
             case let .link(label, _):
-                return containsBlobEmoji(KordiMarkdownParser.parseInline(label))
+                return containsRichEmoji(KordiMarkdownParser.parseInline(label))
             default:
                 return false
             }
         }
     }
 
-    private func containsBlobEmoji(_ parts: [KordiMarkdownInlinePart]) -> Bool {
+    private func containsRichEmoji(_ parts: [KordiMarkdownInlinePart]) -> Bool {
         parts.contains { part in
-            if case .blobEmoji = part { return true }
-            return false
+            switch part {
+            case .blobEmoji, .notoEmoji: true
+            default: false
+            }
         }
     }
 
@@ -717,6 +735,8 @@ private struct InlineMarkdownText: View {
                 KordiMarkdownParser.compactLinkLabel(label, url: url)
             case let .blobEmoji(emoji):
                 emoji.accessibilityName
+            case let .notoEmoji(emoji):
+                emoji.name
             }
         }.joined()
     }
@@ -741,7 +761,7 @@ private struct InlineMarkdownText: View {
                 fragment.link = url
                 fragment.foregroundColor = inlineAccent ?? KordiTheme.signalBlue
                 fragment.underlineStyle = .single
-            case .blobEmoji:
+            case .blobEmoji, .notoEmoji:
                 continue
             }
             result.append(fragment)

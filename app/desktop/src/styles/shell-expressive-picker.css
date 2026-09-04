@@ -85,7 +85,7 @@
   display: grid;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   height: 100%;
   background: transparent;
 }
@@ -138,6 +138,7 @@
   display: flex;
   min-height: 2.75rem;
   align-items: center;
+  justify-content: center;
   gap: 0.125rem;
   padding: 0 0.5rem;
   border-top: 1px solid var(--app-divider);
@@ -158,6 +159,40 @@
   height: 1rem;
 }
 
+.app-emoji-collection-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.app-noto-emoji {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  line-height: 1;
+}
+
+.app-noto-emoji[data-loading='true']::before {
+  width: 55%;
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: color-mix(in oklab, currentColor 9%, transparent);
+  content: '';
+}
+
+.app-noto-emoji > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+}
+
+.app-noto-emoji > img[data-ready='true'] {
+  opacity: 1;
+}
+
 .app-blob-emoji-category:hover,
 .app-blob-emoji-category:focus-visible,
 .app-blob-emoji-category-active {
@@ -170,7 +205,7 @@
   width: 1.45em;
   height: 1.45em;
   margin: -0.25em 0.08em -0.25em;
-  vertical-align: -0.25em;
+  vertical-align: -0.2em;
   object-fit: contain;
 }
 

@@ -87,6 +87,18 @@ test('plain message content renders known Blob Emoji shortcodes inline', () => {
   assert.match(html, /:blob:not-real:/);
 });
 
+test('plain message content enhances catalogued Unicode with Noto Emoji CDN images', () => {
+  const parts = parseMessageInlineParts('Ship it 🚀 https://example.com/😀');
+  const html = renderToStaticMarkup(createElement(MessageInlineContent, {
+    text: 'Ship it 🚀',
+  }));
+
+  assert.equal(parts.filter((part) => part.type === 'notoEmoji').length, 1);
+  assert.match(html, /fonts\.gstatic\.com\/s\/e\/notoemoji\/latest\/1f680\/512\.webp/);
+  assert.match(html, /data-loading="true"/);
+  assert.doesNotMatch(html, /🚀/);
+});
+
 test('plain message content emphasizes every textual mention alongside a structured target', () => {
   const parts = parseMessageInlineParts(
     '@AlexMorgansKordi, please ask @EthanParksKordi to reply. Email test@example.com.',

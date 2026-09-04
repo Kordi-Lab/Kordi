@@ -19,6 +19,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { messageDeliveryVisual, shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
 import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGallery';
+import { EmojiPickerItemImage } from '@/features/emoji/EmojiPicker';
+import { emojiItemFromComposerValue } from '@/features/emoji/emojiCatalog';
 import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
 import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
 import {
@@ -778,6 +780,20 @@ function MessageBubbleView({
   );
   const footerDetail = showContactRequestAction ? undefined : msg.detail; const showAvatarSlot = !isAgentMessage; const showAvatar = showAvatarSlot && !isGroupedWithNext;
   const canOpenSenderProfile = Boolean(isPeerHumanMessage && onOpenSenderProfile && !selectionMode); const isForwardedMessage = msg.messageAction?.kind === 'forward'; const forwardedSource = isForwardedMessage ? msg.messageAction?.source : null;
+  const standaloneEmojiItem = showCompactFooter
+    && !showInlineHumanSender
+    && !msg.messageAction
+    && !msg.sourceMessage
+    && !hasAttachments
+    && !hasVoice
+    && !hasLinkPreview
+    && !msg.supportContactResponse
+    && !msg.supportContactTyping
+    && !footerDetail
+    && !msg.replySummary
+    && !msg.editedAt
+    ? emojiItemFromComposerValue(msg.text)
+    : null;
   const messageSurfaceContent = (
     <>
       {showInlineHumanSender ? (
@@ -787,7 +803,19 @@ function MessageBubbleView({
       {msg.sourceMessage && !isForwardedMessage ? (
         <div className={cn(hasText || hasAttachments || hasVoice ? 'mb-2' : '')}><SourceMessageQuote sourceMessage={msg.sourceMessage} compactReplyPreview={isOwnHumanMessage || isPeerHumanMessage} onNavigateToMessage={onNavigateToMessage} /></div>
       ) : null}
-      {showCompactFooter ? (
+      {standaloneEmojiItem ? (
+        <div
+          className={cn('app-standalone-emoji-message relative h-11', isOwnHumanMessage ? 'w-[4.5rem]' : 'w-11')}
+          data-kordi-copy-surface="message"
+        >
+          <EmojiPickerItemImage item={standaloneEmojiItem} className="h-11 w-11" />
+          {isOwnHumanMessage ? (
+            <span className="app-message-delivery-footer absolute -bottom-0.5 -right-2 inline-flex text-black/45">
+              <MessageDeliveryStatusSlot status={bubbleDeliveryStatus} />
+            </span>
+          ) : null}
+        </div>
+      ) : showCompactFooter ? (
         showInlineCompactFooter ? (
           <div className="leading-[1.45]">
             <span className="whitespace-pre-wrap break-words" data-kordi-copy-surface="message">
@@ -929,7 +957,7 @@ function MessageBubbleView({
         <TranscriptMessageSurface data-message-context-menu-anchor="true"
           data-message-media-side={hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : undefined : undefined} data-message-mixed-images={hasMixedImageAttachments ? 'true' : undefined}
           data-message-detached-image-group={hasDetachedImageGroup ? 'true' : undefined}
-          attachmentPreview={<AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={hasOnlyBorderlessMediaAttachments}
+          attachmentPreview={<AttachmentPreview msg={msg} imageGallery={imageGallery} imageDeliveryStatus={null} />} borderless={hasOnlyBorderlessMediaAttachments || Boolean(standaloneEmojiItem)}
           bubbleClassName={bubble} compact={useHumanCompactDensity} detachedImageGroup={hasDetachedImageGroup}
           enter={shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus)}
           side={isOwnHumanMessage ? 'own' : isPeerHumanMessage ? 'peer' : 'agent'}
@@ -946,16 +974,16 @@ function MessageBubbleView({
           'app-message-hover-time-trigger min-w-0',
           hasDetachedImageGroup ? cn('flex flex-col gap-2', isOwnHumanMessage ? 'items-end' : 'items-start') : '',
           hasGroupedImageAttachments ? (isOwnHumanMessage ? 'mr-4' : isPeerHumanMessage ? 'ml-4' : '') : '',
-          hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
+          hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup || standaloneEmojiItem ? 'bg-transparent shadow-none' : cn('shadow-sm', shouldAnimateHumanMessageEntry(isOwnHumanMessage || isPeerHumanMessage, deliveryStatus) && 'app-message-bubble-enter'),
           isOwnHumanMessage || isPeerHumanMessage ? 'text-[14px]' : 'text-[13px]',
           isOwnHumanMessage
-            ? hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup
+            ? hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup || standaloneEmojiItem
               ? 'w-fit max-w-[31rem] p-0'
               : useHumanCompactDensity
                 ? cn('app-message-bubble-contact-compact w-fit rounded-[8px] px-3 py-1.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
                 : cn('w-fit px-4 py-2.5', hasMixedImageAttachments ? 'max-w-[31rem]' : 'max-w-[52rem]', humanMessageBubbleShapeClass('own'))
             : isPeerHumanMessage
-              ? hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup
+              ? hasOnlyBorderlessMediaAttachments || hasDetachedImageGroup || standaloneEmojiItem
                 ? 'w-fit max-w-[31rem] p-0'
                 : useHumanCompactDensity
                   ? cn(
@@ -969,7 +997,7 @@ function MessageBubbleView({
                     humanMessageBubbleShapeClass('peer'),
                   )
                : hasDetachedImageGroup ? 'w-fit max-w-[31rem] p-0' : 'w-fit max-w-[58rem] rounded-[20px] px-3.5 py-2.5', hasVoice && !hasOnlyBorderlessMediaAttachments ? 'px-2.5 py-1.5' : '',
-          !hasOnlyBorderlessMediaAttachments && !hasDetachedImageGroup && bubble,
+          !hasOnlyBorderlessMediaAttachments && !hasDetachedImageGroup && !standaloneEmojiItem && bubble,
         )}
         >
         {messageSurfaceContent}

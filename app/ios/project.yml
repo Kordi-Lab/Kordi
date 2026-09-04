@@ -32,7 +32,10 @@ targets:
         excludes:
           - Supporting/Preview Content
           - Resources/blob-emoji
+          - Resources/noto-emoji
       - path: Kordi/Resources/blob-emoji
+        type: folder
+      - path: Kordi/Resources/noto-emoji
         type: folder
     resources:
       - path: Kordi/Resources/Assets.xcassets

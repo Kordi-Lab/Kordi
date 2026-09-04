@@ -388,6 +388,7 @@ test('edited outgoing label stays inside while the timestamp remains hover-only'
   assert.doesNotMatch(markup.slice(footerStart, hoverTimeStart), /20:25/);
   assert.match(markup.slice(hoverTimeStart), />20:25<\/time>/);
   assert.match(markup, /app-message-hover-time-trigger/);
+  assert.match(markup, /app-message-hover-time[^\"]*w-0 min-w-0[^\"]*overflow-visible/);
   assert.doesNotMatch(markup, /group-hover\/message:opacity-100/);
   assert.match(markup, /data-message-delivery-glyph="double-check"/);
 });
