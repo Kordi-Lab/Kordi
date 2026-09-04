@@ -4,6 +4,43 @@ import XCTest
 @testable import Kordi
 
 final class ConversationReadPresentationTests: XCTestCase {
+    func testAgentSendAcknowledgementDoesNotWaitForRuntimeCompletion() throws {
+        let iosDirectory = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi")
+        let source = try String(
+            contentsOf: iosDirectory.appendingPathComponent("App/AppModel.swift"),
+            encoding: .utf8
+        )
+        let sendStart = try XCTUnwrap(source.range(of: "    func send(\n"))
+        let sendEnd = try XCTUnwrap(source.range(
+            of: "    func retry(",
+            range: sendStart.upperBound..<source.endIndex
+        ))
+        let send = source[sendStart.lowerBound..<sendEnd.lowerBound]
+        XCTAssertTrue(send.contains("startAgentRunInBackground("))
+        XCTAssertFalse(send.contains("await startAgentRun("))
+
+        let pollStart = try XCTUnwrap(source.range(of: "    private func pollForAgentReply("))
+        let pollEnd = try XCTUnwrap(source.range(
+            of: "    private struct MessageHistoryLoadResult",
+            range: pollStart.upperBound..<source.endIndex
+        ))
+        XCTAssertFalse(source[pollStart.lowerBound..<pollEnd.lowerBound].contains("loadConversation("))
+    }
+
+    func testEmptyConversationLoadingHasVisibleProgress() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Kordi/Features/Conversation/ConversationInitialLoadingView.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(source.contains("ProgressView(\"Loading conversation…\")"))
+    }
+
     func testChatDeleteShowsImmediateStableAlertPresentation() throws {
         let source = try String(
             contentsOf: URL(fileURLWithPath: #filePath)
@@ -922,7 +959,6 @@ final class ConversationReadPresentationTests: XCTestCase {
             conversation(id: "person", kind: .person, unread: 2),
             conversation(id: "group-main", kind: .group, unread: 3, groupSpaceId: "space"),
             conversation(id: "group-followup", kind: .group, unread: 1, groupSpaceId: "space"),
-            conversation(id: "group-fork", kind: .group, unread: 7, groupSpaceId: "space", forkedFromSessionId: "session:group-main"),
             conversation(id: "agent-session", kind: .agent, unread: 4),
             conversation(id: "agent-template:unused", kind: .agent, unread: 9),
         ]
@@ -942,6 +978,47 @@ final class ConversationReadPresentationTests: XCTestCase {
             MainTabUnreadCounts(chats: 3, agents: 0)
         )
         XCTAssertEqual(ConversationAttentionBadge.countLabel(120), "99+")
+    }
+
+    func testOnlyCloudGroupOwnersAndAdminsCanRenameChannels() {
+        func group(role: String) -> ConversationSummary {
+            ConversationSummary(
+                id: "group-\(role)",
+                kind: .group,
+                peerAccountId: "acct_peer",
+                agentId: nil,
+                ownerDisplayName: "Group",
+                displayName: "channel",
+                lastMessage: "",
+                lastActivityAt: .distantPast,
+                unreadCount: 0,
+                avatarSource: nil,
+                agentActivity: nil,
+                sessionId: "session:group:\(role)",
+                groupParticipants: [
+                    CloudGroupParticipant(
+                        accountId: "acct_me",
+                        displayName: "Me",
+                        avatarUrl: nil,
+                        role: role
+                    )
+                ]
+            )
+        }
+
+        XCTAssertTrue(group(role: "owner").canManageGroup(accountId: "acct_me"))
+        XCTAssertTrue(group(role: "admin").canManageGroup(accountId: "acct_me"))
+        XCTAssertFalse(group(role: "member").canManageGroup(accountId: "acct_me"))
+    }
+
+    @MainActor
+    func testAppModelDeletesLegacyLocalSessionTitleOverrides() {
+        let key = "kordi.session-title-overrides"
+        UserDefaults.standard.set(["session:group:old": "Local title"], forKey: key)
+
+        _ = AppModel(previewMode: true)
+
+        XCTAssertNil(UserDefaults.standard.object(forKey: key))
     }
 
     func testVisibleAndLegacyMentionsAdvanceUnreadState() throws {

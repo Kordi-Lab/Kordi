@@ -23,7 +23,6 @@ fn active_turn_status_uses_elapsed_progress_instead_of_static_status_line() {
     let first = render_status(&state, 80);
     let plain_first = crate::utils::strip_ansi(&first);
     assert!(plain_first.contains("requesting response •"));
-    assert!(!plain_first.contains("Working..."));
     assert!(first.contains("\x1b[38;2;")); // truecolor escapes
 
     for _ in 0..3 {

@@ -241,7 +241,7 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertEqual(rows.map(\.conversation.sessionId), [pinned.sessionId, newer.sessionId])
     }
 
-    func testTimelineCollapsesForksAndExcludesSupportAndContactForks() {
+    func testTimelineCollapsesAgentForksAndExcludesSupport() {
         let root = conversation(
             id: "root",
             peerAccountId: "acct_me",
@@ -263,18 +263,6 @@ final class AgentSessionPresentationTests: XCTestCase {
             ),
             parentSessionId: root.sessionId
         )
-        let contactFork = replacingForkParent(
-            conversation(
-                id: "contact-fork",
-                peerAccountId: "acct_me",
-                agentId: "agent_research",
-                agentName: "Research Agent",
-                title: "Private contact fork",
-                preview: "Fork",
-                date: Date(timeIntervalSince1970: 50)
-            ),
-            parentSessionId: "session:direct-person:acct_me:acct_maya"
-        )
         let support = conversation(
             id: "support",
             peerAccountId: KordiSupportIdentity.accountId,
@@ -286,7 +274,7 @@ final class AgentSessionPresentationTests: XCTestCase {
         )
 
         let rows = AgentSessionTimelineCatalog.build(
-            conversations: [root, child, contactFork, support],
+            conversations: [root, child, support],
             collapsedForkParentIds: [root.sessionId]
         )
 

@@ -38,9 +38,10 @@ test('self-hosted debug stack is loopback-only and production-independent', () =
   assert.match(compose, /kordi-beta:\/\/oauth\/callback/);
   assert.doesNotMatch(compose, /KORDI_CHAT_SYNC_V2_ENABLED|CHAT_SYNC_V2_DISABLED/);
   assert.match(compose, /KORDI_CLOUD_API_BASE: http:\/\/cloud-server:17081/);
-  for (const port of [1420, 1422, 1482, 1484, 1486]) {
-    assert.match(compose, new RegExp(`http://127\\.0\\.0\\.1:${port}`));
-  }
+  assert.match(
+    compose,
+    /KORDI_CHAT_REALTIME_ALLOWED_ORIGINS: "tauri:\/\/localhost,http:\/\/tauri\.localhost,http:\/\/127\.0\.0\.1"/,
+  );
   assert.match(compose, /KORDI_CLOUD_SANDBOX_BACKEND: local/);
   assert.match(compose, /KORDI_SUPPORT_ENABLED: "false"/);
 });
@@ -375,7 +376,7 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
     );
     writeFileSync(
       join(binDir, 'pnpm'),
-      '#!/usr/bin/env bash\nif [[ -n "${TEST_TUNNEL_ATTEMPT_FILE:-}" ]]; then\n  for _attempt in $(seq 1 80); do\n    if [[ -f "$TEST_TUNNEL_ATTEMPT_FILE" ]] && (( $(cat "$TEST_TUNNEL_ATTEMPT_FILE") >= 2 )); then break; fi\n    sleep 0.1\n  done\nfi\nprintf \'%s\\n\' "$*|$VITE_KORDI_CLOUD_API_BASE|$VITE_KORDI_DEV_PROFILE|${DATABASE_URL:-}|${KORDI_OAUTH_GOOGLE_CLIENT_SECRET:-}|${KORDI_CLOUD_GCP_PROJECT:-}" > "$TEST_DESKTOP_CAPTURE"\n',
+      '#!/usr/bin/env bash\nif [[ -n "${TEST_TUNNEL_ATTEMPT_FILE:-}" ]]; then\n  for _attempt in $(seq 1 80); do\n    if [[ -f "$TEST_TUNNEL_ATTEMPT_FILE" ]] && (( $(cat "$TEST_TUNNEL_ATTEMPT_FILE") >= 2 )); then break; fi\n    sleep 0.1\n  done\nfi\nprintf \'%s\\n\' "$*|$VITE_KORDI_CLOUD_API_BASE|$VITE_KORDI_DEV_PROFILE|${DATABASE_URL:-}|${KORDI_OAUTH_GOOGLE_CLIENT_SECRET:-}|${KORDI_CLOUD_GCP_PROJECT:-}|$VITE_KORDI_ENABLE_LOOPBACK_REALTIME" > "$TEST_DESKTOP_CAPTURE"\n',
     );
     writeFileSync(
       join(binDir, 'nc'),
@@ -419,7 +420,7 @@ test('remote development launcher binds the IAP tunnel and desktop to one verifi
     assert.match(gcloudArgs, /-L 127\.0\.0\.1:17081:127\.0\.0\.1:17081/);
     assert.equal(
       readFileSync(desktopCapturePath, 'utf8').trim(),
-      'dev:desktop:profile -- --profile remote-isolated --title Kordi Remote Dev --port 1498|http://127.0.0.1:17081|community|||',
+      'dev:desktop:profile -- --profile remote-isolated --title Kordi Remote Dev --port 1498|http://127.0.0.1:17081|community||||1',
     );
     assert.match(launched.stdout, /Verified Google and GitHub OAuth/);
 

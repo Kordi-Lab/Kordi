@@ -79,6 +79,7 @@ export function buildChatsPageProps(args: MainContentShellArgs): ComponentProps<
     chatSlashMenuIndex: args.chatSlashMenuIndex,
     setChatSlashMenuIndex: args.setChatSlashMenuIndex,
     acceptChatSlashCommand: args.acceptChatSlashCommand,
+    acceptChatMentionTarget: args.acceptChatMentionTarget,
     chatAttachmentInputRef: args.chatAttachmentInputRef,
     chatComposerAttachments: args.chatComposerAttachments,
     saveDesktopAttachments: args.saveDesktopAttachments,

@@ -130,6 +130,7 @@ pub struct DesktopChatManager {
     sessions: Arc<tokio::sync::Mutex<HashMap<String, DesktopSessionHandle>>>,
     turns: Arc<tokio::sync::Mutex<HashMap<String, DesktopChatTurnHandle>>>,
     background_turn_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
+    shared_request_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl DesktopChatManager {
@@ -464,16 +465,13 @@ pub async fn desktop_chat_fork_session_from_message(
         trimmed_entry_id,
     )?;
     let canonical_entry_match = canonical_message_id.is_some();
-    let source_is_canonical_group = canonical_entry_match
-        && crate::canonical_sessions::canonical_session_is_group_chat(trimmed_session_id)?;
     let local_session_exists =
         !canonical_entry_match && session_exists_globally(trimmed_session_id)?;
     if !canonical_entry_match && !local_session_exists {
         return Err(format!("Session not found: {trimmed_session_id}"));
     }
 
-    // Canonical-rooted entries (group / bridge / direct-agent and
-    // cloud-mirrored self-agent chats) snapshot through the canonical
+    // Canonical Agent entries snapshot through the canonical
     // path. Purely-local sessions without canonical mirroring use the
     // kordi_session fork-from-entry path. Both produce a local fork
     // the user continues from.
@@ -490,23 +488,6 @@ pub async fn desktop_chat_fork_session_from_message(
         kordi_cli::desktop_runtime::fork_session_from_message(trimmed_session_id, trimmed_entry_id)
             .map_err(|err| err.to_string())?
     };
-
-    if source_is_canonical_group {
-        // Cloud/contact/group forks are canonical Cloud sessions. Do not create
-        // or resume a localhost desktop runtime for the fork id; doing so mirrors
-        // the fork back as a self-agent session, creates fake Processing rows,
-        // and prevents peers from seeing the Cloud fork lineage consistently.
-        let fallback_session_id = ensure_loaded_session(&manager, &cwd, None).await?;
-        let state = build_chat_state(&manager, &cwd, fallback_session_id).await?;
-        return Ok(DesktopChatForkSessionResult {
-            state,
-            forked_session_id: outcome.session_id,
-            source_session_id: outcome.source_session_id,
-            source_message_id: outcome.source_entry_id,
-            selected_text: outcome.selected_text,
-            canonical_only: true,
-        });
-    }
 
     let mut runtime = kordi_cli::desktop_runtime::DesktopRuntimeSession::resume(
         std::path::PathBuf::from(&outcome.cwd),

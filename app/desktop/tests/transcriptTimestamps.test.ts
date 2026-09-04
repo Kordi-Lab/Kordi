@@ -66,6 +66,24 @@ test('messages without exact timestamps do not create guessed separators', () =>
   );
 });
 
+test('every transcript event gets its own timestamp component', () => {
+  const start = Date.parse('2026-08-08T10:00:00.000Z');
+  const messages = [
+    message(start),
+    message(start + 60_000, { role: 'system', messageKind: 'session-title-update' }),
+    message(start + 2 * 60_000, { role: 'system', messageKind: 'group-member-joined' }),
+  ];
+
+  assert.deepEqual(
+    transcriptTimeSeparatorLabels(messages, {
+      now: start + 10 * 60_000,
+      timeZone: 'UTC',
+      locales: 'en-US',
+    }),
+    ['10:00', '10:01', '10:02'],
+  );
+});
+
 test('a time separator breaks same-sender avatar grouping', () => {
   const messages = [message(1), message(2)];
   const separators = ['10:00', '10:06'];

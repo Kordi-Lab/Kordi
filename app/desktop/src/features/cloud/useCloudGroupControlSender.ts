@@ -14,7 +14,6 @@ import {
 } from './cloudAttachments';
 import {
   cloudGroupAttachmentReferences,
-  cloudGroupForkPayloadFromSessionMetadata,
   cloudGroupManualSessionTitleSnapshot,
   cloudGroupOutgoingParticipantSnapshot,
   cloudGroupParticipantsForCollaborationSession,
@@ -23,10 +22,8 @@ import {
   cloudGroupTitleForOutgoingControl,
   encodeCloudGroupControl,
   firstCloudGroupSendFailure,
-  firstRequiredCloudGroupSendFailure,
   fulfilledCloudGroupSends,
   parseCloudGroupControl,
-  requiredCloudGroupControlTargetAccountIds,
 } from './cloudGroupMessages';
 import {
   type CloudGroupOutboxEntry,
@@ -44,13 +41,6 @@ import {
 import type {
   SendCloudGroupControlInput,
 } from './cloudGroupControl.types';
-import {
-  useCloudGroupSessionTitleSync,
-} from './useCloudGroupSessionTitleSync';
-import {
-  persistReliableCloudGroupSessionTitle,
-  reliableCloudGroupSessionTitle,
-} from './cloudGroupReliableSessionTitle';
 import type {
   CloudGroupControlCanonicalContext,
   CloudGroupControlTransport,
@@ -81,10 +71,7 @@ export function useCloudGroupControlSender({
     syncDiff,
   } = transport;
   const {
-    state: canonicalState,
     stateRef: canonicalStateRef,
-    titleBackfillsRef,
-    initialMessagesSettled,
   } = canonical;
 
   const sendCloudGroupControl = useCallback(async (
@@ -135,18 +122,6 @@ export function useCloudGroupControlSender({
         .map((participant) => participant.accountId.trim())
         .filter(Boolean),
     ])].filter((accountId) => accountId !== account.accountId);
-    const explicitTargetAccountIds = input.targetAccountIds
-      .map((value) => value.trim())
-      .filter(
-        (accountId) =>
-          Boolean(accountId) && accountId !== account.accountId,
-      );
-    const requiredTargetAccountIds =
-      requiredCloudGroupControlTargetAccountIds({
-        kind: input.kind,
-        explicitTargetAccountIds,
-        memberLeaves: input.memberLeaves,
-      });
     if (targetAccountIds.length === 0) {
       finishChatPerformanceSpan(firstAckPerformanceSpan, {
         resultClass: 'failed',
@@ -154,6 +129,7 @@ export function useCloudGroupControlSender({
       });
       return;
     }
+    const canonicalRecipientId = targetAccountIds[0];
     const groupTitle = cloudGroupTitleForOutgoingControl({
       kind: input.kind,
       groupTitle: input.groupTitle,
@@ -169,16 +145,6 @@ export function useCloudGroupControlSender({
         ),
         identities: currentCanonicalState?.identities,
       });
-    const reliableSessionTitle = reliableCloudGroupSessionTitle({ input, messageIndex, manualTitle: sessionTitle, accountId: account.accountId });
-    const syncReliableSessionTitle = () => persistReliableCloudGroupSessionTitle({ client, token: session.token, input, title: reliableSessionTitle, reportWarning });
-    const forkFromSessionMetadata = input.kind === 'group-message'
-      ? cloudGroupForkPayloadFromSessionMetadata(
-          canonicalStateRef.current?.sessions.find(
-            (candidate) => candidate.id === input.groupId,
-          )?.metadata,
-          input.groupId,
-        )
-      : null;
     const buildPayload = (
       uploadedAttachments: SendCloudMessageAttachmentInput[],
     ) => {
@@ -219,7 +185,6 @@ export function useCloudGroupControlSender({
         sessionTitleSyncOnly: input.sessionTitleSyncOnly,
         memberJoins: input.memberJoins,
         memberLeaves: input.memberLeaves,
-        fork: input.fork ?? forkFromSessionMetadata,
         message,
       });
       return { message, envelope };
@@ -234,17 +199,11 @@ export function useCloudGroupControlSender({
       attachmentCount,
       payloadBytes: chatPerformancePayloadBytes(envelope),
     }));
-    const forkCreatedAtMs =
-      input.fork?.createdAtMs
-      ?? forkFromSessionMetadata?.createdAtMs;
     const clientCreatedAtMs =
       typeof initialPayload.message?.createdAtMs === 'number'
       && Number.isFinite(initialPayload.message.createdAtMs)
         ? initialPayload.message.createdAtMs
-        : typeof forkCreatedAtMs === 'number'
-          && Number.isFinite(forkCreatedAtMs)
-          ? forkCreatedAtMs
-          : null;
+        : null;
     const clientCreatedAt = clientCreatedAtMs !== null
       ? new Date(clientCreatedAtMs).toISOString()
       : null;
@@ -261,13 +220,12 @@ export function useCloudGroupControlSender({
         canonicalMessageId,
         sessionId: input.groupId,
         envelope: initialPayload.envelope,
-        trackCanonicalDelivery:
-          initialPayload.message?.forkSnapshot !== true,
+        trackCanonicalDelivery: true,
         pendingAttachments: cloudGroupOutboxAttachmentSources(
           input.attachments ?? [],
         ),
         clientCreatedAt,
-        pendingRecipientIds: targetAccountIds,
+        pendingRecipientIds: [canonicalRecipientId],
         deliveredRecipientIds: [],
         attemptsByRecipientId: {},
         nextAttemptAtMs: 0,
@@ -336,7 +294,6 @@ export function useCloudGroupControlSender({
         });
       }
       if (sentAny) {
-        await syncReliableSessionTitle();
         await Promise.all([
           claimFreshFallback(
             sentMessages,
@@ -359,11 +316,11 @@ export function useCloudGroupControlSender({
     const payloadVoiceMessage = payload.message?.voiceMessage?.mediaId
       ? { ...payload.message.voiceMessage, mediaId: payload.message.voiceMessage.mediaId }
       : null;
-    const results = await Promise.allSettled(
-      targetAccountIds.map(async (peerId) => {
+    const results = await Promise.allSettled([
+      (async () => {
         const sentMessage = await client.sendMessage(
           session.token,
-          peerId,
+          canonicalRecipientId,
           payload.envelope,
           {
             sessionId: input.groupId,
@@ -380,31 +337,11 @@ export function useCloudGroupControlSender({
           uploadedAttachments.length,
         );
         return sentMessage;
-      }),
-    );
+      })(),
+    ]);
     const sent = fulfilledCloudGroupSends(results);
     sent.forEach(mergeMessage);
-    const requiredControlFailure =
-      firstRequiredCloudGroupSendFailure(
-        results,
-        targetAccountIds,
-        requiredTargetAccountIds,
-      );
-    if (requiredControlFailure) {
-      finishChatPerformanceSpan(firstAckPerformanceSpan, {
-        resultClass: 'failed',
-        recipientCount: targetAccountIds.length,
-        errorCount: 1,
-      });
-      throw requiredControlFailure.reason instanceof Error
-        ? requiredControlFailure.reason
-        : new Error(String(
-            requiredControlFailure.reason
-            || 'Required group control failed.',
-          ));
-    }
     if (sent.length > 0) {
-      await syncReliableSessionTitle();
       if (input.kind === 'group-message' && canonicalMessageId) {
         await Promise.all([
           claimFreshFallback(
@@ -443,16 +380,6 @@ export function useCloudGroupControlSender({
     reportWarning,
     syncDiff,
   ]);
-
-  useCloudGroupSessionTitleSync({
-    account,
-    canonicalState,
-    messageIndex,
-    initialMessagesSettled,
-    titleBackfillsRef,
-    sendGroupControl: sendCloudGroupControl,
-    reportWarning,
-  });
 
   return sendCloudGroupControl;
 }

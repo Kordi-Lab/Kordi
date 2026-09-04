@@ -57,6 +57,8 @@ async fn concurrent_end_and_join_leave_a_terminal_call() {
         .await
         .unwrap();
     }
+    let mut direct_members = [caller.as_str(), callee.as_str()];
+    direct_members.sort_unstable();
     let conversation = create_conversation(
         &pool,
         &caller,
@@ -64,7 +66,10 @@ async fn concurrent_end_and_join_leave_a_terminal_call() {
             client_operation_id: Uuid::now_v7(),
             kind: ConversationKind::Direct,
             shared_title: None,
-            client_session_id: format!("session:direct:{suffix}"),
+            client_session_id: format!(
+                "session:direct-person:{}:{}",
+                direct_members[0], direct_members[1]
+            ),
             member_account_ids: vec![callee.clone()],
         },
     )

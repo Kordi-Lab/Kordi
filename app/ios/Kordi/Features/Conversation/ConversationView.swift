@@ -720,11 +720,9 @@ struct ConversationView: View {
                 ) {
                     let identityChanged = previousLatestMessageID != currentLatestMessageID
                     scrollToBottom(animated: identityChanged)
-                    if !identityChanged {
-                        Task { @MainActor in
-                            await Task.yield()
-                            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
-                        }
+                    Task { @MainActor in
+                        await Task.yield()
+                        proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                     }
                 }
             }
@@ -2738,6 +2736,7 @@ enum ConversationTimelinePresentation {
             }
         }
         let timestampVisibility = messages.indices.map { index in
+            if messages[index].isSystemNotice { return true }
             guard index > messages.startIndex else { return true }
             let current = messages[index].createdAt
             let previous = messages[index - 1].createdAt

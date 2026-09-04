@@ -259,15 +259,7 @@ export function sessionPrefersPersistedTitle(session: CanonicalSessionState['ses
       && title
       && !isGenericSessionTitle(title)
     ) return true;
-    const groupName = stringValue(metadata.customName)?.trim() ?? '';
-    const groupSpaceId = stringValue(metadata.groupSpaceId)
-      ?? stringValue(metadata.groupId)
-      ?? '';
-    const isChildSession = Boolean(groupSpaceId)
-      && normalizeParticipantSpaceId(groupSpaceId) !== normalizeParticipantSpaceId(session.id);
-    return !isGenericSessionTitle(title)
-      && Boolean(title)
-      && (isChildSession || (Boolean(groupName) && title !== groupName));
+    return false;
   }
   if (session.kind !== 'self-agent' && session.kind !== 'project') {
     return sessionHasManualTitle(session);
@@ -317,6 +309,7 @@ export function sessionConversationDisplayTitle(
   fallback: string,
   options: { preferFallback?: boolean } = {},
 ) {
+  if (session.kind === 'group') return fallback.trim() || 'Channel 1';
   const selfAgent = session.kind === 'self-agent'
     ? participants.find((participant) => (
         participant.kind === 'agent'

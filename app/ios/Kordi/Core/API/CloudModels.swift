@@ -925,6 +925,8 @@ struct CloudChatConversation: Codable, Hashable {
     let version: Int
     let createdByAccountId: String
     let legacySessionId: String?
+    var groupSpaceId: String? = nil
+    var groupTitle: String? = nil
     let forkedFromSessionId: String?
     let forkedFromMessageId: String?
     let latestMessageSequence: Int64
@@ -938,6 +940,8 @@ struct CloudChatConversation: Codable, Hashable {
         case sharedTitle = "shared_title"
         case createdByAccountId = "created_by_account_id"
         case legacySessionId = "legacy_session_id"
+        case groupSpaceId = "group_space_id"
+        case groupTitle = "group_title"
         case forkedFromSessionId = "forked_from_session_id"
         case forkedFromMessageId = "forked_from_message_id"
         case latestMessageSequence = "latest_message_sequence"

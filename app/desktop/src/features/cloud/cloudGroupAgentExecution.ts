@@ -9,7 +9,10 @@ import {
   cancelDesktopChatTurn,
   upsertCanonicalMessageFast,
 } from '@/lib/desktop';
-import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
+import {
+  desktopSharedRequestAlreadyStarted,
+  startDesktopSharedChatMessage,
+} from '@/lib/desktopBackgroundSessions';
 import type {
   AppendCanonicalMessageRequest,
   DesktopChatTurnSnapshot,
@@ -197,7 +200,10 @@ export async function respondToCloudGroupAgentMention(
   ];
   const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
     if (signal.aborted) return;
-    runtime.setLocalTurns((current) => ({ ...current, [message.id]: turn }));
+    runtime.setLocalTurns((current) => ({
+      ...current,
+      [message.id]: { ...turn, replyToMessageId: message.id },
+    }));
   };
   const runtimeStartSpan = beginChatPerformanceSpan(
     'cloud-agent-runtime-start',
@@ -229,6 +235,7 @@ export async function respondToCloudGroupAgentMention(
     finishChatPerformanceSpan(runtimeStartSpan, { resultClass: 'success' });
   } catch (error) {
     finishChatPerformanceSpan(runtimeStartSpan, { resultClass: 'failed' });
+    if (desktopSharedRequestAlreadyStarted(error)) return;
     throw error;
   }
   rememberLocalTurn(startedTurn);

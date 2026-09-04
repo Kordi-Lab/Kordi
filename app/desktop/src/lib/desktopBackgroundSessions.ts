@@ -6,6 +6,10 @@ import type {
   DesktopVisibleTaskRecord,
 } from '@/lib/desktop';
 
+export function desktopSharedRequestAlreadyStarted(error: unknown) {
+  return String(error).includes('shared_request_already_started');
+}
+
 export function startDesktopSharedChatMessage(
   requestId: string,
   sessionId: string,

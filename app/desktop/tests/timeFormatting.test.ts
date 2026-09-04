@@ -100,7 +100,7 @@ test('sessionChatActivityAtMs ignores fork snapshot/import rows for last active'
   const snapshotImportAtMs = Date.parse('2026-05-14T20:00:00.000Z');
   const session = {
     id: 'session:fork:time',
-    kind: 'group',
+    kind: 'self-agent',
     title: 'Fork',
     status: 'active',
     createdByIdentityId: 'human:me',
@@ -110,7 +110,7 @@ test('sessionChatActivityAtMs ignores fork snapshot/import rows for last active'
   };
   const messages = [
     { id: 'real', sessionId: session.id, senderIdentityId: 'human:me', senderRole: 'user', messageKind: 'text', contentText: 'real', status: 'sent', sequenceNum: 1, createdAtMs: realMessageAtMs, updatedAtMs: realMessageAtMs, sourceTransport: 'cloud-group' },
-    { id: 'snapshot', sessionId: session.id, senderIdentityId: 'human:peer', senderRole: 'person', messageKind: 'text', contentText: 'snapshot', status: 'sent', sequenceNum: 2, createdAtMs: snapshotImportAtMs, updatedAtMs: snapshotImportAtMs, sourceTransport: 'cloud-group-fork-snapshot' },
+    { id: 'snapshot', sessionId: session.id, senderIdentityId: 'agent:me', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'snapshot', status: 'sent', sequenceNum: 2, createdAtMs: snapshotImportAtMs, updatedAtMs: snapshotImportAtMs, sourceTransport: 'canonical-fork-snapshot' },
   ] as CanonicalSessionMessage[];
 
   assert.equal(sessionChatActivityAtMs(session as never, messages), realMessageAtMs);

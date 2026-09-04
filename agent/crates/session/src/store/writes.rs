@@ -2,6 +2,7 @@ use anyhow::Result;
 use chrono::Utc;
 use kordi_core::types::SessionEntry;
 use rusqlite::{Connection, params};
+use std::sync::Mutex;
 use uuid::Uuid;
 
 use crate::{
@@ -9,11 +10,17 @@ use crate::{
     schema,
 };
 
+// ponytail: process-wide startup lock; use per-path locks if concurrent opens become measurable.
+static DATABASE_OPEN_LOCK: Mutex<()> = Mutex::new(());
+
 /// Open or create the sessions database.
 pub(super) fn open_db(path: &std::path::Path) -> Result<Connection> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
+    let _guard = DATABASE_OPEN_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let conn = Connection::open(path)?;
     conn.busy_timeout(schema::SQLITE_BUSY_TIMEOUT)?;
     conn.execute_batch("PRAGMA foreign_keys=ON;")?;

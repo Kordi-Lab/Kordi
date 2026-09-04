@@ -198,7 +198,6 @@ function cloudGroupFallbackRunPromptForMessage({
       ) return [];
       if (envelope.message.id === requestMessageId) return [];
       if (envelope.message.createdAtMs > requestCreatedAtMs) return [];
-      if (envelope.message.forkSnapshot === true) return [];
       if (!cloudMessageActionAllowsAgentContext(envelope.message.messageAction)) {
         return [];
       }

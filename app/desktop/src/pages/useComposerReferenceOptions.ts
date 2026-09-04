@@ -140,6 +140,7 @@ export function useComposerMentionMenu({
   onPickFile,
   onAttachPath,
   onFocus,
+  onSelectOption,
   selectedIndex,
   setSelectedIndex,
 }: {
@@ -153,6 +154,7 @@ export function useComposerMentionMenu({
   onPickFile: () => void;
   onAttachPath: (path: string) => void;
   onFocus: (cursor: number) => void;
+  onSelectOption?: (option: ComposerMentionOption) => void;
   selectedIndex: number;
   setSelectedIndex: Dispatch<SetStateAction<number>>;
 }) {
@@ -185,6 +187,7 @@ export function useComposerMentionMenu({
 
   const select = (item: ComposerMentionOption) => {
     if (!query) return;
+    onSelectOption?.(item);
     const insertion = insertComposerMention(text, query, item);
     onTextChange(insertion.value);
     setCursor(insertion.cursor);
