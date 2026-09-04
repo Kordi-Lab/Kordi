@@ -392,6 +392,13 @@ export function cloudGroupAgentRuntimeSessionId(
     : groupRuntimeSessionId;
 }
 
+export function cloudGroupAgentRequestRuntimeSessionId(
+  runtimeSessionId: string,
+  requestId: string,
+): string {
+  return `${runtimeSessionId}:request:${requestId}`;
+}
+
 export function compactCloudAgentRuntimeRoute(route?: DesktopChatMessageRoute | null): DesktopChatMessageRoute | null {
   const compacted: DesktopChatMessageRoute = {};
   const model = cleanText(route?.model);

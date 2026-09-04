@@ -2,6 +2,7 @@ import type { MouseEvent as ReactMouseEvent } from 'react';
 
 import { openDesktopExternalUrl } from '@/lib/desktop';
 import { blobEmojiById, type BlobEmoji } from '@/features/emoji/blobEmoji';
+import { notoEmojiRanges, type NotoEmoji } from '@/features/emoji/notoEmoji';
 import { messageMentionsForText } from '@/features/chat/messageMentions';
 import type { MessageMention } from '../types';
 
@@ -19,11 +20,13 @@ type ExternalMessageLinkOpener = (url: string) => unknown;
 export type MessageInlinePart =
   | { type: 'text'; value: string; start: number }
   | { type: 'blobEmoji'; emoji: BlobEmoji; start: number }
+  | { type: 'notoEmoji'; emoji: NotoEmoji; start: number }
   | { type: 'mention'; label: string; targetKind: 'agent' | 'person' | 'all'; targetIdentityId?: string | null; humanId?: string | null; start: number }
   | { type: 'link'; label: string; href: string; start: number };
 
 type InlineRange =
   | { type: 'blobEmoji'; emoji: BlobEmoji; start: number; end: number }
+  | { type: 'notoEmoji'; emoji: NotoEmoji; start: number; end: number }
   | { type: 'mention'; label: string; targetKind: 'agent' | 'person' | 'all'; targetIdentityId?: string | null; humanId?: string | null; start: number; end: number }
   | { type: 'link'; label: string; href: string; start: number; end: number };
 
@@ -365,10 +368,14 @@ function textualMentionRanges(text: string, reserved: InlineRange[]) {
 export function parseMessageInlineParts(text: string, mentions: MessageMention[] = []): MessageInlinePart[] {
   const links = linkRanges(text);
   const blobEmoji = blobEmojiRanges(text);
-  const structuredMentions = structuredMentionRanges(text, mentions, [...links, ...blobEmoji]);
-  const textualMentions = textualMentionRanges(text, [...links, ...blobEmoji, ...structuredMentions]);
+  const notoEmoji: InlineRange[] = notoEmojiRanges(text)
+    .map((range) => ({ type: 'notoEmoji' as const, ...range }))
+    .filter((range) => !links.some((link) => rangesOverlap(range, link)));
+  const emojiRanges = [...blobEmoji, ...notoEmoji];
+  const structuredMentions = structuredMentionRanges(text, mentions, [...links, ...emojiRanges]);
+  const textualMentions = textualMentionRanges(text, [...links, ...emojiRanges, ...structuredMentions]);
   const mentionRanges = [...structuredMentions, ...textualMentions];
-  const ranges = [...links, ...blobEmoji, ...mentionRanges].sort((left, right) => left.start - right.start);
+  const ranges = [...links, ...emojiRanges, ...mentionRanges].sort((left, right) => left.start - right.start);
   const parts: MessageInlinePart[] = [];
   let cursor = 0;
 
@@ -381,6 +388,8 @@ export function parseMessageInlineParts(text: string, mentions: MessageMention[]
       parts.push({ type: 'link', label: range.label, href: range.href, start: range.start });
     } else if (range.type === 'blobEmoji') {
       parts.push({ type: 'blobEmoji', emoji: range.emoji, start: range.start });
+    } else if (range.type === 'notoEmoji') {
+      parts.push({ type: 'notoEmoji', emoji: range.emoji, start: range.start });
     } else {
       parts.push({
         type: 'mention',

@@ -59,7 +59,7 @@ test('emoji insertion does not split an existing grapheme cluster', () => {
   );
 });
 
-test('composer uses the complete Blob Emoji catalog and private sticker and GIF libraries', () => {
+test('composer uses the shared Emoji picker and private sticker and GIF libraries', () => {
   const picker = readFileSync(
     new URL('../src/features/emoji/ComposerExpressivePicker.tsx', import.meta.url),
     'utf8',
@@ -71,8 +71,8 @@ test('composer uses the complete Blob Emoji catalog and private sticker and GIF 
 
   assert.equal(catalog.emoji.length, 547);
   assert.equal(catalog.emoji.filter((emoji) => emoji.animated).length, 173);
-  assert.match(picker, /\['emoji', 'Blob Emoji'\]/);
-  assert.match(picker, /<BlobEmojiPicker/);
+  assert.match(picker, /\['emoji', 'Emoji'\]/);
+  assert.match(picker, /<EmojiPicker/);
   assert.match(picker, /\['stickers', 'Stickers'\]/);
   assert.match(picker, /\['gifs', 'GIFs'\]/);
   assert.match(picker, /My Stickers/);

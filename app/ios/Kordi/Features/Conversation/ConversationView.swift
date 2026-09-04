@@ -518,6 +518,7 @@ struct ConversationView: View {
                                     messageCount: timeline.count
                                 ) {
                                     LatestMessageButton(count: newMessageCount) {
+                                        immediateBottomRequest &+= 1
                                         scrollToBottom(animated: true)
                                     }
                                     .transition(.scale(scale: 0.82).combined(with: .opacity))
@@ -883,6 +884,7 @@ struct ConversationView: View {
             }
             if ProcessInfo.processInfo.arguments.contains("--preview-emoji-picker") {
                 isExpressivePickerPresented = true
+                isComposerFocused = true
             }
             openCompanionPreviewIfReady()
         }
@@ -1698,7 +1700,8 @@ struct ConversationView: View {
         initialViewport = .latest
         hasPositionedInitialTimeline = true
         if animated {
-            immediateBottomRequest &+= 1
+            // Appends follow SwiftUI's layout-aware anchor. The UIKit offset
+            // command is reserved for explicitly interrupting a manual scroll.
             withAnimation(.smooth(duration: 0.42)) {
                 trackedMessageID = bottomAnchorID
             }

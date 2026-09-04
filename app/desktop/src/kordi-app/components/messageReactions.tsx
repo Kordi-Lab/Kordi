@@ -1,16 +1,14 @@
 import { useMemo } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
-import { BlobEmojiImage } from '@/features/emoji/BlobEmojiImage';
-import { BlobEmojiPicker } from '@/features/emoji/BlobEmojiPicker';
+import { EmojiPicker, EmojiPickerItemImage } from '@/features/emoji/EmojiPicker';
 import {
-  blobEmojiById,
-  blobEmojiCatalog,
-  blobEmojiFromReaction,
-  blobEmojiReactionValue,
-  readRecentBlobEmojiIDs,
-  recordRecentBlobEmoji,
-} from '@/features/emoji/blobEmoji';
+  emojiItemFromReaction,
+  emojiReactionValue,
+  quickReactionEmojiItems,
+  readRecentEmojiItems,
+  recordRecentEmojiItem,
+} from '@/features/emoji/emojiCatalog';
 import { cn } from '@/lib/utils';
 import type { Message } from '../types';
 
@@ -27,7 +25,7 @@ export function MessageReactionChips({
   return (
     <div className={cn('app-message-reaction-chips', `app-message-reaction-chips-${side}`)} aria-label="Message reactions">
       {msg.reactions.map((reaction) => {
-        const emoji = blobEmojiFromReaction(reaction.value);
+        const item = emojiItemFromReaction(reaction.value);
         return (
           <button
             key={reaction.value}
@@ -35,10 +33,10 @@ export function MessageReactionChips({
             className="app-message-reaction-chip"
             disabled={!onReactMessage}
             onClick={() => void onReactMessage?.(msg, reaction.value)}
-            aria-label={`${emoji?.id ?? reaction.value} reaction, ${reaction.accountIds.length} people`}
+            aria-label={`${item?.name ?? reaction.value} reaction, ${reaction.accountIds.length} people`}
           >
-            {emoji
-              ? <BlobEmojiImage emoji={emoji} decorative />
+            {item
+              ? <EmojiPickerItemImage item={item} decorative />
               : <span>{reaction.value}</span>}
             <span>{reaction.accountIds.length}</span>
           </button>
@@ -57,32 +55,30 @@ export function MessageReactionSurface({
   onReact: (reaction: string) => void;
   onToggleExpanded: () => void;
 }) {
-  const { recentReactions, quickReactions } = useMemo(() => {
-    const recent = readRecentBlobEmojiIDs().flatMap((id) => blobEmojiById.get(id) ?? []);
-    const recentIDs = new Set(recent.map((emoji) => emoji.id));
-    const fallback = blobEmojiCatalog.filter((emoji) => !emoji.animated);
+  const { recentItems, quickItems } = useMemo(() => {
+    const recent = readRecentEmojiItems();
     return {
-      recentReactions: recent,
-      quickReactions: [...recent, ...fallback.filter((emoji) => !recentIDs.has(emoji.id))].slice(0, 6),
+      recentItems: recent,
+      quickItems: quickReactionEmojiItems(),
     };
   }, []);
 
   return (
     <div className={cn('app-message-reaction-surface app-transient-surface', expanded && 'app-message-reaction-surface-expanded')}>
       <div className="app-message-reaction-quick-row">
-        {quickReactions.map((emoji) => (
+        {quickItems.map((item) => (
           <button
-            key={emoji.id}
+            key={item.key}
             type="button"
             className="app-message-reaction-quick"
-            aria-label={`React with ${emoji.id}`}
-            title={emoji.id}
+            aria-label={`React with ${item.name}`}
+            title={item.name}
             onClick={() => {
-              recordRecentBlobEmoji(emoji.id);
-              onReact(blobEmojiReactionValue(emoji));
+              recordRecentEmojiItem(item);
+              onReact(emojiReactionValue(item));
             }}
           >
-            <BlobEmojiImage emoji={emoji} decorative />
+            <EmojiPickerItemImage item={item} decorative />
           </button>
         ))}
         <button
@@ -96,10 +92,10 @@ export function MessageReactionSurface({
         </button>
       </div>
       {expanded ? (
-        <BlobEmojiPicker
+        <EmojiPicker
           compact
-          initialCategory={recentReactions.length ? 'recent' : 'all'}
-          onSelect={(emoji) => onReact(blobEmojiReactionValue(emoji))}
+          initialCategory={recentItems.length ? 'recent' : 'noto'}
+          onSelect={(item) => onReact(emojiReactionValue(item))}
         />
       ) : null}
     </div>

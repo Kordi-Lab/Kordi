@@ -1,0 +1,8111 @@
+{
+  "schema": 1,
+  "source": "https://googlefonts.github.io/noto-emoji-animation/data/api.json",
+  "sourceSha256": "caf9ebf0b461216e6638e4d660740d8e9fb78ba74c7b67d89045d2b399d3d3a6",
+  "license": "CC-BY-4.0",
+  "emoji": [
+    {
+      "id": "1f600",
+      "value": "😀",
+      "name": "Smile",
+      "keywords": [
+        "smile"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f603",
+      "value": "😃",
+      "name": "Smile with big eyes",
+      "keywords": [
+        "smile-with-big-eyes"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f604",
+      "value": "😄",
+      "name": "Grin",
+      "keywords": [
+        "grin"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f601",
+      "value": "😁",
+      "name": "Grinning",
+      "keywords": [
+        "grinning"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f606",
+      "value": "😆",
+      "name": "Laughing",
+      "keywords": [
+        "laughing"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f605",
+      "value": "😅",
+      "name": "Grin sweat",
+      "keywords": [
+        "grin-sweat"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f602",
+      "value": "😂",
+      "name": "Joy",
+      "keywords": [
+        "joy"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f923",
+      "value": "🤣",
+      "name": "Rofl",
+      "keywords": [
+        "rofl"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f62d",
+      "value": "😭",
+      "name": "Loudly crying",
+      "keywords": [
+        "loudly-crying"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f609",
+      "value": "😉",
+      "name": "Wink",
+      "keywords": [
+        "wink"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f617",
+      "value": "😗",
+      "name": "Kissing",
+      "keywords": [
+        "kissing"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f619",
+      "value": "😙",
+      "name": "Kissing smiling eyes",
+      "keywords": [
+        "kissing-smiling-eyes"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f61a",
+      "value": "😚",
+      "name": "Kissing closed eyes",
+      "keywords": [
+        "kissing-closed-eyes"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f618",
+      "value": "😘",
+      "name": "Kissing heart",
+      "keywords": [
+        "kissing-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f970",
+      "value": "🥰",
+      "name": "Heart face",
+      "keywords": [
+        "heart-face",
+        "3-hearts"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f60d",
+      "value": "😍",
+      "name": "Heart eyes",
+      "keywords": [
+        "heart-eyes"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f929",
+      "value": "🤩",
+      "name": "Star struck",
+      "keywords": [
+        "star-struck"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f973",
+      "value": "🥳",
+      "name": "Partying face",
+      "keywords": [
+        "partying-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fae0",
+      "value": "🫠",
+      "name": "Melting",
+      "keywords": [
+        "melting"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f643",
+      "value": "🙃",
+      "name": "Upside down face",
+      "keywords": [
+        "upside-down-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f642",
+      "value": "🙂",
+      "name": "Slightly happy",
+      "keywords": [
+        "slightly-happy"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f972",
+      "value": "🥲",
+      "name": "Happy cry",
+      "keywords": [
+        "happy-cry"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f979",
+      "value": "🥹",
+      "name": "Holding back tears",
+      "keywords": [
+        "holding-back-tears"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f60a",
+      "value": "😊",
+      "name": "Blush",
+      "keywords": [
+        "blush"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "263a_fe0f",
+      "value": "☺️",
+      "name": "Warm smile",
+      "keywords": [
+        "warm-smile"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f60c",
+      "value": "😌",
+      "name": "Relieved",
+      "keywords": [
+        "relieved"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f642_200d_2195_fe0f",
+      "value": "🙂‍↕️",
+      "name": "Head nod",
+      "keywords": [
+        "head-nod"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f642_200d_2194_fe0f",
+      "value": "🙂‍↔️",
+      "name": "Head shake",
+      "keywords": [
+        "head-shake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f60f",
+      "value": "😏",
+      "name": "Smirk",
+      "keywords": [
+        "smirk"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f924",
+      "value": "🤤",
+      "name": "Drool",
+      "keywords": [
+        "drool"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f60b",
+      "value": "😋",
+      "name": "Yum",
+      "keywords": [
+        "yum"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f61b",
+      "value": "😛",
+      "name": "Stuck out tongue",
+      "keywords": [
+        "stuck-out-tongue"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f61d",
+      "value": "😝",
+      "name": "Squinting tongue",
+      "keywords": [
+        "squinting-tongue"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f61c",
+      "value": "😜",
+      "name": "Winky tongue",
+      "keywords": [
+        "winky-tongue"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f92a",
+      "value": "🤪",
+      "name": "Zany face",
+      "keywords": [
+        "zany-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faea",
+      "value": "🫪",
+      "name": "Distorted face",
+      "keywords": [
+        "distorted-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f614",
+      "value": "😔",
+      "name": "Pensive",
+      "keywords": [
+        "pensive"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f97a",
+      "value": "🥺",
+      "name": "Pleading",
+      "keywords": [
+        "pleading"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f62c",
+      "value": "😬",
+      "name": "Grimacing",
+      "keywords": [
+        "grimacing"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f611",
+      "value": "😑",
+      "name": "Expressionless",
+      "keywords": [
+        "expressionless"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f610",
+      "value": "😐",
+      "name": "Neutral face",
+      "keywords": [
+        "neutral-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f636",
+      "value": "😶",
+      "name": "Mouth none",
+      "keywords": [
+        "mouth-none"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f636_200d_1f32b_fe0f",
+      "value": "😶‍🌫️",
+      "name": "Face in clouds",
+      "keywords": [
+        "face-in-clouds",
+        "lost"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fae5",
+      "value": "🫥",
+      "name": "Dotted line face",
+      "keywords": [
+        "dotted-line-face",
+        "invisible"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f910",
+      "value": "🤐",
+      "name": "Zipper face",
+      "keywords": [
+        "zipper-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fae1",
+      "value": "🫡",
+      "name": "Salute",
+      "keywords": [
+        "salute"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f914",
+      "value": "🤔",
+      "name": "Thinking face",
+      "keywords": [
+        "thinking-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f92b",
+      "value": "🤫",
+      "name": "Shushing face",
+      "keywords": [
+        "shushing-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fae2",
+      "value": "🫢",
+      "name": "Hand over mouth",
+      "keywords": [
+        "hand-over-mouth"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f92d",
+      "value": "🤭",
+      "name": "Smiling eyes with hand over mouth",
+      "keywords": [
+        "smiling-eyes-with-hand-over-mouth",
+        "chuckling"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f971",
+      "value": "🥱",
+      "name": "Yawn",
+      "keywords": [
+        "yawn"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f917",
+      "value": "🤗",
+      "name": "Hug face",
+      "keywords": [
+        "hug-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fae3",
+      "value": "🫣",
+      "name": "Peeking",
+      "keywords": [
+        "peeking"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f631",
+      "value": "😱",
+      "name": "Screaming",
+      "keywords": [
+        "screaming"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f928",
+      "value": "🤨",
+      "name": "Raised eyebrow",
+      "keywords": [
+        "raised-eyebrow"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9d0",
+      "value": "🧐",
+      "name": "Monocle",
+      "keywords": [
+        "monocle"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f612",
+      "value": "😒",
+      "name": "Unamused",
+      "keywords": [
+        "unamused"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f644",
+      "value": "🙄",
+      "name": "Rolling eyes",
+      "keywords": [
+        "rolling-eyes"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f62e_200d_1f4a8",
+      "value": "😮‍💨",
+      "name": "Exhale",
+      "keywords": [
+        "exhale"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f624",
+      "value": "😤",
+      "name": "Triumph",
+      "keywords": [
+        "triumph"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f620",
+      "value": "😠",
+      "name": "Angry",
+      "keywords": [
+        "angry"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f621",
+      "value": "😡",
+      "name": "Rage",
+      "keywords": [
+        "rage"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f92c",
+      "value": "🤬",
+      "name": "Cursing",
+      "keywords": [
+        "cursing"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f61e",
+      "value": "😞",
+      "name": "Sad",
+      "keywords": [
+        "sad"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f613",
+      "value": "😓",
+      "name": "Sweat",
+      "keywords": [
+        "sweat",
+        "downcast"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f61f",
+      "value": "😟",
+      "name": "Worried",
+      "keywords": [
+        "worried"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f625",
+      "value": "😥",
+      "name": "Concerned",
+      "keywords": [
+        "concerned"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f622",
+      "value": "😢",
+      "name": "Cry",
+      "keywords": [
+        "cry"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "2639_fe0f",
+      "value": "☹️",
+      "name": "Big frown",
+      "keywords": [
+        "big-frown"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f641",
+      "value": "🙁",
+      "name": "Frown",
+      "keywords": [
+        "frown"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fae4",
+      "value": "🫤",
+      "name": "Diagonal mouth",
+      "keywords": [
+        "diagonal-mouth"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f615",
+      "value": "😕",
+      "name": "Slightly frowning",
+      "keywords": [
+        "slightly-frowning"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f630",
+      "value": "😰",
+      "name": "Anxious with sweat",
+      "keywords": [
+        "anxious-with-sweat"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f628",
+      "value": "😨",
+      "name": "Scared",
+      "keywords": [
+        "scared"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f627",
+      "value": "😧",
+      "name": "Anguished",
+      "keywords": [
+        "anguished"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f626",
+      "value": "😦",
+      "name": "Gasp",
+      "keywords": [
+        "gasp"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f62e",
+      "value": "😮",
+      "name": "Mouth open",
+      "keywords": [
+        "mouth-open"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f62f",
+      "value": "😯",
+      "name": "Surprised",
+      "keywords": [
+        "surprised",
+        "hushed"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f632",
+      "value": "😲",
+      "name": "Astonished",
+      "keywords": [
+        "astonished"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f633",
+      "value": "😳",
+      "name": "Flushed",
+      "keywords": [
+        "flushed"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f92f",
+      "value": "🤯",
+      "name": "Mind blown",
+      "keywords": [
+        "mind-blown",
+        "exploding-head"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f616",
+      "value": "😖",
+      "name": "Scrunched mouth",
+      "keywords": [
+        "scrunched-mouth",
+        "confounded",
+        "zigzag-mouth"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f623",
+      "value": "😣",
+      "name": "Scrunched eyes",
+      "keywords": [
+        "scrunched-eyes",
+        "persevering"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f629",
+      "value": "😩",
+      "name": "Weary",
+      "keywords": [
+        "weary"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f62b",
+      "value": "😫",
+      "name": "Distraught",
+      "keywords": [
+        "distraught"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f635",
+      "value": "😵",
+      "name": "X eyes",
+      "keywords": [
+        "x-eyes"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f635_200d_1f4ab",
+      "value": "😵‍💫",
+      "name": "Dizzy face",
+      "keywords": [
+        "dizzy-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fae8",
+      "value": "🫨",
+      "name": "Shaking face",
+      "keywords": [
+        "shaking-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f974",
+      "value": "🥴",
+      "name": "Woozy",
+      "keywords": [
+        "woozy"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f975",
+      "value": "🥵",
+      "name": "Hot face",
+      "keywords": [
+        "hot-face",
+        "sweat-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f976",
+      "value": "🥶",
+      "name": "Cold face",
+      "keywords": [
+        "cold-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f922",
+      "value": "🤢",
+      "name": "Sick",
+      "keywords": [
+        "sick",
+        "nauseated"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f92e",
+      "value": "🤮",
+      "name": "Vomit",
+      "keywords": [
+        "vomit"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fae9",
+      "value": "🫩",
+      "name": "Tired",
+      "keywords": [
+        "tired",
+        "bags-under-eyes"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f634",
+      "value": "😴",
+      "name": "Sleep",
+      "keywords": [
+        "sleep"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f62a",
+      "value": "😪",
+      "name": "Sleepy",
+      "keywords": [
+        "sleepy"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f927",
+      "value": "🤧",
+      "name": "Sneeze",
+      "keywords": [
+        "sneeze"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f912",
+      "value": "🤒",
+      "name": "Thermometer face",
+      "keywords": [
+        "thermometer-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f915",
+      "value": "🤕",
+      "name": "Bandage face",
+      "keywords": [
+        "bandage-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f637",
+      "value": "😷",
+      "name": "Mask",
+      "keywords": [
+        "mask"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f925",
+      "value": "🤥",
+      "name": "Liar",
+      "keywords": [
+        "liar"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f607",
+      "value": "😇",
+      "name": "Halo",
+      "keywords": [
+        "halo",
+        "innocent"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f920",
+      "value": "🤠",
+      "name": "Cowboy",
+      "keywords": [
+        "cowboy"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f911",
+      "value": "🤑",
+      "name": "Money face",
+      "keywords": [
+        "money-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f913",
+      "value": "🤓",
+      "name": "Nerd face",
+      "keywords": [
+        "nerd-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f60e",
+      "value": "😎",
+      "name": "Sunglasses face",
+      "keywords": [
+        "sunglasses-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f978",
+      "value": "🥸",
+      "name": "Disguise",
+      "keywords": [
+        "disguise"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f921",
+      "value": "🤡",
+      "name": "Clown",
+      "keywords": [
+        "clown"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f4a9",
+      "value": "💩",
+      "name": "Poop",
+      "keywords": [
+        "poop"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f608",
+      "value": "😈",
+      "name": "Imp smile",
+      "keywords": [
+        "imp-smile"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f47f",
+      "value": "👿",
+      "name": "Imp frown",
+      "keywords": [
+        "imp-frown"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f47b",
+      "value": "👻",
+      "name": "Ghost",
+      "keywords": [
+        "ghost"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f480",
+      "value": "💀",
+      "name": "Skull",
+      "keywords": [
+        "skull"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f916",
+      "value": "🤖",
+      "name": "Robot",
+      "keywords": [
+        "robot"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f479",
+      "value": "👹",
+      "name": "Ogre",
+      "keywords": [
+        "ogre"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "2603_fe0f",
+      "value": "☃️",
+      "name": "Snowman with snow",
+      "keywords": [
+        "snowman-with-snow"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "26c4",
+      "value": "⛄",
+      "name": "Snowman",
+      "keywords": [
+        "snowman"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f47d",
+      "value": "👽",
+      "name": "Alien",
+      "keywords": [
+        "alien"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f47e",
+      "value": "👾",
+      "name": "Alien monster",
+      "keywords": [
+        "alien-monster"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f31a",
+      "value": "🌚",
+      "name": "Moon face new",
+      "keywords": [
+        "moon-face-new"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f31d",
+      "value": "🌝",
+      "name": "Moon face full",
+      "keywords": [
+        "moon-face-full"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f31e",
+      "value": "🌞",
+      "name": "Sun with face",
+      "keywords": [
+        "sun-with-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f31b",
+      "value": "🌛",
+      "name": "Moon face first quarter",
+      "keywords": [
+        "moon-face-first-quarter"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f31c",
+      "value": "🌜",
+      "name": "Moon face last quarter",
+      "keywords": [
+        "moon-face-last-quarter"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f63a",
+      "value": "😺",
+      "name": "Smiley cat",
+      "keywords": [
+        "smiley-cat"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f638",
+      "value": "😸",
+      "name": "Smile cat",
+      "keywords": [
+        "smile-cat"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f639",
+      "value": "😹",
+      "name": "Joy cat",
+      "keywords": [
+        "joy-cat"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f63b",
+      "value": "😻",
+      "name": "Heart eyes cat",
+      "keywords": [
+        "heart-eyes-cat"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f63c",
+      "value": "😼",
+      "name": "Smirk cat",
+      "keywords": [
+        "smirk-cat"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f63d",
+      "value": "😽",
+      "name": "Kissing cat",
+      "keywords": [
+        "kissing-cat"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f640",
+      "value": "🙀",
+      "name": "Scream cat",
+      "keywords": [
+        "scream-cat"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f63f",
+      "value": "😿",
+      "name": "Crying cat face",
+      "keywords": [
+        "crying-cat-face"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f63e",
+      "value": "😾",
+      "name": "Pouting cat",
+      "keywords": [
+        "pouting-cat"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f648",
+      "value": "🙈",
+      "name": "See no evil monkey",
+      "keywords": [
+        "see-no-evil-monkey"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f649",
+      "value": "🙉",
+      "name": "Hear no evil monkey",
+      "keywords": [
+        "hear-no-evil-monkey"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64a",
+      "value": "🙊",
+      "name": "Speak no evil monkey",
+      "keywords": [
+        "speak-no-evil-monkey"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "2b50",
+      "value": "⭐",
+      "name": "Star",
+      "keywords": [
+        "star"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f31f",
+      "value": "🌟",
+      "name": "Glowing star",
+      "keywords": [
+        "glowing-star"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "2728",
+      "value": "✨",
+      "name": "Sparkles",
+      "keywords": [
+        "sparkles"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "26a1",
+      "value": "⚡",
+      "name": "Electricity",
+      "keywords": [
+        "electricity",
+        "zap",
+        "lightning"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f4a5",
+      "value": "💥",
+      "name": "Collision",
+      "keywords": [
+        "collision"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faef",
+      "value": "🫯",
+      "name": "Fight",
+      "keywords": [
+        "fight"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f573_fe0f",
+      "value": "🕳️",
+      "name": "Hole",
+      "keywords": [
+        "hole"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f525",
+      "value": "🔥",
+      "name": "Fire",
+      "keywords": [
+        "fire",
+        "burn",
+        "lit"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f4af",
+      "value": "💯",
+      "name": "100",
+      "keywords": [
+        "100",
+        "one-hundred",
+        "hundred",
+        "points"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f389",
+      "value": "🎉",
+      "name": "Party popper",
+      "keywords": [
+        "party-popper"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f38a",
+      "value": "🎊",
+      "name": "Confetti ball",
+      "keywords": [
+        "confetti-ball"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "2764_fe0f",
+      "value": "❤️",
+      "name": "Red heart",
+      "keywords": [
+        "red-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9e1",
+      "value": "🧡",
+      "name": "Orange heart",
+      "keywords": [
+        "orange-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f49b",
+      "value": "💛",
+      "name": "Yellow heart",
+      "keywords": [
+        "yellow-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f49a",
+      "value": "💚",
+      "name": "Green heart",
+      "keywords": [
+        "green-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fa75",
+      "value": "🩵",
+      "name": "Light blue heart",
+      "keywords": [
+        "light-blue-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f499",
+      "value": "💙",
+      "name": "Blue heart",
+      "keywords": [
+        "blue-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f49c",
+      "value": "💜",
+      "name": "Purple heart",
+      "keywords": [
+        "purple-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90e",
+      "value": "🤎",
+      "name": "Brown heart",
+      "keywords": [
+        "brown-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f5a4",
+      "value": "🖤",
+      "name": "Black heart",
+      "keywords": [
+        "black-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fa76",
+      "value": "🩶",
+      "name": "Grey heart",
+      "keywords": [
+        "grey-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90d",
+      "value": "🤍",
+      "name": "White heart",
+      "keywords": [
+        "white-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fa77",
+      "value": "🩷",
+      "name": "Pink heart",
+      "keywords": [
+        "pink-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f498",
+      "value": "💘",
+      "name": "Cupid",
+      "keywords": [
+        "cupid"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f49d",
+      "value": "💝",
+      "name": "Gift heart",
+      "keywords": [
+        "gift-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f496",
+      "value": "💖",
+      "name": "Sparkling heart",
+      "keywords": [
+        "sparkling-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f497",
+      "value": "💗",
+      "name": "Heart grow",
+      "keywords": [
+        "heart-grow"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f493",
+      "value": "💓",
+      "name": "Beating heart",
+      "keywords": [
+        "beating-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f49e",
+      "value": "💞",
+      "name": "Revolving hearts",
+      "keywords": [
+        "revolving-hearts"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f495",
+      "value": "💕",
+      "name": "Two hearts",
+      "keywords": [
+        "two-hearts"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f48c",
+      "value": "💌",
+      "name": "Love letter",
+      "keywords": [
+        "love-letter"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f49f",
+      "value": "💟",
+      "name": "Heart box",
+      "keywords": [
+        "heart-box"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "2665_fe0f",
+      "value": "♥️",
+      "name": "Heart",
+      "keywords": [
+        "heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "2763_fe0f",
+      "value": "❣️",
+      "name": "Heart exclamation point",
+      "keywords": [
+        "heart-exclamation-point"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "2764_fe0f_200d_1fa79",
+      "value": "❤️‍🩹",
+      "name": "Bandaged heart",
+      "keywords": [
+        "bandaged-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f494",
+      "value": "💔",
+      "name": "Broken heart",
+      "keywords": [
+        "broken-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "2764_fe0f_200d_1f525",
+      "value": "❤️‍🔥",
+      "name": "Fire heart",
+      "keywords": [
+        "fire-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f48b",
+      "value": "💋",
+      "name": "Kiss",
+      "keywords": [
+        "kiss"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fac2",
+      "value": "🫂",
+      "name": "Hugging",
+      "keywords": [
+        "hugging"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f5e3_fe0f",
+      "value": "🗣️",
+      "name": "Speaking head",
+      "keywords": [
+        "speaking-head"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f463",
+      "value": "👣",
+      "name": "Footprints",
+      "keywords": [
+        "footprints"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fac6",
+      "value": "🫆",
+      "name": "Fingerprint",
+      "keywords": [
+        "fingerprint"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9e0",
+      "value": "🧠",
+      "name": "Brain",
+      "keywords": [
+        "brain"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fac0",
+      "value": "🫀",
+      "name": "Anatomical heart",
+      "keywords": [
+        "anatomical-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fa78",
+      "value": "🩸",
+      "name": "Blood",
+      "keywords": [
+        "blood"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9a0",
+      "value": "🦠",
+      "name": "Microbe",
+      "keywords": [
+        "microbe",
+        "virus"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b4",
+      "value": "🦴",
+      "name": "Bone",
+      "keywords": [
+        "bone"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f440",
+      "value": "👀",
+      "name": "Eyes",
+      "keywords": [
+        "eyes"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f441_fe0f",
+      "value": "👁️",
+      "name": "Eye",
+      "keywords": [
+        "eye"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fae6",
+      "value": "🫦",
+      "name": "Biting lip",
+      "keywords": [
+        "biting-lip"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f443",
+      "value": "👃",
+      "name": "Nose",
+      "keywords": [
+        "nose"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f443_1f3fb",
+      "value": "👃🏻",
+      "name": "Nose: light skin tone",
+      "keywords": [
+        "nose"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f443_1f3fc",
+      "value": "👃🏼",
+      "name": "Nose: medium-light skin tone",
+      "keywords": [
+        "nose"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f443_1f3fd",
+      "value": "👃🏽",
+      "name": "Nose: medium skin tone",
+      "keywords": [
+        "nose"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f443_1f3fe",
+      "value": "👃🏾",
+      "name": "Nose: medium-dark skin tone",
+      "keywords": [
+        "nose"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f443_1f3ff",
+      "value": "👃🏿",
+      "name": "Nose: dark skin tone",
+      "keywords": [
+        "nose"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f442",
+      "value": "👂",
+      "name": "Ear",
+      "keywords": [
+        "ear"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f442_1f3fb",
+      "value": "👂🏻",
+      "name": "Ear: light skin tone",
+      "keywords": [
+        "ear"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f442_1f3fc",
+      "value": "👂🏼",
+      "name": "Ear: medium-light skin tone",
+      "keywords": [
+        "ear"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f442_1f3fd",
+      "value": "👂🏽",
+      "name": "Ear: medium skin tone",
+      "keywords": [
+        "ear"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f442_1f3fe",
+      "value": "👂🏾",
+      "name": "Ear: medium-dark skin tone",
+      "keywords": [
+        "ear"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f442_1f3ff",
+      "value": "👂🏿",
+      "name": "Ear: dark skin tone",
+      "keywords": [
+        "ear"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9bb",
+      "value": "🦻",
+      "name": "Hearing aid",
+      "keywords": [
+        "hearing-aid"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9bb_1f3fb",
+      "value": "🦻🏻",
+      "name": "Hearing aid: light skin tone",
+      "keywords": [
+        "hearing-aid"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9bb_1f3fc",
+      "value": "🦻🏼",
+      "name": "Hearing aid: medium-light skin tone",
+      "keywords": [
+        "hearing-aid"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9bb_1f3fd",
+      "value": "🦻🏽",
+      "name": "Hearing aid: medium skin tone",
+      "keywords": [
+        "hearing-aid"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9bb_1f3fe",
+      "value": "🦻🏾",
+      "name": "Hearing aid: medium-dark skin tone",
+      "keywords": [
+        "hearing-aid"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9bb_1f3ff",
+      "value": "🦻🏿",
+      "name": "Hearing aid: dark skin tone",
+      "keywords": [
+        "hearing-aid"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b6",
+      "value": "🦶",
+      "name": "Foot",
+      "keywords": [
+        "foot"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b6_1f3fb",
+      "value": "🦶🏻",
+      "name": "Foot: light skin tone",
+      "keywords": [
+        "foot"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b6_1f3fc",
+      "value": "🦶🏼",
+      "name": "Foot: medium-light skin tone",
+      "keywords": [
+        "foot"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b6_1f3fd",
+      "value": "🦶🏽",
+      "name": "Foot: medium skin tone",
+      "keywords": [
+        "foot"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b6_1f3fe",
+      "value": "🦶🏾",
+      "name": "Foot: medium-dark skin tone",
+      "keywords": [
+        "foot"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b6_1f3ff",
+      "value": "🦶🏿",
+      "name": "Foot: dark skin tone",
+      "keywords": [
+        "foot"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b5",
+      "value": "🦵",
+      "name": "Leg",
+      "keywords": [
+        "leg"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b5_1f3fb",
+      "value": "🦵🏻",
+      "name": "Leg: light skin tone",
+      "keywords": [
+        "leg"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b5_1f3fc",
+      "value": "🦵🏼",
+      "name": "Leg: medium-light skin tone",
+      "keywords": [
+        "leg"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b5_1f3fd",
+      "value": "🦵🏽",
+      "name": "Leg: medium skin tone",
+      "keywords": [
+        "leg"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b5_1f3fe",
+      "value": "🦵🏾",
+      "name": "Leg: medium-dark skin tone",
+      "keywords": [
+        "leg"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9b5_1f3ff",
+      "value": "🦵🏿",
+      "name": "Leg: dark skin tone",
+      "keywords": [
+        "leg"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9bf",
+      "value": "🦿",
+      "name": "Leg mechanical",
+      "keywords": [
+        "leg-mechanical"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f9be",
+      "value": "🦾",
+      "name": "Arm mechanical",
+      "keywords": [
+        "arm-mechanical"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f4aa",
+      "value": "💪",
+      "name": "Muscle",
+      "keywords": [
+        "muscle",
+        "flex",
+        "bicep",
+        "strong"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f4aa_1f3fb",
+      "value": "💪🏻",
+      "name": "Muscle: light skin tone",
+      "keywords": [
+        "muscle",
+        "flex",
+        "bicep",
+        "strong"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f4aa_1f3fc",
+      "value": "💪🏼",
+      "name": "Muscle: medium-light skin tone",
+      "keywords": [
+        "muscle",
+        "flex",
+        "bicep",
+        "strong"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f4aa_1f3fd",
+      "value": "💪🏽",
+      "name": "Muscle: medium skin tone",
+      "keywords": [
+        "muscle",
+        "flex",
+        "bicep",
+        "strong"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f4aa_1f3fe",
+      "value": "💪🏾",
+      "name": "Muscle: medium-dark skin tone",
+      "keywords": [
+        "muscle",
+        "flex",
+        "bicep",
+        "strong"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f4aa_1f3ff",
+      "value": "💪🏿",
+      "name": "Muscle: dark skin tone",
+      "keywords": [
+        "muscle",
+        "flex",
+        "bicep",
+        "strong"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44f",
+      "value": "👏",
+      "name": "Clap",
+      "keywords": [
+        "clap"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44f_1f3fb",
+      "value": "👏🏻",
+      "name": "Clap: light skin tone",
+      "keywords": [
+        "clap"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44f_1f3fc",
+      "value": "👏🏼",
+      "name": "Clap: medium-light skin tone",
+      "keywords": [
+        "clap"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44f_1f3fd",
+      "value": "👏🏽",
+      "name": "Clap: medium skin tone",
+      "keywords": [
+        "clap"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44f_1f3fe",
+      "value": "👏🏾",
+      "name": "Clap: medium-dark skin tone",
+      "keywords": [
+        "clap"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44f_1f3ff",
+      "value": "👏🏿",
+      "name": "Clap: dark skin tone",
+      "keywords": [
+        "clap"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44d",
+      "value": "👍",
+      "name": "Thumbs up",
+      "keywords": [
+        "thumbs-up",
+        "+1"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44d_1f3fb",
+      "value": "👍🏻",
+      "name": "Thumbs up: light skin tone",
+      "keywords": [
+        "thumbs-up",
+        "+1"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44d_1f3fc",
+      "value": "👍🏼",
+      "name": "Thumbs up: medium-light skin tone",
+      "keywords": [
+        "thumbs-up",
+        "+1"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44d_1f3fd",
+      "value": "👍🏽",
+      "name": "Thumbs up: medium skin tone",
+      "keywords": [
+        "thumbs-up",
+        "+1"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44d_1f3fe",
+      "value": "👍🏾",
+      "name": "Thumbs up: medium-dark skin tone",
+      "keywords": [
+        "thumbs-up",
+        "+1"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44d_1f3ff",
+      "value": "👍🏿",
+      "name": "Thumbs up: dark skin tone",
+      "keywords": [
+        "thumbs-up",
+        "+1"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44e",
+      "value": "👎",
+      "name": "Thumbs down",
+      "keywords": [
+        "thumbs-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44e_1f3fb",
+      "value": "👎🏻",
+      "name": "Thumbs down: light skin tone",
+      "keywords": [
+        "thumbs-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44e_1f3fc",
+      "value": "👎🏼",
+      "name": "Thumbs down: medium-light skin tone",
+      "keywords": [
+        "thumbs-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44e_1f3fd",
+      "value": "👎🏽",
+      "name": "Thumbs down: medium skin tone",
+      "keywords": [
+        "thumbs-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44e_1f3fe",
+      "value": "👎🏾",
+      "name": "Thumbs down: medium-dark skin tone",
+      "keywords": [
+        "thumbs-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44e_1f3ff",
+      "value": "👎🏿",
+      "name": "Thumbs down: dark skin tone",
+      "keywords": [
+        "thumbs-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf6",
+      "value": "🫶",
+      "name": "Heart hands",
+      "keywords": [
+        "heart-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf6_1f3fb",
+      "value": "🫶🏻",
+      "name": "Heart hands: light skin tone",
+      "keywords": [
+        "heart-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf6_1f3fc",
+      "value": "🫶🏼",
+      "name": "Heart hands: medium-light skin tone",
+      "keywords": [
+        "heart-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf6_1f3fd",
+      "value": "🫶🏽",
+      "name": "Heart hands: medium skin tone",
+      "keywords": [
+        "heart-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf6_1f3fe",
+      "value": "🫶🏾",
+      "name": "Heart hands: medium-dark skin tone",
+      "keywords": [
+        "heart-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf6_1f3ff",
+      "value": "🫶🏿",
+      "name": "Heart hands: dark skin tone",
+      "keywords": [
+        "heart-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64c",
+      "value": "🙌",
+      "name": "Raising hands",
+      "keywords": [
+        "raising-hands",
+        "hooray"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64c_1f3fb",
+      "value": "🙌🏻",
+      "name": "Raising hands: light skin tone",
+      "keywords": [
+        "raising-hands",
+        "hooray"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64c_1f3fc",
+      "value": "🙌🏼",
+      "name": "Raising hands: medium-light skin tone",
+      "keywords": [
+        "raising-hands",
+        "hooray"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64c_1f3fd",
+      "value": "🙌🏽",
+      "name": "Raising hands: medium skin tone",
+      "keywords": [
+        "raising-hands",
+        "hooray"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64c_1f3fe",
+      "value": "🙌🏾",
+      "name": "Raising hands: medium-dark skin tone",
+      "keywords": [
+        "raising-hands",
+        "hooray"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64c_1f3ff",
+      "value": "🙌🏿",
+      "name": "Raising hands: dark skin tone",
+      "keywords": [
+        "raising-hands",
+        "hooray"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f450",
+      "value": "👐",
+      "name": "Open hands",
+      "keywords": [
+        "open-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f450_1f3fb",
+      "value": "👐🏻",
+      "name": "Open hands: light skin tone",
+      "keywords": [
+        "open-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f450_1f3fc",
+      "value": "👐🏼",
+      "name": "Open hands: medium-light skin tone",
+      "keywords": [
+        "open-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f450_1f3fd",
+      "value": "👐🏽",
+      "name": "Open hands: medium skin tone",
+      "keywords": [
+        "open-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f450_1f3fe",
+      "value": "👐🏾",
+      "name": "Open hands: medium-dark skin tone",
+      "keywords": [
+        "open-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f450_1f3ff",
+      "value": "👐🏿",
+      "name": "Open hands: dark skin tone",
+      "keywords": [
+        "open-hands"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f932",
+      "value": "🤲",
+      "name": "Palms up",
+      "keywords": [
+        "palms-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f932_1f3fb",
+      "value": "🤲🏻",
+      "name": "Palms up: light skin tone",
+      "keywords": [
+        "palms-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f932_1f3fc",
+      "value": "🤲🏼",
+      "name": "Palms up: medium-light skin tone",
+      "keywords": [
+        "palms-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f932_1f3fd",
+      "value": "🤲🏽",
+      "name": "Palms up: medium skin tone",
+      "keywords": [
+        "palms-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f932_1f3fe",
+      "value": "🤲🏾",
+      "name": "Palms up: medium-dark skin tone",
+      "keywords": [
+        "palms-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f932_1f3ff",
+      "value": "🤲🏿",
+      "name": "Palms up: dark skin tone",
+      "keywords": [
+        "palms-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91c",
+      "value": "🤜",
+      "name": "Fist rightwards",
+      "keywords": [
+        "fist-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91c_1f3fb",
+      "value": "🤜🏻",
+      "name": "Fist rightwards: light skin tone",
+      "keywords": [
+        "fist-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91c_1f3fc",
+      "value": "🤜🏼",
+      "name": "Fist rightwards: medium-light skin tone",
+      "keywords": [
+        "fist-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91c_1f3fd",
+      "value": "🤜🏽",
+      "name": "Fist rightwards: medium skin tone",
+      "keywords": [
+        "fist-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91c_1f3fe",
+      "value": "🤜🏾",
+      "name": "Fist rightwards: medium-dark skin tone",
+      "keywords": [
+        "fist-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91c_1f3ff",
+      "value": "🤜🏿",
+      "name": "Fist rightwards: dark skin tone",
+      "keywords": [
+        "fist-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91b",
+      "value": "🤛",
+      "name": "Fist leftwards",
+      "keywords": [
+        "fist-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91b_1f3fb",
+      "value": "🤛🏻",
+      "name": "Fist leftwards: light skin tone",
+      "keywords": [
+        "fist-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91b_1f3fc",
+      "value": "🤛🏼",
+      "name": "Fist leftwards: medium-light skin tone",
+      "keywords": [
+        "fist-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91b_1f3fd",
+      "value": "🤛🏽",
+      "name": "Fist leftwards: medium skin tone",
+      "keywords": [
+        "fist-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91b_1f3fe",
+      "value": "🤛🏾",
+      "name": "Fist leftwards: medium-dark skin tone",
+      "keywords": [
+        "fist-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91b_1f3ff",
+      "value": "🤛🏿",
+      "name": "Fist leftwards: dark skin tone",
+      "keywords": [
+        "fist-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270a",
+      "value": "✊",
+      "name": "Raised fist",
+      "keywords": [
+        "raised-fist"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270a_1f3fb",
+      "value": "✊🏻",
+      "name": "Raised fist: light skin tone",
+      "keywords": [
+        "raised-fist"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270a_1f3fc",
+      "value": "✊🏼",
+      "name": "Raised fist: medium-light skin tone",
+      "keywords": [
+        "raised-fist"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270a_1f3fd",
+      "value": "✊🏽",
+      "name": "Raised fist: medium skin tone",
+      "keywords": [
+        "raised-fist"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270a_1f3fe",
+      "value": "✊🏾",
+      "name": "Raised fist: medium-dark skin tone",
+      "keywords": [
+        "raised-fist"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270a_1f3ff",
+      "value": "✊🏿",
+      "name": "Raised fist: dark skin tone",
+      "keywords": [
+        "raised-fist"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44a",
+      "value": "👊",
+      "name": "Fist",
+      "keywords": [
+        "fist",
+        "bump"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44a_1f3fb",
+      "value": "👊🏻",
+      "name": "Fist: light skin tone",
+      "keywords": [
+        "fist",
+        "bump"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44a_1f3fc",
+      "value": "👊🏼",
+      "name": "Fist: medium-light skin tone",
+      "keywords": [
+        "fist",
+        "bump"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44a_1f3fd",
+      "value": "👊🏽",
+      "name": "Fist: medium skin tone",
+      "keywords": [
+        "fist",
+        "bump"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44a_1f3fe",
+      "value": "👊🏾",
+      "name": "Fist: medium-dark skin tone",
+      "keywords": [
+        "fist",
+        "bump"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44a_1f3ff",
+      "value": "👊🏿",
+      "name": "Fist: dark skin tone",
+      "keywords": [
+        "fist",
+        "bump"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf3",
+      "value": "🫳",
+      "name": "Palm down",
+      "keywords": [
+        "palm-down",
+        "drop"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf3_1f3fb",
+      "value": "🫳🏻",
+      "name": "Palm down: light skin tone",
+      "keywords": [
+        "palm-down",
+        "drop"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf3_1f3fc",
+      "value": "🫳🏼",
+      "name": "Palm down: medium-light skin tone",
+      "keywords": [
+        "palm-down",
+        "drop"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf3_1f3fd",
+      "value": "🫳🏽",
+      "name": "Palm down: medium skin tone",
+      "keywords": [
+        "palm-down",
+        "drop"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf3_1f3fe",
+      "value": "🫳🏾",
+      "name": "Palm down: medium-dark skin tone",
+      "keywords": [
+        "palm-down",
+        "drop"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf3_1f3ff",
+      "value": "🫳🏿",
+      "name": "Palm down: dark skin tone",
+      "keywords": [
+        "palm-down",
+        "drop"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf4",
+      "value": "🫴",
+      "name": "Palm up",
+      "keywords": [
+        "palm-up",
+        "throw"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf4_1f3fb",
+      "value": "🫴🏻",
+      "name": "Palm up: light skin tone",
+      "keywords": [
+        "palm-up",
+        "throw"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf4_1f3fc",
+      "value": "🫴🏼",
+      "name": "Palm up: medium-light skin tone",
+      "keywords": [
+        "palm-up",
+        "throw"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf4_1f3fd",
+      "value": "🫴🏽",
+      "name": "Palm up: medium skin tone",
+      "keywords": [
+        "palm-up",
+        "throw"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf4_1f3fe",
+      "value": "🫴🏾",
+      "name": "Palm up: medium-dark skin tone",
+      "keywords": [
+        "palm-up",
+        "throw"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf4_1f3ff",
+      "value": "🫴🏿",
+      "name": "Palm up: dark skin tone",
+      "keywords": [
+        "palm-up",
+        "throw"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1",
+      "value": "🫱",
+      "name": "Rightwards hand",
+      "keywords": [
+        "rightwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fb",
+      "value": "🫱🏻",
+      "name": "Rightwards hand: light skin tone",
+      "keywords": [
+        "rightwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fc",
+      "value": "🫱🏼",
+      "name": "Rightwards hand: medium-light skin tone",
+      "keywords": [
+        "rightwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fd",
+      "value": "🫱🏽",
+      "name": "Rightwards hand: medium skin tone",
+      "keywords": [
+        "rightwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fe",
+      "value": "🫱🏾",
+      "name": "Rightwards hand: medium-dark skin tone",
+      "keywords": [
+        "rightwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3ff",
+      "value": "🫱🏿",
+      "name": "Rightwards hand: dark skin tone",
+      "keywords": [
+        "rightwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf2",
+      "value": "🫲",
+      "name": "Leftwards hand",
+      "keywords": [
+        "leftwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf2_1f3fb",
+      "value": "🫲🏻",
+      "name": "Leftwards hand: light skin tone",
+      "keywords": [
+        "leftwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf2_1f3fc",
+      "value": "🫲🏼",
+      "name": "Leftwards hand: medium-light skin tone",
+      "keywords": [
+        "leftwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf2_1f3fd",
+      "value": "🫲🏽",
+      "name": "Leftwards hand: medium skin tone",
+      "keywords": [
+        "leftwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf2_1f3fe",
+      "value": "🫲🏾",
+      "name": "Leftwards hand: medium-dark skin tone",
+      "keywords": [
+        "leftwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf2_1f3ff",
+      "value": "🫲🏿",
+      "name": "Leftwards hand: dark skin tone",
+      "keywords": [
+        "leftwards-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf8",
+      "value": "🫸",
+      "name": "Push rightwards",
+      "keywords": [
+        "push-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf8_1f3fb",
+      "value": "🫸🏻",
+      "name": "Push rightwards: light skin tone",
+      "keywords": [
+        "push-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf8_1f3fc",
+      "value": "🫸🏼",
+      "name": "Push rightwards: medium-light skin tone",
+      "keywords": [
+        "push-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf8_1f3fd",
+      "value": "🫸🏽",
+      "name": "Push rightwards: medium skin tone",
+      "keywords": [
+        "push-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf8_1f3fe",
+      "value": "🫸🏾",
+      "name": "Push rightwards: medium-dark skin tone",
+      "keywords": [
+        "push-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf8_1f3ff",
+      "value": "🫸🏿",
+      "name": "Push rightwards: dark skin tone",
+      "keywords": [
+        "push-rightwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf7",
+      "value": "🫷",
+      "name": "Push leftwards",
+      "keywords": [
+        "push-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf7_1f3fb",
+      "value": "🫷🏻",
+      "name": "Push leftwards: light skin tone",
+      "keywords": [
+        "push-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf7_1f3fc",
+      "value": "🫷🏼",
+      "name": "Push leftwards: medium-light skin tone",
+      "keywords": [
+        "push-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf7_1f3fd",
+      "value": "🫷🏽",
+      "name": "Push leftwards: medium skin tone",
+      "keywords": [
+        "push-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf7_1f3fe",
+      "value": "🫷🏾",
+      "name": "Push leftwards: medium-dark skin tone",
+      "keywords": [
+        "push-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf7_1f3ff",
+      "value": "🫷🏿",
+      "name": "Push leftwards: dark skin tone",
+      "keywords": [
+        "push-leftwards"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44b",
+      "value": "👋",
+      "name": "Wave",
+      "keywords": [
+        "wave"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44b_1f3fb",
+      "value": "👋🏻",
+      "name": "Wave: light skin tone",
+      "keywords": [
+        "wave"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44b_1f3fc",
+      "value": "👋🏼",
+      "name": "Wave: medium-light skin tone",
+      "keywords": [
+        "wave"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44b_1f3fd",
+      "value": "👋🏽",
+      "name": "Wave: medium skin tone",
+      "keywords": [
+        "wave"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44b_1f3fe",
+      "value": "👋🏾",
+      "name": "Wave: medium-dark skin tone",
+      "keywords": [
+        "wave"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44b_1f3ff",
+      "value": "👋🏿",
+      "name": "Wave: dark skin tone",
+      "keywords": [
+        "wave"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91a",
+      "value": "🤚",
+      "name": "Back hand",
+      "keywords": [
+        "back-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91a_1f3fb",
+      "value": "🤚🏻",
+      "name": "Back hand: light skin tone",
+      "keywords": [
+        "back-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91a_1f3fc",
+      "value": "🤚🏼",
+      "name": "Back hand: medium-light skin tone",
+      "keywords": [
+        "back-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91a_1f3fd",
+      "value": "🤚🏽",
+      "name": "Back hand: medium skin tone",
+      "keywords": [
+        "back-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91a_1f3fe",
+      "value": "🤚🏾",
+      "name": "Back hand: medium-dark skin tone",
+      "keywords": [
+        "back-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91a_1f3ff",
+      "value": "🤚🏿",
+      "name": "Back hand: dark skin tone",
+      "keywords": [
+        "back-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f590_fe0f",
+      "value": "🖐️",
+      "name": "Palm",
+      "keywords": [
+        "palm"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f590_1f3fb",
+      "value": "🖐🏻",
+      "name": "Palm: light skin tone",
+      "keywords": [
+        "palm"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f590_1f3fc",
+      "value": "🖐🏼",
+      "name": "Palm: medium-light skin tone",
+      "keywords": [
+        "palm"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f590_1f3fd",
+      "value": "🖐🏽",
+      "name": "Palm: medium skin tone",
+      "keywords": [
+        "palm"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f590_1f3fe",
+      "value": "🖐🏾",
+      "name": "Palm: medium-dark skin tone",
+      "keywords": [
+        "palm"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f590_1f3ff",
+      "value": "🖐🏿",
+      "name": "Palm: dark skin tone",
+      "keywords": [
+        "palm"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270b",
+      "value": "✋",
+      "name": "Raised hand",
+      "keywords": [
+        "raised-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270b_1f3fb",
+      "value": "✋🏻",
+      "name": "Raised hand: light skin tone",
+      "keywords": [
+        "raised-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270b_1f3fc",
+      "value": "✋🏼",
+      "name": "Raised hand: medium-light skin tone",
+      "keywords": [
+        "raised-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270b_1f3fd",
+      "value": "✋🏽",
+      "name": "Raised hand: medium skin tone",
+      "keywords": [
+        "raised-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270b_1f3fe",
+      "value": "✋🏾",
+      "name": "Raised hand: medium-dark skin tone",
+      "keywords": [
+        "raised-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270b_1f3ff",
+      "value": "✋🏿",
+      "name": "Raised hand: dark skin tone",
+      "keywords": [
+        "raised-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f596",
+      "value": "🖖",
+      "name": "Vulcan",
+      "keywords": [
+        "vulcan",
+        "prosper",
+        "spock"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f596_1f3fb",
+      "value": "🖖🏻",
+      "name": "Vulcan: light skin tone",
+      "keywords": [
+        "vulcan",
+        "prosper",
+        "spock"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f596_1f3fc",
+      "value": "🖖🏼",
+      "name": "Vulcan: medium-light skin tone",
+      "keywords": [
+        "vulcan",
+        "prosper",
+        "spock"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f596_1f3fd",
+      "value": "🖖🏽",
+      "name": "Vulcan: medium skin tone",
+      "keywords": [
+        "vulcan",
+        "prosper",
+        "spock"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f596_1f3fe",
+      "value": "🖖🏾",
+      "name": "Vulcan: medium-dark skin tone",
+      "keywords": [
+        "vulcan",
+        "prosper",
+        "spock"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f596_1f3ff",
+      "value": "🖖🏿",
+      "name": "Vulcan: dark skin tone",
+      "keywords": [
+        "vulcan",
+        "prosper",
+        "spock"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91f",
+      "value": "🤟",
+      "name": "Love you gesture",
+      "keywords": [
+        "love-you-gesture"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91f_1f3fb",
+      "value": "🤟🏻",
+      "name": "Love you gesture: light skin tone",
+      "keywords": [
+        "love-you-gesture"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91f_1f3fc",
+      "value": "🤟🏼",
+      "name": "Love you gesture: medium-light skin tone",
+      "keywords": [
+        "love-you-gesture"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91f_1f3fd",
+      "value": "🤟🏽",
+      "name": "Love you gesture: medium skin tone",
+      "keywords": [
+        "love-you-gesture"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91f_1f3fe",
+      "value": "🤟🏾",
+      "name": "Love you gesture: medium-dark skin tone",
+      "keywords": [
+        "love-you-gesture"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91f_1f3ff",
+      "value": "🤟🏿",
+      "name": "Love you gesture: dark skin tone",
+      "keywords": [
+        "love-you-gesture"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f918",
+      "value": "🤘",
+      "name": "Metal",
+      "keywords": [
+        "metal",
+        "horns"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f918_1f3fb",
+      "value": "🤘🏻",
+      "name": "Metal: light skin tone",
+      "keywords": [
+        "metal",
+        "horns"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f918_1f3fc",
+      "value": "🤘🏼",
+      "name": "Metal: medium-light skin tone",
+      "keywords": [
+        "metal",
+        "horns"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f918_1f3fd",
+      "value": "🤘🏽",
+      "name": "Metal: medium skin tone",
+      "keywords": [
+        "metal",
+        "horns"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f918_1f3fe",
+      "value": "🤘🏾",
+      "name": "Metal: medium-dark skin tone",
+      "keywords": [
+        "metal",
+        "horns"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f918_1f3ff",
+      "value": "🤘🏿",
+      "name": "Metal: dark skin tone",
+      "keywords": [
+        "metal",
+        "horns"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270c_fe0f",
+      "value": "✌️",
+      "name": "Victory",
+      "keywords": [
+        "victory",
+        "v",
+        "peace-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270c_1f3fb",
+      "value": "✌🏻",
+      "name": "Victory: light skin tone",
+      "keywords": [
+        "victory",
+        "v",
+        "peace-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270c_1f3fc",
+      "value": "✌🏼",
+      "name": "Victory: medium-light skin tone",
+      "keywords": [
+        "victory",
+        "v",
+        "peace-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270c_1f3fd",
+      "value": "✌🏽",
+      "name": "Victory: medium skin tone",
+      "keywords": [
+        "victory",
+        "v",
+        "peace-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270c_1f3fe",
+      "value": "✌🏾",
+      "name": "Victory: medium-dark skin tone",
+      "keywords": [
+        "victory",
+        "v",
+        "peace-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270c_1f3ff",
+      "value": "✌🏿",
+      "name": "Victory: dark skin tone",
+      "keywords": [
+        "victory",
+        "v",
+        "peace-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91e",
+      "value": "🤞",
+      "name": "Crossed fingers",
+      "keywords": [
+        "crossed-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91e_1f3fb",
+      "value": "🤞🏻",
+      "name": "Crossed fingers: light skin tone",
+      "keywords": [
+        "crossed-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91e_1f3fc",
+      "value": "🤞🏼",
+      "name": "Crossed fingers: medium-light skin tone",
+      "keywords": [
+        "crossed-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91e_1f3fd",
+      "value": "🤞🏽",
+      "name": "Crossed fingers: medium skin tone",
+      "keywords": [
+        "crossed-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91e_1f3fe",
+      "value": "🤞🏾",
+      "name": "Crossed fingers: medium-dark skin tone",
+      "keywords": [
+        "crossed-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91e_1f3ff",
+      "value": "🤞🏿",
+      "name": "Crossed fingers: dark skin tone",
+      "keywords": [
+        "crossed-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf0",
+      "value": "🫰",
+      "name": "Hand with index finger and thumb crossed",
+      "keywords": [
+        "hand-with-index-finger-and-thumb-crossed",
+        "snap",
+        "finger-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf0_1f3fb",
+      "value": "🫰🏻",
+      "name": "Hand with index finger and thumb crossed: light skin tone",
+      "keywords": [
+        "hand-with-index-finger-and-thumb-crossed",
+        "snap",
+        "finger-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf0_1f3fc",
+      "value": "🫰🏼",
+      "name": "Hand with index finger and thumb crossed: medium-light skin tone",
+      "keywords": [
+        "hand-with-index-finger-and-thumb-crossed",
+        "snap",
+        "finger-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf0_1f3fd",
+      "value": "🫰🏽",
+      "name": "Hand with index finger and thumb crossed: medium skin tone",
+      "keywords": [
+        "hand-with-index-finger-and-thumb-crossed",
+        "snap",
+        "finger-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf0_1f3fe",
+      "value": "🫰🏾",
+      "name": "Hand with index finger and thumb crossed: medium-dark skin tone",
+      "keywords": [
+        "hand-with-index-finger-and-thumb-crossed",
+        "snap",
+        "finger-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf0_1f3ff",
+      "value": "🫰🏿",
+      "name": "Hand with index finger and thumb crossed: dark skin tone",
+      "keywords": [
+        "hand-with-index-finger-and-thumb-crossed",
+        "snap",
+        "finger-heart"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f919",
+      "value": "🤙",
+      "name": "Call me hand",
+      "keywords": [
+        "call-me-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f919_1f3fb",
+      "value": "🤙🏻",
+      "name": "Call me hand: light skin tone",
+      "keywords": [
+        "call-me-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f919_1f3fc",
+      "value": "🤙🏼",
+      "name": "Call me hand: medium-light skin tone",
+      "keywords": [
+        "call-me-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f919_1f3fd",
+      "value": "🤙🏽",
+      "name": "Call me hand: medium skin tone",
+      "keywords": [
+        "call-me-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f919_1f3fe",
+      "value": "🤙🏾",
+      "name": "Call me hand: medium-dark skin tone",
+      "keywords": [
+        "call-me-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f919_1f3ff",
+      "value": "🤙🏿",
+      "name": "Call me hand: dark skin tone",
+      "keywords": [
+        "call-me-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90c",
+      "value": "🤌",
+      "name": "Pinched fingers",
+      "keywords": [
+        "pinched-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90c_1f3fb",
+      "value": "🤌🏻",
+      "name": "Pinched fingers: light skin tone",
+      "keywords": [
+        "pinched-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90c_1f3fc",
+      "value": "🤌🏼",
+      "name": "Pinched fingers: medium-light skin tone",
+      "keywords": [
+        "pinched-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90c_1f3fd",
+      "value": "🤌🏽",
+      "name": "Pinched fingers: medium skin tone",
+      "keywords": [
+        "pinched-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90c_1f3fe",
+      "value": "🤌🏾",
+      "name": "Pinched fingers: medium-dark skin tone",
+      "keywords": [
+        "pinched-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90c_1f3ff",
+      "value": "🤌🏿",
+      "name": "Pinched fingers: dark skin tone",
+      "keywords": [
+        "pinched-fingers"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90f",
+      "value": "🤏",
+      "name": "Pinch",
+      "keywords": [
+        "pinch"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90f_1f3fb",
+      "value": "🤏🏻",
+      "name": "Pinch: light skin tone",
+      "keywords": [
+        "pinch"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90f_1f3fc",
+      "value": "🤏🏼",
+      "name": "Pinch: medium-light skin tone",
+      "keywords": [
+        "pinch"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90f_1f3fd",
+      "value": "🤏🏽",
+      "name": "Pinch: medium skin tone",
+      "keywords": [
+        "pinch"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90f_1f3fe",
+      "value": "🤏🏾",
+      "name": "Pinch: medium-dark skin tone",
+      "keywords": [
+        "pinch"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f90f_1f3ff",
+      "value": "🤏🏿",
+      "name": "Pinch: dark skin tone",
+      "keywords": [
+        "pinch"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44c",
+      "value": "👌",
+      "name": "Ok",
+      "keywords": [
+        "ok"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44c_1f3fb",
+      "value": "👌🏻",
+      "name": "Ok: light skin tone",
+      "keywords": [
+        "ok"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44c_1f3fc",
+      "value": "👌🏼",
+      "name": "Ok: medium-light skin tone",
+      "keywords": [
+        "ok"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44c_1f3fd",
+      "value": "👌🏽",
+      "name": "Ok: medium skin tone",
+      "keywords": [
+        "ok"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44c_1f3fe",
+      "value": "👌🏾",
+      "name": "Ok: medium-dark skin tone",
+      "keywords": [
+        "ok"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f44c_1f3ff",
+      "value": "👌🏿",
+      "name": "Ok: dark skin tone",
+      "keywords": [
+        "ok"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf5",
+      "value": "🫵",
+      "name": "Pointing",
+      "keywords": [
+        "pointing"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf5_1f3fb",
+      "value": "🫵🏻",
+      "name": "Pointing: light skin tone",
+      "keywords": [
+        "pointing"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf5_1f3fc",
+      "value": "🫵🏼",
+      "name": "Pointing: medium-light skin tone",
+      "keywords": [
+        "pointing"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf5_1f3fd",
+      "value": "🫵🏽",
+      "name": "Pointing: medium skin tone",
+      "keywords": [
+        "pointing"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf5_1f3fe",
+      "value": "🫵🏾",
+      "name": "Pointing: medium-dark skin tone",
+      "keywords": [
+        "pointing"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf5_1f3ff",
+      "value": "🫵🏿",
+      "name": "Pointing: dark skin tone",
+      "keywords": [
+        "pointing"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f449",
+      "value": "👉",
+      "name": "Point right",
+      "keywords": [
+        "point-right"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f449_1f3fb",
+      "value": "👉🏻",
+      "name": "Point right: light skin tone",
+      "keywords": [
+        "point-right"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f449_1f3fc",
+      "value": "👉🏼",
+      "name": "Point right: medium-light skin tone",
+      "keywords": [
+        "point-right"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f449_1f3fd",
+      "value": "👉🏽",
+      "name": "Point right: medium skin tone",
+      "keywords": [
+        "point-right"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f449_1f3fe",
+      "value": "👉🏾",
+      "name": "Point right: medium-dark skin tone",
+      "keywords": [
+        "point-right"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f449_1f3ff",
+      "value": "👉🏿",
+      "name": "Point right: dark skin tone",
+      "keywords": [
+        "point-right"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f448",
+      "value": "👈",
+      "name": "Point left",
+      "keywords": [
+        "point-left"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f448_1f3fb",
+      "value": "👈🏻",
+      "name": "Point left: light skin tone",
+      "keywords": [
+        "point-left"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f448_1f3fc",
+      "value": "👈🏼",
+      "name": "Point left: medium-light skin tone",
+      "keywords": [
+        "point-left"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f448_1f3fd",
+      "value": "👈🏽",
+      "name": "Point left: medium skin tone",
+      "keywords": [
+        "point-left"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f448_1f3fe",
+      "value": "👈🏾",
+      "name": "Point left: medium-dark skin tone",
+      "keywords": [
+        "point-left"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f448_1f3ff",
+      "value": "👈🏿",
+      "name": "Point left: dark skin tone",
+      "keywords": [
+        "point-left"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "261d_fe0f",
+      "value": "☝️",
+      "name": "Index finger",
+      "keywords": [
+        "index-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "261d_1f3fb",
+      "value": "☝🏻",
+      "name": "Index finger: light skin tone",
+      "keywords": [
+        "index-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "261d_1f3fc",
+      "value": "☝🏼",
+      "name": "Index finger: medium-light skin tone",
+      "keywords": [
+        "index-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "261d_1f3fd",
+      "value": "☝🏽",
+      "name": "Index finger: medium skin tone",
+      "keywords": [
+        "index-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "261d_1f3fe",
+      "value": "☝🏾",
+      "name": "Index finger: medium-dark skin tone",
+      "keywords": [
+        "index-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "261d_1f3ff",
+      "value": "☝🏿",
+      "name": "Index finger: dark skin tone",
+      "keywords": [
+        "index-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f446",
+      "value": "👆",
+      "name": "Point up",
+      "keywords": [
+        "point-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f446_1f3fb",
+      "value": "👆🏻",
+      "name": "Point up: light skin tone",
+      "keywords": [
+        "point-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f446_1f3fc",
+      "value": "👆🏼",
+      "name": "Point up: medium-light skin tone",
+      "keywords": [
+        "point-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f446_1f3fd",
+      "value": "👆🏽",
+      "name": "Point up: medium skin tone",
+      "keywords": [
+        "point-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f446_1f3fe",
+      "value": "👆🏾",
+      "name": "Point up: medium-dark skin tone",
+      "keywords": [
+        "point-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f446_1f3ff",
+      "value": "👆🏿",
+      "name": "Point up: dark skin tone",
+      "keywords": [
+        "point-up"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f447",
+      "value": "👇",
+      "name": "Point down",
+      "keywords": [
+        "point-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f447_1f3fb",
+      "value": "👇🏻",
+      "name": "Point down: light skin tone",
+      "keywords": [
+        "point-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f447_1f3fc",
+      "value": "👇🏼",
+      "name": "Point down: medium-light skin tone",
+      "keywords": [
+        "point-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f447_1f3fd",
+      "value": "👇🏽",
+      "name": "Point down: medium skin tone",
+      "keywords": [
+        "point-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f447_1f3fe",
+      "value": "👇🏾",
+      "name": "Point down: medium-dark skin tone",
+      "keywords": [
+        "point-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f447_1f3ff",
+      "value": "👇🏿",
+      "name": "Point down: dark skin tone",
+      "keywords": [
+        "point-down"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f595",
+      "value": "🖕",
+      "name": "Middle finger",
+      "keywords": [
+        "middle-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f595_1f3fb",
+      "value": "🖕🏻",
+      "name": "Middle finger: light skin tone",
+      "keywords": [
+        "middle-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f595_1f3fc",
+      "value": "🖕🏼",
+      "name": "Middle finger: medium-light skin tone",
+      "keywords": [
+        "middle-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f595_1f3fd",
+      "value": "🖕🏽",
+      "name": "Middle finger: medium skin tone",
+      "keywords": [
+        "middle-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f595_1f3fe",
+      "value": "🖕🏾",
+      "name": "Middle finger: medium-dark skin tone",
+      "keywords": [
+        "middle-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f595_1f3ff",
+      "value": "🖕🏿",
+      "name": "Middle finger: dark skin tone",
+      "keywords": [
+        "middle-finger"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270d_fe0f",
+      "value": "✍️",
+      "name": "Writing hand",
+      "keywords": [
+        "writing-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270d_1f3fb",
+      "value": "✍🏻",
+      "name": "Writing hand: light skin tone",
+      "keywords": [
+        "writing-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270d_1f3fc",
+      "value": "✍🏼",
+      "name": "Writing hand: medium-light skin tone",
+      "keywords": [
+        "writing-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270d_1f3fd",
+      "value": "✍🏽",
+      "name": "Writing hand: medium skin tone",
+      "keywords": [
+        "writing-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270d_1f3fe",
+      "value": "✍🏾",
+      "name": "Writing hand: medium-dark skin tone",
+      "keywords": [
+        "writing-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "270d_1f3ff",
+      "value": "✍🏿",
+      "name": "Writing hand: dark skin tone",
+      "keywords": [
+        "writing-hand"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f933",
+      "value": "🤳",
+      "name": "Selfie",
+      "keywords": [
+        "selfie"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f933_1f3fb",
+      "value": "🤳🏻",
+      "name": "Selfie: light skin tone",
+      "keywords": [
+        "selfie"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f933_1f3fc",
+      "value": "🤳🏼",
+      "name": "Selfie: medium-light skin tone",
+      "keywords": [
+        "selfie"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f933_1f3fd",
+      "value": "🤳🏽",
+      "name": "Selfie: medium skin tone",
+      "keywords": [
+        "selfie"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f933_1f3fe",
+      "value": "🤳🏾",
+      "name": "Selfie: medium-dark skin tone",
+      "keywords": [
+        "selfie"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f933_1f3ff",
+      "value": "🤳🏿",
+      "name": "Selfie: dark skin tone",
+      "keywords": [
+        "selfie"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64f",
+      "value": "🙏",
+      "name": "Folded hands",
+      "keywords": [
+        "folded-hands",
+        "please",
+        "pray",
+        "hope",
+        "wish",
+        "thank-you",
+        "high-five"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64f_1f3fb",
+      "value": "🙏🏻",
+      "name": "Folded hands: light skin tone",
+      "keywords": [
+        "folded-hands",
+        "please",
+        "pray",
+        "hope",
+        "wish",
+        "thank-you",
+        "high-five"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64f_1f3fc",
+      "value": "🙏🏼",
+      "name": "Folded hands: medium-light skin tone",
+      "keywords": [
+        "folded-hands",
+        "please",
+        "pray",
+        "hope",
+        "wish",
+        "thank-you",
+        "high-five"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64f_1f3fd",
+      "value": "🙏🏽",
+      "name": "Folded hands: medium skin tone",
+      "keywords": [
+        "folded-hands",
+        "please",
+        "pray",
+        "hope",
+        "wish",
+        "thank-you",
+        "high-five"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64f_1f3fe",
+      "value": "🙏🏾",
+      "name": "Folded hands: medium-dark skin tone",
+      "keywords": [
+        "folded-hands",
+        "please",
+        "pray",
+        "hope",
+        "wish",
+        "thank-you",
+        "high-five"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f64f_1f3ff",
+      "value": "🙏🏿",
+      "name": "Folded hands: dark skin tone",
+      "keywords": [
+        "folded-hands",
+        "please",
+        "pray",
+        "hope",
+        "wish",
+        "thank-you",
+        "high-five"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f485",
+      "value": "💅",
+      "name": "Nail care",
+      "keywords": [
+        "nail-care"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f485_1f3fb",
+      "value": "💅🏻",
+      "name": "Nail care: light skin tone",
+      "keywords": [
+        "nail-care"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f485_1f3fc",
+      "value": "💅🏼",
+      "name": "Nail care: medium-light skin tone",
+      "keywords": [
+        "nail-care"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f485_1f3fd",
+      "value": "💅🏽",
+      "name": "Nail care: medium skin tone",
+      "keywords": [
+        "nail-care"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f485_1f3fe",
+      "value": "💅🏾",
+      "name": "Nail care: medium-dark skin tone",
+      "keywords": [
+        "nail-care"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f485_1f3ff",
+      "value": "💅🏿",
+      "name": "Nail care: dark skin tone",
+      "keywords": [
+        "nail-care"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91d",
+      "value": "🤝",
+      "name": "Handshake",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91d_1f3fb",
+      "value": "🤝🏻",
+      "name": "Handshake: light skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fb_200d_1faf2_1f3fc",
+      "value": "🫱🏻‍🫲🏼",
+      "name": "Handshake: light skin tone, medium-light skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fb_200d_1faf2_1f3fd",
+      "value": "🫱🏻‍🫲🏽",
+      "name": "Handshake: light skin tone, medium skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fb_200d_1faf2_1f3fe",
+      "value": "🫱🏻‍🫲🏾",
+      "name": "Handshake: light skin tone, medium-dark skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fb_200d_1faf2_1f3ff",
+      "value": "🫱🏻‍🫲🏿",
+      "name": "Handshake: light skin tone, dark skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fc_200d_1faf2_1f3fb",
+      "value": "🫱🏼‍🫲🏻",
+      "name": "Handshake: medium-light skin tone, light skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91d_1f3fc",
+      "value": "🤝🏼",
+      "name": "Handshake: medium-light skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fc_200d_1faf2_1f3fd",
+      "value": "🫱🏼‍🫲🏽",
+      "name": "Handshake: medium-light skin tone, medium skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fc_200d_1faf2_1f3fe",
+      "value": "🫱🏼‍🫲🏾",
+      "name": "Handshake: medium-light skin tone, medium-dark skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fc_200d_1faf2_1f3ff",
+      "value": "🫱🏼‍🫲🏿",
+      "name": "Handshake: medium-light skin tone, dark skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fd_200d_1faf2_1f3fb",
+      "value": "🫱🏽‍🫲🏻",
+      "name": "Handshake: medium skin tone, light skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fd_200d_1faf2_1f3fc",
+      "value": "🫱🏽‍🫲🏼",
+      "name": "Handshake: medium skin tone, medium-light skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91d_1f3fd",
+      "value": "🤝🏽",
+      "name": "Handshake: medium skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fd_200d_1faf2_1f3fe",
+      "value": "🫱🏽‍🫲🏾",
+      "name": "Handshake: medium skin tone, medium-dark skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fd_200d_1faf2_1f3ff",
+      "value": "🫱🏽‍🫲🏿",
+      "name": "Handshake: medium skin tone, dark skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fe_200d_1faf2_1f3fb",
+      "value": "🫱🏾‍🫲🏻",
+      "name": "Handshake: medium-dark skin tone, light skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fe_200d_1faf2_1f3fc",
+      "value": "🫱🏾‍🫲🏼",
+      "name": "Handshake: medium-dark skin tone, medium-light skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fe_200d_1faf2_1f3fd",
+      "value": "🫱🏾‍🫲🏽",
+      "name": "Handshake: medium-dark skin tone, medium skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91d_1f3fe",
+      "value": "🤝🏾",
+      "name": "Handshake: medium-dark skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3fe_200d_1faf2_1f3ff",
+      "value": "🫱🏾‍🫲🏿",
+      "name": "Handshake: medium-dark skin tone, dark skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3ff_200d_1faf2_1f3fb",
+      "value": "🫱🏿‍🫲🏻",
+      "name": "Handshake: dark skin tone, light skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3ff_200d_1faf2_1f3fc",
+      "value": "🫱🏿‍🫲🏼",
+      "name": "Handshake: dark skin tone, medium-light skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3ff_200d_1faf2_1f3fd",
+      "value": "🫱🏿‍🫲🏽",
+      "name": "Handshake: dark skin tone, medium skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1faf1_1f3ff_200d_1faf2_1f3fe",
+      "value": "🫱🏿‍🫲🏾",
+      "name": "Handshake: dark skin tone, medium-dark skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1f91d_1f3ff",
+      "value": "🤝🏿",
+      "name": "Handshake: dark skin tone",
+      "keywords": [
+        "handshake"
+      ],
+      "category": "Smileys and emotions"
+    },
+    {
+      "id": "1fa82",
+      "value": "🪂",
+      "name": "Parachute",
+      "keywords": [
+        "parachute"
+      ],
+      "category": "People"
+    },
+    {
+      "id": "1fac8",
+      "value": "🫈",
+      "name": "Hairy creature",
+      "keywords": [
+        "hairy-creature"
+      ],
+      "category": "People"
+    },
+    {
+      "id": "1f483",
+      "value": "💃",
+      "name": "Dancer woman",
+      "keywords": [
+        "dancer-woman"
+      ],
+      "category": "People"
+    },
+    {
+      "id": "1f483_1f3fb",
+      "value": "💃🏻",
+      "name": "Dancer woman: light skin tone",
+      "keywords": [
+        "dancer-woman"
+      ],
+      "category": "People"
+    },
+    {
+      "id": "1f483_1f3fc",
+      "value": "💃🏼",
+      "name": "Dancer woman: medium-light skin tone",
+      "keywords": [
+        "dancer-woman"
+      ],
+      "category": "People"
+    },
+    {
+      "id": "1f483_1f3fd",
+      "value": "💃🏽",
+      "name": "Dancer woman: medium skin tone",
+      "keywords": [
+        "dancer-woman"
+      ],
+      "category": "People"
+    },
+    {
+      "id": "1f483_1f3fe",
+      "value": "💃🏾",
+      "name": "Dancer woman: medium-dark skin tone",
+      "keywords": [
+        "dancer-woman"
+      ],
+      "category": "People"
+    },
+    {
+      "id": "1f483_1f3ff",
+      "value": "💃🏿",
+      "name": "Dancer woman: dark skin tone",
+      "keywords": [
+        "dancer-woman"
+      ],
+      "category": "People"
+    },
+    {
+      "id": "1f490",
+      "value": "💐",
+      "name": "Bouquet",
+      "keywords": [
+        "bouquet",
+        "flowers"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f339",
+      "value": "🌹",
+      "name": "Rose",
+      "keywords": [
+        "rose"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f940",
+      "value": "🥀",
+      "name": "Wilted flower",
+      "keywords": [
+        "wilted-flower"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f337",
+      "value": "🌷",
+      "name": "Tulip",
+      "keywords": [
+        "tulip"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1fab7",
+      "value": "🪷",
+      "name": "Lotus",
+      "keywords": [
+        "lotus"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f338",
+      "value": "🌸",
+      "name": "Cherry blossom",
+      "keywords": [
+        "cherry-blossom"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1fabb",
+      "value": "🪻",
+      "name": "Hyacinth",
+      "keywords": [
+        "hyacinth"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f33c",
+      "value": "🌼",
+      "name": "Blossom",
+      "keywords": [
+        "blossom"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f342",
+      "value": "🍂",
+      "name": "Fallen leaf",
+      "keywords": [
+        "fallen-leaf"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f341",
+      "value": "🍁",
+      "name": "Maple leaf",
+      "keywords": [
+        "maple-leaf"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f344",
+      "value": "🍄",
+      "name": "Mushroom",
+      "keywords": [
+        "mushroom"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f33f",
+      "value": "🌿",
+      "name": "Herb",
+      "keywords": [
+        "herb"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f331",
+      "value": "🌱",
+      "name": "Plant",
+      "keywords": [
+        "plant",
+        "seed"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f343",
+      "value": "🍃",
+      "name": "Leaves",
+      "keywords": [
+        "leaves"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f340",
+      "value": "🍀",
+      "name": "Luck",
+      "keywords": [
+        "luck",
+        "four-leaf-clover"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f335",
+      "value": "🌵",
+      "name": "Cactus",
+      "keywords": [
+        "cactus"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1fabe",
+      "value": "🪾",
+      "name": "Leafless tree",
+      "keywords": [
+        "leafless-tree"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f332",
+      "value": "🌲",
+      "name": "Evergreen tree",
+      "keywords": [
+        "evergreen-tree"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1faa8",
+      "value": "🪨",
+      "name": "Rock",
+      "keywords": [
+        "rock"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f6d8",
+      "value": "🛘",
+      "name": "Debris",
+      "keywords": [
+        "debris",
+        "landslide"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f30b",
+      "value": "🌋",
+      "name": "Volcano",
+      "keywords": [
+        "volcano"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f3de_fe0f",
+      "value": "🏞️",
+      "name": "National park",
+      "keywords": [
+        "national-park"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f305",
+      "value": "🌅",
+      "name": "Sunrise",
+      "keywords": [
+        "sunrise"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f304",
+      "value": "🌄",
+      "name": "Sunrise over mountains",
+      "keywords": [
+        "sunrise-over-mountains"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f30a",
+      "value": "🌊",
+      "name": "Ocean",
+      "keywords": [
+        "ocean"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f32c_fe0f",
+      "value": "🌬️",
+      "name": "Wind face",
+      "keywords": [
+        "wind-face"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "2744_fe0f",
+      "value": "❄️",
+      "name": "Snowflake",
+      "keywords": [
+        "snowflake",
+        "winter",
+        "cold"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f300",
+      "value": "🌀",
+      "name": "Cyclone",
+      "keywords": [
+        "cyclone"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f32a_fe0f",
+      "value": "🌪️",
+      "name": "Tornado",
+      "keywords": [
+        "tornado"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f308",
+      "value": "🌈",
+      "name": "Rainbow",
+      "keywords": [
+        "rainbow"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f4a7",
+      "value": "💧",
+      "name": "Droplet",
+      "keywords": [
+        "droplet"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "2601_fe0f",
+      "value": "☁️",
+      "name": "Cloud",
+      "keywords": [
+        "cloud"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f327_fe0f",
+      "value": "🌧️",
+      "name": "Rain cloud",
+      "keywords": [
+        "rain-cloud"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f329_fe0f",
+      "value": "🌩️",
+      "name": "Cloud with lightning",
+      "keywords": [
+        "cloud-with-lightning"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "26c5",
+      "value": "⛅",
+      "name": "Partly sunny",
+      "keywords": [
+        "partly-sunny"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1fa90",
+      "value": "🪐",
+      "name": "Ringed planet",
+      "keywords": [
+        "ringed-planet"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f30d",
+      "value": "🌍",
+      "name": "Globe showing Europe Africa",
+      "keywords": [
+        "globe-showing-Europe-Africa"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f30e",
+      "value": "🌎",
+      "name": "Globe showing Americas",
+      "keywords": [
+        "globe-showing-Americas"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f30f",
+      "value": "🌏",
+      "name": "Globe showing Asia Australia",
+      "keywords": [
+        "globe-showing-Asia-Australia"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f30c",
+      "value": "🌌",
+      "name": "Milky way",
+      "keywords": [
+        "milky-way"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "2604_fe0f",
+      "value": "☄️",
+      "name": "Comet",
+      "keywords": [
+        "comet"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f981",
+      "value": "🦁",
+      "name": "Lion face",
+      "keywords": [
+        "lion-face"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f43a",
+      "value": "🐺",
+      "name": "Wolf",
+      "keywords": [
+        "wolf"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f43b",
+      "value": "🐻",
+      "name": "Bear face",
+      "keywords": [
+        "bear-face"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f43c",
+      "value": "🐼",
+      "name": "Panda",
+      "keywords": [
+        "panda"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f98a",
+      "value": "🦊",
+      "name": "Fox face",
+      "keywords": [
+        "fox-face"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f42e",
+      "value": "🐮",
+      "name": "Cow face",
+      "keywords": [
+        "cow-face"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f984",
+      "value": "🦄",
+      "name": "Unicorn",
+      "keywords": [
+        "unicorn"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f98e",
+      "value": "🦎",
+      "name": "Lizard",
+      "keywords": [
+        "lizard"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f409",
+      "value": "🐉",
+      "name": "Dragon",
+      "keywords": [
+        "dragon"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f996",
+      "value": "🦖",
+      "name": "T rex",
+      "keywords": [
+        "t-rex"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f995",
+      "value": "🦕",
+      "name": "Dinosaur",
+      "keywords": [
+        "dinosaur"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f422",
+      "value": "🐢",
+      "name": "Turtle",
+      "keywords": [
+        "turtle"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f40a",
+      "value": "🐊",
+      "name": "Crocodile",
+      "keywords": [
+        "crocodile"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f40d",
+      "value": "🐍",
+      "name": "Snake",
+      "keywords": [
+        "snake"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f438",
+      "value": "🐸",
+      "name": "Frog",
+      "keywords": [
+        "frog"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f407",
+      "value": "🐇",
+      "name": "Rabbit",
+      "keywords": [
+        "rabbit"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f400",
+      "value": "🐀",
+      "name": "Rat",
+      "keywords": [
+        "rat"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f429",
+      "value": "🐩",
+      "name": "Poodle",
+      "keywords": [
+        "poodle"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f415",
+      "value": "🐕",
+      "name": "Dog",
+      "keywords": [
+        "dog"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f9ae",
+      "value": "🦮",
+      "name": "Guide dog",
+      "keywords": [
+        "guide-dog"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f415_200d_1f9ba",
+      "value": "🐕‍🦺",
+      "name": "Service dog",
+      "keywords": [
+        "service-dog"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f416",
+      "value": "🐖",
+      "name": "Pig",
+      "keywords": [
+        "pig"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f40e",
+      "value": "🐎",
+      "name": "Racehorse",
+      "keywords": [
+        "racehorse"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1facf",
+      "value": "🫏",
+      "name": "Donkey",
+      "keywords": [
+        "donkey"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f402",
+      "value": "🐂",
+      "name": "Ox",
+      "keywords": [
+        "ox"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f410",
+      "value": "🐐",
+      "name": "Goat",
+      "keywords": [
+        "goat"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f9a5",
+      "value": "🦥",
+      "name": "Sloth",
+      "keywords": [
+        "sloth"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f998",
+      "value": "🦘",
+      "name": "Kangaroo",
+      "keywords": [
+        "kangaroo"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f405",
+      "value": "🐅",
+      "name": "Tiger",
+      "keywords": [
+        "tiger"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f412",
+      "value": "🐒",
+      "name": "Monkey",
+      "keywords": [
+        "monkey"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f98d",
+      "value": "🦍",
+      "name": "Gorilla",
+      "keywords": [
+        "gorilla"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f9a7",
+      "value": "🦧",
+      "name": "Orangutan",
+      "keywords": [
+        "orangutan"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f43f_fe0f",
+      "value": "🐿️",
+      "name": "Chipmunk",
+      "keywords": [
+        "chipmunk"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f99d",
+      "value": "🦝",
+      "name": "Raccoon",
+      "keywords": [
+        "raccoon"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f994",
+      "value": "🦔",
+      "name": "Hedgehog",
+      "keywords": [
+        "hedgehog"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f9a6",
+      "value": "🦦",
+      "name": "Otter",
+      "keywords": [
+        "otter"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f987",
+      "value": "🦇",
+      "name": "Bat",
+      "keywords": [
+        "bat"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f426",
+      "value": "🐦",
+      "name": "Bird",
+      "keywords": [
+        "bird"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f426_200d_2b1b",
+      "value": "🐦‍⬛",
+      "name": "Black bird",
+      "keywords": [
+        "black-bird"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f413",
+      "value": "🐓",
+      "name": "Rooster",
+      "keywords": [
+        "rooster"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f423",
+      "value": "🐣",
+      "name": "Hatching chick",
+      "keywords": [
+        "hatching-chick"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f424",
+      "value": "🐤",
+      "name": "Baby chick",
+      "keywords": [
+        "baby-chick"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f425",
+      "value": "🐥",
+      "name": "Hatched chick",
+      "keywords": [
+        "hatched-chick"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f985",
+      "value": "🦅",
+      "name": "Eagle",
+      "keywords": [
+        "eagle"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f989",
+      "value": "🦉",
+      "name": "Owl",
+      "keywords": [
+        "owl"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f54a_fe0f",
+      "value": "🕊️",
+      "name": "Peace",
+      "keywords": [
+        "peace",
+        "dove"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1fabf",
+      "value": "🪿",
+      "name": "Goose",
+      "keywords": [
+        "goose"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f9a9",
+      "value": "🦩",
+      "name": "Flamingo",
+      "keywords": [
+        "flamingo"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f99a",
+      "value": "🦚",
+      "name": "Peacock",
+      "keywords": [
+        "peacock"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f426_200d_1f525",
+      "value": "🐦‍🔥",
+      "name": "Phoenix",
+      "keywords": [
+        "phoenix"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f427",
+      "value": "🐧",
+      "name": "Penguin",
+      "keywords": [
+        "penguin"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f9ad",
+      "value": "🦭",
+      "name": "Seal",
+      "keywords": [
+        "seal"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f988",
+      "value": "🦈",
+      "name": "Shark",
+      "keywords": [
+        "shark"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1facd",
+      "value": "🫍",
+      "name": "Orca",
+      "keywords": [
+        "orca"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f42c",
+      "value": "🐬",
+      "name": "Dolphin",
+      "keywords": [
+        "dolphin"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f433",
+      "value": "🐳",
+      "name": "Whale",
+      "keywords": [
+        "whale"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f41f",
+      "value": "🐟",
+      "name": "Fish",
+      "keywords": [
+        "fish"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f421",
+      "value": "🐡",
+      "name": "Blowfish",
+      "keywords": [
+        "blowfish"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f99e",
+      "value": "🦞",
+      "name": "Lobster",
+      "keywords": [
+        "lobster"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f980",
+      "value": "🦀",
+      "name": "Crab",
+      "keywords": [
+        "crab"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f419",
+      "value": "🐙",
+      "name": "Octopus",
+      "keywords": [
+        "octopus"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1fabc",
+      "value": "🪼",
+      "name": "Jellyfish",
+      "keywords": [
+        "jellyfish"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1fae7",
+      "value": "🫧",
+      "name": "Bubbles",
+      "keywords": [
+        "bubbles"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f982",
+      "value": "🦂",
+      "name": "Scorpion",
+      "keywords": [
+        "scorpion"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f577_fe0f",
+      "value": "🕷️",
+      "name": "Spider",
+      "keywords": [
+        "spider"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f40c",
+      "value": "🐌",
+      "name": "Snail",
+      "keywords": [
+        "snail"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f41c",
+      "value": "🐜",
+      "name": "Ant",
+      "keywords": [
+        "ant"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f997",
+      "value": "🦗",
+      "name": "Cricket",
+      "keywords": [
+        "cricket"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f99f",
+      "value": "🦟",
+      "name": "Mosquito",
+      "keywords": [
+        "mosquito"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1fab3",
+      "value": "🪳",
+      "name": "Cockroach",
+      "keywords": [
+        "cockroach"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1fab0",
+      "value": "🪰",
+      "name": "Fly",
+      "keywords": [
+        "fly"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f41d",
+      "value": "🐝",
+      "name": "Bee",
+      "keywords": [
+        "bee"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f41e",
+      "value": "🐞",
+      "name": "Lady bug",
+      "keywords": [
+        "lady-bug"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f98b",
+      "value": "🦋",
+      "name": "Butterfly",
+      "keywords": [
+        "butterfly"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f41b",
+      "value": "🐛",
+      "name": "Bug",
+      "keywords": [
+        "bug"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1fab1",
+      "value": "🪱",
+      "name": "Worm",
+      "keywords": [
+        "worm"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f43e",
+      "value": "🐾",
+      "name": "Paw prints",
+      "keywords": [
+        "paw prints"
+      ],
+      "category": "Animals and nature"
+    },
+    {
+      "id": "1f353",
+      "value": "🍓",
+      "name": "Strawberry",
+      "keywords": [
+        "strawberry"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f352",
+      "value": "🍒",
+      "name": "Cherries",
+      "keywords": [
+        "cherries"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f34e",
+      "value": "🍎",
+      "name": "Red apple",
+      "keywords": [
+        "red-apple"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f345",
+      "value": "🍅",
+      "name": "Tomato",
+      "keywords": [
+        "tomato"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f349",
+      "value": "🍉",
+      "name": "Watermelon",
+      "keywords": [
+        "watermelon"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f34a",
+      "value": "🍊",
+      "name": "Tangerine",
+      "keywords": [
+        "tangerine",
+        "orange",
+        "mandarin"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f955",
+      "value": "🥕",
+      "name": "Carrot",
+      "keywords": [
+        "carrot"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f96d",
+      "value": "🥭",
+      "name": "Mango",
+      "keywords": [
+        "mango"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f34d",
+      "value": "🍍",
+      "name": "Pineapple",
+      "keywords": [
+        "pineapple"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f33d",
+      "value": "🌽",
+      "name": "Ear of corn",
+      "keywords": [
+        "ear-of-corn"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f34b",
+      "value": "🍋",
+      "name": "Lemon",
+      "keywords": [
+        "lemon"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f348",
+      "value": "🍈",
+      "name": "Melon",
+      "keywords": [
+        "melon"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f350",
+      "value": "🍐",
+      "name": "Pear",
+      "keywords": [
+        "pear"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1fadb",
+      "value": "🫛",
+      "name": "Pea pod",
+      "keywords": [
+        "pea-pod"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f96c",
+      "value": "🥬",
+      "name": "Leafy green",
+      "keywords": [
+        "leafy-green"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1fad1",
+      "value": "🫑",
+      "name": "Bell pepper",
+      "keywords": [
+        "bell-pepper"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f95d",
+      "value": "🥝",
+      "name": "Kiwi fruit",
+      "keywords": [
+        "kiwi-fruit"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f951",
+      "value": "🥑",
+      "name": "Avocado",
+      "keywords": [
+        "avocado"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f966",
+      "value": "🥦",
+      "name": "Broccoli",
+      "keywords": [
+        "broccoli"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f952",
+      "value": "🥒",
+      "name": "Cucumber",
+      "keywords": [
+        "cucumber"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1fad0",
+      "value": "🫐",
+      "name": "Blueberries",
+      "keywords": [
+        "blueberries"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f347",
+      "value": "🍇",
+      "name": "Grapes",
+      "keywords": [
+        "grapes"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1fadc",
+      "value": "🫜",
+      "name": "Root vegetable",
+      "keywords": [
+        "root-vegetable",
+        "beet",
+        "turnip"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f954",
+      "value": "🥔",
+      "name": "Potato",
+      "keywords": [
+        "potato"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f9c5",
+      "value": "🧅",
+      "name": "Onion",
+      "keywords": [
+        "onion"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1fada",
+      "value": "🫚",
+      "name": "Ginger",
+      "keywords": [
+        "ginger"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f9c4",
+      "value": "🧄",
+      "name": "Garlic",
+      "keywords": [
+        "garlic"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1fad8",
+      "value": "🫘",
+      "name": "Beans",
+      "keywords": [
+        "beans"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f35e",
+      "value": "🍞",
+      "name": "Bread",
+      "keywords": [
+        "bread"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f95e",
+      "value": "🥞",
+      "name": "Pancakes",
+      "keywords": [
+        "pancakes"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f373",
+      "value": "🍳",
+      "name": "Cooking",
+      "keywords": [
+        "cooking"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f9c0",
+      "value": "🧀",
+      "name": "Cheese wedge",
+      "keywords": [
+        "cheese-wedge"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f953",
+      "value": "🥓",
+      "name": "Bacon",
+      "keywords": [
+        "bacon"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f357",
+      "value": "🍗",
+      "name": "Poultry leg",
+      "keywords": [
+        "poultry-leg"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f354",
+      "value": "🍔",
+      "name": "Hamburger",
+      "keywords": [
+        "hamburger"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f32d",
+      "value": "🌭",
+      "name": "Hot dog",
+      "keywords": [
+        "hot-dog"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f968",
+      "value": "🥨",
+      "name": "Pretzel",
+      "keywords": [
+        "pretzel"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f355",
+      "value": "🍕",
+      "name": "Pizza",
+      "keywords": [
+        "pizza"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f32e",
+      "value": "🌮",
+      "name": "Taco",
+      "keywords": [
+        "taco"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f32f",
+      "value": "🌯",
+      "name": "Burrito",
+      "keywords": [
+        "burrito"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f35d",
+      "value": "🍝",
+      "name": "Spaghetti",
+      "keywords": [
+        "spaghetti"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f957",
+      "value": "🥗",
+      "name": "Green salad",
+      "keywords": [
+        "green-salad"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f35c",
+      "value": "🍜",
+      "name": "Steaming bowl",
+      "keywords": [
+        "steaming-bowl"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f362",
+      "value": "🍢",
+      "name": "Oden",
+      "keywords": [
+        "oden"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f361",
+      "value": "🍡",
+      "name": "Dango",
+      "keywords": [
+        "dango"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f368",
+      "value": "🍨",
+      "name": "Ice cream",
+      "keywords": [
+        "ice-cream"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f366",
+      "value": "🍦",
+      "name": "Soft ice cream",
+      "keywords": [
+        "soft-ice-cream"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f967",
+      "value": "🥧",
+      "name": "Pie",
+      "keywords": [
+        "pie"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f369",
+      "value": "🍩",
+      "name": "Doughnut",
+      "keywords": [
+        "doughnut"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f36a",
+      "value": "🍪",
+      "name": "Cookie",
+      "keywords": [
+        "cookie"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f9c2",
+      "value": "🧂",
+      "name": "Salt",
+      "keywords": [
+        "salt"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f37f",
+      "value": "🍿",
+      "name": "Popcorn",
+      "keywords": [
+        "popcorn"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f9cb",
+      "value": "🧋",
+      "name": "Bubble tea",
+      "keywords": [
+        "bubble-tea",
+        "milk-tea"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f9c3",
+      "value": "🧃",
+      "name": "Beverage box",
+      "keywords": [
+        "beverage-box"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f37c",
+      "value": "🍼",
+      "name": "Baby bottle",
+      "keywords": [
+        "baby-bottle"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f375",
+      "value": "🍵",
+      "name": "Teacup without handle",
+      "keywords": [
+        "teacup-without-handle"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "2615",
+      "value": "☕",
+      "name": "Hot beverage",
+      "keywords": [
+        "hot-beverage"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1fad6",
+      "value": "🫖",
+      "name": "Teapot",
+      "keywords": [
+        "teapot"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f9c9",
+      "value": "🧉",
+      "name": "Mate",
+      "keywords": [
+        "mate"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f37b",
+      "value": "🍻",
+      "name": "Clinking beer mugs",
+      "keywords": [
+        "clinking-beer-mugs"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f942",
+      "value": "🥂",
+      "name": "Clinking glasses",
+      "keywords": [
+        "clinking-glasses"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f37e",
+      "value": "🍾",
+      "name": "Bottle with popping cork",
+      "keywords": [
+        "bottle-with-popping-cork"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f377",
+      "value": "🍷",
+      "name": "Wine glass",
+      "keywords": [
+        "wine-glass"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1fad7",
+      "value": "🫗",
+      "name": "Pour",
+      "keywords": [
+        "pour"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f379",
+      "value": "🍹",
+      "name": "Tropical drink",
+      "keywords": [
+        "tropical-drink"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f962",
+      "value": "🥢",
+      "name": "Chopsticks",
+      "keywords": [
+        "chopsticks"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f37d_fe0f",
+      "value": "🍽️",
+      "name": "Fork and knife with plate",
+      "keywords": [
+        "fork-and-knife-with-plate"
+      ],
+      "category": "Food and drink"
+    },
+    {
+      "id": "1f6d1",
+      "value": "🛑",
+      "name": "Stop sign",
+      "keywords": [
+        "stop-sign"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f6a7",
+      "value": "🚧",
+      "name": "Construction",
+      "keywords": [
+        "construction"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f6a8",
+      "value": "🚨",
+      "name": "Police car light",
+      "keywords": [
+        "police-car-light"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "26fd",
+      "value": "⛽",
+      "name": "Fuel pump",
+      "keywords": [
+        "fuel-pump"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f6df",
+      "value": "🛟",
+      "name": "Ring buoy",
+      "keywords": [
+        "ring-buoy"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "2693",
+      "value": "⚓",
+      "name": "Anchor",
+      "keywords": [
+        "anchor"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f6a6",
+      "value": "🚦",
+      "name": "Vertical traffic light",
+      "keywords": [
+        "vertical-traffic-light"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f6b2",
+      "value": "🚲",
+      "name": "Bicycle",
+      "keywords": [
+        "bicycle"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f3cd_fe0f",
+      "value": "🏍️",
+      "name": "Motorcycle",
+      "keywords": [
+        "motorcycle"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f697",
+      "value": "🚗",
+      "name": "Automobile",
+      "keywords": [
+        "automobile"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f69a",
+      "value": "🚚",
+      "name": "Delivery truck",
+      "keywords": [
+        "delivery-truck"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f69c",
+      "value": "🚜",
+      "name": "Tractor",
+      "keywords": [
+        "tractor"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f3ce_fe0f",
+      "value": "🏎️",
+      "name": "Racing car",
+      "keywords": [
+        "racing-car"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f695",
+      "value": "🚕",
+      "name": "Taxi",
+      "keywords": [
+        "taxi"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f68c",
+      "value": "🚌",
+      "name": "Bus",
+      "keywords": [
+        "bus"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f682",
+      "value": "🚂",
+      "name": "Locomotive",
+      "keywords": [
+        "locomotive"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "26f5",
+      "value": "⛵",
+      "name": "Sailboat",
+      "keywords": [
+        "sailboat"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f6f6",
+      "value": "🛶",
+      "name": "Canoe",
+      "keywords": [
+        "canoe"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f6f8",
+      "value": "🛸",
+      "name": "Flying saucer",
+      "keywords": [
+        "flying-saucer"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f680",
+      "value": "🚀",
+      "name": "Rocket",
+      "keywords": [
+        "rocket"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "2708_fe0f",
+      "value": "✈️",
+      "name": "Airplane",
+      "keywords": [
+        "airplane"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f6eb",
+      "value": "🛫",
+      "name": "Airplane departure",
+      "keywords": [
+        "airplane-departure"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f6ec",
+      "value": "🛬",
+      "name": "Airplane arrival",
+      "keywords": [
+        "airplane-arrival"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f3a2",
+      "value": "🎢",
+      "name": "Roller coaster",
+      "keywords": [
+        "roller-coaster"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f3a1",
+      "value": "🎡",
+      "name": "Ferris wheel",
+      "keywords": [
+        "ferris-wheel"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f3a0",
+      "value": "🎠",
+      "name": "Carousel horse",
+      "keywords": [
+        "carousel-horse"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f5ff",
+      "value": "🗿",
+      "name": "Moai",
+      "keywords": [
+        "moai"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f3da_fe0f",
+      "value": "🏚️",
+      "name": "Derelict house",
+      "keywords": [
+        "derelict-house"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f3e0",
+      "value": "🏠",
+      "name": "House",
+      "keywords": [
+        "house"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f3d5_fe0f",
+      "value": "🏕️",
+      "name": "Camping",
+      "keywords": [
+        "camping"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f307",
+      "value": "🌇",
+      "name": "Sunset",
+      "keywords": [
+        "sunset"
+      ],
+      "category": "Travel and places"
+    },
+    {
+      "id": "1f388",
+      "value": "🎈",
+      "name": "Balloon",
+      "keywords": [
+        "balloon"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f382",
+      "value": "🎂",
+      "name": "Birthday cake",
+      "keywords": [
+        "birthday-cake"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f381",
+      "value": "🎁",
+      "name": "Wrapped gift",
+      "keywords": [
+        "wrapped-gift"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f386",
+      "value": "🎆",
+      "name": "Fireworks",
+      "keywords": [
+        "fireworks"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fa94",
+      "value": "🪔",
+      "name": "Diya lamp",
+      "keywords": [
+        "diya-lamp"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fa85",
+      "value": "🪅",
+      "name": "Piñata",
+      "keywords": [
+        "piñata"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1faa9",
+      "value": "🪩",
+      "name": "Mirror ball",
+      "keywords": [
+        "mirror-ball",
+        "disco-ball"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f947",
+      "value": "🥇",
+      "name": "Gold medal",
+      "keywords": [
+        "gold-medal",
+        "1st-place-medal"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f948",
+      "value": "🥈",
+      "name": "Silver medal",
+      "keywords": [
+        "silver-medal",
+        "2nd-place-medal"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f949",
+      "value": "🥉",
+      "name": "Bronze medal",
+      "keywords": [
+        "bronze-medal",
+        "3rd-place-medal"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3c6",
+      "value": "🏆",
+      "name": "Trophy",
+      "keywords": [
+        "trophy"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "26bd",
+      "value": "⚽",
+      "name": "Soccer ball",
+      "keywords": [
+        "soccer-ball"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "26be",
+      "value": "⚾",
+      "name": "Baseball",
+      "keywords": [
+        "baseball"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f94e",
+      "value": "🥎",
+      "name": "Softball",
+      "keywords": [
+        "softball"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3c0",
+      "value": "🏀",
+      "name": "Basketball",
+      "keywords": [
+        "basketball"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3c9",
+      "value": "🏉",
+      "name": "Rugby football",
+      "keywords": [
+        "rugby-football"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3be",
+      "value": "🎾",
+      "name": "Tennis",
+      "keywords": [
+        "tennis"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3f8",
+      "value": "🏸",
+      "name": "Badminton",
+      "keywords": [
+        "badminton"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f94d",
+      "value": "🥍",
+      "name": "Lacrosse",
+      "keywords": [
+        "lacrosse"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3cf",
+      "value": "🏏",
+      "name": "Cricket game",
+      "keywords": [
+        "cricket-game"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3d1",
+      "value": "🏑",
+      "name": "Field hockey",
+      "keywords": [
+        "field-hockey"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3d2",
+      "value": "🏒",
+      "name": "Ice hockey",
+      "keywords": [
+        "ice-hockey"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3bf",
+      "value": "🎿",
+      "name": "Skis",
+      "keywords": [
+        "skis"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "26f8_fe0f",
+      "value": "⛸️",
+      "name": "Ice skate",
+      "keywords": [
+        "ice-skate"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f6fc",
+      "value": "🛼",
+      "name": "Roller skates",
+      "keywords": [
+        "roller-skates"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fa70",
+      "value": "🩰",
+      "name": "Ballet shoes",
+      "keywords": [
+        "ballet-shoes"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f6f9",
+      "value": "🛹",
+      "name": "Skateboard",
+      "keywords": [
+        "skateboard"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "26f3",
+      "value": "⛳",
+      "name": "Flag in hole",
+      "keywords": [
+        "flag-in-hole"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3af",
+      "value": "🎯",
+      "name": "Direct hit",
+      "keywords": [
+        "direct-hit",
+        "target"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f94f",
+      "value": "🥏",
+      "name": "Flying disc",
+      "keywords": [
+        "flying-disc"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fa83",
+      "value": "🪃",
+      "name": "Boomerang",
+      "keywords": [
+        "boomerang"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fa81",
+      "value": "🪁",
+      "name": "Kite",
+      "keywords": [
+        "kite"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3a3",
+      "value": "🎣",
+      "name": "Fishing pole",
+      "keywords": [
+        "fishing-pole"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f94b",
+      "value": "🥋",
+      "name": "Martial arts uniform",
+      "keywords": [
+        "martial-arts-uniform"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3b1",
+      "value": "🎱",
+      "name": "8 ball",
+      "keywords": [
+        "8-ball"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3d3",
+      "value": "🏓",
+      "name": "Ping pong",
+      "keywords": [
+        "ping-pong"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3b3",
+      "value": "🎳",
+      "name": "Bowling",
+      "keywords": [
+        "bowling"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "265f_fe0f",
+      "value": "♟️",
+      "name": "Chess pawn",
+      "keywords": [
+        "chess-pawn"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3b2",
+      "value": "🎲",
+      "name": "Die",
+      "keywords": [
+        "die"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3b0",
+      "value": "🎰",
+      "name": "Slot machine",
+      "keywords": [
+        "slot-machine"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fa84",
+      "value": "🪄",
+      "name": "Wand",
+      "keywords": [
+        "wand"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f4f7",
+      "value": "📷",
+      "name": "Camera",
+      "keywords": [
+        "camera"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f4f8",
+      "value": "📸",
+      "name": "Camera flash",
+      "keywords": [
+        "camera-flash"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fadf",
+      "value": "🫟",
+      "name": "Splatter",
+      "keywords": [
+        "splatter"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3b7",
+      "value": "🎷",
+      "name": "Saxophone",
+      "keywords": [
+        "saxophone"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3ba",
+      "value": "🎺",
+      "name": "Trumpet",
+      "keywords": [
+        "trumpet"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fa8a",
+      "value": "🪊",
+      "name": "Trombone",
+      "keywords": [
+        "trombone"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3b8",
+      "value": "🎸",
+      "name": "Guitar",
+      "keywords": [
+        "guitar"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fa95",
+      "value": "🪕",
+      "name": "Banjo",
+      "keywords": [
+        "banjo"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3bb",
+      "value": "🎻",
+      "name": "Violin",
+      "keywords": [
+        "violin"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fa89",
+      "value": "🪉",
+      "name": "Harp",
+      "keywords": [
+        "harp"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f941",
+      "value": "🥁",
+      "name": "Drum",
+      "keywords": [
+        "drum"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1fa87",
+      "value": "🪇",
+      "name": "Maracas",
+      "keywords": [
+        "maracas"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f4fa",
+      "value": "📺",
+      "name": "Television",
+      "keywords": [
+        "television"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f39e_fe0f",
+      "value": "🎞️",
+      "name": "Film",
+      "keywords": [
+        "film"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3ac",
+      "value": "🎬",
+      "name": "Clapper",
+      "keywords": [
+        "clapper"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f3ad",
+      "value": "🎭",
+      "name": "Performing arts",
+      "keywords": [
+        "performing-arts"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f39f_fe0f",
+      "value": "🎟️",
+      "name": "Admission tickets",
+      "keywords": [
+        "admission-tickets"
+      ],
+      "category": "Activities and events"
+    },
+    {
+      "id": "1f4df",
+      "value": "📟",
+      "name": "Pager",
+      "keywords": [
+        "pager"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f50c",
+      "value": "🔌",
+      "name": "Electric plug",
+      "keywords": [
+        "electric-plug"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f50b",
+      "value": "🔋",
+      "name": "Battery full",
+      "keywords": [
+        "battery-full"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1faab",
+      "value": "🪫",
+      "name": "Battery low",
+      "keywords": [
+        "battery-low"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4bf",
+      "value": "💿",
+      "name": "Optical disk",
+      "keywords": [
+        "optical-disk"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4bb",
+      "value": "💻",
+      "name": "Laptop computer",
+      "keywords": [
+        "laptop-computer"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f5a8_fe0f",
+      "value": "🖨️",
+      "name": "Printer",
+      "keywords": [
+        "printer"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1fa8e",
+      "value": "🪎",
+      "name": "Treasure",
+      "keywords": [
+        "treasure"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1fa99",
+      "value": "🪙",
+      "name": "Coin",
+      "keywords": [
+        "coin"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f48e",
+      "value": "💎",
+      "name": "Gem stone",
+      "keywords": [
+        "gem-stone"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4b8",
+      "value": "💸",
+      "name": "Money with wings",
+      "keywords": [
+        "money-with-wings"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "2696_fe0f",
+      "value": "⚖️",
+      "name": "Balance scale",
+      "keywords": [
+        "balance-scale"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f6d2",
+      "value": "🛒",
+      "name": "Shopping cart",
+      "keywords": [
+        "shopping-cart"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4a1",
+      "value": "💡",
+      "name": "Light bulb",
+      "keywords": [
+        "light-bulb"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f9f9",
+      "value": "🧹",
+      "name": "Broom",
+      "keywords": [
+        "broom"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f9e6",
+      "value": "🧦",
+      "name": "Socks",
+      "keywords": [
+        "socks"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f393",
+      "value": "🎓",
+      "name": "Graduation cap",
+      "keywords": [
+        "graduation-cap"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f451",
+      "value": "👑",
+      "name": "Crown",
+      "keywords": [
+        "crown"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f48d",
+      "value": "💍",
+      "name": "Ring",
+      "keywords": [
+        "ring"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1faad",
+      "value": "🪭",
+      "name": "Fan",
+      "keywords": [
+        "fan"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "2602_fe0f",
+      "value": "☂️",
+      "name": "Umbrella",
+      "keywords": [
+        "umbrella"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f460",
+      "value": "👠",
+      "name": "High heeled shoe",
+      "keywords": [
+        "high-heeled-shoe"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f45f",
+      "value": "👟",
+      "name": "Running shoe",
+      "keywords": [
+        "running-shoe"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f321_fe0f",
+      "value": "🌡️",
+      "name": "Thermometer",
+      "keywords": [
+        "thermometer"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1fa7a",
+      "value": "🩺",
+      "name": "Stethoscope",
+      "keywords": [
+        "stethoscope"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f6e0_fe0f",
+      "value": "🛠️",
+      "name": "Hammer and wrench",
+      "keywords": [
+        "hammer-and-wrench"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1fa8f",
+      "value": "🪏",
+      "name": "Shovel",
+      "keywords": [
+        "shovel",
+        "dig"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "2699_fe0f",
+      "value": "⚙️",
+      "name": "Gear",
+      "keywords": [
+        "gear"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "26d3_fe0f_200d_1f4a5",
+      "value": "⛓️‍💥",
+      "name": "Broken chain",
+      "keywords": [
+        "broken-chain"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "26d3_fe0f",
+      "value": "⛓️",
+      "name": "Chains",
+      "keywords": [
+        "chains"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f587_fe0f",
+      "value": "🖇️",
+      "name": "Linked paperclips",
+      "keywords": [
+        "linked-paperclips"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "2702_fe0f",
+      "value": "✂️",
+      "name": "Scissors",
+      "keywords": [
+        "scissors"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "270f_fe0f",
+      "value": "✏️",
+      "name": "Pencil",
+      "keywords": [
+        "pencil"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4da",
+      "value": "📚",
+      "name": "Books",
+      "keywords": [
+        "books"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4ca",
+      "value": "📊",
+      "name": "Bar chart",
+      "keywords": [
+        "bar-chart"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4c8",
+      "value": "📈",
+      "name": "Chart increasing",
+      "keywords": [
+        "chart-increasing"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4c9",
+      "value": "📉",
+      "name": "Chart decreasing",
+      "keywords": [
+        "chart-decreasing"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f5d1_fe0f",
+      "value": "🗑️",
+      "name": "Wastebasket",
+      "keywords": [
+        "wastebasket"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4e6",
+      "value": "📦",
+      "name": "Package",
+      "keywords": [
+        "package"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f5f3_fe0f",
+      "value": "🗳️",
+      "name": "Ballot box",
+      "keywords": [
+        "ballot-box"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "23f0",
+      "value": "⏰",
+      "name": "Alarm clock",
+      "keywords": [
+        "alarm-clock"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "231b",
+      "value": "⌛",
+      "name": "Hourglass done",
+      "keywords": [
+        "hourglass-done"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "23f3",
+      "value": "⏳",
+      "name": "Hourglass not done",
+      "keywords": [
+        "hourglass-not-done"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f6ce_fe0f",
+      "value": "🛎️",
+      "name": "Bellhop bell",
+      "keywords": [
+        "bellhop-bell"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f514",
+      "value": "🔔",
+      "name": "Bell",
+      "keywords": [
+        "bell"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4e3",
+      "value": "📣",
+      "name": "Megaphone",
+      "keywords": [
+        "megaphone"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f50e",
+      "value": "🔎",
+      "name": "Magnifying glass tilted right",
+      "keywords": [
+        "magnifying-glass-tilted-right"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f52e",
+      "value": "🔮",
+      "name": "Crystal ball",
+      "keywords": [
+        "crystal-ball"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f4a3",
+      "value": "💣",
+      "name": "Bomb",
+      "keywords": [
+        "bomb"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1faa4",
+      "value": "🪤",
+      "name": "Mouse trap",
+      "keywords": [
+        "mouse-trap"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "1f512",
+      "value": "🔒",
+      "name": "Locked",
+      "keywords": [
+        "locked"
+      ],
+      "category": "Objects"
+    },
+    {
+      "id": "2660_fe0f",
+      "value": "♠️",
+      "name": "Spade",
+      "keywords": [
+        "spade"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2648",
+      "value": "♈",
+      "name": "Aries",
+      "keywords": [
+        "Aries"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2649",
+      "value": "♉",
+      "name": "Taurus",
+      "keywords": [
+        "Taurus"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "264a",
+      "value": "♊",
+      "name": "Gemini",
+      "keywords": [
+        "Gemini"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "264b",
+      "value": "♋",
+      "name": "Cancer",
+      "keywords": [
+        "Cancer"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "264c",
+      "value": "♌",
+      "name": "Leo",
+      "keywords": [
+        "Leo"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "264d",
+      "value": "♍",
+      "name": "Virgo",
+      "keywords": [
+        "Virgo"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "264e",
+      "value": "♎",
+      "name": "Libra",
+      "keywords": [
+        "Libra"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "264f",
+      "value": "♏",
+      "name": "Scorpio",
+      "keywords": [
+        "Scorpio"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2650",
+      "value": "♐",
+      "name": "Sagittarius",
+      "keywords": [
+        "Sagittarius"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2651",
+      "value": "♑",
+      "name": "Capricorn",
+      "keywords": [
+        "Capricorn"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2652",
+      "value": "♒",
+      "name": "Aquarius",
+      "keywords": [
+        "Aquarius"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2653",
+      "value": "♓",
+      "name": "Pisces",
+      "keywords": [
+        "Pisces"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "26ce",
+      "value": "⛎",
+      "name": "Ophiuchus",
+      "keywords": [
+        "Ophiuchus"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f5ef_fe0f",
+      "value": "🗯️",
+      "name": "Anger bubble",
+      "keywords": [
+        "anger-bubble"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f4ac",
+      "value": "💬",
+      "name": "Speech bubble",
+      "keywords": [
+        "speech-bubble"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2757",
+      "value": "❗",
+      "name": "Exclamation",
+      "keywords": [
+        "exclamation",
+        "exclamation-mark"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2753",
+      "value": "❓",
+      "name": "Question",
+      "keywords": [
+        "question",
+        "question-mark",
+        "?"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2049_fe0f",
+      "value": "⁉️",
+      "name": "Exclamation question mark",
+      "keywords": [
+        "exclamation-question-mark",
+        "!?"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "203c_fe0f",
+      "value": "‼️",
+      "name": "Exclamation double",
+      "keywords": [
+        "exclamation-double",
+        "!!"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "274c",
+      "value": "❌",
+      "name": "Cross mark",
+      "keywords": [
+        "cross-mark",
+        "x"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f198",
+      "value": "🆘",
+      "name": "Sos",
+      "keywords": [
+        "sos"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2668_fe0f",
+      "value": "♨️",
+      "name": "Hot springs",
+      "keywords": [
+        "hot-springs"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f4f4",
+      "value": "📴",
+      "name": "Phone off",
+      "keywords": [
+        "phone-off"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2622_fe0f",
+      "value": "☢️",
+      "name": "Radioactive",
+      "keywords": [
+        "radioactive"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2623_fe0f",
+      "value": "☣️",
+      "name": "Biohazard",
+      "keywords": [
+        "biohazard"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "26a0_fe0f",
+      "value": "⚠️",
+      "name": "Warning",
+      "keywords": [
+        "warning"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2705",
+      "value": "✅",
+      "name": "Check mark",
+      "keywords": [
+        "check-mark",
+        "check-mark-green"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f195",
+      "value": "🆕",
+      "name": "New",
+      "keywords": [
+        "new"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f193",
+      "value": "🆓",
+      "name": "Free",
+      "keywords": [
+        "free"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f199",
+      "value": "🆙",
+      "name": "Up!",
+      "keywords": [
+        "up!"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f197",
+      "value": "🆗",
+      "name": "Ok button",
+      "keywords": [
+        "ok-button"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f192",
+      "value": "🆒",
+      "name": "Cool",
+      "keywords": [
+        "cool"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f6ae",
+      "value": "🚮",
+      "name": "Litter",
+      "keywords": [
+        "litter"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "262e_fe0f",
+      "value": "☮️",
+      "name": "Peace symbol",
+      "keywords": [
+        "peace-symbol"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "262f_fe0f",
+      "value": "☯️",
+      "name": "Yin yang",
+      "keywords": [
+        "yin-yang"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "267e_fe0f",
+      "value": "♾️",
+      "name": "Infinity",
+      "keywords": [
+        "infinity"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f3b6",
+      "value": "🎶",
+      "name": "Musical notes",
+      "keywords": [
+        "musical-notes"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2795",
+      "value": "➕",
+      "name": "Plus sign",
+      "keywords": [
+        "plus-sign",
+        "+"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "a9_fe0f",
+      "value": "©️",
+      "name": "Copyright",
+      "keywords": [
+        "copyright"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "ae_fe0f",
+      "value": "®️",
+      "name": "Registered",
+      "keywords": [
+        "registered"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "2122_fe0f",
+      "value": "™️",
+      "name": "Trade mark",
+      "keywords": [
+        "trade-mark"
+      ],
+      "category": "Symbols"
+    },
+    {
+      "id": "1f3c1",
+      "value": "🏁",
+      "name": "Chequered flag",
+      "keywords": [
+        "chequered-flag"
+      ],
+      "category": "Flags"
+    },
+    {
+      "id": "1f6a9",
+      "value": "🚩",
+      "name": "Triangular flag",
+      "keywords": [
+        "triangular-flag"
+      ],
+      "category": "Flags"
+    },
+    {
+      "id": "1f3f4",
+      "value": "🏴",
+      "name": "Black flag",
+      "keywords": [
+        "black-flag"
+      ],
+      "category": "Flags"
+    },
+    {
+      "id": "1f3f3_fe0f",
+      "value": "🏳️",
+      "name": "White flag",
+      "keywords": [
+        "white-flag"
+      ],
+      "category": "Flags"
+    }
+  ]
+}

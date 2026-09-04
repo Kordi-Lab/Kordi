@@ -28,7 +28,7 @@ export function MessageHoverTime({ msg, side }: { msg: Message; side: 'own' | 'p
   return (
     <time
       className={cn(
-        'app-message-hover-time pointer-events-none min-w-10 shrink-0 whitespace-nowrap pb-1 text-[10px] leading-none tabular-nums text-[color:var(--utility-muted-text)] opacity-0 transition-opacity duration-100',
+        'app-message-hover-time pointer-events-none w-0 min-w-0 shrink-0 overflow-visible whitespace-nowrap pb-1 text-[10px] leading-none tabular-nums text-[color:var(--utility-muted-text)] opacity-0 transition-opacity duration-100',
         side === 'own' ? 'text-right' : 'text-left',
       )}
       dateTime={dateTime}

@@ -253,6 +253,8 @@ struct BlobEmojiPreviewText: View {
                     return result + Text("Emoji")
                 }
                 return result + Text(Image(uiImage: image)).baselineOffset(-emojiSize / 6)
+            case let .notoEmoji(emoji):
+                return result + Text(verbatim: emoji.value)
             case let .text(value), let .code(value), let .strong(value), let .emphasis(value):
                 return result + Text(value)
             case let .link(label, _):

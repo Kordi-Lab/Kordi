@@ -359,13 +359,13 @@ test('message context menu shows Blob Emoji reactions for synced messages', () =
   assert.doesNotMatch(markup, />Details</);
 });
 
-test('message reaction expansion chooses All when no Blob Emoji history exists', () => {
+test('message reaction expansion chooses Noto when no emoji history exists', () => {
   const source = readFileSync(
     new URL('../src/kordi-app/components/messageReactions.tsx', import.meta.url),
     'utf8',
   );
 
-  assert.match(source, /initialCategory=\{recentReactions\.length \? 'recent' : 'all'\}/);
+  assert.match(source, /initialCategory=\{recentItems\.length \? 'recent' : 'noto'\}/);
   assert.doesNotMatch(source, /initialCategory=\{quickReactions\.length/);
 });
 

@@ -14,6 +14,7 @@ import {
   loadRemoteImageThroughNativeProxy,
   shouldLoadRemoteImageThroughNativeProxy,
 } from '@/kordi-app/components/remoteAvatarImage';
+import { parseMessageInlineParts } from '@/kordi-app/components/messageLinks';
 import { cn } from '@/lib/utils';
 import {
   blobEmojiAssetUrl,
@@ -29,19 +30,32 @@ import {
 } from './blobEmojiComposerDom';
 import type { EmojiTextSelection } from './emojiText';
 
-const COMPOSER_MENTION_SIGIL_ATTRIBUTE = 'data-composer-mention-sigil';
+const COMPOSER_MENTION_ATTRIBUTE = 'data-composer-mention';
 
-function appendComposerText(fragment: DocumentFragment, value: string) {
-  value.split('@').forEach((part, index) => {
-    if (index > 0) {
-      const sigil = document.createElement('span');
-      sigil.setAttribute(COMPOSER_MENTION_SIGIL_ATTRIBUTE, 'true');
-      sigil.className = 'app-composer-mention-sigil';
-      sigil.textContent = '@';
-      fragment.append(sigil);
-    }
-    if (part) fragment.append(document.createTextNode(part));
-  });
+const composerMentions = (value: string) => parseMessageInlineParts(value).filter((part) => part.type === 'mention');
+
+function appendComposerText(
+  fragment: DocumentFragment,
+  value: string,
+  offset: number,
+  mentions: ReturnType<typeof composerMentions>,
+) {
+  let cursor = 0;
+  for (const mention of mentions) {
+    const start = mention.start - offset;
+    const end = start + mention.label.length;
+    if (start < cursor || start < 0 || end > value.length) continue;
+    if (start > cursor) fragment.append(document.createTextNode(value.slice(cursor, start)));
+    const span = document.createElement('span');
+    span.setAttribute(COMPOSER_MENTION_ATTRIBUTE, 'true');
+    span.dataset.mentionKind = mention.targetKind;
+    span.className = `app-message-mention app-message-mention-${mention.targetKind}`;
+    if (mention.targetKind === 'all') span.classList.add('app-message-mention-person');
+    span.textContent = value.slice(start, end);
+    fragment.append(span);
+    cursor = end;
+  }
+  if (cursor < value.length) fragment.append(document.createTextNode(value.slice(cursor)));
 }
 
 function setBlobEmojiSource(
@@ -104,9 +118,12 @@ function blobEmojiComposerNode(emoji: BlobEmoji, token: string) {
 function renderComposerValue(root: HTMLElement, value: string) {
   const fragment = document.createDocumentFragment();
   const parts = blobEmojiTextParts(value);
+  const mentions = composerMentions(value);
+  let offset = 0;
   for (const part of parts) {
     if (part.type === 'emoji') fragment.append(blobEmojiComposerNode(part.emoji, part.token));
-    else appendComposerText(fragment, part.value);
+    else appendComposerText(fragment, part.value, offset, mentions);
+    offset += part.type === 'emoji' ? part.token.length : part.value.length;
   }
   if (parts[parts.length - 1]?.type === 'emoji') {
     const caretAnchor = document.createElement('span');
@@ -131,10 +148,13 @@ function expectsCaretAnchor(value: string) {
   return parts[parts.length - 1]?.type === 'emoji';
 }
 
-function hasValidMentionSigils(root: HTMLElement, value: string) {
-  const sigils = Array.from(root.querySelectorAll(`[${COMPOSER_MENTION_SIGIL_ATTRIBUTE}]`));
-  return sigils.length === value.split('@').length - 1
-    && sigils.every((sigil) => sigil.textContent === '@');
+function hasValidMentions(root: HTMLElement, value: string) {
+  const mentions = composerMentions(value);
+  const nodes = Array.from(root.querySelectorAll(`[${COMPOSER_MENTION_ATTRIBUTE}]`));
+  return nodes.length === mentions.length && nodes.every((node, index) => (
+    node.textContent === mentions[index]?.label
+    && node.getAttribute('data-mention-kind') === mentions[index]?.targetKind
+  ));
 }
 
 function hasValidCaretAnchor(root: HTMLElement) {
@@ -149,7 +169,7 @@ function composerNeedsRender(root: HTMLElement, value: string) {
   return blobEmojiComposerValue(root) !== value
     || renderedBlobEmojiCount(root) !== expectedBlobEmojiCount(value)
     || hasValidCaretAnchor(root) !== expectsCaretAnchor(value)
-    || !hasValidMentionSigils(root, value);
+    || !hasValidMentions(root, value);
 }
 
 function logicalLength(node: Node): number {

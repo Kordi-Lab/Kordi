@@ -266,7 +266,7 @@ final class AppModel: ObservableObject {
     private var deletedCloudSessionIds = Set<String>()
     private var sessionVisibilityMutationRevision = 0
     private var pendingSessionVisibilityMutationCount = 0
-    private var pendingAgentRequestIds: [String: String] = [:]
+    private var pendingAgentRequestIds: [String: [String]] = [:]
     private var pendingAgentRequestStartedAt: [String: Date] = [:]
     private var pendingAgentDisplayNames: [String: String] = [:]
     private var pendingAgentOwnerNames: [String: String] = [:]
@@ -1488,6 +1488,7 @@ final class AppModel: ObservableObject {
                     ?? conversation.agentDisplayName?.nonEmpty
                     ?? "Kordi",
                 agentOwnerName: routedAgent?.ownerName
+                    ?? (conversation.kind == .agent ? conversation.ownerDisplayName : nil)
             )
         }
         cacheCurrentMessages(conversation.id)
@@ -1698,9 +1699,8 @@ final class AppModel: ObservableObject {
                 }
             }
             recordCloudConnectionFailure(error)
-            if pendingAgentRequestIds[conversation.id] == localId {
-                clearPendingAgentRequest(conversationId: conversation.id)
-                setAgentActivity(.failed, conversationId: conversation.id)
+            if pendingAgentRequestIds[conversation.id, default: []].contains(localId) {
+                finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: localId, failed: true)
             }
             markMessageFailed(localId, error: userFacing(error, fallback: "Message not sent."))
         }
@@ -2051,44 +2051,44 @@ final class AppModel: ObservableObject {
     }
 
     func messages(for conversation: ConversationSummary) -> [ChatMessage] {
-        let messages = messagesByConversation[conversation.id] ?? []
-        guard let requestMessageId = pendingAgentRequestIds[conversation.id],
-              let startedAt = pendingAgentRequestStartedAt[conversation.id],
-              !messages.contains(where: {
-                  $0.author == .agent && $0.requestMessageId == requestMessageId
-              }) else {
-            return messages
-        }
+        var messages = messagesByConversation[conversation.id] ?? []
+        for requestMessageId in pendingAgentRequestIds[conversation.id, default: []] {
+            guard let startedAt = pendingAgentRequestStartedAt[requestMessageId],
+                  !messages.contains(where: {
+                      $0.author == .agent && $0.requestMessageId == requestMessageId
+                  }) else { continue }
 
-        let requestCreatedAt = messages.first(where: { $0.id == requestMessageId })?.createdAt
-            ?? startedAt
-        let placeholderCreatedAt = requestCreatedAt.addingTimeInterval(0.001)
-        let startedAtMs = startedAt.timeIntervalSince1970 * 1_000
-        let placeholder = ChatMessage(
-            id: "local-agent-progress:\(conversation.id)",
-            conversationId: conversation.id,
-            author: .agent,
-            authorName: pendingAgentDisplayNames[conversation.id] ?? "Kordi",
-            senderOwnerName: pendingAgentOwnerNames[conversation.id],
-            text: "processing...",
-            createdAt: placeholderCreatedAt,
-            deliveryState: .delivered,
-            errorMessage: nil,
-            requestMessageId: requestMessageId,
-            agentExecution: AgentExecutionSnapshot(
-                phase: .preparing,
-                summary: "Preparing the response",
-                steps: [],
-                thinkingText: nil,
-                tools: nil,
-                startedAtMs: startedAtMs,
-                updatedAtMs: startedAtMs,
-                completed: false
+            let requestCreatedAt = messages.first(where: { $0.id == requestMessageId })?.createdAt
+                ?? startedAt
+            let placeholderCreatedAt = requestCreatedAt.addingTimeInterval(0.001)
+            let startedAtMs = startedAt.timeIntervalSince1970 * 1_000
+            let placeholder = ChatMessage(
+                id: "local-agent-progress:\(conversation.id):\(requestMessageId)",
+                conversationId: conversation.id,
+                author: .agent,
+                authorName: pendingAgentDisplayNames[requestMessageId] ?? "Kordi",
+                senderOwnerName: pendingAgentOwnerNames[requestMessageId],
+                text: "processing...",
+                createdAt: placeholderCreatedAt,
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: requestMessageId,
+                agentExecution: AgentExecutionSnapshot(
+                    phase: .preparing,
+                    summary: "Preparing the response",
+                    steps: [],
+                    thinkingText: nil,
+                    tools: nil,
+                    startedAtMs: startedAtMs,
+                    updatedAtMs: startedAtMs,
+                    completed: false
+                )
             )
-        )
-        return (messages + [placeholder]).sorted {
-            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+            messages.append(placeholder)
         }
+        return AgentSessionQueuePresentation.apply(to: messages.sorted {
+            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+        }, kind: conversation.kind)
     }
 
     func pendingMentionMessages(for conversation: ConversationSummary) -> [ChatMessage] {
@@ -4336,7 +4336,19 @@ final class AppModel: ObservableObject {
         account: CloudAccount,
         runtimeRoute: CloudModelRouting?
     ) async {
-        if pendingAgentRequestIds[conversation.id] != requestMessageId {
+        guard !Task.isCancelled, self.account?.accountId == account.accountId else { return }
+        if let state = CloudAgentLifecycleProjector.state(
+            forRequestId: requestMessageId,
+            in: Self.directWireMessages(for: conversation, in: cloudMessagesByPeer)
+        ), state.isTerminal {
+            finishPendingAgentRequest(
+                conversationId: conversation.id,
+                requestMessageId: requestMessageId,
+                failed: state == .failed
+            )
+            return
+        }
+        if !pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) {
             beginPendingAgentRequest(
                 conversationId: conversation.id,
                 requestMessageId: requestMessageId,
@@ -4344,6 +4356,15 @@ final class AppModel: ObservableObject {
                 agentDisplayName: conversation.agentDisplayName?.nonEmpty ?? "Kordi",
                 agentOwnerName: conversation.kind == .agent ? conversation.ownerDisplayName : nil
             )
+        }
+        // A queued Agent request must not race the executing Mac by claiming a
+        // fallback run while a previous request in this session is still active.
+        while conversation.kind == .agent,
+              messages(for: conversation).contains(where: {
+                  $0.id == requestMessageId && $0.agentQueuePosition != nil
+              }) {
+            do { try await Task.sleep(for: .seconds(1)) } catch { return }
+            guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else { return }
         }
         if ownerAccountId == account.accountId {
             agentExecutionLocation[conversation.id] = .mac(label: "your Mac")
@@ -4353,7 +4374,7 @@ final class AppModel: ObservableObject {
                 } catch {
                     return
                 }
-                guard pendingAgentRequestIds[conversation.id] == requestMessageId else {
+                guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else {
                     return
                 }
                 guard hasRecentDesktopExecutionHeartbeat(
@@ -4365,7 +4386,7 @@ final class AppModel: ObservableObject {
                         conversation,
                         requestMessageId: requestMessageId
                     )
-                    guard pendingAgentRequestIds[conversation.id] == requestMessageId else {
+                    guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else {
                         return
                     }
                 } while hasRecentDesktopExecutionHeartbeat(
@@ -4395,8 +4416,7 @@ final class AppModel: ObservableObject {
             await pollForAgentReply(conversation, requestMessageId: requestMessageId)
         } catch {
             recordCloudConnectionFailure(error)
-            setAgentActivity(.failed, conversationId: conversation.id)
-            clearPendingAgentRequest(conversationId: conversation.id)
+            finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: requestMessageId, failed: true)
             errorMessage = userFacing(error, fallback: "The agent could not start. Try again.")
         }
     }
@@ -4523,16 +4543,15 @@ final class AppModel: ObservableObject {
             } catch {
                 return
             }
-            guard pendingAgentRequestIds[conversation.id] == requestMessageId else { return }
+            guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else { return }
             if let token,
                let run = try? await api.lookupAgentRun(token: token, requestMessageId: requestMessageId) {
                 if run.status == "failed" {
-                    setAgentActivity(.failed, conversationId: conversation.id)
-                    clearPendingAgentRequest(conversationId: conversation.id)
+                    finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: requestMessageId, failed: true)
                     return
                 }
                 if run.status == "cancelled" {
-                    completeAgentRequest(conversationId: conversation.id)
+                    finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: requestMessageId)
                     return
                 }
             }
@@ -5425,12 +5444,26 @@ final class AppModel: ObservableObject {
                 messagesByConversation[conversationId] = merged
                 cacheCurrentMessages(conversationId)
             }
-            if let conversation = loadedConversations.first(where: { $0.id == conversationId }),
-               conversation.kind != .group {
-                reconcilePendingAgentRequest(
-                    conversationId: conversationId,
-                    wireMessages: Self.directWireMessages(for: conversation, in: wireSnapshot)
-                )
+            if let conversation = loadedConversations.first(where: { $0.id == conversationId }) {
+                if conversation.kind == .group {
+                    for response in projected where response.author == .agent {
+                        guard let requestID = response.requestMessageId,
+                              pendingAgentRequestIds[conversationId, default: []].contains(requestID),
+                              response.agentExecution?.completed == true
+                                || (response.agentExecution == nil
+                                    && !CloudMessageCodec.isAgentProcessingPlaceholder(response.text)) else { continue }
+                        finishPendingAgentRequest(
+                            conversationId: conversationId,
+                            requestMessageId: requestID,
+                            failed: response.agentExecution?.phase == .failed || response.deliveryState == .failed
+                        )
+                    }
+                } else {
+                    reconcilePendingAgentRequest(
+                        conversationId: conversationId,
+                        wireMessages: Self.directWireMessages(for: conversation, in: wireSnapshot)
+                    )
+                }
             }
         }
     }
@@ -6119,10 +6152,12 @@ final class AppModel: ObservableObject {
         agentDisplayName: String,
         agentOwnerName: String? = nil
     ) {
-        pendingAgentRequestIds[conversationId] = requestMessageId
-        pendingAgentRequestStartedAt[conversationId] = startedAt
-        pendingAgentDisplayNames[conversationId] = agentDisplayName
-        pendingAgentOwnerNames[conversationId] = agentOwnerName?.nonEmpty
+        if !pendingAgentRequestIds[conversationId, default: []].contains(requestMessageId) {
+            pendingAgentRequestIds[conversationId, default: []].append(requestMessageId)
+        }
+        pendingAgentRequestStartedAt[requestMessageId] = startedAt
+        pendingAgentDisplayNames[requestMessageId] = agentDisplayName
+        pendingAgentOwnerNames[requestMessageId] = agentOwnerName?.nonEmpty
         agentRequestPresentationIds[requestMessageId] = agentRequestPresentationIds[requestMessageId]
             ?? requestMessageId
         setAgentActivity(.replying, conversationId: conversationId)
@@ -6133,18 +6168,23 @@ final class AppModel: ObservableObject {
         from localRequestMessageId: String,
         to serverRequestMessageId: String
     ) {
-        guard pendingAgentRequestIds[conversationId] == localRequestMessageId else { return }
+        guard let index = pendingAgentRequestIds[conversationId]?.firstIndex(of: localRequestMessageId) else { return }
         let presentationId = agentRequestPresentationIds[localRequestMessageId]
             ?? localRequestMessageId
         agentRequestPresentationIds[serverRequestMessageId] = presentationId
-        pendingAgentRequestIds[conversationId] = serverRequestMessageId
+        pendingAgentRequestIds[conversationId]?[index] = serverRequestMessageId
+        pendingAgentRequestStartedAt[serverRequestMessageId] = pendingAgentRequestStartedAt.removeValue(forKey: localRequestMessageId)
+        pendingAgentDisplayNames[serverRequestMessageId] = pendingAgentDisplayNames.removeValue(forKey: localRequestMessageId)
+        pendingAgentOwnerNames[serverRequestMessageId] = pendingAgentOwnerNames.removeValue(forKey: localRequestMessageId)
     }
 
     private func clearPendingAgentRequest(conversationId: String) {
+        for requestID in pendingAgentRequestIds[conversationId, default: []] {
+            pendingAgentRequestStartedAt[requestID] = nil
+            pendingAgentDisplayNames[requestID] = nil
+            pendingAgentOwnerNames[requestID] = nil
+        }
         pendingAgentRequestIds[conversationId] = nil
-        pendingAgentRequestStartedAt[conversationId] = nil
-        pendingAgentDisplayNames[conversationId] = nil
-        pendingAgentOwnerNames[conversationId] = nil
     }
 
     private func completeAgentRequest(conversationId: String) {
@@ -6152,23 +6192,39 @@ final class AppModel: ObservableObject {
         setAgentActivity(.ready, conversationId: conversationId)
     }
 
+    private func finishPendingAgentRequest(
+        conversationId: String,
+        requestMessageId: String,
+        failed: Bool = false
+    ) {
+        pendingAgentRequestIds[conversationId]?.removeAll { $0 == requestMessageId }
+        pendingAgentRequestStartedAt[requestMessageId] = nil
+        pendingAgentDisplayNames[requestMessageId] = nil
+        pendingAgentOwnerNames[requestMessageId] = nil
+        let hasPending = !pendingAgentRequestIds[conversationId, default: []].isEmpty
+        if !hasPending { pendingAgentRequestIds[conversationId] = nil }
+        setAgentActivity(hasPending ? .replying : (failed ? .failed : .ready), conversationId: conversationId)
+    }
+
     private func reconcilePendingAgentRequest(
         conversationId: String,
         wireMessages: [CloudMessageDTO]
     ) {
-        guard let requestId = pendingAgentRequestIds[conversationId],
-              let state = CloudAgentLifecycleProjector.state(
+        for requestId in pendingAgentRequestIds[conversationId, default: []] {
+            guard let state = CloudAgentLifecycleProjector.state(
                 forRequestId: requestId,
                 in: wireMessages
-              ) else { return }
-        switch state {
-        case .processing:
-            setAgentActivity(.replying, conversationId: conversationId)
-        case .failed:
-            clearPendingAgentRequest(conversationId: conversationId)
-            setAgentActivity(.failed, conversationId: conversationId)
-        case .complete, .cancelled:
-            completeAgentRequest(conversationId: conversationId)
+            ) else { continue }
+            switch state {
+            case .processing:
+                setAgentActivity(.replying, conversationId: conversationId)
+            case .failed, .complete, .cancelled:
+                finishPendingAgentRequest(
+                    conversationId: conversationId,
+                    requestMessageId: requestId,
+                    failed: state == .failed
+                )
+            }
         }
     }
 

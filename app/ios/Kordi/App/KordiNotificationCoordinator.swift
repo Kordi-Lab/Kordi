@@ -86,7 +86,7 @@ final class KordiNotificationCoordinator: ObservableObject {
     }
 
     func accountDidChange() {
-        guard model?.account != nil else {
+        guard model?.account != nil, model?.isPreviewMode != true else {
             pendingMessageRoute = nil
             Task { await setBadgeCount(0) }
             return
