@@ -129,6 +129,126 @@ async fn current_device_metadata_upgrades_legacy_identity_and_preserves_coarse_l
 }
 
 #[tokio::test]
+async fn active_device_list_omits_week_inactive_authorizations() {
+    let Some(pool) = try_pool().await else { return };
+    let email = unique_email("device-active-list");
+    let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
+    let router = fast_router(state);
+    let owner = read_json(
+        router
+            .clone()
+            .oneshot(post(
+                "/v1/cloud/auth/signup",
+                signup_body_with_device(
+                    &email,
+                    "correct horse",
+                    device_registration(32, "Owner iPhone", "ios"),
+                ),
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    let valid_offline = login_with_device(&router, &email, 33, "Offline Mac").await;
+    let fresh_online = login_with_device(&router, &email, 34, "Online Mac").await;
+    let stale = login_with_device(&router, &email, 35, "oauth-google-device").await;
+    let fresh_online_token = fresh_online["session"]["token"].as_str().unwrap();
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(post_with_token(
+                "/v1/cloud/presence/online",
+                fresh_online_token,
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let fresh_online_id = fresh_online["session"]["deviceId"].as_str().unwrap();
+    let stale_token = stale["session"]["token"].as_str().unwrap();
+    let stale_id = stale["session"]["deviceId"].as_str().unwrap();
+    sqlx_core::query::query(
+        "UPDATE cloud_refresh_tokens SET expires_at = $1 \
+         WHERE device_id = $2",
+    )
+    .bind((chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339())
+    .bind(fresh_online_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    sqlx_core::query::query(
+        "UPDATE cloud_devices SET last_seen_at = $1 \
+         WHERE device_id = $2",
+    )
+    .bind((chrono::Utc::now() - chrono::Duration::days(8)).to_rfc3339())
+    .bind(stale_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let response = router
+        .clone()
+        .oneshot(get_with_token(
+            "/v1/cloud/auth/devices",
+            owner["session"]["token"].as_str().unwrap(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_json(response).await;
+    let listed_ids = body["devices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|device| device["deviceId"].as_str())
+        .collect::<Vec<_>>();
+
+    assert_eq!(listed_ids.len(), 3);
+    assert!(listed_ids.contains(&owner["session"]["deviceId"].as_str().unwrap()));
+    assert!(listed_ids.contains(&valid_offline["session"]["deviceId"].as_str().unwrap()));
+    assert!(listed_ids.contains(&fresh_online_id));
+    assert!(!listed_ids.contains(&stale_id));
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/auth/me", stale_token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+
+    let reauthenticated = login_with_device(&router, &email, 35, "Restored iPhone").await;
+    assert_eq!(
+        reauthenticated["session"]["deviceId"].as_str().unwrap(),
+        stale_id
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(get_with_token(
+                "/v1/cloud/auth/me",
+                reauthenticated["session"]["token"].as_str().unwrap(),
+            ))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        router
+            .clone()
+            .oneshot(get_with_token("/v1/cloud/auth/me", stale_token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
 async fn concurrent_distinct_installations_create_distinct_reviewable_devices() {
     let Some(pool) = try_pool().await else { return };
     let email = unique_email("device-concurrent");
