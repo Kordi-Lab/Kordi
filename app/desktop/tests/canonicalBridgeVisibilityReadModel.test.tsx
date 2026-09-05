@@ -668,6 +668,17 @@ test('canonical read model rewrites remote first-person agent mention labels', (
   const conversations = readModel?.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '') ?? [];
 
   assert.equal(conversations[0]?.messages[0]?.text, '@KordiEthan show me the diskusage');
+  const selected = {
+    label: 'Kordi', targetKind: 'agent', targetIdentityId: 'agent:cloud-agent:cloud-agent:acct_other',
+    startUtf16: 0, lengthUtf16: 6, displayText: '@Kordi',
+  };
+  const explicit = createCanonicalSessionReadModel({
+    ...canonicalState,
+    messages: [{ ...canonicalState.messages[0], contentText: '@Kordi reply once',
+      content: { ...canonicalState.messages[0].content, mentions: [selected] } }],
+  } as never)!.messages(sessionId)[0]!;
+  assert.equal(explicit.text, '@Kordi reply once');
+  assert.equal(explicit.mentions?.[0]?.targetIdentityId, selected.targetIdentityId);
 });
 
 test('canonical read model suppresses local agent runtime user echo after bridge UI mention', () => {

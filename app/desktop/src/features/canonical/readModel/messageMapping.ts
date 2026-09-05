@@ -442,11 +442,13 @@ export function mapCanonicalMessage(
   });
   const visibleTools = role === 'owned-agent' || (role === 'external-agent' && hasSharedModelTaskTools) ? tools : [];
   const restoredDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(message.contentText), content);
+  const mentions = canonicalMentions(content.mentions);
   const rawDisplayText = !isOwnMessage && role === 'person'
     ? rewriteLeadingFirstPersonAgentMention(
       restoredDisplayText,
       identity?.displayName || contentSender,
       agentLabelForHumanIdentity(identity, identityById),
+      mentions,
     )
     : restoredDisplayText;
   const isProcessingAgentPlaceholder = isAgentTurn
@@ -504,7 +506,7 @@ export function mapCanonicalMessage(
     voiceMessage,
     detail: stringValue(content.detail),
     attachments: canonicalAttachments(content.attachments),
-    mentions: canonicalMentions(content.mentions),
+    mentions,
     replyToMessageId: replyToMessageId ?? undefined,
     replyAliasIds: replyAliasIds.length ? replyAliasIds : undefined,
     readReceiptSummary: isOwnMessage && role === 'user' ? canonicalReadReceiptSummary(content, identityById) : null,

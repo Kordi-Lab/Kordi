@@ -307,7 +307,7 @@ export function mapCollaborationConversationToViewModel(
     const displayText = isProcessingAgentPlaceholder
       ? ''
       : !isOutboundHuman
-        ? rewriteLeadingFirstPersonAgentMention(rawDisplayText, message.sender || remoteHumanLabel, isPersonChat ? 'Kordi' : remoteAgentLabel)
+        ? rewriteLeadingFirstPersonAgentMention(rawDisplayText, message.sender || remoteHumanLabel, isPersonChat ? 'Kordi' : remoteAgentLabel, mentions)
         : rawDisplayText;
     const isInboundHuman = isAgent && direction === COLLABORATION_MESSAGE_DIRECTION_INBOUND;
     const isLocalAgentResponse = direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
