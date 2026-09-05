@@ -37,6 +37,9 @@ targets:
         type: folder
       - path: Kordi/Resources/noto-emoji
         type: folder
+      - path: ../../shared/digest
+        type: folder
+        buildPhase: resources
     resources:
       - path: Kordi/Resources/Assets.xcassets
       - path: Kordi/Supporting/Preview Content
@@ -54,6 +57,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
+        NSCalendarsFullAccessUsageDescription: Kordi reads calendars you choose to import events into your private digest. It does not send invitations.
         NSCameraUsageDescription: Kordi uses the camera when you record a video message, attach a photo, or join a video call.
         NSLocalNetworkUsageDescription: Kordi uses the local network to establish audio and video calls when required.
         NSMicrophoneUsageDescription: Kordi uses the microphone when you record a voice or video message or join a call.

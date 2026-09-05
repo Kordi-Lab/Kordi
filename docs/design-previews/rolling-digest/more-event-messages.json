@@ -1,0 +1,206 @@
+{
+  "description": "Additional fictional event-related messages for reviewing the live rolling digest. Every participant and arrangement is synthetic.",
+  "dateAnchor": "2026-09-05",
+  "timezone": "Asia/Riyadh",
+  "conversations": {
+    "launch": "9b2944a4-b83d-5240-a63d-616bff94ba0f",
+    "design": "d02a37e6-84b0-546c-aca4-84eb7adb26ad",
+    "security": "7af49dcd-86f7-505a-bb10-e7e4802b55a9"
+  },
+  "messages": [
+    {
+      "id": "critique-propose",
+      "clientMessageId": "6f0fb19f-2793-535a-ab77-c6a121e07097",
+      "conversation": "design",
+      "sender": "mina",
+      "text": "Taylor, can we review the mobile calendar and event editor on Monday, September 7, 2026, 10:00–10:45 Riyadh time? I have booked Studio 1."
+    },
+    {
+      "id": "critique-confirm",
+      "clientMessageId": "8b9916dd-1e0e-5aa4-9e2e-f547a3b017be",
+      "conversation": "design",
+      "sender": "viewer",
+      "text": "Confirmed for Monday, September 7, 2026, 10:00–10:45 Riyadh time. I will bring the latest interactive prototype.",
+      "replyTo": "critique-propose"
+    },
+    {
+      "id": "critique-room",
+      "clientMessageId": "c92ab535-464c-5c9a-9087-087192bc9cc8",
+      "conversation": "design",
+      "sender": "mina",
+      "text": "Small location update: the design critique is in Studio 2, not Studio 1. The date and 10:00 start stay unchanged.",
+      "replyTo": "critique-propose"
+    },
+    {
+      "id": "usability-propose",
+      "clientMessageId": "5ac08ad0-95c2-51d4-b658-3db6afac5a43",
+      "conversation": "design",
+      "sender": "mina",
+      "text": "The calendar usability session is planned for Tuesday, September 8, 2026, 14:00–15:00 Riyadh time. We will test finding an event and importing an ICS file."
+    },
+    {
+      "id": "usability-confirm",
+      "clientMessageId": "51437fb1-ec20-5731-ab55-b1d132852985",
+      "conversation": "design",
+      "sender": "viewer",
+      "text": "That usability slot works for me. Please include the reminder settings in the session.",
+      "replyTo": "usability-propose"
+    },
+    {
+      "id": "usability-move",
+      "clientMessageId": "6b0fb42d-7f09-5697-88c5-47920c48884c",
+      "conversation": "design",
+      "sender": "mina",
+      "text": "The usability session needs to move to Tuesday, September 8, 2026, 15:30–16:30 Riyadh time. The previous 14:00 slot is cancelled.",
+      "replyTo": "usability-propose"
+    },
+    {
+      "id": "usability-reconfirm",
+      "clientMessageId": "2ca8baa0-ad4d-5cb8-a021-47e3d78ddf79",
+      "conversation": "design",
+      "sender": "viewer",
+      "text": "Confirmed: usability testing is Tuesday, September 8, 2026, 15:30–16:30 Riyadh time. This replaces the earlier slot.",
+      "replyTo": "usability-move"
+    },
+    {
+      "id": "usability-link",
+      "clientMessageId": "e2233cb0-d03f-55eb-b169-7c145a6776f7",
+      "conversation": "design",
+      "sender": "mina",
+      "text": "The usability session is remote. Use https://meet.example.com/calendar-usability as the fictional test meeting link.",
+      "replyTo": "usability-reconfirm"
+    },
+    {
+      "id": "partner-propose",
+      "clientMessageId": "b511530e-ef67-5269-8477-5ccf38d4266f",
+      "conversation": "launch",
+      "sender": "alex",
+      "text": "The partner handoff is Wednesday, September 9, 2026, 09:00–09:30 New York time (UTC−04:00). Taylor and Mina, please join remotely."
+    },
+    {
+      "id": "partner-confirm",
+      "clientMessageId": "2f496a26-daca-5cd0-a33a-0ffbbe5661bd",
+      "conversation": "launch",
+      "sender": "viewer",
+      "text": "Confirmed. The partner handoff is 16:00–16:30 Riyadh time on Wednesday, September 9, 2026; that is the same meeting, not a second booking.",
+      "replyTo": "partner-propose"
+    },
+    {
+      "id": "planning-propose",
+      "clientMessageId": "b6d5c01c-8707-5c8b-ba5c-418323cf36d7",
+      "conversation": "launch",
+      "sender": "alex",
+      "text": "Please reserve Thursday, September 10, 2026, 11:00–12:00 Riyadh time for release planning. We will review the rollout checklist."
+    },
+    {
+      "id": "planning-confirm",
+      "clientMessageId": "09771301-d09a-5c83-b890-d22438f1ddbb",
+      "conversation": "launch",
+      "sender": "viewer",
+      "text": "Release planning is confirmed for that hour. I will attend.",
+      "replyTo": "planning-propose"
+    },
+    {
+      "id": "overlap-propose",
+      "clientMessageId": "e2dfd3ec-a1de-558b-9045-1d522988fd82",
+      "conversation": "design",
+      "sender": "mina",
+      "text": "The accessibility review is booked for Thursday, September 10, 2026, 11:30–12:00 Riyadh time. Can you attend, Taylor?"
+    },
+    {
+      "id": "overlap-confirm",
+      "clientMessageId": "0e6c0fdd-7956-51a5-b133-df5e98fd585f",
+      "conversation": "design",
+      "sender": "viewer",
+      "text": "I have accepted the accessibility review, but it overlaps my release planning meeting. Keep both arrangements visible for now; neither has been moved yet.",
+      "replyTo": "overlap-propose"
+    },
+    {
+      "id": "security-walkthrough",
+      "clientMessageId": "5136f5dd-a9ec-532f-9b09-27027259049e",
+      "conversation": "security",
+      "sender": "leo",
+      "text": "Can we do the security walkthrough on Friday, September 11, 2026, 16:00–16:30 Riyadh time? It is a review session, not a statement that approval is complete."
+    },
+    {
+      "id": "security-confirm",
+      "clientMessageId": "14552d60-d35d-5553-ab75-e26c94474a2b",
+      "conversation": "security",
+      "sender": "viewer",
+      "text": "Yes, the security walkthrough slot works.",
+      "replyTo": "security-walkthrough"
+    },
+    {
+      "id": "security-cancel",
+      "clientMessageId": "463e8d62-8baf-50f8-bc30-b9d78feb77bb",
+      "conversation": "security",
+      "sender": "leo",
+      "text": "The security walkthrough is cancelled. We are waiting for the reviewer to return. No replacement date has been agreed; please do not keep the old slot as an upcoming meeting.",
+      "replyTo": "security-walkthrough"
+    },
+    {
+      "id": "copy-deadline",
+      "clientMessageId": "47fa4ee2-3f27-55cf-b28c-f9f5cc26f135",
+      "conversation": "design",
+      "sender": "mina",
+      "text": "The revised copy needs to be ready by Friday, September 18, 2026. We have agreed the date only, not a time of day."
+    },
+    {
+      "id": "copy-owner",
+      "clientMessageId": "4e7afc39-4a48-5fad-8e1b-ae308af3b8ff",
+      "conversation": "design",
+      "sender": "viewer",
+      "text": "I will prepare the revised copy. Please leave the time unspecified until we agree one.",
+      "replyTo": "copy-deadline"
+    },
+    {
+      "id": "office-hours",
+      "clientMessageId": "5ca68240-8131-5c6c-b159-324c7a10d177",
+      "conversation": "security",
+      "sender": "leo",
+      "text": "Maybe we could have an office-hours chat next week about the retention-policy questions. I have not proposed a day or a time."
+    },
+    {
+      "id": "office-hours-tentative",
+      "clientMessageId": "4b1730d4-b27b-54fe-a2ed-8c668a0b0542",
+      "conversation": "security",
+      "sender": "viewer",
+      "text": "That would be useful, but it is still tentative. Let us agree a slot before putting it on the calendar.",
+      "replyTo": "office-hours"
+    },
+    {
+      "id": "brief-owner",
+      "clientMessageId": "39c21791-f1aa-5bd1-997b-4bbd09c392af",
+      "conversation": "launch",
+      "sender": "alex",
+      "text": "I will send the partner handoff brief by Tuesday, September 8, 2026, 18:00 Riyadh time, ahead of the handoff call.",
+      "replyTo": "partner-propose"
+    },
+    {
+      "id": "prototype-owner",
+      "clientMessageId": "245f3103-d322-57a2-a246-73cffa03e30d",
+      "conversation": "design",
+      "sender": "mina",
+      "text": "I will upload the accessibility checklist by Wednesday, September 9, 2026, 17:00 Riyadh time.",
+      "replyTo": "overlap-propose"
+    },
+    {
+      "id": "prototype-ready",
+      "clientMessageId": "75ee7d7c-5d86-5b04-b29e-fcda0e4a4852",
+      "conversation": "design",
+      "sender": "viewer",
+      "text": "The interactive calendar prototype for the design critique is ready. I will walk through it at the confirmed session.",
+      "replyTo": "critique-confirm"
+    }
+  ],
+  "reviewPoints": [
+    "Design critique: one event, 10:00–10:45, location updated to Studio 2.",
+    "Usability session: only the replacement 15:30–16:30 slot should be proposed.",
+    "Partner handoff: 09:00 New York and 16:00 Riyadh describe the same event.",
+    "Release planning and accessibility review overlap; neither should be silently moved.",
+    "Cancelled security walkthrough must not remain an active upcoming suggestion.",
+    "Copy deadline has a known owner and date, but no invented time.",
+    "Office hours remain tentative without an invented date or time.",
+    "Preparation commitments stay linked to the relevant contact and conversation."
+  ]
+}

@@ -8,6 +8,7 @@ use cloud_api_endpoint::cloud_api_base_url_from_env;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
+mod digest_calendar;
 mod link_preview;
 mod media_preview_window;
 mod menu_bar;
@@ -234,6 +235,10 @@ pub fn run() {
             desktop_reveal_media_preview_window,
             menu_bar::desktop_set_menu_bar_unread_count,
             message_notification::desktop_notification_permission_state,
+            digest_calendar::desktop_digest_calendars,
+            digest_calendar::desktop_digest_fetch_ics,
+            digest_calendar::desktop_digest_calendar_events,
+            digest_calendar::desktop_digest_reminders,
             message_notification::desktop_request_notification_permission,
             message_notification::desktop_show_message_notification,
             project::desktop_project_settings,

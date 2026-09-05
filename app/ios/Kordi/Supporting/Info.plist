@@ -52,6 +52,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Kordi reads calendars you choose to import events into your private digest. It does not send invitations.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Kordi uses the camera when you record a video message, attach a photo, or join a video call.</string>
 	<key>NSLocalNetworkUsageDescription</key>

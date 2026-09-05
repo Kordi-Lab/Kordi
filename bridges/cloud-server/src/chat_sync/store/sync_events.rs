@@ -181,3 +181,23 @@ async fn insert_sync_event_with_critical(
     .await?;
     Ok(head.0)
 }
+
+/// Account-private refresh hint. Older clients can safely ignore this event.
+pub async fn append_account_hint(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    event_type: &str,
+    payload: &Value,
+) -> Result<(), StoreError> {
+    insert_noncritical_sync_event(
+        transaction,
+        account_id,
+        event_type,
+        None,
+        None,
+        None,
+        payload,
+    )
+    .await?;
+    Ok(())
+}
