@@ -1,5 +1,64 @@
 import XCTest
+import Testing
 @testable import Kordi
+
+@Test @MainActor
+func sharedAgentWaitingPresentation() throws {
+    let participant = CloudGroupParticipant(
+        accountId: "acct_owner", displayName: "Owner", avatarUrl: nil, role: "member"
+    )
+    let conversation = ConversationSummary(
+        id: "group:waiting", kind: .group, peerAccountId: "acct_owner", agentId: nil,
+        ownerDisplayName: "Group", displayName: "Group", lastMessage: "",
+        lastActivityAt: Date(timeIntervalSince1970: 1), unreadCount: 0,
+        avatarSource: nil, agentActivity: nil, sessionId: "session:group:waiting"
+    )
+    for state in ["processing", "complete"] {
+        for text in ["", "processing...", "The answer"] {
+            let envelope = CloudGroupControlEnvelope(
+                kind: "group-message", groupId: conversation.sessionId,
+                groupSpaceId: conversation.sessionId, groupTitle: "Group",
+                createdByAccountId: participant.accountId, actor: participant,
+                participants: [participant], message: CloudGroupMessagePayload(
+                    id: "response", senderAccountId: participant.accountId,
+                    text: text, createdAtMs: 1_000, senderKind: "agent",
+                    senderDisplayName: "Kordi", deliveryState: state,
+                    replyToMessageId: "request", requestId: "request"
+                )
+            )
+            let wire = CloudMessageDTO(
+                messageId: "wire", fromAccountId: participant.accountId,
+                toAccountId: "acct_viewer", body: try CloudGroupMessageCodec.encode(envelope),
+                createdAt: "2026-09-01T00:00:01Z", deliveredAt: nil, readAt: nil,
+                direction: "incoming", sessionId: conversation.sessionId
+            )
+            let response = try #require(AppModel.mapGroupMessages(
+                [wire], conversation: conversation, ownAccountId: "acct_viewer"
+            ).first)
+            if state == "processing" {
+                let execution = try #require(response.agentExecution)
+                #expect(execution.phase == .preparing)
+                #expect(execution.thinkingText == nil && execution.tools == nil)
+                #expect(MessageBubble.showsAgentWaitingIndicator(
+                    execution: execution, responseText: response.text
+                ) == (text != "The answer"))
+                if text == "processing..." {
+                    var cached = response
+                    cached.agentExecution = nil
+                    #expect(MessageBubble.agentExecutionForDisplay(cached)?.phase == .preparing)
+                    let human = ChatMessage(
+                        id: "human", conversationId: conversation.id, author: .person,
+                        authorName: "Person", text: text, createdAt: cached.createdAt,
+                        deliveryState: .read, errorMessage: nil, requestMessageId: "request"
+                    )
+                    #expect(MessageBubble.agentExecutionForDisplay(human) == nil)
+                }
+            } else {
+                #expect(response.agentExecution == nil)
+            }
+        }
+    }
+}
 
 final class CloudGroupMessageCodecTests: XCTestCase {
     func testLegacyGroupForkControlIsRejected() throws {

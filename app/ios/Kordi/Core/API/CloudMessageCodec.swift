@@ -190,6 +190,22 @@ enum CloudMessageCodec {
         return parsedEnvelopes(body).response?.execution
     }
 
+    static func agentWaitingExecution(
+        deliveryState: CloudAgentLifecycleState?,
+        updatedAtMs: Double
+    ) -> AgentExecutionSnapshot? {
+        guard deliveryState == .processing else { return nil }
+        // Shared chats expose execution status, not the owner's private trace.
+        return AgentExecutionSnapshot(
+            phase: .preparing,
+            summary: "",
+            steps: [],
+            startedAtMs: updatedAtMs,
+            updatedAtMs: updatedAtMs,
+            completed: false
+        )
+    }
+
     static func isAgentExecutionClaim(_ body: String) -> Bool {
         parsedEnvelopes(body).response?.executionClaimId?.nonEmpty != nil
     }

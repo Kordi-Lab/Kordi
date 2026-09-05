@@ -386,6 +386,14 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
             deliveryState: "complete"
         )
 
+        let waiting = try XCTUnwrap(CloudDirectMessageProjector.project(
+            [wire(id: "msg_processing", body: processing, createdAt: "2026-08-08T10:00:01Z")],
+            conversation: conversation, ownAccountId: "acct_me"
+        ).first?.agentExecution)
+        XCTAssertTrue(MessageBubble.showsAgentWaitingIndicator(execution: waiting, responseText: ""))
+        XCTAssertNil(waiting.thinkingText)
+        XCTAssertNil(waiting.tools)
+
         let projected = CloudDirectMessageProjector.project(
             [
                 wire(id: "msg_request", body: "Prepare the rollout", createdAt: "2026-08-08T10:00:00Z"),

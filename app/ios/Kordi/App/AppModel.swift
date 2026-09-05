@@ -2081,7 +2081,7 @@ final class AppModel: ObservableObject {
                 author: .agent,
                 authorName: pendingAgentDisplayNames[requestMessageId] ?? "Kordi",
                 senderOwnerName: pendingAgentOwnerNames[requestMessageId],
-                text: "processing...",
+                text: "",
                 createdAt: placeholderCreatedAt,
                 deliveryState: .delivered,
                 errorMessage: nil,
@@ -4945,7 +4945,11 @@ final class AppModel: ObservableObject {
             ),
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
             voiceMessage: message.voiceMessage,
-            agentExecution: ownerExecution,
+            agentExecution: ownerExecution ?? CloudMessageCodec.agentWaitingExecution(
+                deliveryState: CloudMessageCodec.isAgentExecutionClaim(message.body)
+                    ? nil : CloudMessageCodec.agentResponseDeliveryState(message.body),
+                updatedAtMs: parseCloudDate(message.createdAt).timeIntervalSince1970 * 1_000
+            ),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
             reactions: message.reactions
         )
@@ -5110,6 +5114,10 @@ final class AppModel: ObservableObject {
                 mentions: MessageMention.rebased(payload.mentions ?? [], in: payload.text),
                 messageKind: payload.messageKind,
                 voiceMessage: payload.voiceMessage ?? wire.voiceMessage,
+                agentExecution: author == .agent ? CloudMessageCodec.agentWaitingExecution(
+                    deliveryState: payload.deliveryState == "processing" ? .processing : nil,
+                    updatedAtMs: payload.createdAtMs
+                ) : nil,
                 backgroundAgentSessions: BackgroundAgentSession.fromTaskOperatorTools(
                     payload.structuredContent?.tools ?? []
                 ),

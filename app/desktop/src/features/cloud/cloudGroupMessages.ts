@@ -879,7 +879,7 @@ export function cloudGroupAgentRequestingNoticeRequest(input: {
     senderIdentityId: cloudAgentCanonicalIdentityId(input.targetAgentId, targetAccountId),
     senderRole: 'external-agent',
     messageKind: 'agent-turn',
-    contentText: 'processing...',
+    contentText: '',
     content: {
       sender: targetAgentDisplayName,
       senderOwnerAccountId: targetAccountId,

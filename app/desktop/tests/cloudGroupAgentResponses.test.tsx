@@ -55,7 +55,7 @@ test('cloud group requesting notice uses the final response slot for smooth in-p
 
   assert.equal(message.id, 'msg:cloud-agent-processing:msg_request:acct_yang');
   assert.equal(message.senderIdentityId, 'agent:cloud-agent:cloud_agent_scout');
-  assert.equal(message.contentText, 'processing...');
+  assert.equal(message.contentText, '');
   assert.equal(message.status, 'processing');
   assert.equal(message.sourceTransport, 'cloud-group-agent-offline');
   assert.deepEqual(message.content, {

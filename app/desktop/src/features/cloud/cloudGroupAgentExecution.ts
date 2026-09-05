@@ -126,7 +126,7 @@ export async function respondToCloudGroupAgentMention(
     senderIdentityId: presentation.identityId,
     senderRole: 'owned-agent',
     messageKind: 'agent-turn',
-    contentText: 'processing...',
+    contentText: '',
     content: {
       sender: presentation.displayName,
       senderOwnerAccountId: account.accountId,
@@ -170,7 +170,7 @@ export async function respondToCloudGroupAgentMention(
         id: processingMessageId,
         senderAccountId: account.accountId,
         senderAgentId: presentation.agentId,
-        text: 'processing...',
+        text: '',
         createdAtMs: processingCreatedAtMs,
         senderKind: 'agent',
         senderDisplayName: presentation.displayName,

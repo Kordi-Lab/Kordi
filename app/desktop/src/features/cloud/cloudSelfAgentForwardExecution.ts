@@ -61,7 +61,7 @@ export async function publishCloudSelfAgentHeartbeat({
     accountId,
     encodeCloudAgentResponse({
       requestId: cloudRequestMessageId,
-      text: assistantText.trim() || 'processing...',
+      text: assistantText.trim(),
       deliveryState: 'processing',
       execution,
     }),
@@ -101,7 +101,7 @@ export async function publishCloudSelfAgentExecutionSnapshot({
     accountId,
     encodeCloudAgentResponse({
       requestId: cloudRequestMessageId,
-      text: assistantText.trim() || 'processing...',
+      text: assistantText.trim(),
       deliveryState: 'processing',
       execution,
     }),
@@ -222,7 +222,7 @@ export async function publishCloudSelfAgentOperations({
           accountId,
           encodeCloudAgentResponse({
             requestId,
-            text: 'processing...',
+            text: '',
             deliveryState: 'processing',
             execution: operation.queued
               ? { phase: 'queued', summary: 'Queued next', steps: [], updatedAtMs: operation.createdAtMs, completed: false }

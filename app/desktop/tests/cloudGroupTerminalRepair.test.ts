@@ -117,3 +117,25 @@ test('terminal repair uses a fresh coordinator key after durable replay complete
   assert.deepEqual(applied, ['durable', 'repaired']);
   coordinator.dispose();
 });
+
+test('durable group reply is replayed when its loaded request has no response slot', () => {
+  const row = terminalRow();
+  const request = {
+    ...processingSlot('complete'),
+    id: requestId,
+    senderRole: 'user',
+    messageKind: 'text',
+    sourceTransport: 'cloud-group',
+    contentText: '@Kordi reply once',
+    content: {},
+    parentMessageId: null,
+  } satisfies CanonicalSessionMessage;
+  assert.deepEqual(cloudGroupTerminalRepairReplayRows([row], [request]), [row]);
+  assert.deepEqual(cloudGroupTerminalRepairReplayRows([row], []), []);
+  assert.deepEqual(cloudGroupTerminalRepairReplayRows([row], [
+    { ...request, sessionId: 'session:group:other' },
+  ]), []);
+  assert.deepEqual(cloudGroupTerminalRepairReplayRows([row], [
+    request, processingSlot('complete'),
+  ]), []);
+});

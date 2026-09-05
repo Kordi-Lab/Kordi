@@ -106,7 +106,7 @@ async fn run_agent_prompt_once(
         session_id: target_session_id,
         prompt: prompt.trim().to_string(),
         status: "processing".to_string(),
-        message: "Processing…".to_string(),
+        message: String::new(),
         assistant_text: String::new(),
         thinking_text: String::new(),
         tools: Vec::new(),

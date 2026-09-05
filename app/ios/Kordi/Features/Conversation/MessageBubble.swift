@@ -400,7 +400,7 @@ struct MessageBubble: View, Equatable {
     }
 
     private var agentExecutionMinimumWidth: CGFloat {
-        guard let execution = message.agentExecution else { return 0 }
+        guard let execution = Self.agentExecutionForDisplay(message) else { return 0 }
         let presentation = AgentExecutionTimelinePresentation(execution: execution)
         if !execution.completed, !presentation.hasExpandableContent {
             return 0
@@ -433,7 +433,7 @@ struct MessageBubble: View, Equatable {
                 replyPreview(source)
             }
 
-            if let execution = message.agentExecution {
+            if let execution = Self.agentExecutionForDisplay(message) {
                 AgentExecutionTimeline(
                     execution: execution,
                     showsWaitingIndicator: Self.showsAgentWaitingIndicator(
@@ -657,7 +657,7 @@ struct MessageBubble: View, Equatable {
         if message.voiceMessage != nil { return false }
         let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
         return !text.isEmpty && (
-            message.agentExecution == nil
+            message.author != .agent
                 || Self.hasVisibleAgentResponseText(text)
         )
     }
@@ -700,6 +700,19 @@ struct MessageBubble: View, Equatable {
     static func hasVisibleAgentResponseText(_ responseText: String) -> Bool {
         let text = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
         return !text.isEmpty && !CloudMessageCodec.isAgentProcessingPlaceholder(text)
+    }
+
+    static func agentExecutionForDisplay(_ message: ChatMessage) -> AgentExecutionSnapshot? {
+        if let execution = message.agentExecution { return execution }
+        // Older cached pages predate structured waiting state. Normalize them
+        // on read so the retired placeholder never becomes message content.
+        guard message.author == .agent,
+              message.requestMessageId != nil,
+              CloudMessageCodec.isAgentProcessingPlaceholder(message.text) else { return nil }
+        return CloudMessageCodec.agentWaitingExecution(
+            deliveryState: .processing,
+            updatedAtMs: message.createdAt.timeIntervalSince1970 * 1_000
+        )
     }
 
     static func showsAgentWaitingIndicator(

@@ -152,7 +152,11 @@ enum CloudDirectMessageProjector {
             ),
             messageKind: CloudMessageCodec.canonicalMessageKind(message),
             voiceMessage: message.voiceMessage,
-            agentExecution: visibleOwnerExecution,
+            agentExecution: visibleOwnerExecution ?? CloudMessageCodec.agentWaitingExecution(
+                deliveryState: CloudMessageCodec.isAgentExecutionClaim(message.body)
+                    ? nil : CloudMessageCodec.agentResponseDeliveryState(message.body),
+                updatedAtMs: parseCloudDate(message.createdAt).timeIntervalSince1970 * 1_000
+            ),
             backgroundAgentSessions: CloudMessageCodec.backgroundAgentSessions(message.body),
             reactions: message.reactions
         )

@@ -110,6 +110,7 @@ test('local-first self-agent publication is idempotent and replays one lifecycle
     .map((message) => parseCloudAgentResponse(message.body))
     .find((response) => response?.deliveryState === 'complete');
   assert.equal(processing?.requestId, 'cloud-1');
+  assert.equal(processing?.text, '');
   assert.deepEqual(processing?.execution, execution);
   assert.equal(completed?.requestId, processing?.requestId);
   assert.equal(completed?.text, 'one answer');

@@ -287,7 +287,7 @@ export function processingAgentMessage(
       sessionId: exchange.sessionId,
       prompt: '',
       status: 'processing',
-      message: 'Processing…',
+      message: '',
       assistantText: '',
       thinkingText: '',
       tools: [],
@@ -451,7 +451,7 @@ export function mapCanonicalMessage(
     : restoredDisplayText;
   const isProcessingAgentPlaceholder = isAgentTurn
     && (deliveryState === 'queued' || deliveryState === 'processing')
-    && isProcessingPlaceholderText(rawDisplayText);
+    && (!rawDisplayText.trim() || isProcessingPlaceholderText(rawDisplayText));
   const displayText = isProcessingAgentPlaceholder || legacyCollaborationAgentFailure || noProviderFailure ? '' : rawDisplayText;
   const cancelledByRole = stringValue(content.cancelledByRole)?.trim();
   const cancelledTurnText = cancelled
@@ -518,7 +518,7 @@ export function mapCanonicalMessage(
           sessionId: message.sessionId,
           prompt: '',
           status: completed ? (cancelled ? 'cancelled' : failed ? 'failed' : 'complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'queued' : 'processing' : displayText.trim() ? 'writing' : 'typing'),
-          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
+          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : '' : displayText.trim() ? 'Replying…' : 'Typing…'),
           assistantText: cancelled ? cancelledTurnText : displayText,
           thinkingText,
           tools: visibleTools,

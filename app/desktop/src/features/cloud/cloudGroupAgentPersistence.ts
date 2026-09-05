@@ -87,7 +87,7 @@ export async function persistPendingCloudGroupAgentTurn(
     senderIdentityId: presentation.identityId,
     senderRole: 'owned-agent',
     messageKind: 'agent-turn',
-    contentText: 'processing...',
+    contentText: '',
     content: {
       sender: presentation.displayName,
       senderOwnerAccountId: account.accountId,

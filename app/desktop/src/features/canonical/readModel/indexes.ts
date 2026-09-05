@@ -371,7 +371,8 @@ function isOwnedAgentTurn(message: CanonicalSessionMessage) {
 function isLegacyCollaborationAgentProcessingPlaceholder(message: CanonicalSessionMessage) {
   return (message.senderRole === 'owned-agent' || message.senderRole === 'external-agent')
     && message.messageKind === 'agent-turn'
-    && isProcessingPlaceholderText(message.contentText);
+    && (isProcessingPlaceholderText(message.contentText)
+      || (!message.contentText.trim() && isActiveProcessingStatus(message)));
 }
 
 function isStaleableProcessingPlaceholder(message: CanonicalSessionMessage) {

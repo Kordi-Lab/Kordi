@@ -261,7 +261,7 @@ function cloudAgentProcessingCollaborationMessage({
     id: `cloud-agent-processing:${request.messageId}`,
     direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
     sender: targetAgentName,
-    text: 'processing...',
+    text: '',
     timeLabel: formatDesktopClockTime(timestampMs),
     timestampMs,
     requestId: request.messageId,
