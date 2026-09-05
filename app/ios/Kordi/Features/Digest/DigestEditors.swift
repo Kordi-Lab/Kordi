@@ -113,26 +113,22 @@ struct DigestPeopleView: View {
         let authors = Dictionary(grouping: sources.filter { sourceIds.contains($0.id) }, by: { "\($0.senderAccountId):\($0.isAgent == true ? $0.senderName : "human")" }).values.compactMap(\.first).sorted { $0.senderName < $1.senderName }
         VStack(alignment: .leading, spacing: 8) {
             if let owner = ownerAccountId, !authors.contains(where: { $0.isAgent != true && $0.senderAccountId == owner }) {
-                person(id: owner, name: owner == accountId ? "You" : sources.first(where: { $0.senderAccountId == owner })?.senderName ?? "Contact", agent: false, role: "Owner")
+                person(id: owner, name: owner == accountId ? "You" : sources.first(where: { $0.senderAccountId == owner })?.senderName ?? "Contact", agent: false)
             }
             ForEach(authors) { source in
                 let name = source.isAgent != true && source.senderAccountId == accountId ? "You" : source.senderName
-                let role = source.isAgent != true && source.senderAccountId == ownerAccountId ? "Owner · Mentioned by" : "Mentioned by"
                 if let onSource {
-                    Button { onSource(source) } label: { person(id: source.senderAccountId, name: name, agent: source.isAgent == true, role: role) }.buttonStyle(.plain)
+                    Button { onSource(source) } label: { person(id: source.senderAccountId, name: name, agent: source.isAgent == true) }.buttonStyle(.plain)
                 } else {
-                    person(id: source.senderAccountId, name: name, agent: source.isAgent == true, role: role)
+                    person(id: source.senderAccountId, name: name, agent: source.isAgent == true)
                 }
             }
         }
     }
-    private func person(id: String, name: String, agent: Bool, role: String) -> some View {
+    private func person(id: String, name: String, agent: Bool) -> some View {
         HStack(spacing: 8) {
             IdentityAvatar(name: name, imageSource: agent ? nil : contacts.first(where: { $0.accountId == id })?.avatarUrl, kind: agent ? .agent : .person, size: 28, seed: id)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("@\(name)").font(.caption).foregroundStyle(.tint)
-                Text(role).font(.caption2).foregroundStyle(.secondary)
-            }
+            Text("@\(name)").font(.caption).foregroundStyle(.tint)
         }
     }
 }

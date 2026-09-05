@@ -15,7 +15,8 @@ test('Digest attribution keeps owner messages and separates their agent from the
   ];
   const html = renderToStaticMarkup(createElement(DigestPeople, { item: { sourceIds: ['request', 'reply', 'agent'], ownerAccountId: 'taylor' }, sources, accountId: 'taylor', showMessages: true }));
   assert.equal((html.match(/class="digest-person"/g) ?? []).length, 3);
-  assert.equal((html.match(/Owner · Mentioned by/g) ?? []).length, 1);
+  assert.ok(!html.includes('Mentioned by'));
+  assert.ok(!html.includes('<small>'));
   assert.equal((html.match(/<blockquote>/g) ?? []).length, 3);
   assert.ok(html.includes('@You'));
   assert.ok(html.includes('@Planning agent'));

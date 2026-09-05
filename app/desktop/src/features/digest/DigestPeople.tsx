@@ -16,11 +16,11 @@ export function DigestPeople({ item, sources, accountId, onSource, showMessages 
     <div className="digest-people" aria-label="Related people">
       {item.ownerAccountId && !authors.some(source => !source.isAgent && source.senderAccountId === item.ownerAccountId) && <span className="digest-person">
         <IdentityAvatar kind="human" seed={item.ownerAccountId} isSelf={item.ownerAccountId === accountId} name={name(item.ownerAccountId, 'Contact')} className="digest-person-avatar"/>
-        <span>@{name(item.ownerAccountId, sources.find(source => source.senderAccountId === item.ownerAccountId)?.senderName ?? 'Contact')}<small>Owner</small></span>
+        <span>@{name(item.ownerAccountId, sources.find(source => source.senderAccountId === item.ownerAccountId)?.senderName ?? 'Contact')}</span>
       </span>}
       {authors.map(source => {
         const label = name(source.senderAccountId, source.senderName, source.isAgent);
-        const content = <><IdentityAvatar kind={source.isAgent ? 'agent' : 'human'} seed={source.senderAccountId} isSelf={!source.isAgent && source.senderAccountId === accountId} name={label} className="digest-person-avatar"/><span>@{label}<small>{!source.isAgent && source.senderAccountId === item.ownerAccountId ? 'Owner · Mentioned by' : 'Mentioned by'}</small></span></>;
+        const content = <><IdentityAvatar kind={source.isAgent ? 'agent' : 'human'} seed={source.senderAccountId} isSelf={!source.isAgent && source.senderAccountId === accountId} name={label} className="digest-person-avatar"/><span>@{label}</span></>;
         return onSource ? <button className="digest-person" key={authorKey(source)} aria-label={`Messages from ${label}`} onClick={() => onSource(related.filter(message => authorKey(message) === authorKey(source)).map(message => message.id))}>{content}</button> : <span className="digest-person" key={authorKey(source)}>{content}</span>;
       })}
     </div>
