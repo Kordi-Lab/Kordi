@@ -13,6 +13,15 @@ pub(super) fn builtin_models() -> Vec<Model> {
             cost(10.0, 50.0, 1.0, 12.5),
         ),
         model(
+            "claude-fable-5-1",
+            "Claude Fable 5.1",
+            "anthropic",
+            ApiType::AnthropicMessages,
+            (1_000_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
+            cost(10.0, 50.0, 0.25, 12.5),
+        ),
+        model(
             "claude-haiku-4-5",
             "Claude Haiku 4.5 (latest)",
             "anthropic",
@@ -169,6 +178,13 @@ mod tests {
                 context_window: 1_000_000,
                 max_tokens: 128_000,
                 costs: (10.0, 50.0, 1.0, 12.5),
+            },
+            ExpectedModel {
+                id: "claude-fable-5-1",
+                name: "Claude Fable 5.1",
+                context_window: 1_000_000,
+                max_tokens: 128_000,
+                costs: (10.0, 50.0, 0.25, 12.5),
             },
             ExpectedModel {
                 id: "claude-haiku-4-5",

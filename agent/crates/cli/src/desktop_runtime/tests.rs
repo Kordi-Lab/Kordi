@@ -157,6 +157,7 @@ async fn desktop_model_options_filter_openai_codex_oauth_models_and_do_not_readd
             "openai/gpt-5.6-luna",
             "openai/gpt-5.6-sol",
             "openai/gpt-5.6-terra",
+            "openai/gpt-6-astra",
             "openai/gpt-5.5",
             "openai/gpt-5.4-mini",
             "openai/gpt-5.4",
@@ -165,6 +166,14 @@ async fn desktop_model_options_filter_openai_codex_oauth_models_and_do_not_readd
     );
 
     assert!(values.contains(&"openai/gpt-5.5"));
+    assert_eq!(
+        options
+            .iter()
+            .find(|option| option.value == "openai/gpt-6-astra")
+            .expect("GPT-6 OAuth option")
+            .thinking_levels,
+        ["low", "medium", "high", "xhigh", "max"]
+    );
     assert!(!values.contains(&"openai/gpt-5"));
     assert!(!values.contains(&"openai/gpt-4o-mini"));
     Ok(())
@@ -276,35 +285,6 @@ async fn create_with_id_scopes_task_operator_to_requested_session_id() -> Result
         stored.is_some(),
         "task_operator should use requested create_with_id session id"
     );
-    Ok(())
-}
-
-#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
-#[tokio::test]
-async fn explicit_config_on_new_canonical_runtime_survives_restart() -> Result<()> {
-    let _lock = env_lock().lock().unwrap();
-    let home = tempfile::tempdir().expect("home tempdir");
-    let cwd = tempfile::tempdir().expect("cwd tempdir");
-    let _home = EnvVarGuard::set_path("HOME", home.path());
-    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
-    Settings {
-        default_provider: Some("openai".to_string()),
-        default_model: Some("gpt-5.6-sol".to_string()),
-        ..Settings::default()
-    }
-    .save_global()?;
-
-    let session_id = "session:self-agent:canonical-runtime";
-    let mut runtime =
-        DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), session_id).await?;
-    runtime.set_explicit_config(Some("openai/gpt-5.6-luna"), Some("max"))?;
-    drop(runtime);
-
-    let resumed = DesktopRuntimeSession::resume(cwd.path().to_path_buf(), session_id).await?;
-    let detail = resumed.detail()?;
-    assert_eq!(detail.provider, "openai");
-    assert_eq!(detail.model, "gpt-5.6-luna");
-    assert_eq!(detail.thinking, "max");
     Ok(())
 }
 

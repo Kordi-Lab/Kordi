@@ -9,11 +9,12 @@ struct AgentModelPicker: View {
     @State private var selectedThinking = "medium"
     @State private var isSaving = false
 
-    private let modelNamesByProvider = [
+    static let modelNamesByProvider = [
         "openai": [
             "gpt-5.6-sol",
             "gpt-5.6-terra",
             "gpt-5.6-luna",
+            "gpt-6-astra",
             "gpt-5.5",
             "gpt-5.4",
             "gpt-5.4-mini",
@@ -21,6 +22,7 @@ struct AgentModelPicker: View {
         ],
         "anthropic": [
             "claude-sonnet-5",
+            "claude-fable-5-1",
             "claude-opus-4-8",
             "claude-opus-4-7",
             "claude-opus-4-6",
@@ -32,7 +34,23 @@ struct AgentModelPicker: View {
         "openrouter": ["openai/gpt-5"],
         "xai": ["grok-4"],
     ]
-    private let thinkingLevels = ["off", "default", "minimal", "low", "medium", "high", "xhigh", "max"]
+    static func thinkingLevels(for model: String) -> [String] {
+        switch model.split(separator: "/").last.map(String.init) {
+        case "gpt-6-astra":
+            return ["default", "low", "medium", "high", "xhigh", "max"]
+        case "claude-fable-5-1":
+            return ["default", "minimal", "low", "medium", "high", "xhigh", "max"]
+        default:
+            return ["off", "default", "minimal", "low", "medium", "high", "xhigh", "max"]
+        }
+    }
+
+    static func normalizedThinking(_ thinking: String, for model: String) -> String {
+        guard !thinkingLevels(for: model).contains(thinking) else { return thinking }
+        return model.split(separator: "/").last == "gpt-6-astra" ? "low" : "default"
+    }
+
+    private var thinkingLevels: [String] { Self.thinkingLevels(for: selectedModel) }
 
     private var routing: CloudModelRouting { model.runtimeRouting(for: conversation) }
     private var canEdit: Bool { model.canChangeRuntimeRouting(for: conversation) }
@@ -122,6 +140,9 @@ struct AgentModelPicker: View {
         .onChange(of: selectedProvider) { _, provider in
             selectCompatibleModel(for: provider)
         }
+        .onChange(of: selectedModel) { _, value in
+            selectedThinking = Self.normalizedThinking(selectedThinking, for: value)
+        }
         .onChange(of: routing) { _, _ in
             guard !isSaving else { return }
             loadSelection()
@@ -152,7 +173,7 @@ struct AgentModelPicker: View {
     private var routes: [String] {
         guard let provider = selectedProvider.nonEmpty else { return [] }
         let canonicalProvider = ProviderAuthenticationDefinition.canonicalID(provider)
-        let names = modelNamesByProvider[canonicalProvider]
+        let names = Self.modelNamesByProvider[canonicalProvider]
             ?? ProviderAuthenticationDefinition.all
                 .first(where: { $0.id == canonicalProvider })?
                 .defaultModel.map { [$0] }
@@ -212,7 +233,7 @@ struct AgentModelPicker: View {
         selectCompatibleModel(for: selectedProvider)
         selectedThinking = selectedProvider.isEmpty
             ? ""
-            : routing.thinking?.nonEmpty ?? "medium"
+            : Self.normalizedThinking(routing.thinking?.nonEmpty ?? "medium", for: selectedModel)
     }
 
     private func selectCompatibleModel(for provider: String) {
@@ -232,7 +253,7 @@ struct AgentModelPicker: View {
                 for: conversation,
                 provider: selectedProvider,
                 model: selectedModel,
-                thinking: selectedThinking
+                thinking: Self.normalizedThinking(selectedThinking, for: selectedModel)
             )
             isSaving = false
             if saved { onDismiss() }

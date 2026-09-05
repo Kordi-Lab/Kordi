@@ -31,6 +31,13 @@ const MAX_LEVELS: [ThinkingLevel; 7] = [
     ThinkingLevel::XHigh,
     ThinkingLevel::Max,
 ];
+const GPT_6_LEVELS: [ThinkingLevel; 5] = [
+    ThinkingLevel::Low,
+    ThinkingLevel::Medium,
+    ThinkingLevel::High,
+    ThinkingLevel::XHigh,
+    ThinkingLevel::Max,
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OpenAiAuthRoute {
@@ -53,6 +60,9 @@ fn is_gpt_56_variant(model_id: &str) -> bool {
 
 pub fn thinking_levels(model_id: &str, route: OpenAiAuthRoute) -> &'static [ThinkingLevel] {
     let model_id = normalized_model_id(model_id);
+    if model_id == "gpt-6-astra" {
+        return &GPT_6_LEVELS;
+    }
     if is_gpt_56_variant(&model_id) {
         return &MAX_LEVELS;
     }
@@ -139,6 +149,26 @@ pub fn reasoning_effort(
 mod tests {
     use super::{OpenAiAuthRoute, clamp_thinking_level, reasoning_effort, thinking_levels};
     use kordi_core::agent_session::ThinkingLevel;
+
+    #[test]
+    fn gpt_6_preserves_supported_effort_and_migrates_disabled_thinking() {
+        for route in [OpenAiAuthRoute::Api, OpenAiAuthRoute::CodexOAuth] {
+            assert_eq!(
+                thinking_levels("openai/gpt-6-astra", route)
+                    .iter()
+                    .map(|level| level.as_str())
+                    .collect::<Vec<_>>(),
+                ["low", "medium", "high", "xhigh", "max"]
+            );
+            for effort in ["low", "medium", "high", "xhigh", "max"] {
+                assert_eq!(reasoning_effort("gpt-6-astra", route, effort), Some(effort));
+            }
+            for effort in ["off", "minimal"] {
+                assert_eq!(reasoning_effort("gpt-6-astra", route, effort), Some("low"));
+            }
+            assert_eq!(reasoning_effort("gpt-6-astra", route, "default"), None);
+        }
+    }
 
     #[test]
     fn gpt_56_variants_support_every_thinking_level_on_both_routes() {
