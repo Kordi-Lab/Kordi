@@ -14,7 +14,7 @@ extension CloudAPIClient {
     }
     func saveDigestEvent(token: String, event: DigestCalendarEvent) async throws -> DigestCalendarEvent {
         let id = event.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? event.id
-        return try await send(path: "/v1/cloud/calendar/events/\(id)", method: "PUT", token: token, body: event, fallback: "Could not save the event.")
+        return try await send(path: "/v1/cloud/calendar/events/\(id)", method: "PUT", token: token, body: try event.normalizedForSave(), fallback: "Could not save the event.")
     }
     func removeDigestEvent(token: String, event: DigestCalendarEvent) async throws {
         let id = event.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? event.id

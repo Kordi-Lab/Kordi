@@ -78,7 +78,7 @@ struct DigestEventEditor: View {
     }
     private func submit() async {
         guard hasStart else { error = "Choose the event date and time."; return }
-        if hasEnd && end <= start { error = "End must follow start."; return }
+        if hasEnd && end < start { error = "End cannot be before start."; return }
         let reminderDate = reminder >= 0 && !event.allDay ? start.addingTimeInterval(-Double(reminder) * 60) : nil
         if let reminderDate, reminderDate < Date() { error = "That reminder time has passed. Choose No reminder or a later date."; return }
         var updated = event; updated.title = title.trimmingCharacters(in: .whitespacesAndNewlines)

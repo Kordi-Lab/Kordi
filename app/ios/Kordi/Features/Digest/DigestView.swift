@@ -205,8 +205,8 @@ struct DigestView: View {
             }.navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
         case .task(let item): DigestTaskEditor(item: item, sources: sources, accountId: model.account?.accountId ?? "") { input in try await model.createDigestTask(item.id, input: input); await reloadAfterEdit() }
         case .event(let event): DigestEventEditor(event: event) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit() } remove: { try await model.removeDigestCalendarEvent(event); await reloadAfterEdit() }
-        case .imports: DigestImportView(existing: events) { incoming in for event in incoming { try await model.saveDigestCalendarEvent(event) }; await reloadAfterEdit() }
-        case .connection: DigestConnectView(existing: events) { incoming in for event in incoming { try await model.saveDigestCalendarEvent(event) }; await reloadAfterEdit() }
+        case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
+        case .connection: DigestConnectView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Updates follow your messages, sessions and calendar events."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("Live digest")
         }
     }

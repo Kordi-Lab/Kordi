@@ -1,4 +1,5 @@
 import { cloudApiBaseUrl } from '@/features/cloud/authClient';
+import { normalizeCalendarEvent } from './calendarImport';
 import { loadSession } from '@/features/cloud/session';
 import type { CalendarEvent, DigestResponse } from './types';
 
@@ -13,7 +14,7 @@ async function request<T>(accountId: string, path: string, method = 'GET', body?
   const text = await response.text();
   let result: unknown;
   try { result = text ? JSON.parse(text) : undefined; } catch { throw new Error('The server returned an unreadable response.'); }
-  if (!response.ok) throw new Error((result as { message?: string })?.message || 'Could not update the digest.');
+  if (!response.ok) throw Object.assign(new Error((result as { message?: string })?.message || 'Could not update the digest.'), { status: response.status });
   return result as T;
 }
 export const digestClient = {
@@ -25,7 +26,7 @@ export const digestClient = {
   },
   refresh: (accountId: string) => request<void>(accountId, 'digest/refresh', 'POST'),
   calendar: (accountId: string, signal?: AbortSignal) => request<{ events: CalendarEvent[] }>(accountId, 'calendar/events', 'GET', undefined, signal),
-  saveEvent: (accountId: string, event: CalendarEvent) => request<CalendarEvent>(accountId, `calendar/events/${encodeURIComponent(event.id)}`, 'PUT', event),
+  saveEvent: (accountId: string, event: CalendarEvent) => request<CalendarEvent>(accountId, `calendar/events/${encodeURIComponent(event.id)}`, 'PUT', normalizeCalendarEvent(event)),
   removeEvent: (accountId: string, event: CalendarEvent) => request<void>(accountId, `calendar/events/${encodeURIComponent(event.id)}?revision=${event.revision}`, 'DELETE'),
   feedback: (accountId: string, id: string, dismissed: boolean) => request<void>(accountId, `digest/items/${encodeURIComponent(id)}/feedback`, 'PUT', { dismissed }),
   task: (accountId: string, id: string, input: { title: string; ownerAccountId: string | null; dueAt: string | null }) => request<{ taskId: string }>(accountId, `digest/items/${encodeURIComponent(id)}/task`, 'POST', input),

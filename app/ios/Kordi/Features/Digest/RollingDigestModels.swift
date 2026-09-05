@@ -58,6 +58,18 @@ struct DigestCalendarEvent: Codable, Identifiable, Equatable, Sendable {
     var externalUid: String?
     var revision: Int64 = 0
 }
+extension DigestCalendarEvent {
+    func normalizedForSave() throws -> Self {
+        guard let start = DigestDate.parse(startAt) else { throw DigestCalendarError(message: "Start date is missing or invalid.") }
+        var event = self
+        if let endAt {
+            guard let end = DigestDate.parse(endAt) else { throw DigestCalendarError(message: "End date is invalid.") }
+            guard end >= start else { throw DigestCalendarError(message: "End date is before start.") }
+            if end == start { event.endAt = nil }
+        }
+        return event
+    }
+}
 struct DigestCalendarResponse: Decodable { let events: [DigestCalendarEvent]; let pushAvailable: Bool }
 struct DigestTaskInput: Encodable { let title: String; let ownerAccountId: String?; let dueAt: String? }
 struct DigestTaskResult: Decodable { let taskId: String }

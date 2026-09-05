@@ -85,6 +85,29 @@ enum DigestCalendarService {
     static func hash(_ value: String) -> String { SHA256.hash(data: Data(value.utf8)).map { String(format: "%02x", $0) }.joined() }
 }
 
+struct DigestCalendarImportReport {
+    var imported = 0
+    var duplicates = 0
+    var skipped: [String] = []
+}
+@MainActor
+func importDigestCalendarEvents(_ incoming: [DigestCalendarEvent], existing: [DigestCalendarEvent], save: (DigestCalendarEvent) async throws -> Void) async throws -> DigestCalendarImportReport {
+    var report = DigestCalendarImportReport()
+    var ids = Set(existing.map(\.id)), externalIds = Set(existing.compactMap(\.externalUid))
+    for event in incoming {
+        if ids.contains(event.id) || event.externalUid.map({ externalIds.contains($0) }) == true { report.duplicates += 1; continue }
+        let normalized: DigestCalendarEvent
+        do { normalized = try event.normalizedForSave() }
+        catch { report.skipped.append("\(event.title): \(error.localizedDescription)"); continue }
+        do { try await save(normalized) }
+        catch is CancellationError { throw CancellationError() }
+        catch { throw DigestCalendarError(message: "Imported \(report.imported) events before stopping at \(event.title). \(error.localizedDescription) Retry to continue; saved events will not be duplicated.") }
+        report.imported += 1; ids.insert(event.id)
+        if let externalUid = event.externalUid { externalIds.insert(externalUid) }
+    }
+    return report
+}
+
 enum DigestICSImporter {
     private struct ResultDTO: Decodable { let events: [EventDTO]; let warnings: [String] }
     private struct EventDTO: Decodable {

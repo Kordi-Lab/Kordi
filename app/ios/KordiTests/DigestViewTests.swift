@@ -3,6 +3,21 @@ import XCTest
 
 final class DigestViewTests: XCTestCase {
     @MainActor
+    func testDeviceCalendarImportAcceptsInstantsAndContinuesPastInvalidRanges() async throws {
+        let point = DigestCalendarEvent(id: "point", title: "Point event", startAt: "2026-09-06T12:00:00Z", endAt: "2026-09-06T15:00:00+03:00")
+        XCTAssertNil(try point.normalizedForSave().endAt)
+        var allDay = point; allDay.allDay = true
+        XCTAssertNil(try allDay.normalizedForSave().endAt)
+        var invalid = point; invalid.id = "invalid"; invalid.endAt = "2026-09-06T11:00:00Z"
+        var later = point; later.id = "later"; later.endAt = "2026-09-06T13:00:00Z"
+        var saved: [DigestCalendarEvent] = []
+        let first = try await importDigestCalendarEvents([point, invalid, later, point], existing: []) { saved.append($0) }
+        XCTAssertEqual(first.imported, 2); XCTAssertEqual(first.duplicates, 1); XCTAssertEqual(first.skipped.count, 1)
+        XCTAssertEqual(saved.map(\.id), ["point", "later"])
+        let retry = try await importDigestCalendarEvents([point, later], existing: saved) { _ in XCTFail("Duplicate was submitted") }
+        XCTAssertEqual(retry.imported, 0); XCTAssertEqual(retry.duplicates, 2)
+    }
+    @MainActor
     func testRemindersRejectAnAccountThatHasSignedOut() async {
         do {
             _ = try await DigestCalendarService.syncReminders(accountId: "signed-out", events: [], isCurrentAccount: { false })

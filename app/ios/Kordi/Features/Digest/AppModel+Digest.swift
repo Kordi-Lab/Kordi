@@ -19,6 +19,14 @@ extension AppModel {
         let (api, token, _) = try digestContext()
         _ = try await api.saveDigestEvent(token: token, event: event)
     }
+    func importDigestCalendar(_ events: [DigestCalendarEvent]) async throws -> DigestCalendarImportReport {
+        let (api, token, accountId) = try digestContext()
+        let current = try await api.digestCalendar(token: token)
+        return try await importDigestCalendarEvents(events, existing: current.events) { event in
+            guard self.account?.accountId == accountId else { throw CancellationError() }
+            _ = try await api.saveDigestEvent(token: token, event: event)
+        }
+    }
     func removeDigestCalendarEvent(_ event: DigestCalendarEvent) async throws {
         let (api, token, _) = try digestContext()
         try await api.removeDigestEvent(token: token, event: event)
