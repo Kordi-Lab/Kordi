@@ -188,6 +188,66 @@ pub(super) async fn cancel_turn_by_id(
     snapshot_turn(&turn.snapshot)
 }
 
+pub(super) async fn renew_execution_lease(
+    manager: &DesktopChatManager,
+    turn_id: &str,
+    deadline_ms: i64,
+) -> Result<(), String> {
+    let turn = manager
+        .turns
+        .lock()
+        .await
+        .get(turn_id)
+        .cloned()
+        .ok_or_else(|| "Unknown execution lease turn".to_string())?;
+    let remaining = deadline_ms.saturating_sub(super::now_millis());
+    if remaining <= 0 || turn.cancel.is_cancelled() {
+        turn.cancel.cancel();
+        return Err("Execution lease expired".into());
+    }
+    let mut deadline = turn
+        .execution_lease_deadline
+        .lock()
+        .map_err(|_| "Execution lease unavailable")?;
+    let start_watchdog = deadline.is_none();
+    *deadline = Some(
+        std::time::Instant::now() + std::time::Duration::from_millis(remaining.min(30_000) as u64),
+    );
+    drop(deadline);
+    if start_watchdog {
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                if turn.cancel.is_cancelled()
+                    || snapshot_turn(&turn.snapshot).is_ok_and(|s| s.completed)
+                {
+                    return;
+                }
+                let valid = turn
+                    .execution_lease_deadline
+                    .lock()
+                    .ok()
+                    .and_then(|deadline| *deadline)
+                    .is_some_and(|d| d > std::time::Instant::now());
+                if !valid {
+                    turn.cancel.cancel();
+                    return;
+                }
+            }
+        });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn desktop_chat_renew_execution_lease(
+    manager: tauri::State<'_, DesktopChatManager>,
+    turn_id: String,
+    deadline_ms: i64,
+) -> Result<(), String> {
+    renew_execution_lease(manager.inner(), &turn_id, deadline_ms).await
+}
+
 pub(super) fn update_turn(
     snapshot: &Arc<Mutex<DesktopChatTurnSnapshot>>,
     apply: impl FnOnce(&mut DesktopChatTurnSnapshot),

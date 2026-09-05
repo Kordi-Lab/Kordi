@@ -94,6 +94,7 @@ async fn running_turn_lookup_is_session_scoped() {
         DesktopChatTurnHandle {
             snapshot,
             cancel: tokio_util::sync::CancellationToken::new(),
+            execution_lease_deadline: Arc::new(Mutex::new(None)),
         },
     );
 
@@ -131,6 +132,7 @@ async fn concurrent_turn_admission_queues_per_canonical_session() {
                 transcript_refresh_required: false,
             })),
             cancel: tokio_util::sync::CancellationToken::new(),
+            execution_lease_deadline: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -177,4 +179,26 @@ async fn concurrent_turn_admission_queues_per_canonical_session() {
             .await
             .unwrap();
     assert!(previous.is_none());
+
+    let watched = manager
+        .turns
+        .lock()
+        .await
+        .get("group-request")
+        .unwrap()
+        .clone();
+    super::turns::renew_execution_lease(&manager, "group-request", now_millis() + 100)
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(
+        watched.cancel.is_cancelled(),
+        "native execution must stop without a renderer heartbeat"
+    );
+    assert!(
+        super::turns::renew_execution_lease(&manager, "group-request", now_millis() + 30_000)
+            .await
+            .is_err(),
+        "expired leases cannot revive an executor"
+    );
 }

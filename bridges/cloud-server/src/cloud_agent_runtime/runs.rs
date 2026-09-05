@@ -9,11 +9,11 @@ mod leases;
 mod prompt_history;
 
 pub use authorization::{
-    claim_has_shared_cloud_agent_target, requester_can_target_owner,
+    claim_has_shared_cloud_agent_target, execution_agent_id, requester_can_target_owner,
     validate_agent_authored_group_handoff_claim, validate_shared_cloud_agent_claim,
 };
 pub use claims::{
-    claim_run, lookup_run_for_request, AgentRuntimeRoute, ClaimRunRequest,
+    claim_run, claim_run_for_desktop, lookup_run_for_request, AgentRuntimeRoute, ClaimRunRequest,
     CloudAgentRunLookupResponse, CloudAgentRunResponse,
 };
 pub use completion::{complete_run, fail_run, CompleteRunRequest, FailRunRequest};

@@ -137,6 +137,8 @@ pub async fn ensure_sandbox_for_run(
             sandbox_id, owner_account_id, requester_account_id, session_id, scope, status,
             workspace_key, storage_bytes_used, storage_bytes_quota, created_at, last_active_at, expires_at
          ) VALUES ($1, $2, $3, $4, $5, 'active', $6, 0, $7, $8, $8, $9)
+         ON CONFLICT (workspace_key) WHERE status = 'active'
+         DO UPDATE SET last_active_at = EXCLUDED.last_active_at
          RETURNING sandbox_id, workspace_key",
     )
     .bind(&sandbox_id)

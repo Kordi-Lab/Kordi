@@ -10,6 +10,7 @@ import {
 } from './cloudDirectMessages';
 import { compareCloudMessages } from './cloudMessageMerge';
 import { cloudOperationUuid } from './chatSyncMapping';
+import { cloudAgentId } from './cloudAgentIdentity';
 
 type IdentityLedger = Record<string, {
   cloudMessageId: string | null;
@@ -85,7 +86,9 @@ export function cloudAgentTargetsBySessionId(
     const identity = identityById.get(primaryIdentityId);
     const metadata = record(session?.metadata);
     const identityMetadata = record(identity?.metadata);
-    const targetAgentId = text(metadata.cloudAgentId) || text(identity?.agentId) || text(identityMetadata.agentId);
+    const rawAgentId = text(metadata.cloudAgentId) || text(identity?.agentId) || text(identityMetadata.agentId);
+    const ownerAccountId = text(identityMetadata.accountId) || text(identityMetadata.ownerAccountId);
+    const targetAgentId = ownerAccountId ? cloudAgentId(rawAgentId, ownerAccountId) : rawAgentId;
     const targetAgentName = text(metadata.cloudAgentName) || text(identity?.displayName);
     const isDefaultAgent = primaryIdentityId === state.profile.activeAgentIdentityId && !text(metadata.cloudAgentId);
     if (!isDefaultAgent && targetAgentId && targetAgentName) {

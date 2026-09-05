@@ -10,7 +10,7 @@ final class AgentSessionPresentationTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1)
         )
 
-        XCTAssertEqual(conversation.agentId, CanonicalAvatarSystem.defaultAgentId)
+        XCTAssertEqual(conversation.agentId, "cloud-agent:acct_me")
         XCTAssertNil(conversation.avatarSource)
         XCTAssertTrue(conversation.isLocalDraft)
     }
@@ -22,6 +22,14 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertTrue(ConversationKind.agent.supportsThreadedReplies)
         XCTAssertTrue(ConversationKind.person.supportsThreadedReplies)
         XCTAssertTrue(ConversationKind.group.supportsThreadedReplies)
+    }
+
+    func testDefaultAgentExecutionAliasesShareOneIdentityWithoutMergingCustomAgents() {
+        let owner = "acct_me"
+        XCTAssertEqual(CanonicalAvatarSystem.agentID("cloud-self:acct_me", ownerAccountID: owner), "cloud-agent:acct_me")
+        XCTAssertEqual(CanonicalAvatarSystem.agentID("cloud-local-agent", ownerAccountID: owner), "cloud-agent:acct_me")
+        XCTAssertEqual(CanonicalAvatarSystem.agentID("cloud_agent_research", ownerAccountID: owner), "cloud_agent_research")
+        XCTAssertNotEqual(CanonicalAvatarSystem.agentID(nil, ownerAccountID: "acct_other"), CanonicalAvatarSystem.agentID(nil, ownerAccountID: owner))
     }
 
     func testThreadsPushOnCompactLayoutsAndUseAnInspectorOnWideLayouts() {
@@ -393,7 +401,7 @@ final class AgentSessionPresentationTests: XCTestCase {
             date: Date(timeIntervalSince1970: 20)
         )
 
-        XCTAssertEqual(placeholder.agentId, CanonicalAvatarSystem.defaultAgentId)
+        XCTAssertEqual(placeholder.agentId, "cloud-agent:acct_me")
 
         let rows = AgentSessionTimelineCatalog.build(conversations: [placeholder, actual])
 

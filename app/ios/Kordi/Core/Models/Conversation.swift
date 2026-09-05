@@ -126,7 +126,7 @@ struct ConversationSummary: Identifiable, Hashable {
         self.kind = kind
         self.peerAccountId = peerAccountId
         self.agentId = kind == .agent
-            ? agentId?.nonEmpty ?? CanonicalAvatarSystem.defaultAgentId
+            ? CanonicalAvatarSystem.agentID(agentId, ownerAccountID: peerAccountId)
             : agentId
         self.ownerDisplayName = ownerDisplayName
         self.displayName = displayName

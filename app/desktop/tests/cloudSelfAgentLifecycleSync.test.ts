@@ -89,6 +89,19 @@ test('cloud self-agent canonical identity uses the editable runtime name', () =>
     state: emptyState(),
   });
   assert.equal(plan.agentIdentityRequest.displayName, 'BabyTREE');
+  assert.equal(plan.agentIdentityRequest.agentId, `cloud-agent:${account.accountId}`);
+});
+
+test('runtime request aliases survive cloud canonical projection for queued messages', () => {
+  const row = {
+    id: 'msg:cloud:self:request-b', sessionId: 'session', senderIdentityId: 'human', senderRole: 'user',
+    messageKind: 'text', contentText: 'Next request', content: { desktopEntryId: 'request-b' },
+    status: 'sent', sequenceNum: 1, createdAtMs: 1, updatedAtMs: 1,
+    sourceTransport: 'cloud-self-agent', sourceEventId: 'request-b',
+  } as CanonicalSessionMessage;
+  const mapped = mapCanonicalMessage(row, new Map(), 'human')!;
+  assert.equal(mapped.entryId, 'request-b');
+  assert.ok(mapped.replyAliasIds?.includes('request-b'));
 });
 
 test('initial model synchronization restores the route without adding a transcript notice', () => {

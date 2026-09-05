@@ -123,6 +123,7 @@ type DesktopSessionHandle = Arc<tokio::sync::Mutex<DesktopRuntimeSession>>;
 struct DesktopChatTurnHandle {
     snapshot: Arc<Mutex<DesktopChatTurnSnapshot>>,
     cancel: tokio_util::sync::CancellationToken,
+    execution_lease_deadline: Arc<Mutex<Option<std::time::Instant>>>,
 }
 
 #[derive(Clone, Default)]
@@ -587,6 +588,7 @@ pub async fn desktop_chat_start_message(
     visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
     scheduled_task_session_id: Option<String>,
     request_message_id: Option<String>,
+    execution_lease_deadline_ms: Option<i64>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     message_execution::start_message(
         manager.inner(),
@@ -600,6 +602,7 @@ pub async fn desktop_chat_start_message(
             scheduled_task_session_id,
             sync_session_at_start: false,
             request_message_id,
+            execution_lease_deadline_ms,
         },
     )
     .await

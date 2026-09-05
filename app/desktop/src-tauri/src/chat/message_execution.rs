@@ -27,6 +27,7 @@ pub(super) struct StartMessageInput {
     pub scheduled_task_session_id: Option<String>,
     pub sync_session_at_start: bool,
     pub request_message_id: Option<String>,
+    pub execution_lease_deadline_ms: Option<i64>,
 }
 
 async fn reserve_shared_request(
@@ -174,6 +175,7 @@ pub(super) async fn start_message(
         scheduled_task_session_id,
         sync_session_at_start,
         request_message_id,
+        execution_lease_deadline_ms,
     } = input;
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
@@ -213,13 +215,21 @@ pub(super) async fn start_message(
 
     let (previous_turn, turn_completion) = reserve_turn_in_session(
         manager,
-        turn_id,
+        turn_id.clone(),
         DesktopChatTurnHandle {
             snapshot: snapshot.clone(),
             cancel: cancel.clone(),
+            execution_lease_deadline: Arc::new(Mutex::new(None)),
         },
     )
     .await?;
+    if let Some(deadline) = execution_lease_deadline_ms {
+        if let Err(error) = super::turns::renew_execution_lease(manager, &turn_id, deadline).await {
+            cancel.cancel();
+            fail_turn(&snapshot, error.clone());
+            return Err(error);
+        }
+    }
     let snapshot_for_task = snapshot.clone();
     let is_agent_builder_session = agent_builder::is_agent_builder_session_id(&target_session_id);
     let manager_for_task = manager.clone();

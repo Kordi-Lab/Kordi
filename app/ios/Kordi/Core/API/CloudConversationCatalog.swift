@@ -88,7 +88,10 @@ enum CloudConversationCatalog {
             sessionForksById: sessionForksById
         ).filter { !existingAgentSessionIds.contains($0.sessionId) }
         let discoveredAgentIds = Set(agentSessions.compactMap(\.agentId))
-        let hasDefaultAgentSession = agentSessions.contains { $0.agentId == nil && $0.peerAccountId == account.accountId }
+        let hasDefaultAgentSession = agentSessions.contains {
+            $0.agentId == CanonicalAvatarSystem.agentID(account.defaultAgent?.agentId, ownerAccountID: account.accountId)
+                && $0.peerAccountId == account.accountId
+        }
 
         var agents = agentSessions
         if !hasDefaultAgentSession {

@@ -136,7 +136,15 @@ fn is_default_kordi_target(
     requester_account_id: &str,
 ) -> bool {
     agent_id == format!("cloud-agent:{owner_account_id}")
+        || agent_id == format!("cloud-self:{owner_account_id}")
         || (agent_id == "cloud-local-agent" && owner_account_id == requester_account_id)
+}
+
+pub async fn execution_agent_id(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<String> {
+    Ok(shared_cloud_agent_target_for_claim(pool, input)
+        .await?
+        .map(|target| target.agent_id)
+        .unwrap_or_else(|| format!("cloud-agent:{}", input.owner_account_id)))
 }
 
 pub async fn claim_has_shared_cloud_agent_target(

@@ -27,7 +27,7 @@ use crate::cloud_agent_runtime::runs::{
 };
 use crate::server::ServerState;
 
-async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
+pub(super) async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
     let Some(notifications) = state.notifications() else {
         return;
     };
@@ -61,6 +61,26 @@ fn include_service_provider_auth(state: &ServerState, run: &mut RunnerRunRespons
 pub fn routes(state: Arc<ServerState>) -> Router {
     let user_routes = Router::new()
         .route("/v1/cloud/agent-runs/claim", post(claim_cloud_agent_run))
+        .route(
+            "/v1/cloud/agent-runs/desktop/ready",
+            post(super::desktop::ready),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/claim",
+            post(super::desktop::claim),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/:run_id/renew",
+            post(super::desktop::renew),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/:run_id/admit",
+            post(super::desktop::admit),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/:run_id/progress",
+            post(super::desktop::progress),
+        )
         .route(
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
