@@ -1,5 +1,4 @@
 mod managed_child;
-mod shared_router;
 
 use kordi_cli::desktop_runtime::{DesktopChatContextMessage, DesktopVisibleTaskRecord};
 use tauri::State;
@@ -9,7 +8,6 @@ use super::{
 };
 
 pub(super) use managed_child::ManagedChildAgentRunner;
-pub(super) use shared_router::{classify_shared_task, existing_or_spawn_background_session};
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments, reason = "stable top-level Tauri IPC keys")]

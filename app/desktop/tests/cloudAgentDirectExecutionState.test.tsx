@@ -218,10 +218,12 @@ test('cloud direct local-agent execution does not wait for remote response guard
   assert.match(effect, /response publish failed/);
 });
 
-test('shared direct and group requests route before reserving the parent runtime', () => {
+test('shared direct and group requests use internal request runtimes without automatic forks', () => {
   const directSource = readFileSync(new URL('../src/features/cloud/useCloudDirectAgentExecution.ts', import.meta.url), 'utf8');
   const groupSource = readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
   const desktopSource = readFileSync(new URL('../src/lib/desktopBackgroundSessions.ts', import.meta.url), 'utf8');
+  const nativeSource = readFileSync(new URL('../src-tauri/src/chat/message_execution.rs', import.meta.url), 'utf8');
+  const sharedStart = nativeSource.slice(nativeSource.indexOf('pub(super) async fn start_shared_message('), nativeSource.indexOf('pub(super) async fn start_message('));
 
   assert.match(directSource, /startDesktopSharedChatMessage\(\s*message\.messageId,/);
   assert.match(groupSource, /startDesktopSharedChatMessage\(\s*message\.id,/);
@@ -229,6 +231,9 @@ test('shared direct and group requests route before reserving the parent runtime
   assert.match(directSource, /desktopSharedRequestAlreadyStarted\(error\)\) return/);
   assert.match(groupSource, /desktopSharedRequestAlreadyStarted\(error\)\) return/);
   assert.match(desktopSource, /desktop_chat_start_shared_message/);
+  assert.match(sharedStart, /input\.session_id = shared_request_runtime_session_id/);
+  assert.match(sharedStart, /start_message\(manager, input\)\.await/);
+  assert.doesNotMatch(sharedStart, /classify_shared_task|spawn_background_session|completed: true|forkTurns/);
 });
 
 test('background children publish their prompt and refresh catalog before streaming', () => {
@@ -355,7 +360,7 @@ test('cloud self-agent responses keep local runtime tool details local to the ow
 
   const view = mapCollaborationConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
   const agentMessage = view.messages.find((candidate) => candidate.role === 'owned-agent');
-  assert.equal(agentMessage?.sender, 'Kordi');
+  assert.equal(agentMessage?.sender, "Peer Person's Kordi");
   assert.equal(agentMessage?.turn?.tools[0]?.name, 'read');
 });
 

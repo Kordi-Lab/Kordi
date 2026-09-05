@@ -14,7 +14,7 @@ test('desktop chat start message forwards visible scheduled-task session id to T
   const block = source.slice(start, end);
 
   assert.match(block, /scheduledTaskSessionId:\s*string\s*\|\s*null/);
-  assert.match(block, /scheduledTaskSessionId,\s*\n\s*}\)/);
+  assert.match(block, /invokeDesktop<DesktopChatTurnSnapshot>\([^;]*\n\s*scheduledTaskSessionId,/);
 });
 
 test('cloud group agent scheduling uses the visible group session id, not the hidden runtime session id', () => {
