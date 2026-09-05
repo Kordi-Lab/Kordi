@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { waitForCloudAgentTurn } from '@/features/cloud/cloudAgentLocalExecution';
+import { persistQueuedDesktopMessage } from '@/features/chat/queuedDesktopMessages';
+import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
+import { prepareCanonicalQueuedMessage } from './optimistic';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
@@ -263,6 +266,7 @@ export function queuedDesktopChatMessageFromDraft({
     : `${timestamp}-${Math.random().toString(16).slice(2)}`;
   return {
     id: `queued-local-chat:${sessionId}:${randomId}`,
+    createdAtMs: timestamp,
     sessionId,
     scope,
     text,
@@ -584,12 +588,15 @@ export function useChatMessageActions({
       messageAction: quote?.source ? composerMessageAction(quote) : null,
     });
     enqueueLocalQueuedMessage(queuedMessage);
+    void persistQueuedDesktopMessage(queuedMessage, canonicalHumanIdentityId).then((row) => {
+      if (row) setCanonicalSessionState((current) => mergeCanonicalMessageRow(current, row));
+    }).catch((error) => setDesktopChatError(error instanceof Error ? error.message : 'Unable to synchronize queued message'));
     if (chatSendShouldAutoFollowMain(quote)) shouldAutoFollowChatRef.current = true;
     setDesktopChatError(null);
     setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', sessionId, ''));
     setChatComposerAttachments([]);
     resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-  }, [enqueueLocalQueuedMessage, resolveChatRuntimeRoute, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
+  }, [canonicalHumanIdentityId, enqueueLocalQueuedMessage, resolveChatRuntimeRoute, setCanonicalSessionState, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
 
   const watchLocalTurnAndFlushQueue = useCallback((
     turn: DesktopChatTurnSnapshot,
@@ -645,19 +652,9 @@ export function useChatMessageActions({
       const attachmentPaths = message.attachments.map((item) => item.path);
       const previewText = attachmentSummaryText(message.text);
       const quote = composerQuoteFromMessageAction(message.messageAction);
-      const preparedCanonicalMessage = sentPreparedCanonicalUserMessage(
-        prepareCanonicalUserMessage(
-          message.sessionId,
-          canonicalHumanIdentityId,
-          message.text,
-          message.attachments,
-          message.time,
-          'desktop-chat-ui',
-          'sending',
-          [],
-          quote,
-        ),
-      );
+      const preparedCanonicalMessage = prepareCanonicalQueuedMessage(message, canonicalHumanIdentityId, 'sent');
+      const queuedRow = await persistQueuedDesktopMessage(message, canonicalHumanIdentityId, 'sent');
+      if (queuedRow) setCanonicalSessionState((current) => mergeCanonicalMessageRow(current, queuedRow));
       const turn = await startDesktopChatMessage(
         message.sessionId,
         message.text,
@@ -676,9 +673,6 @@ export function useChatMessageActions({
         return baseState
           ? appendOptimisticOutboundMessage(baseState, message.sessionId, previewText, message.text, message.attachments, message.time, [], quote)
           : current;
-      });
-      await persistCanonicalUserMessage(preparedCanonicalMessage).catch((error: unknown) => {
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to save queued message');
       });
       watchLocalTurnAndFlushQueue(preparedCanonicalMessage
         ? { ...turn, replyToMessageId: preparedCanonicalMessage.messageId }

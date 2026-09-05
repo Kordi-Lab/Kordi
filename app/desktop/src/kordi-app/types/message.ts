@@ -295,6 +295,7 @@ export type DesktopChatToolSnapshot = {
 
 export type QueuedDesktopChatMessage = {
   id: string;
+  createdAtMs?: number;
   sessionId: string;
   scope: 'chat' | 'project';
   text: string;

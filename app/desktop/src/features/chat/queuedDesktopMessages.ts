@@ -1,4 +1,26 @@
 import type { QueuedDesktopChatMessage } from '@/kordi-app/types';
+import { upsertCanonicalMessageFast } from '@/lib/desktop';
+import { prepareCanonicalQueuedMessage } from './messageActions/optimistic';
+
+const pendingQueueWrites = new Map<string, Promise<unknown>>();
+
+export function persistQueuedDesktopMessage(
+  message: QueuedDesktopChatMessage,
+  senderIdentityId: string | null | undefined,
+  status: 'queued' | 'sent' | 'cancelled' = 'queued',
+) {
+  if (message.scope !== 'chat') return Promise.resolve(null);
+  const previous = pendingQueueWrites.get(message.id) ?? Promise.resolve();
+  const pending = previous.catch(() => undefined).then(async () => {
+    const prepared = prepareCanonicalQueuedMessage(message, senderIdentityId, status);
+    return prepared ? upsertCanonicalMessageFast(prepared.request) : null;
+  });
+  pendingQueueWrites.set(message.id, pending);
+  void pending.finally(() => {
+    if (pendingQueueWrites.get(message.id) === pending) pendingQueueWrites.delete(message.id);
+  }).catch(() => undefined);
+  return pending;
+}
 
 export const QUEUED_DESKTOP_MESSAGES_STORAGE_KEY = 'kordi.desktop.queuedDesktopMessages.v1';
 

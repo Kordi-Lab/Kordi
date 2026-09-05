@@ -38,6 +38,7 @@ import {
   cloudSelfAgentForwardMessageKind,
   cloudSelfAgentProgressPolicy,
   cloudSelfAgentShouldPublishProgress,
+  localSelfAgentRequestCanPublishExecution,
 } from './cloudSelfAgentForwardPolicy';
 import {
   CLOUD_SELF_AGENT_HEARTBEAT_MS,
@@ -124,8 +125,7 @@ export function useCloudSelfAgentForwardSync({
           const localRequest = state.messages
             .filter((message) => (
               message.sessionId === sessionId
-              && message.senderRole === 'user'
-              && !message.sourceTransport?.startsWith('cloud-')
+              && localSelfAgentRequestCanPublishExecution(message)
             ))
             .sort((left, right) => (
               right.sequenceNum - left.sequenceNum
