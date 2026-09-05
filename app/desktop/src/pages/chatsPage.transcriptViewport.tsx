@@ -63,7 +63,7 @@ export function useChatTranscriptViewport({
   presentation,
   actions,
   selection,
-  transcriptEntries,
+  transcriptEntries: sourceTranscriptEntries,
   transcriptMessages,
   transcriptTailKey,
 }: ChatSessionPaneProps & {
@@ -86,6 +86,11 @@ export function useChatTranscriptViewport({
     onEditQueuedMessage,
     onCancelQueuedMessage,
   } = viewport;
+  const transcriptEntries = useMemo(() => {
+    const queuedIds = new Set(queuedMessages.map((message) => message.id));
+    return sourceTranscriptEntries.filter(({ message }) => !queuedIds.has(message.id ?? '')
+      && !queuedIds.has(message.replyToMessageId ?? ''));
+  }, [queuedMessages, sourceTranscriptEntries]);
   const {
     isCompressionActive = false,
     plainAgentResponse = false,

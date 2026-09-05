@@ -275,6 +275,9 @@ export function useKordiAppRuntimeActions({
     editQueuedMessage: handleEditQueuedMessage,
   } = useKordiQueuedMessageActions({
     isNativeShell,
+    canonicalHumanIdentityId: canonicalSessionState?.profile.humanIdentityId,
+    setCanonicalSessionState,
+    onError: setDesktopChatError,
     queuedMessagesBySession: queuedDesktopMessagesBySession,
     setComposerDrafts: composerUi.setComposerDrafts,
     setQueuedMessagesBySession: setQueuedDesktopMessagesBySession,

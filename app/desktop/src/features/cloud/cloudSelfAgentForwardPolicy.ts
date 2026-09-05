@@ -1,4 +1,14 @@
 import type { CloudSelfAgentSyncOperation } from './cloudSelfAgentForwardSync';
+import type { CanonicalSessionMessage } from '@/kordi-app/types';
+
+export function localSelfAgentRequestCanPublishExecution(message: CanonicalSessionMessage) {
+  const content = message.content && typeof message.content === 'object'
+    ? message.content as Record<string, unknown> : {};
+  const queueState = typeof content.queueState === 'string' ? content.queueState : message.status;
+  return message.senderRole === 'user'
+    && !message.sourceTransport?.startsWith('cloud-')
+    && !['queued', 'cancelled'].includes(queueState);
+}
 
 export function cloudSelfAgentForwardMessageKind(
   operation: Pick<CloudSelfAgentSyncOperation, 'role' | 'sessionId'>,
