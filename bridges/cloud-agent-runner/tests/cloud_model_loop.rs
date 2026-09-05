@@ -55,6 +55,18 @@ impl CloudAgentRunClient for RecordingClient {
         Ok(provider_auth())
     }
 
+    async fn read_context(
+        &self,
+        run_id: &str,
+        tool: &str,
+        arguments: Value,
+    ) -> Result<Value, RunnerClientError> {
+        assert_eq!(run_id, run().run_id);
+        assert_eq!(tool, "read_session");
+        assert_eq!(arguments["mode"], "participants");
+        Ok(json!({"directory": "Retrieved Group Participant"}))
+    }
+
     async fn export_artifact(
         &self,
         run_id: &str,
@@ -448,4 +460,34 @@ async fn model_loop_exports_artifact_when_requested() {
     assert_eq!(exports.len(), 1);
     assert_eq!(exports[0].name, "report.md");
     assert_eq!(exports[0].sandbox_path, "report.md");
+}
+
+#[tokio::test]
+async fn group_directory_is_disclosed_only_after_explicit_tool_call() {
+    let client = RecordingClient::default();
+    let provider = FakeProvider::new(vec![
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall {
+            id: "read-directory".to_string(),
+            name: "read_session".to_string(),
+            arguments: json!({"sessionId": run().session_id, "mode": "participants"}),
+        }]),
+        ModelProviderResponse::FinalText("Found the participant".to_string()),
+    ]);
+    let text = run_model_loop(
+        &client,
+        &provider,
+        &run(),
+        &sandbox_handle(),
+        provider_auth(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(text, "Found the participant");
+    let messages = provider.seen_messages.lock().unwrap();
+    assert!(!serde_json::to_string(&messages[0])
+        .unwrap()
+        .contains("Retrieved Group Participant"));
+    assert!(serde_json::to_string(&messages[1])
+        .unwrap()
+        .contains("Retrieved Group Participant"));
 }

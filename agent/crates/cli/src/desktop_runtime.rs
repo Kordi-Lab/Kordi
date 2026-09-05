@@ -1,8 +1,10 @@
 use anyhow::{Result, anyhow, bail};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use kordi_core::agent_session::ThinkingLevel;
 use kordi_core::settings::Settings;
-use kordi_core::types::{ContentBlock, EntryBase, EntryId, SessionEntry};
+#[cfg(test)]
+use kordi_core::types::ContentBlock;
+use kordi_core::types::{EntryBase, EntryId, SessionEntry};
 use kordi_provider::registry::Model;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -18,6 +20,7 @@ mod background_sessions;
 mod model_options;
 mod models;
 mod prompt_context;
+mod shared_context;
 #[cfg(test)]
 use prompt_context::strip_session_prompt_context;
 mod session_catalog;
@@ -489,90 +492,6 @@ impl DesktopRuntimeSession {
         runtime: Option<kordi_tools::SessionObservationRuntime>,
     ) {
         self.setup.tool_ctx.session_observation = runtime;
-    }
-
-    pub fn sync_context_messages(
-        &mut self,
-        messages: &[DesktopChatContextMessage],
-    ) -> Result<usize> {
-        self.set_dynamic_system_context(prompt_context::system_context(messages));
-        let history_messages = messages
-            .iter()
-            .filter(|message| !prompt_context::is_system_context(message));
-        if messages.is_empty() {
-            return Ok(0);
-        }
-        ensure_session_row_created(&mut self.setup)?;
-
-        let mut imported_ids = HashSet::new();
-        for row in kordi_session::store::get_entries(&self.setup.conn, &self.setup.session_id)? {
-            let Ok(SessionEntry::CustomMessage {
-                custom_type,
-                details,
-                ..
-            }) = serde_json::from_str::<SessionEntry>(&row.payload)
-            else {
-                continue;
-            };
-            if custom_type != CLOUD_AGENT_CONTEXT_CUSTOM_TYPE {
-                continue;
-            }
-            if let Some(id) = details
-                .as_ref()
-                .and_then(|value| value.get("cloudMessageId"))
-                .and_then(|value| value.as_str())
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                imported_ids.insert(id.to_string());
-            }
-        }
-
-        let mut count = 0;
-        for message in history_messages {
-            let id = message.id.trim();
-            let author_name = message.author_name.trim();
-            let text = message.text.trim();
-            if id.is_empty() || author_name.is_empty() || text.is_empty() {
-                continue;
-            }
-            if !imported_ids.insert(id.to_string()) {
-                continue;
-            }
-            let author_kind = if message.author_kind.trim().eq_ignore_ascii_case("agent") {
-                "agent"
-            } else {
-                "human"
-            };
-            let timestamp = message
-                .created_at_ms
-                .and_then(DateTime::<Utc>::from_timestamp_millis)
-                .unwrap_or_else(Utc::now);
-            let parent_id =
-                kordi_session::store::get_session(&self.setup.conn, &self.setup.session_id)?
-                    .and_then(|session| session.leaf_id)
-                    .map(EntryId);
-            let entry = SessionEntry::CustomMessage {
-                base: EntryBase {
-                    id: EntryId::generate(),
-                    parent_id,
-                    timestamp,
-                },
-                custom_type: CLOUD_AGENT_CONTEXT_CUSTOM_TYPE.to_string(),
-                content: vec![ContentBlock::Text {
-                    text: format!("{author_name} ({author_kind}): {text}"),
-                }],
-                display: false,
-                details: Some(serde_json::json!({
-                    "cloudMessageId": id,
-                    "authorName": author_name,
-                    "authorKind": author_kind,
-                })),
-            };
-            kordi_session::store::append_entry(&self.setup.conn, &self.setup.session_id, &entry)?;
-            count += 1;
-        }
-        Ok(count)
     }
 
     pub fn sync_visible_task_records(

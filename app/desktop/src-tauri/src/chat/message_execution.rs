@@ -13,8 +13,7 @@ use super::{
     ensure_loaded_or_create_explicit_session, ensure_provider_ready_for_send, now_millis,
     prepare_desktop_session_for_send, reserve_turn_if_session_idle, snapshot_turn,
     sync_completed_desktop_session_to_canonical, turn_snapshot_has_model_task_tools, update_turn,
-    DesktopChatManager, DesktopChatMessageRoute, DesktopChatToolSnapshot, DesktopChatTurnHandle,
-    DesktopChatTurnSnapshot,
+    DesktopChatManager, DesktopChatMessageRoute, DesktopChatTurnHandle, DesktopChatTurnSnapshot,
 };
 
 pub(super) struct StartMessageInput {
@@ -26,124 +25,11 @@ pub(super) struct StartMessageInput {
     pub visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
     pub scheduled_task_session_id: Option<String>,
     pub sync_session_at_start: bool,
+    pub shared_context: bool,
 }
 
-pub(super) async fn start_shared_message(
-    manager: &DesktopChatManager,
-    request_id: String,
-    input: StartMessageInput,
-) -> Result<DesktopChatTurnSnapshot, String> {
-    let request_id = request_id.trim().to_string();
-    if request_id.is_empty() {
-        return start_message(manager, input).await;
-    }
-    let cwd = chat_cwd()?;
-    let decision = match super::background_tasks::classify_shared_task(
-        &cwd,
-        &input.text,
-        input.route.as_ref(),
-        input.context_messages.as_deref().unwrap_or_default(),
-    )
-    .await
-    {
-        Ok(decision) => decision,
-        Err(error) => {
-            eprintln!("Shared-task routing assessment failed; continuing inline: {error}");
-            return start_message(manager, input).await;
-        }
-    };
-    if !decision.should_run_in_background() {
-        return start_message(manager, input).await;
-    }
-
-    let target_session_id =
-        ensure_loaded_or_create_explicit_session(manager, &cwd, input.session_id.clone()).await?;
-    let session_handle = {
-        let sessions = manager.sessions.lock().await;
-        sessions
-            .get(&target_session_id)
-            .cloned()
-            .ok_or_else(|| "Session is unavailable".to_string())?
-    };
-    let base_profile = {
-        let mut session = session_handle.lock().await;
-        apply_desktop_chat_message_route(&mut session, input.route.as_ref())?;
-        session
-            .sync_visible_task_records(&input.visible_task_records.clone().unwrap_or_default())
-            .map_err(|error| error.to_string())?;
-        session
-            .sync_context_messages(&input.context_messages.clone().unwrap_or_default())
-            .map_err(|error| error.to_string())?;
-        let detail = session.detail().map_err(|error| error.to_string())?;
-        let agent = session.agent_profile();
-        DesktopRuntimeProfile {
-            provider: Some(detail.provider),
-            model: Some(detail.model),
-            thinking: Some(detail.thinking),
-            system_prompt: Some(agent.system_prompt),
-            skill_names: Some(agent.loaded_skills),
-            ..DesktopRuntimeProfile::default()
-        }
-    };
-    let background_session = super::background_tasks::existing_or_spawn_background_session(
-        manager,
-        input
-            .scheduled_task_session_id
-            .as_deref()
-            .unwrap_or(&target_session_id),
-        &request_id,
-        &cwd,
-        base_profile,
-        &decision,
-        &input,
-    )
-    .await
-    .map_err(|error| error.to_string())?;
-    let result_text = format!(
-        "Task agent running\n\nBackground session: {}",
-        serde_json::to_string(&background_session).map_err(|error| error.to_string())?,
-    );
-    let arguments = serde_json::json!({
-        "action": "spawn",
-        "task_name": background_session.title,
-        "taskTitle": background_session.title,
-        "message": input.text,
-        "forkTurns": "none",
-        "writeScope": decision.write_scope,
-    })
-    .to_string();
-    let now = now_millis();
-    Ok(DesktopChatTurnSnapshot {
-        id: uuid::Uuid::new_v4().to_string(),
-        session_id: target_session_id,
-        prompt: input.text.trim().to_string(),
-        status: "succeeded".to_string(),
-        message: "Background session started".to_string(),
-        assistant_text:
-            "I started this in a linked background session so this chat stays available."
-                .to_string(),
-        thinking_text: String::new(),
-        tools: vec![DesktopChatToolSnapshot {
-            id: format!("shared-task-route:{request_id}"),
-            name: "task_operator".to_string(),
-            status: "completed".to_string(),
-            arguments,
-            live_output: String::new(),
-            result_text: Some(result_text),
-            detail: Some("Started linked background session".to_string()),
-            artifact_path: None,
-            tool_layer: Some("operator".to_string()),
-            is_error: false,
-        }],
-        completed: true,
-        succeeded: true,
-        started_at_ms: now,
-        completed_at_ms: Some(now),
-        transcript_entry_id: None,
-        error: None,
-        transcript_refresh_required: false,
-    })
-}
+mod shared;
+pub(super) use shared::start_shared_message;
 
 pub(super) async fn start_message(
     manager: &DesktopChatManager,
@@ -158,6 +44,7 @@ pub(super) async fn start_message(
         visible_task_records,
         scheduled_task_session_id,
         sync_session_at_start,
+        shared_context,
     } = input;
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
@@ -232,9 +119,23 @@ pub(super) async fn start_message(
                     fail_turn(&snapshot_for_task, error.to_string());
                     return;
                 }
-                if let Err(error) =
-                    session.sync_context_messages(&context_messages.unwrap_or_default())
+                let context_messages = context_messages.unwrap_or_default();
+                let directory = context_messages
+                    .iter()
+                    .find(|message| message.context_role.as_deref() == Some("resource"))
+                    .map(|message| message.text.clone());
+                let synced = if shared_context {
+                    session.sync_shared_context_messages(&context_messages)
+                } else if !context_messages.is_empty()
+                    && context_messages
+                        .iter()
+                        .all(|message| message.context_role.as_deref() == Some("resource"))
                 {
+                    Ok(())
+                } else {
+                    session.sync_context_messages(&context_messages).map(|_| ())
+                };
+                if let Err(error) = synced {
                     fail_turn(&snapshot_for_task, error.to_string());
                     return;
                 }
@@ -243,7 +144,7 @@ pub(super) async fn start_message(
                     &mut session,
                     cwd.clone(),
                     &text,
-                    scheduled_task_session_id.as_deref(),
+                    (scheduled_task_session_id.as_deref(), directory),
                 )
                 .await;
             }

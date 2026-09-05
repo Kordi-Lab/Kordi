@@ -328,7 +328,7 @@ export type CloudAgentNativeContextMessage = {
   id: string;
   authorName: string;
   authorKind: 'human' | 'agent';
-  contextRole?: 'history' | 'system';
+  contextRole?: 'history' | 'system' | 'resource';
   text: string;
   createdAtMs: number;
 };

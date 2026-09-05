@@ -548,14 +548,13 @@ pub async fn desktop_chat_send_message(
     let cwd = chat_cwd()?;
     let target_session_id =
         ensure_loaded_or_create_explicit_session(&manager, &cwd, session_id).await?;
-    let session = {
+    let session_handle = {
         let sessions = manager.sessions.lock().await;
         sessions
             .get(&target_session_id)
             .cloned()
             .ok_or_else(|| "Session is unavailable".to_string())?
     };
-    let session_handle = session;
     let (provider, model) = {
         let mut session = session_handle.lock().await;
         if !agent_builder::is_agent_builder_session_id(&target_session_id) {
@@ -565,7 +564,7 @@ pub async fn desktop_chat_send_message(
                 &mut session,
                 cwd.clone(),
                 &text,
-                None,
+                (None, None),
             )
             .await;
         }
@@ -615,6 +614,7 @@ pub async fn desktop_chat_start_message(
             visible_task_records,
             scheduled_task_session_id,
             sync_session_at_start: false,
+            shared_context: false,
         },
     )
     .await

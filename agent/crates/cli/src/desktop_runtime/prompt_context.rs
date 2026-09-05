@@ -61,7 +61,7 @@ pub(super) fn with_dynamic_system_context(
     );
     match context.map(str::trim).filter(|value| !value.is_empty()) {
         Some(context) => {
-            format!("{DYNAMIC_START}\n{context}\n{DYNAMIC_END}\n\n{base_prompt}")
+            format!("{base_prompt}\n\n{DYNAMIC_START}\n{context}\n{DYNAMIC_END}")
         }
         None => with_saved_agent_persona(&base_prompt, cwd, persona_enabled),
     }
@@ -94,4 +94,23 @@ fn strip_tagged(prompt: &str, start_tag: &str, end_tag: &str) -> String {
     format!("{}{}", &prompt[..start], &prompt[end..])
         .trim_end()
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn changing_request_identity_preserves_the_stable_prompt_prefix() {
+        let base = "Stable agent instructions";
+        let first =
+            with_dynamic_system_context(base, Path::new("."), false, Some("Requester Alice"));
+        let second =
+            with_dynamic_system_context(&first, Path::new("."), false, Some("Requester Bob"));
+        assert!(first.starts_with(base));
+        assert!(second.starts_with(base));
+        assert!(!second.contains("Requester Alice"));
+        assert!(second.contains("Requester Bob"));
+        assert_eq!(second.matches(DYNAMIC_START).count(), 1);
+    }
 }

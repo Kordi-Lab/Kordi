@@ -208,3 +208,28 @@ test('cloneCloudSessionActivityForFork copies source tasks and artifacts to fork
   assert.equal(cloned.tasksBySessionId['session:fork:child']?.[0]?.sessionId, 'session:fork:child');
   assert.equal(cloned.artifactsBySessionId['session:fork:child']?.[0]?.sessionId, 'session:fork:child');
 });
+
+test('deriveCloudActivityFromTurn does not publish linked background sessions as durable tasks', () => {
+  const derived = deriveCloudActivityFromTurn({
+    sessionId: 'session:group:cloud',
+    localAccountId: 'acct_me',
+    participantAccountIds: ['acct_me', 'acct_peer'],
+    turn: {
+      id: 'turn_background', sessionId: 'session:group:cloud', prompt: 'inspect task status', status: 'complete', message: 'Routed', assistantText: 'I moved the task status investigation to a linked session.', thinkingText: '', completed: true, succeeded: true, error: null, transcriptRefreshRequired: false, startedAtMs: 1, completedAtMs: 2,
+      tools: [{
+        id: 'tool_background',
+        name: 'task_operator',
+        status: 'done',
+        arguments: JSON.stringify({ action: 'spawn', taskTitle: 'Investigate task status', summary: 'Inspect why completed work remains active.' }),
+        liveOutput: '',
+        resultText: 'Background session: {"sessionId":"child-session","title":"Investigate task status","status":"running"}',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'operator',
+        isError: false,
+      }],
+    },
+  });
+
+  assert.equal(derived.tasks.length, 0);
+});

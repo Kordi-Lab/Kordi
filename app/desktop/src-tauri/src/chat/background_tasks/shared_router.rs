@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use kordi_cli::desktop_runtime::{
-    background_session_for_parent_message, delete_session_forever, DesktopChatContextMessage,
-    DesktopRuntimeProfile, DesktopRuntimeSession,
+    background_session_for_parent_message, delete_session_forever, DesktopRuntimeProfile,
+    DesktopRuntimeSession,
 };
 use kordi_cli::task_operator::{ChildAgentRunner, SpawnRequest};
 use kordi_tools::task_operator::models::TaskOperatorBackgroundSession;
@@ -10,14 +10,26 @@ use serde::Deserialize;
 use super::super::{message_execution, DesktopChatManager, DesktopChatMessageRoute};
 use super::ManagedChildAgentRunner;
 
-const SHARED_TASK_ROUTER_SYSTEM_PROMPT: &str =
-    "You route work requested inside a shared human or group chat. Judge the request before any main-session work begins. Return one JSON object and nothing else. Choose background when the work is self-contained, likely extended, and does not need immediate negotiation with the user; examples include research, full reviews, web-plus-repository comparisons, multi-file analysis, builds, and test suites. Choose inline for brief answers, clarification, permission, immediate user choices, or work whose next step depends on negotiation in the parent chat. Do not solve the request. Do not use tools. Do not apply a rigid duration threshold. Schema: {\"mode\":\"inline|background\",\"taskTitle\":\"short title\",\"estimatedDuration\":\"brief|extended\",\"coordinationNeeded\":true|false,\"writeScope\":[\"relative/path\"],\"reason\":\"short reason\"}. Use an empty writeScope unless the user explicitly asks to modify files.";
+const SHARED_TASK_ROUTER_SYSTEM_PROMPT: &str = concat!(
+    "You route work requested inside a shared human or group chat. Judge the request before any main-session work begins. Return one JSON object and nothing else. ",
+    "Choose background when the work is self-contained, likely extended, and does not need immediate negotiation with the user; examples include research, full reviews, web-plus-repository comparisons, multi-file analysis, builds, and test suites. ",
+    "Choose inline for brief answers, clarification, permission, immediate user choices, or work whose next step depends on negotiation in the parent chat. Do not solve the request. Do not apply a rigid duration threshold. ",
+    "For a background decision, generate a specific taskTitle, a concise taskSummary, a natural acknowledgement in the local agent's voice, and a self-contained delegatedRequest for the child. Preserve the user's intent without adding work. If the request is ambiguous, use read_session on the supplied source session and retrieve only the messages needed to rewrite it clearly. Never put orchestration instructions in delegatedRequest. ",
+    "Make every generated field specific to this request; never use canned copy. Schema: {\"mode\":\"inline|background\",\"taskTitle\":\"short title\",\"taskSummary\":\"concise task summary\",\"acknowledgement\":\"natural parent-channel response\",\"delegatedRequest\":\"self-contained child request\",\"estimatedDuration\":\"brief|extended\",\"coordinationNeeded\":true|false,\"writeScope\":[\"relative/path\"],\"reason\":\"short reason\"}. ",
+    "Use an empty writeScope unless the user explicitly asks to modify files."
+);
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub(in crate::chat) struct SharedTaskRouteDecision {
     pub mode: String,
     pub task_title: String,
+    #[serde(default)]
+    pub task_summary: String,
+    #[serde(default)]
+    pub acknowledgement: String,
+    #[serde(default)]
+    pub delegated_request: String,
     #[serde(default)]
     pub coordination_needed: bool,
     #[serde(default)]
@@ -42,8 +54,35 @@ fn parse_shared_task_route(text: &str) -> Option<SharedTaskRouteDecision> {
         return None;
     }
     decision.task_title = decision.task_title.trim().chars().take(80).collect();
-    if decision.task_title.is_empty() {
-        decision.task_title = "Background task".to_string();
+    decision.task_summary = decision
+        .task_summary
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(280)
+        .collect();
+    decision.acknowledgement = decision
+        .acknowledgement
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(280)
+        .collect();
+    decision.delegated_request = decision
+        .delegated_request
+        .trim()
+        .chars()
+        .take(2_000)
+        .collect();
+    if decision.should_run_in_background()
+        && (decision.task_title.is_empty()
+            || decision.task_summary.is_empty()
+            || decision.acknowledgement.is_empty()
+            || decision.delegated_request.is_empty())
+    {
+        return None;
     }
     decision.write_scope = decision
         .write_scope
@@ -63,45 +102,46 @@ fn parse_shared_task_route(text: &str) -> Option<SharedTaskRouteDecision> {
 
 fn shared_task_router_prompt(
     request: &str,
-    context_messages: &[DesktopChatContextMessage],
+    source_session_id: &str,
+    source_message_id: &str,
 ) -> String {
-    let mut lines = vec![
+    [
         "Route this shared-chat request:".to_string(),
         String::new(),
         request.trim().to_string(),
-    ];
-    let history = context_messages
-        .iter()
-        .filter(|message| message.context_role.as_deref() != Some("system"))
-        .collect::<Vec<_>>();
-    if !history.is_empty() {
-        lines.push(String::new());
-        lines.push("Recent conversation context:".to_string());
-        lines.extend(
-            history.into_iter().rev().take(8).rev().map(|message| {
-                format!("- {}: {}", message.author_name.trim(), message.text.trim())
-            }),
-        );
-    }
-    lines.join("\n")
+        String::new(),
+        format!("Source session ID: {source_session_id}"),
+        format!("Source message ID: {source_message_id}"),
+    ]
+    .join("\n")
 }
 
 pub(in crate::chat) async fn classify_shared_task(
     cwd: &std::path::Path,
     request: &str,
     route: Option<&DesktopChatMessageRoute>,
-    context_messages: &[DesktopChatContextMessage],
+    source_session_id: &str,
+    source_message_id: &str,
 ) -> Result<SharedTaskRouteDecision> {
     let session_id = format!("shared-task-router:{}", uuid::Uuid::new_v4());
     let profile = DesktopRuntimeProfile {
         system_prompt: Some(SHARED_TASK_ROUTER_SYSTEM_PROMPT.to_string()),
-        tool_names: Some(Vec::new()),
+        tool_names: Some(vec![
+            "search_sessions".to_string(),
+            "read_session".to_string(),
+        ]),
         skill_names: Some(Vec::new()),
         ..DesktopRuntimeProfile::default()
     };
     let mut runtime =
         DesktopRuntimeSession::create_profiled_with_id(cwd.to_path_buf(), &session_id, profile)
             .await?;
+    runtime.set_session_observation_runtime(Some(
+        super::super::session_observation::build_session_observation_runtime(
+            Some(source_session_id.to_string()),
+            None,
+        ),
+    ));
     let result = async {
         super::super::apply_desktop_chat_message_route(&mut runtime, route)
             .map_err(anyhow::Error::msg)?;
@@ -111,7 +151,7 @@ pub(in crate::chat) async fn classify_shared_task(
             .map_err(anyhow::Error::msg)?;
         runtime
             .send_message(
-                shared_task_router_prompt(request, context_messages),
+                shared_task_router_prompt(request, source_session_id, source_message_id),
                 Vec::new(),
             )
             .await
@@ -157,27 +197,18 @@ fn task_name(title: &str, request_id: &str) -> String {
     )
 }
 
-fn delegated_message(request: &str, context_messages: &[DesktopChatContextMessage]) -> String {
-    let mut lines = vec![
-        "Complete this work in the linked background session. Keep progress and the final result here; do not wait on or duplicate work in the parent chat.".to_string(),
+fn delegated_message(
+    decision: &SharedTaskRouteDecision,
+    parent_session_id: &str,
+    parent_message_id: &str,
+) -> String {
+    [
+        decision.delegated_request.trim().to_string(),
         String::new(),
-        "Original request:".to_string(),
-        request.trim().to_string(),
-    ];
-    let history = context_messages
-        .iter()
-        .filter(|message| message.context_role.as_deref() != Some("system"))
-        .collect::<Vec<_>>();
-    if !history.is_empty() {
-        lines.push(String::new());
-        lines.push("Relevant shared-chat context:".to_string());
-        lines.extend(
-            history.into_iter().rev().take(8).rev().map(|message| {
-                format!("- {}: {}", message.author_name.trim(), message.text.trim())
-            }),
-        );
-    }
-    lines.join("\n")
+        format!("Source session ID: {parent_session_id}"),
+        format!("Source message ID: {parent_message_id}"),
+    ]
+    .join("\n")
 }
 
 pub(in crate::chat) async fn existing_or_spawn_background_session(
@@ -194,16 +225,23 @@ pub(in crate::chat) async fn existing_or_spawn_background_session(
     }
     let name = task_name(&decision.task_title, request_id);
     let runner =
-        ManagedChildAgentRunner::new(manager.clone(), parent_session_id.to_string(), base_profile);
+        ManagedChildAgentRunner::new(manager.clone(), parent_session_id.to_string(), base_profile)
+            .with_shared_context(
+                true,
+                input
+                    .context_messages
+                    .as_deref()
+                    .unwrap_or_default()
+                    .iter()
+                    .find(|message| message.context_role.as_deref() == Some("resource"))
+                    .map(|message| message.text.clone()),
+            );
     let spawned = runner
         .spawn(SpawnRequest {
             task_path: format!("/root/{name}"),
             task_name: name,
             task_title: decision.task_title.clone(),
-            message: delegated_message(
-                &input.text,
-                input.context_messages.as_deref().unwrap_or_default(),
-            ),
+            message: delegated_message(decision, parent_session_id, request_id),
             fork_turns: Some("none".to_string()),
             write_scope: decision.write_scope.clone(),
             cwd: cwd.to_path_buf(),
@@ -225,19 +263,62 @@ mod tests {
     fn shared_task_router_parses_background_judgment_and_sanitizes_write_scope() {
         let decision = parse_shared_task_route(
             r#"```json
-            {"mode":"background","taskTitle":"Review runtime","estimatedDuration":"extended","coordinationNeeded":false,"writeScope":["agent/crates","../outside","/absolute"],"reason":"Multi-phase review"}
+            {"mode":"background","taskTitle":"Review runtime","taskSummary":"Inspect runtime behavior and report the findings.","acknowledgement":"I moved the runtime review into a linked background session and will keep its findings there.","delegatedRequest":"Inspect the runtime behavior and report the findings with evidence.","estimatedDuration":"extended","coordinationNeeded":false,"writeScope":["agent/crates","../outside","/absolute"],"reason":"Multi-phase review"}
             ```"#,
         )
         .expect("route decision");
 
         assert!(decision.should_run_in_background());
         assert_eq!(decision.task_title, "Review runtime");
+        assert_eq!(
+            decision.task_summary,
+            "Inspect runtime behavior and report the findings."
+        );
+        assert_eq!(
+            decision.acknowledgement,
+            "I moved the runtime review into a linked background session and will keep its findings there."
+        );
+        assert_eq!(
+            decision.delegated_request,
+            "Inspect the runtime behavior and report the findings with evidence."
+        );
         assert_eq!(decision.write_scope, vec!["agent/crates"]);
+    }
+
+    #[test]
+    fn shared_task_router_rejects_background_routes_without_generated_copy() {
+        assert!(parse_shared_task_route(
+            r#"{"mode":"background","taskTitle":"Review runtime","coordinationNeeded":false}"#,
+        )
+        .is_none());
     }
 
     #[test]
     fn shared_task_router_rejects_unknown_modes() {
         assert!(parse_shared_task_route(r#"{"mode":"later","taskTitle":"Review"}"#).is_none());
+    }
+
+    #[test]
+    fn delegated_message_uses_session_tools_instead_of_copying_chat_history() {
+        let message = delegated_message(
+            &SharedTaskRouteDecision {
+                mode: "background".to_string(),
+                task_title: "Review report".to_string(),
+                task_summary: "Review the latest report.".to_string(),
+                acknowledgement: "I moved the report review to a linked session.".to_string(),
+                delegated_request: "Review the latest report and identify actionable findings."
+                    .to_string(),
+                coordination_needed: false,
+                write_scope: Vec::new(),
+            },
+            "session:group:one",
+            "message:request",
+        );
+
+        assert!(message.starts_with("Review the latest report"));
+        assert!(message.contains("Source session ID: session:group:one"));
+        assert!(message.contains("Source message ID: message:request"));
+        assert!(!message.contains("Complete this work"));
     }
 
     #[test]
@@ -248,5 +329,31 @@ mod tests {
         .expect("route decision");
 
         assert!(!decision.should_run_in_background());
+    }
+}
+
+#[cfg(test)]
+mod generated_copy_tests {
+    use super::parse_shared_task_route;
+
+    #[test]
+    fn every_background_copy_field_is_required_without_a_canned_fallback() {
+        let complete = serde_json::json!({"mode": "background", "taskTitle": "Review rollout",
+            "taskSummary": "Check the rollout for regressions.", "acknowledgement": "I will check the rollout in a linked task.",
+            "delegatedRequest": "Check the rollout for regressions and report evidence."});
+        assert!(parse_shared_task_route(&complete.to_string()).is_some());
+        for field in [
+            "taskTitle",
+            "taskSummary",
+            "acknowledgement",
+            "delegatedRequest",
+        ] {
+            let mut incomplete = complete.clone();
+            incomplete[field] = serde_json::json!("   ");
+            assert!(
+                parse_shared_task_route(&incomplete.to_string()).is_none(),
+                "missing {field}"
+            );
+        }
     }
 }

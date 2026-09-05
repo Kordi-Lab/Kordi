@@ -36,6 +36,7 @@ pub async fn desktop_chat_start_shared_message(
             visible_task_records,
             scheduled_task_session_id,
             sync_session_at_start: false,
+            shared_context: false,
         },
     )
     .await

@@ -109,7 +109,7 @@ export function cloudGroupNativeContextMessages({
         createdAtMs: message.createdAtMs,
       }];
     }),
-  );
+  ).slice(-8).map((message) => ({ ...message, text: Array.from(message.text).slice(0, 800).join('') }));
   const requestEnvelope = groupRows.find(({ envelope }) => (
     envelope?.kind === 'group-message'
       && envelope.groupId === groupId
@@ -156,13 +156,20 @@ export function cloudGroupNativeContextMessages({
       authorName: 'Group agent identity',
       authorKind: 'agent',
       contextRole: 'system',
-      text: personaInstruction,
+      text: `${personaInstruction}\nCurrent request author: ${JSON.stringify({
+        accountId: requestEnvelope.message.senderAccountId,
+        kind: requestEnvelope.message.senderKind === 'agent' ? 'agent' : 'human',
+        name: requestEnvelope.message.senderDisplayName
+          || requestEnvelope.participants.find((participant) => participant.accountId === requestEnvelope.message?.senderAccountId)?.displayName
+          || 'Group participant',
+      })}. Interpret I/me/my as this author; the group creator is not necessarily the requester.`,
       createdAtMs: requestCreatedAtMs,
     },
     ...(mentionInstruction ? [{
       id: `cloud-group-mention-permissions:${groupId}:${cloudContextFingerprint(mentionInstruction)}`,
       authorName: 'Group mention directory',
       authorKind: 'agent' as const,
+      contextRole: 'resource' as const,
       text: mentionInstruction,
       createdAtMs: requestCreatedAtMs,
     }] : []),

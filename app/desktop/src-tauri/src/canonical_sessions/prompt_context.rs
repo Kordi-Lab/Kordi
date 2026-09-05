@@ -11,7 +11,7 @@ use super::{
 };
 
 mod background_routing;
-use background_routing::SHARED_SESSION_BACKGROUND_WORK_POLICY;
+pub(crate) use background_routing::SHARED_SESSION_BACKGROUND_WORK_POLICY;
 
 fn truncate_context_line(value: &str, max_chars: usize) -> String {
     let trimmed = value.trim().replace(['\r', '\n'], " ");
@@ -547,11 +547,7 @@ fn local_self_role(
 fn requester_role(
     conn: &Connection,
     participants: &[PromptParticipantRow],
-    created_by_identity_id: &str,
 ) -> Result<Option<IdentityContextRole>, String> {
-    if let Some(role) = identity_role_for_id(conn, participants, Some(created_by_identity_id))? {
-        return Ok(Some(role));
-    }
     let profile = ensure_local_profile(conn)?;
     identity_role_for_id(conn, participants, profile.human_identity_id.as_deref())
 }
@@ -583,27 +579,6 @@ fn should_render_identity_frame(
         || project_name.is_some_and(|value| !value.trim().is_empty())
 }
 
-fn push_concise_participants(lines: &mut Vec<String>, participants: &[PromptParticipantRow]) {
-    if participants.is_empty() {
-        return;
-    }
-    lines.push(String::new());
-    lines.push("Session participants:".to_string());
-    for participant in participants.iter().take(12) {
-        let owner_suffix = participant
-            .owner_display_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(|owner| format!(", owner: {owner}"))
-            .unwrap_or_default();
-        lines.push(format!(
-            "- {} ({}, {}{})",
-            participant.display_name, participant.kind, participant.role, owner_suffix
-        ));
-    }
-}
-
 pub(crate) fn local_agent_session_prompt_context(
     parent_session_id: Option<&str>,
 ) -> Result<Option<String>, String> {
@@ -630,32 +605,39 @@ pub(crate) fn local_agent_session_prompt_context(
     ) {
         let self_identity =
             local_self_role(&conn, &participants, session.primary_identity_id.as_deref())?;
-        let requester = requester_role(&conn, &participants, &session.created_by_identity_id)?;
+        let requester = requester_role(&conn, &participants)?;
         lines.push(String::new());
         lines.push(render_multi_participant_identity_context(
             &IdentityContextRequest {
                 permissions: identity_permissions(&self_identity.identity_id, "recent-window"),
+                participants: participants
+                    .iter()
+                    .filter(|participant| {
+                        participant.identity_id == self_identity.identity_id
+                            || requester.as_ref().is_some_and(|requester| {
+                                participant.identity_id == requester.identity_id
+                            })
+                    })
+                    .map(PromptParticipantRow::to_identity_context_participant)
+                    .collect(),
                 self_identity,
                 requester,
                 target: None,
-                participants: participants
-                    .iter()
-                    .map(PromptParticipantRow::to_identity_context_participant)
-                    .collect(),
                 session_id: Some(session.id.clone()),
                 session_kind: Some(session.kind.clone()),
                 project_name: session.project_name.clone(),
             },
         ));
-    } else {
-        push_concise_participants(&mut lines, &participants);
     }
 
-    let task_records = local_agent_session_task_records(Some(session_id))?;
-    push_current_session_tasks(&mut lines, &task_records);
+    if session.kind != "group" {
+        let task_records = local_agent_session_task_records(Some(session_id))?;
+        push_current_session_tasks(&mut lines, &task_records);
+    }
+    lines.push(format!("Older messages and other participants are available on demand: read_session sessionId={session_id}, mode=index for message IDs, mode=messages for selected messageIds, mode=participants for the member directory. Use search_sessions for relevant history."));
     push_recent_session_messages(
         &mut lines,
-        recent_session_message_lines(&conn, session_id, 16)?,
+        recent_session_message_lines(&conn, session_id, 8)?,
     );
 
     Ok(Some(lines.join("\n")))
