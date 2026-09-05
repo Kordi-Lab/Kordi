@@ -196,23 +196,21 @@ test('cloud direct local-agent provider failure replaces processing immediately 
   assert.equal(view.messages.some((candidate) => candidate.turn?.status === 'processing'), false);
 });
 
-test('cloud direct local-agent execution does not wait for remote response guards or rerun after publish failure', () => {
+test('shared direct execution acquires ownership before starting and fences publication', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudDirectAgentExecution.ts', import.meta.url), 'utf8');
   const effectStart = source.indexOf('for (const [peerId, messages] of cloudMessageIndex.byPeerId)');
   const effectEnd = source.indexOf('\n  }, [', effectStart);
   assert.ok(effectStart >= 0 && effectEnd > effectStart, 'expected direct Cloud agent effect');
   const effect = source.slice(effectStart, effectEnd);
   const startTurnIndex = effect.indexOf('const startedTurn = await startDesktopSharedChatMessage');
-  const awaitGuardIndex = effect.indexOf('await Promise.all([', startTurnIndex);
-  const finalGuardIndex = effect.indexOf('cloudAgentResponsePublicationIsBlocked({', awaitGuardIndex);
-  const activityPublishIndex = effect.indexOf('await publishDerivedCloudSessionActivity', startTurnIndex);
+  const claimIndex = effect.indexOf('await acquireDesktopExecutionLease');
 
   assert.ok(startTurnIndex >= 0, 'expected local agent execution');
-  assert.ok(awaitGuardIndex > startTurnIndex, 'remote guards must only block response publication');
-  assert.ok(finalGuardIndex > awaitGuardIndex, 'expected a fresh response guard after local execution');
-  assert.ok(activityPublishIndex > finalGuardIndex, 'ownership must be checked before publishing derived activity');
-  assert.match(effect, /const responseGuardPromise = cloudAgentResponsePublicationIsBlocked\(/);
-  assert.match(effect, /const \[initialResponseBlocked, finalResponseBlocked\]\s*=\s*await Promise\.all\(/);
+  assert.ok(claimIndex >= 0 && claimIndex < startTurnIndex);
+  assert.match(effect, /lease\.deadline/);
+  assert.match(effect, /lease\.attach\(startedTurn\.id\)/);
+  assert.match(effect, /lease\.publisher\.sendMessage/);
+  assert.match(effect, /finally \{ lease\.dispose\(\); \}/);
   assert.doesNotMatch(effect.slice(0, startTurnIndex), /await client\.listMessages|await cloudFallbackRunAlreadyOwnsRequest/);
   assert.doesNotMatch(effect, /processedCloudAgentMentionIdsRef\.current\.delete\(message\.messageId\)/);
   assert.match(effect, /response publish failed/);
