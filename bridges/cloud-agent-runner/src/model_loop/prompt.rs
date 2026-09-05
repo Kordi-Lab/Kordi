@@ -46,6 +46,8 @@ pub fn tool_catalog() -> Vec<Value> {
             "Run a shell command inside the Cloud sandbox.",
             vec![("command", "string")],
         ),
+        context_tool_schema(&kordi_tools::session_observation::SearchSessionsTool),
+        context_tool_schema(&kordi_tools::session_observation::ReadSessionTool),
         local_tool_schema(&WebSearchTool),
         local_tool_schema(&WebFetchTool),
         tool_schema(
@@ -91,4 +93,13 @@ fn tool_schema(name: &str, description: &str, properties: Vec<(&str, &str)>) -> 
             }
         }
     })
+}
+
+fn context_tool_schema(tool: &dyn Tool) -> Value {
+    let mut schema = local_tool_schema(tool);
+    schema["function"]["parameters"]["properties"]["beforeSequence"] = serde_json::json!({
+        "type": "integer", "minimum": 1,
+        "description": "Continue an older page using nextBeforeSequence returned by the previous call. Search examines a bounded page; continue when hasMore is true."
+    });
+    schema
 }

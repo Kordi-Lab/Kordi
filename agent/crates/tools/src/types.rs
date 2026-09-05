@@ -199,6 +199,8 @@ pub struct SearchSessionsRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadSessionRequest {
+    #[serde(default)]
+    pub offset: Option<usize>,
     pub session_id: String,
     pub around_message_id: Option<String>,
     pub limit: Option<usize>,
@@ -263,6 +265,8 @@ pub struct SessionObservationWindow {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionObservationMessage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<usize>,
     pub message_id: String,
     pub sender: String,
     pub role: String,
@@ -275,6 +279,8 @@ pub struct SessionObservationMessage {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadSessionResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directory: Option<String>,
     pub session: SessionObservationReadSession,
     pub window: SessionObservationWindow,
     pub messages: Vec<SessionObservationMessage>,

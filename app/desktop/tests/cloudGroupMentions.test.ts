@@ -352,6 +352,8 @@ test('local group context maps the requester and disables second-hop agents', ()
   const personaContext = context.find((message) => message.contextRole === 'system');
   assert.match(personaContext?.text ?? '', /^You are Kordi, the currently responding agent/);
   assert.match(personaContext?.text ?? '', /requester does not own you/);
+  assert.equal(context.at(-1)?.contextRole, 'resource');
+  assert.doesNotMatch(personaContext?.text ?? '', /People:|Agents:/);
   assert.match(context.at(-1)?.text ?? '', /Group @mention permissions/);
   assert.match(context.at(-1)?.text ?? '', /"my Kordi" means @KordiAlexMorgan/);
   assert.doesNotMatch(context.at(-1)?.text ?? '', /@KordiDArcyLin/);

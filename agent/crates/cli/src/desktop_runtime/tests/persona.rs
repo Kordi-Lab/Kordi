@@ -41,7 +41,7 @@ async fn sync_context_messages_imports_cloud_history_once_as_native_session_cont
     assert_eq!(runtime.sync_context_messages(&imported)?, 1);
     assert_eq!(runtime.sync_context_messages(&imported)?, 0);
     assert!(
-        runtime.agent_profile().system_prompt.starts_with(
+        runtime.agent_profile().system_prompt.contains(
             "<desktop_dynamic_system_context>\nYou are Scout. The requester owns you."
         )
     );
@@ -123,7 +123,7 @@ async fn saved_owner_persona_refreshes_existing_sessions_and_stays_system_first(
         runtime
             .setup
             .system_prompt
-            .starts_with("<desktop_dynamic_system_context>\nYou are Researcher.")
+            .contains("<desktop_dynamic_system_context>\nYou are Researcher.")
     );
     assert!(
         !runtime
@@ -136,5 +136,40 @@ async fn saved_owner_persona_refreshes_existing_sessions_and_stays_system_first(
     assert!(runtime.setup.system_prompt.starts_with(
         "<desktop_owner_agent_persona>\nYou are Atlas, the user's local Kordi agent."
     ));
+    Ok(())
+}
+
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
+#[tokio::test]
+async fn shared_context_is_bounded_and_does_not_include_the_member_directory() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let test_home = tempfile::tempdir()?;
+    let _home = EnvVarGuard::set_path("HOME", test_home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    Settings { default_provider: Some("openai".to_string()), default_model: Some("gpt-4o-mini".to_string()), ..Settings::default() }.save_global()?;
+    let cwd = tempfile::tempdir()?;
+    let mut runtime = DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), &format!("shared-context-{}", uuid::Uuid::new_v4())).await?;
+    let mut messages = (0..100).map(|index| DesktopChatContextMessage {
+        id: format!("message-{index}"), author_name: "Recent speaker".to_string(), author_kind: "human".to_string(),
+        context_role: None, text: format!("history-{index}: {}", "x".repeat(2000)), created_at_ms: Some(index),
+    }).collect::<Vec<_>>();
+    messages.push(DesktopChatContextMessage {
+        id: "directory".to_string(), author_name: "Directory".to_string(), author_kind: "agent".to_string(),
+        context_role: Some("resource".to_string()), text: "Unrelated Participant Secret Name".to_string(), created_at_ms: None,
+    });
+    runtime.group_observation_context(Some("group-a"), Some("Unrelated Participant Secret Name"))?;
+    assert_eq!(runtime.group_observation_context(None, None)?, Some(("group-a".to_string(), Some("Unrelated Participant Secret Name".to_string()))));
+    runtime.sync_shared_context_messages(&messages)?;
+    assert_eq!(runtime.group_observation_context(None, None)?.unwrap().0, "group-a");
+    let context = kordi_session::context::build_context(&runtime.setup.conn, runtime.session_id())?;
+    let payload = serde_json::to_string(&context.messages)?;
+    assert!(!payload.contains("Secret Name"));
+    assert!(!payload.contains("history-91:"));
+    assert!(payload.contains("history-92:"));
+    assert!(payload.contains("history-99:"));
+    assert!(payload.len() < 8000);
+    runtime.sync_shared_context_messages(&[])?;
+    assert!(kordi_session::context::build_context(&runtime.setup.conn, runtime.session_id())?.messages.is_empty());
+    assert!(!kordi_session::store::get_entries(&runtime.setup.conn, runtime.session_id())?.is_empty());
     Ok(())
 }

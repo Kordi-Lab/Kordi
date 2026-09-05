@@ -85,6 +85,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
     let runner_routes = Router::new()
         .route("/v1/cloud/agent-runs/lease", post(lease_runner_run))
         .route(
+            "/v1/cloud/agent-runs/:run_id/context",
+            post(read_runner_context),
+        )
+        .route(
             "/v1/cloud/agent-runs/:run_id/running",
             post(mark_runner_run_running),
         )
@@ -455,5 +459,24 @@ async fn revoke_provider_auth_snapshot(
                 StatusCode::INTERNAL_SERVER_ERROR,
             )
         }
+    }
+}
+
+async fn read_runner_context(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Path(run_id): Path<String>,
+    Json(input): Json<super::runs::context_read::ContextReadRequest>,
+) -> Response {
+    if !runner_authorized(&headers) {
+        return runner_unauthorized();
+    }
+    match super::runs::context_read::read_context(state.db_pool(), &run_id, input).await {
+        Ok(value) => Json(value).into_response(),
+        Err(error) => run_error_response(
+            "read run context",
+            "Conversation context is unavailable.",
+            error,
+        ),
     }
 }

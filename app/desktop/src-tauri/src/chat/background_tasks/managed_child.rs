@@ -29,6 +29,8 @@ pub(in crate::chat) struct ManagedChildAgentRunner {
     manager: DesktopChatManager,
     parent_session_id: String,
     base_profile: DesktopRuntimeProfile,
+    directory: Option<String>,
+    scoped_observation: bool,
     jobs: Arc<Mutex<BTreeMap<String, ManagedTask>>>,
 }
 
@@ -42,8 +44,20 @@ impl ManagedChildAgentRunner {
             manager,
             parent_session_id,
             base_profile,
+            directory: None,
+            scoped_observation: false,
             jobs: Arc::new(Mutex::new(BTreeMap::new())),
         }
+    }
+
+    pub(in crate::chat) fn with_shared_context(
+        mut self,
+        scoped: bool,
+        directory: Option<String>,
+    ) -> Self {
+        self.scoped_observation = scoped;
+        self.directory = directory;
+        self
     }
 
     fn profile_for(&self, request: &SpawnRequest) -> Result<DesktopRuntimeProfile> {
@@ -83,10 +97,22 @@ impl ManagedChildAgentRunner {
                 text: message,
                 attachment_paths: Some(attachment_paths),
                 route: None,
-                context_messages: None,
+                context_messages: self.directory.as_ref().map(|text| {
+                    vec![kordi_cli::desktop_runtime::DesktopChatContextMessage {
+                        id: "group-directory".to_string(),
+                        author_name: "Group directory".to_string(),
+                        author_kind: "agent".to_string(),
+                        context_role: Some("resource".to_string()),
+                        text: text.clone(),
+                        created_at_ms: None,
+                    }]
+                }),
                 visible_task_records: None,
-                scheduled_task_session_id: None,
+                scheduled_task_session_id: self
+                    .scoped_observation
+                    .then(|| self.parent_session_id.clone()),
                 sync_session_at_start: true,
+                shared_context: false,
             },
         )
         .await

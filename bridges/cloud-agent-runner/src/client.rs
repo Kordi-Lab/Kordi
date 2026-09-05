@@ -126,6 +126,17 @@ pub trait CloudAgentRunClient {
         run_id: &str,
     ) -> Result<ProviderAuthMaterial, RunnerClientError>;
 
+    async fn read_context(
+        &self,
+        _run_id: &str,
+        _tool: &str,
+        _arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        Err(RunnerClientError::Request(
+            "Conversation retrieval is unavailable".to_string(),
+        ))
+    }
+
     async fn export_artifact(
         &self,
         run_id: &str,
@@ -272,6 +283,19 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
             )
             .await?;
         Ok(envelope.provider_auth)
+    }
+
+    async fn read_context(
+        &self,
+        run_id: &str,
+        tool: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        self.post_json(
+            &format!("/v1/cloud/agent-runs/{run_id}/context"),
+            serde_json::json!({ "runnerId": self.runner_id, "tool": tool, "arguments": arguments }),
+        )
+        .await
     }
 
     async fn export_artifact(

@@ -5,6 +5,7 @@ export type CloudAgentBackgroundSession = {
   sessionId: string;
   turnId?: string;
   title: string;
+  summary?: string;
   status: string;
 };
 
@@ -24,10 +25,12 @@ export function cloudAgentBackgroundSessionsFromTurn(
       const title = typeof parsed.title === 'string' ? parsed.title.trim().slice(0, 80) : '';
       if (!sessionId || !title || sessions.some((session) => session.sessionId === sessionId)) continue;
       const turnId = typeof parsed.turnId === 'string' ? parsed.turnId.trim().slice(0, 256) : '';
+      const summary = typeof parsed.summary === 'string' ? parsed.summary.trim().slice(0, 280) : '';
       sessions.push({
         sessionId,
         ...(turnId ? { turnId } : {}),
         title,
+        ...(summary ? { summary } : {}),
         status: typeof parsed.status === 'string' ? parsed.status.trim().slice(0, 32) || 'running' : 'running',
       });
       if (sessions.length >= 4) break;
@@ -45,10 +48,10 @@ export function cloudAgentPublicBackgroundToolsFromTurn(
     id: `background-session:${session.sessionId}`,
     name: 'task_operator',
     status: 'completed',
-    arguments: '{}',
+    arguments: JSON.stringify({ taskTitle: session.title, summary: session.summary }),
     liveOutput: '',
     resultText: `Background session: ${JSON.stringify(session)}`,
-    detail: 'Started linked background session',
+    detail: session.summary ?? session.title,
     toolLayer: 'operator',
     isError: false,
   }));
@@ -63,10 +66,12 @@ export function parseCloudAgentBackgroundSessions(value: unknown): CloudAgentBac
     const title = typeof record.title === 'string' ? record.title.trim().slice(0, 80) : '';
     if (!sessionId || !title) return [];
     const turnId = typeof record.turnId === 'string' ? record.turnId.trim().slice(0, 256) : '';
+    const summary = typeof record.summary === 'string' ? record.summary.trim().slice(0, 280) : '';
     return [{
       sessionId,
       ...(turnId ? { turnId } : {}),
       title,
+      ...(summary ? { summary } : {}),
       status: typeof record.status === 'string' ? record.status.trim().slice(0, 32) || 'running' : 'running',
     }];
   }).slice(0, 4);

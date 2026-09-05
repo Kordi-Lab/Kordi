@@ -122,6 +122,12 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     run: &CloudAgentRun,
     call: &ModelToolCall,
 ) -> String {
+    if matches!(call.name.as_str(), "search_sessions" | "read_session") {
+        return match client.read_context(&run.run_id, &call.name, call.arguments.clone()).await {
+            Ok(value) => value.to_string(),
+            Err(_) => "Conversation retrieval is unavailable or access was revoked. Do not infer missing context.".to_string(),
+        };
+    }
     if call.name == "export_artifact" {
         return export_model_artifact(client, sandbox, run, &call.arguments).await;
     }
