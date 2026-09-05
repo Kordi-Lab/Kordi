@@ -8,7 +8,7 @@ import {
   type CloudAgentExecutionSnapshot,
 } from './cloudAgentExecutionSnapshot';
 import { cloudMessageActionAllowsAgentContext } from './cloudAgentTriggerPolicy';
-import { cloudDirectMessageAction, cloudDirectMessageDisplayText } from './cloudDirectMessages';
+import { cloudDirectMessageAction, cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from './cloudDirectMessages';
 import { isCloudGroupControlMessage } from './cloudGroupMessages';
 import { compareCloudMessages } from './cloudMessageMerge';
 const CLOUD_AGENT_RESPONSE_PREFIX = 'kordi-cloud-agent-response:';
@@ -230,7 +230,9 @@ export function parseCloudAgentCancel(body: string): CloudAgentCancelEnvelope | 
 }
 
 export function isCloudAgentControlMessage(body: string): boolean {
-  return Boolean(parseCloudAgentCancel(body));
+  const envelope = parseCloudDirectMessageEnvelope(body);
+  return Boolean(parseCloudAgentCancel(body))
+    || (envelope?.synchronizationOnly === true && Boolean(envelope.agentRuntimeRoute));
 }
 
 export function normalizedCloudAgentMention(value: string): string {

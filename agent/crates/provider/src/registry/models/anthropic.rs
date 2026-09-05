@@ -4,15 +4,6 @@ use crate::registry::{ApiType, Model};
 pub(super) fn builtin_models() -> Vec<Model> {
     vec![
         model(
-            "claude-fable-5",
-            "Claude Fable 5",
-            "anthropic",
-            ApiType::AnthropicMessages,
-            (1_000_000, 128_000),
-            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
-            cost(10.0, 50.0, 1.0, 12.5),
-        ),
-        model(
             "claude-fable-5-1",
             "Claude Fable 5.1",
             "anthropic",
@@ -20,6 +11,15 @@ pub(super) fn builtin_models() -> Vec<Model> {
             (1_000_000, 128_000),
             runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
             cost(10.0, 50.0, 0.25, 12.5),
+        ),
+        model(
+            "claude-fable-5",
+            "Claude Fable 5",
+            "anthropic",
+            ApiType::AnthropicMessages,
+            (1_000_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.anthropic.com"),
+            cost(10.0, 50.0, 1.0, 12.5),
         ),
         model(
             "claude-haiku-4-5",
@@ -173,18 +173,18 @@ mod tests {
 
         let expected = [
             ExpectedModel {
-                id: "claude-fable-5",
-                name: "Claude Fable 5",
-                context_window: 1_000_000,
-                max_tokens: 128_000,
-                costs: (10.0, 50.0, 1.0, 12.5),
-            },
-            ExpectedModel {
                 id: "claude-fable-5-1",
                 name: "Claude Fable 5.1",
                 context_window: 1_000_000,
                 max_tokens: 128_000,
                 costs: (10.0, 50.0, 0.25, 12.5),
+            },
+            ExpectedModel {
+                id: "claude-fable-5",
+                name: "Claude Fable 5",
+                context_window: 1_000_000,
+                max_tokens: 128_000,
+                costs: (10.0, 50.0, 1.0, 12.5),
             },
             ExpectedModel {
                 id: "claude-haiku-4-5",

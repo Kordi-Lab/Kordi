@@ -10,6 +10,7 @@ export type CloudDirectMessageEnvelope = {
   schemaVersion: 1;
   kind: 'message';
   text: string;
+  synchronizationOnly?: boolean;
   mentions?: MessageMention[];
   messageAction?: MessageActionMetadata | null;
   targetCloudAgentId?: string | null;

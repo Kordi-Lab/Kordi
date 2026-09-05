@@ -17,6 +17,7 @@ enum CloudMessageCodec {
         let targetCloudAgentOwnerName: String?
         let agentRuntimeRoute: CloudModelRouting?
         let messageAction: MessageActionMetadata?
+        var synchronizationOnly: Bool? = nil
     }
 
     private struct AgentResponseEnvelope: Codable {
@@ -203,7 +204,9 @@ enum CloudMessageCodec {
     }
 
     static func isAgentControl(_ body: String) -> Bool {
-        agentCancelEnvelope(body) != nil
+        let direct = directEnvelope(body)
+        return agentCancelEnvelope(body) != nil
+            || (direct?.synchronizationOnly == true && direct?.agentRuntimeRoute != nil)
     }
 
     static func directEnvelope(_ body: String) -> DirectEnvelope? {
@@ -220,7 +223,8 @@ enum CloudMessageCodec {
         }
         guard let envelope = directEnvelope(message.body),
               envelope.agentRuntimeRoute != nil,
-              ChatMessage.modelFromAgentModelChangeNotice(envelope.text) != nil else {
+              envelope.synchronizationOnly == true
+                || ChatMessage.modelFromAgentModelChangeNotice(envelope.text) != nil else {
             return message.messageKind
         }
         return ChatMessage.agentModelChangeMessageKind

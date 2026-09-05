@@ -6,8 +6,8 @@ use super::{
 use kordi_core::agent_session::ThinkingLevel;
 
 const EXPECTED_MODEL_IDS: &[&str] = &[
-    "claude-fable-5",
     "claude-fable-5-1",
+    "claude-fable-5",
     "claude-haiku-4-5",
     "claude-haiku-4-5-20251001",
     "claude-opus-4-1",
@@ -35,8 +35,8 @@ const BUDGET_MODEL_IDS: &[&str] = &[
 ];
 
 const NATIVE_XHIGH_MODEL_IDS: &[&str] = &[
-    "claude-fable-5",
     "claude-fable-5-1",
+    "claude-fable-5",
     "claude-opus-4-7",
     "claude-opus-4-8",
     "claude-sonnet-5",

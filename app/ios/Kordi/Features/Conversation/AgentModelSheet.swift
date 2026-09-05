@@ -11,18 +11,18 @@ struct AgentModelPicker: View {
 
     static let modelNamesByProvider = [
         "openai": [
+            "gpt-6-astra",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
             "gpt-5.6-luna",
-            "gpt-6-astra",
             "gpt-5.5",
             "gpt-5.4",
             "gpt-5.4-mini",
             "gpt-5.3-codex-spark",
         ],
         "anthropic": [
-            "claude-sonnet-5",
             "claude-fable-5-1",
+            "claude-sonnet-5",
             "claude-opus-4-8",
             "claude-opus-4-7",
             "claude-opus-4-6",
@@ -189,7 +189,7 @@ struct AgentModelPicker: View {
                 ? currentModel
                 : nil
         }
-        return ([current].compactMap { $0 } + suggested)
+        return (suggested + [current].compactMap { $0 })
             .reduce(into: []) { options, option in
                 if !options.contains(option) { options.append(option) }
             }

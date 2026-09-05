@@ -410,12 +410,6 @@ export function VirtualTranscript<Item>({
     const stableDisclosureAnchor = stableDisclosureAnchorRef.current?.sessionKey === sessionKey
       ? stableDisclosureAnchorRef.current
       : null;
-    const firstPageReplacedLoadingCopy = Boolean(
-      aligned
-      && aligned.sessionKey === sessionKey
-      && aligned.itemCount <= 1
-      && items.length > aligned.itemCount,
-    );
     const catalogPreviewHydrated = Boolean(
       aligned
       && aligned.sessionKey === sessionKey
@@ -455,7 +449,6 @@ export function VirtualTranscript<Item>({
       && (viewportWasAtTailRef.current || tailAlignmentActiveRef.current),
     );
     const shouldAlign = aligned?.sessionKey !== sessionKey
-      || firstPageReplacedLoadingCopy
       || catalogPreviewHydrated
       || latestItemAppended
       || tailContentChanged

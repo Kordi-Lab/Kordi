@@ -142,8 +142,8 @@ macro_rules! define_claude_model_profiles {
 
 define_claude_model_profiles! {
     default: OPUS_4_8;
-    FABLE_5: "claude-fable-5" => Fable,
     FABLE_5_1: "claude-fable-5-1" => Fable,
+    FABLE_5: "claude-fable-5" => Fable,
     HAIKU_4_5: "claude-haiku-4-5" => Budget,
     HAIKU_4_5_20251001: "claude-haiku-4-5-20251001" => Budget,
     OPUS_4_1: "claude-opus-4-1" => Budget,

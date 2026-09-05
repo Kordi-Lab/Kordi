@@ -149,10 +149,10 @@ fn openai_codex_oauth_candidates_exclude_platform_only_models() {
     assert_eq!(
         model_ids,
         [
+            "gpt-6-astra",
             "gpt-5.6-luna",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
-            "gpt-6-astra",
             "gpt-5.5",
             "gpt-5.4-mini",
             "gpt-5.4",

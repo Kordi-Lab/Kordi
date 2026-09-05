@@ -87,6 +87,7 @@ export function cloudAgentRuntimeRouteChangeFromBody(
 export function encodeCloudAgentRuntimeRouteChange(
   route: DesktopChatMessageRoute,
   previousRoute?: DesktopChatMessageRoute | null,
+  synchronizationOnly = false,
 ): string {
   const compactRoute = compactCloudAgentRuntimeRoute({
     ...route,
@@ -101,7 +102,8 @@ export function encodeCloudAgentRuntimeRouteChange(
   return encodeCloudDirectMessageEnvelope({
     schemaVersion: 1,
     kind: 'message',
-    text: agentRuntimeRouteChangeNotice(compactRoute, previousRoute),
+    text: synchronizationOnly ? '' : agentRuntimeRouteChangeNotice(compactRoute, previousRoute),
+    ...(synchronizationOnly ? { synchronizationOnly: true } : {}),
     agentRuntimeRoute: {
       model: compactRoute.model,
       authProvider: compactRoute.authProvider,

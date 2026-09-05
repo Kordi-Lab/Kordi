@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
-import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
-import { encodeCloudAgentRuntimeRouteChange } from '../src/features/cloud/cloudAgentRuntime';
+import { encodeCloudAgentResponse, isCloudAgentControlMessage } from '../src/features/cloud/cloudAgentMessages';
+import { applySynchronizedCloudAgentRuntimeRoutes, cloudAgentRuntimeSessionId, encodeCloudAgentRuntimeRouteChange } from '../src/features/cloud/cloudAgentRuntime';
 import {
   cloudSelfAgentRequestClientMessageId,
   cloudSelfAgentResponseClientMessageId,
@@ -56,6 +56,21 @@ test('cloud self-agent canonical identity uses the editable runtime name', () =>
     state: emptyState(),
   });
   assert.equal(plan.agentIdentityRequest.displayName, 'BabyTREE');
+});
+
+test('initial model synchronization restores the route without adding a transcript notice', () => {
+  const route = { model: 'openai/gpt-6-astra', authProvider: 'openai', authChoice: 'local-active-oauth', thinking: 'medium' };
+  const initial: CloudMessage = {
+    ...requestMessage('initial-model', '', '2026-09-05T10:00:00.000Z'),
+    body: encodeCloudAgentRuntimeRouteChange(route, null, true),
+    messageKind: 'agent-model-change',
+  };
+  assert.equal(isCloudAgentControlMessage(initial.body), true);
+  const plan = planCloudSelfAgentCanonicalSync({ account, messages: [initial], state: emptyState() });
+  assert.equal(plan.messageRequests.length, 0);
+  const restored = applySynchronizedCloudAgentRuntimeRoutes({}, account.accountId, [], [initial]);
+  assert.deepEqual(restored[cloudAgentRuntimeSessionId(account.accountId, initial.sessionId)!], route);
+  assert.equal(isCloudAgentControlMessage(encodeCloudAgentRuntimeRouteChange(route)), false);
 });
 
 test('cloud self-agent canonical sync preserves model changes as system events', () => {

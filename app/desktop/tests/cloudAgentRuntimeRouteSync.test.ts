@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import type { CloudMessage } from '../src/features/cloud/authClient';
+import { runtimeRoutesMatch } from '../src/features/cloud/cloudAgentRuntimeRoute';
 import { CLOUD_AGENT_RUNTIME_SESSION_PREFIX } from '../src/features/cloud/cloudAgentMessages';
 import {
   applyCloudAgentModelChangeMessages,
@@ -24,6 +25,15 @@ test('explicit cloud sessions keep independent runtime route identities for the 
       `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}acct_me:session:self-agent:${suffix}`,
     );
   }
+});
+
+test('unchanged runtime routes ignore provider and effort spelling aliases', () => {
+  const route = { model: 'gpt-6-astra', authProvider: 'openai-codex', authChoice: 'local-active-oauth', thinking: 'xhigh' };
+  const qualified = { ...route, model: 'openai/gpt-6-astra', authProvider: 'openai', thinking: 'Extra High' };
+  assert.equal(runtimeRoutesMatch(route, qualified), true);
+  assert.equal(runtimeRoutesMatch({ ...route, model: 'openai-codex/gpt-6-astra' }, qualified), true);
+  assert.equal(runtimeRoutesMatch(route, { ...qualified, thinking: 'medium' }), false);
+  assert.equal(runtimeRoutesMatch(route, { ...qualified, model: 'openai/gpt-5.6-sol' }), false);
 });
 
 test('model-change notices update the matching cloud runtime route once', () => {

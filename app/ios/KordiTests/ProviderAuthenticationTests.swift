@@ -92,11 +92,22 @@ final class ProviderAuthenticationTests: XCTestCase {
 
 @MainActor
 struct ModelReleaseTests {
-    @Test func releasedModelsKeepExistingDefaultsAndNormalizeThinking() {
+    @Test func initialRouteSyncIsHiddenButRetainsTheSelectedModel() throws {
+        let json = #"{"schemaVersion":1,"kind":"message","text":"","synchronizationOnly":true,"agentRuntimeRoute":{"model":"openai/gpt-6-astra","authProvider":"openai","thinking":"medium"}}"#
+        let encoded = Data(json.utf8).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        let body = CloudMessageCodec.directPrefix + encoded
+        #expect(CloudMessageCodec.isAgentControl(body))
+        #expect(CloudMessageCodec.directEnvelope(body)?.agentRuntimeRoute?.defaultModel == "openai/gpt-6-astra")
+    }
+
+    @Test func releasedModelsSortFirstAndNormalizeThinking() {
         #expect(AgentModelPicker.modelNamesByProvider["openai"]?.contains("gpt-6-astra") == true)
         #expect(AgentModelPicker.modelNamesByProvider["anthropic"]?.contains("claude-fable-5-1") == true)
-        #expect(AgentModelPicker.modelNamesByProvider["openai"]?.first == "gpt-5.6-sol")
-        #expect(AgentModelPicker.modelNamesByProvider["anthropic"]?.first == "claude-sonnet-5")
+        #expect(AgentModelPicker.modelNamesByProvider["openai"]?.first == "gpt-6-astra")
+        #expect(AgentModelPicker.modelNamesByProvider["anthropic"]?.first == "claude-fable-5-1")
         for route in ["gpt-6-astra", "openai/gpt-6-astra", "openai-codex/gpt-6-astra"] {
             #expect(AgentModelPicker.thinkingLevels(for: route) == ["default", "low", "medium", "high", "xhigh", "max"])
             #expect(AgentModelPicker.normalizedThinking("off", for: route) == "low")
