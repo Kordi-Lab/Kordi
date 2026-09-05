@@ -120,6 +120,8 @@ pub(super) async fn prepare_desktop_session_for_send(
     cwd: PathBuf,
     user_text: &str,
     context: (Option<&str>, Option<String>),
+    request_message_id: Option<&str>,
+    system_context: &[kordi_cli::desktop_runtime::DesktopChatContextMessage],
 ) {
     let (requested_session, directory) = context;
     let stored_scope = runtime
@@ -171,13 +173,15 @@ pub(super) async fn prepare_desktop_session_for_send(
             provider: Some(detail.provider),
             model: Some(detail.model),
             thinking: Some(detail.thinking),
-            system_prompt: Some(agent.system_prompt),
+            system_prompt: Some(std::iter::once(agent.system_prompt)
+                .chain(system_context.iter().filter(|message| message.context_role.as_deref() == Some("system")).map(|message| message.text.clone()))
+                .collect::<Vec<_>>().join("\n\n")),
             skill_names: Some(agent.loaded_skills),
             ..DesktopRuntimeProfile::default()
         };
         // ponytail: this per-turn registry is enough for background navigation;
         // keep one registry across turns only when parent-side child control is required.
-        let runner = ManagedChildAgentRunner::new(manager.clone(), prompt_session_id, profile)
+        let runner = ManagedChildAgentRunner::new(manager.clone(), prompt_session_id, request_message_id.map(str::to_string), profile)
             .with_shared_context(context_session_id.is_some(), directory);
         let _ = runtime.set_task_operator_runner(Arc::new(runner));
     }

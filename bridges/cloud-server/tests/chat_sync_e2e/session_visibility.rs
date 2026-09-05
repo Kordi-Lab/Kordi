@@ -28,8 +28,8 @@ async fn only_frontend_visible_messages_restore_deleted_sessions() {
         .id
     }
 
-    let first_session = format!("session:direct-person:{}", Uuid::now_v7());
-    let second_session = format!("session:direct-person:{}", Uuid::now_v7());
+    let first_session = format!("session:direct-agent:{peer}:{}", Uuid::now_v7());
+    let second_session = format!("session:direct-agent:{peer}:{}", Uuid::now_v7());
     let first = create(&pool, &owner, &peer, first_session.clone()).await;
     let _second = create(&pool, &owner, &peer, second_session.clone()).await;
     let now = chrono::Utc::now().to_rfc3339();

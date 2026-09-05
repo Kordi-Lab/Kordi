@@ -222,6 +222,30 @@ pub(super) fn apply_event(
         .get("payload")
         .and_then(Value::as_object)
         .ok_or_else(|| "Chat sync event payload is invalid".to_string())?;
+    if event_type == "session.deleted" {
+        let session_id = payload
+            .get("sessionId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "Chat sync session deletion is missing sessionId".to_string())?;
+        tx.execute(
+            "DELETE FROM chat_sync_messages
+             WHERE account_id = ?1 AND conversation_id IN (
+                 SELECT conversation_id FROM chat_sync_conversations
+                 WHERE account_id = ?1 AND client_session_id = ?2
+             )",
+            params![account_id, session_id],
+        )
+        .map_err(|error| error.to_string())?;
+        tx.execute(
+            "DELETE FROM chat_sync_conversations
+             WHERE account_id = ?1 AND client_session_id = ?2",
+            params![account_id, session_id],
+        )
+        .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
     if matches!(event_type, "message.deleted" | "message.hidden") {
         let message_id = required_text(event, "entity_id")?;
         tx.execute(

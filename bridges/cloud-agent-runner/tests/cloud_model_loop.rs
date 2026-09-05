@@ -19,10 +19,16 @@ use serde_json::{json, Value};
 #[derive(Default)]
 struct RecordingClient {
     exports: Arc<Mutex<Vec<ArtifactExportInput>>>,
+    spawns: Mutex<Vec<Value>>,
 }
 
 #[async_trait]
 impl CloudAgentRunClient for RecordingClient {
+    async fn task_operator(&self, _run_id: &str, call_id: &str, arguments: Value) -> Result<Value, RunnerClientError> {
+        assert_eq!(call_id, "spawn-real");
+        self.spawns.lock().unwrap().push(arguments);
+        Ok(json!({"sessionId":"actual-child","title":"Research","status":"running"}))
+    }
     async fn lease_next_run(&self) -> Result<Option<CloudAgentRun>, RunnerClientError> {
         Ok(None)
     }
@@ -134,6 +140,8 @@ fn provider_auth() -> ProviderAuthMaterial {
 
 fn run() -> CloudAgentRun {
     CloudAgentRun {
+        subsession_id: None,
+        subsession_write_scope: Vec::new(),
         run_id: "run_test".to_string(),
         status: "running".to_string(),
         prompt: "Write a tiny status file".to_string(),
@@ -214,6 +222,39 @@ fn cloud_tool_catalog_uses_local_web_tool_definitions() {
         web_fetch["function"]["parameters"],
         local_fetch.parameters_schema
     );
+}
+
+#[tokio::test]
+async fn subsession_is_created_only_by_a_real_model_tool_call() {
+    let client=RecordingClient::default();
+    let provider=FakeProvider::new(vec![
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall { id:"spawn-real".into(), name:"task_operator".into(), arguments:json!({"action":"spawn","taskName":"research","taskTitle":"Research","message":"Compare the sources","forkTurns":"none"}) }]),
+        ModelProviderResponse::FinalText("Research is in the background session.".into()),
+    ]);
+    let text=run_model_loop(&client,&provider,&run(),&sandbox_handle(),provider_auth()).await.unwrap();
+    assert_eq!(client.spawns.lock().unwrap().len(),1);
+    assert_eq!(text,"Research is in the background session.");
+    let prompts=provider.seen_messages.lock().unwrap();
+    assert!(prompts[1].iter().any(|message| message["role"]=="tool" && message["content"].as_str().unwrap_or_default().contains("actual-child")));
+    drop(prompts);
+    let short=RecordingClient::default();
+    let provider=FakeProvider::new(vec![ModelProviderResponse::FinalText("ACK".into())]);
+    assert_eq!(run_model_loop(&short,&provider,&run(),&sandbox_handle(),provider_auth()).await.unwrap(),"ACK");
+    assert!(short.spawns.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn read_only_subsession_cannot_spawn_or_mutate_files() {
+    let client=RecordingClient::default();
+    let provider=FakeProvider::new(vec![
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall { id:"nested".into(),name:"task_operator".into(),arguments:json!({"action":"spawn"}) },ModelToolCall{id:"write".into(),name:"write".into(),arguments:json!({"path":"out.txt","content":"forbidden"})}]),
+        ModelProviderResponse::FinalText("No mutation performed.".into()),
+    ]);
+    let mut child=run(); child.subsession_id=Some("child".into());
+    let sandbox=sandbox_handle();
+    run_model_loop(&client,&provider,&child,&sandbox,provider_auth()).await.unwrap();
+    assert!(client.spawns.lock().unwrap().is_empty());
+    assert!(sandbox.read_text("out.txt").await.is_err());
 }
 
 #[tokio::test]

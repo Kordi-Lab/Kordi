@@ -277,6 +277,8 @@ test('chat list preference methods use the account and group routes', async () =
   await client.setCloudSessionMuted('kordi_cs_xyz', 'session:one', false);
   await client.setCloudSessionUnread('kordi_cs_xyz', 'session:one', true);
   await client.setCloudGroupSpacePinned('kordi_cs_xyz', 'session:group:mobile', true);
+  await client.setCloudGroupSpaceMuted('kordi_cs_xyz', 'session:group:mobile', false);
+  await client.setCloudGroupSpaceArchived('kordi_cs_xyz', 'session:group:mobile', true);
 
   assert.equal(calls[0].url, 'http://srv/v1/cloud/sessions/session%3Aone/pinned');
   assert.equal(calls[0].init?.method, 'PUT');
@@ -286,6 +288,10 @@ test('chat list preference methods use the account and group routes', async () =
   assert.equal(calls[2].init?.method, 'PUT');
   assert.equal(calls[3].url, 'http://srv/v1/cloud/group-spaces/session%3Agroup%3Amobile/pinned');
   assert.equal(calls[3].init?.method, 'PUT');
+  assert.equal(calls[4].url, 'http://srv/v1/cloud/group-spaces/session%3Agroup%3Amobile/muted');
+  assert.equal(calls[4].init?.method, 'DELETE');
+  assert.equal(calls[5].url, 'http://srv/v1/cloud/group-spaces/session%3Agroup%3Amobile/hidden');
+  assert.equal(calls[5].init?.method, 'PUT');
 });
 
 test('hideCloudSession sends an authenticated PUT to the hidden route', async () => {

@@ -950,6 +950,10 @@ export type DesktopVisibleTaskRecord = {
   involvedParticipants?: string[];
 };
 
+export async function fetchDesktopChatSessionActiveTurn(sessionId: string) {
+  return invokeDesktop<DesktopChatTurnSnapshot | null>('desktop_chat_session_active_turn', { sessionId });
+}
+
 export async function startDesktopChatMessage(
   sessionId: string,
   text: string,
@@ -958,6 +962,8 @@ export async function startDesktopChatMessage(
   contextMessages: DesktopChatContextMessage[] = [],
   visibleTaskRecords: DesktopVisibleTaskRecord[] = [],
   scheduledTaskSessionId: string | null = null,
+  requestMessageId: string | null = null,
+  executionLeaseDeadlineMs: number | null = null,
 ) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_message', {
     sessionId,
@@ -967,7 +973,13 @@ export async function startDesktopChatMessage(
     contextMessages,
     visibleTaskRecords,
     scheduledTaskSessionId,
+    requestMessageId,
+    executionLeaseDeadlineMs,
   });
+}
+
+export function renewDesktopChatExecutionLease(turnId: string, deadlineMs: number) {
+  return invokeDesktop<void>('desktop_chat_renew_execution_lease', { turnId, deadlineMs });
 }
 
 export type DesktopShapeAgentRoute = {

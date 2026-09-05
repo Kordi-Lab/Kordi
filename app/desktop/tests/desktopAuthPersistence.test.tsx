@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import {
   createDesktopAuthSyncGuard,
+  desktopAuthSyncIntentFromAnotherSource,
   isDesktopAuthUpdateFromAnotherSource,
 } from '../src/features/auth/desktopAuthSync';
 import {
@@ -129,6 +130,23 @@ test('auth update broadcasts ignore the sender but accept other and legacy surfa
   }, 'current'), true);
   assert.equal(isDesktopAuthUpdateFromAnotherSource({ type: 'auth-updated' }, 'current'), true);
   assert.equal(isDesktopAuthUpdateFromAnotherSource({ type: 'message-updated' }, 'current'), false);
+  assert.deepEqual(desktopAuthSyncIntentFromAnotherSource({
+    type: 'auth-updated',
+    at: 42,
+    sourceId: 'other',
+    reason: 'oauth-completed',
+    providerId: 'openai-codex',
+  }, 'current'), {
+    providerId: 'openai-codex',
+    reason: 'oauth-completed',
+    revision: 42,
+  });
+  assert.equal(desktopAuthSyncIntentFromAnotherSource({
+    type: 'auth-updated',
+    at: 43,
+    sourceId: 'other',
+    reason: 'oauth-completed',
+  }, 'current'), null);
 });
 
 test('deleting the final OpenAI profile leaves a usable empty provider detail', () => {

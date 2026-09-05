@@ -55,7 +55,7 @@ export function historicalCollaborationProcessingPlaceholderIds(
     const message = conversation.messages[index];
     const requestId = message.requestId?.trim() || null;
     const isProcessingResponse = normalizeDeliveryState(message.deliveryState) === 'processing'
-      && isProcessingPlaceholderText(displayText(message))
+      && (!displayText(message).trim() || isProcessingPlaceholderText(displayText(message)))
       && isCollaborationAgentResponseDirection(message);
     if (isProcessingResponse) {
       if (

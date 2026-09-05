@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use kordi_cli::desktop_runtime::{
-    create_background_session, delete_session_forever, DesktopRuntimeProfile, DesktopRuntimeSession,
+    activate_background_runtime_session, create_background_session, delete_session_forever, DesktopRuntimeProfile, DesktopRuntimeSession,
 };
 use kordi_cli::task_operator::{
     managed_child_prompt_context, managed_child_tool_names, BackgroundSessionInspection,
@@ -14,7 +14,7 @@ use kordi_cli::task_operator::{
 use tokio::sync::Mutex;
 
 use super::super::{
-    cancel_turn_by_id, message_execution, session_has_running_turn, turn_snapshot_by_id,
+    cancel_turn_by_id, message_execution, turn_snapshot_by_id,
     DesktopChatManager,
 };
 
@@ -28,6 +28,7 @@ struct ManagedTask {
 pub(in crate::chat) struct ManagedChildAgentRunner {
     manager: DesktopChatManager,
     parent_session_id: String,
+    parent_request_id: Option<String>,
     base_profile: DesktopRuntimeProfile,
     directory: Option<String>,
     scoped_observation: bool,
@@ -38,11 +39,13 @@ impl ManagedChildAgentRunner {
     pub(in crate::chat) fn new(
         manager: DesktopChatManager,
         parent_session_id: String,
+        parent_request_id: Option<String>,
         base_profile: DesktopRuntimeProfile,
     ) -> Self {
         Self {
             manager,
             parent_session_id,
+            parent_request_id,
             base_profile,
             directory: None,
             scoped_observation: false,
@@ -78,7 +81,7 @@ impl ManagedChildAgentRunner {
             &request.write_scope,
         );
         profile.system_prompt = Some(match profile.system_prompt.take() {
-            Some(base) if !base.trim().is_empty() => format!("{base}\n\n{child_context}"),
+            Some(base) if !base.trim().is_empty() => format!("{base}\n\n{child_context}\n\nRetain the parent Agent identity and ownership. This is an execution subsession, not another Agent or a conversation channel."),
             _ => child_context,
         });
         Ok(profile)
@@ -111,8 +114,10 @@ impl ManagedChildAgentRunner {
                 scheduled_task_session_id: self
                     .scoped_observation
                     .then(|| self.parent_session_id.clone()),
-                sync_session_at_start: true,
+                sync_session_at_start: false,
                 shared_context: false,
+                request_message_id: None,
+                execution_lease_deadline_ms: None,
             },
         )
         .await
@@ -127,7 +132,7 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
         let session_id = create_background_session(
             &request.cwd,
             &self.parent_session_id,
-            request.parent_message_id.as_deref(),
+            self.parent_request_id.as_deref().or(request.parent_message_id.as_deref()),
             &request.task_title,
         )?;
         let runtime =
@@ -165,6 +170,10 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
             .lock()
             .await
             .insert(turn.id.clone());
+        if let Err(error) = activate_background_runtime_session(&session_id) {
+            let _ = cancel_turn_by_id(&self.manager, &turn.id).await;
+            return Err(error);
+        }
         self.jobs.lock().await.insert(
             request.task_path.clone(),
             ManagedTask {
@@ -218,16 +227,13 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
                 if !turn.completed {
                     continue;
                 }
-                let summary = turn.assistant_text.trim().to_string();
+                let summary = format!("Result retained in background session: {}", task.session_id);
                 if turn.succeeded {
                     return Ok(WaitOutcome::Completed { target, summary });
                 }
                 return Ok(WaitOutcome::Failed {
                     target,
-                    summary: turn
-                        .error
-                        .filter(|value| !value.trim().is_empty())
-                        .unwrap_or(turn.message),
+                    summary,
                 });
             }
             if tokio::time::Instant::now() >= deadline {
@@ -248,12 +254,8 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
     }
 
     async fn inspect(&self, session_id: &str) -> Result<Option<BackgroundSessionInspection>> {
-        Ok(session_has_running_turn(&self.manager, session_id)
-            .await
-            .then(|| BackgroundSessionInspection {
-                status: "running".to_string(),
-                summary: None,
-            }))
+        let snapshot = super::snapshots::subsession_snapshot(&self.manager, session_id).await?;
+        Ok(Some(BackgroundSessionInspection { status: snapshot.status, summary: None }))
     }
 }
 
@@ -280,6 +282,7 @@ mod tests {
         let runner = ManagedChildAgentRunner::new(
             DesktopChatManager::default(),
             "parent".to_string(),
+            Some("request".to_string()),
             DesktopRuntimeProfile::default(),
         );
         let read_only = runner

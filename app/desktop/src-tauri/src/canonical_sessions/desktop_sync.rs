@@ -323,6 +323,37 @@ pub(crate) fn sync_desktop_chat_message(
         })
         .flatten();
 
+    if is_user {
+        if let Some(entry_id) = message.entry_id.as_deref() {
+            let existing: Option<String> = conn.query_row(
+                "SELECT id FROM session_messages WHERE session_id = ?1 AND sender_role = 'user'
+                 AND (id = ?2 OR (source_transport = 'cloud-self-agent' AND source_event_id = ?2)) LIMIT 1",
+                params![session_id, entry_id], |row| row.get(0),
+            ).optional().map_err(|error| error.to_string())?;
+            if let Some(id) = existing {
+                conn.execute(
+                    "UPDATE session_messages SET content_json = json_set(COALESCE(content_json, '{}'), '$.desktopEntryId', ?2) WHERE id = ?1",
+                    params![id, entry_id],
+                ).map_err(|error| error.to_string())?;
+                return Ok(Some(id));
+            }
+        }
+    }
+    if is_agent {
+        if let Some(parent_id) = canonical_reply_to_message_id.as_deref() {
+            let cloud_owned: bool = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM session_messages WHERE id = ?1 AND session_id = ?2 AND source_transport = 'cloud-self-agent')",
+                params![parent_id, session_id], |row| row.get(0),
+            ).map_err(|error| error.to_string())?;
+            // The owner executor publishes this exact request's terminal reply.
+            // Importing the native transcript as a second outbound turn would
+            // duplicate both the cloud reply and its request.
+            if cloud_owned {
+                return Ok(None);
+            }
+        }
+    }
+
     if let Some(snapshot_message_id) = matching_fork_snapshot_message_id(
         conn,
         session_id,
@@ -1038,6 +1069,45 @@ mod fork_metadata_tests {
         let content =
             content_with_desktop_runtime(None, &message, None).expect("desktop content builds");
         assert_eq!(content["desktopEntryId"], "entry:runtime-agent");
+    }
+
+    #[test]
+    fn cloud_request_identity_reconciles_without_matching_message_text() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE session_messages (
+            id TEXT PRIMARY KEY, session_id TEXT, sender_role TEXT,
+            source_transport TEXT, source_event_id TEXT, content_json TEXT
+        ); INSERT INTO session_messages VALUES
+            ('canonical-one', 'session', 'user', 'cloud-self-agent', 'request-one', '{}'),
+            ('canonical-two', 'session', 'user', 'cloud-self-agent', 'request-two', '{}');",
+        )
+        .unwrap();
+        let message = kordi_cli::desktop_runtime::DesktopChatMessage {
+            role: "user".to_string(),
+            sender: None,
+            text: "Identical repeated text".to_string(),
+            detail: None,
+            time_label: "12:00".to_string(),
+            timestamp_ms: 1000,
+            failed: false,
+            cancelled: false,
+            attachments: Vec::new(),
+            thinking_text: None,
+            tools: Vec::new(),
+            entry_id: Some("request-two".to_string()),
+        };
+        assert_eq!(
+            super::sync_desktop_chat_message(&conn, "session", "human", "agent", 0, &message, None)
+                .unwrap(),
+            Some("canonical-two".to_string())
+        );
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM session_messages", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 2);
     }
 
     #[test]

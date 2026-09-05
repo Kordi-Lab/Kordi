@@ -98,6 +98,8 @@ pub struct CloudAgentRunResponse {
     pub created_at: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+    #[serde(rename = "executionBackend")]
+    pub execution_backend: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -110,8 +112,8 @@ pub async fn lookup_run_for_request(
     request_message_id: &str,
     account_id: &str,
 ) -> RunResult<CloudAgentRunLookupResponse> {
-    let row: Option<(String, String, Option<String>, String, String)> = query_as(
-        "SELECT run_id, status, sandbox_id, created_at, updated_at \
+    let row: Option<(String, String, Option<String>, String, String, String)> = query_as(
+        "SELECT run_id, status, sandbox_id, created_at, updated_at, execution_backend \
          FROM cloud_agent_fallback_runs \
          WHERE request_message_id = $1 AND (owner_account_id = $2 OR requester_account_id = $2) \
          ORDER BY created_at DESC LIMIT 1",
@@ -128,16 +130,36 @@ pub async fn lookup_run_for_request(
             sandbox_id: row.2,
             created_at: row.3,
             updated_at: row.4,
+            execution_backend: row.5,
         }),
     })
 }
 
 pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<CloudAgentRunResponse> {
-    let existing: Option<(String, String, Option<String>, String, String)> = query_as(
-        "SELECT run_id, status, sandbox_id, created_at, updated_at \
-         FROM cloud_agent_fallback_runs WHERE idempotency_key = $1",
+    claim_run_with_executor(pool, input, None).await
+}
+
+pub async fn claim_run_for_desktop(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+    executor: &str,
+) -> RunResult<CloudAgentRunResponse> {
+    claim_run_with_executor(pool, input, Some(executor)).await
+}
+
+async fn claim_run_with_executor(
+    pool: &PgPool,
+    input: &ClaimRunRequest,
+    desktop_executor: Option<&str>,
+) -> RunResult<CloudAgentRunResponse> {
+    let agent_id = super::execution_agent_id(pool, input).await?;
+    let existing: Option<(String, String, Option<String>, String, String, String)> = query_as(
+        "SELECT run_id, status, sandbox_id, created_at, updated_at, execution_backend \
+         FROM cloud_agent_fallback_runs WHERE owner_account_id = $1 AND execution_agent_id = $2 AND request_message_id = $3",
     )
-    .bind(&input.idempotency_key)
+    .bind(&input.owner_account_id)
+    .bind(&agent_id)
+    .bind(&input.request_message_id)
     .fetch_optional(pool)
     .await?;
     if let Some(row) = existing {
@@ -147,6 +169,7 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
             sandbox_id: row.2,
             created_at: row.3,
             updated_at: row.4,
+            execution_backend: row.5,
         });
     }
 
@@ -162,13 +185,16 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
     let prompt = fallback_prompt_for_claim(pool, input).await?;
     let runtime_route = serde_json::to_value(runtime_route_for_claim(pool, input).await?)
         .map_err(|error| sqlx_core::Error::Encode(Box::new(error)))?;
-    let row: (String, String, Option<String>, String, String) = query_as(
+    let lease_expires_at =
+        desktop_executor.map(|_| (Utc::now() + chrono::Duration::seconds(45)).to_rfc3339());
+    let row: (String, String, Option<String>, String, String, String) = query_as(
         "INSERT INTO cloud_agent_fallback_runs (
             run_id, idempotency_key, request_message_id, session_id, owner_account_id,
-            requester_account_id, status, prompt, system_prompt, sandbox_id, runtime_route_json, created_at, updated_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, 'queued', $7, $8, $9, $10, $11, $11)
-         ON CONFLICT (idempotency_key) DO UPDATE SET idempotency_key = cloud_agent_fallback_runs.idempotency_key
-         RETURNING run_id, status, sandbox_id, created_at, updated_at",
+            requester_account_id, status, prompt, system_prompt, sandbox_id, runtime_route_json, created_at, updated_at,
+            execution_backend, execution_agent_id, claimed_by, lease_expires_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, $11, $11, $13, $14, $15, $16)
+         ON CONFLICT (owner_account_id, execution_agent_id, request_message_id) DO UPDATE SET request_message_id = cloud_agent_fallback_runs.request_message_id
+         RETURNING run_id, status, sandbox_id, created_at, updated_at, execution_backend",
     )
     .bind(&run_id)
     .bind(&input.idempotency_key)
@@ -181,6 +207,11 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
     .bind(&sandbox.sandbox_id)
     .bind(runtime_route)
     .bind(&now)
+    .bind(if desktop_executor.is_some() { "leased" } else { "queued" })
+    .bind(if desktop_executor.is_some() { "desktop" } else { "cloud" })
+    .bind(&agent_id)
+    .bind(desktop_executor)
+    .bind(lease_expires_at)
     .fetch_one(pool)
     .await?;
 
@@ -190,6 +221,7 @@ pub async fn claim_run(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<Clou
         sandbox_id: row.2,
         created_at: row.3,
         updated_at: row.4,
+        execution_backend: row.5,
     })
 }
 

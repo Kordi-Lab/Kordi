@@ -19,8 +19,5 @@ export type CloudGroupControlTransport = {
 };
 
 export type CloudGroupControlCanonicalContext = {
-  state: CanonicalSessionState | null | undefined;
   stateRef: MutableRefObject<CanonicalSessionState | null>;
-  titleBackfillsRef: MutableRefObject<Set<string>>;
-  initialMessagesSettled: boolean;
 };

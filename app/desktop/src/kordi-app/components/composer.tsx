@@ -30,7 +30,6 @@ export {
   normalizeComposerThinkingLevels,
 } from './composerThinking';
 export { ComposerMentionMenu } from './composerMentionMenu';
-import { IdentityAvatar } from './IdentityAvatar';
 import {
   normalizeComposerProviderId,
   providerDisplayLabel,

@@ -97,6 +97,10 @@ test('thread count changes invalidate the memoized message bubble', () => {
     messageSnapshotKey(message),
     messageSnapshotKey({ ...message, threadSummary: { replyCount: 2 } }),
   );
+  assert.notEqual(
+    messageSnapshotKey({ ...message, threadSummary: { replyCount: 1, agentState: 'running' } }),
+    messageSnapshotKey({ ...message, threadSummary: { replyCount: 1, agentState: 'done' } }),
+  );
 });
 
 test('forwarded message reveal uses reduced-motion-safe highlight styling', () => {

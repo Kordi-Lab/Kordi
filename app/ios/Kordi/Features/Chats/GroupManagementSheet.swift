@@ -53,12 +53,14 @@ struct GroupManagementSheet: View {
                     Section("Group name") {
                         HStack(spacing: 10) {
                             TextField("Group name", text: $titleDraft)
+                                .disabled(!presentation.space.canManage(accountId: model.account?.accountId))
                             Button("Rename") { renameGroup() }
                                 .fontWeight(.semibold)
                                 .disabled(
                                     isSaving
-                                        || titleDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                        || titleDraft.trimmingCharacters(in: .whitespacesAndNewlines) == presentation.space.displayName
+                                    || titleDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    || titleDraft.trimmingCharacters(in: .whitespacesAndNewlines) == presentation.space.displayName
+                                    || !presentation.space.canManage(accountId: model.account?.accountId)
                                 )
                         }
                     }

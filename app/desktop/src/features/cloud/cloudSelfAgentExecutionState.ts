@@ -72,6 +72,10 @@ export function cloudSelfAgentTerminalOrLocalRequestIds(
   const localClientMessageIds = localSelfAgentRequestClientMessageIds(state);
   return new Set([
     ...cloudSelfAgentTerminalResponseRequestIds(messages),
+    ...messages.flatMap((message) => {
+      const cancelled = parseCloudAgentCancel(message.body);
+      return cancelled ? [cancelled.requestId] : [];
+    }),
     ...messages.flatMap((message) => message.clientMessageId
       && localClientMessageIds.has(message.clientMessageId)
       ? [message.messageId]

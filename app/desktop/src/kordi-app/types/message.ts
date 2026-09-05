@@ -124,6 +124,7 @@ export type MessageReplySummary = {
 
 export type MessageThreadSummary = {
   replyCount: number;
+  agentState?: 'running' | 'done' | 'failed' | 'stopped';
 };
 
 export type MessageReadReceiptParticipant = {
@@ -295,6 +296,7 @@ export type DesktopChatToolSnapshot = {
 
 export type QueuedDesktopChatMessage = {
   id: string;
+  createdAtMs?: number;
   sessionId: string;
   scope: 'chat' | 'project';
   text: string;
@@ -311,6 +313,7 @@ export type CollaborationAgentRequestControl = {
 };
 
 export type DesktopChatTurnSnapshot = {
+  messageAction?: MessageActionMetadata | null;
   id: string;
   sessionId: string;
   prompt: string;

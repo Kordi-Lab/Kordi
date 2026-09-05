@@ -211,3 +211,19 @@ test('thread projections preserve optimistic counts and isolate queued replies',
   assert.deepEqual(queued.mainMessages.map((item) => item.id), ['main']);
   assert.deepEqual(queued.activeThreadMessages.map((item) => item.id), ['thread']);
 });
+
+test('thread entry tracks actual agent completion without exposing its result in main', () => {
+  const root = message('root', 'Run a task');
+  const source = threadRootSource(root, 'session')!;
+  const pending: Message = {
+    ...message('response', '', threadMessageAction(source)), role: 'owned-agent',
+    replyToMessageId: 'root',
+    turn: { id: 'turn', sessionId: 'runtime', prompt: '', status: 'running', message: '', assistantText: '', thinkingText: '', tools: [], completed: false, succeeded: false },
+  };
+  assert.equal(projectMessageThreads([root, pending]).mainMessages[0].threadSummary?.agentState, 'running');
+  const done: Message = { ...pending, id: 'done', turn: { ...pending.turn!, status: 'succeeded', assistantText: 'THREAD_ONLY_RESULT', completed: true, succeeded: true } };
+  const projection = projectMessageThreads([root, done, pending]);
+  assert.equal(projection.mainMessages.length, 1);
+  assert.equal(projection.mainMessages[0].threadSummary?.agentState, 'done');
+  assert.equal(projection.mainMessages[0].text, 'Run a task');
+});

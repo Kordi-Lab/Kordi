@@ -206,16 +206,6 @@ function selfParticipant(participants: ConversationParticipant[]) {
 }
 
 function spaceKindForConversation(conversation: Conversation, nonSelf: ConversationParticipant[]): ParticipantSpaceKind {
-  // A fork of a canonical (group/contact) session is always a private
-  // continuation — even if its stored participant list inherited
-  // multiple humans from the source, we never want it to render as a
-  // separate group conversation in the sidebar. Defensive override
-  // covers historical forks created before the participant filter
-  // landed too.
-  const forkParent = conversation.forkedFromSessionId?.trim() ?? '';
-  if (forkParent.startsWith('session:')) {
-    return 'self';
-  }
   const humanCount = nonSelfHumans(nonSelf).length;
   if (conversation.participantSpaceId || humanCount > 1) {
     return 'group';
@@ -317,12 +307,11 @@ function spaceIdForConversation(
   kind: ParticipantSpaceKind,
   primary: ConversationParticipant | undefined,
   conversation: Conversation,
-  legacyCloudGroupAliasByExplicitId: ReadonlyMap<string, string> = new Map(),
 ) {
   if (kind === 'self') return 'self:local';
   if (kind === 'group') {
     const explicit = groupSpaceIdForConversation(conversation);
-    if (explicit) return legacyCloudGroupAliasByExplicitId.get(explicit) ?? `group:${explicit}`;
+    if (explicit) return `group:${explicit}`;
     const cloudParticipantKey = cloudGroupParticipantKey(conversation);
     if (cloudParticipantKey) return `group:cloud:${cloudParticipantKey}`;
     const participantKey = nonSelfParticipants(conversation)
@@ -426,26 +415,6 @@ function spaceTitle(
 }
 
 export function buildParticipantSpaces(conversations: Conversation[]): ParticipantSpaceViewModel[] {
-  const cloudRootIdsByParticipantKey = new Map<string, Set<string>>();
-  for (const conversation of conversations) {
-    const nonSelf = nonSelfParticipants(conversation)
-      .sort((left, right) => participantSortKey(left).localeCompare(participantSortKey(right)));
-    if (spaceKindForConversation(conversation, nonSelf) !== 'group') continue;
-    const participantKey = cloudGroupParticipantKey(conversation);
-    const explicitGroupId = groupSpaceIdForConversation(conversation);
-    const ownSessionId = cleanOptionalText(conversation.canonicalSessionId) || cleanOptionalText(conversation.id);
-    if (!participantKey || !explicitGroupId || explicitGroupId !== ownSessionId) continue;
-    const rootIds = cloudRootIdsByParticipantKey.get(participantKey) ?? new Set<string>();
-    rootIds.add(explicitGroupId);
-    cloudRootIdsByParticipantKey.set(participantKey, rootIds);
-  }
-  const legacyCloudGroupAliasByExplicitId = new Map<string, string>();
-  for (const [participantKey, rootIds] of cloudRootIdsByParticipantKey) {
-    if (rootIds.size < 2) continue;
-    const aliasId = `group:cloud:${participantKey}`;
-    for (const rootId of rootIds) legacyCloudGroupAliasByExplicitId.set(rootId, aliasId);
-  }
-
   const namedGroupIdByParticipantKey = new Map<string, string | null>();
   for (const conversation of conversations) {
     const nonSelf = nonSelfParticipants(conversation)
@@ -454,7 +423,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     const kind = spaceKindForConversation(conversation, nonSelf);
     if (kind !== 'group' || !groupHasCustomName(conversation)) continue;
     const primary = primaryParticipantForKind(kind, displayParticipants);
-    const id = spaceIdForConversation(kind, primary, conversation, legacyCloudGroupAliasByExplicitId);
+    const id = spaceIdForConversation(kind, primary, conversation);
     const participantKey = groupParticipantKey(conversation);
     if (!participantKey) continue;
     const existing = namedGroupIdByParticipantKey.get(participantKey);
@@ -473,7 +442,7 @@ export function buildParticipantSpaces(conversations: Conversation[]): Participa
     const displayParticipants = allDisplayParticipants(conversation);
     const kind = spaceKindForConversation(conversation, nonSelf);
     const primary = primaryParticipantForKind(kind, displayParticipants);
-    const baseId = spaceIdForConversation(kind, primary, conversation, legacyCloudGroupAliasByExplicitId);
+    const baseId = spaceIdForConversation(kind, primary, conversation);
     const participantKey = kind === 'group' ? groupParticipantKey(conversation) : '';
     const aliasId = kind === 'group' && genericLegacyCollaborationGroupContinuation(conversation) && participantKey
       ? namedGroupIdByParticipantKey.get(participantKey)

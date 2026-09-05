@@ -3,7 +3,7 @@
 use std::sync::{Arc, Mutex};
 
 use kordi_cli::desktop_runtime::{
-    DesktopChatContextMessage, DesktopChatMessage, DesktopChatSessionDetail, DesktopRuntimeProfile,
+    DesktopChatContextMessage, DesktopChatMessage, DesktopChatSessionDetail,
     DesktopVisibleTaskRecord,
 };
 
@@ -11,7 +11,7 @@ use super::{
     agent_builder, apply_desktop_chat_message_route, apply_desktop_turn_event,
     attach_cloud_scheduled_task_runtime_for_session, chat_cwd, desktop_task_tools_from_messages,
     ensure_loaded_or_create_explicit_session, ensure_provider_ready_for_send, now_millis,
-    prepare_desktop_session_for_send, reserve_turn_if_session_idle, snapshot_turn,
+    prepare_desktop_session_for_send, reserve_turn_in_session, snapshot_turn,
     sync_completed_desktop_session_to_canonical, turn_snapshot_has_model_task_tools, update_turn,
     DesktopChatManager, DesktopChatMessageRoute, DesktopChatTurnHandle, DesktopChatTurnSnapshot,
 };
@@ -26,6 +26,35 @@ pub(super) struct StartMessageInput {
     pub scheduled_task_session_id: Option<String>,
     pub sync_session_at_start: bool,
     pub shared_context: bool,
+    pub request_message_id: Option<String>,
+    pub execution_lease_deadline_ms: Option<i64>,
+}
+
+async fn reserve_shared_request(
+    manager: &DesktopChatManager,
+    session_id: &str,
+    request_id: &str,
+) -> bool {
+    let key = format!("{}\0{}", session_id.trim(), request_id.trim());
+    // ponytail: request ids live for the process lifetime; add bounded eviction
+    // only if long-running desktop sessions show measurable growth.
+    manager.shared_request_ids.lock().await.insert(key)
+}
+
+fn shared_request_runtime_session_id(session_id: &str, request_id: &str) -> Result<String, String> {
+    let session_id = session_id.trim();
+    let request_id = request_id.trim();
+    if !super::canonical_sync::is_cloud_agent_runtime_session_id(session_id)
+        || request_id.is_empty()
+    {
+        return Err("Shared requests require a runtime session and request ID".to_string());
+    }
+    let suffix = format!(":request:{request_id}");
+    Ok(if session_id.ends_with(&suffix) {
+        session_id.to_string()
+    } else {
+        format!("{session_id}{suffix}")
+    })
 }
 
 mod shared;
@@ -45,6 +74,8 @@ pub(super) async fn start_message(
         scheduled_task_session_id,
         sync_session_at_start,
         shared_context,
+        request_message_id,
+        execution_lease_deadline_ms,
     } = input;
     let attachment_paths = attachment_paths.unwrap_or_default();
     if text.trim().is_empty() && attachment_paths.is_empty() {
@@ -82,26 +113,48 @@ pub(super) async fn start_message(
     }));
     let cancel = tokio_util::sync::CancellationToken::new();
 
-    if !reserve_turn_if_session_idle(
+    let (previous_turn, turn_completion) = reserve_turn_in_session(
         manager,
-        turn_id,
+        turn_id.clone(),
         DesktopChatTurnHandle {
             snapshot: snapshot.clone(),
             cancel: cancel.clone(),
+            execution_lease_deadline: Arc::new(Mutex::new(None)),
         },
     )
-    .await
-    {
-        return Err(
-            "This session already has a running task. Open another session to work concurrently."
-                .to_string(),
-        );
+    .await?;
+    if let Some(deadline) = execution_lease_deadline_ms {
+        if let Err(error) = super::turns::renew_execution_lease(manager, &turn_id, deadline).await {
+            cancel.cancel();
+            fail_turn(&snapshot, error.clone());
+            return Err(error);
+        }
     }
     let snapshot_for_task = snapshot.clone();
     let is_agent_builder_session = agent_builder::is_agent_builder_session_id(&target_session_id);
     let manager_for_task = manager.clone();
 
     tokio::spawn(async move {
+        // Dropping the sender releases exactly the next admitted request,
+        // including on failure. A canceled queued turn still waits for its
+        // predecessor so cancellation cannot let later requests overtake it.
+        let _completion = turn_completion;
+        if let Some(previous_turn) = previous_turn {
+            let _ = previous_turn.await;
+        }
+        if cancel.is_cancelled() {
+            update_turn(&snapshot_for_task, |state| {
+                state.status = "cancelled".to_string();
+                state.completed = true;
+                state.completed_at_ms = Some(now_millis());
+            });
+            return;
+        }
+        update_turn(&snapshot_for_task, |state| {
+            state.status = "starting".to_string();
+            state.message = "Working…".to_string();
+            state.started_at_ms = now_millis();
+        });
         let (provider, model) = {
             let mut session = session_handle.lock().await;
             if let Err(error) = apply_desktop_chat_message_route(&mut session, route.as_ref()) {
@@ -145,6 +198,8 @@ pub(super) async fn start_message(
                     cwd.clone(),
                     &text,
                     (scheduled_task_session_id.as_deref(), directory),
+                    request_message_id.as_deref(),
+                    &context_messages,
                 )
                 .await;
             }
@@ -170,7 +225,12 @@ pub(super) async fn start_message(
         let turn = {
             let mut session = session_handle.lock().await;
             match session
-                .begin_message_streaming(text, attachment_paths, cancel.clone())
+                .begin_message_streaming_with_request_id(
+                    text,
+                    attachment_paths,
+                    cancel.clone(),
+                    request_message_id,
+                )
                 .await
             {
                 Ok(turn) => turn,
@@ -327,7 +387,10 @@ async fn sync_completed_session(
 
 #[cfg(test)]
 mod tests {
-    use super::latest_turn_assistant_entry_id;
+    use super::{
+        latest_turn_assistant_entry_id, reserve_shared_request, shared_request_runtime_session_id,
+        DesktopChatManager,
+    };
     use kordi_cli::desktop_runtime::DesktopChatMessage;
 
     fn message(role: &str, entry_id: Option<&str>) -> DesktopChatMessage {
@@ -345,6 +408,34 @@ mod tests {
             tools: Vec::new(),
             entry_id: entry_id.map(str::to_string),
         }
+    }
+
+    #[tokio::test]
+    async fn shared_request_is_admitted_once_per_runtime() {
+        let manager = DesktopChatManager::default();
+
+        assert!(reserve_shared_request(&manager, "runtime-a", "request-1").await);
+        assert!(!reserve_shared_request(&manager, "runtime-a", "request-1").await);
+        assert!(reserve_shared_request(&manager, "runtime-b", "request-1").await);
+    }
+
+    #[tokio::test]
+    async fn shared_requests_use_distinct_internal_runtimes_without_double_scoping() {
+        let manager = DesktopChatManager::default();
+        let base = "cloud-agent:owner:conversation";
+        let first = shared_request_runtime_session_id(base, "request-a").unwrap();
+        let second = shared_request_runtime_session_id(base, "request-b").unwrap();
+        assert_eq!(first, format!("{base}:request:request-a"));
+        assert_ne!(first, second);
+        assert!(crate::chat::canonical_sync::is_cloud_agent_runtime_session_id(&first));
+        let scoped = shared_request_runtime_session_id(&first, " request-a ").unwrap();
+        assert_eq!(scoped, first);
+        assert!(reserve_shared_request(&manager, &first, "request-a").await);
+        assert!(!reserve_shared_request(&manager, &scoped, "request-a").await);
+        assert!(reserve_shared_request(&manager, &second, "request-b").await);
+        assert!(shared_request_runtime_session_id(base, " ").is_err());
+        assert!(shared_request_runtime_session_id(" ", "request-a").is_err());
+        assert!(shared_request_runtime_session_id("private-agent-chat", "request-a").is_err());
     }
 
     #[test]

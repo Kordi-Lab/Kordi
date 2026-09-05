@@ -217,6 +217,28 @@ fn resolve_startup_session_id_uses_unique_prefix_match() {
 }
 
 #[test]
+fn resolve_startup_session_id_prefers_an_exact_match_over_a_longer_prefix_match() {
+    let conn = kordi_session::store::open_memory().expect("memory db");
+    let cwd = tempdir().expect("tempdir");
+    let cwd_str = cwd.path().display().to_string();
+    let exact_id = kordi_session::store::create_session(&conn, &cwd_str).expect("session");
+    let longer_id = kordi_session::store::create_session(&conn, &cwd_str).expect("session");
+    conn.execute(
+        "UPDATE sessions SET session_id = ?1 WHERE session_id = ?2",
+        rusqlite::params![format!("{exact_id}-qa"), longer_id],
+    )
+    .expect("rename longer session");
+
+    let entry = SessionBootstrapOptions {
+        session: Some(exact_id.clone()),
+        ..Default::default()
+    };
+
+    let resolved = resolve_startup_session_id(&conn, cwd.path(), &entry).expect("resolve");
+    assert_eq!(resolved, (exact_id, true));
+}
+
+#[test]
 fn resolve_startup_session_id_uses_latest_session_for_continue_or_resume() {
     let conn = kordi_session::store::open_memory().expect("memory db");
     let cwd = tempdir().expect("tempdir");

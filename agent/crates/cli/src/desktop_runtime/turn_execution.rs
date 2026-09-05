@@ -1,9 +1,9 @@
 //! Desktop turn preparation, execution, event streaming, and completion.
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use tokio::sync::mpsc;
 
-use crate::turn_runner::{self, TurnConfig, TurnEvent, run_turn};
+use crate::turn_runner::{self, run_turn, TurnConfig, TurnEvent};
 
 use super::attachments::{
     append_attachment_context_message, attachment_is_image, attachment_metadata_from_path,
@@ -11,8 +11,8 @@ use super::attachments::{
 };
 use super::model_options::request_thinking_for_model_with_auth;
 use super::{
-    DesktopChatSessionDetail, DesktopRuntimeSession, ensure_session_row_created,
-    maybe_name_session_from_prompt, refresh_provider_runtime_fields,
+    ensure_session_row_created, maybe_name_session_from_prompt, refresh_provider_runtime_fields,
+    DesktopChatSessionDetail, DesktopRuntimeSession,
 };
 
 pub struct DesktopRuntimeTurn {
@@ -73,6 +73,17 @@ impl DesktopRuntimeSession {
         prompt: String,
         attachment_paths: Vec<String>,
         cancel: tokio_util::sync::CancellationToken,
+    ) -> Result<DesktopRuntimeTurn> {
+        self.begin_message_streaming_with_request_id(prompt, attachment_paths, cancel, None)
+            .await
+    }
+
+    pub async fn begin_message_streaming_with_request_id(
+        &mut self,
+        prompt: String,
+        attachment_paths: Vec<String>,
+        cancel: tokio_util::sync::CancellationToken,
+        request_message_id: Option<String>,
     ) -> Result<DesktopRuntimeTurn> {
         self.refresh_saved_agent_persona();
         let prompt = prompt.trim().to_string();
@@ -150,13 +161,24 @@ impl DesktopRuntimeSession {
             &self.setup.model,
         )
         .await?;
-        turn_runner::append_user_message_with_images(
-            &sibling_conn,
-            &self.setup.session_id,
-            &prompt,
-            &images,
-        )
-        .await?;
+        if request_message_id.is_some() {
+            turn_runner::append_user_message_with_id(
+                &sibling_conn,
+                &self.setup.session_id,
+                &prompt,
+                &images,
+                request_message_id.as_deref(),
+            )
+            .await?;
+        } else {
+            turn_runner::append_user_message_with_images(
+                &sibling_conn,
+                &self.setup.session_id,
+                &prompt,
+                &images,
+            )
+            .await?;
+        }
         append_attachment_context_message(
             &sibling_conn,
             &self.setup.session_id,

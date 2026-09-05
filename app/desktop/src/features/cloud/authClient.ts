@@ -36,6 +36,7 @@ import type {
 } from './cloudIdentityTypes';
 import { ChatSyncClient } from './chatSyncClient';
 import { cloudApiBaseUrl } from './cloudApiEnvironment';
+import type { CloudAgentSubsession, NativeAgentSubsession } from './agentSubsessionTypes';
 import type { CloudSessionPin } from './cloudSessionPinTypes';
 import type {
   ChatSyncBootstrapResponse,
@@ -300,6 +301,7 @@ export type CloudAgentRunClaimInput = {
   prompt: string;
   idempotencyKey: string;
   targetCloudAgentId?: string | null;
+  runtimeRoute?: { defaultModel?: string | null; defaultAuthProvider?: string | null; defaultAuthChoice?: string | null; thinking?: string | null };
 };
 
 export type CloudAgentRunStatus = string;
@@ -310,6 +312,7 @@ export type CloudAgentRun = {
   sandboxId: string | null;
   createdAt: string;
   updatedAt: string;
+  executionBackend?: 'cloud' | 'desktop';
 };
 
 export type CloudAgentRunLookup = {
@@ -349,6 +352,19 @@ export function defaultCloudRequestTimeoutMs(baseUrl: string): number {
 }
 
 export class CloudAuthClient {
+  getAgentSubsession(token: string, id: string, includeMessages = false): Promise<CloudAgentSubsession> {
+    return this.send(`/v1/cloud/agent-subsessions/${encodeURIComponent(id)}?includeMessages=${includeMessages}`, {
+      method: 'GET', headers: { Authorization: `Bearer ${token}` },
+    }, 'Could not load this agent task.');
+  }
+
+  putAgentSubsession(token: string, value: NativeAgentSubsession, expectedVersion: number): Promise<CloudAgentSubsession> {
+    return this.send(`/v1/cloud/agent-subsessions/${encodeURIComponent(value.sessionId)}`, {
+      method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parentSessionId: value.parentSessionId, parentRequestId: value.parentRequestId,
+        title: value.title, status: value.status, messages: value.messages, expectedVersion }),
+    }, 'Could not synchronize this agent task.');
+  }
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
@@ -544,7 +560,7 @@ export class CloudAuthClient {
     input: CloudProviderAuthSnapshotInput,
   ): Promise<CloudProviderAuthSnapshot> {
     return this.send<CloudProviderAuthSnapshot>(
-      '/v1/cloud/agent-provider-auth/snapshots',
+      '/v1/cloud/agent-provider-auth/snapshots?intent=explicit',
       {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -575,7 +591,7 @@ export class CloudAuthClient {
 
   async revokeProviderAuthSnapshot(token: string, snapshotId: string): Promise<CloudProviderAuthSnapshot> {
     return this.send<CloudProviderAuthSnapshot>(
-      `/v1/cloud/agent-provider-auth/snapshots/${encodeURIComponent(snapshotId)}`,
+      `/v1/cloud/agent-provider-auth/snapshots/${encodeURIComponent(snapshotId)}?intent=explicit`,
       {
         method: 'DELETE',
         headers: { authorization: `Bearer ${token}` },
@@ -725,6 +741,13 @@ export class CloudAuthClient {
       },
       'Could not request Kordi fallback.',
     );
+  }
+
+  async desktopAgentExecution<T>(token: string, action: string, input: unknown): Promise<T> {
+    return this.send<T>(`/v1/cloud/agent-runs/desktop/${action}`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify(input),
+    }, 'Could not coordinate desktop agent execution.');
   }
 
   async lookupCloudAgentRunForRequest(token: string, requestMessageId: string): Promise<CloudAgentRun | null> {
@@ -897,22 +920,22 @@ export class CloudAuthClient {
       pinned ? 'Could not pin cloud chat.' : 'Could not unpin cloud chat.',
     );
   }
-
   async setCloudSessionMuted(token: string, sessionId: string, muted: boolean): Promise<void> {
     await this.sessionList.setSessionPreference(token, sessionId, 'muted', muted,
       muted ? 'Could not mute cloud chat.' : 'Could not unmute cloud chat.',
     );
   }
-
   async setCloudSessionUnread(token: string, sessionId: string, unread: boolean): Promise<void> {
     await this.sessionList.setSessionPreference(token, sessionId, 'unread', unread,
       unread ? 'Could not mark cloud chat unread.' : 'Could not mark cloud chat read.',
     );
   }
-
   async setCloudGroupSpacePinned(token: string, groupSpaceId: string, pinned: boolean): Promise<void> {
     await this.sessionList.setGroupPinned(token, groupSpaceId, pinned);
   }
+
+  async setCloudGroupSpaceMuted(token: string, groupSpaceId: string, muted: boolean): Promise<void> { await this.sessionList.setGroupMuted(token, groupSpaceId, muted); }
+  async setCloudGroupSpaceArchived(token: string, groupSpaceId: string, archived: boolean): Promise<void> { await this.sessionList.setGroupArchived(token, groupSpaceId, archived); }
 
   async listSessionForks(token: string, sourceSessionId: string): Promise<CloudSessionForkSummary[]> {
     const response = await this.send<{ forks: CloudSessionForkSummary[] }>(

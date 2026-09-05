@@ -370,12 +370,17 @@ mod tests {
             .iter()
             .enumerate()
             .map(|(index, event_type)| {
+                let payload = if *event_type == "session.deleted" {
+                    json!({ "sessionId": "session:obsolete" })
+                } else {
+                    json!({})
+                };
                 json!({
                     "stream_seq": index as i64 + 1,
                     "protocol_version": 2,
                     "type": event_type,
                     "critical": true,
-                    "payload": {}
+                    "payload": payload
                 })
             })
             .collect();
@@ -476,3 +481,7 @@ mod bounded_tests;
 #[cfg(test)]
 #[path = "chat_sync/test_support.rs"]
 mod test_support;
+
+#[cfg(test)]
+#[path = "chat_sync/unread_tests.rs"]
+mod unread_tests;

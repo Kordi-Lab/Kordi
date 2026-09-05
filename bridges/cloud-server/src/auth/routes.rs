@@ -235,6 +235,14 @@ pub fn routes_with_config(
             put(pin_group_space).delete(unpin_group_space),
         )
         .route(
+            "/v1/cloud/group-spaces/:group_space_id/muted",
+            put(mute_group_space).delete(unmute_group_space),
+        )
+        .route(
+            "/v1/cloud/group-spaces/:group_space_id/hidden",
+            put(hide_group_space).delete(unhide_group_space),
+        )
+        .route(
             "/v1/cloud/sessions/:source_session_id/pin",
             get(get_cloud_session_pin).put(update_cloud_session_pin),
         )
@@ -243,6 +251,7 @@ pub fn routes_with_config(
             delete(delete_cloud_session),
         )
         .merge(crate::auth::session_activity::routes())
+        .merge(crate::auth::subsessions::routes())
         .route(
             "/v1/cloud/attachments/initiate",
             post(crate::attachments::routes::initiate),

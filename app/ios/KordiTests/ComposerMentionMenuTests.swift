@@ -1,6 +1,28 @@
 import UIKit
 import XCTest
+import Testing
 @testable import Kordi
+
+@Test
+func mentionOwnerCaptionUsesAccountIdentity() {
+    let target = ComposerMentionTarget(
+        id: "agent:cloud-agent:acct_owner", displayName: "Alex's Kordi", kind: .agent,
+        accountId: "acct_owner", agentId: "cloud-agent:acct_owner", ownerName: "Alex", avatarSource: nil
+    )
+    let item = ComposerMentionMenuItem(kind: .target(target))
+    #expect(item.detail(for: "acct_owner") == "Owner · You")
+    #expect(item.detail(for: "acct_other") == "Owner · Alex")
+    #expect(item.detail() == "Owner · Alex")
+    #expect(item.accessibilityLabel(for: "acct_owner") == "Alex's Kordi, Owner · You")
+    #expect(item.target?.agentId == target.agentId)
+    #expect(item.target?.mentionText == "@KordiAlex")
+    let partial = ComposerMentionQuery(range: NSRange(location: 0, length: 7),
+        raw: "KordiA", normalized: "kordia", trailingWhitespace: false)
+    #expect(ComposerMentionMenuCatalog.items(for: partial, targets: [target]).first?.target?.id == target.id)
+    let completed = ComposerMentionQuery(range: NSRange(location: 0, length: 11),
+        raw: "KordiAlex ", normalized: "kordialex", trailingWhitespace: true)
+    #expect(ComposerMentionMenuCatalog.items(for: completed, targets: [target]).isEmpty)
+}
 
 final class ComposerMentionMenuTests: XCTestCase {
     private let agent = ComposerMentionTarget(
@@ -63,8 +85,8 @@ final class ComposerMentionMenuTests: XCTestCase {
             with: ComposerMentionMenuItem(kind: .target(agent))
         )
 
-        XCTAssertEqual(replacement.text, "Ask @Kordi about this")
-        XCTAssertEqual(replacement.selection.location, ("Ask @Kordi" as NSString).length)
+        XCTAssertEqual(replacement.text, "Ask \(agent.mentionText) about this")
+        XCTAssertEqual(replacement.selection.location, ("Ask \(agent.mentionText)" as NSString).length)
     }
 
     func testFileActionRemovesOnlyTheActiveMentionToken() throws {
@@ -101,7 +123,7 @@ final class ComposerMentionMenuTests: XCTestCase {
     }
 
     func testComposerHighlightsActiveAndSelectedMentionsOnly() throws {
-        let value = "Hello @Kordi"
+        let value = "Hello \(agent.mentionText)"
         let query = try XCTUnwrap(ComposerMentionQuery.current(
             in: value,
             selection: ComposerTextSelection(location: (value as NSString).length, length: 0)
@@ -120,7 +142,7 @@ final class ComposerMentionMenuTests: XCTestCase {
         )
         XCTAssertEqual(activeHighlights, [.init(range: query.range, kind: .active)])
         XCTAssertEqual(selectedHighlights, [
-            .init(range: NSRange(location: 6, length: 6), kind: .agent),
+            .init(range: NSRange(location: 6, length: (agent.mentionText as NSString).length), kind: .agent),
         ])
         XCTAssertTrue(ComposerMentionText.highlights(
             in: value,

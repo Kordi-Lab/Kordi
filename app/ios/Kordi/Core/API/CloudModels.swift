@@ -42,6 +42,13 @@ enum CanonicalAvatarSystem {
     static let humanStyle = "lorelei"
     static let agentStyle = "thumbs"
     static let defaultAgentId = "cloud-local-agent"
+    static func agentID(_ raw: String?, ownerAccountID: String) -> String {
+        let id = raw?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        if id == nil || id == defaultAgentId || id == "cloud-self:\(ownerAccountID)" {
+            return "cloud-agent:\(ownerAccountID)"
+        }
+        return id!
+    }
     static let markerPrefix = "kordi-avatar://"
 
     struct Marker: Equatable {
@@ -149,6 +156,15 @@ struct CloudDefaultAgentProfile: Codable, Hashable {
     let displayName: String
     let avatarUrl: String?
     let avatar: CanonicalAvatarDescriptor
+
+    static func displayName(_ value: String?, ownerName: String?) -> String {
+        let name = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !name.isEmpty, name.range(of: #"^(?:my\s+)?kordi$"#, options: [.regularExpression, .caseInsensitive]) == nil {
+            return name
+        }
+        guard let owner = ownerName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty else { return "Kordi" }
+        return "\(owner)'s Kordi"
+    }
 }
 
 struct CloudAccount: Codable, Hashable {
@@ -711,6 +727,29 @@ struct CloudSessionActivity: Codable, Hashable {
     let artifacts: [CloudSessionArtifactActivity]
 }
 
+struct CloudAgentSubsession: Codable, Hashable {
+    struct Message: Codable, Hashable, Identifiable {
+        let id: String
+        let role: String
+        let text: String
+        let timestampMs: Int64
+    }
+    let sessionId: String
+    let parentSessionId: String
+    let parentRequestId: String
+    let ownerAccountId: String
+    let agentId: String
+    let ownerDisplayName: String
+    let agentDisplayName: String
+    let title: String
+    let status: String
+    let version: Int64
+    var messages: [Message]
+    let updatedAt: String
+
+    var state: BackgroundAgentSession.State { .init(wireValue: status) ?? .failed }
+}
+
 struct CloudMessageAttachment: Codable, Hashable, Identifiable {
     let attachmentId: String
     let name: String
@@ -925,6 +964,8 @@ struct CloudChatConversation: Codable, Hashable {
     let version: Int
     let createdByAccountId: String
     let legacySessionId: String?
+    var groupSpaceId: String? = nil
+    var groupTitle: String? = nil
     let forkedFromSessionId: String?
     let forkedFromMessageId: String?
     let latestMessageSequence: Int64
@@ -938,6 +979,8 @@ struct CloudChatConversation: Codable, Hashable {
         case sharedTitle = "shared_title"
         case createdByAccountId = "created_by_account_id"
         case legacySessionId = "legacy_session_id"
+        case groupSpaceId = "group_space_id"
+        case groupTitle = "group_title"
         case forkedFromSessionId = "forked_from_session_id"
         case forkedFromMessageId = "forked_from_message_id"
         case latestMessageSequence = "latest_message_sequence"
@@ -1316,6 +1359,7 @@ struct CloudAgentRun: Codable, Hashable {
     let sandboxId: String?
     let createdAt: String
     let updatedAt: String
+    var executionBackend: String? = nil
 }
 
 struct CloudSyncResponse: Codable, Hashable {

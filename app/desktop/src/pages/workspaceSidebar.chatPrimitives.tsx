@@ -60,7 +60,7 @@ export function ParticipantSpaceAvatarStack({
         <span
           key={`${avatar.seed}-${index}`}
           className="relative inline-flex"
-          style={{ zIndex: avatars.length - index }}
+          style={{ zIndex: index + 1 }}
         >
           <IdentityAvatar
             kind={avatar.kind}

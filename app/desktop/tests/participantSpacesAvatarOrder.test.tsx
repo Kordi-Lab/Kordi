@@ -37,7 +37,7 @@ function groupConversation(participants: ConversationParticipant[]): Conversatio
   };
 }
 
-test('cloud group sessions with the same people collapse into one group space even if legacy metadata has different group ids', () => {
+test('cloud group sessions with the same people keep their authoritative group ids', () => {
   const alice = participant('acct_a', 'seed-a', 'Alice');
   const bob = participant('acct_b', 'seed-b', 'Bob');
   const carol = participant('acct_c', 'seed-c', 'Carol');
@@ -48,19 +48,22 @@ test('cloud group sessions with the same people collapse into one group space ev
       id: 'session:group:one',
       canonicalSessionId: 'session:group:one',
       participantSpaceId: 'group:session:group:one',
-      metadata: { kind: 'chat-group', groupSpaceId: 'session:group:one', customName: 'Cloud group' },
+      metadata: { kind: 'chat-group', groupSpaceId: 'session:group:one', customName: 'First group' },
     },
     {
       ...groupConversation([alice, bob, carol]),
       id: 'session:group:two',
       canonicalSessionId: 'session:group:two',
       participantSpaceId: 'group:session:group:two',
-      metadata: { kind: 'chat-group', groupSpaceId: 'session:group:two', customName: 'Cloud group' },
+      metadata: { kind: 'chat-group', groupSpaceId: 'session:group:two', customName: 'Second group' },
     },
   ]);
 
-  assert.equal(spaces.filter((space) => space.kind === 'group').length, 1);
-  assert.deepEqual(spaces[0]?.sessions.map((session) => session.id).sort(), ['session:group:one', 'session:group:two']);
+  assert.equal(spaces.filter((space) => space.kind === 'group').length, 2);
+  assert.deepEqual(spaces.map((space) => space.id).sort(), [
+    'group:session:group:one',
+    'group:session:group:two',
+  ]);
 });
 
 test('direct contacts with the same display name remain separate participant spaces', () => {

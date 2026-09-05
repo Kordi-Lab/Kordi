@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { CloudAgentTurnCoordinator } from '../src/features/cloud/cloudAgentTurnCoordinator';
+import { cloudGroupAgentRequestRuntimeSessionId } from '../src/features/cloud/cloudAgentRuntime';
 
 function deferred() {
   let resolve!: () => void;
@@ -10,6 +11,31 @@ function deferred() {
   });
   return { promise, resolve };
 }
+
+test('mentions of the same group agent use independent request runtimes', async () => {
+  const coordinator = new CloudAgentTurnCoordinator('acct_me');
+  const gate = deferred();
+  const bothStarted = deferred();
+  const started: string[] = [];
+  for (const requestId of ['request:1', 'request:2']) {
+    const runtimeSessionId = cloudGroupAgentRequestRuntimeSessionId('runtime:group:agent', requestId);
+    const job = {
+      runtimeSessionId,
+      requestId,
+      run: async () => {
+        started.push(requestId);
+        if (started.length === 2) bothStarted.resolve();
+        await gate.promise;
+      },
+    };
+    assert.deepEqual(coordinator.enqueue(job), { accepted: true, queued: false });
+    assert.equal(coordinator.enqueue(job).accepted, false);
+  }
+  await bothStarted.promise;
+  assert.deepEqual(started, ['request:1', 'request:2']);
+  gate.resolve();
+  await coordinator.waitForIdle();
+});
 
 test('same runtime jobs execute in FIFO order without overlapping', async () => {
   const coordinator = new CloudAgentTurnCoordinator('acct_me');

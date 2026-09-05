@@ -472,10 +472,6 @@ export function useCloudMessageSync({
       });
     }
     const interval = window.setInterval(() => {
-      if (
-        typeof document !== 'undefined'
-        && document.visibilityState !== 'visible'
-      ) return;
       void syncCloudCollaborationDiff();
     }, CLOUD_MESSAGES_REFRESH_MS);
     return () => window.clearInterval(interval);

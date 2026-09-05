@@ -146,7 +146,19 @@ pub(crate) fn append_message_in_db(
     if let (Some(source_transport), Some(source_event_id)) =
         (&request.source_transport, &request.source_event_id)
     {
-        if let Some(existing) = select_message_by_source(conn, source_transport, source_event_id)? {
+        if let Some(mut existing) =
+            select_message_by_source(conn, source_transport, source_event_id)?
+        {
+            if let Some(sequence_num) = chat_sync_sequence_num(conn, &request)? {
+                if existing.sequence_num != sequence_num {
+                    conn.execute(
+                        "UPDATE session_messages SET sequence_num = ?2 WHERE id = ?1",
+                        params![existing.id, sequence_num],
+                    )
+                    .map_err(|err| err.to_string())?;
+                    existing.sequence_num = sequence_num;
+                }
+            }
             return Ok(existing);
         }
     }

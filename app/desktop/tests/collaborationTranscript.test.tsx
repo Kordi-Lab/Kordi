@@ -398,6 +398,17 @@ test('direct person bridge transcript rewrites remote first-person agent mention
   }), host(), 'My Kordi');
 
   assert.equal(view.messages[0]?.text, '@KordiEthan show me the diskusage');
+  const explicit = mapCollaborationConversationToViewModel(conversation({
+    messages: [{
+      id: 'explicit-agent-mention', direction: 'inbound', sender: 'Ethan',
+      text: '@Kordi reply once', timeLabel: '17:30', timestampMs: 1,
+      requestId: null, deliveryState: null, outreach: null,
+      mentions: [{ label: 'Kordi', targetKind: 'agent', targetIdentityId: 'agent:someone-else',
+        startUtf16: 0, lengthUtf16: 6, displayText: '@Kordi' }],
+    }],
+  }), host(), 'My Kordi');
+  assert.equal(explicit.messages[0]?.text, '@Kordi reply once');
+  assert.equal(explicit.messages[0]?.mentions?.[0]?.targetIdentityId, 'agent:someone-else');
 });
 
 test('direct person bridge transcript renders local agent responses as agent turns', () => {

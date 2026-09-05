@@ -12,9 +12,8 @@ const PROCESSING_PLACEHOLDER_PATTERN = /^(?:queued|processing|requesting)(?:\.{0
 const OUTREACH_CONTEXT_ENVELOPE_PATTERN = /^Context:\s*[\s\S]*?\n\s*Request:\s*\n?([\s\S]*)$/i;
 
 /**
- * Returns true if a collaboration message body is the synthetic "queued..." /
- * "processing..." / "requesting..." placeholder Kordi writes while an agent
- * reply is in flight.
+ * Recognizes retired text placeholders in older cached collaboration messages.
+ * New waiting messages use an empty body and an explicit lifecycle state.
  * Matches optional 0-3 trailing dots or a single ellipsis character.
  */
 export function isProcessingPlaceholderText(text: string): boolean {

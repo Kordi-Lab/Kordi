@@ -2,10 +2,24 @@
 
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
+use futures_util::TryStreamExt;
 
 use super::envelopes::{cloud_group_request_envelope_for_run, direct_cloud_agent_target};
 use super::group_mentions::agent_handoff_target;
 use super::{ClaimRunRequest, RunResult};
+
+/// Resolve transport aliases without changing the durable group request identity.
+pub async fn request_identity(pool: &PgPool, session_id: &str, request_id: &str) -> RunResult<Option<(String,String)>> {
+    let mut rows=query_as::<_,(String,String,String)>("SELECT m.message_id::text,m.client_message_id::text,m.content #>> '{blocks,0,text}' FROM cloud_chat_messages m JOIN cloud_chat_conversations c USING(conversation_id) WHERE c.legacy_session_id=$1 AND m.deleted_at IS NULL AND m.content #>> '{blocks,0,text}' IS NOT NULL ORDER BY m.conversation_sequence DESC")
+        .bind(session_id).fetch(pool);
+    while let Some((wire,client,body))=rows.try_next().await? {
+        let logical=super::envelopes::parse_cloud_group_envelope(&body).and_then(|envelope| envelope.message.map(|message|message.id));
+        if request_id==wire || request_id==client || request_id==format!("ios_{client}") || logical.as_deref()==Some(request_id) {
+            return Ok(Some((logical.unwrap_or_else(||wire.clone()),wire)));
+        }
+    }
+    Ok(None)
+}
 
 pub async fn requester_can_target_owner(
     pool: &PgPool,
@@ -33,16 +47,16 @@ pub async fn validate_agent_authored_group_handoff_claim(
         cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id)
             .await?
     else {
-        return Ok(true);
+        return Ok(!input.session_id.trim().starts_with("session:group:"));
     };
     let Some(message) = envelope.message.as_ref() else {
         return Ok(false);
     };
-    if message.sender_kind.as_deref() != Some("agent") {
-        return Ok(true);
-    }
     if message.sender_account_id.trim() != input.requester_account_id.trim() {
         return Ok(false);
+    }
+    if message.sender_kind.as_deref() != Some("agent") {
+        return Ok(true);
     }
     Ok(agent_handoff_target(&envelope).is_some_and(|target| {
         target.participant.account_id.trim() == input.owner_account_id.trim()
@@ -65,13 +79,21 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
             .await?
     {
         if let Some(message) = envelope.message {
-            if let Some(agent_id) = message
+            if message
                 .target_cloud_agent_id
                 .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
+                .is_some_and(|id| !id.trim().is_empty())
+                || message
+                    .target_cloud_agent_owner_account_id
+                    .as_deref()
+                    .is_some_and(|id| !id.trim().is_empty())
             {
+                let agent_id = message
+                    .target_cloud_agent_id
+                    .as_deref()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
                 let owner_account_id = message
                     .target_cloud_agent_owner_account_id
                     .as_deref()
@@ -83,7 +105,9 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
                     &agent_id,
                     &owner_account_id,
                     &input.requester_account_id,
-                ) {
+                ) && owner_account_id == input.owner_account_id
+                {
+                    // Only skip definition lookup after checking the selected owner.
                     return Ok(None);
                 }
                 return Ok(Some(SharedCloudAgentTarget {
@@ -120,7 +144,8 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
         &target.agent_id,
         &target.owner_account_id,
         &input.requester_account_id,
-    ) {
+    ) && target.owner_account_id == input.owner_account_id
+    {
         return Ok(None);
     }
     Ok(Some(SharedCloudAgentTarget {
@@ -136,7 +161,15 @@ fn is_default_kordi_target(
     requester_account_id: &str,
 ) -> bool {
     agent_id == format!("cloud-agent:{owner_account_id}")
+        || agent_id == format!("cloud-self:{owner_account_id}")
         || (agent_id == "cloud-local-agent" && owner_account_id == requester_account_id)
+}
+
+pub async fn execution_agent_id(pool: &PgPool, input: &ClaimRunRequest) -> RunResult<String> {
+    Ok(shared_cloud_agent_target_for_claim(pool, input)
+        .await?
+        .map(|target| target.agent_id)
+        .unwrap_or_else(|| format!("cloud-agent:{}", input.owner_account_id)))
 }
 
 pub async fn claim_has_shared_cloud_agent_target(

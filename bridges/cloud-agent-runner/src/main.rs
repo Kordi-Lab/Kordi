@@ -51,12 +51,20 @@ async fn main() -> Result<()> {
         "starting kordi cloud agent runner"
     );
 
+    let mut workers = tokio::task::JoinSet::new();
+    let mut poll = tokio::time::interval(Duration::from_millis(poll_ms));
+    poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
-        match process_one_run(&client).await {
-            Ok(RunnerStepOutcome::NoRun) => {}
-            Ok(outcome) => tracing::info!(?outcome, "processed cloud agent run"),
-            Err(err) => tracing::warn!(error = %err, "cloud agent runner step failed"),
+        tokio::select! {
+            Some(result) = workers.join_next(), if !workers.is_empty() => match result {
+                Ok(Ok(RunnerStepOutcome::NoRun)) => {},
+                Ok(Ok(_)) => tracing::info!("cloud agent run finished"),
+                _ => tracing::warn!("cloud agent runner step failed"),
+            },
+            _ = poll.tick(), if workers.len() < 4 => {
+                let execution = client.for_execution();
+                workers.spawn(async move { process_one_run(&execution).await });
+            },
         }
-        tokio::time::sleep(Duration::from_millis(poll_ms)).await;
     }
 }

@@ -1,5 +1,5 @@
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
-import { publicScopedAgentMentionHandle, stripSelfPossessivePrefix } from '@/lib/identityLabels';
+import { defaultAgentDisplayName, publicScopedAgentMentionHandle, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type {
   Conversation,
@@ -342,7 +342,7 @@ function uniqueHandle(baseHandle: string, suffix: string) {
 
 function candidateWithBaseMentionHandle(candidate: CollaborationMentionCandidate) {
   const handle = candidate.targetKind === 'agent'
-    && candidate.peer.displayName?.trim() !== candidate.displayLabel
+    && (candidate.peer.isDefaultAgent || candidate.peer.displayName?.trim() !== candidate.displayLabel)
     ? publicScopedAgentMentionHandle(
       candidate.peer.ownerName,
       candidate.displayLabel,
@@ -421,7 +421,9 @@ export function buildCollaborationMentionCandidates(collaborationState: DesktopC
       const pushLabel = (value: string | null | undefined, targetKind: CollaborationMentionCandidate['targetKind']) => {
         const rawLabel = value?.trim();
         const displayLabel = targetKind === 'agent'
-          ? stripSelfPossessivePrefix(rawLabel, peer.ownerName) || rawLabel
+          ? peer.isDefaultAgent
+            ? defaultAgentDisplayName(peer.ownerName, rawLabel)
+            : stripSelfPossessivePrefix(rawLabel, peer.ownerName) || rawLabel
           : rawLabel;
         if (!displayLabel) return;
         const handle = mentionHandleForLabel(displayLabel, peer.nodeId);

@@ -463,7 +463,7 @@ test('planCloudSelfAgentSync skips inherited fork snapshot rows but keeps new fo
   const forkSessionId = 'session:fork:abc123';
   const state = {
     sessions: [
-      { id: forkSessionId, kind: 'self-agent', title: 'Fork', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', metadata: { fork: { forkedFromSessionId: 'session:group:1' } }, createdAtMs: 1, updatedAtMs: 1 },
+      { id: forkSessionId, kind: 'self-agent', title: 'Fork', status: 'active', createdByIdentityId: 'human:me', primaryIdentityId: 'agent:me', metadata: { fork: { forkedFromSessionId: 'session:self-agent:parent' } }, createdAtMs: 1, updatedAtMs: 1 },
     ],
     identities: [],
     participants: [],

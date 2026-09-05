@@ -131,6 +131,8 @@ pub(super) async fn append_cloud_agent_response_sync_event(
     pool: &PgPool,
     event: CloudAgentResponseSyncEvent<'_>,
 ) -> Result<Option<String>, sqlx_core::Error> {
+    let body = super::runs::subsessions::with_links(pool, event.message_id, event.body).await?;
+    let event = CloudAgentResponseSyncEvent { body: &body, ..event };
     ensure_response_conversation(pool, &event).await?;
     let conversation: Option<(Uuid,)> = query_as(
         "SELECT conversation.conversation_id

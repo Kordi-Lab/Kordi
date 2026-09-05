@@ -386,7 +386,7 @@ test('cloud agent mentions keep the current request native and sync prior cloud 
         messageId: 'msg_agent_peer',
         fromAccountId: 'acct_peer',
         toAccountId: 'acct_me',
-        body: encodeCloudAgentResponse({ requestId: 'msg_remote_request', text: 'I can help.' }),
+        body: encodeCloudAgentResponse({ requestId: 'msg_human_peer', text: 'I can help.' }),
         createdAt: '2026-05-11T10:02:00Z',
         direction: 'incoming',
       },

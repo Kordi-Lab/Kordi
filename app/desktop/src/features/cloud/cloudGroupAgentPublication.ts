@@ -17,6 +17,9 @@ import type {
 import type { CloudGroupAgentHandoff } from './cloudGroupMentions';
 import type { CloudGroupAgentPolicy } from './cloudGroupAgentControl.types';
 import type { CloudAgentExecutionTool } from './cloudAgentMessages';
+import type { CloudAuthClient } from './authClient';
+import { cloudOperationUuid } from './chatSyncMapping';
+import { parseCloudGroupControl } from './cloudGroupMessages';
 
 export async function publishCloudGroupAgentTerminalAfterGuards({
   context,
@@ -33,6 +36,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   agentDisplayName,
   agentHandoff,
   signal,
+  publisher,
 }: {
   context: CloudGroupMessageControlContext;
   runtime: CloudGroupAgentRuntime;
@@ -48,6 +52,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   agentDisplayName: string;
   agentHandoff: CloudGroupAgentHandoff | null;
   signal: AbortSignal;
+  publisher?: Pick<CloudAuthClient, 'sendMessage'>;
 }): Promise<void> {
   if (signal.aborted) return;
   const {
@@ -60,7 +65,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   const guardSpan = beginChatPerformanceSpan(
     'cloud-agent-ownership-guard',
   );
-  const guardDecision = await cloudGroupAgentGuardDecision({
+  const guardDecision = publisher ? { requestAlreadyOwned: false, resultClass: 'success' as const } : await cloudGroupAgentGuardDecision({
     loadMessages: () => loadCloudGroupAgentTargetMessages(
       runtime,
       token,
@@ -88,6 +93,7 @@ export async function publishCloudGroupAgentTerminalAfterGuards({
   );
   if (!guardDecision.requestAlreadyOwned) {
     const fanout = await publishCloudGroupAgentEnvelope({
+      publisher,
       runtime,
       token,
       targetAccountIds,
@@ -147,6 +153,7 @@ export async function publishCloudGroupAgentEnvelope({
   sessionId,
   createdAtMs,
   signal,
+  publisher,
 }: {
   runtime: CloudGroupAgentRuntime;
   token: string;
@@ -155,9 +162,11 @@ export async function publishCloudGroupAgentEnvelope({
   sessionId: string;
   createdAtMs: number;
   signal?: AbortSignal;
+  publisher?: Pick<CloudAuthClient, 'sendMessage'>;
 }): Promise<{ sentCount: number; failedCount: number }> {
   const sent = await Promise.allSettled(targetAccountIds.map((targetAccountId) => (
-    runtime.client.sendMessage(token, targetAccountId, body, {
+    (publisher ?? runtime.client).sendMessage(token, targetAccountId, body, {
+      ...(publisher ? { clientMessageId: cloudOperationUuid(`group-agent:${sessionId}:${parseCloudGroupControl(body)?.message?.id ?? createdAtMs}`) } : {}),
       sessionId,
       clientCreatedAt: new Date(createdAtMs).toISOString(),
       conversationKind: 'group',

@@ -1,13 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { buildForkLineage, isGroupForkSession } from '@/features/chat/forkLineage';
+import { buildForkLineage } from '@/features/chat/forkLineage';
 import { filterParticipantSpaces } from '@/features/chat/participantSpaces';
+import { effectiveSessionUnread, totalVisibleUnread } from '@/features/chat/unreadCounts';
 import type { ChatChannel } from '@/kordi-app/types';
 import {
   buildChatSidebarRows,
   type ChatSidebarSessionInput,
 } from '@/pages/sidebar/chatSidebarRows';
-import { filterGroupForkSessionsFromSpaces, groupSpacePreferenceId, participantSpaceSessionPreferenceId } from '@/pages/workspaceSidebar.chatHelpers';
+import { groupSpacePreferenceId, participantSpaceSessionPreferenceId } from '@/pages/workspaceSidebar.chatHelpers';
 import type {
   WorkspaceSidebarChats,
   WorkspaceSidebarParticipantSpace as ParticipantSpaceItem,
@@ -112,18 +113,9 @@ export function useWorkspaceChatSidebarModel(
   const sourceAgentParticipantSpaces = showArchived
     ? filterParticipantSpaces(orderedArchivedSpaces, chatSearch, 'agent')
     : orderedAgentParticipantSpaces;
-  const visibleParticipantSpaces = useMemo(
-    () => filterGroupForkSessionsFromSpaces(sourceParticipantSpaces),
-    [sourceParticipantSpaces],
-  );
-  const visibleContactParticipantSpaces = useMemo(
-    () => filterGroupForkSessionsFromSpaces(sourceContactParticipantSpaces),
-    [sourceContactParticipantSpaces],
-  );
-  const visibleAgentParticipantSpaces = useMemo(
-    () => filterGroupForkSessionsFromSpaces(sourceAgentParticipantSpaces),
-    [sourceAgentParticipantSpaces],
-  );
+  const visibleParticipantSpaces = sourceParticipantSpaces;
+  const visibleContactParticipantSpaces = sourceContactParticipantSpaces;
+  const visibleAgentParticipantSpaces = sourceAgentParticipantSpaces;
   const activeParticipantSpaceId =
     visibleParticipantSpaces.find((space) =>
       space.sessions.some(
@@ -208,10 +200,9 @@ export function useWorkspaceChatSidebarModel(
       const nextSeen = new Set(seen);
       nextSeen.add(sessionId);
       const rowSession = allSidebarSessionRowsById.get(sessionId)?.session;
-      const ownUnread = Math.max(
-        rowSession && unreadSessionIds.has(participantSpaceSessionPreferenceId(rowSession)) ? 1 : 0,
-        rowSession?.unread ?? 0,
-      );
+      const ownUnread = rowSession
+        ? effectiveSessionUnread(rowSession, mutedSessionIds, unreadSessionIds)
+        : 0;
       const forkUnread = (
         globalForkLineage.forksByParentSessionId.get(sessionId) ?? []
       ).reduce((sum, fork) => sum + visit(fork.id, nextSeen), 0);
@@ -223,7 +214,7 @@ export function useWorkspaceChatSidebarModel(
       visit(sessionId, new Set());
     }
     return cache;
-  }, [allSidebarSessionRowsById, globalForkLineage, unreadSessionIds]);
+  }, [allSidebarSessionRowsById, globalForkLineage, mutedSessionIds, unreadSessionIds]);
   const unreadByParticipantSpaceIdWithForkDescendants = useMemo(() => {
     const collect = (sessionId: string, target: Set<string>, seen: Set<string>) => {
       if (seen.has(sessionId)) return;
@@ -241,10 +232,9 @@ export function useWorkspaceChatSidebarModel(
       }
       const unread = [...sessionIds].reduce((sum, sessionId) => {
         const rowSession = allSidebarSessionRowsById.get(sessionId)?.session;
-        return sum + Math.max(
-          rowSession && unreadSessionIds.has(participantSpaceSessionPreferenceId(rowSession)) ? 1 : 0,
-          rowSession?.unread ?? 0,
-        );
+        return sum + (rowSession
+          ? effectiveSessionUnread(rowSession, mutedSessionIds, unreadSessionIds)
+          : 0);
       }, 0);
       unreadBySpaceId.set(space.id, unread);
     }
@@ -252,18 +242,17 @@ export function useWorkspaceChatSidebarModel(
   }, [
     allSidebarSessionRowsById,
     globalForkLineage,
+    mutedSessionIds,
     visibleParticipantSpaces,
     unreadSessionIds,
   ]);
   const currentContactUnread = visibleContactParticipantSpaces.reduce(
     (sum, space) =>
       sum
-      + (space.sessions.every((session) => mutedSessionIds.has(participantSpaceSessionPreferenceId(session)))
-        ? 0
-        : Math.max(
-          0,
-          unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread,
-        )),
+      + Math.max(
+        0,
+        unreadByParticipantSpaceIdWithForkDescendants.get(space.id) ?? space.unread,
+      ),
     0,
   );
   const flatAgentSessions = useMemo(
@@ -313,9 +302,7 @@ export function useWorkspaceChatSidebarModel(
   const currentAgentUnread = flatAgentSessions.reduce(
     (sum, { session }) =>
       renderableAgentSessionIds.has(session.id)
-        ? sum + (mutedSessionIds.has(participantSpaceSessionPreferenceId(session))
-          ? 0
-          : Math.max(unreadSessionIds.has(participantSpaceSessionPreferenceId(session)) ? 1 : 0, session.unread))
+        ? sum + effectiveSessionUnread(session, mutedSessionIds, unreadSessionIds)
         : sum,
     0,
   );
@@ -416,15 +403,10 @@ export function useWorkspaceChatSidebarModel(
       topLevelAgentSessions,
     ],
   );
-  const totalUnread = chatConversations.reduce(
-    (sum, conversation) =>
-      isGroupForkSession(conversation) || mutedSessionIds.has(conversation.canonicalSessionId || conversation.id)
-        ? sum
-        : sum + Math.max(
-          unreadSessionIds.has(conversation.canonicalSessionId || conversation.id) ? 1 : 0,
-          conversation.unread ?? 0,
-        ),
-    0,
+  const totalUnread = totalVisibleUnread(
+    chatConversations,
+    mutedSessionIds,
+    unreadSessionIds,
   );
   const collaborationSyncStatus: CollaborationSyncStatus =
     options.isCollaborationSyncUnavailable

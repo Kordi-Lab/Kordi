@@ -69,9 +69,27 @@ pub(super) async fn ensure_group_response_messages(
         cloud_group_request_envelope_for_run(pool, response.session_id, response.request_message_id)
             .await?
     };
-    let Some(request_envelope) = request_envelope else {
+    let Some(mut request_envelope) = request_envelope else {
         return Ok(None);
     };
+    if let Some(message) = request_envelope.message.as_mut() {
+        if message
+            .message_action
+            .as_ref()
+            .and_then(|action| action.get("kind"))
+            .and_then(|kind| kind.as_str())
+            != Some("thread")
+        {
+            message.message_action =
+                crate::cloud_agent_runtime::shared_threads::reply_thread_action(
+                    pool,
+                    response.session_id,
+                    response.request_message_id,
+                    response.owner_account_id,
+                )
+                .await?;
+        }
+    }
     let response_group_message_id = response.run_id.to_string();
     let stable_created_at: Option<(String,)> =
         query_as("SELECT created_at FROM cloud_agent_fallback_runs WHERE run_id = $1")

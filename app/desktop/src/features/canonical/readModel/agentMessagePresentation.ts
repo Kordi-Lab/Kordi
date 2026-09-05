@@ -1,5 +1,12 @@
 import type { CanonicalIdentity } from '@/kordi-app/types';
-import { selfDisplayName, stripSelfPossessivePrefix } from '@/lib/identityLabels';
+import { defaultAgentDisplayName, selfDisplayName, stripSelfPossessivePrefix } from '@/lib/identityLabels';
+import { cloudAgentId, defaultCloudAgentId } from '@/features/cloud/cloudAgentIdentity';
+
+function isDefaultAgent(identity: CanonicalIdentity | undefined, owner: CanonicalIdentity | undefined) {
+  const ownerId = identity?.humanId?.trim() || owner?.humanId?.trim();
+  return Boolean(ownerId && identity?.kind === 'agent' && identity.agentId?.trim()
+    && cloudAgentId(identity.agentId, ownerId) === defaultCloudAgentId(ownerId));
+}
 
 export function ownerScopedAgentName(
   identity: CanonicalIdentity | undefined,
@@ -9,6 +16,7 @@ export function ownerScopedAgentName(
   if (!identity) return undefined;
   if (identity.kind !== 'agent') return selfDisplayName(identity.displayName, identity.id === profileHumanIdentityId);
   const owner = identity.ownerIdentityId ? identityById.get(identity.ownerIdentityId) : undefined;
+  if (isDefaultAgent(identity, owner)) return defaultAgentDisplayName(owner?.displayName, identity.displayName);
   return stripSelfPossessivePrefix(identity.displayName, owner?.displayName) || identity.displayName;
 }
 
@@ -29,7 +37,9 @@ export function agentMessagePresentation(
     ? identity.displayName?.trim()
     : null;
   return {
-    sender: localIdentitySender || contentSender || identity?.displayName,
+    sender: isDefaultAgent(identity, owner)
+      ? defaultAgentDisplayName(owner?.displayName || contentOwnerName, localIdentitySender || contentSender || identity?.displayName)
+      : localIdentitySender || contentSender || identity?.displayName,
     senderOwnerName: isAgentTurn
       ? contentOwnerName?.trim() || (owner?.id === profileHumanIdentityId ? 'You' : owner?.displayName?.trim()) || null
       : null,

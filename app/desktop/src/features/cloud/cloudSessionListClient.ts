@@ -69,4 +69,20 @@ export class CloudSessionListClient {
       pinned ? 'Could not pin cloud group.' : 'Could not unpin cloud group.',
     );
   }
+
+  setGroupMuted(token: string, groupSpaceId: string, muted: boolean): Promise<void> {
+    return this.request<void>(
+      `/v1/cloud/group-spaces/${encodeURIComponent(groupSpaceId)}/muted`,
+      { method: muted ? 'PUT' : 'DELETE', headers: { authorization: `Bearer ${token}` } },
+      muted ? 'Could not mute cloud group.' : 'Could not unmute cloud group.',
+    );
+  }
+
+  setGroupArchived(token: string, groupSpaceId: string, archived: boolean): Promise<void> {
+    return this.request<void>(
+      `/v1/cloud/group-spaces/${encodeURIComponent(groupSpaceId)}/hidden`,
+      { method: archived ? 'PUT' : 'DELETE', headers: { authorization: `Bearer ${token}` } },
+      archived ? 'Could not archive cloud group.' : 'Could not restore cloud group.',
+    );
+  }
 }

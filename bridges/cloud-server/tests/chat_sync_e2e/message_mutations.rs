@@ -13,7 +13,7 @@ async fn message_edits_and_both_deletion_scopes_converge() {
             client_operation_id: Uuid::now_v7(),
             kind: ConversationKind::Direct,
             shared_title: None,
-            client_session_id: format!("session:mutation:{}", Uuid::now_v7()),
+            client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer.clone()],
         },
     )

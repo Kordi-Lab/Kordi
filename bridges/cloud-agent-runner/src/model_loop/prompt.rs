@@ -11,6 +11,19 @@ Export artifacts only when explicitly useful to share; unexported sandbox files 
 
 pub fn tool_catalog() -> Vec<Value> {
     vec![
+        serde_json::json!({
+            "type":"function", "function": {
+                "name":"task_operator", "description":"Create a real independent execution subsession of this Agent, or inspect one by its exact sessionId. After a successful spawn, briefly acknowledge in the parent chat and end the parent turn; do not wait or copy the child result here.",
+                "parameters":{"type":"object","properties":{
+                    "action":{"type":"string","enum":["spawn","inspect"]},
+                    "taskName":{"type":"string","description":"Stable ASCII letters, numbers, and underscores; reuse the same name when retrying a spawn."},
+                    "taskTitle":{"type":"string"}, "message":{"type":"string"},
+                    "forkTurns":{"type":"string","enum":["none"]},
+                    "writeScope":{"type":"array","items":{"type":"string"}},
+                    "sessionId":{"type":"string"}
+                },"required":["action"]}
+            }
+        }),
         tool_schema(
             "read",
             "Read a UTF-8 text file inside the Cloud sandbox.",

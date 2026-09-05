@@ -9,6 +9,12 @@ export type DesktopAuthUpdateReason =
   | 'profile-removed'
   | 'provider-logout';
 
+export type DesktopAuthSyncIntent = {
+  providerId: string;
+  reason: DesktopAuthUpdateReason;
+  revision: number;
+};
+
 export type DesktopAuthRefreshToken = Readonly<{
   requestId: number;
   mutationRevision: number;
@@ -26,6 +32,7 @@ type DesktopAuthUpdatedMessage = {
   at: number;
   sourceId?: string;
   reason?: DesktopAuthUpdateReason;
+  providerId?: string;
 };
 
 function createDesktopAuthSourceId() {
@@ -79,7 +86,27 @@ export function isDesktopAuthUpdateFromAnotherSource(
   return isDesktopAuthUpdatedMessage(value) && value.sourceId !== currentSourceId;
 }
 
-export function broadcastDesktopAuthUpdated(reason: DesktopAuthUpdateReason) {
+export function desktopAuthSyncIntentFromAnotherSource(
+  value: unknown,
+  currentSourceId = desktopAuthSourceId,
+): DesktopAuthSyncIntent | null {
+  if (
+    !isDesktopAuthUpdatedMessage(value)
+    || value.sourceId === currentSourceId
+    || !value.reason
+    || !value.providerId?.trim()
+  ) return null;
+  return {
+    providerId: value.providerId.trim(),
+    reason: value.reason,
+    revision: value.at,
+  };
+}
+
+export function broadcastDesktopAuthUpdated(
+  reason: DesktopAuthUpdateReason,
+  providerId?: string,
+) {
   if (typeof BroadcastChannel === 'undefined') return;
 
   try {
@@ -89,6 +116,7 @@ export function broadcastDesktopAuthUpdated(reason: DesktopAuthUpdateReason) {
       at: Date.now(),
       sourceId: desktopAuthSourceId,
       reason,
+      providerId: providerId?.trim() || undefined,
     } satisfies DesktopAuthUpdatedMessage);
     channel.close();
   } catch {

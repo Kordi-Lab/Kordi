@@ -733,7 +733,8 @@ function MessageBubbleView({
               sessions={relatedAgentSessions}
               agentName={msg.sender}
               statusBySessionId={relatedAgentSessionStatusById}
-              onOpen={onOpenForkSession}
+              parentSessionId={msg.turn.sessionId}
+              parentRequestId={msg.turn.replyToMessageId ?? msg.replyToMessageId}
             />
           </div>
           <MessageHoverTime msg={msg} side="peer" />

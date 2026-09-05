@@ -96,10 +96,7 @@ pub(in crate::canonical_sessions::commands) fn load_catalog_from_db(
                             ORDER BY sm.sequence_num DESC, sm.created_at_ms DESC, sm.id DESC
                         ) AS row_rank
                     FROM session_messages sm
-                    WHERE COALESCE(sm.source_transport, '') NOT IN (
-                        'canonical-fork-snapshot',
-                        'cloud-group-fork-snapshot'
-                    )
+                    WHERE COALESCE(sm.source_transport, '') != 'canonical-fork-snapshot'
                       AND LOWER(TRIM(COALESCE(sm.status, ''))) NOT IN ('sending', 'processing')
                       AND NOT CASE
                           WHEN LOWER(TRIM(COALESCE(sm.message_kind, ''))) = 'status'

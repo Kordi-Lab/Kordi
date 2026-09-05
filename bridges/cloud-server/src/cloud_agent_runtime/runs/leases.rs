@@ -47,6 +47,10 @@ pub struct RunnerRunEnvelope {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RunnerRunResponse {
+    #[serde(rename = "subsessionId")]
+    pub subsession_id: Option<String>,
+    #[serde(rename = "subsessionWriteScope")]
+    pub subsession_write_scope: Vec<String>,
     #[serde(rename = "runId")]
     pub run_id: String,
     pub status: String,
@@ -92,19 +96,36 @@ pub async fn lease_next_run(
     pool: &PgPool,
     runner_id: &str,
 ) -> RunResult<Option<RunnerRunResponse>> {
+    lease_run(pool, runner_id, None).await
+}
+
+async fn lease_run(
+    pool: &PgPool,
+    runner_id: &str,
+    canary_run_id: Option<&str>,
+) -> RunResult<Option<RunnerRunResponse>> {
     let now = Utc::now();
     let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
+    let mut tx = pool.begin().await?;
+    // ponytail: serialize ownership transitions, not agent work; use per-session
+    // locks if admission or terminal publication becomes a measured bottleneck.
+    sqlx_core::query::query("SELECT pg_advisory_xact_lock(81208411)")
+        .execute(&mut *tx)
+        .await?;
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
-         SET status = 'leased', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
+         SET status = 'leased', execution_backend = 'cloud', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
          WHERE run_id = ( \
-             SELECT run_id FROM cloud_agent_fallback_runs \
-             WHERE status = 'queued' \
+             SELECT candidate.run_id FROM cloud_agent_fallback_runs candidate \
+             WHERE (status = 'queued' \
                 OR ( \
                     status IN ('leased', 'running') \
                     AND lease_expires_at IS NOT NULL \
-                    AND lease_expires_at <= $3 \
-                ) \
+                    AND lease_expires_at::timestamptz <= $3::timestamptz \
+                )) \
+             AND ($4::text IS NULL OR candidate.run_id=$4) \
+             AND (NOT EXISTS(SELECT 1 FROM cloud_chat_conversations c WHERE c.legacy_session_id=candidate.session_id AND c.kind='ai') \
+                  OR NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs active WHERE active.run_id<>candidate.run_id AND active.session_id=candidate.session_id AND active.execution_agent_id=candidate.execution_agent_id AND active.status IN ('queued','leased','running') AND (active.created_at<candidate.created_at OR (active.status='running' AND active.lease_expires_at::timestamptz>now())))) \
              ORDER BY created_at ASC \
              LIMIT 1 \
              FOR UPDATE SKIP LOCKED \
@@ -114,8 +135,10 @@ pub async fn lease_next_run(
     .bind(runner_id)
     .bind(&lease_expires_at)
     .bind(now.to_rfc3339())
-    .fetch_optional(pool)
+    .bind(canary_run_id)
+    .fetch_optional(&mut *tx)
     .await?;
+    tx.commit().await?;
     let Some(row) = row else {
         return Ok(None);
     };
@@ -127,31 +150,7 @@ pub async fn lease_canary_run(
     runner_id: &str,
     canary_run_id: &str,
 ) -> RunResult<Option<RunnerRunResponse>> {
-    let now = Utc::now();
-    let lease_expires_at = (now + chrono::Duration::seconds(120)).to_rfc3339();
-    let row: Option<RunnerRunRow> = query_as(
-        "UPDATE cloud_agent_fallback_runs \
-         SET status = 'leased', claimed_by = $1, lease_expires_at = $2, updated_at = $3 \
-         WHERE run_id = $4 AND ( \
-             status = 'queued' \
-             OR ( \
-                 status IN ('leased', 'running') \
-                 AND lease_expires_at IS NOT NULL \
-                 AND lease_expires_at <= $3 \
-             ) \
-         ) \
-         RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message, system_prompt",
-    )
-    .bind(runner_id)
-    .bind(&lease_expires_at)
-    .bind(now.to_rfc3339())
-    .bind(canary_run_id)
-    .fetch_optional(pool)
-    .await?;
-    let Some(row) = row else {
-        return Ok(None);
-    };
-    runner_response_from_row(pool, row).await.map(Some)
+    lease_run(pool, runner_id, Some(canary_run_id)).await
 }
 
 pub async fn mark_run_running(
@@ -164,7 +163,7 @@ pub async fn mark_run_running(
     let row: Option<RunnerRunRow> = query_as(
         "UPDATE cloud_agent_fallback_runs \
          SET status = 'running', lease_expires_at = $3, updated_at = $4 \
-         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running') \
+         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend='cloud' AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now() \
          RETURNING run_id, status, prompt, owner_account_id, requester_account_id, session_id, sandbox_id, runtime_route_json, response_message_id, error_code, error_message, system_prompt",
     )
     .bind(run_id)
@@ -190,6 +189,8 @@ pub(super) async fn runner_response_from_row(
     pool: &PgPool,
     mut row: RunnerRunRow,
 ) -> RunResult<RunnerRunResponse> {
+    let (subsession_id, scope): (Option<uuid::Uuid>, serde_json::Value) = query_as("SELECT subsession_id,subsession_write_scope FROM cloud_agent_fallback_runs WHERE run_id=$1")
+        .bind(&row.0).fetch_one(pool).await?;
     if row.0.starts_with(crate::digest::RUN_PREFIX)
         && matches!(row.1.as_str(), "leased" | "running")
         && !crate::digest::revalidate_run(pool, &row.0).await?
@@ -206,6 +207,8 @@ pub(super) async fn runner_response_from_row(
     .fetch_optional(pool)
     .await?;
     Ok(RunnerRunResponse {
+        subsession_id: subsession_id.map(|id| id.to_string()),
+        subsession_write_scope: serde_json::from_value(scope).unwrap_or_default(),
         run_id: row.0,
         status: row.1,
         prompt: row.2,

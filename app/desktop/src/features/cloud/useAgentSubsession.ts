@@ -1,0 +1,45 @@
+import { useEffect, useState } from 'react';
+import { CloudAuthClient } from './authClient';
+import { CLOUD_SESSION_CHANGED_EVENT, loadSession } from './session';
+import type { CloudAgentSubsession } from './agentSubsessionTypes';
+
+export function useAgentSubsession(id: string, includeMessages = false) {
+  const [snapshot, setSnapshot] = useState<CloudAgentSubsession | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    const changed = () => { setSnapshot(null); setError(null); setRetry((value) => value + 1); };
+    window.addEventListener(CLOUD_SESSION_CHANGED_EVENT, changed);
+    return () => window.removeEventListener(CLOUD_SESSION_CHANGED_EVENT, changed);
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let current: CloudAgentSubsession | null = null;
+    let accountId: string | null = null;
+    let failures = 0;
+    const client = new CloudAuthClient();
+    const load = async () => {
+      try {
+        const session = await loadSession();
+        if (!session || (accountId && session.accountId !== accountId)) { setSnapshot(null); setError('Sign in to view this task.'); return; }
+        accountId = session.accountId;
+        let next = await client.getAgentSubsession(session.token, id, includeMessages && current == null);
+        if (includeMessages && current && next.version !== current.version) next = await client.getAgentSubsession(session.token, id, true);
+        if (cancelled || (await loadSession())?.accountId !== accountId) return;
+        if (current && next.version === current.version) next = { ...next, messages: current.messages };
+        if (!current || next.version !== current.version || next.agentDisplayName !== current.agentDisplayName || next.ownerDisplayName !== current.ownerDisplayName) { current = next; setSnapshot(next); }
+        failures = 0;
+        setError(null);
+      } catch {
+        if (cancelled) return;
+        failures += 1;
+        if (failures >= 3) { setSnapshot(null); current = null; setError('This task is not available. Check access or try again after synchronization.'); }
+      }
+      if (!cancelled) timer = setTimeout(() => { void load(); }, current?.status === 'running' || !current ? 1500 : 10000);
+    };
+    void load();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [id, includeMessages, retry]);
+  return { snapshot: snapshot?.sessionId === id ? snapshot : null, error, reload: () => { setError(null); setSnapshot(null); setRetry((value) => value + 1); } };
+}

@@ -89,7 +89,11 @@ struct ConversationInitialLoadingView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             KordiChatWallpaper(theme: chatTheme)
-            if !placeholders.isEmpty {
+            if placeholders.isEmpty {
+                ProgressView("Loading conversation…")
+                    .controlSize(.large)
+                    .foregroundStyle(.secondary)
+            } else {
                 TimelineView(
                     .animation(
                         minimumInterval: 1 / 30,

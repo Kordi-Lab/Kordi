@@ -19,6 +19,7 @@ export interface SessionStorageBackend {
 }
 
 export const CLOUD_SESSION_SIGNED_OUT_EVENT = 'kordi-cloud-session-signed-out';
+export const CLOUD_SESSION_CHANGED_EVENT = 'kordi-cloud-session-changed';
 
 function isTauriRuntime(): boolean {
   if (typeof window === 'undefined') return false;
@@ -121,15 +122,18 @@ export async function loadSession(): Promise<StoredSession | null> {
 }
 
 export async function saveSession(session: StoredSession): Promise<void> {
+  const previousAccountId = cachedSessionValue?.accountId;
   await backend().save(session);
   cachedSessionValue = { ...session };
   cachedSessionLoadPromise = null;
+  if (previousAccountId !== session.accountId && typeof window !== 'undefined') window.dispatchEvent(new Event(CLOUD_SESSION_CHANGED_EVENT));
 }
 
 export async function clearSession(): Promise<void> {
   await backend().clear();
   cachedSessionValue = null;
   cachedSessionLoadPromise = null;
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(CLOUD_SESSION_CHANGED_EVENT));
 }
 
 export function notifyCloudSessionSignedOut(): void {

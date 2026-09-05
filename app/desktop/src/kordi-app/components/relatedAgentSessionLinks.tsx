@@ -1,4 +1,7 @@
 import { Bot, ChevronRight } from 'lucide-react';
+import { useState } from 'react';
+import { useAgentSubsession } from '@/features/cloud/useAgentSubsession';
+import { AgentSubsessionDialog } from './AgentSubsessionDialog';
 
 import {
   normalizedRelatedAgentSessionStatus,
@@ -19,12 +22,17 @@ export function RelatedAgentSessionLinks({
   agentName,
   statusBySessionId,
   onOpen,
+  parentSessionId,
+  parentRequestId,
 }: {
   sessions: RelatedAgentSession[];
   agentName?: string | null;
   statusBySessionId?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
   onOpen?: (sessionId: string) => void;
+  parentSessionId?: string;
+  parentRequestId?: string | null;
 }) {
+  const [selected, setSelected] = useState<string | null>(null);
   if (sessions.length === 0) return null;
 
   return (
@@ -34,16 +42,24 @@ export function RelatedAgentSessionLinks({
       data-related-agent-session-style="thread-preview"
     >
       <span className="pointer-events-none absolute -left-3 -top-3 h-7 w-3 rounded-bl-[9px] border-b border-l border-[color:var(--app-divider)]" aria-hidden="true" />
-      {sessions.map((session) => {
-        const status = statusBySessionId?.get(session.sessionId)
-          ?? normalizedRelatedAgentSessionStatus(session.status);
-        const presentation = STATUS[status];
-        return <button
+      {sessions.map((session) => <SubsessionLink key={session.sessionId} session={session} agentName={agentName}
+        status={statusBySessionId?.get(session.sessionId)} onOpen={onOpen ?? setSelected} />)}
+      {selected ? <AgentSubsessionDialog key={selected} sessionId={selected} parentSessionId={parentSessionId} parentRequestId={parentRequestId} agentName={agentName} onClose={() => setSelected(null)} /> : null}
+    </div>
+  );
+}
+
+function SubsessionLink({ session, agentName, status, onOpen }: {
+  session: RelatedAgentSession; agentName?: string | null; status?: RelatedAgentSessionRunStatus; onOpen: (id: string) => void;
+}) {
+  const { snapshot, error } = useAgentSubsession(session.sessionId);
+  const resolved = snapshot ? normalizedRelatedAgentSessionStatus(snapshot.status) : status ?? normalizedRelatedAgentSessionStatus(session.status);
+  const presentation = STATUS[resolved];
+  return <button
           key={session.sessionId}
           type="button"
           className="app-button-quiet group grid min-h-10 w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-1.5 py-1 text-left disabled:cursor-default disabled:opacity-60"
           onClick={() => onOpen?.(session.sessionId)}
-          disabled={!onOpen}
           aria-label={`Open background agent session: ${session.title}`}
           data-related-agent-session-id={session.sessionId}
         >
@@ -51,28 +67,25 @@ export function RelatedAgentSessionLinks({
             <Bot className="h-3.5 w-3.5" />
           </span>
           <span className="min-w-0 flex-1 truncate text-[12px] font-semibold leading-4 text-[color:var(--utility-foreground)]" title={session.title}>
-            {session.title}
+            {snapshot?.title ?? session.title}
           </span>
           <span className="flex shrink-0 items-center gap-0.5 text-[10.5px] font-semibold leading-4 text-[color:var(--app-sidebar-accent)]">
             Open
             <ChevronRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
           </span>
           <span className="col-span-2 col-start-2 flex min-w-0 items-center gap-1.5 text-[10.5px] leading-4 text-[color:var(--utility-muted-text)]">
-            <span className="font-medium text-[color:var(--utility-foreground)]">{agentName?.trim() || 'Agent'}</span>
+            <span className="font-medium text-[color:var(--utility-foreground)]">{snapshot?.agentDisplayName || agentName?.trim() || 'Agent'}</span>
             <span aria-hidden="true"> · </span>
             <span className="truncate">Background session</span>
             <span
               className="ml-auto inline-flex shrink-0 items-center gap-1"
-              data-related-agent-session-status={status}
-              aria-label={`Status: ${presentation.label}`}
+              data-related-agent-session-status={resolved}
+              aria-label={`Status: ${error ? 'Sync unavailable' : presentation.label}`}
               aria-live="polite"
             >
-              <span className={cn('h-1.5 w-1.5 rounded-full', presentation.dot)} aria-hidden="true" />
-              {presentation.label}
+              <span className={cn('h-1.5 w-1.5 rounded-full', error ? 'bg-slate-400' : presentation.dot)} aria-hidden="true" />
+              {error ? 'Sync unavailable' : presentation.label}
             </span>
           </span>
         </button>;
-      })}
-    </div>
-  );
 }

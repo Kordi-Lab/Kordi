@@ -43,7 +43,7 @@ function coordinatesKey({
   return `${groupId}\u0000${senderAccountId}\u0000${requestId}`;
 }
 
-function processingSlotCoordinatesKey(
+function agentSlotCoordinatesKey(
   message: CanonicalSessionMessage,
 ): string | null {
   const senderIdentityPrefix = 'agent:cloud:';
@@ -63,12 +63,6 @@ function processingSlotCoordinatesKey(
     || cleanText(content.requestId)
     || cleanText(content.replyToMessageId);
   if (!linkedRequestId) return null;
-  const deliveryState = cleanText(content.deliveryState).toLowerCase();
-  const pending = message.status === 'queued'
-    || message.status === 'processing'
-    || deliveryState === 'queued'
-    || deliveryState === 'processing';
-  if (!pending) return null;
   return coordinatesKey({
     groupId: message.sessionId,
     requestId: linkedRequestId,
@@ -88,15 +82,29 @@ export function cloudGroupTerminalRepairReplayRows(
   messages: readonly CanonicalSessionMessage[],
 ): IndexedCloudGroupRow[] {
   if (messages.length === 0) return [];
+  const requestKeys = new Set(messages.map(
+    (message) => `${message.sessionId}\u0000${message.id}`,
+  ));
+  const agentSlotKeys = new Set<string>();
   const processingSlotKeys = new Set<string>();
   for (const message of messages) {
-    const key = processingSlotCoordinatesKey(message);
-    if (key) processingSlotKeys.add(key);
+    const key = agentSlotCoordinatesKey(message);
+    if (!key) continue;
+    agentSlotKeys.add(key);
+    const deliveryState = cleanText(contentRecord(message.content).deliveryState);
+    if (['queued', 'processing'].includes(deliveryState)
+      || ['queued', 'processing'].includes(message.status)) {
+      processingSlotKeys.add(key);
+    }
   }
-  if (processingSlotKeys.size === 0) return [];
   return rows.filter((row) => {
     const coordinates = terminalResponseCoordinates(row);
-    return coordinates !== null
-      && processingSlotKeys.has(coordinatesKey(coordinates));
+    if (!coordinates) return false;
+    const key = coordinatesKey(coordinates);
+    // Durable storage is not proof that the currently loaded page contains
+    // the reply. A missing slot needs the same repair as a pending slot.
+    return processingSlotKeys.has(key)
+      || (!agentSlotKeys.has(key)
+        && requestKeys.has(`${coordinates.groupId}\u0000${coordinates.requestId}`));
   });
 }

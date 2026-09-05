@@ -1,3 +1,5 @@
+import type { MessageMention } from '@/kordi-app/types';
+
 const SELF_REFERENCE_RE = /^(you|me)$/i;
 const FIRST_PERSON_POSSESSIVE_RE = /^(my|your)\s+/i;
 
@@ -33,6 +35,13 @@ export function selfObjectLabel(value?: string | null, isSelf = false) {
   const label = cleanLabel(value);
   if (isSelf || isSelfReferenceName(label)) return 'me';
   return label;
+}
+
+export function defaultAgentDisplayName(ownerName?: string | null, value?: string | null) {
+  const name = cleanLabel(value);
+  const owner = cleanLabel(ownerName);
+  if (name && !/^(?:my\s+)?kordi$/iu.test(name)) return name;
+  return owner ? `${owner}'s Kordi` : 'Kordi';
 }
 
 export function stripSelfPossessivePrefix(value?: string | null, ownerName?: string | null) {
@@ -99,10 +108,14 @@ export function rewriteLeadingFirstPersonAgentMention(
   text: string,
   ownerName: string | null | undefined,
   agentLabel: string | null | undefined = 'Kordi',
+  mentions: readonly MessageMention[] = [],
 ) {
   const match = /^(\s*)@(?:my\s*kordi|your\s*kordi|kordi)(?:\s*[:;,.!?—-]\s*|\s+|$)([\s\S]*)$/iu.exec(text);
   if (!match) return text;
   const [, leading, rest = ''] = match;
+  if (mentions.some((mention) => mention.targetKind === 'agent'
+    && mention.targetIdentityId?.trim()
+    && (mention.startUtf16 == null || mention.startUtf16 === leading.length))) return text;
   const normalizedRest = rest.trimStart();
   const mention = `@${publicScopedAgentMentionHandle(ownerName, agentLabel)}`;
   return normalizedRest ? `${leading}${mention} ${normalizedRest}` : `${leading}${mention}`;

@@ -18,7 +18,7 @@ export type CloudAgentExecutionTool = {
 
 /** Owner-visible execution state shared only between devices on the same account. */
 export type CloudAgentExecutionSnapshot = {
-  phase: 'preparing' | 'analyzing' | 'using-tool' | 'writing' | 'complete' | 'failed' | 'cancelled';
+  phase: 'queued' | 'preparing' | 'analyzing' | 'using-tool' | 'writing' | 'complete' | 'failed' | 'cancelled';
   summary: string;
   steps: CloudAgentExecutionStep[];
   thinkingText?: string;
@@ -34,6 +34,7 @@ export function parseCloudAgentExecutionSnapshot(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   const phases: CloudAgentExecutionSnapshot['phase'][] = [
+    'queued',
     'preparing',
     'analyzing',
     'using-tool',

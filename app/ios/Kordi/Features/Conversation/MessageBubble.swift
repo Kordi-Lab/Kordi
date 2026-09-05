@@ -33,6 +33,7 @@ struct MessageBubble: View, Equatable {
     let isSelected: Bool
     let allowsQuotedReplies: Bool
     let threadReplyCount: Int
+    var threadAgentState: BackgroundAgentSession.State? = nil
     let showsAvatarSlot: Bool
     let authorAvatarName: String
     let authorAvatarSource: String?
@@ -84,6 +85,7 @@ struct MessageBubble: View, Equatable {
             && lhs.isSelected == rhs.isSelected
             && lhs.allowsQuotedReplies == rhs.allowsQuotedReplies
             && lhs.threadReplyCount == rhs.threadReplyCount
+            && lhs.threadAgentState == rhs.threadAgentState
             && lhs.showsAvatarSlot == rhs.showsAvatarSlot
             && lhs.authorAvatarName == rhs.authorAvatarName
             && lhs.authorAvatarSource == rhs.authorAvatarSource
@@ -138,6 +140,12 @@ struct MessageBubble: View, Equatable {
             if message.author == .me { Spacer(minLength: 34) }
 
             VStack(alignment: message.author == .me ? .trailing : .leading, spacing: 4) {
+                if let position = message.agentQueuePosition {
+                    Label(position == 1 ? "Queued next" : "Queued · \(position)", systemImage: "clock")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                }
                 if showAuthor && message.author == .agent {
                     HStack(spacing: 6) {
                         Text(message.authorName)
@@ -155,7 +163,8 @@ struct MessageBubble: View, Equatable {
 
                 messageSurface
                     .overlay(alignment: .bottomTrailing) {
-                        if message.author == .me, !isCallActivity, !message.isEdited {
+                        if message.author == .me, !isCallActivity, !message.isEdited,
+                           message.agentQueuePosition == nil {
                             if showsMediaDeliveryStatus {
                                 mediaDeliveryStatusOverlay
                             } else {
@@ -252,6 +261,7 @@ struct MessageBubble: View, Equatable {
                     MessageBubbleAccessoryRow(
                         reactions: message.reactions,
                         threadReplyCount: threadReplyCount,
+                        threadAgentState: threadAgentState,
                         ownAccountId: ownAccountId,
                         scrollAnchor: message.author == .me ? .trailing : .leading,
                         onReact: onReact,
@@ -393,7 +403,7 @@ struct MessageBubble: View, Equatable {
     }
 
     private var agentExecutionMinimumWidth: CGFloat {
-        guard let execution = message.agentExecution else { return 0 }
+        guard let execution = Self.agentExecutionForDisplay(message) else { return 0 }
         let presentation = AgentExecutionTimelinePresentation(execution: execution)
         if !execution.completed, !presentation.hasExpandableContent {
             return 0
@@ -426,7 +436,7 @@ struct MessageBubble: View, Equatable {
                 replyPreview(source)
             }
 
-            if let execution = message.agentExecution {
+            if let execution = Self.agentExecutionForDisplay(message) {
                 AgentExecutionTimeline(
                     execution: execution,
                     showsWaitingIndicator: Self.showsAgentWaitingIndicator(
@@ -650,7 +660,7 @@ struct MessageBubble: View, Equatable {
         if message.voiceMessage != nil { return false }
         let text = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
         return !text.isEmpty && (
-            message.agentExecution == nil
+            message.author != .agent
                 || Self.hasVisibleAgentResponseText(text)
         )
     }
@@ -693,6 +703,19 @@ struct MessageBubble: View, Equatable {
     static func hasVisibleAgentResponseText(_ responseText: String) -> Bool {
         let text = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
         return !text.isEmpty && !CloudMessageCodec.isAgentProcessingPlaceholder(text)
+    }
+
+    static func agentExecutionForDisplay(_ message: ChatMessage) -> AgentExecutionSnapshot? {
+        if let execution = message.agentExecution { return execution }
+        // Older cached pages predate structured waiting state. Normalize them
+        // on read so the retired placeholder never becomes message content.
+        guard message.author == .agent,
+              message.requestMessageId != nil,
+              CloudMessageCodec.isAgentProcessingPlaceholder(message.text) else { return nil }
+        return CloudMessageCodec.agentWaitingExecution(
+            deliveryState: .processing,
+            updatedAtMs: message.createdAt.timeIntervalSince1970 * 1_000
+        )
     }
 
     static func showsAgentWaitingIndicator(
@@ -851,6 +874,7 @@ private struct MessageBubbleAccessoryRow: View {
     @Environment(\.kordiChatTheme) private var chatTheme
     let reactions: [MessageReaction]
     let threadReplyCount: Int
+    let threadAgentState: BackgroundAgentSession.State?
     let ownAccountId: String?
     let scrollAnchor: UnitPoint
     let onReact: (String) -> Void
@@ -982,10 +1006,14 @@ private struct BackgroundSessionThreadConnector: Shape {
 
 private struct BackgroundAgentSessionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @EnvironmentObject private var model: AppModel
+    @State private var snapshot: CloudAgentSubsession?
+    @State private var syncUnavailable = false
     let presentation: BackgroundAgentSessionPresentation
     let agentName: String
     let isEnabled: Bool
     let onOpen: (BackgroundAgentSession) -> Void
+    private var state: BackgroundAgentSession.State { snapshot?.state ?? presentation.state }
 
     var body: some View {
         Button {
@@ -1000,7 +1028,7 @@ private struct BackgroundAgentSessionRow: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(presentation.session.title)
+                        Text(snapshot?.title ?? presentation.session.title)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 1)
@@ -1041,14 +1069,32 @@ private struct BackgroundAgentSessionRow: View {
         .disabled(!isEnabled)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(presentation.session.title), \(agentName), background session, \(presentation.state.label)"
+            "\(snapshot?.title ?? presentation.session.title), \(snapshot?.agentDisplayName ?? agentName), background session, \(syncUnavailable ? "Sync unavailable" : state.label)"
         )
         .accessibilityHint("Opens the linked agent session")
+        .task(id: presentation.session.sessionId) {
+            var failures = 0
+            while !Task.isCancelled {
+                do {
+                    let next = try await model.agentSubsession(id: presentation.session.sessionId)
+                    try Task.checkCancellation()
+                    if next != snapshot { snapshot = next }
+                    failures = 0
+                    syncUnavailable = false
+                } catch {
+                    if Task.isCancelled { return }
+                    failures += 1
+                    syncUnavailable = failures >= 3
+                }
+                do { try await Task.sleep(for: .seconds(state == .running ? 1.5 : 10)) }
+                catch { return }
+            }
+        }
     }
 
     private var metadataLabel: some View {
         HStack(spacing: 5) {
-            Text(agentName)
+            Text(snapshot?.agentDisplayName ?? agentName)
                 .fontWeight(.medium)
                 .foregroundStyle(.primary)
             Text("·")
@@ -1065,7 +1111,7 @@ private struct BackgroundAgentSessionRow: View {
                 .fill(statusColor)
                 .frame(width: 6, height: 6)
                 .accessibilityHidden(true)
-            Text(presentation.state.label)
+            Text(syncUnavailable ? "Sync unavailable" : state.label)
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
@@ -1073,7 +1119,8 @@ private struct BackgroundAgentSessionRow: View {
     }
 
     private var statusColor: Color {
-        switch presentation.state {
+        if syncUnavailable { return .secondary }
+        return switch state {
         case .running: KordiTheme.signalBlue
         case .done: .green
         case .failed: .red

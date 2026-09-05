@@ -1,4 +1,7 @@
 use super::*;
+use sqlx_core::transaction::Transaction;
+use sqlx_postgres::Postgres;
+use uuid::Uuid;
 
 pub(super) struct SessionListPreferences {
     pub pinned_session_ids: Vec<String>,
@@ -59,40 +62,38 @@ pub(super) async fn load_session_list_preferences(
 }
 
 pub(super) async fn clear_session_pin(
-    pool: &PgPool,
+    transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
-    session_id: &str,
+    conversation_id: Uuid,
 ) -> Result<(), sqlx_core::error::Error> {
     query(
-        "UPDATE cloud_chat_conversation_members member SET pinned_at = NULL \
-         FROM cloud_chat_conversations conversation \
-         WHERE member.conversation_id = conversation.conversation_id \
-           AND member.account_id = $1 AND member.membership_state = 'active' \
-           AND (conversation.legacy_session_id = $2 OR conversation.conversation_id::text = $2)",
+        "UPDATE cloud_chat_conversation_members SET pinned_at = NULL \
+         WHERE account_id = $1 AND conversation_id = $2 \
+           AND membership_state = 'active' AND pinned_at IS NOT NULL",
     )
     .bind(account_id)
-    .bind(session_id)
-    .execute(pool)
+    .bind(conversation_id)
+    .execute(&mut **transaction)
     .await?;
     Ok(())
 }
 
 pub(super) async fn clear_session_preferences(
-    pool: &PgPool,
+    transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
-    session_id: &str,
+    conversation_id: Uuid,
 ) -> Result<(), sqlx_core::error::Error> {
     query(
-        "UPDATE cloud_chat_conversation_members member \
+        "UPDATE cloud_chat_conversation_members \
          SET pinned_at = NULL, muted_until = NULL, marked_unread_at = NULL \
-         FROM cloud_chat_conversations conversation \
-         WHERE member.conversation_id = conversation.conversation_id \
-           AND member.account_id = $1 AND member.membership_state = 'active' \
-           AND (conversation.legacy_session_id = $2 OR conversation.conversation_id::text = $2)",
+         WHERE account_id = $1 AND conversation_id = $2 \
+           AND membership_state = 'active' \
+           AND (pinned_at IS NOT NULL OR muted_until IS NOT NULL \
+                OR marked_unread_at IS NOT NULL)",
     )
     .bind(account_id)
-    .bind(session_id)
-    .execute(pool)
+    .bind(conversation_id)
+    .execute(&mut **transaction)
     .await?;
     Ok(())
 }
@@ -119,55 +120,83 @@ async fn set_cloud_session_list_preference(
         );
     };
     let pool = state.db_pool();
+    let mut transaction = match pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let conversation_id = match conversation_id_for_session_in_transaction(
+        &mut transaction,
+        &session.account_id,
+        &session_id,
+    )
+    .await
+    {
+        Ok(Some(conversation_id)) => conversation_id,
+        Ok(None) => {
+            return err(
+                "not_a_participant",
+                "You can only update sessions you participate in.",
+                StatusCode::FORBIDDEN,
+            );
+        }
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
     let result = match preference {
         SessionListPreference::Pinned => {
             query(
-                "UPDATE cloud_chat_conversation_members member \
+                "UPDATE cloud_chat_conversation_members \
                  SET pinned_at = CASE WHEN $3 THEN NOW() ELSE NULL END \
-                 FROM cloud_chat_conversations conversation \
-                 WHERE member.conversation_id = conversation.conversation_id \
-                   AND member.account_id = $1 AND member.membership_state = 'active' \
-                   AND (conversation.legacy_session_id = $2 OR conversation.conversation_id::text = $2)",
+                 WHERE account_id = $1 AND conversation_id = $2 \
+                   AND membership_state = 'active' AND (pinned_at IS NULL) = $3",
             )
             .bind(&session.account_id)
-            .bind(&session_id)
+            .bind(conversation_id)
             .bind(enabled)
-            .execute(pool)
+            .execute(&mut *transaction)
             .await
         }
         SessionListPreference::Muted => {
             query(
-                "UPDATE cloud_chat_conversation_members member \
+                "UPDATE cloud_chat_conversation_members \
                  SET muted_until = CASE WHEN $3 THEN 'infinity'::timestamptz ELSE NULL END \
-                 FROM cloud_chat_conversations conversation \
-                 WHERE member.conversation_id = conversation.conversation_id \
-                   AND member.account_id = $1 AND member.membership_state = 'active' \
-                   AND (conversation.legacy_session_id = $2 OR conversation.conversation_id::text = $2)",
+                 WHERE account_id = $1 AND conversation_id = $2 \
+                   AND membership_state = 'active' \
+                   AND ((muted_until IS NOT NULL AND muted_until > NOW()) <> $3)",
             )
             .bind(&session.account_id)
-            .bind(&session_id)
+            .bind(conversation_id)
             .bind(enabled)
-            .execute(pool)
+            .execute(&mut *transaction)
             .await
         }
         SessionListPreference::Unread => {
             query(
-                "UPDATE cloud_chat_conversation_members member \
+                "UPDATE cloud_chat_conversation_members \
                  SET marked_unread_at = CASE WHEN $3 THEN NOW() ELSE NULL END \
-                 FROM cloud_chat_conversations conversation \
-                 WHERE member.conversation_id = conversation.conversation_id \
-                   AND member.account_id = $1 AND member.membership_state = 'active' \
-                   AND (conversation.legacy_session_id = $2 OR conversation.conversation_id::text = $2)",
+                 WHERE account_id = $1 AND conversation_id = $2 \
+                   AND membership_state = 'active' AND (marked_unread_at IS NULL) = $3",
             )
             .bind(&session.account_id)
-            .bind(&session_id)
+            .bind(conversation_id)
             .bind(enabled)
-            .execute(pool)
+            .execute(&mut *transaction)
             .await
         }
     };
-    let rows_affected = match result {
-        Ok(result) => result.rows_affected(),
+    let changed = match result {
+        Ok(result) => result.rows_affected() > 0,
         Err(_) => {
             return err(
                 "server_error",
@@ -176,12 +205,15 @@ async fn set_cloud_session_list_preference(
             );
         }
     };
-    if rows_affected == 0 {
-        return err(
-            "not_a_participant",
-            "You can only update sessions you participate in.",
-            StatusCode::FORBIDDEN,
-        );
+    if !changed {
+        return match transaction.commit().await {
+            Ok(()) => StatusCode::NO_CONTENT.into_response(),
+            Err(_) => err(
+                "server_error",
+                "Could not update session preferences.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            ),
+        };
     }
     let event_type = match (preference, enabled) {
         (SessionListPreference::Pinned, true) => "session.pinned",
@@ -192,17 +224,19 @@ async fn set_cloud_session_list_preference(
         (SessionListPreference::Unread, false) => "session.unmarked_unread",
     };
     let now = Utc::now().to_rfc3339();
-    if publish_chat_event(
-        pool,
-        &session.account_id,
+    if crate::chat_sync::store::append_user_sync_events_in_transaction(
+        &mut transaction,
+        std::slice::from_ref(&session.account_id),
         event_type,
-        Some(&session_id),
-        None,
-        serde_json::json!({ "sessionId": &session_id, "updatedAt": &now }),
-        &now,
+        Some(conversation_id),
+        &serde_json::json!({
+            "sessionId": &session_id,
+            "updatedAt": &now,
+        }),
     )
     .await
     .is_err()
+        || transaction.commit().await.is_err()
     {
         return err(
             "server_error",
@@ -317,42 +351,64 @@ async fn set_group_space_pinned(
         );
     };
     let now = Utc::now().to_rfc3339();
-    if query(
+    let mut transaction = match state.db_pool().begin().await {
+        Ok(transaction) => transaction,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    match query(
         "INSERT INTO cloud_account_group_space_preferences \
          (account_id, group_space_id, pinned_at, updated_at) \
          VALUES ($1, $2, CASE WHEN $3 THEN NOW() ELSE NULL END, NOW()) \
          ON CONFLICT (account_id, group_space_id) DO UPDATE SET \
-           pinned_at = EXCLUDED.pinned_at, updated_at = EXCLUDED.updated_at",
+           pinned_at = EXCLUDED.pinned_at, updated_at = EXCLUDED.updated_at \
+         WHERE (cloud_account_group_space_preferences.pinned_at IS NOT NULL) <> $3",
     )
     .bind(&session.account_id)
     .bind(&group_space_id)
     .bind(pinned)
-    .execute(state.db_pool())
+    .execute(&mut *transaction)
     .await
-    .is_err()
     {
-        return err(
-            "server_error",
-            "Could not update group preferences.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
+        Ok(result) if result.rows_affected() == 0 => {
+            return match transaction.commit().await {
+                Ok(()) => StatusCode::NO_CONTENT.into_response(),
+                Err(_) => err(
+                    "server_error",
+                    "Could not update group preferences.",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                ),
+            };
+        }
+        Ok(_) => {}
+        Err(_) => {
+            return err(
+                "server_error",
+                "Could not update group preferences.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
     }
     let event_type = if pinned {
         "group_space.pinned"
     } else {
         "group_space.unpinned"
     };
-    if publish_chat_event(
-        state.db_pool(),
-        &session.account_id,
+    if crate::chat_sync::store::append_user_sync_events_in_transaction(
+        &mut transaction,
+        std::slice::from_ref(&session.account_id),
         event_type,
-        Some(&group_space_id),
         None,
-        serde_json::json!({ "sessionId": &group_space_id, "updatedAt": &now }),
-        &now,
+        &serde_json::json!({ "sessionId": &group_space_id, "updatedAt": &now }),
     )
     .await
     .is_err()
+        || transaction.commit().await.is_err()
     {
         return err(
             "server_error",

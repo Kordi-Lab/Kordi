@@ -287,7 +287,7 @@ export function processingAgentMessage(
       sessionId: exchange.sessionId,
       prompt: '',
       status: 'processing',
-      message: 'Processing…',
+      message: '',
       assistantText: '',
       thinkingText: '',
       tools: [],
@@ -359,14 +359,16 @@ export function mapCanonicalMessage(
   const role = canonicalMessageRole(message, identity, profileHumanIdentityId);
   const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
   const completed = canonicalMessageIsComplete(message, content);
-  const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+  const deliveryState = isAgentTurn && !completed && contentRecord(content.execution).phase === 'queued'
+    ? 'queued'
+    : stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
   const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail));
   const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;
   const legacyCollaborationAgentFailure = isAgentTurn && failed && sourceTransport.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();
   const sourceRequestId = stringValue(content.requestId)?.trim();
-  const desktopEntryId = sourceTransport.startsWith('desktop-chat') ? stringValue(content.desktopEntryId)?.trim() : undefined;
+  const desktopEntryId = stringValue(content.desktopEntryId)?.trim();
   const parentMessageId = message.parentMessageId?.trim();
   const visibleParentMessageId = parentMessageId
     ? context.visibleReplyTargetByMessageId?.get(parentMessageId) ?? parentMessageId
@@ -376,7 +378,9 @@ export function mapCanonicalMessage(
   const replyToMessageId = isAgentTurn
     ? contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null
     : contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null;
-  const replyAliasIds = [...new Set([parentMessageId, sourceRequestId, stringValue(content.cloudGroupMessageId)?.trim()]
+  const replyAliasIds = [...new Set([parentMessageId, sourceRequestId, desktopEntryId,
+    sourceTransport === 'cloud-self-agent' && message.senderRole === 'user' ? message.sourceEventId : undefined,
+    stringValue(content.cloudGroupMessageId)?.trim()]
     .filter((value): value is string => Boolean(value && value !== message.id)))];
   const trimmedProfileIdentityId = profileHumanIdentityId?.trim() || null;
   const viewerOwnsAgent = isAgentTurn
@@ -438,16 +442,18 @@ export function mapCanonicalMessage(
   });
   const visibleTools = role === 'owned-agent' || (role === 'external-agent' && hasSharedModelTaskTools) ? tools : [];
   const restoredDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(message.contentText), content);
+  const mentions = canonicalMentions(content.mentions);
   const rawDisplayText = !isOwnMessage && role === 'person'
     ? rewriteLeadingFirstPersonAgentMention(
       restoredDisplayText,
       identity?.displayName || contentSender,
       agentLabelForHumanIdentity(identity, identityById),
+      mentions,
     )
     : restoredDisplayText;
   const isProcessingAgentPlaceholder = isAgentTurn
     && (deliveryState === 'queued' || deliveryState === 'processing')
-    && isProcessingPlaceholderText(rawDisplayText);
+    && (!rawDisplayText.trim() || isProcessingPlaceholderText(rawDisplayText));
   const displayText = isProcessingAgentPlaceholder || legacyCollaborationAgentFailure || noProviderFailure ? '' : rawDisplayText;
   const cancelledByRole = stringValue(content.cancelledByRole)?.trim();
   const cancelledTurnText = cancelled
@@ -482,7 +488,7 @@ export function mapCanonicalMessage(
     // visible text, while canonical-only and fork-snapshot messages
     // continue to target their stable canonical message id.
     entryId: desktopEntryId || message.id,
-    isForkSnapshot: (sourceTransport === 'canonical-fork-snapshot' || sourceTransport === 'cloud-group-fork-snapshot') || undefined,
+    isForkSnapshot: sourceTransport === 'canonical-fork-snapshot' || undefined,
     role,
     sender,
     senderOwnerName: agentPresentation.senderOwnerName,
@@ -496,11 +502,11 @@ export function mapCanonicalMessage(
     time,
     timestampMs: message.createdAtMs,
     callActivity: canonicalCallActivity(message, content, isOwnMessage),
-    messageKind: voiceMessage ? 'voice' : undefined,
+    messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? message.messageKind : undefined,
     voiceMessage,
     detail: stringValue(content.detail),
     attachments: canonicalAttachments(content.attachments),
-    mentions: canonicalMentions(content.mentions),
+    mentions,
     replyToMessageId: replyToMessageId ?? undefined,
     replyAliasIds: replyAliasIds.length ? replyAliasIds : undefined,
     readReceiptSummary: isOwnMessage && role === 'user' ? canonicalReadReceiptSummary(content, identityById) : null,
@@ -514,7 +520,7 @@ export function mapCanonicalMessage(
           sessionId: message.sessionId,
           prompt: '',
           status: completed ? (cancelled ? 'cancelled' : failed ? 'failed' : 'complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'queued' : 'processing' : displayText.trim() ? 'writing' : 'typing'),
-          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
+          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : '' : displayText.trim() ? 'Replying…' : 'Typing…'),
           assistantText: cancelled ? cancelledTurnText : displayText,
           thinkingText,
           tools: visibleTools,

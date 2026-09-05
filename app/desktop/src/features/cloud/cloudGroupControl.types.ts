@@ -26,7 +26,6 @@ export type SendCloudGroupControlInput = {
   sessionTitle?: CloudGroupSessionTitleSnapshot | null;
   sessionTitleSyncOnly?: boolean;
   collaborationParticipants?: DesktopCollaborationSessionParticipant[];
-  fork?: CloudGroupControlEnvelope['fork'];
   message?: CloudGroupControlEnvelope['message'];
   attachments?: AttachmentItem[];
   retryFailed?: boolean;

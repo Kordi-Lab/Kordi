@@ -88,10 +88,10 @@ pub(super) fn store_error(context: &str, error: StoreError) -> Response {
             Some(json!({ "bootstrap_required": true })),
         ),
         StoreError::CursorAhead => error_response(
-            StatusCode::BAD_REQUEST,
-            "INVALID_SYNC_CURSOR",
+            StatusCode::CONFLICT,
+            "SYNC_CURSOR_EXPIRED",
             "The sync cursor is ahead of the server stream.",
-            None,
+            Some(json!({ "bootstrap_required": true })),
         ),
         StoreError::Database(error) => {
             eprintln!("[chat-sync] {context}: {error}");
@@ -347,11 +347,24 @@ fn validate_attachment_metadata(
 
 #[cfg(test)]
 mod tests {
+    use axum::{body::to_bytes, http::StatusCode};
     use serde_json::json;
     use uuid::Uuid;
 
-    use super::validate_message_request;
+    use super::{store_error, validate_message_request};
     use crate::chat_sync::models::SendMessageRequest;
+    use crate::chat_sync::store::StoreError;
+
+    #[tokio::test]
+    async fn reset_server_cursor_requests_a_fresh_bootstrap() {
+        let response = store_error("sync", StoreError::CursorAhead);
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["error"]["code"], "SYNC_CURSOR_EXPIRED");
+        assert_eq!(body["error"]["details"]["bootstrap_required"], true);
+    }
 
     #[test]
     fn client_messages_cannot_impersonate_call_activity() {

@@ -181,6 +181,34 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         XCTAssertEqual(response.events.map(\.eventType), ["provider-auth.updated"])
     }
 
+    func testProviderAuthenticationMutationsRequireExplicitIntent() async throws {
+        ProviderAuthenticationMutationURLProtocol.requests = []
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ProviderAuthenticationMutationURLProtocol.self]
+        let client = CloudAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:17081")!,
+            session: URLSession(configuration: configuration)
+        )
+
+        let snapshot = try await client.publishProviderAuthSnapshot(
+            token: "oauth-session",
+            provider: "openai",
+            authChoice: "ios-api-key",
+            payload: ["apiKey": "test-key"]
+        )
+        _ = try await client.revokeProviderAuthSnapshot(
+            token: "oauth-session",
+            snapshotId: snapshot.snapshotId
+        )
+
+        XCTAssertEqual(ProviderAuthenticationMutationURLProtocol.requests.count, 2)
+        for request in ProviderAuthenticationMutationURLProtocol.requests {
+            let intent = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "intent" })?.value
+            XCTAssertEqual(intent, "explicit")
+        }
+    }
+
     func testSessionPinEventsReachTheAppModelProjection() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [SessionPinSyncURLProtocol.self]
@@ -562,6 +590,32 @@ private final class ProviderAuthenticationSyncURLProtocol: URLProtocol {
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: payload)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+private final class ProviderAuthenticationMutationURLProtocol: URLProtocol {
+    static var requests: [URLRequest] = []
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.requests.append(request)
+        let json = request.httpMethod == "DELETE"
+            ? #"{"snapshotId":"snap_explicit","provider":"openai","authChoice":"ios-api-key","createdAt":"2026-08-17T12:00:00Z","revokedAt":"2026-08-17T12:01:00Z"}"#
+            : #"{"snapshotId":"snap_explicit","provider":"openai","authChoice":"ios-api-key","createdAt":"2026-08-17T12:00:00Z","revokedAt":null}"#
+        let payload = Data(json.utf8)
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: request.httpMethod == "DELETE" ? 200 : 201,
             httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"]
         )!

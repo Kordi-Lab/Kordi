@@ -7,7 +7,7 @@ import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessi
 import { messagesWithThreadReplyCounts, projectMessageThreads, projectQueuedThreadMessages, threadRootSource } from '@/features/chat/messageThreads';
 import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
-import { isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
+import { isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import { cn } from '@/lib/utils';
@@ -148,7 +148,6 @@ export function ChatsPage({
   const prefersReducedMotion = useReducedMotion();
   const activeSessionId = (activeConv.canonicalSessionId || activeConv.id).trim();
   const activeConversationIsGroupSession = isGroupSessionId(activeSessionId);
-  const activeConversationIsGroupFork = isGroupForkSession(activeConv);
   const activePaneKind = conversationPaneKind(activeConv);
   const sessionRouteSyncEnabled = shouldSynchronizeConversationModelRoute({
     conversation: activeConv,
@@ -328,7 +327,7 @@ export function ChatsPage({
     messages: attributedTranscriptMessages,
     desktopChatState,
     isGroupSession: activeConversationIsGroupSession,
-    isGroupFork: activeConversationIsGroupFork,
+    isAgentSession: activeConv.type === 'owned-agent' || activeConv.type === 'external-agent',
     onForkMessage: onForkChatMessage,
   });
   const companionTranscriptMessages = useMemo(() => {

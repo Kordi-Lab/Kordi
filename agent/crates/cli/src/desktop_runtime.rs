@@ -33,6 +33,8 @@ use attachments::attachment_metadata_from_path;
 use attachments::attachment_summary_from_metadata;
 
 pub use background_sessions::{
+    activate_background_runtime_session, background_runtime_session_ids, background_runtime_snapshot, is_background_runtime_session,
+    BackgroundSessionMessage, BackgroundSessionSnapshot,
     background_session_for_parent_message, create_background_session, session_exists,
 };
 pub use model_options::{

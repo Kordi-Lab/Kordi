@@ -159,7 +159,7 @@ test('related agent sessions open in the companion panel instead of replacing ma
   assert.match(sessionSource, /candidateIds\.has\(state\.requestedConversationId\)/);
   assert.match(controllerSource, /loaded && !isKnownSession[\s\S]*refreshDesktopChat\(\)/);
   assert.match(workspaceSource, /companionConversationList\(chatConversations/);
-  assert.match(backgroundSessionSource, /isGroupForkSession\(conversation\)/);
+  assert.match(backgroundSessionSource, /return chatConversations/);
   assert.match(mainSource, /onOpenForkSession: companion\.openSession/);
   assert.match(companionSource, /onOpenForkSession: session\.actions\.switchConversation/);
   assert.doesNotMatch(mainSource, /onOpenForkSession: runtime\.onSelectSession/);

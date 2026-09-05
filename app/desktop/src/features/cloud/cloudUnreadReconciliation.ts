@@ -112,10 +112,7 @@ export function mergeNativeCloudUnreadCounts({
     ([sessionId, head]) => [sessionId, head.unreadCount],
   ));
   for (const [sessionId, count] of Object.entries(projectedUnreadBySessionId ?? {})) {
-    const nativeHead = nativeHeadsBySessionId[sessionId];
-    if (!nativeHead || nativeHead.lastReadSequence === 0) {
-      counts[sessionId] = Math.max(counts[sessionId] ?? 0, count);
-    }
+    if (!(sessionId in counts)) counts[sessionId] = count;
   }
   for (const sessionId of optimisticSessionIds) {
     if ((projectedUnreadBySessionId?.[sessionId] ?? 0) === 0) counts[sessionId] = 0;

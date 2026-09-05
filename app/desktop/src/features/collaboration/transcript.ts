@@ -301,13 +301,13 @@ export function mapCollaborationConversationToViewModel(
       }];
     }
     const isProcessingAgentPlaceholder = normalizedDeliveryState === 'processing'
-      && isProcessingPlaceholderText(rawDisplayText)
+      && (!rawDisplayText.trim() || isProcessingPlaceholderText(rawDisplayText))
       && isCollaborationAgentResponseDirection(message);
     const isOutboundHuman = direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND;
     const displayText = isProcessingAgentPlaceholder
       ? ''
       : !isOutboundHuman
-        ? rewriteLeadingFirstPersonAgentMention(rawDisplayText, message.sender || remoteHumanLabel, isPersonChat ? 'Kordi' : remoteAgentLabel)
+        ? rewriteLeadingFirstPersonAgentMention(rawDisplayText, message.sender || remoteHumanLabel, isPersonChat ? 'Kordi' : remoteAgentLabel, mentions)
         : rawDisplayText;
     const isInboundHuman = isAgent && direction === COLLABORATION_MESSAGE_DIRECTION_INBOUND;
     const isLocalAgentResponse = direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
@@ -377,7 +377,7 @@ export function mapCollaborationConversationToViewModel(
           sessionId: conversation.id,
           prompt: localTurn?.prompt ?? '',
           status: responseCancelled ? 'cancelled' : responseFailed ? 'failed' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing') : localTurn?.status ?? 'complete',
-          message: responseCancelled ? 'Stopped' : responseFailed ? 'Failed' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…') : localTurn?.message ?? 'Complete',
+          message: responseCancelled ? 'Stopped' : responseFailed ? 'Failed' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? '' : displayText.trim() ? 'Replying…' : 'Typing…') : localTurn?.message ?? 'Complete',
           assistantText: responseFailed ? '' : responseCancelled && !displayText.trim() ? 'Request stopped' : displayText || localTurn?.assistantText || '',
           thinkingText: localTurn?.thinkingText ?? '',
           tools: localTurn?.tools ?? [],
@@ -493,7 +493,7 @@ export function mapCollaborationConversationToViewModel(
         sessionId: conversation.id,
         prompt: localTurn?.prompt ?? '',
         status: localTurn?.status ?? (conversation.peerTyping ? 'typing' : 'processing'),
-        message: localTurn?.message ?? (conversation.peerTyping ? 'Typing…' : 'Processing…'),
+        message: localTurn?.message ?? (conversation.peerTyping ? 'Typing…' : ''),
         assistantText: localTurn?.assistantText ?? '',
         thinkingText: localTurn?.thinkingText ?? '',
         tools: localTurn?.tools ?? [],

@@ -2,6 +2,9 @@ use super::support::*;
 use super::*;
 
 const LEGACY_DEFAULT_SELF_AGENT_SESSION_ID: &str = "session:self-agent:default";
+const DIRECT_PERSON_SESSION_PREFIX: &str = "session:direct-person:";
+const DIRECT_AGENT_SESSION_PREFIX: &str = "session:direct-agent:";
+const DIRECT_SYSTEM_AGENT_SESSION_PREFIX: &str = "session:direct-system-agent:";
 
 fn account_scoped_client_session_id(
     account_id: &str,
@@ -18,6 +21,32 @@ fn account_scoped_client_session_id(
         ));
     }
     Ok(format!("session:self-agent:{account_id}:default"))
+}
+
+fn fork_session_kind_allowed(is_registered_fork: bool, kind: ConversationKind) -> bool {
+    !is_registered_fork || kind == ConversationKind::Ai
+}
+
+fn normalized_direct_session_id(
+    session_id: String,
+    members: &[String],
+    trusted_support_owner: Option<&str>,
+) -> Result<String, StoreError> {
+    if session_id.starts_with(DIRECT_PERSON_SESSION_PREFIX) {
+        return Ok(format!(
+            "{DIRECT_PERSON_SESSION_PREFIX}{}:{}",
+            members[0], members[1]
+        ));
+    }
+    if session_id.starts_with(DIRECT_AGENT_SESSION_PREFIX)
+        || (session_id.starts_with(DIRECT_SYSTEM_AGENT_SESSION_PREFIX)
+            && trusted_support_owner.is_some())
+    {
+        return Ok(session_id);
+    }
+    Err(StoreError::InvalidInput(
+        "direct conversation session id is invalid",
+    ))
 }
 
 pub async fn create_conversation(
@@ -67,7 +96,7 @@ async fn create_conversation_in_transaction_with_trusted_peer(
         .ok_or(StoreError::InvalidInput("client session id is required"))?;
     let client_session_id =
         account_scoped_client_session_id(account_id, request.kind, &members, client_session_id)?;
-    let client_session_id = normalize_client_session_id(Some(&client_session_id))?
+    let mut client_session_id = normalize_client_session_id(Some(&client_session_id))?
         .ok_or(StoreError::InvalidInput("client session id is required"))?;
     match request.kind {
         ConversationKind::Direct if members.len() != 2 => {
@@ -85,6 +114,10 @@ async fn create_conversation_in_transaction_with_trusted_peer(
         }
         _ => {}
     }
+    if request.kind == ConversationKind::Direct {
+        client_session_id =
+            normalized_direct_session_id(client_session_id, &members, trusted_peer_account_id)?;
+    }
     let request_fingerprint = fingerprint(&CreationIntent {
         kind: request.kind,
         shared_title: &shared_title,
@@ -94,6 +127,16 @@ async fn create_conversation_in_transaction_with_trusted_peer(
 
     advisory_operation_lock(transaction, account_id, request.client_operation_id).await?;
     advisory_session_lock(transaction, &client_session_id).await?;
+    let registered_fork: (bool,) =
+        query_as("SELECT EXISTS(SELECT 1 FROM cloud_session_forks WHERE fork_session_id = $1)")
+            .bind(&client_session_id)
+            .fetch_one(&mut **transaction)
+            .await?;
+    if !fork_session_kind_allowed(registered_fork.0, request.kind) {
+        return Err(StoreError::InvalidInput(
+            "fork sessions must be Agent conversations",
+        ));
+    }
     let existing: Option<(Uuid, String)> = query_as(
         "SELECT conversation_id, creation_fingerprint \
          FROM cloud_chat_conversations \
@@ -236,6 +279,49 @@ mod tests {
     use super::*;
 
     #[test]
+    fn direct_person_sessions_are_canonicalized_by_member_identity() {
+        let members = vec!["acct_a".to_string(), "acct_b".to_string()];
+        assert_eq!(
+            normalized_direct_session_id(
+                "session:direct-person:stale:order".to_string(),
+                &members,
+                None,
+            )
+            .unwrap(),
+            "session:direct-person:acct_a:acct_b"
+        );
+    }
+
+    #[test]
+    fn direct_sessions_reject_seed_and_untrusted_system_agent_ids() {
+        let members = vec!["acct_a".to_string(), "acct_b".to_string()];
+        assert!(normalized_direct_session_id(
+            "session:seed:obsolete-direct".to_string(),
+            &members,
+            None,
+        )
+        .is_err());
+        assert!(normalized_direct_session_id(
+            "session:direct-system-agent:acct_a:agent".to_string(),
+            &members,
+            None,
+        )
+        .is_err());
+        assert!(normalized_direct_session_id(
+            "session:direct-agent:acct_b:agent".to_string(),
+            &members,
+            None,
+        )
+        .is_ok());
+        assert!(normalized_direct_session_id(
+            "session:direct-system-agent:acct_a:agent".to_string(),
+            &members,
+            Some("acct_b"),
+        )
+        .is_ok());
+    }
+
+    #[test]
     fn legacy_default_self_agent_session_is_scoped_per_account() {
         let first = account_scoped_client_session_id(
             "acct_first",
@@ -268,5 +354,13 @@ mod tests {
             ),
             Err(StoreError::InvalidInput(_))
         ));
+    }
+
+    #[test]
+    fn registered_fork_ids_allow_only_agent_conversations() {
+        assert!(fork_session_kind_allowed(true, ConversationKind::Ai));
+        assert!(!fork_session_kind_allowed(true, ConversationKind::Group));
+        assert!(!fork_session_kind_allowed(true, ConversationKind::Direct));
+        assert!(fork_session_kind_allowed(false, ConversationKind::Group));
     }
 }

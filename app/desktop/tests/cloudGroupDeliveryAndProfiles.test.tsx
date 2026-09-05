@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cloudGroupIdentityRequest, cloudGroupParticipantFromContact, cloudGroupParticipantsWithProfiles, cloudGroupTargetAccountIds, firstCloudGroupSendFailure, firstRequiredCloudGroupSendFailure, fulfilledCloudGroupSends, nonCloudGroupTargets, requiredCloudGroupControlTargetAccountIds, shouldRouteMentionThroughCloudGroup } from '../src/features/cloud/cloudGroupMessages';
+import { cloudGroupIdentityRequest, cloudGroupParticipantFromContact, cloudGroupParticipantsWithProfiles, cloudGroupTargetAccountIds, firstCloudGroupSendFailure, fulfilledCloudGroupSends, nonCloudGroupTargets, shouldRouteMentionThroughCloudGroup } from '../src/features/cloud/cloudGroupMessages';
 import { CLOUD_HOST_SENTINEL } from '../src/features/cloud/useCloudContacts';
 
 test('cloud group send helpers treat partial recipient success as a send success', () => {
@@ -11,28 +11,6 @@ test('cloud group send helpers treat partial recipient success as a send success
 
   assert.deepEqual(fulfilledCloudGroupSends(results), ['msg_ok']);
   assert.equal(firstCloudGroupSendFailure(results) instanceof Error, true);
-  assert.equal(firstRequiredCloudGroupSendFailure(results, ['acct_existing', 'acct_new'], ['acct_existing']), undefined);
-  assert.equal(firstRequiredCloudGroupSendFailure(results, ['acct_existing', 'acct_new'], ['acct_new'])?.reason instanceof Error, true);
-});
-
-test('group invites and member removals require every explicit target to receive the control', () => {
-  assert.deepEqual(requiredCloudGroupControlTargetAccountIds({
-    kind: 'group-invite',
-    explicitTargetAccountIds: ['acct_existing', ' acct_new ', 'acct_new'],
-  }), ['acct_existing', 'acct_new']);
-  assert.deepEqual(requiredCloudGroupControlTargetAccountIds({
-    kind: 'group-update',
-    explicitTargetAccountIds: ['acct_existing', 'acct_removed'],
-    memberLeaves: [{ eventId: 'leave_1', accountId: 'acct_removed', createdAtMs: 1 }],
-  }), ['acct_existing', 'acct_removed']);
-  assert.deepEqual(requiredCloudGroupControlTargetAccountIds({
-    kind: 'group-update',
-    explicitTargetAccountIds: ['acct_existing'],
-  }), []);
-  assert.deepEqual(requiredCloudGroupControlTargetAccountIds({
-    kind: 'group-message',
-    explicitTargetAccountIds: ['acct_existing'],
-  }), []);
 });
 
 test('cloud agent mentions inside cloud groups stay on cloud group transport', () => {

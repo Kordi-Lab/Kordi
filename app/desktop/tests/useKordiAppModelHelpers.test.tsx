@@ -263,10 +263,19 @@ test('group rename metadata changes the group name without overwriting manual se
   );
 });
 
+test('group rename removes the UI namespace prefix from a Cloud group id', () => {
+  assert.equal(
+    groupRenameMetadata({
+      groupSpaceId: 'group:seed:v6:weekend-crew',
+    }, 'Weekend Crew renamed', 'session:group:fallback').groupSpaceId,
+    'seed:v6:weekend-crew',
+  );
+});
+
 test('session rename notice text names the actor, scope, and new title', () => {
   assert.equal(
     sessionRenameNoticeText('Kordi User 4', 'HIHIHI', 'session'),
-    'Kordi User 4 changed the session name to HIHIHI',
+    'Kordi User 4 changed the channel name to HIHIHI',
   );
   assert.equal(
     sessionRenameNoticeText('Kordi User 4', 'Atestgroup', 'group'),

@@ -220,7 +220,7 @@ async fn send_available_events(
         let batch = match store::sync_batch(pool, account_id, *sent_stream_seq, Some(500)).await {
             Ok(batch) => batch,
             Err(StoreError::CursorExpired) => return Err("SYNC_CURSOR_EXPIRED"),
-            Err(StoreError::CursorAhead) => return Err("INVALID_SYNC_CURSOR"),
+            Err(StoreError::CursorAhead) => return Err("SYNC_CURSOR_EXPIRED"),
             Err(StoreError::InvariantViolation(_)) => return Err("STREAM_SEQUENCE_GAP"),
             Err(StoreError::Database(error)) => {
                 eprintln!("[chat-realtime] read durable events: {error}");

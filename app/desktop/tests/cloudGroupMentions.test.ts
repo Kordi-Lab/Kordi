@@ -240,6 +240,19 @@ test('renamed local agent mentions target the immutable owner agent id', () => {
   }, sourceAccount, participants), true);
 });
 
+test('an explicit remote agent target never falls back to the sender local runtime', () => {
+  assert.equal(cloudGroupMessageTargetsLocalAgent({
+    id: 'msg_remote_target',
+    senderAccountId: sourceAccount.accountId,
+    text: '@Kordi hello',
+    createdAtMs: 2,
+    senderKind: 'human',
+    targetCloudAgentId: 'cloud-agent:acct_target',
+    targetCloudAgentOwnerAccountId: 'acct_target',
+    targetCloudAgentOwnerName: "D'Arcy Lin",
+  }, sourceAccount, participants), false);
+});
+
 test('agent-authored handoffs produce only the resolved owner Cloud fallback claim', () => {
   const groupId = 'session:group:agent-handoff';
   const handoffMessage = {

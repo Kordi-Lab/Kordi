@@ -54,7 +54,7 @@ async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_offline(
 }
 
 #[tokio::test]
-async fn cloud_agent_runtime_fallback_claim_waits_while_owner_mac_is_online() {
+async fn cloud_agent_runtime_fallback_claim_does_not_wait_for_an_unready_online_mac() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = test_router(state);
@@ -87,16 +87,16 @@ async fn cloud_agent_runtime_fallback_claim_waits_while_owner_mac_is_online() {
         .await
         .unwrap();
 
-    assert_eq!(first.status(), StatusCode::CONFLICT);
+    assert_eq!(first.status(), StatusCode::OK);
     let first_body = read_json(first).await;
-    assert_eq!(first_body["errorCode"], "owner_online");
+    assert_eq!(first_body["executionBackend"], "cloud");
     let idempotency_key = claim_body(&owner, &requester, "msg_online_owner")["idempotencyKey"]
         .as_str()
         .unwrap()
         .to_string();
     assert_eq!(
         count_cloud_agent_runs_for_key(&pool, &idempotency_key).await,
-        0
+        1
     );
 }
 
