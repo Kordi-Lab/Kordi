@@ -399,8 +399,10 @@ struct ConversationView: View {
                     ZStack {
                         GeometryReader { viewport in
                             ZStack(alignment: .bottomTrailing) {
+                            // Message rows and the bottom anchor must share the lazy
+                            // scroll-target layout so restoring the tail realizes its rows.
                             ScrollView {
-                                VStack(spacing: 0) {
+                                LazyVStack(spacing: 0) {
                                     if timeline.isEmpty {
                                         EmptyConversation(
                                             conversation: conversation,
@@ -410,21 +412,20 @@ struct ConversationView: View {
                                         )
                                             .padding(.top, 70)
                                     } else {
-                                        LazyVStack(spacing: 0) {
-                                            if visibleStartIndex > 0 || model.hasEarlierMessages(for: conversation) {
-                                                EarlierMessagesLoader(
-                                                    remainingCount: visibleStartIndex > 0 ? visibleStartIndex : nil,
-                                                    isLoading: isLoadingEarlier
-                                                )
-                                                    .id("earlier:\(firstVisibleTimelineIdentity ?? conversation.id)")
-                                                    .onAppear {
-                                                        guard hasPositionedInitialTimeline else { return }
-                                                        loadEarlierMessages(
-                                                            preserving: firstVisibleTimelineIdentity,
-                                                            totalCount: timeline.count,
-                                                            proxy: proxy
-                                                        )
-                                                    }
+                                        if visibleStartIndex > 0 || model.hasEarlierMessages(for: conversation) {
+                                            EarlierMessagesLoader(
+                                                remainingCount: visibleStartIndex > 0 ? visibleStartIndex : nil,
+                                                isLoading: isLoadingEarlier
+                                            )
+                                                .id("earlier:\(firstVisibleTimelineIdentity ?? conversation.id)")
+                                                .onAppear {
+                                                    guard hasPositionedInitialTimeline else { return }
+                                                    loadEarlierMessages(
+                                                        preserving: firstVisibleTimelineIdentity,
+                                                        totalCount: timeline.count,
+                                                        proxy: proxy
+                                                    )
+                                                }
                                         }
                                         ForEach(visibleTimelineRows) { row in
                                             let message = row.message
@@ -445,7 +446,6 @@ struct ConversationView: View {
                                                 threadReplyCount: threadReplyCount,
                                                 proxy: proxy
                                             )
-                                        }
                                         }
                                     }
 

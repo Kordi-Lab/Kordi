@@ -1,7 +1,24 @@
 import CallKit
 import LinkPresentation
 import XCTest
+import Testing
 @testable import Kordi
+
+@Test func conversationMessagesAndTailShareOneLazyScrollTargetLayout() throws {
+    let sourceURL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+    let source = try String(contentsOf: sourceURL, encoding: .utf8)
+    let start = try #require(source.range(of: "                            ScrollView {"))
+    let end = try #require(source.range(of: ".scrollTargetLayout()", range: start.upperBound..<source.endIndex))
+    let content = source[start.upperBound..<end.lowerBound]
+
+    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("LazyVStack(spacing: 0)"))
+    #expect(content.components(separatedBy: "LazyVStack(").count - 1 == 1)
+    #expect(content.contains("ForEach(visibleTimelineRows)"))
+    #expect(content.contains(".id(bottomAnchorID)"))
+}
 
 final class KordiMarkdownParserTests: XCTestCase {
     func testCallAvatarResolverPrefersTheCallParticipantProfileImage() {
