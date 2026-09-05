@@ -227,7 +227,8 @@ enum AgentSessionFactory {
             avatarSource: template.avatarSource,
             agentActivity: .ready,
             sessionId: sessionId,
-            agentDisplayName: agentName
+            agentDisplayName: agentName,
+            isLocalDraft: true
         )
     }
 }

@@ -12,6 +12,7 @@ final class AgentSessionPresentationTests: XCTestCase {
 
         XCTAssertEqual(conversation.agentId, CanonicalAvatarSystem.defaultAgentId)
         XCTAssertNil(conversation.avatarSource)
+        XCTAssertTrue(conversation.isLocalDraft)
     }
 
     func testOnlyAgentSessionsDisableQuotedReplies() {
@@ -174,6 +175,52 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertEqual(draft.displayName, "Research Agent")
         XCTAssertEqual(draft.lastMessage, "New session")
         XCTAssertEqual(draft.agentActivity, .ready)
+        XCTAssertTrue(draft.isLocalDraft)
+        XCTAssertFalse(template.isLocalDraft)
+    }
+
+    @MainActor
+    func testDraftLoadsWithoutCloudButExistingEmptySessionStillRequiresHistory() async throws {
+        let model = AppModel(cache: try LocalMessageStore(inMemory: true), previewMode: false)
+        let existing = conversation(
+            id: "existing-empty",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Research Agent",
+            preview: "",
+            date: Date(timeIntervalSince1970: 1)
+        )
+        let draft = model.makeAgentSession(from: existing)
+
+        // No login, cloud connection, or server conversation is needed to open a draft.
+        let draftLoaded = await model.loadConversation(draft)
+        await model.refreshActiveCall(in: draft)
+        XCTAssertTrue(draftLoaded)
+        XCTAssertTrue(model.messages(for: draft).isEmpty)
+        XCTAssertTrue(model.loadingConversationIDs.isEmpty)
+        XCTAssertTrue(model.conversations.isEmpty)
+        XCTAssertNil(model.errorMessage)
+
+        let existingLoaded = await model.loadConversation(existing)
+        XCTAssertFalse(existingLoaded)
+
+        // A synchronized summary replaces the local marker, even with an older navigation value.
+        let synchronized = ConversationSummary(
+            id: draft.id,
+            kind: draft.kind,
+            peerAccountId: draft.peerAccountId,
+            agentId: draft.agentId,
+            ownerDisplayName: draft.ownerDisplayName,
+            displayName: "First request",
+            lastMessage: "First request",
+            lastActivityAt: draft.lastActivityAt,
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: .ready,
+            sessionId: draft.sessionId
+        )
+        XCTAssertFalse(ConversationIdentityResolver.current(draft, in: [synchronized]).isLocalDraft)
     }
 
     func testTimelineFlattensAgentsByActivityAndKeepsForksUnderTheirParent() {

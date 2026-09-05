@@ -1232,6 +1232,8 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func loadConversation(_ conversation: ConversationSummary) async -> Bool {
+        let conversation = ConversationIdentityResolver.current(conversation, in: conversations)
+        guard !conversation.isLocalDraft else { return true }
         retainCachedConversationPage(conversation.id)
         beginConversationLoad(conversation.id)
         defer { endConversationLoad(conversation.id) }
@@ -2322,6 +2324,8 @@ final class AppModel: ObservableObject {
     }
 
     func refreshActiveCall(in conversation: ConversationSummary) async {
+        let conversation = ConversationIdentityResolver.current(conversation, in: conversations)
+        guard !conversation.isLocalDraft else { return }
         guard let token, !previewMode else { return }
         let callSnapshotGenerationAtStart = callSnapshotGeneration
         let canonicalID = canonicalConversationIDBySessionID[conversation.sessionId]
