@@ -359,7 +359,9 @@ export function mapCanonicalMessage(
   const role = canonicalMessageRole(message, identity, profileHumanIdentityId);
   const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
   const completed = canonicalMessageIsComplete(message, content);
-  const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+  const deliveryState = isAgentTurn && !completed && contentRecord(content.execution).phase === 'queued'
+    ? 'queued'
+    : stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
   const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail));
   const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;

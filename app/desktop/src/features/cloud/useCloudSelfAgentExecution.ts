@@ -35,7 +35,6 @@ import {
 import {
   cloudAgentNativeContextMessagesFromDirectCloudSession,
   encodeCloudAgentResponse,
-  type CloudAgentExecutionSnapshot,
 } from './cloudAgentMessages';
 import {
   cloudAgentRuntimeRouteAfterModelChange,
@@ -79,17 +78,6 @@ export {
   pendingCloudSelfAgentExecutionRequests,
   localSelfAgentRequestClientMessageIds,
 } from './cloudSelfAgentExecutionState';
-
-function preparingExecutionSnapshot(nowMs = Date.now()): CloudAgentExecutionSnapshot {
-  return {
-    phase: 'preparing',
-    summary: 'Preparing the response',
-    steps: [],
-    startedAtMs: nowMs,
-    updatedAtMs: nowMs,
-    completed: false,
-  };
-}
 
 export function useCloudSelfAgentExecution({
   account,
@@ -253,7 +241,6 @@ export function useCloudSelfAgentExecution({
           claimId,
           client,
           cloudRequestMessageId: request.messageId,
-          execution: preparingExecutionSnapshot(),
           sessionId,
           token: session.token,
         });

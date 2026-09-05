@@ -1,5 +1,31 @@
 import XCTest
+import Testing
 @testable import Kordi
+
+@Test func executionClaimsDoNotReplaceQueueAdmission() throws {
+    func response(_ id: String, phase: String, claim: Bool = false) throws -> CloudMessageDTO {
+        var payload: [String: Any] = [
+            "requestId": "request-b", "text": "processing...", "deliveryState": "processing",
+            "execution": ["phase": phase, "summary": phase, "steps": [], "updatedAtMs": 1_000, "completed": false]
+        ]
+        if claim { payload["executionClaimId"] = "owner-device" }
+        let encoded = try JSONSerialization.data(withJSONObject: payload).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return CloudMessageDTO(
+            messageId: id, fromAccountId: "acct_me", toAccountId: "acct_me",
+            body: CloudMessageCodec.agentResponsePrefix + encoded,
+            createdAt: "2026-09-05T10:00:01Z", deliveredAt: nil, readAt: nil, direction: "outgoing", sessionId: "session"
+        )
+    }
+    let claim = try response("claim", phase: "preparing", claim: true)
+    let queued = try response("queued", phase: "queued")
+    #expect(CloudMessageCodec.agentExecution(claim.body) == nil)
+    #expect(CloudAgentLifecycleProjector.visibleRows([claim]).isEmpty)
+    #expect(CloudAgentLifecycleProjector.visibleRows([queued, claim]).map(\.messageId) == ["queued"])
+    #expect(CloudAgentLifecycleProjector.executionByResponseKey(in: [queued, claim]).values.first?.phase == .queued)
+}
 
 final class CloudMessageCodecTests: XCTestCase {
     func testDirectEnvelopeDecodesMacRuntimeRouteFieldNames() throws {

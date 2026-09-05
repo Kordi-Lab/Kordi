@@ -14,7 +14,7 @@ export function QueuedMessageBubble({
   onEdit,
   onCancel,
 }: {
-  message: QueuedDesktopChatMessage;
+  message: Pick<QueuedDesktopChatMessage, 'id' | 'sessionId' | 'text' | 'time'> & { attachments: readonly unknown[] };
   isCompressionActive: boolean;
   onEdit?: (sessionId: string, queuedMessageId: string) => void;
   onCancel?: (sessionId: string, queuedMessageId: string) => void;
@@ -46,11 +46,11 @@ export function QueuedMessageBubble({
             <div className="app-queued-message-text min-w-0 flex-1 whitespace-pre-wrap break-words text-[13px] leading-5" data-kordi-copy-surface="message">
               <MessageInlineContent text={message.text} />
             </div>
-            <div
+            {onEdit || onCancel ? <div
               className="app-queued-message-actions flex shrink-0 items-center gap-1 self-center"
               aria-label="Queued message actions"
             >
-              <button
+              {onEdit ? <button
                 type="button"
                 className="app-button-quiet app-queued-message-edit inline-flex h-7 w-7 items-center justify-center rounded-full p-0"
                 aria-label={`Edit queued message: ${message.text.slice(0, 48)}`}
@@ -58,8 +58,8 @@ export function QueuedMessageBubble({
                 onClick={() => onEdit?.(message.sessionId, message.id)}
               >
                 <SquarePen className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-              <button
+              </button> : null}
+              {onCancel ? <button
                 type="button"
                 className="app-button-quiet app-queued-message-cancel inline-flex h-7 w-7 items-center justify-center rounded-full p-0"
                 aria-label={`Cancel queued message: ${message.text.slice(0, 48)}`}
@@ -67,8 +67,8 @@ export function QueuedMessageBubble({
                 onClick={() => onCancel?.(message.sessionId, message.id)}
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
-              </button>
-            </div>
+              </button> : null}
+            </div> : null}
           </div>
         </div>
         {message.attachments.length > 0 ? (

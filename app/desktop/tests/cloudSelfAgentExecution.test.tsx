@@ -258,19 +258,11 @@ test('self-agent desktop claim elects one Mac through the stable Cloud client me
       return created;
     },
   };
-  const execution = {
-    phase: 'preparing' as const,
-    summary: 'Preparing the response',
-    steps: [],
-    updatedAtMs: 1_000,
-    completed: false,
-  };
   const claim = (claimId: string) => publishCloudSelfAgentExecutionClaim({
     accountId: account.accountId,
     claimId,
     client,
     cloudRequestMessageId: 'request-1',
-    execution,
     nowMs: 1_000,
     sessionId: 'session:self-agent:mobile',
     token: 'token',
@@ -282,4 +274,5 @@ test('self-agent desktop claim elects one Mac through the stable Cloud client me
   assert.equal(first.acquired, true);
   assert.equal(second.acquired, false);
   assert.equal(messagesByClientId.size, 1);
+  assert.equal(parseCloudAgentResponse(first.message.body)?.execution, undefined);
 });

@@ -12,6 +12,9 @@ import {
 import { cloudSelfAgentProcessingTextWouldRegress } from '../src/features/cloud/cloudSelfAgentResponseLifecycle';
 import { planCloudSelfAgentCanonicalSync } from '../src/features/cloud/useCloudCollaborationState';
 import type { CanonicalSessionMessage, CanonicalSessionState } from '../src/kordi-app/types';
+import { mapCanonicalMessage } from '../src/features/canonical/readModel/messageMapping';
+import { queuedTranscriptRequestIds } from '../src/features/chat/queuedDesktopMessages';
+import { selectVisibleCloudAgentResponses } from '../src/features/cloud/cloudAgentResponseSelection';
 
 const account: CloudAccount = {
   accountId: 'acct_me', displayName: 'Me Cloud', primaryEmail: 'me@example.com',
@@ -47,6 +50,36 @@ function requestMessage(
     body, createdAt, deliveredAt: null, readAt: null, direction: 'outgoing', sessionId,
   };
 }
+
+test('ownership claims never flash processing and native queue admission survives canonical projection', () => {
+  const request = requestMessage('request-b', 'Next request', '2026-09-05T10:00:00Z');
+  const response = (id: string, phase: 'queued' | 'preparing', executionClaimId?: string): CloudMessage => ({
+    ...request, messageId: id, createdAt: '2026-09-05T10:00:01Z',
+    body: encodeCloudAgentResponse({
+      requestId: request.messageId, text: 'processing...', deliveryState: 'processing', executionClaimId,
+      execution: { phase, summary: phase, steps: [], updatedAtMs: 1000, completed: false },
+    }),
+  });
+  const claim = response('claim-b', 'preparing', 'mac-owner');
+  const queued = response('queued-b', 'queued');
+  const preparing = response('running-b', 'preparing');
+  const plan = (messages: CloudMessage[], state = emptyState()) => planCloudSelfAgentCanonicalSync({ account, messages, state });
+  assert.equal(plan([request, claim]).messageRequests.length, 1);
+  const queuedPlan = plan([request, claim, queued]);
+  const queuedRow = { ...queuedPlan.messageRequests[1], sequenceNum: 2, updatedAtMs: 1000 } as CanonicalSessionMessage;
+  const mapped = mapCanonicalMessage(queuedRow, new Map());
+  assert.equal(queuedRow.status, 'queued');
+  assert.equal(mapped?.turn?.status, 'queued');
+  assert.deepEqual([...queuedTranscriptRequestIds([mapped!])], ['msg:cloud:self:request-b']);
+  const runningPlan = plan([request, preparing], emptyState([queuedRow]));
+  const runningRow = { ...runningPlan.messageRequests.find((row) => row.senderRole === 'owned-agent'), sequenceNum: 2, updatedAtMs: 2000 } as CanonicalSessionMessage;
+  assert.equal(runningRow.status, 'processing');
+  assert.equal(queuedTranscriptRequestIds([mapCanonicalMessage(runningRow, new Map())!]).size, 0);
+  assert.deepEqual(selectVisibleCloudAgentResponses(
+    [request, queued, { ...claim, createdAt: '2026-09-05T10:00:02Z' }], new Map(), () => false, () => false,
+    Date.parse('2026-09-05T10:00:03Z'),
+  ).visibleMessages.map((row) => row.messageId), [request.messageId, queued.messageId]);
+});
 
 test('cloud self-agent canonical identity uses the editable runtime name', () => {
   const plan = planCloudSelfAgentCanonicalSync({

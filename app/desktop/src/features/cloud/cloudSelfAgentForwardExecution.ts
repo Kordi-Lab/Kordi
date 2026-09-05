@@ -26,7 +26,6 @@ export async function publishCloudSelfAgentExecutionClaim({
   claimId,
   client,
   cloudRequestMessageId,
-  execution,
   nowMs = Date.now(),
   sessionId,
   token,
@@ -35,7 +34,6 @@ export async function publishCloudSelfAgentExecutionClaim({
   claimId: string;
   client: Pick<CloudAuthClient, 'sendMessage'>;
   cloudRequestMessageId: string;
-  execution: CloudAgentExecutionSnapshot;
   nowMs?: number;
   sessionId: string;
   token: string;
@@ -47,7 +45,6 @@ export async function publishCloudSelfAgentExecutionClaim({
       requestId: cloudRequestMessageId,
       text: 'processing...',
       deliveryState: 'processing',
-      execution,
       executionClaimId: claimId,
     }),
     {

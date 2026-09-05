@@ -24,6 +24,7 @@ enum CloudMessageCodec {
         let requestId: String?
         let deliveryState: String?
         let execution: AgentExecutionSnapshot?
+        let executionClaimId: String?
         let backgroundSessions: [BackgroundAgentSession.Wire]?
     }
 
@@ -184,7 +185,12 @@ enum CloudMessageCodec {
     }
 
     static func agentExecution(_ body: String) -> AgentExecutionSnapshot? {
-        parsedEnvelopes(body).response?.execution
+        guard !isAgentExecutionClaim(body) else { return nil }
+        return parsedEnvelopes(body).response?.execution
+    }
+
+    static func isAgentExecutionClaim(_ body: String) -> Bool {
+        parsedEnvelopes(body).response?.executionClaimId?.nonEmpty != nil
     }
 
     static func backgroundAgentSessions(_ body: String) -> [BackgroundAgentSession] {
@@ -361,7 +367,8 @@ enum CloudAgentLifecycleProjector {
     }
 
     static func visibleRows(_ messages: [CloudMessageDTO]) -> [CloudMessageDTO] {
-        let sorted = messages.sorted(by: messagePrecedes)
+        let sorted = messages.filter { !CloudMessageCodec.isAgentExecutionClaim($0.body) }
+            .sorted(by: messagePrecedes)
         var preferredByKey: [ResponseKey: CloudMessageDTO] = [:]
         for message in sorted {
             guard let key = responseKey(for: message) else { continue }
