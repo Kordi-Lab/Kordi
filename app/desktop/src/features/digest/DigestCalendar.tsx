@@ -49,7 +49,7 @@ export function DigestAgenda({ day, events, candidates, people, evidence, onEven
   onConnect: () => void; onImport: () => void;
 }) {
   const scheduled = events.filter(event => eventOnDay(event, day));
-  return <aside className="digest-agenda" aria-label="Schedule and calendar suggestions">
+  return <aside className="digest-agenda" aria-label="Schedule and calendar suggestions" tabIndex={0}>
     <section>
       <h2>{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</h2>
       {scheduled.length ? scheduled.map(event => <button className="digest-agenda-event" key={event.id} onClick={() => onEvent(event)}><span>{event.allDay ? 'All day' : new Date(event.startAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span><strong>{event.title}</strong></button>) : <p className="digest-muted">No events scheduled for this day.</p>}

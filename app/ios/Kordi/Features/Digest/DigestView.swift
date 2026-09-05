@@ -96,7 +96,7 @@ struct DigestView: View {
     @ViewBuilder private var brief: some View {
         if let lead = content?.claims.first {
             VStack(alignment: .leading, spacing: 10) {
-                Text(lead.title).font(.title3.weight(.medium))
+                Text(lead.title).font(.headline.weight(.medium))
                 Text(lead.text).foregroundStyle(.secondary)
                 people(lead)
                 citations(lead)
