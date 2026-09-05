@@ -126,6 +126,61 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
 }
 
 final class ConversationReadPresentationTests: XCTestCase {
+    func testPendingIOSRequestQueuesImmediatelyBehindSyncedMacExecution() throws {
+        let fixture = agentQueueFixture()
+        let request = try XCTUnwrap(fixture.first { $0.id == "request-2" })
+        let beforeAdmission = fixture.filter { ["request-1", "response-1", "request-2"].contains($0.id) }
+        let phase = try XCTUnwrap(AgentSessionQueuePresentation.pendingPhase(
+            requestID: request.id, createdAt: request.createdAt, messages: beforeAdmission,
+            kind: .agent, locallyQueued: false
+        ))
+        XCTAssertEqual(phase, .queued)
+        var placeholder = try XCTUnwrap(fixture.first { $0.id == "response-2" })
+        placeholder.agentExecution = AgentExecutionSnapshot(
+            phase: phase, summary: "Queued next", steps: [], thinkingText: nil,
+            tools: nil, startedAtMs: 2_000, updatedAtMs: 2_000, completed: false
+        )
+        let firstFrame = AgentSessionQueuePresentation.apply(to: beforeAdmission + [placeholder], kind: .agent)
+        XCTAssertEqual(firstFrame.first { $0.id == request.id }?.agentQueuePosition, 1)
+        XCTAssertFalse(firstFrame.contains { $0.author == .agent && $0.requestMessageId == request.id })
+    }
+
+    func testUnconfirmedAgentAdmissionDoesNotInventProcessingOrQueue() {
+        let fixture = agentQueueFixture()
+        let userMessages = fixture.filter { $0.author == .me }
+        XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+            requestID: "request-1", createdAt: Date(timeIntervalSince1970: 1),
+            messages: userMessages, kind: .agent, locallyQueued: false
+        ))
+        // A later queued request must not make the first request queue behind it.
+        XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+            requestID: "request-1", createdAt: Date(timeIntervalSince1970: 1),
+            messages: fixture.filter { $0.id != "response-1" }, kind: .agent, locallyQueued: false
+        ))
+        for kind: ConversationKind in [.group, .person] {
+            XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
+                requestID: "request-2", createdAt: Date(timeIntervalSince1970: 2),
+                messages: fixture, kind: kind, locallyQueued: true
+            ), .preparing)
+        }
+    }
+
+    func testCompletedMacRequestDoesNotCauseAStaleOptimisticQueue() throws {
+        let fixture = agentQueueFixture()
+        let earlier = fixture.filter { ["request-1", "response-1", "request-2"].contains($0.id) }
+        var terminal = try XCTUnwrap(earlier.first { $0.id == "response-1" })
+        for phase: AgentExecutionSnapshot.Phase in [.complete, .failed, .cancelled] {
+            terminal.agentExecution = AgentExecutionSnapshot(
+                phase: phase, summary: "Finished", steps: [], thinkingText: nil,
+                tools: nil, startedAtMs: 1_000, updatedAtMs: 5_000, completed: true
+            )
+            XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+                requestID: "request-2", createdAt: Date(timeIntervalSince1970: 2),
+                messages: [terminal] + earlier, kind: .agent, locallyQueued: false
+            ))
+        }
+    }
+
     func testAgentSessionShowsQueuedRequestsWithoutRunningPlaceholders() {
         let messages = agentQueueFixture()
         let projected = AgentSessionQueuePresentation.apply(to: messages, kind: .agent)

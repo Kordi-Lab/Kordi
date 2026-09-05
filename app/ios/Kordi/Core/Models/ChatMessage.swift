@@ -1250,8 +1250,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 }
 
 enum AgentSessionQueuePresentation {
-    static func apply(to messages: [ChatMessage], kind: ConversationKind) -> [ChatMessage] {
-        guard kind == .agent else { return messages }
+    private static func executionSnapshots(in messages: [ChatMessage]) -> [String: AgentExecutionSnapshot] {
         var snapshots: [String: AgentExecutionSnapshot] = [:]
         for message in messages where message.author == .agent {
             guard let requestID = message.requestMessageId,
@@ -1262,6 +1261,33 @@ enum AgentSessionQueuePresentation {
             }
             snapshots[requestID] = execution
         }
+        return snapshots
+    }
+
+    static func pendingPhase(
+        requestID: String,
+        createdAt: Date,
+        messages: [ChatMessage],
+        kind: ConversationKind,
+        locallyQueued: Bool
+    ) -> AgentExecutionSnapshot.Phase? {
+        guard kind == .agent else { return .preparing }
+        if locallyQueued { return .queued }
+        let snapshots = executionSnapshots(in: messages)
+        let hasActivePredecessor = messages.contains { message in
+            message.author == .agent
+                && message.requestMessageId != requestID
+                && message.createdAt < createdAt
+                && message.requestMessageId.flatMap { snapshots[$0] }?.completed == false
+        }
+        // Sending is not execution admission. Synced Mac work can establish a
+        // queue immediately; otherwise wait for the executor's actual snapshot.
+        return hasActivePredecessor ? .queued : nil
+    }
+
+    static func apply(to messages: [ChatMessage], kind: ConversationKind) -> [ChatMessage] {
+        guard kind == .agent else { return messages }
+        let snapshots = executionSnapshots(in: messages)
         let requests = messages.filter {
             $0.author == .me && !$0.isSystemNotice
                 && $0.deliveryState != .failed && $0.deliveryState != .cancelled

@@ -2066,6 +2066,13 @@ final class AppModel: ObservableObject {
 
             let requestCreatedAt = messages.first(where: { $0.id == requestMessageId })?.createdAt
                 ?? startedAt
+            guard let phase = AgentSessionQueuePresentation.pendingPhase(
+                requestID: requestMessageId,
+                createdAt: requestCreatedAt,
+                messages: messages,
+                kind: conversation.kind,
+                locallyQueued: pendingAgentQueuedRequestIds.contains(requestMessageId)
+            ) else { continue }
             let placeholderCreatedAt = requestCreatedAt.addingTimeInterval(0.001)
             let startedAtMs = startedAt.timeIntervalSince1970 * 1_000
             let placeholder = ChatMessage(
@@ -2080,8 +2087,8 @@ final class AppModel: ObservableObject {
                 errorMessage: nil,
                 requestMessageId: requestMessageId,
                 agentExecution: AgentExecutionSnapshot(
-                    phase: pendingAgentQueuedRequestIds.contains(requestMessageId) ? .queued : .preparing,
-                    summary: pendingAgentQueuedRequestIds.contains(requestMessageId) ? "Queued next" : "Preparing the response",
+                    phase: phase,
+                    summary: phase == .queued ? "Queued next" : "Preparing the response",
                     steps: [],
                     thinkingText: nil,
                     tools: nil,
