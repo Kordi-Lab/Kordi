@@ -963,6 +963,7 @@ export async function startDesktopChatMessage(
   visibleTaskRecords: DesktopVisibleTaskRecord[] = [],
   scheduledTaskSessionId: string | null = null,
   requestMessageId: string | null = null,
+  executionLeaseDeadlineMs: number | null = null,
 ) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_message', {
     sessionId,
@@ -973,7 +974,12 @@ export async function startDesktopChatMessage(
     visibleTaskRecords,
     scheduledTaskSessionId,
     requestMessageId,
+    executionLeaseDeadlineMs,
   });
+}
+
+export function renewDesktopChatExecutionLease(turnId: string, deadlineMs: number) {
+  return invokeDesktop<void>('desktop_chat_renew_execution_lease', { turnId, deadlineMs });
 }
 
 export type DesktopShapeAgentRoute = {

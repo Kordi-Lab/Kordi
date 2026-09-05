@@ -42,6 +42,13 @@ enum CanonicalAvatarSystem {
     static let humanStyle = "lorelei"
     static let agentStyle = "thumbs"
     static let defaultAgentId = "cloud-local-agent"
+    static func agentID(_ raw: String?, ownerAccountID: String) -> String {
+        let id = raw?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        if id == nil || id == defaultAgentId || id == "cloud-self:\(ownerAccountID)" {
+            return "cloud-agent:\(ownerAccountID)"
+        }
+        return id!
+    }
     static let markerPrefix = "kordi-avatar://"
 
     struct Marker: Equatable {
@@ -1320,6 +1327,7 @@ struct CloudAgentRun: Codable, Hashable {
     let sandboxId: String?
     let createdAt: String
     let updatedAt: String
+    var executionBackend: String? = nil
 }
 
 struct CloudSyncResponse: Codable, Hashable {

@@ -387,6 +387,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "enforce canonical direct conversation identity",
         sql: include_str!("../../migrations/0080_enforce_direct_conversation_identity.sql"),
     },
+    EmbeddedMigration {
+        version: 81,
+        description: "agent_execution_ownership",
+        sql: include_str!("../../migrations/0081_agent_execution_ownership.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

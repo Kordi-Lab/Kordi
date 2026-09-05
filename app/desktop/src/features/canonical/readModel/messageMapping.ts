@@ -359,14 +359,16 @@ export function mapCanonicalMessage(
   const role = canonicalMessageRole(message, identity, profileHumanIdentityId);
   const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
   const completed = canonicalMessageIsComplete(message, content);
-  const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+  const deliveryState = isAgentTurn && !completed && contentRecord(content.execution).phase === 'queued'
+    ? 'queued'
+    : stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
   const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail));
   const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;
   const legacyCollaborationAgentFailure = isAgentTurn && failed && sourceTransport.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();
   const sourceRequestId = stringValue(content.requestId)?.trim();
-  const desktopEntryId = sourceTransport.startsWith('desktop-chat') ? stringValue(content.desktopEntryId)?.trim() : undefined;
+  const desktopEntryId = stringValue(content.desktopEntryId)?.trim();
   const parentMessageId = message.parentMessageId?.trim();
   const visibleParentMessageId = parentMessageId
     ? context.visibleReplyTargetByMessageId?.get(parentMessageId) ?? parentMessageId
@@ -376,7 +378,9 @@ export function mapCanonicalMessage(
   const replyToMessageId = isAgentTurn
     ? contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null
     : contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null;
-  const replyAliasIds = [...new Set([parentMessageId, sourceRequestId, stringValue(content.cloudGroupMessageId)?.trim()]
+  const replyAliasIds = [...new Set([parentMessageId, sourceRequestId, desktopEntryId,
+    sourceTransport === 'cloud-self-agent' && message.senderRole === 'user' ? message.sourceEventId : undefined,
+    stringValue(content.cloudGroupMessageId)?.trim()]
     .filter((value): value is string => Boolean(value && value !== message.id)))];
   const trimmedProfileIdentityId = profileHumanIdentityId?.trim() || null;
   const viewerOwnsAgent = isAgentTurn

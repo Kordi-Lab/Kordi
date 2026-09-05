@@ -88,6 +88,7 @@ impl ManagedChildAgentRunner {
                 scheduled_task_session_id: None,
                 sync_session_at_start: true,
                 request_message_id: None,
+                execution_lease_deadline_ms: None,
             },
         )
         .await

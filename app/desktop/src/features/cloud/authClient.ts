@@ -300,6 +300,7 @@ export type CloudAgentRunClaimInput = {
   prompt: string;
   idempotencyKey: string;
   targetCloudAgentId?: string | null;
+  runtimeRoute?: { defaultModel?: string | null; defaultAuthProvider?: string | null; defaultAuthChoice?: string | null; thinking?: string | null };
 };
 
 export type CloudAgentRunStatus = string;
@@ -310,6 +311,7 @@ export type CloudAgentRun = {
   sandboxId: string | null;
   createdAt: string;
   updatedAt: string;
+  executionBackend?: 'cloud' | 'desktop';
 };
 
 export type CloudAgentRunLookup = {
@@ -725,6 +727,13 @@ export class CloudAuthClient {
       },
       'Could not request Kordi fallback.',
     );
+  }
+
+  async desktopAgentExecution<T>(token: string, action: string, input: unknown): Promise<T> {
+    return this.send<T>(`/v1/cloud/agent-runs/desktop/${action}`, {
+      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify(input),
+    }, 'Could not coordinate desktop agent execution.');
   }
 
   async lookupCloudAgentRunForRequest(token: string, requestMessageId: string): Promise<CloudAgentRun | null> {

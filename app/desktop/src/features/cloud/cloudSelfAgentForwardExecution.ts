@@ -4,7 +4,6 @@ import type {
 } from './authClient';
 import {
   encodeCloudAgentResponse,
-  parseCloudAgentResponse,
   type CloudAgentExecutionSnapshot,
 } from './cloudAgentMessages';
 import { finalizeCloudAgentExecutionSnapshot } from './cloudAgentExecutionTrace';
@@ -20,50 +19,6 @@ import { encodeCloudDirectMessageEnvelope } from './cloudDirectMessages';
 
 export const CLOUD_SELF_AGENT_HEARTBEAT_MS = 30_000;
 export const CLOUD_SELF_AGENT_EXECUTION_STREAM_MS = 5_000;
-
-export async function publishCloudSelfAgentExecutionClaim({
-  accountId,
-  claimId,
-  client,
-  cloudRequestMessageId,
-  execution,
-  nowMs = Date.now(),
-  sessionId,
-  token,
-}: {
-  accountId: string;
-  claimId: string;
-  client: Pick<CloudAuthClient, 'sendMessage'>;
-  cloudRequestMessageId: string;
-  execution: CloudAgentExecutionSnapshot;
-  nowMs?: number;
-  sessionId: string;
-  token: string;
-}): Promise<{ acquired: boolean; message: CloudMessage }> {
-  const message = await client.sendMessage(
-    token,
-    accountId,
-    encodeCloudAgentResponse({
-      requestId: cloudRequestMessageId,
-      text: 'processing...',
-      deliveryState: 'processing',
-      execution,
-      executionClaimId: claimId,
-    }),
-    {
-      sessionId,
-      clientCreatedAt: new Date(nowMs).toISOString(),
-      clientMessageId:
-        `self-agent:${sessionId}:${cloudRequestMessageId}`
-        + ':desktop-execution-claim',
-    },
-  );
-  return {
-    acquired:
-      parseCloudAgentResponse(message.body)?.executionClaimId === claimId,
-    message,
-  };
-}
 
 function stableClientMessageId(
   operation: CloudSelfAgentSyncOperation,

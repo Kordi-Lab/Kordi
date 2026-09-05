@@ -1232,6 +1232,8 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func loadConversation(_ conversation: ConversationSummary) async -> Bool {
+        let conversation = ConversationIdentityResolver.current(conversation, in: conversations)
+        guard !conversation.isLocalDraft else { return true }
         retainCachedConversationPage(conversation.id)
         beginConversationLoad(conversation.id)
         defer { endConversationLoad(conversation.id) }
@@ -2064,6 +2066,13 @@ final class AppModel: ObservableObject {
 
             let requestCreatedAt = messages.first(where: { $0.id == requestMessageId })?.createdAt
                 ?? startedAt
+            guard let phase = AgentSessionQueuePresentation.pendingPhase(
+                requestID: requestMessageId,
+                createdAt: requestCreatedAt,
+                messages: messages,
+                kind: conversation.kind,
+                locallyQueued: pendingAgentQueuedRequestIds.contains(requestMessageId)
+            ) else { continue }
             let placeholderCreatedAt = requestCreatedAt.addingTimeInterval(0.001)
             let startedAtMs = startedAt.timeIntervalSince1970 * 1_000
             let placeholder = ChatMessage(
@@ -2078,8 +2087,8 @@ final class AppModel: ObservableObject {
                 errorMessage: nil,
                 requestMessageId: requestMessageId,
                 agentExecution: AgentExecutionSnapshot(
-                    phase: pendingAgentQueuedRequestIds.contains(requestMessageId) ? .queued : .preparing,
-                    summary: pendingAgentQueuedRequestIds.contains(requestMessageId) ? "Queued next" : "Preparing the response",
+                    phase: phase,
+                    summary: phase == .queued ? "Queued next" : "Preparing the response",
                     steps: [],
                     thinkingText: nil,
                     tools: nil,
@@ -2322,6 +2331,8 @@ final class AppModel: ObservableObject {
     }
 
     func refreshActiveCall(in conversation: ConversationSummary) async {
+        let conversation = ConversationIdentityResolver.current(conversation, in: conversations)
+        guard !conversation.isLocalDraft else { return }
         guard let token, !previewMode else { return }
         let callSnapshotGenerationAtStart = callSnapshotGeneration
         let canonicalID = canonicalConversationIDBySessionID[conversation.sessionId]
@@ -4361,38 +4372,11 @@ final class AppModel: ObservableObject {
                 agentOwnerName: conversation.kind == .agent ? conversation.ownerDisplayName : nil
             )
         }
-        if ownerAccountId == account.accountId {
-            agentExecutionLocation[conversation.id] = .mac(label: "your Mac")
-            for _ in 0..<5 {
-                do {
-                    try await Task.sleep(for: .seconds(1))
-                } catch {
-                    return
-                }
-                guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else {
-                    return
-                }
-                guard hasRecentDesktopExecutionHeartbeat(
-                    requestMessageId: requestMessageId,
-                    sessionId: conversation.sessionId
-                ) else { continue }
-                repeat {
-                    await pollForAgentReply(
-                        conversation,
-                        requestMessageId: requestMessageId
-                    )
-                    guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else {
-                        return
-                    }
-                } while hasRecentDesktopExecutionHeartbeat(
-                    requestMessageId: requestMessageId,
-                    sessionId: conversation.sessionId
-                )
-                break
-            }
-        }
-        do {
-            _ = try await api.claimAgentRun(
+        while !Task.isCancelled,
+              self.account?.accountId == account.accountId,
+              pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) {
+            do {
+                let run = try await api.claimAgentRun(
                 token: token,
                 requestMessageId: requestMessageId,
                 sessionId: conversation.sessionId,
@@ -4401,34 +4385,21 @@ final class AppModel: ObservableObject {
                 prompt: prompt,
                 runtimeRoute: runtimeRoute
             )
-            agentExecutionLocation[conversation.id] = .cloud
-            await pollForAgentReply(conversation, requestMessageId: requestMessageId)
-        } catch let error as CloudAPIError where error.code == "owner_online" {
-            let macLabel = ownerAccountId == account.accountId
-                ? "your Mac"
-                : "\(conversation.ownerDisplayName ?? "the owner")’s Mac"
-            agentExecutionLocation[conversation.id] = .mac(label: macLabel)
-            await pollForAgentReply(conversation, requestMessageId: requestMessageId)
-        } catch {
-            recordCloudConnectionFailure(error)
-            finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: requestMessageId, failed: true)
-            errorMessage = userFacing(error, fallback: "The agent could not start. Try again.")
-        }
-    }
-
-    private func hasRecentDesktopExecutionHeartbeat(
-        requestMessageId: String,
-        sessionId: String,
-        now: Date = Date()
-    ) -> Bool {
-        let freshnessWindow: TimeInterval = 90
-        return cloudMessagesByPeer.values.joined().contains { message in
-            guard message.sessionId == sessionId,
-                  CloudMessageCodec.agentResponseRequestId(message.body) == requestMessageId,
-                  CloudMessageCodec.agentResponseDeliveryState(message.body) == .processing else {
-                return false
+                agentExecutionLocation[conversation.id] = run.executionBackend == "desktop"
+                    ? .mac(label: ownerAccountId == account.accountId ? "your Mac" : "the owner’s Mac")
+                    : .cloud
+                await pollForAgentReply(conversation, requestMessageId: requestMessageId)
+            } catch let error as CloudAPIError where error.code == "owner_online" {
+                agentExecutionLocation[conversation.id] = .mac(label: ownerAccountId == account.accountId ? "your Mac" : "the owner’s Mac")
+                // Retry admission, rather than wait forever if the selected Mac disconnects.
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            } catch {
+                if Task.isCancelled { return }
+                recordCloudConnectionFailure(error)
+                finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: requestMessageId, failed: true)
+                errorMessage = userFacing(error, fallback: "The agent could not start. Try again.")
+                return
             }
-            return now.timeIntervalSince(parseCloudDate(message.createdAt)) <= freshnessWindow
         }
     }
 
@@ -4541,6 +4512,9 @@ final class AppModel: ObservableObject {
             guard pendingAgentRequestIds[conversation.id, default: []].contains(requestMessageId) else { return }
             if let token,
                let run = try? await api.lookupAgentRun(token: token, requestMessageId: requestMessageId) {
+                if let backend = run.executionBackend {
+                    agentExecutionLocation[conversation.id] = backend == "desktop" ? .mac(label: "the owner’s Mac") : .cloud
+                }
                 if run.status == "failed" {
                     finishPendingAgentRequest(conversationId: conversation.id, requestMessageId: requestMessageId, failed: true)
                     return

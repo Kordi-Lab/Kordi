@@ -61,6 +61,20 @@ export function agentRuntimeRouteChangeNotice(
     + `${AGENT_RUNTIME_ROUTE_NOTICE_SEPARATOR}${agentThinkingEffortLabel(next.thinking)}`;
 }
 
+export function runtimeRoutesMatch(
+  left?: DesktopChatMessageRoute | null,
+  right?: DesktopChatMessageRoute | null,
+): boolean {
+  const modelId = (route?: DesktopChatMessageRoute | null) => {
+    const model = qualifiedRouteModel(route);
+    return model?.slice(model.indexOf('/') + 1) ?? null;
+  };
+  return modelId(left) === modelId(right)
+    && runtimeRouteProvider(left) === runtimeRouteProvider(right)
+    && cleanRuntimeRouteText(left?.authChoice) === cleanRuntimeRouteText(right?.authChoice)
+    && agentThinkingEffortLabel(left?.thinking) === agentThinkingEffortLabel(right?.thinking);
+}
+
 export function modelFromAgentModelChangeNotice(
   text?: string | null,
 ): string | null {

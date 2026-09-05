@@ -62,6 +62,9 @@ export function normalizeCloudSelfAgentRestoreMessage(
     || isSharedCloudSessionId(sessionId)
   ) return null;
   const response = parseCloudAgentResponse(message.body);
+  // Ownership is not execution admission. Only native progress can declare
+  // that a request is queued or running.
+  if (response?.executionClaimId) return null;
   if (
     !response
     && (
@@ -88,7 +91,9 @@ export function normalizeCloudSelfAgentRestoreMessage(
     createdAtMs: cloudSelfAgentCreatedAtMs(message),
     responseRequestId: response?.requestId ?? null,
     responseDeliveryState: response
-      ? response.deliveryState ?? 'complete'
+      ? response.deliveryState === 'processing' && response.execution?.phase === 'queued'
+        ? 'queued'
+        : response.deliveryState ?? 'complete'
       : null,
     responseExecution: response?.execution,
     messageAction: response ? null : cloudDirectMessageAction(message.body),

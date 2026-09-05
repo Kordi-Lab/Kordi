@@ -20,6 +20,7 @@ import {
 } from '@/features/cloud/cloudAgentRuntime';
 import { cloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { canonicalCloudProviderId } from '@/features/cloud/providerAuthSnapshot';
+import { runtimeRoutesMatch } from '@/features/cloud/cloudAgentRuntimeRoute';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
 type CanonicalStore = ReturnType<
@@ -231,6 +232,8 @@ export function useCloudAgentRuntimeRouteSync({
       );
     }
     const previousRoute = routesBySessionId[runtimeSessionId];
+    const initializingSession = Boolean(input.initialSessionTitle?.trim());
+    if (!initializingSession && runtimeRoutesMatch(previousRoute, nextRoute)) return;
     setRoutesBySessionId((current) => ({
       ...current,
       [runtimeSessionId]: nextRoute,
@@ -270,7 +273,7 @@ export function useCloudAgentRuntimeRouteSync({
           'agent',
           sessionId,
         ),
-        encodeCloudAgentRuntimeRouteChange(nextRoute, previousRoute),
+        encodeCloudAgentRuntimeRouteChange(nextRoute, previousRoute, initializingSession),
         [],
         {
           clientMessageId:

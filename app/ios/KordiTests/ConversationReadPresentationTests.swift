@@ -1,9 +1,186 @@
 import ImageIO
 import UIKit
 import XCTest
+import SwiftUI
 @testable import Kordi
 
+@MainActor
+private final class HistoryNavigationProbe: ObservableObject {
+    @Published var isPresented = false
+}
+
+private struct HistoryNavigationProbeView: View {
+    @ObservedObject var navigation: HistoryNavigationProbe
+    let model: AppModel
+    let calls: KordiCallCoordinator
+    let conversation: ConversationSummary
+
+    var body: some View {
+        NavigationStack {
+            Text("Conversations")
+                .navigationDestination(isPresented: $navigation.isPresented) {
+                    ConversationView(conversation: conversation)
+                }
+        }
+        .environmentObject(model)
+        .environmentObject(calls)
+        .preferredColorScheme(.light)
+    }
+}
+
+@MainActor
+final class CachedAgentHistoryViewportTests: XCTestCase {
+    func testCachedAgentHistoryRendersAfterRepeatedEntry() async throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(
+            id: "agent-session:viewport-test", kind: .agent, peerAccountId: accountID,
+            agentId: "viewport-agent", ownerDisplayName: "Tester", displayName: "Completed history",
+            lastMessage: "Completed", lastActivityAt: Date(), unreadCount: 0,
+            avatarSource: nil, agentActivity: .ready, sessionId: "viewport-test"
+        )
+        var messages = (0..<13).map { index in
+            ChatMessage(
+                id: "message-\(index)", conversationId: conversation.id,
+                author: index.isMultiple(of: 2) ? .me : .agent, authorName: "Tester",
+                text: index.isMultiple(of: 2) ? "Request \(index)" : "## Completed report \(index)\n\n" + String(repeating: "This paragraph describes the completed analysis and its supporting details.\n\n", count: 25),
+                createdAt: Date(timeIntervalSince1970: Double(1_000 + index)),
+                deliveryState: .read, errorMessage: nil, requestMessageId: nil
+            )
+        }
+        if let fixturePath = ProcessInfo.processInfo.environment["KORDI_VIEWPORT_FIXTURE"] {
+            messages = try JSONDecoder().decode([ChatMessage].self, from: Data(contentsOf: URL(fileURLWithPath: fixturePath)))
+        }
+        store.saveMessages(messages, conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        let calls = KordiCallCoordinator()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 440, height: 956))
+        window.windowScene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        window.overrideUserInterfaceStyle = .light
+        defer { window.isHidden = true; window.rootViewController = nil }
+        let navigation = HistoryNavigationProbe()
+        let controller = UIHostingController(rootView: HistoryNavigationProbeView(
+            navigation: navigation, model: model, calls: calls, conversation: conversation
+        ))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        for entry in 0..<5 {
+            navigation.isPresented = true
+            try await Task.sleep(for: .seconds(2))
+            controller.view.layoutIfNeeded()
+            XCTAssertEqual(model.messages(for: conversation).count, messages.count)
+
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
+            _ = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+            try await Task.sleep(for: .milliseconds(150))
+            var didDraw = false
+            let image = renderer.image { _ in
+                didDraw = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            XCTAssertTrue(didDraw)
+            let cgImage = try XCTUnwrap(image.cgImage)
+            var pixels = [UInt8](repeating: 0, count: cgImage.width * cgImage.height * 4)
+            let context = try XCTUnwrap(CGContext(
+                data: &pixels, width: cgImage.width, height: cgImage.height,
+                bitsPerComponent: 8, bytesPerRow: cgImage.width * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+            var textPixels = 0
+            for y in stride(from: 180, to: cgImage.height - 180, by: 3) {
+                for x in stride(from: 24, to: cgImage.width - 80, by: 3) {
+                    let offset = (y * cgImage.width + x) * 4
+                    if pixels[offset + 3] > 240 && pixels[offset] < 100 && pixels[offset + 1] < 100 && pixels[offset + 2] < 100 {
+                        textPixels += 1
+                    }
+                }
+            }
+            if textPixels <= 30 {
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "history-entry-\(entry)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+            XCTAssertGreaterThan(textPixels, 30, "Entry \(entry) has cached messages but no visible transcript text")
+            func scrollView(in view: UIView) -> UIScrollView? {
+                if let scroll = view as? UIScrollView, !(scroll is UITextView) { return scroll }
+                return view.subviews.lazy.compactMap { scrollView(in: $0) }.first
+            }
+            let scroll = try XCTUnwrap(scrollView(in: controller.view))
+            let targetOffset = max(0, scroll.contentSize.height - scroll.bounds.height) * 0.5
+            scroll.setContentOffset(CGPoint(x: 0, y: targetOffset), animated: false)
+            try await Task.sleep(for: .milliseconds(300))
+            navigation.isPresented = false
+            try await Task.sleep(for: .milliseconds(800))
+            XCTAssertNotNil(model.conversationViewportMemory.resumedPosition(
+                for: "\(accountID):\(conversation.id):conversation", latestMessageID: messages.last?.id,
+                availableMessageIDs: Set(messages.map(\.id)), now: Date()
+            ), "Entry \(entry), offset \(scroll.contentOffset.y), target \(targetOffset), content \(scroll.contentSize.height), viewport \(scroll.bounds.height)")
+        }
+    }
+}
+
 final class ConversationReadPresentationTests: XCTestCase {
+    func testPendingIOSRequestQueuesImmediatelyBehindSyncedMacExecution() throws {
+        let fixture = agentQueueFixture()
+        let request = try XCTUnwrap(fixture.first { $0.id == "request-2" })
+        let beforeAdmission = fixture.filter { ["request-1", "response-1", "request-2"].contains($0.id) }
+        let phase = try XCTUnwrap(AgentSessionQueuePresentation.pendingPhase(
+            requestID: request.id, createdAt: request.createdAt, messages: beforeAdmission,
+            kind: .agent, locallyQueued: false
+        ))
+        XCTAssertEqual(phase, .queued)
+        var placeholder = try XCTUnwrap(fixture.first { $0.id == "response-2" })
+        placeholder.agentExecution = AgentExecutionSnapshot(
+            phase: phase, summary: "Queued next", steps: [], thinkingText: nil,
+            tools: nil, startedAtMs: 2_000, updatedAtMs: 2_000, completed: false
+        )
+        let firstFrame = AgentSessionQueuePresentation.apply(to: beforeAdmission + [placeholder], kind: .agent)
+        XCTAssertEqual(firstFrame.first { $0.id == request.id }?.agentQueuePosition, 1)
+        XCTAssertFalse(firstFrame.contains { $0.author == .agent && $0.requestMessageId == request.id })
+    }
+
+    func testUnconfirmedAgentAdmissionDoesNotInventProcessingOrQueue() {
+        let fixture = agentQueueFixture()
+        let userMessages = fixture.filter { $0.author == .me }
+        XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+            requestID: "request-1", createdAt: Date(timeIntervalSince1970: 1),
+            messages: userMessages, kind: .agent, locallyQueued: false
+        ))
+        // A later queued request must not make the first request queue behind it.
+        XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+            requestID: "request-1", createdAt: Date(timeIntervalSince1970: 1),
+            messages: fixture.filter { $0.id != "response-1" }, kind: .agent, locallyQueued: false
+        ))
+        for kind: ConversationKind in [.group, .person] {
+            XCTAssertEqual(AgentSessionQueuePresentation.pendingPhase(
+                requestID: "request-2", createdAt: Date(timeIntervalSince1970: 2),
+                messages: fixture, kind: kind, locallyQueued: true
+            ), .preparing)
+        }
+    }
+
+    func testCompletedMacRequestDoesNotCauseAStaleOptimisticQueue() throws {
+        let fixture = agentQueueFixture()
+        let earlier = fixture.filter { ["request-1", "response-1", "request-2"].contains($0.id) }
+        var terminal = try XCTUnwrap(earlier.first { $0.id == "response-1" })
+        for phase: AgentExecutionSnapshot.Phase in [.complete, .failed, .cancelled] {
+            terminal.agentExecution = AgentExecutionSnapshot(
+                phase: phase, summary: "Finished", steps: [], thinkingText: nil,
+                tools: nil, startedAtMs: 1_000, updatedAtMs: 5_000, completed: true
+            )
+            XCTAssertNil(AgentSessionQueuePresentation.pendingPhase(
+                requestID: "request-2", createdAt: Date(timeIntervalSince1970: 2),
+                messages: [terminal] + earlier, kind: .agent, locallyQueued: false
+            ))
+        }
+    }
+
     func testAgentSessionShowsQueuedRequestsWithoutRunningPlaceholders() {
         let messages = agentQueueFixture()
         let projected = AgentSessionQueuePresentation.apply(to: messages, kind: .agent)

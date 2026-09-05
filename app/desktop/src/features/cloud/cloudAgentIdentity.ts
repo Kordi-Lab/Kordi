@@ -53,7 +53,11 @@ export function cloudAgentId(
   agentId: string | null | undefined,
   ownerAccountId: string,
 ): string {
-  return agentId?.trim() || defaultCloudAgentId(ownerAccountId);
+  const id = agentId?.trim();
+  // Old local mirrors described execution location, not a separate agent.
+  return !id || id === 'cloud-local-agent' || id === `cloud-self:${ownerAccountId.trim()}`
+    ? defaultCloudAgentId(ownerAccountId)
+    : id;
 }
 
 export function cloudAgentCanonicalIdentityId(

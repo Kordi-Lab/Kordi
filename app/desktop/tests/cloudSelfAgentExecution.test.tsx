@@ -12,7 +12,7 @@ import {
   parseCloudAgentResponse,
 } from '../src/features/cloud/cloudAgentMessages';
 import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
-import { publishCloudSelfAgentExecutionClaim } from '../src/features/cloud/cloudSelfAgentForwardExecution';
+import { acquireDesktopExecutionLease } from '../src/features/cloud/cloudDesktopExecutionLease';
 import {
   cloudSelfAgentExecutionCanStart,
   cloudSelfAgentHasTerminalResponse,
@@ -237,49 +237,23 @@ test('terminal Cloud responses remove completed local turns after a reload', () 
   );
 });
 
-test('self-agent desktop claim elects one Mac through the stable Cloud client message id', async () => {
-  const messagesByClientId = new Map<string, CloudMessage>();
+test('desktop execution uses server admission and the fenced publication endpoint', async () => {
+  let claimed = false;
+  const actions: string[] = [];
   const client = {
-    async sendMessage(
-      _token: string,
-      accountId: string,
-      body: string,
-      options: {
-        sessionId?: string | null;
-        clientCreatedAt?: string | null;
-        clientMessageId?: string | null;
-      },
-    ): Promise<CloudMessage> {
-      const clientMessageId = options.clientMessageId ?? '';
-      const existing = messagesByClientId.get(clientMessageId);
-      if (existing) return existing;
-      const created = message('claim-message', body);
-      messagesByClientId.set(clientMessageId, created);
-      return created;
+    async desktopAgentExecution<T>(_token: string, action: string, _input: unknown): Promise<T> {
+      actions.push(action);
+      const acquired = !claimed;
+      if (action === 'claim') claimed = true;
+      return (action === 'claim' ? { runId: 'run-a', acquired } : message('progress', 'complete')) as T;
     },
   };
-  const execution = {
-    phase: 'preparing' as const,
-    summary: 'Preparing the response',
-    steps: [],
-    updatedAtMs: 1_000,
-    completed: false,
-  };
-  const claim = (claimId: string) => publishCloudSelfAgentExecutionClaim({
-    accountId: account.accountId,
-    claimId,
-    client,
-    cloudRequestMessageId: 'request-1',
-    execution,
-    nowMs: 1_000,
-    sessionId: 'session:self-agent:mobile',
-    token: 'token',
-  });
-
-  const first = await claim('mac-a');
-  const second = await claim('mac-b');
-
-  assert.equal(first.acquired, true);
-  assert.equal(second.acquired, false);
-  assert.equal(messagesByClientId.size, 1);
+  const input = { requestMessageId: 'request-1', sessionId: 'session:self-agent:mobile', ownerAccountId: 'owner', requesterAccountId: 'owner', prompt: 'Test', idempotencyKey: 'request-1' };
+  const first = await acquireDesktopExecutionLease(client, 'token', input);
+  try {
+    assert.ok(first);
+    assert.equal(await acquireDesktopExecutionLease(client, 'token', input), null);
+    await first.publisher.sendMessage('token', 'owner', 'response', { clientMessageId: 'response-id' });
+    assert.deepEqual(actions, ['claim', 'claim', 'run-a/progress']);
+  } finally { first?.dispose(); }
 });

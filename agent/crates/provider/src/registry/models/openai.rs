@@ -31,6 +31,15 @@ pub(super) fn builtin_models() -> Vec<Model> {
             cost(2.5, 15.0, 0.25, 3.125),
         ),
         model(
+            "gpt-6-astra",
+            "GPT-6 Astra",
+            "openai",
+            ApiType::OpenaiResponses,
+            (1_050_000, 128_000),
+            runtime(ReasoningCapability::Supported, "https://api.openai.com/v1"),
+            cost(10.0, 50.0, 1.0, 12.5),
+        ),
+        model(
             "gpt-5.5",
             "GPT-5.5",
             "openai",
@@ -162,6 +171,21 @@ pub(super) fn builtin_models() -> Vec<Model> {
 #[cfg(test)]
 mod tests {
     use super::builtin_models;
+
+    #[test]
+    fn gpt_6_has_its_own_limits_and_standard_short_context_prices() {
+        let models = builtin_models();
+        let model = models
+            .iter()
+            .find(|model| model.id == "gpt-6-astra")
+            .unwrap();
+        assert_eq!(model.context_window, 1_050_000);
+        assert_eq!(model.max_tokens, 128_000);
+        assert!(model.reasoning);
+        assert!(matches!(model.api, super::ApiType::OpenaiResponses));
+        assert_eq!(model.cost.input, 10.0);
+        assert_eq!(model.cost.output, 50.0);
+    }
 
     #[test]
     fn registry_contains_only_named_gpt_56_variants() {

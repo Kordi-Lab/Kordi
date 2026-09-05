@@ -1,7 +1,25 @@
 import CallKit
 import LinkPresentation
 import XCTest
+import Testing
 @testable import Kordi
+
+@Test func conversationWindowMeasuresRowsAndTailBeforeRestoringPosition() throws {
+    let sourceURL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+    let source = try String(contentsOf: sourceURL, encoding: .utf8)
+    let start = try #require(source.range(of: "                            ScrollView {"))
+    let end = try #require(source.range(of: ".scrollTargetLayout()", range: start.upperBound..<source.endIndex))
+    let content = source[start.upperBound..<end.lowerBound]
+
+    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("VStack(spacing: 0)"))
+    #expect(!content.contains("LazyVStack("))
+    #expect(content.contains(".onGeometryChange(for: Bool.self)"))
+    #expect(content.contains("ForEach(visibleTimelineRows)"))
+    #expect(content.contains(".id(bottomAnchorID)"))
+}
 
 final class KordiMarkdownParserTests: XCTestCase {
     func testCallAvatarResolverPrefersTheCallParticipantProfileImage() {
@@ -1268,12 +1286,12 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            memory.resumedMessageID(
+            memory.resumedPosition(
                 for: "account:session",
                 latestMessageID: "message-9",
                 availableMessageIDs: ["message-4", "message-9"],
                 now: leftAt.addingTimeInterval(119)
-            ),
+            )?.messageID,
             "message-4"
         )
     }
@@ -1295,12 +1313,12 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            memory.resumedMessageID(
+            memory.resumedPosition(
                 for: "account:session:conversation",
                 latestMessageID: "message-9",
                 availableMessageIDs: ["message-4", "message-9"],
                 now: leftAt.addingTimeInterval(2)
-            ),
+            )?.messageID,
             "message-4"
         )
     }
@@ -1315,7 +1333,7 @@ final class KordiMarkdownParserTests: XCTestCase {
             at: leftAt
         )
 
-        XCTAssertNil(memory.resumedMessageID(
+        XCTAssertNil(memory.resumedPosition(
             for: "account:session",
             latestMessageID: "message-9",
             availableMessageIDs: ["message-4", "message-9"],
@@ -1333,7 +1351,7 @@ final class KordiMarkdownParserTests: XCTestCase {
             at: leftAt
         )
 
-        XCTAssertNil(memory.resumedMessageID(
+        XCTAssertNil(memory.resumedPosition(
             for: "account:session",
             latestMessageID: "message-10",
             availableMessageIDs: ["message-4", "message-9", "message-10"],

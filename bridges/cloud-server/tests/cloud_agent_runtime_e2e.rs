@@ -386,6 +386,8 @@ mod attachments;
 mod avatar_assets;
 #[path = "cloud_agent_runtime_e2e/claims.rs"]
 mod claims;
+#[path = "cloud_agent_runtime_e2e/execution_ownership.rs"]
+mod execution_ownership;
 #[path = "cloud_agent_runtime_e2e/provider_auth.rs"]
 mod provider_auth;
 #[path = "cloud_agent_runtime_e2e/runner.rs"]

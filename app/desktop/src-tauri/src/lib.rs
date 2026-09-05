@@ -370,6 +370,7 @@ pub fn run() {
             chat::background_tasks::desktop_chat_start_shared_message,
             chat::desktop_chat_run_skill_command,
             chat::desktop_chat_cancel_turn,
+            chat::turns::desktop_chat_renew_execution_lease,
             chat::desktop_chat_turn_state,
             chat::turns::desktop_chat_active_turns,
             chat::turns::desktop_chat_session_active_turn,

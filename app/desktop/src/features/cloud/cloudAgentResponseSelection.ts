@@ -21,7 +21,7 @@ export function selectVisibleCloudAgentResponses(
   const preferredResponseByKey = new Map<string, CloudMessage>();
   for (const message of messages) {
     const response = parseCloudAgentResponse(message.body);
-    if (!response) continue;
+    if (!response || response.executionClaimId) continue;
     if (response.deliveryState === 'processing') {
       const createdAtMs = Date.parse(message.createdAt);
       if (
