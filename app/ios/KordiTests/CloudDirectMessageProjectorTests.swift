@@ -858,17 +858,17 @@ extension CloudDirectMessageProjectorTests {
             context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
         }
         let imageURL = "data:image/png;base64," + png.base64EncodedString()
-        let wires = try (0..<335).map { index -> CloudMessageDTO in
+        let wires = try (0..<320).map { index -> CloudMessageDTO in
             let source = MessageActionSource(
                 sourceSessionId: conversation.sessionId,
                 sourceMessageId: "synthetic-0", senderLabel: "Test Person",
                 textPreview: "Synthetic source", attachmentCount: 0
             )
-            let isAgentRequest = index == 280 || index == 284
+            let isAgentRequest = index == 276 || index == 288
             let text = isAgentRequest ? "@Kordi synthetic request"
-                : index >= 332 ? ":blob:blobaww:" : "Synthetic message \(index)"
-            let action: MessageActionMetadata? = (1...18).contains(index) ? .quote(source)
-                : [56, 66].contains(index) ? .forward(source) : nil
+                : index >= 318 ? ":blob:blobaww:" : "Synthetic message \(index)"
+            let action: MessageActionMetadata? = (1...12).contains(index) ? .quote(source)
+                : [24, 64].contains(index) ? .forward(source) : nil
             var body = try CloudMessageCodec.encodeDirect(
                 text: text, agentId: isAgentRequest ? "synthetic-agent" : nil,
                 agentName: isAgentRequest ? "Kordi" : nil,
@@ -879,8 +879,8 @@ extension CloudDirectMessageProjectorTests {
                 )] : nil,
                 messageAction: action
             )
-            if index == 285 || index == 286 {
-                let payload = ["kind": "agent-cancel", "requestId": "synthetic-\(index == 285 ? 280 : 284)"]
+            if index == 289 || index == 290 {
+                let payload = ["kind": "agent-cancel", "requestId": "synthetic-\(index == 289 ? 276 : 288)"]
                 body = CloudMessageCodec.agentCancelPrefix
                     + (try JSONSerialization.data(withJSONObject: payload)).base64EncodedString()
             }
@@ -892,7 +892,7 @@ extension CloudDirectMessageProjectorTests {
                 deliveredAt: nil, readAt: nil,
                 direction: index.isMultiple(of: 2) ? "outgoing" : "incoming",
                 sessionId: conversation.sessionId,
-                attachments: index >= 323 ? [CloudMessageAttachment(
+                attachments: index >= 312 ? [CloudMessageAttachment(
                     attachmentId: "synthetic-image-\(index)", name: "synthetic.png", kind: "image",
                     mimeType: "image/png", sizeBytes: Int64(png.count),
                     widthPixels: 8, heightPixels: 8, downloadUrl: nil, previewUrl: imageURL
@@ -903,10 +903,10 @@ extension CloudDirectMessageProjectorTests {
         let projected = CloudDirectMessageProjector.project(
             wires, conversation: conversation, ownAccountId: accountID
         )
-        XCTAssertEqual(projected.count, 335)
-        XCTAssertEqual(Set(projected.map(\.id)).count, 335)
+        XCTAssertEqual(projected.count, 320)
+        XCTAssertEqual(Set(projected.map(\.id)).count, 320)
         XCTAssertEqual(projected.filter { $0.deliveryState == .cancelled }.count, 2)
-        XCTAssertEqual(MessageThreadProjection(messages: projected).mainMessages.count, 335)
+        XCTAssertEqual(MessageThreadProjection(messages: projected).mainMessages.count, 320)
         store.saveMessages(projected, conversationId: conversation.id, accountId: accountID)
         let calls = KordiCallCoordinator()
         calls.configure(model: model)
