@@ -904,8 +904,11 @@ func defaultSelfAgentSessionId(_ accountId: String) -> String {
     "session:self-agent:\(accountId):default"
 }
 
+private let cloudFractionalDateFormat = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+private let cloudDateFormat = Date.ISO8601FormatStyle()
+
 func parseCloudDate(_ value: String) -> Date {
-    let fractional = ISO8601DateFormatter()
-    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value) ?? .distantPast
+    (try? cloudFractionalDateFormat.parse(value))
+        ?? (try? cloudDateFormat.parse(value))
+        ?? .distantPast
 }

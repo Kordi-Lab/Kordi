@@ -3,6 +3,32 @@ import XCTest
 
 @MainActor
 final class LocalMessageStoreTests: XCTestCase {
+    func testIncrementalCacheSavesPreserveUpdatesAndReinsertDeletedMessages() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let accountID = "synthetic-account"
+        let conversationID = "synthetic-direct"
+        var messages = (0..<100).map {
+            message(id: "synthetic-\($0)", conversationID: conversationID, text: "Original \($0)")
+        }
+        store.saveMessages(messages, conversationId: conversationID, accountId: accountID)
+        messages[50].text = "Edited"
+        messages[51].deliveryState = .read
+        store.saveMessages(messages, conversationId: conversationID, accountId: accountID)
+        XCTAssertEqual(
+            store.loadMessages(accountId: accountID, conversationId: conversationID),
+            messages.sorted(by: ChatMessage.timelinePrecedes)
+        )
+        store.deleteMessages([messages[50].id], accountId: accountID)
+        store.saveMessages(messages, conversationId: conversationID, accountId: accountID)
+        XCTAssertEqual(store.loadMessages(accountId: accountID, conversationId: conversationID).count, 100)
+        store.clear(accountId: accountID)
+        store.saveMessages(messages, conversationId: conversationID, accountId: accountID)
+        XCTAssertEqual(
+            store.loadMessages(accountId: accountID, conversationId: conversationID),
+            messages.sorted(by: ChatMessage.timelinePrecedes)
+        )
+    }
+
     func testConversationCacheKeepsLatestStickerPreview() throws {
         let store = try LocalMessageStore(inMemory: true)
         var source = conversation(id: "person:sticker", displayName: "Sticker chat")

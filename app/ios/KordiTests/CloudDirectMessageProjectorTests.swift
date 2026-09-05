@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import Kordi
 
 final class CloudDirectMessageProjectorTests: XCTestCase {
@@ -836,5 +837,93 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
+    }
+}
+
+extension CloudDirectMessageProjectorTests {
+    @MainActor
+    func testSyntheticDirectConversationReopensFromCache() async throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(
+            id: "synthetic-direct", kind: .person, peerAccountId: "synthetic-peer",
+            agentId: nil, ownerDisplayName: "Test Person", displayName: "Test Person",
+            lastMessage: "Synthetic message", lastActivityAt: Date(), unreadCount: 0,
+            avatarSource: nil, agentActivity: nil, sessionId: "synthetic-direct"
+        )
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8))
+        let png = renderer.pngData { context in
+            UIColor.blue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+        let imageURL = "data:image/png;base64," + png.base64EncodedString()
+        let wires = try (0..<320).map { index -> CloudMessageDTO in
+            let source = MessageActionSource(
+                sourceSessionId: conversation.sessionId,
+                sourceMessageId: "synthetic-0", senderLabel: "Test Person",
+                textPreview: "Synthetic source", attachmentCount: 0
+            )
+            let isAgentRequest = index == 276 || index == 288
+            let text = isAgentRequest ? "@Kordi synthetic request"
+                : index >= 318 ? ":blob:blobaww:" : "Synthetic message \(index)"
+            let action: MessageActionMetadata? = (1...12).contains(index) ? .quote(source)
+                : [24, 64].contains(index) ? .forward(source) : nil
+            var body = try CloudMessageCodec.encodeDirect(
+                text: text, agentId: isAgentRequest ? "synthetic-agent" : nil,
+                agentName: isAgentRequest ? "Kordi" : nil,
+                ownerAccountId: isAgentRequest ? "synthetic-peer" : nil, ownerName: nil,
+                mentions: isAgentRequest ? [MessageMention(
+                    label: "Kordi", targetKind: "agent", targetIdentityId: "agent:synthetic-agent",
+                    startUtf16: 0, lengthUtf16: 6, displayText: "@Kordi"
+                )] : nil,
+                messageAction: action
+            )
+            if index == 289 || index == 290 {
+                let payload = ["kind": "agent-cancel", "requestId": "synthetic-\(index == 289 ? 276 : 288)"]
+                body = CloudMessageCodec.agentCancelPrefix
+                    + (try JSONSerialization.data(withJSONObject: payload)).base64EncodedString()
+            }
+            return CloudMessageDTO(
+                messageId: "synthetic-\(index)", clientMessageId: "client-\(index)",
+                fromAccountId: index.isMultiple(of: 2) ? accountID : "synthetic-peer",
+                toAccountId: index.isMultiple(of: 2) ? "synthetic-peer" : accountID,
+                body: body, createdAt: Date(timeIntervalSince1970: Double(index)).ISO8601Format(),
+                deliveredAt: nil, readAt: nil,
+                direction: index.isMultiple(of: 2) ? "outgoing" : "incoming",
+                sessionId: conversation.sessionId,
+                attachments: index >= 312 ? [CloudMessageAttachment(
+                    attachmentId: "synthetic-image-\(index)", name: "synthetic.png", kind: "image",
+                    mimeType: "image/png", sizeBytes: Int64(png.count),
+                    widthPixels: 8, heightPixels: 8, downloadUrl: nil, previewUrl: imageURL
+                )] : [],
+                conversationSequence: Int64(index + 1)
+            )
+        }
+        let projected = CloudDirectMessageProjector.project(
+            wires, conversation: conversation, ownAccountId: accountID
+        )
+        XCTAssertEqual(projected.count, 320)
+        XCTAssertEqual(Set(projected.map(\.id)).count, 320)
+        XCTAssertEqual(projected.filter { $0.deliveryState == .cancelled }.count, 2)
+        XCTAssertEqual(MessageThreadProjection(messages: projected).mainMessages.count, 320)
+        store.saveMessages(projected, conversationId: conversation.id, accountId: accountID)
+        let calls = KordiCallCoordinator()
+        calls.configure(model: model)
+        for _ in 0..<3 {
+            let view = NavigationStack { ConversationView(conversation: conversation) }
+                .environmentObject(model).environmentObject(calls)
+            let controller = UIHostingController(rootView: view)
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 440, height: 956))
+            window.rootViewController = controller
+            window.makeKeyAndVisible()
+            controller.view.frame = window.bounds
+            controller.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(400))
+            XCTAssertFalse(model.messages(for: conversation).isEmpty)
+            controller.view.layoutIfNeeded()
+            window.isHidden = true
+            window.rootViewController = nil
+        }
     }
 }
