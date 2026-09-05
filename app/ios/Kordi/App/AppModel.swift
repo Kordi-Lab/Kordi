@@ -154,6 +154,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var markedUnreadSessionIds = Set<String>()
     @Published private(set) var pinnedGroupSpaceIds = Set<String>()
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
+    @Published private(set) var subsessions: [String: CloudAgentSubsession] = [:]
     @Published private(set) var callsByConversationID: [String: CloudCall] = [:]
     @Published private(set) var latestCallSnapshot: CloudCall?
     @Published private(set) var sessionActivityByID: [String: CloudSessionActivity] = [:]
@@ -480,6 +481,7 @@ final class AppModel: ObservableObject {
         contactRequests = []
         conversations = []
         messagesByConversation = [:]
+        subsessions = [:]
         callsByConversationID = [:]
         latestCallSnapshot = nil
         endedCallIDs = []
@@ -1185,6 +1187,10 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func loadConversation(_ conversation: ConversationSummary) async -> Bool {
+        if let id = conversation.subsessionId {
+            do { _ = try await agentSubsession(id: id, includeMessages: true); return true }
+            catch { return false }
+        }
         let conversation = ConversationIdentityResolver.current(conversation, in: conversations)
         guard !conversation.isLocalDraft else { return true }
         retainCachedConversationPage(conversation.id)
@@ -1236,8 +1242,18 @@ final class AppModel: ObservableObject {
 
     func agentSubsession(id: String, includeMessages: Bool = false) async throws -> CloudAgentSubsession {
         guard let token, let accountId = account?.accountId else { throw URLError(.userAuthenticationRequired) }
-        let result = try await api.agentSubsession(token: token, id: id, includeMessages: includeMessages)
+        let result: CloudAgentSubsession
+        do {
+            result = try await api.agentSubsession(token: token, id: id, includeMessages: includeMessages)
+        } catch {
+            if account?.accountId == accountId, let error = error as? CloudAPIError,
+               [401, 403, 404].contains(error.statusCode) { subsessions[id] = nil }
+            throw error
+        }
         guard account?.accountId == accountId else { throw CancellationError() }
+        if includeMessages, subsessions[id] != result, (subsessions[id]?.version ?? -1) <= result.version {
+            subsessions[id] = result
+        }
         return result
     }
 
@@ -1370,6 +1386,30 @@ final class AppModel: ObservableObject {
         var text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoingAttachments = voiceMessage.map { [$0.attachment] } ?? attachments
         guard (!text.isEmpty || !outgoingAttachments.isEmpty), let token, let account else { return }
+        if let id = conversation.subsessionId {
+            guard outgoingAttachments.isEmpty else { errorMessage = "This session supports text messages."; return }
+            let messageId = retryMessage?.clientMessageId ?? UUID().uuidString.lowercased()
+            let mentions = retryMessage?.mentions ?? ComposerMentionTargetCatalog.mentions(in: text, selectedTarget: mentionTarget, targets: mentionTargets(for: conversation))
+            let optimistic = ChatMessage(id: messageId, clientMessageId: messageId, conversationId: conversation.id,
+                author: .me, authorName: "You", text: text, createdAt: retryMessage?.createdAt ?? Date(),
+                deliveryState: .sending, errorMessage: nil, requestMessageId: nil, mentions: mentions)
+            messagesByConversation[conversation.id, default: []].removeAll { $0.id == retryMessage?.id }
+            messagesByConversation[conversation.id, default: []].append(optimistic)
+            do {
+                let result = try await api.sendSubsessionMessage(token: token, id: id, clientMessageId: messageId, text: text, mentions: mentions)
+                guard self.account?.accountId == account.accountId else { return }
+                if (subsessions[id]?.version ?? -1) <= result.version { subsessions[id] = result }
+                messagesByConversation[conversation.id]?.removeAll { $0.id == messageId }
+            } catch {
+                guard self.account?.accountId == account.accountId else { return }
+                if let index = messagesByConversation[conversation.id]?.firstIndex(where: { $0.id == messageId }) {
+                    messagesByConversation[conversation.id]?[index].deliveryState = .failed
+                    messagesByConversation[conversation.id]?[index].errorMessage = "Could not send. Tap to retry."
+                }
+                errorMessage = "Could not send this message."
+            }
+            return
+        }
         if let error = MemeAttachmentPolicy.draftError(for: outgoingAttachments) {
             errorMessage = error
             return
@@ -2017,6 +2057,11 @@ final class AppModel: ObservableObject {
     }
 
     func messages(for conversation: ConversationSummary) -> [ChatMessage] {
+        if let id = conversation.subsessionId {
+            let remote = subsessions[id]?.chatMessages(accountId: account?.accountId ?? "") ?? []
+            let ids = Set(remote.map(\.id))
+            return remote + (messagesByConversation[conversation.id] ?? []).filter { !ids.contains($0.id) }
+        }
         var messages = messagesByConversation[conversation.id] ?? []
         for requestMessageId in pendingAgentRequestIds[conversation.id, default: []] {
             guard let startedAt = pendingAgentRequestStartedAt[requestMessageId],
@@ -2518,6 +2563,7 @@ final class AppModel: ObservableObject {
     }
 
     func mentionTargets(for conversation: ConversationSummary) -> [ComposerMentionTarget] {
+        if let id = conversation.subsessionId { return subsessions[id]?.mentionTargets ?? [] }
         guard let account else { return [] }
         return ComposerMentionTargetCatalog.targets(
             account: account,
@@ -2529,6 +2575,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshMentionTargets(for conversation: ConversationSummary) async {
+        guard conversation.subsessionId == nil else { return }
         guard !previewMode, let token, let account else { return }
         let accountID = account.accountId
         let ownerAccountIDs = ComposerMentionTargetCatalog.ownerAccountIDs(
@@ -4232,6 +4279,7 @@ final class AppModel: ObservableObject {
     }
 
     func agentStatusText(for conversation: ConversationSummary) -> String {
+        if conversation.subsessionId != nil { return conversation.agentActivity?.label ?? "Ready" }
         let activity = conversations.first(where: { $0.id == conversation.id })?.agentActivity ?? .ready
         guard activity == .replying, let location = agentExecutionLocation[conversation.id] else {
             return activity.label

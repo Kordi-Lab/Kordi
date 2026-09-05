@@ -18,6 +18,9 @@ pub struct BackgroundSessionMessage {
 #[derive(Clone, Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BackgroundSessionSnapshot {
+    pub can_resume: bool,
+    pub turn_id: Option<String>,
+    pub activity: serde_json::Value,
     pub session_id: String,
     pub parent_session_id: String,
     pub parent_request_id: Option<String>,
@@ -76,6 +79,9 @@ fn background_snapshot_from_store(
     let status =
         crate::task_operator::inspect_persisted_background_session(&conn, session_id)?.status;
     Ok(BackgroundSessionSnapshot {
+        can_resume: saved_runtime_profile_from_store(conn, session_id)?.is_some(),
+        turn_id: None,
+        activity: serde_json::json!({}),
         session_id: row.session_id,
         parent_session_id: row
             .parent_session_id
@@ -100,6 +106,41 @@ fn background_snapshot_from_store(
             })
             .collect(),
     })
+}
+
+// Local-only metadata: never included in a shared transcript or Cloud snapshot.
+pub(super) fn saved_runtime_profile(session_id: &str) -> Result<Option<super::DesktopRuntimeProfile>> {
+    let conn = open_sessions_db()?;
+    saved_runtime_profile_from_store(&conn, session_id)
+}
+
+fn saved_runtime_profile_from_store(conn: &rusqlite::Connection, session_id: &str) -> Result<Option<super::DesktopRuntimeProfile>> {
+    use rusqlite::OptionalExtension;
+    let raw: Option<String> = conn.query_row("SELECT json_extract(payload,'$.data') FROM entries WHERE session_id=?1 AND type='custom' AND json_extract(payload,'$.custom_type')='subsession_runtime_profile' ORDER BY seq DESC LIMIT 1", [session_id], |row| row.get(0)).optional()?;
+    raw.map(|raw| {
+        let value: serde_json::Value = serde_json::from_str(&raw)?;
+        let mut profile: super::DesktopRuntimeProfile = serde_json::from_value(value["profile"].clone())?;
+        profile.execution_policy = match value["executionPolicy"].as_str() {
+            Some("safety") => Some(kordi_tools::ExecutionPolicy::Safety),
+            Some("yolo") => Some(kordi_tools::ExecutionPolicy::Yolo),
+            None => None,
+            _ => bail!("Invalid saved execution policy"),
+        };
+        Ok(profile)
+    }).transpose()
+}
+
+pub(super) fn save_runtime_profile(setup: &super::SessionRuntimeSetup, profile: &super::DesktopRuntimeProfile) -> Result<()> {
+    use kordi_core::types::{EntryBase, EntryId, SessionEntry};
+    let Some(row) = kordi_session::store::get_session(&setup.conn, &setup.session_id)? else { return Ok(()) };
+    if !matches!(row.session_scope.as_str(), "runtime" | "runtime-starting") || saved_runtime_profile_from_store(&setup.conn, &setup.session_id)?.is_some() { return Ok(()) }
+    let entry = SessionEntry::Custom {
+        base: EntryBase { id: EntryId::generate(), parent_id: row.leaf_id.map(EntryId), timestamp: chrono::Utc::now() },
+        custom_type: "subsession_runtime_profile".into(),
+        data: Some(serde_json::json!({"profile":profile,"executionPolicy":profile.execution_policy.map(|policy|policy.as_str())})),
+    };
+    kordi_session::store::append_entry(&setup.conn, &setup.session_id, &entry)?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -174,6 +215,22 @@ mod runtime_snapshot_tests {
         assert!(!encoded.contains("PRIVATE_TRACE"));
         assert!(!encoded.contains("thinkingText"));
         assert!(!encoded.contains("forkedFromSessionId"));
+        let profile = super::super::DesktopRuntimeProfile {
+            system_prompt: Some("PRIVATE_PROFILE".into()),
+            tool_names: Some(vec!["web_search".into()]),
+            ..Default::default()
+        };
+        kordi_session::store::append_entry(&conn, &id, &SessionEntry::Custom {
+            base: EntryBase { id: EntryId::generate(), parent_id: None, timestamp: chrono::Utc::now() },
+            custom_type: "subsession_runtime_profile".into(),
+            data: Some(serde_json::json!({"profile":profile,"executionPolicy":"safety"})),
+        })?;
+        let restored = saved_runtime_profile_from_store(&conn, &id)?.expect("saved runtime profile");
+        assert_eq!(restored.tool_names, Some(vec!["web_search".into()]));
+        assert_eq!(restored.execution_policy, Some(kordi_tools::ExecutionPolicy::Safety));
+        let snapshot = background_snapshot_from_store(&conn, &id)?;
+        assert!(snapshot.can_resume);
+        assert!(!serde_json::to_string(&snapshot)?.contains("PRIVATE_PROFILE"));
         assert!(kordi_session::store::list_sessions(&conn, "/tmp/test")?.is_empty());
         Ok(())
     }

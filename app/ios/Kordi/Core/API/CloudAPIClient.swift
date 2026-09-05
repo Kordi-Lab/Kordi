@@ -928,6 +928,19 @@ actor CloudAPIClient {
         )
     }
 
+    func sendSubsessionMessage(token: String, id: String, clientMessageId: String, text: String, mentions: [MessageMention]) async throws -> CloudAgentSubsession {
+        struct Request: Encodable {
+            let clientMessageId: String
+            let text: String
+            let mentions: [MessageMention]
+        }
+        return try await send(
+            path: "/v1/cloud/agent-subsessions/\(escapedPath(id))/messages", method: "POST", token: token,
+            body: Request(clientMessageId: clientMessageId, text: text, mentions: mentions),
+            fallback: "Could not send this message."
+        )
+    }
+
     func currentProviderAuthSnapshot(
         token: String,
         provider: String? = nil,

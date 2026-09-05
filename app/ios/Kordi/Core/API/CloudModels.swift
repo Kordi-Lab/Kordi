@@ -733,7 +733,15 @@ struct CloudAgentSubsession: Codable, Hashable {
         let role: String
         let text: String
         let timestampMs: Int64
+        var senderAccountId: String? = nil
+        var senderDisplayName: String? = nil
+        var requestId: String? = nil
+        var requestState: String? = nil
+        var mentions: [MessageMention]? = nil
+        var activity: Activity? = nil
     }
+    struct Activity: Codable, Hashable { let tools: [AgentExecutionTool]? }
+    struct Participant: Codable, Hashable { let accountId: String; let displayName: String }
     let sessionId: String
     let parentSessionId: String
     let parentRequestId: String
@@ -746,6 +754,9 @@ struct CloudAgentSubsession: Codable, Hashable {
     let version: Int64
     var messages: [Message]
     let updatedAt: String
+    var activity: Activity? = nil
+    var hasFollowupExecution: Bool? = nil
+    var participants: [Participant]? = nil
 
     var state: BackgroundAgentSession.State { .init(wireValue: status) ?? .failed }
 }

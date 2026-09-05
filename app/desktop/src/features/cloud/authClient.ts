@@ -6,6 +6,7 @@
 // Production sessions never silently fall back to localhost; local tunnels remain
 // available only by explicitly setting VITE_KORDI_CLOUD_API_BASE.
 import type { CloudMessageSnapshotResponse } from './cloudMessageSnapshot';
+import type { DesktopChatContextMessage } from '@/lib/desktop';
 import type { CloudContactSummary } from './cloudContactTypes';
 import type { CloudPresenceAccount, CloudPresenceContactsResponse } from './presence';
 import type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
@@ -362,8 +363,14 @@ export class CloudAuthClient {
     return this.send(`/v1/cloud/agent-subsessions/${encodeURIComponent(value.sessionId)}`, {
       method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ parentSessionId: value.parentSessionId, parentRequestId: value.parentRequestId,
-        title: value.title, status: value.status, messages: value.messages, expectedVersion }),
+        title: value.title, status: value.status, messages: value.messages, activity: value.activity, expectedVersion }),
     }, 'Could not synchronize this agent task.');
+  }
+  sendAgentSubsessionMessage(token: string, id: string, clientMessageId: string, text: string, mentions: unknown[]): Promise<CloudAgentSubsession> {
+    return this.send(`/v1/cloud/agent-subsessions/${encodeURIComponent(id)}/messages`, { method:'POST', headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}, body:JSON.stringify({clientMessageId,text,mentions}) }, 'Could not send this message.');
+  }
+  pendingAgentSubsessionMessages(token:string): Promise<Array<{runId:string;subsessionId:string;messageId:string;senderAccountId:string;text:string;contextMessages?:DesktopChatContextMessage[]}>> {
+    return this.send('/v1/cloud/agent-subsessions/pending', {method:'GET',headers:{Authorization:`Bearer ${token}`}}, 'Could not load queued task messages.');
   }
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;

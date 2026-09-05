@@ -402,5 +402,7 @@ mod scheduled_runs;
 mod subsessions;
 #[path = "cloud_agent_runtime_e2e/cloud_subsessions.rs"]
 mod cloud_subsessions;
+#[path = "cloud_agent_runtime_e2e/subsession_follow.rs"]
+mod subsession_follow;
 #[path = "cloud_agent_runtime_e2e/shared_desktop_lease.rs"]
 mod shared_desktop_lease;

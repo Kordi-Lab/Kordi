@@ -171,6 +171,7 @@ async fn model_subsession_keeps_parent_acl_identity_and_transcript_isolation() {
     .await;
     assert_eq!(renamed["agentId"], created["agentId"]);
     assert_eq!(renamed["ownerDisplayName"], "Renamed Owner");
+    subsession_follow::verify(&router, &pool, &owner, &peer, &outsider, &id.to_string(), created["agentId"].as_str().unwrap(), true).await;
     let after: (i64, i64) = sqlx_core::query_as::query_as("SELECT (SELECT count(*) FROM cloud_chat_conversations), (SELECT count(*) FROM cloud_chat_messages)").fetch_one(&pool).await.unwrap();
     assert_eq!(
         before, after,

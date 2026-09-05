@@ -98,6 +98,7 @@ struct ConversationSummary: Identifiable, Hashable {
     let forkedFromSessionId: String?
     /// A locally created agent session has no remote history until its first send.
     let isLocalDraft: Bool
+    let subsessionId: String?
 
     init(
         id: String,
@@ -120,7 +121,8 @@ struct ConversationSummary: Identifiable, Hashable {
         forkedFromSessionId: String? = nil,
         unreadMentionCount: Int = 0,
         lastReadSequence: Int64 = 0,
-        isLocalDraft: Bool = false
+        isLocalDraft: Bool = false,
+        subsessionId: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -145,6 +147,7 @@ struct ConversationSummary: Identifiable, Hashable {
         self.messageCount = messageCount
         self.forkedFromSessionId = forkedFromSessionId
         self.isLocalDraft = isLocalDraft
+        self.subsessionId = subsessionId
     }
 
     var remotePeerAccountIds: [String] {

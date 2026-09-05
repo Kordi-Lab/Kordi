@@ -4,6 +4,7 @@ import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
 import { fetchDesktopChatActiveTurns, fetchDesktopSubsessionIds } from '@/lib/desktopBackgroundSessions';
 import { publishModelSubsession } from '@/features/cloud/agentSubsessionSync';
 import { loadSession } from '@/features/cloud/session';
+import { discoverSubsessionFollowups } from '@/features/cloud/subsessionFollowExecution';
 
 export function useBackgroundTurnDiscovery({
   enabled,
@@ -21,6 +22,7 @@ export function useBackgroundTurnDiscovery({
     let recoveryAccountId: string | null = null;
 
     const discover = async () => {
+      void discoverSubsessionFollowups().catch(()=>undefined);
       const accountId = (await loadSession())?.accountId ?? null;
       if (accountId !== recoveryAccountId) { recoveryAccountId = accountId; recovered = false; discoveredTurnIdsRef.current.clear(); }
       const turns = await fetchDesktopChatActiveTurns().catch(() => []);

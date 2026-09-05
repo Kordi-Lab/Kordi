@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><link rel="stylesheet" href="/src/index.css"><title>Subsession conversation test</title></head>
+<body class="kordi-app theme-light"><div id="root"></div>
+<script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { AgentSubsessionDialog } from '/src/kordi-app/components/AgentSubsessionDialog.tsx';
+import { __setSessionBackendForTests } from '/src/features/cloud/session.ts';
+__setSessionBackendForTests({ load: async () => ({token: 'fixture-token',accountId: 'peer',expiresAt: '2099-01-01'}),save: async () => {},clear: async () => {} });
+const snapshot = {sessionId: 'fixture-child',parentSessionId: 'fixture-parent',parentRequestId: 'root',ownerAccountId: 'owner',agentId: 'fixture-agent',ownerDisplayName: 'Alex',agentDisplayName: "Alex's Kordi",title: 'Planet research',status: 'running',version: 1,updatedAt: '2026-09-05T00:00:00Z',hasFollowupExecution: true,participants: [{accountId: 'peer',displayName: 'Sam'}],messages: [
+  ...Array.from({length: 18},(_,index) => ({id: `history-${index}`,role: index%2 ? 'assistant' : 'user',senderAccountId: 'peer',text: index%2 ? 'The source comparison is kept in this session.' : 'Compare the planetary data.',timestampMs: index*1000})),
+  {id:'active',role:'assistant',text:'',timestampMs:19000,requestState:'running',activity:{tools:[]}},
+  {id:'queued',role:'user',text:'@KordiAlex summarize afterward',senderAccountId:'peer',timestampMs:20000,requestState:'queued'},
+  {id:'reply:queued',role:'assistant',text:'',timestampMs:20001,requestState:'queued'}
+]};
+window.sentSubsessionRequests = [];
+window.fixtureSubsession = snapshot;
+window.fetch = async (url,init) => {
+  if (!String(url).includes('/agent-subsessions/')) throw Error('Unexpected fixture request');
+  if (init?.method === 'POST') window.sentSubsessionRequests.push(JSON.parse(init.body));
+  return new Response(JSON.stringify(snapshot),{headers:{'content-type':'application/json'}});
+};
+createRoot(document.getElementById('root')).render(React.createElement(AgentSubsessionDialog,{sessionId:'fixture-child',onClose:()=>{}}));
+</script></body></html>

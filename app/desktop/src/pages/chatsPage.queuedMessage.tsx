@@ -3,6 +3,7 @@ import { Clock3, SquarePen, X } from 'lucide-react';
 import {
   MessageBubbleShapeBackdrop,
   queuedMessageBubbleShapeClass,
+  humanMessageBubbleShapeClass,
 } from '@/features/chat/messageBubbleShape';
 import { MessageInlineContent } from '@/kordi-app/components/messageInlineContent';
 import type { QueuedDesktopChatMessage } from '@/kordi-app/types';
@@ -13,22 +14,27 @@ export function QueuedMessageBubble({
   isCompressionActive,
   onEdit,
   onCancel,
+  own = true,
+  sender,
 }: {
   message: Pick<QueuedDesktopChatMessage, 'id' | 'sessionId' | 'text' | 'time'> & { attachments: readonly unknown[] };
   isCompressionActive: boolean;
   onEdit?: (sessionId: string, queuedMessageId: string) => void;
   onCancel?: (sessionId: string, queuedMessageId: string) => void;
+  own?: boolean;
+  sender?: string;
 }) {
   return (
-    <div className="flex justify-end py-0.5">
+    <div className={cn('flex py-0.5', own ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
           'app-queued-message max-w-[min(72%,34rem)] px-3 py-2 text-right',
-          queuedMessageBubbleShapeClass,
+          own ? queuedMessageBubbleShapeClass : cn(humanMessageBubbleShapeClass('peer'), 'app-message-bubble-queued'),
         )}
       >
-        <MessageBubbleShapeBackdrop side="own" />
+        <MessageBubbleShapeBackdrop side={own ? 'own' : 'peer'} />
         <div className="min-w-0 text-left">
+          {sender ? <div className="mb-1 text-xs">{sender}</div> : null}
           <div className="mb-0.5 flex items-center justify-between gap-3">
             <div className="app-queued-message-label inline-flex min-w-0 items-center gap-1.5 text-[9.5px] font-semibold uppercase tracking-[0.07em]">
               <Clock3 className="h-2.5 w-2.5 shrink-0" />

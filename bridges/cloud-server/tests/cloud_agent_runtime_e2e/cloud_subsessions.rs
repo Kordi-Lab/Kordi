@@ -77,6 +77,7 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
         assert!(result["messages"].as_array().unwrap().iter().any(|message|message["text"]=="CHILD_ONLY_RESULT"));
         assert_eq!(router.clone().oneshot(get_with_token(&uri,&outsider.token)).await.unwrap().status(),StatusCode::NOT_FOUND);
         assert_eq!(message_body(&pool,&parent_response).await,parent_body);
+        subsession_follow::verify(&router, &pool, &owner, &peer, &outsider, id, &agent, false).await;
         let after:(i64,)=sqlx_core::query_as::query_as("SELECT count(*) FROM cloud_chat_conversations").fetch_one(&pool).await.unwrap();
         assert_eq!(before,after,"a subsession must not create a conversation channel");
     }

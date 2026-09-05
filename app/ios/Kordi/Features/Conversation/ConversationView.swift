@@ -247,7 +247,10 @@ struct ConversationView: View {
     /// stable id so title, participant names, and avatars update while the
     /// conversation is already open instead of requiring a back/reopen cycle.
     private var conversation: ConversationSummary {
-        ConversationIdentityResolver.current(
+        if let id = initialConversation.subsessionId, let snapshot = model.subsessions[id] {
+            return snapshot.conversation
+        }
+        return ConversationIdentityResolver.current(
             initialConversation,
             in: model.conversations
         )
@@ -760,7 +763,7 @@ struct ConversationView: View {
             }
             .task(id: ConversationIdentityResolver.loadingTaskID(for: conversation)) {
                 await loadAndRevealInitialConversation(using: proxy)
-                await model.refreshActiveCall(in: conversation)
+                if conversation.subsessionId == nil { await model.refreshActiveCall(in: conversation) }
             }
         }
         return conversationTimeline
@@ -795,7 +798,7 @@ struct ConversationView: View {
                         .sharedBackgroundVisibility(.hidden)
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        sessionActionsButton
+                        if conversation.subsessionId == nil { sessionActionsButton }
                     }
                     .sharedBackgroundVisibility(.hidden)
                 } else {
@@ -805,7 +808,7 @@ struct ConversationView: View {
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        sessionActionsButton
+                        if conversation.subsessionId == nil { sessionActionsButton }
                     }
                 }
             }
@@ -1229,9 +1232,10 @@ struct ConversationView: View {
                 ownAccountId: model.account?.accountId,
                 allowsConversationReply: conversation.kind.supportsQuotedReplies,
                 allowsThreadReply: scopedThreadRootMessageID == nil
+                    && conversation.subsessionId == nil
                     && conversation.kind.supportsThreadedReplies
                     && !message.isSystemNotice,
-                allowsReactions: MessageBubble.allowsReactions(
+                allowsReactions: conversation.subsessionId == nil && MessageBubble.allowsReactions(
                     for: message,
                     isPreviewMode: model.isPreviewMode
                 ),
@@ -1994,7 +1998,7 @@ struct ConversationView: View {
     }
 
     private var agentActivity: AgentActivity {
-        model.conversations.first(where: { $0.id == conversation.id })?.agentActivity ?? .ready
+        conversation.agentActivity ?? .ready
     }
 
     private var sessionActionsButton: some View {
@@ -2223,6 +2227,8 @@ struct ConversationView: View {
     private func canSendWithCurrentAuthentication(
         mention: ComposerMentionTarget?
     ) -> Bool {
+        // The bound Agent owner's runtime authenticates shared subsession turns.
+        if conversation.subsessionId != nil { return true }
         let invokesOwnedAgent = ProviderAuthenticationPolicy.requiresAuthentication(
             isAgentConversation: conversation.kind == .agent,
             mentionedAgentOwnerAccountID: mention?.kind == .agent

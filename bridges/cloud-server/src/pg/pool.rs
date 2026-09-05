@@ -402,6 +402,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "model agent subsessions",
         sql: include_str!("../../migrations/0083_model_agent_subsessions.sql"),
     },
+    EmbeddedMigration {
+        version:84,
+        description:"subsession conversations",
+        sql:include_str!("../../migrations/0084_subsession_conversations.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

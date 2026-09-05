@@ -115,6 +115,11 @@ pub(super) async fn claim(
     if !input.run.is_well_formed() || input.run.owner_account_id != session.account_id {
         return denied();
     }
+    match super::subsession_execution::claim(state.db_pool(), &session, &input.run, &executor(&session,input.claim_id)).await {
+        Ok(Some(value)) => return Json(value).into_response(),
+        Ok(None) => {},
+        Err(error) => return run_error_response("subsession admission", "Could not admit the follow-up.", error),
+    }
     let result = async {
         let Some((request_id,wire_id))=super::runs::request_identity(state.db_pool(),&input.run.session_id,&input.run.request_message_id).await? else { return Ok::<_,super::runs::RunError>(None); };
         input.run.request_message_id=request_id;
@@ -157,6 +162,7 @@ pub(super) async fn admit(
             .bind(session_id).bind(agent_id).bind(&run_id).bind(created_at).fetch_one(&mut *tx).await?;
         if !blocked.0 { query("UPDATE cloud_agent_fallback_runs SET status='running' WHERE run_id=$1").bind(&run_id).execute(&mut *tx).await?; }
         tx.commit().await?;
+        if !blocked.0 { super::subsession_execution::mark_active(state.db_pool(),&run_id,"desktop").await.map_err(|e|sqlx_core::Error::Protocol(e.to_string()))?; }
         Ok(Some(!blocked.0))
     }.await;
     match result {
@@ -176,6 +182,7 @@ pub(super) async fn renew(
     Path(run_id): Path<String>,
     Json(input): Json<RenewalInput>,
 ) -> Response {
+    if !matches!(super::subsession_execution::revalidate(state.db_pool(), &run_id).await, Ok(true)) { return expired(); }
     let result = query("UPDATE cloud_agent_fallback_runs SET lease_expires_at=$3, updated_at=$4 WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='desktop' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now()")
         .bind(run_id).bind(executor(&session,input.claim_id)).bind((Utc::now()+chrono::Duration::seconds(45)).to_rfc3339()).bind(Utc::now().to_rfc3339()).execute(state.db_pool()).await;
     match result {
@@ -192,8 +199,11 @@ pub(super) async fn cancel(
     Json(input): Json<RenewalInput>,
 ) -> Response {
     match query("UPDATE cloud_agent_fallback_runs SET status='cancelled',completed_at=$3,updated_at=$3 WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='desktop' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now()")
-        .bind(run_id).bind(executor(&session,input.claim_id)).bind(Utc::now().to_rfc3339()).execute(state.db_pool()).await {
-        Ok(value) if value.rows_affected()==1 => Json(json!({"ok":true})).into_response(),
+        .bind(&run_id).bind(executor(&session,input.claim_id)).bind(Utc::now().to_rfc3339()).execute(state.db_pool()).await {
+        Ok(value) if value.rows_affected()==1 => match super::subsession_execution::cancelled(state.db_pool(), &run_id).await {
+            Ok(()) => Json(json!({"ok":true})).into_response(),
+            Err(e) => run_error_response("cancel follow-up", "Could not update the stopped session.", e),
+        },
         Ok(_) => expired(),
         Err(error) => run_error_response("cancel execution", "Could not stop the execution.", error.into()),
     }
@@ -237,6 +247,11 @@ pub(super) async fn progress(
         Some("cancelled") => "cancelled",
         _ => return denied(),
     };
+    match super::subsession_execution::publish(state.db_pool(),&run_id,&executor(&session,input.claim_id),&response,phase).await {
+        Ok(Some(value)) => return Json(value).into_response(),
+        Ok(None) => {},
+        Err(error) => return run_error_response("subsession publication", "Could not publish the follow-up.", error),
+    }
     let result = async {
         let mut tx = state.db_pool().begin().await?;
         let row: Option<(String,String,String,String)> = query_as("SELECT session_id,request_message_id,requester_account_id,execution_agent_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND owner_account_id=$2 AND claimed_by=$3 AND execution_backend='desktop' AND ((status IN ('leased','running') AND lease_expires_at::timestamptz>now()) OR (status=$4 AND status IN ('completed','failed','cancelled') AND EXISTS(SELECT 1 FROM cloud_chat_messages WHERE sender_account_id=$2 AND client_message_id=$5))) FOR UPDATE")

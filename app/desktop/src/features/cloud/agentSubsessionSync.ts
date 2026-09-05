@@ -1,6 +1,7 @@
 import { CloudAuthClient, CloudAuthError } from './authClient';
 import { loadSession } from './session';
 import { fetchDesktopSubsessionSnapshot } from '@/lib/desktopBackgroundSessions';
+import { renewDesktopChatExecutionLease } from '@/lib/desktop';
 import { relatedAgentSessionsFromTools, normalizedRelatedAgentSessionStatus } from '@/features/chat/relatedAgentSessions';
 import type { DesktopChatTurnSnapshot } from '@/kordi-app/types';
 
@@ -36,9 +37,12 @@ export async function publishModelSubsession(id: string): Promise<void> {
               throw error;
             });
           }
+          const sentAt=Date.now();
           const saved = await client.putAgentSubsession(current.token, snapshot, version);
           version = saved.version;
           resolveFirst();
+          if (saved.hasFollowupExecution) return;
+          if (snapshot.turnId && snapshot.status==='running') await renewDesktopChatExecutionLease(snapshot.turnId,sentAt+30_000);
           if (snapshot.status !== 'running') return;
         } catch (error) {
           if (error instanceof CloudAuthError && [400, 401, 403].includes(error.status ?? 0)) throw error;

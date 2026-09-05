@@ -47,6 +47,8 @@ pub struct RunnerRunEnvelope {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RunnerRunResponse {
+    #[serde(rename="historyMessages")]
+    pub history_messages: Vec<serde_json::Value>,
     #[serde(rename = "subsessionId")]
     pub subsession_id: Option<String>,
     #[serde(rename = "subsessionWriteScope")]
@@ -124,7 +126,12 @@ async fn lease_run(
                     AND lease_expires_at::timestamptz <= $3::timestamptz \
                 )) \
              AND ($4::text IS NULL OR candidate.run_id=$4) \
-             AND (NOT EXISTS(SELECT 1 FROM cloud_chat_conversations c WHERE c.legacy_session_id=candidate.session_id AND c.kind='ai') \
+             AND (NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat q WHERE q.run_id=candidate.run_id) OR ( \
+                 NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs earlier LEFT JOIN cloud_agent_subsession_chat e ON e.run_id=earlier.run_id JOIN cloud_agent_subsession_chat current ON current.run_id=candidate.run_id WHERE earlier.subsession_id=candidate.subsession_id AND earlier.run_id<>candidate.run_id AND earlier.status IN ('queued','leased','running') AND (e.sequence IS NULL OR e.sequence<current.sequence)) \
+                 AND NOT EXISTS(SELECT 1 FROM cloud_agent_subsessions s WHERE s.subsession_id=candidate.subsession_id AND s.execution_backend='desktop' AND s.status='running' AND s.heartbeat_at>now()-interval '45 seconds') \
+                 AND NOT EXISTS(SELECT 1 FROM cloud_agent_subsessions s JOIN cloud_agent_desktop_capabilities ready ON ready.agent_id=s.agent_id AND ready.updated_at>now()-interval '35 seconds' JOIN cloud_devices d ON d.device_id=ready.device_id AND d.account_id=s.owner_account_id AND d.revoked_at IS NULL WHERE s.subsession_id=candidate.subsession_id AND s.execution_backend='desktop' AND candidate.created_at::timestamptz>now()-interval '10 seconds') \
+             )) \
+             AND (candidate.subsession_id IS NOT NULL OR NOT EXISTS(SELECT 1 FROM cloud_chat_conversations c WHERE c.legacy_session_id=candidate.session_id AND c.kind='ai') \
                   OR NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs active WHERE active.run_id<>candidate.run_id AND active.session_id=candidate.session_id AND active.execution_agent_id=candidate.execution_agent_id AND active.status IN ('queued','leased','running') AND (active.created_at<candidate.created_at OR (active.status='running' AND active.lease_expires_at::timestamptz>now())))) \
              ORDER BY created_at ASC \
              LIMIT 1 \
@@ -174,6 +181,7 @@ pub async fn mark_run_running(
     .await?;
     match row {
         Some(row) => {
+            super::super::subsession_execution::mark_active(pool,run_id,"cloud").await?;
             let response = runner_response_from_row(pool, row).await?;
             if response.status == "cancelled" {
                 Err(RunError::NotFound)
@@ -198,6 +206,11 @@ pub(super) async fn runner_response_from_row(
         row.1 = "cancelled".into();
         row.2.clear();
     }
+    if subsession_id.is_some() && matches!(row.1.as_str(), "leased" | "running")
+        && !super::super::subsession_execution::revalidate(pool, &row.0).await? {
+        row.1 = "cancelled".into();
+        row.2.clear();
+    }
     let provider_auth_available: Option<(String,)> = query_as(
         "SELECT snapshot_id FROM cloud_agent_provider_auth_snapshots \
          WHERE account_id = $1 AND revoked_at IS NULL \
@@ -207,6 +220,7 @@ pub(super) async fn runner_response_from_row(
     .fetch_optional(pool)
     .await?;
     Ok(RunnerRunResponse {
+        history_messages: super::super::subsession_execution::history(pool,&row.0).await?,
         subsession_id: subsession_id.map(|id| id.to_string()),
         subsession_write_scope: serde_json::from_value(scope).unwrap_or_default(),
         run_id: row.0,

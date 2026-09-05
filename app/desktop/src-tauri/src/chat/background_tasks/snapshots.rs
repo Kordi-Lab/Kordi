@@ -9,6 +9,7 @@ pub(super) async fn subsession_snapshot(
     session_id: &str,
 ) -> anyhow::Result<BackgroundSessionSnapshot> {
     let mut snapshot = background_runtime_snapshot(session_id)?;
+    snapshot.can_resume |= manager.sessions.lock().await.contains_key(session_id);
     let latest = active_turn_snapshots(manager)
         .await
         .map_err(anyhow::Error::msg)?
@@ -16,6 +17,8 @@ pub(super) async fn subsession_snapshot(
         .filter(|turn| turn.session_id == session_id)
         .max_by_key(|turn| turn.started_at_ms);
     if let Some(turn) = latest {
+        snapshot.turn_id=Some(turn.id.clone());
+        snapshot.activity=serde_json::json!({"tools":turn.tools.iter().map(|tool|serde_json::json!({"id":tool.id,"name":tool.name,"status":tool.status,"isError":tool.is_error,"arguments":"","liveOutput":""})).collect::<Vec<_>>()});
         snapshot.status = if !turn.completed {
             "running"
         } else if turn.status == "cancelled" {

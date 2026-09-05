@@ -359,7 +359,7 @@ struct ComposerView: View {
             .transition(voiceRecordingSurfaceTransition)
         } else {
             HStack(alignment: .bottom, spacing: 8) {
-                if editingMessage == nil {
+                if editingMessage == nil && conversation.subsessionId == nil {
                     attachmentMenu
                 }
                 messageFieldSurface
@@ -425,7 +425,7 @@ struct ComposerView: View {
                 .overlay(alignment: .bottomTrailing) {
                     HStack(spacing: 0) {
                         if editingMessage == nil {
-                            expressivePickerButton
+                            if conversation.subsessionId == nil { expressivePickerButton }
                         }
                         sendButton
                     }
@@ -719,7 +719,7 @@ struct ComposerView: View {
                 } else {
                     Image(systemName: editingMessage != nil
                         ? "checkmark"
-                        : isVoiceInputMode ? "keyboard" : canSend ? "arrow.up" : "mic.fill")
+                        : isVoiceInputMode ? "keyboard" : canSend || conversation.subsessionId != nil ? "arrow.up" : "mic.fill")
                         .font(.body.weight(.bold))
                         .foregroundStyle(
                             canSend && !isVoiceInputMode
@@ -736,6 +736,7 @@ struct ComposerView: View {
         .disabled(
             isSending
                 || isPreparingAttachments
+                || (conversation.subsessionId != nil && !canSend)
                 || (editingMessage != nil && !canSend)
         )
         .accessibilityLabel(
@@ -743,7 +744,7 @@ struct ComposerView: View {
                 ? "Save message edit"
                 : isVoiceInputMode
                 ? "Switch to text input"
-                : canSend ? "Send message" : "Switch to voice input"
+                : canSend || conversation.subsessionId != nil ? "Send message" : "Switch to voice input"
         )
         .accessibilityHint(
             editingMessage != nil

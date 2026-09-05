@@ -2,6 +2,34 @@ import XCTest
 import Testing
 @testable import Kordi
 
+@Test func subsessionIsAConversationWithIdentityBoundMentionsAndSharedQueue() throws {
+    let data = try JSONSerialization.data(withJSONObject: [
+        "sessionId": "child", "parentSessionId": "group", "parentRequestId": "root",
+        "ownerAccountId": "owner", "agentId": "cloud-agent:owner",
+        "ownerDisplayName": "Owner One", "agentDisplayName": "Owner One's Kordi", "title": "Research",
+        "status": "running", "version": 2, "updatedAt": "2026-09-05T00:00:00Z", "hasFollowupExecution": true,
+        "participants": [["accountId": "peer", "displayName": "Peer"]],
+        "messages": [
+            ["id": "plain", "role": "user", "text": "Hello", "timestampMs": 1, "senderAccountId": "peer"],
+            ["id": "active", "role": "assistant", "text": "", "timestampMs": 2, "requestState": "running", "requestId": "a"],
+            ["id": "b", "role": "user", "text": "@KordiOwnerOne follow", "timestampMs": 3, "senderAccountId": "owner", "requestState": "queued"],
+            ["id": "reply:b", "role": "assistant", "text": "", "timestampMs": 4, "requestState": "queued", "requestId": "b"],
+            ["id": "pending", "role": "assistant", "text": "", "timestampMs": 5, "requestState": "pending", "requestId": "c"]
+        ]
+    ])
+    let snapshot = try JSONDecoder().decode(CloudAgentSubsession.self, from: data)
+    #expect(snapshot.conversation.subsessionId == "child")
+    #expect(snapshot.conversation.peerAccountId == "owner")
+    #expect(snapshot.mentionTargets.first?.agentId == "cloud-agent:owner")
+    #expect(snapshot.mentionTargets.first?.mentionText == "@KordiOwnerOne")
+    let rows = snapshot.chatMessages(accountId: "peer")
+    #expect(rows.first?.author == .me)
+    #expect(rows.first(where: { $0.id == "b" })?.author == .person)
+    #expect(rows.first(where: { $0.id == "b" })?.agentQueuePosition == 1)
+    #expect(rows.filter { $0.agentExecution != nil }.count == 1)
+    #expect(!rows.contains { $0.id == "reply:b" || $0.id == "pending" })
+}
+
 @Test(arguments: ["running", "done", "failed", "stopped"])
 func modelSubsessionIdentityAndStateRemainIndependentOfDisplayNames(status: String) throws {
     let data = try JSONSerialization.data(withJSONObject: [

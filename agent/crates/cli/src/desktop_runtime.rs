@@ -88,7 +88,7 @@ pub struct DesktopRuntimeSession {
 /// system prompt, a small tool allowlist, and explicit skill roots. This keeps
 /// specialized workflows persistent without inheriting unrelated project
 /// tools or the display model configured on a cloud agent record.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct DesktopRuntimeProfile {
     pub provider: Option<String>,
     pub model: Option<String>,
@@ -97,6 +97,7 @@ pub struct DesktopRuntimeProfile {
     pub tool_names: Option<Vec<String>>,
     pub skill_names: Option<Vec<String>>,
     pub skill_paths: Vec<PathBuf>,
+    #[serde(skip)]
     pub execution_policy: Option<kordi_tools::ExecutionPolicy>,
 }
 
@@ -126,6 +127,11 @@ impl DesktopRuntimeSession {
     }
 
     pub async fn resume(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
+        if is_background_runtime_session(session_id)? {
+            let profile = background_sessions::saved_runtime_profile(session_id)?
+                .ok_or_else(|| anyhow::anyhow!("The subsession runtime profile is unavailable on this Mac"))?;
+            return Self::resume_profiled(runtime_cwd_for_session(cwd, session_id)?, session_id, profile).await;
+        }
         let runtime_cwd = runtime_cwd_for_session(cwd, session_id)?;
         let entry = SessionBootstrapOptions {
             session: Some(session_id.to_string()),
@@ -159,6 +165,7 @@ impl DesktopRuntimeSession {
         let (_runtime_host, _ui, mut setup) = prepare_session_runtime_for_cwd(cwd, options).await?;
         apply_runtime_profile(&mut setup, &profile);
         normalize_setup_thinking(&mut setup);
+        background_sessions::save_runtime_profile(&setup, &profile)?;
         Ok(Self::from_setup(setup, false))
     }
 

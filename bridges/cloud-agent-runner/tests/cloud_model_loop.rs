@@ -140,6 +140,7 @@ fn provider_auth() -> ProviderAuthMaterial {
 
 fn run() -> CloudAgentRun {
     CloudAgentRun {
+        history_messages: Vec::new(),
         subsession_id: None,
         subsession_write_scope: Vec::new(),
         run_id: "run_test".to_string(),

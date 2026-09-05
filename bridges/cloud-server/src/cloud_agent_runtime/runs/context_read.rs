@@ -25,8 +25,8 @@ pub(crate) async fn read_context(
     input: ContextReadRequest,
 ) -> RunResult<Value> {
     let run: Option<(String, String, String, String)> = query_as(
-        "SELECT run.session_id, COALESCE(parent.request_message_id,run.request_message_id), run.owner_account_id, run.requester_account_id
-         FROM cloud_agent_fallback_runs run LEFT JOIN cloud_agent_fallback_runs parent ON parent.run_id=run.parent_run_id
+        "SELECT run.session_id, COALESCE(sub.parent_request_id,parent.request_message_id,run.request_message_id), run.owner_account_id, run.requester_account_id
+         FROM cloud_agent_fallback_runs run LEFT JOIN cloud_agent_fallback_runs parent ON parent.run_id=run.parent_run_id LEFT JOIN cloud_agent_subsessions sub ON sub.subsession_id=run.subsession_id
          WHERE run.run_id = $1 AND run.claimed_by = $2 AND run.execution_backend='cloud'
          AND run.status IN ('leased', 'running') AND run.lease_expires_at::timestamptz > $3::timestamptz",
     )

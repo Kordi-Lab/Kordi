@@ -39,9 +39,10 @@ pub(super) async fn finish(
         .bind(run_id).bind(runner_id).fetch_optional(&mut *tx).await?;
     let (id,) = owned.ok_or(RunError::NotFound)?;
     let now = chrono::Utc::now();
+    let follow=query("UPDATE cloud_agent_subsession_chat SET response_text=$2,updated_at=now() WHERE run_id=$1").bind(run_id).bind(text).execute(&mut *tx).await?.rows_affected()>0;
     let message = json!([{"id":format!("result:{run_id}"),"role":"assistant","text":text,"timestampMs":now.timestamp_millis()}]);
     query("UPDATE cloud_agent_subsessions SET status=$2,messages=messages||$3,version=version+1,updated_at=now() WHERE subsession_id=$1 AND execution_backend='cloud'")
-        .bind(id).bind(if succeeded {"done"} else {"failed"}).bind(message).execute(&mut *tx).await?;
+        .bind(id).bind(if succeeded {"done"} else {"failed"}).bind(if follow {json!([])}else{message}).execute(&mut *tx).await?;
     let row:RunnerRunRow=query_as("UPDATE cloud_agent_fallback_runs SET status=$3,updated_at=$4,completed_at=$4,lease_expires_at=NULL WHERE run_id=$1 AND claimed_by=$2 RETURNING run_id,status,prompt,owner_account_id,requester_account_id,session_id,sandbox_id,runtime_route_json,response_message_id,error_code,error_message,system_prompt")
         .bind(run_id).bind(runner_id).bind(if succeeded {"completed"} else {"failed"}).bind(now.to_rfc3339()).fetch_one(&mut *tx).await?;
     tx.commit().await?;
@@ -102,6 +103,13 @@ async fn progress(pool: &PgPool, run_id: &str, input: ProgressInput) -> RunResul
     let owned:Option<(Uuid,)> = query_as("SELECT subsession_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='cloud' AND subsession_id IS NOT NULL AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FOR UPDATE")
         .bind(run_id).bind(&input.runner_id).fetch_optional(&mut *tx).await?;
     let (id,) = owned.ok_or(RunError::NotFound)?;
+    let follow=query("UPDATE cloud_agent_subsession_chat SET activity=jsonb_build_object('tools',jsonb_build_array(jsonb_build_object('id',$2::text,'name',$3::text,'status','running','arguments','','liveOutput','','isError',false))),updated_at=now() WHERE run_id=$1")
+        .bind(run_id).bind(&input.tool_call_id).bind(&input.tool_name).execute(&mut *tx).await?.rows_affected()>0;
+    if follow {
+        query("UPDATE cloud_agent_subsessions SET version=version+1,updated_at=now() WHERE subsession_id=$1").bind(id).execute(&mut *tx).await?;
+        tx.commit().await?;
+        return Ok(());
+    }
     query("UPDATE cloud_agent_subsessions SET messages=messages||$2,version=version+1,updated_at=now() WHERE subsession_id=$1 AND status='running' AND NOT messages @> $3 AND jsonb_array_length(messages)<255")
         .bind(id).bind(message).bind(json!([{"id":format!("tool:{}",input.tool_call_id)}])).execute(&mut *tx).await?;
     tx.commit().await?;

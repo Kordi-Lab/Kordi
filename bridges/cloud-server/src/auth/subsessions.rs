@@ -1,4 +1,5 @@
 //! Owner-published model execution records, authorized by the parent conversation.
+pub(crate) mod conversation;
 use crate::{
     auth::routes::CloudSession, chat_sync::store::conversation_id_for_session, server::ServerState,
 };
@@ -27,6 +28,7 @@ fn db_error(_: impl std::fmt::Display) -> ApiError {
 
 pub fn routes() -> Router<Arc<ServerState>> {
     Router::new().route("/v1/cloud/agent-subsessions/:id", get(read).put(write))
+        .route("/v1/cloud/agent-subsessions/:id/messages", axum::routing::post(conversation::send))
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -41,6 +43,8 @@ struct Message {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WriteRequest {
+    #[serde(default)]
+    activity: Value,
     parent_session_id: String,
     parent_request_id: String,
     title: String,
@@ -59,6 +63,9 @@ struct ReadQuery {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Snapshot {
+    activity: Value,
+    has_followup_execution: bool,
+    participants: Vec<Value>,
     session_id: Uuid,
     parent_session_id: String,
     parent_request_id: String,
@@ -69,7 +76,7 @@ struct Snapshot {
     title: String,
     status: String,
     version: i64,
-    messages: Vec<Message>,
+    messages: Vec<Value>,
     updated_at: String,
 }
 
@@ -251,7 +258,16 @@ async fn snapshot(
     if account != owner_account_id {
         messages.retain(|message| message.role == "assistant");
     }
+    let mut messages:Vec<Value>=messages.into_iter().map(|message|json!(message)).collect();
+    if include_messages { messages.extend(conversation::messages(pool,id).await?); }
+    let (activity,has_followup_execution):(Value,bool)=query_as("SELECT activity,EXISTS(SELECT 1 FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND r.status<>'queued') FROM cloud_agent_subsessions WHERE subsession_id=$1")
+        .bind(id).fetch_one(pool).await.map_err(db_error)?;
+    let participants:Vec<(String,String)>=query_as("SELECT a.account_id,a.display_name FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.membership_state='active' JOIN cloud_accounts a ON a.account_id=m.account_id WHERE s.subsession_id=$1 ORDER BY a.account_id")
+        .bind(id).fetch_all(pool).await.map_err(db_error)?;
     Ok(Snapshot {
+        activity,
+        has_followup_execution,
+        participants: participants.into_iter().map(|(account_id,display_name)|json!({"accountId":account_id,"displayName":display_name})).collect(),
         session_id: id,
         parent_session_id,
         parent_request_id,
@@ -296,6 +312,11 @@ async fn write(
         ));
     }
     let pool = state.db_pool();
+    let mut transaction = pool.begin().await.map_err(db_error)?;
+    query("SELECT pg_advisory_xact_lock(81208411)").execute(&mut *transaction).await.map_err(db_error)?;
+    let follow_started:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id WHERE c.subsession_id=$1 AND s.owner_account_id=$2 AND r.status<>'queued')")
+        .bind(id).bind(&session.account_id).fetch_one(&mut *transaction).await.map_err(db_error)?;
+    if follow_started.0 { return snapshot(pool,id,&session.account_id,false).await.map(Json); }
     let cloud_owned: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions WHERE subsession_id=$1 AND execution_backend='cloud')")
         .bind(id).fetch_one(pool).await.map_err(db_error)?;
     if cloud_owned.0 {
@@ -305,7 +326,6 @@ async fn write(
         .await
         .map_err(db_error)?
         .ok_or_else(|| error(StatusCode::FORBIDDEN, "subsession_parent_forbidden"))?;
-    let mut transaction = pool.begin().await.map_err(db_error)?;
     let existing: Option<(String, String, Uuid, String, String, i64, String, String, Value)> = query_as(
         "SELECT owner_account_id, publisher_device_id, parent_conversation_id, parent_request_id, agent_id, version, title, status, messages FROM cloud_agent_subsessions WHERE subsession_id=$1 FOR UPDATE"
     ).bind(id).fetch_optional(&mut *transaction).await.map_err(db_error)?;
@@ -322,7 +342,7 @@ async fn write(
         stored_messages,
     )) = existing
     {
-        if _creator_device == "cloud"
+        if _creator_device != session.device_id
             || owner != session.account_id
             || conversation != parent
             || parent_request != request.parent_request_id
@@ -360,6 +380,9 @@ async fn write(
             return Err(error(StatusCode::CONFLICT, "subsession_version_conflict"));
         }
     }
+    let activity=crate::cloud_agent_runtime::subsession_execution::public_activity(&request.activity);
+    query("UPDATE cloud_agent_subsessions SET heartbeat_at=now(),activity=$2,version=version+CASE WHEN activity<>$2 THEN 1 ELSE 0 END WHERE subsession_id=$1")
+        .bind(id).bind(activity).execute(&mut *transaction).await.map_err(db_error)?;
     transaction.commit().await.map_err(db_error)?;
     snapshot(pool, id, &session.account_id, false)
         .await

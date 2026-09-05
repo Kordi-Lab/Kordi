@@ -60,6 +60,7 @@ fn include_service_provider_auth(state: &ServerState, run: &mut RunnerRunRespons
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     let user_routes = Router::new()
+        .route("/v1/cloud/agent-subsessions/pending", get(super::subsession_execution::pending))
         .route("/v1/cloud/agent-runs/desktop/:run_id/cancel", post(super::desktop::cancel))
         .route("/v1/cloud/agent-runs/claim", post(claim_cloud_agent_run))
         .route(

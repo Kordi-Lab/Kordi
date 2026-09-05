@@ -9,6 +9,8 @@ pub enum RunnerClientError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloudAgentRun {
+    #[serde(rename="historyMessages",default)]
+    pub history_messages: Vec<serde_json::Value>,
     #[serde(rename = "subsessionId", default)]
     pub subsession_id: Option<String>,
     #[serde(rename = "subsessionWriteScope", default)]
