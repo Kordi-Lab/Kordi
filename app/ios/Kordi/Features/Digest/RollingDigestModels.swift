@@ -93,6 +93,12 @@ enum DigestDate {
               let start = calendar.date(byAdding: .day, value: -(calendar.component(.weekday, from: first) - 1), to: first) else { return [] }
         return (0..<42).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
     }
+    static func pendingCandidates(_ candidates: [RollingDigestItem], events: [DigestCalendarEvent], on day: Date, calendar: Calendar = .current) -> [RollingDigestItem] {
+        candidates.filter { item in
+            !events.contains { $0.id == "digest-\(item.id)" }
+                && parse(item.startAt).map { calendar.isDate($0, inSameDayAs: day) } == true
+        }
+    }
     static func event(_ event: DigestCalendarEvent, occursOn date: Date, calendar: Calendar = .current) -> Bool {
         if event.allDay {
             let day = key(date, calendar: calendar)

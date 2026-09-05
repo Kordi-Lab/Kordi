@@ -3,7 +3,7 @@ import Foundation
 extension CloudAPIClient {
     func rollingDigest(token: String) async throws -> RollingDigestResponse {
         try await send(path: "/v1/cloud/digest", method: "GET", token: token,
-                       query: [URLQueryItem(name: "locale", value: Locale.current.identifier), URLQueryItem(name: "timezone", value: TimeZone.current.identifier)],
+                       query: [URLQueryItem(name: "locale", value: Locale.current.identifier(.bcp47)), URLQueryItem(name: "timezone", value: TimeZone.current.identifier)],
                        fallback: "Could not load the digest.")
     }
     func refreshDigest(token: String) async throws {

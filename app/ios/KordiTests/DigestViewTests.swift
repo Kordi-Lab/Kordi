@@ -61,6 +61,17 @@ final class DigestViewTests: XCTestCase {
         XCTAssertEqual(task.sourceIds, ["message"])
         XCTAssertEqual(response.sources.first?.text, "Could someone review this?")
     }
+    func testPendingCalendarMentionsUseLocalDatesAndDisappearAfterConfirmation() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(secondsFromGMT: 3 * 3600))
+        let json = #"[{"id":"review","title":"Design review","text":"","kind":"possible","sourceIds":["message"],"startAt":"2026-09-06T22:00:00Z"},{"id":"unknown","title":"Office hours","text":"","kind":"possible","sourceIds":["message"]}]"#
+        let candidates = try JSONDecoder().decode([RollingDigestItem].self, from: Data(json.utf8))
+        let day = try XCTUnwrap(DigestDate.parse("2026-09-07T09:00:00+03:00"))
+        XCTAssertEqual(DigestDate.pendingCandidates(candidates, events: [], on: day, calendar: calendar).map(\.id), ["review"])
+        let confirmed = DigestCalendarEvent(id: "digest-review", title: "Design review", startAt: "2026-09-06T22:00:00Z")
+        XCTAssertTrue(DigestDate.pendingCandidates(candidates, events: [confirmed], on: day, calendar: calendar).isEmpty)
+        XCTAssertTrue(DigestDate.event(confirmed, occursOn: day, calendar: calendar))
+    }
     func testICSImportExpandsRecurrenceWithoutActivatingAlarms() throws {
         let text = "BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nUID:review\nDTSTAMP:20260901T000000Z\nDTSTART:20260909T120000Z\nDTEND:20260909T123000Z\nRRULE:FREQ=WEEKLY;COUNT=3\nEXDATE:20260916T120000Z\nSUMMARY:Review\nEND:VEVENT\nEND:VCALENDAR"
         let first = try DigestICSImporter.parse(text, from: "2026-09-01", to: "2026-10-01")
