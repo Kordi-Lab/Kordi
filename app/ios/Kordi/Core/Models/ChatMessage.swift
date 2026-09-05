@@ -209,6 +209,7 @@ struct BackgroundAgentSessionPresentation: Identifiable, Hashable {
 
 struct AgentExecutionSnapshot: Codable, Hashable {
     enum Phase: String, Codable, Hashable {
+        case queued
         case preparing
         case analyzing
         case usingTool = "using-tool"
@@ -998,6 +999,8 @@ struct MessageReaction: Identifiable, Codable, Hashable {
 struct ChatMessage: Identifiable, Codable, Hashable {
     static let agentModelChangeMessageKind = "agent-model-change"
     static let groupMemberJoinMessageKind = "group-member-joined"
+    static let groupTitleUpdateMessageKind = "group-title-update"
+    static let channelTitleUpdateMessageKind = "channel-title-update"
     private static let agentModelChangePrefix = "Switched model to "
     private static let agentRuntimeRouteNoticePrefix = "Model: "
     private static let agentRuntimeRouteNoticeSeparator = " · Thinking effort: "
@@ -1061,6 +1064,8 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var messageKind: String?
     var voiceMessage: VoiceMessage?
     var agentExecution: AgentExecutionSnapshot?
+    // Derived from pending requests, never from transport delivery receipts.
+    var agentQueuePosition: Int? = nil
     var backgroundAgentSessions: [BackgroundAgentSession]
     var mentions: [MessageMention]
     var reactions: [MessageReaction]
@@ -1077,9 +1082,15 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         messageKind == Self.groupMemberJoinMessageKind
     }
 
+    var isTitleUpdateNotice: Bool {
+        messageKind == Self.groupTitleUpdateMessageKind
+            || messageKind == Self.channelTitleUpdateMessageKind
+    }
+
     var isSystemNotice: Bool {
         isAgentModelChangeNotice
             || isGroupMemberJoinNotice
+            || isTitleUpdateNotice
             || callActivity != nil
     }
 
@@ -1235,6 +1246,63 @@ struct ChatMessage: Identifiable, Codable, Hashable {
         ) ?? []
         mentions = try container.decodeIfPresent([MessageMention].self, forKey: .mentions) ?? []
         reactions = try container.decodeIfPresent([MessageReaction].self, forKey: .reactions) ?? []
+    }
+}
+
+enum AgentSessionQueuePresentation {
+    private static func executionSnapshots(in messages: [ChatMessage]) -> [String: AgentExecutionSnapshot] {
+        var snapshots: [String: AgentExecutionSnapshot] = [:]
+        for message in messages where message.author == .agent {
+            guard let requestID = message.requestMessageId,
+                  let execution = message.agentExecution else { continue }
+            if let existing = snapshots[requestID] {
+                if existing.completed && !execution.completed { continue }
+                if !execution.completed && execution.updatedAtMs < existing.updatedAtMs { continue }
+            }
+            snapshots[requestID] = execution
+        }
+        return snapshots
+    }
+
+    static func pendingPhase(
+        requestID: String,
+        createdAt: Date,
+        messages: [ChatMessage],
+        kind: ConversationKind,
+        locallyQueued: Bool
+    ) -> AgentExecutionSnapshot.Phase? {
+        guard kind == .agent else { return .preparing }
+        if locallyQueued { return .queued }
+        let snapshots = executionSnapshots(in: messages)
+        let hasActivePredecessor = messages.contains { message in
+            message.author == .agent
+                && message.requestMessageId != requestID
+                && message.createdAt < createdAt
+                && message.requestMessageId.flatMap { snapshots[$0] }?.completed == false
+        }
+        // Sending is not execution admission. Synced Mac work can establish a
+        // queue immediately; otherwise wait for the executor's actual snapshot.
+        return hasActivePredecessor ? .queued : nil
+    }
+
+    static func apply(to messages: [ChatMessage], kind: ConversationKind) -> [ChatMessage] {
+        guard kind == .agent else { return messages }
+        let snapshots = executionSnapshots(in: messages)
+        let requests = messages.filter {
+            $0.author == .me && !$0.isSystemNotice
+                && $0.deliveryState != .failed && $0.deliveryState != .cancelled
+        }.sorted(by: ChatMessage.timelinePrecedes)
+        let queuedIDs = requests.filter {
+            snapshots[$0.id]?.phase == .queued && snapshots[$0.id]?.completed == false
+        }.map(\.id)
+        let positions = Dictionary(uniqueKeysWithValues: queuedIDs.enumerated().map { ($0.element, $0.offset + 1) })
+        return messages.compactMap { message in
+            if message.author == .agent, let requestID = message.requestMessageId,
+               positions[requestID] != nil { return nil }
+            var copy = message
+            copy.agentQueuePosition = positions[message.id]
+            return copy
+        }
     }
 }
 

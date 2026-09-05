@@ -10,8 +10,9 @@ final class AgentSessionPresentationTests: XCTestCase {
             now: Date(timeIntervalSince1970: 1)
         )
 
-        XCTAssertEqual(conversation.agentId, CanonicalAvatarSystem.defaultAgentId)
+        XCTAssertEqual(conversation.agentId, "cloud-agent:acct_me")
         XCTAssertNil(conversation.avatarSource)
+        XCTAssertTrue(conversation.isLocalDraft)
     }
 
     func testOnlyAgentSessionsDisableQuotedReplies() {
@@ -21,6 +22,14 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertTrue(ConversationKind.agent.supportsThreadedReplies)
         XCTAssertTrue(ConversationKind.person.supportsThreadedReplies)
         XCTAssertTrue(ConversationKind.group.supportsThreadedReplies)
+    }
+
+    func testDefaultAgentExecutionAliasesShareOneIdentityWithoutMergingCustomAgents() {
+        let owner = "acct_me"
+        XCTAssertEqual(CanonicalAvatarSystem.agentID("cloud-self:acct_me", ownerAccountID: owner), "cloud-agent:acct_me")
+        XCTAssertEqual(CanonicalAvatarSystem.agentID("cloud-local-agent", ownerAccountID: owner), "cloud-agent:acct_me")
+        XCTAssertEqual(CanonicalAvatarSystem.agentID("cloud_agent_research", ownerAccountID: owner), "cloud_agent_research")
+        XCTAssertNotEqual(CanonicalAvatarSystem.agentID(nil, ownerAccountID: "acct_other"), CanonicalAvatarSystem.agentID(nil, ownerAccountID: owner))
     }
 
     func testThreadsPushOnCompactLayoutsAndUseAnInspectorOnWideLayouts() {
@@ -174,6 +183,52 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertEqual(draft.displayName, "Research Agent")
         XCTAssertEqual(draft.lastMessage, "New session")
         XCTAssertEqual(draft.agentActivity, .ready)
+        XCTAssertTrue(draft.isLocalDraft)
+        XCTAssertFalse(template.isLocalDraft)
+    }
+
+    @MainActor
+    func testDraftLoadsWithoutCloudButExistingEmptySessionStillRequiresHistory() async throws {
+        let model = AppModel(cache: try LocalMessageStore(inMemory: true), previewMode: false)
+        let existing = conversation(
+            id: "existing-empty",
+            peerAccountId: "acct_me",
+            agentId: "agent_research",
+            agentName: "Research Agent",
+            title: "Research Agent",
+            preview: "",
+            date: Date(timeIntervalSince1970: 1)
+        )
+        let draft = model.makeAgentSession(from: existing)
+
+        // No login, cloud connection, or server conversation is needed to open a draft.
+        let draftLoaded = await model.loadConversation(draft)
+        await model.refreshActiveCall(in: draft)
+        XCTAssertTrue(draftLoaded)
+        XCTAssertTrue(model.messages(for: draft).isEmpty)
+        XCTAssertTrue(model.loadingConversationIDs.isEmpty)
+        XCTAssertTrue(model.conversations.isEmpty)
+        XCTAssertNil(model.errorMessage)
+
+        let existingLoaded = await model.loadConversation(existing)
+        XCTAssertFalse(existingLoaded)
+
+        // A synchronized summary replaces the local marker, even with an older navigation value.
+        let synchronized = ConversationSummary(
+            id: draft.id,
+            kind: draft.kind,
+            peerAccountId: draft.peerAccountId,
+            agentId: draft.agentId,
+            ownerDisplayName: draft.ownerDisplayName,
+            displayName: "First request",
+            lastMessage: "First request",
+            lastActivityAt: draft.lastActivityAt,
+            unreadCount: 0,
+            avatarSource: nil,
+            agentActivity: .ready,
+            sessionId: draft.sessionId
+        )
+        XCTAssertFalse(ConversationIdentityResolver.current(draft, in: [synchronized]).isLocalDraft)
     }
 
     func testTimelineFlattensAgentsByActivityAndKeepsForksUnderTheirParent() {
@@ -241,7 +296,7 @@ final class AgentSessionPresentationTests: XCTestCase {
         XCTAssertEqual(rows.map(\.conversation.sessionId), [pinned.sessionId, newer.sessionId])
     }
 
-    func testTimelineCollapsesForksAndExcludesSupportAndContactForks() {
+    func testTimelineCollapsesAgentForksAndExcludesSupport() {
         let root = conversation(
             id: "root",
             peerAccountId: "acct_me",
@@ -263,18 +318,6 @@ final class AgentSessionPresentationTests: XCTestCase {
             ),
             parentSessionId: root.sessionId
         )
-        let contactFork = replacingForkParent(
-            conversation(
-                id: "contact-fork",
-                peerAccountId: "acct_me",
-                agentId: "agent_research",
-                agentName: "Research Agent",
-                title: "Private contact fork",
-                preview: "Fork",
-                date: Date(timeIntervalSince1970: 50)
-            ),
-            parentSessionId: "session:direct-person:acct_me:acct_maya"
-        )
         let support = conversation(
             id: "support",
             peerAccountId: KordiSupportIdentity.accountId,
@@ -286,7 +329,7 @@ final class AgentSessionPresentationTests: XCTestCase {
         )
 
         let rows = AgentSessionTimelineCatalog.build(
-            conversations: [root, child, contactFork, support],
+            conversations: [root, child, support],
             collapsedForkParentIds: [root.sessionId]
         )
 
@@ -358,7 +401,7 @@ final class AgentSessionPresentationTests: XCTestCase {
             date: Date(timeIntervalSince1970: 20)
         )
 
-        XCTAssertEqual(placeholder.agentId, CanonicalAvatarSystem.defaultAgentId)
+        XCTAssertEqual(placeholder.agentId, "cloud-agent:acct_me")
 
         let rows = AgentSessionTimelineCatalog.build(conversations: [placeholder, actual])
 

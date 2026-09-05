@@ -10,7 +10,7 @@ pub(crate) fn latest_readable_session_message_id(
         "SELECT id
          FROM session_messages
          WHERE session_id = ?1
-           AND COALESCE(source_transport, '') NOT IN ('canonical-fork-snapshot', 'cloud-group-fork-snapshot')
+           AND COALESCE(source_transport, '') != 'canonical-fork-snapshot'
            AND LOWER(TRIM(status)) NOT IN ('sending', 'processing')
            AND NOT CASE
                WHEN LOWER(TRIM(COALESCE(message_kind, ''))) = 'status'

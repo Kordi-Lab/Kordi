@@ -94,6 +94,7 @@ async fn running_turn_lookup_is_session_scoped() {
         DesktopChatTurnHandle {
             snapshot,
             cancel: tokio_util::sync::CancellationToken::new(),
+            execution_lease_deadline: Arc::new(Mutex::new(None)),
         },
     );
 
@@ -110,12 +111,12 @@ async fn running_turn_lookup_is_session_scoped() {
 }
 
 #[tokio::test]
-async fn concurrent_turn_admission_is_atomic_per_session() {
+async fn concurrent_turn_admission_queues_per_canonical_session() {
     fn turn_handle(turn_id: &str) -> DesktopChatTurnHandle {
         DesktopChatTurnHandle {
             snapshot: Arc::new(Mutex::new(DesktopChatTurnSnapshot {
                 id: turn_id.to_string(),
-                session_id: "session-shared".to_string(),
+                session_id: "00000000-0000-4000-8000-000000000001".to_string(),
                 prompt: "work".to_string(),
                 status: "starting".to_string(),
                 message: "Working…".to_string(),
@@ -131,25 +132,73 @@ async fn concurrent_turn_admission_is_atomic_per_session() {
                 transcript_refresh_required: false,
             })),
             cancel: tokio_util::sync::CancellationToken::new(),
+            execution_lease_deadline: Arc::new(Mutex::new(None)),
         }
     }
 
     let manager = DesktopChatManager::default();
     let left_manager = manager.clone();
     let right_manager = manager.clone();
+    let right_handle = turn_handle("turn-right");
+    right_handle.snapshot.lock().unwrap().session_id =
+        "cloud-agent:acct_test:00000000-0000-4000-8000-000000000001".to_string();
     let (left, right) = tokio::join!(
-        reserve_turn_if_session_idle(
+        reserve_turn_in_session(
             &left_manager,
             "turn-left".to_string(),
             turn_handle("turn-left"),
         ),
-        reserve_turn_if_session_idle(
-            &right_manager,
-            "turn-right".to_string(),
-            turn_handle("turn-right"),
-        ),
+        reserve_turn_in_session(&right_manager, "turn-right".to_string(), right_handle,),
     );
 
-    assert_ne!(left, right);
-    assert_eq!(manager.turns.lock().await.len(), 1);
+    let (left_previous, left_completion) = left.unwrap();
+    let (right_previous, right_completion) = right.unwrap();
+    assert_ne!(left_previous.is_some(), right_previous.is_some());
+    assert_eq!(manager.turns.lock().await.len(), 2);
+    if let Some(previous) = right_previous {
+        assert_eq!(
+            turn_snapshot_by_id(&manager, "turn-right")
+                .await
+                .unwrap()
+                .status,
+            "queued"
+        );
+        drop(left_completion);
+        let _ = previous.await;
+        drop(right_completion);
+    } else {
+        drop(right_completion);
+        let _ = left_previous.unwrap().await;
+        drop(left_completion);
+    }
+
+    let independent = turn_handle("group-request");
+    independent.snapshot.lock().unwrap().session_id = "group:one:request:two".to_string();
+    let (previous, _completion) =
+        reserve_turn_in_session(&manager, "group-request".to_string(), independent)
+            .await
+            .unwrap();
+    assert!(previous.is_none());
+
+    let watched = manager
+        .turns
+        .lock()
+        .await
+        .get("group-request")
+        .unwrap()
+        .clone();
+    super::turns::renew_execution_lease(&manager, "group-request", now_millis() + 100)
+        .await
+        .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    assert!(
+        watched.cancel.is_cancelled(),
+        "native execution must stop without a renderer heartbeat"
+    );
+    assert!(
+        super::turns::renew_execution_lease(&manager, "group-request", now_millis() + 30_000)
+            .await
+            .is_err(),
+        "expired leases cannot revive an executor"
+    );
 }

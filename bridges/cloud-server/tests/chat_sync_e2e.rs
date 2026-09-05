@@ -70,6 +70,11 @@ fn content(text: &str) -> serde_json::Value {
         "blocks": [{ "type": "text", "text": text }]
     })
 }
+fn direct_person_session_id(left: &str, right: &str) -> String {
+    let mut members = [left, right];
+    members.sort_unstable();
+    format!("session:direct-person:{}:{}", members[0], members[1])
+}
 async fn sync_head(pool: &PgPool, account_id: &str) -> (i64, i64) {
     query_as("SELECT last_seq, min_seq FROM cloud_chat_user_sync_heads WHERE account_id = $1")
         .bind(account_id)
@@ -77,6 +82,66 @@ async fn sync_head(pool: &PgPool, account_id: &str) -> (i64, i64) {
         .await
         .expect("load sync head")
 }
+
+#[tokio::test]
+async fn direct_person_creation_uses_one_server_owned_identity() {
+    let Some(pool) = try_pool().await else { return };
+    let owner = account(&pool, "canonical-direct-owner").await;
+    let peer = account(&pool, "canonical-direct-peer").await;
+    connect_accounts(&pool, &owner, &peer).await;
+    let canonical_session_id = direct_person_session_id(&owner, &peer);
+
+    let first = store::create_conversation(
+        &pool,
+        &owner,
+        CreateConversationRequest {
+            client_operation_id: Uuid::now_v7(),
+            kind: ConversationKind::Direct,
+            shared_title: None,
+            client_session_id: "session:direct-person:stale:first".to_string(),
+            member_account_ids: vec![peer.clone()],
+        },
+    )
+    .await
+    .expect("create canonical direct conversation");
+    assert_eq!(
+        first.value.legacy_session_id.as_deref(),
+        Some(canonical_session_id.as_str())
+    );
+
+    let second = store::create_conversation(
+        &pool,
+        &peer,
+        CreateConversationRequest {
+            client_operation_id: Uuid::now_v7(),
+            kind: ConversationKind::Direct,
+            shared_title: None,
+            client_session_id: "session:direct-person:stale:second".to_string(),
+            member_account_ids: vec![owner.clone()],
+        },
+    )
+    .await
+    .expect("reuse canonical direct conversation");
+    assert!(!second.inserted);
+    assert_eq!(second.value.id, first.value.id);
+
+    assert!(matches!(
+        store::create_conversation(
+            &pool,
+            &owner,
+            CreateConversationRequest {
+                client_operation_id: Uuid::now_v7(),
+                kind: ConversationKind::Direct,
+                shared_title: Some("Obsolete seed".to_string()),
+                client_session_id: "session:seed:obsolete-direct".to_string(),
+                member_account_ids: vec![peer],
+            },
+        )
+        .await,
+        Err(StoreError::InvalidInput(_))
+    ));
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn message_sync_is_idempotent_ordered_and_convergent_across_members() {
     let Some(pool) = try_pool().await else {
@@ -90,7 +155,7 @@ async fn message_sync_is_idempotent_ordered_and_convergent_across_members() {
         client_operation_id: Uuid::now_v7(),
         kind: ConversationKind::Direct,
         shared_title: Some("Initial title".to_string()),
-        client_session_id: format!("session:direct-person:{owner}:{peer}"),
+        client_session_id: direct_person_session_id(&owner, &peer),
         member_account_ids: vec![peer.clone()],
     };
     let created = store::create_conversation(&pool, &owner, create_request.clone())
@@ -383,7 +448,7 @@ async fn retention_advances_the_cursor_floor_before_replay_rows_are_deleted() {
             client_operation_id: Uuid::now_v7(),
             kind: ConversationKind::Direct,
             shared_title: None,
-            client_session_id: format!("session:retention:{}", Uuid::now_v7()),
+            client_session_id: direct_person_session_id(&owner, &peer),
             member_account_ids: vec![peer.clone()],
         },
     )

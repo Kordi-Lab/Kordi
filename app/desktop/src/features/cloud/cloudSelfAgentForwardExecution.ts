@@ -4,64 +4,21 @@ import type {
 } from './authClient';
 import {
   encodeCloudAgentResponse,
-  parseCloudAgentResponse,
   type CloudAgentExecutionSnapshot,
 } from './cloudAgentMessages';
 import { finalizeCloudAgentExecutionSnapshot } from './cloudAgentExecutionTrace';
 import {
   cloudSelfAgentOperationClientMessageId,
+  queuedCancellationLedgerKey,
   type CloudSelfAgentSyncLedger,
   type CloudSelfAgentSyncOperation,
 } from './cloudSelfAgentForwardSync';
+import { cloudSelfAgentProcessingLedgerKey } from './cloudSelfAgentIdentity';
+export { cloudSelfAgentProcessingLedgerKey } from './cloudSelfAgentIdentity';
 import { encodeCloudDirectMessageEnvelope } from './cloudDirectMessages';
 
-const PROCESSING_LEDGER_PREFIX = 'processing:';
 export const CLOUD_SELF_AGENT_HEARTBEAT_MS = 30_000;
-export const CLOUD_SELF_AGENT_EXECUTION_STREAM_MS = 1_000;
-
-export async function publishCloudSelfAgentExecutionClaim({
-  accountId,
-  claimId,
-  client,
-  cloudRequestMessageId,
-  execution,
-  nowMs = Date.now(),
-  sessionId,
-  token,
-}: {
-  accountId: string;
-  claimId: string;
-  client: Pick<CloudAuthClient, 'sendMessage'>;
-  cloudRequestMessageId: string;
-  execution: CloudAgentExecutionSnapshot;
-  nowMs?: number;
-  sessionId: string;
-  token: string;
-}): Promise<{ acquired: boolean; message: CloudMessage }> {
-  const message = await client.sendMessage(
-    token,
-    accountId,
-    encodeCloudAgentResponse({
-      requestId: cloudRequestMessageId,
-      text: 'processing...',
-      deliveryState: 'processing',
-      execution,
-      executionClaimId: claimId,
-    }),
-    {
-      sessionId,
-      clientCreatedAt: new Date(nowMs).toISOString(),
-      clientMessageId:
-        `self-agent:${sessionId}:${cloudRequestMessageId}`
-        + ':desktop-execution-claim',
-    },
-  );
-  return {
-    acquired:
-      parseCloudAgentResponse(message.body)?.executionClaimId === claimId,
-    message,
-  };
-}
+export const CLOUD_SELF_AGENT_EXECUTION_STREAM_MS = 5_000;
 
 function stableClientMessageId(
   operation: CloudSelfAgentSyncOperation,
@@ -73,12 +30,6 @@ function stableClientMessageId(
   const requestId = operation.parentLocalMessageId
     ?? operation.localMessageId;
   return `self-agent:${operation.sessionId}:${requestId}:${kind}`;
-}
-
-export function cloudSelfAgentProcessingLedgerKey(
-  localRequestMessageId: string,
-): string {
-  return `${PROCESSING_LEDGER_PREFIX}${localRequestMessageId}`;
 }
 
 export async function publishCloudSelfAgentHeartbeat({
@@ -206,7 +157,8 @@ export async function publishCloudSelfAgentOperations({
 }): Promise<void> {
   for (const operation of operations) {
     if (!shouldContinue()) return;
-    if (ledger[operation.localMessageId]) continue;
+    if (ledger[operation.localMessageId] && !operation.cancelledWhileQueued
+      && !(operation.queued && !ledger[cloudSelfAgentProcessingLedgerKey(operation.localMessageId)])) continue;
     if (operation.role === 'user') {
       const messageKind = messageKindForOperation(operation);
       const body = operation.targetAgentId && operation.targetAgentName
@@ -219,7 +171,7 @@ export async function publishCloudSelfAgentOperations({
             targetCloudAgentOwnerAccountId: accountId,
           })
         : operation.text;
-      const request = await client.sendMessage(
+      const request = ledger[operation.localMessageId]?.cloudMessageId ? null : await client.sendMessage(
         token,
         accountId,
         body,
@@ -233,19 +185,35 @@ export async function publishCloudSelfAgentOperations({
             : null,
         },
       );
-      ledger[operation.localMessageId] = {
-        cloudMessageId: request.messageId,
-        syncedAtMs: Date.now(),
-      };
-      saveLedger(ledger);
-      if (shouldMergeMessage(operation)) mergeMessage(request);
-      onRequestPublished?.(request, operation);
+      if (request) {
+        ledger[operation.localMessageId] = { cloudMessageId: request.messageId, syncedAtMs: Date.now() };
+        saveLedger(ledger);
+        if (shouldMergeMessage(operation)) mergeMessage(request);
+        onRequestPublished?.(request, operation);
+      }
+      const requestId = ledger[operation.localMessageId]?.cloudMessageId;
+      if (!requestId) continue;
+      if (operation.cancelledWhileQueued) {
+        const cancellationKey = queuedCancellationLedgerKey(operation.localMessageId);
+        if (ledger[cancellationKey]) continue;
+        const cancelled = await client.sendMessage(token, accountId, encodeCloudAgentResponse({
+          requestId, text: 'Request canceled.', deliveryState: 'cancelled',
+          execution: { phase: 'cancelled', summary: 'Request canceled', steps: [], updatedAtMs: operation.cancelledAtMs ?? operation.createdAtMs, completed: true },
+        }), {
+          sessionId: operation.sessionId,
+          clientMessageId: `self-agent:${operation.sessionId}:${operation.localMessageId}:queued-cancelled`,
+        });
+        ledger[cancellationKey] = { cloudMessageId: cancelled.messageId, syncedAtMs: Date.now() };
+        saveLedger(ledger);
+        mergeMessage(cancelled);
+        continue;
+      }
 
       const processingLedgerKey = cloudSelfAgentProcessingLedgerKey(
         operation.localMessageId,
       );
       if (
-        shouldPublishProcessing(operation)
+        (operation.queued || shouldPublishProcessing(operation))
         && !ledger[processingLedgerKey]
       ) {
         if (!shouldContinue()) return;
@@ -253,10 +221,12 @@ export async function publishCloudSelfAgentOperations({
           token,
           accountId,
           encodeCloudAgentResponse({
-            requestId: request.messageId,
+            requestId,
             text: 'processing...',
             deliveryState: 'processing',
-            execution: executionSnapshotForOperation(operation),
+            execution: operation.queued
+              ? { phase: 'queued', summary: 'Queued next', steps: [], updatedAtMs: operation.createdAtMs, completed: false }
+              : executionSnapshotForOperation(operation),
           }),
           {
             sessionId: operation.sessionId,

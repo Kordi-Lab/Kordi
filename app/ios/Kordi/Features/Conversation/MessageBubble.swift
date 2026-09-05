@@ -138,6 +138,12 @@ struct MessageBubble: View, Equatable {
             if message.author == .me { Spacer(minLength: 34) }
 
             VStack(alignment: message.author == .me ? .trailing : .leading, spacing: 4) {
+                if let position = message.agentQueuePosition {
+                    Label(position == 1 ? "Queued next" : "Queued · \(position)", systemImage: "clock")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
+                }
                 if showAuthor && message.author == .agent {
                     HStack(spacing: 6) {
                         Text(message.authorName)
@@ -155,7 +161,8 @@ struct MessageBubble: View, Equatable {
 
                 messageSurface
                     .overlay(alignment: .bottomTrailing) {
-                        if message.author == .me, !isCallActivity, !message.isEdited {
+                        if message.author == .me, !isCallActivity, !message.isEdited,
+                           message.agentQueuePosition == nil {
                             if showsMediaDeliveryStatus {
                                 mediaDeliveryStatusOverlay
                             } else {

@@ -218,6 +218,62 @@ fn opening_existing_manual_group_session_preserves_session_title_and_group_name(
 }
 
 #[test]
+fn canonical_chat_sync_title_replaces_stale_local_group_session_title() {
+    let conn = test_conn();
+    let creator = seed_identity(&conn, "human:me", "Me", "human");
+    let session_id = "session:group:canonical-title";
+    let request = || OpenCanonicalSessionRequest {
+        id: Some(session_id.to_string()),
+        kind: "group".to_string(),
+        title: Some("stale local title".to_string()),
+        status: Some("active".to_string()),
+        created_by_identity_id: creator.id.clone(),
+        primary_identity_id: None,
+        project_id: None,
+        project_name: None,
+        relationship_identity_id: None,
+        participant_identity_ids: vec![],
+        metadata: Some(serde_json::json!({
+            "groupId": session_id,
+            "groupSpaceId": session_id,
+            "sessionTitleSource": "manual",
+            "sessionTitleRevision": 2,
+            "sessionTitleUpdatedAtMs": 500
+        })),
+    };
+    open_or_create_session_in_db(&conn, request()).expect("create stale group session");
+    conn.execute(
+        "INSERT INTO chat_sync_conversations(
+             account_id, conversation_id, client_session_id, version, snapshot_json, updated_at_ms
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            "acct_me",
+            "conversation-canonical-title",
+            session_id,
+            55,
+            serde_json::json!({
+                "id": "conversation-canonical-title",
+                "kind": "group",
+                "legacy_session_id": session_id,
+                "shared_title": "general"
+            })
+            .to_string(),
+            1_000,
+        ],
+    )
+    .expect("seed canonical chat title");
+
+    let reconciled =
+        open_or_create_session_in_db(&conn, request()).expect("reconcile canonical chat title");
+
+    assert_eq!(reconciled.title, "general");
+    let metadata = reconciled.metadata.expect("canonical title metadata");
+    assert_eq!(metadata["sessionTitleSource"], "manual");
+    assert_eq!(metadata["sessionTitleRevision"], 55);
+    assert_eq!(metadata["sessionTitleUpdatedAtMs"], 1_000);
+}
+
+#[test]
 fn canonical_group_session_title_rename_requires_group_admin() {
     let _storage =
         crate::test_support::ScopedKordiStorageRoot::new("group-session-title-non-admin");

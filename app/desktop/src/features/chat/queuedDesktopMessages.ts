@@ -1,4 +1,39 @@
-import type { QueuedDesktopChatMessage } from '@/kordi-app/types';
+import type { Message, QueuedDesktopChatMessage } from '@/kordi-app/types';
+import { upsertCanonicalMessageFast } from '@/lib/desktop';
+import { prepareCanonicalQueuedMessage } from './messageActions/optimistic';
+
+const pendingQueueWrites = new Map<string, Promise<unknown>>();
+
+export function queuedTranscriptRequestIds(messages: readonly Message[]): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (message.turn?.status === 'queued' && !message.turn.completed) {
+      const requestId = message.replyToMessageId ?? message.turn.replyToMessageId;
+      if (requestId) ids.add(requestId);
+    } else if (message.role === 'user' && message.statusChips?.includes('queued') && message.id) {
+      ids.add(message.id);
+    }
+  }
+  return ids;
+}
+
+export function persistQueuedDesktopMessage(
+  message: QueuedDesktopChatMessage,
+  senderIdentityId: string | null | undefined,
+  status: 'queued' | 'sent' | 'cancelled' = 'queued',
+) {
+  if (message.scope !== 'chat') return Promise.resolve(null);
+  const previous = pendingQueueWrites.get(message.id) ?? Promise.resolve();
+  const pending = previous.catch(() => undefined).then(async () => {
+    const prepared = prepareCanonicalQueuedMessage(message, senderIdentityId, status);
+    return prepared ? upsertCanonicalMessageFast(prepared.request) : null;
+  });
+  pendingQueueWrites.set(message.id, pending);
+  void pending.finally(() => {
+    if (pendingQueueWrites.get(message.id) === pending) pendingQueueWrites.delete(message.id);
+  }).catch(() => undefined);
+  return pending;
+}
 
 export const QUEUED_DESKTOP_MESSAGES_STORAGE_KEY = 'kordi.desktop.queuedDesktopMessages.v1';
 

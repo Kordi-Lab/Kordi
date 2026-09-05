@@ -4,6 +4,7 @@ import type {
 import { isProcessingPlaceholderText } from '@/features/collaboration/agentPlaceholderText';
 
 export type CloudSelfAgentResponseDeliveryState =
+  | 'queued'
   | 'processing'
   | 'complete'
   | 'failed'
@@ -13,6 +14,7 @@ const DELIVERY_STATE_PRIORITY: Record<
   CloudSelfAgentResponseDeliveryState,
   number
 > = {
+  queued: -1,
   processing: 0,
   failed: 1,
   cancelled: 2,

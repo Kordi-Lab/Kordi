@@ -1,4 +1,5 @@
 import { normalizedMessageMentions } from '@/features/chat/messageMentions';
+import { cloudAgentId } from './cloudAgentIdentity';
 import type { MessageActionMetadata, MessageMention } from '../../kordi-app/types/message';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 
@@ -78,7 +79,9 @@ export function cloudDirectMessageMentions(body: string): MessageMention[] | und
 }
 
 export function cloudDirectMessageTargetCloudAgentId(body: string): string | null {
-  const agentId = parseCloudDirectMessageEnvelope(body)?.targetCloudAgentId?.trim() ?? '';
+  const envelope = parseCloudDirectMessageEnvelope(body);
+  if (!envelope?.targetCloudAgentId?.trim()) return null;
+  const agentId = cloudAgentId(envelope.targetCloudAgentId, envelope.targetCloudAgentOwnerAccountId ?? '');
   return agentId.startsWith('cloud_agent_') || agentId.startsWith('cloud-agent:') || agentId === 'cloud-local-agent'
     ? agentId
     : null;

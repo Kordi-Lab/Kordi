@@ -18,6 +18,7 @@ use crate::cloud_agent_runtime::provider_auth::{
     ProviderAuthCipher, ProviderAuthForRunResult, PublishProviderAuthSnapshotRequest,
     RunnerProviderAuthMaterialEnvelope, ServiceProviderAuth,
 };
+use crate::cloud_agent_runtime::provider_auth_intent::ProviderAuthMutationQuery;
 use crate::cloud_agent_runtime::runs::{
     complete_run, error_response, fail_run, lease_canary_run, lease_next_run,
     lookup_run_for_request, mark_run_running, run_error_response, runner_unauthorized,
@@ -26,7 +27,7 @@ use crate::cloud_agent_runtime::runs::{
 };
 use crate::server::ServerState;
 
-async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
+pub(super) async fn notify_run_response(state: &ServerState, response_message_id: Option<&str>) {
     let Some(notifications) = state.notifications() else {
         return;
     };
@@ -60,6 +61,26 @@ fn include_service_provider_auth(state: &ServerState, run: &mut RunnerRunRespons
 pub fn routes(state: Arc<ServerState>) -> Router {
     let user_routes = Router::new()
         .route("/v1/cloud/agent-runs/claim", post(claim_cloud_agent_run))
+        .route(
+            "/v1/cloud/agent-runs/desktop/ready",
+            post(super::desktop::ready),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/claim",
+            post(super::desktop::claim),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/:run_id/renew",
+            post(super::desktop::renew),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/:run_id/admit",
+            post(super::desktop::admit),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/:run_id/progress",
+            post(super::desktop::progress),
+        )
         .route(
             "/v1/cloud/agent-runs/request/:request_message_id",
             get(lookup_cloud_agent_run_for_request),
@@ -376,8 +397,12 @@ async fn lookup_cloud_agent_run_for_request(
 async fn publish_provider_auth_snapshot(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    Query(mutation): Query<ProviderAuthMutationQuery>,
     Json(input): Json<PublishProviderAuthSnapshotRequest>,
 ) -> Response {
+    if !mutation.is_explicit() {
+        return explicit_provider_auth_intent_required();
+    }
     let Some(input) = input.normalized() else {
         return error_response(
             "invalid_provider_auth_snapshot",
@@ -439,7 +464,11 @@ async fn revoke_provider_auth_snapshot(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Path(snapshot_id): Path<String>,
+    Query(mutation): Query<ProviderAuthMutationQuery>,
 ) -> Response {
+    if !mutation.is_explicit() {
+        return explicit_provider_auth_intent_required();
+    }
     match revoke_snapshot(state.db_pool(), &session.account_id, &snapshot_id).await {
         Ok(Some(snapshot)) => Json(snapshot).into_response(),
         Ok(None) => error_response(
@@ -456,4 +485,12 @@ async fn revoke_provider_auth_snapshot(
             )
         }
     }
+}
+
+fn explicit_provider_auth_intent_required() -> Response {
+    error_response(
+        "explicit_provider_auth_intent_required",
+        "Provider authentication changes require explicit user intent.",
+        StatusCode::BAD_REQUEST,
+    )
 }

@@ -19,7 +19,7 @@ import {
   publishCloudSelfAgentExecutionSnapshot,
 } from './cloudSelfAgentForwardExecution';
 import { loadCloudSelfAgentSyncLedger } from './cloudSelfAgentForwardSync';
-import { cloudSelfAgentShouldPublishProgress } from './cloudSelfAgentForwardPolicy';
+import { cloudSelfAgentShouldPublishProgress, localSelfAgentRequestCanPublishExecution } from './cloudSelfAgentForwardPolicy';
 import { cloudSyncedLocalAgentSessionIds } from './cloudSelfAgentSessionIdentity';
 import { loadSession } from './session';
 
@@ -47,6 +47,7 @@ export function useCloudSelfAgentExecutionStreaming({
   >({});
   const localTurnsRef = useRef(localTurnsBySessionId);
   const publishedFingerprintBySessionRef = useRef<Record<string, string>>({});
+  const scheduledTurnIdsRef = useRef<Record<string, string>>({});
   const publishTimerRef = useRef<number | null>(null);
   const publishRevisionRef = useRef(0);
   const lastPublishAtMsRef = useRef(0);
@@ -54,7 +55,7 @@ export function useCloudSelfAgentExecutionStreaming({
     .filter((turn) => !turn.completed)
     .map((turn) => {
       const execution = cloudAgentExecutionSnapshotFromTurn(turn, 0);
-      return `${turn.sessionId}\u0001${cloudAgentExecutionFingerprint(execution, turn.assistantText)}`;
+      return `${turn.sessionId}\u0001${turn.id}\u0001${cloudAgentExecutionFingerprint(execution, turn.assistantText)}`;
     })
     .sort()
     .join('\u0000');
@@ -71,6 +72,7 @@ export function useCloudSelfAgentExecutionStreaming({
 
   useEffect(() => {
     publishedFingerprintBySessionRef.current = {};
+    scheduledTurnIdsRef.current = {};
     publishRevisionRef.current = 0;
     lastPublishAtMsRef.current = 0;
     return () => {
@@ -82,8 +84,16 @@ export function useCloudSelfAgentExecutionStreaming({
   }, [account?.accountId]);
 
   useEffect(() => {
-    if (!account || !executionKey || publishTimerRef.current !== null) return;
-    const waitMs = Math.max(
+    if (!account || !executionKey) return;
+    const turns = Object.values(localTurnsRef.current).filter((turn) => !turn.completed);
+    const hasAdmissionChange = turns.some((turn) => scheduledTurnIdsRef.current[turn.sessionId] !== `${turn.id}:${turn.status === 'queued'}`);
+    if (publishTimerRef.current !== null) {
+      if (!hasAdmissionChange) return;
+      window.clearTimeout(publishTimerRef.current);
+    }
+    for (const turn of turns) scheduledTurnIdsRef.current[turn.sessionId] = `${turn.id}:${turn.status === 'queued'}`;
+    // Starting a request or leaving the queue must not wait behind text-stream throttling.
+    const waitMs = hasAdmissionChange ? 0 : Math.max(
       0,
       lastPublishAtMsRef.current
         + CLOUD_SELF_AGENT_EXECUTION_STREAM_MS
@@ -91,6 +101,7 @@ export function useCloudSelfAgentExecutionStreaming({
     );
     publishTimerRef.current = window.setTimeout(() => {
       publishTimerRef.current = null;
+      lastPublishAtMsRef.current = Date.now();
       void (async () => {
         const state = canonicalStateRef.current;
         const session = await loadSession();
@@ -108,8 +119,8 @@ export function useCloudSelfAgentExecutionStreaming({
           const localRequest = state.messages
             .filter((message) => (
               message.sessionId === turn.sessionId
-              && message.senderRole === 'user'
-              && !message.sourceTransport?.startsWith('cloud-')
+              && localSelfAgentRequestCanPublishExecution(message)
+              && (!turn.replyToMessageId || message.id === turn.replyToMessageId)
             ))
             .sort((left, right) => (
               right.sequenceNum - left.sequenceNum
@@ -120,10 +131,10 @@ export function useCloudSelfAgentExecutionStreaming({
             : null;
           if (!localRequest || !cloudRequestMessageId) continue;
           const execution = cloudAgentExecutionSnapshotFromTurn(turn);
-          const fingerprint = cloudAgentExecutionFingerprint(
+          const fingerprint = `${turn.id}:${cloudAgentExecutionFingerprint(
             execution,
             turn.assistantText,
-          );
+          )}`;
           if (
             publishedFingerprintBySessionRef.current[turn.sessionId]
             === fingerprint

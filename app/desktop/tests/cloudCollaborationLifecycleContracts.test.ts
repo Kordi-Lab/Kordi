@@ -91,7 +91,7 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   assert.match(source, /messagesByPeer: visibleMessagesByPeer,/);
   assert.match(
     source,
-    /useRecoveredCloudGroupReplay\(\{[\s\S]*canonicalSessionState\?\.profile\.humanIdentityId[\s\S]*setCanonicalSessionState[\s\S]*initialMessagesSettled: recoveryMessagesReady/,
+    /useRecoveredCloudGroupReplay\(\{[\s\S]*canonicalSessionState\?\.profile\.humanIdentityId[\s\S]*setCanonicalSessionState[\s\S]*initialMessagesSettled,/,
   );
   assert.match(
     source,
@@ -100,7 +100,11 @@ test('Cloud cache stays interactive without becoming authoritative', () => {
   );
   const recoveredReplay = recoveredReplaySource();
   assert.match(recoveredReplay, /useCloudAgentTurnRecovery\(\{[\s\S]*initialMessagesSettled/);
-  assert.match(recoveredReplay, /const replayEnabled = Boolean\([\s\S]*recoverySettled/);
+  assert.match(
+    recoveredReplay,
+    /const replayEnabled = Boolean\([\s\S]*&& initialMessagesSettled[\s\S]*nativeShell \|\| recoverySettled/,
+    'native group recovery must wait until reliable chat bootstrap is durable',
+  );
   assert.match(recoveredReplay, /useLegacyCloudGroupTitleNoticeRecovery\(\{\s*enabled: backgroundReplayEnabled/);
   assert.match(recoveredReplay, /useCloudGroupReplay\(\{\s*enabled: backgroundReplayEnabled/);
   assert.match(

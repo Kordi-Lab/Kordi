@@ -199,11 +199,11 @@ test('deriveCloudActivityFromTurn preserves participant display names and avatar
 
 test('cloneCloudSessionActivityForFork copies source tasks and artifacts to fork session', () => {
   const source = normalizeCloudSessionActivitySnapshot({
-    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:parent', taskId: 'task-1', title: 'Review', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: ['docs/a.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
-    artifacts: [{ artifactActivityId: 'artifactact_1', sessionId: 'session:group:parent', artifactId: 'docs/a.md', name: 'a.md', path: 'docs/a.md', kind: 'document', category: 'artifact', summary: null, createdByAccountId: 'acct_a', sourceMessageId: null, attachmentId: null, contentType: null, sizeBytes: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:self-agent:parent', taskId: 'task-1', title: 'Review', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: ['docs/a.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+    artifacts: [{ artifactActivityId: 'artifactact_1', sessionId: 'session:self-agent:parent', artifactId: 'docs/a.md', name: 'a.md', path: 'docs/a.md', kind: 'document', category: 'artifact', summary: null, createdByAccountId: 'acct_a', sourceMessageId: null, attachmentId: null, contentType: null, sizeBytes: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
   });
 
-  const cloned = cloneCloudSessionActivityForFork(source, 'session:group:parent', 'session:fork:child', '2026-05-15T10:05:00Z');
+  const cloned = cloneCloudSessionActivityForFork(source, 'session:self-agent:parent', 'session:fork:child', '2026-05-15T10:05:00Z');
 
   assert.equal(cloned.tasksBySessionId['session:fork:child']?.[0]?.sessionId, 'session:fork:child');
   assert.equal(cloned.artifactsBySessionId['session:fork:child']?.[0]?.sessionId, 'session:fork:child');

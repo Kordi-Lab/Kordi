@@ -1,5 +1,5 @@
 import type { KordiAppFoundation } from '@/app/useKordiAppFoundation';
-import { useKordiCloudGroupFork } from '@/app/useKordiCloudGroupFork';
+import { useKordiCloudAgentFork } from '@/app/useKordiCloudAgentFork';
 import { useKordiCollaborationNavigationActions } from '@/app/useKordiCollaborationNavigationActions';
 import { useKordiProviderAutoSwitch } from '@/app/useKordiProviderAutoSwitch';
 import { useKordiQueuedMessageActions } from '@/app/useKordiQueuedMessageActions';
@@ -27,8 +27,6 @@ export function useKordiAppRuntimeActions({
       canonicalSessionState,
       setCanonicalSessionState,
       hydrateCanonicalSessionPage,
-      loadCanonicalSessionHistory,
-      refreshCanonicalState,
     },
     ui: {
       projectsUi,
@@ -130,12 +128,9 @@ export function useKordiAppRuntimeActions({
     unsupportedAction: unsupportedLegacyCollaborationAction,
   });
 
-  const syncCloudGroupFork = useKordiCloudGroupFork({
+  const syncCloudAgentFork = useKordiCloudAgentFork({
     account: cloudSession.account,
-    loadCanonicalSessionHistory,
     recordCloudSessionFork,
-    refreshCanonicalState,
-    sendCloudGroupControl,
   });
 
   const {
@@ -170,7 +165,7 @@ export function useKordiAppRuntimeActions({
       activeConv.canonicalSessionId || activeConvId,
       'draft:local-chat',
     ),
-    onForkCreated: syncCloudGroupFork,
+    onForkCreated: syncCloudAgentFork,
   });
 
   const {
@@ -187,6 +182,7 @@ export function useKordiAppRuntimeActions({
     setProjectComposerText,
     acceptChatSlashCommand,
     acceptProjectSlashCommand,
+    acceptChatMentionTarget,
     handleSendChatMessage,
     handleRetryChatMessage,
     handleSendProjectMessage,
@@ -279,6 +275,9 @@ export function useKordiAppRuntimeActions({
     editQueuedMessage: handleEditQueuedMessage,
   } = useKordiQueuedMessageActions({
     isNativeShell,
+    canonicalHumanIdentityId: canonicalSessionState?.profile.humanIdentityId,
+    setCanonicalSessionState,
+    onError: setDesktopChatError,
     queuedMessagesBySession: queuedDesktopMessagesBySession,
     setComposerDrafts: composerUi.setComposerDrafts,
     setQueuedMessagesBySession: setQueuedDesktopMessagesBySession,
@@ -295,7 +294,8 @@ export function useKordiAppRuntimeActions({
   });
 
   const activeQueuedDesktopMessages =
-    queuedDesktopMessagesBySession[activeConv.id]
+    queuedDesktopMessagesBySession[activeConv.canonicalSessionId ?? activeConv.id]
+    ?? queuedDesktopMessagesBySession[activeConv.id]
     ?? ('queuedMessages' in activeConv ? activeConv.queuedMessages : undefined)
     ?? [];
 
@@ -332,6 +332,7 @@ export function useKordiAppRuntimeActions({
       setProjectComposerText,
       acceptChatSlashCommand,
       acceptProjectSlashCommand,
+      acceptChatMentionTarget,
       handleSendChatMessage,
       handleRetryChatMessage,
       handleSendProjectMessage,

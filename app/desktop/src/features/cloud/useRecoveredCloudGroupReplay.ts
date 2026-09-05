@@ -85,10 +85,8 @@ export function useRecoveredCloudGroupReplay({
   const replayEnabled = Boolean(
     contextKey
     && setCanonicalState
-    && (
-      nativeShell
-      || (initialMessagesSettled && recoverySettled)
-    )
+    && initialMessagesSettled
+    && (nativeShell || recoverySettled)
   );
   const activeSessionId = cloudSessionIdFromConversationId(
     activeConversationId ?? '',

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Copy, ExternalLink, LoaderCircle, LogIn, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { broadcastDesktopAuthUpdated } from '@/features/auth/desktopAuthSync';
+import { broadcastDesktopAuthUpdated, type DesktopAuthUpdateReason } from '@/features/auth/desktopAuthSync';
 import { AuthFlowSteps, type AuthFlowStep } from '@/kordi-app/auth/AuthFlowSteps';
 import type { DesktopAuthAttemptSnapshot, DesktopAuthProvider, DesktopAuthState } from '@/kordi-app/types';
 import {
@@ -27,7 +27,7 @@ type AuthPopupProps = {
   embedded?: boolean;
   authState?: DesktopAuthState | null;
   onRequestClose?: () => void;
-  onAuthUpdated?: () => void | Promise<void>;
+  onAuthUpdated?: (reason?: DesktopAuthUpdateReason, providerId?: string) => void | Promise<void>;
   onChatStateRefresh?: () => unknown;
   onEnterChat?: (preferredModelValue?: string) => void | Promise<void>;
 };
@@ -199,8 +199,8 @@ export default function AuthPopup({
   useEffect(() => {
     if (!authAttempt?.completed || !authAttempt.succeeded) return;
 
-    broadcastDesktopAuthUpdated('oauth-completed');
-    onAuthUpdated?.();
+    broadcastDesktopAuthUpdated('oauth-completed', providerId);
+    onAuthUpdated?.('oauth-completed', providerId);
     void Promise.resolve(onChatStateRefresh?.()).catch(() => {});
 
     if (embedded) {
@@ -212,7 +212,7 @@ export default function AuthPopup({
     }, 1000);
 
     return () => window.clearTimeout(timer);
-  }, [authAttempt?.completed, authAttempt?.succeeded, embedded, onAuthUpdated, onChatStateRefresh, onRequestClose]);
+  }, [authAttempt?.completed, authAttempt?.succeeded, embedded, onAuthUpdated, onChatStateRefresh, onRequestClose, providerId]);
   const provider = useMemo<DesktopAuthProvider | null>(
     () => authState?.providers.find((item) => item.id === providerId) ?? null,
     [authState, providerId],
@@ -263,9 +263,9 @@ export default function AuthPopup({
       setIsSubmitting(true);
       const nextState = await saveDesktopApiKey(provider.id, apiKeyDraft.trim());
       setAuthState(nextState);
-      broadcastDesktopAuthUpdated('api-key-saved');
+      broadcastDesktopAuthUpdated('api-key-saved', provider.id);
       void Promise.resolve(onChatStateRefresh?.()).catch(() => {});
-      await Promise.resolve(onAuthUpdated?.());
+      await Promise.resolve(onAuthUpdated?.('api-key-saved', provider.id));
       if (enterChat && onEnterChat) {
         await Promise.resolve(onEnterChat());
       }

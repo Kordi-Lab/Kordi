@@ -1,7 +1,25 @@
 import CallKit
 import LinkPresentation
 import XCTest
+import Testing
 @testable import Kordi
+
+@Test func conversationWindowMeasuresRowsAndTailBeforeRestoringPosition() throws {
+    let sourceURL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+    let source = try String(contentsOf: sourceURL, encoding: .utf8)
+    let start = try #require(source.range(of: "                            ScrollView {"))
+    let end = try #require(source.range(of: ".scrollTargetLayout()", range: start.upperBound..<source.endIndex))
+    let content = source[start.upperBound..<end.lowerBound]
+
+    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("VStack(spacing: 0)"))
+    #expect(!content.contains("LazyVStack("))
+    #expect(content.contains(".onGeometryChange(for: Bool.self)"))
+    #expect(content.contains("ForEach(visibleTimelineRows)"))
+    #expect(content.contains(".id(bottomAnchorID)"))
+}
 
 final class KordiMarkdownParserTests: XCTestCase {
     func testCallAvatarResolverPrefersTheCallParticipantProfileImage() {
@@ -806,6 +824,35 @@ final class KordiMarkdownParserTests: XCTestCase {
         XCTAssertFalse(presentation[2].groupedWithPrevious)
     }
 
+    func testTimelinePresentationGivesEverySystemEventItsOwnTimestamp() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let messages = [
+            timelineMessage(id: "peer", author: .person, name: "Maya", date: start),
+            timelineMessage(
+                id: "rename",
+                author: .person,
+                name: "Maya",
+                date: start.addingTimeInterval(20),
+                messageKind: ChatMessage.channelTitleUpdateMessageKind
+            ),
+            timelineMessage(
+                id: "join",
+                author: .person,
+                name: "Maya",
+                date: start.addingTimeInterval(40),
+                messageKind: ChatMessage.groupMemberJoinMessageKind
+            )
+        ]
+
+        let presentation = ConversationTimelinePresentation.make(
+            messages: messages,
+            selfAccountId: "acct_me",
+            participants: []
+        )
+
+        XCTAssertEqual(presentation.map(\.showsTimestamp), [true, true, true])
+    }
+
     @MainActor
     func testTimelineTimestampUsesAWeekdayForRecentHistoricalMessages() {
         var calendar = Calendar(identifier: .gregorian)
@@ -978,6 +1025,24 @@ final class KordiMarkdownParserTests: XCTestCase {
             isAtBottom: true,
             messageCount: 13
         ))
+    }
+
+    func testNewMessageScrollCorrectionRunsAfterKeyboardLayout() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: ".onChange(of: timeline.last)"))
+        let end = try XCTUnwrap(source.range(
+            of: ".onChange(of: isExpressivePickerPresented)",
+            range: start.upperBound..<source.endIndex
+        ))
+        let handler = source[start.lowerBound..<end.lowerBound]
+
+        XCTAssertTrue(handler.contains("await Task.yield()"))
+        XCTAssertTrue(handler.contains("proxy.scrollTo(bottomAnchorID, anchor: .bottom)"))
+        XCTAssertFalse(handler.contains("if !identityChanged"))
     }
 
     func testConversationKeepsFollowingWhenLatestMessageStreamsInPlace() {
@@ -1221,12 +1286,12 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            memory.resumedMessageID(
+            memory.resumedPosition(
                 for: "account:session",
                 latestMessageID: "message-9",
                 availableMessageIDs: ["message-4", "message-9"],
                 now: leftAt.addingTimeInterval(119)
-            ),
+            )?.messageID,
             "message-4"
         )
     }
@@ -1248,12 +1313,12 @@ final class KordiMarkdownParserTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            memory.resumedMessageID(
+            memory.resumedPosition(
                 for: "account:session:conversation",
                 latestMessageID: "message-9",
                 availableMessageIDs: ["message-4", "message-9"],
                 now: leftAt.addingTimeInterval(2)
-            ),
+            )?.messageID,
             "message-4"
         )
     }
@@ -1268,7 +1333,7 @@ final class KordiMarkdownParserTests: XCTestCase {
             at: leftAt
         )
 
-        XCTAssertNil(memory.resumedMessageID(
+        XCTAssertNil(memory.resumedPosition(
             for: "account:session",
             latestMessageID: "message-9",
             availableMessageIDs: ["message-4", "message-9"],
@@ -1286,7 +1351,7 @@ final class KordiMarkdownParserTests: XCTestCase {
             at: leftAt
         )
 
-        XCTAssertNil(memory.resumedMessageID(
+        XCTAssertNil(memory.resumedPosition(
             for: "account:session",
             latestMessageID: "message-10",
             availableMessageIDs: ["message-4", "message-9", "message-10"],
@@ -1411,7 +1476,8 @@ final class KordiMarkdownParserTests: XCTestCase {
         id: String,
         author: MessageAuthor,
         name: String,
-        date: Date
+        date: Date,
+        messageKind: String? = nil
     ) -> ChatMessage {
         ChatMessage(
             id: id,
@@ -1422,7 +1488,8 @@ final class KordiMarkdownParserTests: XCTestCase {
             createdAt: date,
             deliveryState: .delivered,
             errorMessage: nil,
-            requestMessageId: nil
+            requestMessageId: nil,
+            messageKind: messageKind
         )
     }
 

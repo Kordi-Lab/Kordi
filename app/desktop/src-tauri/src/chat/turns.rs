@@ -175,12 +175,77 @@ pub(super) async fn cancel_turn_by_id(
         .ok_or_else(|| format!("Unknown chat turn: {turn_id}"))?;
     turn.cancel.cancel();
     update_turn(&turn.snapshot, |state| {
-        if !state.completed {
+        if state.status == "queued" {
+            state.status = "cancelled".to_string();
+            state.completed = true;
+            state.completed_at_ms = Some(super::now_millis());
+            state.message = "Request stopped.".to_string();
+        } else if !state.completed {
             state.status = "cancelling".to_string();
             state.message = "Stopping…".to_string();
         }
     });
     snapshot_turn(&turn.snapshot)
+}
+
+pub(super) async fn renew_execution_lease(
+    manager: &DesktopChatManager,
+    turn_id: &str,
+    deadline_ms: i64,
+) -> Result<(), String> {
+    let turn = manager
+        .turns
+        .lock()
+        .await
+        .get(turn_id)
+        .cloned()
+        .ok_or_else(|| "Unknown execution lease turn".to_string())?;
+    let remaining = deadline_ms.saturating_sub(super::now_millis());
+    if remaining <= 0 || turn.cancel.is_cancelled() {
+        turn.cancel.cancel();
+        return Err("Execution lease expired".into());
+    }
+    let mut deadline = turn
+        .execution_lease_deadline
+        .lock()
+        .map_err(|_| "Execution lease unavailable")?;
+    let start_watchdog = deadline.is_none();
+    *deadline = Some(
+        std::time::Instant::now() + std::time::Duration::from_millis(remaining.min(30_000) as u64),
+    );
+    drop(deadline);
+    if start_watchdog {
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                if turn.cancel.is_cancelled()
+                    || snapshot_turn(&turn.snapshot).is_ok_and(|s| s.completed)
+                {
+                    return;
+                }
+                let valid = turn
+                    .execution_lease_deadline
+                    .lock()
+                    .ok()
+                    .and_then(|deadline| *deadline)
+                    .is_some_and(|d| d > std::time::Instant::now());
+                if !valid {
+                    turn.cancel.cancel();
+                    return;
+                }
+            }
+        });
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn desktop_chat_renew_execution_lease(
+    manager: tauri::State<'_, DesktopChatManager>,
+    turn_id: String,
+    deadline_ms: i64,
+) -> Result<(), String> {
+    renew_execution_lease(manager.inner(), &turn_id, deadline_ms).await
 }
 
 pub(super) fn update_turn(
@@ -338,19 +403,53 @@ pub(super) fn turn_matches_running_session(
 ) -> bool {
     snapshot
         .lock()
-        .map(|turn| turn.session_id == session_id && !turn.completed)
+        .map(|turn| {
+            execution_session_key(&turn.session_id) == execution_session_key(session_id)
+                && !turn.completed
+        })
         .unwrap_or(false)
 }
 
-pub(super) async fn reserve_turn_if_session_idle(
+// Old owner-runtime records used an account-qualified UUID. New self-agent
+// requests use the canonical UUID on both platforms; an in-flight old record
+// must still reserve that same session during an update.
+fn execution_session_key(session_id: &str) -> &str {
+    session_id
+        .strip_prefix("cloud-agent:")
+        .and_then(|value| value.split_once(':'))
+        .map(|(_, id)| id)
+        .filter(|id| uuid::Uuid::parse_str(id).is_ok())
+        .unwrap_or(session_id)
+}
+
+pub(super) async fn reserve_turn_in_session(
     manager: &DesktopChatManager,
     turn_id: String,
     handle: super::DesktopChatTurnHandle,
-) -> bool {
-    let session_id = match handle.snapshot.lock() {
-        Ok(snapshot) => snapshot.session_id.clone(),
-        Err(_) => return false,
-    };
+) -> Result<
+    (
+        Option<tokio::sync::oneshot::Receiver<()>>,
+        tokio::sync::oneshot::Sender<()>,
+    ),
+    String,
+> {
+    let session_id = snapshot_turn(&handle.snapshot)?.session_id;
+    let (completion, next) = tokio::sync::oneshot::channel();
+    let previous = manager
+        .session_turn_tails
+        .lock()
+        .await
+        .insert(execution_session_key(&session_id).to_string(), next)
+        .and_then(|mut previous| match previous.try_recv() {
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty) => Some(previous),
+            _ => None,
+        });
+    if previous.is_some() {
+        update_turn(&handle.snapshot, |snapshot| {
+            snapshot.status = "queued".to_string();
+            snapshot.message = "Queued next".to_string();
+        });
+    }
     let mut turns = manager.turns.lock().await;
     turns.retain(|_, turn| {
         turn.snapshot
@@ -358,14 +457,23 @@ pub(super) async fn reserve_turn_if_session_idle(
             .map(|snapshot| !snapshot.completed)
             .unwrap_or(false)
     });
-    if turns
-        .values()
-        .any(|turn| turn_matches_running_session(&turn.snapshot, &session_id))
-    {
-        return false;
-    }
     turns.insert(turn_id, handle);
-    true
+    Ok((previous, completion))
+}
+
+#[tauri::command]
+pub async fn desktop_chat_session_active_turn(
+    manager: tauri::State<'_, DesktopChatManager>,
+    session_id: String,
+) -> Result<Option<DesktopChatTurnSnapshot>, String> {
+    let turns = manager.turns.lock().await;
+    let mut matching = turns
+        .values()
+        .filter(|turn| turn_matches_running_session(&turn.snapshot, &session_id))
+        .map(|turn| snapshot_turn(&turn.snapshot))
+        .collect::<Result<Vec<_>, _>>()?;
+    matching.sort_by_key(|turn| (turn.status == "queued", turn.started_at_ms));
+    Ok(matching.into_iter().next())
 }
 
 pub(super) async fn session_has_running_turn(

@@ -148,23 +148,17 @@ pub(super) async fn claim_cloud_agent_run(
 
     let now = Utc::now();
     let route_timeout = crate::presence::presence_timeout();
-    let owner_desktop_online = match crate::presence::account_has_online_desktop(
-        state.db_pool(),
-        &input.owner_account_id,
-        now,
-        route_timeout,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(error) => {
-            return run_error_response(
-                "check owner desktop presence",
-                "Could not determine the agent execution route.",
-                error.into(),
-            );
-        }
-    };
+    let owner_desktop_online =
+        match super::desktop::prefer_ready_desktop(state.db_pool(), &input).await {
+            Ok(value) => value,
+            Err(error) => {
+                return run_error_response(
+                    "check owner desktop presence",
+                    "Could not determine the agent execution route.",
+                    error.into(),
+                );
+            }
+        };
     if owner_desktop_online {
         return error_response(
             "owner_online",

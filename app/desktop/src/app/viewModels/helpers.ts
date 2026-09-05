@@ -1,7 +1,7 @@
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { projectRootFromCanonicalProjectGroupId } from '@/features/canonical/sessionResolver';
 import { deriveSessionTitle } from '@/features/chat/sessionTitlePolicy';
-import { attachmentOnlyMessagePreview, safePreviewText } from '@/features/chat/participantConversationState';
+import { attachmentOnlyMessagePreview, messageCanAppearInPreview, safePreviewText } from '@/features/chat/participantConversationState';
 import { blobEmojiPlainText } from '@/features/emoji/blobEmoji';
 import { firstPersonPossessiveLabel, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type {
@@ -312,7 +312,7 @@ export function hideRawConversationIds(conversations: Conversation[]) {
 export function buildConversationPreview(messages: Message[], fallback?: string) {
   const latestMessage = [...messages]
     .reverse()
-    .find((message) => message.role !== 'system' && buildMessagePreview(message).trim().length > 0);
+    .find((message) => messageCanAppearInPreview(message) && buildMessagePreview(message).trim().length > 0);
 
   if (latestMessage) {
     return truncateInlineText(buildMessagePreview(latestMessage));

@@ -156,6 +156,7 @@ struct KordiShareConfiguration: Equatable, Sendable {
     let baseURL: URL
     let appGroupIdentifier: String
     let credentialService: String
+    let credentialAccessGroup: String
     let hostAppURLScheme: String
 
     static func current(bundle: Bundle = .main) throws -> KordiShareConfiguration {
@@ -166,6 +167,7 @@ struct KordiShareConfiguration: Equatable, Sendable {
         let baseURLValue = try setting("KordiCloudBaseURL", in: info)
         let appGroup = try setting("KordiShareAppGroup", in: info)
         let service = try setting("KordiShareCredentialService", in: info)
+        let accessGroup = try setting("KordiShareKeychainAccessGroup", in: info)
         let scheme = try setting("KordiHostAppURLScheme", in: info)
         let channel = try setting("KordiDistributionChannel", in: info)
         guard let baseURL = URL(string: baseURLValue),
@@ -174,6 +176,7 @@ struct KordiShareConfiguration: Equatable, Sendable {
                 baseURL: baseURL,
                 appGroup: appGroup,
                 service: service,
+                accessGroup: accessGroup,
                 scheme: scheme
               ) else {
             throw ShareExtensionCredentialError.invalidConfiguration
@@ -182,6 +185,7 @@ struct KordiShareConfiguration: Equatable, Sendable {
             baseURL: baseURL,
             appGroupIdentifier: appGroup,
             credentialService: service,
+            credentialAccessGroup: accessGroup,
             hostAppURLScheme: scheme
         )
     }
@@ -193,6 +197,7 @@ struct KordiShareConfiguration: Equatable, Sendable {
         baseURL: URL,
         appGroup: String,
         service: String,
+        accessGroup: String,
         scheme: String
     ) -> Bool {
         let hasNoExtraURLComponents = (baseURL.path.isEmpty || baseURL.path == "/")
@@ -208,6 +213,7 @@ struct KordiShareConfiguration: Equatable, Sendable {
                 && hasNoExtraURLComponents
                 && appGroup == "group.ai.kordi.share"
                 && service == "ai.kordi.share-session"
+                && accessGroup.hasSuffix(".\(service)")
                 && scheme == "kordi"
         case "beta":
             #if BETA
@@ -217,6 +223,7 @@ struct KordiShareConfiguration: Equatable, Sendable {
                 && hasNoExtraURLComponents
                 && appGroup == "group.ai.kordi.beta.share"
                 && service == "ai.kordi.beta.share-session"
+                && accessGroup.hasSuffix(".\(service)")
                 && scheme == "kordi-beta"
             #else
             return false
@@ -297,7 +304,7 @@ struct ShareExtensionCredentialStore {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: configuration.credentialService,
             kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: configuration.appGroupIdentifier
+            kSecAttrAccessGroup as String: configuration.credentialAccessGroup
         ]
     }
 }

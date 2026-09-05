@@ -362,6 +362,36 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "chat group catalog",
         sql: include_str!("../../migrations/0075_chat_group_catalog.sql"),
     },
+    EmbeddedMigration {
+        version: 76,
+        description: "remove group session forks",
+        sql: include_str!("../../migrations/0076_remove_group_session_forks.sql"),
+    },
+    EmbeddedMigration {
+        version: 77,
+        description: "remove group personal titles",
+        sql: include_str!("../../migrations/0077_remove_group_personal_titles.sql"),
+    },
+    EmbeddedMigration {
+        version: 78,
+        description: "normalize group space ids",
+        sql: include_str!("../../migrations/0078_normalize_group_space_ids.sql"),
+    },
+    EmbeddedMigration {
+        version: 79,
+        description: "default group channel titles",
+        sql: include_str!("../../migrations/0079_default_group_channel_titles.sql"),
+    },
+    EmbeddedMigration {
+        version: 80,
+        description: "enforce canonical direct conversation identity",
+        sql: include_str!("../../migrations/0080_enforce_direct_conversation_identity.sql"),
+    },
+    EmbeddedMigration {
+        version: 81,
+        description: "agent_execution_ownership",
+        sql: include_str!("../../migrations/0081_agent_execution_ownership.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

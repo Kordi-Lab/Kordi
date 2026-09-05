@@ -88,7 +88,10 @@ enum CloudConversationCatalog {
             sessionForksById: sessionForksById
         ).filter { !existingAgentSessionIds.contains($0.sessionId) }
         let discoveredAgentIds = Set(agentSessions.compactMap(\.agentId))
-        let hasDefaultAgentSession = agentSessions.contains { $0.agentId == nil && $0.peerAccountId == account.accountId }
+        let hasDefaultAgentSession = agentSessions.contains {
+            $0.agentId == CanonicalAvatarSystem.agentID(account.defaultAgent?.agentId, ownerAccountID: account.accountId)
+                && $0.peerAccountId == account.accountId
+        }
 
         var agents = agentSessions
         if !hasDefaultAgentSession {
@@ -189,10 +192,21 @@ enum CloudConversationCatalog {
             if grouped[sessionId] == nil { grouped[sessionId] = [] }
         }
         let canonicalLineage = canonicalGroupLineage(controls.map(\.1))
+        let defaultChannelTitles = defaultGroupChannelTitles(canonicalConversations)
+        let groupTitlesBySpaceId = authoritativeGroupTitles(
+            controls: controls,
+            canonicalConversations: canonicalConversations,
+            lineage: canonicalLineage
+        )
 
         return grouped.compactMap { groupId, rows in
             guard !KordiSupportIdentity.isSystemAgentSession(groupId) else { return nil }
-            let sorted = rows.sorted { rowDate($0) < rowDate($1) }
+            let sorted = rows.sorted {
+                CloudMessageStateProjector.synchronizationPrecedes(
+                    $0.0,
+                    precedes: $1.0
+                )
+            }
             let canonical = canonicalConversationsBySessionId[groupId]
             let participants = enrichedParticipants(
                 mergedParticipants(
@@ -204,7 +218,7 @@ enum CloudConversationCatalog {
             )
             let peers = participants.filter { $0.accountId != account.accountId }
             let groupMessages = deduplicatedGroupMessages(sorted)
-            let latestMessage = groupMessages.max { $0.createdAtMs < $1.createdAtMs }
+            let latestMessage = groupMessages.last
             let canonicalContentMessages = messages.filter {
                 CloudMessageStateProjector.sessionKeys(for: $0).contains(groupId)
                     && ChatCallActivity(messageKind: $0.messageKind) == nil
@@ -247,6 +261,12 @@ enum CloudConversationCatalog {
                     nil
                 ))
             }
+            if let latestTitleUpdate = sorted.reversed().compactMap({ row -> (date: Date, text: String?, attachment: ChatAttachment?)? in
+                guard let notice = CloudGroupMessageCodec.titleUpdateNotice(for: row.1) else { return nil }
+                return (rowDate(row), notice.text, nil)
+            }).first {
+                visibleRows.append(latestTitleUpdate)
+            }
             let latestVisible = visibleRows.max { $0.date < $1.date }
             let latestVisibleText = latestVisible?.text
             let latestVisibleDate = latestVisible?.date
@@ -255,30 +275,22 @@ enum CloudConversationCatalog {
                 nonGenericTitle(row.1.sessionTitle?.title)
                     ?? (row.1.kind == "session-title-update" ? nonGenericTitle(row.1.groupTitle) : nil)
             }.first
-            let groupTitle = sorted.reversed().compactMap { row -> String? in
+            let localGroupTitle = sorted.reversed().compactMap { row -> String? in
                 ["group-invite", "group-update", "group-title-update"].contains(row.1.kind)
                     ? nonGenericTitle(row.1.groupTitle)
                     : nil
             }.first
-            let participantTitle = peers
-                .map { contactsById[$0.accountId]?.preferredName ?? $0.displayName }
-                .filter { !$0.isEmpty }
-                .prefix(3)
-                .joined(separator: ", ")
-            let groupSpaceId = canonicalLineage[groupId]?.spaceId
-                ?? sorted.reversed().compactMap { $0.1.groupSpaceId?.nonEmpty }.first
+            let groupSpaceId = normalizedGroupSpaceId(canonicalLineage[groupId]?.spaceId)
+                ?? normalizedGroupSpaceId(canonical?.groupSpaceId)
+                ?? sorted.reversed().compactMap { normalizedGroupSpaceId($0.1.groupSpaceId) }.first
+                ?? normalizedGroupSpaceId(groupId)
                 ?? groupId
-            let inferredSessionTitle = groupMessages
-                .min { $0.createdAtMs < $1.createdAtMs }
-                .flatMap { Self.sessionTitle($0.text) }
-            let title = sessionTitle
-                ?? (groupId == groupSpaceId ? groupTitle : nil)
-                ?? nonGenericTitle(canonical?.preferences.personalTitle)
-                ?? nonGenericTitle(canonical?.sharedTitle)
-                ?? inferredSessionTitle
-                ?? groupTitle
-                ?? participantTitle.nonEmpty
-                ?? "Group"
+            let groupTitle = groupTitlesBySpaceId[groupSpaceId]
+                ?? localGroupTitle
+            let title = nonGenericTitle(canonical?.sharedTitle)
+                ?? sessionTitle
+                ?? defaultChannelTitles[groupId]
+                ?? "Channel 1"
             let unreadMessageIds = Set(sorted.compactMap { wire, envelope -> String? in
                 guard envelope.kind == "group-message",
                       let message = envelope.message else { return nil }
@@ -357,8 +369,6 @@ enum CloudConversationCatalog {
                         + canonicalContentMessages.map(\.messageId)
                         + callMessages.map(\.messageId)
                 ).count,
-                forkedFromSessionId: canonicalLineage[groupId]?.forkedFromSessionId
-                    ?? canonical?.forkedFromSessionId?.nonEmpty,
                 unreadMentionCount: unreadMentionMessageIds.count,
                 lastReadSequence: lastReadSequence(
                     in: canonical,
@@ -368,54 +378,115 @@ enum CloudConversationCatalog {
         }
     }
 
-    /// Historical desktop builds wrote a fork's own session id into
-    /// `groupSpaceId`. The fork payload still carries the true parent, so walk
-    /// that lineage to keep every session under its original group space.
     private struct GroupLineage {
         let spaceId: String
-        let forkedFromSessionId: String?
+    }
+
+    private struct GroupTitleCandidate {
+        let title: String
+        let priority: Int
+        let updatedAt: Date
+        let sourceId: String
+    }
+
+    private static func authoritativeGroupTitles(
+        controls: [(CloudMessageDTO, CloudGroupControlEnvelope)],
+        canonicalConversations: [CloudChatConversation],
+        lineage: [String: GroupLineage]
+    ) -> [String: String] {
+        var candidates: [String: GroupTitleCandidate] = [:]
+        func consider(
+            spaceId: String,
+            title: String?,
+            priority: Int,
+            updatedAt: Date,
+            sourceId: String
+        ) {
+            guard let title = nonGenericTitle(title) else { return }
+            let next = GroupTitleCandidate(
+                title: title,
+                priority: priority,
+                updatedAt: updatedAt,
+                sourceId: sourceId
+            )
+            if let current = candidates[spaceId],
+               current.priority > next.priority
+                || (current.priority == next.priority && current.updatedAt > next.updatedAt)
+                || (current.priority == next.priority
+                    && current.updatedAt == next.updatedAt
+                    && current.sourceId >= next.sourceId) {
+                return
+            }
+            candidates[spaceId] = next
+        }
+
+        for conversation in canonicalConversations where conversation.kind == "group" {
+            let sessionId = conversation.legacySessionId?.nonEmpty ?? conversation.id
+            let spaceId = normalizedGroupSpaceId(conversation.groupSpaceId)
+                ?? normalizedGroupSpaceId(lineage[sessionId]?.spaceId)
+                ?? sessionId
+            consider(
+                spaceId: spaceId,
+                title: conversation.groupTitle,
+                priority: 2,
+                updatedAt: parseCloudDate(conversation.updatedAt),
+                sourceId: conversation.id
+            )
+        }
+        for (wire, envelope) in controls where [
+            "group-invite", "group-update", "group-title-update"
+        ].contains(envelope.kind) {
+            let spaceId = normalizedGroupSpaceId(lineage[envelope.groupId]?.spaceId)
+                ?? normalizedGroupSpaceId(envelope.groupSpaceId)
+                ?? envelope.groupId
+            consider(
+                spaceId: spaceId,
+                title: envelope.groupTitle,
+                priority: envelope.kind == "group-title-update" ? 3 : 1,
+                updatedAt: parseCloudDate(wire.createdAt),
+                sourceId: wire.messageId
+            )
+        }
+        return candidates.mapValues(\.title)
     }
 
     private static func canonicalGroupLineage(
         _ envelopes: [CloudGroupControlEnvelope]
     ) -> [String: GroupLineage] {
-        var explicitSpaceByGroup: [String: String] = [:]
-        var parentByFork: [String: String] = [:]
-        for envelope in envelopes {
-            if let explicit = envelope.groupSpaceId?.nonEmpty {
-                explicitSpaceByGroup[envelope.groupId] = explicit
+        Dictionary(
+            envelopes.map { envelope in
+                (
+                    envelope.groupId,
+                    GroupLineage(
+                        spaceId: normalizedGroupSpaceId(envelope.groupSpaceId)
+                            ?? normalizedGroupSpaceId(envelope.groupId)
+                            ?? envelope.groupId
+                    )
+                )
+            },
+            uniquingKeysWith: { _, latest in latest }
+        )
+    }
+
+    private static func defaultGroupChannelTitles(
+        _ conversations: [CloudChatConversation]
+    ) -> [String: String] {
+        var bySpaceId: [String: [CloudChatConversation]] = [:]
+        for conversation in conversations where conversation.kind == "group" {
+            let sessionId = conversation.legacySessionId?.nonEmpty ?? conversation.id
+            let spaceId = normalizedGroupSpaceId(conversation.groupSpaceId) ?? sessionId
+            bySpaceId[spaceId, default: []].append(conversation)
+        }
+        var titles: [String: String] = [:]
+        for conversations in bySpaceId.values {
+            for (index, conversation) in conversations.sorted(by: {
+                parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt)
+                    || ($0.createdAt == $1.createdAt && $0.id < $1.id)
+            }).enumerated() {
+                titles[conversation.legacySessionId?.nonEmpty ?? conversation.id] = "Channel \(index + 1)"
             }
-            if let fork = envelope.fork,
-               let child = fork.forkSessionId.nonEmpty ?? envelope.groupId.nonEmpty,
-               let parent = fork.parentSessionId.nonEmpty,
-               child != parent {
-                parentByFork[child] = parent
-            }
         }
-
-        var resolved: [String: String] = [:]
-        func root(for groupId: String, visiting: Set<String>) -> String {
-            if let cached = resolved[groupId] { return cached }
-            guard !visiting.contains(groupId) else { return groupId }
-            var nextVisiting = visiting
-            nextVisiting.insert(groupId)
-
-            let parent = parentByFork[groupId]
-                ?? explicitSpaceByGroup[groupId].flatMap { $0 == groupId ? nil : $0 }
-            let value = parent.map { root(for: $0, visiting: nextVisiting) } ?? groupId
-            resolved[groupId] = value
-            return value
-        }
-
-        for groupId in Set(envelopes.map(\.groupId)) {
-            resolved[groupId] = root(for: groupId, visiting: [])
-        }
-        return Dictionary(uniqueKeysWithValues: resolved.map { groupId, spaceId in
-            (groupId, GroupLineage(
-                spaceId: spaceId,
-                forkedFromSessionId: parentByFork[groupId]
-            ))
-        })
+        return titles
     }
 
     private static func agentConversations(
@@ -829,11 +900,13 @@ enum CloudConversationCatalog {
     private static func deduplicatedGroupMessages(
         _ rows: [(CloudMessageDTO, CloudGroupControlEnvelope)]
     ) -> [CloudGroupMessagePayload] {
-        var byId: [String: CloudGroupMessagePayload] = [:]
-        for (_, envelope) in rows where envelope.kind == "group-message" {
-            if let message = envelope.message { byId[message.id] = message }
-        }
-        return Array(byId.values)
+        var seen = Set<String>()
+        return Array(rows.reversed().compactMap { _, envelope in
+            guard envelope.kind == "group-message",
+                  let message = envelope.message,
+                  seen.insert(message.id).inserted else { return nil }
+            return message
+        }.reversed())
     }
 
     private static func previewAttachment(_ message: CloudMessageDTO?) -> ChatAttachment? {

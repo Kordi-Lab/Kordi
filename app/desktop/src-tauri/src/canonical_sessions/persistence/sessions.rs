@@ -1,6 +1,7 @@
 //! Canonical session, participant, and row-projection persistence.
 
 use rusqlite::{params, Connection, OptionalExtension};
+use serde_json::Value;
 
 use super::super::{
     clean_optional, default_session_title, json_from_db, json_to_db, now_ms,
@@ -20,13 +21,56 @@ pub(in crate::canonical_sessions) fn open_or_create_session_in_db(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| stable_session_id(&request));
-    let default_title = default_session_title(conn, &request)?;
+    let mut default_title = default_session_title(conn, &request)?;
+    let mut request_metadata = request.metadata;
+    if kind == "group" {
+        if let Some((title, revision, updated_at_ms)) = conn
+            .query_row(
+                "SELECT json_extract(snapshot_json, '$.shared_title'), version, updated_at_ms
+                 FROM chat_sync_conversations
+                 WHERE client_session_id = ?1
+                   AND json_extract(snapshot_json, '$.kind') = 'group'
+                 ORDER BY updated_at_ms DESC LIMIT 1",
+                [&id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .filter(|(title, _, _)| !title.trim().is_empty())
+        {
+            default_title = title.trim().to_string();
+            let metadata =
+                request_metadata.get_or_insert_with(|| Value::Object(Default::default()));
+            if let Some(metadata) = metadata.as_object_mut() {
+                metadata.insert(
+                    "sessionTitleSource".to_string(),
+                    Value::String("manual".to_string()),
+                );
+                metadata.insert("sessionTitleRevision".to_string(), Value::from(revision));
+                metadata.insert(
+                    "sessionTitlePolicyVersion".to_string(),
+                    Value::from(kordi_session::naming::SESSION_TITLE_POLICY_VERSION),
+                );
+                metadata.insert(
+                    "sessionTitleUpdatedAtMs".to_string(),
+                    Value::from(updated_at_ms),
+                );
+                metadata.remove("sessionTitleUpdatedByAccountId");
+            }
+        }
+    }
     let existing_session = select_session(conn, &id)?;
     let (title, metadata_value) = reconcile_session_title_metadata(
         existing_session.as_ref(),
         &kind,
         default_title,
-        request.metadata,
+        request_metadata,
     );
     let status = validate_status(request.status, "active");
     let created_by_identity_id = request.created_by_identity_id;

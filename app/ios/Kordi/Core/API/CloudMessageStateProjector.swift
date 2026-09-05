@@ -26,7 +26,7 @@ enum CloudMessageStateProjector {
                 continue
             }
             if let current = latestBySessionID[sessionID],
-               !synchronizationOrder(current, precedes: message) {
+               !synchronizationPrecedes(current, precedes: message) {
                 continue
             }
             latestBySessionID[sessionID] = message
@@ -129,7 +129,7 @@ enum CloudMessageStateProjector {
         }
     }
 
-    private static func synchronizationOrder(
+    static func synchronizationPrecedes(
         _ left: CloudMessageDTO,
         precedes right: CloudMessageDTO
     ) -> Bool {

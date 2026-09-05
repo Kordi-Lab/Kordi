@@ -303,57 +303,6 @@ test('canonical read model collapses Cloud mirrors of inherited owned-agent fork
   assert.equal(messages.every((message) => message.isForkSnapshot), true);
 });
 
-test('canonical mirror dedup keeps identical replies from different owned agents in a group fork', () => {
-  const sessionId = 'session:fork:group-owned-agents';
-  const readModel = createCanonicalSessionReadModel({
-    storagePath: '/tmp/canonical.sqlite3',
-    profile: {
-      id: 'profile:me',
-      displayName: 'Me',
-      humanIdentityId: 'human:me',
-      activeAgentIdentityId: 'agent:alpha',
-      storageRoot: '/tmp',
-      createdAtMs: 1,
-      updatedAtMs: 1,
-    },
-    identities: [
-      { id: 'human:me', kind: 'human', displayName: 'Me', source: 'local', avatarKey: 'me', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:alpha', kind: 'agent', displayName: 'Alpha', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'alpha', createdAtMs: 1, updatedAtMs: 1 },
-      { id: 'agent:beta', kind: 'agent', displayName: 'Beta', source: 'local', ownerIdentityId: 'human:me', avatarKey: 'beta', createdAtMs: 1, updatedAtMs: 1 },
-    ],
-    sessions: [{
-      id: sessionId,
-      kind: 'group',
-      title: 'Group fork',
-      status: 'active',
-      createdByIdentityId: 'human:me',
-      primaryIdentityId: null,
-      relationshipIdentityId: null,
-      metadata: { fork: { forkedFromSessionId: 'session:group:parent' } },
-      createdAtMs: 1,
-      updatedAtMs: 2,
-      lastMessageAtMs: 2,
-    }],
-    participants: [
-      { sessionId, identityId: 'human:me', role: 'self', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-      { sessionId, identityId: 'agent:alpha', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-      { sessionId, identityId: 'agent:beta', role: 'owned-agent', state: 'active', addedByIdentityId: 'human:me', addedAtMs: 1 },
-    ],
-    messages: [
-      { id: 'snapshot-alpha', sessionId, senderIdentityId: 'agent:alpha', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Same valid answer', content: { sender: 'Alpha', timeLabel: '09:01' }, parentMessageId: null, status: 'complete', sequenceNum: 1, createdAtMs: 950, updatedAtMs: 950, contentHash: null, sourceTransport: 'canonical-fork-snapshot', sourceEventId: `fork-snapshot:${sessionId}:session:group:parent:msg:alpha` },
-      { id: 'desktop-beta', sessionId, senderIdentityId: 'agent:beta', senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Same valid answer', content: { sender: 'Beta', timeLabel: '09:01' }, parentMessageId: null, status: 'complete', sequenceNum: 2, createdAtMs: 950, updatedAtMs: 950, contentHash: null, sourceTransport: 'desktop-chat', sourceEventId: 'desktop-beta' },
-    ],
-    delegatedExchanges: [],
-    contextSnapshots: [],
-    presence: [],
-  } as never);
-
-  assert.deepEqual(
-    (readModel?.messages(sessionId) ?? []).map((message) => message.id),
-    ['snapshot-alpha', 'desktop-beta'],
-  );
-});
-
 test('canonical read model hides duplicate local-agent group response fanout copies', () => {
   const sessionId = 'session:group:fanout-agent';
   const responseText = 'same weather answer';

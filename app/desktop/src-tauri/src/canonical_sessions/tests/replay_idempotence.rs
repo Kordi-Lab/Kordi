@@ -209,6 +209,25 @@ fn cloud_replay_preserves_reliable_sequence_when_newest_page_arrives_first() {
 }
 
 #[test]
+fn cloud_notice_adopts_reliable_sequence_after_optimistic_insert() {
+    let conn = test_conn();
+    upsert_identity_in_db(&conn, identity_request()).expect("insert identity");
+    open_or_create_session_in_db(&conn, session_request()).expect("insert session");
+    let mut notice = message_request();
+    notice.id = Some("msg:cloud:title-notice".to_string());
+    notice.source_transport = Some("cloud-group-title-update".to_string());
+    notice.source_event_id = Some("cloud-group-title-update:wire-title".to_string());
+
+    let optimistic = append_message_in_db(&conn, notice.clone()).expect("insert optimistic notice");
+    assert_eq!(optimistic.sequence_num, 1);
+
+    seed_chat_sync_message(&conn, "wire-title", 20);
+    let durable = append_message_in_db(&conn, notice).expect("replay durable notice");
+
+    assert_eq!(durable.sequence_num, 20);
+}
+
+#[test]
 fn versioned_message_replay_rejects_cross_session_movement() {
     let conn = test_conn();
     upsert_identity_in_db(&conn, identity_request()).expect("insert identity");

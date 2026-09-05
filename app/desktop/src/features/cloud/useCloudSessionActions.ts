@@ -26,6 +26,7 @@ import {
 import {
   loadSession,
 } from './session';
+import { type IdPresenceMutation, setCloudGroupArchived as mutateCloudGroupArchived, setCloudGroupMuted as mutateCloudGroupMuted } from './useCloudGroupVisibilityActions';
 
 type CloudSessionActionStores = {
   activity: {
@@ -44,11 +45,13 @@ type CloudSessionActionStores = {
     setHiddenIds: Dispatch<SetStateAction<Set<string>>>;
     hiddenIdsRef: MutableRefObject<Set<string>>;
     setDeletedIds: Dispatch<SetStateAction<Set<string>>>;
+    deletedIdsRef: MutableRefObject<Set<string>>;
     setUnreadIds: Dispatch<SetStateAction<Set<string>>>;
     setLocallyReadIds: Dispatch<SetStateAction<Set<string>>>;
     setPinnedIds: Dispatch<SetStateAction<Set<string>>>;
     pinnedIdsRef: MutableRefObject<Set<string>>;
     setMutedIds: Dispatch<SetStateAction<Set<string>>>;
+    mutedIdsRef: MutableRefObject<Set<string>>;
     setPinnedGroupSpaceIds: Dispatch<SetStateAction<Set<string>>>;
     pinnedGroupSpaceIdsRef: MutableRefObject<Set<string>>;
   };
@@ -57,13 +60,6 @@ type CloudSessionActionStores = {
       SetStateAction<Record<string, CloudMessage[]>>
     >;
   };
-};
-
-type IdPresenceMutation = {
-  valueRef: MutableRefObject<Set<string>>;
-  setValue: Dispatch<SetStateAction<Set<string>>>;
-  id: string;
-  present: boolean;
 };
 
 function setIdPresence(
@@ -100,11 +96,13 @@ export function useCloudSessionActions({
   const setHiddenIds = stores.visibility.setHiddenIds;
   const hiddenIdsRef = stores.visibility.hiddenIdsRef;
   const setDeletedIds = stores.visibility.setDeletedIds;
+  const deletedIdsRef = stores.visibility.deletedIdsRef;
   const setUnreadIds = stores.visibility.setUnreadIds;
   const setLocallyReadIds = stores.visibility.setLocallyReadIds;
   const setPinnedIds = stores.visibility.setPinnedIds;
   const pinnedIdsRef = stores.visibility.pinnedIdsRef;
   const setMutedIds = stores.visibility.setMutedIds;
+  const mutedIdsRef = stores.visibility.mutedIdsRef;
   const setPinnedGroupSpaceIds = stores.visibility.setPinnedGroupSpaceIds;
   const pinnedGroupSpaceIdsRef = stores.visibility.pinnedGroupSpaceIdsRef;
   const setMessagesByPeer = stores.messages.setByPeer;
@@ -407,6 +405,14 @@ export function useCloudSessionActions({
     }], (token) => client.setCloudGroupSpacePinned(token, trimmedGroupSpaceId, pinned));
   }, [client, pinnedGroupSpaceIdsRef, runOptimisticVisibilityMutation, setPinnedGroupSpaceIds]);
 
+  const setGroupMuted = useCallback((groupSpaceId: string, sessionIds: string[], muted: boolean) => (
+    mutateCloudGroupMuted({ client, runMutation: runOptimisticVisibilityMutation, mutedIdsRef, setMutedIds, groupSpaceId, sessionIds, muted })
+  ), [client, mutedIdsRef, runOptimisticVisibilityMutation, setMutedIds]);
+
+  const setGroupArchived = useCallback((groupSpaceId: string, sessionIds: string[], archived: boolean) => (
+    mutateCloudGroupArchived({ client, runMutation: runOptimisticVisibilityMutation, hiddenIdsRef, deletedIdsRef, pinnedIdsRef, pinnedGroupSpaceIdsRef, setHiddenIds, setDeletedIds, setPinnedIds, setPinnedGroupSpaceIds, groupSpaceId, sessionIds, archived })
+  ), [client, deletedIdsRef, hiddenIdsRef, pinnedGroupSpaceIdsRef, pinnedIdsRef, runOptimisticVisibilityMutation, setDeletedIds, setHiddenIds, setPinnedGroupSpaceIds, setPinnedIds]);
+
   const remove = useCallback(async (sessionId: string) => {
     const trimmedSessionId = sessionId.trim();
     if (!trimmedSessionId) return;
@@ -470,6 +476,8 @@ export function useCloudSessionActions({
     setUnread,
     markRead,
     setGroupPinned,
+    setGroupMuted,
+    setGroupArchived,
     remove,
   };
 }

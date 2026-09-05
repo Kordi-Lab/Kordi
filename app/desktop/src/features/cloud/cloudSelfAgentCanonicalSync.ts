@@ -11,6 +11,8 @@ import type {
   CloudSessionTitle,
 } from './authClient';
 import { cloudAgentExecutionCanonicalContent } from './cloudAgentExecutionTrace';
+import { defaultCloudAgentId } from './cloudAgentIdentity';
+import { canonicalAvatarImageSource } from './canonicalAvatar';
 import { type CloudGroupReadCursor } from './cloudGroupMessages';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { createCloudSelfAgentSessionPlanner } from './cloudSelfAgentSessionPlan';
@@ -444,9 +446,9 @@ export function planCloudSelfAgentCanonicalSync({
       sourceHostId: null,
       sourceIdentityId: null,
       humanId: null,
-      agentId: `cloud-self:${account.accountId}`,
-      avatarKey: `cloud-self:${account.accountId}`,
-      profileImageUrl: null,
+      agentId: defaultCloudAgentId(account.accountId),
+      avatarKey: defaultCloudAgentId(account.accountId),
+      profileImageUrl: account.defaultAgent ? canonicalAvatarImageSource(account.defaultAgent.avatar) : null,
       metadata: {
         cloudSelfAgent: true,
         accountId: account.accountId,

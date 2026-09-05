@@ -4,7 +4,7 @@ import type {
 } from '@/kordi-app/types';
 import { isGenericSessionTitle } from '@/features/chat/sessionTitlePolicy';
 import type { ChatSyncConversation } from './authClient';
-import { cloudSelfAgentOperationClientMessageId } from './cloudSelfAgentIdentity';
+import { cloudSelfAgentOperationClientMessageId, cloudSelfAgentProcessingLedgerKey } from './cloudSelfAgentIdentity';
 export {
   cloudSelfAgentOperationClientMessageId,
   loadCloudSelfAgentRecoverySessionIds,
@@ -39,8 +39,15 @@ export type CloudSelfAgentSyncOperation = {
   parentLocalMessageId: string | null;
   createdAtMs: number;
   deliveryState: 'sent' | 'complete' | 'failed' | 'cancelled';
+  queued?: boolean;
+  cancelledWhileQueued?: boolean;
+  cancelledAtMs?: number;
   targetAgentId?: string; targetAgentName?: string;
 };
+
+export function queuedCancellationLedgerKey(localMessageId: string) {
+  return `queued-cancelled:${localMessageId}`;
+}
 
 export type CloudSelfAgentSessionReconciliation = {
   sessionId: string;
@@ -205,6 +212,7 @@ function selfAgentMessageDeliveryState(
   const content = objectContent(message.content);
   const deliveryState = contentText(content, 'deliveryState').toLowerCase();
   if (message.senderRole === 'user') {
+    if (content.queuedMessage === true && ['queued', 'cancelled'].includes(contentText(content, 'queueState') || deliveryState || status)) return 'sent';
     return ['sent', 'delivered', 'read', 'complete', 'completed'].includes(
       deliveryState || status,
     ) ? 'sent' : null;
@@ -254,7 +262,6 @@ function shouldSkipSelfAgentForwardSyncMessage(
   recoverMissingChatSession = false,
 ): boolean {
   return message.sourceTransport === 'canonical-fork-snapshot'
-    || message.sourceTransport === 'cloud-group-fork-snapshot'
     || (!recoverMissingChatSession && (
       message.sourceTransport === 'cloud-self-agent'
       || message.id.startsWith('msg:cloud:self:')
@@ -437,9 +444,14 @@ export function planCloudSelfAgentSync(
     for (const message of sorted) {
       if (message.senderRole === 'user') {
         lastUserMessageId = message.id;
+        const content = objectContent(message.content);
+        const queuedState = contentText(content, 'queueState') || contentText(content, 'deliveryState') || message.status;
+        const cancelledWhileQueued = content.queuedMessage === true && queuedState === 'cancelled';
         if (
           options.recoverSessionIds?.has(message.sessionId)
           || !ledger[message.id]
+          || (queuedState === 'queued' && !ledger[cloudSelfAgentProcessingLedgerKey(message.id)])
+          || (cancelledWhileQueued && !ledger[queuedCancellationLedgerKey(message.id)])
         ) {
           const operation: CloudSelfAgentSyncOperation = {
             localMessageId: message.id,
@@ -449,9 +461,14 @@ export function planCloudSelfAgentSync(
             parentLocalMessageId: null,
             createdAtMs: message.createdAtMs,
             deliveryState: 'sent',
+            ...(queuedState === 'queued' ? { queued: true } : {}),
+            ...(cancelledWhileQueued ? {
+              cancelledWhileQueued: true,
+              cancelledAtMs: typeof content.queueUpdatedAtMs === 'number' ? content.queueUpdatedAtMs : message.updatedAtMs,
+            } : {}),
             ...target,
           };
-          if (!options.remoteClientMessageIds?.has(
+          if (queuedState === 'queued' || cancelledWhileQueued || !options.remoteClientMessageIds?.has(
             cloudSelfAgentOperationClientMessageId(operation),
           )) operations.push(operation);
         }

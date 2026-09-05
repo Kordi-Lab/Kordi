@@ -641,6 +641,7 @@ export function buildCloudCollaborationConversation({
       })];
     }
     if (!pendingAgentRequestIds.has(message.messageId)) return [mapped];
+    if (isSelfPeer && !localTurn) return [mapped];
     return [mapped, cloudAgentProcessingCollaborationMessage({
       account,
       request: message,
