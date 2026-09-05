@@ -50,3 +50,7 @@ python3 scripts/digest-system-eval.test.py
 ```
 
 The HTML harness renders the desktop implementation. For native iOS system testing, use the Kordi Beta scheme against the same isolated API and synthetic account; resizing this harness is not an iOS implementation test.
+
+## Additional event conversations
+
+`more-event-messages.json` adds 24 fictional messages across the three visible test conversations. They cover confirmed meetings, rescheduling, a location change, a cancelled meeting, a New York/Riyadh time conversion, overlapping bookings, preparation tasks, a date-only deadline and an unconfirmed invitation. Stable client message IDs and reply references allow publication through the normal chat API without duplicating a retried batch. These are conversation fixtures, not pre-created calendar events.
