@@ -179,13 +179,8 @@ struct DigestView: View {
         }
     }
     private func people(_ item: RollingDigestItem) -> some View {
-        let related = sources.filter { item.sourceIds.contains($0.id) }
-        let unique = Dictionary(grouping: related, by: \.senderAccountId).values.compactMap(\.first).sorted { $0.senderName < $1.senderName }
-        return VStack(alignment: .leading, spacing: 4) {
-            if let owner = item.ownerAccountId { Text("Owner @\(owner == model.account?.accountId ? "You" : sources.first(where: { $0.senderAccountId == owner })?.senderName ?? "Contact")").font(.caption).foregroundStyle(.secondary) }
-            ForEach(unique.filter { $0.senderAccountId != item.ownerAccountId }) { source in
-                Button("From @\(source.isAgent == true ? source.senderName : source.senderAccountId == model.account?.accountId ? "You" : source.senderName)") { Task { await perform { digest = try await model.loadRollingDigest(); selectedSheet = .source(source.id) } } }.font(.caption)
-            }
+        DigestPeopleView(sourceIds: item.sourceIds, ownerAccountId: item.ownerAccountId, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts) { source in
+            Task { await perform { digest = try await model.loadRollingDigest(); selectedSheet = .source(source.id) } }
         }
     }
     @ViewBuilder private func sheetBody(_ sheet: DigestSheet) -> some View {
@@ -203,8 +198,8 @@ struct DigestView: View {
                     }.padding().navigationTitle(source.sessionTitle)
                 } else { Text("This source is no longer accessible or included.").padding().navigationTitle("Source unavailable") }
             }.navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
-        case .task(let item): DigestTaskEditor(item: item, sources: sources, accountId: model.account?.accountId ?? "") { input in try await model.createDigestTask(item.id, input: input); await reloadAfterEdit() }
-        case .event(let event): DigestEventEditor(event: event) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit() } remove: { try await model.removeDigestCalendarEvent(event); await reloadAfterEdit() }
+        case .task(let item): DigestTaskEditor(item: item, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts) { input in try await model.createDigestTask(item.id, input: input); await reloadAfterEdit() }
+        case .event(let event): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit() } remove: { try await model.removeDigestCalendarEvent(event); await reloadAfterEdit() }
         case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .connection: DigestConnectView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Updates follow your messages, sessions and calendar events."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("Live digest")

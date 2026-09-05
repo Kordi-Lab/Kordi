@@ -48,6 +48,15 @@
 .digest-people { display: flex; gap: 4px 12px; flex-wrap: wrap; margin-top: 8px; }
 .digest-people button, .digest-evidence button { border: 0; padding: 2px 0; font-size: 12px; min-height: 28px; text-align: left; }
 .digest-people button { color: var(--digest-accent); }
+.digest-person { display: inline-flex; align-items: center; gap: 7px; }
+.digest-person-avatar { width: 26px; height: 26px; }
+.digest-person small { display: block; font-size: 10px; line-height: 15px; color: var(--digest-muted); font-weight: 400; }
+.digest-source-messages { margin-top: 16px; font-size: 12px; }
+.digest-source-messages summary { cursor: pointer; color: var(--digest-muted); }
+.digest-source-messages article { margin-top: 12px; }
+.digest-source-messages article p { color: var(--digest-muted); margin: 0 0 4px; }
+.digest-source-messages blockquote { margin: 0; padding: 0 0 0 10px; border-left: 2px solid var(--digest-line); white-space: pre-wrap; overflow-wrap: anywhere; }
+.digest-event-context { font-size: 12px; color: var(--digest-muted); }
 .digest-evidence { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .digest-warning { padding: 10px 12px; border-radius: 7px; background: #b8892110; font-size: 12px; }
 .digest-empty { padding: 16px 0; color: var(--digest-muted); }
