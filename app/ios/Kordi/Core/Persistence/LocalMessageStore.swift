@@ -282,6 +282,11 @@ final class LocalMessageStore {
     private var conversationFingerprints: [String: Int] = [:]
     private var messageFingerprints: [String: [String: Int]] = [:]
     private var messageHasEarlier: [String: [String: Bool]] = [:]
+    private let savedMessageFingerprints: NSCache<NSString, NSNumber> = {
+        let cache = NSCache<NSString, NSNumber>()
+        cache.countLimit = 8_192
+        return cache
+    }()
 
     init(inMemory: Bool = false) throws {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: inMemory)
@@ -489,15 +494,19 @@ final class LocalMessageStore {
             || hasEarlier == messageHasEarlier[accountId]?[conversationId]
         guard !sameMessages || !sameHistoryState else { return }
         do {
-            let recordIDs = messages.map {
+            let changedMessages = messages.filter { message in
+                let key = scopedCacheRecordID(accountId: accountId, entityId: message.id) as NSString
+                return savedMessageFingerprints.object(forKey: key)?.intValue != message.hashValue
+            }
+            let recordIDs = changedMessages.map {
                 scopedCacheRecordID(accountId: accountId, entityId: $0.id)
             }
             let descriptor = FetchDescriptor<CachedMessageRecord>(
                 predicate: #Predicate { recordIDs.contains($0.id) }
             )
-            let existing = try context.fetch(descriptor)
+            let existing = changedMessages.isEmpty ? [] : try context.fetch(descriptor)
             let existingById = Dictionary(uniqueKeysWithValues: existing.map { ($0.messageId, $0) })
-            for message in messages {
+            for message in changedMessages {
                 if let record = existingById[message.id] {
                     if record.value != message { record.update(from: message) }
                 } else {
@@ -517,6 +526,11 @@ final class LocalMessageStore {
                 hasMore: pageHasMore
             )
             try context.save()
+            // Only remember durable writes; eviction safely falls back to reading the record.
+            for message in changedMessages {
+                let key = scopedCacheRecordID(accountId: accountId, entityId: message.id) as NSString
+                savedMessageFingerprints.setObject(NSNumber(value: message.hashValue), forKey: key)
+            }
             messageFingerprints[accountId, default: [:]][conversationId] = nextFingerprint
             if let hasEarlier {
                 messageHasEarlier[accountId, default: [:]][conversationId] = hasEarlier
@@ -545,6 +559,9 @@ final class LocalMessageStore {
                 conversationIDs.insert(page.conversationId)
             }
             try context.save()
+            for recordID in recordIDs {
+                savedMessageFingerprints.removeObject(forKey: recordID as NSString)
+            }
             for conversationID in conversationIDs {
                 messageFingerprints[accountId]?[conversationID] = nil
             }
@@ -599,6 +616,7 @@ final class LocalMessageStore {
             messages.forEach(context.delete)
             messagePages.forEach(context.delete)
             try context.save()
+            savedMessageFingerprints.removeAllObjects()
             conversationFingerprints[accountId] = nil
             messageFingerprints[accountId] = nil
             messageHasEarlier[accountId] = nil
