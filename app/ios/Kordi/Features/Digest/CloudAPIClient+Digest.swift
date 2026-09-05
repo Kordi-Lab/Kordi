@@ -7,7 +7,7 @@ extension CloudAPIClient {
                        fallback: "Could not load the digest.")
     }
     func refreshDigest(token: String) async throws {
-        try await sendWithoutResponse(path: "/v1/cloud/digest/refresh", method: "POST", token: token, fallback: "Could not refresh the digest.")
+        try await sendWithoutResponse(path: "/v1/cloud/digest/refresh", method: "POST", token: token, query: [URLQueryItem(name: "locale", value: Locale.current.identifier(.bcp47)), URLQueryItem(name: "timezone", value: TimeZone.current.identifier)], fallback: "Could not refresh the digest.")
     }
     func digestCalendar(token: String) async throws -> DigestCalendarResponse {
         try await send(path: "/v1/cloud/calendar/events", method: "GET", token: token, fallback: "Could not load the calendar.")

@@ -26,7 +26,7 @@ struct DigestTaskEditor: View {
                 Picker("Owner", selection: $owner) {
                     Text("Unassigned").tag("")
                     Text("You").tag(accountId)
-                    ForEach(Dictionary(grouping: sources.filter { item.sourceIds.contains($0.id) }, by: \.senderAccountId).values.compactMap(\.first).filter { $0.senderAccountId != accountId }.sorted { $0.senderName < $1.senderName }) { source in Text(source.senderAccountId == accountId ? "You" : source.senderName).tag(source.senderAccountId) }
+                    ForEach(Dictionary(grouping: sources.filter { $0.isAgent != true && item.sourceIds.contains($0.id) }, by: \.senderAccountId).values.compactMap(\.first).filter { $0.senderAccountId != accountId }.sorted { $0.senderName < $1.senderName }) { source in Text(source.senderAccountId == accountId ? "You" : source.senderName).tag(source.senderAccountId) }
                 }
                 Toggle("Set a due date", isOn: $hasDue)
                 if hasDue { DatePicker("Due", selection: $due) }

@@ -50,6 +50,9 @@ final class DigestViewTests: XCTestCase {
         let event = DigestCalendarEvent(id: "event", title: "Planning", startAt: "2026-09-10T00:00:00Z", endAt: "2026-09-12T00:00:00Z", allDay: true)
         XCTAssertTrue(DigestDate.event(event, occursOn: day, calendar: calendar))
         XCTAssertFalse(DigestDate.event(event, occursOn: try XCTUnwrap(DigestDate.parse("2026-09-12T12:00:00Z")), calendar: calendar))
+        let singleDay = DigestCalendarEvent(id: "single", title: "Holiday", startAt: "2026-09-11T00:00:00Z", allDay: true)
+        XCTAssertTrue(DigestDate.event(singleDay, occursOn: day, calendar: calendar))
+        XCTAssertFalse(DigestDate.event(singleDay, occursOn: try XCTUnwrap(DigestDate.parse("2026-09-12T12:00:00Z")), calendar: calendar))
         let overnight = DigestCalendarEvent(id: "night", title: "Handoff", startAt: "2026-09-10T23:30:00Z", endAt: "2026-09-11T00:30:00Z")
         XCTAssertTrue(DigestDate.event(overnight, occursOn: day, calendar: calendar))
     }

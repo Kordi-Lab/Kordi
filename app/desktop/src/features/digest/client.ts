@@ -24,7 +24,7 @@ export const digestClient = {
     if (response.accountId !== accountId) throw new Error('Digest account did not match the signed-in account.');
     return response;
   },
-  refresh: (accountId: string) => request<void>(accountId, 'digest/refresh', 'POST'),
+  refresh: (accountId: string) => request<void>(accountId, `digest/refresh?${new URLSearchParams({ locale: navigator.language, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })}`, 'POST'),
   calendar: (accountId: string, signal?: AbortSignal) => request<{ events: CalendarEvent[] }>(accountId, 'calendar/events', 'GET', undefined, signal),
   saveEvent: (accountId: string, event: CalendarEvent) => request<CalendarEvent>(accountId, `calendar/events/${encodeURIComponent(event.id)}`, 'PUT', normalizeCalendarEvent(event)),
   removeEvent: (accountId: string, event: CalendarEvent) => request<void>(accountId, `calendar/events/${encodeURIComponent(event.id)}?revision=${event.revision}`, 'DELETE'),

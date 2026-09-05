@@ -56,14 +56,19 @@ async fn read(
     let pool = state.db_pool();
     let locale = prefs.locale.unwrap_or_else(|| "en".into());
     let timezone = prefs.timezone.unwrap_or_else(|| "UTC".into());
-    if locale.len() > 64 || timezone.len() > 100 {
+    if locale.is_empty() || timezone.is_empty() || locale.len() > 64 || timezone.len() > 100 {
         return error(
             "invalid_preferences",
             "Invalid locale or timezone.",
             StatusCode::BAD_REQUEST,
         );
     }
-    if query("INSERT INTO cloud_account_digests(account_id,locale,timezone) VALUES($1,$2,$3) ON CONFLICT(account_id) DO UPDATE SET locale=$2,timezone=$3").bind(&session.account_id).bind(locale).bind(timezone).execute(pool).await.is_err(){return failed();}
+    if store::initialize_preferences(pool, &session.account_id, &locale, &timezone)
+        .await
+        .is_err()
+    {
+        return failed();
+    }
     type Row = (
         Option<Value>,
         Value,
@@ -106,9 +111,25 @@ async fn read(
 async fn refresh(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
+    Query(prefs): Query<Preferences>,
 ) -> Response {
-    if query("UPDATE cloud_account_digests SET retry_after=now() WHERE account_id=$1")
-        .bind(&session.account_id)
+    if prefs
+        .locale
+        .as_ref()
+        .is_some_and(|v| v.is_empty() || v.len() > 64)
+        || prefs
+            .timezone
+            .as_ref()
+            .is_some_and(|v| v.is_empty() || v.len() > 100)
+    {
+        return error(
+            "invalid_preferences",
+            "Invalid locale or timezone.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    if query("UPDATE cloud_account_digests SET retry_after=now(),locale=COALESCE($2,locale),timezone=COALESCE($3,timezone) WHERE account_id=$1")
+        .bind(&session.account_id).bind(prefs.locale).bind(prefs.timezone)
         .execute(state.db_pool())
         .await
         .is_err()
@@ -132,7 +153,7 @@ async fn events(
         Err(_) => failed(),
     }
 }
-async fn save_event(
+pub(super) async fn save_event(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Path(id): Path<String>,
@@ -158,12 +179,45 @@ async fn save_event(
             StatusCode::FORBIDDEN,
         );
     }
+    let mut tx = match state.db_pool().begin().await {
+        Ok(tx) => tx,
+        Err(_) => return failed(),
+    };
+    if query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!("digest-calendar:{}", session.account_id))
+        .execute(&mut *tx)
+        .await
+        .is_err()
+    {
+        return failed();
+    }
+    if event.revision == 0 {
+        let count: Result<(i64,), _> =
+            query_as("SELECT COUNT(*) FROM cloud_calendar_events WHERE account_id=$1")
+                .bind(&session.account_id)
+                .fetch_one(&mut *tx)
+                .await;
+        match count {
+            Ok((count,)) if count >= 1000 => {
+                return error(
+                    "calendar_full",
+                    "Your Kordi calendar has 1,000 events. Remove older events before adding more.",
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                )
+            }
+            Err(_) => return failed(),
+            _ => {}
+        }
+    }
     let row:Result<Option<(Value,i64)>,_>=query_as("INSERT INTO cloud_calendar_events(account_id,event_id,payload) SELECT $1,$2,$3 WHERE $4=0 ON CONFLICT(account_id,event_id) DO UPDATE SET payload=$3,revision=cloud_calendar_events.revision+1,updated_at=now() WHERE cloud_calendar_events.revision=$4 RETURNING payload,revision")
-        .bind(&session.account_id).bind(&id).bind(serde_json::to_value(&event).unwrap()).bind(event.revision).fetch_optional(state.db_pool()).await;
+        .bind(&session.account_id).bind(&id).bind(serde_json::to_value(&event).unwrap()).bind(event.revision).fetch_optional(&mut *tx).await;
     // Existing rows with an expected revision use an explicit update.
-    let row=match row {Ok(None) if event.revision>0=>query_as("UPDATE cloud_calendar_events SET payload=$3,revision=revision+1,updated_at=now() WHERE account_id=$1 AND event_id=$2 AND revision=$4 RETURNING payload,revision").bind(&session.account_id).bind(&id).bind(serde_json::to_value(&event).unwrap()).bind(event.revision).fetch_optional(state.db_pool()).await,other=>other};
+    let row=match row {Ok(None) if event.revision>0=>query_as("UPDATE cloud_calendar_events SET payload=$3,revision=revision+1,updated_at=now() WHERE account_id=$1 AND event_id=$2 AND revision=$4 RETURNING payload,revision").bind(&session.account_id).bind(&id).bind(serde_json::to_value(&event).unwrap()).bind(event.revision).fetch_optional(&mut *tx).await,other=>other};
     match row {
         Ok(Some((mut value, revision))) => {
+            if tx.commit().await.is_err() {
+                return failed();
+            }
             value["revision"] = json!(revision);
             Json(value).into_response()
         }
@@ -278,10 +332,9 @@ async fn task(
     }
     if request.owner_account_id.as_ref().is_some_and(|owner| {
         owner != &session.account_id
-            && !input
-                .sources
-                .iter()
-                .any(|s| &s.sender_account_id == owner && item.source_ids.contains(&s.id))
+            && !input.sources.iter().any(|s| {
+                !s.is_agent && &s.sender_account_id == owner && item.source_ids.contains(&s.id)
+            })
     }) {
         return error(
             "invalid_owner",

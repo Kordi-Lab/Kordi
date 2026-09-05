@@ -78,9 +78,9 @@ async fn source_page(
     ids: Option<&[String]>,
 ) -> Result<(Vec<Source>, bool)> {
     let suffix = if ids.is_some() {
-        " AND m.message_id::text=ANY($2) ORDER BY m.created_at DESC LIMIT 700"
+        " AND m.message_id::text=ANY($2) ORDER BY m.created_at DESC,m.message_id DESC LIMIT 700"
     } else {
-        " AND (m.generation_status IS NULL OR m.generation_status IN ('complete','completed')) ORDER BY m.created_at DESC LIMIT 501"
+        " AND (m.generation_status IS NULL OR m.generation_status IN ('complete','completed')) ORDER BY m.created_at DESC,m.message_id DESC LIMIT 501"
     };
     let sql=format!("SELECT m.message_id::text,c.conversation_id::text,COALESCE(c.legacy_session_id,c.conversation_id::text),COALESCE(member.personal_title,c.shared_title,c.group_title,'Conversation'),m.sender_account_id,COALESCE(sender.display_name,'Contact'),m.content,m.created_at,m.version,m.message_kind{SOURCE_FROM}{suffix}");
     type Row = (
@@ -138,8 +138,19 @@ pub async fn authorized(pool: &PgPool, account: &str, ids: &[String]) -> Result<
     Ok(ids.iter().all(|id| found.iter().any(|s| &s.id == id)))
 }
 
+pub async fn initialize_preferences(
+    pool: &PgPool,
+    account: &str,
+    locale: &str,
+    timezone: &str,
+) -> Result<()> {
+    query("INSERT INTO cloud_account_digests(account_id,locale,timezone) VALUES($1,$2,$3) ON CONFLICT(account_id) DO NOTHING")
+        .bind(account).bind(locale).bind(timezone).execute(pool).await?;
+    Ok(())
+}
+
 pub async fn calendar(pool: &PgPool, account: &str) -> Result<Vec<CalendarEvent>> {
-    let rows:Vec<(Value,i64)>=query_as("SELECT payload,revision FROM cloud_calendar_events WHERE account_id=$1 ORDER BY payload->>'startAt' LIMIT 1000").bind(account).fetch_all(pool).await?;
+    let rows:Vec<(Value,i64)>=query_as("SELECT payload,revision FROM cloud_calendar_events WHERE account_id=$1 ORDER BY (payload->>'startAt')::timestamptz,event_id LIMIT 1000").bind(account).fetch_all(pool).await?;
     let mut events = Vec::new();
     for (value, revision) in rows {
         if let Ok(mut event) = serde_json::from_value::<CalendarEvent>(value) {
@@ -254,22 +265,68 @@ pub async fn input(
     })
 }
 
+pub(super) fn retain_previous_evidence(
+    previous: &mut Output,
+    saved: &[Source],
+    current: &[Source],
+) {
+    let versions: HashMap<_, _> = current
+        .iter()
+        .map(|source| (source.id.as_str(), source.version))
+        .collect();
+    let unchanged: BTreeSet<_> = saved
+        .iter()
+        .filter(|source| versions.get(source.id.as_str()) == Some(&source.version))
+        .map(|source| source.id.as_str())
+        .collect();
+    for items in [
+        &mut previous.claims,
+        &mut previous.commitments,
+        &mut previous.suggestions,
+        &mut previous.calendar_candidates,
+    ] {
+        items.retain(|item| {
+            item.source_ids
+                .iter()
+                .all(|id| unchanged.contains(id.as_str()))
+        });
+    }
+}
+
 fn input_hash(input: &Input) -> String {
     let value = json!({"version":1,"sources":input.sources,"events":input.calendar_events,"tasks":input.existing_tasks,"locale":input.locale,"timezone":input.timezone,"dueReminders":input.calendar_events.iter().filter(|e|e.reminder_at.as_ref().and_then(|d|chrono::DateTime::parse_from_rfc3339(d).ok()).is_some_and(|d|d<=Utc::now())).map(|e|&e.id).collect::<Vec<_>>()});
     hex::encode(Sha256::digest(value.to_string().as_bytes()))
 }
 
 pub async fn refresh(pool: &PgPool, account: &str, force: bool) -> Result<()> {
-    type DigestState = (String, String, String, Option<Value>, Option<String>);
-    let row:Option<DigestState>=query_as("SELECT locale,timezone,input_hash,snapshot_json,active_run_id FROM cloud_account_digests WHERE account_id=$1 AND retry_after<=now()").bind(account).fetch_optional(pool).await?;
-    let Some((locale, timezone, old_hash, snapshot, active)) = row else {
+    type DigestState = (
+        String,
+        String,
+        String,
+        Option<Value>,
+        Option<String>,
+        Option<Value>,
+    );
+    let row:Option<DigestState>=query_as("SELECT locale,timezone,input_hash,snapshot_json,active_run_id,snapshot_input_json FROM cloud_account_digests WHERE account_id=$1 AND retry_after<=now()").bind(account).fetch_optional(pool).await?;
+    let Some((locale, timezone, old_hash, snapshot, active, saved_input)) = row else {
         return Ok(());
     };
     if active.is_some() {
         return Ok(());
     }
     let previous = snapshot.and_then(|v| serde_json::from_value(v).ok());
-    let input = input(pool, account, &locale, &timezone, previous).await?;
+    let mut input = input(pool, account, &locale, &timezone, previous).await?;
+    if let Some(previous) = &mut input.previous {
+        let saved = saved_input.and_then(|value| serde_json::from_value::<Input>(value).ok());
+        retain_previous_evidence(
+            previous,
+            saved
+                .as_ref()
+                .map(|input| input.sources.as_slice())
+                .unwrap_or(&[]),
+            &input.sources,
+        );
+    }
     let hash = input_hash(&input);
     if hash == old_hash && !force {
         return Ok(());

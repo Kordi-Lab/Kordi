@@ -102,7 +102,9 @@ enum DigestDate {
     static func event(_ event: DigestCalendarEvent, occursOn date: Date, calendar: Calendar = .current) -> Bool {
         if event.allDay {
             let day = key(date, calendar: calendar)
-            return day >= String(event.startAt.prefix(10)) && day < String((event.endAt ?? "").prefix(10))
+            let start = String(event.startAt.prefix(10))
+            guard let end = event.endAt else { return day == start }
+            return day >= start && day < String(end.prefix(10))
         }
         guard let start = parse(event.startAt) else { return false }
         let end = parse(event.endAt) ?? start.addingTimeInterval(1)

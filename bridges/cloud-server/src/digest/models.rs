@@ -106,7 +106,9 @@ pub fn validate_output(output: &Output, input: &Input) -> Result<(), &'static st
             || item.owner_account_id.as_deref().is_some_and(|id| {
                 id != input.viewer_account_id
                     && !input.sources.iter().any(|source| {
-                        source.sender_account_id == id && item.source_ids.contains(&source.id)
+                        !source.is_agent
+                            && source.sender_account_id == id
+                            && item.source_ids.contains(&source.id)
                     })
             })
         {
@@ -128,7 +130,8 @@ pub fn validate_output(output: &Output, input: &Input) -> Result<(), &'static st
 }
 
 pub fn validate_event(event: &CalendarEvent) -> Result<(), &'static str> {
-    if event.id.is_empty()
+    if event.revision < 0
+        || event.id.is_empty()
         || event.id.len() > 300
         || event.title.trim().is_empty()
         || event.title.len() > 500

@@ -11,6 +11,7 @@ struct FakeClient {
     run: Arc<Mutex<Option<CloudAgentRun>>>,
     calls: Arc<Mutex<Vec<String>>>,
     fail_provider_auth_fetch: bool,
+    stall_renewal: bool,
     last_lease: Arc<Mutex<Option<tokio::time::Instant>>>,
 }
 
@@ -36,6 +37,7 @@ impl FakeClient {
             run: Arc::new(Mutex::new(Some(run))),
             calls: Arc::new(Mutex::new(Vec::new())),
             fail_provider_auth_fetch: false,
+            stall_renewal: false,
             last_lease: Arc::new(Mutex::new(None)),
         }
     }
@@ -54,6 +56,10 @@ impl CloudAgentRunClient for FakeClient {
 
     async fn mark_running(&self, run_id: &str) -> Result<(), RunnerClientError> {
         self.calls.lock().unwrap().push(format!("running:{run_id}"));
+        let renewing = self.last_lease.lock().unwrap().is_some();
+        if self.stall_renewal && renewing {
+            std::future::pending::<()>().await;
+        }
         *self.last_lease.lock().unwrap() = Some(tokio::time::Instant::now());
         Ok(())
     }
@@ -420,12 +426,15 @@ async fn long_digest_renews_its_lease_and_has_a_wall_clock_limit() {
             Ok(ModelProviderResponse::FinalText("digest fixture".into()))
         }
     }
-    for (seconds, completes) in [(125, true), (601, false)] {
-        let client = FakeClient::with_run(CloudAgentRun {
+    for (seconds, completes, stall_renewal) in
+        [(125, true, false), (601, false, false), (601, false, true)]
+    {
+        let mut client = FakeClient::with_run(CloudAgentRun {
             prompt: serde_json::json!({"sources":[]}).to_string(),
             sandbox_id: None,
             ..leased_run("digest_slow", true)
         });
+        client.stall_renewal = stall_renewal;
         let started = tokio::time::Instant::now();
         let result =
             process_one_run_with_provider(&client, &DelayedProvider(seconds), temp_sandbox())
@@ -442,7 +451,7 @@ async fn long_digest_renews_its_lease_and_has_a_wall_clock_limit() {
                 .iter()
                 .filter(|call| call.as_str() == "running:digest_slow")
                 .count()
-                >= 4
+                >= if stall_renewal { 2 } else { 4 }
         );
         if !completes {
             assert!(client

@@ -150,17 +150,20 @@ where
             };
             // Keep the existing lease alive while the read-only model is working.
             // mark_running also revalidates source access on the server.
-            let generation = tokio::time::timeout(std::time::Duration::from_secs(600), generation);
             tokio::pin!(generation);
             let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(40));
             heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             heartbeat.tick().await;
-            loop {
-                tokio::select! {
-                    result = &mut generation => break result.unwrap_or(Err(())),
-                    _ = heartbeat.tick() => client.mark_running(&run.run_id).await?,
+            tokio::time::timeout(std::time::Duration::from_secs(600), async {
+                loop {
+                    tokio::select! {
+                        result = &mut generation => break Ok::<_, RunnerClientError>(result),
+                        _ = heartbeat.tick() => client.mark_running(&run.run_id).await?,
+                    }
                 }
-            }
+            })
+            .await
+            .unwrap_or(Ok(Err(())))?
         };
         return match response {
             Ok(text) => {
