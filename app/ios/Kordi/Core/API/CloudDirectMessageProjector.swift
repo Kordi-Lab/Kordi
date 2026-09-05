@@ -25,6 +25,9 @@ enum CloudDirectMessageProjector {
                 return (message.messageId, parseCloudDate(message.createdAt))
             }
         )
+        let requestTargetsById = Dictionary(uniqueKeysWithValues: sorted.compactMap { message in
+            CloudMessageCodec.directEnvelope(message.body).map { (message.messageId, $0) }
+        })
         var result: [ChatMessage] = []
 
         for wire in sorted {
@@ -52,7 +55,8 @@ enum CloudDirectMessageProjector {
                 conversation: conversation,
                 ownAccountId: ownAccountId,
                 createdAt: anchoredCreatedAt,
-                ownerExecution: ownerExecution
+                ownerExecution: ownerExecution,
+                agentTarget: responseRequestId.flatMap { requestTargetsById[$0] }
             ))
 
             guard let cancel = cancellations[wire.messageId],
@@ -73,8 +77,10 @@ enum CloudDirectMessageProjector {
                 conversationId: conversation.id,
                 conversationSequence: cancel.conversationSequence,
                 author: .agent,
-                authorName: conversation.agentDisplayName?.nonEmpty ?? "Kordi",
-                senderOwnerName: conversation.ownerDisplayName?.nonEmpty,
+                authorName: requestTargetsById[wire.messageId]?.targetCloudAgentName?.nonEmpty
+                    ?? conversation.agentDisplayName?.nonEmpty ?? "Kordi",
+                senderOwnerName: requestTargetsById[wire.messageId]?.targetCloudAgentOwnerName?.nonEmpty
+                    ?? conversation.ownerDisplayName?.nonEmpty,
                 text: "Request canceled by \(cancelledBy).",
                 createdAt: parseCloudDate(cancel.createdAt),
                 deliveryState: .cancelled,
@@ -95,7 +101,8 @@ enum CloudDirectMessageProjector {
         conversation: ConversationSummary,
         ownAccountId: String,
         createdAt: Date? = nil,
-        ownerExecution: AgentExecutionSnapshot? = nil
+        ownerExecution: AgentExecutionSnapshot? = nil,
+        agentTarget: CloudMessageCodec.DirectEnvelope? = nil
     ) -> ChatMessage {
         let isAgentResponse = CloudMessageCodec.isAgentResponse(message.body)
         let responseRequestId = isAgentResponse ? CloudMessageCodec.agentResponseRequestId(message.body) : nil
@@ -107,11 +114,18 @@ enum CloudDirectMessageProjector {
             ? readerIds.compactMap(\.nonEmpty).filter { $0 != ownAccountId }
             : []
         let authorName: String
+        let verifiedTarget = agentTarget?.targetCloudAgentOwnerAccountId == message.fromAccountId ? agentTarget : nil
+        let agentOwnerName = verifiedTarget?.targetCloudAgentOwnerName?.nonEmpty
+            ?? (message.fromAccountId == conversation.peerAccountId ? conversation.ownerDisplayName?.nonEmpty : nil)
         switch author {
         case .me:
             authorName = "You"
         case .agent:
-            authorName = conversation.agentDisplayName?.nonEmpty ?? "Kordi"
+            let name = verifiedTarget?.targetCloudAgentName?.nonEmpty ?? conversation.agentDisplayName?.nonEmpty ?? "Kordi"
+            authorName = CanonicalAvatarSystem.agentID(
+                verifiedTarget?.targetCloudAgentId ?? conversation.agentId, ownerAccountID: message.fromAccountId
+            ) == "cloud-agent:\(message.fromAccountId)"
+                ? CloudDefaultAgentProfile.displayName(name, ownerName: agentOwnerName) : name
         case .person:
             authorName = conversation.ownerDisplayName?.nonEmpty ?? conversation.displayName
         }
@@ -128,7 +142,7 @@ enum CloudDirectMessageProjector {
             conversationSequence: message.conversationSequence,
             author: author,
             authorName: authorName,
-            senderOwnerName: author == .agent ? conversation.ownerDisplayName?.nonEmpty : nil,
+            senderOwnerName: author == .agent ? agentOwnerName : nil,
             text: CloudMessageCodec.displayText(message.body),
             createdAt: createdAt ?? parseCloudDate(message.createdAt),
             editedAt: message.editedAt.map(parseCloudDate),

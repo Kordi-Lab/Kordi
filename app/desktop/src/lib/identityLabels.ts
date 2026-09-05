@@ -37,6 +37,13 @@ export function selfObjectLabel(value?: string | null, isSelf = false) {
   return label;
 }
 
+export function defaultAgentDisplayName(ownerName?: string | null, value?: string | null) {
+  const name = cleanLabel(value);
+  const owner = cleanLabel(ownerName);
+  if (name && !/^(?:my\s+)?kordi$/iu.test(name)) return name;
+  return owner ? `${owner}'s Kordi` : 'Kordi';
+}
+
 export function stripSelfPossessivePrefix(value?: string | null, ownerName?: string | null) {
   let label = cleanLabel(value);
   if (!label) return label;

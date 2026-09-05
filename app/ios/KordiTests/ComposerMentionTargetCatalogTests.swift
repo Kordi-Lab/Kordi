@@ -1,5 +1,64 @@
 import XCTest
+import Testing
 @testable import Kordi
+
+@Test
+func ownerScopedDefaultAgentNamesKeepStableIdentity() throws {
+    let account = CloudAccount(
+        accountId: "acct_me", kordiId: nil, displayName: "Test 111", primaryEmail: nil,
+        avatarUrl: nil, avatar: mentionTestAvatar(entityId: "acct_me"), nodeId: nil, passwordSet: true
+    )
+    let conversation = ConversationSummary(
+        id: "contact", kind: .person, peerAccountId: "acct_peer", agentId: nil,
+        ownerDisplayName: nil, displayName: "Test 222", lastMessage: "",
+        lastActivityAt: Date(timeIntervalSince1970: 0), unreadCount: 0,
+        avatarSource: nil, agentActivity: nil, sessionId: "session:contact"
+    )
+    let contact = CloudContact(accountId: "acct_peer", kordiId: nil,
+        displayName: "Test 222", avatarUrl: nil, nodeId: nil, createdAt: "2026-09-01T00:00:00Z")
+    let targets = ComposerMentionTargetCatalog.targets(
+        account: account, conversation: conversation, ownedAgents: [], sharedAgents: [], contacts: [contact]
+    )
+    let target = try #require(targets.first { $0.agentId == "cloud-agent:acct_me" })
+    #expect(target.displayName == "Test 111's Kordi")
+    #expect(target.mentionText == "@KordiTest111")
+    #expect(targets.first { $0.agentId == "cloud-agent:acct_peer" }?.mentionText == "@KordiTest222")
+    let renamed = ComposerMentionTarget(id: target.id, displayName: "Review & Plan", kind: .agent,
+        accountId: target.accountId, agentId: target.agentId, ownerName: target.ownerName, avatarSource: nil)
+    #expect(renamed.mentionText == "@ReviewPlanTest111")
+    let message = "\(renamed.mentionText) reply once"
+    let mention = try #require(ComposerMentionTargetCatalog.mentions(
+        in: message, selectedTarget: renamed, targets: [renamed]
+    ).first)
+    #expect(mention.agentId == target.agentId && mention.targetIdentityId == target.id)
+    #expect(ComposerMentionTargetCatalog.resolvedTarget(
+        in: message, selectedTarget: renamed, targets: [renamed]
+    )?.agentId == target.agentId)
+    #expect(ComposerMentionTargetCatalog.mentions(
+        in: "\(target.mentionText) reply once", selectedTarget: target, targets: [renamed]
+    ).first?.agentId == target.agentId)
+    let punctuatedOwner = ComposerMentionTarget(id: target.id, displayName: "O'Neil 🦀's Kordi",
+        kind: .agent, accountId: target.accountId, agentId: target.agentId,
+        ownerName: "O'Neil 🦀", avatarSource: nil)
+    #expect(punctuatedOwner.mentionText == "@KordiONeil")
+    #expect(CloudDefaultAgentProfile.displayName("Scout", ownerName: "Peer") == "Scout")
+}
+
+@Test
+func compactMentionCollisionsRequireExplicitIdentity() {
+    let first = ComposerMentionTarget(id: "agent:first", displayName: "A-B", kind: .agent,
+        accountId: "acct_owner", agentId: "first", ownerName: "Owner", avatarSource: nil)
+    let second = ComposerMentionTarget(id: "agent:second", displayName: "AB", kind: .agent,
+        accountId: "acct_owner", agentId: "second", ownerName: "Owner", avatarSource: nil)
+    let targets = [first, second]
+    let text = "\(first.mentionText) reply once"
+    #expect(first.mentionText == second.mentionText)
+    #expect(ComposerMentionTargetCatalog.resolvedTarget(in: text, selectedTarget: nil, targets: targets) == nil)
+    #expect(ComposerMentionTargetCatalog.mentions(in: text, selectedTarget: nil, targets: targets).isEmpty)
+    #expect(ComposerMentionTargetCatalog.resolvedTarget(in: text, selectedTarget: second, targets: targets)?.id == second.id)
+    #expect(ComposerMentionTargetCatalog.mentions(in: text, selectedTarget: second, targets: targets).first?.agentId == second.agentId)
+    #expect(ComposerMentionTargetCatalog.resolvedTarget(in: "\(first.mentionText)Suffix", selectedTarget: first, targets: targets) == nil)
+}
 
 final class ComposerMentionTargetCatalogTests: XCTestCase {
     private let account = CloudAccount(
@@ -141,7 +200,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         let target = try XCTUnwrap(targets.first { $0.agentId == "cloud-agent:acct_peer" })
 
         XCTAssertEqual(target.displayName, "BabyTREE")
-        XCTAssertEqual(target.mentionText, "@BabyTREE")
+        XCTAssertEqual(target.mentionText, "@BabyTREEPeer")
         XCTAssertEqual(target.avatarSource, "https://example.com/babytree.jpg")
     }
 
@@ -222,14 +281,14 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         let selected = try XCTUnwrap(agents.first { $0.agentId == "agent_two" })
         XCTAssertEqual(
             ComposerMentionTargetCatalog.resolvedTarget(
-                in: "@Research check this",
+                in: "\(selected.mentionText) check this",
                 selectedTarget: selected,
                 targets: targets
             )?.agentId,
             "agent_two"
         )
         XCTAssertNil(ComposerMentionTargetCatalog.resolvedTarget(
-            in: "@Research check this",
+            in: "\(selected.mentionText) check this",
             selectedTarget: selected,
             targets: targets.filter { $0.id != selected.id }
         ))
@@ -247,7 +306,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
         )
 
         let segments = ComposerMentionTargetCatalog.highlightedSegments(
-            in: "Email test@example.com. @Shutestbeta1 ask @Project Driver.",
+            in: "Email test@example.com. @Shutestbeta1 ask \(agentTarget.mentionText).",
             targets: [agentTarget]
         )
 
@@ -255,7 +314,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             segments.filter { $0.kind != nil },
             [
                 ComposerMentionTextSegment(text: "@Shutestbeta1", kind: .person),
-                ComposerMentionTextSegment(text: "@Project Driver", kind: .agent),
+                ComposerMentionTextSegment(text: agentTarget.mentionText, kind: .agent),
             ]
         )
         XCTAssertFalse(segments.contains { $0.text == "@example.com" && $0.kind != nil })
@@ -316,7 +375,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
             ownerName: "Alex Smith",
             avatarSource: nil
         )
-        let text = "🧭 Ask @Alex Smith and @مشروع 🧭 Kordi, then @Alex Smith."
+        let text = "🧭 Ask \(person.mentionText) and \(agent.mentionText), then \(person.mentionText)."
         let mentions = ComposerMentionTargetCatalog.mentions(
             in: text,
             selectedTarget: agent,
@@ -493,7 +552,7 @@ final class ComposerMentionTargetCatalogTests: XCTestCase {
 
         XCTAssertEqual(
             ComposerMentionTargetCatalog.mentions(
-                in: "@Research check this",
+                in: "\(second.mentionText) check this",
                 selectedTarget: second,
                 targets: [first, second]
             ).map(\.targetIdentityId),

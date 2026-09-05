@@ -156,6 +156,15 @@ struct CloudDefaultAgentProfile: Codable, Hashable {
     let displayName: String
     let avatarUrl: String?
     let avatar: CanonicalAvatarDescriptor
+
+    static func displayName(_ value: String?, ownerName: String?) -> String {
+        let name = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !name.isEmpty, name.range(of: #"^(?:my\s+)?kordi$"#, options: [.regularExpression, .caseInsensitive]) == nil {
+            return name
+        }
+        guard let owner = ownerName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty else { return "Kordi" }
+        return "\(owner)'s Kordi"
+    }
 }
 
 struct CloudAccount: Codable, Hashable {

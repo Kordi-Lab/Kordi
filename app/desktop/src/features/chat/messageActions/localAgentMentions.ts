@@ -1,6 +1,6 @@
 import { defaultCloudAgentId } from '@/features/cloud/cloudAgentIdentity';
 import type { DesktopCollaborationState, DesktopChatState } from '@/kordi-app/types';
-import { possessiveScopedLabel, publicScopedAgentMentionHandle, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
+import { defaultAgentDisplayName, possessiveScopedLabel, publicScopedAgentMentionHandle, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 
 import { mentionHandleForLabel, normalizeMentionLabel } from './mentionHandles';
 
@@ -25,6 +25,7 @@ export function localCollaborationAgentLabels(collaborationState: DesktopCollabo
   const agentLabel = activeAgent?.label?.trim();
   return [
     agentLabel,
+    publicScopedAgentMentionHandle(ownerName, agentLabel),
     scopedAgentLabel(ownerName, 'Kordi', true),
     scopedAgentLabel(ownerName, agentLabel || 'Kordi', true),
     scopedAgentLabel(ownerName, 'Kordi'),
@@ -79,8 +80,10 @@ export function resolveMentionedLocalAgentTarget(
   const { activeHost, activeAgent } = activeCollaborationHostAndAgent(collaborationState);
   const ownerAccountId = activeHost?.humanId?.trim() || activeHost?.nodeId?.trim();
   if (!activeHost || !activeAgent || !ownerAccountId) return null;
-  const displayLabel = state?.localAgent?.label?.trim() || activeAgent.label?.trim() || 'Kordi';
-  const label = mentionHandleForLabel(displayLabel, activeAgent.id || ownerAccountId);
+  const name = state?.localAgent?.label?.trim() || activeAgent.label?.trim() || 'Kordi';
+  const displayLabel = activeAgent.isDefault ? defaultAgentDisplayName(activeHost.ownerName, name) : name;
+  const label = activeAgent.isDefault ? publicScopedAgentMentionHandle(activeHost.ownerName, displayLabel)
+    : mentionHandleForLabel(displayLabel, activeAgent.id || ownerAccountId);
   const peer = {
     endpoint: activeHost.endpoint,
     nodeId: activeAgent.nodeId?.trim() || ownerAccountId,

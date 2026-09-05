@@ -873,7 +873,28 @@ struct ComposerMentionTarget: Identifiable, Hashable {
     let ownerName: String?
     let avatarSource: String?
 
-    var mentionText: String { kind == .all ? "@all" : "@\(displayName)" }
+    var mentionText: String {
+        if kind == .all { return "@all" }
+        var name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if kind == .agent {
+            if let owner = ownerName?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+                for apostrophe in ["'", "’"] {
+                    let prefix = "\(owner)\(apostrophe)s "
+                    if name.range(of: prefix, options: [.anchored, .caseInsensitive]) != nil {
+                        name = String(name.dropFirst(prefix.count))
+                        break
+                    }
+                }
+            }
+            name = name.replacingOccurrences(of: #"^(?:my|your)\s+|^[^'’]+['’]s\s+"#,
+                                             with: "", options: [.regularExpression, .caseInsensitive])
+            name += ownerName ?? ""
+        }
+        let handle = String(String.UnicodeScalarView(name.precomposedStringWithCompatibilityMapping.unicodeScalars.filter {
+            CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0)
+        }))
+        return "@\(String((handle.nonEmpty ?? "Participant").prefix(64)))"
+    }
 }
 
 enum ChatCallActivityEvent: String, Codable, Hashable {

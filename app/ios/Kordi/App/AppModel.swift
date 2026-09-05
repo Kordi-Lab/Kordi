@@ -5078,6 +5078,11 @@ final class AppModel: ObservableObject {
                     ownAccountId: ownAccountId
                 )
                 : nil
+            let ownerName = payload.senderOwnerName?.nonEmpty ?? participantNames[payload.senderAccountId]
+            let agentName = CanonicalAvatarSystem.agentID(payload.senderAgentId, ownerAccountID: payload.senderAccountId)
+                == "cloud-agent:\(payload.senderAccountId)"
+                ? CloudDefaultAgentProfile.displayName(payload.senderDisplayName, ownerName: ownerName)
+                : payload.senderDisplayName?.nonEmpty ?? "Kordi"
             return ChatMessage(
                 id: messageId,
                 clientMessageId: wire.clientMessageId,
@@ -5086,8 +5091,8 @@ final class AppModel: ObservableObject {
                 author: author,
                 authorName: author == .me
                     ? "You"
-                    : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
-                senderOwnerName: author == .agent ? payload.senderOwnerName?.nonEmpty : nil,
+                    : author == .agent ? agentName : payload.senderDisplayName?.nonEmpty ?? participantNames[payload.senderAccountId] ?? "Participant",
+                senderOwnerName: author == .agent ? ownerName : nil,
                 text: payload.text,
                 createdAt: Date(
                     timeIntervalSince1970: (

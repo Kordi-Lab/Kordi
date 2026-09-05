@@ -545,13 +545,16 @@ enum CloudConversationCatalog {
                 ? account.defaultAgent
                 : contactsById[peerAccountId]?.defaultAgent
             let resolvedTargetId = targetId ?? defaultAgent?.agentId
-            let agentName = requests.compactMap { $0.1.targetCloudAgentName?.nonEmpty }.last
+            var agentName = requests.compactMap { $0.1.targetCloudAgentName?.nonEmpty }.last
                 ?? definition?.name
                 ?? defaultAgent?.displayName
                 ?? "Kordi"
             guard !KordiSupportIdentity.matches(name: agentName, seed: resolvedTargetId) else { return nil }
             let ownerName = requests.compactMap { $0.1.targetCloudAgentOwnerName?.nonEmpty }.last
                 ?? (peerAccountId == account.accountId ? account.preferredName : contactsById[peerAccountId]?.preferredName)
+            if CanonicalAvatarSystem.agentID(resolvedTargetId, ownerAccountID: peerAccountId) == "cloud-agent:\(peerAccountId)" {
+                agentName = CloudDefaultAgentProfile.displayName(agentName, ownerName: ownerName)
+            }
             let firstPrompt = conversationalRows.first(where: { !CloudMessageCodec.isAgentResponse($0.body) })
                 .map { CloudMessageCodec.displayText($0.body) }
             let latest = conversationalRows.last
@@ -680,7 +683,7 @@ enum CloudConversationCatalog {
             let memberAgentName = otherMember?.defaultAgentDisplayName?.nonEmpty
             let memberAgentId = otherMember?.defaultAgentId?.nonEmpty
             let resolvedTargetId = targetId ?? defaultAgent?.agentId ?? memberAgentId
-            let agentName = requests.compactMap { $0.targetCloudAgentName?.nonEmpty }.last
+            var agentName = requests.compactMap { $0.targetCloudAgentName?.nonEmpty }.last
                 ?? definition?.name
                 ?? defaultAgent?.displayName
                 ?? memberAgentName
@@ -690,6 +693,9 @@ enum CloudConversationCatalog {
                 ?? (peerAccountId == account.accountId
                     ? account.preferredName
                     : contactsById[peerAccountId]?.preferredName ?? otherMember?.displayName)
+            if CanonicalAvatarSystem.agentID(resolvedTargetId, ownerAccountID: peerAccountId) == "cloud-agent:\(peerAccountId)" {
+                agentName = CloudDefaultAgentProfile.displayName(agentName, ownerName: ownerName)
+            }
             let firstPrompt = conversationalRows.first(where: { !CloudMessageCodec.isAgentResponse($0.body) })
                 .map { CloudMessageCodec.displayText($0.body) }
             let latest = conversationalRows.last
@@ -787,7 +793,7 @@ enum CloudConversationCatalog {
 
     private static func defaultAgentConversation(account: CloudAccount, now: Date) -> ConversationSummary {
         let sessionId = defaultSelfAgentSessionId(account.accountId)
-        let agentName = account.defaultAgent?.displayName.nonEmpty ?? "Kordi"
+        let agentName = CloudDefaultAgentProfile.displayName(account.defaultAgent?.displayName, ownerName: account.preferredName)
         return ConversationSummary(
             id: "agent-template:\(sessionId)",
             kind: .agent,
