@@ -1,7 +1,129 @@
 import ImageIO
 import UIKit
 import XCTest
+import SwiftUI
 @testable import Kordi
+
+@MainActor
+private final class HistoryNavigationProbe: ObservableObject {
+    @Published var isPresented = false
+}
+
+private struct HistoryNavigationProbeView: View {
+    @ObservedObject var navigation: HistoryNavigationProbe
+    let model: AppModel
+    let calls: KordiCallCoordinator
+    let conversation: ConversationSummary
+
+    var body: some View {
+        NavigationStack {
+            Text("Conversations")
+                .navigationDestination(isPresented: $navigation.isPresented) {
+                    ConversationView(conversation: conversation)
+                }
+        }
+        .environmentObject(model)
+        .environmentObject(calls)
+        .preferredColorScheme(.light)
+    }
+}
+
+@MainActor
+final class CachedAgentHistoryViewportTests: XCTestCase {
+    func testCachedAgentHistoryRendersAfterRepeatedEntry() async throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(
+            id: "agent-session:viewport-test", kind: .agent, peerAccountId: accountID,
+            agentId: "viewport-agent", ownerDisplayName: "Tester", displayName: "Completed history",
+            lastMessage: "Completed", lastActivityAt: Date(), unreadCount: 0,
+            avatarSource: nil, agentActivity: .ready, sessionId: "viewport-test"
+        )
+        var messages = (0..<13).map { index in
+            ChatMessage(
+                id: "message-\(index)", conversationId: conversation.id,
+                author: index.isMultiple(of: 2) ? .me : .agent, authorName: "Tester",
+                text: index.isMultiple(of: 2) ? "Request \(index)" : "## Completed report \(index)\n\n" + String(repeating: "This paragraph describes the completed analysis and its supporting details.\n\n", count: 25),
+                createdAt: Date(timeIntervalSince1970: Double(1_000 + index)),
+                deliveryState: .read, errorMessage: nil, requestMessageId: nil
+            )
+        }
+        if let fixturePath = ProcessInfo.processInfo.environment["KORDI_VIEWPORT_FIXTURE"] {
+            messages = try JSONDecoder().decode([ChatMessage].self, from: Data(contentsOf: URL(fileURLWithPath: fixturePath)))
+        }
+        store.saveMessages(messages, conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        let calls = KordiCallCoordinator()
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 440, height: 956))
+        window.windowScene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        window.overrideUserInterfaceStyle = .light
+        defer { window.isHidden = true; window.rootViewController = nil }
+        let navigation = HistoryNavigationProbe()
+        let controller = UIHostingController(rootView: HistoryNavigationProbeView(
+            navigation: navigation, model: model, calls: calls, conversation: conversation
+        ))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        controller.view.frame = window.bounds
+        controller.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        for entry in 0..<5 {
+            navigation.isPresented = true
+            try await Task.sleep(for: .seconds(2))
+            controller.view.layoutIfNeeded()
+            XCTAssertEqual(model.messages(for: conversation).count, messages.count)
+
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let renderer = UIGraphicsImageRenderer(bounds: window.bounds, format: format)
+            _ = renderer.image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+            try await Task.sleep(for: .milliseconds(150))
+            var didDraw = false
+            let image = renderer.image { _ in
+                didDraw = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            XCTAssertTrue(didDraw)
+            let cgImage = try XCTUnwrap(image.cgImage)
+            var pixels = [UInt8](repeating: 0, count: cgImage.width * cgImage.height * 4)
+            let context = try XCTUnwrap(CGContext(
+                data: &pixels, width: cgImage.width, height: cgImage.height,
+                bitsPerComponent: 8, bytesPerRow: cgImage.width * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ))
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+            var textPixels = 0
+            for y in stride(from: 180, to: cgImage.height - 180, by: 3) {
+                for x in stride(from: 24, to: cgImage.width - 80, by: 3) {
+                    let offset = (y * cgImage.width + x) * 4
+                    if pixels[offset + 3] > 240 && pixels[offset] < 100 && pixels[offset + 1] < 100 && pixels[offset + 2] < 100 {
+                        textPixels += 1
+                    }
+                }
+            }
+            if textPixels <= 30 {
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "history-entry-\(entry)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+            XCTAssertGreaterThan(textPixels, 30, "Entry \(entry) has cached messages but no visible transcript text")
+            func scrollView(in view: UIView) -> UIScrollView? {
+                if let scroll = view as? UIScrollView, !(scroll is UITextView) { return scroll }
+                return view.subviews.lazy.compactMap { scrollView(in: $0) }.first
+            }
+            let scroll = try XCTUnwrap(scrollView(in: controller.view))
+            let targetOffset = max(0, scroll.contentSize.height - scroll.bounds.height) * 0.5
+            scroll.setContentOffset(CGPoint(x: 0, y: targetOffset), animated: false)
+            try await Task.sleep(for: .milliseconds(300))
+            navigation.isPresented = false
+            try await Task.sleep(for: .milliseconds(800))
+            XCTAssertNotNil(model.conversationViewportMemory.resumedPosition(
+                for: "\(accountID):\(conversation.id):conversation", latestMessageID: messages.last?.id,
+                availableMessageIDs: Set(messages.map(\.id)), now: Date()
+            ), "Entry \(entry), offset \(scroll.contentOffset.y), target \(targetOffset), content \(scroll.contentSize.height), viewport \(scroll.bounds.height)")
+        }
+    }
+}
 
 final class ConversationReadPresentationTests: XCTestCase {
     func testAgentSessionShowsQueuedRequestsWithoutRunningPlaceholders() {
