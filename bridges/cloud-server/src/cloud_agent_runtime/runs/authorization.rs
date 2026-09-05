@@ -33,16 +33,16 @@ pub async fn validate_agent_authored_group_handoff_claim(
         cloud_group_request_envelope_for_run(pool, &input.session_id, &input.request_message_id)
             .await?
     else {
-        return Ok(true);
+        return Ok(!input.session_id.trim().starts_with("session:group:"));
     };
     let Some(message) = envelope.message.as_ref() else {
         return Ok(false);
     };
-    if message.sender_kind.as_deref() != Some("agent") {
-        return Ok(true);
-    }
     if message.sender_account_id.trim() != input.requester_account_id.trim() {
         return Ok(false);
+    }
+    if message.sender_kind.as_deref() != Some("agent") {
+        return Ok(true);
     }
     Ok(agent_handoff_target(&envelope).is_some_and(|target| {
         target.participant.account_id.trim() == input.owner_account_id.trim()
@@ -65,13 +65,21 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
             .await?
     {
         if let Some(message) = envelope.message {
-            if let Some(agent_id) = message
+            if message
                 .target_cloud_agent_id
                 .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
+                .is_some_and(|id| !id.trim().is_empty())
+                || message
+                    .target_cloud_agent_owner_account_id
+                    .as_deref()
+                    .is_some_and(|id| !id.trim().is_empty())
             {
+                let agent_id = message
+                    .target_cloud_agent_id
+                    .as_deref()
+                    .unwrap_or_default()
+                    .trim()
+                    .to_string();
                 let owner_account_id = message
                     .target_cloud_agent_owner_account_id
                     .as_deref()
@@ -83,7 +91,9 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
                     &agent_id,
                     &owner_account_id,
                     &input.requester_account_id,
-                ) {
+                ) && owner_account_id == input.owner_account_id
+                {
+                    // Only skip definition lookup after checking the selected owner.
                     return Ok(None);
                 }
                 return Ok(Some(SharedCloudAgentTarget {
@@ -120,7 +130,8 @@ pub(super) async fn shared_cloud_agent_target_for_claim(
         &target.agent_id,
         &target.owner_account_id,
         &input.requester_account_id,
-    ) {
+    ) && target.owner_account_id == input.owner_account_id
+    {
         return Ok(None);
     }
     Ok(Some(SharedCloudAgentTarget {

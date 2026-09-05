@@ -65,10 +65,19 @@ pub(super) async fn prefer_ready_desktop(
     input: &ClaimRunRequest,
 ) -> super::runs::RunResult<bool> {
     let agent = execution_agent_id(pool, input).await?;
+    let Some(received_at) =
+        super::runs::request_received_at(pool, &input.session_id, &input.request_message_id)
+            .await?
+    else {
+        return Ok(false);
+    };
+    if received_at <= Utc::now() - chrono::Duration::seconds(10) {
+        return Ok(false);
+    }
     // Readiness only grants a short admission window. An unresponsive desktop
     // must not block fallback forever merely because the application is online.
-    let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds') AND EXISTS(SELECT 1 FROM cloud_chat_messages WHERE message_id::text=$3 AND created_at>now()-interval '10 seconds')")
-        .bind(&input.owner_account_id).bind(agent).bind(&input.request_message_id).fetch_one(pool).await?;
+    let row: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_desktop_capabilities r JOIN cloud_devices d USING(device_id) JOIN cloud_device_presence p USING(device_id) WHERE d.account_id=$1 AND d.revoked_at IS NULL AND r.agent_id=$2 AND r.updated_at>now()-interval '35 seconds' AND p.state='online' AND p.last_heartbeat_at::timestamptz>now()-interval '35 seconds')")
+        .bind(&input.owner_account_id).bind(agent).fetch_one(pool).await?;
     Ok(row.0)
 }
 
@@ -197,7 +206,9 @@ pub(super) async fn progress(
     let Some(response) = response else {
         return denied();
     };
-    if response.get("text").and_then(Value::as_str).is_none() { return denied(); }
+    if response.get("text").and_then(Value::as_str).is_none() {
+        return denied();
+    }
     let phase = match response.get("deliveryState").and_then(Value::as_str) {
         Some("processing")
             if response.pointer("/execution/phase").and_then(Value::as_str) == Some("queued") =>
@@ -229,10 +240,14 @@ pub(super) async fn progress(
     match result {
         Ok(Some(value)) => {
             if matches!(phase, "completed" | "failed" | "cancelled") {
-                super::routes::notify_run_response(&state, value.get("messageId").and_then(Value::as_str)).await;
+                super::routes::notify_run_response(
+                    &state,
+                    value.get("messageId").and_then(Value::as_str),
+                )
+                .await;
             }
             Json(value).into_response()
-        },
+        }
         Ok(None) => expired(),
         Err(_) => error_response(
             "server_error",

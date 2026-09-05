@@ -18,6 +18,7 @@ import {
   cloudDirectMessageDisplayText,
   cloudDirectMessageTargetCloudAgentId,
   cloudDirectMessageTargetCloudAgentOwnerAccountId,
+  parseCloudDirectMessageEnvelope,
 } from './cloudDirectMessages';
 import {
   cloudMessageActionAllowsAgentContext,
@@ -376,9 +377,14 @@ export function cloudFallbackRunClaimsForMessages({
           && cleanText(groupMessage.targetCloudAgentOwnerAccountId)
             === ownerAccountId,
         );
+        const hasExplicitTarget = Boolean(
+          cleanText(groupMessage.targetCloudAgentId)
+          || cleanText(groupMessage.targetCloudAgentOwnerAccountId),
+        );
         if (
-          !targetsOwnerById
-          && !cloudMessageMentionsContactAgent(groupRequestMessage, contact)
+          hasExplicitTarget
+            ? !targetsOwnerById
+            : !cloudMessageMentionsContactAgent(groupRequestMessage, contact)
         ) {
           continue;
         }
@@ -426,9 +432,15 @@ export function cloudFallbackRunClaimsForMessages({
       const targetsHostedCloudAgent = targetCloudAgentId
         && cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body)
           === ownerAccountId;
+      const directEnvelope = parseCloudDirectMessageEnvelope(message.body);
+      const hasExplicitTarget = Boolean(
+        cleanText(directEnvelope?.targetCloudAgentId)
+        || cleanText(directEnvelope?.targetCloudAgentOwnerAccountId),
+      );
       if (
-        !targetsHostedCloudAgent
-        && !cloudMessageMentionsContactAgent(message, contact)
+        hasExplicitTarget
+          ? !targetsHostedCloudAgent
+          : !cloudMessageMentionsContactAgent(message, contact)
       ) continue;
       const alreadyTerminal =
         terminalDirectRequestIdsByPeerId.get(peerId)?.has(message.messageId)
