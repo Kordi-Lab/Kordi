@@ -11,6 +11,7 @@ struct FakeClient {
     run: Arc<Mutex<Option<CloudAgentRun>>>,
     calls: Arc<Mutex<Vec<String>>>,
     fail_provider_auth_fetch: bool,
+    last_lease: Arc<Mutex<Option<tokio::time::Instant>>>,
 }
 
 struct FakeModelProvider {
@@ -35,6 +36,7 @@ impl FakeClient {
             run: Arc::new(Mutex::new(Some(run))),
             calls: Arc::new(Mutex::new(Vec::new())),
             fail_provider_auth_fetch: false,
+            last_lease: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -52,6 +54,7 @@ impl CloudAgentRunClient for FakeClient {
 
     async fn mark_running(&self, run_id: &str) -> Result<(), RunnerClientError> {
         self.calls.lock().unwrap().push(format!("running:{run_id}"));
+        *self.last_lease.lock().unwrap() = Some(tokio::time::Instant::now());
         Ok(())
     }
 
@@ -60,6 +63,14 @@ impl CloudAgentRunClient for FakeClient {
         run_id: &str,
         response_text: &str,
     ) -> Result<(), RunnerClientError> {
+        if self
+            .last_lease
+            .lock()
+            .unwrap()
+            .is_some_and(|at| at.elapsed() >= std::time::Duration::from_secs(120))
+        {
+            return Err(RunnerClientError::Request("Run lease expired".into()));
+        }
         self.calls
             .lock()
             .unwrap()
@@ -392,4 +403,52 @@ async fn digest_observes_simulated_chat_without_creating_a_sandbox() {
             "complete:digest_fixture:digest fixture"
         ]
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn long_digest_renews_its_lease_and_has_a_wall_clock_limit() {
+    struct DelayedProvider(u64);
+    #[async_trait]
+    impl CloudModelProvider for DelayedProvider {
+        async fn next_response(
+            &self,
+            _: &OpenAiProviderConfig,
+            _: &[Value],
+            _: &[Value],
+        ) -> Result<ModelProviderResponse, ModelLoopError> {
+            tokio::time::sleep(std::time::Duration::from_secs(self.0)).await;
+            Ok(ModelProviderResponse::FinalText("digest fixture".into()))
+        }
+    }
+    for (seconds, completes) in [(125, true), (601, false)] {
+        let client = FakeClient::with_run(CloudAgentRun {
+            prompt: serde_json::json!({"sources":[]}).to_string(),
+            sandbox_id: None,
+            ..leased_run("digest_slow", true)
+        });
+        let started = tokio::time::Instant::now();
+        let result =
+            process_one_run_with_provider(&client, &DelayedProvider(seconds), temp_sandbox())
+                .await
+                .unwrap();
+        assert_eq!(
+            matches!(result, RunnerStepOutcome::Completed { .. }),
+            completes
+        );
+        assert!(started.elapsed() <= std::time::Duration::from_secs(600));
+        assert!(
+            client
+                .calls()
+                .iter()
+                .filter(|call| call.as_str() == "running:digest_slow")
+                .count()
+                >= 4
+        );
+        if !completes {
+            assert!(client
+                .calls()
+                .iter()
+                .any(|call| call == "fail:digest_slow:digest_generation_failed"));
+        }
+    }
 }

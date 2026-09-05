@@ -139,11 +139,28 @@ where
 
     client.mark_running(&run.run_id).await?;
     if run.run_id.starts_with("digest_") {
-        let response = match client.fetch_provider_auth(&run.run_id).await {
-            Ok(material) => crate::digest::run(provider, &run, material)
-                .await
-                .map_err(|_| ()),
-            Err(_) => Err(()),
+        let response = {
+            let generation = async {
+                match client.fetch_provider_auth(&run.run_id).await {
+                    Ok(material) => crate::digest::run(provider, &run, material)
+                        .await
+                        .map_err(|_| ()),
+                    Err(_) => Err(()),
+                }
+            };
+            // Keep the existing lease alive while the read-only model is working.
+            // mark_running also revalidates source access on the server.
+            let generation = tokio::time::timeout(std::time::Duration::from_secs(600), generation);
+            tokio::pin!(generation);
+            let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(40));
+            heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            heartbeat.tick().await;
+            loop {
+                tokio::select! {
+                    result = &mut generation => break result.unwrap_or(Err(())),
+                    _ = heartbeat.tick() => client.mark_running(&run.run_id).await?,
+                }
+            }
         };
         return match response {
             Ok(text) => {

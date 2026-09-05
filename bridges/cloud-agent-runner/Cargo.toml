@@ -35,3 +35,6 @@ kordi-provider.workspace = true
 kordi-tools.workspace = true
 kordi-session.workspace = true
 kordi-cli = { path = "../../agent/crates/cli", default-features = false }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
