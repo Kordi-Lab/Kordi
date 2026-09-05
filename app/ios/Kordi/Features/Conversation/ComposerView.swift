@@ -848,7 +848,7 @@ struct ComposerView: View {
     }
 
     private var mentionPicker: some View {
-        ComposerMentionPicker(items: mentionMenuItems, onSelect: acceptMentionItem)
+        ComposerMentionPicker(items: mentionMenuItems, currentAccountID: model.account?.accountId, onSelect: acceptMentionItem)
         .frame(height: mentionPickerHeight)
         .frame(maxWidth: .infinity)
         .modifier(ComposerFloatingPanelSurfaceModifier())
