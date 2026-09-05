@@ -448,6 +448,7 @@ struct ConversationView: View {
                                                 pinnedMessageIDs: pinnedMessageIDs,
                                                 previewActionMessageID: previewActionMessageID,
                                                 threadReplyCount: threadReplyCount,
+                                                threadAgentState: projection.thread(rootID: message.id)?.agentState,
                                                 viewportFrame: viewport.frame(in: .global),
                                                 proxy: proxy
                                             )
@@ -1031,6 +1032,7 @@ struct ConversationView: View {
         pinnedMessageIDs: Set<String>,
         previewActionMessageID: String?,
         threadReplyCount: Int,
+        threadAgentState: BackgroundAgentSession.State?,
         viewportFrame: CGRect,
         proxy: ScrollViewProxy
     ) -> some View {
@@ -1073,6 +1075,7 @@ struct ConversationView: View {
                     allowsQuotedReplies: scopedThreadRootMessageID == nil
                         && conversation.kind.supportsQuotedReplies,
                     threadReplyCount: threadReplyCount,
+                    threadAgentState: threadAgentState,
                     showsAvatarSlot: message.author != .agent,
                     authorAvatarName: avatar.name,
                     authorAvatarSource: avatar.source,

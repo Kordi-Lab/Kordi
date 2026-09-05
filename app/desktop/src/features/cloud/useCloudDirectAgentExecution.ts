@@ -5,6 +5,7 @@ import {
   type SetStateAction,
 } from 'react';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
+import { threadMessageAction as createThreadMessageAction } from '@/features/chat/messageActionMetadata';
 import {
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
@@ -28,6 +29,7 @@ import {
 } from './cloudAttachments';
 import {
   cloudAgentNativeContextMessagesFromDirectCloudSession,
+  cloudDirectAgentReplyThreadAction,
   cloudAgentNoProviderNoticeText,
   encodeCloudAgentResponse,
   isCloudAgentNoProviderConfiguredError,
@@ -162,10 +164,11 @@ export function useCloudDirectAgentExecution({
           activitySessionId ?? peerId,
         );
         if (!runtimeSessionId) continue;
+        let replyMessageAction = cloudDirectAgentReplyThreadAction(messages, message, account.accountId);
         const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
           setLocalTurns((current) => ({
             ...current,
-            [message.messageId]: turn,
+            [message.messageId]: { ...turn, messageAction: replyMessageAction },
           }));
         };
         void (async () => {
@@ -236,12 +239,31 @@ export function useCloudDirectAgentExecution({
               contextMessages,
               visibleTaskRecords,
               activitySessionId,
+              activitySessionId ? (replyMessageAction ? true : null) : false,
             );
+            if (startedTurn.replyInThread && !replyMessageAction && activitySessionId) {
+              replyMessageAction = createThreadMessageAction({
+                sourceSessionId: activitySessionId,
+                sourceMessageId: message.messageId,
+                senderLabel: message.fromAccountId === account.accountId
+                  ? account.displayName || 'You' : peerHumanName,
+                textPreview: directDisplayMessage.body.slice(0, 220),
+                attachmentCount: agentAttachments.length,
+                createdAtMs: Date.parse(message.createdAt),
+              });
+            }
             rememberLocalTurn(startedTurn);
-            turnIdsByRequestIdRef.current.set(
-              message.messageId,
-              startedTurn.id,
-            );
+            turnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
+            if (replyMessageAction) {
+              await client.sendMessage(session.token, peerId, encodeCloudAgentResponse({
+                requestId: message.messageId,
+                text: '',
+                deliveryState: 'processing',
+                messageAction: replyMessageAction,
+              }), { sessionId: message.sessionId ?? null })
+                .then(mergeMessage)
+                .catch((error) => reportWarning('[cloud-agent-mention] thread status publish failed', error));
+            }
             finalTurn = startedTurn.completed
               ? startedTurn
               : await waitForCloudAgentTurn(
@@ -264,11 +286,6 @@ export function useCloudDirectAgentExecution({
             );
           } finally {
             turnIdsByRequestIdRef.current.delete(message.messageId);
-          }
-
-          if (finalTurn.status === 'cancelled') {
-            void syncMessages();
-            return;
           }
 
           try {
@@ -326,6 +343,8 @@ export function useCloudDirectAgentExecution({
               && finalTurn.assistantText.trim().length > 0;
             const responseText = responseSucceeded
               ? finalTurn.assistantText.trim()
+              : finalTurn.status === 'cancelled'
+                ? 'Request stopped.'
               : isCloudAgentNoProviderConfiguredError(
                 finalTurn.error || finalTurn.message,
               )
@@ -341,8 +360,9 @@ export function useCloudDirectAgentExecution({
               encodeCloudAgentResponse({
                 requestId: message.messageId,
                 text: responseText,
-                deliveryState: responseSucceeded ? 'complete' : 'failed',
+                deliveryState: finalTurn.status === 'cancelled' ? 'cancelled' : responseSucceeded ? 'complete' : 'failed',
                 backgroundSessions: cloudAgentBackgroundSessionsFromTurn(finalTurn),
+                messageAction: replyMessageAction,
               }),
               { sessionId: message.sessionId ?? null },
             );

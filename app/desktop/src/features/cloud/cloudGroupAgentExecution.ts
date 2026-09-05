@@ -1,4 +1,5 @@
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
+import { threadMessageAction as createThreadMessageAction } from '@/features/chat/messageActionMetadata';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { isTerminalCloudAgentTurn } from '@/features/canonical/cloudAgentTurnLifecycle';
 import {
@@ -34,6 +35,8 @@ import {
   loadCloudGroupAgentTargetMessages,
 } from './cloudGroupAgentGuard';
 import { ensureCloudGroupAgentIdentity } from './cloudGroupAgentPersistence';
+import { cloudGroupAgentReplyThreadAction } from './cloudGroupAgentPolicy';
+import { handleCloudGroupAgentFailure } from './cloudGroupAgentFailure';
 import {
   publishCloudGroupAgentEnvelope,
   publishCloudGroupAgentTerminalAfterGuards,
@@ -73,9 +76,9 @@ export async function respondToCloudGroupAgentMention(
     participantByAccount,
   } = context;
   const message = envelope.message!;
-  const threadMessageAction = message.messageAction?.kind === 'thread'
+  let threadMessageAction = message.messageAction?.kind === 'thread'
     ? message.messageAction
-    : null;
+    : cloudGroupAgentReplyThreadAction(groupRows, envelope.groupId, message.id, account.accountId);
   const session = await loadSession();
   if (!session?.token) throw new Error('Not signed in.');
   throwIfCloudAgentTurnAborted(signal);
@@ -117,6 +120,75 @@ export async function respondToCloudGroupAgentMention(
 
   const presentation = await ensureCloudGroupAgentIdentity(input, signal);
   throwIfCloudAgentTurnAborted(signal);
+
+  const contextMessages = [
+    ...cloudAgentContextMessagesFromDefinition(
+      runtime.agentDefinitionsById[message.targetCloudAgentId ?? ''] ?? null,
+    ),
+    ...policy.nativeContext({
+      groupRows,
+      groupId: envelope.groupId,
+      requestMessageId: message.id,
+      requestCreatedAtMs: message.createdAtMs,
+      respondingAccountId: account.accountId,
+      respondingAgentId: presentation.agentId,
+    }),
+  ];
+  const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
+    if (signal.aborted) return;
+    runtime.setLocalTurns((current) => ({
+      ...current,
+      [message.id]: { ...turn, replyToMessageId: message.id, messageAction: threadMessageAction },
+    }));
+  };
+  const runtimeStartSpan = beginChatPerformanceSpan(
+    'cloud-agent-runtime-start',
+  );
+  let startedTurn: DesktopChatTurnSnapshot & { replyInThread: boolean };
+  try {
+    startedTurn = await startDesktopSharedChatMessage(
+      message.id,
+      cloudGroupAgentRequestRuntimeSessionId(runtimeSessionId, message.id),
+      promptTextForCloudAgentMention(message.text),
+      mappedAttachments
+        .map((attachment) => attachment.localPath?.trim() || '')
+        .filter(Boolean),
+      cloudAgentRuntimeRouteForTargetCloudAgent({
+        targetCloudAgentId: message.targetCloudAgentId,
+        cloudAgentDefinitionsById: runtime.agentDefinitionsById,
+        routesByRuntimeSessionId: runtime.routesBySessionId,
+        runtimeSessionId,
+        fallbackRoute: runtime.defaultRoute,
+        requestRoute: message.agentRuntimeRoute,
+      }),
+      contextMessages,
+      cloudVisibleTaskRecordsForSession(
+        runtime.sessionActivity(),
+        envelope.groupId,
+      ),
+      envelope.groupId,
+      threadMessageAction ? true : null,
+    );
+    finishChatPerformanceSpan(runtimeStartSpan, { resultClass: 'success' });
+  } catch (error) {
+    finishChatPerformanceSpan(runtimeStartSpan, { resultClass: 'failed' });
+    if (desktopSharedRequestAlreadyStarted(error)) return;
+    throw error;
+  }
+  if (startedTurn.replyInThread && !threadMessageAction) {
+    threadMessageAction = createThreadMessageAction({
+      sourceSessionId: envelope.groupId,
+      sourceMessageId: message.id,
+      senderLabel: message.senderDisplayName || participantByAccount.get(message.senderAccountId)?.displayName || 'Member',
+      textPreview: message.text.slice(0, 220),
+      attachmentCount: mappedAttachments.length,
+      createdAtMs: message.createdAtMs,
+    });
+  }
+  const replyContext = threadMessageAction ? {
+    ...context,
+    envelope: { ...envelope, message: { ...message, messageAction: threadMessageAction } },
+  } : context;
   const processingMessageId =
     `msg:cloud-agent-processing:${message.id}:${account.accountId}`;
   const processingCreatedAtMs = Date.now();
@@ -143,116 +215,69 @@ export async function respondToCloudGroupAgentMention(
     sourceTransport: 'cloud-group-agent',
     sourceEventId: `cloud-group-agent:${processingMessageId}`,
   } satisfies AppendCanonicalMessageRequest;
-  const persistedProcessingMessage = await upsertCanonicalMessageFast(
-    processingRequest,
-  );
-  throwIfCloudAgentTurnAborted(signal);
-  setCanonicalState((current) =>
-    mergeCanonicalMessageRow(current, persistedProcessingMessage)
-  );
-  if (isTerminalCloudAgentTurn(persistedProcessingMessage)) {
-    void runtime.syncDiff();
-    return;
-  }
-  await publishCloudGroupAgentEnvelope({
-    runtime,
-    token: session.token,
-    targetAccountIds,
-    body: encodeCloudGroupControl({
-      kind: 'group-message',
-      groupId: envelope.groupId,
-      groupSpaceId,
-      groupTitle: null,
-      createdByAccountId: envelope.createdByAccountId,
-      actor: cloudGroupSelfParticipant(account, 'person'),
-      participants: [...participantByAccount.values()],
-      message: {
-        id: processingMessageId,
-        senderAccountId: account.accountId,
-        senderAgentId: presentation.agentId,
-        text: '',
-        createdAtMs: processingCreatedAtMs,
-        senderKind: 'agent',
-        senderDisplayName: presentation.displayName,
-        deliveryState: 'processing',
-        replyToMessageId: message.id,
-        requestId: message.id,
-        ...(threadMessageAction ? { messageAction: threadMessageAction } : {}),
-      },
-    }),
-    sessionId: envelope.groupId,
-    createdAtMs: processingCreatedAtMs,
-    signal,
-  });
-  throwIfCloudAgentTurnAborted(signal);
-
-  const contextMessages = [
-    ...cloudAgentContextMessagesFromDefinition(
-      runtime.agentDefinitionsById[message.targetCloudAgentId ?? ''] ?? null,
-    ),
-    ...policy.nativeContext({
-      groupRows,
-      groupId: envelope.groupId,
-      requestMessageId: message.id,
-      requestCreatedAtMs: message.createdAtMs,
-      respondingAccountId: account.accountId,
-      respondingAgentId: presentation.agentId,
-    }),
-  ];
-  const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
-    if (signal.aborted) return;
-    runtime.setLocalTurns((current) => ({
-      ...current,
-      [message.id]: { ...turn, replyToMessageId: message.id },
-    }));
-  };
-  const runtimeStartSpan = beginChatPerformanceSpan(
-    'cloud-agent-runtime-start',
-  );
-  let startedTurn: DesktopChatTurnSnapshot;
-  try {
-    startedTurn = await startDesktopSharedChatMessage(
-      message.id,
-      cloudGroupAgentRequestRuntimeSessionId(runtimeSessionId, message.id),
-      promptTextForCloudAgentMention(message.text),
-      mappedAttachments
-        .map((attachment) => attachment.localPath?.trim() || '')
-        .filter(Boolean),
-      cloudAgentRuntimeRouteForTargetCloudAgent({
-        targetCloudAgentId: message.targetCloudAgentId,
-        cloudAgentDefinitionsById: runtime.agentDefinitionsById,
-        routesByRuntimeSessionId: runtime.routesBySessionId,
-        runtimeSessionId,
-        fallbackRoute: runtime.defaultRoute,
-        requestRoute: message.agentRuntimeRoute,
-      }),
-      contextMessages,
-      cloudVisibleTaskRecordsForSession(
-        runtime.sessionActivity(),
-        envelope.groupId,
-      ),
-      envelope.groupId,
-    );
-    finishChatPerformanceSpan(runtimeStartSpan, { resultClass: 'success' });
-  } catch (error) {
-    finishChatPerformanceSpan(runtimeStartSpan, { resultClass: 'failed' });
-    if (desktopSharedRequestAlreadyStarted(error)) return;
-    throw error;
-  }
-  rememberLocalTurn(startedTurn);
   runtime.turnIdsByRequestId.set(message.id, startedTurn.id);
   const cancelStartedTurn = () => {
     void cancelDesktopChatTurn(startedTurn.id).catch(() => undefined);
   };
   signal.addEventListener('abort', cancelStartedTurn, { once: true });
   if (signal.aborted) cancelStartedTurn();
+  let persistedProcessingMessage: Awaited<ReturnType<typeof upsertCanonicalMessageFast>>;
   let finalTurn: DesktopChatTurnSnapshot;
   try {
+    persistedProcessingMessage = await upsertCanonicalMessageFast(
+      processingRequest,
+    );
+    throwIfCloudAgentTurnAborted(signal);
+    setCanonicalState((current) =>
+      mergeCanonicalMessageRow(current, persistedProcessingMessage)
+    );
+    if (isTerminalCloudAgentTurn(persistedProcessingMessage)) {
+      cancelStartedTurn();
+      void runtime.syncDiff();
+      return;
+    }
+    await publishCloudGroupAgentEnvelope({
+      runtime,
+      token: session.token,
+      targetAccountIds,
+      body: encodeCloudGroupControl({
+        kind: 'group-message',
+        groupId: envelope.groupId,
+        groupSpaceId,
+        groupTitle: null,
+        createdByAccountId: envelope.createdByAccountId,
+        actor: cloudGroupSelfParticipant(account, 'person'),
+        participants: [...participantByAccount.values()],
+        message: {
+          id: processingMessageId,
+          senderAccountId: account.accountId,
+          senderAgentId: presentation.agentId,
+          text: '',
+          createdAtMs: processingCreatedAtMs,
+          senderKind: 'agent',
+          senderDisplayName: presentation.displayName,
+          deliveryState: 'processing',
+          replyToMessageId: message.id,
+          requestId: message.id,
+          ...(threadMessageAction ? { messageAction: threadMessageAction } : {}),
+        },
+      }),
+      sessionId: envelope.groupId,
+      createdAtMs: processingCreatedAtMs,
+      signal,
+    });
+    throwIfCloudAgentTurnAborted(signal);
+    rememberLocalTurn(startedTurn);
+
     finalTurn = await waitForCloudGroupAgentTurn(
       startedTurn,
       rememberLocalTurn,
       (turnId, onSnapshot) => policy.waitForTurn(turnId, onSnapshot),
     );
+  } catch (error) {
+    cancelStartedTurn();
+    await handleCloudGroupAgentFailure(error, { ...input, context: replyContext, signal });
+    return;
   } finally {
     signal.removeEventListener('abort', cancelStartedTurn);
     runtime.turnIdsByRequestId.delete(message.id);
@@ -261,7 +286,7 @@ export async function respondToCloudGroupAgentMention(
   rememberLocalTurn(finalTurn);
   if (finalTurn.status === 'cancelled') {
     await persistCloudGroupAgentCancellation(
-      input,
+      { ...input, context: replyContext },
       persistedProcessingMessage,
     );
     return;
@@ -368,7 +393,7 @@ export async function respondToCloudGroupAgentMention(
     runtime.reportFailure('local-response', error);
   });
   void publishCloudGroupAgentTerminalAfterGuards({
-    context,
+    context: replyContext,
     runtime,
     policy,
     token: session.token,

@@ -122,18 +122,21 @@ export function RequestReplyLine({
 
 export function ThreadReplyLine({
   count,
+  agentState,
   own,
   inline = false,
   onOpen,
 }: {
   count?: number;
+  agentState?: 'running' | 'done' | 'failed' | 'stopped';
   own: boolean;
   inline?: boolean;
   onOpen?: () => void;
 }) {
   const visibleCount = Math.max(0, Math.floor(count ?? 0));
   if (visibleCount <= 0) return null;
-  const label = `${visibleCount} discussed in thread`;
+  const stateLabel = agentState ? { running: 'Running', done: 'Done', failed: 'Failed', stopped: 'Stopped' }[agentState] : null;
+  const label = `${visibleCount} discussed in thread${stateLabel ? ` · ${stateLabel}` : ''}`;
   return (
     <button
       type="button"

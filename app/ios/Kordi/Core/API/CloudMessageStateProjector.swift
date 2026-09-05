@@ -37,6 +37,9 @@ enum CloudMessageStateProjector {
     }
 
     static func deliveryState(for message: CloudMessageDTO, ownAccountId: String) -> MessageDeliveryState {
+        let executionState = CloudMessageCodec.agentResponseDeliveryState(message.body)
+        if executionState == .failed { return .failed }
+        if executionState == .cancelled { return .cancelled }
         if message.readAt != nil { return .read }
         // Kordi Cloud accepts and durably records the message before returning
         // it. macOS therefore presents every successful outgoing write as

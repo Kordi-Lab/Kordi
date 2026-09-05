@@ -59,16 +59,34 @@ fn shared_request_runtime_session_id(session_id: &str, request_id: &str) -> Resu
 pub(super) async fn start_shared_message(
     manager: &DesktopChatManager,
     request_id: String,
+    reply_in_thread: Option<bool>,
     mut input: StartMessageInput,
-) -> Result<DesktopChatTurnSnapshot, String> {
+) -> Result<super::background_tasks::DesktopSharedChatTurn, String> {
     let request_id = request_id.trim().to_string();
-    // Shared-chat requests run independently, but their progress and result
-    // belong to the original conversation, not a new user-visible fork.
+    // Execution stays internal. A long task replies in a message thread in
+    // the same shared conversation, never in a new private chat/channel.
     input.session_id = shared_request_runtime_session_id(&input.session_id, &request_id)?;
     if !reserve_shared_request(manager, &input.session_id, &request_id).await {
         return Err("shared_request_already_started".to_string());
     }
-    start_message(manager, input).await
+    let reply_in_thread = if let Some(reply_in_thread) = reply_in_thread {
+        reply_in_thread
+    } else {
+        super::background_tasks::classify_shared_task(
+            &chat_cwd()?,
+            &input.text,
+            input.route.as_ref(),
+            input.context_messages.as_deref().unwrap_or_default(),
+        )
+        .await
+        .map(|decision| decision.should_run_in_background())
+        .unwrap_or(false)
+    };
+    let turn = start_message(manager, input).await?;
+    Ok(super::background_tasks::DesktopSharedChatTurn {
+        turn,
+        reply_in_thread,
+    })
 }
 
 pub(super) async fn start_message(

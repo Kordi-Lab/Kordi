@@ -6,14 +6,13 @@ import { cloudGroupAgentRequestRuntimeSessionId, cloudGroupAgentRuntimeSessionId
 import type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 import { respondToCloudGroupAgentMention } from './cloudGroupAgentExecution';
 import { handleCloudGroupAgentFailure } from './cloudGroupAgentFailure';
-import { persistPendingCloudGroupAgentTurn } from './cloudGroupAgentPersistence';
 import { cloudGroupLocalAgentRequestAlreadyHandled } from './cloudGroupLocalAgentRequestState';
 
 export type { ApplyCloudGroupAgentControlInput } from './cloudGroupAgentControl.types';
 
-export async function applyCloudGroupAgentControl(
+export function applyCloudGroupAgentControl(
   input: ApplyCloudGroupAgentControlInput,
-): Promise<void> {
+): void {
   const {
     context,
     setCanonicalState,
@@ -69,7 +68,6 @@ export async function applyCloudGroupAgentControl(
     return;
   }
 
-  const contextSignal = runtime.turnCoordinator.activeContextSignal();
   const admission = runtime.turnCoordinator.enqueue({
     runtimeSessionId: cloudGroupAgentRequestRuntimeSessionId(runtimeSessionId, message.id),
     requestId: message.id,
@@ -93,13 +91,7 @@ export async function applyCloudGroupAgentControl(
     return;
   }
 
-  try {
-    await persistPendingCloudGroupAgentTurn(input, contextSignal);
-    finishChatPerformanceSpan(replaySpan, {
-      resultClass: admission.queued ? 'queued' : 'success',
-    });
-  } catch (error) {
-    finishChatPerformanceSpan(replaySpan, { resultClass: 'failed' });
-    throw error;
-  }
+  finishChatPerformanceSpan(replaySpan, {
+    resultClass: admission.queued ? 'queued' : 'success',
+  });
 }

@@ -991,6 +991,7 @@ function MessageBubbleView({
         )}>
           <ThreadReplyLine
             count={msg.threadSummary.replyCount}
+            agentState={msg.threadSummary.agentState}
             own={isOwnHumanMessage}
             onOpen={onOpenMessageThread ? () => onOpenMessageThread(msg) : undefined}
           />

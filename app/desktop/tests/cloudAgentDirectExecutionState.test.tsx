@@ -227,13 +227,15 @@ test('shared direct and group requests use internal request runtimes without aut
 
   assert.match(directSource, /startDesktopSharedChatMessage\(\s*message\.messageId,/);
   assert.match(groupSource, /startDesktopSharedChatMessage\(\s*message\.id,/);
-  assert.match(groupSource, /\[message\.id\]: \{ \.\.\.turn, replyToMessageId: message\.id \}/);
+  assert.match(groupSource, /\[message\.id\]: \{ \.\.\.turn, replyToMessageId: message\.id, messageAction: threadMessageAction \}/);
   assert.match(directSource, /desktopSharedRequestAlreadyStarted\(error\)\) return/);
   assert.match(groupSource, /desktopSharedRequestAlreadyStarted\(error\)\) return/);
   assert.match(desktopSource, /desktop_chat_start_shared_message/);
   assert.match(sharedStart, /input\.session_id = shared_request_runtime_session_id/);
   assert.match(sharedStart, /start_message\(manager, input\)\.await/);
-  assert.doesNotMatch(sharedStart, /classify_shared_task|spawn_background_session|completed: true|forkTurns/);
+  assert.match(sharedStart, /classify_shared_task/);
+  assert.match(sharedStart, /reply_in_thread/);
+  assert.doesNotMatch(sharedStart, /spawn_background_session|completed: true|forkTurns/);
 });
 
 test('background children publish their prompt and refresh catalog before streaming', () => {

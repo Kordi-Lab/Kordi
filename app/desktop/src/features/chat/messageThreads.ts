@@ -5,6 +5,22 @@ export type MessageThread = {
   replies: Message[];
 };
 
+function threadAgentState(messages: readonly Message[]): NonNullable<Message['threadSummary']>['agentState'] {
+  const turns = new Map<string, NonNullable<Message['turn']>>();
+  for (const message of messages) {
+    if (!message.turn) continue;
+    const key = message.turn.replyToMessageId || message.replyToMessageId || messageId(message);
+    if (turns.get(key)?.completed && !message.turn.completed) continue;
+    turns.set(key, message.turn);
+  }
+  const values = [...turns.values()];
+  if (values.some((turn) => !turn.completed)) return 'running';
+  const latest = values[values.length - 1];
+  if (!latest) return undefined;
+  if (latest.status === 'cancelled') return 'stopped';
+  return latest.succeeded ? 'done' : 'failed';
+}
+
 function messageId(message: Message) {
   return message.id?.trim() || message.entryId?.trim() || message.turn?.id.trim() || '';
 }
@@ -126,8 +142,9 @@ export function projectMessageThreads(messages: readonly Message[]) {
       .filter((message) => !messageIds(message).some((id) => rootIdByThreadMessageId.has(id)))
       .filter(messageHasVisibleContent)
       .map((message) => {
-        const count = replies.get(messageId(message))?.length ?? 0;
-        return count > 0 ? { ...message, threadSummary: { replyCount: count } } : message;
+        const threadReplies = replies.get(messageId(message)) ?? [];
+        const count = threadReplies.length;
+        return count > 0 ? { ...message, threadSummary: { replyCount: count, agentState: threadAgentState(threadReplies) } } : message;
     }),
     threads,
     threadRootIdByMessageId: rootIdByThreadMessageId,
@@ -155,7 +172,7 @@ export function messagesWithThreadReplyCounts(
       : 0;
     const liveCount = liveThreadRootId && ids.includes(liveThreadRootId) ? 1 : 0;
     const replyCount = Math.max(optimisticCount, actualCount + liveCount);
-    return replyCount !== actualCount ? { ...message, threadSummary: { replyCount } } : message;
+    return replyCount !== actualCount ? { ...message, threadSummary: { ...message.threadSummary, replyCount } } : message;
   });
 }
 

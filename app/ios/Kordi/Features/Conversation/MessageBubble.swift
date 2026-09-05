@@ -33,6 +33,7 @@ struct MessageBubble: View, Equatable {
     let isSelected: Bool
     let allowsQuotedReplies: Bool
     let threadReplyCount: Int
+    var threadAgentState: BackgroundAgentSession.State? = nil
     let showsAvatarSlot: Bool
     let authorAvatarName: String
     let authorAvatarSource: String?
@@ -84,6 +85,7 @@ struct MessageBubble: View, Equatable {
             && lhs.isSelected == rhs.isSelected
             && lhs.allowsQuotedReplies == rhs.allowsQuotedReplies
             && lhs.threadReplyCount == rhs.threadReplyCount
+            && lhs.threadAgentState == rhs.threadAgentState
             && lhs.showsAvatarSlot == rhs.showsAvatarSlot
             && lhs.authorAvatarName == rhs.authorAvatarName
             && lhs.authorAvatarSource == rhs.authorAvatarSource
@@ -259,6 +261,7 @@ struct MessageBubble: View, Equatable {
                     MessageBubbleAccessoryRow(
                         reactions: message.reactions,
                         threadReplyCount: threadReplyCount,
+                        threadAgentState: threadAgentState,
                         ownAccountId: ownAccountId,
                         scrollAnchor: message.author == .me ? .trailing : .leading,
                         onReact: onReact,
@@ -871,6 +874,7 @@ private struct MessageBubbleAccessoryRow: View {
     @Environment(\.kordiChatTheme) private var chatTheme
     let reactions: [MessageReaction]
     let threadReplyCount: Int
+    let threadAgentState: BackgroundAgentSession.State?
     let ownAccountId: String?
     let scrollAnchor: UnitPoint
     let onReact: (String) -> Void
@@ -924,7 +928,7 @@ private struct MessageBubbleAccessoryRow: View {
         if threadReplyCount > 0 {
             Button(action: onOpenThread) {
                 Label(
-                    "\(threadReplyCount) discussed in thread",
+                    "\(threadReplyCount) discussed in thread\(threadAgentState.map { " · \($0.label)" } ?? "")",
                     systemImage: "bubble.left.and.bubble.right"
                 )
                 .font(.caption2.weight(.semibold))
@@ -933,7 +937,7 @@ private struct MessageBubbleAccessoryRow: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
-                "Open thread with \(threadReplyCount) discussed in thread"
+                "Open thread with \(threadReplyCount) discussed in thread\(threadAgentState.map { ", \($0.label)" } ?? "")"
             )
         }
     }

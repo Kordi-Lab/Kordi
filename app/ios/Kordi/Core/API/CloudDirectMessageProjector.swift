@@ -129,7 +129,8 @@ enum CloudDirectMessageProjector {
         case .person:
             authorName = conversation.ownerDisplayName?.nonEmpty ?? conversation.displayName
         }
-        let messageAction = CloudMessageCodec.directEnvelope(message.body)?.messageAction
+        let messageAction = CloudMessageCodec.agentResponseMessageAction(message.body)
+            ?? CloudMessageCodec.directEnvelope(message.body)?.messageAction
         let visibleOwnerExecution = isAgentResponse
             && message.fromAccountId == ownAccountId
             && message.toAccountId == ownAccountId

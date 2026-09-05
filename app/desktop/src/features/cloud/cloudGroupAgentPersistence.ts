@@ -1,10 +1,6 @@
 import {
   upsertCanonicalIdentityFast,
-  upsertCanonicalMessageFast,
 } from '@/lib/desktop';
-import type { AppendCanonicalMessageRequest } from '@/kordi-app/types';
-import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
-import { cloudGroupAgentConversationId } from './cloudGroupMessages';
 import type {
   ApplyCloudGroupAgentControlInput,
   CloudGroupAgentPresentation,
@@ -67,45 +63,4 @@ export async function ensureCloudGroupAgentIdentity(
     );
   }
   return presentation;
-}
-
-export async function persistPendingCloudGroupAgentTurn(
-  input: ApplyCloudGroupAgentControlInput,
-  signal?: AbortSignal,
-): Promise<void> {
-  if (signal?.aborted) return;
-  const { account, envelope } = input.context;
-  const message = envelope.message!;
-  const presentation = await ensureCloudGroupAgentIdentity(input, signal);
-  if (signal?.aborted) return;
-  const createdAtMs = Date.now();
-  const pendingMessageId =
-    `msg:cloud-agent-processing:${message.id}:${account.accountId}`;
-  const persistedPendingMessage = await upsertCanonicalMessageFast({
-    id: pendingMessageId,
-    sessionId: envelope.groupId,
-    senderIdentityId: presentation.identityId,
-    senderRole: 'owned-agent',
-    messageKind: 'agent-turn',
-    contentText: '',
-    content: {
-      sender: presentation.displayName,
-      senderOwnerAccountId: account.accountId,
-      senderOwnerName: presentation.ownerDisplayName,
-      timestampMs: createdAtMs,
-      deliveryState: 'processing',
-      sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
-      requestId: message.id,
-      replyToMessageId: message.id,
-    },
-    createdAtMs,
-    parentMessageId: message.id,
-    status: 'processing',
-    sourceTransport: 'cloud-group-agent',
-    sourceEventId: `cloud-group-agent:${pendingMessageId}`,
-  } satisfies AppendCanonicalMessageRequest);
-  if (signal?.aborted) return;
-  input.setCanonicalState((current) =>
-    mergeCanonicalMessageRow(current, persistedPendingMessage)
-  );
 }

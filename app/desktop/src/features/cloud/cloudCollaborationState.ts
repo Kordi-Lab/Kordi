@@ -192,7 +192,7 @@ export function cloudMessageToCollaborationMessage(
 ): DesktopCollaborationConversationMessage {
   const timestampMs = Date.parse(message.createdAt) || Date.now();
   const agentResponse = parseCloudAgentResponse(message.body);
-  const directMessageAction = agentResponse ? null : cloudDirectMessageAction(message.body);
+  const directMessageAction = agentResponse?.messageAction ?? cloudDirectMessageAction(message.body);
   const displayText = agentResponse?.text ?? cloudDirectMessageDisplayText(message.body);
   const isOwn = message.fromAccountId === account.accountId;
   const syncedExecutionTurn = cloudAgentExecutionTurnForMessage(
@@ -269,6 +269,7 @@ function cloudAgentProcessingCollaborationMessage({
     detail: undefined,
     attachments: [],
     localTurn: localAgentTurnsByRequestId[request.messageId] ?? null,
+    messageAction: localAgentTurnsByRequestId[request.messageId]?.messageAction ?? cloudDirectMessageAction(request.body),
   };
 }
 
@@ -311,6 +312,7 @@ function cloudAgentCompletedLocalTurnCollaborationMessage({
     detail: undefined,
     attachments: [],
     localTurn,
+    messageAction: localTurn.messageAction ?? cloudDirectMessageAction(request.body),
   };
 }
 

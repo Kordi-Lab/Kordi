@@ -502,6 +502,29 @@ struct MessageThread: Identifiable, Equatable {
 
     var id: String { root.id }
     var messages: [ChatMessage] { [root] + replies }
+
+    var agentState: BackgroundAgentSession.State? {
+        var states: [String: BackgroundAgentSession.State] = [:]
+        var latestID: String?
+        for message in replies where message.author == .agent {
+            let id = message.requestMessageId ?? message.replyToMessageId ?? message.id
+            let state: BackgroundAgentSession.State
+            if message.deliveryState == .cancelled || message.agentExecution?.phase == .cancelled {
+                state = .stopped
+            } else if message.deliveryState == .failed || message.agentExecution?.phase == .failed {
+                state = .failed
+            } else if message.agentExecution?.completed == false {
+                state = .running
+            } else {
+                state = .done
+            }
+            if let existing = states[id], existing != .running, state == .running { continue }
+            states[id] = state
+            latestID = id
+        }
+        if states.values.contains(.running) { return .running }
+        return latestID.flatMap { states[$0] }
+    }
 }
 
 struct MessageThreadProjection: Equatable {

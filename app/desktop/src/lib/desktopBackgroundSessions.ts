@@ -19,8 +19,9 @@ export function startDesktopSharedChatMessage(
   contextMessages: DesktopChatContextMessage[] = [],
   visibleTaskRecords: DesktopVisibleTaskRecord[] = [],
   scheduledTaskSessionId: string | null = null,
+  replyInThread: boolean | null = null,
 ) {
-  return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_shared_message', {
+  return invokeDesktop<DesktopChatTurnSnapshot & { replyInThread: boolean }>('desktop_chat_start_shared_message', {
     requestId,
     sessionId,
     text,
@@ -29,6 +30,7 @@ export function startDesktopSharedChatMessage(
     contextMessages,
     visibleTaskRecords,
     scheduledTaskSessionId,
+    replyInThread,
   });
 }
 
