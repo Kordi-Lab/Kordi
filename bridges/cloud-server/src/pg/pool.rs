@@ -362,6 +362,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "chat group catalog",
         sql: include_str!("../../migrations/0075_chat_group_catalog.sql"),
     },
+    EmbeddedMigration {
+        version: 76,
+        description: "rolling digest and account calendar",
+        sql: include_str!("../../migrations/0076_rolling_digest.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
@@ -386,7 +391,7 @@ pub async fn init_pool(database_url: &str) -> Result<PgPool, PgPoolError> {
     Ok(pool)
 }
 
-async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
+pub(crate) async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
     query(
         "CREATE TABLE IF NOT EXISTS cloud_schema_versions (\n             version     BIGINT PRIMARY KEY,\n             description TEXT NOT NULL,\n             applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()\n         );",
     )

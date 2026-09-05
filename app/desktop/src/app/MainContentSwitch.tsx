@@ -11,6 +11,8 @@ const AgentsPage = lazy(() => import('@/kordi-app/agents/AgentsPage').then((modu
   default: module.AgentsPage,
 })));
 
+const DigestPage = lazy(() => import('@/features/digest/DigestPage'));
+
 type MainContentSwitchProps = {
   activeNav: NavId;
   cloudSession: UseCloudSessionResult;
@@ -27,6 +29,8 @@ export function MainContentSwitch({
   chatsPageProps,
 }: MainContentSwitchProps) {
   switch (activeNav) {
+    case 'digest':
+      return <Suspense fallback={<div aria-busy="true">Loading digest…</div>}>{cloudSession.account ? <DigestPage key={cloudSession.account.accountId} accountId={cloudSession.account.accountId} /> : <div className="p-6">Sign in to open your digest.</div>}</Suspense>;
     case 'contacts':
       return <ContactsRoute cloudSession={cloudSession} contactsPageProps={contactsPageProps} />;
     case 'agents':

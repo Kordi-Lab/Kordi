@@ -3,6 +3,8 @@ use std::io::Cursor;
 use a2::{Client, ClientConfig, Endpoint};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
+#[path = "notifications_calendar.rs"]
+mod calendar;
 #[path = "notifications_calls.rs"]
 mod calls;
 #[path = "notifications_message.rs"]

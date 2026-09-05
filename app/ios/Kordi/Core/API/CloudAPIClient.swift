@@ -2334,7 +2334,7 @@ actor CloudAPIClient {
         return CloudChatRealtimeConnection(url: url, deviceId: ticket.deviceId)
     }
 
-    private func send<Response: Decodable>(
+    func send<Response: Decodable>(
         path: String,
         method: String,
         token: String? = nil,
@@ -2344,7 +2344,7 @@ actor CloudAPIClient {
         try await perform(path: path, method: method, token: token, query: query, body: nil, fallback: fallback)
     }
 
-    private func send<Response: Decodable, Body: Encodable>(
+    func send<Response: Decodable, Body: Encodable>(
         path: String,
         method: String,
         token: String? = nil,
@@ -2355,7 +2355,7 @@ actor CloudAPIClient {
         try await perform(path: path, method: method, token: token, query: query, body: try encoder.encode(body), fallback: fallback)
     }
 
-    private func sendWithoutResponse(
+    func sendWithoutResponse(
         path: String,
         method: String,
         token: String? = nil,
@@ -2372,7 +2372,7 @@ actor CloudAPIClient {
         )
     }
 
-    private func sendWithoutResponse<Body: Encodable>(
+    func sendWithoutResponse<Body: Encodable>(
         path: String,
         method: String,
         token: String? = nil,
@@ -2389,7 +2389,7 @@ actor CloudAPIClient {
         )
     }
 
-    private func sendWithoutResponse(
+    func sendWithoutResponse(
         path: String,
         method: String,
         token: String?,

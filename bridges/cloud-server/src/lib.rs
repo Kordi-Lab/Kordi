@@ -13,6 +13,7 @@ pub mod calls;
 pub mod chat_sync;
 pub mod cloud_agent_runtime;
 pub mod cloud_agents;
+pub mod digest;
 pub mod events;
 pub mod notifications;
 pub mod pg;

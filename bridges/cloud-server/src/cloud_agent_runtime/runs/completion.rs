@@ -103,6 +103,10 @@ pub async fn complete_run(
     runner_id: &str,
     response_text: &str,
 ) -> RunResult<RunnerRunResponse> {
+    if run_id.starts_with(crate::digest::RUN_PREFIX) {
+        crate::digest::complete(pool, run_id, runner_id, response_text).await?;
+        return digest_run_response(pool, run_id).await;
+    }
     let trimmed = response_text.trim();
     if trimmed.is_empty() {
         return Err(RunError::NotFound);
@@ -246,6 +250,10 @@ pub async fn fail_run(
     message: &str,
     support_agent_id: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
+    if run_id.starts_with(crate::digest::RUN_PREFIX) {
+        crate::digest::fail(pool, run_id, Some(runner_id), error_code).await?;
+        return digest_run_response(pool, run_id).await;
+    }
     let existing: Option<FailedRunRow> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id \
          FROM cloud_agent_fallback_runs \
@@ -387,6 +395,11 @@ pub async fn fail_run(
         }
         None => Err(RunError::NotFound),
     }
+}
+
+async fn digest_run_response(pool: &PgPool, run_id: &str) -> RunResult<RunnerRunResponse> {
+    let row: RunnerRunRow = query_as("SELECT run_id,status,prompt,owner_account_id,requester_account_id,session_id,sandbox_id,runtime_route_json,response_message_id,error_code,error_message,system_prompt FROM cloud_agent_fallback_runs WHERE run_id=$1").bind(run_id).fetch_one(pool).await?;
+    runner_response_from_row(pool, row).await
 }
 
 #[cfg(test)]

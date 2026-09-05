@@ -174,15 +174,29 @@ pub async fn mark_run_running(
     .fetch_optional(pool)
     .await?;
     match row {
-        Some(row) => runner_response_from_row(pool, row).await,
+        Some(row) => {
+            let response = runner_response_from_row(pool, row).await?;
+            if response.status == "cancelled" {
+                Err(RunError::NotFound)
+            } else {
+                Ok(response)
+            }
+        }
         None => Err(RunError::NotFound),
     }
 }
 
 pub(super) async fn runner_response_from_row(
     pool: &PgPool,
-    row: RunnerRunRow,
+    mut row: RunnerRunRow,
 ) -> RunResult<RunnerRunResponse> {
+    if row.0.starts_with(crate::digest::RUN_PREFIX)
+        && matches!(row.1.as_str(), "leased" | "running")
+        && !crate::digest::revalidate_run(pool, &row.0).await?
+    {
+        row.1 = "cancelled".into();
+        row.2.clear();
+    }
     let provider_auth_available: Option<(String,)> = query_as(
         "SELECT snapshot_id FROM cloud_agent_provider_auth_snapshots \
          WHERE account_id = $1 AND revoked_at IS NULL \

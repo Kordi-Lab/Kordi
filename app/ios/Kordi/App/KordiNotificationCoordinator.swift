@@ -60,6 +60,7 @@ final class KordiNotificationCoordinator: ObservableObject {
 
     @Published private(set) var authorizationState: KordiNotificationAuthorizationState = .notDetermined
     @Published private(set) var pendingMessageRoute: KordiMessageNotificationRoute?
+    @Published private(set) var pendingCalendarEventID: String?
     @Published private(set) var messagesEnabled: Bool
     @Published private(set) var soundEnabled: Bool
     @Published private(set) var previewsEnabled: Bool
@@ -88,6 +89,7 @@ final class KordiNotificationCoordinator: ObservableObject {
     func accountDidChange() {
         guard model?.account != nil, model?.isPreviewMode != true else {
             pendingMessageRoute = nil
+            pendingCalendarEventID = nil
             Task { await setBadgeCount(0) }
             return
         }
@@ -168,6 +170,9 @@ final class KordiNotificationCoordinator: ObservableObject {
     }
 
     func presentationOptions(for notification: UNNotification) -> UNNotificationPresentationOptions {
+        if notification.request.content.categoryIdentifier == "KORDI_CALENDAR" {
+            return notification.request.content.userInfo["accountId"] as? String == model?.account?.accountId ? [.banner, .sound] : []
+        }
         guard let payload = KordiMessageNotificationPayload(notification.request.content.userInfo) else {
             return [.banner, .sound, .badge]
         }
@@ -203,7 +208,16 @@ final class KordiNotificationCoordinator: ObservableObject {
         routePendingNotificationIfPossible()
     }
 
+    func consumeCalendarRoute() { pendingCalendarEventID = nil }
+
     private func routePendingNotificationIfPossible() {
+        if let payload = pendingNotificationPayload,
+           let eventID = payload["calendarEventId"] as? String,
+           payload["accountId"] as? String == model?.account?.accountId {
+            self.pendingNotificationPayload = nil
+            pendingCalendarEventID = eventID
+            return
+        }
         guard let pendingNotificationPayload,
               let payload = KordiMessageNotificationPayload(pendingNotificationPayload),
               payload.accountID == model?.account?.accountId,

@@ -1,692 +1,247 @@
 import SwiftUI
 
-struct DigestMessageRoute: Hashable {
-    let conversation: ConversationSummary
-    let messageID: String
-}
-
-struct DigestMessageReference: Identifiable, Hashable {
-    let conversation: ConversationSummary
-    let message: ChatMessage
-
-    var id: String { "\(conversation.id):\(message.id)" }
-    var route: DigestMessageRoute {
-        DigestMessageRoute(conversation: conversation, messageID: message.id)
-    }
-    var excerpt: String {
-        let plainText = message.text
-            .replacingOccurrences(
-                of: #"```[\s\S]*?```"#,
-                with: "",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(?m)^\s*#{1,6}\s*"#,
-                with: "",
-                options: .regularExpression
-            )
-            .replacingOccurrences(of: "- [x]", with: "Completed:")
-            .replacingOccurrences(of: "- [ ]", with: "Pending:")
-            .replacingOccurrences(
-                of: #"[*_`~]"#,
-                with: "",
-                options: .regularExpression
-            )
-        let collapsed = plainText
-            .split(whereSeparator: \.isWhitespace)
-            .joined(separator: " ")
-        if collapsed.isEmpty {
-            let attachmentCount = message.attachments.count
-            return attachmentCount == 1
-                ? "Shared an attachment"
-                : "Shared \(attachmentCount) attachments"
-        }
-        guard collapsed.count > 118 else { return collapsed }
-        return String(collapsed.prefix(117)).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
-    }
-}
-
-struct DigestInsight: Identifiable, Equatable {
-    let id: String
-    let text: String
-    let detail: String?
-    let references: [DigestMessageReference]
-}
-
-struct DigestSnapshot: Equatable {
-    let unreadMessageCount: Int
-    let conversationCount: Int
-    let summarizedConversationCount: Int
-    let messageCount: Int
-    let summaryText: String
-    let summaryReferences: [DigestMessageReference]
-    let todoItems: [DigestInsight]
-    let activeAgentItems: [DigestInsight]
-    let attentionItems: [DigestInsight]
-
-    var isEmpty: Bool { conversationCount == 0 }
-    var activeAgentCount: Int { activeAgentItems.count }
-    var failedSessionCount: Int { attentionItems.count }
-}
-
-enum DigestCatalog {
-    static func snapshot(
-        from conversations: [ConversationSummary],
-        messagesByConversation: [String: [ChatMessage]]
-    ) -> DigestSnapshot {
-        let sorted = conversations.sorted {
-            $0.lastActivityAt > $1.lastActivityAt || (
-                $0.lastActivityAt == $1.lastActivityAt
-                    && $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
-            )
-        }
-
-        let referencesByConversation = Dictionary(uniqueKeysWithValues: sorted.map { conversation in
-            let references = messagesByConversation[conversation.id, default: []]
-                .filter(hasDigestContent)
-                .sorted(by: messageSort)
-                .map { DigestMessageReference(conversation: conversation, message: $0) }
-            return (conversation.id, references)
-        })
-        let allReferences = referencesByConversation.values.flatMap { $0 }
-        let summarizedConversationCount = referencesByConversation.values.filter { !$0.isEmpty }.count
-        let latestReferences = sorted.compactMap { conversation in
-            referencesByConversation[conversation.id]?.last
-        }
-        let summaryReferences = prioritizedSummaryReferences(latestReferences)
-
-        let failedConversationIDs = Set(sorted.compactMap { conversation -> String? in
-            let hasFailedMessage = referencesByConversation[conversation.id, default: []]
-                .contains { $0.message.deliveryState == .failed }
-            return conversation.agentActivity == .failed || hasFailedMessage ? conversation.id : nil
-        })
-        let todoItems = sorted.compactMap { conversation -> DigestInsight? in
-            guard conversation.unreadCount > 0,
-                  !failedConversationIDs.contains(conversation.id),
-                  let reference = latestIncomingReference(
-                    in: referencesByConversation[conversation.id, default: []]
-                  ) else { return nil }
-            let unreadDetail = conversation.unreadCount == 1
-                ? "1 unread message"
-                : "\(conversation.unreadCount) unread messages"
-            return DigestInsight(
-                id: "todo:\(reference.id)",
-                text: reference.excerpt,
-                detail: unreadDetail,
-                references: [reference]
-            )
-        }
-        let activeAgentItems = sorted.compactMap { conversation -> DigestInsight? in
-            guard conversation.agentActivity == .replying,
-                  !failedConversationIDs.contains(conversation.id),
-                  let reference = referencesByConversation[conversation.id]?.last else { return nil }
-            return DigestInsight(
-                id: "active:\(reference.id)",
-                text: reference.excerpt,
-                detail: "Agent work is still in progress",
-                references: [reference]
-            )
-        }
-        let attentionItems = sorted.compactMap { conversation -> DigestInsight? in
-            guard failedConversationIDs.contains(conversation.id),
-                  let reference = referencesByConversation[conversation.id]?
-                    .last(where: { $0.message.deliveryState == .failed })
-                    ?? referencesByConversation[conversation.id]?.last else { return nil }
-            return DigestInsight(
-                id: "attention:\(reference.id)",
-                text: reference.excerpt,
-                detail: reference.message.errorMessage?.nonEmpty
-                    ?? "This session needs review before it can continue.",
-                references: [reference]
-            )
-        }
-
-        return DigestSnapshot(
-            unreadMessageCount: conversations.reduce(0) { $0 + $1.unreadCount },
-            conversationCount: conversations.count,
-            summarizedConversationCount: summarizedConversationCount,
-            messageCount: allReferences.count,
-            summaryText: summaryText(
-                messageCount: allReferences.count,
-                summarizedConversationCount: summarizedConversationCount,
-                conversationCount: conversations.count
-            ),
-            summaryReferences: summaryReferences,
-            todoItems: todoItems,
-            activeAgentItems: activeAgentItems,
-            attentionItems: attentionItems
-        )
-    }
-
-    private static func hasDigestContent(_ message: ChatMessage) -> Bool {
-        message.text.nonEmpty != nil || !message.attachments.isEmpty
-    }
-
-    private static func messageSort(_ lhs: ChatMessage, _ rhs: ChatMessage) -> Bool {
-        lhs.createdAt < rhs.createdAt || (lhs.createdAt == rhs.createdAt && lhs.id < rhs.id)
-    }
-
-    private static func latestIncomingReference(
-        in references: [DigestMessageReference]
-    ) -> DigestMessageReference? {
-        references.last(where: { $0.message.author != .me }) ?? references.last
-    }
-
-    private static func prioritizedSummaryReferences(
-        _ latestReferences: [DigestMessageReference]
-    ) -> [DigestMessageReference] {
-        let sorted = latestReferences.sorted {
-            let leftPriority = summaryPriority($0)
-            let rightPriority = summaryPriority($1)
-            if leftPriority != rightPriority { return leftPriority > rightPriority }
-            if $0.message.createdAt != $1.message.createdAt {
-                return $0.message.createdAt > $1.message.createdAt
-            }
-            return $0.id < $1.id
-        }
-        return Array(sorted.prefix(3))
-    }
-
-    private static func summaryPriority(_ reference: DigestMessageReference) -> Int {
-        var priority = reference.conversation.unreadCount > 0 ? 100 : 0
-        if reference.conversation.agentActivity == .failed
-            || reference.message.deliveryState == .failed {
-            priority += 50
-        }
-        if reference.conversation.agentActivity == .replying { priority += 25 }
-        if reference.message.author != .me { priority += 10 }
-        return priority
-    }
-
-    private static func summaryText(
-        messageCount: Int,
-        summarizedConversationCount: Int,
-        conversationCount: Int
-    ) -> String {
-        guard conversationCount > 0 else {
-            return "Your cross-session summary will appear when conversations begin."
-        }
-        guard messageCount > 0 else {
-            return "No synced message content is available to summarize yet."
-        }
-        if summarizedConversationCount == conversationCount {
-            let sessionLabel = conversationCount == 1 ? "session" : "sessions"
-            return "Reviewed \(messageCount) messages across all \(conversationCount) \(sessionLabel). The most recent updates are highlighted below."
-        }
-        let missingCount = conversationCount - summarizedConversationCount
-        let missingLabel = missingCount == 1 ? "session has" : "sessions have"
-        return "Reviewed \(messageCount) messages across \(summarizedConversationCount) sessions. \(missingCount) \(missingLabel) no synced message content yet."
-    }
+struct DigestMessageRoute: Hashable { let conversation: ConversationSummary; let messageID: String }
+private enum DigestPane: String, CaseIterable { case brief = "Brief", tasks = "Next steps", calendar = "Calendar" }
+private enum DigestSheet: Identifiable {
+    case source(String), task(RollingDigestItem), event(DigestCalendarEvent), imports, connection, details
+    var id: String { switch self { case .source(let id): "source:\(id)"; case .task(let item): "task:\(item.id)"; case .event(let event): "event:\(event.id)"; case .imports: "import"; case .connection: "connection"; case .details: "details" } }
 }
 
 struct DigestView: View {
     @EnvironmentObject private var model: AppModel
-
-    private var digest: DigestSnapshot {
-        DigestCatalog.snapshot(
-            from: model.conversations,
-            messagesByConversation: model.messagesByConversation
-        )
-    }
+    @EnvironmentObject private var notifications: KordiNotificationCoordinator
+    @State private var pane = DigestPane.brief
+    @State private var digest: RollingDigestResponse?
+    @State private var events: [DigestCalendarEvent] = []
+    @State private var error: String?
+    @State private var selectedSheet: DigestSheet?
+    @State private var month = Date()
+    @State private var remindersAllowed = true
+    @State private var remoteReminders = false
+    @State private var isRefreshing = false
+    private var sources: [RollingDigestSource] { digest?.sources ?? [] }
+    private var content: RollingDigestContent? { digest?.snapshot }
+    private var openTasks: [RollingDigestItem] { content?.commitments.filter { $0.kind != "done" } ?? [] }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 26) {
-                DigestSummarySection(digest: digest)
-
-                DigestTodoSection(digest: digest)
-
-                DigestAnalysisSection(digest: digest)
-
-                Divider()
-                    .padding(.vertical, 2)
-
-                DigestNeedsAttentionView(digest: digest)
+        VStack(spacing: 0) {
+            HStack {
+                Text(statusText).font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button { selectedSheet = .details } label: { Label("Live", systemImage: "circle.fill").font(.caption).labelStyle(.titleAndIcon) }
+                    .tint(.secondary)
+            }.padding(.horizontal, 18).padding(.bottom, 8)
+            HStack(spacing: 26) {
+                ForEach(DigestPane.allCases, id: \.self) { tab in
+                    Button { pane = tab } label: {
+                        VStack(spacing: 8) {
+                            HStack(spacing: 4) { Text(tab.rawValue); if tab == .tasks { Text(openTasks.count, format: .number).foregroundStyle(.secondary) } }
+                                .font(.subheadline.weight(pane == tab ? .semibold : .regular))
+                            Rectangle().fill(pane == tab ? Color.primary : .clear).frame(height: 2)
+                        }
+                    }.buttonStyle(.plain).accessibilityAddTraits(pane == tab ? .isSelected : [])
+                }
+                Spacer(minLength: 0)
+            }.padding(.horizontal, 18)
+            Divider()
+            ZStack {
+                page { brief }.opacity(pane == .brief ? 1 : 0).allowsHitTesting(pane == .brief).accessibilityHidden(pane != .brief)
+                page { tasks }.opacity(pane == .tasks ? 1 : 0).allowsHitTesting(pane == .tasks).accessibilityHidden(pane != .tasks)
+                page { calendar }.opacity(pane == .calendar ? 1 : 0).allowsHitTesting(pane == .calendar).accessibilityHidden(pane != .calendar)
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 16)
-            .padding(.bottom, 40)
         }
-        .background(Color(uiColor: .systemBackground))
-        .refreshable { await model.refreshWorkspace() }
-        .navigationTitle("Digest")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: ConversationSummary.self) { conversation in
-            ConversationView(conversation: conversation)
+        .navigationTitle("Digest").navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button { Task { await requestReminders() } } label: { Image(systemName: "bell") }.accessibilityLabel("Enable calendar reminders")
+                Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise") }.disabled(isRefreshing || digest?.status == "updating").accessibilityLabel("Refresh digest")
+            }
+        }
+        .task(id: model.account?.accountId) {
+            guard let accountId = model.account?.accountId else { digest = nil; events = []; selectedSheet = nil; return }
+            if digest?.accountId != accountId { digest = nil; events = [] }
+            while !Task.isCancelled {
+                await load(accountId: accountId)
+                do { try await Task.sleep(for: .seconds(5)) } catch { return }
+            }
+        }
+        .sheet(item: $selectedSheet) { sheet in
+            NavigationStack {
+                sheetBody(sheet)
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { selectedSheet = nil } } }
+            }.presentationDragIndicator(.visible)
         }
         .navigationDestination(for: DigestMessageRoute.self) { route in
-            ConversationView(
-                conversation: route.conversation,
-                initialMessageID: route.messageID
-            )
+            ConversationView(conversation: route.conversation, initialMessageID: route.messageID)
         }
     }
-}
-
-private struct DigestSummarySection: View {
-    let digest: DigestSnapshot
-
-    var body: some View {
-        DigestDocumentSection(title: "Summary") {
-            DigestCallout(systemImage: "text.alignleft") {
-                Text(digest.summaryText)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if !digest.summaryReferences.isEmpty {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(digest.summaryReferences) { reference in
-                        DigestSummaryHighlight(reference: reference)
-                    }
+    private var statusText: String {
+        if digest?.status == "updating" { return "Updating · previous brief available" }
+        if let date = DigestDate.parse(digest?.updatedAt) { return "Updated \(date.formatted(date: .omitted, time: .shortened))" }
+        return "Preparing your digest"
+    }
+    private func page<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                if let error { Text(error).font(.subheadline).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) }
+                if let code = digest?.errorCode {
+                    Text(code == "missing_provider_auth" ? "Connect a model provider in account settings to generate your digest." : "The last update failed. Your previous brief remains available.")
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
-            }
-        }
+                if digest?.partial == true { Text("Partial coverage · a bounded selection of accessible messages was included.").font(.caption).foregroundStyle(.secondary) }
+                content()
+            }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 20)
+        }.refreshable { await refresh() }
     }
-}
-
-private struct DigestTodoSection: View {
-    let digest: DigestSnapshot
-
-    var body: some View {
-        DigestDocumentSection(title: "To-do") {
-            if digest.todoItems.isEmpty {
-                DigestChecklistBlock(
-                    text: "Nothing pending",
-                    detail: nil,
-                    state: .complete,
-                    references: []
-                )
-            } else {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(digest.todoItems) { item in
-                        DigestChecklistBlock(
-                            text: item.text,
-                            detail: item.detail,
-                            state: .pending,
-                            references: item.references
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct DigestAnalysisSection: View {
-    let digest: DigestSnapshot
-
-    var body: some View {
-        DigestDocumentSection(title: "Analysis") {
-            DigestCallout(systemImage: "sparkles") {
-                Text(analysisText)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !digest.activeAgentItems.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        ForEach(digest.activeAgentItems) { item in
-                            DigestInsightBlock(item: item)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var analysisText: String {
-        let conversationSummary = digest.summarizedConversationCount == 1
-            ? "1 session contributed message content."
-            : "\(digest.summarizedConversationCount) sessions contributed message content."
-        let agentSummary: String
-        if digest.activeAgentCount == 0 {
-            agentSummary = "No agents are working right now."
-        } else if digest.activeAgentCount == 1 {
-            agentSummary = "1 agent is still working."
-        } else {
-            agentSummary = "\(digest.activeAgentCount) agents are still working."
-        }
-        return "\(conversationSummary) \(agentSummary)"
-    }
-}
-
-private struct DigestNeedsAttentionView: View {
-    let digest: DigestSnapshot
-
-    var body: some View {
-        DigestDocumentSection(title: "Needs attention") {
-            if digest.attentionItems.isEmpty {
-                DigestAttentionStatus(
-                    systemImage: "checkmark.circle.fill",
-                    title: "All clear",
-                    detail: "No blocked chats need your attention.",
-                    references: []
-                )
-            } else {
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(digest.attentionItems) { item in
-                        DigestAttentionStatus(
-                            systemImage: "exclamationmark.circle.fill",
-                            title: item.text,
-                            detail: item.detail ?? "Open the source message to review the failure.",
-                            references: item.references
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private struct DigestDocumentSection<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    init(
-        title: String,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 13) {
-            Text(title)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(.primary)
-
-            content
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
-    }
-}
-
-private enum DigestChecklistState {
-    case pending
-    case complete
-}
-
-private struct DigestChecklistBlock: View {
-    let text: String
-    let detail: String?
-    let state: DigestChecklistState
-    let references: [DigestMessageReference]
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 11) {
-            Image(systemName: state == .complete ? "checkmark.square.fill" : "square")
-                .font(.body.weight(.medium))
-                .foregroundStyle(state == .complete ? Color.green : .secondary)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 9) {
-                Text(text)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let detail {
-                    Text(detail)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                if !references.isEmpty {
-                    DigestMessageCitations(references: references)
-                }
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(text)
-    }
-}
-
-private struct DigestCallout<Content: View>: View {
-    let systemImage: String
-    @ViewBuilder let content: Content
-
-    init(
-        systemImage: String,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.systemImage = systemImage
-        self.content = content()
-    }
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.body.weight(.medium))
-                .foregroundStyle(KordiTheme.agentViolet)
-                .frame(width: 20)
-                .accessibilityHidden(true)
-
+    @ViewBuilder private var brief: some View {
+        if let lead = content?.claims.first {
             VStack(alignment: .leading, spacing: 10) {
-                content
+                Text(lead.title).font(.title3.weight(.medium))
+                Text(lead.text).foregroundStyle(.secondary)
+                people(lead)
+                citations(lead)
+            }
+            ForEach(Array((content?.claims ?? []).dropFirst())) { item in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(item.title).font(.headline.weight(.medium))
+                    Text(item.text).foregroundStyle(.secondary)
+                    people(item)
+                    citations(item)
+                    Divider().padding(.top, 8)
+                }
+            }
+        } else {
+            Text(digest?.status == "ready" ? "No conversations to summarize yet." : "Your sourced brief will appear after the first update.").foregroundStyle(.secondary).padding(.vertical, 24)
+        }
+    }
+    @ViewBuilder private var tasks: some View {
+        Text("Commitments").font(.subheadline).foregroundStyle(.secondary)
+        ForEach(openTasks) { item in
+            VStack(alignment: .leading, spacing: 8) {
+                Text(item.title).font(.headline.weight(.medium))
+                people(item)
+                Text(item.kind == "possible" ? "Possible follow-up" : item.ownerAccountId == nil ? "Owner not specified" : "Explicit commitment").font(.caption).foregroundStyle(.secondary)
+                if let due = DigestDate.parse(item.dueAt) { Text("Due \(due.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
+                citations(item)
+                if digest?.feedback.contains(where: { $0.id == item.id && $0.status == "task" }) == true { Text("Already a task").font(.caption).foregroundStyle(.secondary) }
+                else { Button("Review task") { selectedSheet = .task(item) }.buttonStyle(.bordered) }
+                Divider().padding(.top, 8)
             }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            Color(uiColor: .secondarySystemBackground),
-            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-        )
-        .accessibilityElement(children: .contain)
+        if openTasks.isEmpty { Text("No open commitments.").foregroundStyle(.secondary) }
+        HStack { Text("Consider next"); Spacer(); Text("AI suggestions").font(.caption) }.font(.subheadline).foregroundStyle(.secondary)
+        ForEach(content?.suggestions.filter { item in digest?.feedback.contains(where: { $0.id == item.id && $0.status == "dismissed" }) != true } ?? []) { item in
+            VStack(alignment: .leading, spacing: 8) {
+                Text(item.title).font(.headline.weight(.medium)); Text(item.text).foregroundStyle(.secondary)
+                people(item); citations(item)
+                Button("Dismiss") { Task { await perform { try await model.dismissDigestItem(item.id, dismissed: true) } } }
+            }
+        }
+        if digest?.feedback.contains(where: { $0.status == "dismissed" }) == true {
+            Button("Restore dismissed suggestions") { Task { await perform { for feedback in digest?.feedback.filter({ $0.status == "dismissed" }) ?? [] { try await model.dismissDigestItem(feedback.id, dismissed: false) } } } }
+        }
     }
-}
-
-private struct DigestAttentionStatus: View {
-    let systemImage: String
-    let title: String
-    let detail: String
-    let references: [DigestMessageReference]
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 11) {
-            Image(systemName: systemImage)
-                .font(.body.weight(.medium))
-                .foregroundStyle(references.isEmpty ? Color.green : Color.orange)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if !references.isEmpty {
-                    DigestMessageCitations(references: references)
-                        .padding(.top, 4)
+    private var calendar: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 22) {
+                Button("🔗 Connect calendars") { selectedSheet = .connection }
+                Button("📥 Import ICS") { selectedSheet = .imports }
+            }.font(.subheadline).buttonStyle(.plain).foregroundStyle(.secondary)
+            if !remindersAllowed { Text("Events are saved, but notifications are off. Enable them in Settings to receive reminders.").font(.caption).foregroundStyle(.secondary) }
+            HStack {
+                Text(month.formatted(.dateTime.month(.wide).year())).font(.title2.weight(.medium))
+                Spacer(minLength: 4)
+                Button { changeMonth(-1) } label: { Image(systemName: "chevron.left") }.accessibilityLabel("Previous month")
+                Button("Today") { month = Date() }.font(.caption)
+                Button { changeMonth(1) } label: { Image(systemName: "chevron.right") }.accessibilityLabel("Next month")
+            }.buttonStyle(.plain)
+            DigestMonthGrid(month: month, events: events) { selectedSheet = .event($0) }
+            Text("Mentioned in chats").font(.subheadline).foregroundStyle(.secondary)
+            ForEach(content?.calendarCandidates ?? []) { item in
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(item.title).font(.headline.weight(.medium)); people(item)
+                    Text(DigestDate.parse(item.startAt)?.formatted(date: .abbreviated, time: .shortened) ?? "Date or time needs review").font(.caption).foregroundStyle(.secondary)
+                    citations(item)
+                    Button(events.contains(where: { $0.id == "digest-\(item.id)" }) ? "View event" : "Review & add") {
+                        selectedSheet = .event(events.first(where: { $0.id == "digest-\(item.id)" }) ?? DigestCalendarEvent(id: "digest-\(item.id)", title: item.title, startAt: item.startAt ?? "", endAt: item.endAt, sourceIds: item.sourceIds, description: item.text))
+                    }.buttonStyle(.bordered)
                 }
             }
         }
-        .accessibilityElement(children: .contain)
     }
-}
-
-private struct DigestSummaryHighlight: View {
-    let reference: DigestMessageReference
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 9) {
-                Circle()
-                    .fill(Color(uiColor: .tertiaryLabel))
-                    .frame(width: 5, height: 5)
-                    .accessibilityHidden(true)
-
-                Text(reference.excerpt)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            DigestMessageCitation(reference: reference)
-                .padding(.leading, 14)
-        }
-    }
-}
-
-private struct DigestInsightBlock: View {
-    let item: DigestInsight
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Text(item.text)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let detail = item.detail {
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            DigestMessageCitations(references: item.references)
-        }
-    }
-}
-
-private struct DigestMessageCitations: View {
-    let references: [DigestMessageReference]
-
-    var body: some View {
-        DigestReferenceFlowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
-            ForEach(references) { reference in
-                DigestMessageCitation(reference: reference)
+    private func changeMonth(_ value: Int) { month = Calendar.current.date(byAdding: .month, value: value, to: month) ?? month }
+    private func citations(_ item: RollingDigestItem) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(sources.filter { item.sourceIds.contains($0.id) }) { source in
+                Button("↗ \(source.sessionTitle)") { Task { await perform { let fresh = try await model.loadRollingDigest(); digest = fresh; selectedSheet = .source(source.id) } } }
+                    .font(.caption).foregroundStyle(.secondary).padding(.vertical, 4)
             }
         }
     }
-}
-
-private struct DigestMessageCitation: View {
-    let reference: DigestMessageReference
-
-    var body: some View {
-        NavigationLink(value: reference.route) {
-            HStack(spacing: 5) {
-                Image(systemName: "bubble.left.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-
-                Text(reference.conversation.displayName)
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
-
-                Text(reference.message.createdAt, format: .dateTime.hour().minute())
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                Image(systemName: "arrow.up.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+    private func people(_ item: RollingDigestItem) -> some View {
+        let related = sources.filter { item.sourceIds.contains($0.id) }
+        let unique = Dictionary(grouping: related, by: \.senderAccountId).values.compactMap(\.first).sorted { $0.senderName < $1.senderName }
+        return VStack(alignment: .leading, spacing: 4) {
+            if let owner = item.ownerAccountId { Text("Owner @\(owner == model.account?.accountId ? "You" : sources.first(where: { $0.senderAccountId == owner })?.senderName ?? "Contact")").font(.caption).foregroundStyle(.secondary) }
+            ForEach(unique.filter { $0.senderAccountId != item.ownerAccountId }) { source in
+                Button("From @\(source.isAgent == true ? source.senderName : source.senderAccountId == model.account?.accountId ? "You" : source.senderName)") { Task { await perform { digest = try await model.loadRollingDigest(); selectedSheet = .source(source.id) } } }.font(.caption)
             }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 5)
-            .background(
-                Color(uiColor: .tertiarySystemFill),
-                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(
-            "Open message from \(reference.conversation.displayName) at "
-                + reference.message.createdAt.formatted(.dateTime.hour().minute())
-        )
-        .accessibilityHint("Jumps to the referenced message")
-    }
-}
-
-private struct DigestReferenceFlowLayout: Layout {
-    let horizontalSpacing: CGFloat
-    let verticalSpacing: CGFloat
-
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) -> CGSize {
-        let result = layout(subviews: subviews, width: proposal.width ?? .greatestFiniteMagnitude)
-        return result.size
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        let result = layout(subviews: subviews, width: bounds.width)
-
-        for (index, position) in result.positions.enumerated() {
-            subviews[index].place(
-                at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
-                anchor: .topLeading,
-                proposal: ProposedViewSize(result.sizes[index])
-            )
         }
     }
-
-    private func layout(
-        subviews: Subviews,
-        width: CGFloat
-    ) -> (size: CGSize, positions: [CGPoint], sizes: [CGSize]) {
-        guard !subviews.isEmpty else { return (.zero, [], []) }
-
-        let availableWidth = max(0, width)
-        var positions: [CGPoint] = []
-        var sizes: [CGSize] = []
-        var cursorX: CGFloat = 0
-        var cursorY: CGFloat = 0
-        var lineHeight: CGFloat = 0
-        var usedWidth: CGFloat = 0
-
-        for subview in subviews {
-            let idealSize = subview.sizeThatFits(.unspecified)
-            let proposedWidth = min(idealSize.width, availableWidth)
-            let size = subview.sizeThatFits(
-                ProposedViewSize(width: proposedWidth, height: nil)
-            )
-
-            if cursorX > 0, cursorX + size.width > availableWidth {
-                cursorX = 0
-                cursorY += lineHeight + verticalSpacing
-                lineHeight = 0
+    @ViewBuilder private func sheetBody(_ sheet: DigestSheet) -> some View {
+        switch sheet {
+        case .source(let id):
+            ScrollView {
+                if let source = sources.first(where: { $0.id == id }) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        Text("@\(source.senderName)").font(.subheadline)
+                        Text(source.text).textSelection(.enabled)
+                        if let date = DigestDate.parse(source.createdAt) { Text(date.formatted()).font(.caption).foregroundStyle(.secondary) }
+                        if let conversation = model.conversations.first(where: { $0.sessionId == source.sessionId || $0.id == source.conversationId }) {
+                            NavigationLink("Open conversation", value: DigestMessageRoute(conversation: conversation, messageID: source.id))
+                        }
+                    }.padding().navigationTitle(source.sessionTitle)
+                } else { Text("This source is no longer accessible or included.").padding().navigationTitle("Source unavailable") }
+            }.navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
+        case .task(let item): DigestTaskEditor(item: item, sources: sources, accountId: model.account?.accountId ?? "") { input in try await model.createDigestTask(item.id, input: input); await reloadAfterEdit() }
+        case .event(let event): DigestEventEditor(event: event) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit() } remove: { try await model.removeDigestCalendarEvent(event); await reloadAfterEdit() }
+        case .imports: DigestImportView(existing: events) { incoming in for event in incoming { try await model.saveDigestCalendarEvent(event) }; await reloadAfterEdit() }
+        case .connection: DigestConnectView(existing: events) { incoming in for event in incoming { try await model.saveDigestCalendarEvent(event) }; await reloadAfterEdit() }
+        case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Updates follow your messages, sessions and calendar events."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("Live digest")
+        }
+    }
+    private func reloadAfterEdit() async { selectedSheet = nil; if let account = model.account?.accountId { await load(accountId: account) } }
+    private func load(accountId: String) async {
+        do {
+            async let report = model.loadRollingDigest()
+            async let calendar = model.loadDigestCalendar()
+            let (next, calendarResponse) = try await (report, calendar)
+            let nextEvents = calendarResponse.events
+            remoteReminders = calendarResponse.pushAvailable
+            try Task.checkCancellation()
+            guard model.account?.accountId == accountId else { return }
+            digest = next; events = nextEvents; error = nil
+            let accessibleIDs = Set(next.sources.map(\.id))
+            if let sheet = selectedSheet {
+                switch sheet {
+                case .task(let item) where !item.sourceIds.allSatisfy(accessibleIDs.contains): selectedSheet = nil
+                case .event(let event) where !event.sourceIds.allSatisfy(accessibleIDs.contains): selectedSheet = nil
+                default: break
+                }
             }
-
-            positions.append(CGPoint(x: cursorX, y: cursorY))
-            sizes.append(size)
-            usedWidth = max(usedWidth, cursorX + size.width)
-            cursorX += size.width + horizontalSpacing
-            lineHeight = max(lineHeight, size.height)
-        }
-
-        return (
-            CGSize(width: min(usedWidth, availableWidth), height: cursorY + lineHeight),
-            positions,
-            sizes
-        )
+            if let eventID = notifications.pendingCalendarEventID {
+                pane = .calendar
+                if let event = nextEvents.first(where: { $0.id == eventID }) { month = DigestDate.parse(event.startAt) ?? Date(); selectedSheet = .event(event) }
+                notifications.consumeCalendarRoute()
+            }
+            if remoteReminders {
+                await DigestCalendarService.clearReminders()
+                await notifications.refreshAuthorizationState(registerIfAllowed: true)
+                remindersAllowed = notifications.authorizationState.canRegisterForRemoteNotifications
+            } else { remindersAllowed = try await DigestCalendarService.syncReminders(accountId: accountId, events: nextEvents, isCurrentAccount: { model.account?.accountId == accountId }) }
+        } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
     }
-}
-
-#Preview("Digest") {
-    NavigationStack {
-        DigestView()
-    }
-    .environmentObject(AppModel(previewMode: true))
-    .tint(KordiTheme.signalBlue)
+    private func refresh() async { isRefreshing = true; defer { isRefreshing = false }; await perform { try await model.refreshRollingDigest() }; if let id = model.account?.accountId { await load(accountId: id) } }
+    private func requestReminders() async { if remoteReminders { await notifications.requestAuthorization(); remindersAllowed = notifications.authorizationState.canRegisterForRemoteNotifications; return }; guard let id = model.account?.accountId else { return }; await perform { remindersAllowed = try await DigestCalendarService.syncReminders(accountId: id, events: events, requestPermission: true, isCurrentAccount: { model.account?.accountId == id }) } }
+    private func perform(_ operation: () async throws -> Void) async { do { try await operation(); error = nil } catch { self.error = error.localizedDescription } }
 }

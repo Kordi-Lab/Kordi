@@ -46,7 +46,7 @@ export type {
   SourcePreviewLine,
 } from './types/message';
 
-export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'settings';
+export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'settings' | 'digest';
 export type ChatChannel = 'contact' | 'agent';
 export type DetailTab = 'info' | 'context' | 'artifacts' | 'tasks';
 export type ConversationType = 'person' | 'owned-agent' | 'external-agent';
