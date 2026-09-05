@@ -83,7 +83,11 @@ def evaluate(args):
     target_hour, target_minute = (15, 30) if manifest['phase'] else (14, 0)
     starts = [dt.datetime.fromisoformat(i['startAt'].replace('Z', '+00:00')).astimezone(dt.timezone(dt.timedelta(hours=3))) for i in candidates if i.get('startAt')]
     target_date = dt.datetime.fromisoformat(manifest['preparedAt']).astimezone(dt.timezone(dt.timedelta(hours=3))).date() + dt.timedelta(days=1)
-    check('Launch review uses the latest agreed date and time', bool(starts) and all(d.date() == target_date and (d.hour, d.minute) == (target_hour, target_minute) for d in starts), 'scenario')
+    check('Launch review uses the latest agreed date and time', len(candidates) == 1 and bool(starts) and all(d.date() == target_date and (d.hour, d.minute) == (target_hour, target_minute) for d in starts), 'scenario')
+    if getattr(args, 'previous', None):
+        previous = json.loads(Path(args.previous).read_text()).get('snapshot', {})
+        old = [i for i in previous.get('calendarCandidates', []) if 'launch' in (i.get('title', '') + i.get('text', '')).lower()]
+        check('Rescheduled meeting preserves its suggestion identity', len(old) == len(candidates) == 1 and old[0]['id'] == candidates[0]['id'], 'scenario')
     if manifest['phase']:
         notes = [i for i in snapshot.get('commitments', []) if 'release notes' in (i.get('title', '') + ' ' + i.get('text', '')).lower()]
         check('Completed release notes are no longer open', all(i.get('kind') == 'done' for i in notes), 'scenario')
@@ -106,6 +110,7 @@ def main():
     run.add_argument('--response', required=True)
     run.add_argument('--manifest', required=True)
     run.add_argument('--output', required=True)
+    run.add_argument('--previous', help='Previous captured response for rolling identity checks')
     args = parser.parse_args()
     if args.command == 'prepare': prepare(args)
     elif not evaluate(args): raise SystemExit(1)
