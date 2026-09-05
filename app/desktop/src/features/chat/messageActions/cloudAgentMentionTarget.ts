@@ -2,10 +2,47 @@ import { defaultCloudAgentId } from '@/features/cloud/cloudAgentIdentity';
 import { stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
 import type { DesktopChatState, DesktopCollaborationState } from '@/kordi-app/types';
+import type { ComposerMentionOption } from '@/kordi-app/components';
 import type { ResolvedMentionedCollaborationTarget } from './types';
 import { localAgentMentionLabels, resolveMentionedCollaborationAgentTargetWithSharedCloudAgentRefresh, resolveMentionedCollaborationTarget, resolveMentionedLocalAgentTarget, type MentionScopeConversation } from './mentions';
 import { mentionTextStartsWithLabel } from './localAgentMentions';
 import { normalizeMentionLabel } from './mentionHandles';
+
+export function selectedComposerAgentMentionTarget(
+  text: string,
+  option: ComposerMentionOption | null,
+  collaborationState: DesktopCollaborationState | null,
+): ResolvedMentionedCollaborationTarget | null {
+  if (
+    option?.targetKind !== 'agent'
+    || !text.toLocaleLowerCase().includes(`@${option.value}`.toLocaleLowerCase())
+  ) return null;
+  const host = collaborationState?.hosts.find(
+    (candidate) => candidate.id === option.sourceHostId,
+  ) ?? null;
+  if (!host) return null;
+  const peer = host.visiblePeers.find((candidate) => (
+    Boolean(option.agentId && candidate.agentId === option.agentId)
+    || Boolean(option.humanId && candidate.humanId === option.humanId)
+    || candidate.nodeId === option.nodeId
+  )) ?? {
+    nodeId: option.nodeId,
+    displayName: option.label,
+    ownerName: option.ownerName ?? host.ownerName,
+    runtime: option.runtime,
+    humanId: option.humanId ?? host.humanId ?? null,
+    agentId: option.agentId ?? null,
+    profileImageUrl: option.avatarImageUrl ?? null,
+  } as DesktopCollaborationState['hosts'][number]['visiblePeers'][number];
+  return {
+    host,
+    peer,
+    label: option.value,
+    displayLabel: option.label,
+    targetKind: 'agent',
+    requestText: text,
+  };
+}
 
 export async function resolvePreferredAgentMentionTarget(
   text: string,

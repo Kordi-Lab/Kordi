@@ -25,6 +25,20 @@ test('renders transcript system notices as neutral text without a colored pill',
   assert.doesNotMatch(markup, /flex justify-center py-2/);
 });
 
+test('keeps rename event text separate from the timestamp component', () => {
+  const message: Message = {
+    role: 'system',
+    text: 'Alex changed the channel name to Planning',
+    time: '09:41',
+    messageKind: 'session-title-update',
+  };
+
+  const markup = renderToStaticMarkup(createElement(MessageBubble, { msg: message }));
+
+  assert.match(markup, /Alex changed the channel name to Planning/);
+  assert.doesNotMatch(markup, /<time>| · 09:41/);
+});
+
 test('renders group meetings as neutral video-chat service events', () => {
   const message: Message = {
     role: 'person',

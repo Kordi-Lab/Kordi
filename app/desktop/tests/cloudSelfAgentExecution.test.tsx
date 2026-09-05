@@ -9,6 +9,7 @@ import type {
 import {
   encodeCloudAgentCancel,
   encodeCloudAgentResponse,
+  parseCloudAgentResponse,
 } from '../src/features/cloud/cloudAgentMessages';
 import { buildCloudMessageIndex } from '../src/features/cloud/cloudMessageIndex';
 import { publishCloudSelfAgentExecutionClaim } from '../src/features/cloud/cloudSelfAgentForwardExecution';
@@ -20,6 +21,28 @@ import {
   pendingCloudSelfAgentExecutionRequests,
   localSelfAgentRequestClientMessageIds,
 } from '../src/features/cloud/useCloudSelfAgentExecution';
+
+import { cloudSelfAgentRuntimeSessionId } from '../src/features/cloud/cloudAgentRuntime';
+import { cloudAgentExecutionSnapshotFromTurn } from '../src/features/cloud/cloudAgentExecutionTrace';
+
+test('cross-device self-agent execution uses the canonical desktop session id', () => {
+  const sessionId = '00000000-0000-4000-8000-000000000001';
+  assert.equal(cloudSelfAgentRuntimeSessionId(sessionId), sessionId);
+  assert.equal(cloudSelfAgentRuntimeSessionId('  '), null);
+});
+
+test('native queue admission is preserved in the cross-device execution snapshot', () => {
+  const execution = cloudAgentExecutionSnapshotFromTurn({
+    id: 'turn-queued', sessionId: 'canonical-session', prompt: 'Next request',
+    status: 'queued', message: 'Queued next', assistantText: '', thinkingText: '',
+    tools: [], completed: false, succeeded: false, transcriptRefreshRequired: false,
+  });
+  const response = parseCloudAgentResponse(encodeCloudAgentResponse({
+    requestId: 'request-queued', text: 'processing...', deliveryState: 'processing', execution,
+  }));
+  assert.equal(response?.execution?.phase, 'queued');
+  assert.equal(response?.execution?.completed, false);
+});
 import type {
   CanonicalSessionState,
   DesktopChatTurnSnapshot,
@@ -235,19 +258,11 @@ test('self-agent desktop claim elects one Mac through the stable Cloud client me
       return created;
     },
   };
-  const execution = {
-    phase: 'preparing' as const,
-    summary: 'Preparing the response',
-    steps: [],
-    updatedAtMs: 1_000,
-    completed: false,
-  };
   const claim = (claimId: string) => publishCloudSelfAgentExecutionClaim({
     accountId: account.accountId,
     claimId,
     client,
     cloudRequestMessageId: 'request-1',
-    execution,
     nowMs: 1_000,
     sessionId: 'session:self-agent:mobile',
     token: 'token',
@@ -259,4 +274,5 @@ test('self-agent desktop claim elects one Mac through the stable Cloud client me
   assert.equal(first.acquired, true);
   assert.equal(second.acquired, false);
   assert.equal(messagesByClientId.size, 1);
+  assert.equal(parseCloudAgentResponse(first.message.body)?.execution, undefined);
 });

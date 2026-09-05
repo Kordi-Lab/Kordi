@@ -1,6 +1,10 @@
 use super::*;
 
+mod group_spaces;
 mod preferences;
+pub(super) use group_spaces::{
+    hide_group_space, mute_group_space, unhide_group_space, unmute_group_space,
+};
 use preferences::{clear_session_pin, clear_session_preferences, load_session_list_preferences};
 pub(super) use preferences::{
     mark_cloud_session_unread, mute_cloud_session, pin_cloud_session, pin_group_space,
@@ -78,9 +82,25 @@ pub(super) async fn hide_cloud_session(
     };
 
     let pool = state.db_pool();
-    match caller_can_access_cloud_session(pool, &session.account_id, &session_id).await {
-        Ok(true) => {}
-        Ok(false) => {
+    let mut transaction = match pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let conversation_id = match conversation_id_for_session_in_transaction(
+        &mut transaction,
+        &session.account_id,
+        &session_id,
+    )
+    .await
+    {
+        Ok(Some(conversation_id)) => conversation_id,
+        Ok(None) => {
             return err(
                 "not_a_participant",
                 "You can only hide sessions you participate in.",
@@ -94,7 +114,7 @@ pub(super) async fn hide_cloud_session(
                 StatusCode::INTERNAL_SERVER_ERROR,
             );
         }
-    }
+    };
 
     let now = Utc::now().to_rfc3339();
     if query(
@@ -109,7 +129,7 @@ pub(super) async fn hide_cloud_session(
     .bind(&session.account_id)
     .bind(&session_id)
     .bind(&now)
-    .execute(pool)
+    .execute(&mut *transaction)
     .await
     .is_err()
     {
@@ -120,7 +140,7 @@ pub(super) async fn hide_cloud_session(
         );
     }
 
-    if clear_session_pin(pool, &session.account_id, &session_id)
+    if clear_session_pin(&mut transaction, &session.account_id, conversation_id)
         .await
         .is_err()
     {
@@ -131,17 +151,16 @@ pub(super) async fn hide_cloud_session(
         );
     }
 
-    if publish_chat_event(
-        pool,
-        &session.account_id,
+    if crate::chat_sync::store::append_user_sync_events_in_transaction(
+        &mut transaction,
+        std::slice::from_ref(&session.account_id),
         "session.hidden",
-        Some(&session_id),
-        None,
-        serde_json::json!({ "sessionId": &session_id, "hiddenAt": &now }),
-        &now,
+        Some(conversation_id),
+        &serde_json::json!({ "sessionId": &session_id, "hiddenAt": &now }),
     )
     .await
     .is_err()
+        || transaction.commit().await.is_err()
     {
         return err(
             "server_error",
@@ -167,9 +186,25 @@ pub(super) async fn unhide_cloud_session(
     };
 
     let pool = state.db_pool();
-    match caller_can_access_cloud_session(pool, &session.account_id, &session_id).await {
-        Ok(true) => {}
-        Ok(false) => {
+    let mut transaction = match pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let conversation_id = match conversation_id_for_session_in_transaction(
+        &mut transaction,
+        &session.account_id,
+        &session_id,
+    )
+    .await
+    {
+        Ok(Some(conversation_id)) => conversation_id,
+        Ok(None) => {
             return err(
                 "not_a_participant",
                 "You can only unhide sessions you participate in.",
@@ -183,7 +218,7 @@ pub(super) async fn unhide_cloud_session(
                 StatusCode::INTERNAL_SERVER_ERROR,
             );
         }
-    }
+    };
 
     let now = Utc::now().to_rfc3339();
     if query(
@@ -192,7 +227,7 @@ pub(super) async fn unhide_cloud_session(
     )
     .bind(&session.account_id)
     .bind(&session_id)
-    .execute(pool)
+    .execute(&mut *transaction)
     .await
     .is_err()
     {
@@ -203,17 +238,16 @@ pub(super) async fn unhide_cloud_session(
         );
     }
 
-    if publish_chat_event(
-        pool,
-        &session.account_id,
+    if crate::chat_sync::store::append_user_sync_events_in_transaction(
+        &mut transaction,
+        std::slice::from_ref(&session.account_id),
         "session.unhidden",
-        Some(&session_id),
-        None,
-        serde_json::json!({ "sessionId": &session_id, "unhiddenAt": &now }),
-        &now,
+        Some(conversation_id),
+        &serde_json::json!({ "sessionId": &session_id, "unhiddenAt": &now }),
     )
     .await
     .is_err()
+        || transaction.commit().await.is_err()
     {
         return err(
             "server_error",
@@ -239,9 +273,25 @@ pub(super) async fn delete_cloud_session(
     };
 
     let pool = state.db_pool();
-    match caller_can_access_cloud_session(pool, &session.account_id, &session_id).await {
-        Ok(true) => {}
-        Ok(false) => {
+    let mut transaction = match pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    let conversation_id = match conversation_id_for_session_in_transaction(
+        &mut transaction,
+        &session.account_id,
+        &session_id,
+    )
+    .await
+    {
+        Ok(Some(conversation_id)) => conversation_id,
+        Ok(None) => {
             return err(
                 "not_a_participant",
                 "You can only remove sessions you participate in.",
@@ -255,18 +305,7 @@ pub(super) async fn delete_cloud_session(
                 StatusCode::INTERNAL_SERVER_ERROR,
             );
         }
-    }
-
-    if clear_session_preferences(pool, &session.account_id, &session_id)
-        .await
-        .is_err()
-    {
-        return err(
-            "server_error",
-            "Could not clear session preferences.",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        );
-    }
+    };
 
     let now = Utc::now().to_rfc3339();
     if query(
@@ -281,7 +320,7 @@ pub(super) async fn delete_cloud_session(
     .bind(&session.account_id)
     .bind(&session_id)
     .bind(&now)
-    .execute(pool)
+    .execute(&mut *transaction)
     .await
     .is_err()
     {
@@ -292,17 +331,27 @@ pub(super) async fn delete_cloud_session(
         );
     }
 
-    if publish_chat_event(
-        pool,
-        &session.account_id,
+    if clear_session_preferences(&mut transaction, &session.account_id, conversation_id)
+        .await
+        .is_err()
+    {
+        return err(
+            "server_error",
+            "Could not clear session preferences.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+
+    if crate::chat_sync::store::append_user_sync_events_in_transaction(
+        &mut transaction,
+        std::slice::from_ref(&session.account_id),
         "session.deleted",
-        Some(&session_id),
-        None,
-        serde_json::json!({ "sessionId": &session_id, "deletedAt": &now }),
-        &now,
+        Some(conversation_id),
+        &serde_json::json!({ "sessionId": &session_id, "deletedAt": &now }),
     )
     .await
     .is_err()
+        || transaction.commit().await.is_err()
     {
         return err(
             "server_error",

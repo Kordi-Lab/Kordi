@@ -61,11 +61,7 @@ test('native group and self-agent recovery consume bounded message pages', () =>
   );
 });
 
-test('failed Cloud title and self-agent migrations back off before retrying', () => {
-  const titles = source('../src/features/cloud/useCloudGroupSessionTitleSync.ts');
-  assert.match(titles, /CLOUD_GROUP_TITLE_BACKFILL_RETRY_MS = 30_000/);
-  assert.match(titles, /failedAtByBackfillKeyRef\.current\.set\(backfillKey, Date\.now\(\)\)/);
-
+test('failed self-agent migrations back off before retrying', () => {
   const selfAgent = source('../src/features/cloud/useCloudSelfAgentForwardSync.ts');
   assert.match(selfAgent, /CLOUD_SELF_AGENT_RECONCILE_RETRY_MS = 30_000/);
   assert.match(selfAgent, /previousFailure\?\.accountId === account\.accountId/);

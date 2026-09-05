@@ -4,6 +4,10 @@ import type { CloudSelfAgentSyncOperation } from './cloudSelfAgentForwardSync';
 const RECOVERY_KEY_PREFIX = 'kordi.cloud.selfAgentRecovery:';
 const PREVIOUS_RECOVERY_KEY_PREFIX = 'kordi.cloud.selfAgentV2Recovery.v1:';
 
+export function cloudSelfAgentProcessingLedgerKey(localMessageId: string) {
+  return `processing:${localMessageId}`;
+}
+
 export function cloudSelfAgentRequestClientMessageId(
   sessionId: string,
   localMessageId: string,

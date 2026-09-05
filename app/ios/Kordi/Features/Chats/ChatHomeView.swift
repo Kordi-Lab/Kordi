@@ -1,8 +1,12 @@
 import SwiftUI
 
-enum ChatChannel {
+enum ChatChannel: Hashable {
     case contact
     case agent
+}
+
+struct ArchivedChatsRoute: Hashable {
+    let channel: ChatChannel
 }
 
 struct ChatHomeView: View {
@@ -22,16 +26,19 @@ struct ChatHomeView: View {
     @State private var pullRefreshState: ChatPullRefreshVisualState = .idle
     private let onOpenConversation: ((ConversationSummary) -> Void)?
     private let onOpenNewChat: ((NewChatMode) -> Void)?
+    private let onOpenArchivedChats: (() -> Void)?
 
     init(
         channel: ChatChannel,
         onOpenConversation: ((ConversationSummary) -> Void)? = nil,
-        onOpenNewChat: ((NewChatMode) -> Void)? = nil
+        onOpenNewChat: ((NewChatMode) -> Void)? = nil,
+        onOpenArchivedChats: (() -> Void)? = nil
     ) {
         self.channel = channel
         _newChatMode = State(initialValue: NewChatMode.previewMode(arguments: ProcessInfo.processInfo.arguments))
         self.onOpenConversation = onOpenConversation
         self.onOpenNewChat = onOpenNewChat
+        self.onOpenArchivedChats = onOpenArchivedChats
     }
 
     private var searchQuery: String {
@@ -178,6 +185,12 @@ struct ChatHomeView: View {
         .navigationDestination(isPresented: $showingArchivedChats) {
             ArchivedChatsView(channel: channel)
         }
+        .navigationDestination(for: ArchivedChatsRoute.self) { route in
+            ArchivedChatsView(
+                channel: route.channel,
+                onOpenConversation: onOpenConversation
+            )
+        }
         .toolbar {
             if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .principal) {
@@ -211,11 +224,11 @@ struct ChatHomeView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
-        .alert("Rename session", isPresented: Binding(
+        .alert(renameTarget?.kind == .group ? "Rename channel" : "Rename session", isPresented: Binding(
             get: { renameTarget != nil },
             set: { if !$0 { renameTarget = nil } }
         )) {
-            TextField("Session name", text: $renameDraft)
+            TextField(renameTarget?.kind == .group ? "Channel name" : "Session name", text: $renameDraft)
             Button("Cancel", role: .cancel) { renameTarget = nil }
             Button("Rename") {
                 guard let target = renameTarget else { return }
@@ -224,7 +237,9 @@ struct ChatHomeView: View {
             }
             .disabled(renameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         } message: {
-            Text("This name is used for the session, matching Kordi on macOS.")
+            Text(renameTarget?.kind == .group
+                ? "This shared channel name is synchronized for every group member."
+                : "This name is synchronized with Kordi on macOS.")
         }
         .alert(
             "Delete this chat from your list?",
@@ -295,7 +310,11 @@ struct ChatHomeView: View {
     private var archivedChatsEntry: some View {
         if archivedForChannelCount > 0 {
             Button {
-                showingArchivedChats = true
+                if let onOpenArchivedChats {
+                    onOpenArchivedChats()
+                } else {
+                    showingArchivedChats = true
+                }
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "archivebox")
@@ -597,11 +616,14 @@ struct ChatHomeView: View {
 
     @ViewBuilder
     private func sessionContextMenu(for conversation: ConversationSummary) -> some View {
-        Button {
-            renameDraft = conversation.displayName
-            renameTarget = conversation
-        } label: {
-            Label("Rename", systemImage: "pencil")
+        if conversation.kind != .group
+            || conversation.canManageGroup(accountId: model.account?.accountId) {
+            Button {
+                renameDraft = conversation.displayName
+                renameTarget = conversation
+            } label: {
+                Label(conversation.kind == .group ? "Rename channel" : "Rename", systemImage: "pencil")
+            }
         }
         Button {
             toggleUnread(conversation)
@@ -808,9 +830,18 @@ struct ChatHomeView: View {
 private struct ArchivedChatsView: View {
     @EnvironmentObject private var model: AppModel
     let channel: ChatChannel
+    private let onOpenConversation: ((ConversationSummary) -> Void)?
     @State private var deleteTarget: ConversationSummary?
     @State private var selectedConversation: ConversationSummary?
     @State private var expandedGroupSpaceIds = Set<String>()
+
+    init(
+        channel: ChatChannel,
+        onOpenConversation: ((ConversationSummary) -> Void)? = nil
+    ) {
+        self.channel = channel
+        self.onOpenConversation = onOpenConversation
+    }
 
     private var conversations: [ConversationSummary] {
         model.archivedConversations.filter {
@@ -905,7 +936,11 @@ private struct ArchivedChatsView: View {
 
     private func archivedSessionActionRow(_ conversation: ConversationSummary) -> some View {
         Button {
-            selectedConversation = conversation
+            if let onOpenConversation {
+                onOpenConversation(conversation)
+            } else {
+                selectedConversation = conversation
+            }
         } label: {
             archivedConversationRow(conversation)
         }

@@ -2,8 +2,8 @@ use anyhow::Result;
 use chrono::Utc;
 use kordi_core::types::*;
 use kordi_monitor::ResolvedCacheUsage;
-use kordi_provider::CollectedResponse;
 use kordi_provider::registry::Model;
+use kordi_provider::CollectedResponse;
 use kordi_session::store;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -64,6 +64,16 @@ pub(crate) async fn append_user_message_with_images(
     prompt: &str,
     images: &[kordi_core::agent_session::ImageContent],
 ) -> Result<()> {
+    append_user_message_with_id(conn, session_id, prompt, images, None).await
+}
+
+pub(crate) async fn append_user_message_with_id(
+    conn: &Arc<Mutex<rusqlite::Connection>>,
+    session_id: &str,
+    prompt: &str,
+    images: &[kordi_core::agent_session::ImageContent],
+    request_id: Option<&str>,
+) -> Result<()> {
     let conn = conn.lock().await;
     let mut content = vec![ContentBlock::Text {
         text: prompt.to_string(),
@@ -77,8 +87,12 @@ pub(crate) async fn append_user_message_with_images(
                 .unwrap_or_else(|| "image/png".to_string()),
         }
     }));
+    let mut base = next_entry_base(&conn, session_id);
+    if let Some(request_id) = request_id.filter(|id| !id.trim().is_empty()) {
+        base.id = EntryId(request_id.to_string());
+    }
     let user_entry = SessionEntry::Message {
-        base: next_entry_base(&conn, session_id),
+        base,
         message: AgentMessage::User(UserMessage {
             content,
             timestamp: Utc::now().timestamp_millis(),
@@ -267,6 +281,20 @@ mod tests {
     use super::*;
     use kordi_core::types::{AgentMessage, AssistantContent, SessionEntry, StopReason};
     use kordi_provider::registry::{ApiType, CostConfig, Model, ModelInput};
+
+    #[tokio::test]
+    async fn user_input_preserves_the_canonical_request_id() -> Result<()> {
+        let session_id = "canonical-agent-session";
+        let conn = kordi_session::store::open_memory()?;
+        kordi_session::store::create_session_with_id(&conn, session_id, "/tmp")?;
+        let conn = wrap_conn(conn);
+        let request_id = "00000000-0000-4000-8000-000000000001";
+        append_user_message_with_id(&conn, session_id, "Hello", &[], Some(request_id)).await?;
+        let conn = conn.lock().await;
+        let path = kordi_session::tree::active_path(&conn, session_id)?;
+        assert_eq!(path.last().unwrap().entry_id, request_id);
+        Ok(())
+    }
 
     fn test_model() -> Model {
         Model {

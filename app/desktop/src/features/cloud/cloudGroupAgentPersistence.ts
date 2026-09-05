@@ -69,7 +69,7 @@ export async function ensureCloudGroupAgentIdentity(
   return presentation;
 }
 
-export async function persistQueuedCloudGroupAgentTurn(
+export async function persistPendingCloudGroupAgentTurn(
   input: ApplyCloudGroupAgentControlInput,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -79,33 +79,33 @@ export async function persistQueuedCloudGroupAgentTurn(
   const presentation = await ensureCloudGroupAgentIdentity(input, signal);
   if (signal?.aborted) return;
   const createdAtMs = Date.now();
-  const queuedMessageId =
+  const pendingMessageId =
     `msg:cloud-agent-processing:${message.id}:${account.accountId}`;
-  const persistedQueuedMessage = await upsertCanonicalMessageFast({
-    id: queuedMessageId,
+  const persistedPendingMessage = await upsertCanonicalMessageFast({
+    id: pendingMessageId,
     sessionId: envelope.groupId,
     senderIdentityId: presentation.identityId,
     senderRole: 'owned-agent',
     messageKind: 'agent-turn',
-    contentText: 'queued...',
+    contentText: 'processing...',
     content: {
       sender: presentation.displayName,
       senderOwnerAccountId: account.accountId,
       senderOwnerName: presentation.ownerDisplayName,
       timestampMs: createdAtMs,
-      deliveryState: 'queued',
+      deliveryState: 'processing',
       sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
       requestId: message.id,
       replyToMessageId: message.id,
     },
     createdAtMs,
     parentMessageId: message.id,
-    status: 'queued',
+    status: 'processing',
     sourceTransport: 'cloud-group-agent',
-    sourceEventId: `cloud-group-agent:${queuedMessageId}`,
+    sourceEventId: `cloud-group-agent:${pendingMessageId}`,
   } satisfies AppendCanonicalMessageRequest);
   if (signal?.aborted) return;
   input.setCanonicalState((current) =>
-    mergeCanonicalMessageRow(current, persistedQueuedMessage)
+    mergeCanonicalMessageRow(current, persistedPendingMessage)
   );
 }

@@ -115,7 +115,7 @@ test('canonical Cloud unread and legacy group titles remain masked until the acc
 
   assert.equal(pendingModel?.buildChatConversations([], subtitle)[0]?.unread, 0);
   assert.equal(readyModel?.buildChatConversations([], subtitle)[0]?.unread, 99);
-  assert.equal(pendingModel?.buildChatConversations([], subtitle)[0]?.name, 'New chat');
+  assert.equal(pendingModel?.buildChatConversations([], subtitle)[0]?.name, 'Channel 1');
   assert.equal(readyModel?.buildChatConversations([], subtitle)[0]?.name, 'Announcement');
   assert.equal(reliablePendingModel?.buildChatConversations([], subtitle)[0]?.name, 'Announcement');
   const recovered = reliablePendingModel?.applyConversation({
@@ -136,7 +136,7 @@ test('canonical Cloud unread and legacy group titles remain masked until the acc
   assert.equal(recovered?.canonicalMessageCount, 1);
 });
 
-test('canonical group conversation title stays on first message when synced cloud group name changes', () => {
+test('canonical group conversation title never comes from its first message', () => {
   const sessionId = 'session:group:cloud-room';
   const readModel = createCanonicalSessionReadModel({
     storagePath: '/tmp/canonical.sqlite3',
@@ -180,7 +180,7 @@ test('canonical group conversation title stays on first message when synced clou
 
   const conversations = readModel.buildChatConversations([], (messages, fallback) => messages[0]?.text ?? fallback ?? '');
   const conversation = conversations.find((candidate) => candidate.id === sessionId);
-  assert.equal(conversation?.name, 'hi every');
+  assert.equal(conversation?.name, 'Channel 1');
   assert.equal((conversation?.metadata as { customName?: string } | undefined)?.customName, '1111');
   assert.equal(conversation?.messages[0]?.reactionConversationId, sessionId);
   assert.equal(conversation?.messages[0]?.reactionTargetMessageId, 'msg:1');

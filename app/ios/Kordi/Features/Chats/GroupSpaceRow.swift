@@ -41,7 +41,7 @@ struct GroupSpaceRow: View {
             Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 4) {
-                Text(relativeTimestamp(space.lastActivityAt))
+                Text(chatListTimestamp(space.lastActivityAt))
                     .font(.caption)
                     .foregroundStyle(
                         unmutedUnreadCount > 0 || unmutedMentionCount > 0
@@ -151,7 +151,7 @@ struct GroupSessionRow: View {
             Spacer(minLength: 8)
 
             VStack(alignment: .trailing, spacing: 4) {
-                Text(relativeTimestamp(session.lastActivityAt))
+                Text(chatListTimestamp(session.lastActivityAt))
                     .font(.caption)
                     .foregroundStyle(session.hasUnreadAttention && !isMuted ? KordiTheme.signalBlue : .secondary)
                 if session.hasUnreadAttention {
@@ -177,16 +177,5 @@ struct GroupSessionRow: View {
         let title = session.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         if title.isEmpty { return "# Untitled session" }
         return title.hasPrefix("#") ? title : "# \(title)"
-    }
-}
-
-private func relativeTimestamp(_ date: Date) -> String {
-    let elapsed = max(0, Date().timeIntervalSince(date))
-    return switch elapsed {
-    case ..<60: "Now"
-    case ..<3_600: "\(Int(elapsed / 60))m"
-    case ..<86_400: "\(Int(elapsed / 3_600))h"
-    case ..<604_800: "\(Int(elapsed / 86_400))d"
-    default: date.formatted(.dateTime.month(.abbreviated).day())
     }
 }

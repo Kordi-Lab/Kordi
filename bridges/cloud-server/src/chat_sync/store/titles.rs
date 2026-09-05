@@ -124,19 +124,25 @@ pub async fn update_personal_title(
         return Ok(existing);
     }
 
-    let row: Option<(Option<String>, i32)> = query_as(
-        "SELECT personal_title, preferences_version \
-         FROM cloud_chat_conversation_members \
-         WHERE conversation_id = $1 AND account_id = $2 AND membership_state = 'active' \
-         FOR UPDATE",
+    let row: Option<(Option<String>, i32, String)> = query_as(
+        "SELECT member.personal_title, member.preferences_version, conversation.kind \
+         FROM cloud_chat_conversation_members member \
+         JOIN cloud_chat_conversations conversation \
+           ON conversation.conversation_id = member.conversation_id \
+         WHERE member.conversation_id = $1 AND member.account_id = $2 \
+           AND member.membership_state = 'active' \
+         FOR UPDATE OF member",
     )
     .bind(conversation_id)
     .bind(account_id)
     .fetch_optional(&mut *transaction)
     .await?;
-    let Some((current_title, current_version)) = row else {
+    let Some((current_title, current_version, conversation_kind)) = row else {
         return Err(StoreError::Forbidden);
     };
+    if conversation_kind == "group" {
+        return Err(StoreError::Forbidden);
+    }
     let current = ConversationPreferencesSnapshot {
         conversation_id,
         account_id: account_id.to_string(),

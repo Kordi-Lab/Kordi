@@ -649,11 +649,13 @@ final class CloudModelDecodingTests: XCTestCase {
     }
 
     func testChatConversationDecodesDurableForkLineage() throws {
-        let payload = Data(#"{"id":"conversation-child","kind":"ai","shared_title":"Child","version":3,"created_by_account_id":"acct_me","legacy_session_id":"session:fork:child","forked_from_session_id":"session:self-agent:root","forked_from_message_id":"msg_root","latest_message_sequence":4,"created_at":"2026-08-09T10:00:00Z","updated_at":"2026-08-09T10:01:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":4,"last_read_sequence":4,"joined_at":"2026-08-09T10:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-child","account_id":"acct_me","personal_title":null,"version":1}}"#.utf8)
+        let payload = Data(#"{"id":"conversation-child","kind":"ai","shared_title":"Child","version":3,"created_by_account_id":"acct_me","legacy_session_id":"session:fork:child","group_space_id":"session:group:root","group_title":"Canonical group","forked_from_session_id":"session:self-agent:root","forked_from_message_id":"msg_root","latest_message_sequence":4,"created_at":"2026-08-09T10:00:00Z","updated_at":"2026-08-09T10:01:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":4,"last_read_sequence":4,"joined_at":"2026-08-09T10:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-child","account_id":"acct_me","personal_title":null,"version":1}}"#.utf8)
 
         let conversation = try JSONDecoder().decode(CloudChatConversation.self, from: payload)
 
         XCTAssertEqual(conversation.legacySessionId, "session:fork:child")
+        XCTAssertEqual(conversation.groupSpaceId, "session:group:root")
+        XCTAssertEqual(conversation.groupTitle, "Canonical group")
         XCTAssertEqual(conversation.forkedFromSessionId, "session:self-agent:root")
         XCTAssertEqual(conversation.forkedFromMessageId, "msg_root")
     }

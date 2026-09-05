@@ -11,7 +11,9 @@ import {
   DESKTOP_AUTH_CHANNEL_NAME,
   broadcastDesktopAuthUpdated,
   createDesktopAuthSyncGuard,
+  desktopAuthSyncIntentFromAnotherSource,
   isDesktopAuthUpdateFromAnotherSource,
+  type DesktopAuthSyncIntent,
   type DesktopAuthUpdateReason,
 } from './desktopAuthSync';
 
@@ -24,11 +26,26 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
   const [isDesktopAuthLoading, setIsDesktopAuthLoading] = useState(isNativeShell);
   const [desktopAuthError, setDesktopAuthError] = useState<string | null>(null);
   const [activeLoginProviderId, setActiveLoginProviderId] = useState<string | null>(null);
+  const [providerAuthSyncIntent, setProviderAuthSyncIntent] =
+    useState<DesktopAuthSyncIntent | null>(null);
+  const providerAuthSyncRevisionRef = useRef(0);
   const authSyncGuardRef = useRef<ReturnType<typeof createDesktopAuthSyncGuard> | null>(null);
   if (!authSyncGuardRef.current) {
     authSyncGuardRef.current = createDesktopAuthSyncGuard();
   }
   const authSyncGuard = authSyncGuardRef.current;
+
+  const recordProviderAuthSyncIntent = useCallback((
+    reason: DesktopAuthUpdateReason,
+    providerId: string,
+  ) => {
+    providerAuthSyncRevisionRef.current += 1;
+    setProviderAuthSyncIntent({
+      providerId,
+      reason,
+      revision: providerAuthSyncRevisionRef.current,
+    });
+  }, []);
 
   const clearDesktopAuthError = useCallback(() => {
     setDesktopAuthError(null);
@@ -44,23 +61,32 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
 
     try {
       const nextState = await fetchDesktopAuthState();
-      if (isCancelled() || !authSyncGuard.canApplyRefresh(refreshToken)) return;
+      if (isCancelled() || !authSyncGuard.canApplyRefresh(refreshToken)) return false;
       setDesktopAuthState(nextState);
       setDesktopAuthError(null);
+      return true;
     } catch (error) {
-      if (isCancelled() || !authSyncGuard.canApplyRefresh(refreshToken)) return;
+      if (isCancelled() || !authSyncGuard.canApplyRefresh(refreshToken)) return false;
       setDesktopAuthError(error instanceof Error ? error.message : 'Unable to load desktop auth');
+      return false;
     }
   }, [authSyncGuard]);
 
-  const refreshDesktopAuth = useCallback(async () => {
-    await loadDesktopAuthState();
-  }, [loadDesktopAuthState]);
+  const refreshDesktopAuth = useCallback(async (
+    reason?: DesktopAuthUpdateReason,
+    providerId?: string,
+  ) => {
+    const applied = await loadDesktopAuthState();
+    if (applied && reason && providerId) {
+      recordProviderAuthSyncIntent(reason, providerId);
+    }
+  }, [loadDesktopAuthState, recordProviderAuthSyncIntent]);
 
   const runDesktopAuthMutation = useCallback(async (
     operation: () => Promise<DesktopAuthState>,
     fallbackError: string,
     reason: DesktopAuthUpdateReason,
+    providerId: string,
   ) => {
     authSyncGuard.beginMutation();
     try {
@@ -68,19 +94,21 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
       const nextState = await operation();
       setDesktopAuthState(nextState);
       setDesktopAuthError(null);
-      broadcastDesktopAuthUpdated(reason);
+      recordProviderAuthSyncIntent(reason, providerId);
+      broadcastDesktopAuthUpdated(reason, providerId);
     } catch (error) {
       setDesktopAuthError(error instanceof Error ? error.message : fallbackError);
     } finally {
       authSyncGuard.finishMutation();
     }
-  }, [authSyncGuard]);
+  }, [authSyncGuard, recordProviderAuthSyncIntent]);
 
   const handleLogoutProvider = useCallback(async (providerId: string) => {
     await runDesktopAuthMutation(
       () => logoutDesktopProvider(providerId),
       'Unable to log out provider',
       'provider-logout',
+      providerId,
     );
   }, [runDesktopAuthMutation]);
 
@@ -89,6 +117,7 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
       () => setDesktopActiveAuthChoice(providerId, choice),
       'Unable to select auth option',
       'active-choice-changed',
+      providerId,
     );
   }, [runDesktopAuthMutation]);
 
@@ -97,6 +126,7 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
       () => removeDesktopAuthProfile(providerId, profileId),
       'Unable to remove saved auth',
       'profile-removed',
+      providerId,
     );
   }, [runDesktopAuthMutation]);
 
@@ -135,7 +165,12 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
     if (channel) {
       channel.onmessage = (event) => {
         if (!isDesktopAuthUpdateFromAnotherSource(event.data)) return;
-        refresh();
+        const intent = desktopAuthSyncIntentFromAnotherSource(event.data);
+        void loadDesktopAuthState().then((applied) => {
+          if (applied && intent) {
+            recordProviderAuthSyncIntent(intent.reason, intent.providerId);
+          }
+        });
       };
     }
 
@@ -145,7 +180,12 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
       window.removeEventListener('focus', refresh);
       channel?.close();
     };
-  }, [isNativeShell, refreshDesktopAuth]);
+  }, [
+    isNativeShell,
+    loadDesktopAuthState,
+    recordProviderAuthSyncIntent,
+    refreshDesktopAuth,
+  ]);
 
   return {
     desktopAuthState,
@@ -155,6 +195,7 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
     setDesktopAuthError,
     clearDesktopAuthError,
     activeLoginProviderId,
+    providerAuthSyncIntent,
     setActiveLoginProviderId,
     selectAuthProvider,
     refreshDesktopAuth,

@@ -150,14 +150,7 @@ struct AgentSessionRow: View {
     }
 
     private var relativeTimestamp: String {
-        let elapsed = max(0, Date().timeIntervalSince(conversation.lastActivityAt))
-        return switch elapsed {
-        case ..<60: "Now"
-        case ..<3_600: "\(Int(elapsed / 60))m"
-        case ..<86_400: "\(Int(elapsed / 3_600))h"
-        case ..<604_800: "\(Int(elapsed / 86_400))d"
-        default: conversation.lastActivityAt.formatted(.dateTime.month(.abbreviated).day())
-        }
+        chatListTimestamp(conversation.lastActivityAt)
     }
 }
 

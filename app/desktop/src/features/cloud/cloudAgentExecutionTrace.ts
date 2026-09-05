@@ -153,6 +153,8 @@ export function cloudAgentExecutionSnapshotFromTurn(
       ? 'failed'
       : turn.completed
         ? 'complete'
+        : turn.status === 'queued'
+          ? 'queued'
         : runningTool
           ? 'using-tool'
           : turn.assistantText.trim()
@@ -166,6 +168,8 @@ export function cloudAgentExecutionSnapshotFromTurn(
       ? 'Execution needs attention'
       : turn.completed
         ? 'Execution complete'
+        : phase === 'queued'
+          ? 'Queued next'
         : runningTool?.label
           ?? (phase === 'writing'
             ? 'Writing the response'

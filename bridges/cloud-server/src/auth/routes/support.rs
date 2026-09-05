@@ -1,4 +1,7 @@
 use super::*;
+use sqlx_core::transaction::Transaction;
+use sqlx_postgres::Postgres;
+use uuid::Uuid;
 
 pub(super) const SIGNUP_DEFAULT_DEVICE_NAME: &str = "cloud-email-password-device";
 
@@ -217,42 +220,42 @@ pub(super) fn normalized_source_session_id(value: &str) -> Option<String> {
     Some(trimmed.to_string())
 }
 
-pub(super) async fn caller_can_access_cloud_session(
-    pool: &PgPool,
+pub(super) async fn conversation_id_for_session_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
     session_id: &str,
-) -> Result<bool, sqlx_core::Error> {
-    let participants = cloud_session_participants(pool, session_id).await?;
-    Ok(participants
-        .iter()
-        .any(|participant| participant == account_id))
+) -> Result<Option<Uuid>, sqlx_core::Error> {
+    let canonical_id = Uuid::parse_str(session_id).ok();
+    query_as(
+        "SELECT conversation.conversation_id \
+         FROM cloud_chat_conversations conversation \
+         JOIN cloud_chat_conversation_members member \
+           ON member.conversation_id = conversation.conversation_id \
+         WHERE (conversation.legacy_session_id = $1 OR conversation.conversation_id = $3) \
+           AND member.account_id = $2 \
+           AND member.membership_state = 'active'",
+    )
+    .bind(session_id)
+    .bind(account_id)
+    .bind(canonical_id)
+    .fetch_optional(&mut **transaction)
+    .await
+    .map(|row: Option<(Uuid,)>| row.map(|(conversation_id,)| conversation_id))
 }
 
-// Session pin/visibility remain ancillary account settings, but their change
-// notifications still travel through the durable per-user stream so a
-// second device converges without consulting superseded mailbox storage.
-pub(super) async fn publish_chat_event(
-    pool: &PgPool,
-    account_id: &str,
-    event_type: &str,
-    peer_account_id: Option<&str>,
-    _message_id: Option<&str>,
-    payload: serde_json::Value,
-    _occurred_at: &str,
-) -> Result<(), crate::chat_sync::store::StoreError> {
-    let conversation_id = if let Some(session_id) = peer_account_id {
-        crate::chat_sync::store::conversation_id_for_session(pool, account_id, session_id).await?
-    } else {
-        None
-    };
-    crate::chat_sync::store::publish_user_sync_events(
-        pool,
-        &[account_id.to_string()],
-        event_type,
-        conversation_id,
-        payload,
+pub(super) async fn active_conversation_member_ids_in_transaction(
+    transaction: &mut Transaction<'_, Postgres>,
+    conversation_id: Uuid,
+) -> Result<Vec<String>, sqlx_core::Error> {
+    query_as::<_, (String,)>(
+        "SELECT account_id FROM cloud_chat_conversation_members \
+         WHERE conversation_id = $1 AND membership_state = 'active' \
+         ORDER BY account_id ASC",
     )
+    .bind(conversation_id)
+    .fetch_all(&mut **transaction)
     .await
+    .map(|rows| rows.into_iter().map(|(account_id,)| account_id).collect())
 }
 
 #[cfg(test)]

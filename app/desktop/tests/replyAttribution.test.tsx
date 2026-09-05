@@ -337,15 +337,6 @@ test('shouldInferLatestHumanReplyTarget enables fallback linking for person, ext
   assert.equal(shouldInferLatestHumanReplyTarget({ type: 'owned-agent', participantSpaceId: null, canonicalParticipantCount: 1 }), false);
 });
 
-test('shouldInferLatestHumanReplyTarget does not quote new private self-agent fork turns', () => {
-  assert.equal(shouldInferLatestHumanReplyTarget({
-    type: 'owned-agent',
-    participantSpaceId: null,
-    canonicalParticipantCount: 1,
-    forkedFromSessionId: 'parent-self-session',
-  }), false);
-});
-
 test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent conversations', () => {
   assert.equal(shouldSuppressAgentReplyAttribution({
     id: 'session:self-agent:1',
@@ -358,13 +349,6 @@ test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent convers
     type: 'owned-agent',
     participantSpaceId: 'space-1',
     canonicalParticipantCount: 4,
-  }), false);
-  assert.equal(shouldSuppressAgentReplyAttribution({
-    id: 'session:self-agent-group-fork',
-    type: 'owned-agent',
-    participantSpaceId: null,
-    canonicalParticipantCount: 1,
-    forkedFromSessionId: 'session:group:1',
   }), false);
   assert.equal(shouldSuppressAgentReplyAttribution({ id: 'session:project:1', type: 'owned-agent', participantSpaceId: 'space:project', canonicalParticipantCount: 4 }), false);
   assert.equal(shouldSuppressAgentReplyAttribution({

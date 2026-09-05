@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 
 import {
   buildForkLineage,
-  isGroupForkSession,
 } from '@/features/chat/forkLineage';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '@/features/chat/draftSessions';
 import type {
@@ -20,7 +19,7 @@ type UseChatForkModelInput = {
   messages: readonly Message[];
   desktopChatState: DesktopChatState | null;
   isGroupSession: boolean;
-  isGroupFork: boolean;
+  isAgentSession: boolean;
   onForkMessage?: (sessionId: string, messageEntryId: string) => Promise<void>;
 };
 
@@ -35,15 +34,13 @@ export function useChatForkModel({
   messages,
   desktopChatState,
   isGroupSession,
-  isGroupFork,
+  isAgentSession,
   onForkMessage,
 }: UseChatForkModelInput) {
-  const sourceSessionId = isGroupFork
-    ? null
-    : conversation.forkedFromSessionId?.trim() || null;
+  const sourceSessionId = conversation.forkedFromSessionId?.trim() || null;
   const sourceMessageIds = useMemo(
-    () => isGroupFork ? new Set<string>() : forkSourceMessageIds(conversation),
-    [conversation, isGroupFork],
+    () => forkSourceMessageIds(conversation),
+    [conversation],
   );
   const sourceTitle = useMemo(() => {
     if (!sourceSessionId) return null;
@@ -55,9 +52,7 @@ export function useChatForkModel({
 
   const forksByEntryId = useMemo(() => {
     if (isGroupSession) return new Map<string, ForkSummary[]>();
-    const summaries = (desktopChatState?.sessions ?? []).filter(
-      (summary) => !isGroupForkSession(summary),
-    );
+    const summaries = desktopChatState?.sessions ?? [];
     const lineage = buildForkLineage(summaries.map((summary) => ({
       id: summary.id,
       forkedFromSessionId: summary.forkedFromSessionId ?? null,
@@ -92,7 +87,7 @@ export function useChatForkModel({
       && conversation.id !== LOCAL_DRAFT_CHAT_CONVERSATION_ID
       && !conversation.id.startsWith('bridge:')
       && !isGroupSession
-      && !isGroupFork,
+      && isAgentSession,
   );
   const forkMessage = isForkable && onForkMessage
     ? (entryId: string) => {

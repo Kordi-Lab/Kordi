@@ -359,7 +359,9 @@ export function mapCanonicalMessage(
   const role = canonicalMessageRole(message, identity, profileHumanIdentityId);
   const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
   const completed = canonicalMessageIsComplete(message, content);
-  const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+  const deliveryState = isAgentTurn && !completed && contentRecord(content.execution).phase === 'queued'
+    ? 'queued'
+    : stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
   const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail));
   const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;
@@ -482,7 +484,7 @@ export function mapCanonicalMessage(
     // visible text, while canonical-only and fork-snapshot messages
     // continue to target their stable canonical message id.
     entryId: desktopEntryId || message.id,
-    isForkSnapshot: (sourceTransport === 'canonical-fork-snapshot' || sourceTransport === 'cloud-group-fork-snapshot') || undefined,
+    isForkSnapshot: sourceTransport === 'canonical-fork-snapshot' || undefined,
     role,
     sender,
     senderOwnerName: agentPresentation.senderOwnerName,
@@ -496,7 +498,7 @@ export function mapCanonicalMessage(
     time,
     timestampMs: message.createdAtMs,
     callActivity: canonicalCallActivity(message, content, isOwnMessage),
-    messageKind: voiceMessage ? 'voice' : undefined,
+    messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? message.messageKind : undefined,
     voiceMessage,
     detail: stringValue(content.detail),
     attachments: canonicalAttachments(content.attachments),

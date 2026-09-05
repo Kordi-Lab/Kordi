@@ -384,7 +384,7 @@ final class CompanionChatPanelTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("Kordi/Features/Conversation/ComposerView.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
-        let start = try XCTUnwrap(source.range(of: "private var messageEditor"))
+        let start = try XCTUnwrap(source.range(of: "private var messageEditor: some View"))
         let end = try XCTUnwrap(source.range(
             of: "private var messageFieldAnimation",
             range: start.upperBound..<source.endIndex
@@ -818,7 +818,7 @@ final class CompanionChatPanelTests: XCTestCase {
         )
 
         XCTAssertEqual(suggestion?.id, "agent-session:session:self-agent:provider-only")
-        XCTAssertEqual(suggestion?.displayName, "My Kordi")
+        XCTAssertEqual(suggestion?.displayName, "Kordi")
         XCTAssertEqual(suggestion?.peerAccountId, "acct_me")
     }
 

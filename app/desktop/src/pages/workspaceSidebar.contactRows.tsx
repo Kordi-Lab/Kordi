@@ -1,4 +1,4 @@
-import { BellOff, ChevronDown, ChevronRight, MoreHorizontal, Paperclip, Pin, Plus, Split } from 'lucide-react';
+import { BellOff, ChevronDown, MoreHorizontal, Paperclip, Pin, Plus } from 'lucide-react';
 
 import { attachmentPreviewUrl } from '@/features/chat/attachmentMediaGallery';
 import { isBlankParticipantSpaceSession } from '@/features/chat/participantSpaces';
@@ -40,14 +40,12 @@ export type ContactSidebarRowActions = {
 function ParticipantSpaceSessionRow({
   session,
   space,
-  depth,
   model,
   actions,
   activeConvId,
 }: {
   session: ParticipantSpaceItem['sessions'][number];
   space: ParticipantSpaceItem;
-  depth: number;
   model: WorkspaceChatSidebarModel;
   actions: ContactSidebarRowActions;
   activeConvId: string;
@@ -62,19 +60,7 @@ function ParticipantSpaceSessionRow({
   const sessionRowTitle = participantSpaceSessionRowTitle(session.title);
   const sessionIdLabel = participantSpaceSessionIdLabel(session);
   const preferenceSessionId = participantSpaceSessionPreferenceId(session);
-  const isFork = depth > 0;
-  const childForks =
-    model.globalForkLineage.forksByParentSessionId.get(session.id) ?? [];
-  const hasForks = childForks.length > 0;
-  const expanded = hasForks && model.isForkListExpanded(session.id);
-  const ownSessionUnreadCount = session.unread;
-  const rowUnreadCount = expanded
-    ? ownSessionUnreadCount
-    : (model.unreadBySessionIdWithForkDescendants.get(session.id)
-      ?? ownSessionUnreadCount);
-  const visualDepth = Math.min(depth, 4);
-  const indentPaddingLeft =
-    visualDepth > 0 ? `${0.625 + visualDepth * 0.875}rem` : undefined;
+  const rowUnreadCount = session.unread;
 
   return (
     <button
@@ -85,7 +71,6 @@ function ParticipantSpaceSessionRow({
       data-session-preview-line={sessionPreview}
       data-session-id-label={sessionIdLabel}
       data-session-updated-at={sessionRowTimeLabel}
-      data-session-fork-depth={visualDepth || undefined}
       onClick={() => actions.onSelectChatSession(session.id)}
       onContextMenu={(event) => {
         const target = sessionContextMenuTargetForConversation(
@@ -105,11 +90,9 @@ function ParticipantSpaceSessionRow({
         event.stopPropagation();
         actions.onOpenSessionContextMenu(target);
       }}
-      style={indentPaddingLeft ? { paddingLeft: indentPaddingLeft } : undefined}
       className={cn(
         'app-session-row app-participant-space-session-row w-full px-2.5 py-1 text-left text-white',
         isActive && 'app-session-row-active',
-        isFork && 'app-session-row-fork',
       )}
     >
       <div className="app-participant-space-session-main min-w-0">
@@ -139,57 +122,12 @@ function ParticipantSpaceSessionRow({
         <SidebarSessionMetaColumn
           timeLabel={sessionRowTimeLabel}
           unreadCount={rowUnreadCount}
-          unreadMentionCount={ownSessionUnreadCount > 0 ? conversation.unreadMentions : 0}
+          unreadMentionCount={rowUnreadCount > 0 ? conversation.unreadMentions : 0}
           unreadScope="participant-session"
           indicator={session.statusIndicator}
           active={isActive}
           muted={model.mutedSessionIds.has(preferenceSessionId)}
         />
-        {hasForks ? (
-          <>
-            <span
-              className="app-participant-space-session-fork-count inline-flex h-4 shrink-0 items-center gap-0.5 rounded-full bg-white/[0.06] px-1.5 text-[9.5px] font-medium tabular-nums text-slate-300"
-              title={`${childForks.length} fork${childForks.length === 1 ? '' : 's'} of this session`}
-              aria-label={`${childForks.length} forks`}
-            >
-              <Split className="h-2.5 w-2.5" />
-              <span>{childForks.length}</span>
-            </span>
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                model.toggleForkParent(session.id);
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') return;
-                event.preventDefault();
-                event.stopPropagation();
-                model.toggleForkParent(session.id);
-              }}
-              className="app-participant-space-session-fork-toggle inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-slate-400 transition hover:bg-white/[0.06] hover:text-slate-100"
-              aria-label={expanded ? 'Hide forks' : 'Show forks'}
-              title={expanded ? 'Hide forks' : 'Show forks'}
-            >
-              <ChevronRight
-                className={cn(
-                  'h-3 w-3 transition-transform',
-                  expanded && 'rotate-90',
-                )}
-              />
-            </span>
-          </>
-        ) : isFork ? (
-          <span
-            className="app-participant-space-session-fork-marker inline-flex h-4 w-4 shrink-0 items-center justify-center text-slate-500"
-            aria-hidden="true"
-            title="Forked session"
-          >
-            <Split className="h-3 w-3" />
-          </span>
-        ) : null}
       </div>
     </button>
   );
@@ -473,7 +411,6 @@ export function ContactSidebarRow({
     <ParticipantSpaceSessionRow
       session={row.session}
       space={row.space}
-      depth={descriptor.depth}
       model={model}
       actions={actions}
       activeConvId={activeConvId}

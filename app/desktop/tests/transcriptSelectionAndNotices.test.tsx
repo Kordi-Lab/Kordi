@@ -388,7 +388,8 @@ test('edited outgoing label stays inside while the timestamp remains hover-only'
   assert.doesNotMatch(markup.slice(footerStart, hoverTimeStart), /20:25/);
   assert.match(markup.slice(hoverTimeStart), />20:25<\/time>/);
   assert.match(markup, /app-message-hover-time-trigger/);
-  assert.match(markup, /app-message-hover-time[^\"]*w-0 min-w-0[^\"]*overflow-visible/);
+  assert.match(markup, /app-message-hover-time[^\"]*w-max shrink-0/);
+  assert.doesNotMatch(markup.slice(hoverTimeStart), /\bw-0\b/);
   assert.doesNotMatch(markup, /group-hover\/message:opacity-100/);
   assert.match(markup, /data-message-delivery-glyph="double-check"/);
 });
@@ -417,7 +418,7 @@ test('blank transcript-row space does not reveal the exact message time', () => 
 
   assert.doesNotMatch(source, /group\/message/);
   assert.match(source, /app-message-hover-time-trigger/);
-  assert.match(styles, /\.app-message-hover-time-trigger:is\(:hover, :focus-within\) \+ \.app-message-hover-time/);
+  assert.match(styles, /\.app-message-hover-time-trigger:is\(:hover, :focus-within\) ~ \.app-message-hover-time/);
 });
 
 test('short agent messages shrink-wrap the row so hover time stays beside the bubble', () => {

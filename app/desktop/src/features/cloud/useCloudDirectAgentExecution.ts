@@ -8,7 +8,10 @@ import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCre
 import {
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
-import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
+import {
+  desktopSharedRequestAlreadyStarted,
+  startDesktopSharedChatMessage,
+} from '@/lib/desktopBackgroundSessions';
 import type {
   Contact,
   DesktopChatTurnSnapshot,
@@ -247,6 +250,7 @@ export function useCloudDirectAgentExecution({
               );
             rememberLocalTurn(finalTurn);
           } catch (error) {
+            if (desktopSharedRequestAlreadyStarted(error)) return;
             finalTurn = cloudAgentFailedTurnSnapshot({
               requestId: message.messageId,
               sessionId: runtimeSessionId,

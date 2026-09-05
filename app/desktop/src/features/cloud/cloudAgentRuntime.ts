@@ -381,6 +381,10 @@ export function cloudAgentRuntimeSessionId(accountId?: string | null, cloudSessi
   return `${CLOUD_AGENT_RUNTIME_SESSION_PREFIX}${localAccountId}:${runtimeTargetId}`;
 }
 
+export function cloudSelfAgentRuntimeSessionId(sessionId?: string | null): string | null {
+  return cleanText(sessionId);
+}
+
 export function cloudGroupAgentRuntimeSessionId(
   accountId?: string | null,
   groupId?: string | null,
@@ -392,6 +396,13 @@ export function cloudGroupAgentRuntimeSessionId(
   return targetAgentId?.startsWith('cloud_agent_')
     ? `${groupRuntimeSessionId}:${targetAgentId}`
     : groupRuntimeSessionId;
+}
+
+export function cloudGroupAgentRequestRuntimeSessionId(
+  runtimeSessionId: string,
+  requestId: string,
+): string {
+  return `${runtimeSessionId}:request:${requestId}`;
 }
 
 export function compactCloudAgentRuntimeRoute(route?: DesktopChatMessageRoute | null): DesktopChatMessageRoute | null {
