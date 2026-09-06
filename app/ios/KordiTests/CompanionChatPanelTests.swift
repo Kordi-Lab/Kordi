@@ -4,6 +4,34 @@ import Testing
 @testable import Kordi
 
 struct ConversationBoundaryTests {
+@Test func sharedTaskInstructionsUseAgentIdentityWithoutBecomingLiveAnswers() throws {
+    let data = try JSONSerialization.data(withJSONObject: [
+        "sessionId": "child", "parentSessionId": "parent", "parentRequestId": "root",
+        "ownerAccountId": "owner", "agentId": "agent-one", "ownerDisplayName": "Owner",
+        "agentDisplayName": "Researcher", "title": "Research", "status": "running", "version": 1,
+        "updatedAt": "", "messages": [
+            ["id": "brief", "role": "user", "senderAgentId": "agent-one", "text": "Compare sources", "timestampMs": 1],
+            ["id": "human", "role": "user", "senderAccountId": "peer", "senderDisplayName": "Peer", "text": "Follow", "timestampMs": 2, "requestState": "queued"],
+        ],
+    ])
+    var snapshot = try JSONDecoder().decode(CloudAgentSubsession.self, from: data)
+    for account in ["owner", "peer"] {
+        let rows = snapshot.chatMessages(accountId: account)
+        #expect(rows.map(\.id) == ["brief", "runtime:child", "human"])
+        #expect(rows[0].author == .agent)
+        #expect(rows[0].authorName == "Researcher")
+        #expect(rows[0].senderOwnerName == (account == "owner" ? "You" : "Owner"))
+        #expect(rows[0].agentExecution == nil)
+        #expect(rows[1].agentExecution?.completed == false)
+        #expect(rows[2].author == (account == "peer" ? .me : .person))
+        #expect(rows[2].agentQueuePosition == 1)
+    }
+    snapshot.messages.append(.init(id: "answer", role: "assistant", text: "Sources found", timestampMs: 3))
+    #expect(snapshot.chatMessages(accountId: "peer").last?.agentExecution?.completed == false)
+    snapshot.messages[0].senderAgentId = "unrelated-agent"
+    #expect(snapshot.chatMessages(accountId: "peer").first?.author == .person)
+}
+
 @Test func askAgentPushesAChatPageInsteadOfResizingTheMainConversation() throws {
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
     let main = try String(contentsOf: root.appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift"), encoding: .utf8)

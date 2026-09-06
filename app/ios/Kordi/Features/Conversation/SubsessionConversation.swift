@@ -26,14 +26,15 @@ extension CloudAgentSubsession {
         var result: [ChatMessage] = []
         var queuePosition = 0
         for message in messages {
-            let agent = message.role == "assistant"
-            if agent && ["queued", "pending", "leased"].contains(message.requestState ?? "") { continue }
+            let assistant = message.role == "assistant"
+            let agent = assistant || message.senderAgentId == agentId
+            if assistant && ["queued", "pending", "leased"].contains(message.requestState ?? "") { continue }
             let author: MessageAuthor = agent ? .agent : message.senderAccountId == accountId ? .me : .person
             let phase: AgentExecutionSnapshot.Phase? = switch message.requestState {
-                case "running" where agent: .usingTool
-                case "completed" where agent: .complete
-                case "failed" where agent: .failed
-                case "cancelled" where agent: .cancelled
+                case "running" where assistant: .usingTool
+                case "completed" where assistant: .complete
+                case "failed" where assistant: .failed
+                case "cancelled" where assistant: .cancelled
                 default: nil
             }
             let execution = phase.map { phase in
@@ -55,14 +56,17 @@ extension CloudAgentSubsession {
         if state == .running && hasFollowupExecution != true {
             let progress = AgentExecutionSnapshot(phase: .usingTool, summary: "", steps: [], tools: activity?.tools,
                 startedAtMs: nil, updatedAtMs: 0, completed: false)
-            if let index = result.lastIndex(where: { $0.author == .agent && $0.requestMessageId == nil }) {
+            let lastAnswer = messages.last { $0.role == "assistant" && $0.requestId == nil }
+            if let index = result.lastIndex(where: { $0.id == lastAnswer?.id }) {
                 result[index].agentExecution = progress
             } else {
+                let taskBrief = messages.last { $0.senderAgentId == agentId }
+                let insertionIndex = result.lastIndex { $0.id == taskBrief?.id }.map { $0 + 1 } ?? 0
                 result.insert(ChatMessage(id: "runtime:\(sessionId)", conversationId: conversation.id,
                     author: .agent, authorName: agentDisplayName,
                     senderOwnerName: ownerAccountId == accountId ? "You" : ownerDisplayName,
                     text: "", createdAt: .distantPast, deliveryState: .delivered, errorMessage: nil,
-                    requestMessageId: nil, agentExecution: progress), at: 0)
+                    requestMessageId: nil, agentExecution: progress), at: insertionIndex)
             }
         }
         return result

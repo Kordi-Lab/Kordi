@@ -17,7 +17,7 @@ pub fn tool_catalog() -> Vec<Value> {
                 "parameters":{"type":"object","properties":{
                     "action":{"type":"string","enum":["spawn","inspect"]},
                     "taskName":{"type":"string","description":"Stable ASCII letters, numbers, and underscores; reuse the same name when retrying a spawn."},
-                    "taskTitle":{"type":"string"}, "message":{"type":"string"},
+                    "taskTitle":{"type":"string"}, "message":{"type":"string","description":"Public task instructions posted as this Agent to all parent-chat members. Never include private Ask Agent context, credentials, or system instructions."},
                     "forkTurns":{"type":"string","enum":["none"]},
                     "writeScope":{"type":"array","items":{"type":"string"}},
                     "sessionId":{"type":"string"}

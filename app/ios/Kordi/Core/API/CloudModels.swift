@@ -779,6 +779,7 @@ struct CloudAgentSubsession: Codable, Hashable {
         let text: String
         let timestampMs: Int64
         var senderAccountId: String? = nil
+        var senderAgentId: String? = nil
         var senderDisplayName: String? = nil
         var requestId: String? = nil
         var requestState: String? = nil

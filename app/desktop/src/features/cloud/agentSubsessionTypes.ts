@@ -1,6 +1,6 @@
 export type AgentSubsessionMessage = {
   id: string; role: 'user' | 'assistant'; text: string; timestampMs: number;
-  senderAccountId?: string; senderDisplayName?: string; requestId?: string;
+  senderAccountId?: string; senderAgentId?: string; senderDisplayName?: string; requestId?: string;
   requestState?: string | null; mentions?: import('@/kordi-app/types').MessageMention[];
   activity?: { tools?: import('@/kordi-app/types').DesktopChatToolSnapshot[] };
 };

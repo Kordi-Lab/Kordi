@@ -1,5 +1,26 @@
 import { test, expect } from '@playwright/test';
 
+for (const account of ['owner', 'peer']) {
+  test(`shared task instructions show the Agent for ${account}, with separate live progress`, async ({ page }, testInfo) => {
+    await page.addInitScript(account => { (window as unknown as {fixtureAccountId:string}).fixtureAccountId = account; }, account);
+    await page.goto('/tests/visual/subsessionConversation.html');
+    await page.evaluate(() => {
+      const record = (window as unknown as {fixtureSubsession: Record<string,unknown>}).fixtureSubsession;
+      Object.assign(record, {hasFollowupExecution:false,version:2,messages:[
+        {id:'brief',role:'user',senderAgentId:'fixture-agent',text:'Compare the sources in this shared Agent thread.',timestampMs:1000},
+      ]});
+    });
+    await page.getByRole('button', { name: 'Open background agent session: Planet research' }).click();
+    const panel = page.locator('[data-chat-side-agent-panel="true"]');
+    await expect(panel.getByText('Compare the sources in this shared Agent thread.', {exact:true})).toBeVisible();
+    await expect(panel.getByText("Alex's Kordi", {exact:true}).first()).toBeVisible();
+    await expect(panel.getByText('Task', {exact:true})).toHaveCount(0);
+    await expect(panel.getByText('Ta', {exact:true})).toHaveCount(0);
+    await expect(panel.getByRole('textbox')).toBeVisible();
+    await page.screenshot({path:testInfo.outputPath('shared-task-instruction.png')});
+  });
+}
+
 test('Tasks shows authoritative Agent thread entries and frozen execution time, and opens the same chat pane', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     const host = window as unknown as {__TAURI_INTERNALS__: unknown; fixtureNativeCommands: string[]};

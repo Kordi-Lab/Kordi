@@ -86,6 +86,36 @@ test('subsession avatars come from stable member and Agent profiles, not account
   assert.equal(agent.senderIdentityId, record.agentId);
 });
 
+test('Agent task instructions are attributed by ID for every member without becoming live answers', () => {
+  const record: CloudAgentSubsession = { sessionId: 'child', parentSessionId: 'parent', parentRequestId: 'root',
+    ownerAccountId: 'owner', agentId: 'agent-one', ownerDisplayName: 'Owner', agentDisplayName: 'Researcher',
+    agentAvatarUrl: 'https://example.test/agent.png', title: 'Research', status: 'running', version: 1, updatedAt: '',
+    messages: [
+      { id: 'brief', role: 'user', senderAgentId: 'agent-one', text: 'Compare sources', timestampMs: 1 },
+      { id: 'human', role: 'user', senderAccountId: 'peer', senderDisplayName: 'Peer', text: 'Follow', timestampMs: 2, requestState: 'queued' },
+    ] };
+  for (const account of ['owner', 'peer']) {
+    const [brief, progress, human] = subsessionTranscript(record, account);
+    assert.equal(brief.role, account === 'owner' ? 'owned-agent' : 'external-agent');
+    assert.equal(brief.sender, 'Researcher');
+    assert.equal(brief.senderIdentityId, record.agentId);
+    assert.equal(brief.senderProfileImageUrl, record.agentAvatarUrl);
+    assert.equal(brief.senderOwnerName, account === 'owner' ? 'You' : 'Owner');
+    assert.equal(brief.turn, undefined);
+    assert.equal(progress.id, 'runtime:child');
+    assert.equal(progress.turn?.completed, false);
+    assert.equal(human.senderIdentityId, 'peer');
+    assert.equal(human.role, account === 'peer' ? 'user' : 'person');
+    assert.deepEqual(human.statusChips, ['queued']);
+  }
+  record.messages.push({ id: 'answer', role: 'assistant', text: 'Sources found', timestampMs: 3 });
+  assert.equal(subsessionTranscript(record, 'peer').at(-1)?.turn?.assistantText, 'Sources found');
+  record.status = 'done';
+  assert.equal(subsessionTranscript(record, 'peer').filter(row => row.turn).length, 0);
+  record.messages[0].senderAgentId = 'unrelated-agent';
+  assert.equal(subsessionTranscript(record, 'peer')[0].senderType, 'human');
+});
+
 test('ordinary answers do not synthesize a subsession or a task card', async () => {
   await publishModelSubsessions({ tools: [] });
   await publishModelSubsessions({ tools: [{ id: 'plan', name: 'task_operator', status: 'completed', arguments: '{"action":"create"}', liveOutput: '', resultText: 'Task created', isError: false }] });

@@ -33,7 +33,8 @@ export function subsessionMentions(text: string, options: ComposerMentionOption[
 export function subsessionTranscript(record: CloudAgentSubsession, accountId: string): Message[] {
   const rows = record.messages.filter(row => !(row.role === 'assistant' && ['queued', 'pending', 'leased'].includes(row.requestState ?? '')));
   const result = rows.map((row): Message => {
-    const agent = row.role === 'assistant';
+    const assistant = row.role === 'assistant';
+    const agent = assistant || row.senderAgentId === record.agentId;
     const own = row.senderAccountId === accountId;
     const participant = record.participants?.find(person => person.accountId === row.senderAccountId);
     return {
@@ -47,15 +48,19 @@ export function subsessionTranscript(record: CloudAgentSubsession, accountId: st
       text: row.text, timestampMs: row.timestampMs,
       statusChips: !agent && row.requestState === 'queued' ? ['queued'] : undefined,
       time: new Date(row.timestampMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      mentions: row.mentions, turn: agent && row.requestState ? execution(row, row.activity?.tools) : undefined,
-      replyToMessageId: agent ? row.requestId : undefined,
+      mentions: row.mentions, turn: assistant && row.requestState ? execution(row, row.activity?.tools) : undefined,
+      replyToMessageId: assistant ? row.requestId : undefined,
     };
   });
   if (record.status === 'running' && !record.hasFollowupExecution) {
-    const last = [...result].reverse().find(row => row.senderType === 'agent');
+    const reversed = [...rows].reverse();
+    const lastAnswer = reversed.find(row => row.role === 'assistant' && !row.requestId);
+    const last = result.find(row => row.id === lastAnswer?.id);
+    const taskBrief = reversed.find(row => row.senderAgentId === record.agentId);
     const progress = execution({ id: `runtime:${record.sessionId}`, role: 'assistant', text: '', timestampMs: 0, requestState: 'running' }, record.activity?.tools);
     if (last) last.turn = { ...progress, assistantText: last.text };
-    else result.unshift({ id: progress.id, role: 'external-agent', senderType: 'agent', sender: record.agentDisplayName,
+    else result.splice(result.findIndex(row => row.id === taskBrief?.id) + 1, 0,
+      { id: progress.id, role: record.ownerAccountId === accountId ? 'owned-agent' : 'external-agent', senderType: 'agent', sender: record.agentDisplayName,
       senderOwnerName: record.ownerAccountId === accountId ? 'You' : record.ownerDisplayName,
       senderIdentityId: record.agentId, senderProfileImageUrl: record.agentAvatarUrl,
       senderAvatarSeed: record.agentId, text: '', time: '', turn: progress });

@@ -262,13 +262,18 @@ async fn snapshot(
     } else {
         name
     };
-    let mut messages: Vec<Message> = serde_json::from_value(messages).map_err(db_error)?;
-    // The child's input is a model tool argument and may contain owner-only
-    // context. Other participants receive visible assistant output, not that input.
-    if account != owner_account_id {
-        messages.retain(|message| message.role == "assistant");
-    }
-    let mut messages: Vec<Value> = messages.into_iter().map(|message| json!(message)).collect();
+    let messages: Vec<Message> = serde_json::from_value(messages).map_err(db_error)?;
+    // The initial task brief is written by the spawning Agent, even though its
+    // runtime role is user. Private system context is not part of this snapshot.
+    // Human follow-ups below retain their authenticated account attribution.
+    let mut messages: Vec<Value> = messages
+        .into_iter()
+        .map(|message| {
+            let mut value = json!(message);
+            value["senderAgentId"] = json!(agent_id);
+            value
+        })
+        .collect();
     if include_messages {
         messages.extend(conversation::messages(pool, id).await?);
     }

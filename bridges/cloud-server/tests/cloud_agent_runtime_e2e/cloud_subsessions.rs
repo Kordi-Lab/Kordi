@@ -74,6 +74,11 @@ async fn cloud_subsession_spawn_is_idempotent_fenced_and_keeps_results_out_of_pa
         let result=read_json(result).await;
         assert_eq!(result["status"],"done");
         assert_eq!(result["agentId"],agent);
+        assert_eq!(result["messages"][0]["text"], "Compare sources independently");
+        assert_eq!(result["messages"][0]["senderAgentId"], agent);
+        assert!(result["messages"][0]["senderAccountId"].is_null());
+        let owner_result = read_json(router.clone().oneshot(get_with_token(&uri, &owner.token)).await.unwrap()).await;
+        assert_eq!(owner_result["messages"], result["messages"]);
         assert!(result["messages"].as_array().unwrap().iter().any(|message|message["text"]=="CHILD_ONLY_RESULT"));
         assert_eq!(router.clone().oneshot(get_with_token(&uri,&outsider.token)).await.unwrap().status(),StatusCode::NOT_FOUND);
         assert_eq!(message_body(&pool,&parent_response).await,parent_body);

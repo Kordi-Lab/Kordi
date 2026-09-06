@@ -114,6 +114,11 @@ pub(super) async fn verify(
     assert_eq!(response.status(), StatusCode::OK);
     let response = read_json(response).await;
     let messages = response["messages"].as_array().unwrap();
+    for (id, account) in [(a, &peer.account_id), (b, &owner.account_id)] {
+        let row = messages.iter().find(|row| row["id"] == id.to_string()).unwrap();
+        assert_eq!(row["senderAccountId"], *account);
+        assert!(row["senderAgentId"].is_null(), "human follow-ups must not be attributed to the Agent");
+    }
     assert_eq!(
         messages
             .iter()

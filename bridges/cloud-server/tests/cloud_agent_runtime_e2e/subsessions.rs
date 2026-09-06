@@ -152,8 +152,11 @@ async fn model_subsession_keeps_parent_acl_identity_and_transcript_isolation() {
     let result = read_json(result).await;
     assert_eq!(result["status"], "done");
     assert_eq!(result["version"], 2);
-    assert_eq!(result["messages"].as_array().unwrap().len(), 1);
-    assert_eq!(result["messages"][0]["text"], "SUBSESSION_ONLY");
+    assert_eq!(result["messages"].as_array().unwrap().len(), 2);
+    assert_eq!(result["messages"][0]["text"], "Task brief");
+    assert_eq!(result["messages"][0]["senderAgentId"], result["agentId"]);
+    assert!(result["messages"][0]["senderAccountId"].is_null());
+    assert_eq!(result["messages"][1]["text"], "SUBSESSION_ONLY");
     let owner_result = read_json(
         router
             .clone()
@@ -166,6 +169,7 @@ async fn model_subsession_keeps_parent_acl_identity_and_transcript_isolation() {
     )
     .await;
     assert_eq!(owner_result["messages"].as_array().unwrap().len(), 2);
+    assert_eq!(owner_result["messages"], result["messages"]);
     let replay = router
         .clone()
         .oneshot(put(&uri, &owner.token, &snapshot))
