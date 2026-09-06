@@ -4,10 +4,58 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
-import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
+import { buildParticipantSpaces, filterParticipantSpaces } from '../src/features/chat/participantSpaces';
+import { useWorkspaceChatSidebarModel } from '../src/pages/workspaceSidebar.chatModel';
 import { collaborationChatConversationRoutesToLocalAgentPage } from '../src/app/useWorkspaceViewModels';
 import { WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 import { conversation, bridgeConversation, baseSidebarProps } from './helpers/workspaceSidebarParticipantSpacesFixtures';
+
+test('Agent ancestry never adds an Agent session or its unread count to group or contact rows', () => {
+  const parent = conversation({
+    id: 'session:group:source', canonicalSessionId: 'session:group:source',
+    participantSpaceId: 'group:session:group:source',
+    name: 'general', unread: 0, _updatedAtMs: 1,
+    metadata: { kind: 'chat-group', customName: 'Research group', groupSpaceId: 'session:group:source' },
+  });
+  const child = conversation({
+    id: 'legacy-agent-task', canonicalSessionId: 'legacy-agent-task',
+    type: 'owned-agent', name: 'Planet research', unread: 7, _updatedAtMs: 2,
+    forkedFromSessionId: parent.id, forkedFromMessageId: 'original-request',
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local' },
+      { id: 'agent:mine', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local' },
+    ],
+    messages: [{ role: 'owned-agent', text: 'Latest synchronized greeting', time: '08:11' }],
+  });
+  const contact = conversation({ id: 'session:direct-person:source', canonicalSessionId: 'session:direct-person:source', unread: 0 });
+  const contactChild = { ...child, id: 'contact-agent-task', canonicalSessionId: 'contact-agent-task', forkedFromSessionId: contact.id };
+  const conversations = [parent, child, contact, contactChild];
+  const spaces = buildParticipantSpaces(conversations);
+  const group = spaces.find(space => space.kind === 'group')!;
+  for (const activeConvId of [parent.id, child.id, contact.id, contactChild.id]) {
+    const props = baseSidebarProps({
+      chatConversations: conversations, participantSpaces: spaces,
+      contactParticipantSpaces: filterParticipantSpaces(spaces, '', 'contact'),
+      agentParticipantSpaces: filterParticipantSpaces(spaces, '', 'agent'),
+      activeConvId, initialSelectedParticipantSpaceId: group.id, initialChatChannel: 'contact',
+    });
+    const contactMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, props as never));
+    assert.match(contactMarkup, /data-agent-session-row="session:group:source"/);
+    assert.doesNotMatch(contactMarkup, /data-agent-session-row="legacy-agent-task"/);
+    assert.doesNotMatch(contactMarkup, /data-agent-session-row="contact-agent-task"/);
+    renderToStaticMarkup(createElement(() => {
+      const model = useWorkspaceChatSidebarModel(props.chats as never);
+      assert.equal(model.contactUnread, 0);
+      assert.equal(model.agentUnread, 14);
+      assert.equal(model.allSidebarSessionRowsById.get(child.id)?.session.conversation.forkedFromSessionId, parent.id);
+      return null;
+    }));
+    const agentProps = { ...props, chats: { ...props.chats, initialChatChannel: 'agent' } };
+    const agentMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, agentProps as never));
+    assert.match(agentMarkup, /data-agent-session-row="legacy-agent-task"/);
+    assert.match(agentMarkup, /data-agent-session-row="contact-agent-task"/);
+  }
+});
 
 test('Agent list retains usable sessions with legacy group, contact, or missing fork parents', () => {
   const chatConversations = ['session:group:old-parent', 'session:direct-person:old-parent', 'session:agent:missing'].map((parent, index) =>

@@ -21,6 +21,16 @@ function conversation(overrides: Partial<Conversation>): Conversation {
   };
 }
 
+test('side chat picker retains an Agent session whose parent is a group conversation', () => {
+  const group = conversation({ id: 'session:group:source', type: 'person' });
+  const agent = conversation({ id: 'research-session', forkedFromSessionId: group.id });
+  const options = chatCompanionSessionOptions(group, [group, agent]);
+  assert.equal(options.length, 1);
+  assert.equal(options[0].conversation.id, agent.id);
+  assert.equal(options[0].depth, 0);
+  assert.equal(options[0].conversation.forkedFromSessionId, group.id);
+});
+
 test('side chat session options keep the main Agent hierarchy and renamed title', () => {
   const activeMainSession = conversation({
     id: 'main-session',

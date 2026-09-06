@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { buildForkLineage } from '@/features/chat/forkLineage';
 import { filterParticipantSpaces } from '@/features/chat/participantSpaces';
+import { spaceMatchesChannel } from '@/features/chat/participantSpaceFilters';
 import { effectiveSessionUnread, totalVisibleUnread } from '@/features/chat/unreadCounts';
 import type { ChatChannel } from '@/kordi-app/types';
 import {
@@ -167,7 +168,17 @@ export function useWorkspaceChatSidebarModel(
         out.push({ session, space });
       }
     }
-    return out;
+    const channelBySessionId = new Map(out.map(({ session, space }) => [
+      session.id, spaceMatchesChannel(space, 'agent') ? 'agent' : 'contact',
+    ]));
+    return out.map((row) => {
+      const parent = row.session.forkedFromSessionId?.trim();
+      if (!parent || !channelBySessionId.has(parent)
+        || channelBySessionId.get(parent) === channelBySessionId.get(row.session.id)) return row;
+      // Sidebar placement is separate from transcript ancestry. Keep the
+      // original conversation link, but never turn an Agent fork into a channel.
+      return { ...row, session: { ...row.session, forkedFromSessionId: null, forkedFromMessageId: null } };
+    });
   }, [
     visibleAgentParticipantSpaces,
     visibleContactParticipantSpaces,
@@ -354,7 +365,7 @@ export function useWorkspaceChatSidebarModel(
           const rootSessionIds = expanded
             ? space.sessions
               .filter((session) => {
-                const parentId = session.forkedFromSessionId?.trim();
+                const parentId = allSidebarSessionRowsById.get(session.id)?.session.forkedFromSessionId?.trim();
                 return !parentId || !allSidebarSessionRowsById.has(parentId);
               })
               .map((session) => session.id)

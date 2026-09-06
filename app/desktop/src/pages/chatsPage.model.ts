@@ -165,17 +165,11 @@ export function chatCompanionSessionOptions(
       parentSessionId: parentReference
         ? (conversationIdBySessionReference.get(parentReference) ?? parentReference)
         : null,
-      parentReference,
     };
   });
   const knownConversationIds = new Set(conversationById.keys());
   const rootSessionIds = sessionInputs
-    .filter((session) => {
-      if (session.parentSessionId && knownConversationIds.has(session.parentSessionId)) {
-        return false;
-      }
-      return !(session.parentReference?.startsWith('session:'));
-    })
+    .filter((session) => !session.parentSessionId || !knownConversationIds.has(session.parentSessionId))
     .map((session) => session.sessionId);
   const activeSessionKey = conversationSessionKey(activeConv);
 
