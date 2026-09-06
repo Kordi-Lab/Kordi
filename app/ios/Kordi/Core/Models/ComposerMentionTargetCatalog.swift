@@ -102,12 +102,13 @@ enum ComposerMentionTargetCatalog {
             for participant in conversation.groupParticipants
                 where contactAccountIDs.contains(participant.accountId)
                     && seenDefaultAgentOwners.insert(participant.accountId).inserted {
+                let contact = contacts.first { $0.accountId == participant.accountId }
                 targets.append(defaultAgentTarget(
                     ownerAccountID: participant.accountId,
-                    ownerName: participant.displayName,
-                    agentID: participant.agentId,
-                    agentName: participant.agentDisplayName,
-                    agentAvatarSource: participant.agentAvatarUrl
+                    ownerName: contact?.preferredName ?? participant.displayName,
+                    agentID: contact?.defaultAgent?.agentId ?? participant.agentId,
+                    agentName: contact?.defaultAgent?.displayName ?? participant.agentDisplayName,
+                    agentAvatarSource: contact?.defaultAgent?.avatar.imageSource ?? participant.agentAvatarUrl
                 ))
             }
             for contact in contacts

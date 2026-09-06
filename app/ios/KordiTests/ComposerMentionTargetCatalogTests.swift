@@ -3,6 +3,26 @@ import Testing
 @testable import Kordi
 
 @Test
+func mentionDirectoryUsesCurrentContactProfileWithoutChangingAgentID() throws {
+    let account = CloudAccount(accountId: "viewer", kordiId: nil, displayName: "Viewer",
+        primaryEmail: nil, avatarUrl: nil, avatar: mentionTestAvatar(entityId: "viewer"), nodeId: nil, passwordSet: true)
+    var contact = CloudContact(accountId: "owner", kordiId: nil, displayName: "Owner",
+        avatarUrl: nil, nodeId: nil, createdAt: "2026-09-06T00:00:00Z")
+    contact.defaultAgent = CloudDefaultAgentProfile(agentId: "cloud-agent:owner", displayName: "Renamed & Agent",
+        avatarUrl: nil, avatar: mentionTestAgentAvatar(entityId: "cloud-agent:owner"))
+    let conversation = ConversationSummary(id: "group", kind: .group, peerAccountId: "owner", agentId: nil,
+        ownerDisplayName: nil, displayName: "Group", lastMessage: "", lastActivityAt: .distantPast,
+        unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: "session:group:fixture",
+        groupParticipants: [CloudGroupParticipant(accountId: "owner", displayName: "Owner", avatarUrl: nil,
+            agentId: "cloud-agent:owner", agentDisplayName: "Previous Agent", role: "member")])
+    let target = try #require(ComposerMentionTargetCatalog.targets(account: account, conversation: conversation,
+        ownedAgents: [], sharedAgents: [], contacts: [contact]).first { $0.agentId == "cloud-agent:owner" })
+    #expect(target.displayName == "Renamed & Agent")
+    #expect(target.mentionText == "@RenamedAgentOwner")
+    #expect(target.id == "agent:cloud-agent:owner")
+}
+
+@Test
 func ownerScopedDefaultAgentNamesKeepStableIdentity() throws {
     let account = CloudAccount(
         accountId: "acct_me", kordiId: nil, displayName: "Test 111", primaryEmail: nil,

@@ -545,13 +545,15 @@ enum CloudConversationCatalog {
                 ? account.defaultAgent
                 : contactsById[peerAccountId]?.defaultAgent
             let resolvedTargetId = targetId ?? defaultAgent?.agentId
-            var agentName = requests.compactMap { $0.1.targetCloudAgentName?.nonEmpty }.last
-                ?? definition?.name
-                ?? defaultAgent?.displayName
+            let isDefaultAgent = CanonicalAvatarSystem.agentID(resolvedTargetId, ownerAccountID: peerAccountId)
+                == "cloud-agent:\(peerAccountId)"
+            var agentName = definition?.name
+                ?? (isDefaultAgent ? defaultAgent?.displayName : nil)
+                ?? requests.compactMap { $0.1.targetCloudAgentName?.nonEmpty }.last
                 ?? "Kordi"
             guard !KordiSupportIdentity.matches(name: agentName, seed: resolvedTargetId) else { return nil }
-            let ownerName = requests.compactMap { $0.1.targetCloudAgentOwnerName?.nonEmpty }.last
-                ?? (peerAccountId == account.accountId ? account.preferredName : contactsById[peerAccountId]?.preferredName)
+            let ownerName = (peerAccountId == account.accountId ? account.preferredName : contactsById[peerAccountId]?.preferredName)
+                ?? requests.compactMap { $0.1.targetCloudAgentOwnerName?.nonEmpty }.last
             if CanonicalAvatarSystem.agentID(resolvedTargetId, ownerAccountID: peerAccountId) == "cloud-agent:\(peerAccountId)" {
                 agentName = CloudDefaultAgentProfile.displayName(agentName, ownerName: ownerName)
             }
@@ -683,16 +685,18 @@ enum CloudConversationCatalog {
             let memberAgentName = otherMember?.defaultAgentDisplayName?.nonEmpty
             let memberAgentId = otherMember?.defaultAgentId?.nonEmpty
             let resolvedTargetId = targetId ?? defaultAgent?.agentId ?? memberAgentId
-            var agentName = requests.compactMap { $0.targetCloudAgentName?.nonEmpty }.last
-                ?? definition?.name
-                ?? defaultAgent?.displayName
+            let isDefaultAgent = CanonicalAvatarSystem.agentID(resolvedTargetId, ownerAccountID: peerAccountId)
+                == "cloud-agent:\(peerAccountId)"
+            var agentName = definition?.name
+                ?? (isDefaultAgent ? defaultAgent?.displayName : nil)
+                ?? requests.compactMap { $0.targetCloudAgentName?.nonEmpty }.last
                 ?? memberAgentName
                 ?? "Kordi"
             guard !KordiSupportIdentity.matches(name: agentName, seed: resolvedTargetId) else { return nil }
-            let ownerName = requests.compactMap { $0.targetCloudAgentOwnerName?.nonEmpty }.last
-                ?? (peerAccountId == account.accountId
+            let ownerName = (peerAccountId == account.accountId
                     ? account.preferredName
                     : contactsById[peerAccountId]?.preferredName ?? otherMember?.displayName)
+                ?? requests.compactMap { $0.targetCloudAgentOwnerName?.nonEmpty }.last
             if CanonicalAvatarSystem.agentID(resolvedTargetId, ownerAccountID: peerAccountId) == "cloud-agent:\(peerAccountId)" {
                 agentName = CloudDefaultAgentProfile.displayName(agentName, ownerName: ownerName)
             }

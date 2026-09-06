@@ -1,5 +1,43 @@
 import XCTest
+import Testing
 @testable import Kordi
+
+@Test(arguments: [true, false])
+func renamedAgentProfileWinsOverHistoricalSessionLabels(isOwner: Bool) throws {
+    let ownerID = "acct_owner"
+    let viewerID = isOwner ? ownerID : "acct_viewer"
+    let agentID = "cloud-agent:\(ownerID)"
+    let avatar = CanonicalAvatarDescriptor(
+        entityType: "agent", entityId: agentID, source: "generated",
+        style: CanonicalAvatarSystem.agentStyle, seed: "rename-fixture",
+        rendererVersion: CanonicalAvatarSystem.rendererVersion, uploadedAsset: nil,
+        version: 1, updatedAt: "2026-09-06T00:00:00Z"
+    )
+    let profile = CloudDefaultAgentProfile(agentId: agentID, displayName: "Renamed Agent", avatarUrl: nil, avatar: avatar)
+    var account = CloudAccount(accountId: viewerID, kordiId: nil, displayName: "Viewer",
+        primaryEmail: nil, avatarUrl: nil, avatar: avatar, nodeId: nil, passwordSet: true)
+    if isOwner { account.defaultAgent = profile }
+    var contact = CloudContact(accountId: ownerID, kordiId: nil, displayName: "Owner",
+        avatarUrl: nil, nodeId: nil, createdAt: "2026-09-06T00:00:00Z")
+    contact.defaultAgent = profile
+    let sessionID = "session:self-agent:rename-fixture"
+    let body = try CloudMessageCodec.encodeDirect(text: "Original task", agentId: agentID,
+        agentName: "Previous Agent", ownerAccountId: ownerID, ownerName: "Previous owner label")
+    let message = CloudMessageDTO(messageId: "rename-message", fromAccountId: viewerID,
+        toAccountId: ownerID, body: body, createdAt: "2026-09-06T00:00:00Z",
+        deliveredAt: nil, readAt: nil, direction: "outgoing", sessionId: sessionID, attachments: [])
+    let catalog = CloudConversationCatalog.build(account: account, contacts: isOwner ? [] : [contact],
+        ownedAgents: [], sharedAgents: [], messagesByPeer: [ownerID: [message]])
+    let conversation = try #require(catalog.first { $0.sessionId == sessionID })
+    #expect(conversation.agentId == agentID)
+    #expect(conversation.agentDisplayName == "Renamed Agent")
+    #expect(conversation.displayName == "Original task")
+    let section = try #require(AgentSessionPresentationCatalog.build(
+        conversations: catalog, ownAccountId: viewerID
+    ).first { $0.agentId == agentID })
+    #expect(section.displayName == "Renamed Agent")
+    #expect(CloudMessageCodec.directEnvelope(body)?.targetCloudAgentName == "Previous Agent")
+}
 
 final class CloudConversationCatalogTests: XCTestCase {
     func testGroupPreviewUsesCanonicalSequenceWhenEmbeddedTimesTie() throws {

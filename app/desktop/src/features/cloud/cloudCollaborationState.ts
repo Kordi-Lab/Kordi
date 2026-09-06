@@ -541,7 +541,9 @@ export function buildCloudCollaborationConversation({
   const sessionAgentTarget = isSelfPeer ? cloudAgentSessionTargetFromMessages(messages, account.accountId) : null;
   const { id: defaultAgentId, name: defaultAgentName } = cloudDefaultAgentPresentation(account);
   const selfAgentId = sessionAgentTarget?.targetCloudAgentId || defaultAgentId;
-  const selfAgentName = sessionAgentTarget?.targetCloudAgentName || defaultAgentName;
+  const selfAgentName = selfAgentId === defaultAgentId
+    ? defaultAgentName
+    : sessionAgentTarget?.targetCloudAgentName || defaultAgentName;
   const requestTargetAccountIds = new Map<string, string>();
   const requestTargetAgentNames = new Map<string, string>();
   const explicitResponseAgentNames = new Map<string, string>();

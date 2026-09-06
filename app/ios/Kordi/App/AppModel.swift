@@ -574,14 +574,16 @@ final class AppModel: ObservableObject {
             async let fetchedDevices = try? api.listDevices(token: token)
             async let canonicalLatestMessages = api.bootstrapChatLatestMessages(token: token)
             async let fetchedActiveCalls = try? api.activeCalls(token: token)
-            let (canonicalAccount, contactList, presence, requests, owned, visibility, authSnapshot, deviceList, latestCanonical, activeCalls) = try await (
-                refreshedAccount, fetchedContacts, fetchedPresence, fetchedRequests, ownedAgents,
+            let (canonicalAccount, contactList) = try await (refreshedAccount, fetchedContacts)
+            guard self.token == token, self.account?.accountId == canonicalAccount.accountId else { return }
+            self.account = canonicalAccount
+            contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
+            // Profile updates must not be discarded if unrelated workspace data fails.
+            let (presence, requests, owned, visibility, authSnapshot, deviceList, latestCanonical, activeCalls) = try await (
+                fetchedPresence, fetchedRequests, ownedAgents,
                 fetchedVisibility, fetchedAuth, fetchedDevices, canonicalLatestMessages,
                 fetchedActiveCalls
             )
-            if self.account?.accountId == canonicalAccount.accountId {
-                self.account = canonicalAccount
-            }
             let sharedAgentOwnerIDs = Set(
                 contactList.map(\.accountId)
                     + (await api.cachedChatConversations()).flatMap(\.members).map(\.accountId)
@@ -676,6 +678,7 @@ final class AppModel: ObservableObject {
             errorMessage = nil
         } catch {
             if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
+            await rebuildConversationCatalog()
             recordCloudConnectionFailure(error)
             messageSyncState = .offline
             errorMessage = userFacing(error, fallback: "Could not refresh conversations.")
