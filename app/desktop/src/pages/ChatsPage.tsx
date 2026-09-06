@@ -4,7 +4,7 @@ import { useReducedMotion } from 'framer-motion';
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import type { Conversation, Message } from '@/kordi-app/types';
 import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
-import { messagesWithThreadReplyCounts, projectMessageThreads, projectQueuedThreadMessages, threadRootSource } from '@/features/chat/messageThreads';
+import { messagesWithThreadReplyCounts, projectMessageThreads, projectQueuedThreadMessages, resolveThreadMessageId, threadRootSource } from '@/features/chat/messageThreads';
 import {threadHasUnread} from '@/features/chat/threadReadState';
 import {useThreadReadStatus} from '@/features/cloud/useThreadReadStatus';
 import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
@@ -319,16 +319,17 @@ export function ChatsPage({
   const [threadPanelWidth, setThreadPanelWidth] = useState(384);
   const activeThread = useMemo(() => {
     if (!activeThreadRootId) return null;
-    const existing = threadProjection.threads.get(activeThreadRootId);
+    const rootId = resolveThreadMessageId(activeThreadRootId, threadProjection.primaryIdByAlias);
+    const existing = threadProjection.threads.get(rootId);
     if (existing) return existing;
     const root = attributedTranscriptMessages.find((message) => (
-      message.id === activeThreadRootId || message.entryId === activeThreadRootId
+      message.id === rootId || message.entryId === rootId
     ));
     return root ? { root, replies: [] } : null;
-  }, [activeThreadRootId, attributedTranscriptMessages, threadProjection.threads]);
+  }, [activeThreadRootId, attributedTranscriptMessages, threadProjection.primaryIdByAlias, threadProjection.threads]);
   const queuedThreadProjection = useMemo(
-    () => projectQueuedThreadMessages(transcript.queuedDesktopMessages, activeThreadRootId),
-    [activeThreadRootId, transcript.queuedDesktopMessages],
+    () => projectQueuedThreadMessages(transcript.queuedDesktopMessages, activeThreadRootId, threadProjection.primaryIdByAlias),
+    [activeThreadRootId, threadProjection.primaryIdByAlias, transcript.queuedDesktopMessages],
   );
   const mainQueuedMessages = queuedThreadProjection.mainMessages;
   const activeThreadQueuedMessages = queuedThreadProjection.activeThreadMessages;

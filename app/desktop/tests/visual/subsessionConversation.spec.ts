@@ -46,6 +46,11 @@ for (const context of ['group', 'contact']) {
       await expect(thread).toBeVisible();
       for (const index of [1,2,3]) await expect(thread.getByText(`Discussion reply ${index}`,{exact:true})).toBeVisible();
       await expect(thread.getByRole('textbox')).toBeVisible();
+      await thread.getByRole('textbox').fill('Continue this discussion');
+      await thread.getByRole('textbox').press('Enter');
+      await expect.poll(() => page.evaluate(() => (window as unknown as {threadSends:unknown[]}).threadSends)).toEqual([
+        {text:'Continue this discussion',quote:{action:'thread',source:expect.objectContaining({sourceMessageId:'10000000-0000-4000-8000-000000000001'})}},
+      ]);
       await expect(thread.getByRole('button',{name:/Open thread with/})).toHaveCount(0);
       await thread.getByRole('button',{name:'Close thread',exact:true}).click();
       await expect(thread).toHaveCount(0);

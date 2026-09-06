@@ -70,6 +70,26 @@ test('thread messages stay out of the main transcript and attach a count to the 
   assert.deepEqual(projection.threads.get('root')?.replies.map((item) => item.id), ['reply-1', 'reply-2', 'agent-reply']);
 });
 
+test('thread publication, incoming references, and queues share the cloud root across viewers', () => {
+  const wireId = '10000000-0000-4000-8000-000000000001';
+  const root = {...message(`collaboration-message:viewer-one:${wireId}`,'Root'),reactionTargetMessageId:wireId};
+  const source = threadRootSource(root,'session')!;
+  assert.equal(source.sourceMessageId,wireId);
+  const otherViewerSource = {...source,sourceMessageId:`collaboration-message:viewer-two:${wireId}`};
+  const projection = projectMessageThreads([root,
+    message('first','First',threadMessageAction(source)),
+    message('second','Second',threadMessageAction(otherViewerSource)),
+  ]);
+  assert.equal(projection.mainMessages[0].threadSummary?.replyCount,2);
+  assert.equal(projection.primaryIdByAlias.get(wireId),root.id);
+  const queued = projectQueuedThreadMessages([
+    {id:'queued',sessionId:'session',scope:'chat',text:'Next',time:'',attachments:[],messageAction:threadMessageAction(otherViewerSource)},
+  ],wireId,projection.primaryIdByAlias);
+  assert.equal(queued.activeThreadMessages.length,1);
+  const foreign = {...source,sourceMessageId:'collaboration-message:viewer-two:20000000-0000-4000-8000-000000000002'};
+  assert.equal(projectMessageThreads([root,message('foreign','Foreign',threadMessageAction(foreign))]).threads.size,0);
+});
+
 test('replying from inside a thread keeps the original root source', () => {
   const root = message('root', 'Root message');
   const source = threadRootSource(root, 'session');

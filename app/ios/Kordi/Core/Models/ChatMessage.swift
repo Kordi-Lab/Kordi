@@ -541,12 +541,33 @@ struct MessageThread: Identifiable, Equatable {
 struct MessageThreadProjection: Equatable {
     let mainMessages: [ChatMessage]
     let threadsByRootID: [String: MessageThread]
+    private let primaryIDByAlias: [String: String]
+
+    private static func resolveMessageID(_ reference: String, aliases: [String: String]) -> String {
+        if let id = aliases[reference] { return id }
+        // Desktop presentation keys are not new threads. Reconcile only a
+        // known cloud message in this conversation, never an arbitrary suffix.
+        if reference.hasPrefix("collaboration-message:"),
+           let suffix = reference.split(separator: ":").last,
+           UUID(uuidString: String(suffix)) != nil,
+           let id = aliases[String(suffix)] { return id }
+        return reference
+    }
 
     init(messages: [ChatMessage]) {
         var rootsByID: [String: ChatMessage] = [:]
         for message in messages {
             rootsByID[message.id] = message
         }
+        var aliases: [String: String] = [:]
+        for message in messages {
+            for alias in [message.clientMessageId, message.reactionTargetMessageId].compactMap({ $0 })
+                where rootsByID[alias] == nil {
+                aliases[alias] = message.id
+            }
+        }
+        for message in messages { aliases[message.id] = message.id }
+        primaryIDByAlias = aliases
         var rootIDByThreadMessageID: [String: String] = [:]
         var resolvingMessageIDs = Set<String>()
 
@@ -555,9 +576,9 @@ struct MessageThreadProjection: Equatable {
             guard resolvingMessageIDs.insert(message.id).inserted else { return nil }
             defer { resolvingMessageIDs.remove(message.id) }
             let explicitRootID = message.messageAction?.kind == "thread"
-                ? message.messageAction?.source.sourceMessageId.nonEmpty
+                ? message.messageAction?.source.sourceMessageId.nonEmpty.map { Self.resolveMessageID($0, aliases: aliases) }
                 : nil
-            let inheritedRootID = message.replyToMessageId.flatMap { parentID in
+            let inheritedRootID = message.replyToMessageId.map { Self.resolveMessageID($0, aliases: aliases) }.flatMap { parentID in
                 rootIDByThreadMessageID[parentID]
                     ?? rootsByID[parentID].flatMap { resolveRootID(for: $0) }
             }
@@ -575,7 +596,7 @@ struct MessageThreadProjection: Equatable {
                   appendingMessageIDs.insert(message.id).inserted else { return }
             defer { appendingMessageIDs.remove(message.id) }
             guard let rootID = resolveRootID(for: message) else { return }
-            if let parentID = message.replyToMessageId,
+            if let parentID = message.replyToMessageId.map({ Self.resolveMessageID($0, aliases: aliases) }),
                let parent = rootsByID[parentID],
                resolveRootID(for: parent) == rootID {
                 appendThreadMessage(parent)
@@ -593,13 +614,14 @@ struct MessageThreadProjection: Equatable {
     }
 
     func thread(rootID: String) -> MessageThread? {
+        let rootID = Self.resolveMessageID(rootID, aliases: primaryIDByAlias)
         if let thread = threadsByRootID[rootID] { return thread }
         guard let root = mainMessages.first(where: { $0.id == rootID }) else { return nil }
         return MessageThread(root: root, replies: [])
     }
 
     func replyCount(rootID: String) -> Int {
-        threadsByRootID[rootID]?.replies.count ?? 0
+        threadsByRootID[Self.resolveMessageID(rootID, aliases: primaryIDByAlias)]?.replies.count ?? 0
     }
 
     static func rootSource(for message: ChatMessage, sessionID: String) -> MessageActionSource {
@@ -1152,11 +1174,13 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var isEdited: Bool { editedAt != nil }
 
     static func timelinePrecedes(_ left: ChatMessage, _ right: ChatMessage) -> Bool {
-        if let leftSequence = left.conversationSequence,
-           let rightSequence = right.conversationSequence,
+        let leftSequence = left.conversationSequence.flatMap { $0 > 0 ? $0 : nil }
+        let rightSequence = right.conversationSequence.flatMap { $0 > 0 ? $0 : nil }
+        if let leftSequence, let rightSequence,
            leftSequence != rightSequence {
             return leftSequence < rightSequence
         }
+        if (leftSequence != nil) != (rightSequence != nil) { return leftSequence != nil }
         if left.createdAt != right.createdAt { return left.createdAt < right.createdAt }
         return left.id < right.id
     }

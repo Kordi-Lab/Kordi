@@ -4,6 +4,41 @@ import Testing
 @testable import Kordi
 
 struct ConversationBoundaryTests {
+@Test func threadReferencesResolveToTheSameKnownCloudMessage() throws {
+    let wireId = "10000000-0000-4000-8000-000000000001"
+    var root = ChatMessage(id:"group-payload",clientMessageId:"client-root",conversationId:"parent",conversationSequence:30,
+        author:.agent,authorName:"Researcher",text:"Result",createdAt:.now,deliveryState:.delivered,errorMessage:nil,requestMessageId:nil)
+    root.reactionTargetMessageId = wireId
+    func reply(_ id: String, reference: String) -> ChatMessage {
+        var row = ChatMessage(id:id,conversationId:"parent",conversationSequence:31,author:.person,authorName:"Peer",text:"Follow",
+            createdAt:.now,deliveryState:.delivered,errorMessage:nil,requestMessageId:nil)
+        row.messageAction = .thread(MessageActionSource(sourceSessionId:"parent",sourceMessageId:reference,senderLabel:"Researcher",textPreview:"Result",attachmentCount:0))
+        return row
+    }
+    let projection = MessageThreadProjection(messages:[root,reply("one",reference:wireId),reply("two",reference:"collaboration-message:other-viewer:\(wireId)"),reply("three",reference:"client-root")])
+    #expect(projection.mainMessages.map(\.id) == [root.id])
+    #expect(projection.replyCount(rootID:root.id) == 3)
+    #expect(projection.thread(rootID:wireId)?.root.id == root.id)
+    #expect(projection.thread(rootID:"collaboration-message:other-viewer:\(wireId)")?.replies.count == 3)
+    #expect(projection.thread(rootID:root.id)?.hasUnread(cursors:[wireId:30]) == true)
+    #expect(projection.thread(rootID:root.id)?.hasUnread(cursors:[wireId:31]) == false)
+    let unknown = MessageThreadProjection(messages:[root,reply("unknown",reference:"collaboration-message:elsewhere:20000000-0000-4000-8000-000000000002")])
+    #expect(unknown.replyCount(rootID:root.id) == 0)
+}
+
+@Test @MainActor func hydrationAndBackfillKeepCloudOrderInsteadOfRequestAnchoredTime() {
+    func row(_ id: String, sequence: Int64?, time: Double, author: MessageAuthor) -> ChatMessage {
+        ChatMessage(id:id,conversationId:"parent",conversationSequence:sequence,author:author,authorName:"Participant",text:id,
+            createdAt:Date(timeIntervalSince1970:time),deliveryState:sequence == nil ? .sending : .delivered,errorMessage:nil,requestMessageId:nil)
+    }
+    let rows = [row("A-request",sequence:28,time:1,author:.me),row("B-request",sequence:29,time:2,author:.me),
+        row("B-answer",sequence:30,time:2.001,author:.agent),row("A-answer",sequence:31,time:1.001,author:.agent)]
+    let pending = row("pending",sequence:nil,time:0,author:.me)
+    let expected = ["A-request","B-request","B-answer","A-answer","pending"]
+    #expect(AppModel.mergeProjectedMessages(rows,preservingLocalMessagesFrom:[pending]).map(\.id) == expected)
+    #expect(AppModel.mergePartialProjection(Array(rows.suffix(2)),preserving:Array(rows.prefix(2))+[pending]).map(\.id) == expected)
+}
+
 @Test func threadReadCursorsRemainIndependentAndMonotonicAcrossDevices() throws {
     let key = "10000000-0000-4000-8000-000000000001"
     let data = try JSONSerialization.data(withJSONObject: ["root_message_id":key,"root_client_message_id":"client-root","last_read_sequence":2])

@@ -2221,9 +2221,7 @@ final class AppModel: ObservableObject {
             guard !projectedClientMessageIDs.contains(clientMessageId) else { continue }
             messagesByID[localMessage.id] = localMessage
         }
-        return messagesByID.values.sorted {
-            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
-        }
+        return messagesByID.values.sorted(by: ChatMessage.timelinePrecedes)
     }
 
     static func mergePartialProjection(
@@ -2258,9 +2256,7 @@ final class AppModel: ObservableObject {
             messagesByID[localMessage.id] = localMessage
         }
         projected.forEach { messagesByID[$0.id] = $0 }
-        return messagesByID.values.sorted {
-            $0.createdAt < $1.createdAt || ($0.createdAt == $1.createdAt && $0.id < $1.id)
-        }
+        return messagesByID.values.sorted(by: ChatMessage.timelinePrecedes)
     }
 
     static func rekeyMessages(

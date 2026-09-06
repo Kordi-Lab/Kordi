@@ -25,6 +25,7 @@ snapshot.participants.push({accountId:'owner',displayName:'Alex',avatarUrl:avata
 snapshot.agentAvatarUrl = avatar('blue');
 window.fixtureAvatar = avatar;
 window.privateSends = [];
+window.threadSends = [];
 window.fixtureAgentTasks = [{sessionId:'fixture-child',parentSessionId:'fixture-parent',parentRequestId:'root',
   ownerAccountId:'owner',agentId:'fixture-agent',ownerDisplayName:'Alex',agentDisplayName:"Alex's Kordi",
   title:'Planet research',status:'done',executionBackend:'desktop',startedAtMs:1000,finishedAtMs:64000,
@@ -74,7 +75,8 @@ if (window.fixtureDiscussionRole) {
   root.turn.tools = [];
   parent.messages.push(...[1,2,3].map(index => ({id:`discussion-${index}`,role:'person',sender:'Sam',senderType:'human',
     text:`Discussion reply ${index}`,time:'08:01',conversationSequence:index+1,messageAction:{schemaVersion:1,kind:'thread',source:{sourceSessionId:parent.canonicalSessionId,
-      sourceMessageId:'cloud-response',senderLabel:root.sender,textPreview:root.text,attachmentCount:0}}})));
+      sourceMessageId:index===1?'collaboration-message:another-viewer:10000000-0000-4000-8000-000000000001':index===2?'cloud-response':'10000000-0000-4000-8000-000000000001',
+      senderLabel:root.sender,textPreview:root.text,attachmentCount:0}}})));
 }
 const props={
   cloudAccount:window.fixtureThreadUnread?{accountId:window.fixtureAccountId??'peer',displayName:'Sam'}:null,
@@ -102,8 +104,9 @@ const privateChat = {id:'private-session',name:'Private workspace',type:'owned-a
 props.chatConversations = props.companionConversations = [parent,
   {...privateChat,id:'external-session',name:'Other owner session',type:'external-agent'},
   {...privateChat,id:'shared-session',name:'Shared Agent session',trust:'Shared'},privateChat];
-props.onSendChatMessage = (text,id,context) => {
+props.onSendChatMessage = (text,id,context,attachments,quote) => {
   if (id === privateChat.id) window.privateSends.push({text,id,context});
+  else if (quote?.action === 'thread') window.threadSends.push({text,quote});
   else window.unexpectedParentSends += 1;
 };
 props.rightDetailRail = React.createElement(TaskActivityDashboardPanel, {
@@ -127,11 +130,11 @@ function Fixture() {
   const conversations=collapseBlankConversationShells([...props.chatConversations,...created]);
   const runtime={...props,onCreateAgentSession:createActions.createSideAgentSession,
     onPrefetchChatSession:async(id)=>{if(id.startsWith('new-private-')) return true; window.unexpectedNativePrefetches+=1;return false;},
-    onSendChatMessage:(text,id,context)=>{
+    onSendChatMessage:(text,id,context,attachments,quote)=>{
       if(created.some(item=>item.id===id)){
         window.privateSends.push({text,id,context});
         setCreated(items=>items.map(item=>item.id===id?{...item,messages:[...item.messages,{id:'message-'+id,role:'user',text,time:'09:00'}]}:item));
-      }else props.onSendChatMessage(text,id,context);
+      }else props.onSendChatMessage(text,id,context,attachments,quote);
     }
   };
   return React.createElement(ChatsPage,{
