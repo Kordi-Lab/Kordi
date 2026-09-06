@@ -9,6 +9,31 @@ import { collaborationChatConversationRoutesToLocalAgentPage } from '../src/app/
 import { WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 import { conversation, bridgeConversation, baseSidebarProps } from './helpers/workspaceSidebarParticipantSpacesFixtures';
 
+test('Agent list retains usable sessions with legacy group, contact, or missing fork parents', () => {
+  const chatConversations = ['session:group:old-parent', 'session:direct-person:old-parent', 'session:agent:missing'].map((parent, index) =>
+    conversation({
+      id: `agent-child-${index}`, canonicalSessionId: `agent-child-${index}`,
+      type: 'owned-agent', name: `Continued Agent session ${index}`,
+      subtitle: 'Latest synchronized greeting', forkedFromSessionId: parent,
+      unread: 1, _updatedAtMs: index + 1,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local' },
+        { id: 'agent:mine', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local' },
+      ],
+      messages: [{ role: 'owned-agent', text: 'Latest synchronized greeting', time: '08:11' }],
+    }));
+  const spaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations, participantSpaces: spaces, contactParticipantSpaces: [],
+    agentParticipantSpaces: spaces, activeConvId: '', initialChatChannel: 'agent',
+  }) as never));
+  for (let index = 0; index < 3; index += 1) {
+    assert.match(markup, new RegExp(`data-agent-session-row="agent-child-${index}"`));
+    assert.match(markup, new RegExp(`Continued Agent session ${index}`));
+  }
+  assert.match(markup, /Latest synchronized greeting/);
+});
+
 test('WorkspaceSidebar marks the active agent fork path connector for accent styling', () => {
   const chatConversations = [
     conversation({

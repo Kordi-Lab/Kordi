@@ -276,11 +276,9 @@ export function useWorkspaceChatSidebarModel(
   );
   const topLevelAgentSessions = useMemo(
     () =>
-      flatAgentSessions.filter(({ session }) => {
-        if (agentForkLineage.forkSessionIds.has(session.id)) return false;
-        const parent = session.forkedFromSessionId?.trim();
-        return !(parent && parent.startsWith('session:'));
-      }),
+      // Only nest under a parent that is actually present in this Agent list.
+      // A legacy group/contact parent must not make a usable session disappear.
+      flatAgentSessions.filter(({ session }) => !agentForkLineage.forkSessionIds.has(session.id)),
     [agentForkLineage, flatAgentSessions],
   );
   const agentSessionRowsById = useMemo(

@@ -14,6 +14,7 @@ mod core;
 mod desktop_runtime_status;
 mod desktop_sync;
 mod group_participants;
+mod cloud_group_authority;
 mod identity_context;
 mod identity_helpers;
 mod identity_migration;

@@ -210,6 +210,9 @@ pub(crate) fn group_creator_identity_id(
     conn: &Connection,
     session_id: &str,
 ) -> Result<String, String> {
+    if let Some(authority) = super::cloud_group_authority::read(conn, session_id)? {
+        return Ok(authority.creator);
+    }
     let root_session = group_root_session(conn, session_id)?;
     Ok(
         metadata_group_creator_identity_id(root_session.metadata.as_ref())
@@ -235,6 +238,9 @@ pub(crate) fn group_admin_identity_ids(
     conn: &Connection,
     session_id: &str,
 ) -> Result<Vec<String>, String> {
+    if let Some(authority) = super::cloud_group_authority::read(conn, session_id)? {
+        return Ok(authority.admins);
+    }
     let root_session = group_root_session(conn, session_id)?;
     let creator_identity_id = metadata_group_creator_identity_id(root_session.metadata.as_ref())
         .unwrap_or_else(|| root_session.created_by_identity_id.clone());
@@ -303,6 +309,11 @@ pub(crate) fn require_group_member(
     else {
         return Ok(());
     };
+    if let Some(authority) = super::cloud_group_authority::read(conn, session_id)? {
+        return if authority.members.iter().any(|id| id == actor_identity_id) {
+            Ok(())
+        } else { Err(format!("Only group members can {action}.")) };
+    }
     let root_session = group_root_session(conn, session_id)?;
     if participant_is_active(conn, &root_session.id, actor_identity_id)? {
         return Ok(());
@@ -322,7 +333,8 @@ pub(crate) fn require_group_creator(
     else {
         return Ok(());
     };
-    if group_creator_identity_id(conn, session_id)? == actor_identity_id {
+    if group_creator_identity_id(conn, session_id)? == actor_identity_id
+        && group_admin_identity_ids(conn, session_id)?.iter().any(|id| id == actor_identity_id) {
         return Ok(());
     }
     Err(format!("Only the group creator can {action}."))

@@ -24,14 +24,17 @@ pub(in crate::canonical_sessions::commands) fn load_catalog_from_db(
          FROM identities ORDER BY kind ASC, display_name ASC, id ASC",
         canonical_identity_from_row,
     )?;
-    let sessions = query_all(
+    let mut sessions = query_all(
         conn,
         "SELECT id, kind, title, status, created_by_identity_id, primary_identity_id, project_id,
                 project_name, relationship_identity_id, metadata_json, created_at_ms, updated_at_ms, last_message_at_ms
          FROM sessions ORDER BY updated_at_ms DESC, created_at_ms DESC, id ASC",
         canonical_session_from_row,
     )?;
-    let participants = query_all(
+    for session in &mut sessions {
+        super::super::super::cloud_group_authority::project_session(conn, session)?;
+    }
+    let mut participants = query_all(
         conn,
         "SELECT participant.session_id, participant.identity_id, participant.role, participant.state,
                 participant.added_by_identity_id, participant.added_at_ms, participant.last_seen_at_ms,
@@ -190,6 +193,7 @@ pub(in crate::canonical_sessions::commands) fn load_catalog_from_db(
             .map_err(|err| err.to_string())?
     };
 
+    super::super::super::cloud_group_authority::project_participants(conn, &sessions, &mut participants)?;
     Ok(CanonicalSessionCatalog {
         storage_path: path.display().to_string(),
         profile,

@@ -23,7 +23,7 @@ pub(in crate::canonical_sessions) fn load_state_from_db(
     .into_iter()
     .filter_map(|id| select_identity(conn, &id).ok().flatten())
     .collect();
-    let sessions = query_all(
+    let sessions: Vec<_> = query_all(
         conn,
         "SELECT id FROM sessions ORDER BY updated_at_ms DESC, created_at_ms DESC, id ASC",
         |row| row.get::<_, String>(0),
@@ -31,7 +31,7 @@ pub(in crate::canonical_sessions) fn load_state_from_db(
     .into_iter()
     .filter_map(|id| select_session(conn, &id).ok().flatten())
     .collect();
-    let participants = query_all(
+    let mut participants = query_all(
         conn,
         "SELECT participant.session_id, participant.identity_id, participant.role, participant.state,
                 participant.added_by_identity_id, participant.added_at_ms, participant.last_seen_at_ms,
@@ -136,6 +136,7 @@ pub(in crate::canonical_sessions) fn load_state_from_db(
         },
     )?;
 
+    super::super::super::cloud_group_authority::project_participants(conn, &sessions, &mut participants)?;
     Ok(CanonicalSessionState {
         storage_path: path.display().to_string(),
         profile,

@@ -237,7 +237,7 @@ pub(in crate::canonical_sessions) fn select_session(
     conn: &Connection,
     id: &str,
 ) -> Result<Option<CanonicalSession>, String> {
-    conn.query_row(
+    let mut session = conn.query_row(
         "SELECT id, kind, title, status, created_by_identity_id, primary_identity_id, project_id,
                 project_name, relationship_identity_id, metadata_json, created_at_ms, updated_at_ms, last_message_at_ms
          FROM sessions WHERE id = ?1",
@@ -261,5 +261,9 @@ pub(in crate::canonical_sessions) fn select_session(
         },
     )
     .optional()
-    .map_err(|err| err.to_string())
+    .map_err(|err| err.to_string())?;
+    if let Some(session) = &mut session {
+        super::super::cloud_group_authority::project_session(conn, session)?;
+    }
+    Ok(session)
 }
