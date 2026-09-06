@@ -197,6 +197,7 @@ export function cloudGroupIncomingMessageAlreadyApplied(
 }
 
 type CloudGroupControlApplicationProps = {
+  runtimeReady?: boolean;
   account: CloudAccount | null;
   client: CloudAuthClient;
   canonicalStateRef: MutableRefObject<CanonicalSessionState | null>;
@@ -223,6 +224,7 @@ type CloudGroupControlApplicationProps = {
 };
 
 export function useCloudGroupControlApplication({
+  runtimeReady = true,
   account,
   client,
   canonicalStateRef,
@@ -351,6 +353,7 @@ export function useCloudGroupControlApplication({
       runtime: {
         client,
         turnCoordinator,
+        ready: runtimeReady,
         messageIndex: () => messageIndexRef.current,
         sessionActivity: () => sessionActivityRef.current,
         setSessionActivity,
@@ -398,6 +401,7 @@ export function useCloudGroupControlApplication({
     canonicalStateRef,
     client,
     defaultRoute,
+    runtimeReady,
     mergeMessage,
     messageIndexRef,
     processedRequestIdsRef,

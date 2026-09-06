@@ -319,12 +319,12 @@ function cloudAgentCancelledCollaborationMessage({
   account,
   request,
   cancel,
-  targetAccountId,
+  targetAccountId, targetAgentName,
 }: {
   account: CloudAccount;
   request: CloudMessage;
   cancel: CloudMessage;
-  targetAccountId: string;
+  targetAccountId: string; targetAgentName: string | null;
 }): DesktopCollaborationConversationMessage {
   const timestampMs = Date.parse(cancel.createdAt) || (Date.parse(request.createdAt) || Date.now()) + 1;
   const cancelledBy = cancel.fromAccountId === request.fromAccountId
@@ -335,7 +335,7 @@ function cloudAgentCancelledCollaborationMessage({
   return {
     id: `cloud-agent-cancelled:${request.messageId}:${cancel.messageId}`,
     direction: cloudAgentSyntheticResponseDirection(account, targetAccountId),
-    sender: null,
+    sender: targetAgentName,
     text: `Request canceled by ${cancelledBy}.`,
     timeLabel: formatDesktopClockTime(timestampMs),
     timestampMs,
@@ -596,7 +596,7 @@ export function buildCloudCollaborationConversation({
         account,
         request: message,
         cancel,
-        targetAccountId,
+        targetAccountId, targetAgentName: requestTargetAgentNames.get(message.messageId) ?? null,
       })];
     }
     if (timedOutAgentRequestIds.has(message.messageId)) {
@@ -714,8 +714,8 @@ export function buildCloudCollaborationConversation({
       sourceHostId: CLOUD_HOST_SENTINEL,
       localHumanId: account.accountId,
       localHumanName: account.displayName || account.primaryEmail || 'Me',
-      localAgentId: isSelfPeer ? selfAgentId : contact.sourceAgentId?.trim() || `cloud-agent:${peerAccountId}`,
-      localAgentName: isSelfPeer ? selfAgentName : cloudAgentDisplayName(contact),
+      localAgentId: isSelfPeer ? selfAgentId : defaultAgentId,
+      localAgentName: isSelfPeer ? selfAgentName : defaultAgentName,
       localAgentNodeId: account.nodeId || account.accountId,
       remoteHumanId: peerAccountId,
       remoteHumanName: isSelfPeer

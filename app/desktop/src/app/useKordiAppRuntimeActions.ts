@@ -4,7 +4,7 @@ import { useKordiCollaborationNavigationActions } from '@/app/useKordiCollaborat
 import { useKordiProviderAutoSwitch } from '@/app/useKordiProviderAutoSwitch';
 import { useKordiQueuedMessageActions } from '@/app/useKordiQueuedMessageActions';
 import type { KordiWorkspaceState } from '@/app/useKordiWorkspaceState';
-import { authStateHasChatReadyProvider } from '@/kordi-app/auth/model';
+import { authStateHasChatReadyProvider, authStateSatisfiesStartupGate } from '@/kordi-app/auth/model';
 import { useComposerController } from '@/features/chat/useComposerController';
 import { useDesktopSessionController } from '@/features/chat/useDesktopSessionController';
 
@@ -20,6 +20,7 @@ export function useKordiAppRuntimeActions({
       isNativeShell,
       cloudSession,
     },
+    authNavigation: { openCloudAccountAuthentication },
     refs: {
       shouldAutoFollowChatRef,
     },
@@ -191,6 +192,7 @@ export function useKordiAppRuntimeActions({
   } = useComposerController({
     environment: {
       isNativeShell,
+      hasLocalProviderAuth: authStateSatisfiesStartupGate(desktopAuthState),
       hasAnyDesktopAuth:
         authStateHasChatReadyProvider(desktopAuthState, chatModelOptions),
     },
@@ -238,6 +240,7 @@ export function useKordiAppRuntimeActions({
       resolveComposerProviderId,
     },
     authNavigation: {
+      openAgentAuthentication: openCloudAccountAuthentication,
       handleSelectAuthChoice,
       refreshDesktopAuth,
       refreshDesktopChat,

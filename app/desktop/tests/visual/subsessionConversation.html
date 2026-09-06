@@ -129,6 +129,9 @@ props.rightDetailRail = React.createElement(TaskActivityDashboardPanel, {
     initiator:{id:'owner',name:'Alex'},target:{name:'Legacy task'},participants:[]}],
 });
 function Fixture() {
+  const [hasAnyAuth,setHasAnyAuth] = React.useState(window.fixtureHasAuth !== false);
+  window.setFixtureProviderAuth = setHasAnyAuth;
+  const openAuth = () => { window.fixtureAuthRequests = (window.fixtureAuthRequests ?? 0) + 1; };
   const [collapsed,setCollapsed] = React.useState(true);
   const [tab,setTab] = React.useState('info');
   const [created,setCreated] = React.useState([]);
@@ -155,7 +158,8 @@ function Fixture() {
   return React.createElement(ChatsPage,{
     layout:{...props,showRightDetailRail:true,isDetailPanelCollapsed:collapsed,setIsDetailPanelCollapsed:setCollapsed,activeDetailTab:tab,setActiveDetailTab:setTab},
     session:{...props,chatConversations:conversations,companionConversations:conversations},transcript:props,
-    composer:{...props,chatComposerText:mainDraft,updateChatComposerDraft:updateMainDraft,setChatComposerText:setMainDraft},runtime,auth:props
+    composer:{...props,chatComposerText:mainDraft,updateChatComposerDraft:updateMainDraft,setChatComposerText:setMainDraft},runtime,
+    auth:{...props,hasAnyAuth,onOpenAuthSettings:openAuth,onOpenAccountAuthentication:openAuth}
   });
 }
 createRoot(document.getElementById('root')).render(React.createElement(Fixture));

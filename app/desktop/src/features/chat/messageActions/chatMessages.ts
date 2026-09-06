@@ -81,6 +81,7 @@ import {
 appendOptimisticLocalDraftMessage,
 fetchMaterializedLocalChatTarget,
 generatedSelfAgentSessionId,
+isOwnedAgentMention,
 shouldUseNoProviderSelfAgentShortcut,
 } from './localAgentSessionTarget';
 import { localChatSendDelayReason,localChatTargetHasRunningTurn,queuedDesktopChatMessageFromDraft } from "./localChatQueue";
@@ -255,27 +256,7 @@ export async function waitForCompletedDesktopTurn(
   return turn;
 }
 
-export function collaborationConversationSendPlan({
-  activeConvId,
-  hasMaterializedCollaborationConversation,
-  existingTargetConversationId,
-  shouldStayInCanonicalSession,
-}: {
-  activeConvId: string;
-  hasMaterializedCollaborationConversation: boolean;
-  existingTargetConversationId?: string | null;
-  shouldStayInCanonicalSession: boolean;
-}) {
-  const targetConversationId = hasMaterializedCollaborationConversation
-    ? activeConvId
-    : existingTargetConversationId ?? null;
-
-  return {
-    targetConversationId,
-    shouldOpenBeforeOptimisticSend: !targetConversationId && !shouldStayInCanonicalSession,
-    canAppendCollaborationOptimisticMessage: Boolean(targetConversationId),
-  };
-}
+export { collaborationConversationSendPlan } from './messageSendScope';
 export function activeLocalTurnShouldDelayChatSend({
   activeConversationUsesCollaborationRouting,
   activeConvId,
@@ -386,6 +367,7 @@ export function useChatMessageActions({
   desktopChatState,
   canonicalSessionState,
   hasAnyDesktopAuth,
+  hasLocalProviderAuth = hasAnyDesktopAuth, openAgentAuthentication,
   desktopLiveTurn,
   resolveChatRuntimeRoute,
   handleLocalSlashCommand,
@@ -1039,6 +1021,12 @@ export function useChatMessageActions({
     const selectedMentionTarget = selectedComposerAgentMentionTarget(text, selectedChatAgentMentionRef.current, desktopCollaborationState); selectedChatAgentMentionRef.current = null;
     const mentionedTarget = selectedMentionTarget
       ?? await resolvePreferredAgentMentionTarget(text, desktopChatState, desktopCollaborationState, activeConvMentionScope, sharedCloudAgents, resolveSharedCloudAgentsForMention, isTransientDraftConversation, activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person');
+    if (!hasLocalProviderAuth && retryMessage?.messageAction?.kind !== 'forward' && isOwnedAgentMention(mentionedTarget, text.startsWith('@') && localAgentMentioned)) {
+      setDesktopChatError(cloudAgentNoProviderNoticeText());
+      if (openAgentAuthentication) openAgentAuthentication(); else await handleLocalSlashCommand('/login');
+      if (quoteForSend?.action === 'thread') throw new Error(cloudAgentNoProviderNoticeText());
+      return;
+    }
     const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);
     const { targetCloudAgentId, targetCloudAgentName, ownerAccountId: mentionedCloudSharedAgentOwnerAccountId } = cloudAgentMentionIdentity(mentionedTarget);
     const localCollaborationNodeIds = new Set(
@@ -1810,6 +1798,7 @@ export function useChatMessageActions({
     desktopChatState,
     canonicalSessionState,
     hasAnyDesktopAuth,
+    hasLocalProviderAuth, openAgentAuthentication,
     desktopLiveTurn,
     clearComposerAfterSend,
     collaborationSendInFlightConversationIdsRef,

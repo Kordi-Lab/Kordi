@@ -24,3 +24,24 @@ export function claimConversationSend(inFlightConversationIds: Set<string>, conv
 export function releaseConversationSend(inFlightConversationIds: Set<string>, conversationId: string) {
   inFlightConversationIds.delete(conversationId.trim());
 }
+
+export function collaborationConversationSendPlan({
+  activeConvId,
+  hasMaterializedCollaborationConversation,
+  existingTargetConversationId,
+  shouldStayInCanonicalSession,
+}: {
+  activeConvId: string;
+  hasMaterializedCollaborationConversation: boolean;
+  existingTargetConversationId?: string | null;
+  shouldStayInCanonicalSession: boolean;
+}) {
+  const targetConversationId = hasMaterializedCollaborationConversation
+    ? activeConvId
+    : existingTargetConversationId ?? null;
+  return {
+    targetConversationId,
+    shouldOpenBeforeOptimisticSend: !targetConversationId && !shouldStayInCanonicalSession,
+    canAppendCollaborationOptimisticMessage: Boolean(targetConversationId),
+  };
+}

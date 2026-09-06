@@ -364,7 +364,7 @@ export function useCloudCollaborationState({
   });
 
   const cloudGroupControlApplication = useCloudGroupControlApplication({
-    account,
+    account, runtimeReady: defaultCloudAgentRuntimeReady,
     client,
     canonicalStateRef: canonicalSessionStateRef,
     setCanonicalState: setCanonicalSessionState,
@@ -474,7 +474,7 @@ export function useCloudCollaborationState({
   });
 
   useCloudDirectAgentExecution({
-    account,
+    account, runtimeReady: defaultCloudAgentRuntimeReady,
     client,
     cloudAgentDefinitionsById,
     cloudAgentRuntimeRoutesBySessionId,

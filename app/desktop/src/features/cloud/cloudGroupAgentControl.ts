@@ -27,7 +27,8 @@ export function applyCloudGroupAgentControl(
   } = context;
   const message = envelope.message;
   if (
-    !message
+    runtime.ready === false
+    || !message
     || !policy.messageTargetsLocalAgent(
       message,
       account,

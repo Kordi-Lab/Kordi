@@ -72,6 +72,7 @@ export function useCloudDirectAgentExecution({
   cloudMessageIndex,
   defaultCloudAgentRuntimeRoute,
   initialMessagesSettled,
+  runtimeReady = true,
   processedRequestIdsRef,
   turnIdsByRequestIdRef,
   activityRef,
@@ -89,6 +90,7 @@ export function useCloudDirectAgentExecution({
   cloudMessageIndex: CloudMessageIndex;
   defaultCloudAgentRuntimeRoute?: DesktopChatMessageRoute | null;
   initialMessagesSettled: boolean;
+  runtimeReady?: boolean;
   processedRequestIdsRef: MutableRefObject<Set<string>>;
   turnIdsByRequestIdRef: MutableRefObject<Map<string, string>>;
   activityRef: MutableRefObject<CloudSessionActivityStore>;
@@ -101,7 +103,7 @@ export function useCloudDirectAgentExecution({
   reportWarning: (message: string, error: unknown) => void;
 }) {
   useEffect(() => {
-    if (!account || !initialMessagesSettled) return;
+    if (!account || !initialMessagesSettled || !runtimeReady) return;
     for (const [peerId, messages] of cloudMessageIndex.byPeerId) {
       for (const message of messages) {
         if (!shouldRunLocalCloudAgentForCloudMessage({
@@ -213,7 +215,10 @@ export function useCloudDirectAgentExecution({
             ownerAccountId: account.accountId, requesterAccountId: message.fromAccountId,
             prompt, idempotencyKey: `shared:${message.messageId}:${account.accountId}`,
             runtimeRoute: requestedRoute ? { defaultModel: requestedRoute.model, defaultAuthProvider: requestedRoute.authProvider, defaultAuthChoice: requestedRoute.authChoice, thinking: requestedRoute.thinking } : undefined,
-          }).catch((error) => { reportWarning('Agent execution admission failed', error); return null; });
+          }).catch((error) => {
+            if (message.fromAccountId === account.accountId) rememberLocalTurn(cloudAgentFailedTurnSnapshot({ requestId: message.messageId, sessionId: runtimeSessionId, prompt, error }));
+            reportWarning('Agent execution admission failed', error); return null;
+          });
           if (!lease) return;
           try {
           if (!await lease.admitted()) return;
@@ -350,6 +355,9 @@ export function useCloudDirectAgentExecution({
               error,
             );
           }
+          } catch (error) {
+            if (message.fromAccountId === account.accountId) rememberLocalTurn(cloudAgentFailedTurnSnapshot({ requestId: message.messageId, sessionId: runtimeSessionId, prompt, error }));
+            reportWarning('Agent execution admission failed', error);
           } finally { lease.dispose(); }
         })();
       }
@@ -364,6 +372,7 @@ export function useCloudDirectAgentExecution({
     cloudMessageIndex,
     defaultCloudAgentRuntimeRoute,
     initialMessagesSettled,
+    runtimeReady,
     mergeMessage,
     processedRequestIdsRef,
     reportWarning,

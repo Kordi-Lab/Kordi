@@ -125,6 +125,7 @@ export function ChatsPage({
   } = runtime;
   const openAuthentication =
     auth.onOpenAccountAuthentication ?? auth.onOpenAuthSettings;
+  const canRunOwnAgent = () => { if (auth.hasAnyAuth) return true; openAuthentication(); return false; };
   const visibleDesktopLiveTurn = desktopLiveTurn ?? (!isNativeShell ? activeConv.previewLiveTurn ?? null : null);
   const isCompressionActive = visibleDesktopLiveTurn?.status === 'compacting';
   const activeLiveTurnIsRunning = Boolean(
@@ -167,6 +168,7 @@ export function ChatsPage({
     onSendChatMessage,
     onCreateAgentSession,
     onPrefetchChatSession,
+    canRunOwnAgent,
   });
   const companionConversation = companionSession.conversation;
   const suggestedSideAgentConversation = companionSession.suggested;
@@ -345,10 +347,7 @@ export function ChatsPage({
     onNavigateToMessage: transcriptNavigation.main.navigate,
   });
   const createSideAgentSession = async (initialPrompt = '') => {
-    if (!auth.hasAnyAuth) {
-      openAuthentication();
-      return false;
-    }
+    if (!canRunOwnAgent()) return false;
     const opened = await companionSession.actions.create(initialPrompt);
     if (!opened) return false;
     companionLayout.placeCompanion('right');
@@ -356,10 +355,7 @@ export function ChatsPage({
     return opened;
   };
   const openSideAgentPanel = async (initialPrompt = '') => {
-    if (!auth.hasAnyAuth) {
-      openAuthentication();
-      return false;
-    }
+    if (!canRunOwnAgent()) return false;
     const opened = await companionSession.actions.open(initialPrompt);
     if (!opened) return false;
     companionLayout.placeCompanion('right');

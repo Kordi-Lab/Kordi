@@ -84,8 +84,9 @@ test('Ask Agent remains available without an existing agent session and authenti
   assert.match(companionSession, /if \(!suggested\) return create\(initialPrompt\)/);
   assert.match(
     chatsPage,
-    /const openSideAgentPanel = async[\s\S]*if \(!auth\.hasAnyAuth\) \{[\s\S]*openAuthentication\(\);[\s\S]*return false;/,
+    /const openSideAgentPanel = async[\s\S]*if \(!canRunOwnAgent\(\)\) return false;/,
   );
+  assert.match(chatsPage, /const canRunOwnAgent = \(\) => \{ if \(auth\.hasAnyAuth\) return true; openAuthentication\(\); return false;/);
 });
 
 test('desktop startup distinguishes an unmaterialized shell from a real session', () => {

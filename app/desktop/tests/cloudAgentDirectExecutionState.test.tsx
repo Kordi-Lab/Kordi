@@ -365,7 +365,7 @@ test('cloud self-agent responses keep local runtime tool details local to the ow
 
   const view = mapCollaborationConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
   const agentMessage = view.messages.find((candidate) => candidate.role === 'owned-agent');
-  assert.equal(agentMessage?.sender, "Peer Person's Kordi");
+  assert.equal(agentMessage?.sender, "Me Cloud's Kordi");
   assert.equal(agentMessage?.turn?.tools[0]?.name, 'read');
 });
 

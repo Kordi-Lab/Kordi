@@ -98,6 +98,17 @@ test('closing during creation does not reopen the pane when the result arrives',
   expect(await page.evaluate(()=>(window as unknown as {unexpectedParentSends:number}).unexpectedParentSends)).toBe(0);
 });
 
+test('Ask Agent preserves its draft and asks for auth after the local provider is disconnected', async ({page}) => {
+  const panel = page.locator('[data-chat-side-agent-panel="true"]');
+  const field = panel.getByRole('textbox');
+  await field.fill('KEEP_PRIVATE_DRAFT');
+  await page.evaluate(() => (window as unknown as {setFixtureProviderAuth:(value:boolean)=>void}).setFixtureProviderAuth(false));
+  await panel.getByRole('button', {name:'Send to Private workspace',exact:true}).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as {fixtureAuthRequests:number}).fixtureAuthRequests)).toBe(1);
+  await expect(field).toHaveText('KEEP_PRIVATE_DRAFT');
+  expect(await page.evaluate(() => (window as unknown as {privateSends:unknown[]}).privateSends)).toEqual([]);
+});
+
 test('successive New chat actions do not reuse the previous empty private session', async ({page}) => {
   const panel=page.locator('[data-chat-side-agent-panel="true"]');
   for (const id of ['new-private-1','new-private-2']) {

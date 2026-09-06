@@ -63,7 +63,7 @@ export type UseChatMessageActionsArgs = Pick<
   | 'setOpenComposerSelector'
 > & Pick<
   ComposerEnvironmentContext,
-  'hasAnyDesktopAuth' | 'isNativeShell'
+  'hasAnyDesktopAuth' | 'hasLocalProviderAuth' | 'isNativeShell'
 > & Pick<
   ComposerMessageRuntimeContext,
   | 'isDesktopChatSending'
@@ -83,7 +83,7 @@ export type UseChatMessageActionsArgs = Pick<
   | 'watchDesktopLiveTurn'
 > & Pick<
   ComposerAuthNavigationContext,
-  'refreshDesktopChat'
+  'refreshDesktopChat' | 'openAgentAuthentication'
 > & {
   attachmentSummaryText: (text: string, attachments?: AttachmentItem[]) => string;
   handleLocalSlashCommand: (

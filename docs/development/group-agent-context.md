@@ -56,6 +56,8 @@ Subsession reads inherit active membership in the parent conversation. Members r
 
 Names are current presentation data, not routing identifiers. A profile rename updates selectors, headers and mention choices by Agent ID without rewriting stored message text or changing the scope of an existing conversation.
 
+On macOS, sending a request to your own Agent requires local provider authentication, including explicit mentions in contact/group chats and Agent execution subsessions. A blocked send opens Authentication and retains the draft; it does not silently import Cloud credentials or submit an owner request to Cloud. Other participants can request the Agent while its owner Mac is unready: the unready Mac does not claim or publish a terminal failure for their request, leaving Cloud fallback available with the owner's existing Cloud credentials. Ordinary human messages remain sendable without provider authentication. Cancelled responses retain the requested Agent identity; the cancelling participant does not become the Agent's owner.
+
 ## Request identity and caching
 
 The server freezes the authenticated requester, Agent and Owner metadata once for each admitted run. Desktop and Cloud append it after existing history and before the new user request. Retries and tool iterations reuse the same metadata. Participant text cannot replace that binding or confer private access.

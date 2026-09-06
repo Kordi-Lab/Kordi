@@ -33,6 +33,7 @@ type UseChatCompanionSessionInput = {
   onSendChatMessage: ChatsPageRuntime['onSendChatMessage'];
   onCreateAgentSession: ChatsPageRuntime['onCreateAgentSession'];
   onPrefetchChatSession: ChatsPageRuntime['onPrefetchChatSession'];
+  canRunOwnAgent?: () => boolean;
 };
 
 export function useChatCompanionSession({
@@ -44,6 +45,7 @@ export function useChatCompanionSession({
   onSendChatMessage,
   onCreateAgentSession,
   onPrefetchChatSession,
+  canRunOwnAgent,
 }: UseChatCompanionSessionInput) {
   const visibleCandidates = useMemo(
     () => chatCompanionCandidates(activeConversation, conversations),
@@ -255,6 +257,10 @@ export function useChatCompanionSession({
     const draft = state.drafts[targetConversation.id] ?? '';
     if (!draft.trim() && attachments.length === 0) return false;
     if (isCreating || state.createdConversation?.id === targetConversation.id) return false;
+    const requestsOwnAgent = targetConversation.agentSubsessionId
+      ? subsession.snapshot?.ownerAccountId === subsession.accountId && mentions.some(mention => mention.targetKind === 'agent' && mention.agentId === subsession.snapshot?.agentId)
+      : isPrivateOwnedAgentConversation(targetConversation);
+    if (requestsOwnAgent && canRunOwnAgent && !canRunOwnAgent()) return false;
     if (targetConversation.agentSubsessionId) {
       if (sendingRef.current || !subsession.snapshot || subsession.error) return false;
       if (attachments.length) { setSubsessionSendError({ id: targetConversation.id, message: 'This session supports text messages.' }); return false; }
