@@ -183,6 +183,8 @@ async fn runtime_identity_is_append_only_and_keeps_the_full_prompt_stable() -> R
     Settings { default_provider: Some("openai".into()), default_model: Some("gpt-4o-mini".into()), ..Settings::default() }.save_global()?;
     let cwd = tempfile::tempdir()?;
     let mut runtime = DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), "identity-test").await?;
+    runtime.group_observation_context(Some("session:group:context-only"), None)?;
+    assert_eq!(runtime.turn_execution_policy()?, runtime.setup.tool_ctx.execution_policy);
     let mut identity = kordi_core::types::RuntimeIdentity {
         request_id: "request-a".into(), agent_id: "agent-owner".into(), agent_name: "Owner's Kordi".into(),
         owner_account_id: "owner".into(), owner_name: "Owner".into(),
@@ -193,6 +195,8 @@ async fn runtime_identity_is_append_only_and_keeps_the_full_prompt_stable() -> R
         context_role: Some("runtimeIdentity".into()), text: serde_json::to_string(identity).unwrap(), created_at_ms: None,
     };
     runtime.sync_shared_context_messages(&[message(&identity)])?;
+    let tools = runtime.setup.tool_registry.tool_defs().to_vec();
+    assert_eq!(runtime.turn_execution_policy()?, kordi_tools::ExecutionPolicy::Shared);
     runtime.freeze_identity_prompt()?;
     let prompt = runtime.setup.system_prompt.clone();
     let context = kordi_session::context::build_context(&runtime.setup.conn, runtime.session_id())?;
@@ -207,6 +211,8 @@ async fn runtime_identity_is_append_only_and_keeps_the_full_prompt_stable() -> R
     identity.requester_name = "Owner renamed".into();
     identity.agent_name = "Renamed Agent".into();
     runtime.sync_context_messages(&[message(&identity)])?;
+    assert_eq!(runtime.turn_execution_policy()?, runtime.setup.tool_ctx.execution_policy);
+    assert_eq!(runtime.setup.tool_registry.tool_defs(), tools);
     runtime.setup.system_prompt = "A refreshed profile must not replace an active prefix".into();
     runtime.freeze_identity_prompt()?;
     assert_eq!(runtime.setup.system_prompt, prompt);

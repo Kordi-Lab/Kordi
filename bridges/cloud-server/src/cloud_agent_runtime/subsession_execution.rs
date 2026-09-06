@@ -8,6 +8,8 @@ use sqlx_postgres::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+type FollowHistoryRow = (String, String, String, Option<Value>, Option<String>);
+
 pub(super) async fn pending(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
@@ -55,7 +57,11 @@ pub(super) async fn claim(
             .bind(&run).bind(executor).execute(&mut *tx).await?;
     }
     tx.commit().await?;
-    let identity = if eligible.0 { Some(super::runs::identity::identity_for_run(pool, &run).await?) } else { None };
+    let identity = if eligible.0 {
+        Some(super::runs::identity::identity_for_run(pool, &run).await?)
+    } else {
+        None
+    };
     Ok(Some(
         json!({"runId":run,"acquired":eligible.0,"leaseSeconds":45,"turnIdentity":identity}),
     ))
@@ -171,14 +177,16 @@ pub(crate) async fn history(pool: &PgPool, run: &str) -> RunResult<Vec<Value>> {
     if let Some((identity,)) = initial_identity {
         result.insert(0, json!({"role":"runtimeIdentity","content":identity}));
     }
-    let rows:Vec<(String,String,String,Option<Value>,Option<String>)>=query_as("SELECT a.display_name,c.text,c.response_text,r.turn_identity,r.prompt FROM cloud_agent_subsession_chat c JOIN cloud_accounts a ON a.account_id=c.sender_account_id LEFT JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND c.sequence<$2 ORDER BY c.sequence DESC LIMIT 128")
+    let rows:Vec<FollowHistoryRow>=query_as("SELECT a.display_name,c.text,c.response_text,r.turn_identity,r.prompt FROM cloud_agent_subsession_chat c JOIN cloud_accounts a ON a.account_id=c.sender_account_id LEFT JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND c.sequence<$2 ORDER BY c.sequence DESC LIMIT 128")
         .bind(id).bind(sequence).fetch_all(pool).await?;
     for (name, text, response, identity, prompt) in rows.into_iter().rev() {
         if let Some(identity) = identity {
             result.push(json!({"role":"runtimeIdentity","content":identity}));
             result.push(json!({"role":"user","content":prompt.unwrap_or(text)}));
         } else {
-            result.push(json!({"role":"user","content":format!("Participant {}: {text}",json!(name))}));
+            result.push(
+                json!({"role":"user","content":format!("Participant {}: {text}",json!(name))}),
+            );
         }
         if !response.is_empty() {
             result.push(json!({"role":"assistant","content":response}));

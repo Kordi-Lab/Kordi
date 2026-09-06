@@ -15,6 +15,7 @@ export type CloudAgentSubsession = Omit<NativeAgentSubsession, 'parentRequestId'
   ownerDisplayName: string; agentDisplayName: string; version: number; updatedAt: string;
   agentAvatarUrl?: string | null;
   hasFollowupExecution?: boolean;
+  live?: boolean; queued?: boolean; startedAtMs?: number | null;
   participants?: Array<{accountId:string;displayName:string;avatarUrl?:string|null;avatarSeed?:string|null}>;
 };
 

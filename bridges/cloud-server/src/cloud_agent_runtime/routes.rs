@@ -60,8 +60,14 @@ fn include_service_provider_auth(state: &ServerState, run: &mut RunnerRunRespons
 
 pub fn routes(state: Arc<ServerState>) -> Router {
     let user_routes = Router::new()
-        .route("/v1/cloud/agent-subsessions/pending", get(super::subsession_execution::pending))
-        .route("/v1/cloud/agent-runs/desktop/:run_id/cancel", post(super::desktop::cancel))
+        .route(
+            "/v1/cloud/agent-subsessions/pending",
+            get(super::subsession_execution::pending),
+        )
+        .route(
+            "/v1/cloud/agent-runs/desktop/:run_id/cancel",
+            post(super::desktop::cancel),
+        )
         .route("/v1/cloud/agent-runs/claim", post(claim_cloud_agent_run))
         .route(
             "/v1/cloud/agent-runs/desktop/ready",
@@ -106,8 +112,14 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .with_state(state.clone());
 
     let runner_routes = Router::new()
-        .route("/v1/cloud/agent-runs/:run_id/subsession-progress", post(super::runs::subsession_lifecycle::progress_route))
-        .route("/v1/cloud/agent-runs/:run_id/task-operator", post(super::runs::subsessions::tool_route))
+        .route(
+            "/v1/cloud/agent-runs/:run_id/subsession-progress",
+            post(super::runs::subsession_lifecycle::progress_route),
+        )
+        .route(
+            "/v1/cloud/agent-runs/:run_id/task-operator",
+            post(super::runs::subsessions::tool_route),
+        )
         .route("/v1/cloud/agent-runs/lease", post(lease_runner_run))
         .route(
             "/v1/cloud/agent-runs/:run_id/context",
@@ -402,98 +414,10 @@ async fn lookup_cloud_agent_run_for_request(
     }
 }
 
-async fn publish_provider_auth_snapshot(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Query(mutation): Query<ProviderAuthMutationQuery>,
-    Json(input): Json<PublishProviderAuthSnapshotRequest>,
-) -> Response {
-    if !mutation.is_explicit() {
-        return explicit_provider_auth_intent_required();
-    }
-    let Some(input) = input.normalized() else {
-        return error_response(
-            "invalid_provider_auth_snapshot",
-            "Provider, authChoice, and payload are required.",
-            StatusCode::BAD_REQUEST,
-        );
-    };
-    let cipher = match EnvProviderAuthCipher::from_env() {
-        Ok(cipher) => cipher,
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] provider auth cipher unavailable: {err}");
-            return error_response(
-                "provider_auth_not_configured",
-                "Cloud provider-auth snapshots are not configured on this server.",
-                StatusCode::SERVICE_UNAVAILABLE,
-            );
-        }
-    };
-    match publish_snapshot(
-        state.db_pool(),
-        &cipher,
-        &session.account_id,
-        &session.device_id,
-        input,
-    )
-    .await
-    {
-        Ok(snapshot) => (StatusCode::CREATED, Json(snapshot)).into_response(),
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] publish provider auth snapshot: {err}");
-            error_response(
-                "server_error",
-                "Could not publish Cloud provider-auth snapshot.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    }
-}
-
-async fn current_provider_auth_snapshot(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Query(query): Query<CurrentProviderAuthSnapshotQuery>,
-) -> Response {
-    match current_snapshot(state.db_pool(), &session.account_id, &query).await {
-        Ok(snapshot) => Json(CurrentProviderAuthSnapshotResponse { snapshot }).into_response(),
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] current provider auth snapshot: {err}");
-            error_response(
-                "server_error",
-                "Could not load Cloud provider-auth snapshot.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    }
-}
-
-async fn revoke_provider_auth_snapshot(
-    State(state): State<Arc<ServerState>>,
-    Extension(session): Extension<CloudSession>,
-    Path(snapshot_id): Path<String>,
-    Query(mutation): Query<ProviderAuthMutationQuery>,
-) -> Response {
-    if !mutation.is_explicit() {
-        return explicit_provider_auth_intent_required();
-    }
-    match revoke_snapshot(state.db_pool(), &session.account_id, &snapshot_id).await {
-        Ok(Some(snapshot)) => Json(snapshot).into_response(),
-        Ok(None) => error_response(
-            "provider_auth_snapshot_not_found",
-            "Cloud provider-auth snapshot was not found.",
-            StatusCode::NOT_FOUND,
-        ),
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime] revoke provider auth snapshot: {err}");
-            error_response(
-                "server_error",
-                "Could not revoke Cloud provider-auth snapshot.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )
-        }
-    }
-}
+mod auth_snapshots;
+use auth_snapshots::{
+    current_provider_auth_snapshot, publish_provider_auth_snapshot, revoke_provider_auth_snapshot,
+};
 
 async fn read_runner_context(
     State(state): State<Arc<ServerState>>,
@@ -512,12 +436,4 @@ async fn read_runner_context(
             error,
         ),
     }
-}
-
-fn explicit_provider_auth_intent_required() -> Response {
-    error_response(
-        "explicit_provider_auth_intent_required",
-        "Provider authentication changes require explicit user intent.",
-        StatusCode::BAD_REQUEST,
-    )
 }

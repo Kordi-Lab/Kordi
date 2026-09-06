@@ -171,7 +171,8 @@ test('side-panel Agent model controls use independent menu state and target the 
   const source = chatsPageSource();
   const side = sidePanelBlock(source);
 
-  assert.match(source, /openComposerSelector: ComposerSelector \| null/, 'side-panel model selector should own independent state');
+  const companionState = readFileSync(new URL('../src/pages/chatCompanionState.ts', import.meta.url), 'utf8');
+  assert.match(companionState, /openComposerSelector: ComposerSelector \| null/, 'side-panel model selector should own independent state');
   assert.match(source, /selector:\s*\{[\s\S]*toggle:/, 'side-panel model selector should expose its own toggle handler');
   assert.match(source, /const localConfigTargetSessionId = conversation[\s\S]*localAgentComposerConfigTargetSessionId\(conversation\)/, 'side-panel model controls should resolve the canonical runtime session when available');
   assert.match(source, /useCompanionComposerRuntime\(\{[\s\S]*sessionId: localConfigTargetSessionId/, 'side-panel model controls should hydrate the exact canonical runtime');

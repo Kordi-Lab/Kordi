@@ -43,4 +43,33 @@ Desktop continuation resumes the existing native session and its saved runtime p
 
 macOS and Cloud share the same card/read contract. Desktop publishes model-created runtime snapshots; Cloud creates a durable child run through its leased tool endpoint. Repeated spawns with the same parent run and task name reuse the child. Cloud workers have bounded concurrency, isolated sandbox directories and lease renewal. A returning Mac cannot acquire a run already owned by Cloud. Shared desktop requests also acquire execution leases and publish through the fenced endpoint; ordinary private-session queue admission is retained.
 
-Subsession reads inherit active membership in the parent conversation. Other participants receive visible assistant output, not the model-generated child input, reasoning, or raw tool payloads. Cloud-only execution cannot access owner-local files. Database-backed tests cover creation, replay, ownership, source placement, cross-account reads and independent result storage.
+Subsession reads inherit active membership in the parent conversation. Members receive the Agent-authored task brief and visible assistant output, never private system instructions, reasoning, or raw tool payloads. Human follow-ups retain their authenticated sender identity. Cloud-only execution cannot access owner-local files. Database-backed tests cover creation, replay, ownership, source placement, cross-account reads and independent result storage.
+
+## Conversation boundaries
+
+| Surface | Visibility and identity | Trigger |
+| --- | --- | --- |
+| Ask Agent | Owner-only Agent conversation | Owner sends a request |
+| Agent execution subsession | Active members of its source conversation; one bound Agent and Owner ID | Agent calls the spawn tool; later replies require an explicit mention of that Agent |
+| Message discussion thread | Same members as its parent conversation | A member chooses Reply in thread |
+| Private Agent fork | Independent owner-only Agent session with inherited reference history | Owner forks an Agent session |
+
+Names are current presentation data, not routing identifiers. A profile rename updates selectors, headers and mention choices by Agent ID without rewriting stored message text or changing the scope of an existing conversation.
+
+## Request identity and caching
+
+The server freezes the authenticated requester, Agent and Owner metadata once for each admitted run. Desktop and Cloud append it after existing history and before the new user request. Retries and tool iterations reuse the same metadata. Participant text cannot replace that binding or confer private access.
+
+Desktop identity-bound runtimes retain their prepared system header across follow-ups. Historical identity records keep the labels that were valid for those turns; a new turn can carry renamed labels without rewriting the earlier prefix. Provider tools, model routing, cache keys and cache controls are unchanged. Prefix regression tests do not guarantee real-provider cache hits, which also depend on cache lifetime and routing.
+
+## Upgrade and rollout
+
+Non-owner desktop requests use a frozen per-turn execution policy, resolved from authenticated Agent/Owner/Requester IDs. Tool schemas and ordering do not change. Local reads, filesystem searches, commands, writes, outreach, scheduling, reflection and extension tools are denied before execution; extension hooks do not run for these turns. Inline `@file` expansion and local attachment paths are also disabled. Only audited public-web tools and callbacks scoped to the current shared conversation are available. Missing scope fails closed; background work inherits the identity and cannot request local write access or copy private history. Owner requests retain the configured local permissions.
+
+Shared web transport validates literal addresses, every redirect and the DNS answers used by the connection, and does not inherit system proxies. Cloud uses the same public-web transport while its file/command tools remain confined to the existing conversation sandbox. Neither mode grants access to an owner's device or other private sessions.
+
+Deploy the server and runner before updating desktop executors: new desktop execution requires a server-authored identity snapshot. No automatic production rollout is part of this change.
+
+The stability branch and main used migration 76 for different work. Migration 82 adds the digest/calendar schema idempotently without changing an already-recorded migration or replaying historical conversation deletion. An upgrade regression starts from main's version 76 and verifies that existing chat, digest and calendar data survive.
+
+Before deployment, audit legacy Direct session IDs. Migration 80 removes only the explicitly identified obsolete development seed namespace and fails closed if other noncanonical Direct identities remain. Do not delete unrecognized conversation data to bypass that check.

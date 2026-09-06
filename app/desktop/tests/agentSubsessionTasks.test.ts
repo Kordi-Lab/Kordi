@@ -1,12 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { agentThreadElapsed, agentThreadStatus } from '../src/features/cloud/agentSubsessionTasks';
+import { agentSubsessionStatusNotice, agentThreadElapsed, agentThreadStatus } from '../src/features/cloud/agentSubsessionTasks';
 import type { AgentSubsessionTask } from '../src/features/cloud/agentSubsessionTypes';
 
 const task: AgentSubsessionTask = { sessionId: 'child', parentSessionId: 'parent', parentRequestId: 'request',
   agentId: 'agent-one', ownerAccountId: 'owner', ownerDisplayName: 'Owner', agentDisplayName: 'Researcher',
   title: 'Research', status: 'done', executionBackend: 'desktop', startedAtMs: 1000, finishedAtMs: 64000,
   heartbeatAtMs: 64000, live: false, queued: false };
+
+test('parent cards distinguish queued work and expired heartbeats without changing terminal results', () => {
+  assert.equal(agentSubsessionStatusNotice({ status: 'running', live: false, startedAtMs: 1 }), 'Status unavailable');
+  assert.equal(agentSubsessionStatusNotice({ status: 'running', live: false, queued: true, startedAtMs: null }), 'Queued next');
+  assert.equal(agentSubsessionStatusNotice({ status: 'running', live: true }), null);
+  assert.equal(agentSubsessionStatusNotice({ status: 'done', live: false }), null);
+  assert.equal(agentSubsessionStatusNotice({ status: 'running' }), null);
+});
 
 test('finished execution clocks do not grow while a conversation waits for another message', () => {
   assert.equal(agentThreadStatus(task), 'Done');

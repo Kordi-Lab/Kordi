@@ -1,48 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch,SetStateAction } from 'react';
+import { useEffect,useMemo,useRef,useState } from 'react';
+import { type CompanionSessionState,type ComposerSelector,emptyState,normalizeStateForCandidates } from "./chatCompanionState";
 
-import type { Conversation, MessageMention } from '@/kordi-app/types';
-import { CloudAuthClient } from '@/features/cloud/authClient';
-import { CLOUD_SESSION_CHANGED_EVENT, loadSession } from '@/features/cloud/session';
-import { useAgentSubsession } from '@/features/cloud/useAgentSubsession';
-import { subsessionConversation, subsessionMentionOptions } from '@/features/cloud/subsessionConversation';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
-import type {
-  ChatAttachment,
-  ChatsPageComposer,
-  ChatsPageRuntime,
-} from '@/pages/chatsPage.types';
-import {
-  buildAskAgentSessionReferenceContext,
-  buildAskAgentSessionReferenceContextMessage,
-  chatCompanionCandidates,
-  chatCompanionSessionOptions,
-  chatSideAgentConversationForOpenRequest,
-  pairedCompanionConversation,
-  isPrivateOwnedAgentConversation,
-} from '@/pages/chatsPage.model';
+import { CloudAuthClient } from '@/features/cloud/authClient';
+import { CLOUD_SESSION_CHANGED_EVENT,loadSession } from '@/features/cloud/session';
+import { subsessionConversation,subsessionMentionOptions } from '@/features/cloud/subsessionConversation';
+import { useAgentSubsession } from '@/features/cloud/useAgentSubsession';
+import type { Conversation,MessageMention } from '@/kordi-app/types';
 import { scheduleTranscriptScrollToBottom } from '@/pages/chatsPage.header';
-
-type ComposerSelector = {
-  scope: 'chat' | 'project';
-  type: 'mode' | 'auth' | 'provider' | 'model' | 'thinking';
-};
-
-type CompanionSessionState = {
-  pageConversationId: string;
-  subsessionId: string | null;
-  selectedConversationId: string | null;
-  openConversationId: string | null;
-  requestedConversationId: string | null;
-  referenceContext: string | null;
-  actionsOpen: boolean;
-  sessionListOpen: boolean;
-  openComposerSelector: ComposerSelector | null;
-  drafts: Record<string, string>;
-  createdConversation: Conversation | null;
-  isCreating: boolean;
-  creationError: string | null;
-};
+import {
+buildAskAgentSessionReferenceContext,
+buildAskAgentSessionReferenceContextMessage,
+chatCompanionCandidates,
+chatCompanionSessionOptions,
+chatSideAgentConversationForOpenRequest,
+isPrivateOwnedAgentConversation,
+pairedCompanionConversation,
+} from '@/pages/chatsPage.model';
+import type {
+ChatAttachment,
+ChatsPageComposer,
+ChatsPageRuntime,
+} from '@/pages/chatsPage.types';
 
 type UseChatCompanionSessionInput = {
   activeConversation: Conversation;
@@ -54,71 +34,6 @@ type UseChatCompanionSessionInput = {
   onCreateAgentSession: ChatsPageRuntime['onCreateAgentSession'];
   onPrefetchChatSession: ChatsPageRuntime['onPrefetchChatSession'];
 };
-
-function emptyState(pageConversationId: string): CompanionSessionState {
-  return {
-    pageConversationId,
-    subsessionId: null,
-    selectedConversationId: null,
-    openConversationId: null,
-    requestedConversationId: null,
-    referenceContext: null,
-    actionsOpen: false,
-    sessionListOpen: false,
-    openComposerSelector: null,
-    drafts: {},
-    createdConversation: null,
-    isCreating: false,
-    creationError: null,
-  };
-}
-
-function normalizeStateForCandidates(
-  state: CompanionSessionState,
-  pageConversationId: string,
-  candidateIds: ReadonlySet<string>,
-): CompanionSessionState {
-  if (state.pageConversationId !== pageConversationId) {
-    return emptyState(pageConversationId);
-  }
-  const selectedConversationId = state.selectedConversationId
-    && (candidateIds.has(state.selectedConversationId) || state.createdConversation?.id === state.selectedConversationId)
-    ? state.selectedConversationId
-    : null;
-  const requestedConversationId = state.requestedConversationId
-    && !candidateIds.has(state.requestedConversationId)
-    ? state.requestedConversationId
-    : null;
-  const resolvedRequestedConversationId = state.requestedConversationId
-    && candidateIds.has(state.requestedConversationId)
-    ? state.requestedConversationId
-    : null;
-  const openConversationId = resolvedRequestedConversationId ?? (state.openConversationId
-    && (candidateIds.has(state.openConversationId) || state.createdConversation?.id === state.openConversationId)
-    ? state.openConversationId
-    : null);
-  if (
-    (resolvedRequestedConversationId ?? selectedConversationId) === state.selectedConversationId
-    && openConversationId === state.openConversationId
-    && requestedConversationId === state.requestedConversationId
-    && !(state.createdConversation && candidateIds.has(state.createdConversation.id))
-  ) {
-    return state;
-  }
-  return {
-    ...state,
-    selectedConversationId: resolvedRequestedConversationId ?? selectedConversationId,
-    openConversationId,
-    requestedConversationId,
-    createdConversation: state.createdConversation && !candidateIds.has(state.createdConversation.id) ? state.createdConversation : null,
-    referenceContext: openConversationId ? state.referenceContext : null,
-    actionsOpen: openConversationId ? state.actionsOpen : false,
-    sessionListOpen: openConversationId ? state.sessionListOpen : false,
-    openComposerSelector: openConversationId
-      ? state.openComposerSelector
-      : null,
-  };
-}
 
 export function useChatCompanionSession({
   activeConversation,

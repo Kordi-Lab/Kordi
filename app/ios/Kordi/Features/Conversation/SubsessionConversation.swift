@@ -5,7 +5,7 @@ extension CloudAgentSubsession {
         ConversationSummary(id: "subsession:\(sessionId)", kind: .agent,
             peerAccountId: ownerAccountId, agentId: agentId, ownerDisplayName: ownerDisplayName,
             displayName: title, lastMessage: messages.last?.text ?? "", lastActivityAt: .distantPast,
-            unreadCount: 0, avatarSource: agentAvatarUrl, agentActivity: state == .running ? .replying : .ready,
+            unreadCount: 0, avatarSource: agentAvatarUrl, agentActivity: state == .running && live != false ? .replying : .ready,
             sessionId: sessionId, agentDisplayName: agentDisplayName,
             groupParticipants: (participants ?? []).map {
                 CloudGroupParticipant(accountId: $0.accountId, displayName: $0.displayName,
@@ -29,9 +29,10 @@ extension CloudAgentSubsession {
             let assistant = message.role == "assistant"
             let agent = assistant || message.senderAgentId == agentId
             if assistant && ["queued", "pending", "leased"].contains(message.requestState ?? "") { continue }
+            if assistant && live == false && message.requestState == "running" && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { continue }
             let author: MessageAuthor = agent ? .agent : message.senderAccountId == accountId ? .me : .person
             let phase: AgentExecutionSnapshot.Phase? = switch message.requestState {
-                case "running" where assistant: .usingTool
+                case "running" where assistant && live != false: .usingTool
                 case "completed" where assistant: .complete
                 case "failed" where assistant: .failed
                 case "cancelled" where assistant: .cancelled
@@ -53,7 +54,7 @@ extension CloudAgentSubsession {
             }
             result.append(row)
         }
-        if state == .running && hasFollowupExecution != true {
+        if state == .running && live != false && hasFollowupExecution != true {
             let progress = AgentExecutionSnapshot(phase: .usingTool, summary: "", steps: [], tools: activity?.tools,
                 startedAtMs: nil, updatedAtMs: 0, completed: false)
             let lastAnswer = messages.last { $0.role == "assistant" && $0.requestId == nil }

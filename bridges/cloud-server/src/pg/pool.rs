@@ -18,6 +18,9 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 
+#[cfg(test)]
+mod upgrade_tests;
+
 #[derive(Debug)]
 pub enum PgPoolError {
     Connect(sqlx_core::Error),

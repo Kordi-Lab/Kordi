@@ -5,7 +5,8 @@ use std::time::Duration;
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use kordi_cli::desktop_runtime::{
-    activate_background_runtime_session, create_background_session, delete_session_forever, DesktopRuntimeProfile, DesktopRuntimeSession,
+    activate_background_runtime_session, create_background_session, delete_session_forever,
+    DesktopRuntimeProfile, DesktopRuntimeSession,
 };
 use kordi_cli::task_operator::{
     managed_child_prompt_context, managed_child_tool_names, BackgroundSessionInspection,
@@ -13,10 +14,7 @@ use kordi_cli::task_operator::{
 };
 use tokio::sync::Mutex;
 
-use super::super::{
-    cancel_turn_by_id, message_execution, turn_snapshot_by_id,
-    DesktopChatManager,
-};
+use super::super::{cancel_turn_by_id, message_execution, turn_snapshot_by_id, DesktopChatManager};
 
 #[derive(Clone, Debug)]
 struct ManagedTask {
@@ -104,16 +102,23 @@ impl ManagedChildAgentRunner {
                 text: message,
                 attachment_paths: Some(attachment_paths),
                 route: None,
-                context_messages: Some(self.directory.as_ref().map(|text| {
-                    kordi_cli::desktop_runtime::DesktopChatContextMessage {
-                        id: "group-directory".to_string(),
-                        author_name: "Group directory".to_string(),
-                        author_kind: "agent".to_string(),
-                        context_role: Some("resource".to_string()),
-                        text: text.clone(),
-                        created_at_ms: None,
-                    }
-                }).into_iter().chain(self.runtime_identity.clone()).collect()),
+                context_messages: Some(
+                    self.directory
+                        .as_ref()
+                        .map(
+                            |text| kordi_cli::desktop_runtime::DesktopChatContextMessage {
+                                id: "group-directory".to_string(),
+                                author_name: "Group directory".to_string(),
+                                author_kind: "agent".to_string(),
+                                context_role: Some("resource".to_string()),
+                                text: text.clone(),
+                                created_at_ms: None,
+                            },
+                        )
+                        .into_iter()
+                        .chain(self.runtime_identity.clone())
+                        .collect(),
+                ),
                 visible_task_records: None,
                 scheduled_task_session_id: self
                     .scoped_observation
@@ -136,7 +141,9 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
         let session_id = create_background_session(
             &request.cwd,
             &self.parent_session_id,
-            self.parent_request_id.as_deref().or(request.parent_message_id.as_deref()),
+            self.parent_request_id
+                .as_deref()
+                .or(request.parent_message_id.as_deref()),
             &request.task_title,
         )?;
         let runtime =
@@ -235,10 +242,7 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
                 if turn.succeeded {
                     return Ok(WaitOutcome::Completed { target, summary });
                 }
-                return Ok(WaitOutcome::Failed {
-                    target,
-                    summary,
-                });
+                return Ok(WaitOutcome::Failed { target, summary });
             }
             if tokio::time::Instant::now() >= deadline {
                 return Ok(WaitOutcome::TimedOut);
@@ -259,7 +263,13 @@ impl ChildAgentRunner for ManagedChildAgentRunner {
 
     async fn inspect(&self, session_id: &str) -> Result<Option<BackgroundSessionInspection>> {
         let snapshot = super::snapshots::subsession_snapshot(&self.manager, session_id).await?;
-        Ok(Some(BackgroundSessionInspection { status: snapshot.status, summary: None }))
+        if snapshot.parent_session_id != self.parent_session_id {
+            bail!("Background session is outside the current shared conversation")
+        }
+        Ok(Some(BackgroundSessionInspection {
+            status: snapshot.status,
+            summary: None,
+        }))
     }
 }
 

@@ -115,10 +115,23 @@ pub(super) async fn claim(
     if !input.run.is_well_formed() || input.run.owner_account_id != session.account_id {
         return denied();
     }
-    match super::subsession_execution::claim(state.db_pool(), &session, &input.run, &executor(&session,input.claim_id)).await {
+    match super::subsession_execution::claim(
+        state.db_pool(),
+        &session,
+        &input.run,
+        &executor(&session, input.claim_id),
+    )
+    .await
+    {
         Ok(Some(value)) => return Json(value).into_response(),
-        Ok(None) => {},
-        Err(error) => return run_error_response("subsession admission", "Could not admit the follow-up.", error),
+        Ok(None) => {}
+        Err(error) => {
+            return run_error_response(
+                "subsession admission",
+                "Could not admit the follow-up.",
+                error,
+            )
+        }
     }
     let result = async {
         let Some((request_id,wire_id))=super::runs::request_identity(state.db_pool(),&input.run.session_id,&input.run.request_message_id).await? else { return Ok::<_,super::runs::RunError>(None); };
@@ -183,7 +196,12 @@ pub(super) async fn renew(
     Path(run_id): Path<String>,
     Json(input): Json<RenewalInput>,
 ) -> Response {
-    if !matches!(super::subsession_execution::revalidate(state.db_pool(), &run_id).await, Ok(true)) { return expired(); }
+    if !matches!(
+        super::subsession_execution::revalidate(state.db_pool(), &run_id).await,
+        Ok(true)
+    ) {
+        return expired();
+    }
     let result = query("UPDATE cloud_agent_fallback_runs SET lease_expires_at=$3, updated_at=$4 WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='desktop' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now()")
         .bind(run_id).bind(executor(&session,input.claim_id)).bind((Utc::now()+chrono::Duration::seconds(45)).to_rfc3339()).bind(Utc::now().to_rfc3339()).execute(state.db_pool()).await;
     match result {
@@ -224,12 +242,22 @@ pub(super) async fn progress(
     Path(run_id): Path<String>,
     Json(input): Json<ProgressInput>,
 ) -> Response {
-    let parts=input.body.split_once(':').filter(|(prefix,body)| matches!(*prefix,"kordi-cloud-agent-response"|"kordi-cloud-group") && body.len()<=1_048_576);
-    let group=parts.is_some_and(|(prefix,_)|prefix=="kordi-cloud-group");
+    let parts = input.body.split_once(':').filter(|(prefix, body)| {
+        matches!(*prefix, "kordi-cloud-agent-response" | "kordi-cloud-group")
+            && body.len() <= 1_048_576
+    });
+    let group = parts.is_some_and(|(prefix, _)| prefix == "kordi-cloud-group");
     let envelope: Option<Value> = parts
-        .and_then(|(_,s)| URL_SAFE_NO_PAD.decode(s).ok())
+        .and_then(|(_, s)| URL_SAFE_NO_PAD.decode(s).ok())
         .and_then(|b| serde_json::from_slice(&b).ok());
-    let response=if group { envelope.as_ref().and_then(|value|value.get("message")).cloned() } else { envelope.clone() };
+    let response = if group {
+        envelope
+            .as_ref()
+            .and_then(|value| value.get("message"))
+            .cloned()
+    } else {
+        envelope.clone()
+    };
     let Some(response) = response else {
         return denied();
     };
@@ -248,10 +276,24 @@ pub(super) async fn progress(
         Some("cancelled") => "cancelled",
         _ => return denied(),
     };
-    match super::subsession_execution::publish(state.db_pool(),&run_id,&executor(&session,input.claim_id),&response,phase).await {
+    match super::subsession_execution::publish(
+        state.db_pool(),
+        &run_id,
+        &executor(&session, input.claim_id),
+        &response,
+        phase,
+    )
+    .await
+    {
         Ok(Some(value)) => return Json(value).into_response(),
-        Ok(None) => {},
-        Err(error) => return run_error_response("subsession publication", "Could not publish the follow-up.", error),
+        Ok(None) => {}
+        Err(error) => {
+            return run_error_response(
+                "subsession publication",
+                "Could not publish the follow-up.",
+                error,
+            )
+        }
     }
     let result = async {
         let mut tx = state.db_pool().begin().await?;

@@ -7,6 +7,29 @@ use rusqlite::OptionalExtension;
 use super::{DesktopChatContextMessage, DesktopRuntimeSession, ensure_session_row_created};
 
 impl DesktopRuntimeSession {
+    /// Resolve authority from persisted application metadata, never participant text.
+    pub(super) fn turn_execution_policy(&self) -> Result<kordi_tools::ExecutionPolicy> {
+        if let Some(context) = self.runtime_identity_context()? {
+            let identity: RuntimeIdentity = serde_json::from_str(&context.text)?;
+            if !identity.owner_account_id.trim().is_empty()
+                && identity.owner_account_id == identity.requester_account_id
+            {
+                return Ok(self.setup.tool_ctx.execution_policy);
+            }
+            return Ok(kordi_tools::ExecutionPolicy::Shared);
+        }
+        // A private Ask Agent chat may retrieve group context without becoming
+        // a member-authored shared request. Shared admission requires identity.
+        Ok(self.setup.tool_ctx.execution_policy)
+    }
+
+    pub(super) fn has_shared_observation_scope(&self) -> Result<bool> {
+        Ok(self.setup.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM entries WHERE session_id=?1 AND type='custom' AND json_extract(payload,'$.custom_type')='group_observation_scope')",
+            [&self.setup.session_id], |row| row.get(0),
+        )?)
+    }
+
     pub fn runtime_identity_context(&self) -> Result<Option<DesktopChatContextMessage>> {
         let raw: Option<String> = self.setup.conn.query_row(
             "SELECT json_extract(payload,'$.details') FROM entries WHERE session_id=?1 AND type='custom_message' AND json_extract(payload,'$.custom_type')=?2 ORDER BY seq DESC LIMIT 1",

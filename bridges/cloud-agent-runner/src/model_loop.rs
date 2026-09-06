@@ -90,22 +90,30 @@ where
     for message in &run.history_messages {
         match message["role"].as_str() {
             Some("runtimeIdentity") => {
-                let identity: kordi_core::types::RuntimeIdentity = serde_json::from_value(message["content"].clone())
-                    .map_err(|_| ModelLoopError::Provider("Invalid historical runtime identity".into()))?;
+                let identity: kordi_core::types::RuntimeIdentity =
+                    serde_json::from_value(message["content"].clone()).map_err(|_| {
+                        ModelLoopError::Provider("Invalid historical runtime identity".into())
+                    })?;
                 if let Some(current) = &run.turn_identity {
                     if !current.same_agent(&identity) {
-                        return Err(ModelLoopError::Provider("Subsession Agent ownership cannot change".into()));
+                        return Err(ModelLoopError::Provider(
+                            "Subsession Agent ownership cannot change".into(),
+                        ));
                     }
                 }
                 messages.push(identity.provider_message());
             }
             Some("user" | "assistant") => messages.push(message.clone()),
-            _ => {},
+            _ => {}
         }
     }
     if let Some(identity) = &run.turn_identity {
-        if identity.owner_account_id != run.owner_account_id || identity.requester_account_id != run.requester_account_id {
-            return Err(ModelLoopError::Provider("Runtime identity does not match the admitted run".into()));
+        if identity.owner_account_id != run.owner_account_id
+            || identity.requester_account_id != run.requester_account_id
+        {
+            return Err(ModelLoopError::Provider(
+                "Runtime identity does not match the admitted run".into(),
+            ));
         }
         messages.push(identity.provider_message());
     }

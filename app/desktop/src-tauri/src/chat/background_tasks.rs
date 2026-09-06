@@ -10,7 +10,6 @@ use super::{
 
 pub(super) use managed_child::ManagedChildAgentRunner;
 
-
 #[tauri::command]
 #[allow(clippy::too_many_arguments, reason = "stable top-level Tauri IPC keys")]
 pub async fn desktop_chat_start_shared_message(

@@ -41,6 +41,9 @@ test('shared follow-ups preserve identity and never show a queued or unadmitted 
   assert.equal(rows.find(row => row.id === 'reply:a')?.senderIdentityId, record.agentId);
   const renamed = subsessionMentionOptions({ ...record, agentDisplayName: 'Researcher' }, 'peer');
   assert.equal(subsessionMentions('@ResearcherOwnerOne continue', renamed)[0].agentId, record.agentId);
+  const stale = subsessionTranscript({ ...record, live: false }, 'peer');
+  assert(!stale.some(row => row.turn?.completed === false));
+  assert(stale.some(row => row.id === 'b'), 'queued human follow-ups remain visible');
 });
 
 test('subsession synchronization uses the execution resource without creating conversations', async () => {

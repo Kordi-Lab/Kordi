@@ -176,6 +176,14 @@ fn desktop_sync_enriches_cloud_self_agent_response_without_appending_a_duplicate
     .expect("retained response id");
 
     assert_eq!(synced_id, "msg:cloud-response");
+    let reply: String = conn
+        .query_row(
+            "SELECT json_extract(content_json, '$.replyToMessageId') FROM session_messages WHERE id=?1",
+            [&synced_id],
+            |row| row.get(0),
+        )
+        .expect("retained exact Cloud reply target");
+    assert_eq!(reply, "msg:request");
     let rows: Vec<(String, String, i64, Option<String>)> = conn
         .prepare(
             "SELECT id, source_transport, created_at_ms,

@@ -4,9 +4,7 @@ use kordi_cloud_server::cloud_agent_runtime::runs;
 pub(super) async fn verify(
     router: &axum::Router,
     pool: &sqlx_postgres::PgPool,
-    owner: &TestAccount,
-    peer: &TestAccount,
-    outsider: &TestAccount,
+    [owner, peer, outsider]: [&TestAccount; 3],
     id: &str,
     agent: &str,
     desktop: bool,
@@ -115,9 +113,15 @@ pub(super) async fn verify(
     let response = read_json(response).await;
     let messages = response["messages"].as_array().unwrap();
     for (id, account) in [(a, &peer.account_id), (b, &owner.account_id)] {
-        let row = messages.iter().find(|row| row["id"] == id.to_string()).unwrap();
+        let row = messages
+            .iter()
+            .find(|row| row["id"] == id.to_string())
+            .unwrap();
         assert_eq!(row["senderAccountId"], *account);
-        assert!(row["senderAgentId"].is_null(), "human follow-ups must not be attributed to the Agent");
+        assert!(
+            row["senderAgentId"].is_null(),
+            "human follow-ups must not be attributed to the Agent"
+        );
     }
     assert_eq!(
         messages
@@ -219,9 +223,9 @@ pub(super) async fn verify(
             .unwrap()
             .unwrap();
         assert_eq!(leased.subsession_id.as_deref(), Some(id));
-        assert_eq!(leased.turn_identity["ownerAccountId"],owner.account_id);
-        assert_eq!(leased.turn_identity["requesterAccountId"],peer.account_id);
-        assert_eq!(leased.turn_identity["agentId"],agent);
+        assert_eq!(leased.turn_identity["ownerAccountId"], owner.account_id);
+        assert_eq!(leased.turn_identity["requesterAccountId"], peer.account_id);
+        assert_eq!(leased.turn_identity["agentId"], agent);
         let history = serde_json::to_string(&leased.history_messages).unwrap();
         assert!(history.contains("CHILD_ONLY_RESULT"));
         assert!(history.contains("Ordinary shared context"));
@@ -287,11 +291,14 @@ pub(super) async fn verify(
         .unwrap()
         .unwrap();
     assert_eq!(next.owner_account_id, owner.account_id);
-    assert_eq!(next.turn_identity["ownerAccountId"],owner.account_id);
-    assert_eq!(next.turn_identity["requesterAccountId"],owner.account_id);
-    assert_eq!(next.turn_identity["agentId"],agent);
-    assert!(next.history_messages.iter().any(|message| message["role"]=="runtimeIdentity"
-        && message["content"]["requesterAccountId"]==peer.account_id));
+    assert_eq!(next.turn_identity["ownerAccountId"], owner.account_id);
+    assert_eq!(next.turn_identity["requesterAccountId"], owner.account_id);
+    assert_eq!(next.turn_identity["agentId"], agent);
+    assert!(next
+        .history_messages
+        .iter()
+        .any(|message| message["role"] == "runtimeIdentity"
+            && message["content"]["requesterAccountId"] == peer.account_id));
     assert_eq!(next.subsession_id.as_deref(), Some(id));
     assert!(serde_json::to_string(&next.history_messages)
         .unwrap()

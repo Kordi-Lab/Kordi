@@ -1,47 +1,48 @@
-import type {
-  AddCanonicalGroupMembersRequest,
-  AddCanonicalSessionParticipantsRequest,
-  AdoptCloudProfileIdentityRequest,
-  AppendCanonicalMessageRequest,
-  CanonicalIdentity,
-  CanonicalGroupMembershipDelta,
-  CanonicalMessageDeliveryDelta,
-  CanonicalMessagePage,
-  CanonicalProfileIdentityDelta,
-  CanonicalReadCursorDelta,
-  CanonicalSessionCatalog,
-  CanonicalSessionMessage,
-  CanonicalSessionState,
-  CreateCanonicalDelegatedExchangeRequest,
-  DesktopArtifactDirectory,
-  DesktopArtifactPreview,
-  DesktopAuthAttemptSnapshot,
-  DesktopAuthState,
-  DesktopChatProjectSource,
-  DesktopChatSessionDetail,
-  DesktopChatState,
-  DesktopChatTurnSnapshot,
-  DesktopProjectSettings,
-  MarkCanonicalSessionReadRequest,
-  OpenCanonicalSessionFastResult,
-  OpenCanonicalSessionRequest,
-  RemoveCanonicalSessionParticipantRequest,
-  RenameCanonicalSessionRequest,
-  SetCanonicalSessionParticipantRoleRequest,
-  UpdateCanonicalPresenceRequest,
-  UpdateCanonicalMessageDeliveryRequest,
-  UpdateCanonicalSessionMetadataRequest,
-  UpsertCanonicalIdentityRequest,
-} from '@/kordi-app/types';
 import {
-  beginChatPerformanceSpan,
-  chatPerformancePayloadBytes,
-  finishChatPerformanceSpan,
+beginChatPerformanceSpan,
+chatPerformancePayloadBytes,
+finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
 import {
-  desktopUpdaterController,
-  type DesktopUpdaterState,
+desktopUpdaterController,
+type DesktopUpdaterState,
 } from '@/features/updates/desktopUpdater';
+import type {
+AddCanonicalGroupMembersRequest,
+AddCanonicalSessionParticipantsRequest,
+AdoptCloudProfileIdentityRequest,
+AppendCanonicalMessageRequest,
+CanonicalGroupMembershipDelta,
+CanonicalIdentity,
+CanonicalMessageDeliveryDelta,
+CanonicalMessagePage,
+CanonicalProfileIdentityDelta,
+CanonicalReadCursorDelta,
+CanonicalSessionCatalog,
+CanonicalSessionMessage,
+CanonicalSessionState,
+CreateCanonicalDelegatedExchangeRequest,
+DesktopArtifactDirectory,
+DesktopArtifactPreview,
+DesktopAuthAttemptSnapshot,
+DesktopAuthState,
+DesktopChatProjectSource,
+DesktopChatSessionDetail,
+DesktopChatState,
+DesktopChatTurnSnapshot,
+DesktopProjectSettings,
+MarkCanonicalSessionReadRequest,
+OpenCanonicalSessionFastResult,
+OpenCanonicalSessionRequest,
+RemoveCanonicalSessionParticipantRequest,
+RenameCanonicalSessionRequest,
+SetCanonicalSessionParticipantRoleRequest,
+UpdateCanonicalMessageDeliveryRequest,
+UpdateCanonicalPresenceRequest,
+UpdateCanonicalSessionMetadataRequest,
+UpsertCanonicalIdentityRequest,
+} from '@/kordi-app/types';
+import { type DesktopChatContextMessage,type DesktopVisibleTaskRecord } from "./desktopChatContextTypes";
 
 
 export function isNativeDesktopShell() {
@@ -933,23 +934,6 @@ export type DesktopChatMessageRoute = {
   thinking?: string | null;
 };
 
-export type DesktopChatContextMessage = {
-  id: string;
-  authorName: string;
-  authorKind: 'human' | 'agent'; contextRole?: 'history' | 'system' | 'resource' | 'runtimeIdentity';
-  text: string;
-  createdAtMs?: number | null;
-};
-
-export type DesktopVisibleTaskRecord = {
-  taskId: string;
-  parentTaskId?: string | null;
-  title: string;
-  summary?: string | null;
-  status: string;
-  involvedParticipants?: string[];
-};
-
 export async function fetchDesktopChatSessionActiveTurn(sessionId: string) {
   return invokeDesktop<DesktopChatTurnSnapshot | null>('desktop_chat_session_active_turn', { sessionId });
 }
@@ -1075,3 +1059,5 @@ export async function openDesktopAuthPopup(
     'popup=yes,width=560,height=760,resizable=no,scrollbars=yes',
   );
 }
+
+export { type DesktopChatContextMessage,type DesktopVisibleTaskRecord } from "./desktopChatContextTypes";

@@ -15,6 +15,17 @@ use sqlx_postgres::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+type ParentRunRow = (
+    String,
+    String,
+    String,
+    String,
+    String,
+    String,
+    Value,
+    Option<Uuid>,
+);
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SpawnInput {
@@ -70,7 +81,7 @@ pub(crate) async fn execute_tool(
     query("SELECT pg_advisory_xact_lock(81208411)")
         .execute(&mut *tx)
         .await?;
-    let parent: Option<(String,String,String,String,String,String,Value,Option<Uuid>)> = query_as(
+    let parent: Option<ParentRunRow> = query_as(
         "SELECT session_id,request_message_id,owner_account_id,requester_account_id,execution_agent_id,system_prompt,runtime_route_json,subsession_id FROM cloud_agent_fallback_runs WHERE run_id=$1 AND claimed_by=$2 AND execution_backend='cloud' AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FOR UPDATE"
     ).bind(run_id).bind(&input.runner_id).fetch_optional(&mut *tx).await?;
     let (session_id, request_id, owner, requester, agent, system_prompt, route, child) =

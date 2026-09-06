@@ -96,7 +96,7 @@ test('terminal persistence precedes slow activity and ownership publication', ()
     terminalUpsert,
   );
   const terminalFanout = source.indexOf(
-    'void publishCloudGroupAgentTerminalAfterGuards({',
+    'await publishCloudGroupAgentTerminalAfterGuards({',
     terminalUpsert,
   );
 

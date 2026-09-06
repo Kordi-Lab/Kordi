@@ -343,7 +343,7 @@ export function useCloudGroupControlApplication({
     if (!messageContext) return;
     if (options.historyReplay) return;
 
-    await applyCloudGroupAgentControl({
+    applyCloudGroupAgentControl({
       context: messageContext,
       setCanonicalState: options.deferPublish
         ? publishCanonicalState

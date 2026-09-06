@@ -1,5 +1,64 @@
 use super::*;
 
+#[tokio::test]
+async fn new_admission_preserves_recent_terminal_snapshots_for_publishers() {
+    fn handle(id: &str, completed_at_ms: Option<i64>) -> super::super::DesktopChatTurnHandle {
+        super::super::DesktopChatTurnHandle {
+            snapshot: Arc::new(Mutex::new(DesktopChatTurnSnapshot {
+                id: id.into(),
+                session_id: id.into(),
+                prompt: String::new(),
+                status: if completed_at_ms.is_some() {
+                    "complete"
+                } else {
+                    "starting"
+                }
+                .into(),
+                message: String::new(),
+                assistant_text: "Result".into(),
+                thinking_text: String::new(),
+                tools: vec![],
+                completed: completed_at_ms.is_some(),
+                succeeded: completed_at_ms.is_some(),
+                started_at_ms: completed_at_ms.unwrap_or_else(super::super::now_millis),
+                completed_at_ms,
+                transcript_entry_id: None,
+                error: None,
+                transcript_refresh_required: false,
+            })),
+            cancel: tokio_util::sync::CancellationToken::new(),
+            execution_lease_deadline: Arc::new(Mutex::new(None)),
+        }
+    }
+    let manager = DesktopChatManager::default();
+    let now = super::super::now_millis();
+    {
+        let mut turns = manager.turns.lock().await;
+        turns.insert("recent".into(), handle("recent", Some(now)));
+        turns.insert(
+            "expired".into(),
+            handle("expired", Some(now - 6 * 60 * 1_000)),
+        );
+    }
+    let (_previous, _completion) =
+        reserve_turn_in_session(&manager, "next".into(), handle("next", None))
+            .await
+            .unwrap();
+    assert!(
+        turn_snapshot_by_id(&manager, "recent")
+            .await
+            .unwrap()
+            .completed
+    );
+    assert!(turn_snapshot_by_id(&manager, "expired").await.is_err());
+    assert!(
+        !turn_snapshot_by_id(&manager, "next")
+            .await
+            .unwrap()
+            .completed
+    );
+}
+
 fn persisted_message(
     role: &str,
     timestamp_ms: i64,

@@ -31,7 +31,10 @@ export function subsessionMentions(text: string, options: ComposerMentionOption[
 }
 
 export function subsessionTranscript(record: CloudAgentSubsession, accountId: string): Message[] {
-  const rows = record.messages.filter(row => !(row.role === 'assistant' && ['queued', 'pending', 'leased'].includes(row.requestState ?? '')));
+  const rows = record.messages.filter(row => !(row.role === 'assistant' && (
+    ['queued', 'pending', 'leased'].includes(row.requestState ?? '')
+      || record.live === false && row.requestState === 'running' && !row.text.trim()
+  )));
   const result = rows.map((row): Message => {
     const assistant = row.role === 'assistant';
     const agent = assistant || row.senderAgentId === record.agentId;
@@ -48,11 +51,11 @@ export function subsessionTranscript(record: CloudAgentSubsession, accountId: st
       text: row.text, timestampMs: row.timestampMs,
       statusChips: !agent && row.requestState === 'queued' ? ['queued'] : undefined,
       time: new Date(row.timestampMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      mentions: row.mentions, turn: assistant && row.requestState ? execution(row, row.activity?.tools) : undefined,
+      mentions: row.mentions, turn: assistant && row.requestState && !(record.live === false && row.requestState === 'running') ? execution(row, row.activity?.tools) : undefined,
       replyToMessageId: assistant ? row.requestId : undefined,
     };
   });
-  if (record.status === 'running' && !record.hasFollowupExecution) {
+  if (record.status === 'running' && record.live !== false && !record.hasFollowupExecution) {
     const reversed = [...rows].reverse();
     const lastAnswer = reversed.find(row => row.role === 'assistant' && !row.requestId);
     const last = result.find(row => row.id === lastAnswer?.id);

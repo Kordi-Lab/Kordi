@@ -2,7 +2,8 @@ use super::*;
 
 #[test]
 fn explicit_default_targets_and_group_progress_keep_their_identity() {
-    let direct = format!("{}{}", CLOUD_DIRECT_MESSAGE_PREFIX, URL_SAFE_NO_PAD.encode(serde_json::json!({
+    let direct =
+        format!("{}{}", CLOUD_DIRECT_MESSAGE_PREFIX, URL_SAFE_NO_PAD.encode(serde_json::json!({
         "schemaVersion":1,"kind":"message","text":"@Kordi reply once",
         "targetCloudAgentId":"cloud-agent:acct_owner","targetCloudAgentOwnerAccountId":"acct_owner"
     }).to_string()));

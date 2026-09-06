@@ -70,13 +70,20 @@ impl DesktopRuntimeSession {
         &mut self,
         messages: &[DesktopChatContextMessage],
     ) -> Result<usize> {
-        if !messages.iter().any(|m| m.context_role.as_deref() == Some("runtimeIdentity"))
-            || (prompt_context::system_context(messages).is_some() && self.runtime_identity_context()?.is_none()) {
+        if !messages
+            .iter()
+            .any(|m| m.context_role.as_deref() == Some("runtimeIdentity"))
+            || (prompt_context::system_context(messages).is_some()
+                && self.runtime_identity_context()?.is_none())
+        {
             self.set_dynamic_system_context(prompt_context::system_context(messages));
         }
         let history_messages = messages.iter().filter(|message| {
             !prompt_context::is_system_context(message)
-                && !matches!(message.context_role.as_deref(), Some("resource" | "runtimeIdentity"))
+                && !matches!(
+                    message.context_role.as_deref(),
+                    Some("resource" | "runtimeIdentity")
+                )
         });
         if messages.is_empty() {
             return Ok(0);
@@ -160,9 +167,14 @@ impl DesktopRuntimeSession {
         messages: &[DesktopChatContextMessage],
     ) -> Result<()> {
         if let Some(previous) = self.runtime_identity_context()? {
-            let previous: kordi_core::types::RuntimeIdentity = serde_json::from_str(&previous.text)?;
-            for message in messages.iter().filter(|m| m.context_role.as_deref() == Some("runtimeIdentity")) {
-                let current: kordi_core::types::RuntimeIdentity = serde_json::from_str(&message.text)?;
+            let previous: kordi_core::types::RuntimeIdentity =
+                serde_json::from_str(&previous.text)?;
+            for message in messages
+                .iter()
+                .filter(|m| m.context_role.as_deref() == Some("runtimeIdentity"))
+            {
+                let current: kordi_core::types::RuntimeIdentity =
+                    serde_json::from_str(&message.text)?;
                 if current.request_id == previous.request_id {
                     self.sync_runtime_identity(messages)?;
                     return Ok(());
@@ -188,8 +200,10 @@ impl DesktopRuntimeSession {
         let recent = messages
             .iter()
             .filter(|message| {
-                !matches!(message.context_role.as_deref(), Some("system" | "resource" | "runtimeIdentity"))
-                    && !message.text.trim().is_empty()
+                !matches!(
+                    message.context_role.as_deref(),
+                    Some("system" | "resource" | "runtimeIdentity")
+                ) && !message.text.trim().is_empty()
             })
             .rev()
             .take(8)

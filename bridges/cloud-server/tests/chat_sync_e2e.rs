@@ -11,6 +11,8 @@ use sqlx_postgres::PgPool;
 use uuid::Uuid;
 #[path = "chat_sync_e2e/default_self_agent.rs"]
 mod default_self_agent;
+#[path = "chat_sync_e2e/fork_lineage.rs"]
+mod fork_lineage;
 #[path = "chat_sync_e2e/membership.rs"]
 mod membership;
 #[path = "chat_sync_e2e/message_mutations.rs"]
@@ -174,37 +176,7 @@ async fn message_sync_is_idempotent_ordered_and_convergent_across_members() {
         peer_snapshot.avatar_url.as_deref(),
         Some("https://avatars.example/peer.png")
     );
-    let fork_session_id = created.value.legacy_session_id.clone().unwrap();
-    let fork_created_at = chrono::Utc::now().to_rfc3339();
-    query(
-        "INSERT INTO cloud_session_forks \
-         (fork_session_id, parent_session_id, parent_message_id, created_by_account_id, created_at) \
-         VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(&fork_session_id)
-    .bind("session:self-agent:parent")
-    .bind("msg:parent")
-    .bind(&owner)
-    .bind(fork_created_at)
-    .execute(&pool)
-    .await
-    .expect("record fork lineage");
-    let bootstrapped = store::bootstrap(&pool, &owner)
-        .await
-        .expect("bootstrap fork lineage");
-    let fork_snapshot = bootstrapped
-        .conversations
-        .iter()
-        .find(|conversation| conversation.id == conversation_id)
-        .expect("fork conversation snapshot");
-    assert_eq!(
-        fork_snapshot.forked_from_session_id.as_deref(),
-        Some("session:self-agent:parent")
-    );
-    assert_eq!(
-        fork_snapshot.forked_from_message_id.as_deref(),
-        Some("msg:parent")
-    );
+    assert!(created.value.forked_from_session_id.is_none());
     let duplicate = store::create_conversation(&pool, &owner, create_request)
         .await
         .expect("retry conversation creation");

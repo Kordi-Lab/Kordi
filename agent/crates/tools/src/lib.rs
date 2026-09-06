@@ -38,8 +38,8 @@ pub use schedule_task::{
     ScheduleTaskRuntime, ScheduleTaskSchedule, ScheduleTaskTargetRuntime,
 };
 pub use scheduler::{
-    FileQueue, FileQueueReservation, cap_tool_result_content, execute_reserved_tool_call,
-    execute_tool_call, execute_tool_calls,
+    FileQueue, FileQueueReservation, cap_tool_result_content, ensure_tool_allowed,
+    execute_reserved_tool_call, execute_tool_call, execute_tool_calls,
 };
 pub use types::{
     ExecutionPolicy, ReachOutFn, ReachOutFuture, ReachOutRequest, ReachOutResponse,

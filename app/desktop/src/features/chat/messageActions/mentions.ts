@@ -1,64 +1,27 @@
-import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
-import { defaultAgentDisplayName, publicScopedAgentMentionHandle, stripSelfPossessivePrefix } from '@/lib/identityLabels';
 import type { SharedCloudAgentSummary } from '@/features/cloud/cloudAgents';
+import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import type {
-  Conversation,
-  ConversationCollaborationTarget,
-  DesktopCollaborationState,
-  DesktopChatState,
+Conversation,
+DesktopCollaborationState
 } from '@/kordi-app/types';
+import { defaultAgentDisplayName,publicScopedAgentMentionHandle,stripSelfPossessivePrefix } from '@/lib/identityLabels';
 
-import type { ResolvedMentionedCollaborationTarget } from './types';
-import { mentionHandleForLabel, normalizeMentionLabel } from './mentionHandles';
 import { mentionTextStartsWithLabel } from './localAgentMentions';
+import { mentionHandleForLabel,normalizeMentionLabel } from './mentionHandles';
 
-export { mentionHandleForLabel, normalizeMentionLabel } from './mentionHandles';
 export {
-  leadingAddressRest,
-  localAgentMentionLabels,
-  localAgentRuntimeText,
-  localCollaborationAgentLabels,
-  localHumanAddressLabels,
-  mentionsLocalAgent,
-  publicLocalAgentMentionText,
-  resolveMentionedLocalAgentTarget,
-  scopedAgentLabel,
-  stripLeadingAddressMentions,
+leadingAddressRest,
+localAgentMentionLabels,
+localAgentRuntimeText,
+localCollaborationAgentLabels,
+localHumanAddressLabels,
+mentionsLocalAgent,
+publicLocalAgentMentionText,
+resolveMentionedLocalAgentTarget,
+scopedAgentLabel,
+stripLeadingAddressMentions
 } from './localAgentMentions';
-
-export function outreachIdentityForCollaborationTarget(target: ResolvedMentionedCollaborationTarget) {
-  const targetDisplayName = target.displayLabel;
-  const targetOwnerName = target.peer.ownerName ?? null;
-  const targetRuntime = target.peer.runtime;
-  const targetHumanId = target.peer.humanId ?? null;
-  const targetAgentId = target.peer.agentId ?? null;
-  return {
-    targetDisplayName,
-    targetOwnerName,
-    targetRuntime,
-    targetHumanId,
-    targetAgentId,
-    selfTargetIdentity: {
-      identityId: targetAgentId ? `agent:${targetAgentId}` : (targetHumanId ? `human:${targetHumanId}` : null),
-      displayName: targetDisplayName,
-      kind: target.targetKind === 'agent' ? 'agent' : 'human',
-      ownerDisplayName: targetOwnerName,
-      sourceIdentityId: target.peer.nodeId,
-      humanId: targetHumanId,
-      agentId: targetAgentId,
-      runtime: targetRuntime,
-    },
-  };
-}
-
-export function mentionedPersonIsActiveCollaborationTarget(
-  target: ResolvedMentionedCollaborationTarget,
-  activeTarget?: ConversationCollaborationTarget | null,
-) {
-  if (target.targetKind !== 'person' || !activeTarget) return false;
-  if (target.peer.humanId && activeTarget.humanId && target.peer.humanId === activeTarget.humanId) return true;
-  return target.peer.nodeId === activeTarget.nodeId;
-}
+export { mentionHandleForLabel,normalizeMentionLabel } from './mentionHandles';
 
 
 export type CollaborationMentionCandidate = {
@@ -641,3 +604,5 @@ export async function resolveMentionedCollaborationAgentTargetWithSharedCloudAge
   }
   return mentionedTarget;
 }
+
+export { mentionedPersonIsActiveCollaborationTarget,outreachIdentityForCollaborationTarget } from "./outreachIdentity";

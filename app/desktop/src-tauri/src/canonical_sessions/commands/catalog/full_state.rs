@@ -136,7 +136,11 @@ pub(in crate::canonical_sessions) fn load_state_from_db(
         },
     )?;
 
-    super::super::super::cloud_group_authority::project_participants(conn, &sessions, &mut participants)?;
+    super::super::super::cloud_group_authority::project_participants(
+        conn,
+        &sessions,
+        &mut participants,
+    )?;
     Ok(CanonicalSessionState {
         storage_path: path.display().to_string(),
         profile,

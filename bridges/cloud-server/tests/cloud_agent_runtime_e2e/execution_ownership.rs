@@ -182,12 +182,29 @@ async fn desktop_and_cloud_share_one_run_and_preserve_queue_during_takeover() {
         .unwrap();
     assert_eq!(read_json(admitted).await["admitted"], true);
     let result_body = format!("kordi-cloud-agent-response:{}", base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(json!({"kind":"agent-response","requestId":request_b,"text":"Desktop result","deliveryState":"complete"}).to_string()));
-    let publication = json!({"claimId":claim_b,"clientMessageId":uuid::Uuid::new_v4(),"body":result_body});
-    let first = router.clone().oneshot(post_json_with_token(&format!("/v1/cloud/agent-runs/desktop/{run_b}/progress"), &owner.token, publication.clone())).await.unwrap();
-    assert_eq!(first.status(),StatusCode::OK);
+    let publication =
+        json!({"claimId":claim_b,"clientMessageId":uuid::Uuid::new_v4(),"body":result_body});
+    let first = router
+        .clone()
+        .oneshot(post_json_with_token(
+            &format!("/v1/cloud/agent-runs/desktop/{run_b}/progress"),
+            &owner.token,
+            publication.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
     let first = read_json(first).await;
-    let retry = router.clone().oneshot(post_json_with_token(&format!("/v1/cloud/agent-runs/desktop/{run_b}/progress"), &owner.token, publication)).await.unwrap();
-    assert_eq!(retry.status(),StatusCode::OK);
+    let retry = router
+        .clone()
+        .oneshot(post_json_with_token(
+            &format!("/v1/cloud/agent-runs/desktop/{run_b}/progress"),
+            &owner.token,
+            publication,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(retry.status(), StatusCode::OK);
     assert_eq!(read_json(retry).await["messageId"], first["messageId"]);
 
     // An online app without a ready runtime must not block a new cloud request.

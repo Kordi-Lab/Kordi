@@ -1,3 +1,4 @@
+import { type CloudAgentRun,type CloudAgentRunClaimInput,type CloudAgentRunLookup,type CloudProviderAuthSnapshot,type CloudProviderAuthSnapshotInput } from "./cloudAgentRuntimeTypes";
 // Cloud-edition HTTP client. Authentication and ancillary account features
 // remain under /v1/cloud; durable chat transport is exclusively /v2/chat.
 // Stays independent of React. Native outbox helpers are no-ops in web/tests,
@@ -5,40 +6,9 @@
 
 // Production sessions never silently fall back to localhost; local tunnels remain
 // available only by explicitly setting VITE_KORDI_CLOUD_API_BASE.
-import type { CloudMessageSnapshotResponse } from './cloudMessageSnapshot';
 import type { DesktopChatContextMessage } from '@/lib/desktop';
-import type { CloudContactSummary } from './cloudContactTypes';
-import type { CloudPresenceAccount, CloudPresenceContactsResponse } from './presence';
-import type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
-import { downloadCloudAttachmentBlob } from './cloudAttachmentDownloadClient';
-import { buildCloudAuthError, CloudAuthError } from './cloudAuthError';
-import type { CloudAuthErrorCode } from './cloudAuthError';
-import { CloudExpressiveMediaClient } from './cloudExpressiveMediaClient';
-import { CloudSessionListClient } from './cloudSessionListClient';
-import type { CloudSessionVisibility } from './cloudSessionListClient';
-import { CloudDeviceClient } from './cloudDeviceClient';
-import type {
-  CloudDeviceListResponse,
-  CloudDeviceMutationResponse,
-} from './cloudDeviceClient';
-import { CloudIdentityAuthClient } from './cloudIdentityAuthClient';
-import {
-  acceptCloudGroupInvitation,
-  createCloudGroupInvitation,
-  resolveCloudGroupInvitation,
-  revokeCloudGroupInvitation,
-} from './groupInvitationClient';
-import type {
-  CloudAccount,
-  CloudAppInvitation,
-  CloudGroupInvitationCreateInput,
-  CloudGroupInvitationSummary,
-  CloudPublicProfile,
-} from './cloudIdentityTypes';
+import type { CloudAgentSubsession,NativeAgentSubsession } from './agentSubsessionTypes';
 import { ChatSyncClient } from './chatSyncClient';
-import { cloudApiBaseUrl } from './cloudApiEnvironment';
-import type { CloudAgentSubsession, NativeAgentSubsession } from './agentSubsessionTypes';
-import type { CloudSessionPin } from './cloudSessionPinTypes';
 import type {
   ChatSyncBootstrapResponse,
   ChatSyncConversation,
@@ -46,22 +16,40 @@ import type {
   ChatSyncEvent,
   ChatSyncMessage,
 } from './chatSyncTypes';
+import { cloudApiBaseUrl } from './cloudApiEnvironment';
+import { downloadCloudAttachmentBlob } from './cloudAttachmentDownloadClient';
+import type { CloudAttachmentDownloadUrlResult,CloudAttachmentFinalizeResult,CloudAttachmentInitiateResult,CloudAttachmentPreviewUpdateResult,CloudExpressiveMediaItem,CloudMessageAttachment,CloudVoiceMessage,SendCloudMessageAttachmentInput } from './cloudAttachmentTypes';
+import { buildCloudAuthError,CloudAuthError } from './cloudAuthError';
+import type { CloudContactSummary } from './cloudContactTypes';
+import type {
+  CloudDeviceListResponse,
+  CloudDeviceMutationResponse,
+} from './cloudDeviceClient';
+import { CloudDeviceClient } from './cloudDeviceClient';
+import { CloudExpressiveMediaClient } from './cloudExpressiveMediaClient';
+import { CloudIdentityAuthClient } from './cloudIdentityAuthClient';
+import type {
+  CloudAccount,
+  CloudAppInvitation,
+  CloudGroupInvitationCreateInput,
+  CloudGroupInvitationSummary,
+  CloudPublicProfile,
+} from './cloudIdentityTypes';
+import type { CloudSessionVisibility } from './cloudSessionListClient';
+import { CloudSessionListClient } from './cloudSessionListClient';
+import type { CloudSessionPin } from './cloudSessionPinTypes';
 import {
   installationDeviceRegistration,
   type CloudDeviceRegistration,
 } from './deviceIdentity';
-export type { CloudContactSummary } from './cloudContactTypes';
-export type { CloudPresenceAccount, CloudPresenceContactsResponse, CloudPresenceStatus } from './presence';
-export type { CloudAttachmentDownloadUrlResult, CloudAttachmentFinalizeResult, CloudAttachmentInitiateResult, CloudAttachmentPreviewUpdateResult, CloudExpressiveMediaItem, CloudExpressiveMediaListResponse, CloudExpressiveMediaMutationResponse, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput, SendCloudVoiceMessageInput } from './cloudAttachmentTypes';
-export type {
-  CloudDeviceAuthorization,
-  CloudDeviceAuthorizationState,
-  CloudDeviceListResponse,
-  CloudDeviceMutationResponse,
-} from './cloudDeviceClient';
-export { parseCloudOAuthHashResult } from './cloudOAuthResult';
-export { CloudAuthError } from './cloudAuthError';
-export { chatSyncSessionTitle, cloudMessageFromChatSync, cloudOperationUuid } from './chatSyncMapping';
+import {
+  acceptCloudGroupInvitation,
+  createCloudGroupInvitation,
+  resolveCloudGroupInvitation,
+  revokeCloudGroupInvitation,
+} from './groupInvitationClient';
+import type { CloudPresenceAccount,CloudPresenceContactsResponse } from './presence';
+export { chatSyncSessionTitle,cloudMessageFromChatSync,cloudOperationUuid } from './chatSyncMapping';
 export type {
   ChatSyncBootstrapResponse,
   ChatSyncConversation,
@@ -70,30 +58,38 @@ export type {
   ChatSyncMember,
   ChatSyncMessage,
   ChatSyncPreferences,
-  ChatSyncSyncResponse,
+  ChatSyncSyncResponse
 } from './chatSyncTypes';
-export type { CloudAuthErrorCode } from './cloudAuthError';
-export type { CloudSessionPin } from './cloudSessionPinTypes';
-export type { CloudSessionVisibility } from './cloudSessionListClient';
-export type {
-  CloudAccount,
-  CloudAppInvitation,
-  CloudGroupInvitation,
-  CloudGroupInvitationAcceptance,
-  CloudGroupInvitationCreateInput,
-  CloudGroupInvitationSummary,
-  CloudGroupInvitationPreview,
-  CloudPublicProfile,
-} from './cloudIdentityTypes';
 export {
   chatSyncWebSocketUrl,
   cloudApiBaseUrl,
   cloudRealtimeWebSocketEnabled,
   cloudWebSocketUrl,
   DEFAULT_CLOUD_API_BASE_URL,
-  operatorCloudOAuthProviderFallback,
+  operatorCloudOAuthProviderFallback
 } from './cloudApiEnvironment';
 export type { CloudApiEnvironment } from './cloudApiEnvironment';
+export type { CloudAttachmentDownloadUrlResult,CloudAttachmentFinalizeResult,CloudAttachmentInitiateResult,CloudAttachmentPreviewUpdateResult,CloudExpressiveMediaItem,CloudExpressiveMediaListResponse,CloudExpressiveMediaMutationResponse,CloudMessageAttachment,CloudVoiceMessage,SendCloudMessageAttachmentInput,SendCloudVoiceMessageInput } from './cloudAttachmentTypes';
+export { CloudAuthError } from './cloudAuthError';
+export type { CloudAuthErrorCode } from './cloudAuthError';
+export type { CloudContactSummary } from './cloudContactTypes';
+export type {
+  CloudDeviceAuthorization,
+  CloudDeviceAuthorizationState,
+  CloudDeviceListResponse,
+  CloudDeviceMutationResponse
+} from './cloudDeviceClient';
+export type {
+  CloudAccount,
+  CloudAppInvitation,
+  CloudGroupInvitation,
+  CloudGroupInvitationAcceptance,
+  CloudGroupInvitationCreateInput,CloudGroupInvitationPreview,CloudGroupInvitationSummary,CloudPublicProfile
+} from './cloudIdentityTypes';
+export { parseCloudOAuthHashResult } from './cloudOAuthResult';
+export type { CloudSessionVisibility } from './cloudSessionListClient';
+export type { CloudSessionPin } from './cloudSessionPinTypes';
+export type { CloudPresenceAccount,CloudPresenceContactsResponse,CloudPresenceStatus } from './presence';
 
 export type CloudSession = {
   token: string;
@@ -278,46 +274,6 @@ export type UpsertCloudTaskActivityInput = Omit<CloudTaskActivity, 'taskActivity
 export type UpsertCloudArtifactActivityInput = Omit<CloudArtifactActivity, 'artifactActivityId' | 'createdAt' | 'updatedAt' | 'archivedAt'> & {
   participantAccountIds: string[];
   clientUpdatedAt?: string | null;
-};
-
-export type CloudProviderAuthSnapshotInput = {
-  provider: string;
-  authChoice: string;
-  payload: unknown;
-};
-
-export type CloudProviderAuthSnapshot = {
-  snapshotId: string;
-  provider: string;
-  authChoice: string;
-  createdAt: string;
-  revokedAt: string | null;
-};
-
-export type CloudAgentRunClaimInput = {
-  requestMessageId: string;
-  sessionId: string;
-  ownerAccountId: string;
-  requesterAccountId: string;
-  prompt: string;
-  idempotencyKey: string;
-  targetCloudAgentId?: string | null;
-  runtimeRoute?: { defaultModel?: string | null; defaultAuthProvider?: string | null; defaultAuthChoice?: string | null; thinking?: string | null };
-};
-
-export type CloudAgentRunStatus = string;
-
-export type CloudAgentRun = {
-  runId: string;
-  status: CloudAgentRunStatus;
-  sandboxId: string | null;
-  createdAt: string;
-  updatedAt: string;
-  executionBackend?: 'cloud' | 'desktop';
-};
-
-export type CloudAgentRunLookup = {
-  run: CloudAgentRun | null;
 };
 
 export type CloudAuthClientOptions = {
@@ -1043,3 +999,5 @@ export class CloudAuthClient {
 export function defaultCloudAuthClient(): CloudAuthClient {
   return new CloudAuthClient();
 }
+
+export { type CloudAgentRun,type CloudAgentRunClaimInput,type CloudAgentRunLookup,type CloudAgentRunStatus,type CloudProviderAuthSnapshot,type CloudProviderAuthSnapshotInput } from "./cloudAgentRuntimeTypes";

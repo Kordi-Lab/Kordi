@@ -4,8 +4,8 @@ import { useReducedMotion } from 'framer-motion';
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import type { Conversation, Message } from '@/kordi-app/types';
 import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
-import { messagesWithThreadReplyCounts, projectMessageThreads, projectQueuedThreadMessages, resolveThreadMessageId, threadRootSource } from '@/features/chat/messageThreads';
-import {threadHasUnread} from '@/features/chat/threadReadState';
+import { projectMessageThreads, projectQueuedThreadMessages, resolveThreadMessageId, threadRootSource } from '@/features/chat/messageThreads';
+import { useThreadMessageSummaries } from './useThreadMessageSummaries';
 import {useThreadReadStatus} from '@/features/cloud/useThreadReadStatus';
 import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
@@ -288,33 +288,9 @@ export function ChatsPage({
   const activeLiveTurnThreadRootId = locatedLiveTurn && !locatedLiveTurn.completed
     ? threadProjection.threadRootIdByMessageId.get(locatedLiveTurn.replyToMessageId?.trim() ?? '') ?? null
     : null;
-  const optimisticThreadConversationId = openThreadState?.conversationId;
-  const optimisticThreadRootId = openThreadState?.rootId;
-  const optimisticThreadReplyCount = openThreadState?.optimisticReplyCount;
   const threadReadStatus = useThreadReadStatus(activeSessionId, cloudAccount?.accountId, threadProjection.threads.size > 0);
-  const attributedTranscriptMessages = useMemo(
-    () => messagesWithThreadReplyCounts(
-      threadProjection.mainMessages.map(message => {
-        const thread = threadProjection.threads.get(message.id ?? '');
-        return thread && message.threadSummary && threadReadStatus.reads
-          ? {...message, threadSummary:{...message.threadSummary,unread:threadHasUnread(thread,threadReadStatus.reads)}} : message;
-      }),
-      activeConv.id,
-      activeLiveTurnThreadRootId,
-      optimisticThreadConversationId,
-      optimisticThreadRootId,
-      optimisticThreadReplyCount,
-    ),
-    [
-      activeConv.id,
-      activeLiveTurnThreadRootId,
-      optimisticThreadConversationId,
-      optimisticThreadReplyCount,
-      optimisticThreadRootId,
-      threadProjection.mainMessages,
-      threadProjection.threads,
-      threadReadStatus.reads,
-    ],
+  const attributedTranscriptMessages = useThreadMessageSummaries(
+    threadProjection, threadReadStatus.reads, activeConv.id, activeLiveTurnThreadRootId, openThreadState,
   );
   const [threadPanelWidth, setThreadPanelWidth] = useState(384);
   const activeThread = useMemo(() => {

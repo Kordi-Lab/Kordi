@@ -166,7 +166,8 @@ test('related agent sessions open in the companion panel instead of replacing ma
   assert.match(sessionSource, /chatCompanionSessionOptions\(activeConversation, conversations\)/);
   assert.match(sessionSource, /requestedConversationId: conversationId/);
   assert.match(sessionSource, /onPrefetchChatSession\(conversationId\)/);
-  assert.match(sessionSource, /candidateIds\.has\(state\.requestedConversationId\)/);
+  const stateModel = readFileSync(new URL('../src/pages/chatCompanionState.ts', import.meta.url), 'utf8');
+  assert.match(stateModel, /candidateIds\.has\(state\.requestedConversationId\)/);
   assert.match(controllerSource, /loaded && !isKnownSession[\s\S]*refreshDesktopChat\(\)/);
   assert.match(workspaceSource, /companionConversationList\(chatConversations/);
   assert.match(backgroundSessionSource, /return chatConversations/);

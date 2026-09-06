@@ -173,18 +173,28 @@ fn responses_body_preserves_gpt_56_max_reasoning() {
 #[test]
 fn runtime_identity_preserves_serialized_prefix_and_request_configuration() {
     let mut request = completion_request("gpt-5.4");
-    request.tools = vec![json!({"type":"function","function":{"name":"read","parameters":{"type":"object"}}})];
-    let mut messages = vec![json!({"role":"user","content":"history"}), json!({"role":"assistant","content":"previous answer"})];
+    request.tools =
+        vec![json!({"type":"function","function":{"name":"read","parameters":{"type":"object"}}})];
+    let mut messages = vec![
+        json!({"role":"user","content":"history"}),
+        json!({"role":"assistant","content":"previous answer"}),
+    ];
     let first = build_responses_request_body(&request, messages.clone());
     messages.push(json!({"role":"developer","content":"Owner B; requester A"}));
     messages.push(json!({"role":"user","content":"Who are you?"}));
     let second = build_responses_request_body(&request, messages);
     let old_input = first["input"].as_array().unwrap();
-    assert_eq!(&second["input"].as_array().unwrap()[..old_input.len()], old_input.as_slice());
+    assert_eq!(
+        &second["input"].as_array().unwrap()[..old_input.len()],
+        old_input.as_slice()
+    );
     assert_eq!(second["input"][2]["role"], "developer");
     let mut first_config = first.clone();
     let mut second_config = second.clone();
     first_config.as_object_mut().unwrap().remove("input");
     second_config.as_object_mut().unwrap().remove("input");
-    assert_eq!(serde_json::to_vec(&first_config).unwrap(), serde_json::to_vec(&second_config).unwrap());
+    assert_eq!(
+        serde_json::to_vec(&first_config).unwrap(),
+        serde_json::to_vec(&second_config).unwrap()
+    );
 }

@@ -829,10 +829,17 @@ struct CloudAgentSubsession: Codable, Hashable {
     let updatedAt: String
     var activity: Activity? = nil
     var hasFollowupExecution: Bool? = nil
+    var live: Bool? = nil
+    var queued: Bool? = nil
+    var startedAtMs: Int64? = nil
     var participants: [Participant]? = nil
     var agentAvatarUrl: String? = nil
 
     var state: BackgroundAgentSession.State { .init(wireValue: status) ?? .failed }
+    var statusNotice: String? {
+        if queued == true, !(status == "running" && startedAtMs != nil) { return "Queued next" }
+        return status == "running" && live == false ? "Status unavailable" : nil
+    }
 }
 
 struct CloudMessageAttachment: Codable, Hashable, Identifiable {

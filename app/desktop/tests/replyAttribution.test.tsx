@@ -1,39 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { humanRequest,turn } from "./helpers/replyAttributionFixtures";
 
-import { buildReplyAttribution, replyStatusText, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '../src/features/chat/replyAttribution';
-import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
-import {projectMessageThreads} from '../src/features/chat/messageThreads';
-
-function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {
-  return {
-    id: 'turn-1',
-    sessionId: 'session-1',
-    prompt: '',
-    status: 'complete',
-    message: 'Complete',
-    assistantText: 'Done',
-    thinkingText: '',
-    tools: [],
-    completed: true,
-    succeeded: true,
-    error: null,
-    ...overrides,
-  };
-}
-
-function humanRequest(overrides: Partial<Message> = {}): Message {
-  return {
-    id: 'msg:request',
-    role: 'user',
-    sender: 'Me',
-    senderType: 'human',
-    isOwnMessage: true,
-    text: '@AliceKordi review the copy and call out confusing parts.',
-    time: '10:00',
-    ...overrides,
-  };
-}
+import { projectMessageThreads } from '../src/features/chat/messageThreads';
+import { buildReplyAttribution,replyStatusText,shouldInferLatestHumanReplyTarget,shouldSuppressAgentReplyAttribution } from '../src/features/chat/replyAttribution';
+import type { Message } from '../src/kordi-app/types';
 
 test('buildReplyAttribution keeps fallback ids stable for transcript windows', () => {
   const messages: Message[] = [

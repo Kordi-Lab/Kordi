@@ -312,7 +312,9 @@ pub(crate) fn require_group_member(
     if let Some(authority) = super::cloud_group_authority::read(conn, session_id)? {
         return if authority.members.iter().any(|id| id == actor_identity_id) {
             Ok(())
-        } else { Err(format!("Only group members can {action}.")) };
+        } else {
+            Err(format!("Only group members can {action}."))
+        };
     }
     let root_session = group_root_session(conn, session_id)?;
     if participant_is_active(conn, &root_session.id, actor_identity_id)? {
@@ -334,7 +336,10 @@ pub(crate) fn require_group_creator(
         return Ok(());
     };
     if group_creator_identity_id(conn, session_id)? == actor_identity_id
-        && group_admin_identity_ids(conn, session_id)?.iter().any(|id| id == actor_identity_id) {
+        && group_admin_identity_ids(conn, session_id)?
+            .iter()
+            .any(|id| id == actor_identity_id)
+    {
         return Ok(());
     }
     Err(format!("Only the group creator can {action}."))

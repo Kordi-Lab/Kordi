@@ -8,11 +8,12 @@ use crate::canonical_sessions::{
 fn update_cloud_message_with_desktop_runtime(
     conn: &Connection,
     message_id: &str,
+    parent_message_id: &str,
     content_text: &str,
     content_json: Option<&str>,
     message: &kordi_cli::desktop_runtime::DesktopChatMessage,
 ) -> Result<(), String> {
-    let mut content = content_with_desktop_runtime(content_json, message, None)?;
+    let mut content = content_with_desktop_runtime(content_json, message, Some(parent_message_id))?;
     let status = desktop_runtime_status::status(message);
     content["deliveryState"] = serde_json::Value::String(status.to_string());
     let content_string = content.to_string();
@@ -86,6 +87,7 @@ pub(super) fn reconcile_cloud_self_agent_message_with_desktop_runtime(
     update_cloud_message_with_desktop_runtime(
         conn,
         &cloud_message_id,
+        parent_message_id,
         content_text,
         content_json.as_deref(),
         message,

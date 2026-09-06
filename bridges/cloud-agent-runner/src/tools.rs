@@ -99,7 +99,7 @@ fn cloud_tool_context(sandbox: &SandboxBackendHandle) -> ToolContext {
         cwd: root.clone(),
         artifacts_dir: root,
         model: None,
-        execution_policy: ExecutionPolicy::Safety,
+        execution_policy: ExecutionPolicy::Shared,
         on_output: None,
         web_search: None,
         reach_out: None,

@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { CloudAuthClient, CloudAuthError } from './authClient';
 import { CLOUD_SESSION_CHANGED_EVENT, loadSession } from './session';
-import type { AgentSubsessionTask } from './agentSubsessionTypes';
+import type { AgentSubsessionTask, CloudAgentSubsession } from './agentSubsessionTypes';
+
+export function agentSubsessionStatusNotice(task: Pick<CloudAgentSubsession, 'status' | 'live' | 'queued' | 'startedAtMs'>) {
+  if (task.queued && !(task.status === 'running' && task.startedAtMs != null)) return 'Queued next';
+  return task.status === 'running' && task.live === false ? 'Status unavailable' : null;
+}
 
 export function agentThreadStatus(task: AgentSubsessionTask) {
   if (task.status === 'running' && task.startedAtMs != null) return task.live ? 'Running' : 'Status unavailable';

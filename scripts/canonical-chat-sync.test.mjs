@@ -85,7 +85,7 @@ test("remaining versioned chat names are migration inputs, not live choices", as
     "app/desktop/src-tauri/src/canonical_sessions/schema.rs",
     "app/desktop/src/features/cloud/indexedDbCloudMessageCacheStore.ts",
     "app/desktop/src/features/cloud/cloudSelfAgentIdentity.ts",
-    "app/desktop/src/features/cloud/cloudSelfAgentForwardSync.ts",
+    "app/desktop/src/features/cloud/cloudSelfAgentSyncLedger.ts",
     "bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh",
   ]);
   const compatibility = [

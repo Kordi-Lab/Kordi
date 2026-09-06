@@ -6,16 +6,16 @@ mod delivery;
 mod envelopes;
 mod errors;
 mod group_mentions;
-mod leases;
 pub(crate) mod identity;
+mod leases;
 mod prompt_history;
-pub(crate) mod subsessions;
 pub(crate) mod subsession_lifecycle;
+pub(crate) mod subsessions;
 
 pub use authorization::{
-    request_identity,
-    claim_has_shared_cloud_agent_target, execution_agent_id, requester_can_target_owner,
-    validate_agent_authored_group_handoff_claim, validate_shared_cloud_agent_claim,
+    claim_has_shared_cloud_agent_target, execution_agent_id, request_identity,
+    requester_can_target_owner, validate_agent_authored_group_handoff_claim,
+    validate_shared_cloud_agent_claim,
 };
 pub use claims::{
     claim_run, claim_run_for_desktop, lookup_run_for_request, AgentRuntimeRoute, ClaimRunRequest,

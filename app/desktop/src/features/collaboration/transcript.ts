@@ -1,30 +1,31 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { collaborationMessageActionSourceReference,collaborationMessageActionWithRealSourceLabel } from "./messageActionPresentation";
 
-import type { Conversation, ConversationCollaborationTarget, DesktopCollaborationConversation, DesktopCollaborationConversationMessage, DesktopCollaborationHost, DesktopCollaborationOutreachMetadata, Message, MessageAttachment, MessageMention } from '@/kordi-app/types';
+import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/avatarIdentity';
+import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import {
-  COLLABORATION_MESSAGE_DIRECTION_INBOUND,
-  COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE,
-  COLLABORATION_MESSAGE_DIRECTION_OUTBOUND,
-  COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+collaborationPendingAgentReplyState,
+collaborationTimestampIsExpired,
+isCollaborationAgentResponseDirection,
+isTerminalCollaborationAgentRequestState,
+} from '@/features/collaboration/collaborationProcessingState';
+import { collaborationProfileImageUrl,isCollaborationConversationPersonChat } from '@/features/collaboration/conversationPresentation';
+import {
+COLLABORATION_MESSAGE_DIRECTION_INBOUND,
+COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE,
+COLLABORATION_MESSAGE_DIRECTION_OUTBOUND,
+COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/collaboration/messages';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
-import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
-import {
-  collaborationPendingAgentReplyState,
-  collaborationTimestampIsExpired,
-  isCollaborationAgentResponseDirection,
-  isTerminalCollaborationAgentRequestState,
-} from '@/features/collaboration/collaborationProcessingState';
-import { collaborationProfileImageUrl, isCollaborationConversationPersonChat } from '@/features/collaboration/conversationPresentation';
 import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
-import { isKordiSupportConversation, KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
-import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/avatarIdentity';
-import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
-import { collaborationUnreadByParentSessionId, collaborationUnreadMentionCount } from './unreadState';
+import { isKordiSupportConversation,KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
+import type { Conversation,ConversationCollaborationTarget,DesktopCollaborationConversation,DesktopCollaborationConversationMessage,DesktopCollaborationHost,DesktopCollaborationOutreachMetadata,Message,MessageAttachment,MessageMention } from '@/kordi-app/types';
+import { firstPersonPossessiveLabel,rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 import {
-  collaborationHostLabel,
-  collaborationOutboundStatusChip,
+collaborationHostLabel,
+collaborationOutboundStatusChip,
 } from './transcriptStatus';
+import { collaborationUnreadByParentSessionId,collaborationUnreadMentionCount } from './unreadState';
 
 type CollaborationConversationViewModel = Conversation & { _updatedAtMs?: number };
 function isImplicitDirectPersonSessionMessage(outreach: DesktopCollaborationOutreachMetadata) {
@@ -81,47 +82,6 @@ function collaborationMessageAttachments(message: DesktopCollaborationConversati
     const previewUrl = collaborationAttachmentPreviewUrl(attachment);
     return { ...attachment, ...(message.messageKind === 'sticker' && attachment.kind === 'image' ? { subtype: 'sticker' as const } : {}), ...(previewUrl ? { previewUrl } : {}) };
   });
-}
-
-function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
-  const trimmed = label.trim();
-  const normalized = trimmed.toLowerCase();
-  if ((normalized === 'me' || normalized === 'you') && humanSourceLabel.trim()) {
-    return humanSourceLabel.trim();
-  }
-  if (normalized === 'my kordi' && agentSourceLabel.trim()) {
-    return agentSourceLabel.trim();
-  }
-  return trimmed;
-}
-
-function collaborationMessageActionWithRealSourceLabel(
-  action: Message['messageAction'],
-  humanSourceLabel: string,
-  agentSourceLabel: string,
-): Message['messageAction'] {
-  if (!action) return null;
-  const senderLabel = realSourceLabelForRelativeLabel(action.source.senderLabel, humanSourceLabel, agentSourceLabel);
-  if (senderLabel === action.source.senderLabel) return action;
-  return {
-    ...action,
-    source: {
-      ...action.source,
-      senderLabel,
-    },
-  };
-}
-
-function collaborationMessageActionSourceReference(action: Message['messageAction']): Message['sourceMessage'] {
-  if (!action || action.kind === 'thread') return null;
-  return {
-    messageId: action.source.sourceMessageId,
-    senderLabel: action.source.senderLabel,
-    text: action.source.textPreview,
-    mentions: action.source.mentions,
-    attachmentCount: action.source.attachmentCount,
-    time: action.source.timeLabel ?? null,
-  };
 }
 function collaborationMessageMentions(
   conversation: DesktopCollaborationConversation,
@@ -284,8 +244,9 @@ export function mapCollaborationConversationToViewModel(
     if (isPersonChat && isGroupScopedCollaborationMessage(message)) return [];
     if (staleProcessingPlaceholderIds.has(message.id)) return [];
     const direction = message.direction, messageId = collaborationViewMessageId(message);
-    const replyToMessageId = message.requestId?.trim()
-      ? requestMessageIdByRequestId.get(message.requestId.trim()) ?? null
+    const requestId = message.requestId?.trim();
+    const replyToMessageId = requestId
+      ? requestMessageIdByRequestId.get(requestId) ?? null
       : null;
     const rawDisplayText = collaborationMessageDisplayText(conversation, message);
     const mentions = collaborationMessageMentions(conversation, message);
@@ -387,9 +348,9 @@ export function mapCollaborationConversationToViewModel(
           succeeded: responseCancelled || responseFailed ? false : !isLiveAgentReply ? (localTurn?.succeeded ?? true) : false,
           error: responseFailed ? (displayText || localTurn?.error || 'Message failed') : localTurn?.error ?? null,
           replyToMessageId,
-          pendingCollaborationAgentRequest: isLiveAgentReply && message.requestId?.trim() ? {
+          pendingCollaborationAgentRequest: isLiveAgentReply && requestId ? {
             conversationId: conversation.id,
-            requestId: message.requestId.trim(),
+            requestId,
           } : null,
         },
       }];

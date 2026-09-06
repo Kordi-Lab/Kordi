@@ -49,7 +49,7 @@ pub struct RunnerRunEnvelope {
 pub struct RunnerRunResponse {
     #[serde(rename = "turnIdentity")]
     pub turn_identity: serde_json::Value,
-    #[serde(rename="historyMessages")]
+    #[serde(rename = "historyMessages")]
     pub history_messages: Vec<serde_json::Value>,
     #[serde(rename = "subsessionId")]
     pub subsession_id: Option<String>,
@@ -183,7 +183,7 @@ pub async fn mark_run_running(
     .await?;
     match row {
         Some(row) => {
-            super::super::subsession_execution::mark_active(pool,run_id,"cloud").await?;
+            super::super::subsession_execution::mark_active(pool, run_id, "cloud").await?;
             let response = runner_response_from_row(pool, row).await?;
             if response.status == "cancelled" {
                 Err(RunError::NotFound)
@@ -208,8 +208,10 @@ pub(super) async fn runner_response_from_row(
         row.1 = "cancelled".into();
         row.2.clear();
     }
-    if subsession_id.is_some() && matches!(row.1.as_str(), "leased" | "running")
-        && !super::super::subsession_execution::revalidate(pool, &row.0).await? {
+    if subsession_id.is_some()
+        && matches!(row.1.as_str(), "leased" | "running")
+        && !super::super::subsession_execution::revalidate(pool, &row.0).await?
+    {
         row.1 = "cancelled".into();
         row.2.clear();
     }
@@ -223,7 +225,7 @@ pub(super) async fn runner_response_from_row(
     .await?;
     Ok(RunnerRunResponse {
         turn_identity: super::identity::identity_for_run(pool, &row.0).await?,
-        history_messages: super::super::subsession_execution::history(pool,&row.0).await?,
+        history_messages: super::super::subsession_execution::history(pool, &row.0).await?,
         subsession_id: subsession_id.map(|id| id.to_string()),
         subsession_write_scope: serde_json::from_value(scope).unwrap_or_default(),
         run_id: row.0,

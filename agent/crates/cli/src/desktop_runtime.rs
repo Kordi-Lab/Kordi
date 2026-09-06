@@ -17,11 +17,11 @@ use crate::session_bootstrap::{
 use crate::tool_registry::ToolSelectionPreference;
 mod attachments;
 mod background_sessions;
+mod identity;
 mod model_options;
 mod models;
 mod prompt_context;
 mod shared_context;
-mod identity;
 #[cfg(test)]
 use prompt_context::strip_session_prompt_context;
 mod session_catalog;
@@ -34,9 +34,10 @@ use attachments::attachment_metadata_from_path;
 use attachments::attachment_summary_from_metadata;
 
 pub use background_sessions::{
-    activate_background_runtime_session, background_runtime_session_ids, background_runtime_snapshot, is_background_runtime_session,
-    BackgroundSessionMessage, BackgroundSessionSnapshot,
-    background_session_for_parent_message, create_background_session, session_exists,
+    BackgroundSessionMessage, BackgroundSessionSnapshot, activate_background_runtime_session,
+    background_runtime_session_ids, background_runtime_snapshot,
+    background_session_for_parent_message, create_background_session,
+    is_background_runtime_session, session_exists,
 };
 pub use model_options::{
     authenticated_model_options, clear_desktop_model_options_cache,
@@ -129,9 +130,16 @@ impl DesktopRuntimeSession {
 
     pub async fn resume(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
         if is_background_runtime_session(session_id)? {
-            let profile = background_sessions::saved_runtime_profile(session_id)?
-                .ok_or_else(|| anyhow::anyhow!("The subsession runtime profile is unavailable on this Mac"))?;
-            return Self::resume_profiled(runtime_cwd_for_session(cwd, session_id)?, session_id, profile).await;
+            let profile =
+                background_sessions::saved_runtime_profile(session_id)?.ok_or_else(|| {
+                    anyhow::anyhow!("The subsession runtime profile is unavailable on this Mac")
+                })?;
+            return Self::resume_profiled(
+                runtime_cwd_for_session(cwd, session_id)?,
+                session_id,
+                profile,
+            )
+            .await;
         }
         let runtime_cwd = runtime_cwd_for_session(cwd, session_id)?;
         let entry = SessionBootstrapOptions {

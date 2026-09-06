@@ -1,12 +1,12 @@
 pub mod artifacts;
 mod claim_route;
 mod desktop;
-pub(crate) mod subsession_execution;
 pub mod policy;
 pub mod provider_auth;
 mod provider_auth_intent;
 pub mod routes;
 pub mod runs;
 pub mod sandboxes;
-mod sync_events;
 mod shared_threads;
+pub(crate) mod subsession_execution;
+mod sync_events;

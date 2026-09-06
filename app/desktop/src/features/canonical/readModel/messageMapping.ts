@@ -1,38 +1,28 @@
-import type {
-  CanonicalIdentity, CanonicalSessionMessage, CanonicalSessionState,
-  DesktopChatToolSnapshot, Message, MessageActionMetadata,
-} from '@/kordi-app/types';
-import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
-import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
-import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
+import { cloudAgentFallbackErrorNotice,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { cloudVoiceMessageMetadataOnly } from '@/features/cloud/cloudVoiceMessage';
-import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
-import { isSelfReferenceName, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
+import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
+import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
+import type {
+CanonicalIdentity,CanonicalSessionMessage,CanonicalSessionState,
+DesktopChatToolSnapshot,Message,MessageActionMetadata,
+} from '@/kordi-app/types';
+import { isSelfReferenceName,rewriteLeadingFirstPersonAgentMention,selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
-import { canonicalCallActivity } from './callActivity';
+import { agentMessagePresentation,ownerScopedAgentName } from './agentMessagePresentation';
 import { canonicalAttachments } from './attachmentMapping';
-import { isInternalCloudAgentControlMessage, isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
+import { canonicalCallActivity } from './callActivity';
 import { canonicalMentions } from './mentionMapping';
-import { canonicalMessageAction, canonicalMessageActionSourceReference } from './messageActionMapping';
+import { canonicalMessageAction,canonicalMessageActionSourceReference } from './messageActionMapping';
+import { canonicalReadReceiptSummary,contentRecord,numberValue,stringValue } from "./messageContent";
 import { canonicalMessageReactionMetadata } from './messageReactionMetadata';
-import { agentMessagePresentation, ownerScopedAgentName } from './agentMessagePresentation';
+import { isInternalCloudAgentControlMessage,isPlaceholderSessionTitleNotice,isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
 
 export { ownerScopedAgentName } from './agentMessagePresentation';
 
-export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
 export { canonicalAttachments } from './attachmentMapping';
-export function contentRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-export function stringValue(value: unknown) {
-  return typeof value === 'string' ? value : undefined;
-}
-
-export function numberValue(value: unknown) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
+export { isProcessingPlaceholderText,stripOutreachContextEnvelope };
 
 function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
   const trimmed = label.trim();
@@ -61,32 +51,6 @@ function canonicalMessageActionWithRealSourceLabel(
       senderLabel,
     },
   };
-}
-
-function canonicalReadReceiptSummary(
-  content: Record<string, unknown>,
-  identityById: Map<string, CanonicalIdentity>,
-): Message['readReceiptSummary'] {
-  const summary = contentRecord(content.readReceiptSummary);
-  const rawParticipants = Array.isArray(summary.participants) ? summary.participants : [];
-  const participants = rawParticipants.flatMap((value) => {
-    const record = contentRecord(value);
-    const accountId = stringValue(record.accountId)?.trim() ?? '';
-    const identityId = stringValue(record.identityId)?.trim() || (accountId ? `human:${accountId}` : '');
-    if (!identityId) return [];
-    const identity = identityById.get(identityId);
-    const name = identity?.displayName || stringValue(record.name)?.trim() || accountId || 'Someone';
-    return [{
-      id: identity?.id ?? identityId,
-      name,
-      avatarSeed: canonicalIdentityAvatarSeed(identity) ?? stringValue(record.avatarSeed) ?? null,
-      profileImageUrl: identity?.profileImageUrl ?? stringValue(record.profileImageUrl) ?? null,
-      readAt: stringValue(record.readAt) ?? null,
-    }];
-  });
-  const count = Math.max(0, Math.floor(numberValue(summary.count) ?? participants.length));
-  if (count <= 0) return null;
-  return { count, participants: participants.slice(0, Math.max(count, participants.length)) };
 }
 
 export function canonicalTools(value: unknown): DesktopChatToolSnapshot[] {
@@ -487,7 +451,7 @@ export function mapCanonicalMessage(
     // transcript merge reconcile tool-only turns without relying on
     // visible text, while canonical-only and fork-snapshot messages
     // continue to target their stable canonical message id.
-    entryId: desktopEntryId || message.id,
+    entryId: sourceTransport === 'canonical-fork-snapshot' ? message.id : desktopEntryId || message.id,
     isForkSnapshot: sourceTransport === 'canonical-fork-snapshot' || undefined,
     role,
     sender,
@@ -534,3 +498,5 @@ export function mapCanonicalMessage(
       : undefined,
   };
 }
+
+export { contentRecord,numberValue,stringValue } from "./messageContent";

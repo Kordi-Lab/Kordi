@@ -1040,8 +1040,8 @@ final class KordiMarkdownParserTests: XCTestCase {
         ))
         let handler = source[start.lowerBound..<end.lowerBound]
 
-        XCTAssertTrue(handler.contains("await Task.yield()"))
-        XCTAssertTrue(handler.contains("proxy.scrollTo(bottomAnchorID, anchor: .bottom)"))
+        XCTAssertTrue(handler.contains("scrollToBottom(animated: identityChanged)"))
+        XCTAssertTrue(source.contains("immediateBottomRequest &+= 1"))
         XCTAssertFalse(handler.contains("if !identityChanged"))
     }
 

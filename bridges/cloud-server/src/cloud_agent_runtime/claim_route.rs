@@ -69,10 +69,18 @@ pub(super) async fn claim_cloud_agent_run(
         );
     }
 
-    match super::runs::request_identity(state.db_pool(), &input.session_id, &input.request_message_id).await {
+    match super::runs::request_identity(
+        state.db_pool(),
+        &input.session_id,
+        &input.request_message_id,
+    )
+    .await
+    {
         Ok(Some((id, _))) => input.request_message_id = id,
-        Ok(None) => {},
-        Err(error) => return run_error_response("request identity", "Could not resolve the request.", error),
+        Ok(None) => {}
+        Err(error) => {
+            return run_error_response("request identity", "Could not resolve the request.", error)
+        }
     }
     let valid_agent_handoff =
         match validate_agent_authored_group_handoff_claim(state.db_pool(), &input).await {
@@ -160,7 +168,7 @@ pub(super) async fn claim_cloud_agent_run(
                 return run_error_response(
                     "check owner desktop presence",
                     "Could not determine the agent execution route.",
-                    error.into(),
+                    error,
                 );
             }
         };

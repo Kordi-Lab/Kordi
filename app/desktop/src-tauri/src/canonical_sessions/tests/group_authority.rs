@@ -5,17 +5,30 @@ fn reliable_group_owner_overrides_legacy_channel_creator_without_a_root_row() {
     let conn = test_conn();
     let owner = seed_identity(&conn, "human:acct_owner", "Same display name", "human");
     let peer = seed_identity(&conn, "human:acct_peer", "Same display name", "human");
-    conn.execute("UPDATE local_profile SET human_identity_id=?1", [&owner.id]).unwrap();
+    conn.execute("UPDATE local_profile SET human_identity_id=?1", [&owner.id])
+        .unwrap();
     let id = "session:group:child-without-root";
     let root = "session:group:missing-root";
-    open_or_create_session_in_db(&conn, OpenCanonicalSessionRequest {
-        id: Some(id.into()), kind: "group".into(), title: Some("Design review".into()),
-        status: Some("active".into()), created_by_identity_id: peer.id.clone(),
-        primary_identity_id: None, project_id: None, project_name: None, relationship_identity_id: None,
-        participant_identity_ids: vec![owner.id.clone()],
-        metadata: Some(serde_json::json!({"groupSpaceId":root,"groupCreatorIdentityId":peer.id,
-            "adminIdentityIds":[peer.id],"customName":"Design group","sessionTitleRevision":9})),
-    }).unwrap();
+    open_or_create_session_in_db(
+        &conn,
+        OpenCanonicalSessionRequest {
+            id: Some(id.into()),
+            kind: "group".into(),
+            title: Some("Design review".into()),
+            status: Some("active".into()),
+            created_by_identity_id: peer.id.clone(),
+            primary_identity_id: None,
+            project_id: None,
+            project_name: None,
+            relationship_identity_id: None,
+            participant_identity_ids: vec![owner.id.clone()],
+            metadata: Some(
+                serde_json::json!({"groupSpaceId":root,"groupCreatorIdentityId":peer.id,
+            "adminIdentityIds":[peer.id],"customName":"Design group","sessionTitleRevision":9}),
+            ),
+        },
+    )
+    .unwrap();
     let mut snapshot = serde_json::json!({"id":"cloud-channel","kind":"group","legacy_session_id":id,
         "group_space_id":root,"created_by_account_id":"acct_owner","version":2,
         "members":[{"account_id":"acct_owner","role":"owner","membership_state":"active"},
@@ -23,21 +36,39 @@ fn reliable_group_owner_overrides_legacy_channel_creator_without_a_root_row() {
     conn.execute("INSERT INTO chat_sync_conversations(account_id,conversation_id,client_session_id,version,snapshot_json,updated_at_ms) VALUES('acct_owner','cloud-channel',?1,2,?2,1)",
         rusqlite::params![id,snapshot.to_string()]).unwrap();
     assert!(select_session(&conn, root).unwrap().is_none());
-    assert_eq!(group_admin_identity_ids(&conn, id).unwrap(), vec![owner.id.clone()]);
+    assert_eq!(
+        group_admin_identity_ids(&conn, id).unwrap(),
+        vec![owner.id.clone()]
+    );
     require_group_admin(&conn, id, Some(&owner.id), "rename this group").unwrap();
     require_group_creator(&conn, id, Some(&owner.id), "change group admins").unwrap();
     assert!(require_group_admin(&conn, id, Some(&peer.id), "rename this group").is_err());
     assert!(require_group_creator(&conn, id, Some(&peer.id), "change group admins").is_err());
 
     let state = commands::load_state_from_db(&conn).unwrap();
-    let group = state.sessions.iter().find(|session| session.id == id).unwrap();
+    let group = state
+        .sessions
+        .iter()
+        .find(|session| session.id == id)
+        .unwrap();
     let metadata = group.metadata.as_ref().unwrap();
     assert_eq!(metadata["groupCreatorIdentityId"], owner.id);
     assert_eq!(metadata["adminIdentityIds"], serde_json::json!([owner.id]));
     assert_eq!(metadata["sessionTitleRevision"], 9);
     assert_eq!(group.title, "Design review");
-    assert_eq!(group.created_by_identity_id, peer.id, "historical channel creator stays intact");
-    assert_eq!(state.participants.iter().find(|p| p.session_id == id && p.identity_id == peer.id).unwrap().role, "person");
+    assert_eq!(
+        group.created_by_identity_id, peer.id,
+        "historical channel creator stays intact"
+    );
+    assert_eq!(
+        state
+            .participants
+            .iter()
+            .find(|p| p.session_id == id && p.identity_id == peer.id)
+            .unwrap()
+            .role,
+        "person"
+    );
 
     // The latest authenticated membership overrides stale local admin roles.
     snapshot["members"][0]["membership_state"] = serde_json::json!("left");
@@ -48,8 +79,14 @@ fn reliable_group_owner_overrides_legacy_channel_creator_without_a_root_row() {
     assert!(require_group_member(&conn, id, Some(&owner.id), "invite people").is_err());
 
     // A snapshot cached for a different signed-in account cannot grant authority.
-    conn.execute("UPDATE chat_sync_conversations SET account_id='acct_unrelated'", []).unwrap();
-    assert!(super::super::cloud_group_authority::read(&conn, id).unwrap().is_none());
+    conn.execute(
+        "UPDATE chat_sync_conversations SET account_id='acct_unrelated'",
+        [],
+    )
+    .unwrap();
+    assert!(super::super::cloud_group_authority::read(&conn, id)
+        .unwrap()
+        .is_none());
 }
 
 #[test]

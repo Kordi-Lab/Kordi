@@ -173,6 +173,17 @@ pub(super) async fn start_message(
                     return;
                 }
                 let context_messages = context_messages.unwrap_or_default();
+                if shared_context
+                    && !context_messages
+                        .iter()
+                        .any(|message| message.context_role.as_deref() == Some("runtimeIdentity"))
+                {
+                    fail_turn(
+                        &snapshot_for_task,
+                        "Shared requests require authenticated runtime identity".into(),
+                    );
+                    return;
+                }
                 let directory = context_messages
                     .iter()
                     .find(|message| message.context_role.as_deref() == Some("resource"))

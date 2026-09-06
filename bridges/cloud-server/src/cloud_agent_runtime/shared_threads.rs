@@ -27,7 +27,9 @@ pub(super) fn reply_thread_action_from_body(
         }
         message
     } else {
-        if decoded.get("kind")?.as_str()? != "agent-response" { return None; }
+        if decoded.get("kind")?.as_str()? != "agent-response" {
+            return None;
+        }
         &decoded
     };
     if message

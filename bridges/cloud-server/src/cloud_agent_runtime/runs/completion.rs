@@ -103,7 +103,11 @@ pub async fn complete_run(
     runner_id: &str,
     response_text: &str,
 ) -> RunResult<RunnerRunResponse> {
-    if let Some(run) = super::subsession_lifecycle::finish(pool, run_id, runner_id, response_text, true).await? { return Ok(run); }
+    if let Some(run) =
+        super::subsession_lifecycle::finish(pool, run_id, runner_id, response_text, true).await?
+    {
+        return Ok(run);
+    }
     if run_id.starts_with(crate::digest::RUN_PREFIX) {
         crate::digest::complete(pool, run_id, runner_id, response_text).await?;
         return digest_run_response(pool, run_id).await;
@@ -257,7 +261,17 @@ pub async fn fail_run(
     message: &str,
     support_agent_id: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
-    if let Some(run) = super::subsession_lifecycle::finish(pool, run_id, runner_id, "The background task could not be completed.", false).await? { return Ok(run); }
+    if let Some(run) = super::subsession_lifecycle::finish(
+        pool,
+        run_id,
+        runner_id,
+        "The background task could not be completed.",
+        false,
+    )
+    .await?
+    {
+        return Ok(run);
+    }
     if run_id.starts_with(crate::digest::RUN_PREFIX) {
         crate::digest::fail(pool, run_id, Some(runner_id), error_code).await?;
         return digest_run_response(pool, run_id).await;

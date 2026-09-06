@@ -401,8 +401,8 @@ export function useKordiAppShellComposition({
       activeSessionProject,
       activeQueuedDesktopMessages: queue.activeQueuedDesktopMessages,
       queuedDesktopMessagesBySession: chat.queuedDesktopMessagesBySession,
-      handleEditQueuedMessage: queue.handleEditQueuedMessage,
-      handleCancelQueuedMessage: queue.handleCancelQueuedMessage,
+      handleEditQueuedMessage: (sessionId, messageId) => { void queue.handleEditQueuedMessage(sessionId, messageId); },
+      handleCancelQueuedMessage: (sessionId, messageId) => { void queue.handleCancelQueuedMessage(sessionId, messageId); },
     },
     overlays: {
       showAuthGate: authNavigation.showAuthGate,

@@ -1,21 +1,30 @@
 //! Claim authorization and shared-agent target resolution.
 
+use futures_util::TryStreamExt;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
-use futures_util::TryStreamExt;
 
 use super::envelopes::{cloud_group_request_envelope_for_run, direct_cloud_agent_target};
 use super::group_mentions::agent_handoff_target;
 use super::{ClaimRunRequest, RunResult};
 
 /// Resolve transport aliases without changing the durable group request identity.
-pub async fn request_identity(pool: &PgPool, session_id: &str, request_id: &str) -> RunResult<Option<(String,String)>> {
+pub async fn request_identity(
+    pool: &PgPool,
+    session_id: &str,
+    request_id: &str,
+) -> RunResult<Option<(String, String)>> {
     let mut rows=query_as::<_,(String,String,String)>("SELECT m.message_id::text,m.client_message_id::text,m.content #>> '{blocks,0,text}' FROM cloud_chat_messages m JOIN cloud_chat_conversations c USING(conversation_id) WHERE c.legacy_session_id=$1 AND m.deleted_at IS NULL AND m.content #>> '{blocks,0,text}' IS NOT NULL ORDER BY m.conversation_sequence DESC")
         .bind(session_id).fetch(pool);
-    while let Some((wire,client,body))=rows.try_next().await? {
-        let logical=super::envelopes::parse_cloud_group_envelope(&body).and_then(|envelope| envelope.message.map(|message|message.id));
-        if request_id==wire || request_id==client || request_id==format!("ios_{client}") || logical.as_deref()==Some(request_id) {
-            return Ok(Some((logical.unwrap_or_else(||wire.clone()),wire)));
+    while let Some((wire, client, body)) = rows.try_next().await? {
+        let logical = super::envelopes::parse_cloud_group_envelope(&body)
+            .and_then(|envelope| envelope.message.map(|message| message.id));
+        if request_id == wire
+            || request_id == client
+            || request_id == format!("ios_{client}")
+            || logical.as_deref() == Some(request_id)
+        {
+            return Ok(Some((logical.unwrap_or_else(|| wire.clone()), wire)));
         }
     }
     Ok(None)

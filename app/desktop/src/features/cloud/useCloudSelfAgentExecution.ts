@@ -1,28 +1,18 @@
 import { publishModelSubsessions } from './agentSubsessionSync';
+import { useDesktopAgentReadiness, type CloudSelfAgentExecutionInput } from './useDesktopAgentReadiness';
 import { cloudAgentBackgroundSessionsFromTurn } from './cloudAgentBackgroundSessions';
 import {
   useEffect,
   useRef,
-  type Dispatch,
-  type MutableRefObject,
-  type SetStateAction,
 } from 'react';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
   cancelDesktopChatTurn,
   startDesktopChatMessage,
-  type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type {
-  CanonicalSessionState,
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
-import type {
-  CloudAccount,
-  CloudAuthClient,
-  CloudMessage,
-} from './authClient';
-import type { CloudAgentDefinition } from './cloudAgents';
 import { resolveCloudMessageAttachments } from './cloudAttachments';
 import {
   cloudAgentExecutionFingerprint,
@@ -50,7 +40,6 @@ import {
   cloudDirectMessageDisplayText,
   cloudDirectMessageTargetCloudAgentId,
 } from './cloudDirectMessages';
-import type { CloudMessageIndex } from './cloudMessageIndex';
 import { cloudAgentRunAlreadyOwnsRequest } from './cloudAgentRequestState';
 import {
   CLOUD_SELF_AGENT_EXECUTION_STREAM_MS,
@@ -69,7 +58,6 @@ import {
 } from './cloudSelfAgentExecutionState';
 import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
 import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
-import { defaultCloudAgentId } from './cloudAgentIdentity';
 import { planCloudSelfAgentCanonicalSync } from './cloudSelfAgentCanonicalSync';
 import { persistCloudSelfAgentCanonicalSyncPlan } from './cloudSelfAgentCanonicalSyncExecution';
 export {
@@ -98,40 +86,9 @@ export function useCloudSelfAgentExecution({
   mergeMessage,
   syncMessages,
   reportWarning,
-}: {
-  account: CloudAccount | null;
-  canonicalState: CanonicalSessionState | null | undefined;
-  client: CloudAuthClient;
-  messageIndex: CloudMessageIndex;
-  initialMessagesSettled: boolean;
-  runtimeReady?: boolean;
-  routesBySessionId?: Record<string, DesktopChatMessageRoute>;
-  defaultRoute?: DesktopChatMessageRoute | null;
-  cloudAgentDefinitionsById?: Record<string, CloudAgentDefinition>;
-  processedRequestIdsRef: MutableRefObject<Set<string>>;
-  turnIdsByRequestIdRef: MutableRefObject<Map<string, string>>;
-  setLocalTurns: Dispatch<
-    SetStateAction<Record<string, DesktopChatTurnSnapshot>>
-  >;
-  mergeMessage: (message: CloudMessage) => void;
-  syncMessages: () => Promise<void>;
-  reportWarning: (message: string, error: unknown) => void;
-}) {
+}: CloudSelfAgentExecutionInput) {
   const supersededRequestIdsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!account) return;
-    let cancelled = false;
-    const publish = async () => {
-      const session = await loadSession();
-      if (!session?.token || cancelled) return;
-      const agentIds = runtimeReady ? [defaultCloudAgentId(account.accountId), ...Object.values(cloudAgentDefinitionsById ?? {})
-        .filter((agent) => agent.ownerAccountId === account.accountId && agent.status !== 'archived').map((agent) => agent.agentId)] : [];
-      await client.desktopAgentExecution(session.token, 'ready', { agentIds });
-    };
-    void publish().catch((error) => reportWarning('[desktop-runtime] readiness failed', error));
-    const timer = setInterval(() => { void publish().catch(() => undefined); }, 10_000);
-    return () => { cancelled = true; clearInterval(timer); };
-  }, [account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning]);
+  useDesktopAgentReadiness({ account, client, runtimeReady, cloudAgentDefinitionsById, reportWarning });
   const activeAccountIdRef = useRef<string | null>(
     account?.accountId ?? null,
   );

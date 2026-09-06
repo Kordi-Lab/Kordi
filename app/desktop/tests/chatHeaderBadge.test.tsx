@@ -13,7 +13,6 @@ import {
   parseAskAgentTriggerCommand,
 } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
-import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 function readChatsPageImplementationSource(): string {

@@ -1,6 +1,18 @@
 //! Shared human messages and explicit, identity-bound Agent mentions.
 use super::*;
 
+type ConversationMessageRow = (
+    Uuid,
+    String,
+    String,
+    String,
+    Value,
+    Option<String>,
+    String,
+    Value,
+    i64,
+);
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct SendRequest {
@@ -157,7 +169,7 @@ pub(super) async fn send(
 }
 
 pub(super) async fn messages(pool: &PgPool, id: Uuid) -> Result<Vec<Value>, ApiError> {
-    let rows:Vec<(Uuid,String,String,String,Value,Option<String>,String,Value,i64)>=query_as("SELECT c.message_id,c.sender_account_id,a.display_name,c.text,c.mentions,CASE WHEN r.status='queued' AND NOT (s.status='running' OR EXISTS(SELECT 1 FROM cloud_agent_subsession_chat earlier JOIN cloud_agent_fallback_runs e ON e.run_id=earlier.run_id WHERE earlier.subsession_id=s.subsession_id AND earlier.sequence<c.sequence AND e.status IN ('queued','leased','running'))) THEN 'pending' ELSE r.status END,c.response_text,c.activity,(extract(epoch from c.created_at)*1000)::bigint FROM cloud_agent_subsession_chat c JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id JOIN cloud_accounts a ON a.account_id=c.sender_account_id LEFT JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 ORDER BY c.sequence")
+    let rows:Vec<ConversationMessageRow>=query_as("SELECT c.message_id,c.sender_account_id,a.display_name,c.text,c.mentions,CASE WHEN r.status='queued' AND NOT (s.status='running' OR EXISTS(SELECT 1 FROM cloud_agent_subsession_chat earlier JOIN cloud_agent_fallback_runs e ON e.run_id=earlier.run_id WHERE earlier.subsession_id=s.subsession_id AND earlier.sequence<c.sequence AND e.status IN ('queued','leased','running'))) THEN 'pending' ELSE r.status END,c.response_text,c.activity,(extract(epoch from c.created_at)*1000)::bigint FROM cloud_agent_subsession_chat c JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id JOIN cloud_accounts a ON a.account_id=c.sender_account_id LEFT JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 ORDER BY c.sequence")
         .bind(id).fetch_all(pool).await.map_err(db_error)?;
     let mut messages = Vec::new();
     for (id, sender, name, text, mentions, status, response, activity, time) in rows {
@@ -185,18 +197,18 @@ mod tests {
             json!({"targetKind":"agent","agentId":"agent-one","startUtf16":0,"lengthUtf16":6});
         assert!(invokes_agent(
             "@Kordi explain",
-            &[mention.clone()],
+            std::slice::from_ref(&mention),
             "agent-one"
         ));
         assert!(!invokes_agent("@Kordi explain", &[], "agent-one"));
         assert!(!invokes_agent(
             "@Kordi explain",
-            &[mention.clone()],
+            std::slice::from_ref(&mention),
             "agent-two"
         ));
         assert!(!invokes_agent(
             "hello everyone",
-            &[mention.clone()],
+            std::slice::from_ref(&mention),
             "agent-one"
         ));
         assert!(!invokes_agent(

@@ -238,6 +238,7 @@ pub(crate) fn permission_posture_badge(execution_mode: ExecutionPolicy) -> &'sta
     match execution_mode {
         ExecutionPolicy::Safety => "mode safety/project-only",
         ExecutionPolicy::Yolo => "mode yolo/full-access",
+        ExecutionPolicy::Shared => "mode shared/public-only",
     }
 }
 

@@ -1021,6 +1021,7 @@ private struct BackgroundAgentSessionRow: View {
     let isEnabled: Bool
     let onOpen: (BackgroundAgentSession) -> Void
     private var state: BackgroundAgentSession.State { snapshot?.state ?? presentation.state }
+    private var statusText: String { syncUnavailable ? "Sync unavailable" : snapshot?.statusNotice ?? state.label }
 
     var body: some View {
         Button {
@@ -1076,7 +1077,7 @@ private struct BackgroundAgentSessionRow: View {
         .disabled(!isEnabled)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(snapshot?.title ?? presentation.session.title), \(snapshot?.agentDisplayName ?? agentName), background session, \(syncUnavailable ? "Sync unavailable" : state.label)"
+            "\(snapshot?.title ?? presentation.session.title), \(snapshot?.agentDisplayName ?? agentName), background session, \(statusText)"
         )
         .accessibilityHint("Opens the linked agent session")
         .task(id: presentation.session.sessionId) {
@@ -1118,7 +1119,7 @@ private struct BackgroundAgentSessionRow: View {
                 .fill(statusColor)
                 .frame(width: 6, height: 6)
                 .accessibilityHidden(true)
-            Text(syncUnavailable ? "Sync unavailable" : state.label)
+            Text(statusText)
         }
         .font(.caption2)
         .foregroundStyle(.secondary)
@@ -1126,7 +1127,7 @@ private struct BackgroundAgentSessionRow: View {
     }
 
     private var statusColor: Color {
-        if syncUnavailable { return .secondary }
+        if syncUnavailable || snapshot?.statusNotice != nil { return .secondary }
         return switch state {
         case .running: KordiTheme.signalBlue
         case .done: .green

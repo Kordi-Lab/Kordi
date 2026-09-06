@@ -34,6 +34,10 @@ fn text_field(params: &Value, key: &str) -> String {
 
 #[async_trait]
 impl Tool for SearchSessionsTool {
+    fn allows_shared_requests(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &str {
         "search_sessions"
     }
@@ -137,6 +141,10 @@ impl Tool for SearchSessionsTool {
 
 #[async_trait]
 impl Tool for ReadSessionTool {
+    fn allows_shared_requests(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &str {
         "read_session"
     }

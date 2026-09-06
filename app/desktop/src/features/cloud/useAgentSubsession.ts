@@ -33,7 +33,7 @@ export function useAgentSubsession(id: string | null, includeMessages = false) {
         if (cancelled || (await loadSession())?.accountId !== accountId) return;
         setViewerAccountId(accountId);
         if (current && next.version === current.version) next = { ...next, messages: current.messages };
-        if (!current || next.version !== current.version || next.agentDisplayName !== current.agentDisplayName || next.ownerDisplayName !== current.ownerDisplayName || next.agentAvatarUrl !== current.agentAvatarUrl || JSON.stringify(next.participants) !== JSON.stringify(current.participants)) { current = next; setSnapshot(next); }
+        if (!current || next.version !== current.version || next.live !== current.live || next.queued !== current.queued || next.startedAtMs !== current.startedAtMs || next.agentDisplayName !== current.agentDisplayName || next.ownerDisplayName !== current.ownerDisplayName || next.agentAvatarUrl !== current.agentAvatarUrl || JSON.stringify(next.participants) !== JSON.stringify(current.participants)) { current = next; setSnapshot(next); }
         failures = 0;
         setError(null);
       } catch (failure) {

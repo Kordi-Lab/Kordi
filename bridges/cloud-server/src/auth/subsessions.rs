@@ -19,6 +19,18 @@ use sqlx_postgres::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
+type PublishedSubsessionRow = (
+    String,
+    String,
+    Uuid,
+    String,
+    String,
+    i64,
+    String,
+    String,
+    Value,
+);
+
 type ApiError = (StatusCode, Json<Value>);
 fn error(status: StatusCode, code: &str) -> ApiError {
     (status, Json(json!({"error":{"code":code,"message":code}})))
@@ -71,6 +83,9 @@ struct ReadQuery {
 struct Snapshot {
     activity: Value,
     has_followup_execution: bool,
+    live: bool,
+    queued: bool,
+    started_at_ms: Option<i64>,
     participants: Vec<Value>,
     session_id: Uuid,
     parent_session_id: String,
@@ -277,13 +292,22 @@ async fn snapshot(
     if include_messages {
         messages.extend(conversation::messages(pool, id).await?);
     }
-    let (activity,has_followup_execution):(Value,bool)=query_as("SELECT activity,EXISTS(SELECT 1 FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND r.status<>'queued') FROM cloud_agent_subsessions WHERE subsession_id=$1")
+    let (activity, has_followup_execution, live, queued, started_at_ms): (Value, bool, bool, bool, Option<i64>) = query_as(
+        "SELECT s.activity,
+         EXISTS(SELECT 1 FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND r.status<>'queued'),
+         s.status='running' AND (s.execution_backend='desktop' AND s.heartbeat_at>now()-interval '45 seconds' OR EXISTS(SELECT 1 FROM cloud_agent_fallback_runs r WHERE r.subsession_id=s.subsession_id AND r.status='running' AND r.lease_expires_at::timestamptz>now())),
+         EXISTS(SELECT 1 FROM cloud_agent_fallback_runs r WHERE r.subsession_id=s.subsession_id AND r.status IN ('queued','leased')),
+         (extract(epoch FROM s.execution_started_at)*1000)::bigint
+         FROM cloud_agent_subsessions s WHERE s.subsession_id=$1")
         .bind(id).fetch_one(pool).await.map_err(db_error)?;
     let participants:Vec<(String,String,Option<String>,String)>=query_as("SELECT a.account_id,a.display_name,a.avatar_url,a.avatar_seed FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.membership_state='active' JOIN cloud_accounts a ON a.account_id=m.account_id WHERE s.subsession_id=$1 ORDER BY a.account_id")
         .bind(id).fetch_all(pool).await.map_err(db_error)?;
     Ok(Snapshot {
         activity,
         has_followup_execution,
+        live,
+        queued,
+        started_at_ms,
         participants: participants.into_iter().map(|(account_id,display_name,avatar_url,avatar_seed)|json!({"accountId":account_id,"displayName":display_name,"avatarUrl":avatar_url,"avatarSeed":avatar_seed})).collect(),
         session_id: id,
         parent_session_id,
@@ -351,7 +375,7 @@ async fn write(
         .await
         .map_err(db_error)?
         .ok_or_else(|| error(StatusCode::FORBIDDEN, "subsession_parent_forbidden"))?;
-    let existing: Option<(String, String, Uuid, String, String, i64, String, String, Value)> = query_as(
+    let existing: Option<PublishedSubsessionRow> = query_as(
         "SELECT owner_account_id, publisher_device_id, parent_conversation_id, parent_request_id, agent_id, version, title, status, messages FROM cloud_agent_subsessions WHERE subsession_id=$1 FOR UPDATE"
     ).bind(id).fetch_optional(&mut *transaction).await.map_err(db_error)?;
     let messages = serde_json::to_value(&request.messages).map_err(db_error)?;

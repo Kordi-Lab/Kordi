@@ -1,36 +1,55 @@
 import {
+  cloudCollaborationConversationId,
+  cloudConversationKindFromConversationId,
+  cloudDirectPersonSessionId,
+  cloudPeerAccountIdFromConversationId,
+  cloudSessionIdFromConversationId,
+  cloudSystemAgentConversationId,
+  cloudSystemAgentSessionId,
+  isCloudCollaborationConversationId,
+  isCloudSystemAgentSessionId,
+} from '@/features/collaboration/conversationIds';
+import {
   COLLABORATION_MESSAGE_DIRECTION_INBOUND,
   COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE,
   COLLABORATION_MESSAGE_DIRECTION_OUTBOUND,
   COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/collaboration/messages';
-import {
-  cloudCollaborationConversationId,
-  cloudConversationKindFromConversationId,
-  cloudDirectPersonSessionId,
-  cloudSystemAgentConversationId,
-  cloudPeerAccountIdFromConversationId,
-  cloudSessionIdFromConversationId,
-  cloudSystemAgentSessionId,
-  isCloudSystemAgentSessionId,
-  isCloudCollaborationConversationId,
-} from '@/features/collaboration/conversationIds';
 import type {
   CanonicalSessionState,
   Contact,
+  DesktopChatTurnSnapshot,
   DesktopCollaborationConversation,
   DesktopCollaborationConversationMessage,
   DesktopCollaborationHost,
   DesktopCollaborationOutreachMetadata,
-  DesktopCollaborationState,
-  DesktopChatTurnSnapshot,
-  UpsertCanonicalIdentityRequest,
+  DesktopCollaborationState
 } from '@/kordi-app/types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
-import { formatDesktopClockTime, formatDesktopLastActiveLabel } from '@/lib/time';
+import { formatDesktopClockTime,formatDesktopLastActiveLabel } from '@/lib/time';
 
-import type { CloudAccount, CloudMessage } from './authClient';
-import { buildCloudMessageIndex, type CloudMessageIndex } from './cloudMessageIndex';
+import type { CloudAccount,CloudMessage } from './authClient';
+import { cloudAvatarImageUrl } from './avatar';
+import { canonicalAvatarImageSource } from './canonicalAvatar';
+import { cloudAgentExecutionTurnForMessage } from './cloudAgentExecutionTrace';
+import { cloudCanonicalDefaultAgentContactFields,cloudDefaultAgentPresentation } from './cloudAgentIdentity';
+import {
+  cloudDirectMessageIsUnreadForAccount,
+  cloudMessageIsSelfAgentRequest,
+  cloudMessageMentionsFirstPersonAgent,
+  cloudMessageMentionsLocalAgent,
+  cloudMessageMentionsNamedAgent,
+  isCloudAgentControlMessage,
+  parseCloudAgentCancel,
+  parseCloudAgentResponse,
+  promptTextForCloudAgentMention,
+} from './cloudAgentMessages';
+import {
+  latestVisibleConversationMessage,
+  selectVisibleCloudAgentResponses,
+} from './cloudAgentResponseSelection';
+import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
+import { cloudMessageAttachmentToMessageAttachment,cloudVoiceMessageToMessageVoice } from './cloudAttachments';
 import {
   cloudDirectPersonMessagesForPeer,
   cloudGroupControlMessageIds,
@@ -38,52 +57,12 @@ import {
   cloudSelfAgentMessagesBySession,
   cloudTurnRevision,
 } from './cloudCollaborationMemo';
-import { cloudMessageAttachmentToMessageAttachment, cloudVoiceMessageToMessageVoice } from './cloudAttachments';
-import { cloudMessageDeliveryPresentation } from './cloudMessageDeliveryPresentation';
-import { cloudAvatarImageUrl } from './avatar';
-import { canonicalAvatarImageSource } from './canonicalAvatar';
-import { cloudCanonicalDefaultAgentContactFields, cloudDefaultAgentPresentation } from './cloudAgentIdentity';
-import {
-  cloudGroupIdentityRequest,
-  cloudGroupParticipantFromContact,
-  cloudGroupSelfParticipant,
-  isCloudGroupControlMessage,
-  type CloudGroupReadCursor,
-} from './cloudGroupMessages';
-import {
-  cloudMessageIsSelfAgentRequest,
-  cloudMessageMentionsFirstPersonAgent,
-  cloudMessageMentionsLocalAgent,
-  cloudMessageMentionsNamedAgent,
-  cloudDirectMessageIsUnreadForAccount,
-  isCloudAgentControlMessage,
-  parseCloudAgentCancel,
-  parseCloudAgentResponse,
-  promptTextForCloudAgentMention,
-} from './cloudAgentMessages';
-import { cloudAgentExecutionTurnForMessage } from './cloudAgentExecutionTrace';
 import {
   cloudAgentBackgroundTurnForMessage,
   cloudAgentSyntheticResponseDirection,
   isDirectCloudContact,
 } from './cloudCollaborationPresentation';
-import { cleanCloudConversationTitle, cleanCloudSessionId } from './cloudConversationMetadata';
-import {
-  latestVisibleConversationMessage,
-  selectVisibleCloudAgentResponses,
-} from './cloudAgentResponseSelection';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
-import {
-  cloudDirectMessageAction,
-  cloudDirectMessageDisplayText,
-  cloudDirectMessageMentions,
-  cloudDirectMessageTargetCloudAgentId,
-  cloudDirectMessageTargetCloudAgentName,
-  cloudDirectMessageTargetCloudAgentOwnerAccountId,
-} from './cloudDirectMessages';
-import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
-import { cloudMessageActionAllowsAgentTrigger } from './cloudAgentTriggerPolicy';
-import { compareCloudMessages } from './cloudMessageMerge';
 import {
   CLOUD_AGENT_RUNTIME,
   CLOUD_PERSON_RUNTIME,
@@ -95,6 +74,23 @@ import {
   cloudSelfContact,
   isSystemCloudAgentContact,
 } from './cloudContactPeers';
+import { cleanCloudConversationTitle,cleanCloudSessionId } from './cloudConversationMetadata';
+import {
+  cloudDirectMessageAction,
+  cloudDirectMessageDisplayText,
+  cloudDirectMessageMentions,
+  cloudDirectMessageTargetCloudAgentId,
+  cloudDirectMessageTargetCloudAgentName,
+  cloudDirectMessageTargetCloudAgentOwnerAccountId,
+} from './cloudDirectMessages';
+import {
+  isCloudGroupControlMessage,
+  type CloudGroupReadCursor
+} from './cloudGroupMessages';
+import { cloudMessageDeliveryPresentation } from './cloudMessageDeliveryPresentation';
+import { buildCloudMessageIndex,type CloudMessageIndex } from './cloudMessageIndex';
+import { compareCloudMessages } from './cloudMessageMerge';
+import { cloudAgentSessionTargetFromMessages } from './cloudSelfAgentSessionIdentity';
 import {
   cloudConversationContactKey,
   messagesForCloudContact,
@@ -122,38 +118,10 @@ export function isCloudCollaborationState(state: DesktopCollaborationState | nul
 export {
   cloudCollaborationConversationId,
   cloudConversationKindFromConversationId,
-  cloudDirectPersonSessionId,
-  cloudSystemAgentConversationId,
-  cloudPeerAccountIdFromConversationId,
-  cloudSessionIdFromConversationId,
-  cloudSystemAgentSessionId,
-  isCloudCollaborationConversationId,
+  cloudDirectPersonSessionId,cloudPeerAccountIdFromConversationId,
+  cloudSessionIdFromConversationId,cloudSystemAgentConversationId,cloudSystemAgentSessionId,
+  isCloudCollaborationConversationId
 };
-
-export function cloudContactsToCanonicalIdentityRequests({
-  account,
-  contacts,
-  localHumanIdentityId,
-}: {
-  account: CloudAccount;
-  contacts: Contact[];
-  localHumanIdentityId: string;
-}): UpsertCanonicalIdentityRequest[] {
-  const participants = [
-    cloudGroupSelfParticipant(account, 'self'),
-    ...contacts
-      .map((contact) => cloudGroupParticipantFromContact(contact, 'person'))
-      .filter((participant): participant is NonNullable<typeof participant> => Boolean(participant)),
-  ];
-  const seen = new Set<string>();
-  const requests: UpsertCanonicalIdentityRequest[] = [];
-  for (const participant of participants) {
-    if (seen.has(participant.accountId)) continue;
-    seen.add(participant.accountId);
-    requests.push(cloudGroupIdentityRequest(participant, account, localHumanIdentityId));
-  }
-  return requests;
-}
 
 function cloudMessageIsGroupControl(message: CloudMessage, groupControlMessageIds?: ReadonlySet<string>) {
   return groupControlMessageIds
@@ -970,3 +938,5 @@ export function buildCloudDesktopCollaborationState({
     localAgentRouting: null,
   };
 }
+
+export { cloudContactsToCanonicalIdentityRequests } from "./cloudIdentityRequests";

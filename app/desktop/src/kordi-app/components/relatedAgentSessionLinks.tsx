@@ -1,5 +1,6 @@
 import { Bot, ChevronRight } from 'lucide-react';
 import { useAgentSubsession } from '@/features/cloud/useAgentSubsession';
+import { agentSubsessionStatusNotice } from '@/features/cloud/agentSubsessionTasks';
 
 import {
   normalizedRelatedAgentSessionStatus,
@@ -47,6 +48,7 @@ function SubsessionLink({ session, agentName, status, onOpen }: {
   const { snapshot, error } = useAgentSubsession(session.sessionId);
   const resolved = snapshot ? normalizedRelatedAgentSessionStatus(snapshot.status) : status ?? normalizedRelatedAgentSessionStatus(session.status);
   const presentation = STATUS[resolved];
+  const notice = error ? 'Sync unavailable' : snapshot ? agentSubsessionStatusNotice(snapshot) : null;
   return <button
           key={session.sessionId}
           type="button"
@@ -73,11 +75,11 @@ function SubsessionLink({ session, agentName, status, onOpen }: {
             <span
               className="ml-auto inline-flex shrink-0 items-center gap-1"
               data-related-agent-session-status={resolved}
-              aria-label={`Status: ${error ? 'Sync unavailable' : presentation.label}`}
+              aria-label={`Status: ${notice ?? presentation.label}`}
               aria-live="polite"
             >
-              <span className={cn('h-1.5 w-1.5 rounded-full', error ? 'bg-slate-400' : presentation.dot)} aria-hidden="true" />
-              {error ? 'Sync unavailable' : presentation.label}
+              <span className={cn('h-1.5 w-1.5 rounded-full', notice ? 'bg-slate-400' : presentation.dot)} aria-hidden="true" />
+              {notice ?? presentation.label}
             </span>
           </span>
         </button>;

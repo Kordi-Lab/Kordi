@@ -84,6 +84,16 @@ struct ConversationBoundaryTests {
         ],
     ])
     var snapshot = try JSONDecoder().decode(CloudAgentSubsession.self, from: data)
+    snapshot.live = false
+    snapshot.startedAtMs = 1
+    #expect(snapshot.statusNotice == "Status unavailable")
+    #expect(!snapshot.chatMessages(accountId: "peer").contains { $0.agentExecution?.completed == false })
+    snapshot.queued = true
+    snapshot.startedAtMs = nil
+    #expect(snapshot.statusNotice == "Queued next")
+    snapshot.live = nil
+    snapshot.queued = nil
+    #expect(snapshot.statusNotice == nil)
     for account in ["owner", "peer"] {
         let rows = snapshot.chatMessages(accountId: account)
         #expect(rows.map(\.id) == ["brief", "runtime:child", "human"])

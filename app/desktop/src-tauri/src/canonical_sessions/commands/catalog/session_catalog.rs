@@ -193,7 +193,11 @@ pub(in crate::canonical_sessions::commands) fn load_catalog_from_db(
             .map_err(|err| err.to_string())?
     };
 
-    super::super::super::cloud_group_authority::project_participants(conn, &sessions, &mut participants)?;
+    super::super::super::cloud_group_authority::project_participants(
+        conn,
+        &sessions,
+        &mut participants,
+    )?;
     Ok(CanonicalSessionCatalog {
         storage_path: path.display().to_string(),
         profile,
