@@ -150,7 +150,7 @@ export function ThreadReplyLine({
     >
       <MessagesSquare className="app-message-reply-line-icon h-2.5 w-2.5 shrink-0" aria-hidden="true" />
       <span className="app-message-reply-count">{label}</span>
-      {unread ? <span data-thread-unread="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" /> : null}
+      {unread ? <span data-thread-unread="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:var(--app-sidebar-accent)]" aria-hidden="true" /> : null}
     </button>
   );
 }
