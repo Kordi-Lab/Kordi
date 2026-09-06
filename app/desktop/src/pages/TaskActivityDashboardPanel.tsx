@@ -7,6 +7,9 @@ import type { ScheduledTask, ScheduledTaskRun } from '@/features/cloud/scheduled
 import { buildTaskActivityDashboard, type TaskDashboardItem, type TaskDashboardSubtask, type TaskDashboardTone } from '@/features/chat/taskActivityDashboard';
 import { collaborationMessageSourceId } from '@/features/collaboration/legacyBridgeCompatibility';
 import { cn } from '@/lib/utils';
+import { useAgentSubsessionTasks } from '@/features/cloud/agentSubsessionTasks';
+import { relatedAgentSessionsFromTools } from '@/features/chat/relatedAgentSessions';
+import { AgentThreadTaskRow } from './AgentThreadTaskRow';
 
 type TaskTargetParticipant = Pick<ConversationParticipant,
   | 'id'
@@ -40,6 +43,7 @@ type TaskActivityDashboardPanelProps = {
   scheduledTasks?: ScheduledTask[];
   scheduledRunsByTaskId?: Record<string, ScheduledTaskRun[]>;
   currentSessionId?: string | null;
+  agentThreadParentId?: string | null;
   targetParticipants?: TaskTargetParticipant[];
   onOpenArtifact?: (artifactId: string) => void;
   onNavigateToResponse?: (messageId: string) => void;
@@ -97,7 +101,7 @@ function useRunningElapsedLabel(running: boolean, resetKey?: string | null, star
       return undefined;
     }
 
-    if (startedAtRef.current === null || runningKeyRef.current !== key) {
+    if (startedAtRef.current === null || runningKeyRef.current !== key || startedAtMs != null && startedAtRef.current !== startedAtMs) {
       startedAtRef.current = startedAtMs ?? Date.now();
       runningKeyRef.current = key;
       setElapsedMs(0);
@@ -277,7 +281,7 @@ function TaskContent({
   const rawSecondaryText = task.summary || task.target || (nested ? 'No run details yet.' : 'Task is running.');
   const genericCompletedSummary = /^(?:complete|completed|response complete|done)$/i.test(rawSecondaryText.trim());
   const secondaryText = (task.status === 'completed' || task.status === 'waiting') && genericCompletedSummary ? '' : rawSecondaryText;
-  const runningElapsed = useRunningElapsedLabel(task.status === 'active', task.id, task.startedAtMs);
+  const runningElapsed = useRunningElapsedLabel(task.status === 'active' && task.live, task.id, task.startedAtMs);
   const subtaskCount = 'subtaskCount' in task ? task.subtaskCount : 0;
   const activeSubtaskCount = 'activeSubtaskCount' in task ? task.activeSubtaskCount : 0;
   const customSubtaskLabel = 'subtaskCountLabel' in task && typeof task.subtaskCountLabel === 'string' ? task.subtaskCountLabel : null;
@@ -350,10 +354,10 @@ function firstLinkedArtifactId(task: TaskDashboardItemWithParticipants, artifact
 
 function dashboardStatusFromActivity(status: string): TaskDashboardItem['status'] {
   const normalized = status.trim().toLowerCase();
-  if (normalized === 'complete' || normalized === 'completed') return 'planned';
+  if (normalized === 'complete' || normalized === 'completed' || normalized === 'done') return 'completed';
   if (normalized === 'closed' || normalized === 'failed') return normalized;
   if (normalized === 'cancelled' || normalized === 'timeout') return 'failed';
-  if (normalized === 'processing' || normalized === 'active') return 'active';
+  if (normalized === 'processing' || normalized === 'active' || normalized === 'running') return 'active';
   return 'planned';
 }
 
@@ -407,13 +411,13 @@ function taskActivityToDashboardItem(activity: SessionTaskActivity, targetPartic
   return {
     id: activity.id,
     title,
-    summary: activity.error ?? `Synced Cloud task${initiator?.name ? ` by ${initiator.name}` : ''}.`,
+    summary: activity.error ?? (status === 'active' ? 'Last reported as running. No current execution timing is available.' : `Synced Cloud task${initiator?.name ? ` by ${initiator.name}` : ''}.`),
     status,
     statusLabel: dashboardStatusLabel(status),
     tone: dashboardToneFromStatus(status),
     target: activity.sourceRequestId ? `ID: ${activity.sourceRequestId}` : null,
     writeScope: [],
-    live: status === 'active',
+    live: false,
     timeLabel: null,
     startedAtMs: activity.createdAtMs || null,
     responseMessageId: activity.sourceRequestId ?? null,
@@ -711,11 +715,27 @@ function mergeTaskTargetParticipants(participants: TaskTargetParticipant[]) {
   return [...byKey.values()];
 }
 
-export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], scheduledTasks = [], scheduledRunsByTaskId = {}, currentSessionId = null, targetParticipants = [], onOpenArtifact, onNavigateToResponse, now = new Date(), timeZone }: TaskActivityDashboardPanelProps) {
+export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, artifacts = [], taskActivities = [], scheduledTasks = [], scheduledRunsByTaskId = {}, currentSessionId = null, agentThreadParentId = null, targetParticipants = [], onOpenArtifact, onNavigateToResponse, now = new Date(), timeZone }: TaskActivityDashboardPanelProps) {
+  const threads = useAgentSubsessionTasks(agentThreadParentId);
+  const delegatedMessages = new Set(messages.filter(message => relatedAgentSessionsFromTools(message.turn?.tools).length > 0));
+  const delegatedTaskIds = new Set(threads.tasks.flatMap(task => [task.sessionId, task.parentRequestId]));
+  for (const message of delegatedMessages) {
+    for (const tool of message.turn?.tools ?? []) {
+      if (!relatedAgentSessionsFromTools([tool]).length) continue;
+      try {
+        const parsed: unknown = JSON.parse(tool.arguments ?? '{}');
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+        const args = parsed as Record<string, unknown>;
+        for (const value of [args.task_name, args.taskName, args.task_id, args.taskId]) {
+          if (typeof value === 'string') delegatedTaskIds.add(value);
+        }
+      } catch { /* An incomplete tool result cannot identify another task. */ }
+    }
+  }
   // Conversation message arrays can be updated in place while collaboration/canonical polling is active.
   // Recompute on every render so a newly attached task_operator/update_plan tool appears as soon
   // as the transcript rerenders, even if the array identity did not change.
-  const dashboard = buildTaskActivityDashboard({ messages, liveTurn });
+  const dashboard = buildTaskActivityDashboard({ messages: messages.filter(message => !delegatedMessages.has(message)), liveTurn: relatedAgentSessionsFromTools(liveTurn?.tools).length ? null : liveTurn });
   const activityTargetParticipants: TaskTargetParticipant[] = taskActivities.flatMap((activity) => activity.participants.map((participant) => ({
     id: participant.id,
     name: participant.name,
@@ -730,15 +750,22 @@ export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, a
     ? scheduledTasks.filter((task) => task.sessionId?.trim() === normalizedCurrentSessionId)
     : scheduledTasks;
   const scheduledRows = dedupeScheduledTaskRows(sessionScheduledTasks.map((task) => scheduledTaskToDashboardItem(task, now, timeZone, scheduledRunsByTaskId[task.taskId] ?? [], messages)));
-  const taskActivityRows = dedupeTaskRowsByKeys(taskActivities.map((activity) => taskActivityToDashboardItem(activity, mergedTargetParticipants)));
+  const taskActivityRows = dedupeTaskRowsByKeys(taskActivities.filter(activity => !delegatedTaskIds.has(activity.sourceRequestId ?? activity.id)).map((activity) => taskActivityToDashboardItem(activity, mergedTargetParticipants)));
   const existingTaskKeys = new Set([...scheduledRows, ...taskActivityRows].flatMap(taskDedupeKeys));
   const localRows = dashboard.tasks.filter((task) => !taskDedupeKeys(task).some((key) => existingTaskKeys.has(key)));
   const tasks = [...scheduledRows, ...taskActivityRows, ...localRows];
 
   return (
     <section className="app-detail-section">
+      {threads.error ? <div role="status" className="app-inspector-empty">{threads.error}</div> : null}
+      {threads.loading ? <div role="status" className="app-inspector-empty">Loading Agent threads…</div> : null}
+      {threads.tasks.length > 0 ? <div className="app-inspector-list" aria-label="Agent threads">
+        <div className="app-detail-kicker mb-2">Agent threads</div>
+        {threads.tasks.map(task => <AgentThreadTaskRow key={task.sessionId} task={task} />)}
+      </div> : null}
       {tasks.length > 0 ? (
         <div className="app-inspector-list">
+          {threads.tasks.length > 0 ? <div className="app-detail-kicker mb-2">Other task activity</div> : null}
           {tasks.map((task) => (
             <TaskRow
               key={task.id}
@@ -750,9 +777,9 @@ export function TaskActivityDashboardPanel({ messages, liveTurn, emptyMessage, a
             />
           ))}
         </div>
-      ) : (
+      ) : threads.tasks.length === 0 && !threads.error && !threads.loading ? (
         <div className="app-inspector-empty">{emptyMessage}</div>
-      )}
+      ) : null}
     </section>
   );
 }

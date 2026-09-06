@@ -129,7 +129,7 @@ fn export_body(runner_id: &str, name: &str, sandbox_path: &str, bytes: &[u8]) ->
 }
 
 async fn read_json(response: axum::response::Response) -> Value {
-    let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     if bytes.is_empty() {
         return Value::Null;
     }

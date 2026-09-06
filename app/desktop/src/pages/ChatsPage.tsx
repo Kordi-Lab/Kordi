@@ -22,6 +22,7 @@ import { useChatThreadSelection } from '@/pages/useChatThreadSelection';
 import { useChatCollaborationRouting } from '@/pages/useChatCollaborationRouting';
 import { useChatCompanionLayout } from '@/pages/useChatCompanionLayout';
 import { useChatCompanionSession } from '@/pages/useChatCompanionSession';
+import { AgentSubsessionNavigationContext } from '@/features/cloud/useAgentSubsession';
 import { useChatDestinations } from '@/pages/useChatDestinations';
 import { useChatForkModel } from '@/pages/useChatForkModel';
 import { useChatHeaderModel } from '@/pages/useChatHeaderModel';
@@ -419,6 +420,7 @@ export function ChatsPage({
   ) : null;
   const splitDivider = <ChatCompanionSplitDivider layoutModel={companionLayout} />;
   return (
+    <AgentSubsessionNavigationContext.Provider value={(id) => openRelatedAgentSession(id, true)}>
     <ChatSenderProfileContext.Provider value={senderProfiles.openParticipant}>
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <div
@@ -564,5 +566,6 @@ export function ChatsPage({
         </div>
       </div>
     </ChatSenderProfileContext.Provider>
+    </AgentSubsessionNavigationContext.Provider>
   );
 }

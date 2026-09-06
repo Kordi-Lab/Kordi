@@ -928,6 +928,13 @@ actor CloudAPIClient {
         )
     }
 
+    func agentSubsessionTasks(token: String, parentSessionId: String, after: String?) async throws -> CloudAgentSubsessionTaskPage {
+        try await send(path: "/v1/cloud/agent-subsessions", method: "GET", token: token,
+            query: [URLQueryItem(name: "parentSessionId", value: parentSessionId)]
+                + (after.map { [URLQueryItem(name: "after", value: $0)] } ?? []),
+            fallback: "Could not load Agent threads.")
+    }
+
     func sendSubsessionMessage(token: String, id: String, clientMessageId: String, text: String, mentions: [MessageMention]) async throws -> CloudAgentSubsession {
         struct Request: Encodable {
             let clientMessageId: String

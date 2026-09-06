@@ -727,6 +727,51 @@ struct CloudSessionActivity: Codable, Hashable {
     let artifacts: [CloudSessionArtifactActivity]
 }
 
+struct CloudAgentSubsessionTask: Codable, Hashable, Identifiable {
+    let sessionId: String
+    let parentSessionId: String
+    let parentRequestId: String
+    let ownerAccountId: String
+    let agentId: String
+    let ownerDisplayName: String
+    let agentDisplayName: String
+    let agentAvatarUrl: String?
+    let title: String
+    let status: String
+    let executionBackend: String
+    let startedAtMs: Int64?
+    let finishedAtMs: Int64?
+    let heartbeatAtMs: Int64
+    let live: Bool
+    let queued: Bool
+    var id: String { sessionId }
+
+    var statusLabel: String {
+        if status == "running", startedAtMs != nil { return live ? "Running" : "Status unavailable" }
+        if queued { return "Queued next" }
+        return switch status {
+        case "done": "Done"
+        case "failed": "Failed"
+        case "stopped": "Stopped"
+        default: "Status unavailable"
+        }
+    }
+
+    func elapsedLabel(at date: Date) -> String? {
+        let end = status == "running" && live ? Int64(date.timeIntervalSince1970 * 1000) : finishedAtMs
+        guard !(queued && !live), let start = startedAtMs, let end, end >= start else { return nil }
+        let seconds = (end - start) / 1000
+        if seconds < 60 { return "\(seconds)s" }
+        let minutes = seconds / 60
+        return minutes < 60 ? "\(minutes)m \(seconds % 60)s" : "\(minutes / 60)h \(minutes % 60)m \(seconds % 60)s"
+    }
+}
+
+struct CloudAgentSubsessionTaskPage: Decodable {
+    let sessions: [CloudAgentSubsessionTask]
+    let nextCursor: String?
+}
+
 struct CloudAgentSubsession: Codable, Hashable {
     struct Message: Codable, Hashable, Identifiable {
         let id: String

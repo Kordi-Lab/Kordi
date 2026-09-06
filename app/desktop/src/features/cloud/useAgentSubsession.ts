@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { createContext, useEffect, useState } from 'react';
 import { CloudAuthClient, CloudAuthError } from './authClient';
 import { CLOUD_SESSION_CHANGED_EVENT, loadSession } from './session';
 import type { CloudAgentSubsession } from './agentSubsessionTypes';
+
+export const AgentSubsessionNavigationContext = createContext<((id: string) => void) | null>(null);
 
 export function useAgentSubsession(id: string | null, includeMessages = false) {
   const [snapshot, setSnapshot] = useState<CloudAgentSubsession | null>(null);

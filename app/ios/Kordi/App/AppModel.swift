@@ -1240,6 +1240,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func agentSubsessionTasks(parentSessionId: String) async throws -> [CloudAgentSubsessionTask] {
+        guard let token, let account, !previewMode else { return [] }
+        var tasks: [CloudAgentSubsessionTask] = []
+        var after: String?
+        var seen = Set<String>()
+        repeat {
+            let page = try await api.agentSubsessionTasks(token: token, parentSessionId: parentSessionId, after: after)
+            try Task.checkCancellation()
+            guard self.account?.accountId == account.accountId else { throw CancellationError() }
+            tasks.append(contentsOf: page.sessions)
+            after = page.nextCursor
+            if let after, !seen.insert(after).inserted { throw URLError(.cannotParseResponse) }
+        } while after != nil
+        return tasks
+    }
+
     func agentSubsession(id: String, includeMessages: Bool = false) async throws -> CloudAgentSubsession {
         guard let token, let accountId = account?.accountId else { throw URLError(.userAuthenticationRequired) }
         let result: CloudAgentSubsession

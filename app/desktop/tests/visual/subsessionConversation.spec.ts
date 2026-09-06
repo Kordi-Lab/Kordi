@@ -1,5 +1,39 @@
 import { test, expect } from '@playwright/test';
 
+test('Tasks shows authoritative Agent thread entries and frozen execution time, and opens the same chat pane', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    const host = window as unknown as {__TAURI_INTERNALS__: unknown; fixtureNativeCommands: string[]};
+    host.fixtureNativeCommands = [];
+    host.__TAURI_INTERNALS__ = {invoke: (command: string) => { host.fixtureNativeCommands.push(command); return Promise.resolve(null); }};
+  });
+  await page.goto('/tests/visual/subsessionConversation.html');
+  await page.getByRole('tab', { name: 'Tasks', exact: true }).click();
+  const task = page.locator('[data-agent-thread-task="fixture-child"]');
+  await expect(page.locator('[data-agent-thread-task]')).toHaveCount(2);
+  await expect(task).toContainText('Done · 1m 3s · Mac runtime');
+  await expect(page.getByText('Awaiting human input.', { exact: true })).toHaveCount(0);
+  await expect(page.getByText(/Last reported as running/)).toBeVisible();
+  await expect(page.getByText(/Running · \d/)).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('tasks.png') });
+  await task.getByRole('button', { name: 'Open Agent thread: Planet research', exact: true }).click();
+  const panel = page.locator('[data-chat-side-agent-panel="true"]');
+  await expect(panel).toHaveAttribute('data-companion-session-id', 'fixture-child');
+  await expect(panel.getByRole('textbox')).toBeVisible();
+  await panel.getByRole('button', { name: 'Close side chat', exact: true }).click();
+  await page.evaluate(() => {
+    const task = (window as unknown as {fixtureAgentTasks: Record<string,unknown>[]}).fixtureAgentTasks[0];
+    Object.assign(task,{status:'running',startedAtMs:Date.now()-2000,finishedAtMs:null,live:true});
+  });
+  await expect(task.locator('[data-agent-thread-status="Running"]')).toBeVisible();
+  await page.evaluate(() => {
+    const task = (window as unknown as {fixtureAgentTasks: Record<string,unknown>[]}).fixtureAgentTasks[0];
+    Object.assign(task,{status:'done',startedAtMs:1000,finishedAtMs:4000,live:false});
+  });
+  await expect(task).toContainText('Done · 3s · Mac runtime');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(() => (window as unknown as {fixtureNativeCommands:string[]}).fixtureNativeCommands)).toEqual([]);
+});
+
 test('private Ask Agent and shared Agent threads keep separate identities, avatars and drafts', async ({ page }) => {
   await page.goto('/tests/visual/subsessionConversation.html');
   await page.getByRole('button', { name: 'Ask Agent', exact: true }).click();

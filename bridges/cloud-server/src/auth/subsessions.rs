@@ -1,4 +1,5 @@
 //! Owner-published model execution records, authorized by the parent conversation.
+mod catalog;
 pub(crate) mod conversation;
 use crate::{
     auth::routes::CloudSession, chat_sync::store::conversation_id_for_session, server::ServerState,
@@ -28,6 +29,7 @@ fn db_error(_: impl std::fmt::Display) -> ApiError {
 
 pub fn routes() -> Router<Arc<ServerState>> {
     Router::new()
+        .route("/v1/cloud/agent-subsessions", get(catalog::list))
         .route("/v1/cloud/agent-subsessions/:id", get(read).put(write))
         .route(
             "/v1/cloud/agent-subsessions/:id/messages",
@@ -377,7 +379,7 @@ async fn write(
             if version != request.expected_version {
                 return Err(error(StatusCode::CONFLICT, "subsession_version_conflict"));
             }
-            query("UPDATE cloud_agent_subsessions SET title=$2, status=$3, messages=$4, version=version+1, updated_at=now() WHERE subsession_id=$1")
+            query("UPDATE cloud_agent_subsessions SET title=$2, status=$3, messages=$4, execution_finished_at=CASE WHEN status='running' AND $3<>'running' THEN COALESCE((SELECT to_timestamp(max((m->>'timestampMs')::double precision)/1000) FROM jsonb_array_elements($4::jsonb) m WHERE m->>'role'='assistant' AND (m->>'timestampMs')::bigint>0),now()) ELSE execution_finished_at END, version=version+1, updated_at=now() WHERE subsession_id=$1")
                 .bind(id).bind(&request.title).bind(&request.status).bind(messages).execute(&mut *transaction).await.map_err(db_error)?;
         }
     } else {
@@ -391,7 +393,7 @@ async fn write(
             &session.account_id,
         )
         .await?;
-        let changed = query("INSERT INTO cloud_agent_subsessions(subsession_id,parent_conversation_id,parent_session_id,parent_request_id,owner_account_id,publisher_device_id,agent_id,title,status,messages) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING")
+        let changed = query("INSERT INTO cloud_agent_subsessions(subsession_id,parent_conversation_id,parent_session_id,parent_request_id,owner_account_id,publisher_device_id,agent_id,title,status,messages,execution_started_at,execution_finished_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE((SELECT to_timestamp(min((m->>'timestampMs')::double precision)/1000) FROM jsonb_array_elements($10::jsonb) m WHERE (m->>'timestampMs')::bigint>0),now()),CASE WHEN $9<>'running' THEN COALESCE((SELECT to_timestamp(max((m->>'timestampMs')::double precision)/1000) FROM jsonb_array_elements($10::jsonb) m WHERE m->>'role'='assistant' AND (m->>'timestampMs')::bigint>0),now()) END) ON CONFLICT DO NOTHING")
             .bind(id).bind(parent).bind(&request.parent_session_id).bind(&request.parent_request_id).bind(&session.account_id).bind(&session.device_id).bind(agent_id).bind(&request.title).bind(&request.status).bind(messages)
             .execute(&mut *transaction).await.map_err(db_error)?;
         if changed.rows_affected() != 1 {
@@ -400,7 +402,7 @@ async fn write(
     }
     let activity =
         crate::cloud_agent_runtime::subsession_execution::public_activity(&request.activity);
-    query("UPDATE cloud_agent_subsessions SET heartbeat_at=now(),activity=$2,version=version+CASE WHEN activity<>$2 THEN 1 ELSE 0 END WHERE subsession_id=$1")
+    query("UPDATE cloud_agent_subsessions SET execution_started_at=COALESCE(execution_started_at,(SELECT to_timestamp(min((m->>'timestampMs')::double precision)/1000) FROM jsonb_array_elements(messages) m WHERE (m->>'timestampMs')::bigint>0)),heartbeat_at=now(),activity=$2,version=version+CASE WHEN activity<>$2 THEN 1 ELSE 0 END WHERE subsession_id=$1")
         .bind(id).bind(activity).execute(&mut *transaction).await.map_err(db_error)?;
     transaction.commit().await.map_err(db_error)?;
     snapshot(pool, id, &session.account_id, false)

@@ -62,7 +62,7 @@ pub(super) async fn claim(
 }
 
 pub(super) async fn mark_active(pool: &PgPool, run: &str, backend: &str) -> RunResult<()> {
-    query("UPDATE cloud_agent_subsessions s SET status='running',execution_backend=$2,heartbeat_at=now(),version=version+1,updated_at=now() FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=s.subsession_id AND r.run_id=$1 AND r.status='running' AND (s.status<>'running' OR s.execution_backend<>$2)")
+    query("UPDATE cloud_agent_subsessions s SET status='running',execution_backend=$2,execution_started_at=CASE WHEN s.status<>'running' THEN now() ELSE COALESCE(s.execution_started_at,now()) END,execution_finished_at=NULL,heartbeat_at=now(),version=version+1,updated_at=now() FROM cloud_agent_fallback_runs r WHERE r.subsession_id=s.subsession_id AND r.run_id=$1 AND r.status='running' AND (s.status<>'running' OR s.execution_backend<>$2 OR s.execution_started_at IS NULL)")
         .bind(run).bind(backend).execute(pool).await?;
     Ok(())
 }
@@ -75,7 +75,7 @@ pub(crate) async fn revalidate(pool: &PgPool, run: &str) -> RunResult<bool> {
         query("SELECT pg_advisory_xact_lock(81208411)")
             .execute(&mut *tx)
             .await?;
-        query("UPDATE cloud_agent_subsessions s SET status='stopped',version=version+1,updated_at=now() FROM cloud_agent_fallback_runs r WHERE r.run_id=$1 AND s.subsession_id=r.subsession_id AND r.status IN ('leased','running')")
+        query("UPDATE cloud_agent_subsessions s SET status='stopped',execution_finished_at=COALESCE(execution_finished_at,now()),version=version+1,updated_at=now() FROM cloud_agent_fallback_runs r WHERE r.run_id=$1 AND s.subsession_id=r.subsession_id AND r.status IN ('leased','running')")
             .bind(run).execute(&mut *tx).await?;
         query("UPDATE cloud_agent_fallback_runs SET status='cancelled',completed_at=now()::text,updated_at=now()::text WHERE run_id=$1 AND status IN ('queued','leased','running')")
             .bind(run).execute(&mut *tx).await?;
@@ -86,7 +86,7 @@ pub(crate) async fn revalidate(pool: &PgPool, run: &str) -> RunResult<bool> {
 }
 
 pub(super) async fn cancelled(pool: &PgPool, run: &str) -> RunResult<()> {
-    query("UPDATE cloud_agent_subsessions s SET status='stopped',version=version+1,updated_at=now() FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=s.subsession_id AND r.run_id=$1 AND r.status='cancelled' AND NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs other WHERE other.subsession_id=s.subsession_id AND other.run_id<>r.run_id AND other.status='running')")
+    query("UPDATE cloud_agent_subsessions s SET status='stopped',execution_finished_at=COALESCE(execution_finished_at,now()),version=version+1,updated_at=now() FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=s.subsession_id AND r.run_id=$1 AND r.status='cancelled' AND NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs other WHERE other.subsession_id=s.subsession_id AND other.run_id<>r.run_id AND other.status='running')")
         .bind(run).execute(pool).await?;
     Ok(())
 }
@@ -137,7 +137,7 @@ pub(super) async fn publish(
         "cancelled" => "stopped",
         _ => "running",
     };
-    query("UPDATE cloud_agent_subsessions SET status=$2,heartbeat_at=now(),version=version+1,updated_at=now() WHERE subsession_id=$1")
+    query("UPDATE cloud_agent_subsessions SET status=$2,execution_finished_at=CASE WHEN $2<>'running' THEN COALESCE(execution_finished_at,now()) ELSE NULL END,heartbeat_at=now(),version=version+1,updated_at=now() WHERE subsession_id=$1")
         .bind(id).bind(status).execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(Some(receipt))

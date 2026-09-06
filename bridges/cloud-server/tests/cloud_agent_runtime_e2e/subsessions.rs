@@ -223,6 +223,58 @@ async fn model_subsession_keeps_parent_acl_identity_and_transcript_isolation() {
     .await;
     assert_eq!(renamed["agentId"], created["agentId"]);
     assert_eq!(renamed["ownerDisplayName"], "Renamed Owner");
+    let catalog_uri = format!("/v1/cloud/agent-subsessions?parentSessionId={parent_id}");
+    let catalog = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token(&catalog_uri, &peer.token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(catalog["sessions"][0]["sessionId"], id.to_string());
+    assert_eq!(catalog["sessions"][0]["status"], "done");
+    assert_eq!(catalog["sessions"][0]["startedAtMs"], 1000);
+    assert_eq!(catalog["sessions"][0]["finishedAtMs"], 2000);
+    assert!(
+        !catalog.to_string().contains("SUBSESSION_ONLY"),
+        "the catalog must not include transcripts"
+    );
+    assert!(matches!(
+        router
+            .clone()
+            .oneshot(get_with_token(&catalog_uri, &outsider.token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND | StatusCode::FORBIDDEN
+    ));
+    // More than one page must remain reachable without loading parent history.
+    sqlx_core::query::query("INSERT INTO cloud_agent_subsessions(subsession_id,parent_conversation_id,parent_session_id,parent_request_id,owner_account_id,publisher_device_id,agent_id,title,status) SELECT gen_random_uuid(),s.parent_conversation_id,s.parent_session_id,s.parent_request_id,s.owner_account_id,s.publisher_device_id,s.agent_id,'Catalog fixture','done' FROM cloud_agent_subsessions s CROSS JOIN generate_series(1,101) WHERE s.subsession_id=$1")
+        .bind(id).execute(&pool).await.unwrap();
+    let first = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token(&catalog_uri, &peer.token))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(first["sessions"].as_array().unwrap().len(), 100);
+    let after = first["nextCursor"].as_str().unwrap();
+    let second = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token(
+                &format!("{catalog_uri}&after={after}"),
+                &peer.token,
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(second["sessions"].as_array().unwrap().len(), 2);
+    assert!(second["nextCursor"].is_null());
     subsession_follow::verify(
         &router,
         &pool,
@@ -256,5 +308,14 @@ async fn model_subsession_keeps_parent_acl_identity_and_transcript_isolation() {
             .status(),
         StatusCode::NOT_FOUND
     );
+    assert!(matches!(
+        router
+            .clone()
+            .oneshot(get_with_token(&catalog_uri, &peer.token))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::NOT_FOUND | StatusCode::FORBIDDEN
+    ));
     println!("SUBSESSION_AUTHORIZATION_AND_ISOLATION_VERIFIED");
 }

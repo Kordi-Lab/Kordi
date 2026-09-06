@@ -4,6 +4,19 @@ import Testing
 @testable import Kordi
 
 struct ConversationBoundaryTests {
+@Test func taskClockStopsOnCompletionAndDoesNotUseConversationAge() throws {
+    let data = try JSONSerialization.data(withJSONObject: [
+        "sessionId":"child", "parentSessionId":"parent", "parentRequestId":"request",
+        "ownerAccountId":"owner", "agentId":"agent-one", "ownerDisplayName":"Owner", "agentDisplayName":"Researcher",
+        "title":"Research", "status":"done", "executionBackend":"desktop", "startedAtMs":1000,
+        "finishedAtMs":64000, "heartbeatAtMs":64000, "live":false, "queued":false,
+    ])
+    let task = try JSONDecoder().decode(CloudAgentSubsessionTask.self, from: data)
+    #expect(task.statusLabel == "Done")
+    #expect(task.elapsedLabel(at: Date(timeIntervalSince1970: 100000)) == "1m 3s")
+    #expect(task.elapsedLabel(at: Date(timeIntervalSince1970: 200000)) == "1m 3s")
+}
+
 @Test func avatarsAndIdentityBoundMentions() throws {
     try subsessionIsAConversationWithIdentityBoundMentionsAndSharedQueue()
 }

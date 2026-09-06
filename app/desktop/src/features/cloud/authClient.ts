@@ -353,6 +353,13 @@ export function defaultCloudRequestTimeoutMs(baseUrl: string): number {
 }
 
 export class CloudAuthClient {
+  listAgentSubsessionTasks(token: string, parentSessionId: string, after?: string): Promise<{sessions: import('./agentSubsessionTypes').AgentSubsessionTask[]; nextCursor: string | null}> {
+    const query = new URLSearchParams({ parentSessionId, ...(after ? { after } : {}) });
+    return this.send(`/v1/cloud/agent-subsessions?${query}`, {
+      method: 'GET', headers: { Authorization: `Bearer ${token}` },
+    }, 'Could not load Agent threads.');
+  }
+
   getAgentSubsession(token: string, id: string, includeMessages = false): Promise<CloudAgentSubsession> {
     return this.send(`/v1/cloud/agent-subsessions/${encodeURIComponent(id)}?includeMessages=${includeMessages}`, {
       method: 'GET', headers: { Authorization: `Bearer ${token}` },

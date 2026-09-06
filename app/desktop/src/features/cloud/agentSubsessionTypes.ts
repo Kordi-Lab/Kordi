@@ -17,3 +17,12 @@ export type CloudAgentSubsession = Omit<NativeAgentSubsession, 'parentRequestId'
   hasFollowupExecution?: boolean;
   participants?: Array<{accountId:string;displayName:string;avatarUrl?:string|null;avatarSeed?:string|null}>;
 };
+
+export type AgentSubsessionTask = Pick<CloudAgentSubsession, 'sessionId' | 'parentSessionId' | 'parentRequestId' | 'agentId' | 'ownerAccountId' | 'ownerDisplayName' | 'agentDisplayName' | 'agentAvatarUrl' | 'title' | 'status'> & {
+  executionBackend: 'desktop' | 'cloud';
+  startedAtMs: number | null;
+  finishedAtMs: number | null;
+  heartbeatAtMs: number;
+  live: boolean;
+  queued: boolean;
+};

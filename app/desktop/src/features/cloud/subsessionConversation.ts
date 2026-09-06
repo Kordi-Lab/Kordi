@@ -71,6 +71,12 @@ export function subsessionConversation(id: string, record: CloudAgentSubsession 
     subtitle: record ? `${record.agentDisplayName} · Owner · ${record.ownerAccountId === accountId ? 'You' : record.ownerDisplayName}` : 'Loading conversation…',
     unread: 0, collaborationSources: ['Cloud'], trust: 'Shared', directness: 'Agent session',
     participants: record ? (record.participants ?? []).map(person => person.displayName) : [],
+    canonicalParticipants: record ? (record.participants ?? []).map(person => ({
+      id: person.accountId, humanId: person.accountId, sourceIdentityId: person.accountId,
+      name: person.displayName, kind: 'human' as const, source: 'cloud',
+      role: person.accountId === accountId ? 'self' : 'participant',
+      avatarKey: person.avatarSeed, profileImageUrl: person.avatarUrl,
+    })) : [],
     avatarSeed: record?.agentId,
     profileImageUrl: record?.agentAvatarUrl,
     messages: record ? subsessionTranscript(record, accountId) : [],

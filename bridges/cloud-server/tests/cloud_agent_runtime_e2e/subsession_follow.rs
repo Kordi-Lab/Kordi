@@ -13,6 +13,12 @@ pub(super) async fn verify(
 ) {
     let uuid = uuid::Uuid::parse_str(id).unwrap();
     let uri = format!("/v1/cloud/agent-subsessions/{id}");
+    let clock = || {
+        sqlx_core::query_as::query_as::<_, (Option<String>, Option<String>)>(
+        "SELECT execution_started_at::text,execution_finished_at::text FROM cloud_agent_subsessions WHERE subsession_id=$1",
+    ).bind(uuid).fetch_one(pool)
+    };
+    let original_clock = clock().await.unwrap();
     let snapshot = read_json(
         router
             .clone()
@@ -75,6 +81,11 @@ pub(super) async fn verify(
     assert_eq!(
         linked.0, 0,
         "plain messages and wrong Agent IDs must not invoke a runtime"
+    );
+    assert_eq!(
+        clock().await.unwrap(),
+        original_clock,
+        "ordinary conversation messages must not change execution time"
     );
     let a = uuid::Uuid::new_v4();
     let b = uuid::Uuid::new_v4();
@@ -227,6 +238,9 @@ pub(super) async fn verify(
     .await;
     assert_eq!(active["status"], "running");
     assert_eq!(active["agentId"], agent);
+    let active_clock = clock().await.unwrap();
+    assert!(active_clock.0.is_some());
+    assert!(active_clock.1.is_none());
     if desktop {
         let body = format!(
             "kordi-cloud-agent-response:{}",
@@ -272,6 +286,12 @@ pub(super) async fn verify(
     runs::mark_run_running(pool, &run_b, "follow-b")
         .await
         .unwrap();
+    let next_clock = clock().await.unwrap();
+    assert_ne!(
+        next_clock.0, original_clock.0,
+        "follow-ups start a new execution clock"
+    );
+    assert!(next_clock.1.is_none());
     runs::complete_run(pool, &run_b, "follow-b", "FOLLOW_B_ONLY")
         .await
         .unwrap();
@@ -287,6 +307,7 @@ pub(super) async fn verify(
     )
     .await;
     assert_eq!(finished["status"], "done");
+    assert!(clock().await.unwrap().1.is_some());
     let messages = finished["messages"].as_array().unwrap();
     assert_eq!(
         messages
