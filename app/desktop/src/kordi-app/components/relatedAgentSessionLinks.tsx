@@ -1,7 +1,5 @@
 import { Bot, ChevronRight } from 'lucide-react';
-import { useState } from 'react';
 import { useAgentSubsession } from '@/features/cloud/useAgentSubsession';
-import { AgentSubsessionDialog } from './AgentSubsessionDialog';
 
 import {
   normalizedRelatedAgentSessionStatus,
@@ -22,17 +20,12 @@ export function RelatedAgentSessionLinks({
   agentName,
   statusBySessionId,
   onOpen,
-  parentSessionId,
-  parentRequestId,
 }: {
   sessions: RelatedAgentSession[];
   agentName?: string | null;
   statusBySessionId?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
-  onOpen?: (sessionId: string) => void;
-  parentSessionId?: string;
-  parentRequestId?: string | null;
+  onOpen?: (sessionId: string, isSubsession?: boolean) => void;
 }) {
-  const [selected, setSelected] = useState<string | null>(null);
   if (sessions.length === 0) return null;
 
   return (
@@ -43,14 +36,13 @@ export function RelatedAgentSessionLinks({
     >
       <span className="pointer-events-none absolute -left-3 -top-3 h-7 w-3 rounded-bl-[9px] border-b border-l border-[color:var(--app-divider)]" aria-hidden="true" />
       {sessions.map((session) => <SubsessionLink key={session.sessionId} session={session} agentName={agentName}
-        status={statusBySessionId?.get(session.sessionId)} onOpen={onOpen ?? setSelected} />)}
-      {selected ? <AgentSubsessionDialog key={selected} sessionId={selected} parentSessionId={parentSessionId} parentRequestId={parentRequestId} agentName={agentName} onClose={() => setSelected(null)} /> : null}
+        status={statusBySessionId?.get(session.sessionId)} onOpen={onOpen} />)}
     </div>
   );
 }
 
 function SubsessionLink({ session, agentName, status, onOpen }: {
-  session: RelatedAgentSession; agentName?: string | null; status?: RelatedAgentSessionRunStatus; onOpen: (id: string) => void;
+  session: RelatedAgentSession; agentName?: string | null; status?: RelatedAgentSessionRunStatus; onOpen?: (id: string, isSubsession?: boolean) => void;
 }) {
   const { snapshot, error } = useAgentSubsession(session.sessionId);
   const resolved = snapshot ? normalizedRelatedAgentSessionStatus(snapshot.status) : status ?? normalizedRelatedAgentSessionStatus(session.status);
@@ -59,7 +51,8 @@ function SubsessionLink({ session, agentName, status, onOpen }: {
           key={session.sessionId}
           type="button"
           className="app-button-quiet group grid min-h-10 w-full grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-2 rounded-lg px-1.5 py-1 text-left disabled:cursor-default disabled:opacity-60"
-          onClick={() => onOpen?.(session.sessionId)}
+          onClick={() => onOpen?.(session.sessionId, true)}
+          disabled={!onOpen}
           aria-label={`Open background agent session: ${session.title}`}
           data-related-agent-session-id={session.sessionId}
         >

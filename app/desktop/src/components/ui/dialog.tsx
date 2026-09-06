@@ -86,7 +86,6 @@ type AppDialogProps = {
   anchorRect?: AppDialogAnchor | null;
   className?: string;
   backdropClassName?: string;
-  contentClassName?: string;
 };
 
 export function AppDialog({
@@ -100,7 +99,6 @@ export function AppDialog({
   anchorRect = null,
   className,
   backdropClassName,
-  contentClassName,
 }: AppDialogProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const onDismissRef = useRef(onDismiss);
@@ -208,7 +206,7 @@ export function AppDialog({
             style={popoverGeometry.arrowStyle}
           />
         ) : null}
-        <div className={cn(isPopover ? 'relative' : undefined, contentClassName)}>{children}</div>
+        <div className={isPopover ? 'relative' : undefined}>{children}</div>
       </div>
     </div>
   );

@@ -171,6 +171,11 @@ test('related agent sessions open in the companion panel instead of replacing ma
   assert.match(workspaceSource, /companionConversationList\(chatConversations/);
   assert.match(backgroundSessionSource, /return chatConversations/);
   assert.match(mainSource, /onOpenForkSession: companion\.openSession/);
-  assert.match(companionSource, /onOpenForkSession: session\.actions\.switchConversation/);
+  assert.match(companionSource, /onOpenForkSession: shell\.openSession/);
+  assert.match(pageSource, /companionSession\.actions\.openSubsession\(sessionId\)/);
+  const linksSource = readFileSync(new URL('../src/kordi-app/components/relatedAgentSessionLinks.tsx', import.meta.url), 'utf8');
+  const transcriptSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(linksSource, /AgentSubsessionDialog|AppDialog|setSelected/);
+  assert.match(transcriptSource, /<RelatedAgentSessionLinks[\s\S]*?onOpen=\{onOpenForkSession\}/);
   assert.doesNotMatch(mainSource, /onOpenForkSession: runtime\.onSelectSession/);
 });

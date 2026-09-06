@@ -10,7 +10,7 @@ export function queuedTranscriptRequestIds(messages: readonly Message[]): Set<st
     if (message.turn?.status === 'queued' && !message.turn.completed) {
       const requestId = message.replyToMessageId ?? message.turn.replyToMessageId;
       if (requestId) ids.add(requestId);
-    } else if (message.role === 'user' && message.statusChips?.includes('queued') && message.id) {
+    } else if ((message.role === 'user' || message.role === 'person') && message.statusChips?.includes('queued') && message.id) {
       ids.add(message.id);
     }
   }

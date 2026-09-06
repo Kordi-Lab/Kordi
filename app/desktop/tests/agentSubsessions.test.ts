@@ -1,11 +1,20 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { CloudAuthClient } from '../src/features/cloud/authClient';
 import type { NativeAgentSubsession } from '../src/features/cloud/agentSubsessionTypes';
 import { publishModelSubsessions } from '../src/features/cloud/agentSubsessionSync';
 import { deriveCloudActivityFromTurn } from '../src/features/cloud/cloudSessionActivity';
 import { subsessionMentionOptions, subsessionMentions, subsessionTranscript } from '../src/features/cloud/subsessionConversation';
 import type { CloudAgentSubsession } from '../src/features/cloud/agentSubsessionTypes';
+
+test('iOS keeps the native child-chat navigation and the existing ConversationView', () => {
+  const navigation = readFileSync(new URL('../../ios/Kordi/Features/Conversation/ConversationView.swift', import.meta.url), 'utf8');
+  const destination = readFileSync(new URL('../../ios/Kordi/Features/Conversation/AgentSubsessionView.swift', import.meta.url), 'utf8');
+  assert.match(navigation, /\.navigationDestination\(item: \$selectedBackgroundSession\)/);
+  assert.match(destination, /ConversationView\(conversation: snapshot\.conversation/);
+  assert.doesNotMatch(destination, /MarkdownMessageContent|\.sheet\(|\.fullScreenCover\(/);
+});
 
 test('shared follow-ups preserve identity and never show a queued or unadmitted request as processing', () => {
   const record: CloudAgentSubsession = { sessionId: 'child', parentSessionId: 'parent', parentRequestId: 'root',

@@ -207,8 +207,8 @@ export function ChatsPage({
   const canOpenSideAgentPanel = companionSession.canOpen;
   const companionPaneKind = companionConversation ? conversationPaneKind(companionConversation) : null;
   const companionConversationUsesCollaborationTransport = companionConversation?.collaborationSources.some((source) => source.trim().toLowerCase() !== 'local') ?? false;
-  const companionConversationIsCollaborationAgent = Boolean(companionPaneKind === 'agent' && companionConversationUsesCollaborationTransport);
-  const companionShowsLocalAgentControls = companionPaneKind === 'agent' && !companionConversationIsCollaborationAgent;
+  const companionConversationIsCollaborationAgent = Boolean(!companionConversation?.agentSubsessionId && companionPaneKind === 'agent' && companionConversationUsesCollaborationTransport);
+  const companionShowsLocalAgentControls = !companionConversation?.agentSubsessionId && companionPaneKind === 'agent' && !companionConversationIsCollaborationAgent;
   const rawCompanionTranscriptLiveTurn = companionConversation?.previewLiveTurn ?? undefined;
   const companionTranscriptLiveTurn = rawCompanionTranscriptLiveTurn && companionConversation && rawCompanionTranscriptLiveTurn.sessionId === companionConversation.id
     ? rawCompanionTranscriptLiveTurn
@@ -379,8 +379,10 @@ export function ChatsPage({
     companionLayout.setFolded(false);
     return opened;
   };
-  const openRelatedAgentSession = (sessionId: string) => {
-    companionSession.actions.switchConversation(sessionId);
+  const openRelatedAgentSession = (sessionId: string, isSubsession = false) => {
+    if (isSubsession) companionSession.actions.openSubsession(sessionId);
+    else companionSession.actions.switchConversation(sessionId);
+    destinations.companion.setValue('messages');
     companionLayout.placeCompanion('right');
     companionLayout.setFolded(false);
   };
@@ -404,6 +406,7 @@ export function ChatsPage({
       shell={{
         isNativeShell,
         openAuthentication,
+        openSession: openRelatedAgentSession,
         onCreateSession: () => {
           void createSideAgentSession();
         },

@@ -302,7 +302,7 @@ export type ChatSessionPaneActions = {
     typeof MessageBubble
   >['onOpenSenderProfile'];
   onForkMessage?: (entryId: string) => void;
-  onOpenForkSession?: (sessionId: string) => void;
+  onOpenForkSession?: (sessionId: string, isSubsession?: boolean) => void;
   onReplyMessage?: (message: Message, destination: MessageReplyDestination) => void;
   onOpenMessageThread?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;

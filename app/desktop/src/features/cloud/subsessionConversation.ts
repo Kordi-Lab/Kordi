@@ -1,5 +1,5 @@
 import type { CloudAgentSubsession, AgentSubsessionMessage } from './agentSubsessionTypes';
-import type { Message, MessageMention, DesktopChatToolSnapshot } from '@/kordi-app/types';
+import type { Conversation, Message, MessageMention, DesktopChatToolSnapshot } from '@/kordi-app/types';
 import type { ComposerMentionOption } from '@/kordi-app/components/composer';
 import { publicScopedAgentMentionHandle } from '@/lib/identityLabels';
 import { mentionHandleForLabel } from '@/features/chat/messageActions/mentionHandles';
@@ -41,8 +41,10 @@ export function subsessionTranscript(record: CloudAgentSubsession, accountId: st
       senderAvatarSeed: agent ? record.agentId : row.senderAccountId,
       senderType: agent ? 'agent' : 'human', isOwnMessage: !agent && own, showSenderMeta: true,
       text: row.text, timestampMs: row.timestampMs,
+      statusChips: !agent && row.requestState === 'queued' ? ['queued'] : undefined,
       time: new Date(row.timestampMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       mentions: row.mentions, turn: agent && row.requestState ? execution(row, row.activity?.tools) : undefined,
+      replyToMessageId: agent ? row.requestId : undefined,
     };
   });
   if (record.status === 'running' && !record.hasFollowupExecution) {
@@ -56,8 +58,21 @@ export function subsessionTranscript(record: CloudAgentSubsession, accountId: st
   return result;
 }
 
+export function subsessionConversation(id: string, record: CloudAgentSubsession | null, accountId: string): Conversation {
+  return {
+    id, canonicalSessionId: id, agentSubsessionId: id,
+    name: record?.title ?? 'Agent session',
+    type: record?.ownerAccountId === accountId ? 'owned-agent' : 'external-agent',
+    subtitle: record ? `${record.agentDisplayName} · Owner · ${record.ownerAccountId === accountId ? 'You' : record.ownerDisplayName}` : 'Loading conversation…',
+    unread: 0, collaborationSources: ['Cloud'], trust: 'Shared', directness: 'Agent session',
+    participants: record ? [record.agentDisplayName] : [],
+    avatarSeed: record?.agentId,
+    messages: record ? subsessionTranscript(record, accountId) : [],
+  };
+}
+
 function execution(row: AgentSubsessionMessage, tools: DesktopChatToolSnapshot[] = []): NonNullable<Message['turn']> {
   const completed = ['completed', 'failed', 'cancelled'].includes(row.requestState ?? '');
   return { id: row.id, sessionId: '', prompt: '', status: row.requestState ?? 'running', message: '',
-    assistantText: row.text, thinkingText: '', tools, completed, succeeded: row.requestState === 'completed' };
+    assistantText: row.text, thinkingText: '', tools, completed, succeeded: row.requestState === 'completed', replyToMessageId: row.requestId };
 }

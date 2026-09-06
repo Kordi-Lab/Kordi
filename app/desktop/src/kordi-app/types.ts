@@ -138,6 +138,8 @@ export type SessionTaskActivity = {
 
 export type Conversation = {
   id: string;
+  /** A shared execution resource rendered in the existing chat pane, not a channel. */
+  agentSubsessionId?: string;
   /** This server-owned conversation can submit a reviewed Kordi Support report. */
   supportTicketEnabled?: boolean;
   /** UI-only session draft. It must not be written to canonical storage before the first send. */

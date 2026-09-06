@@ -201,10 +201,12 @@ export function useChatTranscriptViewport({
               <time dateTime={transcriptTimestampDateTime(msg.timestampMs)}>{timeSeparators[idx]}</time>
             </div>
           ) : null}
-          {msg.role === 'user' && [msg.id, msg.entryId, ...(msg.replyAliasIds ?? [])].some((id) => id && syncedQueuedIds.has(id)) ? (
+          {(msg.role === 'user' || msg.role === 'person') && [msg.id, msg.entryId, ...(msg.replyAliasIds ?? [])].some((id) => id && syncedQueuedIds.has(id)) ? (
             <QueuedMessageBubble
               message={{ id: msg.id ?? '', sessionId: sessionKey, text: msg.text, time: msg.time, attachments: msg.attachments ?? [] }}
               isCompressionActive={isCompressionActive}
+              own={msg.role === 'user' || msg.isOwnMessage === true}
+              sender={msg.sender}
             />
           ) : <MessageBubble
             msg={msg}

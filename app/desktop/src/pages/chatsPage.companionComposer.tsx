@@ -1,10 +1,15 @@
 import type { Dispatch, RefObject, SetStateAction } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { ComposerConfigTargetOverride } from '@/features/chat/composerController.types';
 import { extractClipboardFiles, extractPastedLocalFilePaths } from '@/features/chat/pasteAttachments';
-import { BlobEmojiComposerInput } from '@/features/emoji/BlobEmojiComposerInput';
+import { BlobEmojiComposerInput, type BlobEmojiComposerInputHandle } from '@/features/emoji/BlobEmojiComposerInput';
+import { subsessionMentions } from '@/features/cloud/subsessionConversation';
+import { ComposerMentionMenu } from '@/kordi-app/components/composerMentionMenu';
+import { currentMentionQuery, orderedComposerMentionOptions } from '@/kordi-app/components/composerMentionOptions';
+import type { ComposerMentionOption } from '@/kordi-app/components/composer';
 import {
   collaborationChatRoutingControlVisibility,
   type LocalCollaborationAgentRoutingOption,
@@ -21,6 +26,7 @@ import {
 import type {
   Conversation,
   DesktopChatContextWindowStatus,
+  MessageMention,
 } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 import {
@@ -72,6 +78,7 @@ type CompanionComposerUi = {
 
 export type CompanionComposerProps = {
   conversation: Conversation;
+  subsession?: { mentionOptions: ComposerMentionOption[]; sending: boolean; sendError: string | null; disabled: boolean };
   paneKind: 'human' | 'agent';
   draftText: string;
   attachmentError: string | null;
@@ -87,11 +94,12 @@ export type CompanionComposerProps = {
     value: string,
     target?: HTMLTextAreaElement | HTMLDivElement,
   ) => void;
-  onSend: (conversation: Conversation) => void;
+  onSend: (conversation: Conversation, mentions?: MessageMention[]) => void;
 };
 
 export function CompanionComposer({
   conversation,
+  subsession,
   paneKind,
   draftText,
   attachmentError,
@@ -127,11 +135,43 @@ export function CompanionComposer({
     toggleSelector,
   } = ui;
   const selectedAgent = collaborationRouting.selectedAgent;
+  const editor = useRef<BlobEmojiComposerInputHandle>(null);
+  const mentionCaret = useRef<number | null>(null);
+  const selectedMentions = useRef<ComposerMentionOption[]>([]);
+  const [query, setQuery] = useState<ReturnType<typeof currentMentionQuery>>(null);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const menuId = useId();
+  const mentionOptions = orderedComposerMentionOptions(subsession && query
+    ? subsession.mentionOptions.filter(option => option.value.toLowerCase().includes(query.normalized) || option.label.toLowerCase().includes(query.normalized)) : []);
+  useEffect(() => { if (!draftText) selectedMentions.current = []; }, [draftText]);
+  useLayoutEffect(() => {
+    if (mentionCaret.current == null) return;
+    const caret = mentionCaret.current; mentionCaret.current = null;
+    editor.current?.focus({ start: caret, end: caret });
+  }, [draftText]);
+  const acceptMention = (option: ComposerMentionOption) => {
+    if (!query) return;
+    selectedMentions.current = [...selectedMentions.current.filter(item => item.value !== option.value), option];
+    const replacement = '@' + option.value + ' ';
+    mentionCaret.current = query.start + replacement.length;
+    onDraftChange(conversation.id, draftText.slice(0, query.start) + replacement + draftText.slice(query.end));
+    setQuery(null);
+  };
+  const send = () => {
+    if (subsession?.disabled || subsession?.sending) return;
+    const selectedHandles = new Set(selectedMentions.current.map(option => option.value));
+    const boundOptions = [...(subsession?.mentionOptions ?? []).filter(option => !selectedHandles.has(option.value)), ...selectedMentions.current];
+    setQuery(null);
+    onSend(conversation, subsession ? subsessionMentions(draftText.trim(), boundOptions) : undefined);
+  };
+  const error = subsession?.sendError ?? attachmentError;
 
   return (
     <div data-companion-composer-frame="true" className="shrink-0 px-5 pb-4 pt-3">
       <div className="app-composer-shell rounded-[26px] p-3" data-companion-composer-footer="true">
         <div className="relative">
+          {mentionOptions.length > 0 ? <ComposerMentionMenu id={menuId} items={mentionOptions}
+            selectedIndex={Math.min(selectedIndex, mentionOptions.length - 1)} onSelect={acceptMention} /> : null}
           <div
             className={cn(
               'app-composer-input rounded-[18px] transition',
@@ -154,16 +194,25 @@ export function CompanionComposer({
               onRemove={removeChatComposerAttachment}
               onReplace={updateChatComposerAttachment}
             />
-            {attachmentError ? (
+            {error ? (
               <p className="px-0.5 pb-1 text-[10.5px] leading-4 text-amber-500" role="alert">
-                {attachmentError}
+                {error}
               </p>
             ) : null}
             <BlobEmojiComposerInput
+              ref={editor}
               value={draftText}
+              readOnly={subsession?.sending}
+              ariaControls={mentionOptions.length ? menuId : undefined}
+              ariaExpanded={mentionOptions.length > 0}
+              ariaActiveDescendant={mentionOptions.length ? `${menuId}-option-${Math.min(selectedIndex, mentionOptions.length - 1)}` : undefined}
               onPointerDownCapture={(event) => event.stopPropagation()}
-              onChange={(value, target) => onDraftChange(conversation.id, value, target)}
+              onChange={(value, target) => {
+                onDraftChange(conversation.id, value, target);
+                if (subsession) { setQuery(currentMentionQuery(value, editor.current?.selection().start)); setSelectedIndex(0); }
+              }}
               onPaste={(event) => {
+                if (subsession) return;
                 const files = extractClipboardFiles(event.clipboardData);
                 if (files.length > 0) {
                   event.preventDefault();
@@ -180,25 +229,33 @@ export function CompanionComposer({
                 }
               }}
               onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
+                if (mentionOptions.length && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+                  event.preventDefault(); setSelectedIndex((selectedIndex + (event.key === 'ArrowDown' ? 1 : mentionOptions.length - 1)) % mentionOptions.length); return;
+                }
+                if (mentionOptions.length && event.key === 'Enter') {
+                  event.preventDefault(); acceptMention(mentionOptions[Math.min(selectedIndex, mentionOptions.length - 1)]); return;
+                }
+                if (query && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setQuery(null); return; }
                 if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
                   event.preventDefault();
-                  onSend(conversation);
+                  send();
                 }
               }}
               className="min-h-[24px] max-h-[220px] w-full resize-none overflow-y-auto bg-transparent px-0 py-0 text-[15px] leading-6 text-[color:var(--utility-foreground)] outline-none placeholder:text-[color:var(--utility-muted-text)]"
-              placeholder={paneKind === 'agent' ? 'Ask the agent…' : `Message ${conversation.name}`}
+              placeholder={subsession ? 'Send a message; @mention the agent for a reply' : paneKind === 'agent' ? 'Ask the agent…' : `Message ${conversation.name}`}
             />
           </div>
         </div>
         <div data-companion-send-row="true" className="app-composer-meta mt-2 flex flex-nowrap items-center justify-between gap-3 pt-2.5">
           <div className="flex shrink-0 items-center gap-2 overflow-visible pr-1">
-            <ComposerAttachmentAddMenu
+            {!subsession ? <ComposerAttachmentAddMenu
               inputRef={attachmentInputRef}
               onChooseFiles={isNativeShell
                 ? () => { void saveDesktopAttachmentPaths(); }
                 : undefined}
               data-companion-attachment-control="true"
-            />
+            /> : null}
           </div>
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-visible">
             {localRouting.enabled && localRouting.selection && localRouting.configTarget ? (
@@ -289,11 +346,11 @@ export function CompanionComposer({
               type="button"
               size="icon"
               variant="secondary"
-              onClick={() => onSend(conversation)}
+              onClick={send}
               className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
               title={`Send to ${conversation.name}`}
               aria-label={`Send to ${conversation.name}`}
-              disabled={!draftText.trim() && chatComposerAttachments.length === 0}
+              disabled={subsession?.sending || subsession?.disabled || (!draftText.trim() && chatComposerAttachments.length === 0)}
               data-companion-send-control="true"
             >
               <Send className="h-4 w-4" />

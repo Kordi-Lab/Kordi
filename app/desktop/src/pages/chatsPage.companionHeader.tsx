@@ -114,7 +114,7 @@ export function CompanionHeader({
             >
               Ask Agent · {conversation.name}
             </span>
-            <span data-chat-session-subtitle="true" className="app-chat-pane-metadata-row text-[11px] leading-5 text-slate-400">Agent session</span>
+            <span data-chat-session-subtitle="true" className="app-chat-pane-metadata-row text-[11px] leading-5 text-slate-400">{conversation.agentSubsessionId ? conversation.subtitle : 'Agent session'}</span>
           </div>
         </div>
       </div>

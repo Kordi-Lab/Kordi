@@ -329,7 +329,7 @@ function MessageBubbleView({
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
   imageGallery?: readonly MessageAttachment[];
-  onOpenForkSession?: (sessionId: string) => void;
+  onOpenForkSession?: (sessionId: string, isSubsession?: boolean) => void;
   relatedAgentSessionStatusById?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
   onReplyMessage?: (message: Message, destination: 'conversation' | 'thread') => void;
   onOpenMessageThread?: (message: Message) => void;
@@ -733,8 +733,7 @@ function MessageBubbleView({
               sessions={relatedAgentSessions}
               agentName={msg.sender}
               statusBySessionId={relatedAgentSessionStatusById}
-              parentSessionId={msg.turn.sessionId}
-              parentRequestId={msg.turn.replyToMessageId ?? msg.replyToMessageId}
+              onOpen={onOpenForkSession}
             />
           </div>
           <MessageHoverTime msg={msg} side="peer" />

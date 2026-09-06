@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
-import type { Conversation } from '@/kordi-app/types';
+import type { Conversation, MessageMention } from '@/kordi-app/types';
+import { CloudAuthClient } from '@/features/cloud/authClient';
+import { CLOUD_SESSION_CHANGED_EVENT, loadSession } from '@/features/cloud/session';
+import { useAgentSubsession } from '@/features/cloud/useAgentSubsession';
+import { subsessionConversation, subsessionMentionOptions } from '@/features/cloud/subsessionConversation';
 import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
 import type {
   ChatAttachment,
@@ -25,6 +29,7 @@ type ComposerSelector = {
 
 type CompanionSessionState = {
   pageConversationId: string;
+  subsessionId: string | null;
   selectedConversationId: string | null;
   openConversationId: string | null;
   requestedConversationId: string | null;
@@ -49,6 +54,7 @@ type UseChatCompanionSessionInput = {
 function emptyState(pageConversationId: string): CompanionSessionState {
   return {
     pageConversationId,
+    subsessionId: null,
     selectedConversationId: null,
     openConversationId: null,
     requestedConversationId: null,
@@ -163,6 +169,20 @@ export function useChatCompanionSession({
   }
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const subsession = useAgentSubsession(state.subsessionId, true);
+  const resourceConversation = useMemo(
+    () => state.subsessionId ? subsessionConversation(state.subsessionId, subsession.snapshot, subsession.accountId) : null,
+    [state.subsessionId, subsession.snapshot, subsession.accountId],
+  );
+  const [subsessionSending, setSubsessionSending] = useState(false);
+  const sendingRef = useRef(false);
+  const [subsessionSendError, setSubsessionSendError] = useState<{ id: string; message: string } | null>(null);
+  const sendAttempts = useRef(new Map<string, { id: string; text: string; mentions: MessageMention[] }>());
+  useEffect(() => {
+    const reset = () => { setStoredState(emptyState(activeConversation.id)); sendAttempts.current.clear(); setSubsessionSendError(null); };
+    window.addEventListener(CLOUD_SESSION_CHANGED_EVENT, reset);
+    return () => window.removeEventListener(CLOUD_SESSION_CHANGED_EVENT, reset);
+  }, [activeConversation.id]);
   const selectedConversation = candidates.find(
     (conversation) => conversation.id === state.selectedConversationId,
   ) ?? null;
@@ -171,7 +191,7 @@ export function useChatCompanionSession({
     visibleCandidates,
   ) ?? visibleCandidates[0] ?? null;
   const suggested = selectedConversation ?? suggestedConversation;
-  const conversation = chatSideAgentConversationForOpenRequest(
+  const conversation = resourceConversation ?? chatSideAgentConversationForOpenRequest(
     state.openConversationId,
     candidates,
   );
@@ -212,7 +232,7 @@ export function useChatCompanionSession({
       ...current,
       drafts: { ...current.drafts, [conversationId]: value },
     }));
-    setComposerTextForSession(conversationId, value);
+    if (conversationId !== state.subsessionId) setComposerTextForSession(conversationId, value);
     if (!target || target.tagName !== 'TEXTAREA') return;
     target.style.height = '0px';
     target.style.height = `${Math.min(target.scrollHeight, 160)}px`;
@@ -223,6 +243,7 @@ export function useChatCompanionSession({
     ));
     updateState((current) => ({
       ...current,
+      subsessionId: null,
       selectedConversationId: conversationId,
       openConversationId: conversationId,
       requestedConversationId: null,
@@ -256,9 +277,36 @@ export function useChatCompanionSession({
   const sendDraft = (
     targetConversation: Conversation,
     attachments: ChatAttachment[],
+    mentions: MessageMention[] = [],
   ) => {
     const draft = state.drafts[targetConversation.id] ?? '';
     if (!draft.trim() && attachments.length === 0) return false;
+    if (targetConversation.agentSubsessionId) {
+      if (sendingRef.current || !subsession.snapshot || subsession.error) return false;
+      if (attachments.length) { setSubsessionSendError({ id: targetConversation.id, message: 'This session supports text messages.' }); return false; }
+      const id = targetConversation.agentSubsessionId;
+      const text = draft.trim();
+      const previous = sendAttempts.current.get(id);
+      const attempt = previous?.text === text ? previous : { id: crypto.randomUUID(), text, mentions };
+      sendAttempts.current.set(id, attempt);
+      sendingRef.current = true; setSubsessionSending(true); setSubsessionSendError(null);
+      void (async () => {
+        try {
+          const account = await loadSession();
+          if (!account || account.accountId !== subsession.accountId) throw Error('Account changed');
+          await new CloudAuthClient().sendAgentSubsessionMessage(account.token, id, attempt.id, text, attempt.mentions);
+          if ((await loadSession())?.accountId !== account.accountId) return;
+          sendAttempts.current.delete(id);
+          setStoredState(current => ({
+            ...current, drafts: current.drafts[id]?.trim() === text ? { ...current.drafts, [id]: '' } : current.drafts,
+          }));
+          subsession.reload();
+          scheduleTranscriptScrollToBottom(transcriptScrollRef);
+        } catch { setSubsessionSendError({ id, message: 'Could not send. Your message is kept below; try again.' }); }
+        finally { sendingRef.current = false; setSubsessionSending(false); }
+      })();
+      return false;
+    }
     const referenceMessage = state.referenceContext
       ? buildAskAgentSessionReferenceContextMessage(
           activeConversation,
@@ -294,15 +342,22 @@ export function useChatCompanionSession({
     sessionOptions,
     suggested,
     draftText,
+    subsession: state.subsessionId ? {
+      mentionOptions: subsession.snapshot ? subsessionMentionOptions(subsession.snapshot, subsession.accountId) : [],
+      sending: subsessionSending,
+      sendError: subsessionSendError?.id === state.subsessionId ? subsessionSendError.message : null,
+      disabled: !subsession.snapshot || Boolean(subsession.error),
+    } : undefined,
     canOpen: Boolean(suggested || onCreateAgentSession),
     transcript: {
-      isLoading: transcriptNeedsLoading
+      isLoading: state.subsessionId ? !subsession.snapshot && !subsession.error : transcriptNeedsLoading
         && transcriptLoadFailureSessionId !== conversationId,
-      loadError: transcriptNeedsLoading
+      loadError: state.subsessionId ? subsession.error : transcriptNeedsLoading
         && transcriptLoadFailureSessionId === conversationId
         ? 'Couldn’t load chat history.'
         : null,
       retry: () => {
+        if (state.subsessionId) { subsession.reload(); return; }
         setTranscriptLoadFailureSessionId((current) => (
           current === conversationId ? null : current
         ));
@@ -357,6 +412,11 @@ export function useChatCompanionSession({
     actions: {
       create,
       open,
+      openSubsession: (subsessionId: string) => {
+        setSubsessionSendError(null);
+        updateState(current => ({ ...current, subsessionId, openConversationId: null, requestedConversationId: null,
+          referenceContext: null, actionsOpen: false, sessionListOpen: false, openComposerSelector: null }));
+      },
       switchConversation: (conversationId: string) => {
         if (
           !selectableSessionIds.has(conversationId)
@@ -365,6 +425,7 @@ export function useChatCompanionSession({
           if (!onPrefetchChatSession) return;
           updateState((current) => ({
             ...current,
+            subsessionId: null,
             requestedConversationId: conversationId,
             referenceContext: buildAskAgentSessionReferenceContext(activeConversation),
           }));
@@ -381,6 +442,7 @@ export function useChatCompanionSession({
       },
       close: () => updateState((current) => ({
         ...current,
+        subsessionId: null,
         selectedConversationId: null,
         openConversationId: null,
         requestedConversationId: null,

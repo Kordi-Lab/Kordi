@@ -276,7 +276,7 @@ function useStableChatSessionPaneActions(
       actionsRef.current.onOpenSenderProfile?.(message, anchorRect)
     ),
     onForkMessage: (entryId) => actionsRef.current.onForkMessage?.(entryId),
-    onOpenForkSession: (sessionId) => actionsRef.current.onOpenForkSession?.(sessionId),
+    onOpenForkSession: (sessionId, isSubsession) => actionsRef.current.onOpenForkSession?.(sessionId, isSubsession),
     onReplyMessage: (message, destination) => actionsRef.current.onReplyMessage?.(message, destination),
     onOpenMessageThread: (message) => actionsRef.current.onOpenMessageThread?.(message),
     onForwardMessage: (message) => actionsRef.current.onForwardMessage?.(message),
