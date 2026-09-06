@@ -19,6 +19,7 @@ fn public_ip(ip: IpAddr) -> bool {
                 && a < 224
                 && !(a == 100 && (64..=127).contains(&b))
                 && !(a == 192 && b == 0 && c == 0)
+                && !(a == 192 && b == 88 && c == 99)
                 && !(a == 198 && (b == 18 || b == 19))
         }
         IpAddr::V6(ip) => {
@@ -108,7 +109,7 @@ mod tests {
             "http://localhost",
             "http://host.local",
             "https://user:pass@example.com",
-            "http://example.com:17081",
+            "http://example.com:8080",
             "http://[2002:7f00:1::]",
             "http://[64:ff9b::7f00:1]",
         ] {
