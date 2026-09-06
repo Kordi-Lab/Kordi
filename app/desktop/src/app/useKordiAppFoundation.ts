@@ -113,9 +113,7 @@ export function useKordiAppFoundation({
     handleLogoutProvider,
     handleSelectAuthChoice,
     handleRemoveAuthProfile,
-  } = useDesktopAuthState({
-    isNativeShell,
-  });
+  } = useDesktopAuthState({ isNativeShell, accountId: cloudSession.account?.accountId });
 
   const { mapDesktopMessages } = useDesktopTranscriptAdapter({ localAvatarSeedsRef });
 

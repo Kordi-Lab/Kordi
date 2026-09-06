@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { CLOUD_SESSION_CHANGED_EVENT, loadSession } from '@/features/cloud/session';
 
 import type { DesktopAuthState } from '@/kordi-app/types';
 import {
@@ -19,9 +20,10 @@ import {
 
 type UseDesktopAuthStateArgs = {
   isNativeShell: boolean;
+  accountId?: string | null;
 };
 
-export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) {
+export function useDesktopAuthState({ isNativeShell, accountId }: UseDesktopAuthStateArgs) {
   const [desktopAuthState, setDesktopAuthState] = useState<DesktopAuthState | null>(null);
   const [isDesktopAuthLoading, setIsDesktopAuthLoading] = useState(isNativeShell);
   const [desktopAuthError, setDesktopAuthError] = useState<string | null>(null);
@@ -29,18 +31,20 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
   const [providerAuthSyncIntent, setProviderAuthSyncIntent] =
     useState<DesktopAuthSyncIntent | null>(null);
   const providerAuthSyncRevisionRef = useRef(0);
-  const authSyncGuardRef = useRef<ReturnType<typeof createDesktopAuthSyncGuard> | null>(null);
-  if (!authSyncGuardRef.current) {
-    authSyncGuardRef.current = createDesktopAuthSyncGuard();
-  }
-  const authSyncGuard = authSyncGuardRef.current;
+  const accountGenerationRef = useRef(0);
+  const [authSyncGuard] = useState(createDesktopAuthSyncGuard);
 
-  const recordProviderAuthSyncIntent = useCallback((
+  const recordProviderAuthSyncIntent = useCallback(async (
     reason: DesktopAuthUpdateReason,
     providerId: string,
+    generation: number,
   ) => {
+    const session = await loadSession().catch(() => null);
+    if (!session || generation !== accountGenerationRef.current) return;
     providerAuthSyncRevisionRef.current += 1;
     setProviderAuthSyncIntent({
+      accountId: session.accountId,
+      deviceId: session.deviceId,
       providerId,
       reason,
       revision: providerAuthSyncRevisionRef.current,
@@ -76,9 +80,10 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
     reason?: DesktopAuthUpdateReason,
     providerId?: string,
   ) => {
+    const generation = accountGenerationRef.current;
     const applied = await loadDesktopAuthState();
     if (applied && reason && providerId) {
-      recordProviderAuthSyncIntent(reason, providerId);
+      await recordProviderAuthSyncIntent(reason, providerId, generation);
     }
   }, [loadDesktopAuthState, recordProviderAuthSyncIntent]);
 
@@ -88,14 +93,17 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
     reason: DesktopAuthUpdateReason,
     providerId: string,
   ) => {
+    const generation = accountGenerationRef.current;
     authSyncGuard.beginMutation();
     try {
       setDesktopAuthError(null);
       const nextState = await operation();
+      if (generation !== accountGenerationRef.current) return;
       setDesktopAuthState(nextState);
       setDesktopAuthError(null);
-      recordProviderAuthSyncIntent(reason, providerId);
-      broadcastDesktopAuthUpdated(reason, providerId);
+      await recordProviderAuthSyncIntent(reason, providerId, generation);
+      if (generation !== accountGenerationRef.current) return;
+      await broadcastDesktopAuthUpdated(reason, providerId);
     } catch (error) {
       setDesktopAuthError(error instanceof Error ? error.message : fallbackError);
     } finally {
@@ -145,13 +153,21 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
     return () => {
       cancelled = true;
     };
-  }, [isNativeShell, loadDesktopAuthState]);
+  }, [accountId, isNativeShell, loadDesktopAuthState]);
 
   useEffect(() => {
     if (!isNativeShell) return;
 
     const refresh = () => {
       void refreshDesktopAuth();
+    };
+    const resetAccount = () => {
+      accountGenerationRef.current += 1;
+      authSyncGuard.beginMutation();
+      setDesktopAuthState(null);
+      setProviderAuthSyncIntent(null);
+      setActiveLoginProviderId(null);
+      authSyncGuard.finishMutation();
     };
     let channel: BroadcastChannel | null = null;
     if (typeof BroadcastChannel !== 'undefined') {
@@ -166,21 +182,26 @@ export function useDesktopAuthState({ isNativeShell }: UseDesktopAuthStateArgs) 
       channel.onmessage = (event) => {
         if (!isDesktopAuthUpdateFromAnotherSource(event.data)) return;
         const intent = desktopAuthSyncIntentFromAnotherSource(event.data);
-        void loadDesktopAuthState().then((applied) => {
-          if (applied && intent) {
-            recordProviderAuthSyncIntent(intent.reason, intent.providerId);
+        const generation = accountGenerationRef.current;
+        void loadDesktopAuthState().then(async (applied) => {
+          const session = await loadSession().catch(() => null);
+          if (applied && intent?.accountId === session?.accountId && intent?.deviceId === session?.deviceId && intent) {
+            await recordProviderAuthSyncIntent(intent.reason, intent.providerId, generation);
           }
         });
       };
     }
 
     window.addEventListener('focus', refresh);
+    window.addEventListener(CLOUD_SESSION_CHANGED_EVENT, resetAccount);
 
     return () => {
       window.removeEventListener('focus', refresh);
+      window.removeEventListener(CLOUD_SESSION_CHANGED_EVENT, resetAccount);
       channel?.close();
     };
   }, [
+    authSyncGuard,
     isNativeShell,
     loadDesktopAuthState,
     recordProviderAuthSyncIntent,

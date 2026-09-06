@@ -15,6 +15,7 @@ import type {
 } from './authClient';
 import {
   removeCloudSessionMessages,
+  saveCloudSessionVisibility,
   type CloudSessionPinsById,
 } from './cloudDiffSync';
 import {
@@ -121,7 +122,14 @@ export function useCloudSessionActions({
     try {
       const visibility = await client.listSessionVisibility(token);
       if (generation !== visibilityRefreshGenerationRef.current) return;
+      const session = await loadSession();
+      if (generation !== visibilityRefreshGenerationRef.current || !account || session?.accountId !== account.accountId || session.token !== token) return;
       const ids = (values: string[]) => new Set(values.map((value) => value.trim()).filter(Boolean));
+      saveCloudSessionVisibility(account.accountId, {
+        hiddenSessionIds:ids(visibility.hiddenSessionIds),deletedSessionIds:ids(visibility.deletedSessionIds),
+        unreadSessionIds:ids(visibility.unreadSessionIds),pinnedSessionIds:ids(visibility.pinnedSessionIds),
+        mutedSessionIds:ids(visibility.mutedSessionIds),pinnedGroupSpaceIds:ids(visibility.pinnedGroupSpaceIds),
+      });
       setHiddenIds(ids(visibility.hiddenSessionIds));
       setDeletedIds(ids(visibility.deletedSessionIds));
       setUnreadIds(ids(visibility.unreadSessionIds));
@@ -131,7 +139,7 @@ export function useCloudSessionActions({
     } catch {
       // The local mutation remains valid; the normal sync loop retries.
     }
-  }, [client, setDeletedIds, setHiddenIds, setMutedIds, setPinnedGroupSpaceIds, setPinnedIds, setUnreadIds]);
+  }, [account, client, setDeletedIds, setHiddenIds, setMutedIds, setPinnedGroupSpaceIds, setPinnedIds, setUnreadIds]);
 
   const runOptimisticVisibilityMutation = useCallback(async (
     mutationKey: string,

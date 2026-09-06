@@ -29,6 +29,7 @@ pub struct ChatSyncApplyRequest {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatSyncLocalState {
+    pub visibility: Option<Value>,
     pub account_id: String,
     pub cursor: Option<String>,
     pub last_stream_seq: i64,
@@ -119,6 +120,7 @@ mod message_reads;
 mod outbox;
 mod projection;
 pub mod unread;
+mod visibility;
 
 pub use apply::ChatSyncConversationHead;
 use apply::*;

@@ -85,6 +85,7 @@ pub struct SyncBatch {
 }
 
 pub struct BootstrapSnapshot {
+    pub session_visibility: super::visibility::SessionVisibilitySnapshot,
     pub conversations: Vec<ConversationSnapshot>,
     pub latest_messages: Vec<MessageSnapshot>,
     pub session_pins: Vec<CloudSessionPinSummary>,

@@ -2,6 +2,7 @@ import type { ChatSyncConversation, ChatSyncEvent, ChatSyncMessage } from '@/fea
 import { invokeDesktop, isNativeDesktopShell } from './desktop';
 
 export type ChatSyncLocalState = {
+  visibility?: import('@/features/cloud/cloudSessionListClient').CloudSessionVisibility | null;
   accountId: string;
   cursor: string | null;
   lastStreamSeq: number;

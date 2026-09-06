@@ -199,7 +199,7 @@ export default function AuthPopup({
   useEffect(() => {
     if (!authAttempt?.completed || !authAttempt.succeeded) return;
 
-    broadcastDesktopAuthUpdated('oauth-completed', providerId);
+    void broadcastDesktopAuthUpdated('oauth-completed', providerId);
     onAuthUpdated?.('oauth-completed', providerId);
     void Promise.resolve(onChatStateRefresh?.()).catch(() => {});
 
@@ -263,7 +263,7 @@ export default function AuthPopup({
       setIsSubmitting(true);
       const nextState = await saveDesktopApiKey(provider.id, apiKeyDraft.trim());
       setAuthState(nextState);
-      broadcastDesktopAuthUpdated('api-key-saved', provider.id);
+      await broadcastDesktopAuthUpdated('api-key-saved', provider.id);
       void Promise.resolve(onChatStateRefresh?.()).catch(() => {});
       await Promise.resolve(onAuthUpdated?.('api-key-saved', provider.id));
       if (enterChat && onEnterChat) {

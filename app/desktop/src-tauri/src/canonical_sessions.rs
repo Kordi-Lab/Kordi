@@ -104,23 +104,9 @@ use self::title_policy::reconcile_session_title_metadata;
 const CANONICAL_SESSIONS_DB_FILENAME: &str = "canonical-sessions.sqlite3";
 const SCHEMA_VERSION: i64 = 2;
 
-pub(crate) fn open_db() -> Result<Connection, String> {
-    let path = canonical_sessions_db_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
-    }
-    let conn = Connection::open(path).map_err(|err| err.to_string())?;
-    conn.busy_timeout(std::time::Duration::from_secs(5))
-        .map_err(|err| err.to_string())?;
-    conn.execute_batch(
-        "PRAGMA foreign_keys = ON;
-         PRAGMA journal_mode = WAL;
-         PRAGMA synchronous = NORMAL;",
-    )
-    .map_err(|err| err.to_string())?;
-    initialize_schema(&conn)?;
-    Ok(conn)
-}
+mod database;
+pub(crate) use database::open_db;
+use database::open_db_at_path;
 
 fn self_participant_identity_id(
     conn: &Connection,

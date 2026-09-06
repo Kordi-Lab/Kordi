@@ -5,7 +5,7 @@ mod preferences;
 pub(super) use group_spaces::{
     hide_group_space, mute_group_space, unhide_group_space, unmute_group_space,
 };
-use preferences::{clear_session_pin, clear_session_preferences, load_session_list_preferences};
+use preferences::{clear_session_pin, clear_session_preferences};
 pub(super) use preferences::{
     mark_cloud_session_unread, mute_cloud_session, pin_cloud_session, pin_group_space,
     unmark_cloud_session_unread, unmute_cloud_session, unpin_cloud_session, unpin_group_space,
@@ -15,57 +15,19 @@ pub(super) async fn list_cloud_session_visibility(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
 ) -> Response {
-    let rows: Vec<(String, Option<String>, Option<String>)> = match query_as(
-        "SELECT session_id, hidden_at, deleted_at \
-         FROM cloud_account_session_visibility \
-         WHERE account_id = $1 AND (hidden_at IS NOT NULL OR deleted_at IS NOT NULL) \
-         ORDER BY updated_at ASC",
-    )
-    .bind(&session.account_id)
-    .fetch_all(state.db_pool())
-    .await
-    {
-        Ok(rows) => rows,
-        Err(_) => {
-            return err(
-                "server_error",
-                "Database error.",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            );
-        }
-    };
-
-    let mut hidden_session_ids = Vec::new();
-    let mut deleted_session_ids = Vec::new();
-    for (session_id, hidden_at, deleted_at) in rows {
-        if deleted_at.is_some() {
-            deleted_session_ids.push(session_id);
-        } else if hidden_at.is_some() {
-            hidden_session_ids.push(session_id);
-        }
+    let result = async {
+        let mut conn = state.db_pool().acquire().await?;
+        crate::chat_sync::visibility::load(&mut conn, &session.account_id).await
     }
-
-    let preferences =
-        match load_session_list_preferences(state.db_pool(), &session.account_id).await {
-            Ok(preferences) => preferences,
-            Err(_) => {
-                return err(
-                    "server_error",
-                    "Database error.",
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                );
-            }
-        };
-
-    Json(CloudSessionVisibilityResponse {
-        hidden_session_ids,
-        deleted_session_ids,
-        pinned_session_ids: preferences.pinned_session_ids,
-        muted_session_ids: preferences.muted_session_ids,
-        unread_session_ids: preferences.unread_session_ids,
-        pinned_group_space_ids: preferences.pinned_group_space_ids,
-    })
-    .into_response()
+    .await;
+    match result {
+        Ok(snapshot) => Json(snapshot).into_response(),
+        Err(_) => err(
+            "server_error",
+            "Database error.",
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ),
+    }
 }
 
 pub(super) async fn hide_cloud_session(

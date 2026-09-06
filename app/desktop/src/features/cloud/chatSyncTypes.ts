@@ -90,6 +90,7 @@ export type ChatSyncSyncResponse = {
 };
 
 export type ChatSyncBootstrapResponse = {
+  session_visibility?: import('./cloudSessionListClient').CloudSessionVisibility;
   protocol_version: 2;
   conversations: ChatSyncConversation[];
   latest_messages: ChatSyncMessage[];

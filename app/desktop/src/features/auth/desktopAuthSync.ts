@@ -1,3 +1,5 @@
+import { loadSession } from '@/features/cloud/session';
+
 export const DESKTOP_AUTH_CHANNEL_NAME = 'kordi-auth';
 
 const DESKTOP_AUTH_UPDATED_MESSAGE_TYPE = 'auth-updated';
@@ -10,6 +12,8 @@ export type DesktopAuthUpdateReason =
   | 'provider-logout';
 
 export type DesktopAuthSyncIntent = {
+  accountId?: string;
+  deviceId?: string;
   providerId: string;
   reason: DesktopAuthUpdateReason;
   revision: number;
@@ -28,6 +32,8 @@ export type DesktopAuthSyncGuard = {
 };
 
 type DesktopAuthUpdatedMessage = {
+  accountId?: string;
+  deviceId?: string;
   type: typeof DESKTOP_AUTH_UPDATED_MESSAGE_TYPE;
   at: number;
   sourceId?: string;
@@ -97,24 +103,29 @@ export function desktopAuthSyncIntentFromAnotherSource(
     || !value.providerId?.trim()
   ) return null;
   return {
+    ...(value.accountId ? { accountId: value.accountId } : {}),
+    ...(value.deviceId ? { deviceId: value.deviceId } : {}),
     providerId: value.providerId.trim(),
     reason: value.reason,
     revision: value.at,
   };
 }
 
-export function broadcastDesktopAuthUpdated(
+export async function broadcastDesktopAuthUpdated(
   reason: DesktopAuthUpdateReason,
   providerId?: string,
 ) {
   if (typeof BroadcastChannel === 'undefined') return;
 
   try {
+    const session = await loadSession();
     const channel = new BroadcastChannel(DESKTOP_AUTH_CHANNEL_NAME);
     channel.postMessage({
       type: DESKTOP_AUTH_UPDATED_MESSAGE_TYPE,
       at: Date.now(),
       sourceId: desktopAuthSourceId,
+      accountId: session?.accountId,
+      deviceId: session?.deviceId,
       reason,
       providerId: providerId?.trim() || undefined,
     } satisfies DesktopAuthUpdatedMessage);

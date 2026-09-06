@@ -85,9 +85,6 @@
     }
   },
   "src/features/auth/useDesktopAuthState.ts": {
-    "react-hooks/refs": {
-      "count": 1
-    },
     "react-hooks/set-state-in-effect": {
       "count": 1
     }

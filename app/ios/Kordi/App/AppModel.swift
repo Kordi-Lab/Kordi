@@ -205,6 +205,7 @@ final class AppModel: ObservableObject {
     private var cloudSyncHasCurrentSequence = false
     private var cloudRealtimeLastReceivedSequence: Int64 = 0
     private var hasHydratedWireSnapshot = false
+    private var hasHydratedSessionVisibility = false
     private var hasHydratedForkLineage = false
     private var hasObservedOwnedAgentRouting = false
     private var fullyHydratedCanonicalGroupSessionIds = Set<String>()
@@ -343,15 +344,21 @@ final class AppModel: ObservableObject {
             ))
             token = savedToken
             account = restoredAccount
-            conversations = restoredConversations(accountId: restoredAccount.accountId)
+            conversations = []
             if let snapshot = await wireCache.load(accountId: restoredAccount.accountId) {
+                if let visibility = snapshot.visibility {
+                    applyCloudSessionVisibility(visibility)
+                    conversations = restoredConversations(accountId: restoredAccount.accountId).filter {
+                        !hiddenCloudSessionIds.contains($0.sessionId) && !deletedCloudSessionIds.contains($0.sessionId)
+                    }
+                }
                 cloudMessagesByPeer = snapshot.messagesByPeer
                 sessionForksById = snapshot.sessionForksById ?? [:]
                 rebuildCloudMessageIndices()
                 applyLatestSyncedAgentModelChanges()
                 cloudSyncCursor = snapshot.cursor
                 lastMessageSyncAt = snapshot.savedAt
-                hasHydratedWireSnapshot = snapshot.cursor != "0"
+                hasHydratedWireSnapshot = snapshot.cursor != "0" && snapshot.visibility != nil
                 hasHydratedForkLineage = snapshot.sessionForksById != nil
                     && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
             }
@@ -469,12 +476,14 @@ final class AppModel: ObservableObject {
         cloudSyncHasCurrentSequence = false
         cloudRealtimeLastReceivedSequence = 0
         hasHydratedWireSnapshot = false
+        hasHydratedSessionVisibility = false
         hasHydratedForkLineage = false
         hasObservedOwnedAgentRouting = false
         fullyHydratedCanonicalGroupSessionIds = []
         cloudConnectionState = .connecting
         messageSyncState = .syncing
         token = nil
+        isRefreshing = false
         currentDeviceId = nil
         account = nil
         contacts = []
@@ -562,7 +571,7 @@ final class AppModel: ObservableObject {
         let shouldRecordRemoteModelChanges = hasObservedOwnedAgentRouting
         isRefreshing = true
         if showSyncActivity { messageSyncState = .syncing }
-        defer { isRefreshing = false }
+        defer { if self.token == token { isRefreshing = false } }
         do {
             async let refreshedAccount = api.me(token: token)
             async let fetchedContacts = api.listContacts(token: token)
@@ -584,6 +593,7 @@ final class AppModel: ObservableObject {
                 fetchedVisibility, fetchedAuth, fetchedDevices, canonicalLatestMessages,
                 fetchedActiveCalls
             )
+            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return }
             let sharedAgentOwnerIDs = Set(
                 contactList.map(\.accountId)
                     + (await api.cachedChatConversations()).flatMap(\.members).map(\.accountId)
@@ -592,6 +602,7 @@ final class AppModel: ObservableObject {
                 token: token,
                 ownerAccountIds: Array(sharedAgentOwnerIDs)
             )
+            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return }
             contacts = contactList.sorted { $0.preferredName.localizedCaseInsensitiveCompare($1.preferredName) == .orderedAscending }
             if let presence {
                 applyContactPresenceSnapshot(presence)
@@ -620,12 +631,7 @@ final class AppModel: ObservableObject {
                 currentRevision: sessionVisibilityMutationRevision,
                 pendingMutationCount: pendingSessionVisibilityMutationCount
             ) {
-                hiddenCloudSessionIds = Set(visibility.hiddenSessionIds.compactMap(\.nonEmpty))
-                deletedCloudSessionIds = Set(visibility.deletedSessionIds.compactMap(\.nonEmpty))
-                pinnedSessionIds = Set((visibility.pinnedSessionIds ?? []).compactMap(\.nonEmpty))
-                mutedSessionIds = Set((visibility.mutedSessionIds ?? []).compactMap(\.nonEmpty))
-                markedUnreadSessionIds = Set((visibility.unreadSessionIds ?? []).compactMap(\.nonEmpty))
-                pinnedGroupSpaceIds = Set((visibility.pinnedGroupSpaceIds ?? []).compactMap(\.nonEmpty))
+                applyCloudSessionVisibility(visibility)
             }
             for message in latestCanonical { mergeCloudMessage(message, peerHint: nil) }
             if let activeCalls {
@@ -641,6 +647,7 @@ final class AppModel: ObservableObject {
                 + shared.map(\.ownerAccountId)
             )
             let history = await loadMessageHistories(token: token, peerAccountIds: peerAccountIds)
+            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return }
             let canonicalGroupSessionIds = await api.cachedChatConversations()
                 .filter { $0.kind == "group" && $0.latestMessageSequence > 0 }
                 .compactMap { $0.legacySessionId?.nonEmpty ?? $0.id.nonEmpty }
@@ -648,6 +655,7 @@ final class AppModel: ObservableObject {
                 token: token,
                 sessionIds: canonicalGroupSessionIds
             )
+            guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return }
             let groupParticipantIds = Set(cloudMessagesByPeer.values.flatMap { messages in
                 messages.flatMap { CloudGroupMessageCodec.parse($0.body)?.participants.map(\.accountId) ?? [] }
             })
@@ -660,6 +668,7 @@ final class AppModel: ObservableObject {
                     token: token,
                     ownerAccountIds: Array(additionalOwners)
                 )
+                guard self.token == token, self.account?.accountId == account.accountId, !Task.isCancelled else { return }
                 shared = normalizedSharedCloudAgents(shared + additional)
                 sharedCloudAgents = shared
             }
@@ -678,6 +687,7 @@ final class AppModel: ObservableObject {
             errorMessage = nil
         } catch {
             if CloudTransportErrorPolicy.isCancellation(error) || Task.isCancelled { return }
+            guard self.token == token, self.account?.accountId == account.accountId else { return }
             await rebuildConversationCatalog()
             recordCloudConnectionFailure(error)
             messageSyncState = .offline
@@ -5261,6 +5271,7 @@ final class AppModel: ObservableObject {
             while !Task.isCancelled {
                 do {
                     let response = try await api.sync(token: token, cursor: nextCursor)
+                    guard self.token == token, !Task.isCancelled else { return }
                     if cloudConnectionState != .connected {
                         cloudConnectionState = .connected
                         if errorMessage == Self.cloudUnavailableMessage {
@@ -5282,6 +5293,7 @@ final class AppModel: ObservableObject {
                         if hasProviderAuthenticationChanges {
                             await refreshProviderAuthentication()
                         }
+                        guard self.token == token, !Task.isCancelled else { return }
                         applyCloudSyncEvents(pendingEvents)
                         let hasDirectoryChanges = pendingEvents.contains {
                             $0.eventType != "message.upsert"
@@ -5532,6 +5544,9 @@ final class AppModel: ObservableObject {
 
     private func rebuildConversationCatalog() async {
         guard let account else { return }
+        guard previewMode || hasHydratedSessionVisibility else { return }
+        let expectedToken = token
+        let visibilityRevision = sessionVisibilityMutationRevision
         let canonicalConversations = await api.cachedChatConversations()
         canonicalConversationIDBySessionID = canonicalConversations.reduce(into: [:]) { result, item in
             result[item.id] = item.id
@@ -5541,6 +5556,7 @@ final class AppModel: ObservableObject {
         }
         let canonicalParticipantsBySessionId = await api.cachedChatParticipantsBySessionId()
         let canonicalForksBySessionId = await api.cachedChatSessionForksById()
+        guard self.account?.accountId == account.accountId, token == expectedToken, visibilityRevision == sessionVisibilityMutationRevision else { return }
         for (sessionId, fork) in canonicalForksBySessionId {
             sessionForksById[sessionId] = fork
         }
@@ -5564,7 +5580,7 @@ final class AppModel: ObservableObject {
                 sessionForksById: forkSnapshot
             )
         }.value
-        guard self.account?.accountId == account.accountId else { return }
+        guard self.account?.accountId == account.accountId, token == expectedToken, visibilityRevision == sessionVisibilityMutationRevision else { return }
         let projected = rebuilt.map { conversation in
             var copy = conversation
             if markedUnreadSnapshot.contains(conversation.sessionId), !copy.hasUnreadAttention {
@@ -5977,6 +5993,10 @@ final class AppModel: ObservableObject {
         var deviceListChanged = false
 
         for event in events {
+            if let visibility = event.visibility {
+                applyCloudSessionVisibility(visibility)
+                continue
+            }
             if ["call.created", "call.updated"].contains(event.eventType),
                let call = event.payload?.call {
                 applyCallSnapshot(call)
@@ -6031,6 +6051,7 @@ final class AppModel: ObservableObject {
                 "session.marked_unread", "session.unmarked_unread"
             ].contains(event.eventType),
                let sessionId = event.payload?.sessionId?.nonEmpty ?? event.peerAccountId?.nonEmpty {
+                sessionVisibilityMutationRevision &+= 1
                 switch event.eventType {
                 case "session.hidden":
                     if !deletedCloudSessionIds.contains(sessionId) { hiddenCloudSessionIds.insert(sessionId) }
@@ -6162,12 +6183,31 @@ final class AppModel: ObservableObject {
     }
 
     private func persistCloudSnapshot(accountId: String) async {
+        guard account?.accountId == accountId else { return }
         await wireCache.save(
             accountId: accountId,
             cursor: cloudSyncCursor,
             messagesByPeer: cloudMessagesByPeer,
-            sessionForksById: hasHydratedForkLineage ? sessionForksById : nil
+            sessionForksById: hasHydratedForkLineage ? sessionForksById : nil,
+            visibility: hasHydratedSessionVisibility ? currentCloudSessionVisibility : nil
         )
+    }
+
+    private var currentCloudSessionVisibility: CloudSessionVisibility {
+        CloudSessionVisibility(hiddenSessionIds: hiddenCloudSessionIds.sorted(), deletedSessionIds: deletedCloudSessionIds.sorted(),
+            pinnedSessionIds: pinnedSessionIds.sorted(), mutedSessionIds: mutedSessionIds.sorted(),
+            unreadSessionIds: markedUnreadSessionIds.sorted(), pinnedGroupSpaceIds: pinnedGroupSpaceIds.sorted())
+    }
+
+    private func applyCloudSessionVisibility(_ visibility: CloudSessionVisibility) {
+        hiddenCloudSessionIds = Set(visibility.hiddenSessionIds.compactMap(\.nonEmpty))
+        deletedCloudSessionIds = Set(visibility.deletedSessionIds.compactMap(\.nonEmpty))
+        pinnedSessionIds = Set((visibility.pinnedSessionIds ?? []).compactMap(\.nonEmpty))
+        mutedSessionIds = Set((visibility.mutedSessionIds ?? []).compactMap(\.nonEmpty))
+        markedUnreadSessionIds = Set((visibility.unreadSessionIds ?? []).compactMap(\.nonEmpty))
+        pinnedGroupSpaceIds = Set((visibility.pinnedGroupSpaceIds ?? []).compactMap(\.nonEmpty))
+        hasHydratedSessionVisibility = true
+        sessionVisibilityMutationRevision &+= 1
     }
 
     private func setAgentActivity(_ activity: AgentActivity, conversationId: String) {
@@ -6572,13 +6612,14 @@ final class AppModel: ObservableObject {
         deviceErrorMessage = nil
         deviceReviewRequired = false
         if let snapshot = await wireCache.load(accountId: response.account.accountId) {
+            if let visibility = snapshot.visibility { applyCloudSessionVisibility(visibility) }
             cloudMessagesByPeer = snapshot.messagesByPeer
             sessionForksById = snapshot.sessionForksById ?? [:]
             rebuildCloudMessageIndices()
             applyLatestSyncedAgentModelChanges()
             cloudSyncCursor = snapshot.cursor
             lastMessageSyncAt = snapshot.savedAt
-            hasHydratedWireSnapshot = snapshot.cursor != "0"
+            hasHydratedWireSnapshot = snapshot.cursor != "0" && snapshot.visibility != nil
             hasHydratedForkLineage = snapshot.sessionForksById != nil
                 && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
         }

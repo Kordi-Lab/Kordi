@@ -69,6 +69,9 @@ pub(super) fn load_state(
     conn: &Connection,
     account_id: &str,
 ) -> Result<ChatSyncLocalState, String> {
+    let _read_snapshot = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
     let cursor = load_cursor_state(conn, account_id)?;
     let conversations = load_conversations(conn, account_id)?;
     let direct_conversation_ids = conversations
@@ -128,6 +131,7 @@ pub(super) fn load_state(
         &direct_conversation_ids,
     );
     Ok(ChatSyncLocalState {
+        visibility: super::visibility::load_visibility(conn, account_id)?,
         account_id: account_id.to_string(),
         cursor: cursor.cursor,
         last_stream_seq: cursor.last_stream_seq,
@@ -198,7 +202,18 @@ pub(super) fn load_message_refs(
 }
 
 pub(super) fn apply(request: ChatSyncApplyRequest) -> Result<ChatSyncApplyResult, String> {
-    let mut conn = open_db()?;
+    let mut conn = if let Some(active) =
+        crate::cloud_account_paths::cloud_account_storage_current()?
+    {
+        if active.account_id != request.account_id {
+            return Err("Chat sync belongs to a different signed-in account".into());
+        }
+        let storage = std::path::PathBuf::from(active.storage_root);
+        let parent = storage.parent().ok_or("Invalid account storage root")?;
+        super::super::open_db_at_path(&parent.join(super::super::CANONICAL_SESSIONS_DB_FILENAME))?
+    } else {
+        open_db()?
+    };
     apply_on_connection(&mut conn, request)
 }
 
@@ -262,6 +277,12 @@ pub(super) fn apply_on_connection(
     for event in &request.events {
         apply_event(&tx, account_id, event)?;
     }
+    super::visibility::apply_visibility_events(
+        &tx,
+        account_id,
+        &request.events,
+        request.bootstrap,
+    )?;
 
     if let Some(cursor) = request
         .cursor

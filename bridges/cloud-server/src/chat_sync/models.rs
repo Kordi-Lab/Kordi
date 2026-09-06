@@ -270,6 +270,7 @@ pub struct CloudSessionPinSummary {
 
 #[derive(Debug, Serialize)]
 pub struct BootstrapResponse {
+    pub session_visibility: super::visibility::SessionVisibilitySnapshot,
     pub protocol_version: i32,
     pub conversations: Vec<ConversationSnapshot>,
     pub latest_messages: Vec<MessageSnapshot>,

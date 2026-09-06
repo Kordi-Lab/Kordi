@@ -22,6 +22,7 @@ import type {
 } from './cloudAgents';
 import {
   loadCloudSessionVisibility,
+  hasCachedCloudSessionVisibility,
   saveCloudSessionVisibility,
   type CloudSessionPinsById,
   type CloudSessionTitlesById,
@@ -285,6 +286,7 @@ export function useCloudAccountLifecycleState({
     if (
       !account
       || messagesCacheAccountRef.current !== account.accountId
+      || !hasCachedCloudSessionVisibility(account.accountId)
     ) return;
     saveCloudSessionVisibility(account.accountId, {
       hiddenSessionIds,

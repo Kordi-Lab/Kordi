@@ -98,6 +98,8 @@ export async function reconcileCloudProviderAuthSnapshots({
     || session.accountId !== accountId
     || !isCurrent()
   ) return 'not-ready';
+  if ((intent.accountId && intent.accountId !== session.accountId)
+    || (intent.deviceId && intent.deviceId !== session.deviceId)) return 'stale';
 
   const reconciliationTargets = cloudProviderAuthReconciliationTargets(
     desktopAuthState,
@@ -156,7 +158,6 @@ export function useCloudProviderAuthSnapshotSync({
   route,
   desktopAuthState,
   intent,
-  initialMessagesSettled,
   reportWarning,
 }: {
   account: CloudAccount | null;
@@ -188,7 +189,8 @@ export function useCloudProviderAuthSnapshotSync({
   }, []);
 
   useEffect(() => {
-    if (!account || !initialMessagesSettled || !intent) return;
+    if (!account || !intent) return;
+    if (intent.accountId && intent.accountId !== account.accountId) return;
     const provider = canonicalCloudProviderId(intent.providerId);
     const syncKey = [
       account.accountId,
@@ -248,7 +250,6 @@ export function useCloudProviderAuthSnapshotSync({
     account,
     client,
     desktopAuthState,
-    initialMessagesSettled,
     intent,
     reportWarning,
     route,

@@ -159,6 +159,9 @@ pub(super) fn apply_event(
         return Err("Unsupported chat sync protocol version".to_string());
     }
     let event_type = required_text(event, "type")?;
+    if event_type == "session.visibility.snapshot" {
+        return Ok(());
+    }
     let critical = event
         .get("critical")
         .and_then(Value::as_bool)

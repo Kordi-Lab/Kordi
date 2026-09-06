@@ -1421,6 +1421,7 @@ struct CloudChatRealtimeConnection: Hashable {
 }
 
 struct CloudChatBootstrapResponse: Codable, Hashable {
+    var sessionVisibility: CloudSessionVisibility? = nil
     let protocolVersion: Int
     let conversations: [CloudChatConversation]
     let latestMessages: [CloudChatMessage]
@@ -1430,6 +1431,7 @@ struct CloudChatBootstrapResponse: Codable, Hashable {
     let serverTime: String
 
     enum CodingKeys: String, CodingKey {
+        case sessionVisibility = "session_visibility"
         case protocolVersion = "protocol_version"
         case conversations
         case latestMessages = "latest_messages"
@@ -1485,6 +1487,7 @@ struct CloudSyncEvent: Codable, Hashable {
     let messageId: String?
     let payload: CloudSyncEventPayload?
     let occurredAt: String
+    var visibility: CloudSessionVisibility? = nil
 }
 
 struct CloudSyncEventPayload: Codable, Hashable {

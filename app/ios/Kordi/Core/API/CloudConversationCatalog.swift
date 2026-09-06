@@ -566,7 +566,7 @@ enum CloudConversationCatalog {
                 peerAccountId: peerAccountId,
                 agentId: resolvedTargetId,
                 ownerDisplayName: ownerName,
-                displayName: sessionTitle(firstPrompt) ?? agentName,
+                displayName: nonGenericTitle(canonical?.preferences.personalTitle) ?? nonGenericTitle(canonical?.sharedTitle) ?? sessionTitle(firstPrompt) ?? agentName,
                 lastMessage: latest.map { CloudMessageCodec.previewText($0) } ?? definition?.description?.nonEmpty ?? "No messages yet",
                 lastAttachment: previewAttachment(latest),
                 lastActivityAt: latest.map { parseCloudDate($0.createdAt) } ?? definition.map { parseCloudDate($0.updatedAt) } ?? .distantPast,

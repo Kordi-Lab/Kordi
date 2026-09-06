@@ -65,6 +65,7 @@ actor CloudAPIClient {
     private var chatMessagesById: [String: CloudChatMessage] = [:]
     private var chatBootstrapTask: Task<CloudChatBootstrapResponse, Error>?
     private var lastChatBootstrap: CloudChatBootstrapResponse?
+    private var chatBootstrapGeneration = 0
 
     init(
         baseURL: URL = configuredBaseURL,
@@ -336,6 +337,7 @@ actor CloudAPIClient {
     }
 
     private func resetChatCache() {
+        chatBootstrapGeneration &+= 1
         chatConversationsById = [:]
         chatConversationsBySessionId = [:]
         chatMessagesById = [:]
@@ -1861,8 +1863,10 @@ actor CloudAPIClient {
     private func bootstrapChat(token: String, force: Bool = false) async throws -> CloudChatBootstrapResponse {
         if !force, let cached = lastChatBootstrap { return cached }
         if let task = chatBootstrapTask { return try await task.value }
+        let expectedAccount = activeAccountId
+        let expectedGeneration = chatBootstrapGeneration
         let task = Task { [self] in
-            let response: CloudChatBootstrapResponse = try await send(
+            var response: CloudChatBootstrapResponse = try await send(
                 path: "/v2/chat/sync/bootstrap",
                 method: "GET",
                 token: token,
@@ -1871,18 +1875,21 @@ actor CloudAPIClient {
             guard response.protocolVersion == 2 else {
                 throw CloudAPIError(code: "unsupported_protocol", message: "This Kordi version cannot read the reliable chat stream.", statusCode: 0)
             }
+            if response.sessionVisibility == nil { response.sessionVisibility = try await listSessionVisibility(token: token) }
+            try Task.checkCancellation()
             return response
         }
         chatBootstrapTask = task
         do {
             let response = try await task.value
+            guard activeAccountId == expectedAccount, chatBootstrapGeneration == expectedGeneration, !Task.isCancelled else { throw CancellationError() }
             chatBootstrapTask = nil
             lastChatBootstrap = response
             response.conversations.forEach(remember)
             response.latestMessages.forEach { chatMessagesById[$0.id] = $0 }
             return response
         } catch {
-            chatBootstrapTask = nil
+            if chatBootstrapGeneration == expectedGeneration { chatBootstrapTask = nil }
             throw error
         }
     }
@@ -2063,7 +2070,11 @@ actor CloudAPIClient {
                 )
             }
         }
-        return titleEvents + messageEvents + pinEvents
+        let visibilityEvents = bootstrap.sessionVisibility.map { [CloudSyncEvent(
+            eventId: "bootstrap:visibility:\(bootstrap.lastStreamSequence)", eventType: "session.visibility.snapshot",
+            peerAccountId: nil, messageId: nil, payload: nil, occurredAt: bootstrap.serverTime, visibility: $0
+        )] } ?? []
+        return visibilityEvents + titleEvents + messageEvents + pinEvents
     }
 
     private func projectedEvents(from event: CloudChatEvent) throws -> [CloudSyncEvent] {

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		76A00FABDC02FA26E7C31DA4 /* CloudInitialStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 134F1B1ED00BEA5F6A8E081E /* CloudInitialStateTests.swift */; };
 		AB82AE16C983CF38F5213001 /* AgentSubsessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB82AE16C983CF38F5213002 /* AgentSubsessionView.swift */; };
 		AB82AE16C983CF38F5213003 /* SubsessionConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB82AE16C983CF38F5213004 /* SubsessionConversation.swift */; };
 		013F4527A10AEF91C682C06E /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 092A3B6DDEAE95871DABB253 /* LoginView.swift */; };
@@ -154,6 +155,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		134F1B1ED00BEA5F6A8E081E /* CloudInitialStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudInitialStateTests.swift; sourceTree = "<group>"; };
 		AB82AE16C983CF38F5213002 /* AgentSubsessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSubsessionView.swift; sourceTree = "<group>"; };
 		AB82AE16C983CF38F5213004 /* SubsessionConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubsessionConversation.swift; sourceTree = "<group>"; };
 		092A3B6DDEAE95871DABB253 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
@@ -499,6 +501,7 @@
 				23CAA0002D51BCCCF6B07B66 /* CloudMessageCodecTests.swift */,
 				DA243B6979BEEBADE478E33E /* CloudMessageStateProjectorTests.swift */,
 				B37C62BFC4F16FEF6200E1C5 /* CloudModelDecodingTests.swift */,
+				134F1B1ED00BEA5F6A8E081E /* CloudInitialStateTests.swift */,
 				B8A9FFC456D58053BB00863A /* CloudOAuthCallbackTests.swift */,
 				45283A731378FF0892492602 /* CloudWireCacheTests.swift */,
 				8D777A5F9528D93CB115E881 /* CompanionChatPanelTests.swift */,
@@ -749,6 +752,7 @@
 				C8BD24AA4D691A02181E4FB4 /* CloudMessageCodecTests.swift in Sources */,
 				12DF1537FF5C73FEE11B47E8 /* CloudMessageStateProjectorTests.swift in Sources */,
 				29FCDC50AB216E5B75E180D2 /* CloudModelDecodingTests.swift in Sources */,
+				76A00FABDC02FA26E7C31DA4 /* CloudInitialStateTests.swift in Sources */,
 				FD5B3FEC4C203C259378AB38 /* CloudOAuthCallbackTests.swift in Sources */,
 				E9903E8C12FFD9B876610EAC /* CloudWireCacheTests.swift in Sources */,
 				0AE339A604A15C66AF7F3BFA /* CompanionChatPanelTests.swift in Sources */,

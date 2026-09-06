@@ -351,6 +351,7 @@ async fn bootstrap(
     };
     match store::bootstrap(state.db_pool(), &session.account_id).await {
         Ok(snapshot) => Json(BootstrapResponse {
+            session_visibility: snapshot.session_visibility,
             protocol_version: PROTOCOL_VERSION,
             conversations: snapshot.conversations,
             latest_messages: snapshot.latest_messages,

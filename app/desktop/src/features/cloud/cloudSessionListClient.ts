@@ -13,6 +13,21 @@ type CloudSessionListRequest = <TResponse>(
   fallbackMessage: string,
 ) => Promise<TResponse>;
 
+export function requireCloudSessionVisibility(value: unknown): CloudSessionVisibility {
+  const record = value as Partial<CloudSessionVisibility> | null;
+  if (!record || !Array.isArray(record.hiddenSessionIds) || !Array.isArray(record.deletedSessionIds)) {
+    throw new Error('Chat visibility snapshot is unavailable.');
+  }
+  const list = (key: keyof CloudSessionVisibility) => {
+    const values = record[key] ?? [];
+    if (!Array.isArray(values) || !values.every(value => typeof value === 'string')) throw new Error('Invalid chat visibility snapshot.');
+    return values;
+  };
+  return {hiddenSessionIds:list('hiddenSessionIds'),deletedSessionIds:list('deletedSessionIds'),
+    pinnedSessionIds:list('pinnedSessionIds'),mutedSessionIds:list('mutedSessionIds'),
+    unreadSessionIds:list('unreadSessionIds'),pinnedGroupSpaceIds:list('pinnedGroupSpaceIds')};
+}
+
 export class CloudSessionListClient {
   constructor(private readonly request: CloudSessionListRequest) {}
 

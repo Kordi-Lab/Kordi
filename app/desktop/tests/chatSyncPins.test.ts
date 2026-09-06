@@ -51,6 +51,7 @@ test('bootstrap pin snapshots replace stale private and shared state', async () 
     fetchImpl: async () => new Response(JSON.stringify({
       protocol_version: 2,
       conversations: [conversation],
+      session_visibility: {hiddenSessionIds:[],deletedSessionIds:[],pinnedSessionIds:[],mutedSessionIds:[],unreadSessionIds:[],pinnedGroupSpaceIds:[]},
       latest_messages: [message],
       session_pins: [{
         sessionId,

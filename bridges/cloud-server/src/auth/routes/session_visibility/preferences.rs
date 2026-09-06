@@ -3,64 +3,6 @@ use sqlx_core::transaction::Transaction;
 use sqlx_postgres::Postgres;
 use uuid::Uuid;
 
-pub(super) struct SessionListPreferences {
-    pub pinned_session_ids: Vec<String>,
-    pub muted_session_ids: Vec<String>,
-    pub unread_session_ids: Vec<String>,
-    pub pinned_group_space_ids: Vec<String>,
-}
-
-pub(super) async fn load_session_list_preferences(
-    pool: &PgPool,
-    account_id: &str,
-) -> Result<SessionListPreferences, sqlx_core::error::Error> {
-    let rows: Vec<(String, bool, bool, bool)> = query_as(
-        "SELECT COALESCE(conversation.legacy_session_id, conversation.conversation_id::text), \
-                member.pinned_at IS NOT NULL, \
-                member.muted_until IS NOT NULL AND member.muted_until > NOW(), \
-                member.marked_unread_at IS NOT NULL \
-         FROM cloud_chat_conversation_members member \
-         JOIN cloud_chat_conversations conversation \
-           ON conversation.conversation_id = member.conversation_id \
-         WHERE member.account_id = $1 AND member.membership_state = 'active' \
-           AND (member.pinned_at IS NOT NULL OR member.marked_unread_at IS NOT NULL OR \
-                (member.muted_until IS NOT NULL AND member.muted_until > NOW())) \
-         ORDER BY conversation.updated_at DESC, conversation.conversation_id ASC",
-    )
-    .bind(account_id)
-    .fetch_all(pool)
-    .await?;
-    let mut preferences = SessionListPreferences {
-        pinned_session_ids: Vec::new(),
-        muted_session_ids: Vec::new(),
-        unread_session_ids: Vec::new(),
-        pinned_group_space_ids: Vec::new(),
-    };
-    for (session_id, pinned, muted, unread) in rows {
-        if pinned {
-            preferences.pinned_session_ids.push(session_id.clone());
-        }
-        if muted {
-            preferences.muted_session_ids.push(session_id.clone());
-        }
-        if unread {
-            preferences.unread_session_ids.push(session_id);
-        }
-    }
-    preferences.pinned_group_space_ids = query_as::<_, (String,)>(
-        "SELECT group_space_id FROM cloud_account_group_space_preferences \
-         WHERE account_id = $1 AND pinned_at IS NOT NULL \
-         ORDER BY updated_at DESC, group_space_id ASC",
-    )
-    .bind(account_id)
-    .fetch_all(pool)
-    .await?
-    .into_iter()
-    .map(|(group_space_id,)| group_space_id)
-    .collect();
-    Ok(preferences)
-}
-
 pub(super) async fn clear_session_pin(
     transaction: &mut Transaction<'_, Postgres>,
     account_id: &str,
