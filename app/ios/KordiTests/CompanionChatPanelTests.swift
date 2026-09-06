@@ -4,6 +4,14 @@ import Testing
 @testable import Kordi
 
 struct ConversationBoundaryTests {
+@Test func askAgentOmitsTheContextNoticeWithoutChangingItsPrivateScope() throws {
+    let source = try String(contentsOf: URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Kordi/Features/Conversation/CompanionChatPanel.swift"),encoding:.utf8)
+    #expect(!source.contains("CompanionContextStrip"))
+    #expect(source.contains("Only you · Agent session"))
+    #expect(source.contains("companionContext: sourceContext"))
+}
+
 @Test func threadViewsEnableOnlyActualReplyQuotes() throws {
     let source = try String(contentsOf: URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent()
         .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift"),encoding:.utf8)

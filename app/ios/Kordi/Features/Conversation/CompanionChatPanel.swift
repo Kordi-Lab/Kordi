@@ -208,7 +208,6 @@ struct CompanionChatPanel: View {
                     onClose: dismiss.callAsFunction
                 )
 
-                CompanionContextStrip(sourceName: sourceConversation.displayName)
 
                 ConversationView(
                     conversation: selectedConversation,
@@ -317,26 +316,6 @@ private struct CompanionPanelHeader: View {
         .padding(.vertical, 5)
         .background(.bar)
         .overlay(alignment: .bottom) { Divider() }
-    }
-}
-
-private struct CompanionContextStrip: View {
-    let sourceName: String
-
-    var body: some View {
-        Label {
-            Text("Using \(sourceName) as context")
-                .lineLimit(1)
-        } icon: {
-            Image(systemName: "link")
-                .accessibilityHidden(true)
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemBackground))
-        .accessibilityElement(children: .combine)
     }
 }
 
