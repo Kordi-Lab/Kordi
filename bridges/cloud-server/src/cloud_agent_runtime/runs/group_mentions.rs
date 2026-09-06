@@ -247,14 +247,8 @@ pub(super) fn persona_instruction(
     } else {
         "Do not delegate to another agent in this response."
     };
-    let responding_name = message
-        .target_cloud_agent_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("Kordi");
     Some(format!(
-        "You are {responding_name}, the currently responding agent in this Kordi group conversation.\n{relationship}\n{delegation}"
+        "You are the currently responding Agent in this Kordi group conversation.\n{relationship}\n{delegation}"
     ))
 }
 
@@ -450,7 +444,7 @@ mod tests {
         assert!(!self_directory.contains("@KordiResearchAgent"));
         let self_persona = persona_instruction(&envelope, "acct_owner", "cloud-agent:acct_owner")
             .expect("self persona");
-        assert!(self_persona.starts_with("You are Kordi, the currently responding agent"));
+        assert!(self_persona.starts_with("You are the currently responding Agent"));
         assert!(self_persona.contains("\"my Kordi\" means you"));
         let custom_persona = persona_instruction(&envelope, "acct_owner", "cloud_agent_scout")
             .expect("custom persona");

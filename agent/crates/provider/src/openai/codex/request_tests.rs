@@ -150,3 +150,30 @@ fn sanitize_messages_for_codex_resets_pending_tool_calls_after_user_turn() {
     assert_eq!(sanitized.len(), 2);
     assert_eq!(sanitized[1]["role"], "user");
 }
+#[test]
+fn runtime_identity_remains_at_the_tail_for_every_provider() {
+    let mut history = vec![json!({"role":"user","content":"before"}), json!({"role":"assistant","content":"answer"})];
+    let before = convert_messages_for_codex(&history);
+    history.push(json!({"role":"developer","content":"Owner B; requester A"}));
+    history.push(json!({"role":"user","content":"Who are you?"}));
+    let after = convert_messages_for_codex(&history);
+    assert_eq!(&after[..before.len()], before.as_slice());
+    assert_eq!(after[2]["role"], "developer");
+    let openai = crate::transforms::convert_messages_for_openai(&history);
+    assert_eq!(openai[2]["role"], "developer");
+    let anthropic = crate::transforms::convert_messages_for_anthropic(&history);
+    assert_eq!(anthropic[2]["content"], "Owner B; requester A");
+    let google = crate::google::convert_messages_google(&history);
+    assert_eq!(google[2]["parts"][0]["text"], "Owner B; requester A");
+    let request = crate::CompletionRequest {
+        system_prompt: "Stable Agent policy".into(), messages: history[..2].to_vec(),
+        tools: vec![json!({"type":"function","function":{"name":"read","parameters":{"type":"object"}}})],
+        extra_tool_schemas: vec![], model: "gpt-5.4".into(), max_tokens: None, stream: true, thinking: Some("medium".into()),
+    };
+    let mut before = super::build_codex_request_body(&request);
+    let mut after = super::build_codex_request_body(&crate::CompletionRequest { messages: history, ..request });
+    let previous_input = before.as_object_mut().unwrap().remove("input").unwrap();
+    let next_input = after.as_object_mut().unwrap().remove("input").unwrap();
+    assert_eq!(&next_input.as_array().unwrap()[..previous_input.as_array().unwrap().len()], previous_input.as_array().unwrap().as_slice());
+    assert_eq!(serde_json::to_vec(&before).unwrap(), serde_json::to_vec(&after).unwrap());
+}

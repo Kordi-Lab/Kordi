@@ -140,6 +140,7 @@ fn provider_auth() -> ProviderAuthMaterial {
 
 fn run() -> CloudAgentRun {
     CloudAgentRun {
+        turn_identity: None,
         history_messages: Vec::new(),
         subsession_id: None,
         subsession_write_scope: Vec::new(),
@@ -532,4 +533,42 @@ async fn group_directory_is_disclosed_only_after_explicit_tool_call() {
     assert!(serde_json::to_string(&messages[1])
         .unwrap()
         .contains("Retrieved Group Participant"));
+}
+#[tokio::test]
+async fn runtime_identity_is_frozen_across_tool_calls_and_appended_after_history() {
+    let mut first = run();
+    first.subsession_id = Some("child".into());
+    let identity = kordi_core::types::RuntimeIdentity {
+        request_id: "request-a".into(), agent_id: "agent-owner".into(), agent_name: "Owner's Kordi".into(),
+        owner_account_id: first.owner_account_id.clone(), owner_name: "Owner".into(),
+        requester_account_id: first.requester_account_id.clone(), requester_name: "Visitor".into(), request_policy: None,
+    };
+    first.turn_identity = Some(identity.clone());
+    first.history_messages = vec![json!({"role":"user","content":"Earlier question"}), json!({"role":"assistant","content":"Earlier answer"})];
+    let provider = FakeProvider::new(vec![
+        ModelProviderResponse::ToolCalls(vec![ModelToolCall { id: "lookup".into(), name: "read_session".into(), arguments: json!({"mode":"participants"}) }]),
+        ModelProviderResponse::FinalText("I am Owner's Kordi".into()),
+        ModelProviderResponse::FinalText("I am your Kordi".into()),
+    ]);
+    let client = RecordingClient::default();
+    run_model_loop(&client, &provider, &first, &sandbox_handle(), provider_auth()).await.unwrap();
+    let seen = provider.seen_messages.lock().unwrap().clone();
+    assert_eq!(seen[0][3], identity.provider_message());
+    assert_eq!(&seen[1][..seen[0].len()], seen[0].as_slice());
+    assert!(!seen[0][0]["content"].as_str().unwrap().contains("Visitor"));
+    let mut follow = first.clone();
+    follow.requester_account_id = follow.owner_account_id.clone();
+    follow.turn_identity.as_mut().unwrap().request_id = "request-b".into();
+    follow.turn_identity.as_mut().unwrap().requester_account_id = follow.owner_account_id.clone();
+    follow.turn_identity.as_mut().unwrap().requester_name = "Renamed owner".into();
+    follow.history_messages.extend([
+        json!({"role":"runtimeIdentity","content":identity}),
+        json!({"role":"user","content":first.prompt}),
+        json!({"role":"assistant","content":"I am Owner's Kordi"}),
+    ]);
+    follow.prompt = "And who owns you?".into();
+    run_model_loop(&client, &provider, &follow, &sandbox_handle(), provider_auth()).await.unwrap();
+    let seen = provider.seen_messages.lock().unwrap();
+    assert_eq!(&seen[2][..seen[0].len()], seen[0].as_slice());
+    assert_eq!(seen[2][6], follow.turn_identity.as_ref().unwrap().provider_message());
 }

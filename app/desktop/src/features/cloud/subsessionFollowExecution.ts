@@ -28,7 +28,7 @@ export async function discoverSubsessionFollowups() {
           requesterAccountId:request.senderAccountId,prompt:request.text,idempotencyKey:`subsession:${request.messageId}`,
         });
         if (!lease || !await lease.admitted()) return;
-        let turn=await startDesktopChatMessage(request.subsessionId,promptTextForCloudAgentMention(request.text),[],null,request.contextMessages??[],[],source.parentSessionId,request.messageId,lease.deadline);
+        let turn=await startDesktopChatMessage(request.subsessionId,promptTextForCloudAgentMention(request.text),[],null,lease.contextMessages(request.contextMessages??[]),[],source.parentSessionId,request.messageId,lease.deadline);
         turnId=turn.id;
         lease.attach(turn.id);
         let last='';

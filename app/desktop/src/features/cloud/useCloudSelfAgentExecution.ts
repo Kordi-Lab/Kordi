@@ -413,7 +413,7 @@ export function useCloudSelfAgentExecution({
                 fallbackRoute: defaultRoute,
                 requestRoute,
               }),
-              contextMessages,
+              lease.contextMessages(contextMessages),
               [],
               null,
               request.messageId,

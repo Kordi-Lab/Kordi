@@ -174,7 +174,7 @@ export async function respondToCloudGroupAgentMention(
         .map((attachment) => attachment.localPath?.trim() || '')
         .filter(Boolean),
       requestedRoute,
-      contextMessages,
+      lease.contextMessages(contextMessages),
       cloudVisibleTaskRecordsForSession(
         runtime.sessionActivity(),
         envelope.groupId,

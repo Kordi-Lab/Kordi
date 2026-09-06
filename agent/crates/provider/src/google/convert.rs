@@ -44,7 +44,7 @@ pub fn convert_messages_google(messages: &[Value]) -> Vec<Value> {
         .filter_map(|msg| {
             let role = msg.get("role").and_then(|value| value.as_str())?;
             match role {
-                "user" => {
+                "user" | "developer" => {
                     if let Some(arr) = msg.get("content")?.as_array() {
                         let parts: Vec<Value> = arr
                             .iter()

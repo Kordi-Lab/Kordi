@@ -18,8 +18,7 @@ pub(super) async fn pending(
     for (run, id, message, actor, text) in rows {
         let ordinary:Vec<(String,String,String,i64)>=query_as("SELECT c.message_id::text,a.display_name,c.text,(extract(epoch from c.created_at)*1000)::bigint FROM cloud_agent_subsession_chat c JOIN cloud_accounts a ON a.account_id=c.sender_account_id WHERE c.subsession_id=$1 AND c.run_id IS NULL AND c.sequence<(SELECT sequence FROM cloud_agent_subsession_chat WHERE message_id::text=$2) ORDER BY c.sequence DESC LIMIT 64")
             .bind(id).bind(&message).fetch_all(state.db_pool()).await.map_err(|_|axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-        let mut context:Vec<Value>=ordinary.into_iter().rev().map(|(id,name,text,time)|json!({"id":id,"authorName":name,"authorKind":"person","text":text,"createdAtMs":time})).collect();
-        context.push(json!({"id":format!("requester:{message}"),"authorName":"Current requester","authorKind":"agent","contextRole":"system","text":format!("The current follow-up requester has account ID {}. This does not change the Agent identity or owner.",json!(actor))}));
+        let context:Vec<Value>=ordinary.into_iter().rev().map(|(id,name,text,time)|json!({"id":id,"authorName":name,"authorKind":"person","text":text,"createdAtMs":time})).collect();
         pending.push(json!({"runId":run,"subsessionId":id,"messageId":message,"senderAccountId":actor,"text":text,"contextMessages":context}));
     }
     Ok(Json(pending))
@@ -56,8 +55,9 @@ pub(super) async fn claim(
             .bind(&run).bind(executor).execute(&mut *tx).await?;
     }
     tx.commit().await?;
+    let identity = if eligible.0 { Some(super::runs::identity::identity_for_run(pool, &run).await?) } else { None };
     Ok(Some(
-        json!({"runId":run,"acquired":eligible.0,"leaseSeconds":45}),
+        json!({"runId":run,"acquired":eligible.0,"leaseSeconds":45,"turnIdentity":identity}),
     ))
 }
 
@@ -164,10 +164,22 @@ pub(crate) async fn history(pool: &PgPool, run: &str) -> RunResult<Vec<Value>> {
         .flatten()
         .filter_map(|m| Some(json!({"role":m["role"].as_str()?,"content":m["text"].as_str()?})))
         .collect();
-    let rows:Vec<(String,String,String)>=query_as("SELECT a.display_name,c.text,c.response_text FROM cloud_agent_subsession_chat c JOIN cloud_accounts a ON a.account_id=c.sender_account_id WHERE c.subsession_id=$1 AND c.sequence<$2 ORDER BY c.sequence DESC LIMIT 128")
+    // Replay frozen metadata alongside the original input, not labels looked up
+    // today. Older turns without a snapshot retain their existing representation.
+    let initial_identity: Option<(Value,)> = query_as("SELECT turn_identity FROM cloud_agent_fallback_runs r WHERE r.subsession_id=$1 AND r.parent_run_id IS NOT NULL AND r.turn_identity IS NOT NULL ORDER BY created_at LIMIT 1")
+        .bind(id).fetch_optional(pool).await?;
+    if let Some((identity,)) = initial_identity {
+        result.insert(0, json!({"role":"runtimeIdentity","content":identity}));
+    }
+    let rows:Vec<(String,String,String,Option<Value>,Option<String>)>=query_as("SELECT a.display_name,c.text,c.response_text,r.turn_identity,r.prompt FROM cloud_agent_subsession_chat c JOIN cloud_accounts a ON a.account_id=c.sender_account_id LEFT JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND c.sequence<$2 ORDER BY c.sequence DESC LIMIT 128")
         .bind(id).bind(sequence).fetch_all(pool).await?;
-    for (name, text, response) in rows.into_iter().rev() {
-        result.push(json!({"role":"user","content":format!("Participant {}: {text}",json!(name))}));
+    for (name, text, response, identity, prompt) in rows.into_iter().rev() {
+        if let Some(identity) = identity {
+            result.push(json!({"role":"runtimeIdentity","content":identity}));
+            result.push(json!({"role":"user","content":prompt.unwrap_or(text)}));
+        } else {
+            result.push(json!({"role":"user","content":format!("Participant {}: {text}",json!(name))}));
+        }
         if !response.is_empty() {
             result.push(json!({"role":"assistant","content":response}));
         }

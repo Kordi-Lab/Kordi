@@ -173,3 +173,51 @@ async fn shared_context_is_bounded_and_does_not_include_the_member_directory() -
     assert!(!kordi_session::store::get_entries(&runtime.setup.conn, runtime.session_id())?.is_empty());
     Ok(())
 }
+#[allow(clippy::await_holding_lock, reason = "global env lock; #235")]
+#[tokio::test]
+async fn runtime_identity_is_append_only_and_keeps_the_full_prompt_stable() -> Result<()> {
+    let _lock = env_lock().lock().unwrap();
+    let test_home = tempfile::tempdir()?;
+    let _home = EnvVarGuard::set_path("HOME", test_home.path());
+    let _openai = EnvVarGuard::set_value("OPENAI_API_KEY", "test-openai-key");
+    Settings { default_provider: Some("openai".into()), default_model: Some("gpt-4o-mini".into()), ..Settings::default() }.save_global()?;
+    let cwd = tempfile::tempdir()?;
+    let mut runtime = DesktopRuntimeSession::create_with_id(cwd.path().to_path_buf(), "identity-test").await?;
+    let mut identity = kordi_core::types::RuntimeIdentity {
+        request_id: "request-a".into(), agent_id: "agent-owner".into(), agent_name: "Owner's Kordi".into(),
+        owner_account_id: "owner".into(), owner_name: "Owner".into(),
+        requester_account_id: "visitor".into(), requester_name: "Visitor".into(), request_policy: None,
+    };
+    let message = |identity: &kordi_core::types::RuntimeIdentity| DesktopChatContextMessage {
+        id: identity.request_id.clone(), author_name: "Kordi runtime".into(), author_kind: "agent".into(),
+        context_role: Some("runtimeIdentity".into()), text: serde_json::to_string(identity).unwrap(), created_at_ms: None,
+    };
+    runtime.sync_shared_context_messages(&[message(&identity)])?;
+    runtime.freeze_identity_prompt()?;
+    let prompt = runtime.setup.system_prompt.clone();
+    let context = kordi_session::context::build_context(&runtime.setup.conn, runtime.session_id())?;
+    let first = kordi_core::agent_session::messages_to_provider(&context.messages);
+    assert_eq!(first[0]["role"], "developer");
+    assert!(first[0]["content"].as_str().unwrap().contains("Visitor"));
+    runtime.sync_shared_context_messages(&[message(&identity)])?;
+    assert_eq!(kordi_core::agent_session::messages_to_provider(&kordi_session::context::build_context(&runtime.setup.conn, runtime.session_id())?.messages), first);
+
+    identity.request_id = "request-b".into();
+    identity.requester_account_id = "owner".into();
+    identity.requester_name = "Owner renamed".into();
+    identity.agent_name = "Renamed Agent".into();
+    runtime.sync_context_messages(&[message(&identity)])?;
+    runtime.setup.system_prompt = "A refreshed profile must not replace an active prefix".into();
+    runtime.freeze_identity_prompt()?;
+    assert_eq!(runtime.setup.system_prompt, prompt);
+    let second = kordi_core::agent_session::messages_to_provider(&kordi_session::context::build_context(&runtime.setup.conn, runtime.session_id())?.messages);
+    assert_eq!(&second[..first.len()], first.as_slice());
+    assert_eq!(second.len(), first.len() + 1);
+    identity.owner_account_id = "impostor".into();
+    assert!(runtime.sync_context_messages(&[message(&identity)]).is_err());
+    identity.owner_account_id = "owner".into();
+    identity.requester_name = "Changed during retry".into();
+    assert!(runtime.sync_context_messages(&[message(&identity)]).is_err());
+    assert!(!serde_json::to_string(&runtime.detail()?)?.contains("application metadata"));
+    Ok(())
+}

@@ -28,6 +28,14 @@ async fn shared_desktop_lease_resolves_ids_and_publishes_once() {
         assert_eq!(claimed.status(),StatusCode::OK);
         let claimed=read_json(claimed).await;
         assert_eq!(claimed["acquired"],true);
+        assert_eq!(claimed["turnIdentity"]["ownerAccountId"],owner.account_id);
+        assert_eq!(claimed["turnIdentity"]["requesterAccountId"],peer.account_id);
+        assert_eq!(claimed["turnIdentity"]["agentId"],agent);
+        assert_eq!(claimed["turnIdentity"]["ownerName"],"Owner");
+        sqlx_core::query::query("UPDATE cloud_accounts SET display_name='Renamed owner' WHERE account_id=$1").bind(&owner.account_id).execute(&pool).await.unwrap();
+        let same=router.clone().oneshot(post_json_with_token("/v1/cloud/agent-runs/desktop/claim",&owner.token,input(&wire,claim_id))).await.unwrap();
+        assert_eq!(read_json(same).await["turnIdentity"],claimed["turnIdentity"],"retries must reuse the admitted snapshot after a rename");
+        sqlx_core::query::query("UPDATE cloud_accounts SET display_name='Owner' WHERE account_id=$1").bind(&owner.account_id).execute(&pool).await.unwrap();
         let run=claimed["runId"].as_str().unwrap();
         let canonical=if group {logical.as_str()}else{wire.as_str()};
         let replay=router.clone().oneshot(post_json_with_token("/v1/cloud/agent-runs/desktop/claim",&owner.token,input(canonical,uuid::Uuid::new_v4()))).await.unwrap();

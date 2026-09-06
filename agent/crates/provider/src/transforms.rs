@@ -22,7 +22,9 @@ pub fn convert_messages_for_anthropic(messages: &[Value]) -> Vec<Value> {
         .filter_map(|msg| {
             let role = msg["role"].as_str()?;
             match role {
-                "user" => {
+                "user" | "developer" => {
+                    // Anthropic has no in-history developer role. Keep runtime
+                    // metadata in place rather than hoisting it into system.
                     // Pass through content — may be a string or array of blocks.
                     // Image blocks from messages_to_provider already use Anthropic format:
                     //   { type: "image", source: { type: "base64", media_type, data } }

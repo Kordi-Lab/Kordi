@@ -32,6 +32,7 @@ pub(in crate::chat) struct ManagedChildAgentRunner {
     base_profile: DesktopRuntimeProfile,
     directory: Option<String>,
     scoped_observation: bool,
+    runtime_identity: Option<kordi_cli::desktop_runtime::DesktopChatContextMessage>,
     jobs: Arc<Mutex<BTreeMap<String, ManagedTask>>>,
 }
 
@@ -49,6 +50,7 @@ impl ManagedChildAgentRunner {
             base_profile,
             directory: None,
             scoped_observation: false,
+            runtime_identity: None,
             jobs: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
@@ -57,9 +59,11 @@ impl ManagedChildAgentRunner {
         mut self,
         scoped: bool,
         directory: Option<String>,
+        runtime_identity: Option<kordi_cli::desktop_runtime::DesktopChatContextMessage>,
     ) -> Self {
         self.scoped_observation = scoped;
         self.directory = directory;
+        self.runtime_identity = runtime_identity;
         self
     }
 
@@ -100,16 +104,16 @@ impl ManagedChildAgentRunner {
                 text: message,
                 attachment_paths: Some(attachment_paths),
                 route: None,
-                context_messages: self.directory.as_ref().map(|text| {
-                    vec![kordi_cli::desktop_runtime::DesktopChatContextMessage {
+                context_messages: Some(self.directory.as_ref().map(|text| {
+                    kordi_cli::desktop_runtime::DesktopChatContextMessage {
                         id: "group-directory".to_string(),
                         author_name: "Group directory".to_string(),
                         author_kind: "agent".to_string(),
                         context_role: Some("resource".to_string()),
                         text: text.clone(),
                         created_at_ms: None,
-                    }]
-                }),
+                    }
+                }).into_iter().chain(self.runtime_identity.clone()).collect()),
                 visible_task_records: None,
                 scheduled_task_session_id: self
                     .scoped_observation

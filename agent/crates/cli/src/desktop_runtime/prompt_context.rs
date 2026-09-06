@@ -101,7 +101,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn changing_request_identity_preserves_the_stable_prompt_prefix() {
+    fn dynamic_system_context_replaces_the_previous_block() {
         let base = "Stable agent instructions";
         let first =
             with_dynamic_system_context(base, Path::new("."), false, Some("Requester Alice"));

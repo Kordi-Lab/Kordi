@@ -47,6 +47,8 @@ pub struct RunnerRunEnvelope {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RunnerRunResponse {
+    #[serde(rename = "turnIdentity")]
+    pub turn_identity: serde_json::Value,
     #[serde(rename="historyMessages")]
     pub history_messages: Vec<serde_json::Value>,
     #[serde(rename = "subsessionId")]
@@ -220,6 +222,7 @@ pub(super) async fn runner_response_from_row(
     .fetch_optional(pool)
     .await?;
     Ok(RunnerRunResponse {
+        turn_identity: super::identity::identity_for_run(pool, &row.0).await?,
         history_messages: super::super::subsession_execution::history(pool,&row.0).await?,
         subsession_id: subsession_id.map(|id| id.to_string()),
         subsession_write_scope: serde_json::from_value(scope).unwrap_or_default(),

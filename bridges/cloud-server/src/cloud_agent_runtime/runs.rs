@@ -7,6 +7,7 @@ mod envelopes;
 mod errors;
 mod group_mentions;
 mod leases;
+pub(crate) mod identity;
 mod prompt_history;
 pub(crate) mod subsessions;
 pub(crate) mod subsession_lifecycle;

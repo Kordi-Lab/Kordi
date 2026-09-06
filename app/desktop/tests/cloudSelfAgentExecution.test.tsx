@@ -245,7 +245,7 @@ test('desktop execution uses server admission and the fenced publication endpoin
       actions.push(action);
       const acquired = !claimed;
       if (action === 'claim') claimed = true;
-      return (action === 'claim' ? { runId: 'run-a', acquired } : message('progress', 'complete')) as T;
+      return (action === 'claim' ? { runId: 'run-a', acquired, turnIdentity: { ownerAccountId: 'owner', requesterAccountId: 'owner' } } : message('progress', 'complete')) as T;
     },
   };
   const input = { requestMessageId: 'request-1', sessionId: 'session:self-agent:mobile', ownerAccountId: 'owner', requesterAccountId: 'owner', prompt: 'Test', idempotencyKey: 'request-1' };

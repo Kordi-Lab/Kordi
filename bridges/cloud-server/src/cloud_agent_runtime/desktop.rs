@@ -131,7 +131,8 @@ pub(super) async fn claim(
         let run = claim_run_for_desktop(state.db_pool(), &input.run, &owner).await?;
         let acquired: (bool,) = query_as("SELECT execution_backend='desktop' AND claimed_by=$2 AND status IN ('leased','running') AND lease_expires_at::timestamptz>now() FROM cloud_agent_fallback_runs WHERE run_id=$1")
             .bind(&run.run_id).bind(owner).fetch_one(state.db_pool()).await?;
-        Ok(Some(json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45})))
+        let identity = if acquired.0 { Some(super::runs::identity::identity_for_run(state.db_pool(), &run.run_id).await?) } else { None };
+        Ok(Some(json!({"runId":run.run_id,"acquired":acquired.0,"leaseSeconds":45,"turnIdentity":identity})))
     }.await;
     match result {
         Ok(Some(value)) => Json(value).into_response(),

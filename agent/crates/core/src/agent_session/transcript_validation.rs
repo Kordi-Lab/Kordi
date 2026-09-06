@@ -180,7 +180,12 @@ pub(super) fn validate_and_repair_messages_for_provider(
                     .collect::<Vec<_>>()
                     .join("\n");
                 if !text.is_empty() {
-                    provider_messages.push(json!({"role": "user", "content": text}));
+                    let role = if custom.custom_type == crate::types::RUNTIME_IDENTITY_CUSTOM_TYPE {
+                        "developer"
+                    } else {
+                        "user"
+                    };
+                    provider_messages.push(json!({"role": role, "content": text}));
                 }
             }
             AgentMessage::CompactionSummary(compaction) => {

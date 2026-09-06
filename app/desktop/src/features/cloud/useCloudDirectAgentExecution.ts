@@ -235,7 +235,7 @@ export function useCloudDirectAgentExecution({
               prompt,
               agentAttachmentPaths,
               requestedRoute,
-              contextMessages,
+              lease.contextMessages(contextMessages),
               visibleTaskRecords,
               activitySessionId,
               lease.deadline,

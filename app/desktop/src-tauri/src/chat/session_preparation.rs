@@ -182,7 +182,7 @@ pub(super) async fn prepare_desktop_session_for_send(
         // ponytail: this per-turn registry is enough for background navigation;
         // keep one registry across turns only when parent-side child control is required.
         let runner = ManagedChildAgentRunner::new(manager.clone(), prompt_session_id, request_message_id.map(str::to_string), profile)
-            .with_shared_context(context_session_id.is_some(), directory);
+            .with_shared_context(context_session_id.is_some(), directory, runtime.runtime_identity_context().ok().flatten());
         let _ = runtime.set_task_operator_runner(Arc::new(runner));
     }
 }

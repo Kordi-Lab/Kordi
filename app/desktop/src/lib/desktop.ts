@@ -936,7 +936,7 @@ export type DesktopChatMessageRoute = {
 export type DesktopChatContextMessage = {
   id: string;
   authorName: string;
-  authorKind: 'human' | 'agent'; contextRole?: 'history' | 'system' | 'resource';
+  authorKind: 'human' | 'agent'; contextRole?: 'history' | 'system' | 'resource' | 'runtimeIdentity';
   text: string;
   createdAtMs?: number | null;
 };

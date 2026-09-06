@@ -70,10 +70,13 @@ impl DesktopRuntimeSession {
         &mut self,
         messages: &[DesktopChatContextMessage],
     ) -> Result<usize> {
-        self.set_dynamic_system_context(prompt_context::system_context(messages));
+        if !messages.iter().any(|m| m.context_role.as_deref() == Some("runtimeIdentity"))
+            || (prompt_context::system_context(messages).is_some() && self.runtime_identity_context()?.is_none()) {
+            self.set_dynamic_system_context(prompt_context::system_context(messages));
+        }
         let history_messages = messages.iter().filter(|message| {
             !prompt_context::is_system_context(message)
-                && message.context_role.as_deref() != Some("resource")
+                && !matches!(message.context_role.as_deref(), Some("resource" | "runtimeIdentity"))
         });
         if messages.is_empty() {
             return Ok(0);
@@ -148,6 +151,7 @@ impl DesktopRuntimeSession {
             kordi_session::store::append_entry(&self.setup.conn, &self.setup.session_id, &entry)?;
             count += 1;
         }
+        self.sync_runtime_identity(messages)?;
         Ok(count)
     }
 
@@ -155,6 +159,16 @@ impl DesktopRuntimeSession {
         &mut self,
         messages: &[DesktopChatContextMessage],
     ) -> Result<()> {
+        if let Some(previous) = self.runtime_identity_context()? {
+            let previous: kordi_core::types::RuntimeIdentity = serde_json::from_str(&previous.text)?;
+            for message in messages.iter().filter(|m| m.context_role.as_deref() == Some("runtimeIdentity")) {
+                let current: kordi_core::types::RuntimeIdentity = serde_json::from_str(&message.text)?;
+                if current.request_id == previous.request_id {
+                    self.sync_runtime_identity(messages)?;
+                    return Ok(());
+                }
+            }
+        }
         self.set_dynamic_system_context(prompt_context::system_context(messages));
         ensure_session_row_created(&mut self.setup)?;
         let parent_id =
@@ -174,7 +188,7 @@ impl DesktopRuntimeSession {
         let recent = messages
             .iter()
             .filter(|message| {
-                !matches!(message.context_role.as_deref(), Some("system" | "resource"))
+                !matches!(message.context_role.as_deref(), Some("system" | "resource" | "runtimeIdentity"))
                     && !message.text.trim().is_empty()
             })
             .rev()
@@ -212,6 +226,7 @@ impl DesktopRuntimeSession {
             };
             kordi_session::store::append_entry(&self.setup.conn, &self.setup.session_id, &entry)?;
         }
+        self.sync_runtime_identity(messages)?;
         Ok(())
     }
 }

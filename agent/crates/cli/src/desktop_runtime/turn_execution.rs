@@ -86,6 +86,7 @@ impl DesktopRuntimeSession {
         request_message_id: Option<String>,
     ) -> Result<DesktopRuntimeTurn> {
         self.refresh_saved_agent_persona();
+        self.freeze_identity_prompt()?;
         let prompt = prompt.trim().to_string();
         if prompt.is_empty() && attachment_paths.is_empty() {
             bail!("Message cannot be empty");

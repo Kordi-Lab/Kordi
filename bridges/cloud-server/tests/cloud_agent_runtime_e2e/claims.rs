@@ -313,8 +313,9 @@ async fn agent_authored_group_handoff_runs_in_cloud_when_owner_mac_is_offline() 
     let system_prompt = lease_body["run"]["systemPrompt"].as_str().unwrap();
     assert!(!prompt.contains("Group @mention permissions"));
     assert!(!system_prompt.contains("People:"));
-    assert!(system_prompt.contains("Current requester:"));
-    assert!(system_prompt.contains("the currently responding agent"));
+    assert!(!system_prompt.contains("Current requester:"));
+    let identity = &lease_body["run"]["turnIdentity"];
+    assert!(identity["requestPolicy"].as_str().unwrap().contains("the currently responding Agent"));
     let context_uri = format!("/v1/cloud/agent-runs/{run_id}/context");
     let directory = router.clone().oneshot(post_json_with_runner_token(&context_uri, "runner-test-token",
         json!({"runnerId": "runner-handoff", "tool": "read_session", "arguments": {"sessionId": session_id, "mode": "participants"}}))).await.unwrap();
@@ -331,7 +332,7 @@ async fn agent_authored_group_handoff_runs_in_cloud_when_owner_mac_is_offline() 
             json!({"runnerId": runner, "tool": "read_session", "arguments": {"sessionId": scope}}))).await.unwrap();
         assert_eq!(denied.status(), StatusCode::NOT_FOUND);
     }
-    assert!(system_prompt.contains("Do not delegate to another agent"));
+    assert!(identity["requestPolicy"].as_str().unwrap().contains("Do not delegate to another agent"));
 
     let complete = router
         .clone()

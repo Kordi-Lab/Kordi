@@ -219,6 +219,9 @@ pub(super) async fn verify(
             .unwrap()
             .unwrap();
         assert_eq!(leased.subsession_id.as_deref(), Some(id));
+        assert_eq!(leased.turn_identity["ownerAccountId"],owner.account_id);
+        assert_eq!(leased.turn_identity["requesterAccountId"],peer.account_id);
+        assert_eq!(leased.turn_identity["agentId"],agent);
         let history = serde_json::to_string(&leased.history_messages).unwrap();
         assert!(history.contains("CHILD_ONLY_RESULT"));
         assert!(history.contains("Ordinary shared context"));
@@ -284,6 +287,11 @@ pub(super) async fn verify(
         .unwrap()
         .unwrap();
     assert_eq!(next.owner_account_id, owner.account_id);
+    assert_eq!(next.turn_identity["ownerAccountId"],owner.account_id);
+    assert_eq!(next.turn_identity["requesterAccountId"],owner.account_id);
+    assert_eq!(next.turn_identity["agentId"],agent);
+    assert!(next.history_messages.iter().any(|message| message["role"]=="runtimeIdentity"
+        && message["content"]["requesterAccountId"]==peer.account_id));
     assert_eq!(next.subsession_id.as_deref(), Some(id));
     assert!(serde_json::to_string(&next.history_messages)
         .unwrap()

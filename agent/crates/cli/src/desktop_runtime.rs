@@ -21,6 +21,7 @@ mod model_options;
 mod models;
 mod prompt_context;
 mod shared_context;
+mod identity;
 #[cfg(test)]
 use prompt_context::strip_session_prompt_context;
 mod session_catalog;

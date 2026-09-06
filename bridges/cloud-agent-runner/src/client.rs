@@ -9,6 +9,8 @@ pub enum RunnerClientError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloudAgentRun {
+    #[serde(rename = "turnIdentity", default)]
+    pub turn_identity: Option<kordi_core::types::RuntimeIdentity>,
     #[serde(rename="historyMessages",default)]
     pub history_messages: Vec<serde_json::Value>,
     #[serde(rename = "subsessionId", default)]
