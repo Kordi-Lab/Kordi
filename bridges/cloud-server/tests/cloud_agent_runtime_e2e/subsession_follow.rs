@@ -13,6 +13,42 @@ pub(super) async fn verify(
 ) {
     let uuid = uuid::Uuid::parse_str(id).unwrap();
     let uri = format!("/v1/cloud/agent-subsessions/{id}");
+    let snapshot = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token(
+                &format!("{uri}?includeMessages=true"),
+                &peer.token,
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
+    for account in [owner, peer] {
+        let (avatar, seed): (Option<String>, String) = sqlx_core::query_as::query_as(
+            "SELECT avatar_url,avatar_seed FROM cloud_accounts WHERE account_id=$1",
+        )
+        .bind(&account.account_id)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let member = snapshot["participants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|member| member["accountId"] == account.account_id)
+            .unwrap();
+        assert_eq!(member["avatarUrl"], json!(avatar));
+        assert_eq!(member["avatarSeed"], seed);
+        assert_ne!(
+            seed, account.account_id,
+            "account IDs must not generate replacement avatars"
+        );
+    }
+    let (avatar,): (Option<String>,) = sqlx_core::query_as::query_as(
+        "SELECT CASE WHEN $1='cloud-agent:'||$2 THEN (SELECT avatar_url FROM cloud_default_agent_profiles WHERE owner_account_id=$2) ELSE (SELECT avatar_url FROM cloud_agent_definitions WHERE agent_id=$1 AND owner_account_id=$2) END",
+    ).bind(agent).bind(&owner.account_id).fetch_one(pool).await.unwrap();
+    assert_eq!(snapshot["agentAvatarUrl"], json!(avatar));
     let input = |message: uuid::Uuid, text: &str, target: Option<&str>| {
         json!({
             "clientMessageId":message,"text":text,"mentions":target.map(|agent|vec![json!({

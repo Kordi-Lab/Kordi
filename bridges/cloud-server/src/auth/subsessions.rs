@@ -27,8 +27,12 @@ fn db_error(_: impl std::fmt::Display) -> ApiError {
 }
 
 pub fn routes() -> Router<Arc<ServerState>> {
-    Router::new().route("/v1/cloud/agent-subsessions/:id", get(read).put(write))
-        .route("/v1/cloud/agent-subsessions/:id/messages", axum::routing::post(conversation::send))
+    Router::new()
+        .route("/v1/cloud/agent-subsessions/:id", get(read).put(write))
+        .route(
+            "/v1/cloud/agent-subsessions/:id/messages",
+            axum::routing::post(conversation::send),
+        )
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -73,6 +77,7 @@ struct Snapshot {
     agent_id: String,
     owner_display_name: String,
     agent_display_name: String,
+    agent_avatar_url: Option<String>,
     title: String,
     status: String,
     version: i64,
@@ -219,11 +224,13 @@ async fn snapshot(
         String,
         String,
         String,
+        Option<String>,
     );
     let row: Option<Row> = query_as(
         "SELECT sub.parent_session_id, sub.parent_request_id, sub.owner_account_id, sub.agent_id, sub.title, sub.status, sub.version, \
          CASE WHEN $3 THEN sub.messages ELSE '[]'::jsonb END, sub.updated_at::text, account.display_name, \
-         COALESCE(definition.name, profile.display_name, 'Kordi') FROM cloud_agent_subsessions sub \
+         COALESCE(definition.name, profile.display_name, 'Kordi'), \
+         CASE WHEN sub.agent_id='cloud-agent:'||sub.owner_account_id THEN profile.avatar_url ELSE definition.avatar_url END FROM cloud_agent_subsessions sub \
          JOIN cloud_chat_conversation_members member ON member.conversation_id=sub.parent_conversation_id AND member.account_id=$2 AND member.membership_state='active' \
          JOIN cloud_accounts account ON account.account_id=sub.owner_account_id \
          LEFT JOIN cloud_default_agent_profiles profile ON profile.owner_account_id=sub.owner_account_id \
@@ -241,6 +248,7 @@ async fn snapshot(
         updated_at,
         owner_display_name,
         name,
+        agent_avatar_url,
     )) = row
     else {
         return Err(error(StatusCode::NOT_FOUND, "subsession_not_found"));
@@ -258,16 +266,18 @@ async fn snapshot(
     if account != owner_account_id {
         messages.retain(|message| message.role == "assistant");
     }
-    let mut messages:Vec<Value>=messages.into_iter().map(|message|json!(message)).collect();
-    if include_messages { messages.extend(conversation::messages(pool,id).await?); }
+    let mut messages: Vec<Value> = messages.into_iter().map(|message| json!(message)).collect();
+    if include_messages {
+        messages.extend(conversation::messages(pool, id).await?);
+    }
     let (activity,has_followup_execution):(Value,bool)=query_as("SELECT activity,EXISTS(SELECT 1 FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id WHERE c.subsession_id=$1 AND r.status<>'queued') FROM cloud_agent_subsessions WHERE subsession_id=$1")
         .bind(id).fetch_one(pool).await.map_err(db_error)?;
-    let participants:Vec<(String,String)>=query_as("SELECT a.account_id,a.display_name FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.membership_state='active' JOIN cloud_accounts a ON a.account_id=m.account_id WHERE s.subsession_id=$1 ORDER BY a.account_id")
+    let participants:Vec<(String,String,Option<String>,String)>=query_as("SELECT a.account_id,a.display_name,a.avatar_url,a.avatar_seed FROM cloud_agent_subsessions s JOIN cloud_chat_conversation_members m ON m.conversation_id=s.parent_conversation_id AND m.membership_state='active' JOIN cloud_accounts a ON a.account_id=m.account_id WHERE s.subsession_id=$1 ORDER BY a.account_id")
         .bind(id).fetch_all(pool).await.map_err(db_error)?;
     Ok(Snapshot {
         activity,
         has_followup_execution,
-        participants: participants.into_iter().map(|(account_id,display_name)|json!({"accountId":account_id,"displayName":display_name})).collect(),
+        participants: participants.into_iter().map(|(account_id,display_name,avatar_url,avatar_seed)|json!({"accountId":account_id,"displayName":display_name,"avatarUrl":avatar_url,"avatarSeed":avatar_seed})).collect(),
         session_id: id,
         parent_session_id,
         parent_request_id,
@@ -275,6 +285,7 @@ async fn snapshot(
         agent_id,
         owner_display_name,
         agent_display_name,
+        agent_avatar_url,
         title,
         status,
         version,
@@ -313,10 +324,17 @@ async fn write(
     }
     let pool = state.db_pool();
     let mut transaction = pool.begin().await.map_err(db_error)?;
-    query("SELECT pg_advisory_xact_lock(81208411)").execute(&mut *transaction).await.map_err(db_error)?;
+    query("SELECT pg_advisory_xact_lock(81208411)")
+        .execute(&mut *transaction)
+        .await
+        .map_err(db_error)?;
     let follow_started:(bool,)=query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat c JOIN cloud_agent_fallback_runs r ON r.run_id=c.run_id JOIN cloud_agent_subsessions s ON s.subsession_id=c.subsession_id WHERE c.subsession_id=$1 AND s.owner_account_id=$2 AND r.status<>'queued')")
         .bind(id).bind(&session.account_id).fetch_one(&mut *transaction).await.map_err(db_error)?;
-    if follow_started.0 { return snapshot(pool,id,&session.account_id,false).await.map(Json); }
+    if follow_started.0 {
+        return snapshot(pool, id, &session.account_id, false)
+            .await
+            .map(Json);
+    }
     let cloud_owned: (bool,) = query_as("SELECT EXISTS(SELECT 1 FROM cloud_agent_subsessions WHERE subsession_id=$1 AND execution_backend='cloud')")
         .bind(id).fetch_one(pool).await.map_err(db_error)?;
     if cloud_owned.0 {
@@ -380,7 +398,8 @@ async fn write(
             return Err(error(StatusCode::CONFLICT, "subsession_version_conflict"));
         }
     }
-    let activity=crate::cloud_agent_runtime::subsession_execution::public_activity(&request.activity);
+    let activity =
+        crate::cloud_agent_runtime::subsession_execution::public_activity(&request.activity);
     query("UPDATE cloud_agent_subsessions SET heartbeat_at=now(),activity=$2,version=version+CASE WHEN activity<>$2 THEN 1 ELSE 0 END WHERE subsession_id=$1")
         .bind(id).bind(activity).execute(&mut *transaction).await.map_err(db_error)?;
     transaction.commit().await.map_err(db_error)?;

@@ -62,6 +62,30 @@ test('subsession synchronization uses the execution resource without creating co
   assert(requests.every((request) => !request.url.includes('/conversations')));
 });
 
+test('subsession avatars come from stable member and Agent profiles, not account-derived pictures', () => {
+  const record: CloudAgentSubsession = { sessionId: 'child', parentSessionId: 'parent', parentRequestId: 'root',
+    ownerAccountId: 'owner', agentId: 'agent-one', ownerDisplayName: 'Same name', agentDisplayName: 'Researcher',
+    agentAvatarUrl: 'https://example.test/agent.png', title: 'Research', status: 'done', version: 1, updatedAt: '',
+    participants: [
+      { accountId: 'owner', displayName: 'Same name', avatarUrl: 'https://example.test/owner.png', avatarSeed: 'owner-picture' },
+      { accountId: 'peer', displayName: 'Same name', avatarUrl: 'https://example.test/peer.png', avatarSeed: 'peer-picture' },
+    ], messages: [
+      { id: 'human', role: 'user', senderAccountId: 'peer', text: 'Hello', timestampMs: 1 },
+      { id: 'agent', role: 'assistant', text: 'Answer', timestampMs: 2 },
+    ] };
+  const options = subsessionMentionOptions(record, 'owner');
+  assert.equal(options.length, 2);
+  assert.equal(options[1].humanId, 'peer');
+  assert.equal(options[1].avatarImageUrl, record.participants?.[1].avatarUrl);
+  assert.equal(options[1].avatarSeed, 'peer-picture');
+  assert.equal(options[0].avatarImageUrl, record.agentAvatarUrl);
+  const [person, agent] = subsessionTranscript(record, 'owner');
+  assert.equal(person.senderProfileImageUrl, record.participants?.[1].avatarUrl);
+  assert.equal(person.senderIdentityId, 'peer');
+  assert.equal(agent.senderProfileImageUrl, record.agentAvatarUrl);
+  assert.equal(agent.senderIdentityId, record.agentId);
+});
+
 test('ordinary answers do not synthesize a subsession or a task card', async () => {
   await publishModelSubsessions({ tools: [] });
   await publishModelSubsessions({ tools: [{ id: 'plan', name: 'task_operator', status: 'completed', arguments: '{"action":"create"}', liveOutput: '', resultText: 'Task created', isError: false }] });

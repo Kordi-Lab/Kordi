@@ -113,10 +113,20 @@ export function pairedCompanionConversation(activeConv: Conversation, conversati
   )) ?? null;
 }
 
+export function isPrivateOwnedAgentConversation(conversation: Conversation) {
+  return conversation.type === 'owned-agent'
+    && !conversation.agentSubsessionId
+    && !conversationIsGroupChat(conversation)
+    && conversation.trust !== 'Shared'
+    && !(conversation.canonicalParticipants ?? []).some(
+      (participant) => participant.kind === 'human' && !participantIsSelf(participant),
+    );
+}
+
 export function chatCompanionCandidates(activeConv: Conversation, conversations: Conversation[] = []) {
   return conversations.filter((conversation) => (
     conversation.id !== activeConv.id
-    && conversationIsAgentChat(conversation)
+    && isPrivateOwnedAgentConversation(conversation)
   ));
 }
 
@@ -140,7 +150,7 @@ export function chatCompanionSessionOptions(
   conversations: Conversation[] = [],
 ): ChatCompanionSessionOption[] {
   const agentConversations = conversations
-    .filter(conversationIsAgentChat)
+    .filter(isPrivateOwnedAgentConversation)
     .sort((left, right) => (
       conversationActivityAtMs(right) - conversationActivityAtMs(left)
       || left.name.localeCompare(right.name)

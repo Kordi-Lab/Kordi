@@ -8,8 +8,7 @@ use super::models::{
     AppendCanonicalMessageRequest, CanonicalSessionMessage, OpenCanonicalSessionRequest,
 };
 use super::{
-    append_message_in_db, local_agent_identity_id, local_profile_human_identity_id, open_db,
-    open_or_create_session_in_db,
+    append_message_in_db, local_profile_human_identity_id, open_db, open_or_create_session_in_db,
 };
 
 fn list_canonical_messages(
@@ -59,6 +58,8 @@ struct SourceSessionInfo {
     kind: String,
     project_id: Option<String>,
     project_name: Option<String>,
+    primary_identity_id: Option<String>,
+    metadata: serde_json::Value,
 }
 
 fn select_source_session_info(
@@ -66,13 +67,15 @@ fn select_source_session_info(
     session_id: &str,
 ) -> Result<Option<SourceSessionInfo>, String> {
     conn.query_row(
-        "SELECT kind, project_id, project_name FROM sessions WHERE id = ?1",
+        "SELECT kind, project_id, project_name, primary_identity_id, metadata_json FROM sessions WHERE id = ?1",
         params![session_id],
         |row| {
             Ok(SourceSessionInfo {
                 kind: row.get(0)?,
                 project_id: row.get(1)?,
                 project_name: row.get(2)?,
+                primary_identity_id: row.get(3)?,
+                metadata: row.get::<_, Option<String>>(4)?.and_then(|value| serde_json::from_str(&value).ok()).unwrap_or_default(),
             })
         },
     )
@@ -114,6 +117,19 @@ fn source_kind_allows_fork(kind: &str) -> bool {
     matches!(kind, "self-agent" | "direct-agent" | "project")
 }
 
+fn fork_primary_agent(primary: Option<&str>, agents: &[String]) -> Result<String, String> {
+    if let Some(primary) = primary {
+        if agents.iter().any(|agent| agent == primary) {
+            return Ok(primary.to_string());
+        }
+        return Err("The source Agent identity is unavailable.".to_string());
+    }
+    match agents {
+        [agent] => Ok(agent.clone()),
+        _ => Err("The source Agent identity is ambiguous.".to_string()),
+    }
+}
+
 /// Fork an Agent session into a private Agent session that inherits the
 /// transcript through `canonical_message_id`.
 pub fn fork_canonical_session_into_local_chat(
@@ -136,13 +152,9 @@ pub fn fork_canonical_session_into_local_chat(
         .ok_or_else(|| format!("Canonical message not found: {canonical_message_id}"))?;
     let path = &messages[..=anchor_index];
     let local_human_id = local_profile_human_identity_id(&conn, "You")?;
-    let local_agent_id = local_agent_identity_id(&conn, &local_human_id, "Kordi", cwd)?;
-    let mut participant_ids = vec![local_agent_id.clone()];
-    for identity_id in select_source_agents(&conn, canonical_session_id)? {
-        if !participant_ids.contains(&identity_id) {
-            participant_ids.push(identity_id);
-        }
-    }
+    let source_agents = select_source_agents(&conn, canonical_session_id)?;
+    let agent_identity_id =
+        fork_primary_agent(source_info.primary_identity_id.as_deref(), &source_agents)?;
 
     let new_session_id = format!("session:fork:{}", Uuid::new_v4().simple());
     let mut message_aliases = vec![canonical_message_id.to_string()];
@@ -157,7 +169,7 @@ pub fn fork_canonical_session_into_local_chat(
             message_aliases.push(alias);
         }
     }
-    let metadata = serde_json::json!({
+    let mut metadata = serde_json::json!({
         "source": "canonical-fork-snapshot",
         "sessionTitleSource": "placeholder",
         "titleSource": "placeholder",
@@ -173,19 +185,47 @@ pub fn fork_canonical_session_into_local_chat(
             "snapshotMessageCount": path.len(),
         },
     });
+    // Preserve the execution identity, not the source's membership or live work.
+    for key in [
+        "createdFrom",
+        "agentId",
+        "cloudAgentId",
+        "cloudAgentName",
+        "cloudAgentRole",
+        "cloudAgentSystemPrompt",
+        "cloudAgentSourceSummary",
+        "cloudAgentBoundaries",
+        "cloudAgentSkills",
+        "cloudAgentTools",
+        "cloudAgentPlugins",
+        "cloudAgentOwnerAccountId",
+        "cloudAgentOwnerName",
+        "cloudAgentRuntimeRoute",
+        "sourceHostId",
+        "peerNodeId",
+        "peerRuntime",
+        "peerDisplayName",
+        "peerOwnerName",
+        "peerAgentId",
+        "targetAgentId",
+    ] {
+        if let Some(value) = source_info.metadata.get(key) {
+            metadata[key] = value.clone();
+        }
+    }
     open_or_create_session_in_db(
         &conn,
         OpenCanonicalSessionRequest {
             id: Some(new_session_id.clone()),
-            kind: "self-agent".to_string(),
+            kind: source_info.kind,
             title: Some("New fork".to_string()),
             status: Some("active".to_string()),
             created_by_identity_id: local_human_id,
-            primary_identity_id: Some(local_agent_id),
+            primary_identity_id: Some(agent_identity_id.clone()),
             project_id: source_info.project_id,
             project_name: source_info.project_name,
             relationship_identity_id: None,
-            participant_identity_ids: participant_ids,
+            participant_identity_ids: vec![agent_identity_id],
             metadata: Some(metadata),
         },
     )?;
@@ -254,7 +294,22 @@ pub fn fork_canonical_session_into_local_chat(
 
 #[cfg(test)]
 mod tests {
-    use super::source_kind_allows_fork;
+    use super::{fork_primary_agent, source_kind_allows_fork};
+
+    #[test]
+    fn forks_keep_the_source_agent_instead_of_selecting_the_local_default() {
+        let agents = vec!["agent:default".to_string(), "agent:research".to_string()];
+        assert_eq!(
+            fork_primary_agent(Some("agent:research"), &agents).unwrap(),
+            "agent:research"
+        );
+        assert!(fork_primary_agent(Some("agent:missing"), &agents).is_err());
+        assert!(fork_primary_agent(None, &agents).is_err());
+        assert_eq!(
+            fork_primary_agent(None, &agents[1..]).unwrap(),
+            "agent:research"
+        );
+    }
 
     #[test]
     fn only_agent_session_kinds_allow_forks() {

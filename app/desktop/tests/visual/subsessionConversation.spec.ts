@@ -1,5 +1,40 @@
 import { test, expect } from '@playwright/test';
 
+test('private Ask Agent and shared Agent threads keep separate identities, avatars and drafts', async ({ page }) => {
+  await page.goto('/tests/visual/subsessionConversation.html');
+  await page.getByRole('button', { name: 'Ask Agent', exact: true }).click();
+  const panel = page.locator('[data-chat-side-agent-panel="true"]');
+  await expect(panel.getByText('Ask Agent · Private workspace', { exact: true })).toBeVisible();
+  await expect(panel.getByText('Only you · Agent session', { exact: true })).toBeVisible();
+  const field = panel.getByRole('textbox');
+  await field.fill('PRIVATE_DRAFT_CANARY');
+  await panel.getByRole('button', { name: 'Close side chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Open background agent session: Planet research' }).click();
+  await expect(field).toHaveText('');
+  await expect(panel.getByText('PRIVATE_HISTORY_CANARY')).toHaveCount(0);
+  await field.pressSequentially('@');
+  const member = page.getByRole('option').filter({ hasText: /^@Alex$/ });
+  await expect(member).toBeVisible();
+  await expect(page.getByRole('option').filter({ hasText: /^@Sam$/ })).toHaveCount(0);
+  await expect(page.getByRole('group', { name: 'Members', exact: true })).toBeVisible();
+  const originalAvatar = await member.locator('img').getAttribute('src');
+  await page.evaluate(() => {
+    const fixture = window as unknown as {fixtureSubsession: {participants: {accountId:string;avatarUrl?:string}[]};fixtureAvatar:(color:string)=>string};
+    fixture.fixtureSubsession.participants.find(item=>item.accountId==='owner')!.avatarUrl = fixture.fixtureAvatar('green');
+  });
+  await expect(member.locator('img')).not.toHaveAttribute('src', originalAvatar!);
+  await field.fill('Shared member message');
+  await panel.getByRole('button', { name: 'Send to Planet research', exact: true }).click();
+  await expect(field).toHaveText('');
+  await panel.getByRole('button', { name: 'Close side chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Ask Agent', exact: true }).click();
+  await expect(field).toHaveText('PRIVATE_DRAFT_CANARY');
+  await panel.getByRole('button', { name: 'Send to Private workspace', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as {privateSends: {id:string;text:string}[]}).privateSends)).toMatchObject([{id:'private-session',text:'PRIVATE_DRAFT_CANARY'}]);
+  expect(await page.evaluate(() => (window as unknown as {sentSubsessionRequests:{text:string}[]}).sentSubsessionRequests.map(item=>item.text))).toEqual(['Shared member message']);
+  expect(await page.evaluate(() => (window as unknown as {unexpectedParentSends:number}).unexpectedParentSends)).toBe(0);
+});
+
 test('subsession has a bounded transcript, visible composer, and explicit identity-bound mentions', async ({ page }, testInfo) => {
   await page.goto('/tests/visual/subsessionConversation.html');
   await page.getByRole('button', { name: 'Open background agent session: Planet research' }).click();
@@ -11,7 +46,9 @@ test('subsession has a bounded transcript, visible composer, and explicit identi
   expect(panelBounds!.x).toBeGreaterThan(0);
   expect(panelBounds!.width).toBeLessThan(page.viewportSize()!.width);
   const field = panel.getByRole('textbox');
-  await expect(panel.getByText('Ask Agent · Planet research', { exact: true })).toBeVisible();
+  await expect(panel.getByText('Agent thread · Planet research', { exact: true })).toBeVisible();
+  await expect(panel.getByText(/Shared with chat members/)).toBeVisible();
+  await expect(panel.getByText(/Only you/)).toHaveCount(0);
   await expect(panel.getByText('Queued next', { exact: true })).toHaveCount(2);
   await expect(panel.locator('.app-queued-message').filter({ hasText: 'Owner queued follow' })).toContainText('Alex');
   await expect(field).toBeVisible();
@@ -29,7 +66,7 @@ test('subsession has a bounded transcript, visible composer, and explicit identi
     const snapshot = (window as unknown as {fixtureSubsession: {agentDisplayName: string; version: number}}).fixtureSubsession;
     snapshot.agentDisplayName = 'Research Agent'; snapshot.version += 1;
   });
-  await expect(page.getByText('Research Agent · Owner · Alex', { exact: true })).toBeVisible();
+  await expect(panel.getByText(/Shared with chat members · Research Agent · Owner · Alex/)).toBeVisible();
   await field.pressSequentially(' continue');
   await panel.getByRole('button', { name: 'Send to Planet research', exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as {sentSubsessionRequests: unknown[]}).sentSubsessionRequests[1])).toEqual({ clientMessageId: expect.any(String), text: expect.stringMatching(/^@KordiAlex\s+continue$/), mentions: [expect.objectContaining({ agentId: 'fixture-agent' })] });

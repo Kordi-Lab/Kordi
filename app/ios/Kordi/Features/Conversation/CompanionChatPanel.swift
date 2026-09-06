@@ -84,12 +84,20 @@ enum CompanionChatContextBuilder {
 }
 
 enum CompanionPanelCatalog {
+    static func isPrivateOwnedSession(_ conversation: ConversationSummary, ownAccountID: String) -> Bool {
+        !ownAccountID.isEmpty && conversation.kind == .agent
+            && conversation.peerAccountId == ownAccountID
+            && conversation.subsessionId == nil
+            && !conversation.representsKordiSupport
+            && conversation.groupParticipants.allSatisfy { $0.accountId == ownAccountID }
+    }
+
     static func sections(
         conversations: [ConversationSummary],
         ownAccountID: String
     ) -> [AgentSessionSection] {
         AgentSessionPresentationCatalog.build(
-            conversations: conversations,
+            conversations: conversations.filter { isPrivateOwnedSession($0, ownAccountID: ownAccountID) },
             ownAccountId: ownAccountID
         )
     }
@@ -190,7 +198,8 @@ struct CompanionChatPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let selectedConversation {
+            if let selectedConversation,
+               CompanionPanelCatalog.isPrivateOwnedSession(selectedConversation, ownAccountID: model.account?.accountId ?? "") {
                 CompanionPanelHeader(
                     conversation: selectedConversation,
                     sessions: existingSessions,
@@ -249,7 +258,7 @@ private struct CompanionPanelHeader: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text("Agent session")
+                Text("Only you · Agent session")
                     .font(.caption)
                     .foregroundStyle(KordiTheme.agentViolet)
                     .lineLimit(1)

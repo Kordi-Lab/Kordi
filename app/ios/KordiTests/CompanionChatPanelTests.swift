@@ -1,6 +1,30 @@
 import XCTest
 import SwiftUI
+import Testing
 @testable import Kordi
+
+struct ConversationBoundaryTests {
+@Test func avatarsAndIdentityBoundMentions() throws {
+    try subsessionIsAConversationWithIdentityBoundMentionsAndSharedQueue()
+}
+
+@Test func askAgentNeverSelectsAnotherOwnersAgentOrASharedSubsession() {
+    func session(_ owner: String, child: String? = nil) -> ConversationSummary {
+        ConversationSummary(id: "session-\(owner)-\(child ?? "private")", kind: .agent,
+            peerAccountId: owner, agentId: "cloud-agent:\(owner)", ownerDisplayName: "Owner",
+            displayName: "Research", lastMessage: "", lastActivityAt: .now, unreadCount: 0,
+            avatarSource: nil, agentActivity: .ready, sessionId: "session-\(owner)", subsessionId: child)
+    }
+    let own = session("owner")
+    let shared = session("owner", child: "child")
+    let external = session("peer")
+    #expect(CompanionPanelCatalog.isPrivateOwnedSession(own, ownAccountID: "owner"))
+    #expect(!CompanionPanelCatalog.isPrivateOwnedSession(shared, ownAccountID: "owner"))
+    #expect(!CompanionPanelCatalog.isPrivateOwnedSession(external, ownAccountID: "owner"))
+    #expect(CompanionPanelCatalog.existingSessions(excluding: external,
+        conversations: [own, shared, external], ownAccountID: "owner").map(\.id) == [own.id])
+}
+}
 
 final class CompanionChatPanelTests: XCTestCase {
     func testDemoPreviewModePersistsAcrossDebugRelaunches() throws {

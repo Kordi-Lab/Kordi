@@ -496,6 +496,7 @@ pub(super) fn should_update_desktop_session_shell(
         .unwrap_or_default();
     if session.id.starts_with("session:bridge:")
         || created_from == "chat-create-flow"
+        || source == "canonical-fork-snapshot"
         || source.starts_with("desktop-bridge")
         || source.starts_with("bridge-")
         || matches!(
@@ -506,6 +507,18 @@ pub(super) fn should_update_desktop_session_shell(
         return Ok(false);
     }
     Ok(true)
+}
+
+pub(super) fn desktop_session_agent_identity(
+    conn: &Connection,
+    session_id: &str,
+    fallback: &str,
+) -> Result<String, String> {
+    let identity: Option<String> = conn.query_row(
+        "SELECT identity.id FROM sessions session JOIN identities identity ON identity.id=session.primary_identity_id WHERE session.id=?1 AND identity.kind='agent'",
+        [session_id], |row| row.get(0),
+    ).optional().map_err(|error| error.to_string())?;
+    Ok(identity.unwrap_or_else(|| fallback.to_string()))
 }
 
 pub(super) fn explicit_desktop_project_membership(
@@ -949,6 +962,8 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
             )?;
         }
 
+        let active_agent_identity_id =
+            desktop_session_agent_identity(&conn, &active.id, &agent_identity_id)?;
         let mut latest_user_message_id: Option<String> = None;
         for (index, message) in active.messages.iter().enumerate() {
             let is_agent_message = message_role::is_agent(message);
@@ -956,7 +971,7 @@ pub(crate) fn sync_desktop_chat_state(state: &crate::chat::DesktopChatState) -> 
                 &conn,
                 &active.id,
                 &human_identity_id,
-                &agent_identity_id,
+                &active_agent_identity_id,
                 index,
                 message,
                 is_agent_message

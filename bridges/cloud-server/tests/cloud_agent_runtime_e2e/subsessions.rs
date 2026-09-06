@@ -1,6 +1,48 @@
 use super::*;
 
 #[tokio::test]
+async fn private_agent_session_is_not_readable_by_shared_subsession_members() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let owner = signup(&router, "private-panel-owner", "Owner").await;
+    let peer = signup(&router, "private-panel-peer", "Peer").await;
+    accept_contacts(&router, &owner, &peer).await;
+    let private = create_test_conversation(
+        &pool,
+        &owner.account_id,
+        &format!("session:self-agent:{}", uuid::Uuid::new_v4()),
+        ConversationKind::Ai,
+        vec![],
+    )
+    .await;
+    insert_test_message(&pool, &owner.account_id, private, "PRIVATE_PANEL_CANARY").await;
+    let uri = format!("/v2/chat/conversations/{private}/messages");
+    let own = router
+        .clone()
+        .oneshot(get_with_token(&uri, &owner.token))
+        .await
+        .unwrap();
+    assert_eq!(own.status(), StatusCode::OK);
+    assert!(read_json(own)
+        .await
+        .to_string()
+        .contains("PRIVATE_PANEL_CANARY"));
+    let other = router
+        .clone()
+        .oneshot(get_with_token(&uri, &peer.token))
+        .await
+        .unwrap();
+    assert!(matches!(
+        other.status(),
+        StatusCode::FORBIDDEN | StatusCode::NOT_FOUND
+    ));
+    assert!(!read_json(other)
+        .await
+        .to_string()
+        .contains("PRIVATE_PANEL_CANARY"));
+}
+
+#[tokio::test]
 async fn model_subsession_keeps_parent_acl_identity_and_transcript_isolation() {
     let Some(pool) = try_pool().await else { return };
     let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
@@ -112,7 +154,17 @@ async fn model_subsession_keeps_parent_acl_identity_and_transcript_isolation() {
     assert_eq!(result["version"], 2);
     assert_eq!(result["messages"].as_array().unwrap().len(), 1);
     assert_eq!(result["messages"][0]["text"], "SUBSESSION_ONLY");
-    let owner_result = read_json(router.clone().oneshot(get_with_token(&format!("{uri}?includeMessages=true"), &owner.token)).await.unwrap()).await;
+    let owner_result = read_json(
+        router
+            .clone()
+            .oneshot(get_with_token(
+                &format!("{uri}?includeMessages=true"),
+                &owner.token,
+            ))
+            .await
+            .unwrap(),
+    )
+    .await;
     assert_eq!(owner_result["messages"].as_array().unwrap().len(), 2);
     let replay = router
         .clone()
@@ -171,7 +223,17 @@ async fn model_subsession_keeps_parent_acl_identity_and_transcript_isolation() {
     .await;
     assert_eq!(renamed["agentId"], created["agentId"]);
     assert_eq!(renamed["ownerDisplayName"], "Renamed Owner");
-    subsession_follow::verify(&router, &pool, &owner, &peer, &outsider, &id.to_string(), created["agentId"].as_str().unwrap(), true).await;
+    subsession_follow::verify(
+        &router,
+        &pool,
+        &owner,
+        &peer,
+        &outsider,
+        &id.to_string(),
+        created["agentId"].as_str().unwrap(),
+        true,
+    )
+    .await;
     let after: (i64, i64) = sqlx_core::query_as::query_as("SELECT (SELECT count(*) FROM cloud_chat_conversations), (SELECT count(*) FROM cloud_chat_messages)").fetch_one(&pool).await.unwrap();
     assert_eq!(
         before, after,

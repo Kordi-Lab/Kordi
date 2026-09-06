@@ -1931,6 +1931,18 @@ struct ConversationView: View {
     }
 
     private func avatarIdentity(for message: ChatMessage) -> ConversationAvatarIdentity {
+        if let id = conversation.subsessionId, let snapshot = model.subsessions[id] {
+            if message.author == .agent {
+                return ConversationAvatarIdentity(name: snapshot.agentDisplayName,
+                    source: snapshot.agentAvatarUrl, seed: snapshot.agentId)
+            }
+            let senderId = message.author == .me ? model.account?.accountId
+                : snapshot.messages.first(where: { $0.id == message.id })?.senderAccountId
+            let member = snapshot.participants?.first { $0.accountId == senderId }
+            return ConversationAvatarIdentity(name: member?.displayName ?? message.authorName,
+                source: member?.avatarUrl ?? (message.author == .me ? model.account?.avatar.imageSource : nil),
+                seed: member?.avatarSeed ?? senderId)
+        }
         if message.author == .me {
             let participant = conversation.groupParticipants.first {
                 $0.accountId == model.account?.accountId || $0.role == "self"
@@ -1962,7 +1974,12 @@ struct ConversationView: View {
                 .font(.headline)
                 .lineLimit(1)
 
-            if conversation.kind == .agent, agentActivity == .replying {
+            if conversation.subsessionId != nil {
+                Text("Agent thread · Shared with chat members")
+                    .font(.caption2)
+                    .foregroundStyle(KordiTheme.agentViolet)
+                    .lineLimit(1)
+            } else if conversation.kind == .agent, agentActivity == .replying {
                 HStack(spacing: 5) {
                     if let agentName = conversation.agentDisplayName?.nonEmpty,
                        agentName != conversation.displayName {

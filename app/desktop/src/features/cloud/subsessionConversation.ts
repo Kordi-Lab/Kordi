@@ -10,9 +10,11 @@ export function subsessionMentionOptions(record: CloudAgentSubsession, accountId
     label: record.agentDisplayName, detail: `Owner · ${record.ownerAccountId === accountId ? 'You' : record.ownerDisplayName}`,
     targetKind: 'agent', agentId: record.agentId, humanId: record.ownerAccountId,
     sourceHostId: 'cloud', nodeId: record.agentId, runtime: 'cloud', ownerName: record.ownerDisplayName,
-  }, ...(record.participants ?? []).map(person => ({
+    avatarImageUrl: record.agentAvatarUrl,
+  }, ...(record.participants ?? []).filter(person => person.accountId !== accountId).map(person => ({
     value: mentionHandleForLabel(person.displayName), label: person.displayName, targetKind: 'person' as const,
     humanId: person.accountId, sourceHostId: 'cloud', nodeId: person.accountId, runtime: 'cloud',
+    avatarImageUrl: person.avatarUrl, avatarSeed: person.avatarSeed,
   }))];
 }
 
@@ -33,12 +35,14 @@ export function subsessionTranscript(record: CloudAgentSubsession, accountId: st
   const result = rows.map((row): Message => {
     const agent = row.role === 'assistant';
     const own = row.senderAccountId === accountId;
+    const participant = record.participants?.find(person => person.accountId === row.senderAccountId);
     return {
       id: row.id, role: agent ? record.ownerAccountId === accountId ? 'owned-agent' : 'external-agent' : own ? 'user' : 'person',
       sender: agent ? record.agentDisplayName : own ? 'You' : row.senderDisplayName ?? 'Task',
       senderOwnerName: agent ? record.ownerAccountId === accountId ? 'You' : record.ownerDisplayName : undefined,
       senderIdentityId: agent ? record.agentId : row.senderAccountId,
-      senderAvatarSeed: agent ? record.agentId : row.senderAccountId,
+      senderAvatarSeed: agent ? record.agentId : participant?.avatarSeed ?? row.senderAccountId,
+      senderProfileImageUrl: agent ? record.agentAvatarUrl : participant?.avatarUrl,
       senderType: agent ? 'agent' : 'human', isOwnMessage: !agent && own, showSenderMeta: true,
       text: row.text, timestampMs: row.timestampMs,
       statusChips: !agent && row.requestState === 'queued' ? ['queued'] : undefined,
@@ -53,7 +57,8 @@ export function subsessionTranscript(record: CloudAgentSubsession, accountId: st
     if (last) last.turn = { ...progress, assistantText: last.text };
     else result.unshift({ id: progress.id, role: 'external-agent', senderType: 'agent', sender: record.agentDisplayName,
       senderOwnerName: record.ownerAccountId === accountId ? 'You' : record.ownerDisplayName,
-      senderIdentityId: record.agentId, text: '', time: '', turn: progress });
+      senderIdentityId: record.agentId, senderProfileImageUrl: record.agentAvatarUrl,
+      senderAvatarSeed: record.agentId, text: '', time: '', turn: progress });
   }
   return result;
 }
@@ -65,8 +70,9 @@ export function subsessionConversation(id: string, record: CloudAgentSubsession 
     type: record?.ownerAccountId === accountId ? 'owned-agent' : 'external-agent',
     subtitle: record ? `${record.agentDisplayName} · Owner · ${record.ownerAccountId === accountId ? 'You' : record.ownerDisplayName}` : 'Loading conversation…',
     unread: 0, collaborationSources: ['Cloud'], trust: 'Shared', directness: 'Agent session',
-    participants: record ? [record.agentDisplayName] : [],
+    participants: record ? (record.participants ?? []).map(person => person.displayName) : [],
     avatarSeed: record?.agentId,
+    profileImageUrl: record?.agentAvatarUrl,
     messages: record ? subsessionTranscript(record, accountId) : [],
   };
 }

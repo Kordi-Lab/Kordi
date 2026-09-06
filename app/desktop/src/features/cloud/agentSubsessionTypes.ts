@@ -13,6 +13,7 @@ export type NativeAgentSubsession = {
 export type CloudAgentSubsession = Omit<NativeAgentSubsession, 'parentRequestId'> & {
   parentRequestId: string; ownerAccountId: string; agentId: string;
   ownerDisplayName: string; agentDisplayName: string; version: number; updatedAt: string;
+  agentAvatarUrl?: string | null;
   hasFollowupExecution?: boolean;
-  participants?: Array<{accountId:string;displayName:string}>;
+  participants?: Array<{accountId:string;displayName:string;avatarUrl?:string|null;avatarSeed?:string|null}>;
 };

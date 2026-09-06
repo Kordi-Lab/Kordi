@@ -19,6 +19,7 @@ import {
   chatCompanionSessionOptions,
   chatSideAgentConversationForOpenRequest,
   pairedCompanionConversation,
+  isPrivateOwnedAgentConversation,
 } from '@/pages/chatsPage.model';
 import { scheduleTranscriptScrollToBottom } from '@/pages/chatsPage.header';
 
@@ -307,6 +308,8 @@ export function useChatCompanionSession({
       })();
       return false;
     }
+    // A side-pane location never makes a shared or external session private.
+    if (!isPrivateOwnedAgentConversation(targetConversation) || targetConversation.id !== state.openConversationId) return false;
     const referenceMessage = state.referenceContext
       ? buildAskAgentSessionReferenceContextMessage(
           activeConversation,
@@ -418,6 +421,8 @@ export function useChatCompanionSession({
           referenceContext: null, actionsOpen: false, sessionListOpen: false, openComposerSelector: null }));
       },
       switchConversation: (conversationId: string) => {
+        const known = directConversations.find(item => item.id === conversationId);
+        if (known && !isPrivateOwnedAgentConversation(known)) return;
         if (
           !selectableSessionIds.has(conversationId)
           && !candidateIds.has(conversationId)

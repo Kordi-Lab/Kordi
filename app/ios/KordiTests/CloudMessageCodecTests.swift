@@ -8,7 +8,8 @@ import Testing
         "ownerAccountId": "owner", "agentId": "cloud-agent:owner",
         "ownerDisplayName": "Owner One", "agentDisplayName": "Owner One's Kordi", "title": "Research",
         "status": "running", "version": 2, "updatedAt": "2026-09-05T00:00:00Z", "hasFollowupExecution": true,
-        "participants": [["accountId": "peer", "displayName": "Peer"]],
+        "agentAvatarUrl": "https://example.test/agent.png",
+        "participants": [["accountId": "peer", "displayName": "Peer", "avatarUrl": "https://example.test/peer.png"]],
         "messages": [
             ["id": "plain", "role": "user", "text": "Hello", "timestampMs": 1, "senderAccountId": "peer"],
             ["id": "active", "role": "assistant", "text": "", "timestampMs": 2, "requestState": "running", "requestId": "a"],
@@ -20,8 +21,12 @@ import Testing
     let snapshot = try JSONDecoder().decode(CloudAgentSubsession.self, from: data)
     #expect(snapshot.conversation.subsessionId == "child")
     #expect(snapshot.conversation.peerAccountId == "owner")
-    #expect(snapshot.mentionTargets.first?.agentId == "cloud-agent:owner")
-    #expect(snapshot.mentionTargets.first?.mentionText == "@KordiOwnerOne")
+    #expect(snapshot.mentionTargets(accountId: "peer").first?.agentId == "cloud-agent:owner")
+    #expect(snapshot.mentionTargets(accountId: "peer").first?.mentionText == "@KordiOwnerOne")
+    #expect(snapshot.mentionTargets(accountId: "peer").count == 1)
+    #expect(snapshot.mentionTargets(accountId: "owner").last?.avatarSource == "https://example.test/peer.png")
+    #expect(snapshot.conversation.avatarSource == "https://example.test/agent.png")
+    #expect(snapshot.conversation.groupParticipants.first?.accountId == "peer")
     let rows = snapshot.chatMessages(accountId: "peer")
     #expect(rows.first?.author == .me)
     #expect(rows.first(where: { $0.id == "b" })?.author == .person)

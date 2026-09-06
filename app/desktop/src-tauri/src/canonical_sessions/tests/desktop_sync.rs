@@ -522,6 +522,14 @@ fn desktop_sync_replaces_processing_bridge_agent_placeholder_with_local_runtime_
 #[test]
 fn desktop_sync_does_not_reclassify_bridge_sessions() {
     let conn = test_conn();
+    seed_identity_with_source(
+        &conn,
+        "agent:selected",
+        "Research Agent",
+        "agent",
+        "cloud",
+        Some("human:local"),
+    );
     open_or_create_session_in_db(
         &conn,
         OpenCanonicalSessionRequest {
@@ -573,6 +581,21 @@ fn desktop_sync_does_not_reclassify_bridge_sessions() {
         },
     )
     .expect("open selected agent session");
+
+    assert_eq!(
+        super::super::desktop_sync::desktop_session_agent_identity(
+            &conn,
+            "selected-agent-session",
+            "agent:local"
+        )
+        .unwrap(),
+        "agent:selected"
+    );
+    conn.execute(
+        "UPDATE sessions SET metadata_json=?1 WHERE id='selected-agent-session'",
+        [serde_json::json!({"source":"canonical-fork-snapshot"}).to_string()],
+    )
+    .unwrap();
 
     assert!(
         !should_update_desktop_session_shell(&conn, "session:bridge:humans:test")

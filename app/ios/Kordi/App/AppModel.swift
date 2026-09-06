@@ -1386,6 +1386,10 @@ final class AppModel: ObservableObject {
         var text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoingAttachments = voiceMessage.map { [$0.attachment] } ?? attachments
         guard (!text.isEmpty || !outgoingAttachments.isEmpty), let token, let account else { return }
+        if agentContext != nil && !CompanionPanelCatalog.isPrivateOwnedSession(conversation, ownAccountID: account.accountId) {
+            errorMessage = "Ask Agent is only available in your private Agent sessions."
+            return
+        }
         if let id = conversation.subsessionId {
             guard outgoingAttachments.isEmpty else { errorMessage = "This session supports text messages."; return }
             let messageId = retryMessage?.clientMessageId ?? UUID().uuidString.lowercased()
@@ -2563,7 +2567,7 @@ final class AppModel: ObservableObject {
     }
 
     func mentionTargets(for conversation: ConversationSummary) -> [ComposerMentionTarget] {
-        if let id = conversation.subsessionId { return subsessions[id]?.mentionTargets ?? [] }
+        if let id = conversation.subsessionId { return subsessions[id]?.mentionTargets(accountId: account?.accountId ?? "") ?? [] }
         guard let account else { return [] }
         return ComposerMentionTargetCatalog.targets(
             account: account,

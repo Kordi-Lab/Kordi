@@ -346,6 +346,7 @@ struct ComposerMentionPicker: View {
     let items: [ComposerMentionMenuItem]
     let currentAccountID: String?
     let onSelect: (ComposerMentionMenuItem) -> Void
+    var peopleTitle: String = "Contacts"
 
     var body: some View {
         ScrollView {
@@ -354,7 +355,7 @@ struct ComposerMentionPicker: View {
                     let sectionItems = items.filter { $0.section == section }
                     if !sectionItems.isEmpty {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(section.title)
+                            Text(section == .contacts ? peopleTitle : section.title)
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 12)

@@ -5,16 +5,20 @@ extension CloudAgentSubsession {
         ConversationSummary(id: "subsession:\(sessionId)", kind: .agent,
             peerAccountId: ownerAccountId, agentId: agentId, ownerDisplayName: ownerDisplayName,
             displayName: title, lastMessage: messages.last?.text ?? "", lastActivityAt: .distantPast,
-            unreadCount: 0, avatarSource: nil, agentActivity: state == .running ? .replying : .ready,
-            sessionId: sessionId, agentDisplayName: agentDisplayName, subsessionId: sessionId)
+            unreadCount: 0, avatarSource: agentAvatarUrl, agentActivity: state == .running ? .replying : .ready,
+            sessionId: sessionId, agentDisplayName: agentDisplayName,
+            groupParticipants: (participants ?? []).map {
+                CloudGroupParticipant(accountId: $0.accountId, displayName: $0.displayName,
+                    avatarUrl: $0.avatarUrl, role: nil)
+            }, subsessionId: sessionId)
     }
 
-    var mentionTargets: [ComposerMentionTarget] {
+    func mentionTargets(accountId: String) -> [ComposerMentionTarget] {
         [ComposerMentionTarget(id: agentId, displayName: agentDisplayName, kind: .agent,
-            accountId: ownerAccountId, agentId: agentId, ownerName: ownerDisplayName, avatarSource: nil)]
-        + (participants ?? []).map {
+            accountId: ownerAccountId, agentId: agentId, ownerName: ownerDisplayName, avatarSource: agentAvatarUrl)]
+        + (participants ?? []).filter { $0.accountId != accountId }.map {
             ComposerMentionTarget(id: $0.accountId, displayName: $0.displayName, kind: .person,
-                accountId: $0.accountId, agentId: nil, ownerName: nil, avatarSource: nil)
+                accountId: $0.accountId, agentId: nil, ownerName: nil, avatarSource: $0.avatarUrl)
         }
     }
 

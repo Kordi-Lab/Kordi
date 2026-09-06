@@ -170,7 +170,7 @@ export function CompanionComposer({
     <div data-companion-composer-frame="true" className="shrink-0 px-5 pb-4 pt-3">
       <div className="app-composer-shell rounded-[26px] p-3" data-companion-composer-footer="true">
         <div className="relative">
-          {mentionOptions.length > 0 ? <ComposerMentionMenu id={menuId} items={mentionOptions}
+          {mentionOptions.length > 0 ? <ComposerMentionMenu id={menuId} items={mentionOptions} peopleLabel="Members"
             selectedIndex={Math.min(selectedIndex, mentionOptions.length - 1)} onSelect={acceptMention} /> : null}
           <div
             className={cn(
