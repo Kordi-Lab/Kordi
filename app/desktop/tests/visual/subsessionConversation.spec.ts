@@ -1,5 +1,36 @@
 import { test, expect } from '@playwright/test';
 
+for (const theme of ['light', 'dark']) {
+  test(`transparent website icons use a visible fallback in ${theme} chat bubbles`, async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      const host = window as unknown as {__TAURI_INTERNALS__: unknown};
+      host.__TAURI_INTERNALS__ = {invoke: async (command: string, args: {url?:string}) => {
+        if (command !== 'desktop_fetch_remote_image_data_url') return null;
+        const fill = args.url?.includes('visible.example') ? '<rect width="16" height="16" fill="blue"/>' : '';
+        return `data:image/svg+xml;base64,${btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">${fill}</svg>`)}`;
+      }};
+    });
+    await page.goto('/tests/visual/subsessionConversation.html');
+    await page.evaluate(theme => {
+      document.body.className = `kordi-app theme-${theme}`;
+      const record = (window as unknown as {fixtureSubsession:Record<string,unknown>}).fixtureSubsession;
+      Object.assign(record,{status:'done',version:2,messages:[{id:'answer',role:'assistant',timestampMs:1000,
+        text:'Mars has two moons. ([Source](https://transparent.example/moons))\n\n[Visible icon](https://visible.example/moons)'}]});
+    }, theme);
+    await page.getByRole('button', {name:'Open background agent session: Planet research'}).click();
+    const panel = page.locator('[data-chat-side-agent-panel="true"]');
+    const empty = panel.locator('[data-site-icon-host="transparent.example"]').first();
+    await expect(empty).toHaveAttribute('data-site-icon-state','failed');
+    await expect(empty.locator('svg')).toBeVisible();
+    await expect(empty.locator('img')).toHaveCount(0);
+    const visible = panel.locator('[data-site-icon-host="visible.example"]').first();
+    await expect(visible).toHaveAttribute('data-site-icon-state','ready');
+    await expect(visible.locator('img')).toBeVisible();
+    await expect(panel.getByRole('link', {name:'Source',exact:true})).toHaveAttribute('href','https://transparent.example/moons');
+    await page.screenshot({path:testInfo.outputPath('website-icon-fallback.png')});
+  });
+}
+
 for (const account of ['owner', 'peer']) {
   test(`shared task instructions show the Agent for ${account}, with separate live progress`, async ({ page }, testInfo) => {
     await page.addInitScript(account => { (window as unknown as {fixtureAccountId:string}).fixtureAccountId = account; }, account);
