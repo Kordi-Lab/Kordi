@@ -5159,7 +5159,8 @@ final class AppModel: ObservableObject {
                         $0.chatAttachment(messageKind: payload.messageKind)
                     }
                     : [],
-                replyToMessageId: payload.replyToMessageId ?? payload.messageAction?.replyToMessageId,
+                replyToMessageId: (author == .agent ? payload.requestId : nil)
+                    ?? payload.replyToMessageId ?? payload.messageAction?.replyToMessageId,
                 reactionTargetMessageId: wire.messageId,
                 messageAction: payload.messageAction,
                 mentions: MessageMention.rebased(payload.mentions ?? [], in: payload.text),

@@ -322,7 +322,7 @@ struct ConversationView: View {
             })?.id
         }
         let visibleStartIndex = timeline.count - visibleTimeline.count
-        let messagesById = Dictionary(uniqueKeysWithValues: timeline.map { ($0.id, $0) })
+        let messagesById = Dictionary(uniqueKeysWithValues: allMessages.map { ($0.id, $0) })
         let presentationStartIndex = max(timeline.startIndex, visibleStartIndex - 1)
         let timelinePresentation = ConversationTimelinePresentation.make(
             messages: Array(timeline[presentationStartIndex..<timeline.endIndex]),
@@ -1083,14 +1083,13 @@ struct ConversationView: View {
                             && message.author == .person
                             && !presentation.groupedWithPrevious),
                     showAvatar: presentation.showsAvatar,
-                    replySourceMessage: message.replyToMessageId.flatMap { messagesByID[$0] },
+                    replySourceMessage: message.quotedReplyMessageId.flatMap { messagesByID[$0] },
                     isHighlighted: highlightedMessageID == message.id,
                     isActionPresented: messageActionMessage?.id == message.id,
                     isPinned: pinnedMessageIDs.contains(message.id),
                     selectionMode: !selectedMessageIDs.isEmpty,
                     isSelected: selectedMessageIDs.contains(message.id),
-                    allowsQuotedReplies: scopedThreadRootMessageID == nil
-                        && conversation.kind.supportsQuotedReplies,
+                    allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
                     threadReplyCount: threadReplyCount,
                     threadHasUnread: model.threadReadCursors[conversation.sessionId].map {
                         threadProjection.thread(rootID: message.id)?.hasUnread(cursors: $0) ?? false

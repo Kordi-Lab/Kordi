@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import { buildReplyAttribution, replyStatusText, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '../src/features/chat/replyAttribution';
 import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
+import {projectMessageThreads} from '../src/features/chat/messageThreads';
 
 function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {
   return {
@@ -57,6 +58,34 @@ test('buildReplyAttribution keeps fallback ids stable for transcript windows', (
   assert.equal(result.messages[1].id, 'transcript-message:861');
   assert.equal(result.messages[1].replyToMessageId, 'transcript-message:860');
   assert.equal(result.messages[1].turn?.sourceMessage?.messageId, 'transcript-message:860');
+});
+
+test('thread replies quote the exact trigger and replace stale quotes without changing placement', () => {
+  const old = humanRequest({id:'old',text:'@MyKordi OLD-REQUEST'});
+  const root = humanRequest({id:'root',text:'Discussion root'});
+  const action = {schemaVersion:1 as const,kind:'thread' as const,source:{sourceSessionId:'session',sourceMessageId:'root',senderLabel:'Me',textPreview:'Discussion root',attachmentCount:0}};
+  const question = humanRequest({id:'question',reactionTargetMessageId:'wire-question',text:'@KordiOwner What are we discussing?',messageAction:action,replyToMessageId:'root'});
+  const stale = {messageId:'old',senderLabel:'Me',text:old.text};
+  const response: Message = {id:'response',role:'owned-agent',sender:'Researcher',senderType:'agent',text:'',time:'',
+    messageAction:action,replyToMessageId:'wire-question',sourceMessage:stale,
+    turn:turn({replyToMessageId:'wire-question',sourceMessage:stale})};
+  const linked = buildReplyAttribution([old,root,question,response],null,{inferLatestHumanRequest:true});
+  const answer = linked.messages[3];
+  assert.equal(answer.sourceMessage?.messageId,'question');
+  assert.equal(answer.turn?.sourceMessage?.text,question.text);
+  assert.equal(answer.messageAction?.source.sourceMessageId,'root');
+  assert.equal(linked.messages[2].sourceMessage,undefined);
+  assert.equal(buildReplyAttribution(linked.messages).messages[3].turn?.sourceMessage?.messageId,'question');
+  assert.equal(buildReplyAttribution([answer]).messages[0].turn?.sourceMessage?.messageId,'question');
+  assert.deepEqual(projectMessageThreads(linked.messages).threads.get('root')?.replies.map(row=>row.id),['question','response']);
+  for (const target of ['not-loaded',undefined]) {
+    const missing = {...response,replyToMessageId:target,turn:turn({replyToMessageId:target,sourceMessage:stale})};
+    const result = buildReplyAttribution([old,root,missing],null,{inferLatestHumanRequest:true}).messages[2];
+    assert.equal(result.sourceMessage,undefined);
+    assert.equal(result.turn?.sourceMessage,undefined);
+    assert.equal(result.replyToMessageId,target);
+    assert.equal(result.messageAction?.source.sourceMessageId,'root');
+  }
 });
 
 test('buildReplyAttribution adds generic reply count and source quote without responder names', () => {
@@ -392,11 +421,12 @@ test('buildReplyAttribution resolves canonical bridge parent aliases as the sour
   assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Maya');
 });
 
-test('buildReplyAttribution falls back to visible request when explicit reply target was hidden as duplicate', () => {
+test('buildReplyAttribution resolves a known duplicate alias without guessing a different request', () => {
   const messages: Message[] = [
     humanRequest({
       id: 'msg:visible-ui-request',
       text: '@MyKordi how are yo',
+      replyAliasIds: ['msg:hidden-runtime-duplicate'],
     }),
     {
       id: 'msg:my-agent-response',

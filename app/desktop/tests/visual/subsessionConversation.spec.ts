@@ -1,5 +1,25 @@
 import { test, expect } from '@playwright/test';
 
+for (const role of ['owned-agent','external-agent']) {
+  test(`thread Agent quotes the exact current question for ${role} after reopening`, async ({page},testInfo) => {
+    await page.addInitScript(role => Object.assign(window,{fixtureDiscussionRole:role,fixtureThreadReply:true}),role);
+    for (let attempt=0;attempt<2;attempt++) {
+      await page.goto('/tests/visual/subsessionConversation.html');
+      await page.getByRole('button',{name:'Open thread with 5 discussed in thread',exact:true}).click();
+      const thread = page.getByRole('complementary',{name:'Message thread'});
+      const answer = thread.locator('#app-transcript-message-thread-answer');
+      await expect(answer).toContainText('THREAD-ANSWER');
+      await expect(answer.locator('.app-source-message-quote')).toHaveCount(1);
+      await expect(answer.locator('.app-source-message-quote')).toContainText('What are we discussing?');
+      await expect(answer).not.toContainText('UNRELATED-REQUEST');
+      await expect(thread.locator('#app-transcript-message-thread-question .app-source-message-quote')).toHaveCount(0);
+      await answer.getByTitle('Jump to original request',{exact:true}).click();
+      await expect(thread.locator('#app-transcript-message-thread-question')).toBeVisible();
+      if(attempt===0) await page.screenshot({path:testInfo.outputPath('thread-reply-quote.png')});
+    }
+  });
+}
+
 test('thread unread updates synchronize between devices without clearing another member', async ({ browser }, testInfo) => {
   const reads = new Map<string,number>();
   const writes: number[] = [];

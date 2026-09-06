@@ -4,6 +4,28 @@ import Testing
 
 @MainActor
 struct AgentThreadBoundaryTests {
+    @Test(arguments: ["acct_owner", "acct_requester"])
+    func responseQuotesItsActualRequestInsteadOfTheThreadRoot(viewer: String) throws {
+        let conversation = ConversationSummary(id:"contact",kind:.person,peerAccountId:"acct_owner",agentId:nil,
+            ownerDisplayName:"Owner",displayName:"Owner",lastMessage:"",lastActivityAt:.distantPast,
+            unreadCount:0,avatarSource:nil,agentActivity:nil,sessionId:"session:contact:thread")
+        let action = MessageActionMetadata.thread(MessageActionSource(sourceSessionId:conversation.sessionId,sourceMessageId:"root",senderLabel:"Requester",textPreview:"Discussion root",attachmentCount:0))
+        let request = try CloudMessageCodec.encodeDirect(text:"@KordiOwner What are we discussing?",agentId:"cloud-agent:acct_owner",agentName:"Kordi",ownerAccountId:"acct_owner",ownerName:"Owner",messageAction:action)
+        let payload: [String:Any] = ["kind":"agent-response","requestId":"question","deliveryState":"complete","text":"Current answer",
+            "messageAction": ["schemaVersion":1,"kind":"thread","source":["sourceSessionId":conversation.sessionId,"sourceMessageId":"root","senderLabel":"Requester","textPreview":"Discussion root","attachmentCount":0]]]
+        let response = CloudMessageCodec.agentResponsePrefix + (try JSONSerialization.data(withJSONObject:payload)).base64EncodedString()
+        func wire(_ id:String,_ sender:String,_ body:String) -> CloudMessageDTO {
+            CloudMessageDTO(messageId:id,fromAccountId:sender,toAccountId:"acct_requester",body:body,createdAt:"2026-09-01T00:00:01Z",deliveredAt:nil,readAt:nil,direction:"incoming",sessionId:conversation.sessionId)
+        }
+        let messages = CloudDirectMessageProjector.project([wire("root","acct_requester","Discussion root"),wire("question","acct_requester",request),wire("answer","acct_owner",response)],conversation:conversation,ownAccountId:viewer)
+        let answer = try #require(messages.first { $0.id == "answer" })
+        #expect(answer.replyToMessageId == "question")
+        #expect(answer.quotedReplyMessageId == "question")
+        #expect(answer.messageAction?.source.sourceMessageId == "root")
+        #expect(messages.first { $0.id == "question" }?.quotedReplyMessageId == nil)
+        #expect(MessageThreadProjection(messages:messages).thread(rootID:"root")?.replies.count == 2)
+    }
+
     @Test(arguments: ["processing", "complete", "failed", "cancelled"])
     func responseStaysInThreadWithLiveState(state: String) throws {
         let conversation = ConversationSummary(

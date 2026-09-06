@@ -50,9 +50,10 @@ function sourceReferenceForMessage(message: Message, messageId: string): Message
 }
 
 function explicitReplyTargetForMessage(message: Message) {
-  if (message.messageAction?.kind === 'thread') return null;
   const explicitReplyId = cleanText(message.replyToMessageId)
     || cleanText(message.turn?.replyToMessageId);
+  // Thread placement is not a quote. Agent replies still retain their actual trigger.
+  if (message.messageAction?.kind === 'thread') return isAgentResponse(message) ? explicitReplyId || null : null;
   if (explicitReplyId) return explicitReplyId;
 
   if (message.messageAction?.kind === 'forward') return null;
@@ -89,7 +90,7 @@ function compactUnique(values: Array<string | null | undefined>) {
 }
 
 function messageSourceLookupIds(message: Message, messageId: string) {
-  return compactUnique([messageId, ...(message.replyAliasIds ?? [])]);
+  return compactUnique([messageId, message.entryId, message.clientMessageId, message.reactionTargetMessageId, ...(message.replyAliasIds ?? [])]);
 }
 
 function mentionTargetsForRequest(message: Message) {
@@ -203,10 +204,10 @@ function replyTargetForMessage(
   requestCandidates: readonly RequestCandidate[],
   mentionCandidates: readonly RequestCandidate[],
   inferLatestHumanRequest: boolean,
-  sourceByMessageId: ReadonlyMap<string, MessageSourceReference>,
 ) {
   const explicitTarget = explicitReplyTargetForMessage(message);
-  if (explicitTarget && sourceByMessageId.has(explicitTarget)) return explicitTarget;
+  if (explicitTarget) return explicitTarget;
+  if (message.messageAction?.kind === 'thread') return null;
   return inferredReplyTargetForAgentMessage(
     message,
     requestCandidates,
@@ -234,14 +235,14 @@ function addReplySummary(
   });
 }
 
-function withSourceMessage(message: Message, sourceMessage: MessageSourceReference) {
+function withSourceMessage(message: Message, sourceMessage?: MessageSourceReference) {
   return {
     ...message,
-    sourceMessage: message.sourceMessage ?? sourceMessage,
+    sourceMessage: isAgentResponse(message) ? sourceMessage : message.sourceMessage ?? sourceMessage,
     turn: message.turn
       ? {
           ...message.turn,
-          sourceMessage: message.turn.sourceMessage ?? sourceMessage,
+          sourceMessage,
         }
       : message.turn,
   };
@@ -400,12 +401,15 @@ export function buildReplyAttribution(
       requestCandidates,
       mentionCandidates,
       inferLatestHumanRequest,
-      sourceByMessageId,
     );
     mentionCandidates.push({ messageId, message });
-    if (!replyTargetId) return suppressAgentReplyAttribution ? withoutAgentReplyAttribution(message) : message;
-    const sourceMessage = sourceByMessageId.get(replyTargetId);
-    if (!sourceMessage) return suppressAgentReplyAttribution ? withoutAgentReplyAttribution(message) : message;
+    if (!replyTargetId) {
+      if (suppressAgentReplyAttribution) return withoutAgentReplyAttribution(message);
+      return message.messageAction?.kind === 'thread' ? withSourceMessage(message) : message;
+    }
+    const sourceMessage = sourceByMessageId.get(replyTargetId)
+      ?? [message.sourceMessage, message.turn?.sourceMessage].find(source => source?.messageId === replyTargetId);
+    if (!sourceMessage) return suppressAgentReplyAttribution ? withoutAgentReplyAttribution(message) : withSourceMessage(message);
 
     const noProviderDedupeKey = noProviderReplyDedupeKey(message, sourceMessage);
     if (noProviderDedupeKey) {
@@ -426,14 +430,15 @@ export function buildReplyAttribution(
     const explicitTargetId = explicitReplyTargetForTurn(liveTurn);
     const replyTargetId = explicitTargetId ?? inferredReplyTargetForLiveTurn(liveTurn, requestCandidates, inferLatestHumanRequest);
     if (!replyTargetId) return suppressAgentReplyAttribution ? withoutLiveTurnReplyAttribution(liveTurn) : liveTurn;
-    const sourceMessage = sourceByMessageId.get(replyTargetId);
-    if (!sourceMessage) return suppressAgentReplyAttribution ? withoutLiveTurnReplyAttribution(liveTurn) : liveTurn;
+    const sourceMessage = sourceByMessageId.get(replyTargetId)
+      ?? (liveTurn.sourceMessage?.messageId === replyTargetId ? liveTurn.sourceMessage : undefined);
+    if (!sourceMessage) return suppressAgentReplyAttribution ? withoutLiveTurnReplyAttribution(liveTurn) : { ...liveTurn, sourceMessage: undefined };
     if (suppressAgentReplyAttribution) return withoutLiveTurnReplyAttribution(liveTurn);
     addReplySummary(summariesByRequestId, sourceMessage.messageId, liveTurn.id, liveTurn.completed);
     return {
       ...liveTurn,
       replyToMessageId: sourceMessage.messageId,
-      sourceMessage: liveTurn.sourceMessage ?? sourceMessage,
+      sourceMessage,
     };
   })();
 

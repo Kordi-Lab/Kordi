@@ -1173,6 +1173,12 @@ struct ChatMessage: Identifiable, Codable, Hashable {
 
     var isEdited: Bool { editedAt != nil }
 
+    var quotedReplyMessageId: String? {
+        if author == .agent, let requestMessageId = requestMessageId?.nonEmpty { return requestMessageId }
+        if messageAction?.kind == "thread" { return nil }
+        return messageAction?.replyToMessageId ?? replyToMessageId
+    }
+
     static func timelinePrecedes(_ left: ChatMessage, _ right: ChatMessage) -> Bool {
         let leftSequence = left.conversationSequence.flatMap { $0 > 0 ? $0 : nil }
         let rightSequence = right.conversationSequence.flatMap { $0 > 0 ? $0 : nil }

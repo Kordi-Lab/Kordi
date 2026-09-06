@@ -4,6 +4,14 @@ import Testing
 @testable import Kordi
 
 struct ConversationBoundaryTests {
+@Test func threadViewsEnableOnlyActualReplyQuotes() throws {
+    let source = try String(contentsOf: URL(fileURLWithPath:#filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift"),encoding:.utf8)
+    #expect(source.contains("replySourceMessage: message.quotedReplyMessageId.flatMap"))
+    #expect(source.contains("allowsQuotedReplies: conversation.kind.supportsQuotedReplies"))
+    #expect(!source.contains("allowsQuotedReplies: scopedThreadRootMessageID == nil"))
+}
+
 @Test func threadReferencesResolveToTheSameKnownCloudMessage() throws {
     let wireId = "10000000-0000-4000-8000-000000000001"
     var root = ChatMessage(id:"group-payload",clientMessageId:"client-root",conversationId:"parent",conversationSequence:30,

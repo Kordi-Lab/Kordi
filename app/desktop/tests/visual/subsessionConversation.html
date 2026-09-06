@@ -78,6 +78,20 @@ if (window.fixtureDiscussionRole) {
       sourceMessageId:index===1?'collaboration-message:another-viewer:10000000-0000-4000-8000-000000000001':index===2?'cloud-response':'10000000-0000-4000-8000-000000000001',
       senderLabel:root.sender,textPreview:root.text,attachmentCount:0}}})));
 }
+if (window.fixtureThreadReply) {
+  const root = parent.messages[0];
+  const action = parent.messages[1].messageAction;
+  const original = {id:'original-request',role:'person',sender:'Sam',senderType:'human',text:'Original request',time:'08:00'};
+  const old = {id:'unrelated-request',role:'person',sender:'Sam',senderType:'human',text:'@MyKordi UNRELATED-REQUEST',time:'07:00'};
+  root.replyToMessageId = root.turn.replyToMessageId = original.id;
+  parent.messages.unshift(old,original);
+  const question = {id:'thread-question',role:'person',sender:'Sam',senderType:'human',text:'@ScopedAgent What are we discussing?',time:'08:02',
+    reactionTargetMessageId:'wire-question',messageAction:action,replyToMessageId:root.reactionTargetMessageId};
+  const stale = {messageId:old.id,senderLabel:'Sam',text:old.text};
+  parent.messages.push(question,{id:'thread-answer',role:root.role,sender:root.sender,senderType:'agent',text:'',time:'08:03',
+    messageAction:action,replyToMessageId:'wire-question',sourceMessage:stale,
+    turn:{...root.turn,id:'thread-answer-turn',assistantText:'THREAD-ANSWER',replyToMessageId:'wire-question',sourceMessage:stale}});
+}
 const props={
   cloudAccount:window.fixtureThreadUnread?{accountId:window.fixtureAccountId??'peer',displayName:'Sam'}:null,
   isNativeShell:false,showChatDetailRail:false,collapseChatSessions:false,setIsSessionPanelCollapsed:noop,

@@ -158,7 +158,7 @@ enum CloudDirectMessageProjector {
                     $0.chatAttachment(messageKind: CloudMessageCodec.canonicalMessageKind(message))
                 }
                 : [],
-            replyToMessageId: messageAction?.replyToMessageId ?? responseRequestId,
+            replyToMessageId: responseRequestId ?? messageAction?.replyToMessageId,
             reactionTargetMessageId: message.messageId,
             messageAction: messageAction,
             mentions: MessageMention.rebased(
