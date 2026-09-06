@@ -1,5 +1,60 @@
 import { test, expect } from '@playwright/test';
 
+test('thread unread updates synchronize between devices without clearing another member', async ({ browser }, testInfo) => {
+  const reads = new Map<string,number>();
+  const writes: number[] = [];
+  const context = await browser.newContext();
+  await context.exposeFunction('fixtureThreadReadRequest', ({accountId,method,body}: {accountId:string;method:string;body:{sequence:number}|null}) => {
+    const record = () => ({root_message_id:'10000000-0000-4000-8000-000000000001',root_client_message_id:'10000000-0000-4000-8000-000000000001',last_read_sequence:reads.get(accountId)??0});
+    if (method === 'PUT' && body) { reads.set(accountId,Math.max(reads.get(accountId)??0,body.sequence));writes.push(body.sequence);return record(); }
+    return reads.has(accountId)?[record()]:[];
+  });
+  await context.addInitScript(() => Object.assign(window,{fixtureThreadUnread:true,fixtureDiscussionRole:'external-agent'}));
+  const first = await context.newPage();
+  const second = await context.newPage();
+  const peer = await context.newPage();
+  await peer.addInitScript(() => { (window as unknown as {fixtureAccountId:string}).fixtureAccountId='owner'; });
+  for (const page of [first,second,peer]) await page.goto('/tests/visual/subsessionConversation.html');
+  for (const page of [first,second,peer]) await expect(page.locator('[data-thread-unread="true"]')).toHaveCount(1);
+  await first.screenshot({path:testInfo.outputPath('thread-unread.png')});
+  expect(writes).toEqual([]);
+  await first.bringToFront();
+  await first.getByRole('button',{name:'Open thread with 3 discussed in thread, unread replies',exact:true}).click();
+  await expect(first.getByRole('complementary',{name:'Message thread'})).toBeVisible();
+  await expect.poll(() => reads.get('peer')).toBe(4);
+  await expect(second.locator('[data-thread-unread="true"]')).toHaveCount(0);
+  await expect(peer.locator('[data-thread-unread="true"]')).toHaveCount(1);
+  await first.screenshot({path:testInfo.outputPath('thread-open-read.png')});
+  await second.reload();
+  await expect(second.getByRole('button',{name:'Open thread with 3 discussed in thread',exact:true})).toBeVisible();
+  await expect(second.locator('[data-thread-unread="true"]')).toHaveCount(0);
+  await context.close();
+});
+
+for (const context of ['group', 'contact']) {
+  for (const role of ['owned-agent', 'external-agent']) {
+    test(`${context} Agent discussion entry opens existing replies for ${role}`, async ({ page }) => {
+      await page.addInitScript(({context,role}) => {
+        Object.assign(window,{fixtureDiscussionContext:context,fixtureDiscussionRole:role});
+      }, {context,role});
+      await page.goto('/tests/visual/subsessionConversation.html');
+      const entry = page.getByRole('button',{name:'Open thread with 3 discussed in thread',exact:true});
+      await expect(entry).toBeVisible();
+      await expect(page.getByText('Discussion reply 1',{exact:true})).toHaveCount(0);
+      await entry.click();
+      const thread = page.getByRole('complementary',{name:'Message thread'});
+      await expect(thread).toBeVisible();
+      for (const index of [1,2,3]) await expect(thread.getByText(`Discussion reply ${index}`,{exact:true})).toBeVisible();
+      await expect(thread.getByRole('textbox')).toBeVisible();
+      await expect(thread.getByRole('button',{name:/Open thread with/})).toHaveCount(0);
+      await thread.getByRole('button',{name:'Close thread',exact:true}).click();
+      await expect(thread).toHaveCount(0);
+      await expect(entry).toBeVisible();
+      expect(await page.evaluate(() => (window as unknown as {unexpectedParentSends:number}).unexpectedParentSends)).toBe(0);
+    });
+  }
+}
+
 for (const theme of ['light', 'dark']) {
   test(`transparent website icons use a visible fallback in ${theme} chat bubbles`, async ({ page }, testInfo) => {
     await page.addInitScript(() => {

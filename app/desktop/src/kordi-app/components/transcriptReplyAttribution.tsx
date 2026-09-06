@@ -122,11 +122,13 @@ export function RequestReplyLine({
 
 export function ThreadReplyLine({
   count,
+  unread = false,
   own,
   inline = false,
   onOpen,
 }: {
   count?: number;
+  unread?: boolean;
   own: boolean;
   inline?: boolean;
   onOpen?: () => void;
@@ -144,10 +146,11 @@ export function ThreadReplyLine({
         inline ? 'align-baseline' : 'mt-0.5',
         own ? 'self-end' : 'self-start',
       )}
-      aria-label={`Open thread with ${label}`}
+      aria-label={`Open thread with ${label}${unread ? ', unread replies' : ''}`}
     >
       <MessagesSquare className="app-message-reply-line-icon h-2.5 w-2.5 shrink-0" aria-hidden="true" />
       <span className="app-message-reply-count">{label}</span>
+      {unread ? <span data-thread-unread="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" /> : null}
     </button>
   );
 }

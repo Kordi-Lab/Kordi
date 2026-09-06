@@ -503,6 +503,17 @@ struct MessageThread: Identifiable, Equatable {
     var id: String { root.id }
     var messages: [ChatMessage] { [root] + replies }
 
+    var readKey: String? {
+        [root.reactionTargetMessageId, root.clientMessageId, root.id].compactMap { value in
+            value.flatMap(UUID.init(uuidString:))?.uuidString.lowercased()
+        }.first
+    }
+
+    func hasUnread(cursors: [String: Int64]) -> Bool {
+        guard let readKey else { return false }
+        return replies.contains { $0.author != .me && ($0.conversationSequence ?? 0) > (cursors[readKey] ?? 0) }
+    }
+
     var agentState: BackgroundAgentSession.State? {
         var states: [String: BackgroundAgentSession.State] = [:]
         var latestID: String?

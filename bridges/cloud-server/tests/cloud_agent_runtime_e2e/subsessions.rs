@@ -1,6 +1,57 @@
 use super::*;
 
 #[tokio::test]
+async fn thread_read_cursors_sync_per_account_without_reading_other_threads_or_parent() {
+    let Some(pool) = try_pool().await else { return };
+    let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));
+    let owner = signup(&router, "thread-reader", "Reader").await;
+    let peer = signup(&router, "thread-peer", "Peer").await;
+    let outsider = signup(&router, "thread-outsider", "Outsider").await;
+    accept_contacts(&router, &owner, &peer).await;
+    for kind in [ConversationKind::Group, ConversationKind::Direct] {
+        let session_id = if kind == ConversationKind::Group {
+            format!("session:group:{}", uuid::Uuid::new_v4())
+        } else {
+            let mut members = [owner.account_id.clone(), peer.account_id.clone()];
+            members.sort();
+            format!("session:direct-person:{}:{}", members[0], members[1])
+        };
+        let parent = create_test_conversation(&pool, &owner.account_id, &session_id, kind, vec![peer.account_id.clone()]).await;
+        let root = insert_test_message(&pool, &peer.account_id, parent, "Root").await;
+        let reply = insert_test_message(&pool, &peer.account_id, parent, "Reply").await;
+        let (sequence,): (i64,) = sqlx_core::query_as::query_as("SELECT conversation_sequence FROM cloud_chat_messages WHERE message_id=$1")
+            .bind(uuid::Uuid::parse_str(&reply).unwrap()).fetch_one(&pool).await.unwrap();
+        let uri = format!("/v2/chat/conversations/{parent}/threads/read");
+        let put = |token: &str, root: &str, sequence: i64| Request::builder().method("PUT").uri(&uri)
+            .header("authorization", format!("Bearer {token}")).header("content-type", "application/json")
+            .body(Body::from(json!({"root_message_id":root,"sequence":sequence}).to_string())).unwrap();
+        let saved = router.clone().oneshot(put(&owner.token, &root, sequence)).await.unwrap();
+        assert_eq!(saved.status(), StatusCode::OK);
+        let saved = read_json(saved).await;
+        let client_root = saved["root_client_message_id"].as_str().unwrap();
+        let stale = router.clone().oneshot(put(&owner.token, client_root, 0)).await.unwrap();
+        assert_eq!(read_json(stale).await["last_read_sequence"], sequence);
+        let other_device = read_json(router.clone().oneshot(get_with_token(&uri, &owner.token)).await.unwrap()).await;
+        assert_eq!(other_device, json!([saved]));
+        let peer_state = read_json(router.clone().oneshot(get_with_token(&uri, &peer.token)).await.unwrap()).await;
+        assert_eq!(peer_state, json!([]));
+        let (parent_read,): (i64,) = sqlx_core::query_as::query_as("SELECT last_read_sequence FROM cloud_chat_conversation_members WHERE conversation_id=$1 AND account_id=$2")
+            .bind(parent).bind(&owner.account_id).fetch_one(&pool).await.unwrap();
+        assert_eq!(parent_read, 0);
+        insert_test_message(&pool, &peer.account_id, parent, "New unread reply").await;
+        let unchanged = read_json(router.clone().oneshot(get_with_token(&uri, &owner.token)).await.unwrap()).await;
+        assert_eq!(unchanged[0]["last_read_sequence"], sequence);
+        assert_eq!(router.clone().oneshot(put(&owner.token, &root, sequence + 100)).await.unwrap().status(), StatusCode::BAD_REQUEST);
+        assert_eq!(router.clone().oneshot(put(&owner.token, &uuid::Uuid::new_v4().to_string(), sequence)).await.unwrap().status(), StatusCode::NOT_FOUND);
+        assert!(!router.clone().oneshot(get_with_token(&uri, &outsider.token)).await.unwrap().status().is_success());
+        assert!(!router.clone().oneshot(put(&outsider.token, &root, sequence)).await.unwrap().status().is_success());
+        sqlx_core::query::query("UPDATE cloud_chat_conversation_members SET membership_state='left' WHERE conversation_id=$1 AND account_id=$2")
+            .bind(parent).bind(&peer.account_id).execute(&pool).await.unwrap();
+        assert!(!router.clone().oneshot(get_with_token(&uri, &peer.token)).await.unwrap().status().is_success());
+    }
+}
+
+#[tokio::test]
 async fn private_agent_session_is_not_readable_by_shared_subsession_members() {
     let Some(pool) = try_pool().await else { return };
     let router = test_router(Arc::new(ServerState::new(pool.clone(), EventBus::noop())));

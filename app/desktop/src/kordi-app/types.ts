@@ -902,6 +902,7 @@ export type DesktopCollaborationHost = {
 };
 
 export type DesktopCollaborationConversationMessage = {
+  conversationSequence?: number | null;
   id: string;
   clientMessageId?: string | null;
   direction: CollaborationMessageDirection;

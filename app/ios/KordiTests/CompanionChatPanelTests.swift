@@ -4,6 +4,24 @@ import Testing
 @testable import Kordi
 
 struct ConversationBoundaryTests {
+@Test func threadReadCursorsRemainIndependentAndMonotonicAcrossDevices() throws {
+    let key = "10000000-0000-4000-8000-000000000001"
+    let data = try JSONSerialization.data(withJSONObject: ["root_message_id":key,"root_client_message_id":"client-root","last_read_sequence":2])
+    let read = try JSONDecoder().decode(CloudThreadRead.self, from:data)
+    let root = ChatMessage(id:key,conversationId:"parent",author:.agent,authorName:"Researcher",text:"Root",createdAt:.now,deliveryState:.delivered,errorMessage:nil,requestMessageId:nil)
+    let reply = ChatMessage(id:"reply",conversationId:"parent",conversationSequence:2,author:.person,authorName:"Peer",text:"Reply",createdAt:.now,deliveryState:.delivered,errorMessage:nil,requestMessageId:nil)
+    let thread = MessageThread(root:root,replies:[reply])
+    #expect(thread.hasUnread(cursors:[:]))
+    var cursors = CloudThreadRead.merging([read],into:[:])
+    #expect(!thread.hasUnread(cursors:cursors))
+    cursors = CloudThreadRead.merging([CloudThreadRead(rootMessageId:key,rootClientMessageId:"client-root",lastReadSequence:1)],into:cursors)
+    #expect(cursors[key] == 2)
+    let own = ChatMessage(id:"own",conversationId:"parent",conversationSequence:3,author:.me,authorName:"You",text:"Own reply",createdAt:.now,deliveryState:.delivered,errorMessage:nil,requestMessageId:nil)
+    #expect(!MessageThread(root:root,replies:[reply,own]).hasUnread(cursors:cursors))
+    let answer = ChatMessage(id:"agent",conversationId:"parent",conversationSequence:4,author:.agent,authorName:"Researcher",text:"New result",createdAt:.now,deliveryState:.delivered,errorMessage:nil,requestMessageId:nil)
+    #expect(MessageThread(root:root,replies:[reply,own,answer]).hasUnread(cursors:cursors))
+}
+
 @Test func sharedTaskInstructionsUseAgentIdentityWithoutBecomingLiveAnswers() throws {
     let data = try JSONSerialization.data(withJSONObject: [
         "sessionId": "child", "parentSessionId": "parent", "parentRequestId": "root",

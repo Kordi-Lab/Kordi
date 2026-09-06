@@ -928,6 +928,29 @@ actor CloudAPIClient {
         )
     }
 
+    private func threadReadConversation(token: String, sessionId: String) async throws -> CloudChatConversation {
+        if let cached = chatConversationsBySessionId[sessionId] ?? chatConversationsById[sessionId] { return cached }
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId] ?? chatConversationsById[sessionId] else {
+            throw CloudAPIError(code: "chat_conversation_missing", message: "This conversation is unavailable.", statusCode: 404)
+        }
+        return conversation
+    }
+
+    func threadReads(token: String, sessionId: String) async throws -> [CloudThreadRead] {
+        let conversation = try await threadReadConversation(token: token, sessionId: sessionId)
+        return try await send(path: "/v2/chat/conversations/\(escapedPath(conversation.id))/threads/read",
+            method: "GET", token: token, fallback: "Could not load thread read status.")
+    }
+
+    func markThreadRead(token: String, sessionId: String, rootId: String, sequence: Int64) async throws -> CloudThreadRead {
+        struct Request: Encodable { let root_message_id: String; let sequence: Int64 }
+        let conversation = try await threadReadConversation(token: token, sessionId: sessionId)
+        return try await send(path: "/v2/chat/conversations/\(escapedPath(conversation.id))/threads/read",
+            method: "PUT", token: token, body: Request(root_message_id: rootId, sequence: sequence),
+            fallback: "Could not save thread read status.")
+    }
+
     func agentSubsessionTasks(token: String, parentSessionId: String, after: String?) async throws -> CloudAgentSubsessionTaskPage {
         try await send(path: "/v1/cloud/agent-subsessions", method: "GET", token: token,
             query: [URLQueryItem(name: "parentSessionId", value: parentSessionId)]

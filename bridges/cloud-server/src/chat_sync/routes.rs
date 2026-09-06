@@ -31,6 +31,7 @@ mod group_envelope;
 mod http;
 mod message_mutations;
 mod reaction;
+mod thread_reads;
 
 use group_envelope::normalize_legacy_group_envelope;
 use http::*;
@@ -72,6 +73,7 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
             get(history).post(send_message),
         )
         .merge(message_mutations::routes())
+        .route("/v2/chat/conversations/:conversation_id/threads/read", get(thread_reads::read).put(thread_reads::advance))
         .route(
             "/v2/chat/conversations/:conversation_id/delivered",
             put(advance_delivery_cursor),

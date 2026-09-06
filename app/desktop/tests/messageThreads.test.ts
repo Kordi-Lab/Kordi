@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { MessageBubble } from '../src/kordi-app/components/transcript';
+import {mergeThreadReads, threadHasUnread} from '../src/features/chat/threadReadState';
 
 import { messagesWithThreadReplyCounts, projectMessageThreads, projectQueuedThreadMessages, threadRootSource } from '../src/features/chat/messageThreads';
 import { cloudMessageActionFromRecord } from '../src/features/cloud/cloudMessageActionCodec';
@@ -18,6 +22,38 @@ function message(id: string, text: string, action?: Message['messageAction']): M
     messageAction: action,
   };
 }
+
+test('Agent turn roots render the existing discussion entry for owners and other members', () => {
+  for (const role of ['owned-agent', 'external-agent'] as const) {
+    const root: Message = { ...message('agent-root', ''), role, sender: 'Researcher', senderType: 'agent',
+      replyAliasIds: ['cloud-agent-root'],
+      turn: { id: 'turn', sessionId: 'session', prompt: '', status: 'complete', message: '',
+        assistantText: 'ACK', thinkingText: '', tools: [], completed: true, succeeded: true } };
+    const source = { ...threadRootSource(root, 'session')!, sourceMessageId: 'cloud-agent-root' };
+    const rows = [root, ...[1, 2, 3].map(index => message(`reply-${index}`, `Discussion ${index}`, threadMessageAction(source)))];
+    const projected = projectMessageThreads(rows).mainMessages[0];
+    assert.equal(projected.threadSummary?.replyCount, 3);
+    const render = (msg: Message) => renderToStaticMarkup(createElement(MessageBubble, {msg, onOpenMessageThread: () => {}}));
+    assert.match(render(projected), /aria-label="Open thread with 3 discussed in thread"/);
+    assert.doesNotMatch(render({...projected, threadSummary: undefined}), /discussed in thread/);
+  }
+});
+
+test('thread unread state uses monotonic cloud sequences and excludes the viewers own messages', () => {
+  const rootId = '10000000-0000-4000-8000-000000000001';
+  const root = {...message('local-root','Root'),reactionTargetMessageId:rootId};
+  const thread = {root,replies:[{...message('reply','Reply'),conversationSequence:2}]};
+  assert(threadHasUnread(thread,{}));
+  const cursor = {root_message_id:rootId,root_client_message_id:'client-root',last_read_sequence:2};
+  let reads = mergeThreadReads({},[cursor]);
+  assert(!threadHasUnread(thread,reads));
+  reads = mergeThreadReads(reads,[{...cursor,last_read_sequence:1}]);
+  assert.equal(reads[rootId],2);
+  thread.replies.push({...message('own','Own reply'),role:'user',isOwnMessage:true,conversationSequence:3});
+  assert(!threadHasUnread(thread,reads));
+  thread.replies.push({...message('agent','New result'),role:'owned-agent',senderType:'agent',conversationSequence:4});
+  assert(threadHasUnread(thread,reads));
+});
 
 test('thread messages stay out of the main transcript and attach a count to the root', () => {
   const root = message('root', 'Root message');

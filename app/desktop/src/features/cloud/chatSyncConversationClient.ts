@@ -331,6 +331,23 @@ export class ChatSyncConversationClient {
     await this.advanceChatCursor(token, conversation, 'read');
   }
 
+  async threadReads(token: string, sessionId: string): Promise<import('./chatSyncTypes').CloudThreadRead[]> {
+    const conversation = await this.mutationConversation(token, sessionId);
+    return await this.state.send<import('./chatSyncTypes').CloudThreadRead[]>(
+      `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/threads/read`,
+      {method:'GET',headers:{authorization:`Bearer ${token}`}}, 'Could not load thread read status.') ?? [];
+  }
+
+  async markThreadRead(token: string, sessionId: string, rootId: string, sequence: number): Promise<import('./chatSyncTypes').CloudThreadRead> {
+    const conversation = await this.mutationConversation(token, sessionId);
+    const result = await this.state.send<import('./chatSyncTypes').CloudThreadRead>(
+      `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/threads/read`,
+      {method:'PUT',headers:{authorization:`Bearer ${token}`,'content-type':'application/json'},
+        body:JSON.stringify({root_message_id:rootId,sequence})}, 'Could not save thread read status.');
+    if (!result) throw new Error('Thread read status is unavailable.');
+    return result;
+  }
+
   async markSessionMessagesRead(token: string, sessionId: string): Promise<void> {
     let conversation = this.state.conversationBySessionId.get(sessionId.trim());
     if (!conversation) {

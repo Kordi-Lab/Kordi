@@ -412,6 +412,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "subsession execution clock",
         sql: include_str!("../../migrations/0085_subsession_execution_clock.sql"),
     },
+    EmbeddedMigration {
+        version: 86,
+        description: "per-member thread read cursors",
+        sql: include_str!("../../migrations/0086_thread_read_cursors.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,

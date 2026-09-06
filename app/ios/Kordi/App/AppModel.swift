@@ -152,6 +152,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var pinnedSessionIds = Set<String>()
     @Published private(set) var mutedSessionIds = Set<String>()
     @Published private(set) var markedUnreadSessionIds = Set<String>()
+    @Published private(set) var threadReadCursors: [String: [String: Int64]] = [:]
     @Published private(set) var pinnedGroupSpaceIds = Set<String>()
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
     @Published private(set) var subsessions: [String: CloudAgentSubsession] = [:]
@@ -507,6 +508,7 @@ final class AppModel: ObservableObject {
         pinnedSessionIds = []
         mutedSessionIds = []
         markedUnreadSessionIds = []
+        threadReadCursors = [:]
         pinnedGroupSpaceIds = []
         archivedConversations = []
         agentRunState = [:]
@@ -1254,6 +1256,26 @@ final class AppModel: ObservableObject {
             if let after, !seen.insert(after).inserted { throw URLError(.cannotParseResponse) }
         } while after != nil
         return tasks
+    }
+
+    func refreshThreadReads(sessionId: String) async throws {
+        guard let token, let accountId = account?.accountId, !previewMode else { return }
+        let reads = try await api.threadReads(token: token, sessionId: sessionId)
+        try Task.checkCancellation()
+        guard account?.accountId == accountId else { throw CancellationError() }
+        let next = CloudThreadRead.merging(reads, into: threadReadCursors[sessionId] ?? [:])
+        if threadReadCursors[sessionId] != next { threadReadCursors[sessionId] = next }
+    }
+
+    func markThreadRead(sessionId: String, thread: MessageThread) async throws {
+        guard let token, let accountId = account?.accountId, !previewMode,
+              let key = thread.readKey, let cursors = threadReadCursors[sessionId] else { return }
+        let sequence = thread.replies.compactMap(\.conversationSequence).max() ?? 0
+        guard sequence > (cursors[key] ?? 0) else { return }
+        let read = try await api.markThreadRead(token: token, sessionId: sessionId, rootId: key, sequence: sequence)
+        try Task.checkCancellation()
+        guard account?.accountId == accountId else { throw CancellationError() }
+        threadReadCursors[sessionId] = CloudThreadRead.merging([read], into: threadReadCursors[sessionId] ?? [:])
     }
 
     func agentSubsession(id: String, includeMessages: Bool = false) async throws -> CloudAgentSubsession {

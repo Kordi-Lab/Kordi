@@ -33,6 +33,7 @@ struct MessageBubble: View, Equatable {
     let isSelected: Bool
     let allowsQuotedReplies: Bool
     let threadReplyCount: Int
+    var threadHasUnread = false
     var threadAgentState: BackgroundAgentSession.State? = nil
     let showsAvatarSlot: Bool
     let authorAvatarName: String
@@ -85,6 +86,7 @@ struct MessageBubble: View, Equatable {
             && lhs.isSelected == rhs.isSelected
             && lhs.allowsQuotedReplies == rhs.allowsQuotedReplies
             && lhs.threadReplyCount == rhs.threadReplyCount
+            && lhs.threadHasUnread == rhs.threadHasUnread
             && lhs.threadAgentState == rhs.threadAgentState
             && lhs.showsAvatarSlot == rhs.showsAvatarSlot
             && lhs.authorAvatarName == rhs.authorAvatarName
@@ -261,6 +263,7 @@ struct MessageBubble: View, Equatable {
                     MessageBubbleAccessoryRow(
                         reactions: message.reactions,
                         threadReplyCount: threadReplyCount,
+                        threadHasUnread: threadHasUnread,
                         threadAgentState: threadAgentState,
                         ownAccountId: ownAccountId,
                         scrollAnchor: message.author == .me ? .trailing : .leading,
@@ -874,6 +877,7 @@ private struct MessageBubbleAccessoryRow: View {
     @Environment(\.kordiChatTheme) private var chatTheme
     let reactions: [MessageReaction]
     let threadReplyCount: Int
+    let threadHasUnread: Bool
     let threadAgentState: BackgroundAgentSession.State?
     let ownAccountId: String?
     let scrollAnchor: UnitPoint
@@ -927,10 +931,12 @@ private struct MessageBubbleAccessoryRow: View {
     private var threadButton: some View {
         if threadReplyCount > 0 {
             Button(action: onOpenThread) {
-                Label(
-                    "\(threadReplyCount) discussed in thread",
-                    systemImage: "bubble.left.and.bubble.right"
-                )
+                HStack(spacing: 4) {
+                    Label("\(threadReplyCount) discussed in thread", systemImage: "bubble.left.and.bubble.right")
+                    if threadHasUnread {
+                        Image(systemName: "circle.fill").font(.system(size: 6)).accessibilityHidden(true)
+                    }
+                }
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(chatTheme.accent)
                 .frame(minHeight: 44)
@@ -939,6 +945,7 @@ private struct MessageBubbleAccessoryRow: View {
             .accessibilityLabel(
                 "Open thread with \(threadReplyCount) discussed in thread"
             )
+            .accessibilityValue(threadHasUnread ? "Unread replies" : "")
         }
     }
 

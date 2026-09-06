@@ -879,6 +879,8 @@ export class CloudAuthClient {
   }
 
   async markMessagesRead(token: string, peerAccountId: string): Promise<void> { return this.chat.markMessagesRead(token, peerAccountId); }
+  threadReads(token: string, sessionId: string) { return this.chat.threadReads(token, sessionId); }
+  markThreadRead(token: string, sessionId: string, rootId: string, sequence: number) { return this.chat.markThreadRead(token, sessionId, rootId, sequence); }
 
   async markSessionMessagesRead(token: string, sessionId: string): Promise<void> { return this.chat.markSessionMessagesRead(token, sessionId); }
 

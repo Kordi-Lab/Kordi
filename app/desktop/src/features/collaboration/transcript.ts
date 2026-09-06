@@ -298,6 +298,7 @@ export function mapCollaborationConversationToViewModel(
         text: rawDisplayText,
         time: message.timeLabel,
         timestampMs: message.timestampMs,
+        conversationSequence: message.conversationSequence,
       }];
     }
     const isProcessingAgentPlaceholder = normalizedDeliveryState === 'processing'
@@ -371,6 +372,7 @@ export function mapCollaborationConversationToViewModel(
         text: '',
         time: message.timeLabel,
         timestampMs: message.timestampMs,
+        conversationSequence: message.conversationSequence,
         replyToMessageId, messageAction, sourceMessage, reactionConversationId: message.reactionConversationId, reactionTargetMessageId: message.reactionTargetMessageId, cloudMessageVersion: message.cloudMessageVersion, editedAt: message.editedAt, reactions: message.reactions,
         turn: {
           id: localTurn?.id ?? `collaboration-live-turn:${conversation.id}:${message.id}`,
@@ -419,6 +421,7 @@ export function mapCollaborationConversationToViewModel(
       text: displayText, ...('messageKind' in message ? { messageKind: message.messageKind ?? null } : {}), ...('voiceMessage' in message ? { voiceMessage: message.voiceMessage ?? null } : {}),
       time: message.timeLabel,
       timestampMs: message.timestampMs,
+      conversationSequence: message.conversationSequence,
       statusChips: isOutboundHuman
         ? outboundStatus
         : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1] && !isAgent
@@ -445,6 +448,7 @@ export function mapCollaborationConversationToViewModel(
         text: '',
         time: message.timeLabel,
         timestampMs: message.timestampMs,
+        conversationSequence: message.conversationSequence,
         replyToMessageId,
         turn: {
           id: `collaboration-live-turn:${conversation.id}:${message.id}:cancelled`,

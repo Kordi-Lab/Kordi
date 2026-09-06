@@ -767,6 +767,28 @@ struct CloudAgentSubsessionTask: Codable, Hashable, Identifiable {
     }
 }
 
+struct CloudThreadRead: Codable, Equatable {
+    let rootMessageId: String
+    let rootClientMessageId: String
+    let lastReadSequence: Int64
+
+    enum CodingKeys: String, CodingKey {
+        case rootMessageId = "root_message_id"
+        case rootClientMessageId = "root_client_message_id"
+        case lastReadSequence = "last_read_sequence"
+    }
+
+    static func merging(_ rows: [Self], into current: [String: Int64]) -> [String: Int64] {
+        var result = current
+        for row in rows {
+            for key in [row.rootMessageId, row.rootClientMessageId] {
+                result[key] = max(result[key] ?? 0, row.lastReadSequence)
+            }
+        }
+        return result
+    }
+}
+
 struct CloudAgentSubsessionTaskPage: Decodable {
     let sessions: [CloudAgentSubsessionTask]
     let nextCursor: String?

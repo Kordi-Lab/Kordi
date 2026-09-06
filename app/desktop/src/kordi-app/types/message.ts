@@ -124,6 +124,7 @@ export type MessageReplySummary = {
 
 export type MessageThreadSummary = {
   replyCount: number;
+  unread?: boolean;
   agentState?: 'running' | 'done' | 'failed' | 'stopped';
 };
 
@@ -256,6 +257,7 @@ export type Message = {
   replyAliasIds?: string[];
   replySummary?: MessageReplySummary;
   threadSummary?: MessageThreadSummary;
+  conversationSequence?: number | null;
   readReceiptSummary?: MessageReadReceiptSummary | null;
   messageAction?: MessageActionMetadata | null;
   reactionConversationId?: string | null;

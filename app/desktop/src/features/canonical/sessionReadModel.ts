@@ -132,12 +132,14 @@ export function mergeCanonicalHistoryIntoRuntime(
     ])];
     const reactionMetadata = mergedMessageReactionMetadata(message, canonicalMessage);
     const senderOwnerName = canonicalMessage.senderOwnerName ?? message.senderOwnerName;
-    if (!canonicalMessage.isForkSnapshot && replyAliasIds.length === (message.replyAliasIds?.length ?? 0) && !reactionMetadata.changed && senderOwnerName === message.senderOwnerName) {
+    const conversationSequence = canonicalMessage.conversationSequence ?? message.conversationSequence;
+    if (!canonicalMessage.isForkSnapshot && replyAliasIds.length === (message.replyAliasIds?.length ?? 0) && !reactionMetadata.changed && senderOwnerName === message.senderOwnerName && conversationSequence === message.conversationSequence) {
       return message;
     }
     return {
       ...message,
       senderOwnerName,
+      conversationSequence,
       ...(canonicalMessage.isForkSnapshot ? { isForkSnapshot: true } : {}),
       ...(replyAliasIds.length > 0 ? { replyAliasIds } : {}),
       ...reactionMetadata.values,
@@ -256,6 +258,7 @@ function localRuntimeProgressForCanonicalPlaceholder(canonicalMessage: Message, 
     replyToMessageId: canonicalReplyToMessageId ?? localMessage.replyToMessageId,
     sourceMessage: canonicalMessage.sourceMessage ?? localMessage.sourceMessage,
     replyAliasIds: canonicalMessage.replyAliasIds ?? localMessage.replyAliasIds,
+    conversationSequence: canonicalMessage.conversationSequence ?? localMessage.conversationSequence,
     turn: {
       ...localMessage.turn,
       id: canonicalMessage.turn?.id ?? localMessage.turn.id,

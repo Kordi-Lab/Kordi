@@ -738,6 +738,16 @@ function MessageBubbleView({
           </div>
           <MessageHoverTime msg={msg} side="peer" />
         </div>
+        {msg.threadSummary?.replyCount ? (
+          <div className="flex min-h-7 items-center">
+            <ThreadReplyLine
+              count={msg.threadSummary.replyCount}
+              unread={msg.threadSummary.unread}
+              own={false}
+              onOpen={onOpenMessageThread ? () => onOpenMessageThread(msg) : undefined}
+            />
+          </div>
+        ) : null}
       </MessageContextMenuHost>
     );
   }
@@ -991,6 +1001,7 @@ function MessageBubbleView({
         )}>
           <ThreadReplyLine
             count={msg.threadSummary.replyCount}
+            unread={msg.threadSummary.unread}
             own={isOwnHumanMessage}
             onOpen={onOpenMessageThread ? () => onOpenMessageThread(msg) : undefined}
           />

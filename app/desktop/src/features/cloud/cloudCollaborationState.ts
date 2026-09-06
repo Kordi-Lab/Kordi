@@ -214,6 +214,7 @@ export function cloudMessageToCollaborationMessage(
   return {
     id: message.messageId,
     clientMessageId: message.clientMessageId ?? null,
+    conversationSequence: message.conversationSequence,
     direction: agentResponse
       ? (isOwn ? COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE : COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE)
       : isOwn

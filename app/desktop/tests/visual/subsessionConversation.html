@@ -33,6 +33,13 @@ window.fixtureAgentTasks.push({...window.fixtureAgentTasks[0],sessionId:'second-
 window.unexpectedParentSends = 0;
 window.unexpectedNativePrefetches = 0;
 window.fetch = async (url,init) => {
+  if (String(url).includes('/v2/chat/sync/bootstrap')) return new Response(JSON.stringify({protocol_version:2,
+    conversations:[{id:'20000000-0000-4000-8000-000000000001',kind:'group',shared_title:'Research group',version:1,
+      created_by_account_id:'owner',legacy_session_id:'session:group:fixture-parent',latest_message_sequence:100,
+      members:[],preferences:{account_id:window.fixtureAccountId??'peer',conversation_id:'20000000-0000-4000-8000-000000000001',personal_title:null,version:1}}],
+    latest_messages:[],next_cursor:'fixture',last_stream_seq:1,server_time:'2026-09-06T00:00:00Z'}));
+  if (String(url).includes('/threads/read')) return new Response(JSON.stringify(await window.fixtureThreadReadRequest({
+    accountId:window.fixtureAccountId??'peer',method:init?.method??'GET',body:init?.body?JSON.parse(init.body):null})));
   if (String(url).includes('/agent-subsessions?')) {
     const after = new URL(String(url)).searchParams.get('after');
     return new Response(JSON.stringify({sessions:after?window.fixtureAgentTasks.slice(1):window.fixtureAgentTasks.slice(0,1),nextCursor:after?null:'fixture-next-page'}), {headers:{'content-type':'application/json'}});
@@ -58,7 +65,19 @@ const parent={ id:'fixture-parent',canonicalSessionId:'session:group:fixture-par
     turn:{id:'parent-turn',sessionId:'fixture-parent',prompt:'Research',status:'succeeded',message:'',assistantText:'Parent conversation remains here.',
       thinkingText:'',completed:true,succeeded:true,tools:[{id:'spawn',name:'task_operator',status:'completed',arguments:'{"action":"spawn"}',
         liveOutput:'',isError:false,resultText:'Background session: {"sessionId":"fixture-child","title":"Planet research","status":"running"}'}]}}]};
+if (window.fixtureDiscussionRole) {
+  parent.directness = window.fixtureDiscussionContext === 'contact' ? 'Direct chat' : 'Group chat';
+  const root = parent.messages[0];
+  root.role = window.fixtureDiscussionRole;
+  root.replyAliasIds = ['cloud-response'];
+  root.reactionTargetMessageId = '10000000-0000-4000-8000-000000000001';
+  root.turn.tools = [];
+  parent.messages.push(...[1,2,3].map(index => ({id:`discussion-${index}`,role:'person',sender:'Sam',senderType:'human',
+    text:`Discussion reply ${index}`,time:'08:01',conversationSequence:index+1,messageAction:{schemaVersion:1,kind:'thread',source:{sourceSessionId:parent.canonicalSessionId,
+      sourceMessageId:'cloud-response',senderLabel:root.sender,textPreview:root.text,attachmentCount:0}}})));
+}
 const props={
+  cloudAccount:window.fixtureThreadUnread?{accountId:window.fixtureAccountId??'peer',displayName:'Sam'}:null,
   isNativeShell:false,showChatDetailRail:false,collapseChatSessions:false,setIsSessionPanelCollapsed:noop,
   showRightDetailRail:false,isDetailPanelCollapsed:true,setIsDetailPanelCollapsed:noop,activeConv:parent,
   chatConversations:[parent],companionConversations:[parent],activeConversationUsesCollaboration:false,

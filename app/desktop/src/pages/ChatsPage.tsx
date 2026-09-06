@@ -5,6 +5,8 @@ import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/
 import type { Conversation, Message } from '@/kordi-app/types';
 import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
 import { messagesWithThreadReplyCounts, projectMessageThreads, projectQueuedThreadMessages, threadRootSource } from '@/features/chat/messageThreads';
+import {threadHasUnread} from '@/features/chat/threadReadState';
+import {useThreadReadStatus} from '@/features/cloud/useThreadReadStatus';
 import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { isGroupSessionId } from '@/features/chat/forkLineage';
@@ -289,9 +291,14 @@ export function ChatsPage({
   const optimisticThreadConversationId = openThreadState?.conversationId;
   const optimisticThreadRootId = openThreadState?.rootId;
   const optimisticThreadReplyCount = openThreadState?.optimisticReplyCount;
+  const threadReadStatus = useThreadReadStatus(activeSessionId, cloudAccount?.accountId, threadProjection.threads.size > 0);
   const attributedTranscriptMessages = useMemo(
     () => messagesWithThreadReplyCounts(
-      threadProjection.mainMessages,
+      threadProjection.mainMessages.map(message => {
+        const thread = threadProjection.threads.get(message.id ?? '');
+        return thread && message.threadSummary && threadReadStatus.reads
+          ? {...message, threadSummary:{...message.threadSummary,unread:threadHasUnread(thread,threadReadStatus.reads)}} : message;
+      }),
       activeConv.id,
       activeLiveTurnThreadRootId,
       optimisticThreadConversationId,
@@ -305,6 +312,8 @@ export function ChatsPage({
       optimisticThreadReplyCount,
       optimisticThreadRootId,
       threadProjection.mainMessages,
+      threadProjection.threads,
+      threadReadStatus.reads,
     ],
   );
   const [threadPanelWidth, setThreadPanelWidth] = useState(384);
@@ -522,6 +531,8 @@ export function ChatsPage({
                 removeStagedAttachment={composer.removeChatComposerAttachment}
                 isNativeShell={isNativeShell}
                 accountId={cloudAccount?.accountId}
+                readCursors={threadReadStatus.reads}
+                onMarkRead={threadReadStatus.markRead}
                 queuedMessages={activeThreadQueuedMessages}
                 onCancelQueuedMessage={transcript.onCancelQueuedMessage}
                 width={threadPanelWidth}

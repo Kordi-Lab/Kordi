@@ -501,6 +501,7 @@ export function mapCanonicalMessage(
     text: isAgentTurn ? '' : displayText,
     time,
     timestampMs: message.createdAtMs,
+    conversationSequence: numberValue(content.conversationSequence),
     callActivity: canonicalCallActivity(message, content, isOwnMessage),
     messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? message.messageKind : undefined,
     voiceMessage,

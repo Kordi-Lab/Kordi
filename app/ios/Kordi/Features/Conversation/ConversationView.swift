@@ -894,6 +894,23 @@ struct ConversationView: View {
         .onChange(of: canOpenCompanionPanel) { _, _ in
             openCompanionPreviewIfReady()
         }
+        .task(id: "thread-reads:\(conversation.sessionId):\(model.account?.accountId ?? ""):\(scopedThreadRootMessageID ?? "main")") {
+            guard conversation.subsessionId == nil else { return }
+            while !Task.isCancelled {
+                if scenePhase == .active, !threadProjection.threadsByRootID.isEmpty {
+                    do {
+                        try await model.refreshThreadReads(sessionId: conversation.sessionId)
+                        if hasRevealedInitialViewport, isAtBottom,
+                           let rootId = scopedThreadRootMessageID, let thread = threadProjection.thread(rootID: rootId) {
+                            try await model.markThreadRead(sessionId: conversation.sessionId, thread: thread)
+                        }
+                    } catch {
+                        // Keep confirmed cursors until a successful reconnect.
+                    }
+                }
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            }
+        }
         .onChange(of: isAtBottom) { _, _ in
             synchronizeReadPresentation()
         }
@@ -1075,6 +1092,9 @@ struct ConversationView: View {
                     allowsQuotedReplies: scopedThreadRootMessageID == nil
                         && conversation.kind.supportsQuotedReplies,
                     threadReplyCount: threadReplyCount,
+                    threadHasUnread: model.threadReadCursors[conversation.sessionId].map {
+                        threadProjection.thread(rootID: message.id)?.hasUnread(cursors: $0) ?? false
+                    } ?? false,
                     threadAgentState: threadAgentState,
                     showsAvatarSlot: message.author != .agent,
                     authorAvatarName: avatar.name,
