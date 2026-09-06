@@ -70,6 +70,22 @@ test('a failed creation retains the old private chat and can be retried', async 
   await expect(panel.getByRole('textbox')).toHaveText('');
 });
 
+test('a delayed main draft update cannot move typing out of the private composer', async ({page}) => {
+  const main=page.getByRole('tabpanel').filter({has:page.getByRole('region',{name:'Conversation messages'})}).first().getByRole('textbox');
+  const side=page.locator('[data-chat-side-agent-panel="true"]').getByRole('textbox');
+  await page.evaluate(()=>{(window as unknown as {holdMainDraftCommit:boolean}).holdMainDraftCommit=true;});
+  await main.fill('MAIN_DRAFT');
+  await side.fill('PRIVATE_DRAFT');
+  await side.focus();
+  await expect(side).toBeFocused();
+  await page.evaluate(()=>(window as unknown as {commitMainDraft:()=>void}).commitMainDraft());
+  await expect(main).toHaveText('MAIN_DRAFT');
+  await expect(side).toBeFocused();
+  await page.keyboard.type('_CONTINUED');
+  await expect(side).toHaveText('PRIVATE_DRAFT_CONTINUED');
+  await expect(main).toHaveText('MAIN_DRAFT');
+});
+
 test('closing during creation does not reopen the pane when the result arrives', async ({page}) => {
   const panel=page.locator('[data-chat-side-agent-panel="true"]');
   await page.evaluate(()=>{(window as unknown as {holdNativeCreate:boolean}).holdNativeCreate=true;});

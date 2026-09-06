@@ -133,6 +133,7 @@ function Fixture() {
   const [tab,setTab] = React.useState('info');
   const [created,setCreated] = React.useState([]);
   const [mainDraft,setMainDraft] = React.useState('');
+  const updateMainDraft=value=>{ if(window.holdMainDraftCommit) window.commitMainDraft=()=>setMainDraft(value); else setMainDraft(value); };
   const createActions = useKordiSideAgentSessionActions({isNativeShell:true,setDesktopChatError:noop,setComposerDrafts:noop,
     setDesktopChatState:state=>{
       const entry={...privateChat,id:state.activeSessionId,canonicalSessionId:state.activeSessionId,name:'New chat',messages:[],
@@ -154,7 +155,7 @@ function Fixture() {
   return React.createElement(ChatsPage,{
     layout:{...props,showRightDetailRail:true,isDetailPanelCollapsed:collapsed,setIsDetailPanelCollapsed:setCollapsed,activeDetailTab:tab,setActiveDetailTab:setTab},
     session:{...props,chatConversations:conversations,companionConversations:conversations},transcript:props,
-    composer:{...props,chatComposerText:mainDraft,updateChatComposerDraft:setMainDraft,setChatComposerText:setMainDraft},runtime,auth:props
+    composer:{...props,chatComposerText:mainDraft,updateChatComposerDraft:updateMainDraft,setChatComposerText:setMainDraft},runtime,auth:props
   });
 }
 createRoot(document.getElementById('root')).render(React.createElement(Fixture));

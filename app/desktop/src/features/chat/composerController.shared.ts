@@ -130,8 +130,11 @@ export function focusComposerTextareaForNativeInput(
 ) {
   const requestAnimationFrame = deps.requestAnimationFrame ?? window.requestAnimationFrame.bind(window);
   const querySelector = deps.querySelector ?? document.querySelector.bind(document);
+  const previousFocus = globalThis.document?.activeElement;
   const focusTextarea = () => {
     const textarea = querySelector(selector) as (HTMLTextAreaElement | { focus?: () => void } | null);
+    const currentFocus = globalThis.document?.activeElement;
+    if (currentFocus !== previousFocus && currentFocus !== textarea) return;
     textarea?.focus?.();
   };
 

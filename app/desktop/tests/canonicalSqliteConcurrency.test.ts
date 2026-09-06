@@ -2,14 +2,13 @@ import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
-const canonicalSessionsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions.rs', import.meta.url), 'utf8');
+const canonicalSessionsSource = () => readFileSync(new URL('../src-tauri/src/canonical_sessions/database.rs', import.meta.url), 'utf8');
 
 test('canonical SQLite connections use WAL and busy timeout to avoid UI-blocking lock failures', () => {
   const source = canonicalSessionsSource();
-  const openStart = source.indexOf('fn open_db() -> Result<Connection, String>');
-  const openEnd = source.indexOf('\n}\n\nfn self_participant_identity_id', openStart);
-  assert.notEqual(openStart, -1, 'expected canonical open_db');
-  assert.notEqual(openEnd, -1, 'expected end of canonical open_db');
+  const openStart = source.indexOf('fn open_db_at_path(');
+  const openEnd = source.length;
+  assert.notEqual(openStart, -1, 'expected shared canonical database opener');
   const openDb = source.slice(openStart, openEnd);
 
   assert.match(openDb, /busy_timeout\(std::time::Duration::from_secs\(5\)\)/, 'canonical DB should wait briefly for concurrent writers instead of failing immediately');
