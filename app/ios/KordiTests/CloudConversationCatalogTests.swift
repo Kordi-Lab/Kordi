@@ -3,6 +3,7 @@ import Testing
 @testable import Kordi
 
 @Test(arguments: [true, false])
+@MainActor
 func renamedAgentProfileWinsOverHistoricalSessionLabels(isOwner: Bool) throws {
     let ownerID = "acct_owner"
     let viewerID = isOwner ? ownerID : "acct_viewer"
@@ -37,6 +38,17 @@ func renamedAgentProfileWinsOverHistoricalSessionLabels(isOwner: Bool) throws {
     ).first { $0.agentId == agentID })
     #expect(section.displayName == "Renamed Agent")
     #expect(CloudMessageCodec.directEnvelope(body)?.targetCloudAgentName == "Previous Agent")
+    let cache = try LocalMessageStore(inMemory: true)
+    var previousAccount = account
+    var previousContact = contact
+    let previousProfile = CloudDefaultAgentProfile(agentId: agentID, displayName: "Previous Agent", avatarUrl: nil, avatar: avatar)
+    if isOwner { previousAccount.defaultAgent = previousProfile }
+    previousContact.defaultAgent = previousProfile
+    let previous = CloudConversationCatalog.build(account: previousAccount, contacts: isOwner ? [] : [previousContact],
+        ownedAgents: [], sharedAgents: [], messagesByPeer: [ownerID: [message]])
+    cache.saveConversations(previous, accountId: viewerID)
+    cache.saveConversations([conversation], accountId: viewerID)
+    #expect(cache.loadConversations(accountId: viewerID).first?.agentDisplayName == "Renamed Agent")
 }
 
 final class CloudConversationCatalogTests: XCTestCase {
