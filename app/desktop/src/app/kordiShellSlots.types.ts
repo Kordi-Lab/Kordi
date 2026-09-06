@@ -78,7 +78,7 @@ export type AssembleKordiShellSlotsArgs = KordiShellAttachmentArgs & import('./c
   filteredConversations: Conversation[];
   setActiveNav: Dispatch<SetStateAction<NavId>>;
   handleCreateChatSession: () => Promise<void>;
-  handleCreateSideAgentSession: () => Promise<string | null>;
+  handleCreateSideAgentSession: (sourceSessionId?: string) => Promise<string | null>;
   chatSearch: string;
   setChatSearch: Dispatch<SetStateAction<string>>;
   runtimeProjects: Project[];

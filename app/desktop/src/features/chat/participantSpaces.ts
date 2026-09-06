@@ -52,6 +52,7 @@ export function isPersistedBlankGroupContinuation(session: ParticipantSpaceSessi
 function blankAgentConversationCollapseKey(conversation: Conversation) {
   if (conversationHasUserContent(conversation) || conversation.type === 'person') return null;
   const metadata = metadataRecord(conversation.metadata);
+  if (metadata.source === 'ask-agent-new-chat') return null;
   const agent = nonSelfAgents(allDisplayParticipants(conversation))[0];
   const title = cleanOptionalText(conversation.name).toLowerCase();
   const agentName = cleanOptionalText(agent?.name).toLowerCase();

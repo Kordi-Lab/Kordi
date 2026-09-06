@@ -198,7 +198,7 @@ struct ConversationView: View {
     @State private var messageActionFeedback = 0
 
     private var navigationBarVisibility: Visibility {
-        showsNavigationChrome ? .visible : .hidden
+        showsNavigationChrome ? .visible : .automatic
     }
     private var messageMutationErrorPresented: Binding<Bool> {
         Binding(
@@ -818,8 +818,10 @@ struct ConversationView: View {
         }
         .onDisappear {
             voiceRecorder.cancel()
-            attachments.forEach { $0.discardOwnedFile() }
-            attachments = []
+            if !showsCompanionPanel {
+                attachments.forEach { $0.discardOwnedFile() }
+                attachments = []
+            }
             callJoinTask?.cancel()
             callJoinTask = nil
             callCoordinator.cancelUnadmittedStart()
@@ -1008,9 +1010,8 @@ struct ConversationView: View {
             conversation: conversation,
             onReplyInConversation: { replySource = $0 }
         ))
-        .inspector(isPresented: $showsCompanionPanel) {
+        .navigationDestination(isPresented: $showsCompanionPanel) {
             CompanionChatPanel(
-                isPresented: $showsCompanionPanel,
                 selectedConversation: $selectedCompanionConversation,
                 sourceConversation: conversation
             )
@@ -2078,6 +2079,7 @@ struct ConversationView: View {
 
     private func openCompanionPanel() {
         dismissComposerPickers()
+        dismissKeyboard()
         guard allowsCompanionPanel else { return }
         guard model.hasConfiguredProviderAuthentication else {
             showsProviderAuthentication = true

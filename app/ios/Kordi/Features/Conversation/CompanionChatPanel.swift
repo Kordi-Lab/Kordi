@@ -175,7 +175,7 @@ enum CompanionPanelCatalog {
 
 struct CompanionChatPanel: View {
     @EnvironmentObject private var model: AppModel
-    @Binding var isPresented: Bool
+    @Environment(\.dismiss) private var dismiss
     @Binding var selectedConversation: ConversationSummary?
 
     let sourceConversation: ConversationSummary
@@ -205,7 +205,7 @@ struct CompanionChatPanel: View {
                     sessions: existingSessions,
                     onNewSession: { createSession(from: selectedConversation) },
                     onSelectSession: { self.selectedConversation = $0 },
-                    onClose: { isPresented = false }
+                    onClose: dismiss.callAsFunction
                 )
 
                 CompanionContextStrip(sourceName: sourceConversation.displayName)
@@ -225,10 +225,10 @@ struct CompanionChatPanel: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(uiColor: .systemBackground))
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .inspectorColumnWidth(min: 320, ideal: 390, max: 480)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func createSession(from conversation: ConversationSummary) {
@@ -245,6 +245,15 @@ private struct CompanionPanelHeader: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            Button(action: onClose) {
+                Image(systemName: "chevron.left")
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to conversation")
+
             IdentityAvatar(
                 name: conversation.agentDisplayName?.nonEmpty ?? conversation.displayName,
                 imageSource: conversation.avatarSource,
@@ -302,14 +311,6 @@ private struct CompanionPanelHeader: View {
             .accessibilityLabel("Switch Ask Agent session")
             .accessibilityValue(conversation.displayName)
 
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close Ask Agent")
         }
         .padding(.leading, 16)
         .padding(.trailing, 6)

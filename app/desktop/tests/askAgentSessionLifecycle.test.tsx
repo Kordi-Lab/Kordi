@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { reusableBlankDesktopSessionId } from '../src/app/useKordiSideAgentSessionActions';
 import { existingBlankSessionIdForParticipantSpace } from '../src/features/chat/chatCreateFlows';
 import { isUnmaterializedDesktopAgentSession } from '../src/features/chat/draftSessions';
 import {
@@ -70,28 +69,11 @@ test('accepted local Agent messages settle their optimistic canonical delivery s
   assert.equal((message?.content as { deliveryState?: string }).deliveryState, 'sent');
 });
 
-test('Ask Agent reuses one idle blank side session but not the main or a busy session', () => {
-  const state = {
-    activeSessionId: 'session:main',
-    activeSession: {
-      id: 'session:main',
-      title: 'Main conversation',
-      messageCount: 2,
-      draft: false,
-      project: null,
-      messages: [{ role: 'user', text: 'hello' }],
-    },
-    sessions: [
-      { id: 'session:main', title: 'Main conversation', messageCount: 2, draft: false },
-      { id: 'session:blank', title: 'New chat', messageCount: 0, draft: false },
-    ],
-  } as never;
-
-  assert.equal(reusableBlankDesktopSessionId(state, 'session:main'), 'session:blank');
-  assert.equal(
-    reusableBlankDesktopSessionId(state, 'session:main', new Set(['session:blank'])),
-    null,
-  );
+test('explicit side chats remain distinct instead of collapsing into startup blank shells', () => {
+  const source = conversation({ id: 'startup', canonicalSessionId: 'startup' });
+  const first = conversation({ id: 'first', canonicalSessionId: 'first', metadata: { source: 'ask-agent-new-chat' } });
+  const second = conversation({ id: 'second', canonicalSessionId: 'second', metadata: { source: 'ask-agent-new-chat' } });
+  assert.deepEqual(collapseBlankConversationShells([source, first, second]).map(item => item.id), ['startup', 'first', 'second']);
 });
 
 test('Ask Agent remains available without an existing agent session and authenticates before creating one', () => {

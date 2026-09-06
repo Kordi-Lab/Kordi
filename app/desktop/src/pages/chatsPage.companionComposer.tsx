@@ -77,6 +77,7 @@ type CompanionComposerUi = {
 };
 
 export type CompanionComposerProps = {
+  isPreparing?: boolean;
   conversation: Conversation;
   subsession?: { mentionOptions: ComposerMentionOption[]; sending: boolean; sendError: string | null; disabled: boolean };
   paneKind: 'human' | 'agent';
@@ -98,6 +99,7 @@ export type CompanionComposerProps = {
 };
 
 export function CompanionComposer({
+  isPreparing = false,
   conversation,
   subsession,
   paneKind,
@@ -158,7 +160,7 @@ export function CompanionComposer({
     setQuery(null);
   };
   const send = () => {
-    if (subsession?.disabled || subsession?.sending) return;
+    if (isPreparing || subsession?.disabled || subsession?.sending) return;
     const selectedHandles = new Set(selectedMentions.current.map(option => option.value));
     const boundOptions = [...(subsession?.mentionOptions ?? []).filter(option => !selectedHandles.has(option.value)), ...selectedMentions.current];
     setQuery(null);
@@ -350,7 +352,7 @@ export function CompanionComposer({
               className="app-composer-send h-10 w-10 shrink-0 rounded-full p-0"
               title={`Send to ${conversation.name}`}
               aria-label={`Send to ${conversation.name}`}
-              disabled={subsession?.sending || subsession?.disabled || (!draftText.trim() && chatComposerAttachments.length === 0)}
+              disabled={isPreparing || subsession?.sending || subsession?.disabled || (!draftText.trim() && chatComposerAttachments.length === 0)}
               data-companion-send-control="true"
             >
               <Send className="h-4 w-4" />

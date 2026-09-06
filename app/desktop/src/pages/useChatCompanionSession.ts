@@ -39,6 +39,9 @@ type CompanionSessionState = {
   sessionListOpen: boolean;
   openComposerSelector: ComposerSelector | null;
   drafts: Record<string, string>;
+  createdConversation: Conversation | null;
+  isCreating: boolean;
+  creationError: string | null;
 };
 
 type UseChatCompanionSessionInput = {
@@ -64,6 +67,9 @@ function emptyState(pageConversationId: string): CompanionSessionState {
     sessionListOpen: false,
     openComposerSelector: null,
     drafts: {},
+    createdConversation: null,
+    isCreating: false,
+    creationError: null,
   };
 }
 
@@ -76,7 +82,7 @@ function normalizeStateForCandidates(
     return emptyState(pageConversationId);
   }
   const selectedConversationId = state.selectedConversationId
-    && candidateIds.has(state.selectedConversationId)
+    && (candidateIds.has(state.selectedConversationId) || state.createdConversation?.id === state.selectedConversationId)
     ? state.selectedConversationId
     : null;
   const requestedConversationId = state.requestedConversationId
@@ -88,13 +94,14 @@ function normalizeStateForCandidates(
     ? state.requestedConversationId
     : null;
   const openConversationId = resolvedRequestedConversationId ?? (state.openConversationId
-    && candidateIds.has(state.openConversationId)
+    && (candidateIds.has(state.openConversationId) || state.createdConversation?.id === state.openConversationId)
     ? state.openConversationId
     : null);
   if (
     (resolvedRequestedConversationId ?? selectedConversationId) === state.selectedConversationId
     && openConversationId === state.openConversationId
     && requestedConversationId === state.requestedConversationId
+    && !(state.createdConversation && candidateIds.has(state.createdConversation.id))
   ) {
     return state;
   }
@@ -103,6 +110,7 @@ function normalizeStateForCandidates(
     selectedConversationId: resolvedRequestedConversationId ?? selectedConversationId,
     openConversationId,
     requestedConversationId,
+    createdConversation: state.createdConversation && !candidateIds.has(state.createdConversation.id) ? state.createdConversation : null,
     referenceContext: openConversationId ? state.referenceContext : null,
     actionsOpen: openConversationId ? state.actionsOpen : false,
     sessionListOpen: openConversationId ? state.sessionListOpen : false,
@@ -170,6 +178,23 @@ export function useChatCompanionSession({
   }
   const transcriptScrollRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const navigationGeneration = useRef(0);
+  const createFlight = useRef<Promise<boolean> | null>(null);
+  const isCreating = state.isCreating;
+  const creationError = state.creationError;
+  const setIsCreating = (value: boolean) => setStoredState(current => ({ ...current, isCreating: value }));
+  const setCreationError = (value: string | null) => setStoredState(current => ({ ...current, creationError: value }));
+  const cancelCreation = () => {
+    navigationGeneration.current += 1;
+    createFlight.current = null;
+    setIsCreating(false);
+    setCreationError(null);
+  };
+  useEffect(() => {
+    navigationGeneration.current += 1;
+    createFlight.current = null;
+    return () => { navigationGeneration.current += 1; };
+  }, [activeConversation.id]);
   const subsession = useAgentSubsession(state.subsessionId, true);
   const resourceConversation = useMemo(
     () => state.subsessionId ? subsessionConversation(state.subsessionId, subsession.snapshot, subsession.accountId) : null,
@@ -180,7 +205,7 @@ export function useChatCompanionSession({
   const [subsessionSendError, setSubsessionSendError] = useState<{ id: string; message: string } | null>(null);
   const sendAttempts = useRef(new Map<string, { id: string; text: string; mentions: MessageMention[] }>());
   useEffect(() => {
-    const reset = () => { setStoredState(emptyState(activeConversation.id)); sendAttempts.current.clear(); setSubsessionSendError(null); };
+    const reset = () => { navigationGeneration.current += 1; createFlight.current = null; setIsCreating(false); setStoredState(emptyState(activeConversation.id)); sendAttempts.current.clear(); setSubsessionSendError(null); setCreationError(null); };
     window.addEventListener(CLOUD_SESSION_CHANGED_EVENT, reset);
     return () => window.removeEventListener(CLOUD_SESSION_CHANGED_EVENT, reset);
   }, [activeConversation.id]);
@@ -195,7 +220,7 @@ export function useChatCompanionSession({
   const conversation = resourceConversation ?? chatSideAgentConversationForOpenRequest(
     state.openConversationId,
     candidates,
-  );
+  ) ?? (state.createdConversation?.id === state.openConversationId ? state.createdConversation : null);
   const conversationId = conversation?.id ?? null;
   const transcriptNeedsLoading = Boolean(
     conversation?.desktopRuntimeBacked
@@ -239,6 +264,7 @@ export function useChatCompanionSession({
     target.style.height = `${Math.min(target.scrollHeight, 160)}px`;
   };
   const activate = (conversationId: string, initialPrompt = '') => {
+    cancelCreation();
     setTranscriptLoadFailureSessionId((current) => (
       current === conversationId ? null : current
     ));
@@ -248,6 +274,7 @@ export function useChatCompanionSession({
       selectedConversationId: conversationId,
       openConversationId: conversationId,
       requestedConversationId: null,
+      createdConversation: null,
       referenceContext: buildAskAgentSessionReferenceContext(activeConversation),
       actionsOpen: false,
       sessionListOpen: false,
@@ -260,12 +287,42 @@ export function useChatCompanionSession({
       setComposerTextForSession(conversationId, initialPrompt.trim());
     }
   };
-  const create = async (initialPrompt = '') => {
-    if (!onCreateAgentSession) return false;
-    const conversationId = await onCreateAgentSession();
-    if (!conversationId) return false;
-    activate(conversationId, initialPrompt);
-    return true;
+  const create = (initialPrompt = ''): Promise<boolean> => {
+    if (!onCreateAgentSession) return Promise.resolve(false);
+    if (createFlight.current) return createFlight.current;
+    const origin = conversation ?? activeConversation;
+    const source = isPrivateOwnedAgentConversation(origin) ? origin : null;
+    const sourceId = source && !isLocalDraftChatConversationId(source.id) ? source.canonicalSessionId ?? source.id : undefined;
+    const generation = ++navigationGeneration.current;
+    setIsCreating(true); setCreationError(null);
+    const request = (async () => {
+      try {
+        const conversationId = await onCreateAgentSession(sourceId);
+        if (generation !== navigationGeneration.current) return false;
+        if (!conversationId || isLocalDraftChatConversationId(conversationId) || conversationId === sourceId || conversationId === activeConversation.id) throw Error('Invalid new session');
+        const created: Conversation = {
+          id: conversationId, canonicalSessionId: conversationId, name: 'New chat', type: 'owned-agent',
+          subtitle: '', unread: 0, collaborationSources: source?.collaborationSources ?? ['Local'], trust: 'Owned', directness: 'Agent chat',
+          participants: source?.participants ?? [], canonicalParticipants: source?.canonicalParticipants,
+          collaborationTarget: source?.collaborationTarget, profileImageUrl: source?.profileImageUrl, avatarSeed: source?.avatarSeed,
+          messages: [], desktopRuntimeBacked: true, desktopRuntimeTranscriptLoaded: false,
+          metadata: { source: 'ask-agent-new-chat' },
+        };
+        updateState(current => ({ ...current, subsessionId: null, selectedConversationId: conversationId,
+          openConversationId: conversationId, requestedConversationId: conversationId, createdConversation: created,
+          referenceContext: buildAskAgentSessionReferenceContext(activeConversation), actionsOpen: false, sessionListOpen: false,
+          openComposerSelector: null, drafts: { ...current.drafts, [conversationId]: initialPrompt.trim() },
+        }));
+        return true;
+      } catch {
+        if (generation === navigationGeneration.current) setCreationError('Could not create a new private chat. Your current conversation is unchanged.');
+        return false;
+      }
+    })().finally(() => {
+      if (createFlight.current === request) { createFlight.current = null; setIsCreating(false); }
+    });
+    createFlight.current = request;
+    return request;
   };
   const open = async (initialPrompt = '') => {
     if (activePaneKind === 'agent' && onCreateAgentSession) {
@@ -282,6 +339,7 @@ export function useChatCompanionSession({
   ) => {
     const draft = state.drafts[targetConversation.id] ?? '';
     if (!draft.trim() && attachments.length === 0) return false;
+    if (isCreating || state.createdConversation?.id === targetConversation.id) return false;
     if (targetConversation.agentSubsessionId) {
       if (sendingRef.current || !subsession.snapshot || subsession.error) return false;
       if (attachments.length) { setSubsessionSendError({ id: targetConversation.id, message: 'This session supports text messages.' }); return false; }
@@ -345,6 +403,8 @@ export function useChatCompanionSession({
     sessionOptions,
     suggested,
     draftText,
+    isPreparing: isCreating || state.createdConversation != null,
+    creationError,
     subsession: state.subsessionId ? {
       mentionOptions: subsession.snapshot ? subsessionMentionOptions(subsession.snapshot, subsession.accountId) : [],
       sending: subsessionSending,
@@ -353,8 +413,8 @@ export function useChatCompanionSession({
     } : undefined,
     canOpen: Boolean(suggested || onCreateAgentSession),
     transcript: {
-      isLoading: state.subsessionId ? !subsession.snapshot && !subsession.error : transcriptNeedsLoading
-        && transcriptLoadFailureSessionId !== conversationId,
+      isLoading: isCreating || (state.subsessionId ? !subsession.snapshot && !subsession.error : transcriptNeedsLoading
+        && transcriptLoadFailureSessionId !== conversationId),
       loadError: state.subsessionId ? subsession.error : transcriptNeedsLoading
         && transcriptLoadFailureSessionId === conversationId
         ? 'Couldn’t load chat history.'
@@ -374,7 +434,7 @@ export function useChatCompanionSession({
     menu: {
       actionsOpen: conversation ? state.actionsOpen : false,
       sessionListOpen: conversation ? state.sessionListOpen : false,
-      canCreateSession: Boolean(onCreateAgentSession),
+      canCreateSession: Boolean(onCreateAgentSession) && !isCreating,
       toggleActions: () => updateState((current) => ({
         ...current,
         actionsOpen: !current.actionsOpen,
@@ -416,11 +476,13 @@ export function useChatCompanionSession({
       create,
       open,
       openSubsession: (subsessionId: string) => {
+        cancelCreation();
         setSubsessionSendError(null);
-        updateState(current => ({ ...current, subsessionId, openConversationId: null, requestedConversationId: null,
+        updateState(current => ({ ...current, subsessionId, openConversationId: null, requestedConversationId: null, createdConversation: null,
           referenceContext: null, actionsOpen: false, sessionListOpen: false, openComposerSelector: null }));
       },
       switchConversation: (conversationId: string) => {
+        cancelCreation();
         const known = directConversations.find(item => item.id === conversationId);
         if (known && !isPrivateOwnedAgentConversation(known)) return;
         if (
@@ -431,6 +493,7 @@ export function useChatCompanionSession({
           updateState((current) => ({
             ...current,
             subsessionId: null,
+            createdConversation: null,
             requestedConversationId: conversationId,
             referenceContext: buildAskAgentSessionReferenceContext(activeConversation),
           }));
@@ -445,17 +508,18 @@ export function useChatCompanionSession({
         }
         activate(conversationId);
       },
-      close: () => updateState((current) => ({
+      close: () => { cancelCreation(); updateState((current) => ({
         ...current,
         subsessionId: null,
         selectedConversationId: null,
         openConversationId: null,
         requestedConversationId: null,
+        createdConversation: null,
         referenceContext: null,
         actionsOpen: false,
         sessionListOpen: false,
         openComposerSelector: null,
-      })),
+      })); },
       updateDraft,
       sendDraft,
     },

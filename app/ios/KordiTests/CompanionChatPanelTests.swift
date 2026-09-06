@@ -4,6 +4,19 @@ import Testing
 @testable import Kordi
 
 struct ConversationBoundaryTests {
+@Test func askAgentPushesAChatPageInsteadOfResizingTheMainConversation() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+    let main = try String(contentsOf: root.appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift"), encoding: .utf8)
+    let page = try String(contentsOf: root.appendingPathComponent("Kordi/Features/Conversation/CompanionChatPanel.swift"), encoding: .utf8)
+    #expect(main.contains(".navigationDestination(isPresented: $showsCompanionPanel)"))
+    #expect(!main.contains(".inspector(isPresented: $showsCompanionPanel)"))
+    #expect(main.contains("if !showsCompanionPanel {"))
+    #expect(main.contains("showsNavigationChrome ? .visible : .automatic"))
+    #expect(page.contains("Back to conversation"))
+    #expect(page.contains("Only you · Agent session"))
+    #expect(!page.contains(".presentationDetents") && !page.contains(".inspectorColumnWidth"))
+}
+
 @Test func taskClockStopsOnCompletionAndDoesNotUseConversationAge() throws {
     let data = try JSONSerialization.data(withJSONObject: [
         "sessionId":"child", "parentSessionId":"parent", "parentRequestId":"request",

@@ -407,15 +407,11 @@ test('ask agent from an active agent chat creates a fresh side session instead o
     new URL('../src/pages/useChatCompanionSession.ts', import.meta.url),
     'utf8',
   );
-  const appModelSource = readKordiAppModelImplementationSource();
   const sideAgentActionsSource = readFileSync(new URL('../src/app/useKordiSideAgentSessionActions.ts', import.meta.url), 'utf8');
 
   assert.match(pageSource, /activePaneKind === 'agent' && onCreateAgentSession/);
   assert.match(pageSource, /return create\(initialPrompt\)/);
-  assert.match(
-    appModelSource,
-    /mainConversationId:\s*conversations\.activeConv\.id/,
-  );
+  assert.match(sideAgentActionsSource, /createDesktopChatSession\(\{ independent: true, sourceSessionId \}\)/);
   assert.match(sideAgentActionsSource, /setDesktopChatState\(nextState\)/);
   assert.doesNotMatch(sideAgentActionsSource, /\{ \.\.\.nextState, activeSessionId:/);
 });
@@ -426,8 +422,8 @@ test('ask agent new session action switches the side panel to the created agent 
     'utf8',
   );
 
-  assert.match(source, /const conversationId = await onCreateAgentSession\(\)/);
-  assert.match(source, /activate\(conversationId, initialPrompt\)/);
+  assert.match(source, /const conversationId = await onCreateAgentSession\(sourceId\)/);
+  assert.match(source, /requestedConversationId: conversationId, createdConversation: created/);
   assert.match(source, /selectedConversationId: conversationId,[\s\S]*openConversationId: conversationId/);
 });
 

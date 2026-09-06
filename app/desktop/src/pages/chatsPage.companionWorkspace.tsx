@@ -369,11 +369,12 @@ export function ChatCompanionWorkspace({
       }}
       composer={(
         <CompanionComposer
+          isPreparing={session.isPreparing}
           conversation={conversation}
           subsession={session.subsession}
           paneKind={paneKind ?? 'agent'}
           draftText={session.draftText}
-          attachmentError={attachmentError}
+          attachmentError={session.creationError ?? attachmentError}
           isNativeShell={shell.isNativeShell}
           attachmentInputRef={session.refs.attachmentInput}
           composer={companionComposer}

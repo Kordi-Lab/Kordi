@@ -195,9 +195,34 @@ pub async fn desktop_chat_session_detail(
 #[tauri::command]
 pub async fn desktop_chat_new_session(
     manager: State<'_, DesktopChatManager>,
+    independent: Option<bool>,
+    source_session_id: Option<String>,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
-    let session_id = materialize_transient_draft_runtime(&manager, &cwd).await?;
+    let session_id = if independent.unwrap_or(false) {
+        let mut runtime =
+            kordi_cli::desktop_runtime::DesktopRuntimeSession::create_new(cwd.clone())
+                .await
+                .map_err(|error| error.to_string())?;
+        runtime
+            .materialize_session()
+            .map_err(|error| error.to_string())?;
+        let id = runtime.session_id().to_string();
+        crate::canonical_sessions::initialize_private_side_session(
+            &id,
+            source_session_id.as_deref(),
+            &cwd.to_string_lossy(),
+        )?;
+        attach_cloud_scheduled_task_runtime(&mut runtime);
+        manager
+            .sessions
+            .lock()
+            .await
+            .insert(id.clone(), Arc::new(tokio::sync::Mutex::new(runtime)));
+        id
+    } else {
+        materialize_transient_draft_runtime(&manager, &cwd).await?
+    };
     build_chat_state(&manager, &cwd, session_id).await
 }
 

@@ -857,8 +857,8 @@ export async function createDesktopProject(name: string, parentDir?: string) {
   return invokeDesktop<DesktopProjectSettings>('desktop_project_create_new', { name, parentDir });
 }
 
-export async function createDesktopChatSession() {
-  return invokeDesktop<DesktopChatState>('desktop_chat_new_session');
+export async function createDesktopChatSession(options?: { independent?: boolean; sourceSessionId?: string }) {
+  return invokeDesktop<DesktopChatState>('desktop_chat_new_session', options);
 }
 
 export async function createDesktopProjectSession(projectRoot: string, title?: string) {

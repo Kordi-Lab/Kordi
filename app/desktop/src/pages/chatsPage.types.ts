@@ -225,7 +225,7 @@ export type ChatsPageRuntime = {
     attachmentOverride?: AttachmentItem[],
     quoteOverride?: ComposerQuoteState | null,
   ) => Promise<void> | void;
-  onCreateAgentSession?: () => string | null | Promise<string | null>;
+  onCreateAgentSession?: (sourceSessionId?: string) => string | null | Promise<string | null>;
 };
 
 export type ChatsPageAuth = {

@@ -185,34 +185,7 @@ pub fn fork_canonical_session_into_local_chat(
             "snapshotMessageCount": path.len(),
         },
     });
-    // Preserve the execution identity, not the source's membership or live work.
-    for key in [
-        "createdFrom",
-        "agentId",
-        "cloudAgentId",
-        "cloudAgentName",
-        "cloudAgentRole",
-        "cloudAgentSystemPrompt",
-        "cloudAgentSourceSummary",
-        "cloudAgentBoundaries",
-        "cloudAgentSkills",
-        "cloudAgentTools",
-        "cloudAgentPlugins",
-        "cloudAgentOwnerAccountId",
-        "cloudAgentOwnerName",
-        "cloudAgentRuntimeRoute",
-        "sourceHostId",
-        "peerNodeId",
-        "peerRuntime",
-        "peerDisplayName",
-        "peerOwnerName",
-        "peerAgentId",
-        "targetAgentId",
-    ] {
-        if let Some(value) = source_info.metadata.get(key) {
-            metadata[key] = value.clone();
-        }
-    }
+    copy_agent_metadata(&source_info.metadata, &mut metadata);
     open_or_create_session_in_db(
         &conn,
         OpenCanonicalSessionRequest {
@@ -290,6 +263,37 @@ pub fn fork_canonical_session_into_local_chat(
         branch_leaf_id: last_message_id,
         cwd: cwd.to_string(),
     })
+}
+
+// Shared by empty side-chat creation and history forks. Neither may copy membership or live work.
+pub(super) fn copy_agent_metadata(source: &serde_json::Value, target: &mut serde_json::Value) {
+    for key in [
+        "createdFrom",
+        "agentId",
+        "cloudAgentId",
+        "cloudAgentName",
+        "cloudAgentRole",
+        "cloudAgentSystemPrompt",
+        "cloudAgentSourceSummary",
+        "cloudAgentBoundaries",
+        "cloudAgentSkills",
+        "cloudAgentTools",
+        "cloudAgentPlugins",
+        "cloudAgentOwnerAccountId",
+        "cloudAgentOwnerName",
+        "cloudAgentRuntimeRoute",
+        "sourceHostId",
+        "peerNodeId",
+        "peerRuntime",
+        "peerDisplayName",
+        "peerOwnerName",
+        "peerAgentId",
+        "targetAgentId",
+    ] {
+        if let Some(value) = source.get(key) {
+            target[key] = value.clone();
+        }
+    }
 }
 
 #[cfg(test)]
