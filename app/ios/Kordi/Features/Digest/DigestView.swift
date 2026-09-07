@@ -25,6 +25,8 @@ struct DigestView: View {
     @State private var loadRevision = 0
     private var sources: [RollingDigestSource] { digest?.sources ?? [] }
     private var content: RollingDigestContent? { digest?.snapshot }
+    private var visibleClaims: [RollingDigestItem] { digest?.visibleClaims ?? [] }
+    private var dismissedSuggestions: [RollingDigestItem] { digest?.dismissedSuggestions ?? [] }
     private var openTasks: [RollingDigestItem] { content?.commitments.filter { $0.kind != "done" } ?? [] }
 
     var body: some View {
@@ -97,20 +99,19 @@ struct DigestView: View {
                     Text(code == "missing_provider_auth" ? "Connect a model provider in account settings to generate your digest." : "The last update failed. Your previous brief remains available.")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
-                if digest?.partial == true { Text("Partial coverage · a bounded selection of accessible messages was included.").font(.caption).foregroundStyle(.secondary) }
                 content()
             }.font(.subheadline).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 20)
         }.refreshable { await refresh() }
     }
     @ViewBuilder private var brief: some View {
-        if let lead = content?.claims.first {
+        if let lead = visibleClaims.first {
             VStack(alignment: .leading, spacing: 10) {
                 Text(lead.title).font(.subheadline.weight(.semibold))
                 Text(lead.text).foregroundStyle(.secondary)
                 people(lead)
                 citations(lead)
             }
-            ForEach(Array((content?.claims ?? []).dropFirst())) { item in
+            ForEach(Array(visibleClaims.dropFirst())) { item in
                 VStack(alignment: .leading, spacing: 8) {
                     Text(item.title).font(.subheadline.weight(.semibold))
                     Text(item.text).foregroundStyle(.secondary)
@@ -120,7 +121,7 @@ struct DigestView: View {
                 }
             }
         } else {
-            Text(digest?.status == "ready" ? "No conversations to summarize yet." : "Your sourced brief will appear after the first update.").foregroundStyle(.secondary).padding(.vertical, 24)
+            Text(digest?.status == "ready" ? (sources.isEmpty ? "No conversations to summarize yet." : "No brief entries to show.") : "Your sourced brief will appear after the first update.").foregroundStyle(.secondary).padding(.vertical, 24)
         }
     }
     @ViewBuilder private var tasks: some View {
@@ -146,8 +147,8 @@ struct DigestView: View {
                 Button("Dismiss") { Task { await perform { try await model.dismissDigestItem(item.id, dismissed: true) } } }
             }
         }
-        if digest?.feedback.contains(where: { $0.status == "dismissed" }) == true {
-            Button("Restore dismissed suggestions") { Task { await perform { for feedback in digest?.feedback.filter({ $0.status == "dismissed" }) ?? [] { try await model.dismissDigestItem(feedback.id, dismissed: false) } } } }
+        if !dismissedSuggestions.isEmpty {
+            Button("Restore dismissed suggestions") { Task { await perform { for item in dismissedSuggestions { try await model.dismissDigestItem(item.id, dismissed: false) } } } }
         }
     }
     private var calendar: some View {

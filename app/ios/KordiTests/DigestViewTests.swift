@@ -1,4 +1,5 @@
 import XCTest
+import Testing
 @testable import Kordi
 
 final class DigestViewTests: XCTestCase {
@@ -83,4 +84,26 @@ final class DigestViewTests: XCTestCase {
         XCTAssertEqual(first.events.map(\.id), second.events.map(\.id))
         XCTAssertTrue(first.events.allSatisfy { $0.reminderAt == nil })
     }
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func digestDismissalKeepsBriefAndSuggestionRestorationSeparate(hideSuggestion: Bool) throws {
+    let suggestionFeedback = hideSuggestion ? #",{"id":"suggestion","status":"dismissed"}"# : ""
+    let json = """
+    {"accountId":"viewer","snapshot":{
+      "claims":[{"id":"brief","title":"Hidden brief","text":"","kind":"progress","sourceIds":[]},
+        {"id":"visible","title":"Visible brief","text":"","kind":"progress","sourceIds":[]}],
+      "commitments":[],"calendarCandidates":[],
+      "suggestions":[{"id":"suggestion","title":"Suggestion","text":"","kind":"possible","sourceIds":[]},
+        {"id":"task","title":"Converted task","text":"","kind":"possible","sourceIds":[]}]},
+      "sources":[],"partial":true,"revision":1,"updatedAt":"2026-09-07T09:00:00Z","status":"ready",
+      "feedback":[{"id":"brief","status":"dismissed"},{"id":"old-item","status":"dismissed"},
+        {"id":"task","status":"task"}\(suggestionFeedback)]}
+    """
+    let response = try JSONDecoder().decode(RollingDigestResponse.self, from: Data(json.utf8))
+    #expect(response.visibleClaims.map(\.id) == ["visible"])
+    #expect(response.dismissedSuggestions.map(\.id) == (hideSuggestion ? ["suggestion"] : []))
+    #expect(response.snapshot?.claims.count == 2)
+    #expect(response.partial)
 }

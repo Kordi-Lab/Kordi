@@ -45,6 +45,18 @@ struct RollingDigestResponse: Codable, Equatable {
     let status: String
     let errorCode: String?
     let feedback: [RollingDigestFeedback]
+
+    private var dismissedItemIDs: Set<String> {
+        Set(feedback.filter { $0.status == "dismissed" }.map(\.id))
+    }
+    var visibleClaims: [RollingDigestItem] {
+        let dismissed = dismissedItemIDs
+        return (snapshot?.claims ?? []).filter { !dismissed.contains($0.id) }
+    }
+    var dismissedSuggestions: [RollingDigestItem] {
+        let dismissed = dismissedItemIDs
+        return (snapshot?.suggestions ?? []).filter { dismissed.contains($0.id) }
+    }
 }
 struct DigestCalendarEvent: Codable, Identifiable, Equatable, Sendable {
     var id: String
