@@ -332,7 +332,9 @@ enum CloudGroupAgentLifecycleProjector {
                   !answered.contains(request.id),
                   now.timeIntervalSince(request.createdAt) < 10 * 60,
                   let mention = request.mentions.first(where: {
-                      $0.kind == .agent && members[$0.humanId ?? $0.nodeId ?? ""] != nil
+                      $0.kind == .agent
+                          && ($0.sourceHostId.nonEmpty ?? "cloud") == "cloud"
+                          && members[$0.humanId ?? $0.nodeId ?? ""] != nil
                   }),
                   let ownerName = members[mention.humanId ?? mention.nodeId ?? ""] else { return nil }
             let createdAt = request.createdAt.addingTimeInterval(0.001)
