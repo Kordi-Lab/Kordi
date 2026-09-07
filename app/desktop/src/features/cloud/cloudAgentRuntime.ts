@@ -1,5 +1,6 @@
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type { CanonicalSessionMessage } from '@/kordi-app/types';
+import { canonicalJsonValuesEqual } from '@/features/canonical/canonicalEquality';
 
 import type { CloudMessage } from './authClient';
 import type { CloudAgentDefinition } from './cloudAgents';
@@ -335,12 +336,15 @@ export function applySynchronizedCloudAgentRuntimeRoutes(
     canonicalMessages,
     localExecutionRoute,
   );
-  return applyCloudAgentRuntimeRouteChangeCloudMessages(
+  const synchronized = applyCloudAgentRuntimeRouteChangeCloudMessages(
     recovered,
     accountId,
     cloudMessages,
     localExecutionRoute,
   );
+  // A stale mirror can change the intermediate object even when Cloud restores
+  // the current values. Keep the final no-op stable for React subscribers.
+  return canonicalJsonValuesEqual(current, synchronized) ? current : synchronized;
 }
 
 function legacyCanonicalCollaborationConversationId(sessionId: string): string | null {
