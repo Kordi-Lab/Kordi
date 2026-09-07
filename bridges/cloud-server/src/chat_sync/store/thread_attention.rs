@@ -47,9 +47,9 @@ pub async fn thread_attention(
               AND COALESCE(m.attention_content->>'synchronizationOnly','false')<>'true'
               AND m.message_kind !~ '(control|snapshot|cursor|presence|identity)'
               AND (length(trim(COALESCE(m.attention_content->>'text','')))>0
-                   OR jsonb_array_length(COALESCE(m.content->'legacy_attachments','[]'))>0
+                   OR jsonb_array_length(CASE WHEN jsonb_typeof(m.content->'legacy_attachments')='array' THEN m.content->'legacy_attachments' ELSE '[]'::jsonb END)>0
                    OR EXISTS(SELECT 1 FROM cloud_chat_message_attachments a WHERE a.message_id=m.message_id)
-                   OR EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(m.content->'blocks','[]')) b WHERE b->>'type'='voice'))
+                   OR EXISTS(SELECT 1 FROM jsonb_array_elements(CASE WHEN jsonb_typeof(m.content->'blocks')='array' THEN m.content->'blocks' ELSE '[]'::jsonb END) b WHERE b->>'type'='voice'))
               AND m.conversation_sequence > CASE WHEN m.thread_root_message_id IS NULL THEN c.last_read_sequence ELSE COALESCE(r.last_read_sequence,0) END
               AND (m.thread_root_message_id IS NULL OR EXISTS(
                   SELECT 1 FROM cloud_chat_messages root WHERE root.message_id=m.thread_root_message_id AND root.deleted_at IS NULL
@@ -115,7 +115,7 @@ pub async fn thread_page(
     let row: Option<(Uuid,Option<Uuid>,i64)>=query_as("SELECT message_id,thread_root_message_id,conversation_sequence FROM cloud_chat_messages m WHERE conversation_id=$1 AND (message_id=$2 OR client_message_id=$2) AND deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id=$3) ORDER BY (message_id=$2) DESC LIMIT 1")
         .bind(conversation).bind(message).bind(account).fetch_optional(&mut *tx).await?;
     let (id, root, target_sequence) = row.ok_or(StoreError::NotFound)?;
-    let is_thread = root.is_some();
+    let is_thread = root.is_some() || after.is_some();
     let root_id = root.unwrap_or(id);
     let accessible: Option<(Uuid,)> = query_as("SELECT message_id FROM cloud_chat_messages m WHERE message_id=$1 AND conversation_id=$2 AND deleted_at IS NULL AND NOT EXISTS(SELECT 1 FROM cloud_chat_message_visibility v WHERE v.message_id=m.message_id AND v.account_id=$3)")
         .bind(root_id).bind(conversation).bind(account).fetch_optional(&mut *tx).await?;

@@ -785,13 +785,12 @@ struct ConversationView: View {
                         activeThreadFirstMessageID = destination.first ?? destination.target
                         activeThreadShowsUnreadDivider = destination.first != nil
                         openThread(rootMessageID: destination.root)
-                    } else { proxy.scrollTo(destination.root, anchor: .center); highlightReferencedMessage(destination.root) }
+                    } else { navigateToMessage(destination.root, in: messages, proxy: proxy) }
                 } catch { threadNavigationError = "Could not open this message. Please retry."; threadNotificationHandled = false }
             }
             .onChange(of: pendingThreadMessageID) { _, messageID in
                 guard let messageID else { return }
-                proxy.scrollTo(messageID, anchor: .top)
-                highlightReferencedMessage(messageID)
+                navigateToMessage(messageID, in: messages, proxy: proxy)
                 pendingThreadMessageID = nil
             }
             .onChange(of: activeThreadRootMessageID) { previousRootID, currentRootID in

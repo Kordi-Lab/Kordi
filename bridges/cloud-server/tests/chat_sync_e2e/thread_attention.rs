@@ -4,9 +4,12 @@ use kordi_cloud_server::chat_sync::models::AdvanceThreadReadRequest;
 
 #[tokio::test]
 async fn unread_threads_are_discoverable_without_history_and_keep_independent_cursors() {
-    let pool = try_pool()
+    let Ok(database_url) = std::env::var("DATABASE_URL") else {
+        return;
+    };
+    let pool = init_pool(&database_url)
         .await
-        .expect("thread attention test requires an isolated DATABASE_URL");
+        .expect("configured thread attention database must be available");
     let owner = account(&pool, "thread-owner").await;
     let peer = account(&pool, "thread-peer").await;
     let outsider = account(&pool, "thread-outsider").await;
@@ -75,6 +78,9 @@ async fn unread_threads_are_discoverable_without_history_and_keep_independent_cu
     )
     .await;
     let main = send(peer.clone(), "Main message".into(), None, None).await;
+    // Legacy optional metadata must not make the whole account's unread query fail.
+    query("UPDATE cloud_chat_messages SET content=jsonb_set(content,'{legacy_attachments}','null'::jsonb) WHERE message_id=$1")
+        .bind(reply.id).execute(&pool).await.unwrap();
     let summary = store::thread_attention(&pool, &owner, None)
         .await
         .unwrap()
@@ -182,11 +188,15 @@ async fn unread_threads_are_discoverable_without_history_and_keep_independent_cu
         &pool,
         &owner,
         conversation,
-        last.id,
+        second.id,
         page.next_after_sequence,
     )
     .await
     .unwrap();
+    assert!(
+        next.is_thread,
+        "paging by the root must stay in the discussion"
+    );
     assert_eq!(next.messages.len(), 6);
     assert!(next.next_after_sequence.is_none());
     query("INSERT INTO cloud_chat_message_visibility(account_id,message_id) VALUES($1,$2)")
