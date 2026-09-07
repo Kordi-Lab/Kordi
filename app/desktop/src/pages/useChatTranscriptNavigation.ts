@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { resolveTranscriptNavigationIdsForSource } from '@/features/chat/messageNavigation';
 import type {
@@ -17,7 +17,7 @@ type TranscriptNavigationTarget = {
 };
 
 type UseChatTranscriptNavigationInput = {
-  main: TranscriptNavigationTarget;
+  main: TranscriptNavigationTarget & { notificationMessage?: Message; onNotificationNavigation?: () => void };
   companion: TranscriptNavigationTarget & {
     onShowMessages: () => void;
   };
@@ -78,6 +78,16 @@ export function useChatTranscriptNavigation({
       sessionKey: main.conversation.id,
     });
   }, [main.conversation, main.messages]);
+
+  const lastNotification=useRef<Message|undefined>(undefined);
+  const notificationMessage=main.notificationMessage;
+  const onNotificationNavigation=main.onNotificationNavigation;
+  useEffect(()=>{
+    if(!notificationMessage?.id || lastNotification.current===notificationMessage)return;
+    lastNotification.current=notificationMessage;
+    onNotificationNavigation?.();
+    navigateMain(notificationMessage.id);
+  },[notificationMessage,onNotificationNavigation,navigateMain]);
 
   const navigateCompanion = useCallback((
     messageId: string,

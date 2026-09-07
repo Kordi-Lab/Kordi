@@ -272,7 +272,6 @@ export function useCloudCollaborationReadModel({
       (canonicalState?.messages ?? []).some((message) => (
         canonicalSelfAgentSessionIds.has(message.sessionId)
         && message.sourceTransport !== 'canonical-fork-snapshot'
-        && message.sourceTransport !== 'cloud-group-fork-snapshot'
       ));
     const visibleMessagesByPeer = (() => {
       let next = messagesByPeer;

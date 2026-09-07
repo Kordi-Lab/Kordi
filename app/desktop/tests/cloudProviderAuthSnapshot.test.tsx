@@ -219,7 +219,7 @@ test('provider auth snapshot sync gate confirms a signature only after successfu
 
 test('provider auth snapshot reconciliation replaces a stale route profile with the active Mac profile', async () => {
   const { calls, fetchImpl } = recordingFetch((call) => {
-    if (call.url.endsWith('/v1/cloud/agent-provider-auth/snapshots')) {
+    if (call.url.endsWith('/v1/cloud/agent-provider-auth/snapshots?intent=explicit')) {
       return jsonResponse(201, {
         snapshotId: 'snap_openai',
         provider: 'openai-codex',
@@ -263,6 +263,11 @@ test('provider auth snapshot reconciliation replaces a stale route profile with 
           active: true,
         }],
       }],
+    },
+    intent: {
+      providerId: 'openai-codex',
+      reason: 'active-choice-changed',
+      revision: 1,
     },
     isCurrent: () => true,
     loadStoredSession: async () => ({
@@ -344,6 +349,11 @@ test('provider auth snapshot reconciliation revokes every alias after the only p
         options: [],
       }],
     },
+    intent: {
+      providerId: 'openai',
+      reason: 'provider-logout',
+      revision: 1,
+    },
     isCurrent: () => true,
     loadStoredSession: async () => ({
       token: 'session_token',
@@ -364,9 +374,51 @@ test('provider auth snapshot reconciliation revokes every alias after the only p
   );
 });
 
+test('an unconfigured device cannot turn passive absence into provider removal', async () => {
+  const { calls, fetchImpl } = recordingFetch(() => jsonResponse(500, {}));
+  const client = new CloudAuthClient({ baseUrl: 'http://srv', fetchImpl });
+
+  const outcome = await reconcileCloudProviderAuthSnapshots({
+    accountId: 'acct_owner',
+    client,
+    route: null,
+    desktopAuthState: {
+      authPath: '/redacted/auth.json',
+      hasAnyAuth: false,
+      providers: [{
+        id: 'openai',
+        label: 'OpenAI',
+        statusSummary: 'Not configured',
+        loginHint: '',
+        envVar: '',
+        helpUrl: '',
+        supportsOAuth: true,
+        supportsApiKey: true,
+        configured: false,
+        options: [],
+      }],
+    },
+    intent: {
+      providerId: 'openai',
+      reason: 'oauth-completed',
+      revision: 1,
+    },
+    isCurrent: () => true,
+    loadStoredSession: async () => ({
+      token: 'session_token',
+      accountId: 'acct_owner',
+      expiresAt: '2026-08-18T00:00:00Z',
+    }),
+    buildSnapshotPayload: async () => null,
+  });
+
+  assert.equal(outcome, 'not-ready');
+  assert.equal(calls.length, 0);
+});
+
 test('CloudAuthClient publishes current and revokes provider auth snapshots', async () => {
   const { calls, fetchImpl } = recordingFetch((call) => {
-    if (call.url.endsWith('/v1/cloud/agent-provider-auth/snapshots')) {
+    if (call.url.endsWith('/v1/cloud/agent-provider-auth/snapshots?intent=explicit')) {
       return jsonResponse(201, {
         snapshotId: 'snap_1',
         provider: 'openai',
@@ -411,7 +463,7 @@ test('CloudAuthClient publishes current and revokes provider auth snapshots', as
   assert.equal(current?.snapshotId, 'snap_1');
   assert.equal(revoked.revokedAt, '2026-05-23T00:01:00Z');
 
-  assert.equal(calls[0].url, 'http://srv/v1/cloud/agent-provider-auth/snapshots');
+  assert.equal(calls[0].url, 'http://srv/v1/cloud/agent-provider-auth/snapshots?intent=explicit');
   assert.equal(calls[0].init?.method, 'POST');
   assert.deepEqual(JSON.parse(calls[0].init?.body as string), {
     provider: 'openai',
@@ -420,6 +472,6 @@ test('CloudAuthClient publishes current and revokes provider auth snapshots', as
   });
   assert.equal(calls[1].url, 'http://srv/v1/cloud/agent-provider-auth/snapshots/current?provider=openai&authChoice=default');
   assert.equal(calls[1].init?.method, 'GET');
-  assert.equal(calls[2].url, 'http://srv/v1/cloud/agent-provider-auth/snapshots/snap_1');
+  assert.equal(calls[2].url, 'http://srv/v1/cloud/agent-provider-auth/snapshots/snap_1?intent=explicit');
   assert.equal(calls[2].init?.method, 'DELETE');
 });

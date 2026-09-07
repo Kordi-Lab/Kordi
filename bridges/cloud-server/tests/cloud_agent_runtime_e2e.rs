@@ -129,7 +129,7 @@ fn export_body(runner_id: &str, name: &str, sandbox_path: &str, bytes: &[u8]) ->
 }
 
 async fn read_json(response: axum::response::Response) -> Value {
-    let bytes = to_bytes(response.into_body(), 64 * 1024).await.unwrap();
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
     if bytes.is_empty() {
         return Value::Null;
     }
@@ -284,8 +284,8 @@ async fn insert_leased_scheduled_run(
     let now = chrono::Utc::now().to_rfc3339();
     sqlx_core::query::query(
         "INSERT INTO cloud_agent_fallback_runs \
-         (run_id, idempotency_key, request_message_id, session_id, owner_account_id, requester_account_id, status, prompt, claimed_by, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, 'leased', 'Reminder due', $7, $8, $8)",
+         (run_id, idempotency_key, request_message_id, session_id, owner_account_id, requester_account_id, status, prompt, claimed_by, created_at, updated_at, lease_expires_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, 'leased', 'Reminder due', $7, $8, $8, (now()+interval '2 minutes')::text)",
     )
     .bind(&run_id)
     .bind(format!("scheduled:{}:{}", session_id, request_message_id))
@@ -386,6 +386,12 @@ mod attachments;
 mod avatar_assets;
 #[path = "cloud_agent_runtime_e2e/claims.rs"]
 mod claims;
+#[path = "cloud_agent_runtime_e2e/cloud_subsessions.rs"]
+mod cloud_subsessions;
+#[path = "cloud_agent_runtime_e2e/execution_ownership.rs"]
+mod execution_ownership;
+#[path = "cloud_agent_runtime_e2e/group_owner_admission.rs"]
+mod group_owner_admission;
 #[path = "cloud_agent_runtime_e2e/provider_auth.rs"]
 mod provider_auth;
 #[path = "cloud_agent_runtime_e2e/runner.rs"]
@@ -394,3 +400,9 @@ mod runner;
 mod sandboxes;
 #[path = "cloud_agent_runtime_e2e/scheduled_runs.rs"]
 mod scheduled_runs;
+#[path = "cloud_agent_runtime_e2e/shared_desktop_lease.rs"]
+mod shared_desktop_lease;
+#[path = "cloud_agent_runtime_e2e/subsession_follow.rs"]
+mod subsession_follow;
+#[path = "cloud_agent_runtime_e2e/subsessions.rs"]
+mod subsessions;

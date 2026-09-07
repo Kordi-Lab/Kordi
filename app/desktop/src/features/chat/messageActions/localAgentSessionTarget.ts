@@ -3,6 +3,17 @@ import { fetchDesktopChatState } from '@/lib/desktop';
 import type { AttachmentItem } from '../composerController.types';
 import { LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '../draftSessions';
 import { appendOptimisticOutboundMessage } from './optimistic';
+import type { ResolvedMentionedCollaborationTarget } from './types';
+
+export function isOwnedAgentMention(target: ResolvedMentionedCollaborationTarget | null, localAgentMentioned: boolean) {
+  if (!target) return localAgentMentioned;
+  const owner = target.peer.humanId?.trim() || target.peer.nodeId?.trim();
+  const localOwner = target.host.humanId?.trim() || target.host.nodeId?.trim();
+  return target.targetKind === 'agent' && Boolean(
+    (owner && localOwner && owner === localOwner)
+    || (target.peer.agentId && target.host.agents.some(agent => agent.id === target.peer.agentId)),
+  );
+}
 
 export function appendOptimisticLocalDraftMessage(
   current: DesktopChatState | null,

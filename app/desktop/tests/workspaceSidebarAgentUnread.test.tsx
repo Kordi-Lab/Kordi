@@ -4,10 +4,83 @@ import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
-import { buildParticipantSpaces } from '../src/features/chat/participantSpaces';
+import { buildParticipantSpaces, filterParticipantSpaces } from '../src/features/chat/participantSpaces';
+import { useWorkspaceChatSidebarModel } from '../src/pages/workspaceSidebar.chatModel';
 import { collaborationChatConversationRoutesToLocalAgentPage } from '../src/app/useWorkspaceViewModels';
 import { WorkspaceSidebar } from '../src/pages/WorkspaceSidebar';
 import { conversation, bridgeConversation, baseSidebarProps } from './helpers/workspaceSidebarParticipantSpacesFixtures';
+
+test('Agent ancestry never adds an Agent session or its unread count to group or contact rows', () => {
+  const parent = conversation({
+    id: 'session:group:source', canonicalSessionId: 'session:group:source',
+    participantSpaceId: 'group:session:group:source',
+    name: 'general', unread: 0, _updatedAtMs: 1,
+    metadata: { kind: 'chat-group', customName: 'Research group', groupSpaceId: 'session:group:source' },
+  });
+  const child = conversation({
+    id: 'legacy-agent-task', canonicalSessionId: 'legacy-agent-task',
+    type: 'owned-agent', name: 'Planet research', unread: 7, _updatedAtMs: 2,
+    forkedFromSessionId: parent.id, forkedFromMessageId: 'original-request',
+    canonicalParticipants: [
+      { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local' },
+      { id: 'agent:mine', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local' },
+    ],
+    messages: [{ role: 'owned-agent', text: 'Latest synchronized greeting', time: '08:11' }],
+  });
+  const contact = conversation({ id: 'session:direct-person:source', canonicalSessionId: 'session:direct-person:source', unread: 0 });
+  const contactChild = { ...child, id: 'contact-agent-task', canonicalSessionId: 'contact-agent-task', forkedFromSessionId: contact.id };
+  const conversations = [parent, child, contact, contactChild];
+  const spaces = buildParticipantSpaces(conversations);
+  const group = spaces.find(space => space.kind === 'group')!;
+  for (const activeConvId of [parent.id, child.id, contact.id, contactChild.id]) {
+    const props = baseSidebarProps({
+      chatConversations: conversations, participantSpaces: spaces,
+      contactParticipantSpaces: filterParticipantSpaces(spaces, '', 'contact'),
+      agentParticipantSpaces: filterParticipantSpaces(spaces, '', 'agent'),
+      activeConvId, initialSelectedParticipantSpaceId: group.id, initialChatChannel: 'contact',
+    });
+    const contactMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, props as never));
+    assert.match(contactMarkup, /data-agent-session-row="session:group:source"/);
+    assert.doesNotMatch(contactMarkup, /data-agent-session-row="legacy-agent-task"/);
+    assert.doesNotMatch(contactMarkup, /data-agent-session-row="contact-agent-task"/);
+    renderToStaticMarkup(createElement(() => {
+      const model = useWorkspaceChatSidebarModel(props.chats as never);
+      assert.equal(model.contactUnread, 0);
+      assert.equal(model.agentUnread, 14);
+      assert.equal(model.allSidebarSessionRowsById.get(child.id)?.session.conversation.forkedFromSessionId, parent.id);
+      return null;
+    }));
+    const agentProps = { ...props, chats: { ...props.chats, initialChatChannel: 'agent' } };
+    const agentMarkup = renderToStaticMarkup(createElement(WorkspaceSidebar, agentProps as never));
+    assert.match(agentMarkup, /data-agent-session-row="legacy-agent-task"/);
+    assert.match(agentMarkup, /data-agent-session-row="contact-agent-task"/);
+  }
+});
+
+test('Agent list retains usable sessions with legacy group, contact, or missing fork parents', () => {
+  const chatConversations = ['session:group:old-parent', 'session:direct-person:old-parent', 'session:agent:missing'].map((parent, index) =>
+    conversation({
+      id: `agent-child-${index}`, canonicalSessionId: `agent-child-${index}`,
+      type: 'owned-agent', name: `Continued Agent session ${index}`,
+      subtitle: 'Latest synchronized greeting', forkedFromSessionId: parent,
+      unread: 1, _updatedAtMs: index + 1,
+      canonicalParticipants: [
+        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local' },
+        { id: 'agent:mine', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local' },
+      ],
+      messages: [{ role: 'owned-agent', text: 'Latest synchronized greeting', time: '08:11' }],
+    }));
+  const spaces = buildParticipantSpaces(chatConversations);
+  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
+    chatConversations, participantSpaces: spaces, contactParticipantSpaces: [],
+    agentParticipantSpaces: spaces, activeConvId: '', initialChatChannel: 'agent',
+  }) as never));
+  for (let index = 0; index < 3; index += 1) {
+    assert.match(markup, new RegExp(`data-agent-session-row="agent-child-${index}"`));
+    assert.match(markup, new RegExp(`Continued Agent session ${index}`));
+  }
+  assert.match(markup, /Latest synchronized greeting/);
+});
 
 test('WorkspaceSidebar marks the active agent fork path connector for accent styling', () => {
   const chatConversations = [
@@ -163,87 +236,6 @@ test('WorkspaceSidebar renders a self-only photo row as pinned Saved Messages', 
   assert.match(markup, /aria-label="Pinned"/);
   assert.doesNotMatch(markup, /# Shu Yang|Shu Yang · Photo/);
   assert.match(shellCss, /\.app-workspace-sidebar \.app-agent-session-row-saved\s*{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\) max-content/s);
-});
-
-test('WorkspaceSidebar does not show an Agent tab unread badge for hidden canonical parent forks', () => {
-  const chatConversations = [
-    conversation({
-      id: 'session:fork:hidden-contact-child',
-      canonicalSessionId: 'session:fork:hidden-contact-child',
-      name: 'Forked group continuation',
-      type: 'owned-agent',
-      subtitle: 'Unread hidden fork',
-      unread: 1,
-      forkedFromSessionId: 'session:group:cloud-parent',
-      forkedFromMessageId: 'msg:source',
-      participants: ['Me', 'My agent'],
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'agent:my-agent', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-agent' },
-      ],
-    }),
-  ];
-  const participantSpaces = buildParticipantSpaces(chatConversations);
-  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
-    chatConversations,
-    participantSpaces,
-    contactParticipantSpaces: [],
-    agentParticipantSpaces: participantSpaces,
-    activeConvId: '',
-    initialChatChannel: 'agent',
-  }) as never));
-
-  assert.match(markup, /No agent conversations yet/);
-  assert.doesNotMatch(markup, /data-unread-scope="channel-tab" data-unread-count="1"/);
-});
-
-test('WorkspaceSidebar hides group-derived fork unread from the contact tab and folded group row', () => {
-  const chatConversations = [
-    conversation({
-      id: 'session:group:cloud-parent',
-      canonicalSessionId: 'session:group:cloud-parent',
-      name: 'Cloud group',
-      type: 'group',
-      subtitle: 'Parent group',
-      unread: 0,
-      participants: ['Me', 'Alice', 'Bob'],
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'human:alice', name: 'Alice', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'alice' },
-        { id: 'human:bob', name: 'Bob', kind: 'human', role: 'person', source: 'bridge', avatarKey: 'bob' },
-      ],
-      _updatedAtMs: 2,
-    }),
-    conversation({
-      id: 'session:fork:hidden-contact-child',
-      canonicalSessionId: 'session:fork:hidden-contact-child',
-      name: 'Forked group continuation',
-      type: 'owned-agent',
-      subtitle: 'Unread hidden fork',
-      unread: 1,
-      forkedFromSessionId: 'session:group:cloud-parent',
-      forkedFromMessageId: 'msg:source',
-      participants: ['Me', 'My agent'],
-      canonicalParticipants: [
-        { id: 'human:me', name: 'Me', kind: 'human', role: 'self', source: 'local', avatarKey: 'me' },
-        { id: 'agent:my-agent', name: 'My agent', kind: 'agent', role: 'delegate', source: 'local', avatarKey: 'my-agent' },
-      ],
-      _updatedAtMs: 1,
-    }),
-  ];
-  const participantSpaces = buildParticipantSpaces(chatConversations);
-  const contactParticipantSpaces = participantSpaces.filter((space) => space.kind === 'group');
-  const agentParticipantSpaces = participantSpaces.filter((space) => space.kind === 'self');
-  const markup = renderToStaticMarkup(createElement(WorkspaceSidebar, baseSidebarProps({
-    chatConversations,
-    participantSpaces,
-    contactParticipantSpaces,
-    agentParticipantSpaces,
-    activeConvId: 'session:outside-active',
-  }) as never));
-
-  assert.doesNotMatch(markup, /data-unread-scope="channel-tab" data-unread-count="1"/);
-  assert.doesNotMatch(markup, /data-unread-scope="participant-space" data-unread-count="1"/);
 });
 
 test('WorkspaceSidebar shows icon-only Bridge message sync progress beside the Chats title', () => {

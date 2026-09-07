@@ -62,17 +62,62 @@ where
 {
     let mut auth = OpenAiProviderConfig::from_material(&auth_material)?;
     auth.apply_runtime_route(&run.runtime_route, &auth_material.provider);
-    let tools = prompt::tool_catalog();
+    let mut tools = prompt::tool_catalog();
+    if run.subsession_id.is_some() {
+        tools.retain(|tool| {
+            let name = tool["function"]["name"].as_str().unwrap_or_default();
+            name != "task_operator"
+                && name != "export_artifact"
+                && name != "bash"
+                && (!run.subsession_write_scope.is_empty() || !matches!(name, "write" | "edit"))
+        });
+    }
     let executor = CloudToolExecutor::new(sandbox.clone());
     let system_prompt = [run.system_prompt.trim(), cloud_sandbox_system_prompt()]
         .into_iter()
         .filter(|section| !section.is_empty())
         .collect::<Vec<_>>()
         .join("\n\n");
-    let mut messages = vec![
-        json!({ "role": "system", "content": system_prompt }),
-        json!({ "role": "user", "content": run.prompt }),
-    ];
+    let system_prompt = if run.subsession_id.is_none()
+        && (run.session_id.starts_with("session:group:")
+            || run.session_id.starts_with("session:direct-person:"))
+    {
+        format!("{system_prompt}\n\nYou are participating in a shared conversation. Keep brief answers, clarifications, and immediate user decisions in this conversation. For self-contained extended research or multi-step work, use task_operator action=spawn before starting heavy work, unless the user explicitly asks to keep the work inline. Supply a concise taskTitle, a self-contained message and forkTurns=none. After successful creation, give a short task-specific acknowledgement and end this parent turn. The subsession owns progress and the final result; do not wait for or repeat them here. Never create a conversation channel or an ordinary message thread.")
+    } else {
+        system_prompt
+    };
+    let mut messages = vec![json!({ "role": "system", "content": system_prompt })];
+    for message in &run.history_messages {
+        match message["role"].as_str() {
+            Some("runtimeIdentity") => {
+                let identity: kordi_core::types::RuntimeIdentity =
+                    serde_json::from_value(message["content"].clone()).map_err(|_| {
+                        ModelLoopError::Provider("Invalid historical runtime identity".into())
+                    })?;
+                if let Some(current) = &run.turn_identity {
+                    if !current.same_agent(&identity) {
+                        return Err(ModelLoopError::Provider(
+                            "Subsession Agent ownership cannot change".into(),
+                        ));
+                    }
+                }
+                messages.push(identity.provider_message());
+            }
+            Some("user" | "assistant") => messages.push(message.clone()),
+            _ => {}
+        }
+    }
+    if let Some(identity) = &run.turn_identity {
+        if identity.owner_account_id != run.owner_account_id
+            || identity.requester_account_id != run.requester_account_id
+        {
+            return Err(ModelLoopError::Provider(
+                "Runtime identity does not match the admitted run".into(),
+            ));
+        }
+        messages.push(identity.provider_message());
+    }
+    messages.push(json!({ "role": "user", "content": run.prompt }));
     let mut tool_calls_used = 0usize;
 
     for _ in 0..MAX_MODEL_CALLS {
@@ -88,6 +133,25 @@ where
                     tool_calls_used += 1;
                     if tool_calls_used > MAX_TOOL_CALLS {
                         return Err(ModelLoopError::LimitExceeded);
+                    }
+                    if run.subsession_id.is_some()
+                        && matches!(
+                            call.name.as_str(),
+                            "web_search"
+                                | "web_fetch"
+                                | "search_sessions"
+                                | "read_session"
+                                | "read"
+                                | "ls"
+                                | "find"
+                                | "grep"
+                                | "write"
+                                | "edit"
+                        )
+                    {
+                        client
+                            .subsession_progress(&run.run_id, &call.id, &call.name)
+                            .await?;
                     }
                     messages.push(json!({
                         "role": "assistant",
@@ -122,6 +186,39 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
     run: &CloudAgentRun,
     call: &ModelToolCall,
 ) -> String {
+    if call.name == "task_operator" {
+        if run.subsession_id.is_some() {
+            return "Nested execution subsessions are not supported.".into();
+        }
+        return match client
+            .task_operator(&run.run_id, &call.id, call.arguments.clone())
+            .await
+        {
+            Ok(record) => format!("Background session: {record}"),
+            Err(_) => {
+                "The subsession could not be created or accessed. Do not claim it started.".into()
+            }
+        };
+    }
+    if run.subsession_id.is_some() {
+        if matches!(call.name.as_str(), "bash" | "export_artifact") {
+            return "This tool is unavailable in an execution subsession.".into();
+        }
+        if matches!(call.name.as_str(), "write" | "edit") {
+            let path = call.arguments["path"].as_str().unwrap_or_default();
+            if !run.subsession_write_scope.iter().any(|scope| {
+                path == scope || path.starts_with(&format!("{}/", scope.trim_end_matches('/')))
+            }) {
+                return "The path is outside this subsession's write scope.".into();
+            }
+        }
+    }
+    if matches!(call.name.as_str(), "search_sessions" | "read_session") {
+        return match client.read_context(&run.run_id, &call.name, call.arguments.clone()).await {
+            Ok(value) => value.to_string(),
+            Err(_) => "Conversation retrieval is unavailable or access was revoked. Do not infer missing context.".to_string(),
+        };
+    }
     if call.name == "export_artifact" {
         return export_model_artifact(client, sandbox, run, &call.arguments).await;
     }

@@ -31,6 +31,7 @@ mod group_envelope;
 mod http;
 mod message_mutations;
 mod reaction;
+mod thread_reads;
 
 use group_envelope::normalize_legacy_group_envelope;
 use http::*;
@@ -72,6 +73,15 @@ fn routes_with_runtime(state: Arc<ServerState>, runtime: ChatSyncRuntime) -> Rou
             get(history).post(send_message),
         )
         .merge(message_mutations::routes())
+        .route("/v2/chat/attention", get(thread_reads::attention))
+        .route(
+            "/v2/chat/conversations/:conversation_id/threads/:message_id",
+            get(thread_reads::page),
+        )
+        .route(
+            "/v2/chat/conversations/:conversation_id/threads/read",
+            get(thread_reads::read).put(thread_reads::advance),
+        )
         .route(
             "/v2/chat/conversations/:conversation_id/delivered",
             put(advance_delivery_cursor),
@@ -305,10 +315,10 @@ async fn sync(
             Ok(sequence) => sequence,
             Err(_) => {
                 return error_response(
-                    StatusCode::BAD_REQUEST,
-                    "INVALID_SYNC_CURSOR",
+                    StatusCode::CONFLICT,
+                    "SYNC_CURSOR_EXPIRED",
                     "The sync cursor is invalid for this account.",
-                    None,
+                    Some(json!({ "bootstrap_required": true })),
                 );
             }
         },
@@ -346,6 +356,7 @@ async fn bootstrap(
     };
     match store::bootstrap(state.db_pool(), &session.account_id).await {
         Ok(snapshot) => Json(BootstrapResponse {
+            session_visibility: snapshot.session_visibility,
             protocol_version: PROTOCOL_VERSION,
             conversations: snapshot.conversations,
             latest_messages: snapshot.latest_messages,
@@ -413,83 +424,4 @@ async fn issue_realtime_ticket(
 }
 
 #[cfg(test)]
-mod tests {
-    use serde_json::json;
-    use uuid::Uuid;
-
-    use super::{
-        require_cursor_codec, validate_message_request, ChatSyncRuntime,
-        MAX_ATTACHMENTS_PER_MESSAGE, MAX_MESSAGE_CONTENT_BYTES,
-    };
-    use crate::chat_sync::models::SendMessageRequest;
-
-    #[test]
-    fn signed_cursor_configuration_is_required() {
-        let runtime = ChatSyncRuntime { cursor_codec: None };
-        assert!(require_cursor_codec(&runtime).is_err());
-    }
-
-    #[test]
-    fn request_limits_are_bounded() {
-        assert_eq!(MAX_MESSAGE_CONTENT_BYTES, 256 * 1024);
-        assert_eq!(MAX_ATTACHMENTS_PER_MESSAGE, 32);
-    }
-
-    #[test]
-    fn durable_message_content_requires_schema_and_blocks() {
-        let request = |content| SendMessageRequest {
-            client_message_id: Uuid::now_v7(),
-            kind: "text".to_string(),
-            content,
-            reply_to_message_id: None,
-            attachment_ids: Vec::new(),
-        };
-
-        assert!(validate_message_request(&request(json!({
-            "schema": 1,
-            "blocks": [{ "type": "text", "text": "hello" }]
-        })))
-        .is_ok());
-        assert!(validate_message_request(&request(json!({ "blocks": [] }))).is_err());
-        assert!(validate_message_request(&request(json!({ "schema": 1 }))).is_err());
-        assert!(validate_message_request(&request(json!({
-            "schema": 0,
-            "blocks": []
-        })))
-        .is_err());
-    }
-
-    #[test]
-    fn meme_attachments_require_accessible_supported_image_metadata() {
-        let attachment_id = "att_meme".to_string();
-        let request = |attachment| SendMessageRequest {
-            client_message_id: Uuid::now_v7(),
-            kind: "text".to_string(),
-            content: json!({
-                "schema": 1,
-                "blocks": [],
-                "legacy_attachments": [attachment]
-            }),
-            reply_to_message_id: None,
-            attachment_ids: vec![attachment_id.clone()],
-        };
-        let valid = json!({
-            "attachmentId": attachment_id,
-            "name": "reaction.png",
-            "kind": "image",
-            "subtype": "meme",
-            "altText": "Surprised cat says: when the tests pass on the first try.",
-            "mimeType": "image/png"
-        });
-
-        assert!(validate_message_request(&request(valid.clone())).is_ok());
-
-        let mut missing_alt = valid.clone();
-        missing_alt["altText"] = json!("  ");
-        assert!(validate_message_request(&request(missing_alt)).is_err());
-
-        let mut unsupported_type = valid;
-        unsupported_type["mimeType"] = json!("image/svg+xml");
-        assert!(validate_message_request(&request(unsupported_type)).is_err());
-    }
-}
+mod tests;

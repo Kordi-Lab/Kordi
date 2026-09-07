@@ -470,6 +470,19 @@ struct MainTabView: View {
             }
         }
         .sensoryFeedback(.selection, trigger: selection)
+        .task(id: notificationCoordinator.pendingCalendarEventID) {
+            guard notificationCoordinator.pendingCalendarEventID != nil else { return }
+            selection = .digest
+            digestPath = NavigationPath()
+        }
+        .task(id: model.pendingThreadRoute) {
+            guard let route = model.pendingThreadRoute else { return }
+            let destination = MainTab.destination(for: route.conversation.kind)
+            selection = destination
+            if destination == .agents { agentsPath = NavigationPath(); agentsPath.append(route) }
+            else { chatsPath = NavigationPath(); chatsPath.append(route) }
+            model.pendingThreadRoute = nil
+        }
         .task(id: notificationCoordinator.pendingMessageRoute) {
             guard let route = notificationCoordinator.pendingMessageRoute else { return }
             let destination = MainTab.destination(for: route.conversation.kind)
@@ -575,7 +588,10 @@ struct MainTabView: View {
             ChatHomeView(
                 channel: .contact,
                 onOpenConversation: { chatsPath.append($0) },
-                onOpenNewChat: { chatsPath.append($0) }
+                onOpenNewChat: { chatsPath.append($0) },
+                onOpenArchivedChats: {
+                    chatsPath.append(ArchivedChatsRoute(channel: .contact))
+                }
             )
         }
         .kordiTabBarVisibility(isRoot: chatsPath.isEmpty)
@@ -586,7 +602,10 @@ struct MainTabView: View {
             ChatHomeView(
                 channel: .agent,
                 onOpenConversation: { agentsPath.append($0) },
-                onOpenNewChat: { agentsPath.append($0) }
+                onOpenNewChat: { agentsPath.append($0) },
+                onOpenArchivedChats: {
+                    agentsPath.append(ArchivedChatsRoute(channel: .agent))
+                }
             )
         }
         .kordiTabBarVisibility(isRoot: agentsPath.isEmpty)
@@ -662,37 +681,6 @@ private extension View {
         } else {
             toolbar(isRoot ? .visible : .hidden, for: .tabBar)
         }
-    }
-}
-
-enum MainTab: String, CaseIterable, Identifiable {
-    case contacts = "Contacts"
-    case chats = "Chats"
-    case agents = "Agents"
-    case digest = "Digest"
-    case account = "Account"
-
-    static let contentTabs: [MainTab] = [.contacts, .chats, .agents, .digest, .account]
-
-    var id: Self { self }
-
-    var symbol: String {
-        switch self {
-        case .contacts:
-            "person.2"
-        case .chats:
-            "bubble.left.and.bubble.right"
-        case .agents:
-            "sparkles"
-        case .digest:
-            "list.bullet.clipboard"
-        case .account:
-            "person"
-        }
-    }
-
-    static func destination(for conversationKind: ConversationKind) -> MainTab {
-        conversationKind == .agent ? .agents : .chats
     }
 }
 

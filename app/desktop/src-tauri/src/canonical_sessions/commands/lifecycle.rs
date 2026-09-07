@@ -48,7 +48,7 @@ fn delete_message_rows(
 fn canonical_cloud_message_id(source_transport: &str, source_event_id: &str) -> Option<String> {
     match source_transport {
         "cloud-self-agent" | "canonical-fork-snapshot" => Some(source_event_id),
-        "cloud-group" | "cloud-group-agent" | "cloud-group-fork-snapshot" => source_event_id
+        "cloud-group" | "cloud-group-agent" => source_event_id
             .strip_prefix(&format!("{source_transport}:"))
             .and_then(|value| value.split(':').next()),
         _ => None,
@@ -199,7 +199,7 @@ pub(super) fn prune_missing_cloud_messages_in_db(
                 "SELECT id, session_id, source_transport, source_event_id
                  FROM session_messages
                  WHERE source_transport IN (
-                   'cloud-group', 'cloud-group-agent', 'cloud-group-fork-snapshot',
+                   'cloud-group', 'cloud-group-agent',
                    'cloud-self-agent', 'canonical-fork-snapshot'
                  ) AND source_event_id IS NOT NULL",
             )

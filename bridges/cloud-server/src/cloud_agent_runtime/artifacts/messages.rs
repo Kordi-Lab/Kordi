@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::Utc;
 use serde_json::{json, Value};
 use sqlx_core::query::query;
@@ -9,6 +10,91 @@ use crate::chat_sync::store;
 use crate::cloud_agent_runtime::sync_events::{
     append_cloud_agent_response_sync_event, CloudAgentResponseSyncEvent,
 };
+
+fn response_with_thread_action(body: &str, request_body: &str) -> Option<String> {
+    let response_prefix = "kordi-cloud-agent-response:";
+    let mut response: Value = serde_json::from_slice(
+        &URL_SAFE_NO_PAD
+            .decode(body.strip_prefix(response_prefix)?)
+            .ok()?,
+    )
+    .ok()?;
+    let request: Value = serde_json::from_slice(
+        &URL_SAFE_NO_PAD
+            .decode(request_body.strip_prefix("kordi-cloud-message:")?)
+            .ok()?,
+    )
+    .ok()?;
+    if response.get("kind").and_then(Value::as_str) != Some("agent-response")
+        || request.get("kind").and_then(Value::as_str) != Some("message")
+    {
+        return None;
+    }
+    let action = request.get("messageAction")?;
+    if action.get("kind").and_then(Value::as_str) != Some("thread") {
+        return None;
+    }
+    response
+        .as_object_mut()?
+        .insert("messageAction".to_string(), action.clone());
+    Some(format!(
+        "{response_prefix}{}",
+        URL_SAFE_NO_PAD.encode(serde_json::to_vec(&response).ok()?)
+    ))
+}
+
+#[cfg(test)]
+mod thread_tests;
+
+async fn inherit_thread_action(
+    pool: &PgPool,
+    session_id: &str,
+    body: &str,
+    owner: &str,
+) -> Result<String, sqlx_core::Error> {
+    let request_id = body
+        .strip_prefix("kordi-cloud-agent-response:")
+        .and_then(|value| URL_SAFE_NO_PAD.decode(value).ok())
+        .and_then(|value| serde_json::from_slice::<Value>(&value).ok())
+        .and_then(|value| {
+            value
+                .get("requestId")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .and_then(|id| Uuid::parse_str(&id).ok());
+    let Some(request_id) = request_id else {
+        return Ok(body.to_string());
+    };
+    let request: Option<(String,)> = query_as(
+        "SELECT message.content #>> '{blocks,0,text}' FROM cloud_chat_messages message \
+         JOIN cloud_chat_conversations conversation ON conversation.conversation_id=message.conversation_id \
+         WHERE message.message_id=$1 AND conversation.legacy_session_id=$2 AND message.deleted_at IS NULL",
+    ).bind(request_id).bind(session_id).fetch_optional(pool).await?;
+    if let Some(response) =
+        request.and_then(|(request,)| response_with_thread_action(body, &request))
+    {
+        return Ok(response);
+    }
+    if let Some(action) = crate::cloud_agent_runtime::shared_threads::reply_thread_action(
+        pool,
+        session_id,
+        &request_id.to_string(),
+        owner,
+    )
+    .await?
+    {
+        let request = format!(
+            "kordi-cloud-message:{}",
+            URL_SAFE_NO_PAD.encode(
+                serde_json::to_vec(&json!({"kind":"message","messageAction":action}))
+                    .unwrap_or_default()
+            )
+        );
+        return Ok(response_with_thread_action(body, &request).unwrap_or_else(|| body.to_string()));
+    }
+    Ok(body.to_string())
+}
 
 pub async fn ensure_response_message(
     pool: &PgPool,
@@ -29,13 +115,14 @@ pub async fn ensure_response_message(
             return Ok(message_id);
         }
     }
+    let body = inherit_thread_action(pool, session_id, body, owner_account_id).await?;
     let message_id = append_cloud_agent_response_sync_event(
         pool,
         CloudAgentResponseSyncEvent {
             message_id: run_id,
             from_account_id: owner_account_id,
             to_account_id: requester_account_id,
-            body,
+            body: &body,
             session_id,
         },
     )
@@ -73,14 +160,22 @@ pub async fn update_response_message_body(
 ) -> Result<(), sqlx_core::Error> {
     let message_id = Uuid::parse_str(message_id.trim())
         .map_err(|_| sqlx_core::Error::Protocol("invalid canonical response message id".into()))?;
-    let row: Option<(String, Value)> = query_as(
-        "SELECT sender_account_id, content FROM cloud_chat_messages WHERE message_id = $1",
+    let row: Option<(String, Value, Option<String>)> = query_as(
+        "SELECT message.sender_account_id, message.content, conversation.legacy_session_id \
+         FROM cloud_chat_messages message JOIN cloud_chat_conversations conversation \
+         ON conversation.conversation_id=message.conversation_id WHERE message.message_id = $1",
     )
     .bind(message_id)
     .fetch_optional(pool)
     .await?;
-    let Some((sender_account_id, mut content)) = row else {
+    let Some((sender_account_id, mut content, session_id)) = row else {
         return Err(sqlx_core::Error::RowNotFound);
+    };
+    let body = match session_id {
+        Some(session_id) => {
+            inherit_thread_action(pool, &session_id, body, &sender_account_id).await?
+        }
+        None => body.to_string(),
     };
     let attachment_ids = query_as::<_, (String,)>(
         "SELECT attachment_id FROM cloud_chat_message_attachments \

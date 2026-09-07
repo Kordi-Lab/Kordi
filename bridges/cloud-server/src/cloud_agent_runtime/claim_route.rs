@@ -51,7 +51,7 @@ async fn owner_has_fresh_desktop_execution_claim(
 pub(super) async fn claim_cloud_agent_run(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
-    Json(input): Json<ClaimRunRequest>,
+    Json(mut input): Json<ClaimRunRequest>,
 ) -> Response {
     if !input.is_well_formed() {
         return error_response(
@@ -69,6 +69,19 @@ pub(super) async fn claim_cloud_agent_run(
         );
     }
 
+    match super::runs::request_identity(
+        state.db_pool(),
+        &input.session_id,
+        &input.request_message_id,
+    )
+    .await
+    {
+        Ok(Some((id, _))) => input.request_message_id = id,
+        Ok(None) => {}
+        Err(error) => {
+            return run_error_response("request identity", "Could not resolve the request.", error)
+        }
+    }
     let valid_agent_handoff =
         match validate_agent_authored_group_handoff_claim(state.db_pool(), &input).await {
             Ok(value) => value,
@@ -148,23 +161,17 @@ pub(super) async fn claim_cloud_agent_run(
 
     let now = Utc::now();
     let route_timeout = crate::presence::presence_timeout();
-    let owner_desktop_online = match crate::presence::account_has_online_desktop(
-        state.db_pool(),
-        &input.owner_account_id,
-        now,
-        route_timeout,
-    )
-    .await
-    {
-        Ok(value) => value,
-        Err(error) => {
-            return run_error_response(
-                "check owner desktop presence",
-                "Could not determine the agent execution route.",
-                error.into(),
-            );
-        }
-    };
+    let owner_desktop_online =
+        match super::desktop::prefer_ready_desktop(state.db_pool(), &input).await {
+            Ok(value) => value,
+            Err(error) => {
+                return run_error_response(
+                    "check owner desktop presence",
+                    "Could not determine the agent execution route.",
+                    error,
+                );
+            }
+        };
     if owner_desktop_online {
         return error_response(
             "owner_online",

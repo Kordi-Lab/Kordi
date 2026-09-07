@@ -40,7 +40,10 @@ pub(super) async fn sync_completed_desktop_session_to_canonical(
     active_session_id: &str,
     session: &DesktopSessionHandle,
 ) {
-    if is_cloud_agent_runtime_session_id(active_session_id) {
+    if is_cloud_agent_runtime_session_id(active_session_id)
+        || kordi_cli::desktop_runtime::is_background_runtime_session(active_session_id)
+            .unwrap_or(false)
+    {
         return;
     }
 

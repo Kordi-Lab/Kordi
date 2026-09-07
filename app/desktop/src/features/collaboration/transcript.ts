@@ -1,30 +1,32 @@
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { collaborationMessageActionSourceReference,collaborationMessageActionWithRealSourceLabel } from "./messageActionPresentation";
 
-import type { Conversation, ConversationCollaborationTarget, DesktopCollaborationConversation, DesktopCollaborationConversationMessage, DesktopCollaborationHost, DesktopCollaborationOutreachMetadata, Message, MessageAttachment, MessageMention } from '@/kordi-app/types';
+import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/avatarIdentity';
+import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
 import {
-  COLLABORATION_MESSAGE_DIRECTION_INBOUND,
-  COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE,
-  COLLABORATION_MESSAGE_DIRECTION_OUTBOUND,
-  COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
+collaborationPendingAgentReplyState,
+collaborationTimestampIsExpired,
+isActiveOutreachStatus,
+isCollaborationAgentResponseDirection,
+isTerminalCollaborationAgentRequestState,
+} from '@/features/collaboration/collaborationProcessingState';
+import { collaborationProfileImageUrl,isCollaborationConversationPersonChat } from '@/features/collaboration/conversationPresentation';
+import {
+COLLABORATION_MESSAGE_DIRECTION_INBOUND,
+COLLABORATION_MESSAGE_DIRECTION_INBOUND_RESPONSE,
+COLLABORATION_MESSAGE_DIRECTION_OUTBOUND,
+COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE,
 } from '@/features/collaboration/messages';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
-import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
-import {
-  collaborationPendingAgentReplyState,
-  collaborationTimestampIsExpired,
-  isCollaborationAgentResponseDirection,
-  isTerminalCollaborationAgentRequestState,
-} from '@/features/collaboration/collaborationProcessingState';
-import { collaborationProfileImageUrl, isCollaborationConversationPersonChat } from '@/features/collaboration/conversationPresentation';
 import { normalizeSupportContactMessages } from '@/features/support/supportConversationPresentation';
-import { isKordiSupportConversation, KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
-import { DEFAULT_LOCAL_AGENT_AVATAR_SEED } from '@/features/canonical/avatarIdentity';
-import { firstPersonPossessiveLabel, rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
-import { collaborationUnreadByParentSessionId, collaborationUnreadMentionCount } from './unreadState';
+import { isKordiSupportConversation,KORDI_SUPPORT_AVATAR_URL } from '@/features/support/supportIdentity';
+import type { Conversation,ConversationCollaborationTarget,DesktopCollaborationConversation,DesktopCollaborationConversationMessage,DesktopCollaborationHost,DesktopCollaborationOutreachMetadata,Message,MessageAttachment,MessageMention } from '@/kordi-app/types';
+import { firstPersonPossessiveLabel,rewriteLeadingFirstPersonAgentMention } from '@/lib/identityLabels';
 import {
-  collaborationHostLabel,
-  collaborationOutboundStatusChip,
+collaborationHostLabel,
+collaborationOutboundStatusChip,
 } from './transcriptStatus';
+import { collaborationUnreadByParentSessionId,collaborationUnreadMentionCount } from './unreadState';
 
 type CollaborationConversationViewModel = Conversation & { _updatedAtMs?: number };
 function isImplicitDirectPersonSessionMessage(outreach: DesktopCollaborationOutreachMetadata) {
@@ -82,47 +84,6 @@ function collaborationMessageAttachments(message: DesktopCollaborationConversati
     return { ...attachment, ...(message.messageKind === 'sticker' && attachment.kind === 'image' ? { subtype: 'sticker' as const } : {}), ...(previewUrl ? { previewUrl } : {}) };
   });
 }
-
-function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
-  const trimmed = label.trim();
-  const normalized = trimmed.toLowerCase();
-  if ((normalized === 'me' || normalized === 'you') && humanSourceLabel.trim()) {
-    return humanSourceLabel.trim();
-  }
-  if (normalized === 'my kordi' && agentSourceLabel.trim()) {
-    return agentSourceLabel.trim();
-  }
-  return trimmed;
-}
-
-function collaborationMessageActionWithRealSourceLabel(
-  action: Message['messageAction'],
-  humanSourceLabel: string,
-  agentSourceLabel: string,
-): Message['messageAction'] {
-  if (!action) return null;
-  const senderLabel = realSourceLabelForRelativeLabel(action.source.senderLabel, humanSourceLabel, agentSourceLabel);
-  if (senderLabel === action.source.senderLabel) return action;
-  return {
-    ...action,
-    source: {
-      ...action.source,
-      senderLabel,
-    },
-  };
-}
-
-function collaborationMessageActionSourceReference(action: Message['messageAction']): Message['sourceMessage'] {
-  if (!action || action.kind === 'thread') return null;
-  return {
-    messageId: action.source.sourceMessageId,
-    senderLabel: action.source.senderLabel,
-    text: action.source.textPreview,
-    mentions: action.source.mentions,
-    attachmentCount: action.source.attachmentCount,
-    time: action.source.timeLabel ?? null,
-  };
-}
 function collaborationMessageMentions(
   conversation: DesktopCollaborationConversation,
   message: DesktopCollaborationConversationMessage,
@@ -142,11 +103,6 @@ function collaborationMessageMentions(
 }
 function normalizeDeliveryState(value: string | null | undefined) {
   return value?.trim().toLowerCase() || '';
-}
-
-function isActiveOutreachStatus(status: string | null | undefined) {
-  const normalized = normalizeDeliveryState(status);
-  return normalized === 'sending' || normalized === 'awaitingreply' || normalized === 'processing';
 }
 
 function isCancelledCollaborationState(value: string | null | undefined) {
@@ -207,9 +163,10 @@ export function mapCollaborationConversationToViewModel(
   const remoteHumanLabel = isSupportContact
     ? remoteAgentLabel
     : conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
-  const pendingAgentId = pendingAgentMention?.agentId?.trim() ?? '';
-  const pendingAgentNodeId = pendingAgentMention?.nodeId?.trim() ?? '';
-  const pendingAgentIsLocal = Boolean(pendingAgentMention && (
+  const activeOutreach = isActiveOutreachStatus(conversation.outreach?.status) ? conversation.outreach : null;
+  const pendingAgentId = pendingAgentMention?.agentId?.trim() || activeOutreach?.targetAgentId?.trim() || '';
+  const pendingAgentNodeId = pendingAgentMention?.nodeId?.trim() || activeOutreach?.targetNodeId?.trim() || '';
+  const pendingAgentIsLocal = Boolean((pendingAgentMention || activeOutreach?.targetKind === 'agent') && (
     (pendingAgentId && pendingAgentId === conversation.identity?.localAgentId?.trim())
     || (pendingAgentNodeId && pendingAgentNodeId === conversation.identity?.localAgentNodeId?.trim())
     || (pendingAgentNodeId && pendingAgentNodeId === host?.nodeId?.trim())
@@ -284,8 +241,9 @@ export function mapCollaborationConversationToViewModel(
     if (isPersonChat && isGroupScopedCollaborationMessage(message)) return [];
     if (staleProcessingPlaceholderIds.has(message.id)) return [];
     const direction = message.direction, messageId = collaborationViewMessageId(message);
-    const replyToMessageId = message.requestId?.trim()
-      ? requestMessageIdByRequestId.get(message.requestId.trim()) ?? null
+    const requestId = message.requestId?.trim();
+    const replyToMessageId = requestId
+      ? requestMessageIdByRequestId.get(requestId) ?? null
       : null;
     const rawDisplayText = collaborationMessageDisplayText(conversation, message);
     const mentions = collaborationMessageMentions(conversation, message);
@@ -298,16 +256,17 @@ export function mapCollaborationConversationToViewModel(
         text: rawDisplayText,
         time: message.timeLabel,
         timestampMs: message.timestampMs,
+        conversationSequence: message.conversationSequence,
       }];
     }
     const isProcessingAgentPlaceholder = normalizedDeliveryState === 'processing'
-      && isProcessingPlaceholderText(rawDisplayText)
+      && (!rawDisplayText.trim() || isProcessingPlaceholderText(rawDisplayText))
       && isCollaborationAgentResponseDirection(message);
     const isOutboundHuman = direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND;
     const displayText = isProcessingAgentPlaceholder
       ? ''
       : !isOutboundHuman
-        ? rewriteLeadingFirstPersonAgentMention(rawDisplayText, message.sender || remoteHumanLabel, isPersonChat ? 'Kordi' : remoteAgentLabel)
+        ? rewriteLeadingFirstPersonAgentMention(rawDisplayText, message.sender || remoteHumanLabel, isPersonChat ? 'Kordi' : remoteAgentLabel, mentions)
         : rawDisplayText;
     const isInboundHuman = isAgent && direction === COLLABORATION_MESSAGE_DIRECTION_INBOUND;
     const isLocalAgentResponse = direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND_RESPONSE;
@@ -371,13 +330,14 @@ export function mapCollaborationConversationToViewModel(
         text: '',
         time: message.timeLabel,
         timestampMs: message.timestampMs,
+        conversationSequence: message.conversationSequence,
         replyToMessageId, messageAction, sourceMessage, reactionConversationId: message.reactionConversationId, reactionTargetMessageId: message.reactionTargetMessageId, cloudMessageVersion: message.cloudMessageVersion, editedAt: message.editedAt, reactions: message.reactions,
         turn: {
           id: localTurn?.id ?? `collaboration-live-turn:${conversation.id}:${message.id}`,
           sessionId: conversation.id,
           prompt: localTurn?.prompt ?? '',
           status: responseCancelled ? 'cancelled' : responseFailed ? 'failed' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'processing' : displayText.trim() ? 'writing' : 'typing') : localTurn?.status ?? 'complete',
-          message: responseCancelled ? 'Stopped' : responseFailed ? 'Failed' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…') : localTurn?.message ?? 'Complete',
+          message: responseCancelled ? 'Stopped' : responseFailed ? 'Failed' : isLiveAgentReply ? (isProcessingAgentPlaceholder ? '' : displayText.trim() ? 'Replying…' : 'Typing…') : localTurn?.message ?? 'Complete',
           assistantText: responseFailed ? '' : responseCancelled && !displayText.trim() ? 'Request stopped' : displayText || localTurn?.assistantText || '',
           thinkingText: localTurn?.thinkingText ?? '',
           tools: localTurn?.tools ?? [],
@@ -385,9 +345,9 @@ export function mapCollaborationConversationToViewModel(
           succeeded: responseCancelled || responseFailed ? false : !isLiveAgentReply ? (localTurn?.succeeded ?? true) : false,
           error: responseFailed ? (displayText || localTurn?.error || 'Message failed') : localTurn?.error ?? null,
           replyToMessageId,
-          pendingCollaborationAgentRequest: isLiveAgentReply && message.requestId?.trim() ? {
+          pendingCollaborationAgentRequest: isLiveAgentReply && requestId ? {
             conversationId: conversation.id,
-            requestId: message.requestId.trim(),
+            requestId,
           } : null,
         },
       }];
@@ -419,6 +379,7 @@ export function mapCollaborationConversationToViewModel(
       text: displayText, ...('messageKind' in message ? { messageKind: message.messageKind ?? null } : {}), ...('voiceMessage' in message ? { voiceMessage: message.voiceMessage ?? null } : {}),
       time: message.timeLabel,
       timestampMs: message.timestampMs,
+      conversationSequence: message.conversationSequence,
       statusChips: isOutboundHuman
         ? outboundStatus
         : conversation.peerTyping && message === conversation.messages[conversation.messages.length - 1] && !isAgent
@@ -445,6 +406,7 @@ export function mapCollaborationConversationToViewModel(
         text: '',
         time: message.timeLabel,
         timestampMs: message.timestampMs,
+        conversationSequence: message.conversationSequence,
         replyToMessageId,
         turn: {
           id: `collaboration-live-turn:${conversation.id}:${message.id}:cancelled`,
@@ -493,7 +455,7 @@ export function mapCollaborationConversationToViewModel(
         sessionId: conversation.id,
         prompt: localTurn?.prompt ?? '',
         status: localTurn?.status ?? (conversation.peerTyping ? 'typing' : 'processing'),
-        message: localTurn?.message ?? (conversation.peerTyping ? 'Typing…' : 'Processing…'),
+        message: localTurn?.message ?? (conversation.peerTyping ? 'Typing…' : ''),
         assistantText: localTurn?.assistantText ?? '',
         thinkingText: localTurn?.thinkingText ?? '',
         tools: localTurn?.tools ?? [],

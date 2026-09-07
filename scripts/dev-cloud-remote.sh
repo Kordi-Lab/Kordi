@@ -205,6 +205,7 @@ unset KORDI_CLOUD_GCP_PROJECT KORDI_CLOUD_SSH_ZONE KORDI_CLOUD_SSH_TARGET
 
 export VITE_KORDI_CLOUD_API_BASE="$api_base"
 export VITE_KORDI_DEV_PROFILE="community"
+export VITE_KORDI_ENABLE_LOOPBACK_REALTIME="1"
 
 if [[ -n "$preview_path" ]]; then
   echo "[kordi-remote-dev] Verified the isolated API for a login-free fixture preview."

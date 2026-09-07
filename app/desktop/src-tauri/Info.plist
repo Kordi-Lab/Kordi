@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>Kordi reads calendars you select to import events into your private digest. It does not send invitations.</string>
   <key>NSCameraUsageDescription</key>
   <string>Kordi uses your camera when you record a video message or join a video call.</string>
   <key>NSMicrophoneUsageDescription</key>

@@ -102,12 +102,13 @@ enum ComposerMentionTargetCatalog {
             for participant in conversation.groupParticipants
                 where contactAccountIDs.contains(participant.accountId)
                     && seenDefaultAgentOwners.insert(participant.accountId).inserted {
+                let contact = contacts.first { $0.accountId == participant.accountId }
                 targets.append(defaultAgentTarget(
                     ownerAccountID: participant.accountId,
-                    ownerName: participant.displayName,
-                    agentID: participant.agentId,
-                    agentName: participant.agentDisplayName,
-                    agentAvatarSource: participant.agentAvatarUrl
+                    ownerName: contact?.preferredName ?? participant.displayName,
+                    agentID: contact?.defaultAgent?.agentId ?? participant.agentId,
+                    agentName: contact?.defaultAgent?.displayName ?? participant.agentDisplayName,
+                    agentAvatarSource: contact?.defaultAgent?.avatar.imageSource ?? participant.agentAvatarUrl
                 ))
             }
             for contact in contacts
@@ -158,7 +159,7 @@ enum ComposerMentionTargetCatalog {
         let agentID = agentID?.nonEmpty ?? "cloud-agent:\(ownerAccountID)"
         return ComposerMentionTarget(
             id: "agent:\(agentID)",
-            displayName: agentName?.nonEmpty ?? "Kordi",
+            displayName: CloudDefaultAgentProfile.displayName(agentName, ownerName: ownerName),
             kind: .agent,
             accountId: ownerAccountID,
             agentId: agentID,
@@ -183,18 +184,19 @@ enum ComposerMentionTargetCatalog {
         targets: [ComposerMentionTarget]
     ) -> ComposerMentionTarget? {
         if let selectedTarget,
-           text.localizedCaseInsensitiveContains(selectedTarget.mentionText) {
+           !mentions(in: text, selectedTarget: selectedTarget, targets: [selectedTarget]).isEmpty {
             return targets.contains(where: { $0.id == selectedTarget.id })
                 ? selectedTarget
                 : nil
         }
 
+        let mentionedIDs = Set(mentions(in: text, selectedTarget: nil, targets: targets).compactMap(\.targetIdentityId))
         let matchingTargets = targets
-            .filter { text.localizedCaseInsensitiveContains($0.mentionText) }
-            .sorted { $0.displayName.count > $1.displayName.count }
+            .filter { mentionedIDs.contains($0.kind == .person ? "human:\($0.accountId)" : $0.id) }
+            .sorted { $0.mentionText.count > $1.mentionText.count }
         guard let mostSpecificTarget = matchingTargets.first else { return nil }
         let equallySpecificMatches = matchingTargets.filter {
-            $0.displayName.count == mostSpecificTarget.displayName.count
+            $0.mentionText.count == mostSpecificTarget.mentionText.count
         }
         return equallySpecificMatches.count == 1 ? mostSpecificTarget : nil
     }
@@ -204,13 +206,17 @@ enum ComposerMentionTargetCatalog {
         selectedTarget: ComposerMentionTarget?,
         targets: [ComposerMentionTarget]
     ) -> [MessageMention] {
+        let targets = targets.map { target in
+            if let selectedTarget, target.id == selectedTarget.id { return selectedTarget }
+            return target
+        }
         let targetsByName = Dictionary(grouping: targets) {
-            $0.displayName.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            $0.mentionText.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
         }
         var occupied: [NSRange] = []
         var result: [MessageMention] = []
         for target in targets.sorted(by: { $0.mentionText.count > $1.mentionText.count }) {
-            let key = target.displayName.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            let key = target.mentionText.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
             if (targetsByName[key]?.count ?? 0) > 1, selectedTarget?.id != target.id { continue }
             var searchStart = text.startIndex
             while searchStart < text.endIndex,

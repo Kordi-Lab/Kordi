@@ -1,6 +1,7 @@
 //! Cloud message wire envelopes and their persistence lookup helpers.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::PgPool;
@@ -119,6 +120,18 @@ pub(crate) fn cloud_agent_response_is_processing_for_request(
     body: &str,
     request_message_id: &str,
 ) -> bool {
+    if let Some(envelope) = parse_cloud_group_envelope(body) {
+        return envelope.kind == "group-message"
+            && envelope.message.is_some_and(|message| {
+                message.sender_kind.as_deref() == Some("agent")
+                    && message.delivery_state.as_deref() == Some("processing")
+                    && message
+                        .request_id
+                        .as_deref()
+                        .or(message.reply_to_message_id.as_deref())
+                        .is_some_and(|id| id.trim() == request_message_id.trim())
+            });
+    }
     let Some(encoded) = body.trim().strip_prefix(CLOUD_AGENT_RESPONSE_PREFIX) else {
         return false;
     };
@@ -282,19 +295,29 @@ pub(super) fn direct_cloud_agent_target(body: &str) -> Option<DirectCloudAgentTa
     {
         return None;
     }
+    if envelope
+        .get("targetCloudAgentId")
+        .is_none_or(serde_json::Value::is_null)
+        && envelope
+            .get("targetCloudAgentOwnerAccountId")
+            .is_none_or(serde_json::Value::is_null)
+    {
+        return None;
+    }
+    // Keep explicit default and malformed targets for authorization. Absence
+    // must not be confused with a target that the caller cannot execute.
     let agent_id = envelope
-        .get("targetCloudAgentId")?
-        .as_str()?
+        .get("targetCloudAgentId")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
         .trim()
         .to_string();
     let owner_account_id = envelope
-        .get("targetCloudAgentOwnerAccountId")?
-        .as_str()?
+        .get("targetCloudAgentOwnerAccountId")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
         .trim()
         .to_string();
-    if !agent_id.starts_with("cloud_agent_") || owner_account_id.is_empty() {
-        return None;
-    }
     let owner_name = envelope
         .get("targetCloudAgentOwnerName")
         .and_then(serde_json::Value::as_str)
@@ -350,8 +373,8 @@ pub(super) async fn cloud_group_request_envelope_with_created_at_for_run(
     if !session_id.trim().starts_with("session:group:") {
         return Ok(None);
     }
-    let rows = query_as::<_, (String, String)>(
-        "SELECT message.content #>> '{blocks,0,text}', message.created_at::text
+    let rows = query_as::<_, (String, DateTime<Utc>)>(
+        "SELECT message.content #>> '{blocks,0,text}', message.created_at
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_messages message
            ON message.conversation_id = conversation.conversation_id
@@ -367,8 +390,27 @@ pub(super) async fn cloud_group_request_envelope_with_created_at_for_run(
         let envelope = parse_cloud_group_envelope(&body)?;
         let message = envelope.message.as_ref()?;
         (envelope.kind == "group-message" && message.id == request_message_id)
-            .then_some((envelope, created_at))
+            .then_some((envelope, created_at.to_rfc3339()))
     }))
+}
+
+pub(crate) async fn request_received_at(
+    pool: &PgPool,
+    session_id: &str,
+    request_message_id: &str,
+) -> Result<Option<DateTime<Utc>>, sqlx_core::Error> {
+    if let Some((_, created_at)) =
+        cloud_group_request_envelope_with_created_at_for_run(pool, session_id, request_message_id)
+            .await?
+    {
+        return DateTime::parse_from_rfc3339(&created_at)
+            .map(|date| Some(date.with_timezone(&Utc)))
+            .map_err(|error| sqlx_core::Error::Decode(Box::new(error)));
+    }
+    Ok(query_as::<_, (DateTime<Utc>,)>(
+        "SELECT m.created_at FROM cloud_chat_messages m JOIN cloud_chat_conversations c USING(conversation_id)
+         WHERE m.message_id::text=$1 AND c.legacy_session_id=$2 AND m.deleted_at IS NULL",
+    ).bind(request_message_id).bind(session_id).fetch_optional(pool).await?.map(|row| row.0))
 }
 
 pub(super) async fn latest_cloud_group_envelope_for_session(
@@ -398,72 +440,4 @@ pub(super) async fn latest_cloud_group_envelope_for_session(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn direct_body(value: serde_json::Value) -> String {
-        format!(
-            "{CLOUD_DIRECT_MESSAGE_PREFIX}{}",
-            URL_SAFE_NO_PAD.encode(value.to_string())
-        )
-    }
-
-    fn agent_response_body(value: serde_json::Value) -> String {
-        format!(
-            "{CLOUD_AGENT_RESPONSE_PREFIX}{}",
-            URL_SAFE_NO_PAD.encode(value.to_string())
-        )
-    }
-
-    #[test]
-    fn processing_claim_matches_only_the_exact_request() {
-        let body = agent_response_body(serde_json::json!({
-            "kind": "agent-response",
-            "requestId": "request-1",
-            "deliveryState": "processing",
-        }));
-
-        assert!(cloud_agent_response_is_processing_for_request(
-            &body,
-            "request-1"
-        ));
-        assert!(!cloud_agent_response_is_processing_for_request(
-            &body,
-            "request-2"
-        ));
-
-        let complete = agent_response_body(serde_json::json!({
-            "kind": "agent-response",
-            "requestId": "request-1",
-            "deliveryState": "complete",
-        }));
-        assert!(!cloud_agent_response_is_processing_for_request(
-            &complete,
-            "request-1"
-        ));
-    }
-
-    #[test]
-    fn direct_agent_target_requires_the_canonical_message_envelope() {
-        let valid = direct_body(serde_json::json!({
-            "schemaVersion": 1,
-            "kind": "message",
-            "text": "Help",
-            "targetCloudAgentId": "cloud_agent_kordi_support",
-            "targetCloudAgentOwnerAccountId": "acct_support",
-            "targetCloudAgentOwnerName": "Kordi",
-        }));
-        let target = direct_cloud_agent_target(&valid).expect("valid direct target");
-        assert_eq!(target.agent_id, "cloud_agent_kordi_support");
-        assert_eq!(target.owner_account_id, "acct_support");
-        assert_eq!(target.owner_name.as_deref(), Some("Kordi"));
-
-        let wrong_kind = direct_body(serde_json::json!({
-            "schemaVersion": 1,
-            "kind": "agent-response",
-            "targetCloudAgentId": "cloud_agent_kordi_support",
-            "targetCloudAgentOwnerAccountId": "acct_support",
-        }));
-        assert!(direct_cloud_agent_target(&wrong_kind).is_none());
-    }
-}
+mod tests;

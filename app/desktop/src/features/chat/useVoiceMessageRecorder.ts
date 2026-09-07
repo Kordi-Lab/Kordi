@@ -153,11 +153,12 @@ export function useVoiceMessageRecorder() {
 
   const reset = useCallback(() => {
     generationRef.current += 1;
+    const wasActive = activeRef.current;
     activeRef.current = false;
     stopSampling();
     samplesRef.current = [];
     preparationPromiseRef.current = null;
-    void cancelDesktopVoiceRecording();
+    if (wasActive) void cancelDesktopVoiceRecording().catch(() => {});
     commit(IDLE_STATE);
   }, [commit, stopSampling]);
 
@@ -228,6 +229,7 @@ export function useVoiceMessageRecorder() {
     const generation = generationRef.current;
     stopSampling();
     await cancelDesktopVoiceRecording().catch(() => {});
+    if (generation !== generationRef.current) return false;
     commit(IDLE_STATE);
     try {
       await startDesktopVoiceRecording();
@@ -389,9 +391,11 @@ export function useVoiceMessageRecorder() {
   }, [commit, transcribeAttachment]);
 
   useEffect(() => () => {
+    generationRef.current += 1;
+    const wasActive = activeRef.current;
     activeRef.current = false;
     stopSampling();
-    void cancelDesktopVoiceRecording();
+    if (wasActive) void cancelDesktopVoiceRecording().catch(() => {});
   }, [stopSampling]);
 
   return {

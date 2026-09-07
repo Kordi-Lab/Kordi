@@ -1,13 +1,16 @@
-import { useMemo, useState } from 'react';
+import {useUnreadThreadNavigation} from './useUnreadThreadNavigation';
+import {ThreadShortcut} from '@/features/chat/ThreadShortcut';
+import { useCallback, useMemo, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import type { Conversation, Message } from '@/kordi-app/types';
 import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
-import { messagesWithThreadReplyCounts, projectMessageThreads, projectQueuedThreadMessages, threadRootSource } from '@/features/chat/messageThreads';
-import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
+import { projectQueuedThreadMessages, threadRootSource } from '@/features/chat/messageThreads';
+import { useThreadMessageSummaries, useThreadTranscript, useActiveThread } from './useThreadMessageSummaries';
+import {useThreadReadStatus} from '@/features/cloud/useThreadReadStatus';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
-import { isGroupForkSession, isGroupSessionId } from '@/features/chat/forkLineage';
+import { isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
 import { useCloudPresence } from '@/features/cloud/useCloudPresence';
 import { cn } from '@/lib/utils';
@@ -22,6 +25,7 @@ import { useChatThreadSelection } from '@/pages/useChatThreadSelection';
 import { useChatCollaborationRouting } from '@/pages/useChatCollaborationRouting';
 import { useChatCompanionLayout } from '@/pages/useChatCompanionLayout';
 import { useChatCompanionSession } from '@/pages/useChatCompanionSession';
+import { AgentSubsessionNavigationContext } from '@/features/cloud/useAgentSubsession';
 import { useChatDestinations } from '@/pages/useChatDestinations';
 import { useChatForkModel } from '@/pages/useChatForkModel';
 import { useChatHeaderModel } from '@/pages/useChatHeaderModel';
@@ -122,6 +126,7 @@ export function ChatsPage({
   } = runtime;
   const openAuthentication =
     auth.onOpenAccountAuthentication ?? auth.onOpenAuthSettings;
+  const canRunOwnAgent = () => { if (auth.hasAnyAuth) return true; openAuthentication(); return false; };
   const visibleDesktopLiveTurn = desktopLiveTurn ?? (!isNativeShell ? activeConv.previewLiveTurn ?? null : null);
   const isCompressionActive = visibleDesktopLiveTurn?.status === 'compacting';
   const activeLiveTurnIsRunning = Boolean(
@@ -148,7 +153,6 @@ export function ChatsPage({
   const prefersReducedMotion = useReducedMotion();
   const activeSessionId = (activeConv.canonicalSessionId || activeConv.id).trim();
   const activeConversationIsGroupSession = isGroupSessionId(activeSessionId);
-  const activeConversationIsGroupFork = isGroupForkSession(activeConv);
   const activePaneKind = conversationPaneKind(activeConv);
   const sessionRouteSyncEnabled = shouldSynchronizeConversationModelRoute({
     conversation: activeConv,
@@ -165,6 +169,7 @@ export function ChatsPage({
     onSendChatMessage,
     onCreateAgentSession,
     onPrefetchChatSession,
+    canRunOwnAgent,
   });
   const companionConversation = companionSession.conversation;
   const suggestedSideAgentConversation = companionSession.suggested;
@@ -208,8 +213,8 @@ export function ChatsPage({
   const canOpenSideAgentPanel = companionSession.canOpen;
   const companionPaneKind = companionConversation ? conversationPaneKind(companionConversation) : null;
   const companionConversationUsesCollaborationTransport = companionConversation?.collaborationSources.some((source) => source.trim().toLowerCase() !== 'local') ?? false;
-  const companionConversationIsCollaborationAgent = Boolean(companionPaneKind === 'agent' && companionConversationUsesCollaborationTransport);
-  const companionShowsLocalAgentControls = companionPaneKind === 'agent' && !companionConversationIsCollaborationAgent;
+  const companionConversationIsCollaborationAgent = Boolean(!companionConversation?.agentSubsessionId && companionPaneKind === 'agent' && companionConversationUsesCollaborationTransport);
+  const companionShowsLocalAgentControls = !companionConversation?.agentSubsessionId && companionPaneKind === 'agent' && !companionConversationIsCollaborationAgent;
   const rawCompanionTranscriptLiveTurn = companionConversation?.previewLiveTurn ?? undefined;
   const companionTranscriptLiveTurn = rawCompanionTranscriptLiveTurn && companionConversation && rawCompanionTranscriptLiveTurn.sessionId === companionConversation.id
     ? rawCompanionTranscriptLiveTurn
@@ -250,24 +255,6 @@ export function ChatsPage({
       setOpenSelector: setCompanionOpenComposerSelector,
     },
   });
-  const transcriptMessages = useMemo(
-    () => collapseAdjacentSessionConfigNotices(
-      suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
-    ),
-    [activeConv.messages, activeTranscriptLiveTurn],
-  );
-  const inferLatestHumanRequest = shouldInferLatestHumanReplyTarget(activeConv);
-  const locatedTranscript = useMemo(
-    () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
-      inferLatestHumanRequest,
-    }),
-    [activeTranscriptLiveTurn, inferLatestHumanRequest, transcriptMessages],
-  );
-  const locatedLiveTurn = locatedTranscript.liveTurn ?? activeTranscriptLiveTurn;
-  const threadProjection = useMemo(
-    () => projectMessageThreads(locatedTranscript.messages),
-    [locatedTranscript.messages],
-  );
   const {
     activeThreadRootId,
     closeThread,
@@ -283,43 +270,25 @@ export function ChatsPage({
     routeReplyMessage,
     clearReply: onClearChatQuote,
   });
+  const openUnreadRoot=useCallback((rootId:string)=>setOpenThreadState({conversationId:activeConv.id,rootId}),[activeConv.id,setOpenThreadState]);
+  const unreadThreads=useUnreadThreadNavigation(activeConv,cloudAccount?.accountId,openUnreadRoot,activeThreadRootId);
+  const loadedThreadPage=unreadThreads.page;
+  const notificationMessage=loadedThreadPage && !loadedThreadPage.isThread?loadedThreadPage.thread.root:undefined;
+  const {threadProjection,locatedLiveTurn}=useThreadTranscript(activeConv,activeTranscriptLiveTurn,notificationMessage);
   const activeLiveTurnThreadRootId = locatedLiveTurn && !locatedLiveTurn.completed
     ? threadProjection.threadRootIdByMessageId.get(locatedLiveTurn.replyToMessageId?.trim() ?? '') ?? null
     : null;
-  const optimisticThreadConversationId = openThreadState?.conversationId;
-  const optimisticThreadRootId = openThreadState?.rootId;
-  const optimisticThreadReplyCount = openThreadState?.optimisticReplyCount;
-  const attributedTranscriptMessages = useMemo(
-    () => messagesWithThreadReplyCounts(
-      threadProjection.mainMessages,
-      activeConv.id,
-      activeLiveTurnThreadRootId,
-      optimisticThreadConversationId,
-      optimisticThreadRootId,
-      optimisticThreadReplyCount,
-    ),
-    [
-      activeConv.id,
-      activeLiveTurnThreadRootId,
-      optimisticThreadConversationId,
-      optimisticThreadReplyCount,
-      optimisticThreadRootId,
-      threadProjection.mainMessages,
-    ],
+  const threadReadStatus = useThreadReadStatus(activeSessionId, cloudAccount?.accountId, threadProjection.threads.size > 0 || Boolean(activeConv.threadAttention?.thread_count));
+  const attributedTranscriptMessages = useThreadMessageSummaries(
+    threadProjection, threadReadStatus.reads, activeConv.id, activeLiveTurnThreadRootId, openThreadState,
   );
   const [threadPanelWidth, setThreadPanelWidth] = useState(384);
-  const activeThread = useMemo(() => {
-    if (!activeThreadRootId) return null;
-    const existing = threadProjection.threads.get(activeThreadRootId);
-    if (existing) return existing;
-    const root = attributedTranscriptMessages.find((message) => (
-      message.id === activeThreadRootId || message.entryId === activeThreadRootId
-    ));
-    return root ? { root, replies: [] } : null;
-  }, [activeThreadRootId, attributedTranscriptMessages, threadProjection.threads]);
+  const localActiveThread=useActiveThread(activeThreadRootId,threadProjection,attributedTranscriptMessages);
+  const remoteThread=loadedThreadPage?.isThread?loadedThreadPage.thread:undefined;
+  const activeThread=unreadThreads.merge(localActiveThread) ?? (remoteThread?.root.id===activeThreadRootId?remoteThread:null);
   const queuedThreadProjection = useMemo(
-    () => projectQueuedThreadMessages(transcript.queuedDesktopMessages, activeThreadRootId),
-    [activeThreadRootId, transcript.queuedDesktopMessages],
+    () => projectQueuedThreadMessages(transcript.queuedDesktopMessages, activeThreadRootId, threadProjection.primaryIdByAlias),
+    [activeThreadRootId, threadProjection.primaryIdByAlias, transcript.queuedDesktopMessages],
   );
   const mainQueuedMessages = queuedThreadProjection.mainMessages;
   const activeThreadQueuedMessages = queuedThreadProjection.activeThreadMessages;
@@ -328,7 +297,7 @@ export function ChatsPage({
     messages: attributedTranscriptMessages,
     desktopChatState,
     isGroupSession: activeConversationIsGroupSession,
-    isGroupFork: activeConversationIsGroupFork,
+    isAgentSession: activeConv.type === 'owned-agent' || activeConv.type === 'external-agent',
     onForkMessage: onForkChatMessage,
   });
   const companionTranscriptMessages = useMemo(() => {
@@ -341,6 +310,8 @@ export function ChatsPage({
     main: {
       conversation: activeConv,
       messages: attributedTranscriptMessages,
+      notificationMessage,
+      onNotificationNavigation: closeThread,
     },
     companion: {
       conversation: companionConversation,
@@ -359,10 +330,7 @@ export function ChatsPage({
     onNavigateToMessage: transcriptNavigation.main.navigate,
   });
   const createSideAgentSession = async (initialPrompt = '') => {
-    if (!auth.hasAnyAuth) {
-      openAuthentication();
-      return false;
-    }
+    if (!canRunOwnAgent()) return false;
     const opened = await companionSession.actions.create(initialPrompt);
     if (!opened) return false;
     companionLayout.placeCompanion('right');
@@ -370,18 +338,17 @@ export function ChatsPage({
     return opened;
   };
   const openSideAgentPanel = async (initialPrompt = '') => {
-    if (!auth.hasAnyAuth) {
-      openAuthentication();
-      return false;
-    }
+    if (!canRunOwnAgent()) return false;
     const opened = await companionSession.actions.open(initialPrompt);
     if (!opened) return false;
     companionLayout.placeCompanion('right');
     companionLayout.setFolded(false);
     return opened;
   };
-  const openRelatedAgentSession = (sessionId: string) => {
-    companionSession.actions.switchConversation(sessionId);
+  const openRelatedAgentSession = (sessionId: string, isSubsession = false) => {
+    if (isSubsession) companionSession.actions.openSubsession(sessionId);
+    else companionSession.actions.switchConversation(sessionId);
+    destinations.companion.setValue('messages');
     companionLayout.placeCompanion('right');
     companionLayout.setFolded(false);
   };
@@ -405,6 +372,7 @@ export function ChatsPage({
       shell={{
         isNativeShell,
         openAuthentication,
+        openSession: openRelatedAgentSession,
         onCreateSession: () => {
           void createSideAgentSession();
         },
@@ -417,6 +385,7 @@ export function ChatsPage({
   ) : null;
   const splitDivider = <ChatCompanionSplitDivider layoutModel={companionLayout} />;
   return (
+    <AgentSubsessionNavigationContext.Provider value={(id) => openRelatedAgentSession(id, true)}>
     <ChatSenderProfileContext.Provider value={senderProfiles.openParticipant}>
       <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         <div
@@ -479,10 +448,17 @@ export function ChatsPage({
               open: openSideAgentPanel,
               openSession: openRelatedAgentSession,
             }}
+            threadShortcut={<ThreadShortcut count={activeConv.threadAttention?.thread_count??0} busy={unreadThreads.busy} error={unreadThreads.error} onClick={()=>void (unreadThreads.error?unreadThreads.retry():unreadThreads.load())}/>}
             threadPanel={activeThread ? (
               <ChatThreadPanel
                 conversation={activeConv}
                 thread={activeThread}
+                navigationMessageId={loadedThreadPage?.target}
+                firstUnreadMessageId={loadedThreadPage?.first}
+                nextAfterSequence={loadedThreadPage?.next}
+                onLoadMore={()=>void unreadThreads.load(activeThread.root.id,loadedThreadPage?.next??undefined)}
+                onNextUnread={()=>void unreadThreads.load()}
+                unreadThreadCount={activeConv.threadAttention?.thread_count??0}
                 replyCount={Math.max(
                   activeThread.replies.length + Number(activeLiveTurnThreadRootId === activeThreadRootId),
                   activeThreadQueuedMessages.length,
@@ -518,6 +494,8 @@ export function ChatsPage({
                 removeStagedAttachment={composer.removeChatComposerAttachment}
                 isNativeShell={isNativeShell}
                 accountId={cloudAccount?.accountId}
+                readCursors={threadReadStatus.reads}
+                onMarkRead={threadReadStatus.markRead}
                 queuedMessages={activeThreadQueuedMessages}
                 onCancelQueuedMessage={transcript.onCancelQueuedMessage}
                 width={threadPanelWidth}
@@ -562,5 +540,6 @@ export function ChatsPage({
         </div>
       </div>
     </ChatSenderProfileContext.Provider>
+    </AgentSubsessionNavigationContext.Provider>
   );
 }

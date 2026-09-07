@@ -40,7 +40,7 @@ import {
   cloudFallbackClaimFailureDiagnostic,
 } from './cloudFallbackClaimDiagnostics';
 import {
-  cloudGroupAgentMentionResponseState,
+  cloudGroupAgentMentionResponseStateFromSources,
   cloudGroupAgentRequestingNoticeRequest,
 } from './cloudGroupMessages';
 import type { CloudMessageIndex } from './cloudMessageIndex';
@@ -180,10 +180,11 @@ export function useCloudAgentAvailability({
         && !hasRequestingNotice
       ) continue;
       activeKeys.add(key);
-      const responseState = cloudGroupAgentMentionResponseState({
+      const responseState = cloudGroupAgentMentionResponseStateFromSources({
         requestMessageId: candidate.requestMessage.id,
         targetAccountId: candidate.targetAccountId,
         messages: canonicalSessionState.messages,
+        rows: messageIndexRef.current.groupRows,
       });
       const requestReachedCloud = cloudAgentRequestReachedCloud(
         candidate.requestMessage,
@@ -257,10 +258,11 @@ export function useCloudAgentAvailability({
       const checkRequestStatus = async () => {
         const latestState = canonicalSessionStateRef.current;
         const latestResponseState = latestState
-          ? cloudGroupAgentMentionResponseState({
+          ? cloudGroupAgentMentionResponseStateFromSources({
             requestMessageId: candidate.requestMessage.id,
             targetAccountId: candidate.targetAccountId,
             messages: latestState.messages,
+            rows: messageIndexRef.current.groupRows,
           })
           : null;
         if (latestResponseState === 'terminal') {

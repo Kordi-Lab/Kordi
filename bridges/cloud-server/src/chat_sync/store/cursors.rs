@@ -473,8 +473,10 @@ pub async fn bootstrap(pool: &PgPool, account_id: &str) -> Result<BootstrapSnaps
         })
         .collect();
     let server_time = Utc::now();
+    let session_visibility = super::super::visibility::load(&mut transaction, account_id).await?;
     transaction.commit().await?;
     Ok(BootstrapSnapshot {
+        session_visibility,
         conversations,
         latest_messages,
         session_pins,

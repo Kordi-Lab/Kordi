@@ -1,5 +1,13 @@
 import Foundation
 
+func normalizedGroupSpaceId(_ value: String?) -> String? {
+    guard var result = value?.nonEmpty else { return nil }
+    while result.hasPrefix("group:") {
+        result.removeFirst("group:".count)
+    }
+    return result.nonEmpty
+}
+
 struct GroupSpaceSummary: Identifiable, Hashable {
     let id: String
     let displayName: String
@@ -13,7 +21,7 @@ struct GroupSpaceSummary: Identifiable, Hashable {
     let membershipSessions: [ConversationSummary]
 
     var preferenceId: String {
-        id.hasPrefix("group:") ? String(id.dropFirst("group:".count)) : id
+        normalizedGroupSpaceId(id) ?? id
     }
 
     var fullyJoinedParticipantAccountIds: Set<String> {
@@ -25,6 +33,10 @@ struct GroupSpaceSummary: Identifiable, Hashable {
                 session.groupParticipants.map(\.accountId).filter { !$0.isEmpty }
             )
         }
+    }
+
+    func canManage(accountId: String?) -> Bool {
+        sessions.contains { $0.canManageGroup(accountId: accountId) }
     }
 
     var accessibilitySummary: String {
@@ -61,14 +73,9 @@ enum GroupSpaceCatalog {
         ownAccountId: String,
         pinnedSessionIds: Set<String> = []
     ) -> [GroupSpaceSummary] {
-        // Forks live in their own history surface. Keep every remaining
-        // canonical group session visible and available for membership fanout.
-        let candidates = conversations.filter {
-            $0.kind == .group && $0.forkedFromSessionId == nil
-        }
-        let legacyAliases = legacyCloudGroupAliases(conversations: candidates)
+        let candidates = conversations.filter { $0.kind == .group }
         let groups = Dictionary(grouping: candidates) { conversation in
-            spaceKey(for: conversation, legacyAliases: legacyAliases)
+            spaceKey(for: conversation)
         }
 
         return groups.map { key, conversations in
@@ -135,12 +142,9 @@ enum GroupSpaceCatalog {
         )
     }
 
-    private static func spaceKey(
-        for conversation: ConversationSummary,
-        legacyAliases: [String: String]
-    ) -> String {
-        if let groupSpaceId = conversation.groupSpaceId?.nonEmpty {
-            return legacyAliases[groupSpaceId] ?? "group:\(groupSpaceId)"
+    private static func spaceKey(for conversation: ConversationSummary) -> String {
+        if let groupSpaceId = normalizedGroupSpaceId(conversation.groupSpaceId) {
+            return "group:\(groupSpaceId)"
         }
         let participantKey = participantKey(for: conversation)
         if !participantKey.isEmpty { return "group:cloud:\(participantKey)" }
@@ -153,25 +157,6 @@ enum GroupSpaceCatalog {
             .filter { !$0.isEmpty }
             .sorted()
             .joined(separator: "+")
-    }
-
-    private static func legacyCloudGroupAliases(
-        conversations: [ConversationSummary]
-    ) -> [String: String] {
-        var rootsByParticipantKey: [String: Set<String>] = [:]
-        for conversation in conversations {
-            guard let groupSpaceId = conversation.groupSpaceId?.nonEmpty,
-                  conversation.sessionId == groupSpaceId else { continue }
-            let key = participantKey(for: conversation)
-            guard !key.isEmpty else { continue }
-            rootsByParticipantKey[key, default: []].insert(groupSpaceId)
-        }
-        var aliases: [String: String] = [:]
-        for (participantKey, rootIDs) in rootsByParticipantKey where rootIDs.count > 1 {
-            let alias = "group:cloud:\(participantKey)"
-            for rootID in rootIDs { aliases[rootID] = alias }
-        }
-        return aliases
     }
 
     private static func mergedParticipants(from sessions: [ConversationSummary]) -> [CloudGroupParticipant] {

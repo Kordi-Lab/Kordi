@@ -13,6 +13,21 @@ type CloudSessionListRequest = <TResponse>(
   fallbackMessage: string,
 ) => Promise<TResponse>;
 
+export function requireCloudSessionVisibility(value: unknown): CloudSessionVisibility {
+  const record = value as Partial<CloudSessionVisibility> | null;
+  if (!record || !Array.isArray(record.hiddenSessionIds) || !Array.isArray(record.deletedSessionIds)) {
+    throw new Error('Chat visibility snapshot is unavailable.');
+  }
+  const list = (key: keyof CloudSessionVisibility) => {
+    const values = record[key] ?? [];
+    if (!Array.isArray(values) || !values.every(value => typeof value === 'string')) throw new Error('Invalid chat visibility snapshot.');
+    return values;
+  };
+  return {hiddenSessionIds:list('hiddenSessionIds'),deletedSessionIds:list('deletedSessionIds'),
+    pinnedSessionIds:list('pinnedSessionIds'),mutedSessionIds:list('mutedSessionIds'),
+    unreadSessionIds:list('unreadSessionIds'),pinnedGroupSpaceIds:list('pinnedGroupSpaceIds')};
+}
+
 export class CloudSessionListClient {
   constructor(private readonly request: CloudSessionListRequest) {}
 
@@ -67,6 +82,22 @@ export class CloudSessionListClient {
       `/v1/cloud/group-spaces/${encodeURIComponent(groupSpaceId)}/pinned`,
       { method: pinned ? 'PUT' : 'DELETE', headers: { authorization: `Bearer ${token}` } },
       pinned ? 'Could not pin cloud group.' : 'Could not unpin cloud group.',
+    );
+  }
+
+  setGroupMuted(token: string, groupSpaceId: string, muted: boolean): Promise<void> {
+    return this.request<void>(
+      `/v1/cloud/group-spaces/${encodeURIComponent(groupSpaceId)}/muted`,
+      { method: muted ? 'PUT' : 'DELETE', headers: { authorization: `Bearer ${token}` } },
+      muted ? 'Could not mute cloud group.' : 'Could not unmute cloud group.',
+    );
+  }
+
+  setGroupArchived(token: string, groupSpaceId: string, archived: boolean): Promise<void> {
+    return this.request<void>(
+      `/v1/cloud/group-spaces/${encodeURIComponent(groupSpaceId)}/hidden`,
+      { method: archived ? 'PUT' : 'DELETE', headers: { authorization: `Bearer ${token}` } },
+      archived ? 'Could not archive cloud group.' : 'Could not restore cloud group.',
     );
   }
 }

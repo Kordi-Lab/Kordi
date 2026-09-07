@@ -1,127 +1,120 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { cloudAgentNoProviderNoticeText, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
+import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSessionRuntimeRoute';
+import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
+import { persistQueuedDesktopMessage } from '@/features/chat/queuedDesktopMessages';
+import { waitForCloudAgentTurn } from '@/features/cloud/cloudAgentLocalExecution';
+import { cloudAgentNoProviderNoticeText,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { isCloudCollaborationConversationId } from '@/features/cloud/cloudCollaborationState';
 import { encodeCloudDirectMessageEnvelope } from '@/features/cloud/cloudDirectMessages';
 import {
-  cloudGroupMessageSessionId,
-  cloudGroupTargetAccountIds,
-  shouldRouteMentionThroughCloudGroup,
+cloudGroupMessageSessionId,
+cloudGroupTargetAccountIds,
+shouldRouteMentionThroughCloudGroup,
 } from '@/features/cloud/cloudGroupMessages';
-import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
-import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSessionRuntimeRoute';
 import type {
-  AppendCanonicalMessageRequest,
-  CanonicalSessionState,
-  ComposerQuoteState,
-  ComposerScope,
-  Conversation,
-  ConversationCollaborationTarget,
-  Message,
-  MessageActionMetadata,
-  DesktopChatState,
-  DesktopCollaborationState,
-  DesktopChatTurnSnapshot,
-  QueuedDesktopChatMessage,
+AppendCanonicalMessageRequest,
+CanonicalSessionState,
+ComposerQuoteState,
+DesktopChatState,
+DesktopChatTurnSnapshot,
+Message,
+MessageActionMetadata,
+QueuedDesktopChatMessage
 } from '@/kordi-app/types';
 import {
-  appendCanonicalMessage,
-  createDesktopChatSession,
-  fetchDesktopChatTurnState,
-  openOrCreateCanonicalSession,
-  startDesktopChatMessage,
-  upsertCanonicalMessage,
-  upsertCanonicalMessageFast,
-  updateCanonicalMessageDelivery,
-  updateDesktopChatSessionConfig,
-  type DesktopChatContextMessage,
+appendCanonicalMessage,
+createDesktopChatSession,
+fetchDesktopChatSessionActiveTurn,
+fetchDesktopChatTurnState,
+openOrCreateCanonicalSession,
+startDesktopChatMessage,
+updateCanonicalMessageDelivery,
+updateDesktopChatSessionConfig,
+upsertCanonicalMessage,
+upsertCanonicalMessageFast,
+type DesktopChatContextMessage,
 } from '@/lib/desktop';
-import { CHAT_COMPOSER_TEXTAREA_SELECTOR, formatDesktopEventTime, isSharedLocalSlashCommand, resizeComposerTextarea } from '../composerController.shared';
+import { useCallback,useEffect,useMemo,useRef } from 'react';
+import { CHAT_COMPOSER_TEXTAREA_SELECTOR,formatDesktopEventTime,isSharedLocalSlashCommand,resizeComposerTextarea } from '../composerController.shared';
 import type { AttachmentItem } from '../composerController.types';
-import { updateScopeDraft, type ComposerDraftState } from '../composerDrafts';
-import { LOCAL_DRAFT_CHAT_CONVERSATION_ID, isLocalDraftChatConversationId } from '../draftSessions';
-import { messageMentionsForSend } from '../messageMentions';
-import { mentionsLocalAgent } from './mentions';
-import {
-  appendOptimisticCollaborationMessage,
-  appendOptimisticCanonicalMessage,
-  appendOptimisticOutboundMessage,
-  failedPreparedCanonicalUserMessage,
-  optimisticSessionTitleFromMessage,
-  markOptimisticCollaborationMessageSending,
-  markOptimisticCanonicalMessageFailed,
-  markOptimisticCanonicalMessageSending,
-  persistCanonicalUserMessage,
-  prepareCanonicalUserMessage,
-  retryAttachmentItemsFromMessage, voiceMessageSendFields,
-  type PreparedCanonicalUserMessage,
-} from './optimistic';
-import { activeConversationMatchesSendScope, claimConversationSend, releaseConversationSend } from './messageSendScope';
-import { reconcileOptimisticCollaborationMessageUpdater } from './optimisticReconciliation';
-import {
-  markOptimisticCanonicalMessageSent,
-  sentPreparedCanonicalUserMessage,
-} from './canonicalDelivery';
-import {
-  collaborationSendFailureDetail,
-  createCloudCollaborationClientMessageId,
-  failedCanonicalGroupMessageRequest,
-  shouldAppendOptimisticCollaborationMessage,
-  terminalCollaborationSendFailure,
-} from './collaborationSendLifecycle';
-import {
-  appendOptimisticLocalDraftMessage,
-  fetchMaterializedLocalChatTarget,
-  generatedSelfAgentSessionId,
-  shouldUseNoProviderSelfAgentShortcut,
-} from './localAgentSessionTarget';
-import type {
-  LocalChatSendInFlight,
-  PendingCollaborationOutreach,
-  UseChatMessageActionsArgs,
-} from './types';
-import { composerMessageAction } from '../messageActionMetadata';
+import { updateScopeDraft,type ComposerDraftState } from '../composerDrafts';
+import { isLocalDraftChatConversationId,LOCAL_DRAFT_CHAT_CONVERSATION_ID } from '../draftSessions';
 import { memeAttachmentDraftError } from '../memeAttachments';
+import { composerMessageAction } from '../messageActionMetadata';
+import { messageMentionsForSend } from '../messageMentions';
 import { sessionTitleMetadata } from '../sessionTitlePolicy';
-import { cloudAgentMentionIdentity, resolveCloudAgentMentionTargetIds, resolvePreferredAgentMentionTarget } from './cloudAgentMentionTarget';
-import { prefetchNativeVideoRetry, terminalCollaborationRetryFailure } from './collaborationRetry';
 import {
-  collaborationDirectSessionParticipants,
-  collaborationGroupSessionParticipants,
-  collaborationGroupSessionSendTargets,
-  collaborationGroupSessionSpaceId,
-  isCollaborationGroupSession,
-  shouldUseCollaborationConversationRouting,
+canonicalNoProviderFailedAgentMessageRequest,
+initialCloudAgentSessionTitle,
+noProviderPendingLiveTurn,
+ownedAgentIdentityId,
+} from './agentMessageLifecycle';
+import {
+markOptimisticCanonicalMessageSent,
+sentPreparedCanonicalUserMessage,
+} from './canonicalDelivery';
+import { cloudAgentMentionIdentity,resolveCloudAgentMentionTargetIds,resolvePreferredAgentMentionTarget,selectedComposerAgentMentionTarget } from './cloudAgentMentionTarget';
+import { prefetchNativeVideoRetry,terminalCollaborationRetryFailure } from './collaborationRetry';
+import {
+collaborationDirectSessionParticipants,
+collaborationGroupSessionParticipants,
+collaborationGroupSessionSendTargets,
+collaborationGroupSessionSpaceId,
+isCollaborationGroupSession,
+shouldUseCollaborationConversationRouting,
 } from './collaborationRouting';
 import {
-  resolvedCloudConversationIdForConversation,
-  resolvedCloudConversationIdForTarget,
-  resolveDirectHostedAgentTarget,
-  resolveLockedKordiSupportCloudConversationId,
-  resolveLockedKordiSupportAgentTarget,
+collaborationSendFailureDetail,
+createCloudCollaborationClientMessageId,
+failedCanonicalGroupMessageRequest,
+shouldAppendOptimisticCollaborationMessage,
+terminalCollaborationSendFailure,
+} from './collaborationSendLifecycle';
+import {
+resolvedCloudConversationIdForConversation,
+resolvedCloudConversationIdForTarget,
+resolveDirectHostedAgentTarget,
+resolveLockedKordiSupportAgentTarget,
+resolveLockedKordiSupportCloudConversationId,
 } from './directHostedAgentTarget';
 import {
-  canonicalNoProviderFailedAgentMessageRequest,
-  initialCloudAgentSessionTitle,
-  noProviderPendingLiveTurn,
-  ownedAgentIdentityId,
+appendOptimisticLocalDraftMessage,
+fetchMaterializedLocalChatTarget,
+generatedSelfAgentSessionId,
+isOwnedAgentMention,
+shouldUseNoProviderSelfAgentShortcut,
+} from './localAgentSessionTarget';
+import { localChatSendDelayReason,localChatTargetHasRunningTurn,queuedDesktopChatMessageFromDraft } from "./localChatQueue";
+import { mentionsLocalAgent } from './mentions';
+import { activeConversationMatchesSendScope,claimConversationSend,releaseConversationSend } from './messageSendScope';
+import {
+appendOptimisticCanonicalMessage,appendOptimisticCollaborationMessage,appendOptimisticOutboundMessage,
+failedPreparedCanonicalUserMessage,markOptimisticCanonicalMessageFailed,
+markOptimisticCanonicalMessageSending,markOptimisticCollaborationMessageSending,optimisticSessionTitleFromMessage,persistCanonicalUserMessage,prepareCanonicalQueuedMessage,prepareCanonicalUserMessage,
+retryAttachmentItemsFromMessage,voiceMessageSendFields,
+type PreparedCanonicalUserMessage
+} from './optimistic';
+import { reconcileOptimisticCollaborationMessageUpdater } from './optimisticReconciliation';
+import type {
+UseChatMessageActionsArgs
+} from './types';
+
+export {
+canonicalNoProviderFailedAgentMessageRequest,
+initialCloudAgentSessionTitle,
+noProviderPendingLiveTurn
 } from './agentMessageLifecycle';
 
 export {
-  canonicalNoProviderFailedAgentMessageRequest,
-  initialCloudAgentSessionTitle,
-  noProviderPendingLiveTurn,
-} from './agentMessageLifecycle';
-
-export {
-  collaborationGroupMentionRelayTargets,
-  collaborationGroupSessionParticipants,
-  collaborationGroupSessionSendTargets,
-  collaborationGroupSessionSpaceId,
-  collaborationLocalAgentMentionCanRelay,
-  collaborationLocalAgentRelayTargets,
-  collaborationSessionOutreachTarget,
-  isCollaborationGroupSession,
-  shouldUseCollaborationConversationRouting,
+collaborationGroupMentionRelayTargets,
+collaborationGroupSessionParticipants,
+collaborationGroupSessionSendTargets,
+collaborationGroupSessionSpaceId,
+collaborationLocalAgentMentionCanRelay,
+collaborationLocalAgentRelayTargets,
+collaborationSessionOutreachTarget,
+isCollaborationGroupSession,
+shouldUseCollaborationConversationRouting
 } from './collaborationRouting';
 async function persistCanonicalGroupMessageFailure(
   prepared: PreparedCanonicalUserMessage | null,
@@ -197,81 +190,6 @@ function appendCanonicalRequestToLocalState(
   };
 }
 
-export function localChatSendIsInFlightForTarget(
-  inFlight: LocalChatSendInFlight | null,
-  targetSessionId: string | null,
-) {
-  if (!inFlight) return false;
-  if (!inFlight.sessionId) return true;
-  if (!targetSessionId) return false;
-  return inFlight.sessionId === targetSessionId;
-}
-
-export function localChatTargetHasRunningTurn(
-  desktopLiveTurn: { sessionId?: string | null; completed?: boolean } | null | undefined,
-  targetSessionId: string | null,
-) {
-  return Boolean(targetSessionId && desktopLiveTurn?.sessionId === targetSessionId && !desktopLiveTurn.completed);
-}
-
-export type LocalChatSendDelayReason = 'session-starting' | 'same-session-running';
-
-export function localChatSendDelayReason({
-  inFlight,
-  targetSessionId,
-  desktopLiveTurn,
-}: {
-  inFlight: LocalChatSendInFlight | null;
-  targetSessionId: string | null;
-  desktopLiveTurn?: { sessionId?: string | null; completed?: boolean } | null;
-}): LocalChatSendDelayReason | null {
-  if (localChatSendIsInFlightForTarget(inFlight, targetSessionId)) {
-    return targetSessionId && inFlight?.sessionId === targetSessionId
-      ? 'same-session-running'
-      : 'session-starting';
-  }
-  if (localChatTargetHasRunningTurn(desktopLiveTurn, targetSessionId)) {
-    return 'same-session-running';
-  }
-  return null;
-}
-
-export function queuedDesktopChatMessageFromDraft({
-  sessionId,
-  text,
-  time,
-  attachments,
-  scope = 'chat',
-  contextMessages,
-  runtimeRoute,
-  messageAction,
-}: {
-  sessionId: string;
-  text: string;
-  time: string;
-  attachments: QueuedDesktopChatMessage['attachments'];
-  scope?: QueuedDesktopChatMessage['scope'];
-  contextMessages?: DesktopChatContextMessage[];
-  runtimeRoute?: QueuedDesktopChatMessage['runtimeRoute'];
-  messageAction?: MessageActionMetadata | null;
-}): QueuedDesktopChatMessage {
-  const timestamp = Date.now();
-  const randomId = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${timestamp}-${Math.random().toString(16).slice(2)}`;
-  return {
-    id: `queued-local-chat:${sessionId}:${randomId}`,
-    sessionId,
-    scope,
-    text,
-    time,
-    attachments,
-    ...(contextMessages && contextMessages.length > 0 ? { contextMessages } : null),
-    ...(runtimeRoute ? { runtimeRoute } : null),
-    ...(messageAction ? { messageAction } : null),
-  };
-}
-
 export function chatSendShouldAutoFollowMain(
   quote?: ComposerQuoteState | null,
   retryMessage?: Message,
@@ -338,27 +256,7 @@ export async function waitForCompletedDesktopTurn(
   return turn;
 }
 
-export function collaborationConversationSendPlan({
-  activeConvId,
-  hasMaterializedCollaborationConversation,
-  existingTargetConversationId,
-  shouldStayInCanonicalSession,
-}: {
-  activeConvId: string;
-  hasMaterializedCollaborationConversation: boolean;
-  existingTargetConversationId?: string | null;
-  shouldStayInCanonicalSession: boolean;
-}) {
-  const targetConversationId = hasMaterializedCollaborationConversation
-    ? activeConvId
-    : existingTargetConversationId ?? null;
-
-  return {
-    targetConversationId,
-    shouldOpenBeforeOptimisticSend: !targetConversationId && !shouldStayInCanonicalSession,
-    canAppendCollaborationOptimisticMessage: Boolean(targetConversationId),
-  };
-}
+export { collaborationConversationSendPlan } from './messageSendScope';
 export function activeLocalTurnShouldDelayChatSend({
   activeConversationUsesCollaborationRouting,
   activeConvId,
@@ -469,6 +367,7 @@ export function useChatMessageActions({
   desktopChatState,
   canonicalSessionState,
   hasAnyDesktopAuth,
+  hasLocalProviderAuth = hasAnyDesktopAuth, openAgentAuthentication,
   desktopLiveTurn,
   resolveChatRuntimeRoute,
   handleLocalSlashCommand,
@@ -476,6 +375,7 @@ export function useChatMessageActions({
   queuedDesktopMessagesBySession,
   collaborationSendInFlightConversationIdsRef,
   localChatSendInFlightRef,
+  selectedChatAgentMentionRef,
   refreshDesktopChat,
   setActiveConvId,
   setCanonicalSessionState,
@@ -522,6 +422,19 @@ export function useChatMessageActions({
   }) ?? resolvedActiveCloudConversationId;
   const queuedDesktopMessagesBySessionRef = useRef(queuedDesktopMessagesBySession);
   const flushQueuedDesktopMessagesForSessionRef = useRef<(sessionId: string) => void>(() => {});
+  const waitingSessionTurnsRef = useRef(new Map<string, string>());
+
+  useEffect(() => () => { waitingSessionTurnsRef.current.clear(); }, []);
+
+  const waitForSessionQueue = useCallback((sessionId: string, turn: DesktopChatTurnSnapshot) => {
+    if (waitingSessionTurnsRef.current.get(sessionId) === turn.id) return;
+    waitingSessionTurnsRef.current.set(sessionId, turn.id);
+    void waitForCloudAgentTurn(turn.id).catch(() => undefined).finally(() => {
+      if (waitingSessionTurnsRef.current.get(sessionId) !== turn.id) return;
+      waitingSessionTurnsRef.current.delete(sessionId);
+      flushQueuedDesktopMessagesForSessionRef.current(sessionId);
+    });
+  }, []);
 
   useEffect(() => {
     queuedDesktopMessagesBySessionRef.current = queuedDesktopMessagesBySession;
@@ -568,12 +481,15 @@ export function useChatMessageActions({
       messageAction: quote?.source ? composerMessageAction(quote) : null,
     });
     enqueueLocalQueuedMessage(queuedMessage);
+    void persistQueuedDesktopMessage(queuedMessage, canonicalHumanIdentityId).then((row) => {
+      if (row) setCanonicalSessionState((current) => mergeCanonicalMessageRow(current, row));
+    }).catch((error) => setDesktopChatError(error instanceof Error ? error.message : 'Unable to synchronize queued message'));
     if (chatSendShouldAutoFollowMain(quote)) shouldAutoFollowChatRef.current = true;
     setDesktopChatError(null);
     setComposerDrafts((current: ComposerDraftState) => updateScopeDraft(current, 'chat', sessionId, ''));
     setChatComposerAttachments([]);
     resizeComposerTextarea(CHAT_COMPOSER_TEXTAREA_SELECTOR);
-  }, [enqueueLocalQueuedMessage, resolveChatRuntimeRoute, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
+  }, [canonicalHumanIdentityId, enqueueLocalQueuedMessage, resolveChatRuntimeRoute, setCanonicalSessionState, setChatComposerAttachments, setComposerDrafts, setDesktopChatError, shouldAutoFollowChatRef]);
 
   const watchLocalTurnAndFlushQueue = useCallback((
     turn: DesktopChatTurnSnapshot,
@@ -617,30 +533,30 @@ export function useChatMessageActions({
 
     localChatSendInFlightRef.current = { sessionId: message.sessionId };
     try {
+      const activeTurn = await fetchDesktopChatSessionActiveTurn(message.sessionId);
+      if (activeTurn) {
+        localChatSendInFlightRef.current = null;
+        waitForSessionQueue(message.sessionId, activeTurn);
+        enqueueLocalQueuedMessage(message, 'front');
+        return;
+      }
       setDesktopChatError(null);
       const materializedState = await materializeLocalChatTarget(message.sessionId);
       const attachmentPaths = message.attachments.map((item) => item.path);
       const previewText = attachmentSummaryText(message.text);
       const quote = composerQuoteFromMessageAction(message.messageAction);
+      const preparedCanonicalMessage = prepareCanonicalQueuedMessage(message, canonicalHumanIdentityId, 'sent');
+      const queuedRow = await persistQueuedDesktopMessage(message, canonicalHumanIdentityId, 'sent');
+      if (queuedRow) setCanonicalSessionState((current) => mergeCanonicalMessageRow(current, queuedRow));
       const turn = await startDesktopChatMessage(
         message.sessionId,
         message.text,
         attachmentPaths,
         message.runtimeRoute ?? resolveChatRuntimeRoute(message.sessionId),
         message.contextMessages ?? [],
-      );
-      const preparedCanonicalMessage = sentPreparedCanonicalUserMessage(
-        prepareCanonicalUserMessage(
-          message.sessionId,
-          canonicalHumanIdentityId,
-          message.text,
-          message.attachments,
-          message.time,
-          'desktop-chat-ui',
-          'sending',
-          [],
-          quote,
-        ),
+        [],
+        null,
+        preparedCanonicalMessage?.messageId ?? null,
       );
       setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
       setDesktopChatState((current) => {
@@ -650,9 +566,6 @@ export function useChatMessageActions({
         return baseState
           ? appendOptimisticOutboundMessage(baseState, message.sessionId, previewText, message.text, message.attachments, message.time, [], quote)
           : current;
-      });
-      await persistCanonicalUserMessage(preparedCanonicalMessage).catch((error: unknown) => {
-        setDesktopChatError(error instanceof Error ? error.message : 'Unable to save queued message');
       });
       watchLocalTurnAndFlushQueue(preparedCanonicalMessage
         ? { ...turn, replyToMessageId: preparedCanonicalMessage.messageId }
@@ -664,15 +577,17 @@ export function useChatMessageActions({
       enqueueLocalQueuedMessage(message, 'front');
       setDesktopChatError(error instanceof Error ? error.message : 'Unable to send queued chat message');
     }
-  }, [attachmentSummaryText, canonicalHumanIdentityId, enqueueLocalQueuedMessage, localChatSendInFlightRef, materializeLocalChatTarget, resolveChatRuntimeRoute, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, watchLocalTurnAndFlushQueue]);
+  }, [attachmentSummaryText, canonicalHumanIdentityId, enqueueLocalQueuedMessage, localChatSendInFlightRef, materializeLocalChatTarget, resolveChatRuntimeRoute, setCanonicalSessionState, setDesktopChatError, setDesktopChatState, waitForSessionQueue, watchLocalTurnAndFlushQueue]);
 
   useEffect(() => {
     flushQueuedDesktopMessagesForSessionRef.current = (sessionId: string) => {
+      if (waitingSessionTurnsRef.current.has(sessionId)
+        || localChatSendInFlightRef.current?.sessionId === sessionId) return;
       const nextMessage = dequeueLocalQueuedMessage(sessionId);
       if (!nextMessage) return;
       void sendQueuedLocalMessage(nextMessage);
     };
-  }, [dequeueLocalQueuedMessage, sendQueuedLocalMessage]);
+  }, [dequeueLocalQueuedMessage, localChatSendInFlightRef, sendQueuedLocalMessage]);
 
   useEffect(() => {
     if (!isNativeShell || activeConversationUsesCollaboration || activeConvId.startsWith('bridge:') || isLocalDraftChatConversationId(activeConvId)) return;
@@ -764,6 +679,9 @@ export function useChatMessageActions({
         attachmentPaths,
         runtimeRoute ?? resolveChatRuntimeRoute(canonicalSessionId),
         contextMessages,
+        [],
+        null,
+        preparedCanonicalMessage?.messageId ?? null,
       );
       const linkedTurn = preparedCanonicalMessage
         ? { ...turn, replyToMessageId: preparedCanonicalMessage.messageId }
@@ -995,6 +913,17 @@ export function useChatMessageActions({
       return;
     }
 
+    try {
+      const targetActiveTurn = await fetchDesktopChatSessionActiveTurn(targetConversation.id);
+      if (targetActiveTurn) {
+        waitForSessionQueue(targetConversation.id, targetActiveTurn);
+        queueLocalDraftForSession(targetConversation.id, text, attachments, contextMessages, activeChatQuote);
+        return;
+      }
+    } catch (error) {
+      setDesktopChatError(error instanceof Error ? error.message : 'Unable to check the active session');
+      return;
+    }
     const delayReason = localChatSendDelayReason({
       inFlight: localChatSendInFlightRef.current,
       targetSessionId: targetConversation.id,
@@ -1034,6 +963,7 @@ export function useChatMessageActions({
     localChatSendInFlightRef,
     materializeLocalChatTarget,
     queueLocalDraftForSession,
+    waitForSessionQueue,
     sendCloudCollaborationMessage,
     sendCloudGroupControl,
     sendLocalAgentChatMessage,
@@ -1088,10 +1018,15 @@ export function useChatMessageActions({
     };
     const activeGroupSessionIsGroup = isCollaborationGroupSession(activeGroupSessionScope);
     const localAgentMentioned = mentionsLocalAgent(text, desktopChatState, desktopCollaborationState);
-    const mentionedTarget = await resolvePreferredAgentMentionTarget(
-      text, desktopChatState, desktopCollaborationState, activeConvMentionScope, sharedCloudAgents, resolveSharedCloudAgentsForMention, isTransientDraftConversation,
-      activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person',
-    );
+    const selectedMentionTarget = selectedComposerAgentMentionTarget(text, selectedChatAgentMentionRef.current, desktopCollaborationState); selectedChatAgentMentionRef.current = null;
+    const mentionedTarget = selectedMentionTarget
+      ?? await resolvePreferredAgentMentionTarget(text, desktopChatState, desktopCollaborationState, activeConvMentionScope, sharedCloudAgents, resolveSharedCloudAgentsForMention, isTransientDraftConversation, activeGroupSessionIsGroup || activeConvCollaborationTarget?.runtime === 'person');
+    if (!hasLocalProviderAuth && retryMessage?.messageAction?.kind !== 'forward' && isOwnedAgentMention(mentionedTarget, text.startsWith('@') && localAgentMentioned)) {
+      setDesktopChatError(cloudAgentNoProviderNoticeText());
+      if (openAgentAuthentication) openAgentAuthentication(); else await handleLocalSlashCommand('/login');
+      if (quoteForSend?.action === 'thread') throw new Error(cloudAgentNoProviderNoticeText());
+      return;
+    }
     const messageMentions = messageMentionsForSend(text, activeConvMentionScope, mentionedTarget);
     const { targetCloudAgentId, targetCloudAgentName, ownerAccountId: mentionedCloudSharedAgentOwnerAccountId } = cloudAgentMentionIdentity(mentionedTarget);
     const localCollaborationNodeIds = new Set(
@@ -1526,6 +1461,19 @@ export function useChatMessageActions({
     }
 
     const localTargetSessionId = targetSessionId ?? null;
+    if (localTargetSessionId) {
+      try {
+        const activeTurn = await fetchDesktopChatSessionActiveTurn(localTargetSessionId);
+        if (activeTurn) {
+          waitForSessionQueue(localTargetSessionId, activeTurn);
+          queueLocalDraftForSession(localTargetSessionId, text, attachmentsToSend, [], quoteForSend);
+          return;
+        }
+      } catch (error) {
+        setDesktopChatError(error instanceof Error ? error.message : 'Unable to check the active session');
+        return;
+      }
+    }
     const localSendDelayReason = localChatSendDelayReason({
       inFlight: localChatSendInFlightRef.current,
       targetSessionId: localTargetSessionId,
@@ -1850,6 +1798,7 @@ export function useChatMessageActions({
     desktopChatState,
     canonicalSessionState,
     hasAnyDesktopAuth,
+    hasLocalProviderAuth, openAgentAuthentication,
     desktopLiveTurn,
     clearComposerAfterSend,
     collaborationSendInFlightConversationIdsRef,
@@ -1857,6 +1806,7 @@ export function useChatMessageActions({
     isNativeShell,
     localChatSendInFlightRef,
     queueLocalDraftForSession,
+    waitForSessionQueue,
     publishCloudAgentRuntimeRouteChange,
     refreshDesktopChat,
     resolveChatRuntimeRoute,
@@ -1880,3 +1830,5 @@ export function useChatMessageActions({
   ), [handleSendChatMessage]);
   return { handleSendChatMessage, handleRetryChatMessage };
 }
+
+export { localChatSendDelayReason,localChatSendIsInFlightForTarget,localChatTargetHasRunningTurn,queuedDesktopChatMessageFromDraft,type LocalChatSendDelayReason } from "./localChatQueue";

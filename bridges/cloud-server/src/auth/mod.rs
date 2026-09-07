@@ -11,3 +11,4 @@ pub mod routes;
 mod rows;
 pub mod session;
 pub mod session_activity;
+pub mod subsessions;

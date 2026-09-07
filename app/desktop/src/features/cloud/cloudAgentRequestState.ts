@@ -350,12 +350,12 @@ export function setCloudGroupRequestPlaceholderProcessing(
         if (
           message.status === 'processing'
           && deliveryState === 'processing'
-          && isProcessingPlaceholderText(message.contentText)
+          && (!message.contentText.trim() || isProcessingPlaceholderText(message.contentText))
         ) return [message];
         changed = true;
         return [{
           ...message,
-          contentText: 'processing...',
+          contentText: '',
           content: {
             ...content,
             deliveryState: 'processing',

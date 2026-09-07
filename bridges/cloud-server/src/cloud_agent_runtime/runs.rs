@@ -1,19 +1,24 @@
 mod authorization;
 mod claims;
 mod completion;
+pub(super) mod context_read;
 mod delivery;
 mod envelopes;
 mod errors;
 mod group_mentions;
+pub(crate) mod identity;
 mod leases;
 mod prompt_history;
+pub(crate) mod subsession_lifecycle;
+pub(crate) mod subsessions;
 
 pub use authorization::{
-    claim_has_shared_cloud_agent_target, requester_can_target_owner,
-    validate_agent_authored_group_handoff_claim, validate_shared_cloud_agent_claim,
+    claim_has_shared_cloud_agent_target, execution_agent_id, request_identity,
+    requester_can_target_owner, validate_agent_authored_group_handoff_claim,
+    validate_shared_cloud_agent_claim,
 };
 pub use claims::{
-    claim_run, lookup_run_for_request, AgentRuntimeRoute, ClaimRunRequest,
+    claim_run, claim_run_for_desktop, lookup_run_for_request, AgentRuntimeRoute, ClaimRunRequest,
     CloudAgentRunLookupResponse, CloudAgentRunResponse,
 };
 pub use completion::{complete_run, fail_run, CompleteRunRequest, FailRunRequest};
@@ -21,8 +26,8 @@ pub use completion::{complete_run, fail_run, CompleteRunRequest, FailRunRequest}
 use delivery::{
     cloud_group_response_recipients, direct_person_peer_account_id, is_scheduled_run_request_id,
 };
-pub(crate) use envelopes::cloud_agent_response_is_processing_for_request;
 pub use envelopes::encode_cloud_agent_response_body;
+pub(crate) use envelopes::{cloud_agent_response_is_processing_for_request, request_received_at};
 #[cfg(test)]
 use envelopes::{
     cloud_group_response_body, parse_cloud_group_envelope, CloudGroupEnvelope, CloudGroupMessage,

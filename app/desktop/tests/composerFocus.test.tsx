@@ -63,6 +63,32 @@ test('focusComposerTextarea restores focus to the chat composer after selector c
   }
 });
 
+test('deferred native and browser focus cannot steal focus from another composer', async () => {
+  const previousDocument = globalThis.document;
+  try {
+    for (const isNativeShell of [false, true]) {
+      let focused = false;
+      let frame: FrameRequestCallback | undefined;
+      const main = { focus: () => { focused = true; } };
+      const document = { activeElement: main as object };
+      globalThis.document = document as unknown as Document;
+      focusComposerTextareaForNativeInput(CHAT_COMPOSER_TEXTAREA_SELECTOR, isNativeShell, {
+        focusNativeWindow: () => undefined,
+        requestAnimationFrame: (callback) => { frame = callback; return 1; },
+        querySelector: () => main,
+      });
+      document.activeElement = { name: 'private-composer' };
+      await Promise.resolve();
+      await Promise.resolve();
+      assert.ok(frame);
+      frame(0);
+      assert.equal(focused, false);
+    }
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
 test('clearing the composer resets its autosized height after a long message', () => {
   let focused = false;
   const textarea = {

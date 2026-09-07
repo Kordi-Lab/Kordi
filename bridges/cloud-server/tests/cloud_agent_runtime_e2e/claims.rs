@@ -54,7 +54,7 @@ async fn cloud_agent_runtime_fallback_claim_is_idempotent_when_owner_is_offline(
 }
 
 #[tokio::test]
-async fn cloud_agent_runtime_fallback_claim_waits_while_owner_mac_is_online() {
+async fn cloud_agent_runtime_fallback_claim_does_not_wait_for_an_unready_online_mac() {
     let Some(pool) = try_pool().await else { return };
     let state = Arc::new(ServerState::new(pool.clone(), EventBus::noop()));
     let router = test_router(state);
@@ -87,16 +87,16 @@ async fn cloud_agent_runtime_fallback_claim_waits_while_owner_mac_is_online() {
         .await
         .unwrap();
 
-    assert_eq!(first.status(), StatusCode::CONFLICT);
+    assert_eq!(first.status(), StatusCode::OK);
     let first_body = read_json(first).await;
-    assert_eq!(first_body["errorCode"], "owner_online");
+    assert_eq!(first_body["executionBackend"], "cloud");
     let idempotency_key = claim_body(&owner, &requester, "msg_online_owner")["idempotencyKey"]
         .as_str()
         .unwrap()
         .to_string();
     assert_eq!(
         count_cloud_agent_runs_for_key(&pool, &idempotency_key).await,
-        0
+        1
     );
 }
 
@@ -311,10 +311,34 @@ async fn agent_authored_group_handoff_runs_in_cloud_when_owner_mac_is_offline() 
     let lease_body = read_json(lease).await;
     let prompt = lease_body["run"]["prompt"].as_str().unwrap();
     let system_prompt = lease_body["run"]["systemPrompt"].as_str().unwrap();
-    assert!(prompt.contains("Group @mention permissions"));
-    assert!(prompt.contains("Current requester: @KordiSource"));
-    assert!(system_prompt.starts_with("You are the currently responding agent"));
-    assert!(system_prompt.contains("Do not delegate to another agent"));
+    assert!(!prompt.contains("Group @mention permissions"));
+    assert!(!system_prompt.contains("People:"));
+    assert!(!system_prompt.contains("Current requester:"));
+    let identity = &lease_body["run"]["turnIdentity"];
+    assert!(identity["requestPolicy"]
+        .as_str()
+        .unwrap()
+        .contains("the currently responding Agent"));
+    let context_uri = format!("/v1/cloud/agent-runs/{run_id}/context");
+    let directory = router.clone().oneshot(post_json_with_runner_token(&context_uri, "runner-test-token",
+        json!({"runnerId": "runner-handoff", "tool": "read_session", "arguments": {"sessionId": session_id, "mode": "participants"}}))).await.unwrap();
+    assert_eq!(directory.status(), StatusCode::OK);
+    assert!(read_json(directory).await["directory"]
+        .as_str()
+        .unwrap()
+        .contains("Current requester: @KordiSource"));
+    for (runner, scope) in [
+        ("other-runner", session_id.as_str()),
+        ("runner-handoff", "session:private"),
+    ] {
+        let denied = router.clone().oneshot(post_json_with_runner_token(&context_uri, "runner-test-token",
+            json!({"runnerId": runner, "tool": "read_session", "arguments": {"sessionId": scope}}))).await.unwrap();
+        assert_eq!(denied.status(), StatusCode::NOT_FOUND);
+    }
+    assert!(identity["requestPolicy"]
+        .as_str()
+        .unwrap()
+        .contains("Do not delegate to another agent"));
 
     let complete = router
         .clone()

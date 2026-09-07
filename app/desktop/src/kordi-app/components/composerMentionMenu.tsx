@@ -17,11 +17,13 @@ export function ComposerMentionMenu({
   items,
   selectedIndex,
   onSelect,
+  peopleLabel = 'Contacts',
 }: {
   id?: string;
   items: ComposerMentionOption[];
   selectedIndex: number;
   onSelect: (item: ComposerMentionOption) => void;
+  peopleLabel?: 'Contacts' | 'Members';
 }) {
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>({});
@@ -81,7 +83,7 @@ export function ComposerMentionMenu({
       items: orderedItems.filter((item) => item.targetKind === 'reference'),
     },
     {
-      label: 'Contacts',
+      label: peopleLabel,
       items: orderedItems.filter((item) => item.targetKind === 'person' || item.targetKind === 'all'),
     },
     {

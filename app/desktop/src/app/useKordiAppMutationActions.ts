@@ -83,6 +83,8 @@ export function useKordiAppMutationActions({
       setCloudSessionUnread,
       markCloudSessionsRead,
       setCloudGroupSpacePinned,
+      setCloudGroupSpaceMuted,
+      setCloudGroupSpaceArchived,
       deleteCloudSession,
     },
   } = foundation;
@@ -107,6 +109,8 @@ export function useKordiAppMutationActions({
     setSessionUnread: handleSetChatSessionUnread,
     markSessionsRead: handleMarkChatSessionsRead,
     setGroupPinned: handleSetChatGroupPinned,
+    setGroupMuted: handleSetChatGroupMuted,
+    setGroupArchived: handleSetChatGroupArchived,
     deleteSession: handleDeleteChatSession,
   } = useKordiChatSessionActions({
     account: cloudSession.account,
@@ -122,6 +126,8 @@ export function useKordiAppMutationActions({
     setCloudSessionUnread,
     markCloudSessionsRead,
     setCloudGroupSpacePinned,
+    setCloudGroupSpaceMuted,
+    setCloudGroupSpaceArchived,
     refreshCanonicalState,
     refreshDesktopChat,
     sendCloudGroupControl,
@@ -300,6 +306,8 @@ export function useKordiAppMutationActions({
       handleSetChatSessionUnread,
       handleMarkChatSessionsRead,
       handleSetChatGroupPinned,
+      handleSetChatGroupMuted,
+      handleSetChatGroupArchived,
       handleDeleteChatSession,
     },
     project: {

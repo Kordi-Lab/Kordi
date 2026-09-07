@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cloudGroupMemberJoinNoticeRequests, cloudGroupSessionTitleSnapshotForControl, encodeCloudGroupControl, parseCloudGroupControl, cloudGroupTitleUpdateNoticeRequest, cloudSessionTitleUpdateNoticeRequest } from '../src/features/cloud/cloudGroupMessages';
+import { cloudGroupMemberJoinNoticeRequests, cloudGroupSessionTitleSnapshotForControl, cloudTitleUpdateNoticeEquivalent, encodeCloudGroupControl, parseCloudGroupControl, cloudGroupTitleUpdateNoticeRequest, cloudSessionTitleUpdateNoticeRequest } from '../src/features/cloud/cloudGroupMessages';
 import { legacyCloudGroupTitleNoticeClassifications } from '../src/features/cloud/legacyCloudGroupTitleNotices';
 import { cloudGroupHistoryReplayPreservesSessionShell } from '../src/features/cloud/cloudGroupSessionControl';
 
@@ -9,6 +9,8 @@ test('history replay preserves an existing group session shell', () => {
   assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, false), false);
   assert.equal(cloudGroupHistoryReplayPreservesSessionShell(false, true), false);
   assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, true, true), false);
+  assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, true, false, 'group-title-update'), false);
+  assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, true, false, 'session-title-update'), false);
 });
 
 test('legacy session rename controls become administrator-authored title snapshots', () => {
@@ -91,6 +93,36 @@ test('group title updates build a remote visible group rename notice separately 
   });
 });
 
+test('replayed duplicate rename controls collapse to one notice', () => {
+  const request = cloudGroupTitleUpdateNoticeRequest({
+    envelope: {
+      kind: 'group-title-update',
+      groupId: 'session:group:cloud',
+      groupSpaceId: 'space:cloud',
+      groupTitle: 'Good group',
+      createdByAccountId: 'acct_sender',
+      actor: { accountId: 'acct_sender', displayName: 'Álvaro', avatarUrl: null },
+      participants: [{ accountId: 'acct_sender', displayName: 'Álvaro', avatarUrl: null }],
+      message: null,
+    },
+    actorIdentityId: 'human:cloud:acct_sender',
+    createdAtMs: 1_234,
+    cloudMessageId: 'cloud-msg-group-rename',
+  })!;
+  const existing = {
+    sessionId: request.sessionId,
+    senderIdentityId: request.senderIdentityId,
+    content: request.content,
+    createdAtMs: 1_000,
+  };
+
+  assert.equal(cloudTitleUpdateNoticeEquivalent(existing, request), true);
+  assert.equal(cloudTitleUpdateNoticeEquivalent(existing, {
+    ...request,
+    content: { ...request.content as object, title: 'Another group' },
+  }), false);
+});
+
 test('group invites and membership updates never synthesize rename notices', () => {
   for (const kind of ['group-invite', 'group-update'] as const) {
     assert.equal(cloudGroupTitleUpdateNoticeRequest({
@@ -140,10 +172,18 @@ test('session title updates build a remote visible rename notice without changin
       kind: 'session-title-update',
       groupId: 'session:group:cloud',
       groupSpaceId: 'space:cloud',
-      groupTitle: 'Sprint follow-up',
+      groupTitle: 'Parent group',
       createdByAccountId: 'acct_sender',
       actor: { accountId: 'acct_sender', displayName: 'Álvaro', avatarUrl: null },
       participants: [{ accountId: 'acct_sender', displayName: 'Álvaro', avatarUrl: null }],
+      sessionTitle: {
+        title: 'Sprint follow-up',
+        titleSource: 'manual',
+        titleRevision: 2,
+        titlePolicyVersion: 1,
+        updatedAtMs: 1_000,
+        updatedByAccountId: 'acct_sender',
+      },
       message: null,
     },
     actorIdentityId: 'human:cloud:acct_sender',
@@ -155,7 +195,7 @@ test('session title updates build a remote visible rename notice without changin
   assert.equal(request?.sessionId, 'session:group:cloud');
   assert.equal(request?.senderRole, 'system');
   assert.equal(request?.messageKind, 'status');
-  assert.equal(request?.contentText, 'Álvaro changed the session name to Sprint follow-up');
+  assert.equal(request?.contentText, 'Álvaro changed the channel name to Sprint follow-up');
   assert.deepEqual(request?.content, {
     kind: 'session-title-update',
     scope: 'session',
@@ -194,7 +234,7 @@ test('session title notices use the verified title author instead of the relay',
   });
 
   assert.equal(request?.senderIdentityId, 'human:cloud:acct_admin');
-  assert.equal(request?.contentText, 'Admin changed the session name to Sprint follow-up');
+  assert.equal(request?.contentText, 'Admin changed the channel name to Sprint follow-up');
   assert.equal((request?.content as { actorDisplayName?: string }).actorDisplayName, 'Admin');
 });
 

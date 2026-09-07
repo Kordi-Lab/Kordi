@@ -1,7 +1,8 @@
 pub(super) fn test_connection() -> rusqlite::Connection {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
     conn.execute_batch(
-        "CREATE TABLE chat_sync_state (
+        "CREATE TABLE chat_sync_visibility (account_id TEXT PRIMARY KEY,snapshot_json TEXT NOT NULL);
+         CREATE TABLE chat_sync_state (
             account_id TEXT PRIMARY KEY, cursor TEXT NOT NULL,
             last_stream_seq INTEGER NOT NULL, updated_at_ms INTEGER NOT NULL
          );

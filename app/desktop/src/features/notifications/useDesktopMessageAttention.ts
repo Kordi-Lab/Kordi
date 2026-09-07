@@ -157,10 +157,12 @@ export function useDesktopMessageAttention({
       : false;
     const qualifyingEvents = events.filter((event) => {
       if (presentedEventIdsRef.current.has(event.eventId)) return false;
+      const threadPanel=event.threadRootId ? Array.from(document.querySelectorAll<HTMLElement>('.app-thread-panel')).find(panel=>[panel.dataset.threadRootId,panel.dataset.threadRootClientId].includes(event.threadRootId)) : undefined;
+      const threadScroll=threadPanel?.querySelector<HTMLElement>('.app-chat-pane-transcript-scroll');
       const exactVisibleSession = appIsActive
         && activeNav === 'chats'
         && event.sessionId === activeSessionId
-        && transcriptAtLatest;
+        && (event.threadRootId ? Boolean(threadScroll && transcriptIsAtLatest(threadScroll)) : transcriptAtLatest);
       return !exactVisibleSession;
     });
     if (qualifyingEvents.length === 0) return;

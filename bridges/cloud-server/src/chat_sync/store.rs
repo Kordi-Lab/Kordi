@@ -85,6 +85,7 @@ pub struct SyncBatch {
 }
 
 pub struct BootstrapSnapshot {
+    pub session_visibility: super::visibility::SessionVisibilitySnapshot,
     pub conversations: Vec<ConversationSnapshot>,
     pub latest_messages: Vec<MessageSnapshot>,
     pub session_pins: Vec<CloudSessionPinSummary>,
@@ -226,7 +227,9 @@ mod pin_snapshots;
 mod reaction;
 mod support;
 mod sync_events;
+mod thread_reads;
 mod titles;
+pub use thread_reads::{advance_thread_read, thread_reads};
 
 pub(crate) use conversation::create_conversation_in_transaction;
 pub use conversation::{create_conversation, create_conversation_with_trusted_peer};
@@ -242,5 +245,9 @@ pub use reaction::set_reaction;
 pub use support::{
     append_user_sync_events_in_transaction, identity_sync_recipient_ids, publish_user_sync_events,
 };
+pub use sync_events::append_account_hint;
 use sync_events::{insert_noncritical_sync_event, insert_sync_event, insert_sync_event_fanout};
 pub use titles::{update_personal_title, update_shared_title};
+
+mod thread_attention;
+pub use thread_attention::{thread_attention, thread_page};

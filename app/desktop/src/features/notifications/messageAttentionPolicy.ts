@@ -13,6 +13,7 @@ export type DesktopMessageAttentionEvent = {
   title: string;
   previewText: string;
   unreadCount: number;
+  threadRootId?: string;
 };
 
 export function shouldRequestDockAttention({
@@ -95,6 +96,7 @@ export function newMessageAttentionEvents({
       messageId: message.id,
       title: message.sender?.trim() || conversation.name || 'Kordi',
       previewText: messagePreview(message),
+      ...(message.messageAction?.kind==='thread'?{threadRootId:message.messageAction.source.sourceMessageId}:{}),
       unreadCount,
     }];
   });

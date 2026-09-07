@@ -1,47 +1,48 @@
-import type {
-  AddCanonicalGroupMembersRequest,
-  AddCanonicalSessionParticipantsRequest,
-  AdoptCloudProfileIdentityRequest,
-  AppendCanonicalMessageRequest,
-  CanonicalIdentity,
-  CanonicalGroupMembershipDelta,
-  CanonicalMessageDeliveryDelta,
-  CanonicalMessagePage,
-  CanonicalProfileIdentityDelta,
-  CanonicalReadCursorDelta,
-  CanonicalSessionCatalog,
-  CanonicalSessionMessage,
-  CanonicalSessionState,
-  CreateCanonicalDelegatedExchangeRequest,
-  DesktopArtifactDirectory,
-  DesktopArtifactPreview,
-  DesktopAuthAttemptSnapshot,
-  DesktopAuthState,
-  DesktopChatProjectSource,
-  DesktopChatSessionDetail,
-  DesktopChatState,
-  DesktopChatTurnSnapshot,
-  DesktopProjectSettings,
-  MarkCanonicalSessionReadRequest,
-  OpenCanonicalSessionFastResult,
-  OpenCanonicalSessionRequest,
-  RemoveCanonicalSessionParticipantRequest,
-  RenameCanonicalSessionRequest,
-  SetCanonicalSessionParticipantRoleRequest,
-  UpdateCanonicalPresenceRequest,
-  UpdateCanonicalMessageDeliveryRequest,
-  UpdateCanonicalSessionMetadataRequest,
-  UpsertCanonicalIdentityRequest,
-} from '@/kordi-app/types';
 import {
-  beginChatPerformanceSpan,
-  chatPerformancePayloadBytes,
-  finishChatPerformanceSpan,
+beginChatPerformanceSpan,
+chatPerformancePayloadBytes,
+finishChatPerformanceSpan,
 } from '@/features/performance/chatPerformance';
 import {
-  desktopUpdaterController,
-  type DesktopUpdaterState,
+desktopUpdaterController,
+type DesktopUpdaterState,
 } from '@/features/updates/desktopUpdater';
+import type {
+AddCanonicalGroupMembersRequest,
+AddCanonicalSessionParticipantsRequest,
+AdoptCloudProfileIdentityRequest,
+AppendCanonicalMessageRequest,
+CanonicalGroupMembershipDelta,
+CanonicalIdentity,
+CanonicalMessageDeliveryDelta,
+CanonicalMessagePage,
+CanonicalProfileIdentityDelta,
+CanonicalReadCursorDelta,
+CanonicalSessionCatalog,
+CanonicalSessionMessage,
+CanonicalSessionState,
+CreateCanonicalDelegatedExchangeRequest,
+DesktopArtifactDirectory,
+DesktopArtifactPreview,
+DesktopAuthAttemptSnapshot,
+DesktopAuthState,
+DesktopChatProjectSource,
+DesktopChatSessionDetail,
+DesktopChatState,
+DesktopChatTurnSnapshot,
+DesktopProjectSettings,
+MarkCanonicalSessionReadRequest,
+OpenCanonicalSessionFastResult,
+OpenCanonicalSessionRequest,
+RemoveCanonicalSessionParticipantRequest,
+RenameCanonicalSessionRequest,
+SetCanonicalSessionParticipantRoleRequest,
+UpdateCanonicalMessageDeliveryRequest,
+UpdateCanonicalPresenceRequest,
+UpdateCanonicalSessionMetadataRequest,
+UpsertCanonicalIdentityRequest,
+} from '@/kordi-app/types';
+import { type DesktopChatContextMessage,type DesktopVisibleTaskRecord } from "./desktopChatContextTypes";
 
 
 export function isNativeDesktopShell() {
@@ -857,8 +858,8 @@ export async function createDesktopProject(name: string, parentDir?: string) {
   return invokeDesktop<DesktopProjectSettings>('desktop_project_create_new', { name, parentDir });
 }
 
-export async function createDesktopChatSession() {
-  return invokeDesktop<DesktopChatState>('desktop_chat_new_session');
+export async function createDesktopChatSession(options?: { independent?: boolean; sourceSessionId?: string }) {
+  return invokeDesktop<DesktopChatState>('desktop_chat_new_session', options);
 }
 
 export async function createDesktopProjectSession(projectRoot: string, title?: string) {
@@ -933,22 +934,9 @@ export type DesktopChatMessageRoute = {
   thinking?: string | null;
 };
 
-export type DesktopChatContextMessage = {
-  id: string;
-  authorName: string;
-  authorKind: 'human' | 'agent'; contextRole?: 'history' | 'system';
-  text: string;
-  createdAtMs?: number | null;
-};
-
-export type DesktopVisibleTaskRecord = {
-  taskId: string;
-  parentTaskId?: string | null;
-  title: string;
-  summary?: string | null;
-  status: string;
-  involvedParticipants?: string[];
-};
+export async function fetchDesktopChatSessionActiveTurn(sessionId: string) {
+  return invokeDesktop<DesktopChatTurnSnapshot | null>('desktop_chat_session_active_turn', { sessionId });
+}
 
 export async function startDesktopChatMessage(
   sessionId: string,
@@ -958,6 +946,8 @@ export async function startDesktopChatMessage(
   contextMessages: DesktopChatContextMessage[] = [],
   visibleTaskRecords: DesktopVisibleTaskRecord[] = [],
   scheduledTaskSessionId: string | null = null,
+  requestMessageId: string | null = null,
+  executionLeaseDeadlineMs: number | null = null,
 ) {
   return invokeDesktop<DesktopChatTurnSnapshot>('desktop_chat_start_message', {
     sessionId,
@@ -967,7 +957,13 @@ export async function startDesktopChatMessage(
     contextMessages,
     visibleTaskRecords,
     scheduledTaskSessionId,
+    requestMessageId,
+    executionLeaseDeadlineMs,
   });
+}
+
+export function renewDesktopChatExecutionLease(turnId: string, deadlineMs: number) {
+  return invokeDesktop<void>('desktop_chat_renew_execution_lease', { turnId, deadlineMs });
 }
 
 export type DesktopShapeAgentRoute = {
@@ -1063,3 +1059,5 @@ export async function openDesktopAuthPopup(
     'popup=yes,width=560,height=760,resizable=no,scrollbars=yes',
   );
 }
+
+export { type DesktopChatContextMessage,type DesktopVisibleTaskRecord } from "./desktopChatContextTypes";

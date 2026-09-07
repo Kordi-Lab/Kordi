@@ -42,6 +42,7 @@ test('agent handoff replies quote the preceding agent instead of a stale human r
     ),
     {
       id: 'msg:stable-research-agent-slot',
+      replyAliasIds: ['msg:cloud-agent:research-agent-terminal'],
       role: 'external-agent',
       sender: "Research Agent's Kordi",
       senderType: 'agent',

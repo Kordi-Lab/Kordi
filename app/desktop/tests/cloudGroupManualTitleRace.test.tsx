@@ -9,7 +9,6 @@ import type {
   CloudAccount,
   CloudAuthClient,
   CloudMessage,
-  UpdateCloudSessionTitleInput,
 } from '../src/features/cloud/authClient';
 import type { SendCloudGroupControlInput } from '../src/features/cloud/cloudGroupControl.types';
 import { parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
@@ -54,14 +53,13 @@ function installDom() {
   };
 }
 
-test('explicit manual title wins while the canonical state ref is stale', async () => {
+test('explicit manual title is sent while the canonical state ref is stale', async () => {
   const installed = installDom();
   const host = document.createElement('div');
   document.body.append(host);
   let root: Root | null = createRoot(host);
   let sendGroupControl: ((input: SendCloudGroupControlInput) => Promise<void>) | null = null;
   let sentBody = '';
-  let persistedTitle: UpdateCloudSessionTitleInput | null = null;
   const sessionId = 'session:group:manual-title-race';
   const manualTitle = {
     title: 'Study group',
@@ -104,19 +102,6 @@ test('explicit manual title wins while the canonical state ref is stale', async 
       sentBody = body;
       return { ...sentMessage, body };
     },
-    async updateCloudSessionTitle(
-      _token: string,
-      _sessionId: string,
-      input: UpdateCloudSessionTitleInput,
-    ) {
-      persistedTitle = input;
-      return {
-        sessionId,
-        ...input,
-        updatedByAccountId: 'acct_me',
-        updatedAt: '2026-09-01T00:00:00Z',
-      };
-    },
   } as unknown as CloudAuthClient;
 
   __setSessionBackendForTests({
@@ -144,10 +129,7 @@ test('explicit manual title wins while the canonical state ref is stale', async 
         async syncDiff() {},
       },
       canonical: {
-        state: null,
         stateRef: { current: staleState },
-        titleBackfillsRef: { current: new Set() },
-        initialMessagesSettled: false,
       },
       reportWarning() {},
     });
@@ -170,8 +152,6 @@ test('explicit manual title wins while the canonical state ref is stale', async 
     }));
 
     assert.deepEqual(parseCloudGroupControl(sentBody)?.sessionTitle, manualTitle);
-    assert.equal(persistedTitle?.title, manualTitle.title);
-    assert.equal(persistedTitle?.titleSource, 'manual');
   } finally {
     await act(async () => root?.unmount());
     root = null;

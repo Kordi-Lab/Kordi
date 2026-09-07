@@ -478,6 +478,7 @@ fn read_session_defaults_to_index_without_message_text() {
     let response = super::super::session_observation::read_session_for_observation_in_db(
         &conn,
         ReadSessionRequest {
+            offset: None,
             session_id,
             around_message_id: None,
             limit: Some(2),
@@ -504,6 +505,7 @@ fn read_session_reads_only_requested_message_details_by_id() {
     let response = super::super::session_observation::read_session_for_observation_in_db(
         &conn,
         ReadSessionRequest {
+            offset: None,
             session_id,
             around_message_id: None,
             limit: Some(10),
@@ -536,6 +538,7 @@ fn read_session_messages_mode_requires_message_ids() {
     let error = super::super::session_observation::read_session_for_observation_in_db(
         &conn,
         ReadSessionRequest {
+            offset: None,
             session_id,
             around_message_id: None,
             limit: Some(10),
@@ -575,6 +578,7 @@ fn read_session_truncates_long_message_text() {
     let response = super::super::session_observation::read_session_for_observation_in_db(
         &conn,
         ReadSessionRequest {
+            offset: None,
             session_id,
             around_message_id: None,
             limit: Some(1),
@@ -593,33 +597,5 @@ fn read_session_truncates_long_message_text() {
     assert!(text.ends_with('…'));
 }
 
-#[test]
-fn read_session_returns_latest_window_in_transcript_order() {
-    let conn = test_conn();
-    let session_id = seed_session_with_messages(&conn);
-
-    let response = super::super::session_observation::read_session_for_observation_in_db(
-        &conn,
-        ReadSessionRequest {
-            session_id,
-            around_message_id: None,
-            limit: Some(2),
-            mode: None,
-            message_ids: None,
-        },
-    )
-    .expect("read session");
-
-    assert_eq!(response.session.title, "Launch planning");
-    assert_eq!(response.session.participants.len(), 2);
-    assert_eq!(
-        response
-            .messages
-            .iter()
-            .map(|message| message.message_id.as_str())
-            .collect::<Vec<_>>(),
-        vec!["msg:2", "msg:3"]
-    );
-    assert!(response.window.has_more_before);
-    assert!(!response.window.has_more_after);
-}
+#[path = "session_observation/reading.rs"]
+mod reading;

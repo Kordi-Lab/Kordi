@@ -34,6 +34,11 @@ test('cloud group replay prepares identities and sessions with compact canonical
   assert.match(replaySetupBlock, /removeCanonicalSessionParticipant\(\{/, 'group replay should persist removed participants as left');
   assert.doesNotMatch(replaySetupBlock, /await upsertCanonicalIdentity\(request\)/, 'participant identity sync must not reload full canonical state per participant');
   assert.doesNotMatch(replaySetupBlock, /await openOrCreateCanonicalSession\(/, 'group replay must not reload full canonical state when opening existing group sessions');
+  assert.doesNotMatch(replaySetupBlock, /isSelfAuthoredControl/, 'durable rename notices must rehydrate for their author too');
+  assert.match(replaySetupBlock, /envelope\.kind === 'group-title-update'[\s\S]*cloudTitleUpdateNoticeEquivalent/);
+  assert.match(replaySetupBlock, /envelope\.kind === 'session-title-update'[\s\S]*cloudTitleUpdateNoticeEquivalent/);
+  assert.match(replaySetupBlock, /const persistedNotice = await upsertCanonicalMessageFast\(noticeRequest\)/);
+  assert.doesNotMatch(replaySetupBlock, /appendCanonicalMessage\(noticeRequest\)/);
 });
 
 test('cloud group replay publishes one coherent React snapshot after each conversation', () => {

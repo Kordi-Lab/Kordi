@@ -9,6 +9,7 @@ struct CloudWireSnapshot: Codable {
     let sessionForksById: [String: CloudSessionForkSummary]?
     let forkLineageVersion: Int?
     let savedAt: Date
+    var visibility: CloudSessionVisibility? = nil
 }
 
 enum CloudSyncRecoveryPolicy {
@@ -51,7 +52,8 @@ actor CloudWireCache {
         accountId: String,
         cursor: String,
         messagesByPeer: [String: [CloudMessageDTO]],
-        sessionForksById: [String: CloudSessionForkSummary]? = nil
+        sessionForksById: [String: CloudSessionForkSummary]? = nil,
+        visibility: CloudSessionVisibility? = nil
     ) {
         guard let directory, let url = snapshotURL(accountId: accountId) else { return }
         do {
@@ -62,7 +64,8 @@ actor CloudWireCache {
                 messagesByPeer: messagesByPeer,
                 sessionForksById: sessionForksById,
                 forkLineageVersion: CloudWireSnapshot.currentForkLineageVersion,
-                savedAt: Date()
+                savedAt: Date(),
+                visibility: visibility
             )
             try encoder.encode(snapshot).write(to: url, options: .atomic)
         } catch {

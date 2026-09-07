@@ -12,4 +12,14 @@ export type ChatListShellArgs = {
   handleSetChatSessionUnread: (sessionId: string, unread: boolean) => Promise<void>;
   handleMarkChatSessionsRead: (sessionIds: string[]) => Promise<void>;
   handleSetChatGroupPinned: (groupSpaceId: string, pinned: boolean) => Promise<void>;
+  handleSetChatGroupMuted: (
+    groupSpaceId: string,
+    sessionIds: string[],
+    muted: boolean,
+  ) => Promise<void>;
+  handleSetChatGroupArchived: (
+    groupSpaceId: string,
+    sessionIds: string[],
+    archived: boolean,
+  ) => Promise<void>;
 };

@@ -1,10 +1,6 @@
 import {
   upsertCanonicalIdentityFast,
-  upsertCanonicalMessageFast,
 } from '@/lib/desktop';
-import type { AppendCanonicalMessageRequest } from '@/kordi-app/types';
-import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
-import { cloudGroupAgentConversationId } from './cloudGroupMessages';
 import type {
   ApplyCloudGroupAgentControlInput,
   CloudGroupAgentPresentation,
@@ -67,45 +63,4 @@ export async function ensureCloudGroupAgentIdentity(
     );
   }
   return presentation;
-}
-
-export async function persistQueuedCloudGroupAgentTurn(
-  input: ApplyCloudGroupAgentControlInput,
-  signal?: AbortSignal,
-): Promise<void> {
-  if (signal?.aborted) return;
-  const { account, envelope } = input.context;
-  const message = envelope.message!;
-  const presentation = await ensureCloudGroupAgentIdentity(input, signal);
-  if (signal?.aborted) return;
-  const createdAtMs = Date.now();
-  const queuedMessageId =
-    `msg:cloud-agent-processing:${message.id}:${account.accountId}`;
-  const persistedQueuedMessage = await upsertCanonicalMessageFast({
-    id: queuedMessageId,
-    sessionId: envelope.groupId,
-    senderIdentityId: presentation.identityId,
-    senderRole: 'owned-agent',
-    messageKind: 'agent-turn',
-    contentText: 'queued...',
-    content: {
-      sender: presentation.displayName,
-      senderOwnerAccountId: account.accountId,
-      senderOwnerName: presentation.ownerDisplayName,
-      timestampMs: createdAtMs,
-      deliveryState: 'queued',
-      sourceConversationId: cloudGroupAgentConversationId(envelope.groupId),
-      requestId: message.id,
-      replyToMessageId: message.id,
-    },
-    createdAtMs,
-    parentMessageId: message.id,
-    status: 'queued',
-    sourceTransport: 'cloud-group-agent',
-    sourceEventId: `cloud-group-agent:${queuedMessageId}`,
-  } satisfies AppendCanonicalMessageRequest);
-  if (signal?.aborted) return;
-  input.setCanonicalState((current) =>
-    mergeCanonicalMessageRow(current, persistedQueuedMessage)
-  );
 }

@@ -116,6 +116,8 @@ export function WorkspaceSidebar({
     onSetChatSessionUnread,
     onMarkChatSessionsRead,
     onSetChatGroupPinned,
+    onSetChatGroupMuted,
+    onSetChatGroupArchived,
     onDeleteChatSession,
   } = chats;
   const {
@@ -350,21 +352,15 @@ export function WorkspaceSidebar({
           target={groupContextMenu}
           onClose={() => setGroupContextMenu(null)}
           onSetPinned={(groupSpaceId, pinned) => { void onSetChatGroupPinned(groupSpaceId, pinned); }}
-          onSetMuted={(sessionIds, muted) => {
-            void Promise.all(sessionIds.map(async (sessionId) => (
-              onSetChatSessionMuted(sessionId, muted)
-            )));
+          onSetMuted={(groupSpaceId, sessionIds, muted) => {
+            void onSetChatGroupMuted(groupSpaceId, sessionIds, muted);
           }}
           onMarkRead={(sessionIds) => { void onMarkChatSessionsRead(sessionIds); }}
-          onArchive={(sessionIds) => {
-            void Promise.all(sessionIds.map(async (sessionId) => (
-              onArchiveChatSession(sessionId)
-            )));
+          onArchive={(groupSpaceId, sessionIds) => {
+            void onSetChatGroupArchived(groupSpaceId, sessionIds, true);
           }}
-          onRestore={(sessionIds) => {
-            void Promise.all(sessionIds.map(async (sessionId) => (
-              onRestoreChatSession(sessionId)
-            )));
+          onRestore={(groupSpaceId, sessionIds) => {
+            void onSetChatGroupArchived(groupSpaceId, sessionIds, false);
           }}
         />
       ) : null}

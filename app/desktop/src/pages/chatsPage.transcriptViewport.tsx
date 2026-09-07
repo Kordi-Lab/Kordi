@@ -12,6 +12,7 @@ import { transcriptMessageIsOwnHuman } from '@/kordi-app/components/transcriptMe
 import type { Message } from '@/kordi-app/types';
 import type { ChatSessionPaneProps } from '@/pages/chatsPage.types';
 import { QueuedMessageBubble } from '@/pages/chatsPage.queuedMessage';
+import { queuedTranscriptRequestIds } from '@/features/chat/queuedDesktopMessages';
 import { PinActivityNotice } from '@/pages/chatsPage.pins';
 
 type TranscriptEntry = {
@@ -63,7 +64,7 @@ export function useChatTranscriptViewport({
   presentation,
   actions,
   selection,
-  transcriptEntries,
+  transcriptEntries: sourceTranscriptEntries,
   transcriptMessages,
   transcriptTailKey,
 }: ChatSessionPaneProps & {
@@ -86,6 +87,16 @@ export function useChatTranscriptViewport({
     onEditQueuedMessage,
     onCancelQueuedMessage,
   } = viewport;
+  const transcriptEntries = useMemo(() => {
+    const queuedIds = new Set(queuedMessages.map((message) => message.id));
+    return sourceTranscriptEntries.filter(({ message }) => ![message.id, message.entryId, ...(message.replyAliasIds ?? [])].some((id) => id && queuedIds.has(id))
+      && !queuedIds.has(message.replyToMessageId ?? '')
+      && !(message.turn?.status === 'queued' && !message.turn.completed));
+  }, [queuedMessages, sourceTranscriptEntries]);
+  const syncedQueuedIds = useMemo(
+    () => queuedTranscriptRequestIds(sourceTranscriptEntries.map(({ message }) => message)),
+    [sourceTranscriptEntries],
+  );
   const {
     isCompressionActive = false,
     plainAgentResponse = false,
@@ -181,7 +192,7 @@ export function useChatTranscriptViewport({
       animateLatestAppend={animateLatestAppend}
       getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
       renderItem={({ message: msg, originalIndex: idx }) => (
-        <div>
+        <div data-incoming-sequence={!msg.isOwnMessage && msg.role!=='user'?msg.conversationSequence:undefined}>
           {timeSeparators[idx] ? (
             <div
               className="app-transcript-time-separator flex justify-center px-2 py-2 text-center text-[11px] font-normal leading-4 tabular-nums text-[color:var(--utility-muted-text)]"
@@ -190,7 +201,15 @@ export function useChatTranscriptViewport({
               <time dateTime={transcriptTimestampDateTime(msg.timestampMs)}>{timeSeparators[idx]}</time>
             </div>
           ) : null}
-          <MessageBubble
+          {presentation.firstUnreadMessageId && transcriptWindowMessageMatchesId(msg,presentation.firstUnreadMessageId,idx)?<div className="my-3 flex items-center gap-3 text-[11px] font-medium text-[color:var(--app-sidebar-accent)]"><span className="h-px flex-1 bg-current opacity-25"/>New replies<span className="h-px flex-1 bg-current opacity-25"/></div>:null}
+          {(msg.role === 'user' || msg.role === 'person') && [msg.id, msg.entryId, ...(msg.replyAliasIds ?? [])].some((id) => id && syncedQueuedIds.has(id)) ? (
+            <QueuedMessageBubble
+              message={{ id: msg.id ?? '', sessionId: sessionKey, text: msg.text, time: msg.time, attachments: msg.attachments ?? [] }}
+              isCompressionActive={isCompressionActive}
+              own={msg.role === 'user' || msg.isOwnMessage === true}
+              sender={msg.sender}
+            />
+          ) : <MessageBubble
             msg={msg}
             imageGallery={imageGallery}
             onOpenSource={onOpenSource}
@@ -228,7 +247,7 @@ export function useChatTranscriptViewport({
             plainAgentResponse={plainAgentResponse}
             isGroupedWithPrevious={isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, -1, timeSeparators)}
             isGroupedWithNext={isGroupedWithAdjacentHumanMessage(transcriptMessages, idx, 1, timeSeparators)}
-          />
+          />}
           {idx === forkSnapshotBoundaryIndex && activeForkSourceSessionId ? (
             <div className="my-2 flex items-center gap-3 px-2 text-[11px] font-medium uppercase tracking-[0.06em] text-sky-300">
               <span className="h-px flex-1 bg-sky-500/30" aria-hidden="true" />
@@ -313,6 +332,7 @@ export function useChatTranscriptViewport({
     onTranscriptScroll,
     pinnedMessageIds,
     plainAgentResponse,
+    presentation.firstUnreadMessageId,
     pinActivityLabel,
     queuedMessages,
     relatedAgentSessionStatusById,
@@ -322,6 +342,7 @@ export function useChatTranscriptViewport({
     selectionMode,
     sessionKey,
     transcriptEntries,
+    syncedQueuedIds,
     transcriptMessages,
     timeSeparators,
     transcriptTailKey,

@@ -9,10 +9,9 @@ async fn scheduled_direct_contact_completion_routes_back_to_originating_contact_
     let owner = signup(&router, "scheduled-direct-owner", "Owner").await;
     let peer = signup(&router, "scheduled-direct-peer", "Peer").await;
     accept_contacts(&router, &peer, &owner).await;
-    let session_id = format!(
-        "session:direct-person:{}:{}",
-        owner.account_id, peer.account_id
-    );
+    let mut members = [&owner.account_id, &peer.account_id];
+    members.sort();
+    let session_id = format!("session:direct-person:{}:{}", members[0], members[1]);
     create_test_conversation(
         &pool,
         &owner.account_id,

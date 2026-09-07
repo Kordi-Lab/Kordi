@@ -67,6 +67,7 @@ export type PendingUserMessage = { text: string; time: string } | null;
 export type ComposerEnvironmentContext = {
   isNativeShell: boolean;
   hasAnyDesktopAuth: boolean;
+  hasLocalProviderAuth?: boolean;
 };
 
 export type ComposerConversationContext = {
@@ -115,6 +116,7 @@ export type ComposerDraftContext = {
 };
 
 export type ComposerAuthNavigationContext = {
+  openAgentAuthentication?: () => void;
   handleSelectAuthChoice: (providerId: string, choice: string) => Promise<void>;
   refreshDesktopAuth: () => Promise<unknown>;
   refreshDesktopChat: (activeSessionId?: string) => Promise<unknown>;

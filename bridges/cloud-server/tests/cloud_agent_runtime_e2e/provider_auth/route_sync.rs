@@ -12,7 +12,7 @@ async fn concurrent_provider_auth_publishes_leave_exactly_one_active_snapshot() 
     let owner = signup(&router, "provider-auth-concurrent-owner", "Owner").await;
     let publish = || {
         router.clone().oneshot(post_json_with_token(
-            "/v1/cloud/agent-provider-auth/snapshots",
+            "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
             &owner.token,
             json!({
                 "provider": "openai",
@@ -63,7 +63,7 @@ async fn publishing_a_provider_alias_replaces_the_active_family_snapshot() {
         let response = router
             .clone()
             .oneshot(post_json_with_token(
-                "/v1/cloud/agent-provider-auth/snapshots",
+                "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
                 &owner.token,
                 json!({
                     "provider": provider,
@@ -113,7 +113,7 @@ async fn provider_auth_removal_falls_back_then_becomes_unconfigured() {
     let owner = signup(&router, "provider-auth-fallback-owner", "Owner").await;
     let publish = |provider: &str, secret: &str| {
         router.clone().oneshot(post_json_with_token(
-            "/v1/cloud/agent-provider-auth/snapshots",
+            "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
             &owner.token,
             json!({
                 "provider": provider,
@@ -134,7 +134,7 @@ async fn provider_auth_removal_falls_back_then_becomes_unconfigured() {
         .to_string();
     let revoke = |snapshot_id: &str| {
         router.clone().oneshot(delete_with_token(
-            &format!("/v1/cloud/agent-provider-auth/snapshots/{snapshot_id}"),
+            &format!("/v1/cloud/agent-provider-auth/snapshots/{snapshot_id}?intent=explicit"),
             &owner.token,
         ))
     };
@@ -181,7 +181,7 @@ async fn provider_auth_material_accepts_canonical_route_provider_alias() {
     let snapshot = router
         .clone()
         .oneshot(post_json_with_token(
-            "/v1/cloud/agent-provider-auth/snapshots",
+            "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
             &owner.token,
             json!({
                 "provider": "openai-codex",

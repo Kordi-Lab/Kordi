@@ -66,6 +66,7 @@ type ChatCompanionWorkspaceProps = {
   shell: {
     isNativeShell: boolean;
     openAuthentication: () => void;
+    openSession: (sessionId: string, isSubsession?: boolean) => void;
     onCreateSession: () => void;
   };
   layout: Pick<
@@ -142,6 +143,7 @@ export function ChatCompanionWorkspace({
     files: File[],
     options: SaveDesktopAttachmentOptions = {},
   ) => {
+    if (conversation?.agentSubsessionId) { setAttachmentError('This session supports text messages.'); return []; }
     if (!shell.isNativeShell || files.length === 0) return [];
     try {
       setAttachmentError(null);
@@ -156,6 +158,7 @@ export function ChatCompanionWorkspace({
     }
   };
   const saveAttachmentPaths = async (paths?: string[]) => {
+    if (conversation?.agentSubsessionId) { setAttachmentError('This session supports text messages.'); return []; }
     if (!shell.isNativeShell) return [];
     try {
       setAttachmentError(null);
@@ -269,7 +272,7 @@ export function ChatCompanionWorkspace({
           ),
           densityMode: chatTranscriptDensityMode(conversation),
           inferLatestHumanReplyTarget:
-            shouldInferLatestHumanReplyTarget(conversation),
+            !conversation.agentSubsessionId && shouldInferLatestHumanReplyTarget(conversation),
           plainAgentResponse: shouldSuppressAgentReplyAttribution(conversation),
           relatedAgentSessionStatusById: presentation.relatedAgentSessionStatusById,
         },
@@ -285,22 +288,22 @@ export function ChatCompanionWorkspace({
           },
           onOpenAuthSettings: shell.openAuthentication,
           onNavigateToMessage: navigation.navigate,
-          onOpenMessageDetail: composer.onSelectMessage,
+          onOpenMessageDetail: conversation.agentSubsessionId ? undefined : composer.onSelectMessage,
           onStopCollaborationAgentRequest:
             runtime.onStopCollaborationAgentRequest,
-          onStopActiveTurn: runtime.onStopDesktopChatTurn,
+          onStopActiveTurn: conversation.agentSubsessionId ? undefined : runtime.onStopDesktopChatTurn,
           onRequestCollaborationContact:
             runtime.onRequestCollaborationContact,
           onOpenSenderProfile: senderProfiles.openCompanion,
-          onForkMessage: runtime.onForkChatMessage
+          onForkMessage: !conversation.agentSubsessionId && runtime.onForkChatMessage
             ? (entryId) => {
                 void runtime.onForkChatMessage?.(conversation.id, entryId);
               }
             : undefined,
-          onOpenForkSession: session.actions.switchConversation,
-          onForwardMessage: composer.onForwardMessage,
-          onReactMessage: composer.onReactMessage,
-          onSelectMessage: composer.onSelectMessage,
+          onOpenForkSession: shell.openSession,
+          onForwardMessage: conversation.agentSubsessionId ? undefined : composer.onForwardMessage,
+          onReactMessage: conversation.agentSubsessionId ? undefined : composer.onReactMessage,
+          onSelectMessage: conversation.agentSubsessionId ? undefined : composer.onSelectMessage,
         },
         selection: {},
         viewport: {
@@ -359,17 +362,19 @@ export function ChatCompanionWorkspace({
         saveDesktopAttachments: saveAttachments,
         saveDesktopAttachmentPaths: saveAttachmentPaths,
         removeChatComposerAttachment: removeAttachment,
-        activeChatQuote: composer.activeChatQuote,
-        onForwardMessage: composer.onForwardMessage,
+        activeChatQuote: conversation.agentSubsessionId ? null : composer.activeChatQuote,
+        onForwardMessage: conversation.agentSubsessionId ? undefined : composer.onForwardMessage,
         rightDetailRail: layout.rightDetailRail,
         setIsDetailPanelCollapsed: layout.setIsDetailPanelCollapsed,
       }}
       composer={(
         <CompanionComposer
+          isPreparing={session.isPreparing}
           conversation={conversation}
+          subsession={session.subsession}
           paneKind={paneKind ?? 'agent'}
           draftText={session.draftText}
-          attachmentError={attachmentError}
+          attachmentError={session.creationError ?? attachmentError}
           isNativeShell={shell.isNativeShell}
           attachmentInputRef={session.refs.attachmentInput}
           composer={companionComposer}
@@ -405,8 +410,8 @@ export function ChatCompanionWorkspace({
             prefersReducedMotion: presentation.prefersReducedMotion,
           }}
           onDraftChange={session.actions.updateDraft}
-          onSend={(targetConversation) => {
-            if (!session.actions.sendDraft(targetConversation, companionAttachments)) return;
+          onSend={(targetConversation, mentions) => {
+            if (!session.actions.sendDraft(targetConversation, companionAttachments, mentions)) return;
             updateCompanionAttachments(() => []);
             setAttachmentError(null);
           }}

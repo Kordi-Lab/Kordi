@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { resolvePreferredAgentMentionTarget } from '../src/features/chat/messageActions/cloudAgentMentionTarget';
+import { resolvePreferredAgentMentionTarget, selectedComposerAgentMentionTarget } from '../src/features/chat/messageActions/cloudAgentMentionTarget';
 import { resolveMentionedLocalAgentTarget } from '../src/features/chat/messageActions/mentions';
+import type { ComposerMentionOption } from '../src/kordi-app/components';
 import type { DesktopCollaborationState, DesktopChatState } from '../src/kordi-app/types';
 
 test('renamed local agent mentions resolve to the immutable default Cloud agent id', async () => {
@@ -39,4 +40,46 @@ test('renamed local agent mentions resolve to the immutable default Cloud agent 
   state.hosts[0].visiblePeers[0].displayName = 'BabyTREE';
   const sameNameRemote = await resolvePreferredAgentMentionTarget('@BabyTREE hi', { localAgent: { label: 'BabyTREE' } } as DesktopChatState, state, directPerson, [], undefined, false, true);
   assert.equal(sameNameRemote?.peer.humanId, 'acct-peer');
+});
+
+test('composer selection preserves identity when agent display names are identical', () => {
+  const state = {
+    activeHostId: 'cloud',
+    hosts: [{
+      id: 'cloud',
+      nodeId: 'acct_me',
+      humanId: 'acct_me',
+      ownerName: 'Me',
+      agents: [],
+      visiblePeers: [{
+        nodeId: 'acct_peer',
+        humanId: 'acct_peer',
+        agentId: 'cloud-agent:acct_peer',
+        displayName: 'Kordi',
+        ownerName: 'Peer',
+        runtime: 'kordi-cloud-agent',
+      }],
+    }],
+  } as DesktopCollaborationState;
+  const local = {
+    value: 'Kordi',
+    label: 'Kordi',
+    targetKind: 'agent',
+    sourceHostId: 'cloud',
+    nodeId: 'acct_me',
+    humanId: 'acct_me',
+    agentId: 'cloud-agent:acct_me',
+    ownerName: 'Me',
+    runtime: 'kordi-cloud-agent',
+  } satisfies ComposerMentionOption;
+  const remote = {
+    ...local,
+    nodeId: 'acct_peer',
+    humanId: 'acct_peer',
+    agentId: 'cloud-agent:acct_peer',
+    ownerName: 'Peer',
+  } satisfies ComposerMentionOption;
+
+  assert.equal(selectedComposerAgentMentionTarget('@Kordi hello', local, state)?.peer.humanId, 'acct_me');
+  assert.equal(selectedComposerAgentMentionTarget('@Kordi hello', remote, state)?.peer.humanId, 'acct_peer');
 });

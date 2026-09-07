@@ -194,6 +194,13 @@ pub fn cloud_session_store(
     expires_at: String,
     device_id: Option<String>,
 ) -> Result<(), String> {
+    if let Some(previous) = cloud_session_load()? {
+        if previous.account_id != account_id {
+            tauri::async_runtime::spawn(crate::digest_calendar::clear_reminders(Some(
+                previous.account_id,
+            )));
+        }
+    }
     let payload = CloudSessionEntry {
         token,
         account_id,
@@ -218,6 +225,11 @@ pub fn cloud_session_load() -> Result<Option<CloudSessionEntry>, String> {
 
 #[tauri::command]
 pub fn cloud_session_clear() -> Result<(), String> {
+    let account_id = cloud_session_load()
+        .ok()
+        .flatten()
+        .map(|session| session.account_id);
+    tauri::async_runtime::spawn(crate::digest_calendar::clear_reminders(account_id));
     secret_delete(KEYCHAIN_SERVICE, KEYCHAIN_USERNAME)
 }
 

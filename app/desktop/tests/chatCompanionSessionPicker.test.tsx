@@ -21,6 +21,16 @@ function conversation(overrides: Partial<Conversation>): Conversation {
   };
 }
 
+test('side chat picker retains an Agent session whose parent is a group conversation', () => {
+  const group = conversation({ id: 'session:group:source', type: 'person' });
+  const agent = conversation({ id: 'research-session', forkedFromSessionId: group.id });
+  const options = chatCompanionSessionOptions(group, [group, agent]);
+  assert.equal(options.length, 1);
+  assert.equal(options[0].conversation.id, agent.id);
+  assert.equal(options[0].depth, 0);
+  assert.equal(options[0].conversation.forkedFromSessionId, group.id);
+});
+
 test('side chat session options keep the main Agent hierarchy and renamed title', () => {
   const activeMainSession = conversation({
     id: 'main-session',
@@ -156,11 +166,17 @@ test('related agent sessions open in the companion panel instead of replacing ma
   assert.match(sessionSource, /chatCompanionSessionOptions\(activeConversation, conversations\)/);
   assert.match(sessionSource, /requestedConversationId: conversationId/);
   assert.match(sessionSource, /onPrefetchChatSession\(conversationId\)/);
-  assert.match(sessionSource, /candidateIds\.has\(state\.requestedConversationId\)/);
+  const stateModel = readFileSync(new URL('../src/pages/chatCompanionState.ts', import.meta.url), 'utf8');
+  assert.match(stateModel, /candidateIds\.has\(state\.requestedConversationId\)/);
   assert.match(controllerSource, /loaded && !isKnownSession[\s\S]*refreshDesktopChat\(\)/);
   assert.match(workspaceSource, /companionConversationList\(chatConversations/);
-  assert.match(backgroundSessionSource, /isGroupForkSession\(conversation\)/);
+  assert.match(backgroundSessionSource, /return chatConversations/);
   assert.match(mainSource, /onOpenForkSession: companion\.openSession/);
-  assert.match(companionSource, /onOpenForkSession: session\.actions\.switchConversation/);
+  assert.match(companionSource, /onOpenForkSession: shell\.openSession/);
+  assert.match(pageSource, /companionSession\.actions\.openSubsession\(sessionId\)/);
+  const linksSource = readFileSync(new URL('../src/kordi-app/components/relatedAgentSessionLinks.tsx', import.meta.url), 'utf8');
+  const transcriptSource = readFileSync(new URL('../src/kordi-app/components/transcript.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(linksSource, /AgentSubsessionDialog|AppDialog|setSelected/);
+  assert.match(transcriptSource, /<RelatedAgentSessionLinks[\s\S]*?onOpen=\{onOpenForkSession\}/);
   assert.doesNotMatch(mainSource, /onOpenForkSession: runtime\.onSelectSession/);
 });

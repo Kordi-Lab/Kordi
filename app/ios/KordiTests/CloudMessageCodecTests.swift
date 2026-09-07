@@ -1,5 +1,82 @@
 import XCTest
+import Testing
 @testable import Kordi
+
+@Test func subsessionIsAConversationWithIdentityBoundMentionsAndSharedQueue() throws {
+    let data = try JSONSerialization.data(withJSONObject: [
+        "sessionId": "child", "parentSessionId": "group", "parentRequestId": "root",
+        "ownerAccountId": "owner", "agentId": "cloud-agent:owner",
+        "ownerDisplayName": "Owner One", "agentDisplayName": "Owner One's Kordi", "title": "Research",
+        "status": "running", "version": 2, "updatedAt": "2026-09-05T00:00:00Z", "hasFollowupExecution": true,
+        "agentAvatarUrl": "https://example.test/agent.png",
+        "participants": [["accountId": "peer", "displayName": "Peer", "avatarUrl": "https://example.test/peer.png"]],
+        "messages": [
+            ["id": "plain", "role": "user", "text": "Hello", "timestampMs": 1, "senderAccountId": "peer"],
+            ["id": "active", "role": "assistant", "text": "", "timestampMs": 2, "requestState": "running", "requestId": "a"],
+            ["id": "b", "role": "user", "text": "@KordiOwnerOne follow", "timestampMs": 3, "senderAccountId": "owner", "requestState": "queued"],
+            ["id": "reply:b", "role": "assistant", "text": "", "timestampMs": 4, "requestState": "queued", "requestId": "b"],
+            ["id": "pending", "role": "assistant", "text": "", "timestampMs": 5, "requestState": "pending", "requestId": "c"]
+        ]
+    ])
+    let snapshot = try JSONDecoder().decode(CloudAgentSubsession.self, from: data)
+    #expect(snapshot.conversation.subsessionId == "child")
+    #expect(snapshot.conversation.peerAccountId == "owner")
+    #expect(snapshot.mentionTargets(accountId: "peer").first?.agentId == "cloud-agent:owner")
+    #expect(snapshot.mentionTargets(accountId: "peer").first?.mentionText == "@KordiOwnerOne")
+    #expect(snapshot.mentionTargets(accountId: "peer").count == 1)
+    #expect(snapshot.mentionTargets(accountId: "owner").last?.avatarSource == "https://example.test/peer.png")
+    #expect(snapshot.conversation.avatarSource == "https://example.test/agent.png")
+    #expect(snapshot.conversation.groupParticipants.first?.accountId == "peer")
+    let rows = snapshot.chatMessages(accountId: "peer")
+    #expect(rows.first?.author == .me)
+    #expect(rows.first(where: { $0.id == "b" })?.author == .person)
+    #expect(rows.first(where: { $0.id == "b" })?.agentQueuePosition == 1)
+    #expect(rows.filter { $0.agentExecution != nil }.count == 1)
+    #expect(!rows.contains { $0.id == "reply:b" || $0.id == "pending" })
+}
+
+@Test(arguments: ["running", "done", "failed", "stopped"])
+func modelSubsessionIdentityAndStateRemainIndependentOfDisplayNames(status: String) throws {
+    let data = try JSONSerialization.data(withJSONObject: [
+        "sessionId": "child", "parentSessionId": "group", "parentRequestId": "request",
+        "ownerAccountId": "acct_owner", "agentId": "cloud-agent:acct_owner",
+        "ownerDisplayName": "Owner", "agentDisplayName": "Owner's Kordi", "title": "Research",
+        "status": status, "version": 2, "messages": [["id": "answer", "role": "assistant", "text": "RESULT", "timestampMs": 1000]],
+        "updatedAt": "2026-09-05T00:00:00Z"
+    ])
+    let snapshot = try JSONDecoder().decode(CloudAgentSubsession.self, from: data)
+    #expect(snapshot.sessionId == "child")
+    #expect(snapshot.parentSessionId == "group")
+    #expect(snapshot.parentRequestId == "request")
+    #expect(snapshot.agentId == "cloud-agent:acct_owner")
+    #expect(snapshot.state.rawValue == status)
+    #expect(snapshot.messages.first?.text == "RESULT")
+}
+
+@Test func executionClaimsDoNotReplaceQueueAdmission() throws {
+    func response(_ id: String, phase: String, claim: Bool = false) throws -> CloudMessageDTO {
+        var payload: [String: Any] = [
+            "requestId": "request-b", "text": "processing...", "deliveryState": "processing",
+            "execution": ["phase": phase, "summary": phase, "steps": [], "updatedAtMs": 1_000, "completed": false]
+        ]
+        if claim { payload["executionClaimId"] = "owner-device" }
+        let encoded = try JSONSerialization.data(withJSONObject: payload).base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        return CloudMessageDTO(
+            messageId: id, fromAccountId: "acct_me", toAccountId: "acct_me",
+            body: CloudMessageCodec.agentResponsePrefix + encoded,
+            createdAt: "2026-09-05T10:00:01Z", deliveredAt: nil, readAt: nil, direction: "outgoing", sessionId: "session"
+        )
+    }
+    let claim = try response("claim", phase: "preparing", claim: true)
+    let queued = try response("queued", phase: "queued")
+    #expect(CloudMessageCodec.agentExecution(claim.body) == nil)
+    #expect(CloudAgentLifecycleProjector.visibleRows([claim]).isEmpty)
+    #expect(CloudAgentLifecycleProjector.visibleRows([queued, claim]).map(\.messageId) == ["queued"])
+    #expect(CloudAgentLifecycleProjector.executionByResponseKey(in: [queued, claim]).values.first?.phase == .queued)
+}
 
 final class CloudMessageCodecTests: XCTestCase {
     func testDirectEnvelopeDecodesMacRuntimeRouteFieldNames() throws {

@@ -11,6 +11,7 @@ import type {
   MessageMention,
   Message,
   ComposerQuoteState,
+  QueuedDesktopChatMessage,
 } from '@/kordi-app/types';
 import { appendCanonicalMessageFast } from '@/lib/desktop';
 
@@ -345,6 +346,41 @@ export function failedPreparedCanonicalUserMessage(
         ...optimisticContentRecord(prepared.request.content),
         deliveryState: 'failed',
         ...(detail?.trim() ? { detail: detail.trim() } : null),
+      },
+    },
+  };
+}
+
+export function prepareCanonicalQueuedMessage(
+  message: QueuedDesktopChatMessage,
+  senderIdentityId: string | null | undefined,
+  status: 'queued' | 'sent' | 'cancelled' = 'queued',
+) {
+  const prepared = prepareCanonicalUserMessage(
+    message.sessionId, senderIdentityId, message.text, message.attachments,
+    message.time, 'desktop-chat-ui', status,
+  );
+  if (!prepared) return null;
+  const timestampMs = message.createdAtMs ?? prepared.timestampMs;
+  return {
+    ...prepared,
+    messageId: message.id,
+    timestampMs,
+    request: {
+      ...prepared.request,
+      id: message.id,
+      createdAtMs: timestampMs,
+      parentMessageId: message.messageAction?.source.sourceSessionId === message.sessionId
+        ? message.messageAction.source.sourceMessageId : null,
+      sourceEventId: `desktop-chat-ui:${message.id}`,
+      content: {
+        ...optimisticContentRecord(prepared.request.content),
+        timestampMs, deliveryState: status, queuedMessage: true, queueState: status,
+        queueUpdatedAtMs: Date.now(),
+        ...(message.messageAction ? {
+          messageAction: message.messageAction,
+          replyToMessageId: message.messageAction.source.sourceMessageId,
+        } : {}),
       },
     },
   };

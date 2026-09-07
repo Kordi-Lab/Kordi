@@ -92,10 +92,6 @@ export function useKordiAppShellComposition({
     createSideAgentSession: handleCreateSideAgentSession,
     setComposerTextForSession: setChatComposerTextForSession,
   } = useKordiSideAgentSessionActions({
-    desktopChatState: chat.desktopChatState,
-    desktopLiveTurnsBySession: chat.desktopLiveTurnsBySession,
-    queuedDesktopMessagesBySession: chat.queuedDesktopMessagesBySession,
-    mainConversationId: conversations.activeConv.id,
     isNativeShell: environment.isNativeShell,
     setComposerDrafts: ui.composerUi.setComposerDrafts,
     setDesktopChatError: chat.setDesktopChatError,
@@ -190,6 +186,8 @@ export function useKordiAppShellComposition({
       handleSetChatSessionUnread: chatSession.handleSetChatSessionUnread,
       handleMarkChatSessionsRead: chatSession.handleMarkChatSessionsRead,
       handleSetChatGroupPinned: chatSession.handleSetChatGroupPinned,
+      handleSetChatGroupMuted: chatSession.handleSetChatGroupMuted,
+      handleSetChatGroupArchived: chatSession.handleSetChatGroupArchived,
       handleDeleteChatSession: chatSession.handleDeleteChatSession,
       handleMoveChatSessionToProject:
         projectActions.handleMoveChatSessionToProject,
@@ -304,6 +302,7 @@ export function useKordiAppShellComposition({
       setChatSlashMenuIndex: ui.composerUi.setChatSlashMenuIndex,
       acceptProjectSlashCommand: composerActions.acceptProjectSlashCommand,
       acceptChatSlashCommand: composerActions.acceptChatSlashCommand,
+      acceptChatMentionTarget: composerActions.acceptChatMentionTarget,
       chatAttachmentInputRef: refs.chatAttachmentInputRef,
       chatComposerAttachments: ui.composerUi.chatComposerAttachments,
       saveDesktopAttachments: composerActions.saveDesktopAttachments,
@@ -402,8 +401,8 @@ export function useKordiAppShellComposition({
       activeSessionProject,
       activeQueuedDesktopMessages: queue.activeQueuedDesktopMessages,
       queuedDesktopMessagesBySession: chat.queuedDesktopMessagesBySession,
-      handleEditQueuedMessage: queue.handleEditQueuedMessage,
-      handleCancelQueuedMessage: queue.handleCancelQueuedMessage,
+      handleEditQueuedMessage: (sessionId, messageId) => { void queue.handleEditQueuedMessage(sessionId, messageId); },
+      handleCancelQueuedMessage: (sessionId, messageId) => { void queue.handleCancelQueuedMessage(sessionId, messageId); },
     },
     overlays: {
       showAuthGate: authNavigation.showAuthGate,

@@ -78,20 +78,20 @@ fn group_conversation_metadata(body: &str) -> Option<(Option<String>, Vec<String
 async fn ensure_response_conversation(
     pool: &PgPool,
     event: &CloudAgentResponseSyncEvent<'_>,
-) -> Result<(), sqlx_core::Error> {
+) -> Result<Option<Uuid>, sqlx_core::Error> {
     let exists: Option<(Uuid,)> = query_as(
         "SELECT conversation_id FROM cloud_chat_conversations WHERE legacy_session_id = $1",
     )
     .bind(event.session_id)
     .fetch_optional(pool)
     .await?;
-    if exists.is_some() {
-        return Ok(());
+    if let Some((id,)) = exists {
+        return Ok(Some(id));
     }
 
     let (kind, title, mut members) = if event.session_id.starts_with("session:group:") {
         let Some((title, members)) = group_conversation_metadata(event.body) else {
-            return Ok(());
+            return Ok(None);
         };
         (ConversationKind::Group, title, members)
     } else if event.from_account_id == event.to_account_id {
@@ -119,10 +119,10 @@ async fn ensure_response_conversation(
         client_session_id: event.session_id.to_string(),
         member_account_ids: members,
     };
-    store::create_conversation(pool, event.from_account_id, request)
+    let conversation = store::create_conversation(pool, event.from_account_id, request)
         .await
         .map_err(|error| sqlx_core::Error::Protocol(error.to_string()))?;
-    Ok(())
+    Ok(Some(conversation.value.id))
 }
 
 /// Publish hosted-agent terminal output into the same durable stream used by
@@ -131,17 +131,24 @@ pub(super) async fn append_cloud_agent_response_sync_event(
     pool: &PgPool,
     event: CloudAgentResponseSyncEvent<'_>,
 ) -> Result<Option<String>, sqlx_core::Error> {
-    ensure_response_conversation(pool, &event).await?;
+    let body = super::runs::subsessions::with_links(pool, event.message_id, event.body).await?;
+    let event = CloudAgentResponseSyncEvent {
+        body: &body,
+        ..event
+    };
+    let Some(destination_id) = ensure_response_conversation(pool, &event).await? else {
+        return Ok(None);
+    };
     let conversation: Option<(Uuid,)> = query_as(
         "SELECT conversation.conversation_id
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_conversation_members member
            ON member.conversation_id = conversation.conversation_id
-         WHERE conversation.legacy_session_id = $1
+         WHERE conversation.conversation_id = $1
            AND member.account_id = $2
            AND member.membership_state = 'active'",
     )
-    .bind(event.session_id)
+    .bind(destination_id)
     .bind(event.from_account_id)
     .fetch_optional(pool)
     .await?;

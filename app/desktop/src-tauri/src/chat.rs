@@ -54,39 +54,10 @@ pub(super) fn now_millis() -> i64 {
         .unwrap_or_default()
 }
 
-fn attach_cloud_scheduled_task_runtime(runtime: &mut DesktopRuntimeSession) {
-    attach_cloud_scheduled_task_runtime_for_session(runtime, None);
-}
-
-fn attach_cloud_scheduled_task_runtime_for_session(
-    runtime: &mut DesktopRuntimeSession,
-    session_id: Option<&str>,
-) {
-    match crate::cloud_session::cloud_session_load() {
-        Ok(Some(session)) if !session.token.trim().is_empty() => {
-            let api_base = match crate::cloud_api_base_url_from_env() {
-                Ok(value) => value,
-                Err(err) => {
-                    eprintln!(
-                        "Unable to attach Cloud scheduled task runtime because the API base is unsafe: {err}"
-                    );
-                    return;
-                }
-            };
-            if let Some(session_id) = session_id.map(str::trim).filter(|value| !value.is_empty()) {
-                runtime.set_scheduled_tasks_cloud_runtime_for_session(
-                    api_base,
-                    session.token,
-                    session_id.to_string(),
-                );
-            } else {
-                runtime.set_scheduled_tasks_cloud_runtime(api_base, session.token);
-            }
-        }
-        Ok(_) => {}
-        Err(err) => eprintln!("Unable to load Cloud session for scheduled task runtime: {err}"),
-    }
-}
+mod cloud_scheduled_runtime;
+use cloud_scheduled_runtime::{
+    attach_cloud_scheduled_task_runtime, attach_cloud_scheduled_task_runtime_for_session,
+};
 
 use canonical_sync::sync_completed_desktop_session_to_canonical;
 use message_route::apply_desktop_chat_message_route;
@@ -108,7 +79,7 @@ use transient_drafts::{
 
 use turns::{
     apply_desktop_turn_event, cancel_turn_by_id, desktop_task_tools_from_messages,
-    reserve_turn_if_session_idle, session_has_running_turn, snapshot_turn, turn_snapshot_by_id,
+    reserve_turn_in_session, session_has_running_turn, snapshot_turn, turn_snapshot_by_id,
     turn_snapshot_has_model_task_tools, update_turn,
 };
 
@@ -123,13 +94,17 @@ type DesktopSessionHandle = Arc<tokio::sync::Mutex<DesktopRuntimeSession>>;
 struct DesktopChatTurnHandle {
     snapshot: Arc<Mutex<DesktopChatTurnSnapshot>>,
     cancel: tokio_util::sync::CancellationToken,
+    execution_lease_deadline: Arc<Mutex<Option<std::time::Instant>>>,
 }
 
 #[derive(Clone, Default)]
 pub struct DesktopChatManager {
     sessions: Arc<tokio::sync::Mutex<HashMap<String, DesktopSessionHandle>>>,
     turns: Arc<tokio::sync::Mutex<HashMap<String, DesktopChatTurnHandle>>>,
+    session_turn_tails:
+        Arc<tokio::sync::Mutex<HashMap<String, tokio::sync::oneshot::Receiver<()>>>>,
     background_turn_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
+    shared_request_ids: Arc<tokio::sync::Mutex<std::collections::HashSet<String>>>,
 }
 
 impl DesktopChatManager {
@@ -191,9 +166,34 @@ pub async fn desktop_chat_session_detail(
 #[tauri::command]
 pub async fn desktop_chat_new_session(
     manager: State<'_, DesktopChatManager>,
+    independent: Option<bool>,
+    source_session_id: Option<String>,
 ) -> Result<DesktopChatState, String> {
     let cwd = chat_cwd()?;
-    let session_id = materialize_transient_draft_runtime(&manager, &cwd).await?;
+    let session_id = if independent.unwrap_or(false) {
+        let mut runtime =
+            kordi_cli::desktop_runtime::DesktopRuntimeSession::create_new(cwd.clone())
+                .await
+                .map_err(|error| error.to_string())?;
+        runtime
+            .materialize_session()
+            .map_err(|error| error.to_string())?;
+        let id = runtime.session_id().to_string();
+        crate::canonical_sessions::initialize_private_side_session(
+            &id,
+            source_session_id.as_deref(),
+            &cwd.to_string_lossy(),
+        )?;
+        attach_cloud_scheduled_task_runtime(&mut runtime);
+        manager
+            .sessions
+            .lock()
+            .await
+            .insert(id.clone(), Arc::new(tokio::sync::Mutex::new(runtime)));
+        id
+    } else {
+        materialize_transient_draft_runtime(&manager, &cwd).await?
+    };
     build_chat_state(&manager, &cwd, session_id).await
 }
 
@@ -464,16 +464,13 @@ pub async fn desktop_chat_fork_session_from_message(
         trimmed_entry_id,
     )?;
     let canonical_entry_match = canonical_message_id.is_some();
-    let source_is_canonical_group = canonical_entry_match
-        && crate::canonical_sessions::canonical_session_is_group_chat(trimmed_session_id)?;
     let local_session_exists =
         !canonical_entry_match && session_exists_globally(trimmed_session_id)?;
     if !canonical_entry_match && !local_session_exists {
         return Err(format!("Session not found: {trimmed_session_id}"));
     }
 
-    // Canonical-rooted entries (group / bridge / direct-agent and
-    // cloud-mirrored self-agent chats) snapshot through the canonical
+    // Canonical Agent entries snapshot through the canonical
     // path. Purely-local sessions without canonical mirroring use the
     // kordi_session fork-from-entry path. Both produce a local fork
     // the user continues from.
@@ -490,23 +487,6 @@ pub async fn desktop_chat_fork_session_from_message(
         kordi_cli::desktop_runtime::fork_session_from_message(trimmed_session_id, trimmed_entry_id)
             .map_err(|err| err.to_string())?
     };
-
-    if source_is_canonical_group {
-        // Cloud/contact/group forks are canonical Cloud sessions. Do not create
-        // or resume a localhost desktop runtime for the fork id; doing so mirrors
-        // the fork back as a self-agent session, creates fake Processing rows,
-        // and prevents peers from seeing the Cloud fork lineage consistently.
-        let fallback_session_id = ensure_loaded_session(&manager, &cwd, None).await?;
-        let state = build_chat_state(&manager, &cwd, fallback_session_id).await?;
-        return Ok(DesktopChatForkSessionResult {
-            state,
-            forked_session_id: outcome.session_id,
-            source_session_id: outcome.source_session_id,
-            source_message_id: outcome.source_entry_id,
-            selected_text: outcome.selected_text,
-            canonical_only: true,
-        });
-    }
 
     let mut runtime = kordi_cli::desktop_runtime::DesktopRuntimeSession::resume(
         std::path::PathBuf::from(&outcome.cwd),
@@ -548,14 +528,13 @@ pub async fn desktop_chat_send_message(
     let cwd = chat_cwd()?;
     let target_session_id =
         ensure_loaded_or_create_explicit_session(&manager, &cwd, session_id).await?;
-    let session = {
+    let session_handle = {
         let sessions = manager.sessions.lock().await;
         sessions
             .get(&target_session_id)
             .cloned()
             .ok_or_else(|| "Session is unavailable".to_string())?
     };
-    let session_handle = session;
     let (provider, model) = {
         let mut session = session_handle.lock().await;
         if !agent_builder::is_agent_builder_session_id(&target_session_id) {
@@ -565,7 +544,9 @@ pub async fn desktop_chat_send_message(
                 &mut session,
                 cwd.clone(),
                 &text,
+                (None, None),
                 None,
+                &[],
             )
             .await;
         }
@@ -603,6 +584,8 @@ pub async fn desktop_chat_start_message(
     context_messages: Option<Vec<DesktopChatContextMessage>>,
     visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
     scheduled_task_session_id: Option<String>,
+    request_message_id: Option<String>,
+    execution_lease_deadline_ms: Option<i64>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     message_execution::start_message(
         manager.inner(),
@@ -615,6 +598,9 @@ pub async fn desktop_chat_start_message(
             visible_task_records,
             scheduled_task_session_id,
             sync_session_at_start: false,
+            shared_context: false,
+            request_message_id,
+            execution_lease_deadline_ms,
         },
     )
     .await

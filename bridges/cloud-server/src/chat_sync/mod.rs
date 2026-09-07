@@ -9,5 +9,6 @@ pub mod realtime;
 pub mod retention;
 pub mod routes;
 pub mod store;
+pub mod visibility;
 
 pub const PROTOCOL_VERSION: i32 = 2;

@@ -17,6 +17,7 @@ import type {
 import { useDesktopMessageAttention } from '@/features/notifications/useDesktopMessageAttention';
 import { extractSessionArtifacts } from '@/features/chat/artifacts';
 import { isLocalDraftChatConversationId, isProjectDraftSessionId } from '@/features/chat/draftSessions';
+import { totalVisibleUnread } from '@/features/chat/unreadCounts';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudArtifactsForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 import { invokeDesktop } from '@/lib/desktop';
 
@@ -101,6 +102,8 @@ type UseKordiDesktopActivityArgs = {
   isDesktopCollaborationSending: boolean;
   desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot | null | undefined>;
   chatConversations: Conversation[];
+  mutedSessionIds: ReadonlySet<string>;
+  unreadSessionIds: ReadonlySet<string>;
   isNativeShell: boolean;
   attentionReady: boolean;
   chatTranscriptScrollRef: MutableRefObject<HTMLElement | null>;
@@ -128,6 +131,8 @@ export function useKordiDesktopActivity({
   isDesktopCollaborationSending,
   desktopLiveTurnsBySession,
   chatConversations,
+  mutedSessionIds,
+  unreadSessionIds,
   isNativeShell,
   attentionReady,
   chatTranscriptScrollRef,
@@ -168,8 +173,8 @@ export function useKordiDesktopActivity({
   const activeArtifacts = activeNav === 'projects' ? activeProjectArtifacts : activeChatArtifacts;
   const artifactContextKey = activeNav === 'projects' ? `projects:${activeProjectSession.id}` : `chats:${activeConv.id}`;
   const totalUnreadMessages = useMemo(
-    () => chatConversations.reduce((sum, conversation) => sum + Math.max(0, conversation.unread ?? 0), 0),
-    [chatConversations],
+    () => totalVisibleUnread(chatConversations, mutedSessionIds, unreadSessionIds),
+    [chatConversations, mutedSessionIds, unreadSessionIds],
   );
 
   useEffect(() => {

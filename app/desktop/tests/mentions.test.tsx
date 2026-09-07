@@ -227,7 +227,7 @@ test('bridge mention option text shows display names with product-facing detail 
       detail: 'Person',
     },
     {
-      label: 'Kordi',
+      label: "Alice's Kordi",
       detail: 'Owner · Alice',
     },
   ]);
@@ -308,7 +308,7 @@ test('group mention candidates include group people and approved agents, not out
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', 'agent:Kordi', 'person:Bob'],
+    ['person:Alice', "agent:Alice's Kordi", 'person:Bob'],
   );
 });
 
@@ -369,7 +369,7 @@ test('direct person mention candidates include only the contact and their agents
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Bob', 'agent:Kordi'],
+    ['person:Bob', "agent:Bob's Kordi"],
   );
 });
 
@@ -409,7 +409,7 @@ test('group mention candidates fall back to participant names when canonical det
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', 'agent:Kordi', 'person:Bob', 'agent:Kordi'],
+    ['person:Alice', "agent:Alice's Kordi", 'person:Bob', "agent:Bob's Kordi"],
   );
 });
 
@@ -467,7 +467,7 @@ test('group mention scope uses root group participants for legacy child continua
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', 'agent:Kordi', 'person:Bob', 'agent:Kordi'],
+    ['person:Alice', "agent:Alice's Kordi", 'person:Bob', "agent:Bob's Kordi"],
   );
 });
 
@@ -544,7 +544,7 @@ test('group mention candidates include server-reachable agents even without cont
 
   assert.deepEqual(
     scoped.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Bob', 'agent:Kordi'],
+    ['person:Bob', "agent:Bob's Kordi"],
   );
 });
 
@@ -577,7 +577,7 @@ test('mention candidates hide active host person and agent duplicates', () => {
 
   assert.deepEqual(
     candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', 'agent:Kordi'],
+    ['person:Alice', "agent:Alice's Kordi"],
   );
 });
 
@@ -700,7 +700,7 @@ test('buildCollaborationMentionCandidates does not expose node id duplicates whe
 
   assert.deepEqual(
     candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', 'agent:Kordi'],
+    ['person:Alice', "agent:Alice's Kordi"],
   );
   assert.equal(candidates.some((candidate) => candidate.displayLabel === 'kd_remote_node_123'), false);
 });
@@ -731,7 +731,7 @@ test('buildCollaborationMentionCandidates does not duplicate a person from their
 
   assert.deepEqual(
     candidates.map((candidate) => `${candidate.targetKind}:${candidate.displayLabel}`),
-    ['person:Alice', 'agent:Kordi'],
+    ['person:Alice', "agent:Alice's Kordi"],
   );
 });
 
@@ -802,8 +802,8 @@ test('outreach identity preserves display label while mention metadata stores sa
   const target = resolveMentionedCollaborationTarget('@AlicesKordi summarize this', collaborationState);
   assert.ok(target);
   assert.equal(target.label, 'KordiAlice');
-  assert.equal(target.displayLabel, 'Kordi');
-  assert.equal(outreachIdentityForCollaborationTarget(target).targetDisplayName, 'Kordi');
+  assert.equal(target.displayLabel, "Alice's Kordi");
+  assert.equal(outreachIdentityForCollaborationTarget(target).targetDisplayName, "Alice's Kordi");
 });
 
 test('legacy display-label matching works only when unambiguous', () => {
@@ -869,7 +869,7 @@ test('local agent labels include sanitized aliases', () => {
 
   assert.deepEqual(
     localAgentMentionLabels(chatState, bridgeStateWithPeers([])),
-    ['Kordi', 'OwnersKordi', 'MyKordi', 'MyOwnersKordi', 'HostOwnersKordi', 'HostOwnersOwnersKordi', 'agentlocal', 'localnode1', 'MyProject'],
+    ['Kordi', 'OwnersKordi', 'KordiHostOwner', 'MyKordi', 'MyOwnersKordi', 'HostOwnersKordi', 'HostOwnersOwnersKordi', 'agentlocal', 'localnode1', 'MyProject'],
   );
 });
 

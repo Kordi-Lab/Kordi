@@ -85,7 +85,7 @@ test("remaining versioned chat names are migration inputs, not live choices", as
     "app/desktop/src-tauri/src/canonical_sessions/schema.rs",
     "app/desktop/src/features/cloud/indexedDbCloudMessageCacheStore.ts",
     "app/desktop/src/features/cloud/cloudSelfAgentIdentity.ts",
-    "app/desktop/src/features/cloud/cloudSelfAgentForwardSync.ts",
+    "app/desktop/src/features/cloud/cloudSelfAgentSyncLedger.ts",
     "bridges/cloud-server/deploy/k3s/deploy-cloud-server.sh",
   ]);
   const compatibility = [
@@ -163,4 +163,27 @@ test("iOS conversation taps navigate before bounded asynchronous hydration", asy
   assert.match(model, /func loadConversation\(_ conversation: ConversationSummary\) async -> Bool/);
   assert.doesNotMatch(model, /prepareConversationForPresentation/);
   assert.match(model, /applyConversationHistoryPage[\s\S]*Task\.detached\(priority: \.userInitiated\)/);
+});
+
+test("iOS archived chats update the owning tab navigation path", async () => {
+  const [app, home] = await readFiles([
+    "app/ios/Kordi/App/KordiApp.swift",
+    "app/ios/Kordi/Features/Chats/ChatHomeView.swift",
+  ]);
+  const archivedAction = home.slice(
+    home.indexOf("private func archivedSessionActionRow"),
+    home.indexOf("\n    }", home.indexOf("private func archivedSessionActionRow")) + 6,
+  );
+
+  assert.match(
+    app,
+    /onOpenArchivedChats:\s*\{\s*chatsPath\.append\(ArchivedChatsRoute\(channel: \.contact\)\)/,
+  );
+  assert.match(
+    app,
+    /onOpenArchivedChats:\s*\{\s*agentsPath\.append\(ArchivedChatsRoute\(channel: \.agent\)\)/,
+  );
+  assert.match(app, /kordiTabBarVisibility\(isRoot: chatsPath\.isEmpty\)/);
+  assert.match(archivedAction, /if let onOpenConversation/);
+  assert.match(archivedAction, /onOpenConversation\(conversation\)/);
 });

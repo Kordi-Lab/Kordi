@@ -153,3 +153,47 @@ test('successful message deletion durably removes the native projection', () => 
   const source = readFileSync(new URL('../src/app/useKordiMessageMutations.ts', import.meta.url), 'utf8');
   assert.match(source, /await deletion;[\s\S]*deleteCanonicalCloudMessage\(messageId\)/);
 });
+
+test('group agent terminal text and reactions never use the retained waiting-slot wire row', () => {
+  const sessionId = 'session:group:agent-response';
+  const stableId = 'msg:cloud-agent-processing:request:acct_me';
+  const terminalId = 'msg:cloud-agent:terminal';
+  const wire = (id: string, text: string, deliveryState: string) => message({
+    messageId: `wire:${id}`, sessionId,
+    reactions: [{ value: id === terminalId ? '👍' : '👎', accountIds: ['acct_peer'] }],
+    body: encodeCloudGroupControl({
+      kind: 'group-message', groupId: sessionId, groupTitle: 'Group',
+      createdByAccountId: 'acct_me',
+      actor: { accountId: 'acct_me', displayName: 'Owner', role: 'person' },
+      participants: [{ accountId: 'acct_me', displayName: 'Owner', role: 'person' }],
+      message: {
+        id, text, deliveryState, senderAccountId: 'acct_me', senderKind: 'agent',
+        requestId: 'request', createdAtMs: 1_000,
+      },
+    }),
+  });
+  const terminal = wire(terminalId, 'Final answer', 'complete');
+  const state = {
+    messages: [{
+      id: stableId, sessionId, senderIdentityId: 'agent:cloud-agent:cloud-agent:acct_me',
+      senderRole: 'owned-agent', messageKind: 'agent-turn', contentText: 'Final answer',
+      content: { cloudGroupMessageId: terminalId, deliveryState: 'complete' },
+      parentMessageId: 'request', status: 'received', sequenceNum: 2,
+      createdAtMs: 1_000, updatedAtMs: 2_000, sourceTransport: 'cloud-group-agent',
+    }],
+  } as CanonicalSessionState;
+  for (const oldText of ['', 'processing...']) {
+    const waiting = wire(stableId, oldText, 'processing');
+    const staleIndex = buildCloudMessageIndex('acct_peer', { acct_me: [waiting] });
+    assert.equal(patchCanonicalCloudMessages(state, staleIndex.groupRows), state,
+      'an absent terminal wire row must not fall back to the older waiting slot');
+    for (const rows of [[waiting, terminal], [terminal, waiting]]) {
+      const index = buildCloudMessageIndex('acct_peer', { acct_me: rows });
+      const projected = patchCanonicalCloudMessages(state, index.groupRows)!;
+      assert.equal(projected.messages[0]?.contentText, 'Final answer');
+      assert.equal(projected.messages[0]?.content.cloudReactionTargetMessageId, `wire:${terminalId}`);
+      assert.deepEqual(projected.messages[0]?.content.reactions,
+        [{ value: '👍', accountIds: ['acct_peer'] }]);
+    }
+  }
+});

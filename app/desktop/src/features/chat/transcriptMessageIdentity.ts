@@ -26,6 +26,8 @@ export function transcriptMessageNavigationIds(message: Message) {
   return compactTranscriptNavigationIds([
     message.id,
     message.entryId,
+    message.clientMessageId,
+    message.reactionTargetMessageId,
     message.turn?.id,
     message.turn?.transcriptEntryId,
     ...(message.replyAliasIds ?? []),

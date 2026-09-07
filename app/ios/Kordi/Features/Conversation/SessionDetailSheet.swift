@@ -39,6 +39,9 @@ struct SessionDetailView: View {
     @State private var relatedConversation: ConversationSummary?
     @State private var participantProfileConversation: ConversationSummary?
     @State private var callStartTask: Task<Void, Never>?
+    @State private var agentThreads: [CloudAgentSubsessionTask] = []
+    @State private var agentThreadError = false
+    @State private var selectedAgentThread: CloudAgentSubsessionTask?
 
     init(conversation: ConversationSummary) {
         self.conversation = conversation
@@ -55,6 +58,11 @@ struct SessionDetailView: View {
 
     private var activity: CloudSessionActivity? {
         model.sessionActivityByID[currentConversation.sessionId]
+    }
+
+    private var legacyTasks: [CloudSessionTaskActivity] {
+        let linked = Set(agentThreads.flatMap { [$0.sessionId, $0.parentRequestId] })
+        return (activity?.tasks ?? []).filter { !linked.contains($0.taskId) && !linked.contains($0.responseMessageId ?? "") }
     }
 
     private var contact: CloudContact? {
@@ -252,6 +260,28 @@ struct SessionDetailView: View {
             await model.refreshActiveCall(in: currentConversation)
         }
         .quickLookPreview($previewURL)
+        .task(id: "\(currentConversation.sessionId):\(model.account?.accountId ?? ""):\(tab.rawValue)") {
+            agentThreads = []
+            agentThreadError = false
+            selectedAgentThread = nil
+            guard tab == .todo, currentConversation.kind != .agent else { return }
+            while !Task.isCancelled {
+                do {
+                    let next = try await model.agentSubsessionTasks(parentSessionId: currentConversation.sessionId)
+                    try Task.checkCancellation()
+                    agentThreads = next
+                    agentThreadError = false
+                } catch {
+                    if Task.isCancelled { return }
+                    agentThreads = []
+                    agentThreadError = true
+                }
+                do { try await Task.sleep(for: .seconds(3)) } catch { return }
+            }
+        }
+        .navigationDestination(item: $selectedAgentThread) { task in
+            AgentSubsessionView(sessionId: task.sessionId)
+        }
         .fullScreenCover(item: $mediaPreview) { presentation in
             MediaPreviewView(presentation: presentation)
         }
@@ -384,15 +414,42 @@ struct SessionDetailView: View {
 
     @ViewBuilder
     private var todoPage: some View {
-        if activity?.tasks.isEmpty ?? true {
+        if agentThreadError {
+            Text("Could not refresh Agent threads. Check access or try again.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        if !agentThreads.isEmpty {
+            SessionDetailCard(title: "Agent threads") {
+                ForEach(agentThreads) { task in
+                    Button { selectedAgentThread = task } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            IdentityAvatar(name: task.agentDisplayName, imageSource: task.agentAvatarUrl,
+                                kind: .agent, size: 28, seed: task.agentId)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(task.title).font(.headline)
+                                Text("\(task.agentDisplayName) · Owner · \(task.ownerDisplayName)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                TimelineView(.animation(minimumInterval: 1, paused: !task.live || task.status != "running")) { context in
+                                    Text([task.statusLabel, task.elapsedLabel(at: context.date), task.executionBackend == "desktop" ? "Mac runtime" : "Cloud runtime"].compactMap { $0 }.joined(separator: " · "))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer(minLength: 4)
+                            Image(systemName: "chevron.right")
+                        }.padding(.vertical, 4)
+                    }.buttonStyle(.plain)
+                }
+            }
+        }
+        if legacyTasks.isEmpty && agentThreads.isEmpty && !agentThreadError {
             SessionDetailEmptyState(
                 title: "No task activity yet",
                 symbol: "checkmark.circle",
                 description: "Planning and execution tasks for this session will appear here."
             )
-        } else {
+        } else if !legacyTasks.isEmpty {
             SessionDetailCard(title: "Session tasks") {
-                let tasks = activity?.tasks ?? []
+                let tasks = legacyTasks
                 ForEach(Array(tasks.enumerated()), id: \.element.id) { index, task in
                     SessionTaskRow(task: task)
                     if index < tasks.count - 1 { Divider() }
@@ -1166,7 +1223,9 @@ private struct SessionTaskRow: View {
                 if let summary = task.summary.nonEmpty {
                     Text(summary).font(.subheadline).foregroundStyle(.secondary)
                 }
-                Text(task.status.replacingOccurrences(of: "_", with: " ").capitalized)
+                Text(["active", "running", "processing"].contains(task.status.lowercased())
+                    ? "Last reported as running · Status unverified"
+                    : task.status.replacingOccurrences(of: "_", with: " ").capitalized)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(tint)
             }

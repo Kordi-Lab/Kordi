@@ -47,11 +47,15 @@
 	<string>$(KORDI_SHARE_APP_GROUP)</string>
 	<key>KordiShareCredentialService</key>
 	<string>$(KORDI_SHARE_CREDENTIAL_SERVICE)</string>
+	<key>KordiShareKeychainAccessGroup</key>
+	<string>$(AppIdentifierPrefix)$(KORDI_SHARE_CREDENTIAL_SERVICE)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Kordi reads calendars you choose to import events into your private digest. It does not send invitations.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Kordi uses the camera when you record a video message, attach a photo, or join a video call.</string>
 	<key>NSLocalNetworkUsageDescription</key>

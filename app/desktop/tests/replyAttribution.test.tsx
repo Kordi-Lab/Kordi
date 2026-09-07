@@ -1,38 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { humanRequest,turn } from "./helpers/replyAttributionFixtures";
 
-import { buildReplyAttribution, replyStatusText, shouldInferLatestHumanReplyTarget, shouldSuppressAgentReplyAttribution } from '../src/features/chat/replyAttribution';
-import type { DesktopChatTurnSnapshot, Message } from '../src/kordi-app/types';
-
-function turn(overrides: Partial<DesktopChatTurnSnapshot> = {}): DesktopChatTurnSnapshot {
-  return {
-    id: 'turn-1',
-    sessionId: 'session-1',
-    prompt: '',
-    status: 'complete',
-    message: 'Complete',
-    assistantText: 'Done',
-    thinkingText: '',
-    tools: [],
-    completed: true,
-    succeeded: true,
-    error: null,
-    ...overrides,
-  };
-}
-
-function humanRequest(overrides: Partial<Message> = {}): Message {
-  return {
-    id: 'msg:request',
-    role: 'user',
-    sender: 'Me',
-    senderType: 'human',
-    isOwnMessage: true,
-    text: '@AliceKordi review the copy and call out confusing parts.',
-    time: '10:00',
-    ...overrides,
-  };
-}
+import { projectMessageThreads } from '../src/features/chat/messageThreads';
+import { buildReplyAttribution,replyStatusText,shouldInferLatestHumanReplyTarget,shouldSuppressAgentReplyAttribution } from '../src/features/chat/replyAttribution';
+import type { Message } from '../src/kordi-app/types';
 
 test('buildReplyAttribution keeps fallback ids stable for transcript windows', () => {
   const messages: Message[] = [
@@ -57,6 +29,34 @@ test('buildReplyAttribution keeps fallback ids stable for transcript windows', (
   assert.equal(result.messages[1].id, 'transcript-message:861');
   assert.equal(result.messages[1].replyToMessageId, 'transcript-message:860');
   assert.equal(result.messages[1].turn?.sourceMessage?.messageId, 'transcript-message:860');
+});
+
+test('thread replies quote the exact trigger and replace stale quotes without changing placement', () => {
+  const old = humanRequest({id:'old',text:'@MyKordi OLD-REQUEST'});
+  const root = humanRequest({id:'root',text:'Discussion root'});
+  const action = {schemaVersion:1 as const,kind:'thread' as const,source:{sourceSessionId:'session',sourceMessageId:'root',senderLabel:'Me',textPreview:'Discussion root',attachmentCount:0}};
+  const question = humanRequest({id:'question',reactionTargetMessageId:'wire-question',text:'@KordiOwner What are we discussing?',messageAction:action,replyToMessageId:'root'});
+  const stale = {messageId:'old',senderLabel:'Me',text:old.text};
+  const response: Message = {id:'response',role:'owned-agent',sender:'Researcher',senderType:'agent',text:'',time:'',
+    messageAction:action,replyToMessageId:'wire-question',sourceMessage:stale,
+    turn:turn({replyToMessageId:'wire-question',sourceMessage:stale})};
+  const linked = buildReplyAttribution([old,root,question,response],null,{inferLatestHumanRequest:true});
+  const answer = linked.messages[3];
+  assert.equal(answer.sourceMessage?.messageId,'question');
+  assert.equal(answer.turn?.sourceMessage?.text,question.text);
+  assert.equal(answer.messageAction?.source.sourceMessageId,'root');
+  assert.equal(linked.messages[2].sourceMessage,undefined);
+  assert.equal(buildReplyAttribution(linked.messages).messages[3].turn?.sourceMessage?.messageId,'question');
+  assert.equal(buildReplyAttribution([answer]).messages[0].turn?.sourceMessage?.messageId,'question');
+  assert.deepEqual(projectMessageThreads(linked.messages).threads.get('root')?.replies.map(row=>row.id),['question','response']);
+  for (const target of ['not-loaded',undefined]) {
+    const missing = {...response,replyToMessageId:target,turn:turn({replyToMessageId:target,sourceMessage:stale})};
+    const result = buildReplyAttribution([old,root,missing],null,{inferLatestHumanRequest:true}).messages[2];
+    assert.equal(result.sourceMessage,undefined);
+    assert.equal(result.turn?.sourceMessage,undefined);
+    assert.equal(result.replyToMessageId,target);
+    assert.equal(result.messageAction?.source.sourceMessageId,'root');
+  }
 });
 
 test('buildReplyAttribution adds generic reply count and source quote without responder names', () => {
@@ -337,15 +337,6 @@ test('shouldInferLatestHumanReplyTarget enables fallback linking for person, ext
   assert.equal(shouldInferLatestHumanReplyTarget({ type: 'owned-agent', participantSpaceId: null, canonicalParticipantCount: 1 }), false);
 });
 
-test('shouldInferLatestHumanReplyTarget does not quote new private self-agent fork turns', () => {
-  assert.equal(shouldInferLatestHumanReplyTarget({
-    type: 'owned-agent',
-    participantSpaceId: null,
-    canonicalParticipantCount: 1,
-    forkedFromSessionId: 'parent-self-session',
-  }), false);
-});
-
 test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent conversations', () => {
   assert.equal(shouldSuppressAgentReplyAttribution({
     id: 'session:self-agent:1',
@@ -358,13 +349,6 @@ test('shouldSuppressAgentReplyAttribution is scoped to direct self-agent convers
     type: 'owned-agent',
     participantSpaceId: 'space-1',
     canonicalParticipantCount: 4,
-  }), false);
-  assert.equal(shouldSuppressAgentReplyAttribution({
-    id: 'session:self-agent-group-fork',
-    type: 'owned-agent',
-    participantSpaceId: null,
-    canonicalParticipantCount: 1,
-    forkedFromSessionId: 'session:group:1',
   }), false);
   assert.equal(shouldSuppressAgentReplyAttribution({ id: 'session:project:1', type: 'owned-agent', participantSpaceId: 'space:project', canonicalParticipantCount: 4 }), false);
   assert.equal(shouldSuppressAgentReplyAttribution({
@@ -408,11 +392,12 @@ test('buildReplyAttribution resolves canonical bridge parent aliases as the sour
   assert.equal(result.messages[1]?.turn?.sourceMessage?.senderLabel, 'Maya');
 });
 
-test('buildReplyAttribution falls back to visible request when explicit reply target was hidden as duplicate', () => {
+test('buildReplyAttribution resolves a known duplicate alias without guessing a different request', () => {
   const messages: Message[] = [
     humanRequest({
       id: 'msg:visible-ui-request',
       text: '@MyKordi how are yo',
+      replyAliasIds: ['msg:hidden-runtime-duplicate'],
     }),
     {
       id: 'msg:my-agent-response',

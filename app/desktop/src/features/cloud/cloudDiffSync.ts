@@ -44,6 +44,12 @@ export function cloudSessionVisibilityStorageKey(accountId: string): string {
   return `${CLOUD_SESSION_VISIBILITY_PREFIX}${accountId.trim()}`;
 }
 
+export function hasCachedCloudSessionVisibility(accountId: string | null | undefined, storage: Storage | null = browserLocalStorage()): boolean {
+  if (!accountId || !storage) return false;
+  try { return objectRecord(JSON.parse(storage.getItem(cloudSessionVisibilityStorageKey(accountId)) ?? '{}'))?.snapshotVersion === 1; }
+  catch { return false; }
+}
+
 function browserLocalStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -133,6 +139,7 @@ export function saveCloudSessionVisibility(
   if (!trimmedAccountId || !storage) return;
   try {
     storage.setItem(cloudSessionVisibilityStorageKey(trimmedAccountId), JSON.stringify({
+      snapshotVersion: 1,
       hiddenSessionIds: [...visibility.hiddenSessionIds].map((value) => value.trim()).filter(Boolean),
       deletedSessionIds: [...visibility.deletedSessionIds].map((value) => value.trim()).filter(Boolean),
       unreadSessionIds: [...visibility.unreadSessionIds].map((value) => value.trim()).filter(Boolean),
@@ -150,13 +157,18 @@ export function applyCloudSyncEventsToSessionVisibility(
   current: CloudSessionVisibilityState,
   events: CloudSyncEvent[],
 ): CloudSessionVisibilityState {
-  const hiddenSessionIds = new Set(current.hiddenSessionIds);
-  const deletedSessionIds = new Set(current.deletedSessionIds);
-  const unreadSessionIds = new Set(current.unreadSessionIds);
-  const pinnedSessionIds = new Set(current.pinnedSessionIds);
-  const mutedSessionIds = new Set(current.mutedSessionIds);
-  const pinnedGroupSpaceIds = new Set(current.pinnedGroupSpaceIds);
-  for (const event of events) {
+  const snapshot = [...events].reverse().find(event => event.eventType === 'session.visibility.snapshot');
+  const raw = objectRecord(objectRecord(snapshot?.payload)?.visibility);
+  const initial = (key: keyof CloudSessionVisibilityState) => new Set<string>(
+    raw ? normalizeSessionIdList(raw[key]) : current[key],
+  );
+  const hiddenSessionIds = initial('hiddenSessionIds');
+  const deletedSessionIds = initial('deletedSessionIds');
+  const unreadSessionIds = initial('unreadSessionIds');
+  const pinnedSessionIds = initial('pinnedSessionIds');
+  const mutedSessionIds = initial('mutedSessionIds');
+  const pinnedGroupSpaceIds = initial('pinnedGroupSpaceIds');
+  for (const event of snapshot ? events.slice(events.lastIndexOf(snapshot) + 1) : events) {
     const sessionId = cloudSyncEventSessionId(event);
     if (!sessionId) continue;
     if (event.eventType === 'session.hidden') {
@@ -422,8 +434,8 @@ export async function syncCloudDiffOnce(input: SyncCloudDiffOnceInput): Promise<
     input.accountId,
     input.messagesByPeer,
     events,
-    initialHiddenSessionIds,
-    initialDeletedSessionIds,
+    visibility.hiddenSessionIds,
+    visibility.deletedSessionIds,
   );
   const sessionActivity = applyCloudSyncEventsToSessionActivity(
     input.sessionActivity ?? EMPTY_CLOUD_SESSION_ACTIVITY,

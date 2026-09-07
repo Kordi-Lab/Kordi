@@ -1,6 +1,115 @@
 import XCTest
 import SwiftUI
+import Testing
 @testable import Kordi
+
+@MainActor
+struct AgentThreadBoundaryTests {
+    @Test(arguments: ["acct_owner", "acct_requester"])
+    func responseQuotesItsActualRequestInsteadOfTheThreadRoot(viewer: String) throws {
+        let conversation = ConversationSummary(id:"contact",kind:.person,peerAccountId:"acct_owner",agentId:nil,
+            ownerDisplayName:"Owner",displayName:"Owner",lastMessage:"",lastActivityAt:.distantPast,
+            unreadCount:0,avatarSource:nil,agentActivity:nil,sessionId:"session:contact:thread")
+        let action = MessageActionMetadata.thread(MessageActionSource(sourceSessionId:conversation.sessionId,sourceMessageId:"root",senderLabel:"Requester",textPreview:"Discussion root",attachmentCount:0))
+        let request = try CloudMessageCodec.encodeDirect(text:"@KordiOwner What are we discussing?",agentId:"cloud-agent:acct_owner",agentName:"Kordi",ownerAccountId:"acct_owner",ownerName:"Owner",messageAction:action)
+        let payload: [String:Any] = ["kind":"agent-response","requestId":"question","deliveryState":"complete","text":"Current answer",
+            "messageAction": ["schemaVersion":1,"kind":"thread","source":["sourceSessionId":conversation.sessionId,"sourceMessageId":"root","senderLabel":"Requester","textPreview":"Discussion root","attachmentCount":0]]]
+        let response = CloudMessageCodec.agentResponsePrefix + (try JSONSerialization.data(withJSONObject:payload)).base64EncodedString()
+        func wire(_ id:String,_ sender:String,_ body:String) -> CloudMessageDTO {
+            CloudMessageDTO(messageId:id,fromAccountId:sender,toAccountId:"acct_requester",body:body,createdAt:"2026-09-01T00:00:01Z",deliveredAt:nil,readAt:nil,direction:"incoming",sessionId:conversation.sessionId)
+        }
+        let messages = CloudDirectMessageProjector.project([wire("root","acct_requester","Discussion root"),wire("question","acct_requester",request),wire("answer","acct_owner",response)],conversation:conversation,ownAccountId:viewer)
+        let answer = try #require(messages.first { $0.id == "answer" })
+        #expect(answer.replyToMessageId == "question")
+        #expect(answer.quotedReplyMessageId == "question")
+        #expect(answer.messageAction?.source.sourceMessageId == "root")
+        #expect(messages.first { $0.id == "question" }?.quotedReplyMessageId == nil)
+        #expect(MessageThreadProjection(messages:messages).thread(rootID:"root")?.replies.count == 2)
+    }
+
+    @Test(arguments: ["processing", "complete", "failed", "cancelled"])
+    func responseStaysInThreadWithLiveState(state: String) throws {
+        let conversation = ConversationSummary(
+            id: "contact", kind: .person, peerAccountId: "acct_owner", agentId: nil,
+            ownerDisplayName: "Owner", displayName: "Owner", lastMessage: "", lastActivityAt: .distantPast,
+            unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: "session:contact:thread"
+        )
+        let requestBody = try CloudMessageCodec.encodeDirect(
+            text: "@KordiOwner research", agentId: "cloud-agent:acct_owner", agentName: "Kordi",
+            ownerAccountId: "acct_owner", ownerName: "Owner"
+        )
+        let payload: [String: Any] = [
+            "kind": "agent-response", "requestId": "root", "deliveryState": state,
+            "text": state == "processing" ? "" : "THREAD_ONLY_RESULT",
+            "messageAction": ["schemaVersion": 1, "kind": "thread", "source": [
+                "sourceSessionId": conversation.sessionId, "sourceMessageId": "root",
+                "senderLabel": "Requester", "textPreview": "Research", "attachmentCount": 0
+            ]]
+        ]
+        let body = CloudMessageCodec.agentResponsePrefix
+            + (try JSONSerialization.data(withJSONObject: payload)).base64EncodedString()
+        func wire(_ id: String, _ sender: String, _ text: String) -> CloudMessageDTO {
+            CloudMessageDTO(messageId: id, fromAccountId: sender, toAccountId: "acct_requester", body: text,
+                createdAt: "2026-09-01T00:00:01Z", deliveredAt: nil, readAt: nil,
+                direction: "incoming", sessionId: conversation.sessionId)
+        }
+        let messages = CloudDirectMessageProjector.project(
+            [wire("root", "acct_requester", requestBody), wire("result", "acct_owner", body)],
+            conversation: conversation, ownAccountId: "acct_requester"
+        )
+        let projection = MessageThreadProjection(messages: messages)
+        let thread = try #require(projection.thread(rootID: "root"))
+        #expect(projection.mainMessages.map(\.id) == ["root"])
+        #expect(thread.replies.count == 1)
+        #expect(thread.replies.first?.senderOwnerName == "Owner")
+        #expect(thread.replies.first?.messageAction?.source.sourceSessionId == conversation.sessionId)
+        #expect(thread.replies.first?.requestMessageId == "root")
+        let expected: BackgroundAgentSession.State = switch state {
+        case "processing": .running
+        case "failed": .failed
+        case "cancelled": .stopped
+        default: .done
+        }
+        #expect(thread.agentState == expected)
+        if state != "processing" { #expect(thread.replies.first?.text == "THREAD_ONLY_RESULT") }
+    }
+}
+
+@Test
+func contactAgentNameUsesRequestOwnerIdentity() throws {
+    let conversation = ConversationSummary(
+        id: "contact", kind: .person, peerAccountId: "acct_peer", agentId: nil,
+        ownerDisplayName: "Peer", displayName: "Peer", lastMessage: "", lastActivityAt: .distantPast,
+        unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: "session:contact"
+    )
+    func wire(_ id: String, _ sender: String, _ body: String) -> CloudMessageDTO {
+        CloudMessageDTO(messageId: id, fromAccountId: sender, toAccountId: "acct_peer", body: body,
+            createdAt: "2026-09-01T00:00:01Z", deliveredAt: nil, readAt: nil,
+            direction: "outgoing", sessionId: conversation.sessionId)
+    }
+    let response = CloudMessageCodec.agentResponsePrefix + Data(
+        #"{"kind":"agent-response","requestId":"request","text":"ACK","deliveryState":"complete"}"#.utf8
+    ).base64EncodedString()
+    for name in ["Kordi", "Scout"] {
+        let request = try CloudMessageCodec.encodeDirect(text: "@KordiOwner reply once",
+            agentId: "cloud-agent:acct_me", agentName: name,
+            ownerAccountId: "acct_me", ownerName: "Owner")
+        let messages = CloudDirectMessageProjector.project(
+            [wire("request", "acct_me", request), wire("response", "acct_me", response)],
+            conversation: conversation, ownAccountId: "acct_me"
+        )
+        let reply = try #require(messages.first { $0.author == .agent })
+        #expect(reply.authorName == (name == "Kordi" ? "Owner's Kordi" : "Scout"))
+        #expect(reply.senderOwnerName == "Owner")
+        #expect(reply.requestMessageId == "request")
+        #expect(CloudMessageCodec.directEnvelope(request)?.targetCloudAgentId == "cloud-agent:acct_me")
+        let mismatched = CloudDirectMessageProjector.project(
+            [wire("request", "acct_me", request), wire("response", "acct_peer", response)],
+            conversation: conversation, ownAccountId: "acct_me"
+        )
+        #expect(mismatched.first { $0.author == .agent }?.senderOwnerName == "Peer")
+    }
+}
 
 final class CloudDirectMessageProjectorTests: XCTestCase {
     func testProjectorPreservesCanonicalBlobReactionTargetAndActors() throws {
@@ -387,6 +496,14 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
             deliveryState: "complete"
         )
 
+        let waiting = try XCTUnwrap(CloudDirectMessageProjector.project(
+            [wire(id: "msg_processing", body: processing, createdAt: "2026-08-08T10:00:01Z")],
+            conversation: conversation, ownAccountId: "acct_me"
+        ).first?.agentExecution)
+        XCTAssertTrue(MessageBubble.showsAgentWaitingIndicator(execution: waiting, responseText: ""))
+        XCTAssertNil(waiting.thinkingText)
+        XCTAssertNil(waiting.tools)
+
         let projected = CloudDirectMessageProjector.project(
             [
                 wire(id: "msg_request", body: "Prepare the rollout", createdAt: "2026-08-08T10:00:00Z"),
@@ -535,7 +652,10 @@ final class CloudDirectMessageProjectorTests: XCTestCase {
         )
 
         XCTAssertEqual(ownerProjected.first?.agentExecution?.phase, .analyzing)
-        XCTAssertNil(peerProjected.first?.agentExecution)
+        XCTAssertEqual(peerProjected.first?.agentExecution?.phase, .preparing)
+        XCTAssertEqual(peerProjected.first?.agentExecution?.steps, [])
+        XCTAssertNil(peerProjected.first?.agentExecution?.thinkingText)
+        XCTAssertNil(peerProjected.first?.agentExecution?.tools)
     }
 
     func testLatestOwnerProcessingSnapshotStreamsInPlace() throws {

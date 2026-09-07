@@ -118,11 +118,9 @@ export function cloudGroupCanonicalMessageSource(
   const message = envelope.message;
   const messageId = wire.messageId.trim();
   if (envelope.kind !== 'group-message' || !message || !messageId) return null;
-  const sourceTransport = message.forkSnapshot
-    ? 'cloud-group-fork-snapshot'
-    : message.senderKind === 'agent'
-      ? 'cloud-group-agent'
-      : 'cloud-group';
+  const sourceTransport = message.senderKind === 'agent'
+    ? 'cloud-group-agent'
+    : 'cloud-group';
   const version = Number(wire.version);
   const versionedSource = Number.isSafeInteger(version) && (
     version > 1
@@ -245,7 +243,6 @@ export function buildCloudMessageIndex(
     if (groupSpaceId) pushMapValue(mutableRowsBySpaceId, groupSpaceId, row);
     if (
       envelope.kind === 'group-message'
-      && !envelope.message?.forkSnapshot
       && !legacyGroupSessionTitleSeededIds.has(envelope.groupId)
     ) {
       legacyGroupSessionTitleSeededIds.add(envelope.groupId);

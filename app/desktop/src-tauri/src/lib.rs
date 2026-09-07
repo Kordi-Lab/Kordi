@@ -8,6 +8,7 @@ use cloud_api_endpoint::cloud_api_base_url_from_env;
 mod cloud_oauth_loopback;
 mod cloud_presence;
 mod cloud_session;
+mod digest_calendar;
 mod link_preview;
 mod media_preview_window;
 mod menu_bar;
@@ -234,6 +235,10 @@ pub fn run() {
             desktop_reveal_media_preview_window,
             menu_bar::desktop_set_menu_bar_unread_count,
             message_notification::desktop_notification_permission_state,
+            digest_calendar::desktop_digest_calendars,
+            digest_calendar::desktop_digest_fetch_ics,
+            digest_calendar::desktop_digest_calendar_events,
+            digest_calendar::desktop_digest_reminders,
             message_notification::desktop_request_notification_permission,
             message_notification::desktop_show_message_notification,
             project::desktop_project_settings,
@@ -368,10 +373,14 @@ pub fn run() {
             chat::desktop_chat_send_message,
             chat::desktop_chat_start_message,
             chat::background_tasks::desktop_chat_start_shared_message,
+            chat::background_tasks::snapshots::desktop_chat_subsession_ids,
+            chat::background_tasks::snapshots::desktop_chat_subsession_snapshot,
             chat::desktop_chat_run_skill_command,
             chat::desktop_chat_cancel_turn,
+            chat::turns::desktop_chat_renew_execution_lease,
             chat::desktop_chat_turn_state,
             chat::turns::desktop_chat_active_turns,
+            chat::turns::desktop_chat_session_active_turn,
             skill_library::desktop_skill_library_list,
             skill_library::desktop_skill_library_detail,
             skill_library::desktop_skill_library_read_file,

@@ -5,6 +5,33 @@ export type MessageThread = {
   replies: Message[];
 };
 
+export function resolveThreadMessageId(reference: string, primaryIdByAlias?: ReadonlyMap<string, string>): string {
+  const exact = primaryIdByAlias?.get(reference);
+  if (exact) return exact;
+  const suffix = reference.slice(reference.lastIndexOf(':') + 1);
+  if (reference.startsWith('collaboration-message:')
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(suffix)) {
+    return primaryIdByAlias?.get(suffix) ?? reference;
+  }
+  return reference;
+}
+
+function threadAgentState(messages: readonly Message[]): NonNullable<Message['threadSummary']>['agentState'] {
+  const turns = new Map<string, NonNullable<Message['turn']>>();
+  for (const message of messages) {
+    if (!message.turn) continue;
+    const key = message.turn.replyToMessageId || message.replyToMessageId || messageId(message);
+    if (turns.get(key)?.completed && !message.turn.completed) continue;
+    turns.set(key, message.turn);
+  }
+  const values = [...turns.values()];
+  if (values.some((turn) => !turn.completed)) return 'running';
+  const latest = values[values.length - 1];
+  if (!latest) return undefined;
+  if (latest.status === 'cancelled') return 'stopped';
+  return latest.succeeded ? 'done' : 'failed';
+}
+
 function messageId(message: Message) {
   return message.id?.trim() || message.entryId?.trim() || message.turn?.id.trim() || '';
 }
@@ -14,8 +41,8 @@ function messageIds(message: Message) {
     message.replyToMessageId?.trim(),
     message.turn?.replyToMessageId?.trim(),
   ].filter(Boolean));
-  return [...new Set([messageId(message), ...(message.replyAliasIds ?? [])]
-    .map((id) => id.trim())
+  return [...new Set([messageId(message), message.entryId, message.clientMessageId, message.reactionTargetMessageId, ...(message.replyAliasIds ?? [])]
+    .map((id) => id?.trim() ?? '')
     .filter((id) => Boolean(id) && !replyTargetIds.has(id)))];
 }
 
@@ -45,7 +72,7 @@ export function threadRootMessageId(message: Message) {
 
 export function threadRootSource(message: Message, sessionId: string): MessageActionSource | null {
   if (message.messageAction?.kind === 'thread') return message.messageAction.source;
-  const sourceMessageId = messageId(message);
+  const sourceMessageId = message.reactionTargetMessageId?.trim() || messageId(message);
   if (!sourceMessageId || !sessionId.trim()) return null;
   return {
     sourceSessionId: sessionId,
@@ -85,10 +112,10 @@ export function projectMessageThreads(messages: readonly Message[]) {
     resolvingMessageIds.add(id);
     const explicitRootAlias = threadRootMessageId(message);
     const explicitRootId = explicitRootAlias
-      ? primaryIdByAlias.get(explicitRootAlias) ?? explicitRootAlias
+      ? resolveThreadMessageId(explicitRootAlias, primaryIdByAlias)
       : null;
     const parentAlias = message.replyToMessageId?.trim() || message.turn?.replyToMessageId?.trim();
-    const parentId = parentAlias ? primaryIdByAlias.get(parentAlias) ?? parentAlias : null;
+    const parentId = parentAlias ? resolveThreadMessageId(parentAlias, primaryIdByAlias) : null;
     const parent = parentId ? roots.get(parentId) : null;
     const rootId = explicitRootId || (parent ? resolveThreadRootId(parent) : null);
     resolvingMessageIds.delete(id);
@@ -103,7 +130,7 @@ export function projectMessageThreads(messages: readonly Message[]) {
     if (!rootId) return;
     appendingMessageIds.add(id);
     const parentAlias = message.replyToMessageId?.trim() || message.turn?.replyToMessageId?.trim();
-    const parentId = parentAlias ? primaryIdByAlias.get(parentAlias) ?? parentAlias : null;
+    const parentId = parentAlias ? resolveThreadMessageId(parentAlias, primaryIdByAlias) : null;
     const parent = parentId ? roots.get(parentId) : null;
     if (parent && resolveThreadRootId(parent) === rootId) appendThreadMessage(parent);
     appendingMessageIds.delete(id);
@@ -126,10 +153,12 @@ export function projectMessageThreads(messages: readonly Message[]) {
       .filter((message) => !messageIds(message).some((id) => rootIdByThreadMessageId.has(id)))
       .filter(messageHasVisibleContent)
       .map((message) => {
-        const count = replies.get(messageId(message))?.length ?? 0;
-        return count > 0 ? { ...message, threadSummary: { replyCount: count } } : message;
+        const threadReplies = replies.get(messageId(message)) ?? [];
+        const count = threadReplies.length;
+        return count > 0 ? { ...message, threadSummary: { replyCount: count, agentState: threadAgentState(threadReplies) } } : message;
     }),
     threads,
+    primaryIdByAlias,
     threadRootIdByMessageId: rootIdByThreadMessageId,
   };
 }
@@ -143,9 +172,7 @@ export function messagesWithThreadReplyCounts(
   optimisticReplyCount?: number,
 ) {
   return messages.map((message) => {
-    const ids = [message.id, message.entryId, ...(message.replyAliasIds ?? [])]
-      .map((id) => id?.trim())
-      .filter(Boolean);
+    const ids = messageIds(message);
     const actualCount = message.threadSummary?.replyCount ?? 0;
     const optimisticCount = optimisticReplyCount
       && optimisticConversationId === conversationId
@@ -155,20 +182,22 @@ export function messagesWithThreadReplyCounts(
       : 0;
     const liveCount = liveThreadRootId && ids.includes(liveThreadRootId) ? 1 : 0;
     const replyCount = Math.max(optimisticCount, actualCount + liveCount);
-    return replyCount !== actualCount ? { ...message, threadSummary: { replyCount } } : message;
+    return replyCount !== actualCount ? { ...message, threadSummary: { ...message.threadSummary, replyCount } } : message;
   });
 }
 
 export function projectQueuedThreadMessages(
   messages: readonly QueuedDesktopChatMessage[],
   activeThreadRootId?: string | null,
+  primaryIdByAlias?: ReadonlyMap<string, string>,
 ) {
   return {
     mainMessages: messages.filter((message) => message.messageAction?.kind !== 'thread'),
     activeThreadMessages: activeThreadRootId
       ? messages.filter((message) => (
           message.messageAction?.kind === 'thread'
-          && message.messageAction.source.sourceMessageId === activeThreadRootId
+          && resolveThreadMessageId(message.messageAction.source.sourceMessageId, primaryIdByAlias)
+            === resolveThreadMessageId(activeThreadRootId, primaryIdByAlias)
         ))
       : [],
   };

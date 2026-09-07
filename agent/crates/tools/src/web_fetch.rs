@@ -35,6 +35,10 @@ pub struct WebFetchTool;
 
 #[async_trait]
 impl Tool for WebFetchTool {
+    fn allows_shared_requests(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &str {
         "web_fetch"
     }
@@ -84,11 +88,16 @@ impl Tool for WebFetchTool {
 
         emit_progress_line(ctx, format!("Fetching: {url}"));
 
-        let client = create_web_client(
-            "web_fetch",
-            Duration::from_secs_f64(timeout_secs),
-            MAX_REDIRECTS,
-        )?;
+        let client = if ctx.execution_policy == crate::ExecutionPolicy::Shared {
+            crate::web::public::validate_url(&url)?;
+            crate::web::public::client(Duration::from_secs_f64(timeout_secs), MAX_REDIRECTS)?
+        } else {
+            create_web_client(
+                "web_fetch",
+                Duration::from_secs_f64(timeout_secs),
+                MAX_REDIRECTS,
+            )?
+        };
 
         let response = send_with_cancel(
             client.get(url.clone()),

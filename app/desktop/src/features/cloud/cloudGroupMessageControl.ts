@@ -157,6 +157,7 @@ export async function applyCloudGroupMessageControl({
   const messageAlreadyExists = existingCloudGroupMessage?.sourceTransport === incomingSourceTransport
     && existingCloudGroupMessage.sourceEventId === incomingSourceEventId
     && existingCloudMessageVersion >= (cloudMessage.version ?? 1)
+    && existingCloudGroupContent.conversationSequence === cloudMessage.conversationSequence
     && stateOps.incomingAlreadyApplied(
       existingCloudGroupMessage,
       agentDeliveryState ?? humanOutgoingDeliveryState,
@@ -319,6 +320,7 @@ export async function applyCloudGroupMessageControl({
       content: senderIsAgent ? {
         ...structuredContent,
         cloudMessageVersion: cloudMessage.version ?? null,
+        conversationSequence: cloudMessage.conversationSequence,
         editedAt: cloudMessage.editedAt ?? null,
         ...(message.mentions?.length ? { mentions: message.mentions } : {}),
         sender: cloudAgentDisplayName(message.senderDisplayName),
@@ -335,6 +337,7 @@ export async function applyCloudGroupMessageControl({
       } : (Object.keys(structuredContent).length > 0 || mappedAttachments.length > 0 || message.voiceMessage?.mediaId || message.mentions?.length || message.messageAction) ? {
         ...structuredContent,
         cloudMessageVersion: cloudMessage.version ?? null,
+        conversationSequence: cloudMessage.conversationSequence,
         editedAt: cloudMessage.editedAt ?? null,
         ...(mappedAttachments.length > 0 ? { attachments: mappedAttachments } : {}),
         ...(message.voiceMessage?.mediaId ? {
@@ -352,6 +355,7 @@ export async function applyCloudGroupMessageControl({
         } : {}),
       } : {
         cloudMessageVersion: cloudMessage.version ?? null,
+        conversationSequence: cloudMessage.conversationSequence,
         editedAt: cloudMessage.editedAt ?? null,
       },
       createdAtMs: message.createdAtMs,

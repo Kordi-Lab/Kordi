@@ -119,6 +119,7 @@ export type ChatsPageComposer = {
   chatSlashMenuIndex: number;
   setChatSlashMenuIndex: Dispatch<SetStateAction<number>>;
   acceptChatSlashCommand: (value: string) => void;
+  acceptChatMentionTarget: (option: ComposerMentionOption) => void;
   chatAttachmentInputRef: RefObject<HTMLInputElement | null>;
   chatComposerAttachments: ChatAttachment[];
   saveDesktopAttachments: (
@@ -224,7 +225,7 @@ export type ChatsPageRuntime = {
     attachmentOverride?: AttachmentItem[],
     quoteOverride?: ComposerQuoteState | null,
   ) => Promise<void> | void;
-  onCreateAgentSession?: () => string | null | Promise<string | null>;
+  onCreateAgentSession?: (sourceSessionId?: string) => string | null | Promise<string | null>;
 };
 
 export type ChatsPageAuth = {
@@ -243,6 +244,7 @@ export type ChatsPageProps = {
 };
 
 export type ChatSessionPaneViewport = {
+  navigationAccessory?: ReactNode;
   sessionKey: string;
   messages: readonly Message[];
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -261,6 +263,7 @@ export type ChatSessionPaneViewport = {
 };
 
 export type ChatSessionPanePresentation = {
+  firstUnreadMessageId?: string|null;
   liveTurn?: DesktopChatTurnSnapshot | null;
   liveTurnSender: string;
   shouldRenderLiveTurn: boolean;
@@ -301,7 +304,7 @@ export type ChatSessionPaneActions = {
     typeof MessageBubble
   >['onOpenSenderProfile'];
   onForkMessage?: (entryId: string) => void;
-  onOpenForkSession?: (sessionId: string) => void;
+  onOpenForkSession?: (sessionId: string, isSubsession?: boolean) => void;
   onReplyMessage?: (message: Message, destination: MessageReplyDestination) => void;
   onOpenMessageThread?: (message: Message) => void;
   onForwardMessage?: (message: Message) => void;

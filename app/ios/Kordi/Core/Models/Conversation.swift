@@ -26,6 +26,10 @@ enum AgentActivity: String, Codable, Hashable {
         case .failed: "Needs attention"
         }
     }
+
+    var listLabel: String? {
+        self == .failed ? nil : label
+    }
 }
 
 enum AgentExecutionLocation: Hashable {
@@ -42,6 +46,39 @@ enum AgentExecutionLocation: Hashable {
     }
 }
 
+func chatListTimestamp(
+    _ date: Date,
+    now: Date = Date(),
+    calendar: Calendar = .autoupdatingCurrent,
+    locale: Locale = .autoupdatingCurrent
+) -> String {
+    if date == .distantPast { return "" }
+    let format = Date.FormatStyle(
+        date: .omitted,
+        time: .omitted,
+        locale: locale,
+        calendar: calendar,
+        timeZone: calendar.timeZone
+    )
+    if calendar.isDate(date, inSameDayAs: now) {
+        return date.formatted(Date.FormatStyle(
+            date: .omitted,
+            time: .shortened,
+            locale: locale,
+            calendar: calendar,
+            timeZone: calendar.timeZone
+        ))
+    }
+    if let yesterday = calendar.date(byAdding: .day, value: -1, to: now),
+       calendar.isDate(date, inSameDayAs: yesterday) {
+        return "Yesterday"
+    }
+    let monthAndDay = format.month(.twoDigits).day(.twoDigits)
+    return calendar.component(.year, from: date) == calendar.component(.year, from: now)
+        ? date.formatted(monthAndDay)
+        : date.formatted(monthAndDay.year())
+}
+
 struct ConversationSummary: Identifiable, Hashable {
     let id: String
     let kind: ConversationKind
@@ -53,6 +90,7 @@ struct ConversationSummary: Identifiable, Hashable {
     var lastAttachment: ChatAttachment?
     var lastActivityAt: Date
     var unreadCount: Int
+    var threadAttention: CloudThreadAttention? = nil
     var unreadMentionCount: Int
     var lastReadSequence: Int64
     var avatarSource: String?
@@ -63,6 +101,9 @@ struct ConversationSummary: Identifiable, Hashable {
     let groupParticipants: [CloudGroupParticipant]
     let messageCount: Int?
     let forkedFromSessionId: String?
+    /// A locally created agent session has no remote history until its first send.
+    let isLocalDraft: Bool
+    let subsessionId: String?
 
     init(
         id: String,
@@ -84,13 +125,15 @@ struct ConversationSummary: Identifiable, Hashable {
         messageCount: Int? = nil,
         forkedFromSessionId: String? = nil,
         unreadMentionCount: Int = 0,
-        lastReadSequence: Int64 = 0
+        lastReadSequence: Int64 = 0,
+        isLocalDraft: Bool = false,
+        subsessionId: String? = nil
     ) {
         self.id = id
         self.kind = kind
         self.peerAccountId = peerAccountId
         self.agentId = kind == .agent
-            ? agentId?.nonEmpty ?? CanonicalAvatarSystem.defaultAgentId
+            ? CanonicalAvatarSystem.agentID(agentId, ownerAccountID: peerAccountId)
             : agentId
         self.ownerDisplayName = ownerDisplayName
         self.displayName = displayName
@@ -108,6 +151,8 @@ struct ConversationSummary: Identifiable, Hashable {
         self.groupParticipants = groupParticipants
         self.messageCount = messageCount
         self.forkedFromSessionId = forkedFromSessionId
+        self.isLocalDraft = isLocalDraft
+        self.subsessionId = subsessionId
     }
 
     var remotePeerAccountIds: [String] {
@@ -130,7 +175,7 @@ struct ConversationSummary: Identifiable, Hashable {
         let mentions = unreadMentionCount > 0
             ? ", \(unreadMentionCount) unread mention\(unreadMentionCount == 1 ? "" : "s")"
             : ""
-        let state = agentActivity.map { ", \($0.label)" } ?? ""
+        let state = (agentActivity?.listLabel).map { ", \($0)" } ?? ""
         return "\(displayName)\(state)\(unread)\(mentions). \(BlobEmojiComposerText.plainText(previewText))"
     }
 
@@ -150,6 +195,14 @@ struct ConversationSummary: Identifiable, Hashable {
 
     var hasUnreadAttention: Bool {
         unreadCount > 0 || unreadMentionCount > 0
+    }
+
+    func canManageGroup(accountId: String?) -> Bool {
+        guard kind == .group,
+              let accountId = accountId?.nonEmpty,
+              let role = groupParticipants.first(where: { $0.accountId == accountId })?.role?.lowercased()
+        else { return false }
+        return role == "owner" || role == "admin"
     }
 
     var representsKordiSupport: Bool {

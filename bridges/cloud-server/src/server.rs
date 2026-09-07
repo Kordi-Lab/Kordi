@@ -146,6 +146,7 @@ pub fn router_with_rate_limiter(state: Arc<ServerState>, rate_limiter: CloudRate
         .merge(crate::cloud_agents::routes::routes(state.clone()))
         .merge(crate::cloud_agent_runtime::routes::routes(state.clone()))
         .merge(crate::scheduled_tasks::routes::routes(state.clone()))
+        .merge(crate::digest::routes(state.clone()))
         .merge(crate::support::routes(state.clone()))
         .merge(crate::updates::routes::routes(state.clone()))
         .merge(ws_router)
@@ -309,9 +310,11 @@ pub async fn run(
     );
     crate::support::spawn_ticket_worker(state.clone());
     crate::scheduled_tasks::worker::spawn_scheduled_task_worker(state.clone());
+    crate::digest::spawn(state.clone());
     crate::chat_sync::retention::spawn_retention_worker(state.db_pool().clone());
     if let Some(notifications) = state.notifications() {
         notifications.spawn_message_notification_worker(state.db_pool().clone());
+        notifications.spawn_calendar_worker(state.db_pool().clone());
     }
     let sweeper_state = state.clone();
     tokio::spawn(async move {

@@ -6,6 +6,7 @@ import {
 import type { CanonicalIdentity, CanonicalSessionMessage } from '@/kordi-app/types';
 import type { CloudAccount } from './authClient';
 import { cloudAvatarImageUrl } from './avatar';
+import { defaultAgentDisplayName } from '@/lib/identityLabels';
 
 const LEGACY_DEFAULT_AGENT_PROFILE_MIGRATION_KEY = 'kordi.defaultAgentProfile.migratedAccount.v1';
 
@@ -53,7 +54,11 @@ export function cloudAgentId(
   agentId: string | null | undefined,
   ownerAccountId: string,
 ): string {
-  return agentId?.trim() || defaultCloudAgentId(ownerAccountId);
+  const id = agentId?.trim();
+  // Old local mirrors described execution location, not a separate agent.
+  return !id || id === 'cloud-local-agent' || id === `cloud-self:${ownerAccountId.trim()}`
+    ? defaultCloudAgentId(ownerAccountId)
+    : id;
 }
 
 export function cloudAgentCanonicalIdentityId(
@@ -91,7 +96,7 @@ export function cloudDefaultAgentPresentation(account: CloudAccount, label?: str
   const profile = account.defaultAgent;
   return {
     id: profile?.agentId?.trim() || defaultCloudAgentId(account.accountId),
-    name: label?.trim() || profile?.displayName?.trim() || 'Kordi',
+    name: defaultAgentDisplayName(account.displayName || account.primaryEmail, label?.trim() || profile?.displayName),
     avatarUrl: profile ? cloudAvatarImageUrl(canonicalAvatarImageSource(profile.avatar)) : null,
   };
 }
@@ -105,7 +110,7 @@ export function cloudCanonicalDefaultAgentContactFields(identity: CanonicalIdent
     : null;
   return {
     targetCloudAgentId: text('defaultAgentId') ?? defaultCloudAgentId(accountId),
-    targetCloudAgentName: text('defaultAgentDisplayName') ?? 'Kordi',
+    targetCloudAgentName: defaultAgentDisplayName(identity.displayName, text('defaultAgentDisplayName')),
     targetCloudAgentOwnerAccountId: accountId,
     targetCloudAgentOwnerName: identity.displayName || accountId,
     targetCloudAgentAvatarUrl: text('defaultAgentAvatarUrl'),

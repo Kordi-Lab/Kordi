@@ -7,7 +7,9 @@ import {
   parseCloudAgentExecutionSnapshot,
   type CloudAgentExecutionSnapshot,
 } from './cloudAgentExecutionSnapshot';
-import { cloudMessageActionAllowsAgentContext } from './cloudAgentTriggerPolicy';
+import { cloudAgentContextMessageIds, cloudMessageActionAllowsAgentContext } from './cloudAgentTriggerPolicy';
+import { cloudMessageActionFromRecord } from './cloudMessageActionCodec';
+import type { MessageActionMetadata } from '@/kordi-app/types/message';
 import { cloudDirectMessageAction, cloudDirectMessageDisplayText, parseCloudDirectMessageEnvelope } from './cloudDirectMessages';
 import { isCloudGroupControlMessage } from './cloudGroupMessages';
 import { compareCloudMessages } from './cloudMessageMerge';
@@ -27,6 +29,7 @@ export type CloudAgentResponseEnvelope = {
   deliveryState?: 'processing' | 'complete' | 'failed' | 'cancelled';
   execution?: CloudAgentExecutionSnapshot;
   backgroundSessions?: CloudAgentBackgroundSession[];
+  messageAction?: MessageActionMetadata;
   /**
    * Ephemeral owner-runtime claim used only to arbitrate which signed-in Mac
    * executes a self-agent request. It is never rendered or forwarded to a
@@ -141,12 +144,14 @@ export function encodeCloudAgentResponse(input: {
   deliveryState?: CloudAgentResponseEnvelope['deliveryState'];
   execution?: CloudAgentExecutionSnapshot;
   backgroundSessions?: CloudAgentBackgroundSession[];
+  messageAction?: MessageActionMetadata | null;
   executionClaimId?: string;
 }): string {
   const envelope: CloudAgentResponseEnvelope = {
     kind: 'agent-response',
     requestId: input.requestId,
     text: input.text,
+    ...(input.messageAction ? { messageAction: input.messageAction } : {}),
     ...(input.deliveryState ? { deliveryState: input.deliveryState } : {}),
     ...(input.execution ? { execution: input.execution } : {}),
     ...(input.backgroundSessions?.length
@@ -173,6 +178,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       : undefined;
     const execution = parseCloudAgentExecutionSnapshot(parsed.execution);
     const backgroundSessions = parseCloudAgentBackgroundSessions(parsed.backgroundSessions);
+    const messageAction = cloudMessageActionFromRecord(parsed.messageAction);
     const executionClaimId = typeof parsed.executionClaimId === 'string'
       ? parsed.executionClaimId.trim().slice(0, 160)
       : '';
@@ -183,6 +189,7 @@ export function parseCloudAgentResponse(body: string): CloudAgentResponseEnvelop
       ...(deliveryState ? { deliveryState } : {}),
       ...(execution ? { execution } : {}),
       ...(backgroundSessions.length > 0 ? { backgroundSessions } : {}),
+      ...(messageAction?.kind === 'thread' ? { messageAction } : {}),
       ...(executionClaimId ? { executionClaimId } : {}),
     };
   } catch {
@@ -328,10 +335,31 @@ export type CloudAgentNativeContextMessage = {
   id: string;
   authorName: string;
   authorKind: 'human' | 'agent';
-  contextRole?: 'history' | 'system';
+  contextRole?: 'history' | 'system' | 'resource';
   text: string;
   createdAtMs: number;
 };
+
+export function cloudDirectAgentReplyThreadAction(messages: readonly CloudMessage[], request: CloudMessage, ownerAccountId: string): MessageActionMetadata | null {
+  const ownAction = cloudDirectMessageAction(request.body);
+  if (ownAction?.kind === 'thread') return ownAction;
+  for (const message of [...messages].reverse()) {
+    if (message.sessionId !== request.sessionId || message.fromAccountId !== ownerAccountId) continue;
+    const response = parseCloudAgentResponse(message.body);
+    if (response?.requestId === request.messageId && response.messageAction
+      && response.messageAction.source.sourceSessionId === request.sessionId) return response.messageAction;
+  }
+  return null;
+}
+
+export function cloudDirectAgentContextMessageIds(messages: readonly CloudMessage[], request: CloudMessage, ownerAccountId?: string): Set<string> {
+  return cloudAgentContextMessageIds([...messages.filter((message) => message.sessionId === request.sessionId), request].map((message) => ({
+    id: message.messageId,
+    replyAliasIds: message.clientMessageId ? [message.clientMessageId, `ios_${message.clientMessageId}`] : [],
+    messageAction: parseCloudAgentResponse(message.body)?.messageAction ?? cloudDirectMessageAction(message.body),
+    replyToMessageId: parseCloudAgentResponse(message.body)?.requestId,
+  })), request.messageId, ownerAccountId ? cloudDirectAgentReplyThreadAction(messages, request, ownerAccountId) : null);
+}
 
 export function cloudAgentNativeContextMessagesFromDirectCloudSession({
   messages,
@@ -351,8 +379,11 @@ export function cloudAgentNativeContextMessagesFromDirectCloudSession({
   peerAgentName?: string;
 }): CloudAgentNativeContextMessage[] {
   const requestCreatedAtMs = cloudMessageCreatedAtMs(requestMessage);
-  const sorted = [...messages].sort(compareCloudMessages);
+  const scoped = messages.filter((message) => message.sessionId === requestMessage.sessionId);
+  const contextIds = cloudDirectAgentContextMessageIds(scoped, requestMessage, localAccountId);
+  const sorted = [...scoped].sort(compareCloudMessages);
   return sorted
+    .filter((message) => contextIds.has(message.messageId))
     .filter((message) => message.messageId !== requestMessage.messageId)
     .filter((message) => (
       message.sessionId === requestMessage.sessionId

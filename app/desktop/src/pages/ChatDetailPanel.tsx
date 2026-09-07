@@ -9,6 +9,7 @@ import { TaskActivityDashboardPanel } from '@/pages/TaskActivityDashboardPanel';
 import { useScheduledTasks } from '@/features/cloud/useScheduledTasks';
 import { firstPersonPossessiveLabel, isSelfReferenceName, selfDisplayName, selfObjectLabel } from '@/lib/identityLabels';
 import { ChatSenderProfileContext } from '@/pages/useChatSenderProfiles';
+import { conversationIsGroupChat } from '@/pages/chatsPage.model';
 
 type ActiveConversation = Conversation;
 
@@ -354,6 +355,7 @@ function ChatDetailPanelView({
         scheduledTasks={scheduledTasks.tasks}
         scheduledRunsByTaskId={scheduledTasks.runsByTaskId}
         currentSessionId={activeConv.canonicalSessionId ?? activeConv.id}
+        agentThreadParentId={!activeConv.agentSubsessionId && (activeConv.type === 'person' || conversationIsGroupChat(activeConv)) ? activeSessionId : null}
         targetParticipants={activeConv.canonicalParticipants ?? []}
         emptyMessage={activeConversationUsesCollaboration ? 'No planning or execution task activity in this chat yet.' : 'No planning or execution task activity in this session yet.'}
         artifacts={artifacts}

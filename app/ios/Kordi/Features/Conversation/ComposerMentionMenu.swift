@@ -94,7 +94,7 @@ struct ComposerMentionMenuItem: Identifiable, Hashable {
         }
     }
 
-    var detail: String {
+    func detail(for currentAccountID: String? = nil) -> String {
         switch kind {
         case .pickFile: "Choose from Files"
         case .startWebLink: "Type a URL after @"
@@ -105,17 +105,19 @@ struct ComposerMentionMenuItem: Identifiable, Hashable {
             case .all: "All people in this group"
             case .person: "Contact"
             case .agent:
-                target.ownerName?.nonEmpty.map { "\($0)’s agent" } ?? "Agent"
+                target.accountId == currentAccountID?.nonEmpty
+                    ? "Owner · You"
+                    : target.ownerName?.nonEmpty.map { "Owner · \($0)" } ?? "Agent"
             }
         }
     }
 
-    var accessibilityLabel: String {
+    func accessibilityLabel(for currentAccountID: String? = nil) -> String {
         switch kind {
         case .pickFile: "Attach a file"
         case .startWebLink: "Add a web link"
         case .webLink(let value, _): "Web link \(value)"
-        case .target(let target): "\(target.displayName), \(detail)"
+        case .target(let target): "\(target.displayName), \(detail(for: currentAccountID))"
         }
     }
 }
@@ -141,12 +143,16 @@ enum ComposerMentionMenuCatalog {
                    options: [.caseInsensitive, .diacriticInsensitive],
                    locale: .current
                ) == query.normalized
+                   || String($0.mentionText.dropFirst()).folding(
+                       options: [.caseInsensitive, .diacriticInsensitive], locale: .current
+                   ) == query.normalized
            }) {
             return []
         }
         return targets.filter {
             $0.displayName.localizedCaseInsensitiveContains(raw)
                 || $0.ownerName?.localizedCaseInsensitiveContains(raw) == true
+                || $0.mentionText.localizedCaseInsensitiveContains(raw)
         }.map { .init(kind: .target($0)) }
     }
 
@@ -338,7 +344,9 @@ enum ComposerMentionPickerLayout {
 
 struct ComposerMentionPicker: View {
     let items: [ComposerMentionMenuItem]
+    let currentAccountID: String?
     let onSelect: (ComposerMentionMenuItem) -> Void
+    var peopleTitle: String = "Contacts"
 
     var body: some View {
         ScrollView {
@@ -347,7 +355,7 @@ struct ComposerMentionPicker: View {
                     let sectionItems = items.filter { $0.section == section }
                     if !sectionItems.isEmpty {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(section.title)
+                            Text(section == .contacts ? peopleTitle : section.title)
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .padding(.horizontal, 12)
@@ -360,7 +368,7 @@ struct ComposerMentionPicker: View {
                                                 .font(.subheadline.weight(.semibold))
                                                 .foregroundStyle(.primary)
                                                 .lineLimit(1)
-                                            Text(item.detail)
+                                            Text(item.detail(for: currentAccountID))
                                                 .font(.caption)
                                                 .foregroundStyle(.secondary)
                                                 .lineLimit(1)
@@ -373,7 +381,7 @@ struct ComposerMentionPicker: View {
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityElement(children: .ignore)
-                                .accessibilityLabel(item.accessibilityLabel)
+                                .accessibilityLabel(item.accessibilityLabel(for: currentAccountID))
                                 .accessibilityHint(item.kind == .pickFile
                                     ? "Opens the Files picker"
                                     : "Adds this item to the message")

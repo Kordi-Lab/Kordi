@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><link rel="stylesheet" href="/src/index.css"><title>Subsession conversation test</title></head>
+<body class="kordi-app theme-light"><div id="root" style="display:flex;height:100vh"></div>
+<script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { ChatsPage } from '/src/pages/ChatsPage.tsx';
+import { TaskActivityDashboardPanel } from '/src/pages/TaskActivityDashboardPanel.tsx';
+import { __setSessionBackendForTests } from '/src/features/cloud/session.ts';
+import { useKordiSideAgentSessionActions } from '/src/app/useKordiSideAgentSessionActions.ts';
+import { collapseBlankConversationShells } from '/src/features/chat/participantSpaces.ts';
+import { buildCloudCollaborationConversation } from '/src/features/cloud/cloudCollaborationState.ts';
+import { mapCollaborationConversationToViewModel } from '/src/features/collaboration/transcript.ts';
+import { cloudContactToContact } from '/src/features/cloud/useCloudContacts.ts';
+import { encodeCloudDirectMessageEnvelope } from '/src/features/cloud/cloudDirectMessages.ts';
+import { encodeCloudAgentCancel } from '/src/features/cloud/cloudAgentMessages.ts';
+__setSessionBackendForTests({ load: async () => ({token: 'fixture-token',accountId: window.fixtureAccountId ?? 'peer',expiresAt: '2099-01-01'}),save: async () => {},clear: async () => {} });
+const snapshot = {sessionId: 'fixture-child',parentSessionId: 'fixture-parent',parentRequestId: 'root',ownerAccountId: 'owner',agentId: 'fixture-agent',ownerDisplayName: 'Alex',agentDisplayName: "Alex's Kordi",title: 'Planet research',status: 'running',version: 1,updatedAt: '2026-09-05T00:00:00Z',hasFollowupExecution: true,participants: [{accountId: 'peer',displayName: 'Sam'}],messages: [
+  ...Array.from({length: 18},(_,index) => ({id: `history-${index}`,role: index%2 ? 'assistant' : 'user',senderAccountId: 'peer',text: index%2 ? 'The source comparison is kept in this session.' : 'Compare the planetary data.',timestampMs: index*1000})),
+  {id:'active',role:'assistant',text:'',timestampMs:19000,requestState:'running',activity:{tools:[]}},
+  {id:'queued',role:'user',text:'@KordiAlex summarize afterward',senderAccountId:'peer',timestampMs:20000,requestState:'queued'},
+  {id:'reply:queued',role:'assistant',text:'',timestampMs:20001,requestState:'queued',requestId:'queued'},
+  {id:'owner-queued',role:'user',text:'Owner queued follow',senderAccountId:'owner',senderDisplayName:'Alex',timestampMs:21000,requestState:'queued'}
+]};
+window.sentSubsessionRequests = [];
+window.fixtureSubsession = snapshot;
+const avatar = color => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="${color}"/></svg>`)}`;
+snapshot.participants.push({accountId:'owner',displayName:'Alex',avatarUrl:avatar('red'),avatarSeed:'owner-photo'});
+snapshot.agentAvatarUrl = avatar('blue');
+window.fixtureAvatar = avatar;
+window.privateSends = [];
+window.threadSends = [];
+window.fixtureAgentTasks = [{sessionId:'fixture-child',parentSessionId:'fixture-parent',parentRequestId:'root',
+  ownerAccountId:'owner',agentId:'fixture-agent',ownerDisplayName:'Alex',agentDisplayName:"Alex's Kordi",
+  title:'Planet research',status:'done',executionBackend:'desktop',startedAtMs:1000,finishedAtMs:64000,
+  heartbeatAtMs:64000,live:false,queued:false,agentAvatarUrl:avatar('blue')}];
+window.fixtureAgentTasks.push({...window.fixtureAgentTasks[0],sessionId:'second-child',title:'Second Agent thread',finishedAtMs:3000});
+window.unexpectedParentSends = 0;
+window.unexpectedNativePrefetches = 0;
+window.fetch = async (url,init) => {
+  if (String(url).includes('/v2/chat/sync/bootstrap')) return new Response(JSON.stringify({protocol_version:2,
+    conversations:[{id:'20000000-0000-4000-8000-000000000001',kind:'group',shared_title:'Research group',version:1,
+      created_by_account_id:'owner',legacy_session_id:'session:group:fixture-parent',latest_message_sequence:100,
+      members:[],preferences:{account_id:window.fixtureAccountId??'peer',conversation_id:'20000000-0000-4000-8000-000000000001',personal_title:null,version:1}}],
+    latest_messages:[],next_cursor:'fixture',last_stream_seq:1,server_time:'2026-09-06T00:00:00Z'}));
+  if (String(url).includes('/threads/read')) return new Response(JSON.stringify(await window.fixtureThreadReadRequest({
+    accountId:window.fixtureAccountId??'peer',method:init?.method??'GET',body:init?.body?JSON.parse(init.body):null})));
+  if (String(url).includes('/agent-subsessions?')) {
+    const after = new URL(String(url)).searchParams.get('after');
+    return new Response(JSON.stringify({sessions:after?window.fixtureAgentTasks.slice(1):window.fixtureAgentTasks.slice(0,1),nextCursor:after?null:'fixture-next-page'}), {headers:{'content-type':'application/json'}});
+  }
+  if (!String(url).includes('/agent-subsessions/')) throw Error('Unexpected fixture request');
+  if (init?.method === 'POST') {
+    const message = JSON.parse(init.body);
+    window.sentSubsessionRequests.push(message);
+    if (window.failNextSubsessionSend) {
+      window.failNextSubsessionSend = false;
+      return new Response('Unavailable', {status:503});
+    }
+    snapshot.messages.push({ id:message.clientMessageId,role:'user',text:message.text,senderAccountId:'peer',
+      timestampMs:Date.now(),mentions:message.mentions,requestState:message.mentions.some(m=>m.agentId==='fixture-agent')?(snapshot.status==='running'?'queued':'pending'):null });
+    snapshot.version += 1;
+  }
+  return new Response(JSON.stringify(snapshot),{headers:{'content-type':'application/json'}});
+};
+const noop=()=>{};
+const parent={ id:'fixture-parent',canonicalSessionId:'session:group:fixture-parent',name:'Research group',type:'person',
+  subtitle:'Group chat',unread:0,collaborationSources:['Cloud'],trust:'Shared',directness:'Group chat',participants:['Sam','Alex'],
+  messages:[{id:'parent-response',role:'external-agent',sender:"Alex's Kordi",text:'Parent conversation remains here.',time:'08:00',
+    turn:{id:'parent-turn',sessionId:'fixture-parent',prompt:'Research',status:'succeeded',message:'',assistantText:'Parent conversation remains here.',
+      thinkingText:'',completed:true,succeeded:true,tools:[{id:'spawn',name:'task_operator',status:'completed',arguments:'{"action":"spawn"}',
+        liveOutput:'',isError:false,resultText:'Background session: {"sessionId":"fixture-child","title":"Planet research","status":"running"}'}]}}]};
+if (window.fixtureDiscussionRole) {
+  parent.directness = window.fixtureDiscussionContext === 'contact' ? 'Direct chat' : 'Group chat';
+  const root = parent.messages[0];
+  root.role = window.fixtureDiscussionRole;
+  root.replyAliasIds = ['cloud-response'];
+  root.reactionTargetMessageId = '10000000-0000-4000-8000-000000000001';
+  root.turn.tools = [];
+  parent.messages.push(...[1,2,3].map(index => ({id:`discussion-${index}`,role:'person',sender:'Sam',senderType:'human',
+    text:`Discussion reply ${index}`,time:'08:01',conversationSequence:index+1,messageAction:{schemaVersion:1,kind:'thread',source:{sourceSessionId:parent.canonicalSessionId,
+      sourceMessageId:index===1?'collaboration-message:another-viewer:10000000-0000-4000-8000-000000000001':index===2?'cloud-response':'10000000-0000-4000-8000-000000000001',
+      senderLabel:root.sender,textPreview:root.text,attachmentCount:0}}})));
+}
+if (window.fixtureThreadReply) {
+  const root = parent.messages[0];
+  const action = parent.messages[1].messageAction;
+  const original = {id:'original-request',role:'person',sender:'Sam',senderType:'human',text:'Original request',time:'08:00'};
+  const old = {id:'unrelated-request',role:'person',sender:'Sam',senderType:'human',text:'@MyKordi UNRELATED-REQUEST',time:'07:00'};
+  root.replyToMessageId = root.turn.replyToMessageId = original.id;
+  parent.messages.unshift(old,original);
+  const question = {id:'thread-question',role:'person',sender:'Sam',senderType:'human',text:'@ScopedAgent What are we discussing?',time:'08:02',
+    reactionTargetMessageId:'wire-question',messageAction:action,replyToMessageId:root.reactionTargetMessageId};
+  const stale = {messageId:old.id,senderLabel:'Sam',text:old.text};
+  parent.messages.push(question,{id:'thread-answer',role:root.role,sender:root.sender,senderType:'agent',text:'',time:'08:03',
+    messageAction:action,replyToMessageId:'wire-question',sourceMessage:stale,
+    turn:{...root.turn,id:'thread-answer-turn',assistantText:'THREAD-ANSWER',replyToMessageId:'wire-question',sourceMessage:stale}});
+}
+if (window.fixtureIncomingReply) {
+  const now = Date.now();
+  const owner = {accountId:'owner',displayName:'Alex',primaryEmail:'owner@example.test',nodeId:'owner',passwordSet:true,avatarUrl:null,
+    avatar:{source:'generated',style:'lorelei',seed:'owner',version:1},defaultAgent:{agentId:'cloud-agent:owner',displayName:'Research Agent',avatar:{source:'generated',style:'lorelei',seed:'agent',version:1}}};
+  const peer = {...owner,accountId:'peer',displayName:'Sam',nodeId:'peer',defaultAgent:null};
+  const account = window.fixtureIncomingReply==='owner'?owner:peer;
+  const body = encodeCloudDirectMessageEnvelope({schemaVersion:1,kind:'message',text:'@ResearchAgent check the weather',targetCloudAgentId:'cloud-agent:owner',targetCloudAgentName:'Research Agent',targetCloudAgentOwnerAccountId:'owner',targetCloudAgentOwnerName:'Alex'});
+  const old = {messageId:'old',fromAccountId:'owner',toAccountId:'peer',body,createdAt:new Date(now-60000).toISOString(),deliveredAt:null,readAt:null,direction:'outgoing'};
+  const cancel = {...old,messageId:'cancel',fromAccountId:'peer',toAccountId:'owner',body:encodeCloudAgentCancel({requestId:old.messageId})};
+  const incoming = {...old,messageId:'incoming-ios',clientMessageId:'distinct-ios-client-id',fromAccountId:'peer',toAccountId:'owner',createdAt:new Date(now).toISOString()};
+  const projected = buildCloudCollaborationConversation({account,contact:cloudContactToContact({...(account===owner?peer:owner),createdAt:old.createdAt}),messages:[old,cancel,incoming],runtime:'person'});
+  Object.assign(parent,mapCollaborationConversationToViewModel(projected,undefined,'Research Agent',now));
+}
+const props={
+  cloudAccount:window.fixtureThreadUnread?{accountId:window.fixtureAccountId??'peer',displayName:'Sam'}:null,
+  isNativeShell:false,showChatDetailRail:false,collapseChatSessions:false,setIsSessionPanelCollapsed:noop,
+  showRightDetailRail:false,isDetailPanelCollapsed:true,setIsDetailPanelCollapsed:noop,activeConv:parent,
+  chatConversations:[parent],companionConversations:[parent],activeConversationUsesCollaboration:false,
+  activeCollaborationModelHost:null,desktopChatState:null,onUpdateCollaborationAgentModelRouting:async()=>{},
+  isEditingDesktopSessionTitle:false,setIsEditingDesktopSessionTitle:noop,desktopSessionRenameDraft:'',setDesktopSessionRenameDraft:noop,
+  onRenameDesktopSession:async()=>{},onRenameChatSession:async()=>{},chatTranscriptScrollRef:{current:null},onTranscriptScroll:noop,
+  onOpenSource:noop,onOpenArtifact:noop,desktopLiveTurn:null,queuedDesktopMessages:[],queuedDesktopMessagesBySession:{},
+  filteredChatSlashCommands:[],chatMentionTargetsForText:()=>[],chatSlashMenuIndex:0,setChatSlashMenuIndex:noop,acceptChatSlashCommand:noop,
+  chatAttachmentInputRef:{current:null},chatComposerAttachments:[],saveDesktopAttachments:async()=>[],saveDesktopAttachmentPaths:async()=>[],
+  removeChatComposerAttachment:noop,updateChatComposerAttachment:noop,chatComposerText:'',updateChatComposerDraft:noop,
+  setChatComposerText:noop,setChatComposerTextForSession:noop,composerControlsRef:{current:null},activeRuntimeContextStatus:null,activeRuntimeCacheText:null,
+  composerSelection:{mode:'Send as Me',model:'Test model',thinking:'medium'},openComposerSelector:null,toggleComposerSelector:noop,
+  selectComposerValue:noop,composerAuthLabel:'Connected',composerAuthOptions:[],selectComposerAuthChoice:noop,selectComposerProviderChoice:noop,
+  composerProviderOptions:[],chatModelOptions:[],isDesktopChatSending:false,onStopDesktopChatTurn:noop,onStopCollaborationAgentRequest:noop,
+  onRequestCollaborationContact:noop,onForkChatMessage:async()=>{},onSelectSession:noop,
+  onSendChatMessage:()=>{window.unexpectedParentSends+=1;},onPrefetchChatSession:async()=>{window.unexpectedNativePrefetches+=1;return false;},
+  hasAnyAuth:true,onOpenAuthSettings:noop,onOpenAccountAuthentication:noop
+};
+const privateChat = {id:'private-session',name:'Private workspace',type:'owned-agent',subtitle:'',unread:0,
+  collaborationSources:['Local'],trust:'Owned',directness:'Agent chat',participants:['Sam'],
+  messages:[{id:'private-history',role:'owned-agent',text:'PRIVATE_HISTORY_CANARY',time:'08:00'}]};
+props.chatConversations = props.companionConversations = [parent,
+  {...privateChat,id:'external-session',name:'Other owner session',type:'external-agent'},
+  {...privateChat,id:'shared-session',name:'Shared Agent session',trust:'Shared'},privateChat];
+props.onSendChatMessage = (text,id,context,attachments,quote) => {
+  if (id === privateChat.id) window.privateSends.push({text,id,context});
+  else if (quote?.action === 'thread') window.threadSends.push({text,quote});
+  else window.unexpectedParentSends += 1;
+};
+props.rightDetailRail = React.createElement(TaskActivityDashboardPanel, {
+  messages:parent.messages,currentSessionId:parent.id,agentThreadParentId:parent.id,
+  emptyMessage:'No tasks',taskActivities:[{id:'legacy',sourceRequestId:'old-task',status:'active',createdAtMs:1,
+    initiator:{id:'owner',name:'Alex'},target:{name:'Legacy task'},participants:[]}],
+});
+function Fixture() {
+  const [hasAnyAuth,setHasAnyAuth] = React.useState(window.fixtureHasAuth !== false);
+  window.setFixtureProviderAuth = setHasAnyAuth;
+  const openAuth = () => { window.fixtureAuthRequests = (window.fixtureAuthRequests ?? 0) + 1; };
+  const [collapsed,setCollapsed] = React.useState(true);
+  const [tab,setTab] = React.useState('info');
+  const [created,setCreated] = React.useState([]);
+  const [mainDraft,setMainDraft] = React.useState('');
+  const updateMainDraft=value=>{ if(window.holdMainDraftCommit) window.commitMainDraft=()=>setMainDraft(value); else setMainDraft(value); };
+  const createActions = useKordiSideAgentSessionActions({isNativeShell:true,setDesktopChatError:noop,setComposerDrafts:noop,
+    setDesktopChatState:state=>{
+      const entry={...privateChat,id:state.activeSessionId,canonicalSessionId:state.activeSessionId,name:'New chat',messages:[],
+        desktopRuntimeBacked:true,desktopRuntimeTranscriptLoaded:true,metadata:{source:'ask-agent-new-chat'}};
+      const publish=()=>setCreated(items=>[...items,entry]);
+      if(window.holdNewChatCatalog) window.publishNewChatCatalog=publish; else publish();
+    }
+  });
+  const conversations=collapseBlankConversationShells([...props.chatConversations,...created]);
+  const runtime={...props,onCreateAgentSession:createActions.createSideAgentSession,
+    onPrefetchChatSession:async(id)=>{if(id.startsWith('new-private-')) return true; window.unexpectedNativePrefetches+=1;return false;},
+    onSendChatMessage:(text,id,context,attachments,quote)=>{
+      if(created.some(item=>item.id===id)){
+        window.privateSends.push({text,id,context});
+        setCreated(items=>items.map(item=>item.id===id?{...item,messages:[...item.messages,{id:'message-'+id,role:'user',text,time:'09:00'}]}:item));
+      }else props.onSendChatMessage(text,id,context,attachments,quote);
+    }
+  };
+  return React.createElement(ChatsPage,{
+    layout:{...props,showRightDetailRail:true,isDetailPanelCollapsed:collapsed,setIsDetailPanelCollapsed:setCollapsed,activeDetailTab:tab,setActiveDetailTab:setTab},
+    session:{...props,chatConversations:conversations,companionConversations:conversations},transcript:props,
+    composer:{...props,chatComposerText:mainDraft,updateChatComposerDraft:updateMainDraft,setChatComposerText:setMainDraft},runtime,
+    auth:{...props,hasAnyAuth,onOpenAuthSettings:openAuth,onOpenAccountAuthentication:openAuth}
+  });
+}
+createRoot(document.getElementById('root')).render(React.createElement(Fixture));
+</script></body></html>

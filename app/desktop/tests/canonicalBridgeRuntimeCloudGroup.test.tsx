@@ -166,7 +166,7 @@ test('canonical read model renders cloud group requesting placeholders as active
   const requestingTurn = conversation?.messages.find((message) => message.turn)?.turn;
 
   assert.equal(requestingTurn?.status, 'processing');
-  assert.equal(requestingTurn?.message, 'Processing…');
+  assert.equal(requestingTurn?.message, '');
   assert.equal(requestingTurn?.assistantText, '');
   assert.deepEqual(requestingTurn?.pendingCollaborationAgentRequest, {
     conversationId: groupConversationId,

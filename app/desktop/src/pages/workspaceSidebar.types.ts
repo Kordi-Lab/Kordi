@@ -122,6 +122,16 @@ export type WorkspaceSidebarChats = {
   onSetChatSessionUnread: (sessionId: string, unread: boolean) => void | Promise<void>;
   onMarkChatSessionsRead: (sessionIds: string[]) => void | Promise<void>;
   onSetChatGroupPinned: (groupSpaceId: string, pinned: boolean) => void | Promise<void>;
+  onSetChatGroupMuted: (
+    groupSpaceId: string,
+    sessionIds: string[],
+    muted: boolean,
+  ) => void | Promise<void>;
+  onSetChatGroupArchived: (
+    groupSpaceId: string,
+    sessionIds: string[],
+    archived: boolean,
+  ) => void | Promise<void>;
   isCollaborationSyncing: boolean;
   isCollaborationSyncUnavailable?: boolean;
 };

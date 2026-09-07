@@ -17,7 +17,7 @@ async fn runner_leases_marks_running_and_completes_claimed_run() {
     let snapshot = router
         .clone()
         .oneshot(post_json_with_token(
-            "/v1/cloud/agent-provider-auth/snapshots",
+            "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
             &owner.token,
             json!({
                 "provider": "openai",

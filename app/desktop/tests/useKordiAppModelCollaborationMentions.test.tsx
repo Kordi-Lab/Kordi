@@ -107,7 +107,7 @@ test('buildCollaborationMentionTargetsByScope exposes product-facing mention det
 
   const localAgent = targets.chat.find((target) => target.label === 'BabyTREE');
   const person = targets.chat.find((target) => target.label === 'Bob' && target.targetKind === 'person');
-  const agent = targets.chat.find((target) => target.label === 'Kordi' && target.targetKind === 'agent');
+  const agent = targets.chat.find((target) => target.label === "Bob's Kordi" && target.targetKind === 'agent');
 
   assert.equal(localAgent?.detail, 'Owner · You');
   assert.equal(localAgent?.avatarImageUrl, 'https://images.test/alice.png');
@@ -169,7 +169,7 @@ test('buildCollaborationMentionTargetsByScope includes the scoped local Bridge a
   });
 
   assert.equal(targets.chat[0]?.label, 'BabyTREE');
-  assert.equal(targets.chat[0]?.value, 'BabyTREE');
+  assert.equal(targets.chat[0]?.value, 'BabyTREEAlice');
   assert.equal(targets.chat[0]?.targetKind, 'agent');
   assert.equal(targets.chat[0]?.nodeId, 'node-agent-local');
   assert.equal(targets.project[0]?.label, 'BabyTREE');
@@ -514,7 +514,7 @@ test('buildCollaborationMentionTargetsByScope includes group-only people but onl
       'all:All:group:session:group:cloud',
       'agent:BabyTREE:acct_me',
       'person:Alice:acct_alice',
-      'agent:Kordi:acct_alice',
+      "agent:Alice's Kordi:acct_alice",
       'person:Bob:acct_bob',
     ],
   );

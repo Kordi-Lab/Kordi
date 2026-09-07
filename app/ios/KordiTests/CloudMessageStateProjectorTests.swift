@@ -1,5 +1,78 @@
 import XCTest
+import Testing
 @testable import Kordi
+
+@MainActor struct GroupWaitingProjectionTests {
+    let now = Date(timeIntervalSince1970: 2_000)
+    var conversation: ConversationSummary {
+        ConversationSummary(
+            id: "group:team", kind: .group, peerAccountId: "acct_owner", agentId: nil,
+            ownerDisplayName: "Team", displayName: "Team", lastMessage: "", lastActivityAt: now,
+            unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: "session:group:team",
+            groupParticipants: [
+                CloudGroupParticipant(accountId: "acct_owner", displayName: "Owner", avatarUrl: nil, role: "member"),
+                CloudGroupParticipant(accountId: "acct_sender", displayName: "Sender", avatarUrl: nil, role: "owner")
+            ]
+        )
+    }
+    func request(author: MessageAuthor = .me, sourceHostID: String? = nil) -> ChatMessage {
+        ChatMessage(
+            id: "request", conversationId: conversation.id, conversationSequence: 10,
+            author: author, authorName: "Sender", text: "@Researcher hello", createdAt: now.addingTimeInterval(-1),
+            deliveryState: .delivered, errorMessage: nil, requestMessageId: nil,
+            mentions: [MessageMention(label: "Researcher", targetKind: "agent", targetIdentityId: "agent:cloud-agent:acct_owner",
+                sourceHostId: sourceHostID, humanId: "acct_owner", agentId: "cloud-agent:acct_owner", displayLabel: "Researcher")]
+        )
+    }
+
+    @Test(arguments: [nil, "", "cloud", " cloud ", "another-host"] as [String?])
+    func waitingPreservesExplicitHostScope(sourceHostID: String?) {
+        let request = request(sourceHostID: sourceHostID)
+        let rows = CloudGroupAgentLifecycleProjector.withPendingRequests([request], conversation: conversation, now: now)
+        #expect(rows.count == (sourceHostID == "another-host" ? 1 : 2))
+    }
+
+    @Test(arguments: [MessageAuthor.me, .person])
+    func syncedRequestsShowOneWaitingBubbleForSenderAndOtherMembers(author: MessageAuthor) throws {
+        let request = request(author: author)
+        let rows = CloudGroupAgentLifecycleProjector.withPendingRequests([request], conversation: conversation, now: now)
+        let pending = try #require(rows.last)
+        #expect(rows.count == 2 && rows.first?.id == request.id)
+        #expect(pending.authorName == "Researcher" && pending.senderOwnerName == "Owner")
+        #expect(pending.requestMessageId == request.id && pending.quotedReplyMessageId == request.id)
+        let execution = try #require(pending.agentExecution)
+        #expect(MessageBubble.showsAgentWaitingIndicator(execution: execution, responseText: pending.text))
+        #expect(CloudGroupAgentLifecycleProjector.withPendingRequests(rows, conversation: conversation, now: now) == rows)
+    }
+
+    @Test(arguments: [CloudAgentLifecycleState.processing, .complete, .failed, .cancelled])
+    func realResponseReplacesWaitingWithoutRegressingAfterPartialSync(state: CloudAgentLifecycleState) throws {
+        let request = request()
+        let response = ChatMessage(id: "response", conversationId: conversation.id, author: .agent,
+            authorName: "Researcher", text: state == .processing ? "" : "Done", createdAt: now,
+            deliveryState: state == .failed ? .failed : state == .cancelled ? .cancelled : .delivered,
+            errorMessage: nil, requestMessageId: request.id,
+            agentExecution: CloudMessageCodec.agentWaitingExecution(deliveryState: state, updatedAtMs: 2_000_000))
+        let stored = [request, response]
+        #expect(CloudGroupAgentLifecycleProjector.withPendingRequests(stored, conversation: conversation, now: now) == stored)
+        let partial = AppModel.mergePartialProjection([request], preserving: stored)
+        #expect(CloudGroupAgentLifecycleProjector.withPendingRequests(partial, conversation: conversation, now: now).count == 2)
+    }
+
+    @Test func oldFailedForwardedAndUntargetedMessagesNeverCreateWaiting() {
+        let original = request()
+        #expect(CloudGroupAgentLifecycleProjector.withPendingRequests([original], conversation: conversation, now: now.addingTimeInterval(601)) == [original])
+        var failed = original
+        failed.deliveryState = .failed
+        #expect(CloudGroupAgentLifecycleProjector.withPendingRequests([failed], conversation: conversation, now: now) == [failed])
+        var forwarded = original
+        forwarded.messageAction = MessageActionMetadata(schemaVersion: 1, kind: "forward", source: original.actionSource)
+        #expect(CloudGroupAgentLifecycleProjector.withPendingRequests([forwarded], conversation: conversation, now: now) == [forwarded])
+        var plain = original
+        plain.mentions = []
+        #expect(CloudGroupAgentLifecycleProjector.withPendingRequests([plain], conversation: conversation, now: now) == [plain])
+    }
+}
 
 final class CloudMessageStateProjectorTests: XCTestCase {
     func testAuthoritativeHistoryPagePrunesOnlyMissingMessagesInItsWindow() {

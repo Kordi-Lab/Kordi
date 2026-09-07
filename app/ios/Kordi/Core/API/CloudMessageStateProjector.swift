@@ -26,7 +26,7 @@ enum CloudMessageStateProjector {
                 continue
             }
             if let current = latestBySessionID[sessionID],
-               !synchronizationOrder(current, precedes: message) {
+               !synchronizationPrecedes(current, precedes: message) {
                 continue
             }
             latestBySessionID[sessionID] = message
@@ -37,6 +37,9 @@ enum CloudMessageStateProjector {
     }
 
     static func deliveryState(for message: CloudMessageDTO, ownAccountId: String) -> MessageDeliveryState {
+        let executionState = CloudMessageCodec.agentResponseDeliveryState(message.body)
+        if executionState == .failed { return .failed }
+        if executionState == .cancelled { return .cancelled }
         if message.readAt != nil { return .read }
         // Kordi Cloud accepts and durably records the message before returning
         // it. macOS therefore presents every successful outgoing write as
@@ -129,7 +132,7 @@ enum CloudMessageStateProjector {
         }
     }
 
-    private static func synchronizationOrder(
+    static func synchronizationPrecedes(
         _ left: CloudMessageDTO,
         precedes right: CloudMessageDTO
     ) -> Bool {

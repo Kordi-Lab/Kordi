@@ -8,14 +8,14 @@ import {
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
 import type { DesktopAuthState } from '@/kordi-app/types';
+import type { DesktopAuthSyncIntent } from '@/features/auth/desktopAuthSync';
 import type {
   CloudAccount,
   CloudAuthClient,
 } from './authClient';
 import {
-  cloudProviderAuthReconciliationSignature,
+  canonicalCloudProviderId,
   cloudProviderAuthReconciliationTargets,
-  cloudProviderAuthSnapshotRouteSignature,
 } from './providerAuthSnapshot';
 import {
   loadSession,
@@ -76,6 +76,7 @@ type ReconcileCloudProviderAuthSnapshotsOptions = {
   client: CloudAuthClient;
   route: DesktopChatMessageRoute | null | undefined;
   desktopAuthState?: DesktopAuthState | null;
+  intent: DesktopAuthSyncIntent;
   isCurrent: () => boolean;
   loadStoredSession?: typeof loadSession;
   buildSnapshotPayload?: typeof buildDesktopCloudProviderAuthSnapshotPayload;
@@ -86,6 +87,7 @@ export async function reconcileCloudProviderAuthSnapshots({
   client,
   route,
   desktopAuthState,
+  intent,
   isCurrent,
   loadStoredSession = loadSession,
   buildSnapshotPayload = buildDesktopCloudProviderAuthSnapshotPayload,
@@ -96,11 +98,21 @@ export async function reconcileCloudProviderAuthSnapshots({
     || session.accountId !== accountId
     || !isCurrent()
   ) return 'not-ready';
+  if ((intent.accountId && intent.accountId !== session.accountId)
+    || (intent.deviceId && intent.deviceId !== session.deviceId)) return 'stale';
 
   const reconciliationTargets = cloudProviderAuthReconciliationTargets(
     desktopAuthState,
     route,
   );
+  const provider = canonicalCloudProviderId(intent.providerId);
+  const matchingTargets = reconciliationTargets.filter(
+    (target) => target.provider === provider,
+  );
+  const target = matchingTargets.find((candidate) => candidate.configured)
+    ?? matchingTargets[0];
+  const removalRequested = intent.reason === 'profile-removed'
+    || intent.reason === 'provider-logout';
   const revokeAllForProvider = async (provider: string) => {
     for (let index = 0; index < 16; index += 1) {
       if (!isCurrent()) return false;
@@ -118,35 +130,19 @@ export async function reconcileCloudProviderAuthSnapshots({
     return true;
   };
 
-  if (reconciliationTargets.length > 0) {
-    for (const target of reconciliationTargets) {
-      if (!isCurrent()) return 'stale';
-      if (!target.configured) {
-        for (const provider of target.queryProviderIds) {
-          if (!await revokeAllForProvider(provider)) return 'stale';
-        }
-        continue;
-      }
-
-      const input = await buildSnapshotPayload({
-        provider: target.provider,
-        authChoice: target.authChoice,
-        model: target.model,
-      });
-      if (!input) return 'not-ready';
-      if (!isCurrent()) return 'stale';
-      await client.publishProviderAuthSnapshot(
-        session.token,
-        input,
-      );
+  if (!target) return removalRequested ? 'complete' : 'not-ready';
+  if (!target.configured) {
+    if (!removalRequested) return 'not-ready';
+    for (const providerId of target.queryProviderIds) {
+      if (!await revokeAllForProvider(providerId)) return 'stale';
     }
     return isCurrent() ? 'complete' : 'stale';
   }
 
   const input = await buildSnapshotPayload({
-    provider: route?.authProvider ?? null,
-    authChoice: route?.authChoice ?? null,
-    model: route?.model ?? null,
+    provider: target.provider,
+    authChoice: target.authChoice,
+    model: target.model,
   });
   if (!input) return 'not-ready';
   if (!isCurrent()) return 'stale';
@@ -161,13 +157,14 @@ export function useCloudProviderAuthSnapshotSync({
   client,
   route,
   desktopAuthState,
-  initialMessagesSettled,
+  intent,
   reportWarning,
 }: {
   account: CloudAccount | null;
   client: CloudAuthClient;
   route: DesktopChatMessageRoute | null | undefined;
   desktopAuthState?: DesktopAuthState | null;
+  intent?: DesktopAuthSyncIntent | null;
   initialMessagesSettled: boolean;
   reportWarning: (message: string, error: unknown) => void;
 }) {
@@ -192,17 +189,16 @@ export function useCloudProviderAuthSnapshotSync({
   }, []);
 
   useEffect(() => {
-    if (!account || !initialMessagesSettled) return;
-    const reconciliationTargets = cloudProviderAuthReconciliationTargets(
-      desktopAuthState,
-      route,
-    );
-    const syncKey = cloudProviderAuthReconciliationSignature(
+    if (!account || !intent) return;
+    if (intent.accountId && intent.accountId !== account.accountId) return;
+    const provider = canonicalCloudProviderId(intent.providerId);
+    const syncKey = [
       account.accountId,
-      reconciliationTargets,
-    ) ?? cloudProviderAuthSnapshotRouteSignature(account.accountId, route);
+      intent.revision,
+      intent.reason,
+      provider ?? '',
+    ].join('|');
     activeSyncKeyRef.current = syncKey;
-    if (!syncKey) return;
 
     const isCurrent = () => (
       activeAccountIdRef.current === account.accountId
@@ -216,6 +212,7 @@ export function useCloudProviderAuthSnapshotSync({
         client,
         route,
         desktopAuthState,
+        intent,
         isCurrent,
       }),
     );
@@ -253,7 +250,7 @@ export function useCloudProviderAuthSnapshotSync({
     account,
     client,
     desktopAuthState,
-    initialMessagesSettled,
+    intent,
     reportWarning,
     route,
   ]);

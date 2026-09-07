@@ -5,6 +5,7 @@ import type { CloudMessage } from '../src/features/cloud/authClient';
 import { parseCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import { parseCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import {
+  CLOUD_SELF_AGENT_EXECUTION_STREAM_MS,
   cloudSelfAgentProcessingLedgerKey,
   publishCloudSelfAgentExecutionSnapshot,
   publishCloudSelfAgentHeartbeat,
@@ -15,6 +16,10 @@ import type {
   CloudSelfAgentSyncLedger,
   CloudSelfAgentSyncOperation,
 } from '../src/features/cloud/cloudSelfAgentForwardSync';
+
+test('owner execution streaming is coalesced before it reaches remote history', () => {
+  assert.equal(CLOUD_SELF_AGENT_EXECUTION_STREAM_MS, 5_000);
+});
 
 test('local-first self-agent publication is idempotent and replays one lifecycle to device B', async () => {
   const messagesByClientId = new Map<string, CloudMessage>();
@@ -105,6 +110,7 @@ test('local-first self-agent publication is idempotent and replays one lifecycle
     .map((message) => parseCloudAgentResponse(message.body))
     .find((response) => response?.deliveryState === 'complete');
   assert.equal(processing?.requestId, 'cloud-1');
+  assert.equal(processing?.text, '');
   assert.deepEqual(processing?.execution, execution);
   assert.equal(completed?.requestId, processing?.requestId);
   assert.equal(completed?.text, 'one answer');

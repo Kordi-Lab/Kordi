@@ -15,6 +15,10 @@ import {
   cloudFallbackRunClaimsForMessages,
 } from '../src/features/cloud/cloudAgentFallbackClaims';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
+import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
+import { appendCloudGroupRequestingPlaceholder, removeCloudGroupPendingRowsForTerminalResponse } from '../src/features/cloud/cloudAgentRequestState';
+import { encodeCloudGroupControl, parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import { mergeCanonicalMessageRow } from '../src/features/canonical/canonicalStateReducers';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -339,4 +343,125 @@ test('cloud group agent mention candidates ignore inherited fork snapshot rows',
   } satisfies CanonicalSessionState;
 
   assert.deepEqual(cloudAgentMentionCandidates(state, 'acct_me'), []);
+});
+
+test('group progress candidates include the sender, Agent owner, and other members', () => {
+  const state = {
+    profile: { humanIdentityId: 'human:sender' },
+    sessions: [{ id: 'session:group:team', kind: 'group', title: 'Team', status: 'active' }],
+    identities: [
+      { id: 'human:owner', kind: 'human', humanId: 'owner', displayName: 'Agent Owner' },
+      { id: 'agent:cloud-agent:cloud-agent:owner', kind: 'agent', humanId: 'owner',
+        agentId: 'cloud-agent:owner', ownerIdentityId: 'human:owner', displayName: 'Renamed Agent', source: 'cloud' },
+    ],
+    participants: [], delegatedExchanges: [], presence: [], contextSnapshots: [],
+    messages: [{
+      id: 'request', sessionId: 'session:group:team', senderIdentityId: 'human:sender',
+      senderRole: 'user', messageKind: 'text', contentText: '@RenamedAgent hello',
+      status: 'sent', sequenceNum: 10, createdAtMs: 10, updatedAtMs: 10,
+      content: { mentions: [{
+        targetKind: 'agent', sourceHostId: 'cloud', humanId: 'owner',
+        agentId: 'cloud-agent:owner', displayLabel: 'Renamed Agent', ownerName: 'Agent Owner',
+      }] },
+    }],
+  } as unknown as CanonicalSessionState;
+  const body = encodeCloudGroupControl({
+    kind: 'group-message', groupId: 'session:group:team', groupTitle: 'Team', createdByAccountId: 'acct_sender',
+    actor: { accountId: 'acct_sender', displayName: 'Sender', role: 'admin' },
+    participants: [
+      { accountId: 'acct_sender', displayName: 'Sender', role: 'admin' },
+      { accountId: 'acct_owner', displayName: 'Agent Owner', role: 'person' },
+      { accountId: 'acct_member', displayName: 'Member', role: 'person' },
+    ],
+    message: { id: 'request', senderAccountId: 'acct_sender', text: '@RenamedAgent hello', createdAtMs: 10,
+      targetCloudAgentId: 'cloud-agent:acct_owner', targetCloudAgentOwnerAccountId: 'acct_owner' },
+  });
+  for (const viewer of ['sender', 'owner', 'member']) {
+    state.profile.humanIdentityId = `human:${viewer}`;
+    state.messages[0].senderRole = viewer === 'sender' ? 'user' : 'person';
+    const candidates = cloudAgentMentionCandidates(state, viewer);
+    assert.equal(candidates.length, 1, viewer);
+    assert.equal(candidates[0].requestMessage.id, 'request');
+    assert.equal(candidates[0].targetAccountId, 'owner');
+    assert.equal(candidates[0].targetAgentDisplayName, 'Renamed Agent');
+    assert.equal(candidates[0].targetHumanDisplayName, 'Agent Owner');
+    const noticeId = 'msg:cloud-agent-processing:request:owner';
+    const pendingState = appendCloudGroupRequestingPlaceholder(state, candidates[0], noticeId)!;
+    assert.equal(appendCloudGroupRequestingPlaceholder(pendingState, candidates[0], noticeId), pendingState);
+    const pending = createCanonicalSessionReadModel(pendingState).messages('session:group:team')
+      .filter(message => message.turn && !message.turn.completed);
+    assert.equal(pending.length, 1, viewer);
+    assert.equal(pending[0].sender, 'Renamed Agent');
+    assert.equal(pending[0].senderOwnerName, viewer === 'owner' ? 'You' : 'Agent Owner');
+    assert.equal(pending[0].role, viewer === 'owner' ? 'owned-agent' : 'external-agent');
+    assert.equal(pending[0].replyToMessageId, 'request');
+    const wire: CloudMessage = {
+      messageId: 'wire-request', fromAccountId: 'acct_sender', toAccountId: viewer === 'sender' ? 'acct_owner' : `acct_${viewer}`,
+      body, createdAt: new Date(10).toISOString(), readAt: null,
+      direction: viewer === 'sender' ? 'outgoing' : 'incoming',
+    };
+    const claims = cloudFallbackRunClaimsForMessages({
+      account: { ...account, accountId: `acct_${viewer}` }, contacts: [],
+      messagesByPeer: { [viewer === 'sender' ? 'acct_owner' : 'acct_sender']: [wire] },
+    });
+    assert.equal(claims.length, viewer === 'sender' ? 1 : 0, 'progress observers cannot claim as the requester');
+  }
+  const requestMessage = state.messages[0];
+  const iosMention = (requestMessage.content as { mentions: Array<Record<string, unknown>> }).mentions[0];
+  delete iosMention.sourceHostId;
+  requestMessage.sourceTransport = 'cloud-group';
+  for (const viewer of ['owner', 'member']) {
+    state.profile.humanIdentityId = `human:${viewer}`;
+    requestMessage.senderRole = viewer === 'owner' ? 'user' : 'person';
+    const candidates = cloudAgentMentionCandidates(state, viewer);
+    assert.equal(candidates.length, 1, `iOS request on ${viewer}'s Mac`);
+    const pendingState = appendCloudGroupRequestingPlaceholder(state, candidates[0], 'msg:cloud-agent-processing:request:owner')!;
+    const pending = createCanonicalSessionReadModel(pendingState).messages('session:group:team')
+      .filter(message => message.turn && !message.turn.completed);
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].sender, 'Renamed Agent');
+    assert.equal(pending[0].senderOwnerName, viewer === 'owner' ? 'You' : 'Agent Owner');
+    assert.equal(pending[0].role, viewer === 'owner' ? 'owned-agent' : 'external-agent');
+    assert.equal(pending[0].replyToMessageId, 'request');
+  }
+  const ownEnvelope = parseCloudGroupControl(body)!;
+  ownEnvelope.message!.senderAccountId = 'acct_owner';
+  const ownWire: CloudMessage = { messageId: 'own-wire', fromAccountId: 'acct_owner', toAccountId: 'acct_sender',
+    body: encodeCloudGroupControl(ownEnvelope), createdAt: new Date(10).toISOString(), readAt: null, direction: 'outgoing' };
+  assert.deepEqual(cloudFallbackRunClaimsForMessages({
+    account: { ...account, accountId: 'acct_owner' }, contacts: [], messagesByPeer: { acct_sender: [ownWire] },
+  }), [], 'observing the same account iOS request does not claim another Cloud run');
+  const candidate = cloudAgentMentionCandidates(state, 'member')[0];
+  const pendingState = appendCloudGroupRequestingPlaceholder(state, candidate, 'msg:cloud-agent-processing:request:owner')!;
+  const pendingRow = pendingState.messages.at(-1)!;
+  const completedState = mergeCanonicalMessageRow(pendingState, { ...pendingRow, status: 'received', contentText: 'Done',
+    content: { ...(pendingRow.content as Record<string, unknown>), deliveryState: 'complete' },
+    sourceTransport: 'cloud-group-agent', updatedAtMs: pendingRow.updatedAtMs + 1 });
+  const cleaned = removeCloudGroupPendingRowsForTerminalResponse(completedState, 'request', 'owner');
+  const replies = createCanonicalSessionReadModel(cleaned!).messages('session:group:team').filter(message => message.turn);
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].turn?.completed, true);
+  requestMessage.sourceTransport = 'desktop-bridge';
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'member'), [], 'missing host is accepted only on synced Cloud group rows');
+  requestMessage.sourceTransport = 'cloud-group';
+  iosMention.sourceHostId = 'another-host';
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'member'), [], 'an explicit non-Cloud host cannot be relabeled');
+  requestMessage.sourceTransport = 'cloud-group-ui';
+  iosMention.sourceHostId = 'cloud';
+  state.messages[0].senderRole = 'user';
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'owner'), [], 'own local requests keep local auth gating');
+  state.messages[0].senderRole = 'external-agent';
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'member'), []);
+  state.messages[0].senderRole = 'person';
+  state.messages[0].status = 'failed';
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'member'), []);
+  state.messages[0].status = 'received';
+  const content = state.messages[0].content as Record<string, unknown>;
+  content.messageAction = { schemaVersion: 1, kind: 'forward', source: {
+    sourceSessionId: 'source', sourceMessageId: 'original', senderLabel: 'Sender',
+  } };
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'member'), [], 'forwarded mentions are display-only');
+  delete content.messageAction;
+  state.messages[0].sessionId = 'session:direct-person:sender:owner';
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'member'), []);
 });

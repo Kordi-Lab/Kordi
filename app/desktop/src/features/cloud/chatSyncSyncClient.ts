@@ -2,6 +2,7 @@ import type { CloudSyncEvent, CloudSyncResponse } from './authClient';
 import { normalizeCloudMessageSnapshot } from './cloudMessageSnapshot';
 import { chatSyncSessionTitle, cloudMessageFromChatSync, directSessionId, conversationPeer } from './chatSyncMapping';
 import { ChatSyncState } from './chatSyncState';
+import { requireCloudSessionVisibility } from './cloudSessionListClient';
 import type { ChatSyncBootstrapResponse, ChatSyncConversation, ChatSyncEvent, ChatSyncMessage, ChatSyncPreferences, ChatSyncSyncResponse } from './chatSyncTypes';
 
 export class ChatSyncSyncClient {
@@ -11,6 +12,12 @@ export class ChatSyncSyncClient {
     const normalizedCursor = cursor.trim();
     if (!normalizedCursor || normalizedCursor === '0') {
       const bootstrap = await this.state.bootstrap(token);
+      // Compatibility with older servers must complete before publishing rows.
+      bootstrap.session_visibility ??= await this.state.send(
+        '/v1/cloud/sessions/visibility', { method: 'GET', headers: { authorization: `Bearer ${token}` } },
+        'Could not load chat visibility.',
+      );
+      bootstrap.session_visibility = requireCloudSessionVisibility(bootstrap.session_visibility);
       const events = this.chatBootstrapEvents(bootstrap);
       return {
         cursor: bootstrap.next_cursor,
@@ -23,7 +30,10 @@ export class ChatSyncSyncClient {
           lastStreamSeq: bootstrap.last_stream_seq,
           conversations: bootstrap.conversations,
           messages: bootstrap.latest_messages,
-          events: [],
+          events: [{ stream_seq: bootstrap.last_stream_seq, event_id: `bootstrap:visibility:${bootstrap.last_stream_seq}`,
+            protocol_version: 2, type: 'session.visibility.snapshot', critical: true,
+            conversation_id: null, entity_id: null, entity_version: null, occurred_at: bootstrap.server_time,
+            payload: { visibility: bootstrap.session_visibility } }],
         },
       };
     }
@@ -233,7 +243,9 @@ export class ChatSyncSyncClient {
         } satisfies CloudSyncEvent;
       })
     ));
-    return [...conversationEvents, ...messageEvents, ...pinEvents];
+    return [{ eventId: `bootstrap:visibility:${bootstrap.last_stream_seq}`, eventType: 'session.visibility.snapshot',
+      peerAccountId: null, messageId: null, occurredAt: bootstrap.server_time,
+      payload: { visibility: bootstrap.session_visibility } }, ...conversationEvents, ...messageEvents, ...pinEvents];
   }
 
   private cloudEventsFromChatEvent(event: ChatSyncEvent): CloudSyncEvent[] {
@@ -250,6 +262,24 @@ export class ChatSyncSyncClient {
       messageId: event.entity_id,
       occurredAt: event.occurred_at,
     };
+    const sessionTitleEvent = conversation ? {
+      ...base,
+      eventType: 'session.title.updated',
+      messageId: null,
+      payload: {
+        sessionTitle: {
+          sessionId: conversation.legacy_session_id ?? conversation.id,
+          title: chatSyncSessionTitle(conversation),
+          titleSource: conversation.preferences.personal_title ? 'manual' : 'external',
+          titleRevision: conversation.version,
+          titlePolicyVersion: 1,
+          titleGeneratedFromMessageId: null,
+          updatedAtMs: Date.parse(conversation.updated_at) || Date.now(),
+          updatedByAccountId: conversation.created_by_account_id,
+          updatedAt: conversation.updated_at,
+        },
+      },
+    } satisfies CloudSyncEvent : null;
     if (event.type === 'call.created' || event.type === 'call.updated') {
       return [{
         ...base,
@@ -290,7 +320,7 @@ export class ChatSyncSyncClient {
       const messageValue = event.payload.message;
       if (!messageValue || typeof messageValue !== 'object' || Array.isArray(messageValue)) return [];
       const message = messageValue as ChatSyncMessage;
-      return [{
+      const messageEvent = {
         ...base,
         eventType: 'message.upsert',
         peerAccountId: conversationPeer(
@@ -303,28 +333,15 @@ export class ChatSyncSyncClient {
           message: cloudMessageFromChatSync(message, conversation),
           ...(event.type === 'reaction.updated' ? { reactionStateConfirmed: true } : {}),
         },
-      }];
+      } satisfies CloudSyncEvent;
+      return event.type === 'message.created' && sessionTitleEvent
+        ? [messageEvent, sessionTitleEvent]
+        : [messageEvent];
     }
     if ((event.type === 'conversation.created'
       || event.type === 'conversation.updated'
       || event.type === 'membership.updated') && conversation) {
-      return [{
-        ...base,
-        eventType: 'session.title.updated',
-        payload: {
-          sessionTitle: {
-            sessionId: conversation.legacy_session_id ?? conversation.id,
-            title: chatSyncSessionTitle(conversation),
-            titleSource: conversation.preferences.personal_title ? 'manual' : 'external',
-            titleRevision: conversation.version,
-            titlePolicyVersion: 1,
-            titleGeneratedFromMessageId: null,
-            updatedAtMs: Date.parse(conversation.updated_at) || Date.now(),
-            updatedByAccountId: conversation.created_by_account_id,
-            updatedAt: conversation.updated_at,
-          },
-        },
-      }];
+      return [sessionTitleEvent!];
     }
     if ([
       'account.profile.updated',

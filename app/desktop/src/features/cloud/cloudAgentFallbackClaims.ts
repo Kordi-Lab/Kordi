@@ -12,12 +12,14 @@ import {
   parseCloudAgentCancel,
   parseCloudAgentResponse,
   promptTextForCloudAgentMention,
+  cloudDirectAgentContextMessageIds,
 } from './cloudAgentMessages';
 import {
   cloudDirectMessageAction,
   cloudDirectMessageDisplayText,
   cloudDirectMessageTargetCloudAgentId,
   cloudDirectMessageTargetCloudAgentOwnerAccountId,
+  parseCloudDirectMessageEnvelope,
 } from './cloudDirectMessages';
 import {
   cloudMessageActionAllowsAgentContext,
@@ -32,6 +34,7 @@ import {
 } from './cloudMessageIndex';
 import { isCloudAgentProcessingPlaceholderText } from './cloudAgentRequestState';
 import { CLOUD_AGENT_MODEL_CHANGE_MESSAGE_KIND } from './cloudAgentRuntime';
+import { cloudGroupAgentContextMessageIds } from './cloudGroupAgentPolicy';
 
 const MAX_CLOUD_FALLBACK_HISTORY_MESSAGES = 12;
 
@@ -129,10 +132,12 @@ function cloudFallbackRunPromptForMessage({
   const requestIndex = peerMessages.findIndex(
     (candidate) => candidate.messageId === message.messageId,
   );
+  const contextIds = cloudDirectAgentContextMessageIds(peerMessages, message, ownerAccountId);
   const previousMessages = (
     requestIndex >= 0 ? peerMessages.slice(0, requestIndex) : peerMessages
   ).filter((candidate) => candidate.messageId !== message.messageId);
   const history = previousMessages
+    .filter((candidate) => contextIds.has(candidate.messageId))
     .map((candidate) => cloudFallbackHistoryLine({
       account,
       contact,
@@ -180,14 +185,17 @@ function cloudGroupFallbackRunPromptForMessage({
   requestMessageId,
   requestCreatedAtMs,
   requestText,
+  ownerAccountId,
 }: {
   groupRows: readonly IndexedCloudGroupRow[];
   groupId: string;
   requestMessageId: string;
   requestCreatedAtMs: number;
   requestText: string;
+  ownerAccountId: string;
 }): string {
   const currentPrompt = promptTextForCloudAgentMention(requestText);
+  const contextIds = cloudGroupAgentContextMessageIds(groupRows, groupId, requestMessageId, ownerAccountId);
   const seenMessageIds = new Set<string>();
   const history = groupRows
     .flatMap(({ envelope }) => {
@@ -197,8 +205,8 @@ function cloudGroupFallbackRunPromptForMessage({
         || !envelope.message
       ) return [];
       if (envelope.message.id === requestMessageId) return [];
+      if (!contextIds.has(envelope.message.id)) return [];
       if (envelope.message.createdAtMs > requestCreatedAtMs) return [];
-      if (envelope.message.forkSnapshot === true) return [];
       if (!cloudMessageActionAllowsAgentContext(envelope.message.messageAction)) {
         return [];
       }
@@ -377,9 +385,14 @@ export function cloudFallbackRunClaimsForMessages({
           && cleanText(groupMessage.targetCloudAgentOwnerAccountId)
             === ownerAccountId,
         );
+        const hasExplicitTarget = Boolean(
+          cleanText(groupMessage.targetCloudAgentId)
+          || cleanText(groupMessage.targetCloudAgentOwnerAccountId),
+        );
         if (
-          !targetsOwnerById
-          && !cloudMessageMentionsContactAgent(groupRequestMessage, contact)
+          hasExplicitTarget
+            ? !targetsOwnerById
+            : !cloudMessageMentionsContactAgent(groupRequestMessage, contact)
         ) {
           continue;
         }
@@ -399,6 +412,7 @@ export function cloudFallbackRunClaimsForMessages({
             requestMessageId: groupMessage.id,
             requestCreatedAtMs: groupMessage.createdAtMs,
             requestText: groupMessage.text,
+            ownerAccountId,
           }),
           idempotencyKey:
             `cloud-agent-fallback-group:${groupEnvelope.groupId}`
@@ -427,9 +441,15 @@ export function cloudFallbackRunClaimsForMessages({
       const targetsHostedCloudAgent = targetCloudAgentId
         && cloudDirectMessageTargetCloudAgentOwnerAccountId(message.body)
           === ownerAccountId;
+      const directEnvelope = parseCloudDirectMessageEnvelope(message.body);
+      const hasExplicitTarget = Boolean(
+        cleanText(directEnvelope?.targetCloudAgentId)
+        || cleanText(directEnvelope?.targetCloudAgentOwnerAccountId),
+      );
       if (
-        !targetsHostedCloudAgent
-        && !cloudMessageMentionsContactAgent(message, contact)
+        hasExplicitTarget
+          ? !targetsHostedCloudAgent
+          : !cloudMessageMentionsContactAgent(message, contact)
       ) continue;
       const alreadyTerminal =
         terminalDirectRequestIdsByPeerId.get(peerId)?.has(message.messageId)

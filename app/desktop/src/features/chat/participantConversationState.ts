@@ -25,6 +25,13 @@ export function safePreviewText(value: string | undefined | null) {
   return text && !rawId ? text : '';
 }
 
+export function messageCanAppearInPreview(
+  message: Pick<Message, 'role' | 'messageKind'>,
+) {
+  return message.role !== 'system'
+    || ['group-title-update', 'session-title-update'].includes(message.messageKind ?? '');
+}
+
 export type AttachmentOnlyMessagePreview = {
   kind: 'image' | 'file';
   label: string;
@@ -80,7 +87,7 @@ export function attachmentOnlyMessagePreview(
 export function latestParticipantSpacePreviewMessage(conversation: Conversation) {
   for (let index = conversation.messages.length - 1; index >= 0; index -= 1) {
     const message = conversation.messages[index];
-    if (!message || message.role === 'system') continue;
+    if (!message || !messageCanAppearInPreview(message)) continue;
     const preview = safePreviewText(message.text)
       || safePreviewText(message.turn?.assistantText)
       || attachmentOnlyMessagePreview(message)?.label;

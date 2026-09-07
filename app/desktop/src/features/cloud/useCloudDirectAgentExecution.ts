@@ -4,11 +4,16 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from 'react';
+import { acquireDesktopExecutionLease } from './cloudDesktopExecutionLease';
+import { publishModelSubsessions } from './agentSubsessionSync';
 import { cloudAgentContextMessagesFromDefinition } from '@/features/chat/chatCreateFlows';
 import {
   type DesktopChatMessageRoute,
 } from '@/lib/desktop';
-import { startDesktopSharedChatMessage } from '@/lib/desktopBackgroundSessions';
+import {
+  desktopSharedRequestAlreadyStarted,
+  startDesktopSharedChatMessage,
+} from '@/lib/desktopBackgroundSessions';
 import type {
   Contact,
   DesktopChatTurnSnapshot,
@@ -25,6 +30,7 @@ import {
 } from './cloudAttachments';
 import {
   cloudAgentNativeContextMessagesFromDirectCloudSession,
+  cloudDirectAgentReplyThreadAction,
   cloudAgentNoProviderNoticeText,
   encodeCloudAgentResponse,
   isCloudAgentNoProviderConfiguredError,
@@ -42,7 +48,6 @@ import {
 } from './cloudDirectMessages';
 import {
   cloudAgentFailedTurnSnapshot,
-  cloudAgentResponsePublicationIsBlocked,
   publishDerivedCloudSessionActivity,
   waitForCloudAgentTurn,
 } from './cloudAgentLocalExecution';
@@ -67,6 +72,7 @@ export function useCloudDirectAgentExecution({
   cloudMessageIndex,
   defaultCloudAgentRuntimeRoute,
   initialMessagesSettled,
+  runtimeReady = true,
   processedRequestIdsRef,
   turnIdsByRequestIdRef,
   activityRef,
@@ -84,6 +90,7 @@ export function useCloudDirectAgentExecution({
   cloudMessageIndex: CloudMessageIndex;
   defaultCloudAgentRuntimeRoute?: DesktopChatMessageRoute | null;
   initialMessagesSettled: boolean;
+  runtimeReady?: boolean;
   processedRequestIdsRef: MutableRefObject<Set<string>>;
   turnIdsByRequestIdRef: MutableRefObject<Map<string, string>>;
   activityRef: MutableRefObject<CloudSessionActivityStore>;
@@ -96,7 +103,7 @@ export function useCloudDirectAgentExecution({
   reportWarning: (message: string, error: unknown) => void;
 }) {
   useEffect(() => {
-    if (!account || !initialMessagesSettled) return;
+    if (!account || !initialMessagesSettled || !runtimeReady) return;
     for (const [peerId, messages] of cloudMessageIndex.byPeerId) {
       for (const message of messages) {
         if (!shouldRunLocalCloudAgentForCloudMessage({
@@ -159,10 +166,12 @@ export function useCloudDirectAgentExecution({
           activitySessionId ?? peerId,
         );
         if (!runtimeSessionId) continue;
+        const replyMessageAction = cloudDirectAgentReplyThreadAction(messages, message, account.accountId);
         const rememberLocalTurn = (turn: DesktopChatTurnSnapshot) => {
+          void publishModelSubsessions(turn).catch(() => undefined);
           setLocalTurns((current) => ({
             ...current,
-            [message.messageId]: turn,
+            [message.messageId]: { ...turn, messageAction: replyMessageAction },
           }));
         };
         void (async () => {
@@ -192,19 +201,27 @@ export function useCloudDirectAgentExecution({
             return;
           }
 
-          // Start these remote guards without awaiting them. Local provider
-          // readiness and execution must not sit behind Cloud latency; the
-          // guards only decide whether the completed response still needs to
-          // be published.
-          const responseGuardPromise = cloudAgentResponsePublicationIsBlocked({
-            client,
-            token: session.token,
-            peerId,
-            fallbackMessages: messages,
-            account,
-            requestMessageId: message.messageId,
+          if (!activitySessionId) return;
+          const requestedRoute = cloudAgentRuntimeRouteForTargetCloudAgent({
+                targetCloudAgentId,
+                cloudAgentDefinitionsById,
+                routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
+                runtimeSessionId,
+                fallbackRoute: defaultCloudAgentRuntimeRoute,
+                requestRoute: cloudDirectMessageAgentRuntimeRoute(message.body),
+              });
+          const lease = await acquireDesktopExecutionLease(client, session.token, {
+            requestMessageId: message.messageId, sessionId: activitySessionId,
+            ownerAccountId: account.accountId, requesterAccountId: message.fromAccountId,
+            prompt, idempotencyKey: `shared:${message.messageId}:${account.accountId}`,
+            runtimeRoute: requestedRoute ? { defaultModel: requestedRoute.model, defaultAuthProvider: requestedRoute.authProvider, defaultAuthChoice: requestedRoute.authChoice, thinking: requestedRoute.thinking } : undefined,
+          }).catch((error) => {
+            if (message.fromAccountId === account.accountId) rememberLocalTurn(cloudAgentFailedTurnSnapshot({ requestId: message.messageId, sessionId: runtimeSessionId, prompt, error }));
+            reportWarning('Agent execution admission failed', error); return null;
           });
-
+          if (!lease) return;
+          try {
+          if (!await lease.admitted()) return;
           let finalTurn: DesktopChatTurnSnapshot;
           try {
             const agentAttachments = message.attachments?.length
@@ -222,23 +239,25 @@ export function useCloudDirectAgentExecution({
               runtimeSessionId,
               prompt,
               agentAttachmentPaths,
-              cloudAgentRuntimeRouteForTargetCloudAgent({
-                targetCloudAgentId,
-                cloudAgentDefinitionsById,
-                routesByRuntimeSessionId: cloudAgentRuntimeRoutesBySessionId,
-                runtimeSessionId,
-                fallbackRoute: defaultCloudAgentRuntimeRoute,
-                requestRoute: cloudDirectMessageAgentRuntimeRoute(message.body),
-              }),
-              contextMessages,
+              requestedRoute,
+              lease.contextMessages(contextMessages),
               visibleTaskRecords,
               activitySessionId,
+              lease.deadline,
             );
+            lease.attach(startedTurn.id);
             rememberLocalTurn(startedTurn);
-            turnIdsByRequestIdRef.current.set(
-              message.messageId,
-              startedTurn.id,
-            );
+            turnIdsByRequestIdRef.current.set(message.messageId, startedTurn.id);
+            if (replyMessageAction) {
+              await lease.publisher.sendMessage(session.token, peerId, encodeCloudAgentResponse({
+                requestId: message.messageId,
+                text: '',
+                deliveryState: 'processing',
+                messageAction: replyMessageAction,
+              }), { sessionId: message.sessionId ?? null })
+                .then(mergeMessage)
+                .catch((error) => reportWarning('[cloud-agent-mention] thread status publish failed', error));
+            }
             finalTurn = startedTurn.completed
               ? startedTurn
               : await waitForCloudAgentTurn(
@@ -246,7 +265,9 @@ export function useCloudDirectAgentExecution({
                 rememberLocalTurn,
               );
             rememberLocalTurn(finalTurn);
+            void publishModelSubsessions(finalTurn).catch(() => undefined);
           } catch (error) {
+            if (desktopSharedRequestAlreadyStarted(error)) return;
             finalTurn = cloudAgentFailedTurnSnapshot({
               requestId: message.messageId,
               sessionId: runtimeSessionId,
@@ -262,28 +283,7 @@ export function useCloudDirectAgentExecution({
             turnIdsByRequestIdRef.current.delete(message.messageId);
           }
 
-          if (finalTurn.status === 'cancelled') {
-            void syncMessages();
-            return;
-          }
-
           try {
-            const [initialResponseBlocked, finalResponseBlocked] =
-              await Promise.all([
-                responseGuardPromise,
-                cloudAgentResponsePublicationIsBlocked({
-                  client,
-                  token: session.token,
-                  peerId,
-                  fallbackMessages: messages,
-                  account,
-                  requestMessageId: message.messageId,
-                }),
-              ] as const);
-            if (initialResponseBlocked || finalResponseBlocked) {
-              void syncMessages();
-              return;
-            }
             if (activitySessionId) {
               await publishDerivedCloudSessionActivity({
                 client,
@@ -322,6 +322,8 @@ export function useCloudDirectAgentExecution({
               && finalTurn.assistantText.trim().length > 0;
             const responseText = responseSucceeded
               ? finalTurn.assistantText.trim()
+              : finalTurn.status === 'cancelled'
+                ? 'Request stopped.'
               : isCloudAgentNoProviderConfiguredError(
                 finalTurn.error || finalTurn.message,
               )
@@ -331,14 +333,15 @@ export function useCloudDirectAgentExecution({
                   || finalTurn.message
                   || 'Cloud agent returned no text response'
                 }`;
-            const response = await client.sendMessage(
+            const response = await lease.publisher.sendMessage(
               session.token,
               peerId,
               encodeCloudAgentResponse({
                 requestId: message.messageId,
                 text: responseText,
-                deliveryState: responseSucceeded ? 'complete' : 'failed',
+                deliveryState: finalTurn.status === 'cancelled' ? 'cancelled' : responseSucceeded ? 'complete' : 'failed',
                 backgroundSessions: cloudAgentBackgroundSessionsFromTurn(finalTurn),
+                messageAction: replyMessageAction,
               }),
               { sessionId: message.sessionId ?? null },
             );
@@ -352,6 +355,10 @@ export function useCloudDirectAgentExecution({
               error,
             );
           }
+          } catch (error) {
+            if (message.fromAccountId === account.accountId) rememberLocalTurn(cloudAgentFailedTurnSnapshot({ requestId: message.messageId, sessionId: runtimeSessionId, prompt, error }));
+            reportWarning('Agent execution admission failed', error);
+          } finally { lease.dispose(); }
         })();
       }
     }
@@ -365,6 +372,7 @@ export function useCloudDirectAgentExecution({
     cloudMessageIndex,
     defaultCloudAgentRuntimeRoute,
     initialMessagesSettled,
+    runtimeReady,
     mergeMessage,
     processedRequestIdsRef,
     reportWarning,
