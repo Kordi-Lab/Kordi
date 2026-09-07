@@ -2595,8 +2595,10 @@ private struct MessageImageAttachment: View {
         }
         .overlay(alignment: .topLeading) {
             if attachment.livePhoto != nil {
-                Label("LIVE", systemImage: "livephoto").font(.caption2.bold())
-                    .padding(5).foregroundStyle(.white).background(.black.opacity(0.6), in: Capsule()).padding(6)
+                Image(systemName: "livephoto").font(.system(size: 16, weight: .medium))
+                    .frame(width: 28, height: 28).foregroundStyle(.white)
+                    .background(.black.opacity(0.45), in: Circle()).padding(6)
+                    .accessibilityLabel("Live Photo")
             }
         }
         .accessibilityLabel(

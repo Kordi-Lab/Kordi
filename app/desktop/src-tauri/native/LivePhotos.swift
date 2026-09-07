@@ -71,6 +71,11 @@ private func prepare(_ input: ImportRequest) throws -> [[String: Any]] {
             try exportPlayback(storedVideo, to: playback)
             try checkSize(playback, maximum: 256 * 1024 * 1024)
             guard let source = CGImageSourceCreateWithURL(storedPhoto as CFURL, nil) else { throw LiveError.invalid }
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+            var width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+            var height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+            if let orientation = (properties?[kCGImagePropertyOrientation] as? NSNumber)?.intValue, (5...8).contains(orientation) { swap(&width, &height) }
+            guard width > 0, height > 0 else { throw LiveError.invalid }
             var thumbnail: CGImage?
             var preview: Data?
             for (dimension, quality) in [(960, 0.72), (640, 0.58), (320, 0.5)] {
@@ -85,14 +90,14 @@ private func prepare(_ input: ImportRequest) throws -> [[String: Any]] {
                 guard CGImageDestinationFinalize(destination) else { throw LiveError.invalid }
                 if bytes.length <= 260_000 { thumbnail = image; preview = bytes as Data; break }
             }
-            guard let image = thumbnail, let preview else { throw LiveError.invalid }
+            guard thumbnail != nil, let preview else { throw LiveError.invalid }
             result.append([
                 "sourcePhotoPath": photo.path, "sourceVideoPath": video.path,
                 "path": storedPhoto.path, "name": photo.lastPathComponent,
                 "kind": "image", "mimeType": UTType(filenameExtension: photo.pathExtension)?.preferredMIMEType ?? "image/jpeg",
                 "sizeBytes": try storedPhoto.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0,
                 "previewUrl": "data:image/jpeg;base64," + preview.base64EncodedString(),
-                "widthPixels": image.width, "heightPixels": image.height,
+                "widthPixels": width, "heightPixels": height,
                 "livePhotoFiles": ["videoPath": storedVideo.path, "playbackPath": playback.path]
             ])
             used.insert(video)

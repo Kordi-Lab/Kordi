@@ -1,7 +1,8 @@
 import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { CirclePlay, LoaderCircle, Square } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
+import { LivePhotoIcon } from './livePhotoIcon';
 import type { LivePhoto } from '@/features/chat/livePhotos';
 import { loadCachedCloudAttachmentLocalPath } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { cloudAttachmentPlaybackUrl } from '@/features/cloud/cloudAttachmentPlayback';
@@ -70,13 +71,14 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
   }
 
   const controls = (
-    <div className={controlsTarget ? "flex items-center border-l border-white/15" : "absolute bottom-5 z-20 flex flex-col items-center gap-2"} data-attachment-image-lightbox-control="true">
+    <div className={controlsTarget ? "flex h-full items-center gap-2" : "absolute bottom-5 z-20 flex flex-col items-center gap-2"} data-attachment-image-lightbox-control="true">
+      {failed ? <span role="status" className="text-xs text-white/70">Live playback unavailable. Try again.</span> : null}
       <button type="button" onClick={() => void play()} disabled={loading && !playing}
-        className={controlsTarget ? "gap-1.5 px-3 text-xs" : "flex min-h-11 items-center gap-2 rounded-full bg-black/60 px-5 text-sm text-white backdrop-blur"}
+        className={controlsTarget ? "flex h-full items-center justify-center rounded-full bg-white/10 aria-pressed:bg-white/25 px-3 text-sm text-white" : "flex min-h-11 items-center justify-center rounded-full bg-black/60 px-3 text-sm text-white backdrop-blur"}
+        title={playing ? 'Stop Live Photo' : 'Play Live Photo'}
         aria-label={playing ? 'Stop Live Photo' : 'Play Live Photo'} aria-pressed={playing}>
         {loading ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
-          : playing ? <Square className="size-4" aria-hidden="true" /> : <CirclePlay className="size-4" aria-hidden="true" />}
-        {loading ? 'Loading…' : 'Live'}
+          : <LivePhotoIcon className="size-5" />}
       </button>
     </div>
   );
@@ -101,7 +103,6 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
         onError={() => { setFailed(true); setPlaying(false); setLoading(false); }}
       />
     ) : null}
-    {failed ? <span role="status" className="absolute bottom-14 right-4 z-20 max-w-[90%] rounded-lg bg-black/80 px-3 py-2 text-sm text-white">Live playback unavailable. Try again.</span> : null}
     {controlsTarget ? createPortal(controls, controlsTarget) : controls}
 
   </>;

@@ -66,6 +66,7 @@ enum LivePhotoMedia {
         try checkSize(video, maximum: maximumMotionBytes)
         _ = try await fromFiles(photo: photo, video: video)
         let data = try Data(contentsOf: photo, options: .mappedIfSafe)
+        let dimensions = PendingAttachmentLoader.imagePixelDimensions(data: data)
         let preview = try PendingAttachmentLoader.loadImage(data: data, suggestedName: name)
         let output = temporaryURL(extension: "mp4")
         do {
@@ -81,7 +82,7 @@ enum LivePhotoMedia {
             var attachment = PendingAttachment(id: UUID().uuidString, name: name, kind: .image,
                                                mimeType: UTType(filenameExtension: photo.pathExtension)?.preferredMIMEType ?? "image/jpeg",
                                                data: Data(), fileURL: photo, previewURL: preview.previewURL,
-                                               widthPixels: preview.widthPixels, heightPixels: preview.heightPixels)
+                                               widthPixels: dimensions?.width, heightPixels: dimensions?.height)
             attachment.livePhotoFiles = LivePhotoFiles(videoURL: video, playbackURL: output)
             return attachment
         } catch {

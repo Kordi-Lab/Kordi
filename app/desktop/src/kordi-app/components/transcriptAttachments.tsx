@@ -1,3 +1,4 @@
+import { LivePhotoIcon } from './livePhotoIcon';
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import {
   attachmentMediaGalleryIndex,
@@ -323,7 +324,7 @@ function AttachmentImageCard({
           transparent={isSticker}
         />
       )}
-      {attachment.livePhoto || attachment.livePhotoFiles ? <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white">LIVE</span> : null}
+      {attachment.livePhoto || attachment.livePhotoFiles ? <span role="img" aria-label="Live Photo" className="pointer-events-none absolute left-2 top-2 grid size-7 place-items-center rounded-full bg-black/45 text-white"><LivePhotoIcon className="size-4" /></span> : null}
       {showOriginalAction ? (
         <div className="absolute bottom-2 right-2 z-10">
           <AttachmentActions attachment={attachment} variant="original" />

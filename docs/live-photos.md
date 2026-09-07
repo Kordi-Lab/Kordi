@@ -1,12 +1,12 @@
 # Live Photos
 
-Kordi keeps a Live Photo as one image attachment with its original paired MOV and a separate MP4 playback rendition. The original photo and MOV retain their pairing metadata so the pair can be reconstructed in Photos. Thumbnails are separate JPEG previews.
+Kordi keeps a Live Photo as one image attachment with its original paired MOV and a separate MP4 playback rendition. The original photo and MOV retain their pairing metadata so the pair can be reconstructed in Photos. Thumbnails are separate JPEG previews. Image dimensions describe the original photo, independently of the thumbnail size.
 
 ## Sending and viewing
 
-- **iPhone:** Open the paperclip menu and choose Photo Library. Live Photos have a LIVE badge. Select a photo and choose **Review Live Photo** to play its motion and sound before sending. **Send still image only** explicitly disables motion. Editing a Live Photo requires confirming a still-image result.
-- **Mac:** Export a Live Photo's unmodified originals from Photos, then select both the photo and MOV in Kordi's attachment picker. PhotoKit validates the pair regardless of filenames. The composer combines a valid pair into one LIVE attachment; its review button plays the motion before sending.
-- **Received photos:** Open the image and activate **Live**. iPhone uses native Live Photo playback and press-and-hold after loading. Mac plays the MP4 in the still image's frame, returns to the still at the end, and stops playback on close or navigation. Motion loads on demand; errors retain the still and offer retry.
+- **iPhone:** Open the paperclip menu and choose Photo Library. Live Photos have the concentric-circle Live Photo symbol. Select a photo and choose **Review Live Photo** to play its motion and sound before sending. Turn off **Send as Live Photo** to explicitly disable motion. Editing a Live Photo requires confirming a still-image result.
+- **Mac:** Export a Live Photo's unmodified originals from Photos, then select both the photo and MOV in Kordi's attachment picker. PhotoKit validates the pair regardless of filenames. The composer combines a valid pair into one attachment with the Live Photo symbol; its review button plays the motion before sending.
+- **Received photos:** Open the image and activate the **Live Photo** icon. iPhone uses native Live Photo playback and press-and-hold after loading. Mac plays the MP4 in the still image's frame, returns to the still at the end, and stops playback on close or navigation. Motion loads on demand; errors retain the still and offer retry. Live controls sit in the toolbar outside the photo. iPhone previews fit the complete image between the header and footer in portrait and landscape.
 - **Save:** On iPhone, use **Save Live Photo** in the viewer. On Mac, **Download Live Photo originals** saves the photo and MOV for importing together into Photos. Forwarding uploads the complete pair and playback rendition under the forwarding sender's account.
 
 Mac import accepts at most 16 selected files per pairing operation. Original photos are limited to 32 MiB; the MOV and MP4 are each limited to 256 MiB. A lone image remains an ordinary image. Motion Photo formats from other platforms and a custom Live Photo editor are outside this implementation.
@@ -35,7 +35,7 @@ Older clients can render the image through the existing JPEG preview endpoint an
 
 ## Validation
 
-No media files are checked in. `scripts/prepare-live-photo-test-assets.sh` generates a small synthetic photo/video pair, validates it with PhotoKit, verifies byte-preserving import, and exports MP4 playback. The iOS test target invokes it when building test resources. Desktop browser tests invoke it on macOS before exercising playback.
+No media files are checked in. `scripts/prepare-live-photo-test-assets.sh` generates a synthetic 4000 × 3000 photo paired with a small video, validates it with PhotoKit, verifies byte-preserving import, and exports MP4 playback. The iOS test target invokes it when building test resources. Desktop browser tests invoke it on macOS before exercising playback in Chromium and WebKit.
 
 ```bash
 bash scripts/prepare-live-photo-test-assets.sh .build/live-photo-fixture

@@ -91,7 +91,6 @@ struct MediaPreviewView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     let presentation: MediaPreviewPresentation
 
     @State private var selectedItemID: ConversationMediaItem.ID
@@ -100,6 +99,9 @@ struct MediaPreviewView: View {
     @State private var liveShareURLs: [URL] = []
     @State private var showLiveShare = false
     @State private var sharingItemID: ConversationMediaItem.ID?
+    @State private var saving = false
+    @State private var saveStatus: String?
+    @State private var playback = LivePhotoPlayback()
 
     init(presentation: MediaPreviewPresentation) {
         self.presentation = presentation
@@ -107,132 +109,140 @@ struct MediaPreviewView: View {
     }
 
     var body: some View {
-        GeometryReader { viewport in
-            ZStack {
-                Color.black
-                    .opacity(backgroundOpacity)
-                    .ignoresSafeArea()
-
-                if presentation.items.isEmpty {
-                    ContentUnavailableView(
-                        "Image unavailable",
-                        systemImage: "photo.badge.exclamationmark",
-                        description: Text("Close the preview and try opening the image again.")
-                    )
-                    .foregroundStyle(.white)
-                } else {
-                    TabView(selection: $selectedItemID) {
-                        ForEach(presentation.items) { item in
-                            MediaPreviewPage(
-                                item: item,
-                                isActive: item.id == selectedItemID,
-                                initialImage: item.id == presentation.initialItemID
-                                    ? presentation.initialImage
-                                    : nil
-                            )
-                            .tag(item.id)
-                        }
+        VStack(spacing: 0) {
+            header
+            GeometryReader { viewport in
+                TabView(selection: $selectedItemID) {
+                    ForEach(presentation.items) { item in
+                        MediaPreviewPage(
+                            item: item,
+                            livePhoto: item.id == selectedItemID ? playback.photo : nil,
+                            playRequest: playback.playRequest,
+                            initialImage: item.id == presentation.initialItemID ? presentation.initialImage : nil
+                        )
+                        .tag(item.id)
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .offset(y: dismissalOffset)
-                    .scaleEffect(contentScale)
-                    .accessibilityValue(pageAccessibilityValue)
-                    .accessibilityAdjustableAction(moveSelection)
                 }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(width: viewport.size.width, height: viewport.size.height)
+                .offset(y: dismissalOffset)
+                .clipped()
+                .accessibilityAdjustableAction(moveSelection)
+                .simultaneousGesture(dismissalGesture(viewportHeight: viewport.size.height))
             }
-            .overlay(alignment: .top) {
-                MediaPreviewHeader(
-                    item: currentItem,
-                    onClose: dismiss.callAsFunction,
-                    onShare: shareCurrentItem
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .opacity(chromeOpacity)
-            }
-            .overlay(alignment: .bottom) {
-                MediaPreviewFooter(
-                    currentPage: currentIndex + 1,
-                    totalPages: presentation.items.count,
-                    isSharing: sharingItemID == selectedItemID,
-                    onShare: shareCurrentItem
-                )
-                .padding(.horizontal, 18)
-                .padding(.bottom, 10)
-                .opacity(chromeOpacity)
-            }
-            .contentShape(Rectangle())
-            .simultaneousGesture(dismissalGesture(viewportHeight: viewport.size.height))
+            footer
         }
-        .presentationBackground(.clear)
+        .background { Color.black.ignoresSafeArea() }
+        .foregroundStyle(.white)
         .preferredColorScheme(.dark)
-        .statusBarHidden(false)
         .sensoryFeedback(.selection, trigger: selectedItemID)
-        .sheet(item: $shareItem) { item in
-            ActivityShareSheet(items: [item.url])
-        }
+        .onChange(of: selectedItemID) { _, _ in playback.reset(); saveStatus = nil }
+        .onChange(of: currentItem?.attachment.id) { _, _ in playback.reset() }
+        .onDisappear { playback.reset() }
+        .sheet(item: $shareItem) { item in ActivityShareSheet(items: [item.url]) }
         .sheet(isPresented: $showLiveShare) { ActivityShareSheet(items: liveShareURLs) }
         .accessibilityAction(.escape, dismiss.callAsFunction)
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Button("Close image preview", systemImage: "chevron.backward") { dismiss() }
+                .labelStyle(.iconOnly).frame(width: 44, height: 44)
+            VStack(spacing: 3) {
+                Text(currentItem?.senderName ?? "Photo").font(.headline).lineLimit(1)
+                if let item = currentItem {
+                    Text(item.sentAt.formatted(date: .abbreviated, time: .shortened))
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            Menu {
+                if currentItem?.attachment.livePhoto != nil {
+                    Button("Save Live Photo", systemImage: "square.and.arrow.down", action: saveCurrentItem)
+                        .disabled(saving)
+                }
+                Button("Share or Save", systemImage: "square.and.arrow.up", action: shareCurrentItem)
+                    .disabled(sharingItemID != nil)
+            } label: {
+                Image(systemName: "ellipsis").frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("More image actions")
+        }
+        .font(.body.weight(.semibold))
+        .buttonStyle(.plain)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .accessibilityIdentifier("media-preview-header")
+    }
+
+    private var footer: some View {
+        VStack(spacing: 8) {
+            if playback.failed {
+                Text("Live playback unavailable. Try again.").font(.caption).foregroundStyle(.secondary)
+            }
+            if let saveStatus { Text(saveStatus).font(.caption).foregroundStyle(.secondary) }
+            ZStack {
+                Text("\(currentIndex + 1) of \(presentation.items.count)")
+                    .font(.caption.weight(.medium)).monospacedDigit().foregroundStyle(.secondary)
+                HStack {
+                    Button(action: shareCurrentItem) {
+                        Group {
+                            if sharingItemID != nil { ProgressView().tint(.white) }
+                            else { Image(systemName: "square.and.arrow.up").font(.title3) }
+                        }
+                        .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain).disabled(sharingItemID != nil)
+                    .accessibilityLabel("Share or save image")
+                    Spacer()
+                    if let item = currentItem, item.attachment.livePhoto != nil {
+                        LivePhotoPlaybackButton(playback: playback) {
+                            let attachment = item.attachment
+                            playback.play {
+                                guard let urls = await model.prepareLivePhotoURLs(attachment) else { throw AttachmentTransferError.invalidImage }
+                                return try await LivePhotoMedia.fromFiles(photo: urls.photo, video: urls.video)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .accessibilityIdentifier("media-preview-footer")
     }
 
     private var currentItem: ConversationMediaItem? {
         let item = presentation.items.first(where: { $0.id == selectedItemID }) ?? presentation.items.first
         return item.map { $0.updated(in: model.messagesByConversation[$0.conversationID] ?? []) }
     }
-
-    private var currentIndex: Int {
-        presentation.items.firstIndex(where: { $0.id == selectedItemID }) ?? 0
-    }
-
-    private var backgroundOpacity: Double {
-        max(0.28, 1 - Double(dismissalOffset / 520))
-    }
-
-    private var chromeOpacity: Double {
-        max(0, 1 - Double(dismissalOffset / 180))
-    }
-
-    private var contentScale: CGFloat {
-        guard !reduceMotion else { return 1 }
-        return max(0.92, 1 - dismissalOffset / 1_800)
-    }
-
-    private var pageAccessibilityValue: String {
-        "Image \(currentIndex + 1) of \(presentation.items.count)"
-    }
+    private var currentIndex: Int { presentation.items.firstIndex(where: { $0.id == selectedItemID }) ?? 0 }
 
     private func dismissalGesture(viewportHeight: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 12, coordinateSpace: .global)
-            .onChanged { value in
-                dismissalOffset = MediaPreviewDismissal.verticalOffset(for: value.translation)
-            }
+            .onChanged { dismissalOffset = MediaPreviewDismissal.verticalOffset(for: $0.translation) }
             .onEnded { value in
-                if MediaPreviewDismissal.shouldDismiss(
-                    translation: value.translation,
-                    predictedEndTranslation: value.predictedEndTranslation,
-                    viewportHeight: viewportHeight
-                ) {
+                if MediaPreviewDismissal.shouldDismiss(translation: value.translation, predictedEndTranslation: value.predictedEndTranslation, viewportHeight: viewportHeight) {
                     dismiss()
                 } else {
-                    withAnimation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.32, dampingFraction: 0.86)) {
-                        dismissalOffset = 0
-                    }
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { dismissalOffset = 0 }
                 }
             }
     }
 
     private func moveSelection(_ direction: AccessibilityAdjustmentDirection) {
-        let nextIndex: Int
-        switch direction {
-        case .increment:
-            nextIndex = min(currentIndex + 1, presentation.items.count - 1)
-        case .decrement:
-            nextIndex = max(currentIndex - 1, 0)
-        @unknown default:
-            return
+        let next = direction == .increment ? currentIndex + 1 : currentIndex - 1
+        guard presentation.items.indices.contains(next) else { return }
+        selectedItemID = presentation.items[next].id
+    }
+
+    private func saveCurrentItem() {
+        guard let item = currentItem, !saving else { return }
+        saving = true
+        Task {
+            let saved = await model.saveLivePhoto(item.attachment)
+            saving = false
+            guard selectedItemID == item.id else { return }
+            saveStatus = saved ? "Saved to Photos" : "Could not save Live Photo. Check Photos access and try again."
         }
-        guard presentation.items.indices.contains(nextIndex) else { return }
-        selectedItemID = presentation.items[nextIndex].id
     }
 
     private func shareCurrentItem() {
@@ -244,232 +254,64 @@ struct MediaPreviewView: View {
                 guard let urls = await model.prepareLivePhotoURLs(item.attachment) else { return }
                 liveShareURLs = [urls.photo, urls.video]
                 showLiveShare = true
-                return
+            } else if let url = await model.prepareAttachmentForSharing(item.attachment) {
+                shareItem = SharedFileItem(url: url)
             }
-            guard let url = await model.prepareAttachmentForSharing(item.attachment) else { return }
-            shareItem = SharedFileItem(url: url)
         }
-    }
-}
-
-private struct MediaPreviewHeader: View {
-    let item: ConversationMediaItem?
-    let onClose: () -> Void
-    let onShare: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            MediaPreviewCircleButton(
-                systemImage: "chevron.backward",
-                accessibilityLabel: "Close image preview",
-                action: onClose
-            )
-
-            Spacer(minLength: 0)
-
-            if let item {
-                VStack(spacing: 1) {
-                    Text(item.senderName)
-                        .font(.headline)
-                        .lineLimit(1)
-                    Text(item.sentAt.formatted(date: .abbreviated, time: .shortened))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 7)
-                .frame(maxWidth: 240)
-                .background(.ultraThinMaterial, in: Capsule())
-                .accessibilityElement(children: .combine)
-            }
-
-            Spacer(minLength: 0)
-
-            Menu {
-                Button(action: onShare) {
-                    Label("Share or Save", systemImage: "square.and.arrow.up")
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 48, height: 48)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .contentShape(Circle())
-            }
-            .accessibilityLabel("More image actions")
-        }
-    }
-}
-
-private struct MediaPreviewFooter: View {
-    let currentPage: Int
-    let totalPages: Int
-    let isSharing: Bool
-    let onShare: () -> Void
-
-    var body: some View {
-        HStack {
-            Button(action: onShare) {
-                Group {
-                    if isSharing {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.title3.weight(.medium))
-                    }
-                }
-                .frame(width: 52, height: 52)
-                .background(.ultraThinMaterial, in: Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(isSharing)
-            .accessibilityLabel(isSharing ? "Preparing image" : "Share or save image")
-
-            Spacer(minLength: 0)
-
-            Text("\(currentPage) of \(totalPages)")
-                .font(.caption.weight(.semibold))
-                .monospacedDigit()
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(.ultraThinMaterial, in: Capsule())
-                .accessibilityLabel("Image \(currentPage) of \(totalPages)")
-
-            Spacer(minLength: 0)
-
-            Color.clear
-                .frame(width: 52, height: 52)
-                .accessibilityHidden(true)
-        }
-    }
-}
-
-private struct MediaPreviewCircleButton: View {
-    let systemImage: String
-    let accessibilityLabel: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 48, height: 48)
-                .background(.ultraThinMaterial, in: Circle())
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
     }
 }
 
 private struct MediaPreviewPage: View {
     @EnvironmentObject private var model: AppModel
-
     let item: ConversationMediaItem
-    let isActive: Bool
-    @State private var savedLivePhoto = false
-    @State private var savingLivePhoto = false
-
+    let livePhoto: PHLivePhoto?
+    let playRequest: Int
     @State private var image: UIImage?
     @State private var loadFailed = false
     @State private var reloadToken = 0
 
-    init(item: ConversationMediaItem, isActive: Bool, initialImage: UIImage?) {
-        self.isActive = isActive
+    init(item: ConversationMediaItem, livePhoto: PHLivePhoto?, playRequest: Int, initialImage: UIImage?) {
         self.item = item
+        self.livePhoto = livePhoto
+        self.playRequest = playRequest
         _image = State(initialValue: initialImage)
     }
-
-    private var attachment: ChatAttachment {
-        item.updated(in: model.messagesByConversation[item.conversationID] ?? []).attachment
-    }
+    private var attachment: ChatAttachment { item.updated(in: model.messagesByConversation[item.conversationID] ?? []).attachment }
 
     var body: some View {
         ZStack {
-            if let image {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .transition(.opacity)
-                    .accessibilityLabel(
-                        attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                            ?? attachment.name
-                    )
-            } else if loadFailed {
-                ContentUnavailableView {
-                    Label("Image unavailable", systemImage: "photo.badge.exclamationmark")
-                } description: {
-                    Text("Check your connection, then try again.")
-                } actions: {
-                    Button("Try Again") {
-                        reloadToken += 1
+            LivePhotoImageSurface(image: image, livePhoto: livePhoto, playRequest: playRequest, label: attachment.altText ?? attachment.name)
+            if image == nil && livePhoto == nil {
+                if loadFailed {
+                    ContentUnavailableView {
+                        Label("Image unavailable", systemImage: "photo.badge.exclamationmark")
+                    } description: {
+                        Text("Check your connection, then try again.")
+                    } actions: {
+                        Button("Try Again") { reloadToken += 1 }.buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
-                }
-                .foregroundStyle(.white)
-            } else {
-                ProgressView("Loading image")
-                    .tint(.white)
-                    .foregroundStyle(.white)
+                } else { ProgressView("Loading image").tint(.white) }
             }
         }
-        .overlay {
-            if attachment.livePhoto != nil, isActive {
-                LivePhotoSurface {
-                    guard let urls = await model.prepareLivePhotoURLs(attachment) else { throw AttachmentTransferError.invalidImage }
-                    return try await LivePhotoMedia.fromFiles(photo: urls.photo, video: urls.video)
-                }
-                .id(attachment.id)
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            if attachment.livePhoto != nil {
-                Button(savedLivePhoto ? "Saved to Photos" : "Save Live Photo", systemImage: "square.and.arrow.down") {
-                    savingLivePhoto = true
-                    Task {
-                        savedLivePhoto = await model.saveLivePhoto(attachment)
-                        savingLivePhoto = false
-                    }
-                }
-                .disabled(savingLivePhoto || savedLivePhoto)
-                .padding(10).background(.ultraThinMaterial, in: Capsule())
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 76)
-        .task(id: "\(attachment.id):\(reloadToken)") {
-            await loadImage()
-        }
+        .task(id: "\(attachment.id):\(reloadToken)") { await loadImage() }
     }
 
     private func loadImage() async {
         loadFailed = false
-
-        if image == nil,
-           let source = attachment.previewURL,
-           let preview = await AvatarImageLoader.image(from: source) {
+        if image == nil, let source = attachment.previewURL, let preview = await AvatarImageLoader.image(from: source) {
             guard !Task.isCancelled else { return }
             image = preview
         }
-
         guard let url = await model.prepareAttachmentForSharing(attachment) else {
             guard !Task.isCancelled else { return }
             loadFailed = image == nil
             return
         }
-
         let fullImage = await Task.detached(priority: .userInitiated) {
             AttachmentImageDecoder.downsampledImage(at: url, maximumPixelSize: 4_096)
         }.value
         guard !Task.isCancelled else { return }
-        if let fullImage {
-            image = fullImage
-        }
+        if let fullImage { image = fullImage }
         loadFailed = image == nil
     }
 }

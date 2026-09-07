@@ -1,3 +1,4 @@
+import { LivePhotoIcon } from './livePhotoIcon';
 import type { LivePhotoFiles } from '@/features/chat/livePhotos';
 import { LivePhotoComposerReview } from './livePhotoComposerReview';
 import {
@@ -185,10 +186,10 @@ export function ComposerAttachmentList({
                 )}
                 aria-hidden="true"
               >
-                <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
+                {attachment.livePhotoFiles ? <LivePhotoIcon className="size-4" /> : <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />}
               </span>
               <span className="min-w-0 max-w-[220px] flex-1 truncate text-[11.5px] font-medium leading-none">
-                {attachment.livePhotoFiles ? `LIVE · ${attachment.name}` : attachment.name}
+                {attachment.name}
               </span>
               {onReplace && attachment.kind === 'image' && attachment.path ? (
                 <button

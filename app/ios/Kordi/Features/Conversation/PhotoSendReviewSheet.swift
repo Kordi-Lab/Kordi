@@ -166,8 +166,10 @@ struct PhotoLibrarySendPicker: View {
             )
                 .overlay(alignment: .bottomLeading) {
                     if asset.mediaSubtypes.contains(.photoLive) {
-                        Label("LIVE", systemImage: "livephoto").font(.caption2.bold())
-                            .padding(4).foregroundStyle(.white).background(.black.opacity(0.6), in: Capsule())
+                        Image(systemName: "livephoto").font(.system(size: 16, weight: .medium))
+                            .frame(width: 24, height: 24).foregroundStyle(.white)
+                            .background(.black.opacity(0.45), in: Circle()).padding(4)
+                            .accessibilityLabel("Live Photo")
                     }
                 }
                 .overlay(alignment: .topTrailing) {

@@ -24,6 +24,7 @@ export default defineConfig({
     reducedMotion: 'reduce',
   },
   projects: [
+    { name: 'webkit-live-photo', testMatch: '**/livePhoto.spec.ts', use: { ...devices['Desktop Safari'] } },
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },

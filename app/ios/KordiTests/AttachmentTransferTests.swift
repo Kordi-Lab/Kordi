@@ -779,6 +779,8 @@ extension AttachmentTransferTests {
         let prepared = try await LivePhotoMedia.loadPair(photo: photo, video: video, name: "Live.jpg")
         defer { prepared.discardOwnedFile() }
         XCTAssertEqual(prepared.kind, .image)
+        XCTAssertEqual(prepared.widthPixels, 4000)
+        XCTAssertEqual(prepared.heightPixels, 3000)
         XCTAssertEqual(prepared.fileURL, photo)
         XCTAssertEqual(try Data(contentsOf: photo), originalPhoto)
         XCTAssertEqual(try Data(contentsOf: video), originalVideo)
@@ -878,6 +880,9 @@ extension AttachmentTransferTests {
             return view.subviews.lazy.compactMap(findLiveView).first
         }
         let native = try XCTUnwrap(findLiveView(host.view))
+        XCTAssertLessThanOrEqual(native.bounds.width, window.bounds.width)
+        XCTAssertLessThanOrEqual(native.bounds.height, window.bounds.height)
+        XCTAssertEqual(native.contentMode, .scaleAspectFit)
         let ended = expectation(description: "Initial playback finishes without a second tap")
         let observer = LivePhotoPlaybackObserver(ended: ended)
         native.delegate = observer

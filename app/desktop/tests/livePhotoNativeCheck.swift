@@ -11,11 +11,12 @@ private func fixture(in directory: URL) throws -> (URL, URL) {
     let video = directory.appendingPathComponent("different-name.mov")
     let identifier = "36C0A362-8A56-45AC-A293-143200000001"
     let width = 320, height = 240
+    let photoWidth = 4000, photoHeight = 3000
     let colorSpace = CGColorSpaceCreateDeviceRGB()
-    let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
-                            bytesPerRow: width * 4, space: colorSpace, bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue)!
+    let context = CGContext(data: nil, width: photoWidth, height: photoHeight, bitsPerComponent: 8,
+                            bytesPerRow: photoWidth * 4, space: colorSpace, bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue)!
     context.setFillColor(NSColor.systemTeal.cgColor)
-    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    context.fill(CGRect(x: 0, y: 0, width: photoWidth, height: photoHeight))
     let destination = CGImageDestinationCreateWithURL(photo as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
     CGImageDestinationAddImage(destination, context.makeImage()!, [
         kCGImagePropertyMakerAppleDictionary: ["17": identifier]
@@ -95,6 +96,7 @@ private func fixture(in directory: URL) throws -> (URL, URL) {
                 let photos = response["photos"] as! [[String: Any]]
                 precondition(photos.count == 1, "Pairing must use metadata, not filenames")
                 let result = photos[0]
+                precondition(result["widthPixels"] as? Int == 4000 && result["heightPixels"] as? Int == 3000, "Dimensions must describe the original, not its thumbnail")
                 let resources = result["livePhotoFiles"] as! [String: String]
                 let photoUnchanged = try Data(contentsOf: URL(fileURLWithPath: result["path"] as! String)) == Data(contentsOf: photo)
                 let videoUnchanged = try Data(contentsOf: URL(fileURLWithPath: resources["videoPath"]!)) == Data(contentsOf: video)
