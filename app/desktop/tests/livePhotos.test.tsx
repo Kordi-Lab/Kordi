@@ -70,3 +70,28 @@ test('cancelling a Live Photo between resource uploads prevents publication', as
     assert.throws(() => upload.check(), /cancelled/);
   } finally { upload.finish(); }
 });
+
+test('forwarding keeps both motion files and re-uploads them under new IDs', async () => {
+  const { resolveForwardAttachmentItems } = await import('../src/features/cloud/cloudAttachments');
+  const downloaded: string[] = [];
+  const forwarded = await resolveForwardAttachmentItems({
+    token: 'test-token', attachments: [{ ...attachment, previewUrl: draft.previewUrl }],
+    client: { downloadAttachmentContent: async (_token, id) => {
+      downloaded.push(id);
+      return new Blob([new Uint8Array([1, 2, 3])], { type: 'application/octet-stream' });
+    } },
+    storeAttachment: async (name) => `/tmp/forwarded-live/${name}`,
+  });
+  assert.equal(forwarded.length, 1);
+  assert.deepEqual(downloaded.sort(), ['motion', 'playback', 'still']);
+  assert.deepEqual(forwarded[0]?.livePhotoFiles, { videoPath: '/tmp/forwarded-live/Live.mov', playbackPath: '/tmp/forwarded-live/Live.mp4' });
+  const uploaded = await uploadComposerAttachments({
+    token: 'test-token', attachments: forwarded, useNativeUpload: true,
+    client: { uploadAttachment: async () => { throw new Error('native upload expected'); }, updateAttachmentPreview: async () => ({ attachmentId: 'new', previewUrl: draft.previewUrl!, updatedLinks: 0 }) },
+    nativeUpload: async ({ path }) => ({ attachmentId: `new:${path}`, sizeBytes: 100, contentType: null }),
+    persistAttachmentPath: async () => null,
+  });
+  assert.equal(uploaded.length, 1);
+  assert.equal(livePhotoAttachmentIds(uploaded[0]!).length, 3);
+  assert.ok(livePhotoAttachmentIds(uploaded[0]!).every((id) => id.startsWith('new:')));
+});

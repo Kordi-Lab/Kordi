@@ -428,6 +428,7 @@ export async function resolveForwardAttachmentItems({
     }
     if (!attachment.previewUrl?.startsWith('data:image/')) throw new Error('Could not download the Live Photo preview. Try again.');
     const paths = await Promise.all([attachment.livePhoto.video, attachment.livePhoto.playback].map(async (resource) => {
+      if (isNativeDesktopShell()) return downloadCloudAttachmentToLocalPath(token, resource.attachmentId, resource.name);
       const blob = await client.downloadAttachmentContent(token, resource.attachmentId);
       return storeAttachment(resource.name, Array.from(new Uint8Array(await blob.arrayBuffer())));
     }));

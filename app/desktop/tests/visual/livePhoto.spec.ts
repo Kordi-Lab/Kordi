@@ -33,3 +33,17 @@ test('failed Live playback keeps the still visible and offers retry', async ({ p
   await expect(page.getByRole('img')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Play Live Photo' })).toBeEnabled();
 });
+
+test('buffering keeps the still visible and can be stopped', async ({ page }) => {
+  await page.route('**/live-photo.mp4', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.continue();
+  });
+  await page.goto('/tests/visual/livePhoto.html');
+  await page.getByRole('button', { name: 'Play Live Photo' }).click();
+  await expect(page.locator('video')).toHaveCSS('opacity', '0');
+  await expect(page.getByRole('img')).toBeVisible();
+  await page.getByRole('button', { name: 'Stop Live Photo' }).click();
+  await expect(page.locator('video')).toHaveCount(0);
+  await expect(page.getByRole('status')).toHaveCount(0);
+});

@@ -55,7 +55,7 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
   }, [imageRef]);
 
   async function play() {
-    if (playing) { videoRef.current?.pause(); setPlaying(false); return; }
+    if (playing) { videoRef.current?.pause(); setPlaying(false); setLoading(false); return; }
     setLoading(true);
     setFailed(false);
     try {
@@ -65,15 +65,13 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
       if (!url) throw new Error('Live Photo unavailable');
       if (mounted.current) { setSource(url); setPlaying(true); }
     } catch {
-      if (mounted.current) setFailed(true);
-    } finally {
-      if (mounted.current) setLoading(false);
+      if (mounted.current) { setFailed(true); setLoading(false); }
     }
   }
 
   const controls = (
     <div className={controlsTarget ? "flex items-center border-l border-white/15" : "absolute bottom-5 z-20 flex flex-col items-center gap-2"} data-attachment-image-lightbox-control="true">
-      <button type="button" onClick={() => void play()} disabled={loading}
+      <button type="button" onClick={() => void play()} disabled={loading && !playing}
         className={controlsTarget ? "gap-1.5 px-3 text-xs" : "flex min-h-11 items-center gap-2 rounded-full bg-black/60 px-5 text-sm text-white backdrop-blur"}
         aria-label={playing ? 'Stop Live Photo' : 'Play Live Photo'} aria-pressed={playing}>
         {loading ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
@@ -87,16 +85,20 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
     {playing && source ? (
       <video ref={videoRef} src={source} playsInline preload="auto"
         className="app-attachment-image-lightbox-image absolute object-contain"
-        style={{ ...frame, transform: `scale(${zoom})`, background: "black" }}
+        style={{ ...frame, transform: `scale(${zoom})`, background: "black", opacity: loading ? 0 : 1 }}
         data-attachment-image-lightbox-control="true"
         aria-label="Live Photo motion"
         onCanPlay={(event) => {
-          void event.currentTarget.play().catch(() => {
-            if (mounted.current) { setFailed(true); setPlaying(false); }
+          setLoading(false);
+          const video = event.currentTarget;
+          void video.play().catch(() => {
+            if (mounted.current && video.isConnected) { setFailed(true); setPlaying(false); setLoading(false); }
           });
         }}
-        onEnded={() => setPlaying(false)}
-        onError={() => { setFailed(true); setPlaying(false); }}
+        onWaiting={() => setLoading(true)}
+        onPlaying={() => setLoading(false)}
+        onEnded={() => { setPlaying(false); setLoading(false); }}
+        onError={() => { setFailed(true); setPlaying(false); setLoading(false); }}
       />
     ) : null}
     {failed ? <span role="status" className="absolute bottom-14 right-4 z-20 max-w-[90%] rounded-lg bg-black/80 px-3 py-2 text-sm text-white">Live playback unavailable. Try again.</span> : null}
