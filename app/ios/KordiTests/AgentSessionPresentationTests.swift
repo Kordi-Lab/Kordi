@@ -1,6 +1,25 @@
 import XCTest
 import SwiftUI
+import Testing
 @testable import Kordi
+
+struct AgentListStatusTests {
+    @Test(arguments: [ConversationKind.person, .agent, .group])
+    func failedStatusDoesNotAddAListBadgeOrVoiceOverLabel(kind: ConversationKind) {
+        let conversation = ConversationSummary(
+            id: "status-test", kind: kind, peerAccountId: "peer", agentId: "agent",
+            ownerDisplayName: "Owner", displayName: "Chat", lastMessage: "Last message",
+            lastActivityAt: Date(), unreadCount: 2, avatarSource: nil,
+            agentActivity: .failed, sessionId: "session:status-test"
+        )
+        #expect(conversation.agentActivity == .failed)
+        #expect(AgentActivity.failed.listLabel == nil)
+        #expect(!conversation.accessibilitySummary.contains("Needs attention"))
+        #expect(conversation.hasUnreadAttention)
+        #expect(AgentActivity.replying.listLabel == "Replying")
+        #expect(AgentActivity.ready.listLabel == "Ready")
+    }
+}
 
 final class AgentSessionPresentationTests: XCTestCase {
     func testDefaultAgentUsesTheCrossDeviceAvatarIdentity() {

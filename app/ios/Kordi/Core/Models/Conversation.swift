@@ -26,6 +26,10 @@ enum AgentActivity: String, Codable, Hashable {
         case .failed: "Needs attention"
         }
     }
+
+    var listLabel: String? {
+        self == .failed ? nil : label
+    }
 }
 
 enum AgentExecutionLocation: Hashable {
@@ -170,7 +174,7 @@ struct ConversationSummary: Identifiable, Hashable {
         let mentions = unreadMentionCount > 0
             ? ", \(unreadMentionCount) unread mention\(unreadMentionCount == 1 ? "" : "s")"
             : ""
-        let state = agentActivity.map { ", \($0.label)" } ?? ""
+        let state = (agentActivity?.listLabel).map { ", \($0)" } ?? ""
         return "\(displayName)\(state)\(unread)\(mentions). \(BlobEmojiComposerText.plainText(previewText))"
     }
 
