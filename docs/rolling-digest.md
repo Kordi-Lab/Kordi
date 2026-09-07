@@ -10,7 +10,7 @@ Generation reuses Cloud provider-auth snapshots and the existing runner lease pr
 
 Aggregation uses canonical v2 membership and per-account message/session visibility. Sources are checked before a lease is returned, when a run starts, before publication and on cached reads. A changed or inaccessible source suppresses the affected cached snapshot until it can be rebuilt. Completion does not create a chat message. Input, output and source evidence publish atomically.
 
-Source work is bounded: the newest 500 candidate messages, up to 200 retained commitment references, approximately 100 KB of source payload, and up to 50 recent/upcoming calendar records. Truncation is shown as partial coverage. The initial sweep processes up to 20 eligible accounts per pass; a dedicated dirty-account queue is the next scaling step if this bound becomes a freshness bottleneck. This implementation does not claim unbounded historical recall or model entailment guarantees.
+Source work is bounded: the newest 500 candidate messages, up to 200 retained commitment references, approximately 100 KB of source payload, and up to 50 recent/upcoming calendar records. Truncation is recorded in the API response `partial` field; the iOS and macOS pages do not display a coverage notice. The initial sweep processes up to 20 eligible accounts per pass; a dedicated dirty-account queue is the next scaling step if this bound becomes a freshness bottleneck. This implementation does not claim unbounded historical recall or model entailment guarantees.
 
 ## Confirmed actions
 

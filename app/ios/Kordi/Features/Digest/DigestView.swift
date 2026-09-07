@@ -97,7 +97,6 @@ struct DigestView: View {
                     Text(code == "missing_provider_auth" ? "Connect a model provider in account settings to generate your digest." : "The last update failed. Your previous brief remains available.")
                         .font(.subheadline).foregroundStyle(.secondary)
                 }
-                if digest?.partial == true { Text("Partial coverage · a bounded selection of accessible messages was included.").font(.caption).foregroundStyle(.secondary) }
                 content()
             }.font(.subheadline).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 20)
         }.refreshable { await refresh() }
