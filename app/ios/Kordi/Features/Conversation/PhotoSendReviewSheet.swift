@@ -50,6 +50,9 @@ struct PhotoLibrarySendPicker: View {
     @State private var selectedAssetIDs: [String] = []
     @State private var editedPhotos: [String: PhotoLibraryEdit] = [:]
     @State private var editingRequest: PhotoEditorRequest?
+    @State private var stillOnlyIDs: Set<String> = []
+    @State private var liveReview: PhotoEditorRequest?
+    @State private var editLiveConfirmation = false
     @State private var grouping: PhotoSendGrouping = .combined
     @State private var isSending = false
 
@@ -87,6 +90,20 @@ struct PhotoLibrarySendPicker: View {
                 asset: request.asset,
                 edit: $editedPhotos[request.id]
             )
+        }
+        .sheet(item: $liveReview) { request in
+            LivePhotoLibraryReview(asset: request.asset, sendsStillOnly: Binding(
+                get: { stillOnlyIDs.contains(request.id) },
+                set: { if $0 { stillOnlyIDs.insert(request.id) } else { stillOnlyIDs.remove(request.id) } }
+            ))
+        }
+        .confirmationDialog("Editing will send this Live Photo as a still image.", isPresented: $editLiveConfirmation, titleVisibility: .visible) {
+            Button("Edit and send still image") {
+                if let id = selectedAssetIDs.last, let asset = assets.first(where: { $0.localIdentifier == id }) {
+                    stillOnlyIDs.insert(id)
+                    editingRequest = PhotoEditorRequest(asset: asset)
+                }
+            }
         }
         .task {
             await loadLibrary()
@@ -147,6 +164,12 @@ struct PhotoLibrarySendPicker: View {
                 asset: asset,
                 editedImage: editedPhotos[asset.localIdentifier]?.image
             )
+                .overlay(alignment: .bottomLeading) {
+                    if asset.mediaSubtypes.contains(.photoLive) {
+                        Label("LIVE", systemImage: "livephoto").font(.caption2.bold())
+                            .padding(4).foregroundStyle(.white).background(.black.opacity(0.6), in: Capsule())
+                    }
+                }
                 .overlay(alignment: .topTrailing) {
                     ZStack {
                         Circle()
@@ -211,6 +234,11 @@ struct PhotoLibrarySendPicker: View {
                 .frame(minHeight: 52)
             }
 
+            if let id = selectedAssetIDs.last, let asset = assets.first(where: { $0.localIdentifier == id }), asset.mediaSubtypes.contains(.photoLive) {
+                Button("Review Live Photo", systemImage: "livephoto") { liveReview = PhotoEditorRequest(asset: asset) }
+                    .frame(minHeight: 44).disabled(isSending || editedPhotos[id] != nil)
+                if stillOnlyIDs.contains(id) { Text("This photo will be sent as a still image.").font(.caption) }
+            }
             HStack(spacing: 12) {
                 Text(selectedAssetIDs.isEmpty ? "Select photos" : "\(selectedAssetIDs.count) selected")
                     .font(.subheadline)
@@ -257,7 +285,9 @@ struct PhotoLibrarySendPicker: View {
     private func beginEditingSelection() {
         guard let id = PhotoLibrarySelection.editingID(in: selectedAssetIDs),
               let asset = assets.first(where: { $0.localIdentifier == id }) else { return }
-        editingRequest = PhotoEditorRequest(asset: asset)
+        if asset.mediaSubtypes.contains(.photoLive), !stillOnlyIDs.contains(id) {
+            editLiveConfirmation = true
+        } else { editingRequest = PhotoEditorRequest(asset: asset) }
     }
 
     @MainActor
@@ -301,7 +331,8 @@ struct PhotoLibrarySendPicker: View {
                 for batch in batches {
                     let attachments = try await PhotoLibraryAttachmentLoader.load(
                         batch,
-                        edits: selectedEdits
+                        edits: selectedEdits,
+                        stillOnlyIDs: stillOnlyIDs
                     )
                     guard await onSend(attachments, grouping) else { return }
                 }
@@ -359,11 +390,19 @@ private struct PhotoLibraryThumbnail: View {
 enum PhotoLibraryAttachmentLoader {
     static func load(
         _ assets: [PHAsset],
-        edits: [String: PhotoLibraryEdit] = [:]
+        edits: [String: PhotoLibraryEdit] = [:],
+        stillOnlyIDs: Set<String> = []
     ) async throws -> [PendingAttachment] {
         var attachments: [PendingAttachment] = []
         attachments.reserveCapacity(assets.count)
+        var succeeded = false
+        defer { if !succeeded { attachments.forEach { $0.discardOwnedFile() } } }
         for (index, asset) in assets.enumerated() {
+            if asset.mediaSubtypes.contains(.photoLive), !stillOnlyIDs.contains(asset.localIdentifier) {
+                guard edits[asset.localIdentifier] == nil else { throw AttachmentTransferError.invalidImage }
+                attachments.append(try await LivePhotoMedia.load(asset))
+                continue
+            }
             let edit = edits[asset.localIdentifier]
             let data: Data
             let originalName: String
@@ -380,6 +419,7 @@ enum PhotoLibraryAttachmentLoader {
             }.value
             attachments.append(attachment)
         }
+        succeeded = true
         return attachments
     }
 

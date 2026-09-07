@@ -19,6 +19,7 @@ type UploadProgressEvent = Omit<CloudAttachmentUploadState, 'error'>;
 const states = new Map<string, CloudAttachmentUploadState>();
 const listeners = new Map<string, Set<() => void>>();
 const pathByRequestId = new Map<string, string>();
+const linkedUploads = new Map<string, { paths: string[]; cancelled: boolean }>();
 const reusableUploads = new Map<string, Promise<DesktopCloudAttachmentUploadResult>>();
 
 function publish(path: string, state: CloudAttachmentUploadState | null) {
@@ -153,9 +154,32 @@ export function uploadNativeCloudAttachment({
   return upload;
 }
 
+export function trackLivePhotoUpload(path: string, companionPaths: string[]) {
+  const group = { paths: companionPaths, cancelled: false };
+  linkedUploads.set(path, group);
+  const unsubscribe = companionPaths.map((companion) => subscribeCloudAttachmentUpload(companion, () => {
+    const state = states.get(companion);
+    if (state) publish(path, { ...state, phase: state.phase === 'complete' ? 'finishing' : state.phase });
+  }));
+  return {
+    check() { if (group.cancelled) throw new Error('Live Photo upload cancelled.'); },
+    finish() {
+      unsubscribe.forEach((stop) => stop());
+      linkedUploads.delete(path);
+      publish(path, null);
+    },
+  };
+}
+
 export async function cancelCloudAttachmentUpload(path: string) {
-  const state = states.get(path);
-  if (!state || !['preparing', 'uploading', 'finishing'].includes(state.phase)) return;
-  publish(path, { ...state, phase: 'cancelled' });
-  await cancelDesktopCloudAttachmentUpload(state.requestId);
+  const group = linkedUploads.get(path);
+  if (group) group.cancelled = true;
+  const requests = new Set<string>();
+  for (const target of [path, ...(group?.paths ?? [])]) {
+    const state = states.get(target);
+    if (!state || !['preparing', 'uploading', 'finishing'].includes(state.phase)) continue;
+    publish(target, { ...state, phase: 'cancelled' });
+    requests.add(state.requestId);
+  }
+  await Promise.all([...requests].map(cancelDesktopCloudAttachmentUpload));
 }

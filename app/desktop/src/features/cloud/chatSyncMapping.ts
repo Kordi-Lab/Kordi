@@ -1,3 +1,4 @@
+import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudMessageAttachment, CloudVoiceMessage, SendCloudMessageAttachmentInput } from './authClient';
 import type { ChatSyncConversation, ChatSyncMessage } from './chatSyncTypes';
 import {
@@ -271,6 +272,7 @@ function attachmentsFromChatContent(content: unknown): CloudMessageAttachment[] 
       mimeType: typeof record.mimeType === 'string' ? record.mimeType : null,
       sizeBytes: typeof record.sizeBytes === 'number' ? record.sizeBytes : null,
       ...(dimensions ?? {}),
+      ...(normalizedLivePhoto(record.livePhoto) ? { livePhoto: normalizedLivePhoto(record.livePhoto) } : {}),
       previewUrl: typeof record.previewUrl === 'string' ? record.previewUrl : null,
     } satisfies CloudMessageAttachment];
   });

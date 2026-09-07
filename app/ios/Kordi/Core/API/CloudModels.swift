@@ -843,6 +843,7 @@ struct CloudAgentSubsession: Codable, Hashable {
 }
 
 struct CloudMessageAttachment: Codable, Hashable, Identifiable {
+    let livePhoto: LivePhotoAttachment?
     let attachmentId: String
     let name: String
     let kind: String
@@ -859,6 +860,7 @@ struct CloudMessageAttachment: Codable, Hashable, Identifiable {
 
     init(
         attachmentId: String,
+        livePhoto: LivePhotoAttachment? = nil,
         name: String,
         kind: String,
         subtype: ChatAttachmentSubtype? = nil,
@@ -870,6 +872,7 @@ struct CloudMessageAttachment: Codable, Hashable, Identifiable {
         downloadUrl: String?,
         previewUrl: String?
     ) {
+        self.livePhoto = livePhoto
         self.attachmentId = attachmentId
         self.name = name
         self.kind = kind

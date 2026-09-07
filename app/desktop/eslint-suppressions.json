@@ -221,11 +221,6 @@
       "count": 3
     }
   },
-  "src/features/cloud/cloudAttachments.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
   "src/features/cloud/cloudDirectMessages.ts": {
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 1

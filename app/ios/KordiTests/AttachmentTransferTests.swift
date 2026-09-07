@@ -1,3 +1,4 @@
+import Photos
 import AVFoundation
 import UIKit
 import XCTest
@@ -748,5 +749,73 @@ final class AttachmentTransferTests: XCTestCase {
             queryItems.first(where: { $0.name == "gsrsearch" })?.value,
             "celebration filemime:image/gif"
         )
+    }
+}
+
+extension AttachmentTransferTests {
+    func testLivePhotoMetadataSurvivesWireAndMessageCacheEncoding() throws {
+        let live = LivePhotoAttachment(
+            video: LivePhotoResource(attachmentId: "motion", name: "Live.mov", mimeType: "video/quicktime", sizeBytes: 200),
+            playback: LivePhotoResource(attachmentId: "playback", name: "Live.mp4", mimeType: "video/mp4", sizeBytes: 300)
+        )
+        let wire = CloudMessageAttachment(attachmentId: "photo", livePhoto: live, name: "Photo.heic", kind: "image",
+                                          mimeType: "image/heic", sizeBytes: 100, downloadUrl: nil, previewUrl: nil)
+        let restored = try JSONDecoder().decode(CloudMessageAttachment.self, from: JSONEncoder().encode(wire))
+        XCTAssertEqual(restored.chatAttachment.livePhoto, live)
+        let cached = try JSONDecoder().decode(ChatAttachment.self, from: JSONEncoder().encode(restored.chatAttachment))
+        XCTAssertEqual(cached.livePhoto?.attachmentIds, ["motion", "playback"])
+        let ordinary = ChatAttachment(attachmentId: "old", name: "old.jpg", kind: .image, mimeType: "image/jpeg", sizeBytes: 1, previewURL: nil)
+        XCTAssertNil(try JSONDecoder().decode(ChatAttachment.self, from: JSONEncoder().encode(ordinary)).livePhoto)
+    }
+
+    func testLivePhotoPairLoadsNativelyAndKeepsOriginalBytes() async throws {
+        let bundle = Bundle(for: AttachmentTransferTests.self)
+        let photo = try XCTUnwrap(bundle.url(forResource: "live-photo", withExtension: "jpg"))
+        let video = try XCTUnwrap(bundle.url(forResource: "live-photo", withExtension: "mov"))
+        let originalPhoto = try Data(contentsOf: photo)
+        let originalVideo = try Data(contentsOf: video)
+        let prepared = try await LivePhotoMedia.loadPair(photo: photo, video: video, name: "Live.jpg")
+        defer { prepared.discardOwnedFile() }
+        XCTAssertEqual(prepared.kind, .image)
+        XCTAssertEqual(prepared.fileURL, photo)
+        XCTAssertEqual(try Data(contentsOf: photo), originalPhoto)
+        XCTAssertEqual(try Data(contentsOf: video), originalVideo)
+        let files = try XCTUnwrap(prepared.livePhotoFiles)
+        XCTAssertEqual(files.videoURL, video)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: files.playbackURL.path))
+        XCTAssertNotNil(prepared.previewURL)
+        let size = try await AVURLAsset(url: files.playbackURL).load(.duration)
+        XCTAssertGreaterThan(CMTimeGetSeconds(size), 0)
+        let reconstructed = try await LivePhotoMedia.fromFiles(photo: photo, video: video)
+        XCTAssertGreaterThan(reconstructed.size.width, 0)
+    }
+}
+
+extension AttachmentTransferTests {
+    func testLivePhotoLibraryImportKeepsTheCurrentPair() async throws {
+#if !targetEnvironment(simulator)
+        throw XCTSkip("Library fixture insertion is only allowed on an isolated simulator")
+#endif
+        let authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard authorization == .authorized || authorization == .limited else {
+            throw XCTSkip("Grant Photos access on the isolated test simulator to exercise library import")
+        }
+        let bundle = Bundle(for: AttachmentTransferTests.self)
+        let photo = try XCTUnwrap(bundle.url(forResource: "live-photo", withExtension: "jpg"))
+        let video = try XCTUnwrap(bundle.url(forResource: "live-photo", withExtension: "mov"))
+        var identifier: String?
+        try await PHPhotoLibrary.shared().performChanges {
+            let request = PHAssetCreationRequest.forAsset()
+            request.addResource(with: .photo, fileURL: photo, options: nil)
+            request.addResource(with: .pairedVideo, fileURL: video, options: nil)
+            identifier = request.placeholderForCreatedAsset?.localIdentifier
+        }
+        let asset = try XCTUnwrap(PHAsset.fetchAssets(withLocalIdentifiers: [try XCTUnwrap(identifier)], options: nil).firstObject)
+        // The task-owned simulator is deleted after validation; never delete assets in a shared photo library.
+        XCTAssertTrue(asset.mediaSubtypes.contains(.photoLive))
+        let imported = try await LivePhotoMedia.load(asset)
+        defer { imported.discardOwnedFile() }
+        XCTAssertNotNil(imported.livePhotoFiles)
+        _ = try await LivePhotoMedia.fromFiles(photo: XCTUnwrap(imported.fileURL), video: XCTUnwrap(imported.livePhotoFiles?.videoURL))
     }
 }

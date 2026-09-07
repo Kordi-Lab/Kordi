@@ -62,6 +62,7 @@ targets:
         NSLocalNetworkUsageDescription: Kordi uses the local network to establish audio and video calls when required.
         NSMicrophoneUsageDescription: Kordi uses the microphone when you record a voice or video message or join a call.
         NSSpeechRecognitionUsageDescription: Kordi transcribes voice messages on this iPhone so people and agents can read them.
+        NSPhotoLibraryAddUsageDescription: Kordi saves Live Photos you choose to your photo library.
         NSPhotoLibraryUsageDescription: Kordi shows your photo library when you choose images to send in a conversation.
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
@@ -199,6 +200,17 @@ targets:
   KordiTests:
     type: bundle.unit-test
     platform: iOS
+    preBuildScripts:
+      - name: Generate synthetic Live Photo test assets
+        script: bash "$SRCROOT/../../scripts/prepare-live-photo-test-assets.sh" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH"
+        inputFiles:
+          - $(SRCROOT)/../desktop/src-tauri/native/LivePhotos.swift
+          - $(SRCROOT)/../desktop/tests/livePhotoNativeCheck.swift
+          - $(SRCROOT)/../../scripts/prepare-live-photo-test-assets.sh
+        outputFiles:
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/live-photo.jpg
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/live-photo.mov
+          - $(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/live-photo.mp4
     sources:
       - path: KordiTests
     dependencies:

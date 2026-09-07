@@ -1,7 +1,9 @@
+import { normalizedLivePhotoFiles, type LivePhotoFiles, normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { SendCloudMessageAttachmentInput } from './authClient';
 import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 
 export type CloudGroupOutboxAttachmentSource = {
+  livePhotoFiles?: LivePhotoFiles;
   id: string;
   path: string;
   name: string;
@@ -45,6 +47,7 @@ export function normalizedCloudGroupOutboxAttachments(value: unknown): SendCloud
       mimeType: cleanText(record.mimeType) || null,
       sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null,
       ...(dimensions ?? {}),
+      ...(normalizedLivePhoto(record.livePhoto) ? { livePhoto: normalizedLivePhoto(record.livePhoto) } : {}),
       ...(previewUrl ? { previewUrl } : {}),
     }];
   });
@@ -80,6 +83,7 @@ export function normalizedCloudGroupOutboxPendingAttachments(value: unknown): Cl
       ...(previewUrl ? { previewUrl } : {}),
       sizeBytes: typeof record.sizeBytes === 'number' && Number.isFinite(record.sizeBytes) ? record.sizeBytes : null,
       ...(dimensions ?? {}),
+      ...(normalizedLivePhotoFiles(record.livePhotoFiles) ? { livePhotoFiles: normalizedLivePhotoFiles(record.livePhotoFiles) } : {}),
     }];
   });
   return attachments.length > 0 ? attachments : undefined;

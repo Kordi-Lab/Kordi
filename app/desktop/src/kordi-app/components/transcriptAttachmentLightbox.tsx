@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, type MouseEvent } from 'react';
+import { LivePhotoPlayback } from './livePhotoPlayback';
+import { useEffect, useId, useRef, useState, type MouseEvent } from 'react';
 import { ChevronLeft, ChevronRight, Minus, Plus } from 'lucide-react';
 
 import { shouldDismissAttachmentImageLightboxForTarget } from './transcriptAttachmentLightboxHitTest';
@@ -41,6 +42,7 @@ export function AttachmentImageLightbox({
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const [liveControls, setLiveControls] = useState<HTMLDivElement | null>(null);
   const instructionId = useId();
   const imageName = attachment.name?.trim() || 'Attached image';
   const imageDescription = attachment.altText?.trim() || imageName;
@@ -101,6 +103,7 @@ export function AttachmentImageLightbox({
           {previewStatus === 'unavailable' ? 'Image preview unavailable' : 'Opening image…'}
         </div>
       )}
+      {attachment.livePhoto || attachment.livePhotoFiles ? <LivePhotoPlayback key={attachment.attachmentId ?? attachment.localPath ?? attachment.name} livePhoto={attachment.livePhoto} localVideoPath={attachment.livePhotoFiles?.playbackPath} zoom={zoom} controlsTarget={liveControls} imageRef={imageRef} /> : null}
       {canGoNext && onNext ? (
         <button
           type="button"
@@ -125,6 +128,7 @@ export function AttachmentImageLightbox({
       {onZoomIn && onZoomOut && onZoomReset ? (
         <div
           data-attachment-image-lightbox-control="true"
+          ref={setLiveControls}
           className="app-attachment-image-lightbox-zoom-controls"
           role="group"
           aria-label="Image zoom"

@@ -1,3 +1,4 @@
+import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { MessageAttachment } from '@/kordi-app/types';
 import { cachedCloudAttachmentLocalPath } from '@/features/cloud/cloudAttachmentLocalPathCache';
 import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
@@ -41,6 +42,7 @@ export function canonicalAttachments(value: unknown): MessageAttachment[] | unde
         ?? (attachmentId ? cachedCloudAttachmentLocalPath(attachmentId) : null),
       sizeBytes: numberValue(record.sizeBytes) ?? null,
       ...(dimensions ?? {}),
+      ...(normalizedLivePhoto(record.livePhoto) ? { livePhoto: normalizedLivePhoto(record.livePhoto) } : {}),
     };
     const downloadUrl = stringValue(record.downloadUrl);
     if (downloadUrl) attachment.downloadUrl = downloadUrl;

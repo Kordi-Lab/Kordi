@@ -1,3 +1,4 @@
+import { normalizedLivePhotoFiles, type LivePhotoFiles } from './livePhotos';
 import type { AttachmentItem, AttachmentItemUpdate } from './composerController.types';
 import type { SaveDesktopAttachmentOptions } from './composerController.types';
 import { attachmentVideoUrl, isMp4VideoAttachment } from './attachmentMediaGallery';
@@ -25,6 +26,7 @@ const MAX_IN_MEMORY_ATTACHMENT_BYTES = 64 * 1024 * 1024;
 type ComposerAttachmentStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
 type StoredComposerAttachment = {
+  livePhotoFiles?: LivePhotoFiles;
   id: string;
   name: string;
   path: string;
@@ -347,6 +349,7 @@ function storedAttachmentFromRecord(record: Record<string, unknown>): Attachment
     formatLabel,
     mimeType,
     localPath: path,
+    ...(normalizedLivePhotoFiles(record.livePhotoFiles) ? { livePhotoFiles: normalizedLivePhotoFiles(record.livePhotoFiles) } : {}),
     previewUrl: null,
     sizeBytes,
     ...(dimensions ?? {}),
@@ -378,6 +381,7 @@ export function parseStoredComposerAttachments(raw: string | null | undefined): 
 export function serializeStoredComposerAttachments(attachments: AttachmentItem[]) {
   const serializable: StoredComposerAttachment[] = attachments.map((attachment) => ({
     id: attachment.id,
+    ...(attachment.livePhotoFiles ? { livePhotoFiles: attachment.livePhotoFiles } : {}),
     name: attachment.name,
     path: attachment.path,
     kind: attachment.kind,

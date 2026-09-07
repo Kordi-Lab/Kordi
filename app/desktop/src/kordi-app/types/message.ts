@@ -1,3 +1,4 @@
+import type { LivePhoto, LivePhotoFiles } from '@/features/chat/livePhotos';
 import type { DesktopChatContextMessage, DesktopChatMessageRoute } from '@/lib/desktop';
 
 export type EditDiffLine = {
@@ -61,6 +62,8 @@ export type EditFilePreview = {
 };
 
 export type MessageAttachment = {
+  livePhotoFiles?: LivePhotoFiles;
+  livePhoto?: LivePhoto | null;
   kind: 'image' | 'file';
   subtype?: 'meme' | 'sticker' | null;
   altText?: string | null;
@@ -78,6 +81,7 @@ export type MessageAttachment = {
 };
 
 export type DesktopChatAttachment = {
+  livePhoto?: LivePhoto | null;
   kind: 'image' | 'file';
   subtype?: 'meme' | 'sticker' | null;
   altText?: string | null;

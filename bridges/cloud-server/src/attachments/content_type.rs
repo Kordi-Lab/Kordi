@@ -16,9 +16,25 @@ pub(super) fn detected_raster_content_type(bytes: &[u8]) -> Option<&'static str>
 
 pub(super) fn detected_supported_content_type(bytes: &[u8]) -> Option<&'static str> {
     detected_raster_content_type(bytes).or_else(|| {
-        // ponytail: verify the ISO Base Media container; parse tracks if uploads ever
-        // need to reject valid MP4 containers that contain audio but no video track.
-        (bytes.len() >= 12 && &bytes[4..8] == b"ftyp").then_some("video/mp4")
+        if bytes.len() < 16 || &bytes[4..8] != b"ftyp" {
+            return None;
+        }
+        let box_size = u32::from_be_bytes(bytes[..4].try_into().ok()?) as usize;
+        if box_size < 16 || box_size > bytes.len() {
+            return None;
+        }
+        let major = &bytes[8..12];
+        let heic = std::iter::once(major)
+            .chain(bytes[16..box_size].chunks_exact(4))
+            .any(|brand| matches!(brand, b"heic" | b"heix" | b"hevc" | b"hevx"));
+        if heic {
+            return Some("image/heic");
+        }
+        match major {
+            b"mif1" | b"msf1" => Some("image/heif"),
+            b"qt  " => Some("video/quicktime"),
+            _ => Some("video/mp4"),
+        }
     })
 }
 
@@ -35,6 +51,9 @@ pub(super) fn normalized_supported_raster_content_type(value: &str) -> Option<&'
 pub(super) fn normalized_verified_content_type(value: &str) -> Option<&'static str> {
     match value.trim().to_ascii_lowercase().as_str() {
         "video/mp4" => Some("video/mp4"),
+        "video/quicktime" => Some("video/quicktime"),
+        "image/heic" => Some("image/heic"),
+        "image/heif" => Some("image/heif"),
         value => normalized_supported_raster_content_type(value),
     }
 }
@@ -71,6 +90,30 @@ mod tests {
             Some("image/jpeg")
         );
         assert_eq!(normalized_supported_raster_content_type("image/heic"), None);
+    }
+
+    #[test]
+    fn distinguishes_live_photo_resources_from_mp4() {
+        assert_eq!(
+            detected_supported_content_type(b"\0\0\0\x14ftypmif1\0\0\0\0heic"),
+            Some("image/heic")
+        );
+        assert_eq!(
+            detected_supported_content_type(b"\0\0\0\x14ftypqt  \0\0\0\0qt  "),
+            Some("video/quicktime")
+        );
+        assert_eq!(
+            normalized_verified_content_type("image/heic"),
+            Some("image/heic")
+        );
+        assert_eq!(
+            normalized_verified_content_type("video/quicktime"),
+            Some("video/quicktime")
+        );
+        assert_eq!(
+            detected_supported_content_type(b"\0\0\xFF\xFFftypheic\0\0\0\0"),
+            None
+        );
     }
 
     #[test]

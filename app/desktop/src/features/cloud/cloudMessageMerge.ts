@@ -30,6 +30,7 @@ export function cloudMessageAttachmentsEqual(
     return Boolean(other)
       && attachment.attachmentId === other.attachmentId
       && (attachment.previewAttachmentId ?? null) === (other.previewAttachmentId ?? null)
+      && JSON.stringify(attachment.livePhoto ?? null) === JSON.stringify(other.livePhoto ?? null)
       && attachment.name === other.name
       && attachment.kind === other.kind
       && (attachment.mimeType ?? null) === (other.mimeType ?? null)

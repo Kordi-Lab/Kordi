@@ -1,3 +1,5 @@
+#[path = "chat_sync_e2e/live_photos.rs"]
+mod live_photos;
 #[path = "chat_sync_e2e/thread_attention.rs"]
 mod thread_attention;
 use kordi_cloud_server::chat_sync::models::{

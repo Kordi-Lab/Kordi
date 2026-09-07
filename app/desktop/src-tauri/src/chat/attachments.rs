@@ -8,6 +8,7 @@ use super::DesktopStoredChatAttachment;
 
 mod cloud_cache;
 pub(crate) mod cloud_upload;
+pub(crate) mod live_photos;
 pub(crate) mod stream;
 
 use cloud_cache::download as download_cloud_attachment;
@@ -68,6 +69,9 @@ fn stored_attachment_mime_type(path: &Path) -> Option<String> {
         Some("txt") => Some("text/plain".to_string()),
         Some("json") => Some("application/json".to_string()),
         Some("pdf") => Some("application/pdf".to_string()),
+        Some("heic") => Some("image/heic".to_string()),
+        Some("heif") => Some("image/heif".to_string()),
+        Some("mov") => Some("video/quicktime".to_string()),
         Some("mp4") => Some("video/mp4".to_string()),
         _ => None,
     }

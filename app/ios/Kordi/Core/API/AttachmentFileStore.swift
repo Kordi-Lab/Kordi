@@ -83,6 +83,11 @@ actor AttachmentFileStore {
     ) {
         for (draft, result) in zip(drafts, uploaded)
             where draft.kind == .image || draft.isMP4Video {
+            if let files = draft.livePhotoFiles, let live = result.livePhoto {
+                for (url, resource) in [(files.videoURL, live.video), (files.playbackURL, live.playback)] {
+                    _ = try? store(fileAt: url, attachment: resource.chatAttachment, accountId: accountId)
+                }
+            }
             if let fileURL = draft.fileURL {
                 _ = try? store(
                     fileAt: fileURL,

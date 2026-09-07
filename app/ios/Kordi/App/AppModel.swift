@@ -1,3 +1,4 @@
+import Photos
 import Foundation
 import SwiftUI
 import UIKit
@@ -1910,27 +1911,26 @@ final class AppModel: ObservableObject {
     }
 
     private func forwardingAttachments(_ attachments: [ChatAttachment]) async -> [PendingAttachment]? {
-        guard !attachments.isEmpty else { return [] }
-        var urls: [URL] = []
-        urls.reserveCapacity(attachments.count)
-        for attachment in attachments {
-            guard let url = await prepareAttachmentForPresentation(attachment) else { return nil }
-            urls.append(url)
-        }
+        var forwarded: [PendingAttachment] = []
         do {
-            let loaded = try await Task.detached(priority: .userInitiated) {
-                try PendingAttachmentLoader.load(urls: urls)
-            }.value
-            return loaded.enumerated().map { index, pending in
-                guard attachments.indices.contains(index) else { return pending }
-                let source = attachments[index]
-                var forwarded = pending
-                forwarded.subtype = source.subtype
-                forwarded.altText = source.altText
-                forwarded.memeRightsConfirmed = source.subtype == .meme
-                return forwarded
+            for source in attachments {
+                if source.livePhoto != nil {
+                    guard let urls = await prepareLivePhotoURLs(source) else { throw AttachmentTransferError.invalidImage }
+                    forwarded.append(try await LivePhotoMedia.loadPair(photo: urls.photo, video: urls.video, name: source.name))
+                } else {
+                    guard let url = await prepareAttachmentForSharing(source) else { throw AttachmentTransferError.invalidImage }
+                    var pending = try await Task.detached(priority: .userInitiated) {
+                        try PendingAttachmentLoader.load(urls: [url])[0]
+                    }.value
+                    pending.subtype = source.subtype
+                    pending.altText = source.altText
+                    pending.memeRightsConfirmed = source.subtype == .meme
+                    forwarded.append(await PendingAttachmentLoader.addingVideoPreview(to: pending))
+                }
             }
+            return forwarded
         } catch {
+            forwarded.forEach { $0.discardOwnedFile() }
             errorMessage = error.localizedDescription
             return nil
         }
@@ -2751,6 +2751,34 @@ final class AppModel: ObservableObject {
         ))
     }
 
+    func prepareLivePhotoURLs(_ attachment: ChatAttachment) async -> (photo: URL, video: URL)? {
+        guard let live = attachment.livePhoto,
+              let photo = await prepareAttachment(attachment, allowsPreviewFallback: false, prefersOriginal: true),
+              let video = await prepareAttachment(live.video.chatAttachment, allowsPreviewFallback: false, prefersOriginal: true) else { return nil }
+        return (photo, video)
+    }
+
+    func saveLivePhoto(_ attachment: ChatAttachment) async -> Bool {
+        guard let urls = await prepareLivePhotoURLs(attachment) else { return false }
+        do {
+            _ = try await LivePhotoMedia.fromFiles(photo: urls.photo, video: urls.video)
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else {
+                errorMessage = "Allow Photos access in Settings to save this Live Photo."
+                return false
+            }
+            try await PHPhotoLibrary.shared().performChanges {
+                let request = PHAssetCreationRequest.forAsset()
+                request.addResource(with: .photo, fileURL: urls.photo, options: nil)
+                request.addResource(with: .pairedVideo, fileURL: urls.video, options: nil)
+            }
+            return true
+        } catch {
+            errorMessage = "Could not save this Live Photo. Try again."
+            return false
+        }
+    }
+
     func prepareAttachmentForSharing(_ attachment: ChatAttachment) async -> URL? {
         await prepareAttachment(
             attachment,
@@ -3087,6 +3115,11 @@ final class AppModel: ObservableObject {
                 }
                 cloudConnectionState = .connected
                 return url
+            }
+            if attachment.kind == .file {
+                let temporaryURL = try await api.downloadAttachmentContentFile(token: token, attachmentId: attachment.attachmentId)
+                defer { try? FileManager.default.removeItem(at: temporaryURL) }
+                return try await attachmentFileStore.store(fileAt: temporaryURL, attachment: attachment, accountId: accountId)
             }
             let data = if usesImagePreview,
                           let preview = try? await api.downloadAttachmentPreviewContent(
@@ -4607,6 +4640,8 @@ final class AppModel: ObservableObject {
     }
 
     private func clearPendingSendMetadata(_ messageId: String) {
+        let draftIDs = pendingAttachmentDraftsByMessageId[messageId]?.map(\.id) ?? []
+        Task { await api.forgetLivePhotoUploads(draftIDs) }
         pendingAttachmentDraftsByMessageId[messageId] = nil
         pendingVoiceDraftsByMessageId[messageId] = nil
         pendingReplyByMessageId[messageId] = nil

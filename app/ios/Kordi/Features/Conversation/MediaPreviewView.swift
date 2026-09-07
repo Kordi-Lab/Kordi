@@ -1,3 +1,4 @@
+import Photos
 import SwiftUI
 import UIKit
 
@@ -81,6 +82,8 @@ struct MediaPreviewView: View {
     @State private var selectedItemID: ConversationMediaItem.ID
     @State private var dismissalOffset: CGFloat = 0
     @State private var shareItem: SharedFileItem?
+    @State private var liveShareURLs: [URL] = []
+    @State private var showLiveShare = false
     @State private var sharingItemID: ConversationMediaItem.ID?
 
     init(presentation: MediaPreviewPresentation) {
@@ -107,6 +110,7 @@ struct MediaPreviewView: View {
                         ForEach(presentation.items) { item in
                             MediaPreviewPage(
                                 item: item,
+                                isActive: item.id == selectedItemID,
                                 initialImage: item.id == presentation.initialItemID
                                     ? presentation.initialImage
                                     : nil
@@ -152,6 +156,7 @@ struct MediaPreviewView: View {
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.url])
         }
+        .sheet(isPresented: $showLiveShare) { ActivityShareSheet(items: liveShareURLs) }
         .accessibilityAction(.escape, dismiss.callAsFunction)
     }
 
@@ -220,6 +225,12 @@ struct MediaPreviewView: View {
         sharingItemID = item.id
         Task {
             defer { sharingItemID = nil }
+            if item.attachment.livePhoto != nil {
+                guard let urls = await model.prepareLivePhotoURLs(item.attachment) else { return }
+                liveShareURLs = [urls.photo, urls.video]
+                showLiveShare = true
+                return
+            }
             guard let url = await model.prepareAttachmentForSharing(item.attachment) else { return }
             shareItem = SharedFileItem(url: url)
         }
@@ -344,12 +355,16 @@ private struct MediaPreviewPage: View {
     @EnvironmentObject private var model: AppModel
 
     let item: ConversationMediaItem
+    let isActive: Bool
+    @State private var savedLivePhoto = false
+    @State private var savingLivePhoto = false
 
     @State private var image: UIImage?
     @State private var loadFailed = false
     @State private var reloadToken = 0
 
-    init(item: ConversationMediaItem, initialImage: UIImage?) {
+    init(item: ConversationMediaItem, isActive: Bool, initialImage: UIImage?) {
+        self.isActive = isActive
         self.item = item
         _image = State(initialValue: initialImage)
     }
@@ -382,6 +397,27 @@ private struct MediaPreviewPage: View {
                 ProgressView("Loading image")
                     .tint(.white)
                     .foregroundStyle(.white)
+            }
+        }
+        .overlay {
+            if item.attachment.livePhoto != nil, isActive {
+                LivePhotoSurface {
+                    guard let urls = await model.prepareLivePhotoURLs(item.attachment) else { throw AttachmentTransferError.invalidImage }
+                    return try await LivePhotoMedia.fromFiles(photo: urls.photo, video: urls.video)
+                }
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if item.attachment.livePhoto != nil {
+                Button(savedLivePhoto ? "Saved to Photos" : "Save Live Photo", systemImage: "square.and.arrow.down") {
+                    savingLivePhoto = true
+                    Task {
+                        savedLivePhoto = await model.saveLivePhoto(item.attachment)
+                        savingLivePhoto = false
+                    }
+                }
+                .disabled(savingLivePhoto || savedLivePhoto)
+                .padding(10).background(.ultraThinMaterial, in: Capsule())
             }
         }
         .padding(.horizontal, 8)

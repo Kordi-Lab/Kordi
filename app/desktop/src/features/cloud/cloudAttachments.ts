@@ -4,7 +4,7 @@ import type { MessageAttachment } from '@/kordi-app/types';
 import { isNativeDesktopShell, storeDesktopChatAttachment } from '@/lib/desktop';
 import { imagePixelDimensionsFromBlob, normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 import type { CloudAuthClient, CloudMessageAttachment, CloudVoiceMessage } from './authClient';
-import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
+import { blobToDataUrl, createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
 import type { CloudAttachmentPreviewGenerator } from './cloudAttachmentPreviewRecovery';
 import {
   cacheCloudAttachmentLocalPath,
@@ -235,6 +235,7 @@ export function cloudMessageAttachmentToMessageAttachment(attachment: CloudMessa
   const dimensions = normalizedImagePixelDimensions(attachment.widthPixels, attachment.heightPixels);
   return {
     kind: attachment.kind,
+    ...(attachment.livePhoto ? { livePhoto: attachment.livePhoto } : {}),
     ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const }
       : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
     name: attachment.name,
@@ -355,7 +356,7 @@ export async function resolveForwardAttachmentItems({
   storeAttachment = storeDesktopChatAttachment,
 }: {
   token: string;
-  client: Pick<CloudAuthClient, 'downloadAttachmentContent'>;
+  client: Pick<CloudAuthClient, 'downloadAttachmentContent'> & Partial<Pick<CloudAuthClient, 'downloadAttachmentPreviewContent'>>;
   attachments: MessageAttachment[];
   storeAttachment?: (name: string, data: number[]) => Promise<string>;
 }): Promise<AttachmentItem[]> {
@@ -368,6 +369,7 @@ export async function resolveForwardAttachmentItems({
       previewAttachmentId: attachment.previewAttachmentId ?? null,
       name: attachment.name,
       kind: attachment.kind,
+      ...(attachment.livePhoto ? { livePhoto: attachment.livePhoto } : {}),
       ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const }
         : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
       mimeType: attachment.mimeType ?? null,
@@ -397,7 +399,7 @@ export async function resolveForwardAttachmentItems({
     }),
   );
   const unresolved: MessageAttachment[] = [];
-  const resolved = attachments.flatMap((attachment, index) => {
+  const resolved: AttachmentItem[] = attachments.flatMap((attachment, index) => {
     const attachmentId = attachment.attachmentId?.trim() || '';
     const path = attachment.localPath?.trim() || resolvedPathByAttachmentId.get(attachmentId) || '';
     if (!path) {
@@ -414,9 +416,22 @@ export async function resolveForwardAttachmentItems({
   });
   if (unresolved.length > 0) {
     const subject = unresolved.length === 1
-      ? `“${unresolved[0]!.name}”`
+      ? `“${unresolved[0].name}”`
       : `${unresolved.length} attachments`;
     throw new Error(`Unable to forward ${subject} because the original file could not be downloaded.`);
+  }
+  for (const attachment of resolved) {
+    if (!attachment.livePhoto) continue;
+    if (!attachment.previewUrl?.startsWith('data:image/') && attachment.attachmentId && client.downloadAttachmentPreviewContent) {
+      const preview = await client.downloadAttachmentPreviewContent(token, attachment.attachmentId);
+      attachment.previewUrl = safeCloudAttachmentPreviewUrl(await blobToDataUrl(preview));
+    }
+    if (!attachment.previewUrl?.startsWith('data:image/')) throw new Error('Could not download the Live Photo preview. Try again.');
+    const paths = await Promise.all([attachment.livePhoto.video, attachment.livePhoto.playback].map(async (resource) => {
+      const blob = await client.downloadAttachmentContent(token, resource.attachmentId);
+      return storeAttachment(resource.name, Array.from(new Uint8Array(await blob.arrayBuffer())));
+    }));
+    attachment.livePhotoFiles = { videoPath: paths[0], playbackPath: paths[1] };
   }
   return resolved;
 }

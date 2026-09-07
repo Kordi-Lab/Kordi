@@ -147,6 +147,7 @@ export function mapDesktopMessagesForTranscript(
       attachments: message.attachments?.map((attachment) => {
         const mapped = {
           kind: attachment.kind,
+          ...(attachment.livePhoto ? { livePhoto: attachment.livePhoto } : {}),
           ...(attachment.subtype === 'sticker'
             ? { subtype: 'sticker' as const }
             : attachment.subtype === 'meme' ? {

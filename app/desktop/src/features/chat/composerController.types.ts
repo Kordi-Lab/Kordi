@@ -1,3 +1,4 @@
+import type { LivePhotoFiles } from './livePhotos';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { SettingsSectionId } from '@/kordi-app/data/settings';
@@ -42,6 +43,7 @@ export type AttachmentItem = MessageAttachment & {
   id: string;
   path: string;
   playbackUrl?: string;
+  livePhotoFiles?: LivePhotoFiles;
   expressiveMedia?: boolean;
   memeRightsConfirmed?: boolean;
   voiceMessage?: MessageVoiceDraft;

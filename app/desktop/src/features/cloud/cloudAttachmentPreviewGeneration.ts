@@ -2,7 +2,7 @@ import { safeCloudAttachmentPreviewUrl } from './cloudAttachmentPreviewUrl';
 
 const COMPRESSED_IMAGE_PREVIEW_TYPES = ['image/webp', 'image/jpeg'] as const;
 
-async function blobToDataUrl(blob: Blob): Promise<string | null> {
+export async function blobToDataUrl(blob: Blob): Promise<string | null> {
   if (typeof FileReader === 'undefined') return null;
   return new Promise((resolve) => {
     const reader = new FileReader();

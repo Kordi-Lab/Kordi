@@ -323,6 +323,7 @@ function AttachmentImageCard({
           transparent={isSticker}
         />
       )}
+      {attachment.livePhoto || attachment.livePhotoFiles ? <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold text-white">LIVE</span> : null}
       {showOriginalAction ? (
         <div className="absolute bottom-2 right-2 z-10">
           <AttachmentActions attachment={attachment} variant="original" />
@@ -331,7 +332,6 @@ function AttachmentImageCard({
     </div>
   );
 }
-
 export function AttachmentPreview({
   msg,
   imageGallery,

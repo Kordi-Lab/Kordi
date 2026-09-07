@@ -1,3 +1,4 @@
+import { importLivePhotos } from '@/features/chat/importLivePhotos';
 import { useEffect, useRef, useState } from 'react';
 import { GripVertical, RefreshCw } from 'lucide-react';
 
@@ -164,13 +165,14 @@ export function ChatCompanionWorkspace({
       setAttachmentError(null);
       const selectedPaths = paths ?? await pickDesktopChatAttachmentPaths();
       if (selectedPaths.length === 0) return [];
-      const saved = await Promise.all(selectedPaths.map(async (sourcePath) => {
+      const liveImport = await importLivePhotos(selectedPaths);
+      const saved = [...liveImport.photos, ...await Promise.all(liveImport.remaining.map(async (sourcePath) => {
         const rawName = composerAttachmentNameFromPath(sourcePath);
         const kind = composerAttachmentKindFromName(rawName);
         const displayName = friendlyAttachmentName(rawName, kind);
         const stored = await storeDesktopChatAttachmentPath(sourcePath, displayName);
         return composerAttachmentItemFromStoredPath({ sourcePath, stored, displayName });
-      }));
+      }))];
       appendAttachments(saved);
       return saved;
     } catch (error) {

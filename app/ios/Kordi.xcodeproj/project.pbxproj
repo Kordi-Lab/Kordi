@@ -122,6 +122,9 @@
 		F72232A5E55E5DDBF7C08493 /* KordiAppEnvironmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B3BED33D4A29116EAD073A0 /* KordiAppEnvironmentTests.swift */; };
 		F7D2FBC93887F75BCDF18D61 /* ConversationInitialLoadingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E3BB5862C5807A1AD1244A0 /* ConversationInitialLoadingView.swift */; };
 		FD5B3FEC4C203C259378AB38 /* CloudOAuthCallbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8A9FFC456D58053BB00863A /* CloudOAuthCallbackTests.swift */; };
+		D799149952AEEC85476E82B6 /* LivePhotoAttachment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5C2D1BC4DA20D76871039412 /* LivePhotoAttachment.swift */; };
+		B5B5BB40648C816CA1BCFEF9 /* LivePhotoMedia.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1A6E730DE888A7B0CBC6C9F /* LivePhotoMedia.swift */; };
+		3CC711F13705BF9F23A3EBDF /* LivePhotoSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFCC37295C93ECDF39C84206 /* LivePhotoSurface.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -275,6 +278,9 @@
 		FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KordiAppEnvironment.swift; sourceTree = "<group>"; };
 		FD490ECA738742A1C27BD23C /* ProviderAuthentication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAuthentication.swift; sourceTree = "<group>"; };
 		FFFD604ABA6CBEE2041D4D75 /* NotoEmoji.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotoEmoji.swift; sourceTree = "<group>"; };
+		5C2D1BC4DA20D76871039412 /* LivePhotoAttachment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePhotoAttachment.swift; sourceTree = "<group>"; };
+		B1A6E730DE888A7B0CBC6C9F /* LivePhotoMedia.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePhotoMedia.swift; sourceTree = "<group>"; };
+		EFCC37295C93ECDF39C84206 /* LivePhotoSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LivePhotoSurface.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -317,6 +323,7 @@
 		172E9DA498FFE8B2AB2A6428 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				5C2D1BC4DA20D76871039412 /* LivePhotoAttachment.swift */,
 				9191C934D4CD680DDA85704F /* AgentSessionPresentation.swift */,
 				0DB3A982982A43712453EAFF /* BlobEmoji.swift */,
 				4603ECC7913F5A0D715AC8F5 /* ChatMessage.swift */,
@@ -383,6 +390,7 @@
 		4F7CE165D40841E48487B17F /* Conversation */ = {
 			isa = PBXGroup;
 			children = (
+				EFCC37295C93ECDF39C84206 /* LivePhotoSurface.swift */,
 				E218169E718634BB75B216F1 /* AgentModelSheet.swift */,
 				6400B908DF86EAAA6883C9B4 /* CallView.swift */,
 				F7F1BB7067E03988558968A0 /* CameraImagePicker.swift */,
@@ -594,6 +602,7 @@
 		FC1EC9CA1DAA5A5E8ADDAB8D /* API */ = {
 			isa = PBXGroup;
 			children = (
+				B1A6E730DE888A7B0CBC6C9F /* LivePhotoMedia.swift */,
 				B308FF37FF8E42CB0F5166D6 /* AttachmentFileStore.swift */,
 				5DC2D15EF36CFC29FD9543A9 /* AttachmentTransfer.swift */,
 				1891761174EB0D425725600A /* CloudAPIClient.swift */,
@@ -630,6 +639,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = D98D284B41715E7364E72438 /* Build configuration list for PBXNativeTarget "KordiTests" */;
 			buildPhases = (
+				6EB16C212CBAD8DEA348AA16 /* Generate synthetic Live Photo test assets */,
 				993120D9E321CDAE32868919 /* Sources */,
 			);
 			buildRules = (
@@ -741,6 +751,33 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		6EB16C212CBAD8DEA348AA16 /* Generate synthetic Live Photo test assets */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../desktop/src-tauri/native/LivePhotos.swift",
+				"$(SRCROOT)/../desktop/tests/livePhotoNativeCheck.swift",
+				"$(SRCROOT)/../../scripts/prepare-live-photo-test-assets.sh",
+			);
+			name = "Generate synthetic Live Photo test assets";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/live-photo.jpg",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/live-photo.mov",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/live-photo.mp4",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "bash \"$SRCROOT/../../scripts/prepare-live-photo-test-assets.sh\" \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		993120D9E321CDAE32868919 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -797,6 +834,9 @@
 				E081B6CC1FCAF0B7E12CFDF6 /* AgentSessionRow.swift in Sources */,
 				BE7A0C420EAEE2B706EFF49E /* AppModel+Digest.swift in Sources */,
 				2E4333FCFA2A1DA835345DE6 /* AppModel.swift in Sources */,
+				3CC711F13705BF9F23A3EBDF /* LivePhotoSurface.swift in Sources */,
+				B5B5BB40648C816CA1BCFEF9 /* LivePhotoMedia.swift in Sources */,
+				D799149952AEEC85476E82B6 /* LivePhotoAttachment.swift in Sources */,
 				85F8CFC2AC23D0C91408C596 /* AttachmentFileStore.swift in Sources */,
 				1AC36BD7EB5D806BCCE18ABB /* AttachmentTransfer.swift in Sources */,
 				92BCC08B73719A9327774C68 /* BlobEmoji.swift in Sources */,

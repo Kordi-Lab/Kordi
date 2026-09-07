@@ -176,6 +176,8 @@ struct ConversationView: View {
     @State private var mediaPreview: MediaPreviewPresentation?
     @State private var videoPreview: VideoPreviewPresentation?
     @State private var fullScreenVideoAttachmentID: String?
+    @State private var liveShareURLs: [URL] = []
+    @State private var showLiveShare = false
     @State private var shareItem: SharedFileItem?
     @State private var messageShareItem: SharedMessageItem?
     @State private var showSessionDetails = false
@@ -1028,6 +1030,7 @@ struct ConversationView: View {
                 poster: presentation.poster
             )
         }
+        .sheet(isPresented: $showLiveShare) { ActivityShareSheet(items: liveShareURLs) }
         .sheet(item: $shareItem) { item in
             ActivityShareSheet(items: [item.url])
         }
@@ -2511,7 +2514,13 @@ struct ConversationView: View {
 
     private func prepare(_ attachment: ChatAttachment, forSharing: Bool) {
         Task {
-            guard let url = await model.prepareAttachmentForPresentation(attachment) else { return }
+            if forSharing, attachment.livePhoto != nil {
+                guard let urls = await model.prepareLivePhotoURLs(attachment) else { return }
+                liveShareURLs = [urls.photo, urls.video]
+                showLiveShare = true
+                return
+            }
+            guard let url = await (forSharing ? model.prepareAttachmentForSharing(attachment) : model.prepareAttachmentForPresentation(attachment)) else { return }
             if forSharing {
                 shareItem = SharedFileItem(url: url)
             } else {

@@ -61,6 +61,13 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
     try {
       const localPath = await ensureLocalPath();
       if (!localPath) return;
+      if (attachment.livePhoto) {
+        const session = await loadSession();
+        if (!session?.token) throw new Error('Sign in to download the Live Photo originals.');
+        const video = attachment.livePhoto.video;
+        const videoPath = await downloadCloudAttachmentToLocalPath(session.token, video.attachmentId, video.name);
+        await downloadDesktopAttachment(videoPath, attachment.name.replace(/\.[^.]+$/, '') + '.mov');
+      }
       setDownloadedPath(await downloadDesktopAttachment(localPath, attachment.name));
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : 'Unable to download attachment');
@@ -122,7 +129,7 @@ export function AttachmentActions({ attachment, variant = 'icon' }: {
       <div className="flex min-w-[170px] flex-col">
         <button type="button" role="menuitem" onClick={() => void handleDownload()} disabled={isDownloading} className={menuButtonClass} aria-label={`Download ${attachment.name}`}>
           <Download className="app-transient-action-icon" />
-          <span className="app-transient-action-label">{downloadedPath ? 'Download again' : 'Download'}</span>
+          <span className="app-transient-action-label">{attachment.livePhoto ? 'Download Live Photo originals' : downloadedPath ? 'Download again' : 'Download'}</span>
         </button>
         {canOpen ? (
           <button type="button" role="menuitem" onClick={() => void handleOpen()} className={menuButtonClass} aria-label={`Open ${attachment.name} with local app`}>
