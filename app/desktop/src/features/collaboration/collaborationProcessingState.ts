@@ -16,6 +16,11 @@ function normalizeDeliveryState(value: string | null | undefined) {
   return value?.trim().toLowerCase() || '';
 }
 
+export function isActiveOutreachStatus(status: string | null | undefined) {
+  const normalized = normalizeDeliveryState(status);
+  return normalized === 'sending' || normalized === 'awaitingreply' || normalized === 'processing';
+}
+
 export function isCollaborationAgentResponseDirection(
   message: DesktopCollaborationConversationMessage,
 ) {
@@ -78,9 +83,15 @@ export function collaborationPendingAgentReplyState(
   nowMs: number,
   displayText: (message: DesktopCollaborationConversationMessage) => string,
 ) {
+  const outreachRequestId = isActiveOutreachStatus(conversation.outreach?.status)
+    ? conversation.outreach?.sourceRequestId?.trim()
+    : null;
   const latestRequest = [...conversation.messages].reverse().find((message) => (
-    message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND
+    (message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND || message.direction === COLLABORATION_MESSAGE_DIRECTION_INBOUND)
     && Boolean(message.requestId?.trim())
+    && (outreachRequestId
+      ? [message.id, message.requestId, message.clientMessageId].includes(outreachRequestId)
+      : message.direction === COLLABORATION_MESSAGE_DIRECTION_OUTBOUND)
   ));
   const hasSentRequest = Boolean(conversation.outreach?.sourceRequestId)
     || conversation.messages.some((message) => Boolean(message.requestId));
@@ -93,6 +104,8 @@ export function collaborationPendingAgentReplyState(
     ? latestRequest?.mentions?.find((mention) => mention.targetKind === 'agent')
     : undefined;
   const requestId = latestRequest?.requestId?.trim() || null;
+  const requestIds = [outreachRequestId, latestRequest?.id, latestRequest?.requestId, latestRequest?.clientMessageId]
+    .flatMap(id => id?.trim() ? [id.trim()] : []);
   const pendingRequestId = awaitingReply && normalizeDeliveryState(latestRequest?.deliveryState) !== 'sending'
     ? latestRequest?.clientMessageId?.trim() === requestId ? latestRequest?.id.trim() || requestId : requestId
     : null;
@@ -101,6 +114,7 @@ export function collaborationPendingAgentReplyState(
         isCollaborationAgentResponseDirection(message)
         && normalizeDeliveryState(message.deliveryState) === 'processing'
         && !staleProcessingPlaceholderIds.has(message.id)
+        && (requestIds.length === 0 || requestIds.includes(message.requestId?.trim() ?? ''))
       ))
     : undefined;
   return { activeAgentReplyMessage, awaitingReply, hasSentRequest, pendingAgentMention, pendingRequestId, staleProcessingPlaceholderIds };

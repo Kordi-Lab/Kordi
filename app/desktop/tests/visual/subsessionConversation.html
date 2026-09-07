@@ -10,6 +10,11 @@ import { TaskActivityDashboardPanel } from '/src/pages/TaskActivityDashboardPane
 import { __setSessionBackendForTests } from '/src/features/cloud/session.ts';
 import { useKordiSideAgentSessionActions } from '/src/app/useKordiSideAgentSessionActions.ts';
 import { collapseBlankConversationShells } from '/src/features/chat/participantSpaces.ts';
+import { buildCloudCollaborationConversation } from '/src/features/cloud/cloudCollaborationState.ts';
+import { mapCollaborationConversationToViewModel } from '/src/features/collaboration/transcript.ts';
+import { cloudContactToContact } from '/src/features/cloud/useCloudContacts.ts';
+import { encodeCloudDirectMessageEnvelope } from '/src/features/cloud/cloudDirectMessages.ts';
+import { encodeCloudAgentCancel } from '/src/features/cloud/cloudAgentMessages.ts';
 __setSessionBackendForTests({ load: async () => ({token: 'fixture-token',accountId: window.fixtureAccountId ?? 'peer',expiresAt: '2099-01-01'}),save: async () => {},clear: async () => {} });
 const snapshot = {sessionId: 'fixture-child',parentSessionId: 'fixture-parent',parentRequestId: 'root',ownerAccountId: 'owner',agentId: 'fixture-agent',ownerDisplayName: 'Alex',agentDisplayName: "Alex's Kordi",title: 'Planet research',status: 'running',version: 1,updatedAt: '2026-09-05T00:00:00Z',hasFollowupExecution: true,participants: [{accountId: 'peer',displayName: 'Sam'}],messages: [
   ...Array.from({length: 18},(_,index) => ({id: `history-${index}`,role: index%2 ? 'assistant' : 'user',senderAccountId: 'peer',text: index%2 ? 'The source comparison is kept in this session.' : 'Compare the planetary data.',timestampMs: index*1000})),
@@ -91,6 +96,19 @@ if (window.fixtureThreadReply) {
   parent.messages.push(question,{id:'thread-answer',role:root.role,sender:root.sender,senderType:'agent',text:'',time:'08:03',
     messageAction:action,replyToMessageId:'wire-question',sourceMessage:stale,
     turn:{...root.turn,id:'thread-answer-turn',assistantText:'THREAD-ANSWER',replyToMessageId:'wire-question',sourceMessage:stale}});
+}
+if (window.fixtureIncomingReply) {
+  const now = Date.now();
+  const owner = {accountId:'owner',displayName:'Alex',primaryEmail:'owner@example.test',nodeId:'owner',passwordSet:true,avatarUrl:null,
+    avatar:{source:'generated',style:'lorelei',seed:'owner',version:1},defaultAgent:{agentId:'cloud-agent:owner',displayName:'Research Agent',avatar:{source:'generated',style:'lorelei',seed:'agent',version:1}}};
+  const peer = {...owner,accountId:'peer',displayName:'Sam',nodeId:'peer',defaultAgent:null};
+  const account = window.fixtureIncomingReply==='owner'?owner:peer;
+  const body = encodeCloudDirectMessageEnvelope({schemaVersion:1,kind:'message',text:'@ResearchAgent check the weather',targetCloudAgentId:'cloud-agent:owner',targetCloudAgentName:'Research Agent',targetCloudAgentOwnerAccountId:'owner',targetCloudAgentOwnerName:'Alex'});
+  const old = {messageId:'old',fromAccountId:'owner',toAccountId:'peer',body,createdAt:new Date(now-60000).toISOString(),deliveredAt:null,readAt:null,direction:'outgoing'};
+  const cancel = {...old,messageId:'cancel',fromAccountId:'peer',toAccountId:'owner',body:encodeCloudAgentCancel({requestId:old.messageId})};
+  const incoming = {...old,messageId:'incoming-ios',clientMessageId:'distinct-ios-client-id',fromAccountId:'peer',toAccountId:'owner',createdAt:new Date(now).toISOString()};
+  const projected = buildCloudCollaborationConversation({account,contact:cloudContactToContact({...(account===owner?peer:owner),createdAt:old.createdAt}),messages:[old,cancel,incoming],runtime:'person'});
+  Object.assign(parent,mapCollaborationConversationToViewModel(projected,undefined,'Research Agent',now));
 }
 const props={
   cloudAccount:window.fixtureThreadUnread?{accountId:window.fixtureAccountId??'peer',displayName:'Sam'}:null,

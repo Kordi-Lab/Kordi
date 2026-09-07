@@ -6,6 +6,7 @@ import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/feat
 import {
 collaborationPendingAgentReplyState,
 collaborationTimestampIsExpired,
+isActiveOutreachStatus,
 isCollaborationAgentResponseDirection,
 isTerminalCollaborationAgentRequestState,
 } from '@/features/collaboration/collaborationProcessingState';
@@ -104,11 +105,6 @@ function normalizeDeliveryState(value: string | null | undefined) {
   return value?.trim().toLowerCase() || '';
 }
 
-function isActiveOutreachStatus(status: string | null | undefined) {
-  const normalized = normalizeDeliveryState(status);
-  return normalized === 'sending' || normalized === 'awaitingreply' || normalized === 'processing';
-}
-
 function isCancelledCollaborationState(value: string | null | undefined) {
   return normalizeDeliveryState(value) === 'cancelled';
 }
@@ -167,9 +163,10 @@ export function mapCollaborationConversationToViewModel(
   const remoteHumanLabel = isSupportContact
     ? remoteAgentLabel
     : conversation.peerOwnerName || conversation.peerDisplayName || conversation.title;
-  const pendingAgentId = pendingAgentMention?.agentId?.trim() ?? '';
-  const pendingAgentNodeId = pendingAgentMention?.nodeId?.trim() ?? '';
-  const pendingAgentIsLocal = Boolean(pendingAgentMention && (
+  const activeOutreach = isActiveOutreachStatus(conversation.outreach?.status) ? conversation.outreach : null;
+  const pendingAgentId = pendingAgentMention?.agentId?.trim() || activeOutreach?.targetAgentId?.trim() || '';
+  const pendingAgentNodeId = pendingAgentMention?.nodeId?.trim() || activeOutreach?.targetNodeId?.trim() || '';
+  const pendingAgentIsLocal = Boolean((pendingAgentMention || activeOutreach?.targetKind === 'agent') && (
     (pendingAgentId && pendingAgentId === conversation.identity?.localAgentId?.trim())
     || (pendingAgentNodeId && pendingAgentNodeId === conversation.identity?.localAgentNodeId?.trim())
     || (pendingAgentNodeId && pendingAgentNodeId === host?.nodeId?.trim())
