@@ -2117,7 +2117,7 @@ final class AppModel: ObservableObject {
             let ids = Set(remote.map(\.id))
             return remote + (messagesByConversation[conversation.id] ?? []).filter { !ids.contains($0.id) }
         }
-        var messages = messagesByConversation[conversation.id] ?? []
+        var messages = CloudGroupAgentLifecycleProjector.withPendingRequests(messagesByConversation[conversation.id] ?? [], conversation: conversation)
         for requestMessageId in pendingAgentRequestIds[conversation.id, default: []] {
             guard let startedAt = pendingAgentRequestStartedAt[requestMessageId],
                   !messages.contains(where: {

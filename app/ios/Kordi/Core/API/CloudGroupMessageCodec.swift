@@ -314,6 +314,51 @@ enum CloudGroupMessageCodec {
 }
 
 enum CloudGroupAgentLifecycleProjector {
+    /// Waiting is derived on read, not persisted or used to claim execution.
+    /// This covers incoming members and the sender's other devices equally.
+    static func withPendingRequests(
+        _ messages: [ChatMessage],
+        conversation: ConversationSummary,
+        now: Date = Date()
+    ) -> [ChatMessage] {
+        guard conversation.kind == .group else { return messages }
+        let answered = Set(messages.compactMap { $0.author == .agent ? $0.requestMessageId : nil })
+        let members = Dictionary(conversation.groupParticipants.map { ($0.accountId, $0.displayName) }, uniquingKeysWith: { first, _ in first })
+        let pending = messages.compactMap { request -> ChatMessage? in
+            guard request.author == .me || request.author == .person,
+                  !request.isSystemNotice,
+                  request.deliveryState != .failed, request.deliveryState != .cancelled,
+                  request.messageAction?.kind != "forward",
+                  !answered.contains(request.id),
+                  now.timeIntervalSince(request.createdAt) < 10 * 60,
+                  let mention = request.mentions.first(where: {
+                      $0.kind == .agent && members[$0.humanId ?? $0.nodeId ?? ""] != nil
+                  }),
+                  let ownerName = members[mention.humanId ?? mention.nodeId ?? ""] else { return nil }
+            let createdAt = request.createdAt.addingTimeInterval(0.001)
+            return ChatMessage(
+                id: "local-agent-progress:\(conversation.id):\(request.id)",
+                conversationId: conversation.id,
+                conversationSequence: request.conversationSequence,
+                author: .agent,
+                authorName: mention.displayLabel?.nonEmpty ?? mention.label,
+                senderOwnerName: ownerName,
+                text: "",
+                createdAt: createdAt,
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: request.id,
+                replyToMessageId: request.id,
+                messageAction: request.messageAction?.kind == "thread" ? request.messageAction : nil,
+                agentExecution: CloudMessageCodec.agentWaitingExecution(
+                    deliveryState: .processing,
+                    updatedAtMs: request.createdAt.timeIntervalSince1970 * 1_000
+                )
+            )
+        }
+        return pending.isEmpty ? messages : (messages + pending).sorted(by: ChatMessage.timelinePrecedes)
+    }
+
     private struct ResponseKey: Hashable {
         let requestId: String
         let senderAccountId: String
