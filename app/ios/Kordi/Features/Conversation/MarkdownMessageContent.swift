@@ -322,6 +322,22 @@ enum KordiMarkdownParser {
     }
 
     static func firstExternalURL(in text: String) -> URL? {
+        externalURLs(in: text, limit: 1).first
+    }
+
+    static func externalURLs(in text: String, limit: Int = 10) -> [URL] {
+        guard limit > 0 else { return [] }
+        var urls: [URL] = []
+        func appendLinks(_ text: String) {
+            for part in parseInline(text) {
+                guard urls.count < limit else { return }
+                switch part {
+                case let .link(_, url): if !urls.contains(url) { urls.append(url) }
+                case let .strong(value), let .emphasis(value): appendLinks(value)
+                default: break
+                }
+            }
+        }
         for block in parse(text) {
             let values: [String]
             switch block {
@@ -335,12 +351,11 @@ enum KordiMarkdownParser {
                 continue
             }
             for value in values {
-                for part in parseInline(value) {
-                    if case let .link(_, url) = part { return url }
-                }
+                appendLinks(value)
+                if urls.count >= limit { return urls }
             }
         }
-        return nil
+        return urls
     }
 
     private static func parseList(

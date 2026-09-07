@@ -24,6 +24,14 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         .route("/v1/cloud/digest/items/:id/task", post(task))
         .route("/v1/cloud/calendar/events", get(events))
         .route(
+            "/v1/cloud/calendar/series/preview",
+            post(super::series_routes::preview),
+        )
+        .route(
+            "/v1/cloud/calendar/series/:id",
+            put(super::series_routes::save).delete(super::series_routes::remove),
+        )
+        .route(
             "/v1/cloud/calendar/events/:id",
             put(save_event).delete(remove_event),
         )
@@ -33,10 +41,10 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         ))
         .with_state(state)
 }
-fn error(code: &str, message: &str, status: StatusCode) -> Response {
+pub(super) fn error(code: &str, message: &str, status: StatusCode) -> Response {
     (status, Json(json!({"errorCode":code,"message":message}))).into_response()
 }
-fn failed() -> Response {
+pub(super) fn failed() -> Response {
     error(
         "digest_unavailable",
         "Could not load the digest. Try again.",
@@ -63,6 +71,13 @@ async fn read(
             StatusCode::BAD_REQUEST,
         );
     }
+    if !valid_timezone(pool, &timezone).await.unwrap_or(false) {
+        return error(
+            "invalid_timezone",
+            "Choose a valid IANA timezone.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
     if store::initialize_preferences(pool, &session.account_id, &locale, &timezone)
         .await
         .is_err()
@@ -76,21 +91,22 @@ async fn read(
         Option<String>,
         i64,
         chrono::DateTime<chrono::Utc>,
+        String,
     );
-    let row=query_as::<_,Row>("SELECT snapshot_json,COALESCE(snapshot_input_json,'{}'),active_run_id,error_code,revision,updated_at FROM cloud_account_digests WHERE account_id=$1").bind(&session.account_id).fetch_one(pool).await;
-    let Ok((mut snapshot, input, active, error_code, revision, updated_at)) = row else {
+    let row=query_as::<_,Row>("SELECT snapshot_json,COALESCE(snapshot_input_json,'{}'),active_run_id,error_code,revision,updated_at,timezone FROM cloud_account_digests WHERE account_id=$1").bind(&session.account_id).fetch_one(pool).await;
+    let Ok((mut snapshot, input, active, error_code, revision, updated_at, timezone)) = row else {
         return failed();
     };
     let input = serde_json::from_value::<Input>(input).ok();
     let mut refs = Vec::new();
     let mut partial = false;
     if let Some(input) = input {
-        match store::input_is_currently_authorized(pool, &session.account_id, &input).await {
-            Ok(true) => {
-                refs = input.sources;
+        match store::authorized_input_sources(pool, &session.account_id, &input).await {
+            Ok(Some(current)) => {
+                refs = current;
                 partial = input.partial;
             }
-            Ok(false) => snapshot = None,
+            Ok(None) => snapshot = None,
             Err(_) => return failed(),
         }
     } else {
@@ -106,7 +122,7 @@ async fn read(
         Ok(v) => v,
         Err(_) => return failed(),
     };
-    Json(json!({"accountId":session.account_id,"snapshot":snapshot,"sources":if snapshot.is_some(){refs}else{vec![]},"partial":partial&&snapshot.is_some(),"revision":revision,"updatedAt":updated_at,"status":if active.is_some(){"updating"}else if error_code.is_some(){"error"}else if snapshot.is_some(){"ready"}else{"loading"},"errorCode":error_code,"feedback":feedback.into_iter().map(|(id,status,task_id)|json!({"id":id,"status":status,"taskId":task_id})).collect::<Vec<_>>()})).into_response()
+    Json(json!({"accountId":session.account_id,"timezone":timezone,"snapshot":snapshot,"sources":if snapshot.is_some(){refs}else{vec![]},"partial":partial&&snapshot.is_some(),"revision":revision,"updatedAt":updated_at,"status":if active.is_some(){"updating"}else if error_code.is_some(){"error"}else if snapshot.is_some(){"ready"}else{"loading"},"errorCode":error_code,"feedback":feedback.into_iter().map(|(id,status,task_id)|json!({"id":id,"status":status,"taskId":task_id})).collect::<Vec<_>>()})).into_response()
 }
 async fn refresh(
     State(state): State<Arc<ServerState>>,
@@ -128,15 +144,16 @@ async fn refresh(
             StatusCode::BAD_REQUEST,
         );
     }
-    if query("UPDATE cloud_account_digests SET retry_after=now(),locale=COALESCE($2,locale),timezone=COALESCE($3,timezone) WHERE account_id=$1")
-        .bind(&session.account_id).bind(prefs.locale).bind(prefs.timezone)
+    // Refresh is not a preference edit: another device must not reinterpret relative dates.
+    if query("UPDATE cloud_account_digests SET retry_after=now() WHERE account_id=$1")
+        .bind(&session.account_id)
         .execute(state.db_pool())
         .await
         .is_err()
     {
         return failed();
     }
-    match store::refresh(state.db_pool(), &session.account_id, true).await {
+    match store::refresh(state.db_pool(), &session.account_id).await {
         Ok(()) => StatusCode::ACCEPTED.into_response(),
         Err(_) => failed(),
     }
@@ -157,7 +174,7 @@ pub(super) async fn save_event(
     State(state): State<Arc<ServerState>>,
     Extension(session): Extension<CloudSession>,
     Path(id): Path<String>,
-    Json(event): Json<CalendarEvent>,
+    Json(mut event): Json<CalendarEvent>,
 ) -> Response {
     if event.id != id {
         return error(
@@ -166,8 +183,40 @@ pub(super) async fn save_event(
             StatusCode::BAD_REQUEST,
         );
     }
-    if let Err(message) = validate_event(&event) {
+    if let Err(message) = normalize_event_times(&mut event).and_then(|()| validate_event(&event)) {
         return error("invalid_event", message, StatusCode::BAD_REQUEST);
+    }
+    if let Some(zone) = &event.timezone {
+        if !valid_timezone(state.db_pool(), zone).await.unwrap_or(false) {
+            return error(
+                "invalid_timezone",
+                "Choose a valid IANA timezone.",
+                StatusCode::BAD_REQUEST,
+            );
+        }
+    }
+    // Older clients cannot interpret update/delete proposals. Never let them create a duplicate.
+    if event.revision == 0 && event.id.starts_with("digest-") {
+        let incompatible: Result<(bool,), _> = query_as("SELECT EXISTS(SELECT 1 FROM cloud_account_digests, jsonb_array_elements(snapshot_json->'calendarCandidates') item WHERE account_id=$1 AND item->>'id'=$2 AND (COALESCE(item->>'calendarAction','create')<>'create' OR (item->'recurrence' IS NOT NULL AND item->'recurrence'<>'null'::jsonb AND NOT $3)))")
+            .bind(&session.account_id).bind(&event.id[7..]).bind(event.confirm_single_occurrence==Some(true)).fetch_one(state.db_pool()).await;
+        match incompatible {
+            Ok((false,)) => {}
+            Ok((true,)) => {
+                return error(
+                    "review_required",
+                    "Review this change in an updated app before saving.",
+                    StatusCode::CONFLICT,
+                )
+            }
+            Err(_) => return failed(),
+        }
+    }
+    if event.revision == 0 && event.recurrence.is_some() {
+        return error(
+            "review_required",
+            "Preview and confirm the series before saving.",
+            StatusCode::CONFLICT,
+        );
     }
     if !store::authorized(state.db_pool(), &session.account_id, &event.source_ids)
         .await
@@ -209,10 +258,10 @@ pub(super) async fn save_event(
             _ => {}
         }
     }
-    let row:Result<Option<(Value,i64)>,_>=query_as("INSERT INTO cloud_calendar_events(account_id,event_id,payload) SELECT $1,$2,$3 WHERE $4=0 ON CONFLICT(account_id,event_id) DO UPDATE SET payload=$3,revision=cloud_calendar_events.revision+1,updated_at=now() WHERE cloud_calendar_events.revision=$4 RETURNING payload,revision")
+    let row:Result<Option<(Value,i64)>,_>=query_as("INSERT INTO cloud_calendar_events(account_id,event_id,payload) SELECT $1,$2,$3 WHERE $4=0 ON CONFLICT(account_id,event_id) DO UPDATE SET payload=cloud_calendar_events.payload || $3,revision=cloud_calendar_events.revision+1,updated_at=now() WHERE cloud_calendar_events.revision=$4 RETURNING payload,revision")
         .bind(&session.account_id).bind(&id).bind(serde_json::to_value(&event).unwrap()).bind(event.revision).fetch_optional(&mut *tx).await;
     // Existing rows with an expected revision use an explicit update.
-    let row=match row {Ok(None) if event.revision>0=>query_as("UPDATE cloud_calendar_events SET payload=$3,revision=revision+1,updated_at=now() WHERE account_id=$1 AND event_id=$2 AND revision=$4 RETURNING payload,revision").bind(&session.account_id).bind(&id).bind(serde_json::to_value(&event).unwrap()).bind(event.revision).fetch_optional(&mut *tx).await,other=>other};
+    let row=match row {Ok(None) if event.revision>0=>query_as("UPDATE cloud_calendar_events SET payload=cloud_calendar_events.payload || $3,revision=revision+1,updated_at=now() WHERE account_id=$1 AND event_id=$2 AND revision=$4 RETURNING payload,revision").bind(&session.account_id).bind(&id).bind(serde_json::to_value(&event).unwrap()).bind(event.revision).fetch_optional(&mut *tx).await,other=>other};
     match row {
         Ok(Some((mut value, revision))) => {
             if tx.commit().await.is_err() {
@@ -228,6 +277,16 @@ pub(super) async fn save_event(
         ),
         Err(_) => failed(),
     }
+}
+async fn valid_timezone(
+    pool: &sqlx_postgres::PgPool,
+    zone: &str,
+) -> Result<bool, sqlx_core::Error> {
+    query_as::<_, (bool,)>("SELECT EXISTS(SELECT 1 FROM pg_timezone_names WHERE name=$1)")
+        .bind(zone)
+        .fetch_one(pool)
+        .await
+        .map(|row| row.0)
 }
 #[derive(Deserialize)]
 struct ExpectedRevision {

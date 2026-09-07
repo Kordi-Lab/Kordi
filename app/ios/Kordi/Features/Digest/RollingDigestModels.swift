@@ -11,6 +11,10 @@ struct RollingDigestSource: Codable, Identifiable, Equatable, Sendable {
     let createdAt: String
     let version: Int
     let isAgent: Bool?
+    let agentId: String?
+    let agentOwnerName: String?
+    let agentAvatarUrl: String?
+    var replyToSourceId: String? = nil
 }
 struct RollingDigestItem: Codable, Identifiable, Equatable, Sendable {
     let id: String
@@ -23,6 +27,13 @@ struct RollingDigestItem: Codable, Identifiable, Equatable, Sendable {
     let existingTaskId: String?
     let startAt: String?
     let endAt: String?
+    var timezone: String? = nil
+    var calendarAction: String? = nil
+    var existingEventId: String? = nil
+    var existingEventRevision: Int64? = nil
+    var calendarScope: String? = nil
+    var existingSeriesId: String? = nil
+    var recurrence: DigestRecurrence? = nil
 }
 struct RollingDigestContent: Codable, Equatable {
     let claims: [RollingDigestItem]
@@ -45,6 +56,23 @@ struct RollingDigestResponse: Codable, Equatable {
     let status: String
     let errorCode: String?
     let feedback: [RollingDigestFeedback]
+    var timezone: String? = nil
+
+    private var dismissedItemIDs: Set<String> {
+        Set(feedback.filter { $0.status == "dismissed" }.map(\.id))
+    }
+    var visibleClaims: [RollingDigestItem] {
+        let dismissed = dismissedItemIDs
+        return (snapshot?.claims ?? []).filter { !dismissed.contains($0.id) }
+    }
+    var dismissedSuggestions: [RollingDigestItem] {
+        let dismissed = dismissedItemIDs
+        return (snapshot?.suggestions ?? []).filter { dismissed.contains($0.id) }
+    }
+    var visibleSuggestions: [RollingDigestItem] {
+        let dismissed = dismissedItemIDs
+        return (snapshot?.suggestions ?? []).filter { !dismissed.contains($0.id) }
+    }
 }
 struct DigestCalendarEvent: Codable, Identifiable, Equatable, Sendable {
     var id: String
@@ -57,6 +85,20 @@ struct DigestCalendarEvent: Codable, Identifiable, Equatable, Sendable {
     var description = ""
     var externalUid: String?
     var revision: Int64 = 0
+    var links: [String]? = nil
+    var timezone: String? = nil
+    var recurrence: DigestRecurrence? = nil
+    var seriesId: String? = nil
+    var seriesFingerprint: String? = nil
+    var confirmSingleOccurrence: Bool? = nil
+}
+struct DigestRecurrence: Codable, Equatable, Sendable {
+    var frequency: String
+    var interval: Int = 1
+    var weekdays: [Int] = []
+    var timezone: String
+    var count: Int?
+    var until: String?
 }
 extension DigestCalendarEvent {
     func normalizedForSave() throws -> Self {
@@ -76,6 +118,26 @@ struct DigestTaskResult: Decodable { let taskId: String }
 struct DigestDismissInput: Encodable { let dismissed: Bool }
 
 enum DigestDate {
+    static func shiftedEnd(from start: Date, to nextStart: Date, end: Date?, allDay: Bool, calendar: Calendar = .current) -> Date {
+        if allDay {
+            let days = end.map { calendar.dateComponents([.day], from: start, to: $0).day ?? 0 } ?? 0
+            return calendar.date(byAdding: .day, value: max(1, days), to: nextStart) ?? nextStart.addingTimeInterval(86400)
+        }
+        let duration = end?.timeIntervalSince(start) ?? 0
+        return nextStart.addingTimeInterval(duration > 0 ? duration : 1800)
+    }
+    static func eventDate(_ event: DigestCalendarEvent) -> Date? {
+        guard event.allDay else { return parse(event.startAt) }
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: String(event.startAt.prefix(10)))
+    }
+    static func label(_ value: String, timezone: String) -> String {
+        guard let date = parse(value), let zone = TimeZone(identifier: timezone) else { return value }
+        let formatter = DateFormatter(); formatter.timeZone = zone
+        formatter.dateStyle = .medium; formatter.timeStyle = .short
+        return formatter.string(from: date) + " · " + timezone
+    }
     static func parse(_ value: String?) -> Date? {
         guard let value else { return nil }
         let formatter = ISO8601DateFormatter()
@@ -95,7 +157,14 @@ enum DigestDate {
     }
     static func pendingCandidates(_ candidates: [RollingDigestItem], events: [DigestCalendarEvent], on day: Date, calendar: Calendar = .current) -> [RollingDigestItem] {
         candidates.filter { item in
-            !events.contains { $0.id == "digest-\(item.id)" }
+            guard item.calendarProposalAvailable(events: events) else { return false }
+            if item.calendarAction == "delete" {
+                return events.contains { saved in
+                    item.calendarCancellationTargets(saved)
+                        && event(saved, occursOn: day, calendar: calendar)
+                }
+            }
+            return (item.calendarAction == "update" || !events.contains { $0.id == "digest-\(item.id)" || $0.seriesId == "digest-\(item.id)" })
                 && parse(item.startAt).map { calendar.isDate($0, inSameDayAs: day) } == true
         }
     }

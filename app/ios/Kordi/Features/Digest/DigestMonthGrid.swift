@@ -21,8 +21,8 @@ struct DigestMonthGrid: View {
                     Text(day).font(.caption2).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(.bottom, 4)
                 }
                 ForEach(DigestDate.monthDays(containing: month), id: \.self) { day in
-                    let matching = events.filter { DigestDate.event($0, occursOn: day) }
                     let proposed = proposals(on: day)
+                    let matching = events.filter { event in DigestDate.event(event, occursOn: day) && !proposed.contains { $0.calendarCancellationTargets(event) } }
                     let selected = Calendar.current.isDate(day, inSameDayAs: selectedDay)
                     let inMonth = Calendar.current.isDate(day, equalTo: month, toGranularity: .month)
                     Button { selectedDay = day } label: {
@@ -33,7 +33,8 @@ struct DigestMonthGrid: View {
                                 .background(selected ? Color.accentColor : .clear, in: .circle)
                             HStack(spacing: 3) {
                                 if !matching.isEmpty { Circle().fill(Color.accentColor).frame(width: 4, height: 4) }
-                                if !proposed.isEmpty { Circle().strokeBorder(Color.accentColor, lineWidth: 1).frame(width: 5, height: 5) }
+                                if proposed.contains(where: { $0.calendarAction != "delete" }) { Circle().strokeBorder(Color.accentColor, lineWidth: 1).frame(width: 5, height: 5) }
+                                if proposed.contains(where: { $0.calendarAction == "delete" }) { Circle().strokeBorder(KordiTheme.destructiveText, lineWidth: 1).frame(width: 5, height: 5) }
                             }.frame(height: 5)
                         }.frame(maxWidth: .infinity, minHeight: 44).contentShape(.rect)
                     }.buttonStyle(.plain)
@@ -43,8 +44,8 @@ struct DigestMonthGrid: View {
             }
             Divider()
             Text(selectedDay.formatted(.dateTime.weekday(.wide).month(.abbreviated).day())).font(.subheadline.weight(.semibold))
-            let scheduled = events.filter { DigestDate.event($0, occursOn: selectedDay) }.sorted { $0.startAt < $1.startAt }
             let proposed = proposals(on: selectedDay).sorted { ($0.startAt ?? "") < ($1.startAt ?? "") }
+            let scheduled = events.filter { event in DigestDate.event(event, occursOn: selectedDay) && !proposed.contains { $0.calendarCancellationTargets(event) } }.sorted { $0.startAt < $1.startAt }
             if scheduled.isEmpty && proposed.isEmpty { Text("No events on this day").font(.footnote).foregroundStyle(.secondary) }
             ForEach(scheduled) { event in
                 Button { onSelect(event) } label: {
@@ -58,18 +59,19 @@ struct DigestMonthGrid: View {
                 }.buttonStyle(.plain)
             }
             ForEach(proposed) { item in
+                let occurrence = events.first { item.calendarCancellationTargets($0) && DigestDate.event($0, occursOn: selectedDay) }
                 Button { onReview(item) } label: {
                     HStack(alignment: .top, spacing: 12) {
-                        Text(DigestDate.parse(item.startAt)?.formatted(date: .omitted, time: .shortened) ?? "")
+                        Text(occurrence?.allDay == true ? "All day" : DigestDate.parse(occurrence?.startAt ?? item.startAt)?.formatted(date: .omitted, time: .shortened) ?? "")
                             .font(.caption).foregroundStyle(.secondary).frame(width: 62, alignment: .leading)
-                        RoundedRectangle(cornerRadius: 2).stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1, dash: [3, 2])).frame(width: 3, height: 32)
+                        RoundedRectangle(cornerRadius: 2).stroke(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.accentColor, style: StrokeStyle(lineWidth: 1, dash: [3, 2])).frame(width: 3, height: 32)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(item.title).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
-                            Text("To review").font(.caption).foregroundStyle(.secondary)
+                            Text(item.title).font(.subheadline.weight(.medium)).foregroundStyle(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.primary)
+                            Text(item.calendarAction == "delete" ? "Cancellation to review" : "To review").font(.caption).foregroundStyle(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.secondary)
                         }.frame(maxWidth: .infinity, alignment: .leading)
                         Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
                     }.padding(.vertical, 6).frame(minHeight: 44)
-                }.buttonStyle(.plain).accessibilityLabel("Review \(item.title)")
+                }.buttonStyle(.plain).accessibilityLabel(item.calendarAction == "delete" ? "Review cancellation of \(item.title)" : "Review \(item.title)")
             }
         }
     }

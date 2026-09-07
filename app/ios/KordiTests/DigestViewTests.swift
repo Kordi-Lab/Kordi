@@ -1,5 +1,86 @@
 import XCTest
+import Testing
 @testable import Kordi
+
+@MainActor
+@Test
+func digestSeriesCancellationUsesTheModelScopeAndRetainsReview() throws {
+    let json = #"{"id":"proposal","title":"Review","text":"A contextual request.","kind":"possible","sourceIds":["reply"],"calendarAction":"delete","calendarScope":"series","existingSeriesId":"owned-series"}"#
+    let item = try JSONDecoder().decode(RollingDigestItem.self, from: Data(json.utf8))
+    let first = DigestCalendarEvent(id: "digest-proposal", title: "Review", startAt: "2026-09-08T12:00:00Z", revision: 1, seriesId: "owned-series")
+    var second = first; second.id = "second"; second.startAt = "2026-09-15T12:00:00Z"
+    var other = first; other.id = "other"; other.seriesId = "different-series"
+    #expect(item.calendarReviewSeries(events: [other,second,first])?.map(\.id) == [first.id,second.id])
+    #expect(try item.calendarReviewEvent(events: [first,second], sources: [], timezone: "UTC").id == first.id)
+    #expect(item.calendarReviewLabel(events: [first,second]) == "Review cancellation")
+    var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    #expect(DigestDate.pendingCandidates([item], events: [first,second], on: try #require(DigestDate.parse(second.startAt)), calendar: calendar).count == 1)
+    #expect(item.calendarProposalAvailable(events: [first,second]))
+    #expect(!item.calendarProposalAvailable(events: []))
+    var draft = first; draft.revision = 0
+    #expect(!item.calendarProposalAvailable(events: [draft]))
+    #expect(DigestDate.pendingCandidates([item], events: [], on: try #require(DigestDate.parse(first.startAt)), calendar: calendar).isEmpty)
+}
+
+@MainActor
+@Test
+func digestEventDatesDefaultToThirtyMinutesAndPreserveDuration() throws {
+    let start = try #require(DigestDate.parse("2026-09-09T23:45:00+03:00"))
+    let next = start.addingTimeInterval(86400)
+    #expect(DigestDate.shiftedEnd(from: start, to: start, end: nil, allDay: false) == start.addingTimeInterval(1800))
+    #expect(DigestDate.shiftedEnd(from: start, to: next, end: start.addingTimeInterval(-60), allDay: false) == next.addingTimeInterval(1800))
+    #expect(DigestDate.shiftedEnd(from: start, to: next, end: start.addingTimeInterval(3600), allDay: false) == next.addingTimeInterval(3600))
+    var calendar = Calendar(identifier: .gregorian); calendar.timeZone = try #require(TimeZone(identifier: "America/New_York"))
+    let springDay = try #require(DigestDate.parse("2026-03-08T00:00:00-05:00"))
+    #expect(DigestDate.shiftedEnd(from: springDay, to: springDay, end: nil, allDay: true, calendar: calendar) == DigestDate.parse("2026-03-09T00:00:00-04:00"))
+}
+
+@MainActor
+@Test
+func digestAutomaticDatesRejectStaleAndCancelledPreviews() async {
+    let preview = DigestSeriesPreview()
+    let first = DigestCalendarEvent(id: "first", title: "Review", startAt: "2099-09-08T12:00:00Z")
+    let second = DigestCalendarEvent(id: "second", title: "Review", startAt: "2099-09-09T12:00:00Z")
+    let cancelled = Task { await preview.update(first, accountId: "viewer") { [$0] } }
+    cancelled.cancel()
+    await cancelled.value
+    #expect(!preview.isReady(for: first, accountId: "viewer"))
+    await preview.update(second, accountId: "viewer") { [$0] }
+    #expect(preview.isReady(for: second, accountId: "viewer"))
+    #expect(!preview.isReady(for: first, accountId: "viewer"))
+    #expect(!preview.isReady(for: second, accountId: "another-account"))
+    await preview.update(second, accountId: "viewer") { _ in throw DigestCalendarError(message: "Network unavailable") }
+    #expect(preview.error != nil && !preview.isReady(for: second, accountId: "viewer"))
+    await preview.update(second, accountId: "viewer") { [$0] }
+    #expect(preview.isReady(for: second, accountId: "viewer"))
+    await preview.update(nil, accountId: "viewer") { _ in Issue.record("An empty request must not be fetched"); return [] }
+    #expect(preview.events.isEmpty && !preview.isReady(for: second, accountId: "viewer"))
+}
+
+@MainActor
+@Test
+func digestCalendarReviewPreservesIdentityAndLinksAcrossTimezones() throws {
+    let raw = #"{"id":"move","title":"Review","text":"Move later","kind":"possible","sourceIds":[],"calendarAction":"update","existingEventId":"meeting","existingEventRevision":4,"startAt":"2026-09-08T13:00:00Z"}"#
+    var item = try JSONDecoder().decode(RollingDigestItem.self, from: Data(raw.utf8))
+    let event = DigestCalendarEvent(id: "meeting", title: "Review", startAt: "2026-09-08T15:00:00+03:00", endAt: "2026-09-08T15:30:00+03:00", reminderAt: "2026-09-08T14:50:00+03:00", revision: 4, links: ["https://example.zoom.us/j/123"], timezone: "Asia/Riyadh")
+    let updated = try item.calendarReviewEvent(events: [event], sources: [], timezone: "America/New_York")
+    #expect(updated.id == "meeting" && updated.revision == 4)
+    #expect(updated.endAt == "2026-09-08T13:30:00Z")
+    #expect(updated.reminderAt == "2026-09-08T12:50:00Z")
+    #expect(updated.timezone == "Asia/Riyadh" && updated.links == event.links)
+    #expect(throws: (any Error).self) { try item.calendarReviewEvent(events: [], sources: [], timezone: "UTC") }
+    item.calendarAction = "delete"
+    #expect(try item.calendarReviewEvent(events: [event], sources: [], timezone: "UTC") == event)
+    #expect(item.calendarReviewLabel(events: [event]) == "Review cancellation")
+    let urls = KordiMarkdownParser.externalURLs(in: "[Zoom](https://example.zoom.us/j/123) **https://example.com/agenda** `https://code.example` [Unsafe](javascript:alert(1))")
+    #expect(urls.map(\.absoluteString) == ["https://example.zoom.us/j/123", "https://example.com/agenda"])
+    for zone in ["America/Los_Angeles", "Asia/Tokyo"] {
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = try #require(TimeZone(identifier: zone))
+        let day = try #require(DigestDate.parse("2026-09-08T12:00:00Z"))
+        var allDay = event; allDay.allDay = true; allDay.startAt = "2026-09-08T00:00:00Z"; allDay.endAt = nil
+        #expect(DigestDate.event(allDay, occursOn: day, calendar: calendar))
+    }
+}
 
 final class DigestViewTests: XCTestCase {
     @MainActor
@@ -83,4 +164,27 @@ final class DigestViewTests: XCTestCase {
         XCTAssertEqual(first.events.map(\.id), second.events.map(\.id))
         XCTAssertTrue(first.events.allSatisfy { $0.reminderAt == nil })
     }
+}
+
+@MainActor
+@Test(arguments: [false, true])
+func digestDismissalKeepsBriefAndSuggestionRestorationSeparate(hideSuggestion: Bool) throws {
+    let suggestionFeedback = hideSuggestion ? #",{"id":"suggestion","status":"dismissed"}"# : ""
+    let json = """
+    {"accountId":"viewer","snapshot":{
+      "claims":[{"id":"brief","title":"Hidden brief","text":"","kind":"progress","sourceIds":[]},
+        {"id":"visible","title":"Visible brief","text":"","kind":"progress","sourceIds":[]}],
+      "commitments":[],"calendarCandidates":[],
+      "suggestions":[{"id":"suggestion","title":"Suggestion","text":"","kind":"possible","sourceIds":[]},
+        {"id":"task","title":"Converted task","text":"","kind":"possible","sourceIds":[]}]},
+      "sources":[],"partial":true,"revision":1,"updatedAt":"2026-09-07T09:00:00Z","status":"ready",
+      "feedback":[{"id":"brief","status":"dismissed"},{"id":"old-item","status":"dismissed"},
+        {"id":"task","status":"task"}\(suggestionFeedback)]}
+    """
+    let response = try JSONDecoder().decode(RollingDigestResponse.self, from: Data(json.utf8))
+    #expect(response.visibleClaims.map(\.id) == ["visible"])
+    #expect(response.dismissedSuggestions.map(\.id) == (hideSuggestion ? ["suggestion"] : []))
+    #expect(response.visibleSuggestions.map(\.id) == (hideSuggestion ? ["task"] : ["suggestion", "task"]))
+    #expect(response.snapshot?.claims.count == 2)
+    #expect(response.partial)
 }

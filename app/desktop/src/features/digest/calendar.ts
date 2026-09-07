@@ -2,11 +2,22 @@ import type { CalendarEvent, CalendarConnection } from './types';
 import { isNativeDesktopShell } from '@/lib/desktop';
 
 export function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
+export function shiftedCalendarEnd(startAt: string, previousStartAt?: string|null, previousEndAt?: string|null, allDay=false): string {
+  const start=Date.parse(startAt);
+  if(!Number.isFinite(start))return '';
+  const duration=Date.parse(previousEndAt??'')-Date.parse(previousStartAt??'');
+  return new Date(start+(duration>0?duration:allDay?86400000:1800000)).toISOString();
+}
+export function zonedEventLabel(value: string, timezone: string): string {
+  const date = new Date(value);
+  try { return date.toLocaleString(undefined,{timeZone:timezone,dateStyle:'medium',timeStyle:'short'}) + ' · ' + timezone; }
+  catch { return date.toISOString() + ' · UTC (meeting timezone: ' + timezone + ')'; }
+}
 export function monthDays(month: string) {
   const start = new Date(`${month}-01T12:00:00`); start.setDate(start.getDate()-start.getDay());
   return Array.from({length:42},(_,i)=>{const day=new Date(start);day.setDate(day.getDate()+i);return dateKey(day);});
 }
-export function eventOnDay(event: CalendarEvent, day: string) {
+export function eventOnDay(event: Pick<CalendarEvent,'startAt'|'endAt'|'allDay'>, day: string) {
   if(event.allDay) return day>=event.startAt.slice(0,10)&&(event.endAt?day<event.endAt.slice(0,10):day===event.startAt.slice(0,10));
   const start=dateKey(new Date(event.startAt));
   const last=event.endAt?dateKey(new Date(new Date(event.endAt).getTime()-1)):start;

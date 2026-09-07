@@ -8,135 +8,10 @@ use std::collections::{BTreeSet, HashMap};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, sqlx_core::Error>;
-// Keep authorization identical for aggregation, cached reads, evidence and conversion.
-const SOURCE_FROM: &str = " FROM cloud_chat_messages m
- JOIN cloud_chat_conversations c ON c.conversation_id=m.conversation_id
- JOIN cloud_chat_conversation_members member ON member.conversation_id=c.conversation_id AND member.account_id=$1 AND member.membership_state='active'
- JOIN cloud_accounts sender ON sender.account_id=m.sender_account_id
- WHERE m.deleted_at IS NULL
- AND NOT EXISTS (SELECT 1 FROM cloud_chat_message_visibility v WHERE v.account_id=$1 AND v.message_id=m.message_id)
- AND NOT EXISTS (SELECT 1 FROM cloud_account_session_visibility v WHERE v.account_id=$1 AND v.session_id=COALESCE(c.legacy_session_id,c.conversation_id::text) AND (v.hidden_at IS NOT NULL OR v.deleted_at IS NOT NULL))";
-
-pub fn visible_text(content: &Value) -> Option<String> {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-    let blocks = content.get("blocks")?.as_array()?;
-    let mut texts = Vec::new();
-    for block in blocks {
-        if block.get("type")?.as_str()? != "text" {
-            continue;
-        }
-        let raw = block.get("text")?.as_str()?.trim();
-        if raw.starts_with("kordi-cloud-") {
-            let (prefix, encoded) = raw.split_once(':')?;
-            let value: Value =
-                serde_json::from_slice(&URL_SAFE_NO_PAD.decode(encoded).ok()?).ok()?;
-            let kind = value.get("kind")?.as_str()?;
-            let text = match (prefix, kind) {
-                ("kordi-cloud-message", "message")
-                | ("kordi-cloud-agent-response", "agent-response") => {
-                    value.get("text")?.as_str()?
-                }
-                ("kordi-cloud-group", "group-message") => {
-                    value.get("message")?.get("text")?.as_str()?
-                }
-                _ => return None,
-            };
-            texts.push(text.to_string());
-        } else if !raw.is_empty() {
-            texts.push(raw.to_string());
-        }
-    }
-    (!texts.is_empty()).then(|| texts.join("\n"))
-}
-
-fn is_agent_content(content: &Value) -> bool {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-    content
-        .get("blocks")
-        .and_then(Value::as_array)
-        .is_some_and(|blocks| {
-            blocks.iter().any(|block| {
-                let Some(text) = block.get("text").and_then(Value::as_str) else {
-                    return false;
-                };
-                if text.starts_with("kordi-cloud-agent-response:") {
-                    return true;
-                }
-                text.strip_prefix("kordi-cloud-group:")
-                    .and_then(|s| URL_SAFE_NO_PAD.decode(s).ok())
-                    .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-                    .is_some_and(|v| {
-                        v.pointer("/message/senderKind").and_then(Value::as_str) == Some("agent")
-                    })
-            })
-        })
-}
-
-async fn source_page(
-    pool: &PgPool,
-    account: &str,
-    ids: Option<&[String]>,
-) -> Result<(Vec<Source>, bool)> {
-    let suffix = if ids.is_some() {
-        " AND m.message_id::text=ANY($2) ORDER BY m.created_at DESC,m.message_id DESC LIMIT 700"
-    } else {
-        " AND (m.generation_status IS NULL OR m.generation_status IN ('complete','completed')) ORDER BY m.created_at DESC,m.message_id DESC LIMIT 501"
-    };
-    let sql=format!("SELECT m.message_id::text,c.conversation_id::text,COALESCE(c.legacy_session_id,c.conversation_id::text),COALESCE(member.personal_title,c.shared_title,c.group_title,'Conversation'),m.sender_account_id,COALESCE(sender.display_name,'Contact'),m.content,m.created_at,m.version,m.message_kind{SOURCE_FROM}{suffix}");
-    type Row = (
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        Value,
-        chrono::DateTime<chrono::Utc>,
-        i32,
-        String,
-    );
-    let mut request = query_as::<_, Row>(&sql).bind(account);
-    if let Some(ids) = ids {
-        request = request.bind(ids);
-    }
-    let rows = request.fetch_all(pool).await?;
-    let limited = ids.is_none() && rows.len() > 500;
-    Ok((
-        rows.into_iter()
-            .filter_map(|r| {
-                visible_text(&r.6).map(|text| Source {
-                    id: r.0,
-                    conversation_id: r.1,
-                    session_id: r.2,
-                    session_title: r.3,
-                    sender_account_id: r.4,
-                    sender_name: if is_agent_content(&r.6) || r.9 == "assistant" {
-                        format!("Agent for {}", r.5)
-                    } else {
-                        r.5
-                    },
-                    text,
-                    created_at: r.7.to_rfc3339(),
-                    version: r.8,
-                    is_agent: is_agent_content(&r.6) || r.9 == "assistant",
-                })
-            })
-            .collect(),
-        limited,
-    ))
-}
-
-pub async fn sources(pool: &PgPool, account: &str, ids: Option<&[String]>) -> Result<Vec<Source>> {
-    Ok(source_page(pool, account, ids).await?.0)
-}
-
-pub async fn authorized(pool: &PgPool, account: &str, ids: &[String]) -> Result<bool> {
-    if ids.is_empty() {
-        return Ok(true);
-    }
-    let found = sources(pool, account, Some(ids)).await?;
-    Ok(ids.iter().all(|id| found.iter().any(|s| &s.id == id)))
-}
+use super::source_reader::source_page;
+#[cfg(test)]
+pub use super::source_reader::visible_text;
+pub use super::source_reader::{authorized, sources};
 
 pub async fn initialize_preferences(
     pool: &PgPool,
@@ -172,6 +47,18 @@ pub async fn input(
 ) -> Result<Input> {
     let (mut sources, mut partial) = source_page(pool, account, None).await?;
     sources.truncate(500);
+    let reply_ids: Vec<_> = sources
+        .iter()
+        .filter_map(|source| source.reply_to_source_id.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .take(200)
+        .collect();
+    for source in self::sources(pool, account, Some(&reply_ids)).await? {
+        if !sources.iter().any(|existing| existing.id == source.id) {
+            sources.push(source);
+        }
+    }
     if let Some(previous) = &previous {
         let ids: Vec<_> = previous
             .commitments
@@ -188,7 +75,7 @@ pub async fn input(
             }
         }
     }
-    let retained: BTreeSet<_> = previous
+    let mut retained: BTreeSet<_> = previous
         .as_ref()
         .into_iter()
         .flat_map(|p| {
@@ -198,6 +85,7 @@ pub async fn input(
                 .flat_map(|i| i.source_ids.iter().cloned())
         })
         .collect();
+    retained.extend(reply_ids);
     sources.sort_by_key(|source| !retained.contains(&source.id));
     let mut budget = 0;
     sources.retain_mut(|s| {
@@ -215,6 +103,16 @@ pub async fn input(
         true
     });
     sources.sort_by(|a, b| a.id.cmp(&b.id));
+    let source_ids: BTreeSet<_> = sources.iter().map(|source| source.id.clone()).collect();
+    for source in &mut sources {
+        if source
+            .reply_to_source_id
+            .as_ref()
+            .is_some_and(|id| !source_ids.contains(id))
+        {
+            source.reply_to_source_id = None;
+        }
+    }
     let sessions: Vec<_> = sources
         .iter()
         .map(|s| s.session_id.clone())
@@ -262,6 +160,7 @@ pub async fn input(
         partial,
         as_of: Utc::now().to_rfc3339(),
         viewer_account_id: account.into(),
+        changes: None,
     })
 }
 
@@ -294,11 +193,11 @@ pub(super) fn retain_previous_evidence(
 }
 
 fn input_hash(input: &Input) -> String {
-    let value = json!({"version":1,"sources":input.sources,"events":input.calendar_events,"tasks":input.existing_tasks,"locale":input.locale,"timezone":input.timezone,"dueReminders":input.calendar_events.iter().filter(|e|e.reminder_at.as_ref().and_then(|d|chrono::DateTime::parse_from_rfc3339(d).ok()).is_some_and(|d|d<=Utc::now())).map(|e|&e.id).collect::<Vec<_>>()});
+    let value = json!({"version":1,"sources":input.sources,"events":input.calendar_events,"tasks":input.existing_tasks,"locale":input.locale,"timezone":input.timezone,"dueReminders":super::incremental::due_reminders(input)});
     hex::encode(Sha256::digest(value.to_string().as_bytes()))
 }
 
-pub async fn refresh(pool: &PgPool, account: &str, force: bool) -> Result<()> {
+pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
     type DigestState = (
         String,
         String,
@@ -315,9 +214,11 @@ pub async fn refresh(pool: &PgPool, account: &str, force: bool) -> Result<()> {
         return Ok(());
     }
     let previous = snapshot.and_then(|v| serde_json::from_value(v).ok());
+    let saved = saved_input
+        .and_then(|value| serde_json::from_value::<Input>(value).ok())
+        .filter(|saved| saved.viewer_account_id == account);
     let mut input = input(pool, account, &locale, &timezone, previous).await?;
     if let Some(previous) = &mut input.previous {
-        let saved = saved_input.and_then(|value| serde_json::from_value::<Input>(value).ok());
         retain_previous_evidence(
             previous,
             saved
@@ -328,8 +229,17 @@ pub async fn refresh(pool: &PgPool, account: &str, force: bool) -> Result<()> {
         );
     }
     let hash = input_hash(&input);
-    if hash == old_hash && !force {
+    if hash == old_hash {
         return Ok(());
+    }
+    if let Some(saved) = saved.as_ref().filter(|_| input.previous.is_some()) {
+        let changes = super::incremental::Changes::between(saved, &input);
+        if changes.is_empty() {
+            query("UPDATE cloud_account_digests SET input_hash=$2,error_code=NULL WHERE account_id=$1 AND active_run_id IS NULL")
+                .bind(account).bind(&hash).execute(pool).await?;
+            return Ok(());
+        }
+        input.changes = Some(changes);
     }
     if input.sources.is_empty() {
         query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=$3,input_json=$3,input_hash=$4,error_code=NULL,revision=revision+1,updated_at=now() WHERE account_id=$1 AND active_run_id IS NULL")
@@ -343,8 +253,8 @@ pub async fn refresh(pool: &PgPool, account: &str, force: bool) -> Result<()> {
     }
     let mut tx = pool.begin().await?;
     let run = format!("{}{}", super::RUN_PREFIX, Uuid::new_v4().simple());
-    let changed=query("UPDATE cloud_account_digests SET active_run_id=$2,input_hash=$3,input_json=$4,error_code=NULL WHERE account_id=$1 AND active_run_id IS NULL AND (input_hash<>$3 OR $5)")
-        .bind(account).bind(&run).bind(&hash).bind(serde_json::to_value(&input).unwrap()).bind(force).execute(&mut *tx).await?;
+    let changed=query("UPDATE cloud_account_digests SET active_run_id=$2,input_hash=$3,input_json=$4,error_code=NULL WHERE account_id=$1 AND active_run_id IS NULL AND input_hash<>$3")
+        .bind(account).bind(&run).bind(&hash).bind(serde_json::to_value(&input).unwrap()).execute(&mut *tx).await?;
     if changed.rows_affected() == 0 {
         return Ok(());
     }
@@ -359,22 +269,50 @@ pub async fn input_is_currently_authorized(
     account: &str,
     input: &Input,
 ) -> Result<bool> {
+    Ok(authorized_input_sources(pool, account, input)
+        .await?
+        .is_some())
+}
+
+pub async fn authorized_input_sources(
+    pool: &PgPool,
+    account: &str,
+    input: &Input,
+) -> Result<Option<Vec<Source>>> {
     let ids: Vec<_> = input.sources.iter().map(|s| s.id.clone()).collect();
     let current = sources(pool, account, Some(&ids)).await?;
-    let versions: HashMap<_, _> = current.into_iter().map(|s| (s.id, s.version)).collect();
+    let versions: HashMap<_, _> = current.iter().map(|s| (&s.id, s.version)).collect();
     if !input
         .sources
         .iter()
         .all(|s| versions.get(&s.id) == Some(&s.version))
     {
-        return Ok(false);
+        return Ok(None);
     }
     for event in &input.calendar_events {
         if !authorized(pool, account, &event.source_ids).await? {
-            return Ok(false);
+            return Ok(None);
         }
     }
-    Ok(true)
+    let current: HashMap<_, _> = current
+        .into_iter()
+        .map(|source| (source.id.clone(), source))
+        .collect();
+    let mut refs = input.sources.clone();
+    for source in &mut refs {
+        let latest = &current[&source.id];
+        source.sender_name = latest.sender_name.clone();
+        source.session_title = latest.session_title.clone();
+        source.is_agent = latest.is_agent;
+        source.agent_id = latest.agent_id.clone();
+        source.agent_owner_name = latest.agent_owner_name.clone();
+        source.agent_avatar_url = latest.agent_avatar_url.clone();
+        source.reply_to_source_id = latest
+            .reply_to_source_id
+            .clone()
+            .filter(|id| ids.contains(id));
+    }
+    Ok(Some(refs))
 }
 
 pub async fn revalidate_run(pool: &PgPool, run: &str) -> Result<bool> {
@@ -406,6 +344,9 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
         serde_json::from_value(value).map_err(|e| sqlx_core::Error::Decode(Box::new(e)))?;
     let output = serde_json::from_str::<Output>(text.trim());
     let Ok(output) = output else {
+        return fail(pool, run, Some(runner), "invalid_output").await;
+    };
+    let Ok(output) = super::incremental::merge_output(&input, output) else {
         return fail(pool, run, Some(runner), "invalid_output").await;
     };
     if validate_output(&output, &input).is_err() {

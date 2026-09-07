@@ -2,7 +2,7 @@ use super::{models::*, store};
 use serde_json::json;
 use sqlx_core::{query::query, query_as::query_as};
 
-fn input() -> Input {
+pub(super) fn input() -> Input {
     Input {
         sources: vec![Source {
             id: "m1".into(),
@@ -15,6 +15,10 @@ fn input() -> Input {
             created_at: "2026-09-07T09:00:00Z".into(),
             version: 1,
             is_agent: false,
+            agent_id: None,
+            agent_owner_name: None,
+            agent_avatar_url: None,
+            reply_to_source_id: None,
         }],
         calendar_events: vec![],
         existing_tasks: json!([]),
@@ -24,6 +28,7 @@ fn input() -> Input {
         partial: false,
         as_of: "2026-09-07T09:01:00Z".into(),
         viewer_account_id: "viewer".into(),
+        changes: None,
     }
 }
 #[test]
@@ -99,6 +104,12 @@ fn calendar_validation_rejects_invalid_times() {
         all_day: false,
         source_ids: vec![],
         description: String::new(),
+        links: None,
+        timezone: None,
+        recurrence: None,
+        series_id: None,
+        series_fingerprint: None,
+        confirm_single_occurrence: None,
         external_uid: None,
         revision: 0,
     };
@@ -190,6 +201,78 @@ async fn postgres_scope_and_atomic_publication() {
         .unwrap();
     assert_eq!(input.sources.len(), 1);
     assert_eq!(input.sources[0].id, message.to_string());
+    query("UPDATE cloud_accounts SET display_name='Source owner' WHERE account_id=$1")
+        .bind(&author)
+        .execute(&pool)
+        .await
+        .unwrap();
+    query("UPDATE cloud_default_agent_profiles SET display_name='Renamed helper' WHERE owner_account_id=$1")
+        .bind(&author).execute(&pool).await.unwrap();
+    query("UPDATE cloud_chat_messages SET message_kind='assistant' WHERE message_id=$1")
+        .bind(message)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let agent_sources = store::sources(&pool, &viewer, Some(&[message.to_string()]))
+        .await
+        .unwrap();
+    assert_eq!(agent_sources[0].sender_name, "Renamed helper");
+    assert_eq!(
+        agent_sources[0].agent_owner_name.as_deref(),
+        Some("Source owner")
+    );
+    assert_eq!(
+        agent_sources[0].agent_id.as_deref(),
+        Some(format!("cloud-agent:{author}").as_str())
+    );
+    assert!(agent_sources[0].agent_avatar_url.is_some());
+    let mut bounded = input.clone();
+    bounded.sources = agent_sources.clone();
+    bounded.sources[0].text = "Bounded preview".into();
+    bounded.sources[0].sender_name = "Stale label".into();
+    let refreshed = store::authorized_input_sources(&pool, &viewer, &bounded)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(refreshed[0].text, "Bounded preview");
+    assert_eq!(refreshed[0].sender_name, "Renamed helper");
+    let custom = format!("cloud_agent_{suffix}");
+    query("INSERT INTO cloud_agent_definitions(agent_id,owner_account_id,name,role,system_prompt,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at) VALUES($1,$2,'Named researcher','research','test','test','test','generated','thumbs',$1,'test',1,'test')")
+        .bind(&custom).bind(&author).execute(&pool).await.unwrap();
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    let envelope = json!({"kind":"group-message","message":{"senderKind":"agent","senderAccountId":author,"senderAgentId":custom,"senderDisplayName":"Stale name","text":"Analysis complete."}});
+    let agent_content = json!({"blocks":[{"type":"text","text":format!("kordi-cloud-group:{}",URL_SAFE_NO_PAD.encode(envelope.to_string()))}]});
+    query("UPDATE cloud_chat_messages SET message_kind='text',content=$2 WHERE message_id=$1")
+        .bind(message)
+        .bind(agent_content)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let custom_sources = store::sources(&pool, &viewer, Some(&[message.to_string()]))
+        .await
+        .unwrap();
+    assert_eq!(custom_sources[0].sender_name, "Named researcher");
+    assert_eq!(custom_sources[0].agent_id.as_deref(), Some(custom.as_str()));
+    query("UPDATE cloud_agent_definitions SET owner_account_id=$2 WHERE agent_id=$1")
+        .bind(&custom)
+        .bind(&viewer)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let mismatched = store::sources(&pool, &viewer, Some(&[message.to_string()]))
+        .await
+        .unwrap();
+    assert_eq!(mismatched[0].sender_name, "Agent");
+    assert!(
+        mismatched[0].agent_id.is_none(),
+        "A source must not claim another owner's Agent identity"
+    );
+    query("UPDATE cloud_chat_messages SET content=$2 WHERE message_id=$1")
+        .bind(message)
+        .bind(json!({"blocks":[{"type":"text","text":"Please review the draft."}]}))
+        .execute(&pool)
+        .await
+        .unwrap();
     let run = format!("digest_{}", uuid::Uuid::new_v4().simple());
     let now = chrono::Utc::now();
     query("UPDATE cloud_account_digests SET input_json=$2,active_run_id=$3 WHERE account_id=$1")
@@ -222,6 +305,48 @@ async fn postgres_scope_and_atomic_publication() {
     assert_eq!(row.0, 1);
     assert!(row.1.is_none());
     assert!(row.2.is_some());
+    let mut delta = input.clone();
+    delta.previous = Some(output.clone());
+    delta.changes = Some(super::incremental::Changes {
+        preferences_changed: true,
+        ..Default::default()
+    });
+    let next_run = format!("digest_{}", uuid::Uuid::new_v4().simple());
+    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,claimed_by,lease_expires_at,created_at,updated_at) SELECT $2,$2,$2,session_id,owner_account_id,requester_account_id,'running',prompt,claimed_by,lease_expires_at,created_at,updated_at FROM cloud_agent_fallback_runs WHERE run_id=$1").bind(&run).bind(&next_run).execute(&pool).await.unwrap();
+    query("UPDATE cloud_account_digests SET input_json=$2,active_run_id=$3 WHERE account_id=$1")
+        .bind(&viewer)
+        .bind(json!(delta))
+        .bind(&next_run)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let patch = Output {
+        suggestions: vec![Item {
+            id: "consider-review".into(),
+            title: "Consider reviewing".into(),
+            source_ids: vec![message.to_string()],
+            kind: "possible".into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    store::complete(
+        &pool,
+        &next_run,
+        "test-runner",
+        &serde_json::to_string(&patch).unwrap(),
+    )
+    .await
+    .unwrap();
+    let merged: (serde_json::Value, i64) =
+        query_as("SELECT snapshot_json,revision FROM cloud_account_digests WHERE account_id=$1")
+            .bind(&viewer)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(merged.1, 2);
+    assert_eq!(merged.0["claims"][0]["id"], "review");
+    assert_eq!(merged.0["suggestions"][0]["id"], "consider-review");
     let count: (i64,) =
         query_as("SELECT COUNT(*) FROM cloud_chat_messages WHERE conversation_id=$1")
             .bind(public)
@@ -232,6 +357,7 @@ async fn postgres_scope_and_atomic_publication() {
         count.0, 1,
         "No chat message is created by digest completion"
     );
+    super::calendar_tests::postgres_reply_context(&pool, &viewer, &author, public, message).await;
     query(
         "UPDATE cloud_chat_conversation_members SET membership_state='removed' WHERE account_id=$1",
     )
@@ -253,6 +379,12 @@ async fn postgres_scope_and_atomic_publication() {
         all_day: false,
         source_ids: vec![],
         description: String::new(),
+        links: None,
+        timezone: None,
+        recurrence: None,
+        series_id: None,
+        series_fingerprint: None,
+        confirm_single_occurrence: None,
         external_uid: None,
         revision: 0,
     };
@@ -295,6 +427,7 @@ async fn postgres_scope_and_atomic_publication() {
         axum::http::StatusCode::OK,
         "A full calendar must still allow edits"
     );
+    super::calendar_tests::postgres_calendar_contract(&pool, &author).await;
     query("DELETE FROM cloud_chat_conversations WHERE conversation_id=ANY($1)")
         .bind(vec![public, private])
         .execute(&pool)

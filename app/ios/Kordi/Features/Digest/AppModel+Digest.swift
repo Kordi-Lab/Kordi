@@ -19,6 +19,12 @@ extension AppModel {
         let (api, token, _) = try digestContext()
         _ = try await api.saveDigestEvent(token: token, event: event)
     }
+    func previewDigestCalendarSeries(_ event: DigestCalendarEvent) async throws -> [DigestCalendarEvent] {
+        let (api, token, accountId) = try digestContext()
+        let result = try await api.previewDigestSeries(token: token, event: event)
+        guard self.account?.accountId == accountId else { throw CancellationError() }
+        return result.events
+    }
     func importDigestCalendar(_ events: [DigestCalendarEvent]) async throws -> DigestCalendarImportReport {
         let (api, token, accountId) = try digestContext()
         let current = try await api.digestCalendar(token: token)
@@ -30,6 +36,10 @@ extension AppModel {
     func removeDigestCalendarEvent(_ event: DigestCalendarEvent) async throws {
         let (api, token, _) = try digestContext()
         try await api.removeDigestEvent(token: token, event: event)
+    }
+    func removeDigestCalendarSeries(_ id: String, events: [DigestCalendarEvent]) async throws {
+        let (api, token, _) = try digestContext()
+        try await api.removeDigestSeries(token: token, id: id, events: events)
     }
     func dismissDigestItem(_ id: String, dismissed: Bool) async throws {
         let (api, token, _) = try digestContext()
