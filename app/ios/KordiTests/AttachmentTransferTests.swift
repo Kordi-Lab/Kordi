@@ -1,3 +1,5 @@
+import PhotosUI
+import SwiftUI
 import Photos
 import AVFoundation
 import UIKit
@@ -817,5 +819,69 @@ extension AttachmentTransferTests {
         defer { imported.discardOwnedFile() }
         XCTAssertNotNil(imported.livePhotoFiles)
         _ = try await LivePhotoMedia.fromFiles(photo: XCTUnwrap(imported.fileURL), video: XCTUnwrap(imported.livePhotoFiles?.videoURL))
+    }
+}
+
+extension AttachmentTransferTests {
+    @MainActor
+    func testLivePhotoSentInDemoKeepsPlayableResourcesAfterDraftCleanup() async throws {
+        let bundle = Bundle(for: AttachmentTransferTests.self)
+        let photo = LivePhotoMedia.temporaryURL(extension: "jpg")
+        let video = LivePhotoMedia.temporaryURL(extension: "mov")
+        try FileManager.default.copyItem(at: XCTUnwrap(bundle.url(forResource: "live-photo", withExtension: "jpg")), to: photo)
+        try FileManager.default.copyItem(at: XCTUnwrap(bundle.url(forResource: "live-photo", withExtension: "mov")), to: video)
+        let draft = try await LivePhotoMedia.loadPair(photo: photo, video: video, name: "Live.jpg")
+        defer { draft.discardOwnedFile() }
+        XCTAssertNotNil(draft.optimisticAttachment.livePhoto)
+
+        let model = AppModel(previewMode: true)
+        let conversation = try XCTUnwrap(model.conversations.first(where: { $0.kind == .person }))
+        await model.send("", attachments: [draft], to: conversation)
+        let sent = try XCTUnwrap(model.messages(for: conversation).last)
+        XCTAssertEqual(sent.deliveryState, .read)
+        let attachment = try XCTUnwrap(sent.attachments.first)
+        XCTAssertNotNil(attachment.livePhoto)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: photo.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: video.path))
+        let preparedURLs = await model.prepareLivePhotoURLs(attachment)
+        let urls = try XCTUnwrap(preparedURLs)
+        let live = try await LivePhotoMedia.fromFiles(photo: urls.photo, video: urls.video)
+        XCTAssertGreaterThan(live.size.width, 0)
+    }
+}
+
+private final class LivePhotoPlaybackObserver: NSObject, PHLivePhotoViewDelegate {
+    let ended: XCTestExpectation
+    init(ended: XCTestExpectation) { self.ended = ended }
+    func livePhotoView(_ livePhotoView: PHLivePhotoView, didEndPlaybackWith playbackStyle: PHLivePhotoViewPlaybackStyle) {
+        ended.fulfill()
+    }
+}
+
+extension AttachmentTransferTests {
+    @MainActor
+    func testFirstLivePhotoPlaybackRequestPlaysAfterPresentation() async throws {
+        let bundle = Bundle(for: AttachmentTransferTests.self)
+        let photo = try XCTUnwrap(bundle.url(forResource: "live-photo", withExtension: "jpg"))
+        let video = try XCTUnwrap(bundle.url(forResource: "live-photo", withExtension: "mov"))
+        let live = try await LivePhotoMedia.fromFiles(photo: photo, video: video)
+        let host = UIHostingController(rootView: NativeLivePhotoView(photo: live, playRequest: 1))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 320, height: 240)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+        func findLiveView(_ view: UIView) -> PHLivePhotoView? {
+            if let view = view as? PHLivePhotoView { return view }
+            return view.subviews.lazy.compactMap(findLiveView).first
+        }
+        let native = try XCTUnwrap(findLiveView(host.view))
+        let ended = expectation(description: "Initial playback finishes without a second tap")
+        let observer = LivePhotoPlaybackObserver(ended: ended)
+        native.delegate = observer
+        await fulfillment(of: [ended], timeout: 4)
+        withExtendedLifetime(observer) {}
     }
 }

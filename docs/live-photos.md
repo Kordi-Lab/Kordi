@@ -46,3 +46,5 @@ pnpm --dir app/desktop test:visual livePhoto.spec.ts
 Use the **Kordi Beta** scheme and a task-owned simulator for iOS tests. The photo-library import test is simulator-only. Open Photo Library in the task-owned Beta app and choose Allow Full Access before running that optional test; it skips when permission has not been granted, so an unattended test never waits on a privacy prompt. It adds a generated asset to that simulator; discard the task-owned simulator after validation. The other native reconstruction tests need no library access.
 
 Before release, verify a physical-device photo with audio, an iCloud-only photo, a photo edited in Photos, and forwarding/save-back between iOS and macOS against the isolated backend.
+
+When launching Beta against a real development account, pass `--disable-preview-data`. Demo mode can persist from an earlier preview launch; demo sends remain local and are not deliveries to the development server.

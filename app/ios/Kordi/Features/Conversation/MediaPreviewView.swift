@@ -5,20 +5,35 @@ import UIKit
 struct ConversationMediaItem: Identifiable, Equatable {
     let id: String
     let messageID: String
-    let attachment: ChatAttachment
+    var attachment: ChatAttachment
+    let conversationID: String
+    let clientMessageID: String?
+    let attachmentIndex: Int
     let senderName: String
     let sentAt: Date
+
+    func updated(in messages: [ChatMessage]) -> Self {
+        guard let message = messages.first(where: {
+            $0.id == messageID || (clientMessageID != nil && $0.clientMessageId == clientMessageID)
+        }), message.attachments.indices.contains(attachmentIndex) else { return self }
+        var updated = self
+        updated.attachment = message.attachments[attachmentIndex]
+        return updated
+    }
 }
 
 enum ConversationMediaGallery {
     static func items(in messages: [ChatMessage]) -> [ConversationMediaItem] {
         messages.flatMap { message in
-            message.attachments.compactMap { attachment in
+            message.attachments.enumerated().compactMap { index, attachment in
                 guard attachment.kind == .image else { return nil }
                 return ConversationMediaItem(
                     id: "\(message.id):\(attachment.id)",
                     messageID: message.id,
                     attachment: attachment,
+                    conversationID: message.conversationId,
+                    clientMessageID: message.clientMessageId,
+                    attachmentIndex: index,
                     senderName: message.author == .me ? "You" : message.authorName,
                     sentAt: message.createdAt
                 )
@@ -161,8 +176,8 @@ struct MediaPreviewView: View {
     }
 
     private var currentItem: ConversationMediaItem? {
-        presentation.items.first(where: { $0.id == selectedItemID })
-            ?? presentation.items.first
+        let item = presentation.items.first(where: { $0.id == selectedItemID }) ?? presentation.items.first
+        return item.map { $0.updated(in: model.messagesByConversation[$0.conversationID] ?? []) }
     }
 
     private var currentIndex: Int {
@@ -369,6 +384,10 @@ private struct MediaPreviewPage: View {
         _image = State(initialValue: initialImage)
     }
 
+    private var attachment: ChatAttachment {
+        item.updated(in: model.messagesByConversation[item.conversationID] ?? []).attachment
+    }
+
     var body: some View {
         ZStack {
             if let image {
@@ -378,8 +397,8 @@ private struct MediaPreviewPage: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
                     .accessibilityLabel(
-                        item.attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
-                            ?? item.attachment.name
+                        attachment.altText?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+                            ?? attachment.name
                     )
             } else if loadFailed {
                 ContentUnavailableView {
@@ -400,19 +419,20 @@ private struct MediaPreviewPage: View {
             }
         }
         .overlay {
-            if item.attachment.livePhoto != nil, isActive {
+            if attachment.livePhoto != nil, isActive {
                 LivePhotoSurface {
-                    guard let urls = await model.prepareLivePhotoURLs(item.attachment) else { throw AttachmentTransferError.invalidImage }
+                    guard let urls = await model.prepareLivePhotoURLs(attachment) else { throw AttachmentTransferError.invalidImage }
                     return try await LivePhotoMedia.fromFiles(photo: urls.photo, video: urls.video)
                 }
+                .id(attachment.id)
             }
         }
         .overlay(alignment: .topTrailing) {
-            if item.attachment.livePhoto != nil {
+            if attachment.livePhoto != nil {
                 Button(savedLivePhoto ? "Saved to Photos" : "Save Live Photo", systemImage: "square.and.arrow.down") {
                     savingLivePhoto = true
                     Task {
-                        savedLivePhoto = await model.saveLivePhoto(item.attachment)
+                        savedLivePhoto = await model.saveLivePhoto(attachment)
                         savingLivePhoto = false
                     }
                 }
@@ -422,7 +442,7 @@ private struct MediaPreviewPage: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 76)
-        .task(id: "\(item.id):\(reloadToken)") {
+        .task(id: "\(attachment.id):\(reloadToken)") {
             await loadImage()
         }
     }
@@ -431,13 +451,13 @@ private struct MediaPreviewPage: View {
         loadFailed = false
 
         if image == nil,
-           let source = item.attachment.previewURL,
+           let source = attachment.previewURL,
            let preview = await AvatarImageLoader.image(from: source) {
             guard !Task.isCancelled else { return }
             image = preview
         }
 
-        guard let url = await model.prepareAttachmentForSharing(item.attachment) else {
+        guard let url = await model.prepareAttachmentForSharing(attachment) else {
             guard !Task.isCancelled else { return }
             loadFailed = image == nil
             return

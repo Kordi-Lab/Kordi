@@ -47,7 +47,7 @@ struct LivePhotoSurface: View {
     }
 }
 
-private struct NativeLivePhotoView: UIViewRepresentable {
+struct NativeLivePhotoView: UIViewRepresentable {
     let photo: PHLivePhoto
     let playRequest: Int
     func makeCoordinator() -> Coordinator { Coordinator() }

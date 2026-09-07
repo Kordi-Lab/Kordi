@@ -35,6 +35,27 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertEqual(presentation?.items.count, 2)
     }
 
+    func testOpenGalleryFollowsUploadedAttachmentWhileKeepingSelection() throws {
+        let file = attachment(id: "file", kind: .file)
+        let pending = pendingAttachment(id: "draft", kind: .image).optimisticAttachment
+        let before = message(id: "local", author: .me, attachments: [file, pending], clientMessageID: "operation")
+        let live = LivePhotoAttachment(
+            video: LivePhotoResource(attachmentId: "motion", name: "Live.mov", mimeType: "video/quicktime", sizeBytes: 1),
+            playback: LivePhotoResource(attachmentId: "playback", name: "Live.mp4", mimeType: "video/mp4", sizeBytes: 1)
+        )
+        let uploaded = ChatAttachment(attachmentId: "uploaded", livePhoto: live, name: "Live.jpg", kind: .image,
+                                      mimeType: "image/jpeg", sizeBytes: 1, previewURL: nil)
+        let after = message(id: "server", author: .me, attachments: [file, uploaded], clientMessageID: "operation")
+        let item = try XCTUnwrap(ConversationMediaGallery.items(in: [before]).first)
+        let updated = item.updated(in: [after])
+        XCTAssertEqual(updated.id, item.id)
+        XCTAssertEqual(updated.attachment.livePhoto, live)
+        XCTAssertEqual(updated.attachment.id, "uploaded")
+        XCTAssertEqual(item.updated(in: []).attachment, pending)
+        let unrelated = message(id: "other", author: .me, attachments: [uploaded])
+        XCTAssertEqual(item.updated(in: [unrelated]).attachment, pending)
+    }
+
     func testDismissalRequiresAChieflyDownwardDrag() {
         XCTAssertEqual(
             MediaPreviewDismissal.verticalOffset(for: CGSize(width: 20, height: 140)),
@@ -559,10 +580,12 @@ final class MediaPreviewTests: XCTestCase {
     private func message(
         id: String,
         author: MessageAuthor,
-        attachments: [ChatAttachment]
+        attachments: [ChatAttachment],
+        clientMessageID: String? = nil
     ) -> ChatMessage {
         ChatMessage(
             id: id,
+            clientMessageId: clientMessageID,
             conversationId: "conversation",
             author: author,
             authorName: "Maya",

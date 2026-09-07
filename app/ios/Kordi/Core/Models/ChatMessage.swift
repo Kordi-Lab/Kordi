@@ -704,6 +704,7 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
     var optimisticAttachment: ChatAttachment {
         ChatAttachment(
             attachmentId: "pending:\(id)",
+            livePhoto: livePhotoFiles?.optimisticMetadata(draftID: id),
             name: name,
             kind: kind,
             subtype: subtype,

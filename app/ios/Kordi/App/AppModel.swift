@@ -1616,6 +1616,14 @@ final class AppModel: ObservableObject {
             date: optimistic.createdAt
         )
         if previewMode {
+            do {
+                try await attachmentFileStore.cachePendingOriginals(outgoingAttachments, accountId: account.accountId)
+            } catch {
+                setMessageDeliveryState(localId, conversationId: conversation.id, state: .failed)
+                errorMessage = "Could not keep the media for this preview. Try sending it again."
+                return
+            }
+            outgoingAttachments.forEach { $0.discardOwnedFile() }
             setMessageDeliveryState(localId, conversationId: conversation.id, state: .read)
             clearPendingSendMetadata(localId)
             if requestsAgentRun { completeAgentRequest(conversationId: conversation.id) }
@@ -2752,8 +2760,25 @@ final class AppModel: ObservableObject {
     }
 
     func prepareLivePhotoURLs(_ attachment: ChatAttachment) async -> (photo: URL, video: URL)? {
-        guard let live = attachment.livePhoto,
-              let photo = await prepareAttachment(attachment, allowsPreviewFallback: false, prefersOriginal: true),
+        guard let live = attachment.livePhoto, let accountId = account?.accountId else { return nil }
+        if attachment.attachmentId.hasPrefix("pending:") {
+            if let photo = await attachmentFileStore.cachedURL(for: attachment, accountId: accountId),
+               let video = await attachmentFileStore.cachedURL(for: live.video.chatAttachment, accountId: accountId) {
+                return (photo, video)
+            }
+            let draftID = String(attachment.attachmentId.dropFirst("pending:".count))
+            guard let draft = pendingAttachmentDraftsByMessageId.values.lazy.flatMap({ $0 }).first(where: { $0.id == draftID }) else { return nil }
+            do {
+                try await attachmentFileStore.cachePendingOriginals([draft], accountId: accountId)
+                guard let photo = await attachmentFileStore.cachedURL(for: attachment, accountId: accountId),
+                      let video = await attachmentFileStore.cachedURL(for: live.video.chatAttachment, accountId: accountId) else { return nil }
+                return (photo, video)
+            } catch {
+                errorMessage = "Could not prepare the Live Photo. Try again."
+                return nil
+            }
+        }
+        guard let photo = await prepareAttachment(attachment, allowsPreviewFallback: false, prefersOriginal: true),
               let video = await prepareAttachment(live.video.chatAttachment, allowsPreviewFallback: false, prefersOriginal: true) else { return nil }
         return (photo, video)
     }

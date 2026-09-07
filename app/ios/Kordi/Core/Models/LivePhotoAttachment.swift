@@ -22,6 +22,18 @@ struct LivePhotoFiles: Hashable, Sendable {
     let videoURL: URL
     let playbackURL: URL
 
+    func optimisticMetadata(draftID: String) -> LivePhotoAttachment {
+        func resource(_ url: URL, suffix: String, mimeType: String) -> LivePhotoResource {
+            let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            return LivePhotoResource(attachmentId: "pending:\(draftID):\(suffix)", name: url.lastPathComponent,
+                                     mimeType: mimeType, sizeBytes: Int64(bytes))
+        }
+        return LivePhotoAttachment(
+            video: resource(videoURL, suffix: "motion", mimeType: "video/quicktime"),
+            playback: resource(playbackURL, suffix: "playback", mimeType: "video/mp4")
+        )
+    }
+
     func discardOwnedFiles() {
         for url in [videoURL, playbackURL]
             where url.deletingLastPathComponent().standardizedFileURL == FileManager.default.temporaryDirectory.standardizedFileURL
