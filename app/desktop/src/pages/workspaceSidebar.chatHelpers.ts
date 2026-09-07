@@ -1,24 +1,12 @@
 import { formatSessionIdSubtitle } from '@/app/viewModels/helpers';
 import { attachmentOnlyMessagePreview } from '@/features/chat/participantConversationState';
 import { conversationChatKindLabel } from '@/features/chat/sessionKindLabels';
-import { isGroupForkSession } from '@/features/chat/forkLineage';
 import type { Conversation } from '@/kordi-app/types';
 import type {
   WorkspaceSidebarConversation as ConversationItem,
   WorkspaceSidebarParticipantSpace as ParticipantSpaceItem,
 } from '@/pages/workspaceSidebar.types';
 import type { SessionContextMenuTarget } from '@/pages/SessionActionOverlays';
-
-export function filterGroupForkSessionsFromSpaces(
-  spaces: ParticipantSpaceItem[],
-): ParticipantSpaceItem[] {
-  return spaces
-    .map((space) => ({
-      ...space,
-      sessions: space.sessions.filter((session) => !isGroupForkSession(session)),
-    }))
-    .filter((space) => space.sessions.length > 0);
-}
 
 export function groupSpacePreferenceId(spaceId: string) {
   const id = spaceId.trim();

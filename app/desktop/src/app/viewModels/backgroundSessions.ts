@@ -1,4 +1,3 @@
-import { isGroupForkSession } from '@/features/chat/forkLineage';
 import type {
   CanonicalSessionState,
   Conversation,
@@ -39,13 +38,7 @@ export function canonicalTaskActivitiesForSession(
 
 export function companionConversationList(
   chatConversations: Conversation[],
-  allConversations: Conversation[],
+  _allConversations: Conversation[],
 ) {
-  const visibleIds = new Set(chatConversations.map((conversation) => conversation.id));
-  return [
-    ...chatConversations,
-    ...allConversations.filter((conversation) => (
-      isGroupForkSession(conversation) && !visibleIds.has(conversation.id)
-    )),
-  ];
+  return chatConversations;
 }

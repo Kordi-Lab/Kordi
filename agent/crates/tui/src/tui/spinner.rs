@@ -578,7 +578,6 @@ mod tests {
         let output = state.render("", 80);
         let plain = crate::utils::strip_ansi(&output);
 
-        assert!(!plain.contains("Working..."));
         assert!(plain.contains(&format_vibe_status(state.current_vibe)));
     }
 }

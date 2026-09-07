@@ -6,6 +6,11 @@ use kordi_tools::{
 use rusqlite::{params, Connection, OptionalExtension};
 
 use super::open_db;
+mod reading;
+use reading::{
+    message_sequence_bounds, read_latest_messages, read_messages_by_ids,
+    read_messages_from_sequence, ObservedMessageRow,
+};
 
 const DEFAULT_SEARCH_LIMIT: usize = 8;
 const MAX_SEARCH_LIMIT: usize = 20;
@@ -14,11 +19,12 @@ const MAX_READ_LIMIT: usize = 80;
 const MAX_SEARCH_SNIPPET_TEXT_CHARS: usize = 500;
 const MAX_READ_MESSAGE_TEXT_CHARS: usize = 1_200;
 
-pub(crate) fn search_sessions_for_observation(
+pub(crate) fn search_sessions_for_observation_scoped(
     request: SearchSessionsRequest,
+    session_id: Option<&str>,
 ) -> Result<SearchSessionsResponse, String> {
     let conn = open_db()?;
-    search_sessions_for_observation_in_db(&conn, request)
+    search_sessions_in_scope(&conn, request, session_id)
 }
 
 pub(crate) fn read_session_for_observation(
@@ -28,9 +34,18 @@ pub(crate) fn read_session_for_observation(
     read_session_for_observation_in_db(&conn, request)
 }
 
+#[cfg(test)]
 pub(crate) fn search_sessions_for_observation_in_db(
     conn: &Connection,
     request: SearchSessionsRequest,
+) -> Result<SearchSessionsResponse, String> {
+    search_sessions_in_scope(conn, request, None)
+}
+
+pub(crate) fn search_sessions_in_scope(
+    conn: &Connection,
+    request: SearchSessionsRequest,
+    scope: Option<&str>,
 ) -> Result<SearchSessionsResponse, String> {
     let query = request.query.trim().to_lowercase();
     if query.is_empty() {
@@ -46,12 +61,12 @@ pub(crate) fn search_sessions_for_observation_in_db(
         .prepare(
             "SELECT id, title, kind, updated_at_ms
              FROM sessions
-             WHERE status <> 'archived'
+             WHERE status <> 'archived' AND (?1 IS NULL OR id = ?1)
              ORDER BY COALESCE(last_message_at_ms, updated_at_ms) DESC, updated_at_ms DESC",
         )
         .map_err(|err| err.to_string())?;
     let rows = stmt
-        .query_map([], |row| {
+        .query_map(params![scope], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
@@ -89,7 +104,11 @@ pub(crate) fn search_sessions_for_observation_in_db(
             session_id,
             title,
             kind,
-            participants,
+            participants: if scope.is_some() {
+                Vec::new()
+            } else {
+                participants
+            },
             updated_at_label: Some(updated_at_ms.to_string()),
             reason,
             snippets,
@@ -129,7 +148,11 @@ pub(crate) fn read_session_for_observation_in_db(
         .optional()
         .map_err(|err| err.to_string())?
         .ok_or_else(|| format!("session not found: {session_id}"))?;
-    let participants = participants_for_read(conn, session_id)?;
+    let participants = if request.mode.as_deref() == Some("participants") {
+        participants_for_read(conn, session_id)?
+    } else {
+        Vec::new()
+    };
     let mode = request
         .mode
         .as_deref()
@@ -143,6 +166,7 @@ pub(crate) fn read_session_for_observation_in_db(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string);
     let (messages, has_more_before, has_more_after) = match mode {
+        "participants" => (Vec::new(), false, false),
         "index" => {
             let bounds = message_sequence_bounds(conn, session_id)?;
             if let Some(around) = around_message_id.as_deref() {
@@ -209,7 +233,7 @@ pub(crate) fn read_session_for_observation_in_db(
             (
                 read_messages_by_ids(conn, session_id, &message_ids)?
                     .into_iter()
-                    .map(ObservedMessageRow::into_detail_message)
+                    .map(|row| row.into_detail_message(request.offset.unwrap_or(0)))
                     .collect(),
                 false,
                 false,
@@ -219,6 +243,7 @@ pub(crate) fn read_session_for_observation_in_db(
     };
 
     Ok(ReadSessionResponse {
+        directory: None,
         session: SessionObservationReadSession {
             participants,
             ..session
@@ -348,140 +373,4 @@ fn message_snippets(
         .map_err(|err| err.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())
-}
-
-#[derive(Debug)]
-struct ObservedMessageRow {
-    message_id: String,
-    sender: String,
-    role: String,
-    text: String,
-    time_label: Option<String>,
-    sequence_num: i64,
-}
-
-impl ObservedMessageRow {
-    fn into_index_message(self) -> SessionObservationMessage {
-        SessionObservationMessage {
-            message_id: self.message_id,
-            sender: self.sender,
-            role: self.role,
-            sequence_num: self.sequence_num,
-            text: None,
-            time_label: self.time_label,
-        }
-    }
-
-    fn into_detail_message(self) -> SessionObservationMessage {
-        SessionObservationMessage {
-            message_id: self.message_id,
-            sender: self.sender,
-            role: self.role,
-            sequence_num: self.sequence_num,
-            text: Some(self.text),
-            time_label: self.time_label,
-        }
-    }
-}
-
-fn read_message_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ObservedMessageRow> {
-    Ok(ObservedMessageRow {
-        message_id: row.get(0)?,
-        sender: row.get(1)?,
-        role: row.get(2)?,
-        text: truncate_text(&row.get::<_, String>(3)?, MAX_READ_MESSAGE_TEXT_CHARS),
-        time_label: Some(row.get::<_, i64>(4)?.to_string()),
-        sequence_num: row.get(5)?,
-    })
-}
-
-fn read_messages_from_sequence(
-    conn: &Connection,
-    session_id: &str,
-    start_sequence: i64,
-    limit: usize,
-) -> Result<Vec<ObservedMessageRow>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, m.content_text, m.created_at_ms, m.sequence_num
-             FROM session_messages m
-             LEFT JOIN identities i ON i.id = m.sender_identity_id
-             WHERE m.session_id = ?1 AND m.sequence_num >= ?2
-             ORDER BY m.sequence_num ASC
-             LIMIT ?3",
-        )
-        .map_err(|err| err.to_string())?;
-    let rows = stmt
-        .query_map(params![session_id, start_sequence, limit], read_message_row)
-        .map_err(|err| err.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|err| err.to_string())
-}
-
-fn read_messages_by_ids(
-    conn: &Connection,
-    session_id: &str,
-    message_ids: &[String],
-) -> Result<Vec<ObservedMessageRow>, String> {
-    let mut rows = Vec::new();
-    let mut stmt = conn
-        .prepare(
-            "SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, m.content_text, m.created_at_ms, m.sequence_num
-             FROM session_messages m
-             LEFT JOIN identities i ON i.id = m.sender_identity_id
-             WHERE m.session_id = ?1 AND m.id = ?2",
-        )
-        .map_err(|err| err.to_string())?;
-    for message_id in message_ids {
-        if let Some(row) = stmt
-            .query_row(params![session_id, message_id], read_message_row)
-            .optional()
-            .map_err(|err| err.to_string())?
-        {
-            rows.push(row);
-        }
-    }
-    rows.sort_by_key(|row| row.sequence_num);
-    rows.dedup_by(|left, right| left.message_id == right.message_id);
-    Ok(rows)
-}
-
-fn read_latest_messages(
-    conn: &Connection,
-    session_id: &str,
-    limit: usize,
-) -> Result<Vec<ObservedMessageRow>, String> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT * FROM (
-                 SELECT m.id, COALESCE(i.display_name, m.sender_role), m.sender_role, m.content_text, m.created_at_ms, m.sequence_num
-                 FROM session_messages m
-                 LEFT JOIN identities i ON i.id = m.sender_identity_id
-                 WHERE m.session_id = ?1
-                 ORDER BY m.sequence_num DESC
-                 LIMIT ?2
-             ) ORDER BY sequence_num ASC",
-        )
-        .map_err(|err| err.to_string())?;
-    let rows = stmt
-        .query_map(params![session_id, limit], read_message_row)
-        .map_err(|err| err.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|err| err.to_string())
-}
-
-fn message_sequence_bounds(
-    conn: &Connection,
-    session_id: &str,
-) -> Result<Option<(i64, i64)>, String> {
-    conn.query_row(
-        "SELECT MIN(sequence_num), MAX(sequence_num) FROM session_messages WHERE session_id = ?1",
-        params![session_id],
-        |row| {
-            let min: Option<i64> = row.get(0)?;
-            let max: Option<i64> = row.get(1)?;
-            Ok(min.zip(max))
-        },
-    )
-    .map_err(|err| err.to_string())
 }

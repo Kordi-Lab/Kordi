@@ -7,7 +7,7 @@ use crate::turn_runner::{self, TurnConfig, TurnEvent, run_turn};
 
 use super::attachments::{
     append_attachment_context_message, attachment_is_image, attachment_metadata_from_path,
-    expand_prompt_with_attachment_paths, load_images_from_paths,
+    expand_prompt_for_policy, expand_prompt_with_attachment_paths, load_images_from_paths,
 };
 use super::model_options::request_thinking_for_model_with_auth;
 use super::{
@@ -74,17 +74,31 @@ impl DesktopRuntimeSession {
         attachment_paths: Vec<String>,
         cancel: tokio_util::sync::CancellationToken,
     ) -> Result<DesktopRuntimeTurn> {
+        self.begin_message_streaming_with_request_id(prompt, attachment_paths, cancel, None)
+            .await
+    }
+
+    pub async fn begin_message_streaming_with_request_id(
+        &mut self,
+        prompt: String,
+        attachment_paths: Vec<String>,
+        cancel: tokio_util::sync::CancellationToken,
+        request_message_id: Option<String>,
+    ) -> Result<DesktopRuntimeTurn> {
         self.refresh_saved_agent_persona();
+        self.freeze_identity_prompt()?;
+        let execution_policy = self.turn_execution_policy()?;
         let prompt = prompt.trim().to_string();
         if prompt.is_empty() && attachment_paths.is_empty() {
             bail!("Message cannot be empty");
         }
 
-        let expanded = expand_prompt_with_attachment_paths(
+        let expanded = expand_prompt_for_policy(
             &prompt,
             &attachment_paths,
             &self.setup.tool_ctx.cwd,
-        );
+            execution_policy,
+        )?;
         let prompt_text = expanded.text.trim().to_string();
         if prompt_text.is_empty() && expanded.image_paths.is_empty() {
             bail!("Message cannot be empty");
@@ -150,13 +164,24 @@ impl DesktopRuntimeSession {
             &self.setup.model,
         )
         .await?;
-        turn_runner::append_user_message_with_images(
-            &sibling_conn,
-            &self.setup.session_id,
-            &prompt,
-            &images,
-        )
-        .await?;
+        if request_message_id.is_some() {
+            turn_runner::append_user_message_with_id(
+                &sibling_conn,
+                &self.setup.session_id,
+                &prompt,
+                &images,
+                request_message_id.as_deref(),
+            )
+            .await?;
+        } else {
+            turn_runner::append_user_message_with_images(
+                &sibling_conn,
+                &self.setup.session_id,
+                &prompt,
+                &images,
+            )
+            .await?;
+        }
         append_attachment_context_message(
             &sibling_conn,
             &self.setup.session_id,
@@ -166,7 +191,8 @@ impl DesktopRuntimeSession {
         .await?;
         refresh_provider_runtime_fields(&mut self.setup);
 
-        let turn_config = build_turn_config(&mut self.setup, cancel)?;
+        let scoped = self.has_shared_observation_scope()?;
+        let turn_config = build_turn_config(&mut self.setup, cancel, execution_policy, scoped)?;
         let (turn_event_tx, turn_event_rx) = mpsc::unbounded_channel::<TurnEvent>();
         let handle =
             tokio::spawn(async move { run_turn(turn_config, turn_event_tx, prompt_text).await });
@@ -212,6 +238,8 @@ impl DesktopRuntimeSession {
 fn build_turn_config(
     setup: &mut crate::session_bootstrap::SessionRuntimeSetup,
     cancel: tokio_util::sync::CancellationToken,
+    execution_policy: kordi_tools::ExecutionPolicy,
+    shared_scope: bool,
 ) -> Result<TurnConfig> {
     let sibling_conn = if let Some(conn) = setup.sibling_conn.clone() {
         conn
@@ -248,13 +276,19 @@ fn build_turn_config(
             cwd: setup.tool_ctx.cwd.clone(),
             artifacts_dir: setup.tool_ctx.artifacts_dir.clone(),
             model: None,
-            execution_policy: setup.tool_ctx.execution_policy,
+            execution_policy,
             on_output: None,
             web_search: setup.tool_ctx.web_search.clone(),
             reach_out: setup.tool_ctx.reach_out.clone(),
             reflection: setup.tool_ctx.reflection.clone(),
-            session_observation: setup.tool_ctx.session_observation.clone(),
-            task_operator: setup.tool_ctx.task_operator.clone(),
+            session_observation: (execution_policy != kordi_tools::ExecutionPolicy::Shared
+                || shared_scope)
+                .then(|| setup.tool_ctx.session_observation.clone())
+                .flatten(),
+            task_operator: (execution_policy != kordi_tools::ExecutionPolicy::Shared
+                || shared_scope)
+                .then(|| setup.tool_ctx.task_operator.clone())
+                .flatten(),
             schedule_task: setup.tool_ctx.schedule_task.clone(),
             execution_mode: setup.tool_ctx.execution_mode,
             request_approval: setup.tool_ctx.request_approval.clone(),
@@ -265,7 +299,11 @@ fn build_turn_config(
         retry_base_delay_ms: setup.retry_base_delay_ms,
         retry_max_delay_ms: setup.retry_max_delay_ms,
         cancel,
-        extensions: setup.extension_commands.clone(),
+        extensions: if execution_policy == kordi_tools::ExecutionPolicy::Shared {
+            Default::default()
+        } else {
+            setup.extension_commands.clone()
+        },
         request_metrics_tracker: setup.request_metrics_tracker.clone(),
         request_metrics_log_path: setup.request_metrics_log_path.clone(),
     })

@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 
+import type { DesktopAuthSyncIntent } from '@/features/auth/desktopAuthSync';
 import type { AttachmentItem } from '@/features/chat/composerController.types';
 import type { DesktopChatMessageRoute } from '@/lib/desktop';
 import type {
@@ -55,6 +56,7 @@ export type UseCloudCollaborationStateArgs = {
   localAgentLabel?: string | null;
   defaultCloudAgentRuntimeReady?: boolean;
   desktopAuthState?: DesktopAuthState | null;
+  providerAuthSyncIntent?: DesktopAuthSyncIntent | null;
 };
 
 export type UseCloudCollaborationStateResult = {
@@ -110,6 +112,16 @@ export type UseCloudCollaborationStateResult = {
   setCloudSessionUnread: (sessionId: string, unread: boolean) => Promise<void>;
   markCloudSessionsRead: (sessionIds: string[]) => Promise<void>;
   setCloudGroupSpacePinned: (groupSpaceId: string, pinned: boolean) => Promise<void>;
+  setCloudGroupSpaceMuted: (
+    groupSpaceId: string,
+    sessionIds: string[],
+    muted: boolean,
+  ) => Promise<void>;
+  setCloudGroupSpaceArchived: (
+    groupSpaceId: string,
+    sessionIds: string[],
+    archived: boolean,
+  ) => Promise<void>;
   deleteCloudSession: (sessionId: string) => Promise<void>;
   cancelCloudAgentRequest:
     (conversationId: string, requestId: string) => Promise<void>;

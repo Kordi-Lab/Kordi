@@ -3,6 +3,8 @@ use reqwest::{Client, RequestBuilder, Response, Url};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
+pub(crate) mod public;
+
 pub(crate) const STANDARD_WEB_USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36";
 
 pub(crate) fn parse_http_url(tool_name: &str, raw_url: &str) -> KordiResult<Url> {

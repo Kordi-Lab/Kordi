@@ -199,12 +199,37 @@ test('deriveCloudActivityFromTurn preserves participant display names and avatar
 
 test('cloneCloudSessionActivityForFork copies source tasks and artifacts to fork session', () => {
   const source = normalizeCloudSessionActivitySnapshot({
-    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:group:parent', taskId: 'task-1', title: 'Review', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: ['docs/a.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
-    artifacts: [{ artifactActivityId: 'artifactact_1', sessionId: 'session:group:parent', artifactId: 'docs/a.md', name: 'a.md', path: 'docs/a.md', kind: 'document', category: 'artifact', summary: null, createdByAccountId: 'acct_a', sourceMessageId: null, attachmentId: null, contentType: null, sizeBytes: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+    tasks: [{ taskActivityId: 'taskact_1', sessionId: 'session:self-agent:parent', taskId: 'task-1', title: 'Review', summary: null, status: 'active', createdByAccountId: 'acct_a', targetAccountId: null, participants: [], artifactIds: ['docs/a.md'], responseMessageId: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
+    artifacts: [{ artifactActivityId: 'artifactact_1', sessionId: 'session:self-agent:parent', artifactId: 'docs/a.md', name: 'a.md', path: 'docs/a.md', kind: 'document', category: 'artifact', summary: null, createdByAccountId: 'acct_a', sourceMessageId: null, attachmentId: null, contentType: null, sizeBytes: null, createdAt: '2026-05-15T10:00:00Z', updatedAt: '2026-05-15T10:00:00Z', archivedAt: null }],
   });
 
-  const cloned = cloneCloudSessionActivityForFork(source, 'session:group:parent', 'session:fork:child', '2026-05-15T10:05:00Z');
+  const cloned = cloneCloudSessionActivityForFork(source, 'session:self-agent:parent', 'session:fork:child', '2026-05-15T10:05:00Z');
 
   assert.equal(cloned.tasksBySessionId['session:fork:child']?.[0]?.sessionId, 'session:fork:child');
   assert.equal(cloned.artifactsBySessionId['session:fork:child']?.[0]?.sessionId, 'session:fork:child');
+});
+
+test('deriveCloudActivityFromTurn does not publish linked background sessions as durable tasks', () => {
+  const derived = deriveCloudActivityFromTurn({
+    sessionId: 'session:group:cloud',
+    localAccountId: 'acct_me',
+    participantAccountIds: ['acct_me', 'acct_peer'],
+    turn: {
+      id: 'turn_background', sessionId: 'session:group:cloud', prompt: 'inspect task status', status: 'complete', message: 'Routed', assistantText: 'I moved the task status investigation to a linked session.', thinkingText: '', completed: true, succeeded: true, error: null, transcriptRefreshRequired: false, startedAtMs: 1, completedAtMs: 2,
+      tools: [{
+        id: 'tool_background',
+        name: 'task_operator',
+        status: 'done',
+        arguments: JSON.stringify({ action: 'spawn', taskTitle: 'Investigate task status', summary: 'Inspect why completed work remains active.' }),
+        liveOutput: '',
+        resultText: 'Background session: {"sessionId":"child-session","title":"Investigate task status","status":"running"}',
+        detail: null,
+        artifactPath: null,
+        toolLayer: 'operator',
+        isError: false,
+      }],
+    },
+  });
+
+  assert.equal(derived.tasks.length, 0);
 });

@@ -1,38 +1,28 @@
-import type {
-  CanonicalIdentity, CanonicalSessionMessage, CanonicalSessionState,
-  DesktopChatToolSnapshot, Message, MessageActionMetadata,
-} from '@/kordi-app/types';
-import { isProcessingPlaceholderText, stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
-import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
-import { cloudAgentFallbackErrorNotice, isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
+import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
+import { cloudAgentFallbackErrorNotice,isCloudAgentNoProviderConfiguredError } from '@/features/cloud/cloudAgentMessages';
 import { cloudGroupAgentConversationId } from '@/features/cloud/cloudGroupMessages';
 import { cloudVoiceMessageMetadataOnly } from '@/features/cloud/cloudVoiceMessage';
-import { canonicalIdentityAvatarSeed } from '@/features/canonical/avatarIdentity';
-import { isSelfReferenceName, rewriteLeadingFirstPersonAgentMention, selfDisplayName } from '@/lib/identityLabels';
+import { isProcessingPlaceholderText,stripOutreachContextEnvelope } from '@/features/collaboration/agentPlaceholderText';
+import { compatibleSourceConversationId } from '@/features/collaboration/legacyBridgeCompatibility';
+import type {
+CanonicalIdentity,CanonicalSessionMessage,CanonicalSessionState,
+DesktopChatToolSnapshot,Message,MessageActionMetadata,
+} from '@/kordi-app/types';
+import { isSelfReferenceName,rewriteLeadingFirstPersonAgentMention,selfDisplayName } from '@/lib/identityLabels';
 import { formatDesktopClockTime } from '@/lib/time';
-import { canonicalCallActivity } from './callActivity';
+import { agentMessagePresentation,ownerScopedAgentName } from './agentMessagePresentation';
 import { canonicalAttachments } from './attachmentMapping';
-import { isInternalCloudAgentControlMessage, isPlaceholderSessionTitleNotice, isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
+import { canonicalCallActivity } from './callActivity';
 import { canonicalMentions } from './mentionMapping';
-import { canonicalMessageAction, canonicalMessageActionSourceReference } from './messageActionMapping';
+import { canonicalMessageAction,canonicalMessageActionSourceReference } from './messageActionMapping';
+import { canonicalReadReceiptSummary,contentRecord,numberValue,stringValue } from "./messageContent";
 import { canonicalMessageReactionMetadata } from './messageReactionMetadata';
-import { agentMessagePresentation, ownerScopedAgentName } from './agentMessagePresentation';
+import { isInternalCloudAgentControlMessage,isPlaceholderSessionTitleNotice,isSynchronizationOnlyCloudGroupTitleNotice } from './messageVisibility';
 
 export { ownerScopedAgentName } from './agentMessagePresentation';
 
-export { isProcessingPlaceholderText, stripOutreachContextEnvelope };
 export { canonicalAttachments } from './attachmentMapping';
-export function contentRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-export function stringValue(value: unknown) {
-  return typeof value === 'string' ? value : undefined;
-}
-
-export function numberValue(value: unknown) {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
+export { isProcessingPlaceholderText,stripOutreachContextEnvelope };
 
 function realSourceLabelForRelativeLabel(label: string, humanSourceLabel: string, agentSourceLabel: string) {
   const trimmed = label.trim();
@@ -61,32 +51,6 @@ function canonicalMessageActionWithRealSourceLabel(
       senderLabel,
     },
   };
-}
-
-function canonicalReadReceiptSummary(
-  content: Record<string, unknown>,
-  identityById: Map<string, CanonicalIdentity>,
-): Message['readReceiptSummary'] {
-  const summary = contentRecord(content.readReceiptSummary);
-  const rawParticipants = Array.isArray(summary.participants) ? summary.participants : [];
-  const participants = rawParticipants.flatMap((value) => {
-    const record = contentRecord(value);
-    const accountId = stringValue(record.accountId)?.trim() ?? '';
-    const identityId = stringValue(record.identityId)?.trim() || (accountId ? `human:${accountId}` : '');
-    if (!identityId) return [];
-    const identity = identityById.get(identityId);
-    const name = identity?.displayName || stringValue(record.name)?.trim() || accountId || 'Someone';
-    return [{
-      id: identity?.id ?? identityId,
-      name,
-      avatarSeed: canonicalIdentityAvatarSeed(identity) ?? stringValue(record.avatarSeed) ?? null,
-      profileImageUrl: identity?.profileImageUrl ?? stringValue(record.profileImageUrl) ?? null,
-      readAt: stringValue(record.readAt) ?? null,
-    }];
-  });
-  const count = Math.max(0, Math.floor(numberValue(summary.count) ?? participants.length));
-  if (count <= 0) return null;
-  return { count, participants: participants.slice(0, Math.max(count, participants.length)) };
 }
 
 export function canonicalTools(value: unknown): DesktopChatToolSnapshot[] {
@@ -287,7 +251,7 @@ export function processingAgentMessage(
       sessionId: exchange.sessionId,
       prompt: '',
       status: 'processing',
-      message: 'Processing…',
+      message: '',
       assistantText: '',
       thinkingText: '',
       tools: [],
@@ -359,14 +323,16 @@ export function mapCanonicalMessage(
   const role = canonicalMessageRole(message, identity, profileHumanIdentityId);
   const isAgentTurn = message.messageKind === 'agent-turn' || role === 'owned-agent' || role === 'external-agent';
   const completed = canonicalMessageIsComplete(message, content);
-  const deliveryState = stringValue(content.deliveryState)?.trim().toLowerCase();
+  const deliveryState = isAgentTurn && !completed && contentRecord(content.execution).phase === 'queued'
+    ? 'queued'
+    : stringValue(content.deliveryState)?.trim().toLowerCase();
   const cancelled = message.status === 'cancelled' || deliveryState === 'cancelled';
   const noProviderFailure = isAgentTurn && isCloudAgentNoProviderConfiguredError(message.contentText || stringValue(content.error) || stringValue(content.detail));
   const failed = message.status === 'failed' || deliveryState === 'failed' || deliveryState === 'processing_failed' || cancelled || noProviderFailure;
   const legacyCollaborationAgentFailure = isAgentTurn && failed && sourceTransport.startsWith('desktop-bridge');
   const sourceConversationId = compatibleSourceConversationId(content)?.trim();
   const sourceRequestId = stringValue(content.requestId)?.trim();
-  const desktopEntryId = sourceTransport.startsWith('desktop-chat') ? stringValue(content.desktopEntryId)?.trim() : undefined;
+  const desktopEntryId = stringValue(content.desktopEntryId)?.trim();
   const parentMessageId = message.parentMessageId?.trim();
   const visibleParentMessageId = parentMessageId
     ? context.visibleReplyTargetByMessageId?.get(parentMessageId) ?? parentMessageId
@@ -376,7 +342,9 @@ export function mapCanonicalMessage(
   const replyToMessageId = isAgentTurn
     ? contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null
     : contentReplyToMessageId || (visibleParentMessageId && visibleParentMessageId !== message.id ? visibleParentMessageId : null) || null;
-  const replyAliasIds = [...new Set([parentMessageId, sourceRequestId, stringValue(content.cloudGroupMessageId)?.trim()]
+  const replyAliasIds = [...new Set([parentMessageId, sourceRequestId, desktopEntryId,
+    sourceTransport === 'cloud-self-agent' && message.senderRole === 'user' ? message.sourceEventId : undefined,
+    stringValue(content.cloudGroupMessageId)?.trim()]
     .filter((value): value is string => Boolean(value && value !== message.id)))];
   const trimmedProfileIdentityId = profileHumanIdentityId?.trim() || null;
   const viewerOwnsAgent = isAgentTurn
@@ -438,16 +406,18 @@ export function mapCanonicalMessage(
   });
   const visibleTools = role === 'owned-agent' || (role === 'external-agent' && hasSharedModelTaskTools) ? tools : [];
   const restoredDisplayText = restoreMentionTriggerText(stripOutreachContextEnvelope(message.contentText), content);
+  const mentions = canonicalMentions(content.mentions);
   const rawDisplayText = !isOwnMessage && role === 'person'
     ? rewriteLeadingFirstPersonAgentMention(
       restoredDisplayText,
       identity?.displayName || contentSender,
       agentLabelForHumanIdentity(identity, identityById),
+      mentions,
     )
     : restoredDisplayText;
   const isProcessingAgentPlaceholder = isAgentTurn
     && (deliveryState === 'queued' || deliveryState === 'processing')
-    && isProcessingPlaceholderText(rawDisplayText);
+    && (!rawDisplayText.trim() || isProcessingPlaceholderText(rawDisplayText));
   const displayText = isProcessingAgentPlaceholder || legacyCollaborationAgentFailure || noProviderFailure ? '' : rawDisplayText;
   const cancelledByRole = stringValue(content.cancelledByRole)?.trim();
   const cancelledTurnText = cancelled
@@ -481,8 +451,8 @@ export function mapCanonicalMessage(
     // transcript merge reconcile tool-only turns without relying on
     // visible text, while canonical-only and fork-snapshot messages
     // continue to target their stable canonical message id.
-    entryId: desktopEntryId || message.id,
-    isForkSnapshot: (sourceTransport === 'canonical-fork-snapshot' || sourceTransport === 'cloud-group-fork-snapshot') || undefined,
+    entryId: sourceTransport === 'canonical-fork-snapshot' ? message.id : desktopEntryId || message.id,
+    isForkSnapshot: sourceTransport === 'canonical-fork-snapshot' || undefined,
     role,
     sender,
     senderOwnerName: agentPresentation.senderOwnerName,
@@ -495,12 +465,13 @@ export function mapCanonicalMessage(
     text: isAgentTurn ? '' : displayText,
     time,
     timestampMs: message.createdAtMs,
+    conversationSequence: numberValue(content.conversationSequence),
     callActivity: canonicalCallActivity(message, content, isOwnMessage),
-    messageKind: voiceMessage ? 'voice' : undefined,
+    messageKind: voiceMessage ? 'voice' : role === 'system' ? stringValue(content.kind) ?? message.messageKind : undefined,
     voiceMessage,
     detail: stringValue(content.detail),
     attachments: canonicalAttachments(content.attachments),
-    mentions: canonicalMentions(content.mentions),
+    mentions,
     replyToMessageId: replyToMessageId ?? undefined,
     replyAliasIds: replyAliasIds.length ? replyAliasIds : undefined,
     readReceiptSummary: isOwnMessage && role === 'user' ? canonicalReadReceiptSummary(content, identityById) : null,
@@ -514,7 +485,7 @@ export function mapCanonicalMessage(
           sessionId: message.sessionId,
           prompt: '',
           status: completed ? (cancelled ? 'cancelled' : failed ? 'failed' : 'complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'queued' : 'processing' : displayText.trim() ? 'writing' : 'typing'),
-          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : 'Processing…' : displayText.trim() ? 'Replying…' : 'Typing…'),
+          message: completed ? (cancelled ? cancelledTurnText : failed ? 'Failed' : 'Complete') : (isProcessingAgentPlaceholder ? deliveryState === 'queued' ? 'Queued…' : '' : displayText.trim() ? 'Replying…' : 'Typing…'),
           assistantText: cancelled ? cancelledTurnText : displayText,
           thinkingText,
           tools: visibleTools,
@@ -527,3 +498,5 @@ export function mapCanonicalMessage(
       : undefined,
   };
 }
+
+export { contentRecord,numberValue,stringValue } from "./messageContent";

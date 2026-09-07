@@ -93,7 +93,13 @@ test('canonical read model shows fresh bridge-parent processing placeholders for
   const messages = readModel.messages(sessionId);
 
   assert.equal(messages.some((message) => message.turn?.status === 'processing'), true);
-  assert.equal(messages.find((message) => message.turn?.status === 'processing')?.turn?.message, 'Processing…');
+  assert.equal(messages.find((message) => message.turn?.status === 'processing')?.turn?.message, '');
+  canonicalState.messages[1].contentText = '';
+  const waiting = createCanonicalSessionReadModel(canonicalState as never)
+    .messages(sessionId).find((message) => message.turn?.status === 'processing');
+  assert.ok(waiting);
+  assert.equal(waiting.turn?.assistantText, '');
+  assert.equal(waiting.turn?.message, '');
 });
 
 test('canonical read model keeps later active processing placeholder when an earlier same-agent request completes', () => {

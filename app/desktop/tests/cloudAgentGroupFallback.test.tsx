@@ -7,6 +7,7 @@ import { buildCloudDesktopCollaborationState } from '../src/features/cloud/cloud
 import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
 import { encodeCloudAgentCancel, encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
 import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import {
   cloudGroupAgentProcessingSlotForResponse,
@@ -46,6 +47,29 @@ const message: CloudMessage = {
   readAt: null,
   direction: 'incoming',
 };
+
+test('explicit default-agent owners override identical Kordi labels in group and contact fallback', () => {
+  const groupId = 'session:group:owner-selection';
+  const participants = [
+    { accountId: account.accountId, displayName: 'Me Cloud', avatarUrl: null, role: 'admin' as const },
+    { accountId: 'acct_peer', displayName: 'Peer Person', avatarUrl: null, role: 'person' as const },
+  ];
+  for (const owner of [account.accountId, 'acct_peer', 'acct_unknown']) {
+    const target = { targetCloudAgentId: `cloud-agent:${owner}`, targetCloudAgentOwnerAccountId: owner, targetCloudAgentName: 'Kordi' };
+    const group = encodeCloudGroupControl({
+      kind: 'group-message', groupId, groupSpaceId: groupId, groupTitle: null,
+      createdByAccountId: account.accountId, actor: participants[0], participants,
+      message: { id: 'ios-group-request', senderAccountId: account.accountId, senderKind: 'human', text: '@Kordi reply once', createdAtMs: 2000, ...target },
+    });
+    const direct = encodeCloudDirectMessageEnvelope({ schemaVersion: 1, kind: 'message', text: '@Kordi reply once', ...target });
+    for (const body of [group, direct]) {
+      const row = { ...message, messageId: `wire-${owner}`, fromAccountId: account.accountId, toAccountId: 'acct_peer', sessionId: groupId, body };
+      const claims = cloudFallbackRunClaimsForMessages({ account, contacts: [peer], messagesByPeer: { acct_peer: [row] } });
+      assert.equal(claims.length, owner === 'acct_peer' ? 1 : 0);
+      if (claims.length) assert.equal(claims[0].ownerAccountId, owner);
+    }
+  }
+});
 
 test('cloud group ingestion preserves self-owned versus remote agent roles', () => {
   assert.equal(cloudGroupAgentCanonicalRole('acct_me', 'acct_me'), 'owned-agent');

@@ -15,6 +15,7 @@ import type { Conversation, DesktopCollaborationState, DesktopChatState } from '
 import { ALL_GROUP_MENTION_LABEL, groupMentionTargetIdentityId } from '@/features/chat/messageMentions';
 
 import { normalizeMentionSearch } from '@/app/useKordiAppModelHelpers';
+import { defaultAgentDisplayName, publicScopedAgentMentionHandle } from '@/lib/identityLabels';
 
 export type CollaborationMentionTargetsByScope = {
   chat: ComposerMentionOption[];
@@ -174,8 +175,12 @@ export function buildCollaborationMentionTargetsByScope({
       const runtimeAgentLabel = desktopChatState?.localAgent?.label?.trim();
       const collaborationAgentLabel = runtimeAgentLabel || activeAgent?.label?.trim() || localAgentBaseLabel;
       const hostDisplayName = activeHost?.displayName?.trim();
-      const localAgentLabel = collaborationAgentLabel || hostDisplayName || localAgentBaseLabel;
-      const localAgentHandle = mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
+      const localAgentLabel = activeAgent?.isDefault
+        ? defaultAgentDisplayName(ownerName, collaborationAgentLabel)
+        : collaborationAgentLabel || hostDisplayName || localAgentBaseLabel;
+      const localAgentHandle = activeAgent?.isDefault
+        ? publicScopedAgentMentionHandle(ownerName, localAgentLabel)
+        : mentionHandleForLabel(localAgentLabel, activeAgent?.id ?? activeAgent?.nodeId ?? 'Kordi');
       pushOption({
         value: localAgentHandle,
         label: localAgentLabel,

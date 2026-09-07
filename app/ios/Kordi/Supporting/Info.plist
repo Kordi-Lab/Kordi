@@ -47,6 +47,8 @@
 	<string>$(KORDI_SHARE_APP_GROUP)</string>
 	<key>KordiShareCredentialService</key>
 	<string>$(KORDI_SHARE_CREDENTIAL_SERVICE)</string>
+	<key>KordiShareKeychainAccessGroup</key>
+	<string>$(AppIdentifierPrefix)$(KORDI_SHARE_CREDENTIAL_SERVICE)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

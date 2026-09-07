@@ -18,6 +18,9 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 
+#[cfg(test)]
+mod upgrade_tests;
+
 #[derive(Debug)]
 pub enum PgPoolError {
     Connect(sqlx_core::Error),
@@ -364,8 +367,63 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
     },
     EmbeddedMigration {
         version: 76,
-        description: "rolling digest and account calendar",
-        sql: include_str!("../../migrations/0076_rolling_digest.sql"),
+        description: "remove group session forks",
+        sql: include_str!("../../migrations/0076_remove_group_session_forks.sql"),
+    },
+    EmbeddedMigration {
+        version: 77,
+        description: "remove group personal titles",
+        sql: include_str!("../../migrations/0077_remove_group_personal_titles.sql"),
+    },
+    EmbeddedMigration {
+        version: 78,
+        description: "normalize group space ids",
+        sql: include_str!("../../migrations/0078_normalize_group_space_ids.sql"),
+    },
+    EmbeddedMigration {
+        version: 79,
+        description: "default group channel titles",
+        sql: include_str!("../../migrations/0079_default_group_channel_titles.sql"),
+    },
+    EmbeddedMigration {
+        version: 80,
+        description: "enforce canonical direct conversation identity",
+        sql: include_str!("../../migrations/0080_enforce_direct_conversation_identity.sql"),
+    },
+    EmbeddedMigration {
+        version: 81,
+        description: "agent_execution_ownership",
+        sql: include_str!("../../migrations/0081_agent_execution_ownership.sql"),
+    },
+    EmbeddedMigration {
+        version: 82,
+        description: "reconcile rolling digest schema",
+        sql: include_str!("../../migrations/0082_reconcile_rolling_digest.sql"),
+    },
+    EmbeddedMigration {
+        version: 83,
+        description: "model agent subsessions",
+        sql: include_str!("../../migrations/0083_model_agent_subsessions.sql"),
+    },
+    EmbeddedMigration {
+        version: 84,
+        description: "subsession conversations",
+        sql: include_str!("../../migrations/0084_subsession_conversations.sql"),
+    },
+    EmbeddedMigration {
+        version: 85,
+        description: "subsession execution clock",
+        sql: include_str!("../../migrations/0085_subsession_execution_clock.sql"),
+    },
+    EmbeddedMigration {
+        version: 86,
+        description: "per-member thread read cursors",
+        sql: include_str!("../../migrations/0086_thread_read_cursors.sql"),
+    },
+    EmbeddedMigration {
+        version: 87,
+        description: "immutable agent turn identity",
+        sql: include_str!("../../migrations/0087_agent_turn_identity.sql"),
     },
 ];
 

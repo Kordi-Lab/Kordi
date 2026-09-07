@@ -80,6 +80,8 @@ pub enum ExecutionPolicy {
     #[default]
     Safety,
     Yolo,
+    /// A shared request from someone other than this device Agent's owner.
+    Shared,
 }
 
 impl ExecutionPolicy {
@@ -87,17 +89,19 @@ impl ExecutionPolicy {
         match self {
             Self::Safety => "safety",
             Self::Yolo => "yolo",
+            Self::Shared => "shared",
         }
     }
 
     pub fn restricts_workspace_writes(self) -> bool {
-        matches!(self, Self::Safety)
+        !matches!(self, Self::Yolo)
     }
 
     pub fn write_scope_label(self) -> &'static str {
         match self {
             Self::Safety => "current project only",
             Self::Yolo => "full access",
+            Self::Shared => "shared conversation and public web only",
         }
     }
 }
@@ -199,6 +203,8 @@ pub struct SearchSessionsRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadSessionRequest {
+    #[serde(default)]
+    pub offset: Option<usize>,
     pub session_id: String,
     pub around_message_id: Option<String>,
     pub limit: Option<usize>,
@@ -263,6 +269,8 @@ pub struct SessionObservationWindow {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionObservationMessage {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<usize>,
     pub message_id: String,
     pub sender: String,
     pub role: String,
@@ -275,6 +283,8 @@ pub struct SessionObservationMessage {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadSessionResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub directory: Option<String>,
     pub session: SessionObservationReadSession,
     pub window: SessionObservationWindow,
     pub messages: Vec<SessionObservationMessage>,
@@ -326,6 +336,12 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> Value;
+
+    /// Execution permission, deliberately excluded from provider-visible schemas.
+    /// Extensions and new tools fail closed until they implement a scoped capability.
+    fn allows_shared_requests(&self) -> bool {
+        false
+    }
 
     fn metadata(&self) -> crate::metadata::ToolMetadata {
         crate::metadata::ToolMetadata::default()

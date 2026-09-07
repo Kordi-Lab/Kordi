@@ -88,7 +88,7 @@ type ChatMainWorkspaceProps = {
     canOpen: boolean;
     suggestedName?: string;
     open: (initialPrompt?: string) => Promise<boolean>;
-    openSession: (sessionId: string) => void;
+    openSession: (sessionId: string, isSubsession?: boolean) => void;
   };
   threadPanel?: ReactNode;
 };

@@ -147,6 +147,7 @@ struct ConversationView: View {
     @State private var initialLoadFailed = false
     @State private var trackedMessageID: String?
     @State private var immediateBottomRequest = 0
+    @State private var animateBottomScroll = false
     @State private var attachments: [PendingAttachment] = []
     @State private var photoGrouping: PhotoSendGrouping = .combined
     @State private var replySource: MessageActionSource?
@@ -171,7 +172,6 @@ struct ConversationView: View {
     @State private var showSessionDetails = false
     @State private var authorProfileConversation: ConversationSummary?
     @State private var selectedBackgroundSession: BackgroundAgentSession?
-    @State private var backgroundConversation: ConversationSummary?
     @State private var callJoinTask: Task<Void, Never>?
     @State private var showAgentModel = false
     @State private var highlightedMessageID: String?
@@ -198,7 +198,7 @@ struct ConversationView: View {
     @State private var messageActionFeedback = 0
 
     private var navigationBarVisibility: Visibility {
-        showsNavigationChrome ? .visible : .hidden
+        showsNavigationChrome ? .visible : .automatic
     }
     private var messageMutationErrorPresented: Binding<Bool> {
         Binding(
@@ -247,7 +247,10 @@ struct ConversationView: View {
     /// stable id so title, participant names, and avatars update while the
     /// conversation is already open instead of requiring a back/reopen cycle.
     private var conversation: ConversationSummary {
-        ConversationIdentityResolver.current(
+        if let id = initialConversation.subsessionId, let snapshot = model.subsessions[id] {
+            return snapshot.conversation
+        }
+        return ConversationIdentityResolver.current(
             initialConversation,
             in: model.conversations
         )
@@ -319,7 +322,7 @@ struct ConversationView: View {
             })?.id
         }
         let visibleStartIndex = timeline.count - visibleTimeline.count
-        let messagesById = Dictionary(uniqueKeysWithValues: timeline.map { ($0.id, $0) })
+        let messagesById = Dictionary(uniqueKeysWithValues: allMessages.map { ($0.id, $0) })
         let presentationStartIndex = max(timeline.startIndex, visibleStartIndex - 1)
         let timelinePresentation = ConversationTimelinePresentation.make(
             messages: Array(timeline[presentationStartIndex..<timeline.endIndex]),
@@ -399,6 +402,9 @@ struct ConversationView: View {
                     ZStack {
                         GeometryReader { viewport in
                             ZStack(alignment: .bottomTrailing) {
+                            // The explicit transcript window already bounds the initial rows.
+                            // ponytail: measure that window eagerly; use measured virtualization
+                            // if rendering many manually loaded pages becomes expensive.
                             ScrollView {
                                 VStack(spacing: 0) {
                                     if timeline.isEmpty {
@@ -410,21 +416,22 @@ struct ConversationView: View {
                                         )
                                             .padding(.top, 70)
                                     } else {
-                                        LazyVStack(spacing: 0) {
-                                            if visibleStartIndex > 0 || model.hasEarlierMessages(for: conversation) {
-                                                EarlierMessagesLoader(
-                                                    remainingCount: visibleStartIndex > 0 ? visibleStartIndex : nil,
-                                                    isLoading: isLoadingEarlier
-                                                )
-                                                    .id("earlier:\(firstVisibleTimelineIdentity ?? conversation.id)")
-                                                    .onAppear {
-                                                        guard hasPositionedInitialTimeline else { return }
-                                                        loadEarlierMessages(
-                                                            preserving: firstVisibleTimelineIdentity,
-                                                            totalCount: timeline.count,
-                                                            proxy: proxy
-                                                        )
-                                                    }
+                                        if visibleStartIndex > 0 || model.hasEarlierMessages(for: conversation) {
+                                            EarlierMessagesLoader(
+                                                remainingCount: visibleStartIndex > 0 ? visibleStartIndex : nil,
+                                                isLoading: isLoadingEarlier
+                                            )
+                                                .id("earlier:\(firstVisibleTimelineIdentity ?? conversation.id)")
+                                                .onGeometryChange(for: Bool.self) { [isPositioned = hasPositionedInitialTimeline, viewportFrame = viewport.frame(in: .global)] geometry in
+                                                    isPositioned && geometry.frame(in: .global).intersects(viewportFrame)
+                                                } action: { isVisible in
+                                                    guard isVisible else { return }
+                                                    loadEarlierMessages(
+                                                        preserving: firstVisibleTimelineIdentity,
+                                                        totalCount: timeline.count,
+                                                        proxy: proxy
+                                                    )
+                                                }
                                         }
                                         ForEach(visibleTimelineRows) { row in
                                             let message = row.message
@@ -443,9 +450,10 @@ struct ConversationView: View {
                                                 pinnedMessageIDs: pinnedMessageIDs,
                                                 previewActionMessageID: previewActionMessageID,
                                                 threadReplyCount: threadReplyCount,
+                                                threadAgentState: projection.thread(rootID: message.id)?.agentState,
+                                                viewportFrame: viewport.frame(in: .global),
                                                 proxy: proxy
                                             )
-                                        }
                                         }
                                     }
 
@@ -462,6 +470,7 @@ struct ConversationView: View {
                                         .background(
                                             ConversationScrollCommandBridge(
                                                 scrollToBottomRequest: immediateBottomRequest,
+                                                animateBottomScroll: animateBottomScroll,
                                                 exactRestoreRequest: $exactScrollRestoreRequest
                                             )
                                         )
@@ -476,27 +485,24 @@ struct ConversationView: View {
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.top, timelineVerticalInset)
-                            }
-                            .defaultScrollAnchor(.bottom)
-                            .scrollPosition(id: $trackedMessageID, anchor: initialViewport.scrollAnchor)
-                            .onChange(of: trackedMessageID) { _, currentMessageID in
-                                if #unavailable(iOS 18.0) {
-                                    guard hasRevealedInitialViewport,
-                                          threadReturnMessageID == nil else { return }
-                                    isAtBottom = currentMessageID == bottomAnchorID
+                                .onGeometryChange(for: ConversationScrollGeometrySnapshot.self) { [viewportFrame = viewport.frame(in: .global)] geometry in
+                                    let frame = geometry.frame(in: .global)
+                                    return ConversationScrollGeometrySnapshot(
+                                        isAtLatest: frame.height <= viewportFrame.height
+                                            || frame.maxY <= viewportFrame.maxY + 12,
+                                        contentOffsetY: viewportFrame.minY - frame.minY
+                                    )
+                                } action: { snapshot in
+                                    guard hasRevealedInitialViewport else { return }
+                                    currentScrollOffsetY = snapshot.contentOffsetY
+                                    isAtBottom = snapshot.isAtLatest
+                                    if !snapshot.isAtLatest, trackedMessageID == bottomAnchorID {
+                                        trackedMessageID = nil
+                                    }
                                 }
                             }
+                            .defaultScrollAnchor(.bottom)
                             .scrollDisabled(messageActionMessage != nil)
-                            .modifier(
-                                ConversationBottomTrackingModifier(
-                                    isAtBottom: $isAtBottom,
-                                    hasPositionedInitialTimeline: $hasPositionedInitialTimeline,
-                                    contentOffsetY: $currentScrollOffsetY,
-                                    exactRestoreRequest: $exactScrollRestoreRequest,
-                                    isEnabled: hasRevealedInitialViewport,
-                                    hasMessages: !timeline.isEmpty
-                                )
-                            )
                             .simultaneousGesture(
                                 TapGesture().onEnded {
                                     dismissKeyboard()
@@ -720,12 +726,6 @@ struct ConversationView: View {
                 ) {
                     let identityChanged = previousLatestMessageID != currentLatestMessageID
                     scrollToBottom(animated: identityChanged)
-                    if !identityChanged {
-                        Task { @MainActor in
-                            await Task.yield()
-                            proxy.scrollTo(bottomAnchorID, anchor: .bottom)
-                        }
-                    }
                 }
             }
             .onChange(of: isExpressivePickerPresented) { _, isPresented in
@@ -763,7 +763,7 @@ struct ConversationView: View {
             }
             .task(id: ConversationIdentityResolver.loadingTaskID(for: conversation)) {
                 await loadAndRevealInitialConversation(using: proxy)
-                await model.refreshActiveCall(in: conversation)
+                if conversation.subsessionId == nil { await model.refreshActiveCall(in: conversation) }
             }
         }
         return conversationTimeline
@@ -798,7 +798,7 @@ struct ConversationView: View {
                         .sharedBackgroundVisibility(.hidden)
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        sessionActionsButton
+                        if conversation.subsessionId == nil { sessionActionsButton }
                     }
                     .sharedBackgroundVisibility(.hidden)
                 } else {
@@ -808,7 +808,7 @@ struct ConversationView: View {
                         }
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        sessionActionsButton
+                        if conversation.subsessionId == nil { sessionActionsButton }
                     }
                 }
             }
@@ -818,8 +818,10 @@ struct ConversationView: View {
         }
         .onDisappear {
             voiceRecorder.cancel()
-            attachments.forEach { $0.discardOwnedFile() }
-            attachments = []
+            if !showsCompanionPanel {
+                attachments.forEach { $0.discardOwnedFile() }
+                attachments = []
+            }
             callJoinTask?.cancel()
             callJoinTask = nil
             callCoordinator.cancelUnadmittedStart()
@@ -891,6 +893,23 @@ struct ConversationView: View {
         }
         .onChange(of: canOpenCompanionPanel) { _, _ in
             openCompanionPreviewIfReady()
+        }
+        .task(id: "thread-reads:\(conversation.sessionId):\(model.account?.accountId ?? ""):\(scopedThreadRootMessageID ?? "main")") {
+            guard conversation.subsessionId == nil else { return }
+            while !Task.isCancelled {
+                if scenePhase == .active, !threadProjection.threadsByRootID.isEmpty {
+                    do {
+                        try await model.refreshThreadReads(sessionId: conversation.sessionId)
+                        if hasRevealedInitialViewport, isAtBottom,
+                           let rootId = scopedThreadRootMessageID, let thread = threadProjection.thread(rootID: rootId) {
+                            try await model.markThreadRead(sessionId: conversation.sessionId, thread: thread)
+                        }
+                    } catch {
+                        // Keep confirmed cursors until a successful reconnect.
+                    }
+                }
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+            }
         }
         .onChange(of: isAtBottom) { _, _ in
             synchronizeReadPresentation()
@@ -974,11 +993,8 @@ struct ConversationView: View {
         .navigationDestination(item: $authorProfileConversation) { destination in
             SessionDetailView(conversation: destination)
         }
-        .navigationDestination(item: $backgroundConversation) { destination in
-            ConversationView(
-                conversation: destination,
-                linkedBackgroundSession: selectedBackgroundSession
-            )
+        .navigationDestination(item: $selectedBackgroundSession) { session in
+            AgentSubsessionView(sessionId: session.sessionId)
         }
         .sheet(item: $forwardRequest) { request in
             ForwardMessageSheet(request: request) { destination in
@@ -1011,9 +1027,8 @@ struct ConversationView: View {
             conversation: conversation,
             onReplyInConversation: { replySource = $0 }
         ))
-        .inspector(isPresented: $showsCompanionPanel) {
+        .navigationDestination(isPresented: $showsCompanionPanel) {
             CompanionChatPanel(
-                isPresented: $showsCompanionPanel,
                 selectedConversation: $selectedCompanionConversation,
                 sourceConversation: conversation
             )
@@ -1034,6 +1049,8 @@ struct ConversationView: View {
         pinnedMessageIDs: Set<String>,
         previewActionMessageID: String?,
         threadReplyCount: Int,
+        threadAgentState: BackgroundAgentSession.State?,
+        viewportFrame: CGRect,
         proxy: ScrollViewProxy
     ) -> some View {
         let message = row.message
@@ -1066,15 +1083,18 @@ struct ConversationView: View {
                             && message.author == .person
                             && !presentation.groupedWithPrevious),
                     showAvatar: presentation.showsAvatar,
-                    replySourceMessage: message.replyToMessageId.flatMap { messagesByID[$0] },
+                    replySourceMessage: message.quotedReplyMessageId.flatMap { messagesByID[$0] },
                     isHighlighted: highlightedMessageID == message.id,
                     isActionPresented: messageActionMessage?.id == message.id,
                     isPinned: pinnedMessageIDs.contains(message.id),
                     selectionMode: !selectedMessageIDs.isEmpty,
                     isSelected: selectedMessageIDs.contains(message.id),
-                    allowsQuotedReplies: scopedThreadRootMessageID == nil
-                        && conversation.kind.supportsQuotedReplies,
+                    allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
                     threadReplyCount: threadReplyCount,
+                    threadHasUnread: model.threadReadCursors[conversation.sessionId].map {
+                        threadProjection.thread(rootID: message.id)?.hasUnread(cursors: $0) ?? false
+                    } ?? false,
+                    threadAgentState: threadAgentState,
                     showsAvatarSlot: message.author != .agent,
                     authorAvatarName: avatar.name,
                     authorAvatarSource: avatar.source,
@@ -1165,13 +1185,6 @@ struct ConversationView: View {
                     },
                     onOpenBackgroundSession: { session in
                         selectedBackgroundSession = session
-                        backgroundConversation = session.destination(
-                            from: conversation,
-                            conversations: model.conversations,
-                            ownAccountId: model.account?.accountId ?? "",
-                            ownDisplayName: model.account?.preferredName ?? "Me",
-                            createdAt: message.createdAt
-                        )
                     },
                     onAgentExecutionExpansionChange: { expanded in
                         guard expanded else { return }
@@ -1184,7 +1197,7 @@ struct ConversationView: View {
             }
         }
         .id(row.id)
-        .modifier(MentionPresentationModifier(isPending: isPendingMention) {
+        .modifier(MentionPresentationModifier(isPending: isPendingMention, viewportFrame: viewportFrame) {
             Task { await model.markMentionPresented(message, in: conversation) }
         })
         .offset(
@@ -1239,9 +1252,10 @@ struct ConversationView: View {
                 ownAccountId: model.account?.accountId,
                 allowsConversationReply: conversation.kind.supportsQuotedReplies,
                 allowsThreadReply: scopedThreadRootMessageID == nil
+                    && conversation.subsessionId == nil
                     && conversation.kind.supportsThreadedReplies
                     && !message.isSystemNotice,
-                allowsReactions: MessageBubble.allowsReactions(
+                allowsReactions: conversation.subsessionId == nil && MessageBubble.allowsReactions(
                     for: message,
                     isPreviewMode: model.isPreviewMode
                 ),
@@ -1698,16 +1712,11 @@ struct ConversationView: View {
     }
 
     private func scrollToBottom(animated: Bool = false) {
+        animateBottomScroll = animated
+        immediateBottomRequest &+= 1
         initialViewport = .latest
         hasPositionedInitialTimeline = true
-        if animated {
-            immediateBottomRequest &+= 1
-            withAnimation(.smooth(duration: 0.42)) {
-                trackedMessageID = bottomAnchorID
-            }
-        } else {
-            trackedMessageID = bottomAnchorID
-        }
+        trackedMessageID = bottomAnchorID
     }
 
     @MainActor
@@ -1722,6 +1731,12 @@ struct ConversationView: View {
             switch initialViewport {
             case .latest:
                 proxy.scrollTo(bottomAnchorID, anchor: .bottom)
+            case let .offset(contentOffsetY):
+                nextScrollRestoreRequest &+= 1
+                exactScrollRestoreRequest = ConversationScrollRestoreRequest(
+                    id: nextScrollRestoreRequest,
+                    contentOffsetY: contentOffsetY
+                )
             case let .resumed(messageID):
                 let targetIdentity = timelineIdentity(for: messageID, in: messages)
                 proxy.scrollTo(targetIdentity, anchor: .center)
@@ -1809,19 +1824,26 @@ struct ConversationView: View {
         guard !hasPreparedInitialViewport else { return }
         let latestMessageID = timeline.last?.id
         let availableMessageIDs = Set(timeline.map(\.id))
-        let resumedMessageID = initialMessageID.flatMap { requestedMessageID in
-            availableMessageIDs.contains(requestedMessageID) ? requestedMessageID : nil
-        } ?? model.conversationViewportMemory.resumedMessageID(
+        let resumedPosition = model.conversationViewportMemory.resumedPosition(
             for: viewportMemoryKey,
             latestMessageID: latestMessageID,
             availableMessageIDs: availableMessageIDs,
             now: now
         )
+        let resumedMessageID = initialMessageID.flatMap { requestedMessageID in
+            availableMessageIDs.contains(requestedMessageID) ? requestedMessageID : nil
+        } ?? resumedPosition?.messageID
 
         var transaction = Transaction(animation: nil)
         transaction.disablesAnimations = true
         withTransaction(transaction) {
-            if let resumedMessageID,
+            if initialMessageID == nil, let contentOffsetY = resumedPosition?.contentOffsetY {
+                visibleMessageLimit = resumedPosition?.visibleMessageLimit ?? ConversationTimelineWindow.initialLimit
+                trackedMessageID = nil
+                isAtBottom = false
+                hasPositionedInitialTimeline = false
+                initialViewport = .offset(contentOffsetY: contentOffsetY)
+            } else if let resumedMessageID,
                let resumeIndex = timeline.firstIndex(where: { $0.id == resumedMessageID }) {
                 let contextStartIndex = max(timeline.startIndex, resumeIndex - 12)
                 visibleMessageLimit = max(
@@ -1853,6 +1875,8 @@ struct ConversationView: View {
             key: viewportMemoryKey,
             messageID: visibleMessageID,
             latestMessageID: timeline.last?.id,
+            contentOffsetY: isAtBottom ? nil : currentScrollOffsetY,
+            visibleMessageLimit: visibleMessageLimit,
             at: now
         )
     }
@@ -1927,6 +1951,18 @@ struct ConversationView: View {
     }
 
     private func avatarIdentity(for message: ChatMessage) -> ConversationAvatarIdentity {
+        if let id = conversation.subsessionId, let snapshot = model.subsessions[id] {
+            if message.author == .agent {
+                return ConversationAvatarIdentity(name: snapshot.agentDisplayName,
+                    source: snapshot.agentAvatarUrl, seed: snapshot.agentId)
+            }
+            let senderId = message.author == .me ? model.account?.accountId
+                : snapshot.messages.first(where: { $0.id == message.id })?.senderAccountId
+            let member = snapshot.participants?.first { $0.accountId == senderId }
+            return ConversationAvatarIdentity(name: member?.displayName ?? message.authorName,
+                source: member?.avatarUrl ?? (message.author == .me ? model.account?.avatar.imageSource : nil),
+                seed: member?.avatarSeed ?? senderId)
+        }
         if message.author == .me {
             let participant = conversation.groupParticipants.first {
                 $0.accountId == model.account?.accountId || $0.role == "self"
@@ -1958,7 +1994,12 @@ struct ConversationView: View {
                 .font(.headline)
                 .lineLimit(1)
 
-            if conversation.kind == .agent, agentActivity == .replying {
+            if conversation.subsessionId != nil {
+                Text("Agent thread · Shared with chat members")
+                    .font(.caption2)
+                    .foregroundStyle(KordiTheme.agentViolet)
+                    .lineLimit(1)
+            } else if conversation.kind == .agent, agentActivity == .replying {
                 HStack(spacing: 5) {
                     if let agentName = conversation.agentDisplayName?.nonEmpty,
                        agentName != conversation.displayName {
@@ -1994,7 +2035,7 @@ struct ConversationView: View {
     }
 
     private var agentActivity: AgentActivity {
-        model.conversations.first(where: { $0.id == conversation.id })?.agentActivity ?? .ready
+        conversation.agentActivity ?? .ready
     }
 
     private var sessionActionsButton: some View {
@@ -2057,6 +2098,7 @@ struct ConversationView: View {
 
     private func openCompanionPanel() {
         dismissComposerPickers()
+        dismissKeyboard()
         guard allowsCompanionPanel else { return }
         guard model.hasConfiguredProviderAuthentication else {
             showsProviderAuthentication = true
@@ -2223,6 +2265,8 @@ struct ConversationView: View {
     private func canSendWithCurrentAuthentication(
         mention: ComposerMentionTarget?
     ) -> Bool {
+        // The bound Agent owner's runtime authenticates shared subsession turns.
+        if conversation.subsessionId != nil { return true }
         let invokesOwnedAgent = ProviderAuthenticationPolicy.requiresAuthentication(
             isAgentConversation: conversation.kind == .agent,
             mentionedAgentOwnerAccountID: mention?.kind == .agent
@@ -2530,6 +2574,7 @@ private struct ConversationCallBanner: View {
 enum ConversationInitialViewport: Equatable {
     case latest
     case resumed(messageID: String)
+    case offset(contentOffsetY: CGFloat)
 
     var scrollAnchor: UnitPoint {
         switch self {
@@ -2537,13 +2582,17 @@ enum ConversationInitialViewport: Equatable {
             .bottom
         case .resumed:
             .center
+        case .offset:
+            .top
         }
     }
 }
 
 struct ConversationViewportSnapshot: Equatable {
-    let messageID: String
+    let messageID: String?
     let latestMessageID: String?
+    let contentOffsetY: CGFloat?
+    let visibleMessageLimit: Int?
     let leftAt: Date
 }
 
@@ -2561,35 +2610,40 @@ final class ConversationViewportMemory {
         key: String,
         messageID: String?,
         latestMessageID: String?,
+        contentOffsetY: CGFloat? = nil,
+        visibleMessageLimit: Int? = nil,
         at date: Date
     ) {
-        guard let messageID else {
+        let offset = contentOffsetY?.isFinite == true ? contentOffsetY : nil
+        guard messageID != nil || offset != nil else {
             snapshotsByKey[key] = nil
             return
         }
         snapshotsByKey[key] = ConversationViewportSnapshot(
             messageID: messageID,
             latestMessageID: latestMessageID,
+            contentOffsetY: offset,
+            visibleMessageLimit: visibleMessageLimit,
             leftAt: date
         )
     }
 
-    func resumedMessageID(
+    func resumedPosition(
         for key: String,
         latestMessageID: String?,
         availableMessageIDs: Set<String>,
         now: Date
-    ) -> String? {
+    ) -> ConversationViewportSnapshot? {
         guard let snapshot = snapshotsByKey[key] else { return nil }
         let elapsed = now.timeIntervalSince(snapshot.leftAt)
         guard elapsed >= 0,
               elapsed < quickReturnInterval,
               snapshot.latestMessageID == latestMessageID,
-              availableMessageIDs.contains(snapshot.messageID) else {
+              snapshot.messageID.map(availableMessageIDs.contains) ?? (snapshot.contentOffsetY != nil) else {
             snapshotsByKey[key] = nil
             return nil
         }
-        return snapshot.messageID
+        return snapshot
     }
 }
 
@@ -2738,6 +2792,7 @@ enum ConversationTimelinePresentation {
             }
         }
         let timestampVisibility = messages.indices.map { index in
+            if messages[index].isSystemNotice { return true }
             guard index > messages.startIndex else { return true }
             let current = messages[index].createdAt
             let previous = messages[index - 1].createdAt
@@ -2891,6 +2946,7 @@ private struct EarlierMessagesLoader: View {
 
 private struct MentionPresentationModifier: ViewModifier {
     let isPending: Bool
+    let viewportFrame: CGRect
     let action: () -> Void
 
     @ViewBuilder
@@ -2901,9 +2957,10 @@ private struct MentionPresentationModifier: ViewModifier {
                 action()
             }
         } else {
-            content.onAppear {
-                guard isPending else { return }
-                action()
+            content.onGeometryChange(for: Bool.self) { [isPending, viewportFrame] geometry in
+                isPending && geometry.frame(in: .global).intersects(viewportFrame)
+            } action: { isVisible in
+                if isVisible { action() }
             }
         }
     }
@@ -2999,6 +3056,7 @@ private struct ConversationScrollRestoreRequest: Equatable {
 
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let scrollToBottomRequest: Int
+    let animateBottomScroll: Bool
     @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
 
     func makeCoordinator() -> Coordinator {
@@ -3068,6 +3126,10 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
                     - scrollView.bounds.height
                     + scrollView.adjustedContentInset.bottom
             )
+            guard animateBottomScroll else {
+                scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetY), animated: false)
+                return
+            }
             UIView.animate(
                 withDuration: 0.42,
                 delay: 0,
@@ -3096,48 +3158,6 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
 private struct ConversationScrollGeometrySnapshot: Equatable {
     let isAtLatest: Bool
     let contentOffsetY: CGFloat
-}
-
-private struct ConversationBottomTrackingModifier: ViewModifier {
-    @Binding var isAtBottom: Bool
-    @Binding var hasPositionedInitialTimeline: Bool
-    @Binding var contentOffsetY: CGFloat?
-    @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
-    let isEnabled: Bool
-    let hasMessages: Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content
-                .onScrollGeometryChange(for: ConversationScrollGeometrySnapshot.self) { geometry in
-                    ConversationScrollGeometrySnapshot(
-                        isAtLatest: ConversationTimelineScrollBehavior.isAtLatest(
-                            visibleMaxY: geometry.visibleRect.maxY,
-                            contentHeight: geometry.contentSize.height,
-                            containerHeight: geometry.containerSize.height
-                        ),
-                        contentOffsetY: geometry.contentOffset.y
-                    )
-                } action: { _, snapshot in
-                    guard isEnabled else { return }
-                    contentOffsetY = snapshot.contentOffsetY
-                    if let restoreRequest = exactRestoreRequest,
-                       ConversationTimelineScrollBehavior.didRestoreContentOffset(
-                           observed: snapshot.contentOffsetY,
-                           target: restoreRequest.contentOffsetY
-                       ) {
-                        exactRestoreRequest = nil
-                    }
-                    isAtBottom = snapshot.isAtLatest
-                    if snapshot.isAtLatest, hasMessages {
-                        hasPositionedInitialTimeline = true
-                    }
-                }
-        } else {
-            content
-        }
-    }
 }
 
 private struct ConversationInitialFailureView: View {

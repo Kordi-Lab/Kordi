@@ -62,6 +62,7 @@ export type CloudGroupCanonicalRuntime = {
 };
 
 export type CloudGroupAgentRuntime = {
+  ready?: boolean;
   client: CloudAuthClient;
   turnCoordinator: CloudAgentTurnCoordinator;
   messageIndex(): CloudMessageIndex;

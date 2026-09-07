@@ -127,6 +127,20 @@ test('ordered Cloud route changes win over a lagging canonical mirror atomically
     model: 'openai/gpt-5.6-sol', authProvider: 'openai',
     authChoice: 'local-active-oauth', thinking: 'max',
   });
+  for (let replay = 0; replay < 100; replay += 1) {
+    assert.equal(
+      applySynchronizedCloudAgentRuntimeRoutes(next, 'acct_me', structuredClone(canonicalMessages), structuredClone(cloudMessages)),
+      next,
+      'equivalent recovery snapshots must not schedule another React update',
+    );
+  }
+  const updatedMessages = [...cloudMessages, routeMessage('cloud-new-model', 'acct_me', 13, {
+    model: 'openai/gpt-6-astra', authProvider: 'openai', authChoice: 'local-active-oauth', thinking: 'high',
+  })];
+  const changed = applySynchronizedCloudAgentRuntimeRoutes(next, 'acct_me', canonicalMessages, updatedMessages);
+  assert.notEqual(changed, next);
+  assert.equal(changed[runtimeSessionId].model, 'openai/gpt-6-astra');
+  assert.equal(changed[runtimeSessionId].thinking, 'high');
 });
 
 test('the latest preceding model-change event is authoritative for the next request', () => {

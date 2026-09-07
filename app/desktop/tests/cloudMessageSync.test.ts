@@ -68,7 +68,7 @@ const message: CloudMessage = {
   direction: 'incoming',
 };
 
-test('cloud startup renders the durable chat cache before catch-up and settles after history backfill', () => {
+test('cloud startup loads visibility with the catalog and backfills history independently', () => {
   const source = cloudMessageSyncSource();
 
   assert.match(source, /if \(!account \|\| !contactsSettled \|\| !cloudUnreadContextKey\) return;/);
@@ -78,7 +78,7 @@ test('cloud startup renders the durable chat cache before catch-up and settles a
   );
   assert.match(
     source,
-    /request\.mode === 'bootstrap'[\s\S]*Promise\.all\(\[[\s\S]*hydrateChatLocalState\(generation\)[\s\S]*refreshCloudAgents\(generation\)[\s\S]*syncDiffOnceForGeneration\(generation, request\.mode === 'full'\)[\s\S]*hydrateMissingChatHistory\(generation\)[\s\S]*markUnreadReadiness\('ready'/,
+    /request\.mode === 'bootstrap'[\s\S]*Promise\.all\(\[[\s\S]*hydrateChatLocalState\(generation\)[\s\S]*refreshCloudAgents\(generation\)[\s\S]*syncDiffOnceForGeneration\(generation,[\s\S]*hydrateMissingChatHistory\(generation\)[\s\S]*hydration\.then\(\(\) => markUnreadReadiness\('ready'/,
   );
   assert.doesNotMatch(
     source,

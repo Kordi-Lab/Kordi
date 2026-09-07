@@ -1,69 +1,64 @@
-import { memo, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
+import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGallery';
+import { messageDeliveryVisual,shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
+import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
+import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
+import { relatedAgentSessionsFromTools,type RelatedAgentSessionRunStatus } from '@/features/chat/relatedAgentSessions';
+import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
+import { selfDisplayName } from '@/lib/identityLabels';
+import { cn } from '@/lib/utils';
 import {
   ArrowRightLeft,
-  Bot,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Clock3,
-  Split,
   LoaderCircle,
-  Sparkles,
+  Split,
   SquareArrowOutUpRight,
-  Undo2,
-  User,
+  Undo2
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { messageDeliveryVisual, shouldAnimateHumanMessageEntry } from '@/features/chat/deliveryStatus';
-import { attachmentsAreOnlyMp4Videos } from '@/features/chat/attachmentMediaGallery';
-import { hasMessageSelectionDragExceededThreshold } from '@/features/chat/messageSelection';
-import { humanMessageBubbleShapeClass } from '@/features/chat/messageBubbleShape';
-import { relatedAgentSessionsFromTools, type RelatedAgentSessionRunStatus } from '@/features/chat/relatedAgentSessions';
-import { transcriptMessageDomId } from '@/features/chat/transcriptNavigation';
-import { selfDisplayName } from '@/lib/identityLabels';
-import { cn } from '@/lib/utils';
-import { IdentityAvatar, useLocalAgentAvatarSeed, useLocalProfileAvatarSeed, type IdentityAvatarKind } from './IdentityAvatar';
+import { memo,useMemo,useRef,useState,type PointerEvent as ReactPointerEvent } from 'react';
+import type {
+  Contact,
+  ContactRequest,
+  EditFilePreview,
+  Message,MessageAttachment,
+  MessageSourceReference
+} from '../types';
+import { AgentHeaderMeta,AgentOwnerTag } from './AgentOwnerTag';
+import { IdentityAvatar,useLocalAgentAvatarSeed,useLocalProfileAvatarSeed,type IdentityAvatarKind } from './IdentityAvatar';
 import { ForwardedFromHeader } from './forwardedFromHeader';
 import { HumanMessageMarkdown } from './humanMessageMarkdown';
 import { MarkdownContent } from './markdown';
+import { messageBubblePropsEqual } from './messageBubbleMemo';
+import { MessageContextMenuHost } from './messageContextMenuHost';
 import { MessageInlineContent } from './messageInlineContent';
 import { MessageLinkPreview } from './messageLinkPreview';
 import { firstExternalMessageLink } from './messageLinks';
-import { messageBubblePropsEqual } from './messageBubbleMemo';
 import { MessageReactionChips } from './messageReactions';
-import { MessageContextMenuHost } from './messageContextMenuHost';
 import { RelatedAgentSessionLinks } from './relatedAgentSessionLinks';
+import { SupportContactAnswer,SupportContactTypingIndicator } from './transcriptAssistantAnswer';
 import { AttachmentPreview } from './transcriptAttachments';
-import { SupportContactAnswer, SupportContactTypingIndicator } from './transcriptAssistantAnswer';
-import { RequestReplyLine, SourceMessageQuote, ThreadReplyLine } from './transcriptReplyAttribution';
-import { LiveChatTurnCard, LiveChatTurnMessage, type StopActiveTurnHandler, type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import { TranscriptCallActivityContent } from './transcriptCallActivityContent';
 import { StandaloneEmojiMessage } from './transcriptEmojiMessage';
 import { standaloneEmojiItemForMessage } from './transcriptEmojiMessageEligibility';
-import { VoiceMessageContent } from './voiceMessage';
-import { transcriptMessageIsOwnHuman, transcriptMessageIsPeerHuman } from './transcriptMessageHumanRole';
-import { MessageDeliveryStatusSlot, TranscriptMessageTransferActions } from './transcriptMessageTransferActions';
-import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
-import { ContactRequestTime, MessageEditedLabel, MessageHoverTime } from './transcriptMessageTime';
+import { LiveChatTurnCard,LiveChatTurnMessage,type StopActiveTurnHandler,type StopCollaborationAgentRequestHandler } from './transcriptLiveTurns';
 import type { MessageForkSummary } from './transcriptMessageForks';
+import { transcriptMessageIsOwnHuman,transcriptMessageIsPeerHuman } from './transcriptMessageHumanRole';
 import { TranscriptMessageSurface } from './transcriptMessageSurface';
-import { AgentHeaderMeta, AgentOwnerTag } from './AgentOwnerTag';
-export { LiveChatTurnCard, LiveChatTurnMessage };
+import { ContactRequestTime,MessageEditedLabel,MessageHoverTime } from './transcriptMessageTime';
+import { MessageDeliveryStatusSlot,TranscriptMessageTransferActions } from './transcriptMessageTransferActions';
+import { RequestReplyLine,SourceMessageQuote,ThreadReplyLine } from './transcriptReplyAttribution';
+import { TranscriptSystemNoticeContent } from './transcriptSystemNoticeContent';
+import { VoiceMessageContent } from './voiceMessage';
 export { MessageContextMenuContent } from './messageContextMenuContent';
 export type { MessageContextMenuActionHandlers } from './messageContextMenuContent';
 export { messageContextMenuPosition } from './messageContextMenuPosition';
 export { openInlineChangedFile } from './transcriptChangedFiles';
-import type {
-  Contact,
-  ContactRequest,
-  ConversationType,
-  EditFilePreview,
-  Message, MessageAttachment,
-  MessageSourceReference,
-} from '../types';
+export { LiveChatTurnCard,LiveChatTurnMessage };
 const COMPACTION_DETAIL_PREFIX = 'Conversation compressed';
 function isCompactionSummaryMessage(msg: Message) {
   return msg.role === 'system' && msg.detail?.startsWith(COMPACTION_DETAIL_PREFIX);
@@ -86,42 +81,6 @@ function cleanCompactionSummary(text: string) {
 function compactionTokenLabel(detail?: string) {
   const match = detail?.match(/Conversation compressed\s*•\s*([^•]+?)\s+tokens before/i);
   return match?.[1]?.trim() ? `${match[1].trim()} tokens before` : null;
-}
-export function TypeBadge({ type, compact = false }: { type: ConversationType; compact?: boolean }) {
-  const sizeClassName = compact
-    ? 'gap-1 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[10px] leading-none [&_svg]:h-2.5 [&_svg]:w-2.5'
-    : 'gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] leading-none';
-
-  if (type === 'person') {
-    return (
-      <Badge variant="secondary" className={cn('app-badge-neutral', sizeClassName)}>
-        <User className="h-3 w-3" />
-        Human
-      </Badge>
-    );
-  }
-  if (type === 'owned-agent') {
-    return (
-      <Badge className={cn('app-badge-owned', sizeClassName)}>
-        <Sparkles className="h-3 w-3" />
-        My agent
-      </Badge>
-    );
-  }
-  return (
-    <Badge variant="outline" className={cn('app-badge-neutral', sizeClassName)}>
-      <Bot className="h-3 w-3" />
-      External agent
-    </Badge>
-  );
-}
-
-export function StatusPill({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={cn('app-control-chip inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-1 text-[11px] font-medium leading-none [&_svg]:h-2.5 [&_svg]:w-2.5 [&_svg]:opacity-80', className)}>
-      {children}
-    </div>
-  );
 }
 function primaryMessageStatus(msg: Message) {
   return msg.statusChips?.[0]?.trim().toLowerCase() ?? null;
@@ -185,6 +144,8 @@ function ContactRequestFailureNotice({
     </div>
   );
 }
+
+export { StatusPill,TypeBadge } from "./transcriptBadges";
 
 function MessageFooter({
   message, status,
@@ -329,7 +290,7 @@ function MessageBubbleView({
   onForkMessage?: (entryId: string) => void;
   messageForks?: MessageForkSummary[];
   imageGallery?: readonly MessageAttachment[];
-  onOpenForkSession?: (sessionId: string) => void;
+  onOpenForkSession?: (sessionId: string, isSubsession?: boolean) => void;
   relatedAgentSessionStatusById?: ReadonlyMap<string, RelatedAgentSessionRunStatus>;
   onReplyMessage?: (message: Message, destination: 'conversation' | 'thread') => void;
   onOpenMessageThread?: (message: Message) => void;
@@ -738,6 +699,16 @@ function MessageBubbleView({
           </div>
           <MessageHoverTime msg={msg} side="peer" />
         </div>
+        {msg.threadSummary?.replyCount ? (
+          <div className="flex min-h-7 items-center">
+            <ThreadReplyLine
+              count={msg.threadSummary.replyCount}
+              unread={msg.threadSummary.unread}
+              own={false}
+              onOpen={onOpenMessageThread ? () => onOpenMessageThread(msg) : undefined}
+            />
+          </div>
+        ) : null}
       </MessageContextMenuHost>
     );
   }
@@ -991,6 +962,7 @@ function MessageBubbleView({
         )}>
           <ThreadReplyLine
             count={msg.threadSummary.replyCount}
+            unread={msg.threadSummary.unread}
             own={isOwnHumanMessage}
             onOpen={onOpenMessageThread ? () => onOpenMessageThread(msg) : undefined}
           />

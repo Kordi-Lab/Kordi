@@ -312,7 +312,7 @@ function selectionIn(root: HTMLElement): EmojiTextSelection {
 
 function restoreSelection(root: HTMLElement, selection: EmojiTextSelection) {
   const browserSelection = window.getSelection();
-  if (!browserSelection) return;
+  if (!browserSelection || document.activeElement !== root) return;
   const range = document.createRange();
   const start = domPoint(root, selection.start);
   const end = domPoint(root, selection.end);

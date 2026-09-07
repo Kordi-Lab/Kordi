@@ -63,6 +63,9 @@ export class ChatSyncClient {
     return this.conversations.markMessagesRead(token, peerAccountId);
   }
 
+  threadReads(token: string, sessionId: string) { return this.conversations.threadReads(token, sessionId); }
+  markThreadRead(token: string, sessionId: string, rootId: string, sequence: number) { return this.conversations.markThreadRead(token, sessionId, rootId, sequence); }
+
   markSessionMessagesRead(token: string, sessionId: string): Promise<void> {
     return this.conversations.markSessionMessagesRead(token, sessionId);
   }

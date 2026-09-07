@@ -228,6 +228,7 @@ pub fn prepare_compaction(
     path_entries: &[EntryRow],
     settings: &CompactionSettings,
 ) -> Option<CompactionPreparation> {
+    let path_entries = crate::context::disclosed_path(path_entries);
     if path_entries.is_empty() {
         return None;
     }

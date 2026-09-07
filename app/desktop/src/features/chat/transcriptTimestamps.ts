@@ -18,9 +18,12 @@ function usableTimestamp(value?: number | null): value is number {
 }
 
 function canAnchorTranscriptTime(message: Message) {
-  return message.role !== 'system'
-    && message.role !== 'action'
+  return message.role !== 'action'
     && message.role !== 'edit';
+}
+
+function isTranscriptEvent(message: Message) {
+  return message.role === 'system' || Boolean(message.callActivity);
 }
 
 /**
@@ -45,7 +48,7 @@ export function transcriptTimeSeparatorLabels(
     const isFirstTimestamp = lastShownTimestampMs === null;
     const isLaterCalendarDay = lastShownCalendarDay !== null && calendarDay !== lastShownCalendarDay;
     const reachesGap = lastShownTimestampMs !== null && timestampMs - lastShownTimestampMs >= gapMs;
-    if (!isFirstTimestamp && !isLaterCalendarDay && !reachesGap) return;
+    if (!isTranscriptEvent(message) && !isFirstTimestamp && !isLaterCalendarDay && !reachesGap) return;
 
     labels[index] = formatDesktopTranscriptTimeLabel(timestampMs, options);
     lastShownTimestampMs = timestampMs;

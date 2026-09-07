@@ -34,6 +34,10 @@ fn text_field(params: &Value, key: &str) -> String {
 
 #[async_trait]
 impl Tool for SearchSessionsTool {
+    fn allows_shared_requests(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &str {
         "search_sessions"
     }
@@ -137,6 +141,10 @@ impl Tool for SearchSessionsTool {
 
 #[async_trait]
 impl Tool for ReadSessionTool {
+    fn allows_shared_requests(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &str {
         "read_session"
     }
@@ -163,10 +171,11 @@ impl Tool for ReadSessionTool {
                     "maximum": MAX_READ_SESSION_LIMIT,
                     "description": "Maximum number of messages to return. Defaults to 30."
                 },
+                "offset": { "type": "integer", "minimum": 0, "description": "Character offset for selected message bodies. Continue with nextOffset when a message is truncated." },
                 "mode": {
                     "type": "string",
-                    "enum": ["index", "messages"],
-                    "description": "Use index first to list message ids without message text. Use messages with messageIds to disclose selected message bodies. Defaults to index."
+                    "enum": ["index", "messages", "participants"],
+                    "description": "Use index first to list message ids without message text. Use messages with messageIds to disclose selected message bodies. Use participants only when participant names or mention handles are needed. Defaults to index."
                 },
                 "messageIds": {
                     "type": "array",
@@ -230,6 +239,10 @@ impl Tool for ReadSessionTool {
             ));
         };
         let response = (runtime.read_session)(ReadSessionRequest {
+            offset: params
+                .get("offset")
+                .and_then(Value::as_u64)
+                .map(|offset| offset.min(usize::MAX as u64) as usize),
             session_id,
             around_message_id,
             limit: Some(limit),
@@ -241,7 +254,22 @@ impl Tool for ReadSessionTool {
             "Session `{}` — {} ({})",
             response.session.session_id, response.session.title, response.session.kind
         );
+        for participant in &response.session.participants {
+            text.push_str(&format!(
+                "\n- {} ({}, {})",
+                participant.name, participant.kind, participant.role
+            ));
+        }
+        if let Some(directory) = &response.directory {
+            text.push_str(&format!("\n{directory}"));
+        }
         for message in &response.messages {
+            if let Some(offset) = message.next_offset {
+                text.push_str(&format!(
+                    "\nMessage {} continues at offset={offset}.",
+                    message.message_id
+                ));
+            }
             if let Some(message_text) = message.text.as_deref() {
                 text.push_str(&format!(
                     "\n- `{}` #{} {}: {}",
@@ -397,6 +425,7 @@ mod tests {
                 captured_clone.lock().expect("captured").push(request);
                 Box::pin(async {
                     Ok(crate::ReadSessionResponse {
+                        directory: None,
                         session: crate::SessionObservationReadSession {
                             session_id: "session:launch".to_string(),
                             title: "Launch".to_string(),
@@ -409,6 +438,7 @@ mod tests {
                             has_more_after: false,
                         },
                         messages: vec![crate::SessionObservationMessage {
+                            next_offset: None,
                             message_id: "msg:2".to_string(),
                             sender: "Bob".to_string(),
                             role: "person".to_string(),

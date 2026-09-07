@@ -141,6 +141,9 @@ pub(super) fn convert_messages_for_codex(messages: &[Value]) -> Vec<Value> {
     for (idx, msg) in messages.iter().enumerate() {
         let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("");
         match role {
+            "developer" => out.push(json!({
+                "role": "developer", "content": msg["content"],
+            })),
             "user" => {
                 if let Some(arr) = msg.get("content").and_then(|v| v.as_array()) {
                     let mut content = Vec::new();

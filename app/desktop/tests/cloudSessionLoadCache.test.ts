@@ -3,6 +3,20 @@ import test from 'node:test';
 
 import { __setSessionBackendForTests, clearSession, loadSession, saveSession, type SessionStorageBackend, type StoredSession } from '../src/features/cloud/session';
 
+test('a delayed keychain read cannot restore the signed-out or previous account session', async () => {
+  let finish!: (value: StoredSession) => void;
+  __setSessionBackendForTests({load: () => new Promise(resolve => { finish = resolve; }), save: async () => {}, clear: async () => {}});
+  try {
+    const pending = loadSession();
+    await clearSession();
+    const current = {accountId:'acct_new',deviceId:'device_new',token:'synthetic-new',expiresAt:'2099-01-01'};
+    await saveSession(current);
+    finish({accountId:'acct_old',deviceId:'device_old',token:'synthetic-old',expiresAt:'2099-01-01'});
+    assert.deepEqual(await pending, current);
+    assert.deepEqual(await loadSession(), current);
+  } finally { __setSessionBackendForTests(null); }
+});
+
 function countingBackend(session: StoredSession | null) {
   let current = session;
   let loadCount = 0;

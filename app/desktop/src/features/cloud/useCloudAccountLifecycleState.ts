@@ -22,6 +22,7 @@ import type {
 } from './cloudAgents';
 import {
   loadCloudSessionVisibility,
+  hasCachedCloudSessionVisibility,
   saveCloudSessionVisibility,
   type CloudSessionPinsById,
   type CloudSessionTitlesById,
@@ -181,7 +182,6 @@ export function useCloudAccountLifecycleState({
     useRef<CloudSessionPinsById>(sessionPinsById);
   const sessionTitlesByIdRef =
     useRef<CloudSessionTitlesById>(sessionTitlesById);
-  const groupSessionTitleBackfillsRef = useRef<Set<string>>(new Set());
   const agentDefinitionsByIdRef =
     useRef<Record<string, CloudAgentDefinition>>(agentDefinitionsById);
   const hiddenSessionIdsRef = useRef<Set<string>>(hiddenSessionIds);
@@ -286,6 +286,7 @@ export function useCloudAccountLifecycleState({
     if (
       !account
       || messagesCacheAccountRef.current !== account.accountId
+      || !hasCachedCloudSessionVisibility(account.accountId)
     ) return;
     saveCloudSessionVisibility(account.accountId, {
       hiddenSessionIds,
@@ -372,7 +373,6 @@ export function useCloudAccountLifecycleState({
     sessionForksByIdRef.current = {};
     sessionPinsByIdRef.current = {};
     sessionTitlesByIdRef.current = {};
-    groupSessionTitleBackfillsRef.current.clear();
     agentDefinitionsByIdRef.current = {};
     setSessionActivity(nextSessionActivity);
     setSessionForksById({});
@@ -403,7 +403,6 @@ export function useCloudAccountLifecycleState({
     collaborationStateRef,
     deletedSessionIdsRef,
     groupReplayCoordinator,
-    groupSessionTitleBackfillsRef,
     hiddenSessionIdsRef,
     mutedSessionIdsRef,
     pinnedGroupSpaceIdsRef,
@@ -459,7 +458,6 @@ export function useCloudAccountLifecycleState({
       byId: sessionTitlesById,
       setById: setSessionTitlesById,
       byIdRef: sessionTitlesByIdRef,
-      backfillsRef: groupSessionTitleBackfillsRef,
     },
     agents: {
       definitionsById: agentDefinitionsById,

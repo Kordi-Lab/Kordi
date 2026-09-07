@@ -1,5 +1,31 @@
 use super::*;
 
+async fn insert_group_request(
+    pool: &sqlx_postgres::PgPool,
+    conversation: uuid::Uuid,
+    session_id: &str,
+    owner: &TestAccount,
+    requester: &TestAccount,
+    request_id: &str,
+) {
+    let envelope = json!({"kind":"group-message", "groupId":session_id, "groupSpaceId":session_id,
+        "createdByAccountId":owner.account_id,
+        "actor":{"accountId":requester.account_id,"displayName":"Requester","role":"person"},
+        "participants":[{"accountId":owner.account_id,"displayName":"Owner","role":"admin"},
+            {"accountId":requester.account_id,"displayName":"Requester","role":"person"}],
+        "message":{"id":request_id,"senderAccountId":requester.account_id,"senderKind":"human",
+            "text":"Research shared sources", "createdAtMs":1000,
+            "targetCloudAgentId":format!("cloud-agent:{}",owner.account_id),
+            "targetCloudAgentOwnerAccountId":owner.account_id}});
+    insert_test_message(
+        pool,
+        &requester.account_id,
+        conversation,
+        &encode_test_cloud_group_envelope(envelope),
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn sandbox_group_sessions_reuse_shared_session_sandbox() {
     let Some(pool) = try_pool().await else { return };
@@ -24,6 +50,35 @@ async fn sandbox_group_sessions_reuse_shared_session_sandbox() {
         "session:group:sandbox-shared-{}",
         uuid::Uuid::new_v4().simple()
     );
+    let conversation = create_test_conversation(
+        &pool,
+        &owner.account_id,
+        &session_id,
+        ConversationKind::Group,
+        vec![
+            requester_a.account_id.clone(),
+            requester_b.account_id.clone(),
+        ],
+    )
+    .await;
+    insert_group_request(
+        &pool,
+        conversation,
+        &session_id,
+        &owner,
+        &requester_a,
+        "msg_group_a",
+    )
+    .await;
+    insert_group_request(
+        &pool,
+        conversation,
+        &session_id,
+        &owner,
+        &requester_b,
+        "msg_group_b",
+    )
+    .await;
     let run_a = router
         .clone()
         .oneshot(post_json_with_token(
@@ -141,6 +196,32 @@ async fn sandbox_expired_rows_are_not_reused_and_runner_lease_includes_sandbox_i
         "session:group:sandbox-expiry-{}",
         uuid::Uuid::new_v4().simple()
     );
+    let conversation = create_test_conversation(
+        &pool,
+        &owner.account_id,
+        &session_id,
+        ConversationKind::Group,
+        vec![requester.account_id.clone()],
+    )
+    .await;
+    insert_group_request(
+        &pool,
+        conversation,
+        &session_id,
+        &owner,
+        &requester,
+        "msg_expiry_first",
+    )
+    .await;
+    insert_group_request(
+        &pool,
+        conversation,
+        &session_id,
+        &owner,
+        &requester,
+        "msg_expiry_second",
+    )
+    .await;
     let first = router
         .clone()
         .oneshot(post_json_with_token(

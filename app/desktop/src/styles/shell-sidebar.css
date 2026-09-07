@@ -314,12 +314,6 @@
   gap: 0.35rem;
 }
 
-.app-workspace-sidebar .app-participant-space-session-fork-toggle,
-.app-workspace-sidebar .app-participant-space-session-fork-marker,
-.app-workspace-sidebar .app-participant-space-session-fork-count {
-  color: var(--app-sidebar-time-text);
-}
-
 .app-workspace-sidebar .app-participant-space-session-row:hover,
 .app-workspace-sidebar .app-participant-space-session-row:focus-visible {
   background: color-mix(in oklab, var(--app-sidebar-selected-bg) 72%, transparent);

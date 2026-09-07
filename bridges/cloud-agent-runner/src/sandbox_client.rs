@@ -170,6 +170,7 @@ impl SandboxBackend for LocalSandboxBackend {
         }
         tokio::fs::create_dir_all(&self.root).await?;
         let output = Command::new("/bin/sh")
+            .kill_on_drop(true)
             .arg("-c")
             .arg(command)
             .current_dir(&self.root)

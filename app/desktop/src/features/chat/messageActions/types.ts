@@ -1,6 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import type { ComposerScope, DesktopCollaborationState } from '@/kordi-app/types';
+import type { ComposerMentionOption } from '@/kordi-app/components';
 import type {
   ComposerAuthNavigationContext,
   ComposerConversationContext,
@@ -62,7 +63,7 @@ export type UseChatMessageActionsArgs = Pick<
   | 'setOpenComposerSelector'
 > & Pick<
   ComposerEnvironmentContext,
-  'hasAnyDesktopAuth' | 'isNativeShell'
+  'hasAnyDesktopAuth' | 'hasLocalProviderAuth' | 'isNativeShell'
 > & Pick<
   ComposerMessageRuntimeContext,
   | 'isDesktopChatSending'
@@ -82,7 +83,7 @@ export type UseChatMessageActionsArgs = Pick<
   | 'watchDesktopLiveTurn'
 > & Pick<
   ComposerAuthNavigationContext,
-  'refreshDesktopChat'
+  'refreshDesktopChat' | 'openAgentAuthentication'
 > & {
   attachmentSummaryText: (text: string, attachments?: AttachmentItem[]) => string;
   handleLocalSlashCommand: (
@@ -92,6 +93,7 @@ export type UseChatMessageActionsArgs = Pick<
   pendingCollaborationCancelRequestedRef: MutableRefObject<boolean>;
   collaborationSendInFlightConversationIdsRef: MutableRefObject<Set<string>>;
   localChatSendInFlightRef: MutableRefObject<LocalChatSendInFlight | null>;
+  selectedChatAgentMentionRef: MutableRefObject<ComposerMentionOption | null>;
   userCancelledTurnIdsRef: MutableRefObject<Set<string>>;
   setPendingCollaborationOutreach: Dispatch<
     SetStateAction<PendingCollaborationOutreach | null>

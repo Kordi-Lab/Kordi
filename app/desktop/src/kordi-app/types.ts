@@ -1,50 +1,40 @@
-import type { CollaborationMessageDirection } from '@/features/collaboration/messages';
 import type { DesktopChatSessionSummary } from '@/features/chat/desktopChatSessionSummary';
+import type { CollaborationMessageDirection } from '@/features/collaboration/messages';
+import { type SessionTaskActivity } from "./sessionTaskTypes";
 
 import type {
-  ComposerQuoteState,
   DesktopChatAttachment,
   DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
-  Message, MessageEditState,
+  Message,
   MessageActionMetadata,
-  MessageActionSource,
   MessageAttachment,
   MessageMention,
-  MessageSourceReference,
   QueuedDesktopChatMessage,
   SessionArtifact,
-  SessionStatusIndicator,
+  SessionStatusIndicator
 } from './types/message';
-export type { Contact, ContactClass } from './types/contact';
+export type { Contact,ContactClass } from './types/contact';
 
 export type {
-  CollaborationAgentRequestControl,
-  ComposerQuoteState,
-  DesktopChatAttachment,
-  DesktopArtifactDirectory,
+  ChangedFileRow,CollaborationAgentRequestControl,
+  ComposerQuoteState,DesktopArtifactDirectory,
   DesktopArtifactDirectoryEntry,
-  DesktopArtifactPreview,
-  ChangedFileRow,
-  DesktopChatToolSnapshot,
+  DesktopArtifactPreview,DesktopChatAttachment,DesktopChatToolSnapshot,
   DesktopChatTurnSnapshot,
   EditDiffLine,
   EditFilePreview,
-  Message, MessageEditState,
-  MessageActionMetadata,
+  Message,MessageActionMetadata,
   MessageActionSource,
-  MessageAttachment,
-  MessageMention,
+  MessageAttachment,MessageEditState,MessageMention,
   MessageReadReceiptParticipant,
-  MessageReadReceiptSummary,
-  MessageReplySummary,
-  MessageReplyDestination,
-  MessageSourceReference,
+  MessageReadReceiptSummary,MessageReplyDestination,MessageReplySummary,MessageSourceReference,
   QueuedDesktopChatMessage,
   SessionArtifact,
   SessionStatusIndicator,
-  SourcePreviewLine,
+  SourcePreviewLine
 } from './types/message';
+export type { DesktopChatSessionSummary };
 
 export type NavId = 'chats' | 'contacts' | 'projects' | 'agents' | 'settings' | 'digest';
 export type ChatChannel = 'contact' | 'agent';
@@ -105,39 +95,10 @@ export type ConversationCollaborationTarget = {
   agentId?: string | null;
 };
 
-export type SessionTaskParticipant = Pick<ConversationParticipant,
-  | 'id'
-  | 'name'
-  | 'kind'
-  | 'role'
-  | 'source'
-  | 'ownerIdentityId'
-  | 'ownerName'
-  | 'sourceHostId'
-  | 'sourceIdentityId'
-  | 'humanId'
-  | 'agentId'
-  | 'avatarKey'
-  | 'profileImageUrl'
->;
-
-export type SessionTaskActivity = {
-  id: string;
-  sessionId: string;
-  status: string;
-  initiator: SessionTaskParticipant | null;
-  target: SessionTaskParticipant | null;
-  participants: SessionTaskParticipant[];
-  createdAtMs: number;
-  updatedAtMs: number;
-  sourceConversationId?: string | null;
-  sourceRequestId?: string | null;
-  contextPolicy: string;
-  error?: string | null;
-};
-
 export type Conversation = {
   id: string;
+  /** A shared execution resource rendered in the existing chat pane, not a channel. */
+  agentSubsessionId?: string;
   /** This server-owned conversation can submit a reviewed Kordi Support report. */
   supportTicketEnabled?: boolean;
   /** UI-only session draft. It must not be written to canonical storage before the first send. */
@@ -791,7 +752,6 @@ export type DesktopChatMessage = {
    * that map 1:1 to a SessionEntry (e.g., user messages). */
   entryId?: string | null;
 };
-export type { DesktopChatSessionSummary };
 
 export type DesktopChatProjectGroup = {
   id: string;
@@ -900,6 +860,7 @@ export type DesktopCollaborationHost = {
 };
 
 export type DesktopCollaborationConversationMessage = {
+  conversationSequence?: number | null;
   id: string;
   clientMessageId?: string | null;
   direction: CollaborationMessageDirection;
@@ -1149,3 +1110,5 @@ export type DesktopChatState = {
   modelOptions: DesktopChatModelOption[];
   slashCommands: DesktopChatSlashCommand[];
 };
+
+export { type SessionTaskActivity,type SessionTaskParticipant } from "./sessionTaskTypes";

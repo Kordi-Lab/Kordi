@@ -1,7 +1,5 @@
-use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 use async_trait::async_trait;
 use kordi_cloud_agent_runner::client::{
@@ -19,10 +17,21 @@ use serde_json::{json, Value};
 #[derive(Default)]
 struct RecordingClient {
     exports: Arc<Mutex<Vec<ArtifactExportInput>>>,
+    spawns: Mutex<Vec<Value>>,
 }
 
 #[async_trait]
 impl CloudAgentRunClient for RecordingClient {
+    async fn task_operator(
+        &self,
+        _run_id: &str,
+        call_id: &str,
+        arguments: Value,
+    ) -> Result<Value, RunnerClientError> {
+        assert_eq!(call_id, "spawn-real");
+        self.spawns.lock().unwrap().push(arguments);
+        Ok(json!({"sessionId":"actual-child","title":"Research","status":"running"}))
+    }
     async fn lease_next_run(&self) -> Result<Option<CloudAgentRun>, RunnerClientError> {
         Ok(None)
     }
@@ -53,6 +62,18 @@ impl CloudAgentRunClient for RecordingClient {
         _run_id: &str,
     ) -> Result<ProviderAuthMaterial, RunnerClientError> {
         Ok(provider_auth())
+    }
+
+    async fn read_context(
+        &self,
+        run_id: &str,
+        tool: &str,
+        arguments: Value,
+    ) -> Result<Value, RunnerClientError> {
+        assert_eq!(run_id, run().run_id);
+        assert_eq!(tool, "read_session");
+        assert_eq!(arguments["mode"], "participants");
+        Ok(json!({"directory": "Retrieved Group Participant"}))
     }
 
     async fn export_artifact(
@@ -122,6 +143,10 @@ fn provider_auth() -> ProviderAuthMaterial {
 
 fn run() -> CloudAgentRun {
     CloudAgentRun {
+        turn_identity: None,
+        history_messages: Vec::new(),
+        subsession_id: None,
+        subsession_write_scope: Vec::new(),
         run_id: "run_test".to_string(),
         status: "running".to_string(),
         prompt: "Write a tiny status file".to_string(),
@@ -146,26 +171,6 @@ fn sandbox() -> Arc<LocalSandboxBackend> {
 
 fn sandbox_handle() -> SandboxBackendHandle {
     sandbox()
-}
-
-fn spawn_single_response_server(body: &'static str) -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
-    let addr = listener.local_addr().expect("local addr");
-    thread::spawn(move || {
-        let (mut stream, _) = listener.accept().expect("accept request");
-        let mut request_buf = [0_u8; 2048];
-        let _ = stream.read(&mut request_buf);
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        stream
-            .write_all(response.as_bytes())
-            .expect("write response");
-        stream.flush().expect("flush response");
-    });
-    format!("http://localtest.me:{}/news", addr.port())
 }
 
 #[test]
@@ -203,6 +208,9 @@ fn cloud_tool_catalog_uses_local_web_tool_definitions() {
         local_fetch.parameters_schema
     );
 }
+
+#[path = "cloud_model_loop/context_tests.rs"]
+mod context_tests;
 
 #[tokio::test]
 async fn model_loop_completes_text_response() {
@@ -364,12 +372,13 @@ async fn model_loop_allows_short_research_tasks_to_make_several_tool_calls_then_
 }
 
 #[tokio::test]
-async fn model_loop_executes_local_web_fetch_tool_in_cloud_sandbox() {
-    std::env::set_var("NO_PROXY", "localtest.me,127.0.0.1,localhost");
-    std::env::set_var("no_proxy", "localtest.me,127.0.0.1,localhost");
+async fn model_loop_denies_private_web_fetch_before_connecting() {
     let client = RecordingClient::default();
-    let url = spawn_single_response_server(
-        "<html><head><title>OpenAI Test News</title></head><body><main><h1>OpenAI ships a test update</h1><p>Source text from controlled server.</p></main></body></html>",
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = format!(
+        "http://localtest.me:{}/news",
+        listener.local_addr().unwrap().port()
     );
     let provider = FakeProvider::new(vec![
         ModelProviderResponse::ToolCalls(vec![ModelToolCall {
@@ -377,7 +386,7 @@ async fn model_loop_executes_local_web_fetch_tool_in_cloud_sandbox() {
             name: "web_fetch".to_string(),
             arguments: json!({"url": url, "max_chars": 4000}),
         }]),
-        ModelProviderResponse::FinalText("Fetched controlled OpenAI test news".to_string()),
+        ModelProviderResponse::FinalText("Cannot fetch private-network sources".to_string()),
     ]);
 
     let text = run_model_loop(
@@ -390,7 +399,11 @@ async fn model_loop_executes_local_web_fetch_tool_in_cloud_sandbox() {
     .await
     .unwrap();
 
-    assert_eq!(text, "Fetched controlled OpenAI test news");
+    assert_eq!(text, "Cannot fetch private-network sources");
+    assert_eq!(
+        listener.accept().unwrap_err().kind(),
+        std::io::ErrorKind::WouldBlock
+    );
     let calls = provider.seen_messages.lock().unwrap();
     let final_context = calls.last().unwrap();
     let tool_message = final_context
@@ -398,15 +411,7 @@ async fn model_loop_executes_local_web_fetch_tool_in_cloud_sandbox() {
         .find(|message| message["role"] == "tool" && message["name"] == "web_fetch")
         .expect("web_fetch tool output should be fed back to model");
     let content = tool_message["content"].as_str().unwrap();
-    assert!(content.contains("Web Fetch"), "content was: {content}");
-    assert!(
-        content.contains("OpenAI ships a test update"),
-        "content was: {content}"
-    );
-    assert!(
-        content.contains("Source text from controlled server"),
-        "content was: {content}"
-    );
+    assert!(content.contains("not authorized"), "content was: {content}");
 }
 
 #[test]

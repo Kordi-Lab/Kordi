@@ -693,7 +693,6 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
         execution_mode: kordi_tools::ToolExecutionMode::Interactive,
         request_approval: None,
     };
-
     let model_ref = ModelRef {
         provider: provider_name.clone(),
         id: model_id.clone(),
@@ -770,16 +769,17 @@ pub(crate) async fn prepare_session_runtime_for_cwd(
 
     Ok((runtime_host, options, setup))
 }
-
 fn resolve_startup_session_id(
     conn: &rusqlite::Connection,
     cwd: &std::path::Path,
     entry: &SessionBootstrapOptions,
 ) -> Result<(String, bool)> {
     let cwd_str = cwd.to_str().unwrap_or(".");
-
     if let Some(session_arg) = &entry.session {
         let all = store::list_all_sessions(conn)?;
+        if all.iter().any(|session| session.session_id == *session_arg) {
+            return Ok((session_arg.clone(), true));
+        }
         let matches: Vec<_> = all
             .iter()
             .filter(|s| s.session_id.starts_with(session_arg.as_str()))

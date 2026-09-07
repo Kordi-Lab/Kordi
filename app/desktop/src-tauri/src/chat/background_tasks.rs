@@ -1,5 +1,5 @@
 mod managed_child;
-mod shared_router;
+pub mod snapshots;
 
 use kordi_cli::desktop_runtime::{DesktopChatContextMessage, DesktopVisibleTaskRecord};
 use tauri::State;
@@ -9,7 +9,6 @@ use super::{
 };
 
 pub(super) use managed_child::ManagedChildAgentRunner;
-pub(super) use shared_router::{classify_shared_task, existing_or_spawn_background_session};
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments, reason = "stable top-level Tauri IPC keys")]
@@ -23,6 +22,7 @@ pub async fn desktop_chat_start_shared_message(
     context_messages: Option<Vec<DesktopChatContextMessage>>,
     visible_task_records: Option<Vec<DesktopVisibleTaskRecord>>,
     scheduled_task_session_id: Option<String>,
+    execution_lease_deadline_ms: Option<i64>,
 ) -> Result<DesktopChatTurnSnapshot, String> {
     message_execution::start_shared_message(
         manager.inner(),
@@ -36,6 +36,9 @@ pub async fn desktop_chat_start_shared_message(
             visible_task_records,
             scheduled_task_session_id,
             sync_session_at_start: false,
+            shared_context: false,
+            request_message_id: None,
+            execution_lease_deadline_ms,
         },
     )
     .await

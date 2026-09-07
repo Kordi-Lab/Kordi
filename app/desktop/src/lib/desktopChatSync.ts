@@ -2,6 +2,7 @@ import type { ChatSyncConversation, ChatSyncEvent, ChatSyncMessage } from '@/fea
 import { invokeDesktop, isNativeDesktopShell } from './desktop';
 
 export type ChatSyncLocalState = {
+  visibility?: import('@/features/cloud/cloudSessionListClient').CloudSessionVisibility | null;
   accountId: string;
   cursor: string | null;
   lastStreamSeq: number;
@@ -111,6 +112,10 @@ export function chatSyncHistoryIsComplete(
   return conversations.every((conversation) => {
     const target = conversation.latest_message_sequence;
     if (target <= 0) return true;
+    const viewer = conversation.members.find(
+      (member) => member.account_id === conversation.preferences.account_id,
+    );
+    if ((viewer?.last_delivered_sequence ?? 0) >= target) return true;
     const row = byConversationId.get(conversation.id);
     return row?.earliestSequence === 1
       && row.latestSequence === target

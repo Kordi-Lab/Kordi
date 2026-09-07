@@ -128,7 +128,7 @@ struct ConversationRow: View {
                         }
                         .font(.subheadline)
 
-                        if activity != .ready {
+                        if activity == .replying {
                             AgentActivityLabel(activity: activity)
                         }
                     }
@@ -172,28 +172,17 @@ struct ConversationRow: View {
     }
 
     private func contactAgentStatus(ownerName: String, activity: AgentActivity) -> Text {
-        Text("\(shortOwnerName(ownerName))’s agent")
+        let owner = Text("\(shortOwnerName(ownerName))’s agent")
             .foregroundStyle(.secondary)
-        + Text(" · ")
+        guard let label = activity.listLabel else { return owner }
+        return owner + Text(" · ")
             .foregroundStyle(.secondary)
-        + Text(activity.label)
-            .foregroundStyle(activity == .failed ? Color.red : KordiTheme.agentViolet)
+        + Text(label)
+            .foregroundStyle(KordiTheme.agentViolet)
     }
 
     private var relativeTimestamp: String {
-        let elapsed = max(0, Date().timeIntervalSince(conversation.lastActivityAt))
-        switch elapsed {
-        case ..<60:
-            return "Now"
-        case ..<3_600:
-            return "\(Int(elapsed / 60))m"
-        case ..<86_400:
-            return "\(Int(elapsed / 3_600))h"
-        case ..<604_800:
-            return "\(Int(elapsed / 86_400))d"
-        default:
-            return conversation.lastActivityAt.formatted(.dateTime.month(.abbreviated).day())
-        }
+        chatListTimestamp(conversation.lastActivityAt)
     }
 
     private func shortOwnerName(_ name: String) -> String {
@@ -295,22 +284,24 @@ private struct AgentActivityLabel: View {
     let activity: AgentActivity
 
     var body: some View {
-        HStack(spacing: 6) {
-            if activity == .replying {
-                Circle()
-                    .fill(KordiTheme.agentViolet)
-                    .frame(width: 7, height: 7)
-                    .accessibilityHidden(true)
-            } else {
-                Circle()
-                    .fill(activity == .failed ? Color.red : Color.green)
-                    .frame(width: 7, height: 7)
-                Text(activity.label)
-                    .font(.subheadline)
-                    .foregroundStyle(activity == .failed ? Color.red : KordiTheme.agentViolet)
+        if let label = activity.listLabel {
+            HStack(spacing: 6) {
+                if activity == .replying {
+                    Circle()
+                        .fill(KordiTheme.agentViolet)
+                        .frame(width: 7, height: 7)
+                        .accessibilityHidden(true)
+                } else {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 7, height: 7)
+                    Text(label)
+                        .font(.subheadline)
+                        .foregroundStyle(KordiTheme.agentViolet)
+                }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(activity.label)
     }
 }

@@ -28,8 +28,8 @@ async fn only_frontend_visible_messages_restore_deleted_sessions() {
         .id
     }
 
-    let first_session = format!("session:direct-person:{}", Uuid::now_v7());
-    let second_session = format!("session:direct-person:{}", Uuid::now_v7());
+    let first_session = format!("session:direct-agent:{peer}:{}", Uuid::now_v7());
+    let second_session = format!("session:direct-agent:{peer}:{}", Uuid::now_v7());
     let first = create(&pool, &owner, &peer, first_session.clone()).await;
     let _second = create(&pool, &owner, &peer, second_session.clone()).await;
     let now = chrono::Utc::now().to_rfc3339();
@@ -50,6 +50,33 @@ async fn only_frontend_visible_messages_restore_deleted_sessions() {
         .await
         .expect("delete session for account");
     }
+
+    let owner_snapshot = store::bootstrap(&pool, &owner)
+        .await
+        .expect("bootstrap owner visibility");
+    let peer_snapshot = store::bootstrap(&pool, &peer)
+        .await
+        .expect("bootstrap peer visibility");
+    assert_eq!(
+        owner_snapshot.session_visibility.deleted_session_ids,
+        vec![first_session.clone()]
+    );
+    assert_eq!(
+        peer_snapshot.session_visibility.deleted_session_ids.len(),
+        2
+    );
+    assert!(peer_snapshot
+        .session_visibility
+        .deleted_session_ids
+        .contains(&first_session));
+    assert!(peer_snapshot
+        .session_visibility
+        .deleted_session_ids
+        .contains(&second_session));
+    assert!(owner_snapshot
+        .session_visibility
+        .hidden_session_ids
+        .is_empty());
 
     let hidden = store::send_message(
         &pool,

@@ -89,6 +89,10 @@ pub struct WebSearchTool;
 
 #[async_trait]
 impl Tool for WebSearchTool {
+    fn allows_shared_requests(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> &str {
         "web_search"
     }
@@ -163,8 +167,13 @@ impl Tool for WebSearchTool {
             false
         };
 
-        let (output, fetched_query, hit_count) =
-            run_duckduckgo_search(&input, cancel, started).await?;
+        let (output, fetched_query, hit_count) = run_duckduckgo_search(
+            &input,
+            cancel,
+            started,
+            ctx.execution_policy == crate::ExecutionPolicy::Shared,
+        )
+        .await?;
         let text = format_output(&output);
         write_cached_search(
             cache_key,

@@ -181,6 +181,34 @@ final class CloudAPIClientAccountActivationTests: XCTestCase {
         XCTAssertEqual(response.events.map(\.eventType), ["provider-auth.updated"])
     }
 
+    func testProviderAuthenticationMutationsRequireExplicitIntent() async throws {
+        ProviderAuthenticationMutationURLProtocol.requests = []
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ProviderAuthenticationMutationURLProtocol.self]
+        let client = CloudAPIClient(
+            baseURL: URL(string: "http://127.0.0.1:17081")!,
+            session: URLSession(configuration: configuration)
+        )
+
+        let snapshot = try await client.publishProviderAuthSnapshot(
+            token: "oauth-session",
+            provider: "openai",
+            authChoice: "ios-api-key",
+            payload: ["apiKey": "test-key"]
+        )
+        _ = try await client.revokeProviderAuthSnapshot(
+            token: "oauth-session",
+            snapshotId: snapshot.snapshotId
+        )
+
+        XCTAssertEqual(ProviderAuthenticationMutationURLProtocol.requests.count, 2)
+        for request in ProviderAuthenticationMutationURLProtocol.requests {
+            let intent = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "intent" })?.value
+            XCTAssertEqual(intent, "explicit")
+        }
+    }
+
     func testSessionPinEventsReachTheAppModelProjection() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [SessionPinSyncURLProtocol.self]
@@ -465,7 +493,7 @@ private final class ChatBootstrapURLProtocol: URLProtocol {
 
     override func startLoading() {
         let payload = Data(
-            #"{"protocol_version":2,"conversations":[],"latest_messages":[],"session_pins":[{"sessionId":"session:group","sharedMessageId":"message-shared","privateMessageId":null,"effectiveMessageId":"message-shared","updatedAt":"2026-08-15T00:00:00Z"}],"next_cursor":"0","last_stream_seq":0,"server_time":"2026-08-15T00:00:00Z"}"#.utf8
+            #"{"protocol_version":2,"session_visibility":{"hiddenSessionIds":[],"deletedSessionIds":[],"pinnedSessionIds":[],"mutedSessionIds":[],"unreadSessionIds":[],"pinnedGroupSpaceIds":[]},"conversations":[],"latest_messages":[],"session_pins":[{"sessionId":"session:group","sharedMessageId":"message-shared","privateMessageId":null,"effectiveMessageId":"message-shared","updatedAt":"2026-08-15T00:00:00Z"}],"next_cursor":"0","last_stream_seq":0,"server_time":"2026-08-15T00:00:00Z"}"#.utf8
         )
         let response = HTTPURLResponse(
             url: request.url!,
@@ -486,7 +514,7 @@ private final class GroupReadBootstrapURLProtocol: URLProtocol {
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        let payload = Data(#"{"protocol_version":2,"conversations":[{"id":"conversation-group-reader","kind":"group","shared_title":"Readers","version":1,"created_by_account_id":"acct_me","legacy_session_id":"session:group:reader","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":8,"created_at":"2026-08-23T10:00:00Z","updated_at":"2026-08-23T10:01:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":8,"joined_at":"2026-08-23T10:00:00Z","left_at":null},{"account_id":"acct_first_peer","display_name":"First Peer","avatar_url":null,"role":"member","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":0,"joined_at":"2026-08-23T10:00:00Z","left_at":null},{"account_id":"acct_actual_reader","display_name":"Actual Reader","avatar_url":null,"role":"member","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":8,"joined_at":"2026-08-23T10:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-group-reader","account_id":"acct_me","personal_title":null,"version":1}}],"latest_messages":[{"id":"message-8","client_message_id":"client-8","conversation_id":"conversation-group-reader","conversation_sequence":8,"sender_account_id":"acct_me","kind":"text","content":{"schema":1,"blocks":[{"type":"text","text":"Hello"}],"legacy_attachments":[]},"reply_to_message_id":null,"attachment_ids":[],"version":1,"generation_status":null,"provider_response_id":null,"created_at":"2026-08-23T10:01:00Z","edited_at":null,"deleted_at":null}],"next_cursor":"8","last_stream_seq":8,"server_time":"2026-08-23T10:02:00Z"}"#.utf8)
+        let payload = Data(#"{"protocol_version":2,"session_visibility":{"hiddenSessionIds":[],"deletedSessionIds":[],"pinnedSessionIds":[],"mutedSessionIds":[],"unreadSessionIds":[],"pinnedGroupSpaceIds":[]},"conversations":[{"id":"conversation-group-reader","kind":"group","shared_title":"Readers","version":1,"created_by_account_id":"acct_me","legacy_session_id":"session:group:reader","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":8,"created_at":"2026-08-23T10:00:00Z","updated_at":"2026-08-23T10:01:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":8,"joined_at":"2026-08-23T10:00:00Z","left_at":null},{"account_id":"acct_first_peer","display_name":"First Peer","avatar_url":null,"role":"member","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":0,"joined_at":"2026-08-23T10:00:00Z","left_at":null},{"account_id":"acct_actual_reader","display_name":"Actual Reader","avatar_url":null,"role":"member","membership_state":"active","version":1,"last_delivered_sequence":8,"last_read_sequence":8,"joined_at":"2026-08-23T10:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-group-reader","account_id":"acct_me","personal_title":null,"version":1}}],"latest_messages":[{"id":"message-8","client_message_id":"client-8","conversation_id":"conversation-group-reader","conversation_sequence":8,"sender_account_id":"acct_me","kind":"text","content":{"schema":1,"blocks":[{"type":"text","text":"Hello"}],"legacy_attachments":[]},"reply_to_message_id":null,"attachment_ids":[],"version":1,"generation_status":null,"provider_response_id":null,"created_at":"2026-08-23T10:01:00Z","edited_at":null,"deleted_at":null}],"next_cursor":"8","last_stream_seq":8,"server_time":"2026-08-23T10:02:00Z"}"#.utf8)
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,
@@ -512,7 +540,7 @@ private final class HistoryPageURLProtocol: URLProtocol {
         if isHistory { Self.historyRequest = request }
         let payload = isHistory
             ? Data(#"{"messages":[{"id":"message-41","client_message_id":"client-41","conversation_id":"conversation-history","conversation_sequence":41,"sender_account_id":"acct_me","kind":"message","content":{"schema":1,"blocks":[{"type":"text","text":"Saved history"}],"legacy_attachments":[]},"reply_to_message_id":null,"attachment_ids":[],"version":1,"generation_status":null,"provider_response_id":null,"created_at":"2026-08-21T00:00:00Z","edited_at":null,"deleted_at":null}],"next_before_sequence":41,"has_more":true}"#.utf8)
-            : Data(#"{"protocol_version":2,"conversations":[{"id":"conversation-history","kind":"ai","shared_title":"History","version":1,"created_by_account_id":"acct_me","legacy_session_id":"session:agent:history","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":41,"created_at":"2026-08-21T00:00:00Z","updated_at":"2026-08-21T00:00:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":41,"last_read_sequence":41,"joined_at":"2026-08-21T00:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-history","account_id":"acct_me","personal_title":null,"version":1}}],"latest_messages":[],"next_cursor":"0","last_stream_seq":0,"server_time":"2026-08-21T00:00:00Z"}"#.utf8)
+            : Data(#"{"protocol_version":2,"session_visibility":{"hiddenSessionIds":[],"deletedSessionIds":[],"pinnedSessionIds":[],"mutedSessionIds":[],"unreadSessionIds":[],"pinnedGroupSpaceIds":[]},"conversations":[{"id":"conversation-history","kind":"ai","shared_title":"History","version":1,"created_by_account_id":"acct_me","legacy_session_id":"session:agent:history","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":41,"created_at":"2026-08-21T00:00:00Z","updated_at":"2026-08-21T00:00:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":41,"last_read_sequence":41,"joined_at":"2026-08-21T00:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-history","account_id":"acct_me","personal_title":null,"version":1}}],"latest_messages":[],"next_cursor":"0","last_stream_seq":0,"server_time":"2026-08-21T00:00:00Z"}"#.utf8)
         let response = HTTPURLResponse(
             url: request.url!,
             statusCode: 200,
@@ -573,6 +601,32 @@ private final class ProviderAuthenticationSyncURLProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
+private final class ProviderAuthenticationMutationURLProtocol: URLProtocol {
+    static var requests: [URLRequest] = []
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        Self.requests.append(request)
+        let json = request.httpMethod == "DELETE"
+            ? #"{"snapshotId":"snap_explicit","provider":"openai","authChoice":"ios-api-key","createdAt":"2026-08-17T12:00:00Z","revokedAt":"2026-08-17T12:01:00Z"}"#
+            : #"{"snapshotId":"snap_explicit","provider":"openai","authChoice":"ios-api-key","createdAt":"2026-08-17T12:00:00Z","revokedAt":null}"#
+        let payload = Data(json.utf8)
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: request.httpMethod == "DELETE" ? 200 : 201,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: payload)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
 private final class SessionPinSyncURLProtocol: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
 
@@ -607,7 +661,7 @@ private final class LegacySupportDeletionURLProtocol: URLProtocol {
         if request.url?.path.hasSuffix("/sync/bootstrap") == true {
             payload = Data(
                 """
-                {"protocol_version":2,"conversations":[{"id":"conversation-support","kind":"ai","shared_title":null,"version":1,"created_by_account_id":"acct_me","legacy_session_id":"\(Self.sessionId)","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":0,"created_at":"2026-08-27T00:00:00Z","updated_at":"2026-08-27T00:00:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":0,"last_read_sequence":0,"joined_at":"2026-08-27T00:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-support","account_id":"acct_me","personal_title":null,"version":1}}],"latest_messages":[],"next_cursor":"1","last_stream_seq":1,"server_time":"2026-08-27T00:00:00Z"}
+                {"protocol_version":2,"session_visibility":{"hiddenSessionIds":[],"deletedSessionIds":[],"pinnedSessionIds":[],"mutedSessionIds":[],"unreadSessionIds":[],"pinnedGroupSpaceIds":[]},"conversations":[{"id":"conversation-support","kind":"ai","shared_title":null,"version":1,"created_by_account_id":"acct_me","legacy_session_id":"\(Self.sessionId)","forked_from_session_id":null,"forked_from_message_id":null,"latest_message_sequence":0,"created_at":"2026-08-27T00:00:00Z","updated_at":"2026-08-27T00:00:00Z","members":[{"account_id":"acct_me","display_name":"Me","avatar_url":null,"role":"owner","membership_state":"active","version":1,"last_delivered_sequence":0,"last_read_sequence":0,"joined_at":"2026-08-27T00:00:00Z","left_at":null}],"preferences":{"conversation_id":"conversation-support","account_id":"acct_me","personal_title":null,"version":1}}],"latest_messages":[],"next_cursor":"1","last_stream_seq":1,"server_time":"2026-08-27T00:00:00Z"}
                 """.utf8
             )
         } else {

@@ -90,6 +90,7 @@ export type ChatSyncSyncResponse = {
 };
 
 export type ChatSyncBootstrapResponse = {
+  session_visibility?: import('./cloudSessionListClient').CloudSessionVisibility;
   protocol_version: 2;
   conversations: ChatSyncConversation[];
   latest_messages: ChatSyncMessage[];
@@ -114,3 +115,4 @@ export type ChatSyncConversationInput = {
   accountId?: string | null;
   replaceMembers?: boolean;
 };
+export type CloudThreadRead = { root_message_id: string; root_client_message_id: string; last_read_sequence: number };

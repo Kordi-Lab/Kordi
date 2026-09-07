@@ -9,10 +9,6 @@ export function isGroupSessionId(value: string | null | undefined): boolean {
   return value?.trim().startsWith('session:group:') ?? false;
 }
 
-export function isGroupForkSession(session: { forkedFromSessionId?: string | null }): boolean {
-  return isGroupSessionId(session.forkedFromSessionId);
-}
-
 export type ForkLineage<S extends SessionWithLineage> = {
   /** Set of session ids that are themselves forks (so they should be
    * rendered nested under their parent rather than at the top level). */

@@ -9,6 +9,14 @@ pub enum RunnerClientError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloudAgentRun {
+    #[serde(rename = "turnIdentity", default)]
+    pub turn_identity: Option<kordi_core::types::RuntimeIdentity>,
+    #[serde(rename = "historyMessages", default)]
+    pub history_messages: Vec<serde_json::Value>,
+    #[serde(rename = "subsessionId", default)]
+    pub subsession_id: Option<String>,
+    #[serde(rename = "subsessionWriteScope", default)]
+    pub subsession_write_scope: Vec<String>,
     #[serde(rename = "runId")]
     pub run_id: String,
     pub status: String,
@@ -107,6 +115,25 @@ struct ArtifactExportEnvelope {
 
 #[async_trait]
 pub trait CloudAgentRunClient {
+    async fn task_operator(
+        &self,
+        _run_id: &str,
+        _call_id: &str,
+        _arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        Err(RunnerClientError::Request(
+            "Subsession tools are unavailable".into(),
+        ))
+    }
+
+    async fn subsession_progress(
+        &self,
+        _run_id: &str,
+        _call_id: &str,
+        _tool_name: &str,
+    ) -> Result<(), RunnerClientError> {
+        Ok(())
+    }
     async fn lease_next_run(&self) -> Result<Option<CloudAgentRun>, RunnerClientError>;
     async fn mark_running(&self, run_id: &str) -> Result<(), RunnerClientError>;
     async fn complete_run(
@@ -126,6 +153,17 @@ pub trait CloudAgentRunClient {
         run_id: &str,
     ) -> Result<ProviderAuthMaterial, RunnerClientError>;
 
+    async fn read_context(
+        &self,
+        _run_id: &str,
+        _tool: &str,
+        _arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        Err(RunnerClientError::Request(
+            "Conversation retrieval is unavailable".to_string(),
+        ))
+    }
+
     async fn export_artifact(
         &self,
         run_id: &str,
@@ -143,6 +181,12 @@ pub struct HttpCloudAgentRunClient {
 }
 
 impl HttpCloudAgentRunClient {
+    pub fn for_execution(&self) -> Self {
+        Self {
+            runner_id: format!("{}:{}", self.runner_id, uuid::Uuid::new_v4().simple()),
+            ..self.clone()
+        }
+    }
     pub fn new(base_url: String, runner_token: String, runner_id: String) -> Self {
         Self::with_canary_run_id(base_url, runner_token, runner_id, None)
     }
@@ -208,6 +252,24 @@ impl HttpCloudAgentRunClient {
 
 #[async_trait]
 impl CloudAgentRunClient for HttpCloudAgentRunClient {
+    async fn task_operator(
+        &self,
+        run_id: &str,
+        call_id: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        self.post_json(&format!("/v1/cloud/agent-runs/{run_id}/task-operator"), serde_json::json!({"runnerId":self.runner_id,"toolCallId":call_id,"arguments":arguments})).await
+    }
+
+    async fn subsession_progress(
+        &self,
+        run_id: &str,
+        call_id: &str,
+        tool_name: &str,
+    ) -> Result<(), RunnerClientError> {
+        let _: serde_json::Value = self.post_json(&format!("/v1/cloud/agent-runs/{run_id}/subsession-progress"), serde_json::json!({"runnerId":self.runner_id,"toolCallId":call_id,"toolName":tool_name})).await?;
+        Ok(())
+    }
     async fn lease_next_run(&self) -> Result<Option<CloudAgentRun>, RunnerClientError> {
         let response: LeaseResponse = self
             .post_json("/v1/cloud/agent-runs/lease", self.lease_request_body())
@@ -272,6 +334,19 @@ impl CloudAgentRunClient for HttpCloudAgentRunClient {
             )
             .await?;
         Ok(envelope.provider_auth)
+    }
+
+    async fn read_context(
+        &self,
+        run_id: &str,
+        tool: &str,
+        arguments: serde_json::Value,
+    ) -> Result<serde_json::Value, RunnerClientError> {
+        self.post_json(
+            &format!("/v1/cloud/agent-runs/{run_id}/context"),
+            serde_json::json!({ "runnerId": self.runner_id, "tool": tool, "arguments": arguments }),
+        )
+        .await
     }
 
     async fn export_artifact(

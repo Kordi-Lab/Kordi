@@ -8,6 +8,7 @@ import { isCloudAgentProcessingPlaceholderText } from './cloudAgentRequestState'
 import {
   cloudMessageActionAllowsAgentContext,
   cloudMessageActionAllowsAgentTrigger,
+  cloudAgentContextMessageIds,
 } from './cloudAgentTriggerPolicy';
 import {
   CLOUD_GROUP_AGENT_MENTION_MAX_DEPTH,
@@ -23,16 +24,28 @@ import type {
 } from './cloudGroupMessages';
 import type { IndexedCloudGroupRow } from './cloudMessageIndex';
 import { cleanCloudText } from './cloudValue';
+import type { MessageActionMetadata } from '@/kordi-app/types/message';
+
+export function cloudGroupAgentReplyThreadAction(
+  rows: readonly IndexedCloudGroupRow[], groupId: string, requestId: string, ownerAccountId: string,
+): MessageActionMetadata | null {
+  for (const { envelope, wire } of [...rows].reverse()) {
+    const message = envelope.message;
+    if (envelope.groupId !== groupId || !message || wire.fromAccountId !== ownerAccountId
+      || message.senderAccountId !== ownerAccountId || message.senderKind !== 'agent'
+      || (message.requestId ?? message.replyToMessageId) !== requestId) continue;
+    const action = message.messageAction;
+    if (action?.kind === 'thread' && action.source.sourceSessionId === groupId) return action;
+  }
+  return null;
+}
 
 export function cloudGroupMessageTargetsLocalAgent(
   message: NonNullable<CloudGroupControlEnvelope['message']>,
   account: CloudAccount,
   participants: readonly CloudGroupParticipant[] = [],
 ): boolean {
-  if (
-    message.forkSnapshot === true
-    || !cloudMessageActionAllowsAgentTrigger(message.messageAction)
-  ) return false;
+  if (!cloudMessageActionAllowsAgentTrigger(message.messageAction)) return false;
   if (message.senderKind === 'agent') {
     return cloudGroupAgentHandoffTargetsAccount(
       { message, participants: [...participants] },
@@ -40,14 +53,19 @@ export function cloudGroupMessageTargetsLocalAgent(
     );
   }
   const targetCloudAgentId = cleanCloudText(message.targetCloudAgentId);
+  const targetCloudAgentOwnerAccountId = cleanCloudText(
+    message.targetCloudAgentOwnerAccountId,
+  );
   const targetsOwnedCloudAgent = Boolean(
     (
       targetCloudAgentId.startsWith('cloud_agent_')
       || targetCloudAgentId === defaultCloudAgentId(account.accountId)
     )
-    && cleanCloudText(message.targetCloudAgentOwnerAccountId)
-      === account.accountId,
+    && targetCloudAgentOwnerAccountId === account.accountId,
   );
+  if (targetCloudAgentId || targetCloudAgentOwnerAccountId) {
+    return targetsOwnedCloudAgent;
+  }
   return targetsOwnedCloudAgent || cloudMessageMentionsLocalAgent(
     message.text,
     account,
@@ -56,6 +74,14 @@ export function cloudGroupMessageTargetsLocalAgent(
         message.senderAccountId === account.accountId,
     },
   );
+}
+
+export function cloudGroupAgentContextMessageIds(groupRows: readonly IndexedCloudGroupRow[], groupId: string, requestId: string, ownerAccountId?: string): Set<string> {
+  return cloudAgentContextMessageIds(groupRows.flatMap(({ envelope }) => (
+    envelope?.kind === 'group-message' && envelope.groupId === groupId && envelope.message
+      ? [{ ...envelope.message, replyToMessageId: envelope.message.replyToMessageId ?? envelope.message.requestId }]
+      : []
+  )), requestId, ownerAccountId ? cloudGroupAgentReplyThreadAction(groupRows, groupId, requestId, ownerAccountId) : null);
 }
 
 export function cloudGroupNativeContextMessages({
@@ -73,6 +99,7 @@ export function cloudGroupNativeContextMessages({
   respondingAccountId: string;
   respondingAgentId?: string | null;
 }): DesktopChatContextMessage[] {
+  const contextIds = cloudGroupAgentContextMessageIds(groupRows, groupId, requestMessageId, respondingAccountId);
   const history = compactCloudAgentNativeContextMessages(
     groupRows.flatMap(({ envelope }) => {
       if (
@@ -81,9 +108,9 @@ export function cloudGroupNativeContextMessages({
         || !envelope.message
       ) return [];
       const message = envelope.message;
+      if (!contextIds.has(message.id)) return [];
       if (message.id === requestMessageId) return [];
       if (message.createdAtMs > requestCreatedAtMs) return [];
-      if (message.forkSnapshot === true) return [];
       if (
         !cloudMessageActionAllowsAgentContext(message.messageAction)
       ) return [];
@@ -109,7 +136,7 @@ export function cloudGroupNativeContextMessages({
         createdAtMs: message.createdAtMs,
       }];
     }),
-  );
+  ).slice(-8).map((message) => ({ ...message, text: Array.from(message.text).slice(0, 800).join('') }));
   const requestEnvelope = groupRows.find(({ envelope }) => (
     envelope?.kind === 'group-message'
       && envelope.groupId === groupId
@@ -156,13 +183,20 @@ export function cloudGroupNativeContextMessages({
       authorName: 'Group agent identity',
       authorKind: 'agent',
       contextRole: 'system',
-      text: personaInstruction,
+      text: `${personaInstruction}\nCurrent request author: ${JSON.stringify({
+        accountId: requestEnvelope.message.senderAccountId,
+        kind: requestEnvelope.message.senderKind === 'agent' ? 'agent' : 'human',
+        name: requestEnvelope.message.senderDisplayName
+          || requestEnvelope.participants.find((participant) => participant.accountId === requestEnvelope.message?.senderAccountId)?.displayName
+          || 'Group participant',
+      })}. Interpret I/me/my as this author; the group creator is not necessarily the requester.`,
       createdAtMs: requestCreatedAtMs,
     },
     ...(mentionInstruction ? [{
       id: `cloud-group-mention-permissions:${groupId}:${cloudContextFingerprint(mentionInstruction)}`,
       authorName: 'Group mention directory',
       authorKind: 'agent' as const,
+      contextRole: 'resource' as const,
       text: mentionInstruction,
       createdAtMs: requestCreatedAtMs,
     }] : []),

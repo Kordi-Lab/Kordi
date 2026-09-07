@@ -78,10 +78,7 @@ export function useCanonicalActiveSessionRead({
     const latestMessages = canonicalState.messages
       .filter((message) => (
         message.sessionId === sessionId
-        && ![
-          'canonical-fork-snapshot',
-          'cloud-group-fork-snapshot',
-        ].includes(message.sourceTransport ?? '')
+        && message.sourceTransport !== 'canonical-fork-snapshot'
         && !['sending', 'processing'].includes(
           message.status.trim().toLowerCase(),
         )

@@ -394,7 +394,7 @@ export function deriveCloudActivityFromTurn(input: {
     const title = taskTitleFromArgs(args) ?? taskTitleFromResultText(tool.resultText);
     const taskId = taskIdFromArgs(args, tool.resultText) ?? (title ? slugify(title) : null);
     const action = cleanText(args.action).toLowerCase();
-    if (!title || !taskId) continue;
+    if (!title || !taskId || (action !== 'create' && action !== 'close')) continue;
     const status = action === 'close' ? 'closed' : 'active';
     tasks.push({
       sessionId: input.sessionId,

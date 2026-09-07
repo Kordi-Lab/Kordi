@@ -11,6 +11,19 @@ Export artifacts only when explicitly useful to share; unexported sandbox files 
 
 pub fn tool_catalog() -> Vec<Value> {
     vec![
+        serde_json::json!({
+            "type":"function", "function": {
+                "name":"task_operator", "description":"Create a real independent execution subsession of this Agent, or inspect one by its exact sessionId. After a successful spawn, briefly acknowledge in the parent chat and end the parent turn; do not wait or copy the child result here.",
+                "parameters":{"type":"object","properties":{
+                    "action":{"type":"string","enum":["spawn","inspect"]},
+                    "taskName":{"type":"string","description":"Stable ASCII letters, numbers, and underscores; reuse the same name when retrying a spawn."},
+                    "taskTitle":{"type":"string"}, "message":{"type":"string","description":"Public task instructions posted as this Agent to all parent-chat members. Never include private Ask Agent context, credentials, or system instructions."},
+                    "forkTurns":{"type":"string","enum":["none"]},
+                    "writeScope":{"type":"array","items":{"type":"string"}},
+                    "sessionId":{"type":"string"}
+                },"required":["action"]}
+            }
+        }),
         tool_schema(
             "read",
             "Read a UTF-8 text file inside the Cloud sandbox.",
@@ -46,6 +59,8 @@ pub fn tool_catalog() -> Vec<Value> {
             "Run a shell command inside the Cloud sandbox.",
             vec![("command", "string")],
         ),
+        context_tool_schema(&kordi_tools::session_observation::SearchSessionsTool),
+        context_tool_schema(&kordi_tools::session_observation::ReadSessionTool),
         local_tool_schema(&WebSearchTool),
         local_tool_schema(&WebFetchTool),
         tool_schema(
@@ -91,4 +106,13 @@ fn tool_schema(name: &str, description: &str, properties: Vec<(&str, &str)>) -> 
             }
         }
     })
+}
+
+fn context_tool_schema(tool: &dyn Tool) -> Value {
+    let mut schema = local_tool_schema(tool);
+    schema["function"]["parameters"]["properties"]["beforeSequence"] = serde_json::json!({
+        "type": "integer", "minimum": 1,
+        "description": "Continue an older page using nextBeforeSequence returned by the previous call. Search examines a bounded page; continue when hasMore is true."
+    });
+    schema
 }

@@ -5,6 +5,7 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { insertEmojiAtSelection } from '@/features/emoji/emojiText';
 import { ComposerExpressivePicker } from '@/features/emoji/ComposerExpressivePicker';
 import type { MessageThread } from '@/features/chat/messageThreads';
+import {threadReadKey} from '@/features/chat/threadReadState';
 import type { Conversation, DesktopChatTurnSnapshot, QueuedDesktopChatMessage } from '@/kordi-app/types';
 import { CompactComposerModelMenu, ComposerMentionMenu, type ComposerMentionOption } from '@/kordi-app/components';
 import { ComposerAttachmentAddMenu, ComposerAttachmentList } from '@/kordi-app/components/composerAttachments';
@@ -37,6 +38,8 @@ export function ChatThreadPanel({
   onWidthChange,
   compactModelMenu,
   chatMentionTargetsForText,
+  readCursors,
+  onMarkRead,
 }: {
   conversation: Conversation;
   thread: MessageThread;
@@ -59,6 +62,8 @@ export function ChatThreadPanel({
   onWidthChange: (width: number) => void;
   compactModelMenu: Omit<ComponentProps<typeof CompactComposerModelMenu>, 'scope'>;
   chatMentionTargetsForText: (text: string, cursor?: number) => ComposerMentionOption[];
+  readCursors?: Record<string,number> | null;
+  onMarkRead?: (rootId:string, sequence:number) => Promise<void>;
 }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -98,6 +103,22 @@ export function ChatThreadPanel({
     () => [{ ...thread.root, threadSummary: undefined }, ...thread.replies],
     [thread],
   );
+  const readKey = threadReadKey(thread.root);
+  const latestSequence = Math.max(0, ...thread.replies.map(message => message.conversationSequence ?? 0));
+  const readSequence = readKey ? readCursors?.[readKey] ?? 0 : 0;
+  useEffect(() => {
+    if (!readKey || !readCursors || !onMarkRead || latestSequence <= readSequence) return;
+    let pending = false;
+    const markVisibleRead = () => {
+      const scroll = scrollRef.current;
+      if (pending || document.visibilityState !== 'visible' || !document.hasFocus() || !scroll
+        || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 32) return;
+      pending = true;
+      void onMarkRead(readKey, latestSequence).catch(() => { pending = false; });
+    };
+    const timer = setInterval(markVisibleRead, 1000);
+    return () => clearInterval(timer);
+  }, [latestSequence, onMarkRead, readCursors, readKey, readSequence]);
   const voice = useVoiceComposer({
     conversation,
     cloudAccountId: accountId ?? null,

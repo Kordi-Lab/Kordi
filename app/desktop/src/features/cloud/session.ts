@@ -19,6 +19,7 @@ export interface SessionStorageBackend {
 }
 
 export const CLOUD_SESSION_SIGNED_OUT_EVENT = 'kordi-cloud-session-signed-out';
+export const CLOUD_SESSION_CHANGED_EVENT = 'kordi-cloud-session-changed';
 
 function isTauriRuntime(): boolean {
   if (typeof window === 'undefined') return false;
@@ -82,8 +83,10 @@ let backendOverride: SessionStorageBackend | null = null;
 let cachedBackend: SessionStorageBackend | null = null;
 let cachedSessionValue: StoredSession | null | undefined;
 let cachedSessionLoadPromise: Promise<StoredSession | null> | null = null;
+let sessionRevision = 0;
 
 function resetSessionLoadCache(): void {
+  sessionRevision += 1;
   cachedSessionValue = undefined;
   cachedSessionLoadPromise = null;
 }
@@ -104,32 +107,47 @@ function backend(): SessionStorageBackend {
 export async function loadSession(): Promise<StoredSession | null> {
   if (cachedSessionValue !== undefined) return cachedSessionValue;
   if (!cachedSessionLoadPromise) {
+    const revision = sessionRevision;
     cachedSessionLoadPromise = backend().load()
       .then((session) => {
+        if (revision !== sessionRevision) return cachedSessionValue ?? null;
         cachedSessionValue = session ?? null;
         return cachedSessionValue;
       })
       .catch((error) => {
-        resetSessionLoadCache();
+        if (revision === sessionRevision) resetSessionLoadCache();
         throw error;
       })
       .finally(() => {
-        cachedSessionLoadPromise = null;
+        if (revision === sessionRevision) cachedSessionLoadPromise = null;
       });
   }
   return cachedSessionLoadPromise;
 }
 
 export async function saveSession(session: StoredSession): Promise<void> {
-  await backend().save(session);
+  const revision = ++sessionRevision;
+  const previousAccountId = cachedSessionValue?.accountId;
+  try { await backend().save(session); }
+  catch (error) {
+    if (revision === sessionRevision) resetSessionLoadCache();
+    throw error;
+  }
+  if (revision !== sessionRevision) return;
   cachedSessionValue = { ...session };
   cachedSessionLoadPromise = null;
+  if (previousAccountId !== session.accountId && typeof window !== 'undefined') window.dispatchEvent(new Event(CLOUD_SESSION_CHANGED_EVENT));
 }
 
 export async function clearSession(): Promise<void> {
-  await backend().clear();
+  const revision = ++sessionRevision;
   cachedSessionValue = null;
   cachedSessionLoadPromise = null;
+  await backend().clear();
+  if (revision !== sessionRevision) return;
+  cachedSessionValue = null;
+  cachedSessionLoadPromise = null;
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(CLOUD_SESSION_CHANGED_EVENT));
 }
 
 export function notifyCloudSessionSignedOut(): void {

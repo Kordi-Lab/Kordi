@@ -11,13 +11,14 @@ import { compareCloudMessages } from './cloudMessageMerge';
 import {
   cloudSessionForksByIdEqual,
   cloudMessagesByPeerEqual,
-  cloudSetsEqual,
   cloudUnreadReadinessContextKey,
   mergeCloudMessagesByPeerSnapshot,
   transitionCloudUnreadReadiness,
   type CloudUnreadReadinessStatus,
 } from './cloudMessageSyncState';
 import { syncCloudDiffOnce } from './cloudDiffSync';
+import { hasCachedCloudSessionVisibility } from './cloudDiffSync';
+import { commitCloudVisibility } from './cloudVisibilitySnapshot';
 import type { CloudSessionTitlesById } from './cloudDiffSync';
 import { mergeCloudSessionActivity } from './cloudSessionActivity';
 import type {
@@ -57,6 +58,8 @@ export function useCloudMessageSync({
   setUnreadReadiness,
   refreshCloudAgents, onMessagesDeleted, onCanonicalMessagesPruned,
 }: UseCloudMessageSyncInput): CloudMessageSyncController {
+  const storesRef = useRef(stores);
+  useEffect(() => { storesRef.current = stores; }, [stores]);
   const {
     stateRef: messagesRef,
     setState: setMessages,
@@ -68,34 +71,30 @@ export function useCloudMessageSync({
   const { stateRef: agentsRef, setState: setAgents } = stores.agents;
   const {
     stateRef: hiddenSessionIdsRef,
-    setState: setHiddenSessionIds,
   } = stores.hiddenSessionIds;
   const {
     stateRef: deletedSessionIdsRef,
-    setState: setDeletedSessionIds,
   } = stores.deletedSessionIds;
   const {
     stateRef: unreadSessionIdsRef,
-    setState: setUnreadSessionIds,
   } = stores.unreadSessionIds;
   const {
     stateRef: pinnedSessionIdsRef,
-    setState: setPinnedSessionIds,
   } = stores.pinnedSessionIds;
   const {
     stateRef: mutedSessionIdsRef,
-    setState: setMutedSessionIds,
   } = stores.mutedSessionIds;
   const {
     stateRef: pinnedGroupSpaceIdsRef,
-    setState: setPinnedGroupSpaceIds,
   } = stores.pinnedGroupSpaceIds;
   const pendingRequestRef = useRef<PendingCloudSyncRequest | null>(null);
   const startupSnapshotContextRef = useRef<string | null>(null);
+  const historyHydrationRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     pendingRequestRef.current = null;
     startupSnapshotContextRef.current = null;
+    historyHydrationRef.current = null;
   }, [account?.accountId, coordinator]);
 
   const markUnreadReadiness = useCallback((
@@ -120,7 +119,7 @@ export function useCloudMessageSync({
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
     const session = await loadSession();
     if (!coordinator.isCurrentGeneration(generation)) return;
-    if (!session?.token) {
+    if (!session?.token || session.accountId !== account.accountId) {
       throw new Error('Cloud session is unavailable for reliable chat sync.');
     }
     await client.drainChatOutbox(session.token, account.accountId);
@@ -171,9 +170,11 @@ export function useCloudMessageSync({
           return local?.cursor ?? '0';
         },
         commitResponse: async (response) => {
+          if (!coordinator.isCurrentGeneration(generation)) throw new Error('Chat account changed during sync.');
           if (!response.chat) {
             throw new Error('Reliable chat sync returned a legacy response.');
           }
+          commitCloudVisibility(account.accountId, storesRef.current, response.events);
           const local = await applyChatSyncLocalBatch({
             accountId: account.accountId,
             bootstrap: response.chat.bootstrap,
@@ -183,6 +184,7 @@ export function useCloudMessageSync({
             messages: response.chat.messages,
             events: response.chat.events,
           });
+          if (!coordinator.isCurrentGeneration(generation)) return;
           publishCloudDeviceEvents(response.chat.events, account.accountId, session.deviceId, response.events);
           for (const event of response.events) if (event.eventType === 'message.deleted' && event.messageId) deletedMessageIds.add(event.messageId);
           directoryBootstrapPending ||= chatEventsRequireDirectoryBootstrap(response.chat.events);
@@ -251,24 +253,6 @@ export function useCloudMessageSync({
     setAgents((current) => (
       JSON.stringify(current) === JSON.stringify(cloudAgentsById) ? current : cloudAgentsById
     ));
-    setHiddenSessionIds((current) => (
-      cloudSetsEqual(current, hiddenSessionIds) ? current : new Set(hiddenSessionIds)
-    ));
-    setDeletedSessionIds((current) => (
-      cloudSetsEqual(current, deletedSessionIds) ? current : new Set(deletedSessionIds)
-    ));
-    setUnreadSessionIds((current) => (
-      cloudSetsEqual(current, unreadSessionIds) ? current : new Set(unreadSessionIds)
-    ));
-    setPinnedSessionIds((current) => (
-      cloudSetsEqual(current, pinnedSessionIds) ? current : new Set(pinnedSessionIds)
-    ));
-    setMutedSessionIds((current) => (
-      cloudSetsEqual(current, mutedSessionIds) ? current : new Set(mutedSessionIds)
-    ));
-    setPinnedGroupSpaceIds((current) => (
-      cloudSetsEqual(current, pinnedGroupSpaceIds) ? current : new Set(pinnedGroupSpaceIds)
-    ));
     if (deletedMessageIds.size > 0) await onMessagesDeleted?.([...deletedMessageIds]);
   }, [
     account,
@@ -288,15 +272,9 @@ export function useCloudMessageSync({
     unreadSessionIdsRef,
     setActivity,
     setAgents,
-    setDeletedSessionIds,
     setForks,
-    setHiddenSessionIds,
     setMessages,
-    setMutedSessionIds,
-    setPinnedGroupSpaceIds,
     setPins,
-    setPinnedSessionIds,
-    setUnreadSessionIds,
     setTitles,
     titlesRef,
   ]);
@@ -305,6 +283,9 @@ export function useCloudMessageSync({
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
     const local = await loadChatSyncLocalState(account.accountId);
     if (!local || !coordinator.isCurrentGeneration(generation)) return;
+    if (!local.visibility) return;
+    commitCloudVisibility(account.accountId, storesRef.current, [{eventId:'cached-visibility',eventType:'session.visibility.snapshot',
+      peerAccountId:null,messageId:null,occurredAt:'',payload:{visibility:local.visibility}}]);
     const conversationById = new Map(
       local.conversations.map((conversation) => [conversation.id, conversation]),
     );
@@ -349,7 +330,7 @@ export function useCloudMessageSync({
   const hydrateMissingChatHistory = useCallback(async (generation: number) => {
     if (!account || !coordinator.isCurrentGeneration(generation)) return;
     const session = await loadSession();
-    if (!session?.token || !coordinator.isCurrentGeneration(generation)) return;
+    if (!session?.token || session.accountId !== account.accountId || !coordinator.isCurrentGeneration(generation)) return;
     const [conversations, coverage] = await Promise.all([
       loadChatSyncConversations(account.accountId),
       loadChatSyncCoverage(account.accountId),
@@ -393,6 +374,7 @@ export function useCloudMessageSync({
         beforeSequence = next;
       }
     }
+    if (!coordinator.isCurrentGeneration(generation)) return;
     const prunedMessageIds = await pruneMissingCanonicalCloudMessages(account.accountId); // Full hydration above makes absence authoritative.
     if (!coordinator.isCurrentGeneration(generation)) return;
     if (prunedMessageIds.length > 0) await onCanonicalMessagesPruned?.(prunedMessageIds);
@@ -407,9 +389,15 @@ export function useCloudMessageSync({
         // backfill then operate exclusively on the durable cursor stream.
         await Promise.all([hydrateChatLocalState(generation), refreshCloudAgents(generation).catch(() => {})]);
       }
-      await syncDiffOnceForGeneration(generation, request.mode === 'full');
-      await hydrateMissingChatHistory(generation);
-      markUnreadReadiness('ready', generation, bootstrapPeerKey);
+      await syncDiffOnceForGeneration(generation, request.mode === 'full' || !hasCachedCloudSessionVisibility(account?.accountId));
+      if (!historyHydrationRef.current) {
+        const hydration = hydrateMissingChatHistory(generation);
+        historyHydrationRef.current = hydration;
+        void hydration.then(() => markUnreadReadiness('ready', generation, bootstrapPeerKey))
+          .catch(() => markUnreadReadiness('error', generation, bootstrapPeerKey)).finally(() => {
+          if (historyHydrationRef.current === hydration) historyHydrationRef.current = null;
+        });
+      }
     } catch (error) {
       if (request.mode !== 'diff' || request.settleInitialMessages) {
         markUnreadReadiness('error', generation, bootstrapPeerKey);
@@ -417,6 +405,7 @@ export function useCloudMessageSync({
       throw error;
     }
   }, [
+    account,
     bootstrapPeerKey,
     hydrateMissingChatHistory,
     hydrateChatLocalState,
@@ -472,10 +461,6 @@ export function useCloudMessageSync({
       });
     }
     const interval = window.setInterval(() => {
-      if (
-        typeof document !== 'undefined'
-        && document.visibilityState !== 'visible'
-      ) return;
       void syncCloudCollaborationDiff();
     }, CLOUD_MESSAGES_REFRESH_MS);
     return () => window.clearInterval(interval);

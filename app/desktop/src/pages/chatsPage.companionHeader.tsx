@@ -110,11 +110,11 @@ export function CompanionHeader({
           <div className="flex min-w-0 w-full flex-col text-white">
             <span
               className="app-chat-pane-title-row min-w-0 w-full truncate text-[17px] font-semibold leading-6"
-              title={`Ask Agent · ${conversation.name}`}
+              title={`${conversation.agentSubsessionId ? 'Agent thread' : 'Ask Agent'} · ${conversation.name}`}
             >
-              Ask Agent · {conversation.name}
+              {conversation.agentSubsessionId ? 'Agent thread' : 'Ask Agent'} · {conversation.name}
             </span>
-            <span data-chat-session-subtitle="true" className="app-chat-pane-metadata-row text-[11px] leading-5 text-slate-400">Agent session</span>
+            <span data-chat-session-subtitle="true" className="app-chat-pane-metadata-row text-[11px] leading-5 text-slate-400">{conversation.agentSubsessionId ? `Shared with chat members · ${conversation.subtitle}` : 'Only you · Agent session'}</span>
           </div>
         </div>
       </div>

@@ -16,10 +16,25 @@ async fn provider_auth_snapshot_create_current_revoke_and_audit() {
     let router = test_router(state);
     let owner = signup(&router, "provider-auth-owner", "Owner").await;
 
-    let create = router
+    let passive_create = router
         .clone()
         .oneshot(post_json_with_token(
             "/v1/cloud/agent-provider-auth/snapshots",
+            &owner.token,
+            json!({
+                "provider": "openai",
+                "authChoice": "default",
+                "payload": { "accessToken": "passive-client-token" }
+            }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(passive_create.status(), StatusCode::BAD_REQUEST);
+
+    let create = router
+        .clone()
+        .oneshot(post_json_with_token(
+            "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
             &owner.token,
             json!({
                 "provider": "openai",
@@ -75,10 +90,20 @@ async fn provider_auth_snapshot_create_current_revoke_and_audit() {
     .await
     .unwrap();
 
-    let revoke = router
+    let passive_revoke = router
         .clone()
         .oneshot(delete_with_token(
             &format!("/v1/cloud/agent-provider-auth/snapshots/{snapshot_id}"),
+            &owner.token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(passive_revoke.status(), StatusCode::BAD_REQUEST);
+
+    let revoke = router
+        .clone()
+        .oneshot(delete_with_token(
+            &format!("/v1/cloud/agent-provider-auth/snapshots/{snapshot_id}?intent=explicit"),
             &owner.token,
         ))
         .await
@@ -137,7 +162,7 @@ async fn provider_auth_snapshot_is_account_scoped() {
     let create = router
         .clone()
         .oneshot(post_json_with_token(
-            "/v1/cloud/agent-provider-auth/snapshots",
+            "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
             &owner.token,
             json!({
                 "provider": "openai",
@@ -179,7 +204,7 @@ async fn provider_auth_material_is_run_scoped_runner_only_and_audited() {
     let snapshot = router
         .clone()
         .oneshot(post_json_with_token(
-            "/v1/cloud/agent-provider-auth/snapshots",
+            "/v1/cloud/agent-provider-auth/snapshots?intent=explicit",
             &owner.token,
             json!({
                 "provider": "openai",

@@ -10,6 +10,7 @@ import type { CloudSyncEvent } from '../src/features/cloud/authClient';
 
 const chatSessionActionsSource = () => readFileSync(new URL('../src/app/useKordiChatSessionActions.ts', import.meta.url), 'utf8');
 const cloudSessionActionsSource = () => readFileSync(new URL('../src/features/cloud/useCloudSessionActions.ts', import.meta.url), 'utf8');
+const cloudGroupVisibilityActionsSource = () => readFileSync(new URL('../src/features/cloud/useCloudGroupVisibilityActions.ts', import.meta.url), 'utf8');
 
 function event(eventType: string, sessionId: string): CloudSyncEvent {
   return {
@@ -124,13 +125,16 @@ test('archive and pin mutations update local visibility before the network', () 
   );
   const hide = source.slice(source.indexOf('const hide ='), source.indexOf('const unhide ='));
   const pin = source.slice(source.indexOf('const setPinned ='), source.indexOf('const setMuted ='));
-  const groupPin = source.slice(source.indexOf('const setGroupPinned ='), source.indexOf('const remove ='));
+  const groupPin = source.slice(source.indexOf('const setGroupPinned ='), source.indexOf('const setGroupMuted ='));
+  const groupVisibility = cloudGroupVisibilityActionsSource();
 
   assert.match(optimisticMutation, /setIdPresence\([\s\S]*await commit\(session\.token\)/);
   assert.match(optimisticMutation, /catch \(error\)[\s\S]*setIdPresence\(/);
   assert.match(hide, /hiddenIdsRef[\s\S]*client\.hideCloudSession/);
   assert.match(pin, /pinnedIdsRef[\s\S]*client\.setCloudSessionPinned/);
   assert.match(groupPin, /pinnedGroupSpaceIdsRef[\s\S]*client\.setCloudGroupSpacePinned/);
+  assert.match(groupVisibility, /mutedIdsRef[\s\S]*client\.setCloudGroupSpaceMuted/);
+  assert.match(groupVisibility, /hiddenIdsRef[\s\S]*client\.setCloudGroupSpaceArchived/);
 });
 
 test('chat list mutations surface action failures without unhandled rejections', () => {

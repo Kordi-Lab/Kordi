@@ -63,6 +63,10 @@ pub(super) async fn spawn_bash_process(
     safety: BashSafetyContext<'_>,
 ) -> Result<SpawnedProcess, Box<ToolResult>> {
     match ctx.execution_policy {
+        ExecutionPolicy::Shared => Err(Box::new(structured_error_result(
+            "Local commands are unavailable for non-owner shared requests".into(),
+            BashResultDetails::error(command, safety, None, None),
+        ))),
         ExecutionPolicy::Yolo => {
             let (process, output_optimization) =
                 optimized_or_raw_bash_command(command, raw_output, ctx).await;

@@ -3,11 +3,14 @@ use std::collections::HashMap;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Utc};
 use serde_json::{Map, Value};
+use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_core::transaction::Transaction;
 use sqlx_postgres::Postgres;
+use uuid::Uuid;
 
 use super::super::StoreError;
+use super::{load_message, normalize_title, MessageSnapshot};
 
 const CLOUD_GROUP_PREFIX: &str = "kordi-cloud-group:";
 
@@ -17,10 +20,104 @@ pub(super) struct GroupEnvelopeProjection {
     pub kind: String,
     pub group_space_id: String,
     pub group_title: Option<String>,
+    pub session_title: Option<String>,
+}
+
+pub(super) async fn lock_group_message_fingerprint(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    conversation_id: Uuid,
+    request_fingerprint: &str,
+) -> Result<(), StoreError> {
+    query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!(
+            "group-message:{conversation_id}:{account_id}:{request_fingerprint}"
+        ))
+        .execute(&mut **transaction)
+        .await?;
+    Ok(())
+}
+
+pub(super) async fn load_existing_group_message(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    conversation_id: Uuid,
+    request_fingerprint: &str,
+) -> Result<Option<MessageSnapshot>, StoreError> {
+    let existing: Option<(Uuid,)> = query_as(
+        "SELECT message_id FROM cloud_chat_messages \
+         WHERE conversation_id = $1 AND sender_account_id = $2 \
+           AND request_fingerprint = $3 \
+         ORDER BY created_at ASC LIMIT 1",
+    )
+    .bind(conversation_id)
+    .bind(account_id)
+    .bind(request_fingerprint)
+    .fetch_optional(&mut **transaction)
+    .await?;
+    match existing {
+        Some((message_id,)) => load_message(transaction, message_id).await.map(Some),
+        None => Ok(None),
+    }
+}
+
+pub(super) async fn apply_group_control_title(
+    transaction: &mut Transaction<'_, Postgres>,
+    account_id: &str,
+    conversation_id: Uuid,
+    projection: &GroupEnvelopeProjection,
+) -> Result<(), StoreError> {
+    if matches!(
+        projection.kind.as_str(),
+        "group-title-update" | "session-title-update"
+    ) {
+        let authorization: Option<(String, String)> = query_as(
+            "SELECT conversation.kind, member.role \
+             FROM cloud_chat_conversations conversation \
+             JOIN cloud_chat_conversation_members member \
+               ON member.conversation_id = conversation.conversation_id \
+             WHERE conversation.conversation_id = $1 \
+               AND member.account_id = $2 \
+               AND member.membership_state = 'active'",
+        )
+        .bind(conversation_id)
+        .bind(account_id)
+        .fetch_optional(&mut **transaction)
+        .await?;
+        let Some((kind, role)) = authorization else {
+            return Err(StoreError::Forbidden);
+        };
+        if kind != "group" || (role != "owner" && role != "admin") {
+            return Err(StoreError::Forbidden);
+        }
+    }
+    if projection.kind == "session-title-update" {
+        let Some(session_title) = normalize_title(projection.session_title.as_deref())? else {
+            return Err(StoreError::InvalidInput("channel title is required"));
+        };
+        query(
+            "UPDATE cloud_chat_conversations \
+             SET shared_title = $2, version = version + 1, updated_at = now() \
+             WHERE conversation_id = $1 AND shared_title IS DISTINCT FROM $2",
+        )
+        .bind(conversation_id)
+        .bind(session_title)
+        .execute(&mut **transaction)
+        .await?;
+    }
+    Ok(())
 }
 
 fn default_agent_id(account_id: &str) -> String {
     format!("cloud-agent:{}", account_id.trim())
+}
+
+fn normalized_group_space_id(value: &str) -> &str {
+    let mut normalized = value.trim();
+    while let Some(value) = normalized.strip_prefix("group:") {
+        normalized = value;
+    }
+    normalized
 }
 
 fn group_text_mut(content: &mut Value) -> Option<&mut Value> {
@@ -207,10 +304,25 @@ pub(super) async fn normalize_group_envelope(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
         })
+        .map(normalized_group_space_id)
         .unwrap_or_default()
         .to_string();
+    if !group_space_id.is_empty() {
+        object.insert(
+            "groupSpaceId".to_string(),
+            Value::String(group_space_id.clone()),
+        );
+    }
     let group_title = object
         .get("groupTitle")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let session_title = object
+        .get("sessionTitle")
+        .and_then(Value::as_object)
+        .and_then(|value| value.get("title"))
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -221,6 +333,7 @@ pub(super) async fn normalize_group_envelope(
             kind,
             group_space_id,
             group_title,
+            session_title,
         }),
     )
 }
@@ -290,6 +403,19 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn strips_presentation_prefixes_from_group_space_ids() {
+        assert_eq!(normalized_group_space_id("group:seed:team"), "seed:team");
+        assert_eq!(
+            normalized_group_space_id("group:group:seed:team"),
+            "seed:team"
+        );
+        assert_eq!(
+            normalized_group_space_id("session:group:team"),
+            "session:group:team"
+        );
+    }
 
     fn content(sender_name: &str, sender_agent_id: Option<&str>) -> Value {
         let mut message = json!({

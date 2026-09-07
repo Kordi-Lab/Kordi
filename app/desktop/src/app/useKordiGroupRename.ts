@@ -17,7 +17,7 @@ import {
 import type { CanonicalSessionState } from '@/kordi-app/types';
 import { updateCanonicalSessionMetadata } from '@/lib/desktop';
 
-import { appendCanonicalRenameNotice } from './useKordiChatSessionActions';
+import { appendCanonicalRenameNotice } from './canonicalRenameNotice';
 import {
   activeGroupAdminIds,
   canonicalGroupParticipantsForSession,
@@ -53,8 +53,8 @@ export function useKordiGroupRename({
     name: string,
   ) => {
     if (!isNativeShell) return;
-    const groupSessionIds = uniqueStrings(sessionIds);
-    if (groupSessionIds.length === 0) return;
+    const requestedSessionIds = uniqueStrings(sessionIds);
+    if (requestedSessionIds.length === 0) return;
     const title = name.trim();
     if (!title) throw new Error('Group name is required.');
     setDesktopError(null);
@@ -68,9 +68,23 @@ export function useKordiGroupRename({
       throw new Error('Local profile identity is not ready yet.');
     }
 
-    const fallbackGroupSpaceId = groupSessionIds[0];
+    const fallbackGroupSpaceId = requestedSessionIds[0];
+    const requestedGroupIds = new Set(requestedSessionIds.map((sessionId) => (
+      metadataGroupSpaceId(sessionMetadataRecord(canonicalState, sessionId))
+        || fallbackGroupSpaceId
+    )));
+    const groupSessionIds = uniqueStrings([
+      ...requestedSessionIds,
+      ...canonicalState.sessions.flatMap((session) => {
+        const metadata = sessionMetadataRecord(canonicalState, session.id);
+        return session.kind === 'group'
+          && requestedGroupIds.has(metadataGroupSpaceId(metadata) || session.id)
+          ? [session.id]
+          : [];
+      }),
+    ]);
     let nextState = canonicalState;
-    const renamedGroupIds = new Map<string, string>();
+    const renamedSessionIdsByGroup = new Map<string, string[]>();
     for (const sessionId of groupSessionIds) {
       const currentMetadata =
         sessionMetadataRecord(nextState, sessionId);
@@ -85,21 +99,17 @@ export function useKordiGroupRename({
           groupId,
         ),
       });
-      renamedGroupIds.set(groupId, sessionId);
-    }
-    for (const sessionId of groupSessionIds) {
-      nextState = await appendCanonicalRenameNotice(
-        nextState,
+      renamedSessionIdsByGroup.set(groupId, [
+        ...(renamedSessionIdsByGroup.get(groupId) ?? []),
         sessionId,
-        title,
-        'group',
-        actorIdentityId,
-      );
+      ]);
     }
     setCanonicalState(nextState);
 
     try {
-      for (const [groupId, sourceSessionId] of renamedGroupIds) {
+      for (const [groupId, groupSessionIdsForGroup] of renamedSessionIdsByGroup) {
+        const sourceSessionId = groupSessionIdsForGroup[0];
+        if (!sourceSessionId) continue;
         const participants = canonicalGroupParticipantsForSession(
           nextState,
           sourceSessionId,
@@ -108,7 +118,6 @@ export function useKordiGroupRename({
           actorIdentityId,
           participants,
         });
-        if (targets.length === 0) continue;
         const updateParticipants =
           buildChatGroupCollaborationUpdateParticipants({
             participants,
@@ -120,17 +129,30 @@ export function useKordiGroupRename({
         const cloudTargetAccountIds =
           cloudGroupTargetAccountIds(targets);
         if (cloudTargetAccountIds.length > 0 && account) {
-          await sendCloudGroupControl({
-            targetAccountIds: cloudTargetAccountIds,
-            kind: 'group-title-update',
-            groupId,
-            groupSpaceId: groupId,
-            groupTitle: title,
-            participants: cloudGroupParticipantsForCollaborationSession(
-              account,
-              updateParticipants,
-            ),
-          });
+          for (const sessionId of groupSessionIdsForGroup) {
+            await sendCloudGroupControl({
+              targetAccountIds: cloudTargetAccountIds,
+              kind: 'group-title-update',
+              groupId: sessionId,
+              groupSpaceId: groupId,
+              groupTitle: title,
+              participants: cloudGroupParticipantsForCollaborationSession(
+                account,
+                updateParticipants,
+              ),
+            });
+          }
+        } else {
+          for (const sessionId of groupSessionIdsForGroup) {
+            nextState = await appendCanonicalRenameNotice(
+              nextState,
+              sessionId,
+              title,
+              'group',
+              actorIdentityId,
+            );
+          }
+          setCanonicalState(nextState);
         }
       }
     } catch (error) {

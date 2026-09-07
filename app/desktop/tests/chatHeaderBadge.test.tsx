@@ -13,7 +13,6 @@ import {
   parseAskAgentTriggerCommand,
 } from '../src/pages/ChatsPage';
 import type { Conversation } from '../src/kordi-app/types';
-import { readKordiAppModelImplementationSource } from './helpers/appModelSource';
 import { readDesktopShellCss } from './helpers/readDesktopStyles';
 
 function readChatsPageImplementationSource(): string {
@@ -112,7 +111,8 @@ test('chat headers reserve a compact second row for quiet metadata', () => {
   assert.match(source, /icon: FolderOpen/);
   assert.match(source, /icon: CheckCircle2/);
   assert.equal((source.match(/app-chat-pane-metadata-row/g) ?? []).length, 2);
-  assert.match(source, /data-chat-session-subtitle="true"[^>]*className="app-chat-pane-metadata-row[^>]*>Agent session/);
+  assert.match(source, /Only you · Agent session/);
+  assert.match(source, /Shared with chat members/);
 });
 
 test('Ask Agent remains a flat utility action while chat details move into destination subtitles', () => {
@@ -233,7 +233,7 @@ test('ask agent slash commands parse prompt text without co-pilot aliases', () =
   assert.equal(parseAskAgentTriggerCommand('please /ask later'), null);
 });
 
-test('ask agent candidates include only agent sessions from any current chat', () => {
+test('ask agent candidates include only private owned Agent sessions from any current chat', () => {
   const humanChat = conversation({ id: 'human-chat', type: 'person' });
   const firstAgentChat = conversation({ id: 'first-agent', type: 'owned-agent' });
   const secondAgentChat = conversation({
@@ -252,11 +252,11 @@ test('ask agent candidates include only agent sessions from any current chat', (
 
   assert.deepEqual(
     chatCompanionCandidates(humanChat, [humanChat, firstAgentChat, secondAgentChat, otherHumanChat]).map((candidate) => candidate.id),
-    ['first-agent', 'second-agent'],
+    ['first-agent'],
   );
   assert.deepEqual(
     chatCompanionCandidates(firstAgentChat, [humanChat, firstAgentChat, secondAgentChat, otherHumanChat]).map((candidate) => candidate.id),
-    ['second-agent'],
+    [],
   );
 });
 
@@ -272,7 +272,7 @@ test('ask agent side defaults to the right for both human and agent main session
   assert.equal(humanSideForCompanionSide('agent', 'right'), 'right');
 });
 
-test('chat companion candidates treat owned-agent chats with human participants as agents', () => {
+test('Ask Agent excludes shared human membership even when the Agent is owned', () => {
   const humanChat = conversation({ id: 'human-chat', type: 'person' });
   const ownedAgentGroupChat = conversation({
     id: 'agent-group-chat',
@@ -291,7 +291,7 @@ test('chat companion candidates treat owned-agent chats with human participants 
 
   assert.deepEqual(
     chatCompanionCandidates(humanChat, [humanChat, ownedAgentGroupChat]).map((candidate) => candidate.id),
-    ['agent-group-chat'],
+    [],
   );
   assert.equal(chatCompanionSideForPaneKinds('agent', 'left'), 'left');
 });
@@ -406,15 +406,11 @@ test('ask agent from an active agent chat creates a fresh side session instead o
     new URL('../src/pages/useChatCompanionSession.ts', import.meta.url),
     'utf8',
   );
-  const appModelSource = readKordiAppModelImplementationSource();
   const sideAgentActionsSource = readFileSync(new URL('../src/app/useKordiSideAgentSessionActions.ts', import.meta.url), 'utf8');
 
   assert.match(pageSource, /activePaneKind === 'agent' && onCreateAgentSession/);
   assert.match(pageSource, /return create\(initialPrompt\)/);
-  assert.match(
-    appModelSource,
-    /mainConversationId:\s*conversations\.activeConv\.id/,
-  );
+  assert.match(sideAgentActionsSource, /createDesktopChatSession\(\{ independent: true, sourceSessionId \}\)/);
   assert.match(sideAgentActionsSource, /setDesktopChatState\(nextState\)/);
   assert.doesNotMatch(sideAgentActionsSource, /\{ \.\.\.nextState, activeSessionId:/);
 });
@@ -425,8 +421,8 @@ test('ask agent new session action switches the side panel to the created agent 
     'utf8',
   );
 
-  assert.match(source, /const conversationId = await onCreateAgentSession\(\)/);
-  assert.match(source, /activate\(conversationId, initialPrompt\)/);
+  assert.match(source, /const conversationId = await onCreateAgentSession\(sourceId\)/);
+  assert.match(source, /requestedConversationId: conversationId, createdConversation: created/);
   assert.match(source, /selectedConversationId: conversationId,[\s\S]*openConversationId: conversationId/);
 });
 

@@ -130,13 +130,6 @@ struct CloudGroupMessagePayload: Codable, Hashable {
     }
 }
 
-struct CloudGroupForkPayload: Codable, Hashable {
-    let forkSessionId: String
-    let parentSessionId: String
-    let parentMessageId: String?
-    let createdAtMs: Double?
-}
-
 struct CloudGroupMemberJoin: Codable, Hashable {
     let eventId: String
     let accountId: String
@@ -162,8 +155,8 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
     let actor: CloudGroupParticipant
     let participants: [CloudGroupParticipant]
     let sessionTitle: CloudGroupSessionTitleSnapshot?
+    let sessionTitleSyncOnly: Bool?
     let memberJoins: [CloudGroupMemberJoin]?
-    let fork: CloudGroupForkPayload?
     let message: CloudGroupMessagePayload?
 
     init(
@@ -175,8 +168,8 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         actor: CloudGroupParticipant,
         participants: [CloudGroupParticipant],
         sessionTitle: CloudGroupSessionTitleSnapshot? = nil,
+        sessionTitleSyncOnly: Bool? = nil,
         memberJoins: [CloudGroupMemberJoin]? = nil,
-        fork: CloudGroupForkPayload? = nil,
         message: CloudGroupMessagePayload?
     ) {
         self.kind = kind
@@ -187,8 +180,8 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         self.actor = actor
         self.participants = participants
         self.sessionTitle = sessionTitle
+        self.sessionTitleSyncOnly = sessionTitleSyncOnly
         self.memberJoins = memberJoins
-        self.fork = fork
         self.message = message
     }
 }
@@ -200,9 +193,31 @@ enum CloudGroupMessageCodec {
         "group-message",
         "group-update",
         "group-title-update",
-        "session-title-update",
-        "session-fork"
+        "session-title-update"
     ]
+
+    static func titleUpdateNotice(
+        for envelope: CloudGroupControlEnvelope
+    ) -> (text: String, messageKind: String)? {
+        let actorName = envelope.actor.displayName.nonEmpty ?? "Someone"
+        if envelope.kind == "group-title-update",
+           let title = envelope.groupTitle?.nonEmpty {
+            return (
+                "\(actorName) changed the group name to \(title)",
+                ChatMessage.groupTitleUpdateMessageKind
+            )
+        }
+        if envelope.kind == "session-title-update",
+           envelope.sessionTitleSyncOnly != true,
+           let title = envelope.sessionTitle?.title.nonEmpty
+            ?? envelope.groupTitle?.nonEmpty {
+            return (
+                "\(actorName) changed the channel name to \(title)",
+                ChatMessage.channelTitleUpdateMessageKind
+            )
+        }
+        return nil
+    }
     private final class ParsedEnvelopeBox: NSObject {
         let envelope: CloudGroupControlEnvelope?
 
@@ -226,9 +241,9 @@ enum CloudGroupMessageCodec {
             createdByAccountId: envelope.createdByAccountId,
             actor: transportParticipant(envelope.actor),
             participants: envelope.participants.map(transportParticipant),
-            sessionTitle: envelope.sessionTitle,
+            sessionTitle: envelope.kind == "group-title-update" ? nil : envelope.sessionTitle,
+            sessionTitleSyncOnly: envelope.sessionTitleSyncOnly,
             memberJoins: envelope.memberJoins,
-            fork: envelope.fork,
             message: envelope.message
         )
         return prefix + base64URL(try JSONEncoder().encode(normalized))
@@ -299,6 +314,53 @@ enum CloudGroupMessageCodec {
 }
 
 enum CloudGroupAgentLifecycleProjector {
+    /// Waiting is derived on read, not persisted or used to claim execution.
+    /// This covers incoming members and the sender's other devices equally.
+    static func withPendingRequests(
+        _ messages: [ChatMessage],
+        conversation: ConversationSummary,
+        now: Date = Date()
+    ) -> [ChatMessage] {
+        guard conversation.kind == .group else { return messages }
+        let answered = Set(messages.compactMap { $0.author == .agent ? $0.requestMessageId : nil })
+        let members = Dictionary(conversation.groupParticipants.map { ($0.accountId, $0.displayName) }, uniquingKeysWith: { first, _ in first })
+        let pending = messages.compactMap { request -> ChatMessage? in
+            guard request.author == .me || request.author == .person,
+                  !request.isSystemNotice,
+                  request.deliveryState != .failed, request.deliveryState != .cancelled,
+                  request.messageAction?.kind != "forward",
+                  !answered.contains(request.id),
+                  now.timeIntervalSince(request.createdAt) < 10 * 60,
+                  let mention = request.mentions.first(where: {
+                      $0.kind == .agent
+                          && ($0.sourceHostId.nonEmpty ?? "cloud") == "cloud"
+                          && members[$0.humanId ?? $0.nodeId ?? ""] != nil
+                  }),
+                  let ownerName = members[mention.humanId ?? mention.nodeId ?? ""] else { return nil }
+            let createdAt = request.createdAt.addingTimeInterval(0.001)
+            return ChatMessage(
+                id: "local-agent-progress:\(conversation.id):\(request.id)",
+                conversationId: conversation.id,
+                conversationSequence: request.conversationSequence,
+                author: .agent,
+                authorName: mention.displayLabel?.nonEmpty ?? mention.label,
+                senderOwnerName: ownerName,
+                text: "",
+                createdAt: createdAt,
+                deliveryState: .delivered,
+                errorMessage: nil,
+                requestMessageId: request.id,
+                replyToMessageId: request.id,
+                messageAction: request.messageAction?.kind == "thread" ? request.messageAction : nil,
+                agentExecution: CloudMessageCodec.agentWaitingExecution(
+                    deliveryState: .processing,
+                    updatedAtMs: request.createdAt.timeIntervalSince1970 * 1_000
+                )
+            )
+        }
+        return pending.isEmpty ? messages : (messages + pending).sorted(by: ChatMessage.timelinePrecedes)
+    }
+
     private struct ResponseKey: Hashable {
         let requestId: String
         let senderAccountId: String

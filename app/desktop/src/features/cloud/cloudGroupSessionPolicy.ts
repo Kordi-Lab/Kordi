@@ -51,7 +51,6 @@ export function cloudGroupSessionPreparationSignature(
     sessionTitle: envelope.sessionTitle ?? null,
     memberJoins: envelope.memberJoins ?? [],
     memberLeaves: envelope.memberLeaves ?? [],
-    fork: envelope.fork ?? null,
   });
 }
 

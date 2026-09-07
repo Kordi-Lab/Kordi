@@ -9,6 +9,7 @@ use uuid::Uuid;
 mod canonical_fork;
 pub(crate) mod chat_sync;
 mod chat_sync_schema;
+mod cloud_group_authority;
 mod commands;
 mod core;
 mod desktop_runtime_status;
@@ -24,10 +25,12 @@ mod message_visibility;
 mod models;
 mod persistence;
 mod presence;
-mod prompt_context;
+pub(crate) mod prompt_context;
 mod sanitization;
 mod schema;
 mod session_observation;
+mod side_sessions;
+pub(crate) use side_sessions::initialize_private_side_session;
 #[cfg(test)]
 mod tests;
 mod title_policy;
@@ -94,30 +97,16 @@ use self::persistence::{
 use self::presence::update_presence_in_db;
 use self::schema::{ensure_local_profile, initialize_schema};
 pub(crate) use self::session_observation::{
-    read_session_for_observation, search_sessions_for_observation,
+    read_session_for_observation, search_sessions_for_observation_scoped,
 };
 use self::title_policy::reconcile_session_title_metadata;
 
 const CANONICAL_SESSIONS_DB_FILENAME: &str = "canonical-sessions.sqlite3";
 const SCHEMA_VERSION: i64 = 2;
 
-pub(crate) fn open_db() -> Result<Connection, String> {
-    let path = canonical_sessions_db_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
-    }
-    let conn = Connection::open(path).map_err(|err| err.to_string())?;
-    conn.busy_timeout(std::time::Duration::from_secs(5))
-        .map_err(|err| err.to_string())?;
-    conn.execute_batch(
-        "PRAGMA foreign_keys = ON;
-         PRAGMA journal_mode = WAL;
-         PRAGMA synchronous = NORMAL;",
-    )
-    .map_err(|err| err.to_string())?;
-    initialize_schema(&conn)?;
-    Ok(conn)
-}
+mod database;
+pub(crate) use database::open_db;
+use database::open_db_at_path;
 
 fn self_participant_identity_id(
     conn: &Connection,
@@ -196,10 +185,7 @@ pub(super) fn mark_session_read_in_db(
                 FROM session_messages
                 WHERE id = ?2
                   AND session_id = ?3
-                  AND COALESCE(source_transport, '') NOT IN (
-                      'canonical-fork-snapshot',
-                      'cloud-group-fork-snapshot'
-                  )
+                  AND COALESCE(source_transport, '') != 'canonical-fork-snapshot'
                   AND LOWER(TRIM(status)) NOT IN ('sending', 'processing')
              )
              UPDATE session_participants AS participant

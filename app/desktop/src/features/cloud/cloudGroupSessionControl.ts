@@ -3,7 +3,6 @@ import {
   resolveReplicatedGroupTitle,
 } from '@/features/chat/groupTitle';
 import {
-  appendCanonicalMessage,
   openOrCreateCanonicalSessionFast,
   removeCanonicalSessionParticipant,
   upsertCanonicalIdentityFast,
@@ -24,8 +23,8 @@ import {
   cloudGroupParticipantsWithProfiles,
   cloudGroupSelfParticipant,
   cloudGroupTitleUpdateNoticeRequest,
+  cloudTitleUpdateNoticeEquivalent,
   cloudSessionTitleUpdateNoticeRequest,
-  cloudSessionTitleUpdateTitle,
   shouldApplyCloudGroupTitleUpdate,
   type CloudGroupControlEnvelope,
   type CloudGroupSessionTitleSnapshot,
@@ -83,8 +82,13 @@ export function cloudGroupHistoryReplayPreservesSessionShell(
   historyReplay: boolean | undefined,
   hasExistingSession: boolean,
   hasCatalogGroupTitle = false,
+  controlKind?: CloudGroupControlEnvelope['kind'],
 ) {
-  return historyReplay === true && hasExistingSession && !hasCatalogGroupTitle;
+  return historyReplay === true
+    && hasExistingSession
+    && !hasCatalogGroupTitle
+    && controlKind !== 'group-title-update'
+    && controlKind !== 'session-title-update';
 }
 
 export async function applyCloudGroupSessionControl({
@@ -184,6 +188,7 @@ export async function applyCloudGroupSessionControl({
     historyReplay,
     Boolean(envelopeSession),
     Boolean(normalizedCatalogGroupTitle),
+    envelope.kind,
   )) {
     const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId)
       ?? envelopeSession!.createdByIdentityId;
@@ -229,19 +234,9 @@ export async function applyCloudGroupSessionControl({
   const participantIdentityIds = [...identityIdByAccount.entries()]
     .filter(([, identityId]) => identityId !== createdByIdentityId)
     .map(([, identityId]) => identityId);
-  const sessionTitleUpdateTitle = cloudSessionTitleUpdateTitle(envelope);
   const incomingGroupTitle = normalizedCatalogGroupTitle
     ?? (shouldApplyCloudGroupTitleUpdate(envelope) ? envelope.groupTitle : null);
-  const isSelfAuthoredControl = envelope.actor.accountId === account.accountId;
   const participantNames = [...participantByAccount.values()].map((participant) => participant.displayName);
-  const forkMetadata = envelope.fork ? {
-    forkedFromSessionId: envelope.fork.parentSessionId,
-    forkedFromMessageId: envelope.fork.parentMessageId ?? null,
-    forkMode: 'cloud-group',
-    contextPolicy: 'prefix-through-message',
-    boundary: 'inherited-history-reference-only',
-    createdAtMs: envelope.fork.createdAtMs ?? null,
-  } : null;
   const parsedControlCreatedAtMs = Date.parse(cloudMessage.createdAt);
   const controlCreatedAtMs = Number.isFinite(parsedControlCreatedAtMs) ? parsedControlCreatedAtMs : Date.now();
   const groupTitleResolution = resolveReplicatedGroupTitle({
@@ -320,7 +315,7 @@ export async function applyCloudGroupSessionControl({
       .sort(compareCloudGroupParticipants)
       .map((participant) => participant.accountId),
     memberApprovalPolicy: 'under-50-open',
-    createdFrom: envelope.kind === 'session-fork' || forkMetadata ? 'cloud-group-fork-sync' : 'cloud-group-sync',
+    createdFrom: 'cloud-group-sync',
     ...(authorizedSessionTitle ? {
       sessionTitleSource: authorizedSessionTitle.titleSource,
       sessionTitleRevision: authorizedSessionTitle.titleRevision,
@@ -328,7 +323,6 @@ export async function applyCloudGroupSessionControl({
       sessionTitleUpdatedAtMs: authorizedSessionTitle.updatedAtMs,
       sessionTitleUpdatedByAccountId: authorizedSessionTitle.updatedByAccountId,
     } : {}),
-    ...(forkMetadata ? { fork: forkMetadata } : {}),
   };
   const persistedSessionTitle = stateOps.cleanText(envelopeSession?.title);
   const openResult = await openOrCreateCanonicalSessionFast({
@@ -345,14 +339,8 @@ export async function applyCloudGroupSessionControl({
   nextState = stateOps.mergeOpenSession(nextState, openResult);
   if (!nextState) return null;
 
-  const appliedSessionTitle = Boolean(
-    sessionTitleUpdateTitle
-    && authorizedSessionTitle
-    && openResult.session.title === authorizedSessionTitle.title
-    && envelopeSession?.title !== openResult.session.title,
-  );
-  if (appliedSessionTitle && authorizedSessionTitle?.updatedByAccountId !== account.accountId) {
-    const titleAuthorAccountId = authorizedSessionTitle!.updatedByAccountId;
+  if (envelope.kind === 'session-title-update' && authorizedSessionTitle) {
+    const titleAuthorAccountId = authorizedSessionTitle.updatedByAccountId;
     const noticeRequest = cloudSessionTitleUpdateNoticeRequest({
       envelope,
       actorIdentityId: identityIdByAccount.get(titleAuthorAccountId) ?? actorIdentityId,
@@ -360,23 +348,25 @@ export async function applyCloudGroupSessionControl({
       createdAtMs: controlCreatedAtMs,
       cloudMessageId: cloudMessage.messageId,
     });
-    if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
-      nextState = await appendCanonicalMessage(noticeRequest);
+    if (noticeRequest && !nextState.messages.some((message) => (
+      cloudTitleUpdateNoticeEquivalent(message, noticeRequest)
+    ))) {
+      const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
+      nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;
     }
   }
-  if (
-    groupTitleResolution.appliesIncoming
-    && !normalizedCatalogGroupTitle
-    && !isSelfAuthoredControl
-  ) {
+  if (envelope.kind === 'group-title-update') {
     const noticeRequest = cloudGroupTitleUpdateNoticeRequest({
       envelope,
       actorIdentityId,
       createdAtMs: controlCreatedAtMs,
       cloudMessageId: cloudMessage.messageId,
     });
-    if (noticeRequest && !nextState.messages.some((message) => message.id === noticeRequest.id)) {
-      nextState = await appendCanonicalMessage(noticeRequest);
+    if (noticeRequest && !nextState.messages.some((message) => (
+      cloudTitleUpdateNoticeEquivalent(message, noticeRequest)
+    ))) {
+      const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
+      nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;
     }
   }
   for (const noticeRequest of cloudGroupMemberJoinNoticeRequests({

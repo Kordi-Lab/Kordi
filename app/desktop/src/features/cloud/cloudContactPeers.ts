@@ -4,6 +4,7 @@ import type { CloudAccount } from './authClient';
 import { cloudAvatarImageUrl } from './avatar';
 import { canonicalAvatarImageSource } from './canonicalAvatar';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
+import { defaultAgentDisplayName } from '@/lib/identityLabels';
 
 export const CLOUD_SERVER_LABEL = 'kordi.cloud';
 export const CLOUD_PERSON_RUNTIME = 'person';
@@ -21,7 +22,10 @@ export function cloudAgentDisplayName(contact: Contact): string {
   if (isSystemCloudAgentContact(contact)) {
     return contact.targetCloudAgentName?.trim() || contact.name.trim();
   }
-  return contact.targetCloudAgentName?.trim() || 'Kordi';
+  const ownerId = contact.sourceParticipantId || contact.id.replace(/^cloud:/, '');
+  const agentId = contact.targetCloudAgentId?.trim();
+  if (agentId && agentId !== `cloud-agent:${ownerId}`) return contact.targetCloudAgentName?.trim() || 'Kordi';
+  return defaultAgentDisplayName(cloudPeerDisplayName(contact), contact.targetCloudAgentName);
 }
 
 export function cloudContactToPersonPeer(contact: Contact): DesktopCollaborationPeer {
@@ -78,7 +82,7 @@ export function cloudContactToAgentPeer(contact: Contact): DesktopCollaborationP
 
 export function cloudSelfContact(account: CloudAccount): Contact {
   const displayName = account.displayName?.trim() || account.primaryEmail?.trim() || 'Me';
-  const agentName = account.defaultAgent?.displayName?.trim() || 'Kordi';
+  const agentName = defaultAgentDisplayName(displayName, account.defaultAgent?.displayName);
   const agentId = account.defaultAgent?.agentId?.trim() || `cloud-agent:${account.accountId}`;
   const agentAvatarUrl = account.defaultAgent
     ? cloudAvatarImageUrl(canonicalAvatarImageSource(account.defaultAgent.avatar))

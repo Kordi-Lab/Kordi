@@ -195,6 +195,12 @@ function SidebarSlot({ args, chatActions }: SidebarSlotProps) {
         onSetChatGroupPinned: (groupSpaceId, pinned) => {
           void args.handleSetChatGroupPinned(groupSpaceId, pinned);
         },
+        onSetChatGroupMuted: (groupSpaceId, sessionIds, muted) => {
+          void args.handleSetChatGroupMuted(groupSpaceId, sessionIds, muted);
+        },
+        onSetChatGroupArchived: (groupSpaceId, sessionIds, archived) => {
+          void args.handleSetChatGroupArchived(groupSpaceId, sessionIds, archived);
+        },
         isCollaborationSyncing: args.isCollaborationSyncing,
       }}
       projects={{

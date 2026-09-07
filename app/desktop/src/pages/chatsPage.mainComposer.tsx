@@ -62,6 +62,7 @@ export function MainComposer({
     chatSlashMenuIndex,
     setChatSlashMenuIndex,
     acceptChatSlashCommand,
+    acceptChatMentionTarget,
     chatAttachmentInputRef,
     chatComposerAttachments,
     saveDesktopAttachments,
@@ -121,6 +122,7 @@ export function MainComposer({
     onPickFile: () => chatAttachmentInputRef.current?.click(),
     onAttachPath: (path) => { void saveDesktopAttachmentPaths([path]); },
     onFocus: (cursor) => composerInputRef.current?.focus({ start: cursor, end: cursor }),
+    onSelectOption: acceptChatMentionTarget,
     selectedIndex: chatSlashMenuIndex,
     setSelectedIndex: setChatSlashMenuIndex,
   });

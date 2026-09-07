@@ -83,7 +83,7 @@ test('canonical chat hydration is cached independently from active session selec
   assert.doesNotMatch(warmedDeps, /activeConvId/, 'switching sessions must not rebuild expensive canonical hydration');
 
   const visibleMemo = source.slice(visibleStart, source.indexOf('\n\n  const activeConv', visibleStart));
-  assert.match(visibleMemo, /allConversations: blankShellCollapsedChatConversations/, 'visible conversations should reuse the stable decorated and blank-collapsed list');
+  assert.match(visibleMemo, /allConversations: cloudCatalogReady \? blankShellCollapsedChatConversations : \[\]/, 'visible conversations should reuse the stable list only after account visibility is known');
   assert.match(visibleMemo, /activeConversationId: activeConvId/, 'only the cheap visibility layer should depend on active selection');
 });
 

@@ -31,7 +31,7 @@ export const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
     <span
       className="app-message-link-site-icon"
       data-site-icon-host={descriptor?.hostname}
-      data-site-icon-state={loadedDataUrl ? 'ready' : remoteIcon.status}
+      data-site-icon-state={failedDataUrl && failedDataUrl === remoteIcon.dataUrl ? 'failed' : remoteIcon.status}
       aria-hidden="true"
     >
       {loadedDataUrl ? (
@@ -39,6 +39,23 @@ export const SiteIcon = memo(function SiteIcon({ href }: { href: string }) {
           src={loadedDataUrl}
           alt=""
           decoding="async"
+          onLoad={(event) => {
+            // Some sites return a valid but fully transparent favicon.
+            // Inspect a bounded sample, not the potentially large source image.
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 16;
+            const context = canvas.getContext('2d');
+            if (!context) return;
+            try {
+              context.drawImage(event.currentTarget, 0, 0, 16, 16);
+              if (!context.getImageData(0, 0, 16, 16).data.some((value, index) => index % 4 === 3 && value > 0)) {
+                setFailedDataUrl(loadedDataUrl);
+              }
+            } catch {
+              // A decode/read failure must keep the existing visible fallback.
+              setFailedDataUrl(loadedDataUrl);
+            }
+          }}
           onError={() => setFailedDataUrl(loadedDataUrl)}
         />
       ) : (

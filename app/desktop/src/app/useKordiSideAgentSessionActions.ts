@@ -4,54 +4,25 @@ import {
   updateScopeDraft,
   type ComposerDraftState,
 } from '@/features/chat/composerDrafts';
-import { isUnmaterializedDesktopAgentSession } from '@/features/chat/draftSessions';
-import type { DesktopChatState, DesktopChatTurnSnapshot, QueuedDesktopChatMessage } from '@/kordi-app/types';
-import { createDesktopChatSession, fetchDesktopChatState } from '@/lib/desktop';
+import { isLocalDraftChatConversationId } from '@/features/chat/draftSessions';
+import { loadSession } from '@/features/cloud/session';
+import type { DesktopChatState } from '@/kordi-app/types';
+import { createDesktopChatSession } from '@/lib/desktop';
 
 type UseKordiSideAgentSessionActionsArgs = {
-  desktopChatState: DesktopChatState | null;
-  desktopLiveTurnsBySession: Record<string, DesktopChatTurnSnapshot>;
-  queuedDesktopMessagesBySession: Record<string, QueuedDesktopChatMessage[]>;
-  mainConversationId: string | null;
   isNativeShell: boolean;
   setComposerDrafts: Dispatch<SetStateAction<ComposerDraftState>>;
   setDesktopChatError: Dispatch<SetStateAction<string | null>>;
   setDesktopChatState: Dispatch<SetStateAction<DesktopChatState | null>>;
 };
 
-export function reusableBlankDesktopSessionId(
-  state: DesktopChatState | null,
-  excludedSessionId?: string | null,
-  occupiedSessionIds: ReadonlySet<string> = new Set(),
-) {
-  if (!state) return null;
-  const excludedId = excludedSessionId?.trim() ?? '';
-  if (
-    state.activeSession.id !== excludedId
-    && !occupiedSessionIds.has(state.activeSession.id)
-    && !state.activeSession.project
-    && isUnmaterializedDesktopAgentSession(state.activeSession)
-  ) {
-    return state.activeSession.id;
-  }
-  return state.sessions.find((session) => (
-    session.id !== excludedId
-    && !occupiedSessionIds.has(session.id)
-    && isUnmaterializedDesktopAgentSession(session)
-  ))?.id ?? null;
-}
-
 export function useKordiSideAgentSessionActions({
-  desktopChatState,
-  desktopLiveTurnsBySession,
-  queuedDesktopMessagesBySession,
-  mainConversationId,
   isNativeShell,
   setComposerDrafts,
   setDesktopChatError,
   setDesktopChatState,
 }: UseKordiSideAgentSessionActionsArgs) {
-  const createFlightRef = useRef<Promise<string | null> | null>(null);
+  const createFlightRef = useRef<{ source?: string; promise: Promise<string | null> } | null>(null);
   const setComposerTextForSession = useCallback(
     (sessionId: string, value: string) => {
       setComposerDrafts((current) => (
@@ -61,30 +32,20 @@ export function useKordiSideAgentSessionActions({
     [setComposerDrafts],
   );
 
-  const createSideAgentSession = useCallback(() => {
+  const createSideAgentSession = useCallback((sourceSessionId?: string) => {
     if (!isNativeShell) return Promise.resolve(null);
-    if (createFlightRef.current) return createFlightRef.current;
+    if (createFlightRef.current?.source === sourceSessionId && createFlightRef.current) return createFlightRef.current.promise;
     const request = (async () => {
       try {
         setDesktopChatError(null);
-        const occupiedSessionIds = new Set([
-          ...Object.keys(desktopLiveTurnsBySession),
-          ...Object.entries(queuedDesktopMessagesBySession)
-            .filter(([, messages]) => messages.length > 0)
-            .map(([sessionId]) => sessionId),
-        ]);
-        const reusableSessionId = reusableBlankDesktopSessionId(
-          desktopChatState,
-          mainConversationId,
-          occupiedSessionIds,
-        );
-        const nextState = reusableSessionId
-          ? desktopChatState?.activeSessionId === reusableSessionId
-            ? desktopChatState
-            : await fetchDesktopChatState(reusableSessionId)
-          : await createDesktopChatSession();
+        const account = await loadSession();
+        const nextState = await createDesktopChatSession({ independent: true, sourceSessionId });
+        if ((await loadSession())?.accountId !== account?.accountId) return null;
         if (!nextState) throw new Error('Unable to load the empty agent session');
         const sessionId = nextState.activeSessionId?.trim() || null;
+        if (!sessionId || isLocalDraftChatConversationId(sessionId) || sessionId === sourceSessionId
+          || nextState.activeSession.id !== sessionId || nextState.activeSession.messageCount > 0
+          || nextState.activeSession.messages.length > 0) throw new Error('Unable to create an empty private Agent session.');
         setDesktopChatState(nextState);
         if (sessionId) {
           setComposerDrafts((current) => (
@@ -101,16 +62,12 @@ export function useKordiSideAgentSessionActions({
         return null;
       }
     })().finally(() => {
-      createFlightRef.current = null;
+      if (createFlightRef.current?.promise === request) createFlightRef.current = null;
     });
-    createFlightRef.current = request;
+    createFlightRef.current = { source: sourceSessionId, promise: request };
     return request;
   }, [
-    desktopChatState,
-    desktopLiveTurnsBySession,
     isNativeShell,
-    mainConversationId,
-    queuedDesktopMessagesBySession,
     setComposerDrafts,
     setDesktopChatError,
     setDesktopChatState,

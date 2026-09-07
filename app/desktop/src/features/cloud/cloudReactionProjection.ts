@@ -71,8 +71,11 @@ export function patchCanonicalCloudMessages(
         ? content.cloudGroupMessageId
         : null,
     );
-    const projection = projections.get(`${message.sessionId}\u0000${message.id}`)
-      ?? projections.get(`${message.sessionId}\u0000${cloudGroupMessageId}`);
+    // Agent turns retain their original waiting-slot ID after completion.
+    // Only the current wire message may supply edits, text, and reactions.
+    const projection = projections.get(
+      `${message.sessionId}\u0000${cloudGroupMessageId || message.id}`,
+    );
     if (!projection) return message;
     const reactions = normalizeCloudMessageReactions(content.reactions) ?? [];
     if (

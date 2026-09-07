@@ -112,7 +112,7 @@ test('cloud remote-agent responses render with the remote owner agent identity',
   });
   const view = mapCollaborationConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
   const agentMessage = view.messages.find((candidate) => candidate.role === 'external-agent');
-  assert.equal(agentMessage?.sender, 'Kordi');
+  assert.equal(agentMessage?.sender, "Peer Person's Kordi");
 });
 
 test('active cloud agent bridge placeholders are not materialized as duplicate sessions', () => {

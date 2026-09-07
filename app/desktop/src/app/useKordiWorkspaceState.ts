@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 
 import { participantSpaceCreateKey } from '@/app/useKordiAppModelHelpers';
+import { hasCachedCloudSessionVisibility } from '@/features/cloud/cloudDiffSync';
 import type { KordiAppFoundation } from '@/app/useKordiAppFoundation';
 import { useKordiCollaborationMentions } from '@/app/useKordiCollaborationMentions';
 import { useKordiDesktopActivity } from '@/app/useKordiDesktopActivity';
@@ -157,6 +158,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     activeCollaborationConversationHost,
     activeCollaborationAwaitingReply,
   } = useWorkspaceViewModels({
+    cloudCatalogReady: !cloudSession.account || hasCachedCloudSessionVisibility(cloudSession.account.accountId),
     isNativeShell,
     isDesktopChatLoading,
     desktopChatState,
@@ -326,6 +328,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     isDesktopCollaborationSending,
     desktopLiveTurnsBySession,
     chatConversations,
+    mutedSessionIds: cloudMutedSessionIds, unreadSessionIds: cloudUnreadSessionIds,
     isNativeShell,
     attentionReady: initialMessagesSettled,
     chatTranscriptScrollRef,

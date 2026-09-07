@@ -268,7 +268,7 @@ fn convert_messages_for_responses(messages: &[Value]) -> Vec<Value> {
         match role {
             "assistant" => push_assistant_message(&mut out, idx, msg),
             "tool" => push_tool_result_message(&mut out, msg),
-            "user" | "system" => push_user_or_system_message(&mut out, role, msg),
+            "user" | "system" | "developer" => push_user_or_system_message(&mut out, role, msg),
             _ => {}
         }
     }

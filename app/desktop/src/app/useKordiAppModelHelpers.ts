@@ -289,16 +289,13 @@ export function metadataString(metadata: Record<string, unknown>, key: string) {
 }
 
 export function normalizeStoredGroupSpaceId(value: string) {
-  const text = value.trim();
-  return text.startsWith('group:') ? text.slice('group:'.length) : text;
+  return value.trim().replace(/^(?:group:)+/, '');
 }
 
 export function metadataGroupSpaceId(metadata: Record<string, unknown>) {
-  return normalizeStoredGroupSpaceId(
-    metadataString(metadata, 'groupId')
+  return normalizeStoredGroupSpaceId(metadataString(metadata, 'groupId')
     || metadataString(metadata, 'groupSpaceId')
-    || metadataString(metadata, 'continuedFromSpaceId'),
-  );
+    || metadataString(metadata, 'continuedFromSpaceId'));
 }
 
 export function groupRenameMetadata(metadata: Record<string, unknown>, title: string, fallbackGroupSpaceId: string, updatedAtMs = Date.now()) {
@@ -314,7 +311,7 @@ export function groupRenameMetadata(metadata: Record<string, unknown>, title: st
 
 export function sessionRenameNoticeText(actorName: string | null | undefined, title: string, scope: 'group' | 'session') {
   const actor = actorName?.trim() || 'Someone';
-  return `${actor} changed the ${scope} name to ${title.trim()}`;
+  return `${actor} changed the ${scope === 'session' ? 'channel' : 'group'} name to ${title.trim()}`;
 }
 
 export function canonicalIdentityDisplayName(state: CanonicalSessionState | null | undefined, identityId: string | null | undefined) {

@@ -9,6 +9,7 @@ import {
 import type { CloudAccount } from '@/features/cloud/authClient';
 import { cloudAvatarImageUrl } from '@/features/cloud/avatar';
 import { canonicalAvatarImageSource } from '@/features/cloud/canonicalAvatar';
+import { defaultAgentDisplayName } from '@/lib/identityLabels';
 import {
   setLocalProfileAvatarSeed,
 } from '@/kordi-app/components/IdentityAvatar';
@@ -76,7 +77,10 @@ export function resolveKordiProfileAvatarState({
       )?.trim()
       || host?.ownerName?.trim()
       || null,
-    localAgentDisplayName: account?.defaultAgent?.displayName?.trim()
+    localAgentDisplayName: (account ? defaultAgentDisplayName(
+      account.displayName || account.primaryEmail,
+      account.defaultAgent?.displayName || agent?.label || localAgentIdentity?.displayName || host?.displayName,
+    ) : null)
       || agent?.label?.trim()
       || localAgentIdentity?.displayName?.trim()
       || host?.displayName?.trim()

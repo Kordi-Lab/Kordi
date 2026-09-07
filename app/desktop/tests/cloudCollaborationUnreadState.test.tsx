@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import type { CloudAccount, CloudMessage } from '../src/features/cloud/authClient';
 import { buildCloudDesktopCollaborationState, cloudDirectPersonSessionId } from '../src/features/cloud/cloudCollaborationState';
 import { encodeCloudAgentResponse } from '../src/features/cloud/cloudAgentMessages';
+import { encodeCloudDirectMessageEnvelope } from '../src/features/cloud/cloudDirectMessages';
 import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
 import { cloudContactToContact } from '../src/features/cloud/useCloudContacts';
 import { cloudAccountGenerationKey, cloudCollaborationPreviousStateForContext, suppressCloudCollaborationUnreadCounts } from '../src/features/cloud/useCloudCollaborationState';
@@ -119,13 +120,35 @@ test('stored self messages restore a private Kordi cloud agent conversation', ()
 
   assert.equal(state.conversations.length, 1);
   assert.equal(state.conversations[0].id, 'cloud:conversation:acct_me:agent');
-  assert.equal(state.conversations[0].title, 'Kordi');
+  assert.equal(state.conversations[0].title, "Me Cloud's Kordi");
   assert.equal(state.conversations[0].peerRuntime, 'kordi-desktop');
   assert.equal(state.conversations[0].identity.remoteAgentId, 'cloud-agent:acct_me');
   assert.deepEqual(state.conversations[0].messages.map((item) => item.text), [
     '@Kordi remember this private note',
     'I will remember it.',
   ]);
+});
+
+test('renaming the default Agent updates the session identity without rewriting the saved request', () => {
+  const renamedAccount: CloudAccount = { ...account, defaultAgent: {
+    agentId: 'cloud-agent:acct_me', displayName: 'Renamed Agent', avatarUrl: null,
+    avatar: { ...cloudAccountAvatarFixture, entityType: 'agent', entityId: 'cloud-agent:acct_me' },
+  } };
+  const body = encodeCloudDirectMessageEnvelope({
+    schemaVersion: 1, kind: 'message', text: 'Original task',
+    targetCloudAgentId: 'cloud-agent:acct_me', targetCloudAgentName: 'Previous Agent',
+    targetCloudAgentOwnerAccountId: 'acct_me', targetCloudAgentOwnerName: 'Previous owner',
+  });
+  const request: CloudMessage = { ...message, messageId: 'rename-request', fromAccountId: 'acct_me',
+    toAccountId: 'acct_me', body, direction: 'outgoing', sessionId: 'session:self-agent:rename' };
+  const state = buildCloudDesktopCollaborationState({
+    account: renamedAccount, contacts: [], messagesByPeer: { acct_me: [request] },
+  });
+  const conversation = state.conversations.find(row => row.cloudSessionId === request.sessionId)
+    ?? state.conversations.find(row => row.identity.remoteAgentId === 'cloud-agent:acct_me');
+  assert.ok(conversation);
+  assert.equal(conversation.identity.remoteAgentName, 'Renamed Agent');
+  assert.equal(request.body, body);
 });
 
 test('cloud bridge rebuild reuses unaffected conversation objects by message revision', () => {

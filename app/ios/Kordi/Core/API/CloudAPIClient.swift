@@ -65,6 +65,7 @@ actor CloudAPIClient {
     private var chatMessagesById: [String: CloudChatMessage] = [:]
     private var chatBootstrapTask: Task<CloudChatBootstrapResponse, Error>?
     private var lastChatBootstrap: CloudChatBootstrapResponse?
+    private var chatBootstrapGeneration = 0
 
     init(
         baseURL: URL = configuredBaseURL,
@@ -336,6 +337,7 @@ actor CloudAPIClient {
     }
 
     private func resetChatCache() {
+        chatBootstrapGeneration &+= 1
         chatConversationsById = [:]
         chatConversationsBySessionId = [:]
         chatMessagesById = [:]
@@ -780,18 +782,6 @@ actor CloudAPIClient {
         )
     }
 
-    func cachedChatSessionTitles() -> [CloudSyncedSessionTitle] {
-        chatConversationsById.values.map { conversation in
-            let title = conversation.preferences.personalTitle
-                ?? (conversation.kind == "group" ? nil : conversation.sharedTitle)
-                ?? ""
-            return CloudSyncedSessionTitle(
-                sessionId: conversation.legacySessionId ?? conversation.id,
-                title: title
-            )
-        }
-    }
-
     func listSessionVisibility(token: String) async throws -> CloudSessionVisibility {
         try await send(
             path: "/v1/cloud/sessions/visibility",
@@ -872,6 +862,28 @@ actor CloudAPIClient {
         )
     }
 
+    func setGroupSpaceMuted(token: String, groupSpaceId: String, muted: Bool) async throws {
+        let escaped = groupSpaceId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? groupSpaceId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/group-spaces/\(escaped)/muted",
+            method: muted ? "PUT" : "DELETE",
+            token: token,
+            fallback: muted ? "Could not mute this group." : "Could not unmute this group."
+        )
+    }
+
+    func setGroupSpaceArchived(token: String, groupSpaceId: String, archived: Bool) async throws {
+        let escaped = groupSpaceId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? groupSpaceId
+        try await sendWithoutResponse(
+            path: "/v1/cloud/group-spaces/\(escaped)/hidden",
+            method: archived ? "PUT" : "DELETE",
+            token: token,
+            fallback: archived ? "Could not archive this group." : "Could not restore this group."
+        )
+    }
+
     func sessionPin(token: String, sessionId: String) async throws -> CloudSessionPin {
         let escaped = sessionId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? sessionId
         let response: SessionPinResponse = try await send(
@@ -910,6 +922,57 @@ actor CloudAPIClient {
         )
     }
 
+    func agentSubsession(token: String, id: String, includeMessages: Bool) async throws -> CloudAgentSubsession {
+        try await send(
+            path: "/v1/cloud/agent-subsessions/\(escapedPath(id))", method: "GET", token: token,
+            query: [URLQueryItem(name: "includeMessages", value: includeMessages ? "true" : "false")],
+            fallback: "Could not load this agent task."
+        )
+    }
+
+    private func threadReadConversation(token: String, sessionId: String) async throws -> CloudChatConversation {
+        if let cached = chatConversationsBySessionId[sessionId] ?? chatConversationsById[sessionId] { return cached }
+        _ = try await bootstrapChat(token: token)
+        guard let conversation = chatConversationsBySessionId[sessionId] ?? chatConversationsById[sessionId] else {
+            throw CloudAPIError(code: "chat_conversation_missing", message: "This conversation is unavailable.", statusCode: 404)
+        }
+        return conversation
+    }
+
+    func threadReads(token: String, sessionId: String) async throws -> [CloudThreadRead] {
+        let conversation = try await threadReadConversation(token: token, sessionId: sessionId)
+        return try await send(path: "/v2/chat/conversations/\(escapedPath(conversation.id))/threads/read",
+            method: "GET", token: token, fallback: "Could not load thread read status.")
+    }
+
+    func markThreadRead(token: String, sessionId: String, rootId: String, sequence: Int64) async throws -> CloudThreadRead {
+        struct Request: Encodable { let root_message_id: String; let sequence: Int64 }
+        let conversation = try await threadReadConversation(token: token, sessionId: sessionId)
+        return try await send(path: "/v2/chat/conversations/\(escapedPath(conversation.id))/threads/read",
+            method: "PUT", token: token, body: Request(root_message_id: rootId, sequence: sequence),
+            fallback: "Could not save thread read status.")
+    }
+
+    func agentSubsessionTasks(token: String, parentSessionId: String, after: String?) async throws -> CloudAgentSubsessionTaskPage {
+        try await send(path: "/v1/cloud/agent-subsessions", method: "GET", token: token,
+            query: [URLQueryItem(name: "parentSessionId", value: parentSessionId)]
+                + (after.map { [URLQueryItem(name: "after", value: $0)] } ?? []),
+            fallback: "Could not load Agent threads.")
+    }
+
+    func sendSubsessionMessage(token: String, id: String, clientMessageId: String, text: String, mentions: [MessageMention]) async throws -> CloudAgentSubsession {
+        struct Request: Encodable {
+            let clientMessageId: String
+            let text: String
+            let mentions: [MessageMention]
+        }
+        return try await send(
+            path: "/v1/cloud/agent-subsessions/\(escapedPath(id))/messages", method: "POST", token: token,
+            body: Request(clientMessageId: clientMessageId, text: text, mentions: mentions),
+            fallback: "Could not send this message."
+        )
+    }
+
     func currentProviderAuthSnapshot(
         token: String,
         provider: String? = nil,
@@ -938,6 +1001,7 @@ actor CloudAPIClient {
             path: "/v1/cloud/agent-provider-auth/snapshots",
             method: "POST",
             token: token,
+            query: [URLQueryItem(name: "intent", value: "explicit")],
             body: PublishProviderAuthSnapshotRequest(
                 provider: provider,
                 authChoice: authChoice,
@@ -952,6 +1016,7 @@ actor CloudAPIClient {
             path: "/v1/cloud/agent-provider-auth/snapshots/\(snapshotId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? snapshotId)",
             method: "DELETE",
             token: token,
+            query: [URLQueryItem(name: "intent", value: "explicit")],
             fallback: "Could not remove provider authentication."
         )
     }
@@ -1798,8 +1863,10 @@ actor CloudAPIClient {
     private func bootstrapChat(token: String, force: Bool = false) async throws -> CloudChatBootstrapResponse {
         if !force, let cached = lastChatBootstrap { return cached }
         if let task = chatBootstrapTask { return try await task.value }
+        let expectedAccount = activeAccountId
+        let expectedGeneration = chatBootstrapGeneration
         let task = Task { [self] in
-            let response: CloudChatBootstrapResponse = try await send(
+            var response: CloudChatBootstrapResponse = try await send(
                 path: "/v2/chat/sync/bootstrap",
                 method: "GET",
                 token: token,
@@ -1808,18 +1875,21 @@ actor CloudAPIClient {
             guard response.protocolVersion == 2 else {
                 throw CloudAPIError(code: "unsupported_protocol", message: "This Kordi version cannot read the reliable chat stream.", statusCode: 0)
             }
+            if response.sessionVisibility == nil { response.sessionVisibility = try await listSessionVisibility(token: token) }
+            try Task.checkCancellation()
             return response
         }
         chatBootstrapTask = task
         do {
             let response = try await task.value
+            guard activeAccountId == expectedAccount, chatBootstrapGeneration == expectedGeneration, !Task.isCancelled else { throw CancellationError() }
             chatBootstrapTask = nil
             lastChatBootstrap = response
             response.conversations.forEach(remember)
             response.latestMessages.forEach { chatMessagesById[$0.id] = $0 }
             return response
         } catch {
-            chatBootstrapTask = nil
+            if chatBootstrapGeneration == expectedGeneration { chatBootstrapTask = nil }
             throw error
         }
     }
@@ -2000,7 +2070,11 @@ actor CloudAPIClient {
                 )
             }
         }
-        return titleEvents + messageEvents + pinEvents
+        let visibilityEvents = bootstrap.sessionVisibility.map { [CloudSyncEvent(
+            eventId: "bootstrap:visibility:\(bootstrap.lastStreamSequence)", eventType: "session.visibility.snapshot",
+            peerAccountId: nil, messageId: nil, payload: nil, occurredAt: bootstrap.serverTime, visibility: $0
+        )] } ?? []
+        return visibilityEvents + titleEvents + messageEvents + pinEvents
     }
 
     private func projectedEvents(from event: CloudChatEvent) throws -> [CloudSyncEvent] {
@@ -2227,9 +2301,9 @@ actor CloudAPIClient {
         conversation: CloudChatConversation,
         occurredAt: String
     ) -> CloudSyncEvent {
-        let title = conversation.preferences.personalTitle
-            ?? (conversation.kind == "group" ? nil : conversation.sharedTitle)
-            ?? ""
+        let title = conversation.kind == "group"
+            ? conversation.sharedTitle ?? ""
+            : conversation.preferences.personalTitle ?? conversation.sharedTitle ?? ""
         return CloudSyncEvent(
             eventId: id,
             eventType: "session.title.updated",

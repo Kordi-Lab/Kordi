@@ -161,6 +161,10 @@ pub(super) fn initialize_schema(conn: &Connection) -> Result<(), String> {
              last_stream_seq INTEGER NOT NULL CHECK(last_stream_seq >= 0),
              updated_at_ms INTEGER NOT NULL
          );
+         CREATE TABLE IF NOT EXISTS chat_sync_visibility (
+             account_id TEXT PRIMARY KEY,
+             snapshot_json TEXT NOT NULL
+         );
          CREATE TABLE IF NOT EXISTS chat_sync_conversations (
              account_id TEXT NOT NULL,
              conversation_id TEXT NOT NULL,

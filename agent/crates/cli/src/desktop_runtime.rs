@@ -1,8 +1,10 @@
 use anyhow::{Result, anyhow, bail};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use kordi_core::agent_session::ThinkingLevel;
 use kordi_core::settings::Settings;
-use kordi_core::types::{ContentBlock, EntryBase, EntryId, SessionEntry};
+#[cfg(test)]
+use kordi_core::types::ContentBlock;
+use kordi_core::types::{EntryBase, EntryId, SessionEntry};
 use kordi_provider::registry::Model;
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -15,9 +17,11 @@ use crate::session_bootstrap::{
 use crate::tool_registry::ToolSelectionPreference;
 mod attachments;
 mod background_sessions;
+mod identity;
 mod model_options;
 mod models;
 mod prompt_context;
+mod shared_context;
 #[cfg(test)]
 use prompt_context::strip_session_prompt_context;
 mod session_catalog;
@@ -30,7 +34,10 @@ use attachments::attachment_metadata_from_path;
 use attachments::attachment_summary_from_metadata;
 
 pub use background_sessions::{
-    background_session_for_parent_message, create_background_session, session_exists,
+    BackgroundSessionMessage, BackgroundSessionSnapshot, activate_background_runtime_session,
+    background_runtime_session_ids, background_runtime_snapshot,
+    background_session_for_parent_message, create_background_session,
+    is_background_runtime_session, session_exists,
 };
 pub use model_options::{
     authenticated_model_options, clear_desktop_model_options_cache,
@@ -83,7 +90,7 @@ pub struct DesktopRuntimeSession {
 /// system prompt, a small tool allowlist, and explicit skill roots. This keeps
 /// specialized workflows persistent without inheriting unrelated project
 /// tools or the display model configured on a cloud agent record.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct DesktopRuntimeProfile {
     pub provider: Option<String>,
     pub model: Option<String>,
@@ -92,6 +99,7 @@ pub struct DesktopRuntimeProfile {
     pub tool_names: Option<Vec<String>>,
     pub skill_names: Option<Vec<String>>,
     pub skill_paths: Vec<PathBuf>,
+    #[serde(skip)]
     pub execution_policy: Option<kordi_tools::ExecutionPolicy>,
 }
 
@@ -121,6 +129,18 @@ impl DesktopRuntimeSession {
     }
 
     pub async fn resume(cwd: std::path::PathBuf, session_id: &str) -> Result<Self> {
+        if is_background_runtime_session(session_id)? {
+            let profile =
+                background_sessions::saved_runtime_profile(session_id)?.ok_or_else(|| {
+                    anyhow::anyhow!("The subsession runtime profile is unavailable on this Mac")
+                })?;
+            return Self::resume_profiled(
+                runtime_cwd_for_session(cwd, session_id)?,
+                session_id,
+                profile,
+            )
+            .await;
+        }
         let runtime_cwd = runtime_cwd_for_session(cwd, session_id)?;
         let entry = SessionBootstrapOptions {
             session: Some(session_id.to_string()),
@@ -154,6 +174,7 @@ impl DesktopRuntimeSession {
         let (_runtime_host, _ui, mut setup) = prepare_session_runtime_for_cwd(cwd, options).await?;
         apply_runtime_profile(&mut setup, &profile);
         normalize_setup_thinking(&mut setup);
+        background_sessions::save_runtime_profile(&setup, &profile)?;
         Ok(Self::from_setup(setup, false))
     }
 
@@ -489,90 +510,6 @@ impl DesktopRuntimeSession {
         runtime: Option<kordi_tools::SessionObservationRuntime>,
     ) {
         self.setup.tool_ctx.session_observation = runtime;
-    }
-
-    pub fn sync_context_messages(
-        &mut self,
-        messages: &[DesktopChatContextMessage],
-    ) -> Result<usize> {
-        self.set_dynamic_system_context(prompt_context::system_context(messages));
-        let history_messages = messages
-            .iter()
-            .filter(|message| !prompt_context::is_system_context(message));
-        if messages.is_empty() {
-            return Ok(0);
-        }
-        ensure_session_row_created(&mut self.setup)?;
-
-        let mut imported_ids = HashSet::new();
-        for row in kordi_session::store::get_entries(&self.setup.conn, &self.setup.session_id)? {
-            let Ok(SessionEntry::CustomMessage {
-                custom_type,
-                details,
-                ..
-            }) = serde_json::from_str::<SessionEntry>(&row.payload)
-            else {
-                continue;
-            };
-            if custom_type != CLOUD_AGENT_CONTEXT_CUSTOM_TYPE {
-                continue;
-            }
-            if let Some(id) = details
-                .as_ref()
-                .and_then(|value| value.get("cloudMessageId"))
-                .and_then(|value| value.as_str())
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-            {
-                imported_ids.insert(id.to_string());
-            }
-        }
-
-        let mut count = 0;
-        for message in history_messages {
-            let id = message.id.trim();
-            let author_name = message.author_name.trim();
-            let text = message.text.trim();
-            if id.is_empty() || author_name.is_empty() || text.is_empty() {
-                continue;
-            }
-            if !imported_ids.insert(id.to_string()) {
-                continue;
-            }
-            let author_kind = if message.author_kind.trim().eq_ignore_ascii_case("agent") {
-                "agent"
-            } else {
-                "human"
-            };
-            let timestamp = message
-                .created_at_ms
-                .and_then(DateTime::<Utc>::from_timestamp_millis)
-                .unwrap_or_else(Utc::now);
-            let parent_id =
-                kordi_session::store::get_session(&self.setup.conn, &self.setup.session_id)?
-                    .and_then(|session| session.leaf_id)
-                    .map(EntryId);
-            let entry = SessionEntry::CustomMessage {
-                base: EntryBase {
-                    id: EntryId::generate(),
-                    parent_id,
-                    timestamp,
-                },
-                custom_type: CLOUD_AGENT_CONTEXT_CUSTOM_TYPE.to_string(),
-                content: vec![ContentBlock::Text {
-                    text: format!("{author_name} ({author_kind}): {text}"),
-                }],
-                display: false,
-                details: Some(serde_json::json!({
-                    "cloudMessageId": id,
-                    "authorName": author_name,
-                    "authorKind": author_kind,
-                })),
-            };
-            kordi_session::store::append_entry(&self.setup.conn, &self.setup.session_id, &entry)?;
-            count += 1;
-        }
-        Ok(count)
     }
 
     pub fn sync_visible_task_records(

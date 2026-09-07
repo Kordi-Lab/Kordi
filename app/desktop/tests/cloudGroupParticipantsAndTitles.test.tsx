@@ -54,6 +54,30 @@ test('encoded cloud group controls never transport avatar image values', () => {
   assert.deepEqual(decoded?.participants.map((participant) => participant.avatarUrl), [null]);
 });
 
+test('group title updates never transport a channel title snapshot', () => {
+  const decoded = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-title-update',
+    groupId: 'session:group:general',
+    groupSpaceId: 'session:group:space',
+    groupTitle: 'Renamed group',
+    createdByAccountId: 'acct_a',
+    actor: { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' },
+    participants: [{ accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'admin' }],
+    sessionTitle: {
+      title: 'stale local channel title',
+      titleSource: 'manual',
+      titleRevision: 1,
+      titlePolicyVersion: 1,
+      updatedAtMs: 1,
+      updatedByAccountId: 'acct_a',
+    },
+    message: null,
+  }));
+
+  assert.equal(decoded?.groupTitle, 'Renamed group');
+  assert.equal(decoded?.sessionTitle, null);
+});
+
 test('cloud group participant normalization rejects kh local ids', () => {
   const participants = cloudGroupUniqueParticipants([
     { accountId: 'acct_a', displayName: 'Alice', avatarUrl: null, role: 'person' },
@@ -281,6 +305,18 @@ test('only explicit group title update controls mutate the shared group name', (
   assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'session-title-update', groupTitle: 'Thread title' }), false);
   assert.equal(shouldApplyCloudGroupTitleUpdate({ kind: 'group-title-update', groupTitle: 'Lalla' }), true);
   assert.equal(cloudSessionTitleUpdateTitle({ kind: 'session-title-update', groupTitle: 'Thread title' }), 'Thread title');
+  assert.equal(cloudSessionTitleUpdateTitle({
+    kind: 'session-title-update',
+    groupTitle: 'Parent group',
+    sessionTitle: {
+      title: 'Thread title',
+      titleSource: 'manual',
+      titleRevision: 2,
+      titlePolicyVersion: 1,
+      updatedAtMs: 1,
+      updatedByAccountId: 'acct_admin',
+    },
+  }), 'Thread title');
   assert.equal(cloudSessionTitleUpdateTitle({ kind: 'group-title-update', groupTitle: 'Lalla' }), null);
 });
 

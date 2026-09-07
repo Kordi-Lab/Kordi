@@ -29,7 +29,6 @@ import type {
 } from './cloudSyncCoordinator';
 import type { CloudUnreadReadinessSnapshot } from './cloudMessageSyncState';
 import { useCloudAccountLifecycleState } from './useCloudAccountLifecycleState';
-import { useCloudSessionVisibilityRefresh } from './useCloudSessionVisibilityRefresh';
 
 const EMPTY_LOCAL_READ_SESSION_IDS = new Set<string>();
 
@@ -57,7 +56,7 @@ export type CloudCollaborationMessageStore = {
 export function useCloudCollaborationStores({
   account,
   canonicalState,
-  client,
+  client: _client,
   messageCache,
   messageStore,
   syncCoordinator,
@@ -176,23 +175,6 @@ export function useCloudCollaborationStores({
   useEffect(() => {
     canonicalStateRef.current = canonicalState ?? null;
   }, [canonicalState]);
-
-  useCloudSessionVisibilityRefresh({
-    account,
-    client,
-    setHiddenSessionIds:
-      lifecycle.visibility.setHiddenSessionIds,
-    setDeletedSessionIds:
-      lifecycle.visibility.setDeletedSessionIds,
-    setUnreadSessionIds:
-      lifecycle.visibility.setUnreadSessionIds,
-    setPinnedSessionIds:
-      lifecycle.visibility.setPinnedSessionIds,
-    setMutedSessionIds:
-      lifecycle.visibility.setMutedSessionIds,
-    setPinnedGroupSpaceIds:
-      lifecycle.visibility.setPinnedGroupSpaceIds,
-  });
 
   return {
     messages: {

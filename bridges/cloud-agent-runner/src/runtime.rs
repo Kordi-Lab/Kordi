@@ -83,7 +83,19 @@ pub fn sandbox_backend_for_run(
     local_root: PathBuf,
 ) -> Result<SandboxBackendHandle, &'static str> {
     match sandbox_backend_mode_from_env() {
-        SandboxBackendMode::Local => Ok(std::sync::Arc::new(LocalSandboxBackend::new(local_root))),
+        SandboxBackendMode::Local => {
+            let id = run.sandbox_id.as_deref().unwrap_or(&run.run_id);
+            if id.is_empty()
+                || !id
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-'))
+            {
+                return Err("invalid_sandbox_id");
+            }
+            Ok(std::sync::Arc::new(LocalSandboxBackend::new(
+                local_root.join(id),
+            )))
+        }
         SandboxBackendMode::K8s => {
             let sandbox_id = run.sandbox_id.as_deref().ok_or("missing_sandbox")?;
             Ok(std::sync::Arc::new(K8sSandboxBackend::from_env(
@@ -218,8 +230,23 @@ where
             return Ok(RunnerStepOutcome::FailedProviderError { run_id: run.run_id });
         }
     };
-    let response_text = match run_model_loop(client, provider, &run, &sandbox, auth_material).await
-    {
+    let result = {
+        let generation = run_model_loop(client, provider, &run, &sandbox, auth_material);
+        tokio::pin!(generation);
+        let mut heartbeat = tokio::time::interval(std::time::Duration::from_secs(40));
+        heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        heartbeat.tick().await;
+        let deadline = tokio::time::sleep(std::time::Duration::from_secs(600));
+        tokio::pin!(deadline);
+        loop {
+            tokio::select! {
+                result = &mut generation => break result,
+                _ = heartbeat.tick() => client.mark_running(&run.run_id).await?,
+                _ = &mut deadline => break Err(crate::model_loop::ModelLoopError::Provider("Cloud execution timed out".into())),
+            }
+        }
+    };
+    let response_text = match result {
         Ok(response_text) => response_text,
         Err(err) => {
             client

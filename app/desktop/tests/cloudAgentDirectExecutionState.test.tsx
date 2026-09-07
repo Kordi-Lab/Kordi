@@ -196,39 +196,48 @@ test('cloud direct local-agent provider failure replaces processing immediately 
   assert.equal(view.messages.some((candidate) => candidate.turn?.status === 'processing'), false);
 });
 
-test('cloud direct local-agent execution does not wait for remote response guards or rerun after publish failure', () => {
+test('shared direct execution acquires ownership before starting and fences publication', () => {
   const source = readFileSync(new URL('../src/features/cloud/useCloudDirectAgentExecution.ts', import.meta.url), 'utf8');
   const effectStart = source.indexOf('for (const [peerId, messages] of cloudMessageIndex.byPeerId)');
   const effectEnd = source.indexOf('\n  }, [', effectStart);
   assert.ok(effectStart >= 0 && effectEnd > effectStart, 'expected direct Cloud agent effect');
   const effect = source.slice(effectStart, effectEnd);
   const startTurnIndex = effect.indexOf('const startedTurn = await startDesktopSharedChatMessage');
-  const awaitGuardIndex = effect.indexOf('await Promise.all([', startTurnIndex);
-  const finalGuardIndex = effect.indexOf('cloudAgentResponsePublicationIsBlocked({', awaitGuardIndex);
-  const activityPublishIndex = effect.indexOf('await publishDerivedCloudSessionActivity', startTurnIndex);
+  const claimIndex = effect.indexOf('await acquireDesktopExecutionLease');
 
   assert.ok(startTurnIndex >= 0, 'expected local agent execution');
-  assert.ok(awaitGuardIndex > startTurnIndex, 'remote guards must only block response publication');
-  assert.ok(finalGuardIndex > awaitGuardIndex, 'expected a fresh response guard after local execution');
-  assert.ok(activityPublishIndex > finalGuardIndex, 'ownership must be checked before publishing derived activity');
-  assert.match(effect, /const responseGuardPromise = cloudAgentResponsePublicationIsBlocked\(/);
-  assert.match(effect, /const \[initialResponseBlocked, finalResponseBlocked\]\s*=\s*await Promise\.all\(/);
+  assert.ok(claimIndex >= 0 && claimIndex < startTurnIndex);
+  assert.match(effect, /lease\.deadline/);
+  assert.match(effect, /lease\.attach\(startedTurn\.id\)/);
+  assert.match(effect, /lease\.publisher\.sendMessage/);
+  assert.match(effect, /finally \{ lease\.dispose\(\); \}/);
   assert.doesNotMatch(effect.slice(0, startTurnIndex), /await client\.listMessages|await cloudFallbackRunAlreadyOwnsRequest/);
   assert.doesNotMatch(effect, /processedCloudAgentMentionIdsRef\.current\.delete\(message\.messageId\)/);
   assert.match(effect, /response publish failed/);
 });
 
-test('shared direct and group requests route before reserving the parent runtime', () => {
+test('shared direct and group requests use internal request runtimes without automatic forks', () => {
   const directSource = readFileSync(new URL('../src/features/cloud/useCloudDirectAgentExecution.ts', import.meta.url), 'utf8');
   const groupSource = readFileSync(new URL('../src/features/cloud/cloudGroupAgentExecution.ts', import.meta.url), 'utf8');
   const desktopSource = readFileSync(new URL('../src/lib/desktopBackgroundSessions.ts', import.meta.url), 'utf8');
+  const sharedStart = readFileSync(new URL('../src-tauri/src/chat/message_execution/shared.rs', import.meta.url), 'utf8');
 
   assert.match(directSource, /startDesktopSharedChatMessage\(\s*message\.messageId,/);
   assert.match(groupSource, /startDesktopSharedChatMessage\(\s*message\.id,/);
+  assert.match(groupSource, /\[message\.id\]: \{ \.\.\.turn, replyToMessageId: message\.id, messageAction: threadMessageAction \}/);
+  assert.match(directSource, /desktopSharedRequestAlreadyStarted\(error\)\) return/);
+  assert.match(groupSource, /desktopSharedRequestAlreadyStarted\(error\)\) return/);
   assert.match(desktopSource, /desktop_chat_start_shared_message/);
+  assert.match(sharedStart, /input\.session_id = shared_request_runtime_session_id/);
+  assert.match(sharedStart, /start_message\(manager, input\)\.await/);
+  assert.doesNotMatch(sharedStart, /classify_shared_task|reply_in_thread/);
+  assert.match(sharedStart, /input\.shared_context = true/);
+  assert.match(sharedStart, /input\.request_message_id = Some\(request_id\)/);
+  assert.doesNotMatch(directSource + groupSource, /createThreadMessageAction|replyInThread/);
+  assert.doesNotMatch(sharedStart, /spawn_background_session|completed: true|forkTurns/);
 });
 
-test('background children publish their prompt and refresh catalog before streaming', () => {
+test('model subsessions synchronize through their execution resource rather than the chat catalog', () => {
   const executionSource = readFileSync(new URL('../src-tauri/src/chat/message_execution.rs', import.meta.url), 'utf8');
   const backgroundSource = readFileSync(new URL('../src-tauri/src/chat/background_tasks/managed_child.rs', import.meta.url), 'utf8');
   const desktopStateSource = readFileSync(new URL('../src/features/chat/useDesktopChatState.ts', import.meta.url), 'utf8');
@@ -237,8 +246,12 @@ test('background children publish their prompt and refresh catalog before stream
 
   const startSync = executionSource.indexOf('if sync_session_at_start');
   const modelRun = executionSource.indexOf('let result = match turn', startSync);
-  assert.ok(startSync >= 0 && modelRun > startSync, 'child prompt must sync before model execution');
-  assert.match(backgroundSource, /sync_session_at_start: true/);
+  assert.ok(startSync >= 0 && modelRun > startSync, 'legacy session synchronization still precedes model execution');
+  assert.match(backgroundSource, /sync_session_at_start: false/);
+  assert.match(backgroundSource, /activate_background_runtime_session/);
+  assert.match(backgroundSource, /Result retained in background session/);
+  const discovery=readFileSync(new URL('../src/features/chat/useBackgroundTurnDiscovery.ts', import.meta.url),'utf8');
+  assert.match(discovery,/subsessionIds\.has\(turn\.sessionId\).*publishModelSubsession/);
 
   const backgroundRefresh = desktopStateSource.indexOf('if (isBackgroundSession) {');
   const polling = desktopStateSource.indexOf('while (!nextTurn.completed)', backgroundRefresh);
@@ -352,7 +365,7 @@ test('cloud self-agent responses keep local runtime tool details local to the ow
 
   const view = mapCollaborationConversationToViewModel(state.conversations[0], state.hosts[0], 'Kordi');
   const agentMessage = view.messages.find((candidate) => candidate.role === 'owned-agent');
-  assert.equal(agentMessage?.sender, 'Kordi');
+  assert.equal(agentMessage?.sender, "Me Cloud's Kordi");
   assert.equal(agentMessage?.turn?.tools[0]?.name, 'read');
 });
 

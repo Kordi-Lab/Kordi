@@ -2,24 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { baseOutreach,renderInfoPanel } from "./helpers/chatDetailPanelFixtures";
 
-import { ChatDetailPanel, chatArtifactPreviewBaseRoot } from '../src/pages/ChatDetailPanel';
-
-const baseOutreach = {
-  targetKind: 'person',
-  parentSessionId: 'session:group:88bbd974-b87f-4e04-a9dc-40c4c9bf1af7',
-  sourceHostId: 'bridge-host-1',
-  sourceRequestId: 'bridge-request-1',
-  targetNodeId: 'kd_remote',
-  targetHumanId: 'human-remote',
-  targetDisplayName: 'Kordi User 3',
-  targetOwnerName: 'Kordi User 3',
-  requestText: 'NLP/AI conference deadlines',
-  contextPolicy: 'session-message',
-  status: 'complete',
-  createdAtMs: 1_000,
-  updatedAtMs: 2_000,
-};
+import { ChatDetailPanel,chatArtifactPreviewBaseRoot } from '../src/pages/ChatDetailPanel';
 
 test('chat artifact previews use the active local session cwd when no project root is available', () => {
   assert.equal(chatArtifactPreviewBaseRoot({
@@ -41,48 +26,6 @@ test('chat artifact previews prefer the project root and avoid local roots for b
     activeSessionWorkspaceRoot: '/tmp/session-cwd',
   }), null);
 });
-
-function renderInfoPanel(overrides = {}) {
-  return renderToStaticMarkup(createElement(ChatDetailPanel, {
-    isNativeShell: true,
-    activeDetailTab: 'info',
-    activeConv: {
-      id: 'session:group:weekend-plan',
-      canonicalSessionId: 'session:group:weekend-plan',
-      name: 'Weekend plan',
-      type: 'person',
-      subtitle: 'session:group:weekend-plan',
-      unread: 0,
-      collaborationSources: ['Bridge'],
-      trust: 'Owned',
-      directness: 'Group chat',
-      participants: ['Me', 'Testuser5', 'Testuser4'],
-      messages: [],
-      ...overrides,
-    },
-    activeConvHasSubtitle: true,
-    activeLastMessage: { time: '13:58', text: 'Latest update' },
-    activeConversationUsesCollaboration: true,
-    activeCollaborationConversationHostNodeId: 'kd_local',
-    activeCollaborationConversationHostUrl: 'https://bridge.example.test',
-    activeCollaborationConversation: {
-      peerNodeId: 'kd_remote',
-      peerRuntime: 'desktop',
-      projectName: null,
-      projectId: null,
-      title: 'Weekend plan',
-      peerTyping: false,
-    },
-    activeCollaborationAwaitingReply: false,
-    isCollaborationSyncing: false,
-    lastCollaborationSyncAtLabel: null,
-    activeSessionProject: null,
-    artifacts: [],
-    activeArtifactId: null,
-    onSelectArtifact: () => {},
-    onOpenOutreachThread: () => {},
-  }));
-}
 
 test('chat detail panel keeps outreach threads out of the normal info view', () => {
   const markup = renderInfoPanel({
@@ -398,7 +341,7 @@ test('chat detail task panel prefers Cloud task activity over failed local task_
   }));
 
   assert.equal(markup.match(/app-inspector-source-row/g)?.length, 1);
-  assert.match(markup, /Synced Cloud task by Alice/);
+  assert.match(markup, /Last reported as running\. No current execution timing is available/);
   assert.doesNotMatch(markup, /failed subtask/);
   assert.match(markup, /https:\/\/example\.test\/me\.png/);
   assert.match(markup, /https:\/\/example\.test\/alice\.png/);
@@ -520,7 +463,7 @@ test('chat detail task panel uses canonical Cloud participant avatars for accoun
   }));
 
   assert.match(markup, /https:\/\/example\.test\/alice\.png/);
-  assert.match(markup, /Synced Cloud task by Alice/);
+  assert.match(markup, /Last reported as running\. No current execution timing is available/);
 });
 
 test('chat detail task panel prefers Cloud task participant Google avatars over stale canonical pixels', () => {
@@ -632,11 +575,11 @@ test('chat detail task panel shows only the two real Cloud participant avatars f
   assert.equal(markup.match(/data-avatar-kind="human"/g)?.length, 2);
   assert.match(markup, /https:\/\/example\.test\/me\.png/);
   assert.match(markup, /https:\/\/example\.test\/alice\.png/);
-  assert.match(markup, /lucide-circle /);
-  assert.doesNotMatch(markup, /lucide-circle-check/);
+  assert.match(markup, /data-task-status-icon="checkbox"/);
+  assert.match(markup, /lucide-circle-check/);
 });
 
-test('chat detail task panel renders empty task state', () => {
+test('chat detail task panel waits for the authoritative thread index before declaring it empty', () => {
   const markup = renderToStaticMarkup(createElement(ChatDetailPanel, {
     isNativeShell: true,
     activeDetailTab: 'tasks',
@@ -669,7 +612,8 @@ test('chat detail task panel renders empty task state', () => {
     onSelectArtifact: () => {},
   }));
 
-  assert.match(markup, /No planning or execution task activity in this session yet/);
+  assert.match(markup, /Loading Agent threads/);
+  assert.doesNotMatch(markup, /No planning or execution task activity in this session yet/);
 });
 
 test('chat detail participant presence renders as compact status lights without visible status text', () => {

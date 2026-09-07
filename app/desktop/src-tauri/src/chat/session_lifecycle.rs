@@ -81,6 +81,7 @@ fn should_retain_desktop_session(
     running_session_ids: &HashSet<String>,
 ) -> bool {
     session_id == active_session_id
+        || session_id == TRANSIENT_LOCAL_DRAFT_SESSION_ID
         || running_session_ids.contains(session_id)
         || agent_builder::is_agent_builder_session_id(session_id)
 }
@@ -307,6 +308,11 @@ mod tests {
     #[test]
     fn inactive_desktop_runtimes_are_disposable() {
         let running = HashSet::from(["session-running".to_string()]);
+        assert!(should_retain_desktop_session(
+            TRANSIENT_LOCAL_DRAFT_SESSION_ID,
+            "new-side-chat",
+            &running
+        ));
 
         assert!(should_retain_desktop_session(
             "session-active",

@@ -87,6 +87,14 @@ test('mention participant menu can carry light theme after portaling outside the
   const source = readFileSync(new URL('../src/kordi-app/components/composerMentionMenu.tsx', import.meta.url), 'utf8');
   assert.match(source, /setMenuThemeClass/);
   assert.match(source, /app-composer-mention-menu-light/);
+  assert.match(source, /onSelect\(item\)/);
+});
+
+test('unified mention selection preserves the selected agent identity for sending', () => {
+  const controller = readFileSync(new URL('../src/pages/useComposerReferenceOptions.ts', import.meta.url), 'utf8');
+  const composer = readFileSync(new URL('../src/pages/chatsPage.mainComposer.tsx', import.meta.url), 'utf8');
+  assert.match(controller, /onSelectOption\?\.\(item\)/);
+  assert.match(composer, /onSelectOption:\s*acceptChatMentionTarget/);
 });
 
 test('mention participant menu is rendered on the foreground popover layer', () => {

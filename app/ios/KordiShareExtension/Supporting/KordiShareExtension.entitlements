@@ -6,5 +6,9 @@
 	<array>
 		<string>$(KORDI_SHARE_APP_GROUP)</string>
 	</array>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)$(KORDI_SHARE_CREDENTIAL_SERVICE)</string>
+	</array>
 </dict>
 </plist>

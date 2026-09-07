@@ -35,7 +35,7 @@ final class SessionRuntimeRouteStoreTests: XCTestCase {
         )
         let contact = try XCTUnwrap(model.conversations.first { $0.id == "person:acct_maya" })
         let defaultAgent = try XCTUnwrap(model.conversations.first {
-            $0.agentId == CanonicalAvatarSystem.defaultAgentId && $0.kind == .agent
+            $0.agentId == "cloud-agent:acct_me" && $0.kind == .agent
         })
 
         XCTAssertTrue(model.canChangeRuntimeRouting(for: contact))
@@ -178,7 +178,7 @@ final class SessionRuntimeRouteStoreTests: XCTestCase {
         )
         let template = try XCTUnwrap(
             model.conversations.first {
-                $0.agentId == CanonicalAvatarSystem.defaultAgentId && $0.kind == .agent
+                $0.agentId == "cloud-agent:acct_me" && $0.kind == .agent
             }
         )
         let updated = await model.updateRuntimeRouting(

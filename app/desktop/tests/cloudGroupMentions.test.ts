@@ -240,6 +240,19 @@ test('renamed local agent mentions target the immutable owner agent id', () => {
   }, sourceAccount, participants), true);
 });
 
+test('an explicit remote agent target never falls back to the sender local runtime', () => {
+  assert.equal(cloudGroupMessageTargetsLocalAgent({
+    id: 'msg_remote_target',
+    senderAccountId: sourceAccount.accountId,
+    text: '@Kordi hello',
+    createdAtMs: 2,
+    senderKind: 'human',
+    targetCloudAgentId: 'cloud-agent:acct_target',
+    targetCloudAgentOwnerAccountId: 'acct_target',
+    targetCloudAgentOwnerName: "D'Arcy Lin",
+  }, sourceAccount, participants), false);
+});
+
 test('agent-authored handoffs produce only the resolved owner Cloud fallback claim', () => {
   const groupId = 'session:group:agent-handoff';
   const handoffMessage = {
@@ -352,6 +365,8 @@ test('local group context maps the requester and disables second-hop agents', ()
   const personaContext = context.find((message) => message.contextRole === 'system');
   assert.match(personaContext?.text ?? '', /^You are Kordi, the currently responding agent/);
   assert.match(personaContext?.text ?? '', /requester does not own you/);
+  assert.equal(context.at(-1)?.contextRole, 'resource');
+  assert.doesNotMatch(personaContext?.text ?? '', /People:|Agents:/);
   assert.match(context.at(-1)?.text ?? '', /Group @mention permissions/);
   assert.match(context.at(-1)?.text ?? '', /"my Kordi" means @KordiAlexMorgan/);
   assert.doesNotMatch(context.at(-1)?.text ?? '', /@KordiDArcyLin/);

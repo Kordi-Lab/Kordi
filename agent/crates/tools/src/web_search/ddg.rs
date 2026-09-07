@@ -14,13 +14,18 @@ pub(super) async fn run_duckduckgo_search(
     input: &WebSearchInput,
     cancel: CancellationToken,
     started: std::time::Instant,
+    public_only: bool,
 ) -> KordiResult<(WebSearchOutput, String, usize)> {
     let fetched_query = build_duckduckgo_query(input);
-    let client = create_web_client(
-        "web search",
-        Duration::from_secs(DEFAULT_TIMEOUT_SECONDS),
-        10,
-    )?;
+    let client = if public_only {
+        crate::web::public::client(Duration::from_secs(DEFAULT_TIMEOUT_SECONDS), 10)?
+    } else {
+        create_web_client(
+            "web search",
+            Duration::from_secs(DEFAULT_TIMEOUT_SECONDS),
+            10,
+        )?
+    };
 
     let mut url = Url::parse(DDG_HTML_ENDPOINT)
         .map_err(|e| KordiError::Tool(format!("Invalid DuckDuckGo endpoint: {e}")))?;

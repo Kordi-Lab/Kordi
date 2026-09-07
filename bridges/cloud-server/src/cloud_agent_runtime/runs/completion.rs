@@ -103,6 +103,11 @@ pub async fn complete_run(
     runner_id: &str,
     response_text: &str,
 ) -> RunResult<RunnerRunResponse> {
+    if let Some(run) =
+        super::subsession_lifecycle::finish(pool, run_id, runner_id, response_text, true).await?
+    {
+        return Ok(run);
+    }
     if run_id.starts_with(crate::digest::RUN_PREFIX) {
         crate::digest::complete(pool, run_id, runner_id, response_text).await?;
         return digest_run_response(pool, run_id).await;
@@ -111,14 +116,18 @@ pub async fn complete_run(
     if trimmed.is_empty() {
         return Err(RunError::NotFound);
     }
+    let mut tx = pool.begin().await?;
+    sqlx_core::query::query("SELECT pg_advisory_xact_lock(81208411)")
+        .execute(&mut *tx)
+        .await?;
     let existing: Option<(String, String, String, String, String, Option<String>)> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, status, response_message_id \
          FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
+         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend='cloud' AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now()",
     )
     .bind(run_id)
     .bind(runner_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some((
         owner_account_id,
@@ -132,6 +141,7 @@ pub async fn complete_run(
         return Err(RunError::NotFound);
     };
     let response_body = encode_cloud_agent_response_body(&request_message_id, trimmed);
+    let response_body = super::subsessions::with_links(pool, run_id, &response_body).await?;
     let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
         if let Some(message_id) = ensure_scheduled_direct_person_response_message(
             pool,
@@ -230,8 +240,9 @@ pub async fn complete_run(
     .bind(runner_id)
     .bind(&response_message_id)
     .bind(&now_text)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
+    tx.commit().await?;
     match row {
         Some(row) => {
             mark_scheduled_task_run_completed(pool, &request_message_id, &response_message_id, now)
@@ -250,18 +261,33 @@ pub async fn fail_run(
     message: &str,
     support_agent_id: Option<&str>,
 ) -> RunResult<RunnerRunResponse> {
+    if let Some(run) = super::subsession_lifecycle::finish(
+        pool,
+        run_id,
+        runner_id,
+        "The background task could not be completed.",
+        false,
+    )
+    .await?
+    {
+        return Ok(run);
+    }
     if run_id.starts_with(crate::digest::RUN_PREFIX) {
         crate::digest::fail(pool, run_id, Some(runner_id), error_code).await?;
         return digest_run_response(pool, run_id).await;
     }
+    let mut tx = pool.begin().await?;
+    sqlx_core::query::query("SELECT pg_advisory_xact_lock(81208411)")
+        .execute(&mut *tx)
+        .await?;
     let existing: Option<FailedRunRow> = query_as(
         "SELECT owner_account_id, requester_account_id, session_id, request_message_id, response_message_id \
          FROM cloud_agent_fallback_runs \
-         WHERE run_id = $1 AND claimed_by = $2 AND status IN ('leased', 'running')",
+         WHERE run_id = $1 AND claimed_by = $2 AND execution_backend='cloud' AND status IN ('leased', 'running') AND lease_expires_at::timestamptz>now()",
     )
     .bind(run_id)
     .bind(runner_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some((owner_account_id, requester_account_id, session_id, request_message_id, _message_id)) =
         existing
@@ -286,6 +312,7 @@ pub async fn fail_run(
     let failure_text = cloud_agent_failure_response_text(error_code, is_support_agent);
     let response_body =
         encode_failed_cloud_agent_response_body(&request_message_id, error_code, is_support_agent);
+    let response_body = super::subsessions::with_links(pool, run_id, &response_body).await?;
     let response_message_id = if is_scheduled_run_request_id(&request_message_id) {
         if let Some(message_id) = ensure_scheduled_direct_person_response_message(
             pool,
@@ -385,8 +412,9 @@ pub async fn fail_run(
     .bind(message)
     .bind(&response_message_id)
     .bind(&now_text)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *tx)
     .await?;
+    tx.commit().await?;
     match row {
         Some(row) => {
             mark_scheduled_task_run_failed(pool, &request_message_id, error_code, message, now)

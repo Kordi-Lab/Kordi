@@ -84,12 +84,20 @@ enum CompanionChatContextBuilder {
 }
 
 enum CompanionPanelCatalog {
+    static func isPrivateOwnedSession(_ conversation: ConversationSummary, ownAccountID: String) -> Bool {
+        !ownAccountID.isEmpty && conversation.kind == .agent
+            && conversation.peerAccountId == ownAccountID
+            && conversation.subsessionId == nil
+            && !conversation.representsKordiSupport
+            && conversation.groupParticipants.allSatisfy { $0.accountId == ownAccountID }
+    }
+
     static func sections(
         conversations: [ConversationSummary],
         ownAccountID: String
     ) -> [AgentSessionSection] {
         AgentSessionPresentationCatalog.build(
-            conversations: conversations,
+            conversations: conversations.filter { isPrivateOwnedSession($0, ownAccountID: ownAccountID) },
             ownAccountId: ownAccountID
         )
     }
@@ -167,7 +175,7 @@ enum CompanionPanelCatalog {
 
 struct CompanionChatPanel: View {
     @EnvironmentObject private var model: AppModel
-    @Binding var isPresented: Bool
+    @Environment(\.dismiss) private var dismiss
     @Binding var selectedConversation: ConversationSummary?
 
     let sourceConversation: ConversationSummary
@@ -190,16 +198,16 @@ struct CompanionChatPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if let selectedConversation {
+            if let selectedConversation,
+               CompanionPanelCatalog.isPrivateOwnedSession(selectedConversation, ownAccountID: model.account?.accountId ?? "") {
                 CompanionPanelHeader(
                     conversation: selectedConversation,
                     sessions: existingSessions,
                     onNewSession: { createSession(from: selectedConversation) },
                     onSelectSession: { self.selectedConversation = $0 },
-                    onClose: { isPresented = false }
+                    onClose: dismiss.callAsFunction
                 )
 
-                CompanionContextStrip(sourceName: sourceConversation.displayName)
 
                 ConversationView(
                     conversation: selectedConversation,
@@ -216,10 +224,10 @@ struct CompanionChatPanel: View {
                 )
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(uiColor: .systemBackground))
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .inspectorColumnWidth(min: 320, ideal: 390, max: 480)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func createSession(from conversation: ConversationSummary) {
@@ -236,6 +244,15 @@ private struct CompanionPanelHeader: View {
 
     var body: some View {
         HStack(spacing: 10) {
+            Button(action: onClose) {
+                Image(systemName: "chevron.left")
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to conversation")
+
             IdentityAvatar(
                 name: conversation.agentDisplayName?.nonEmpty ?? conversation.displayName,
                 imageSource: conversation.avatarSource,
@@ -249,7 +266,7 @@ private struct CompanionPanelHeader: View {
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text("Agent session")
+                Text("Only you · Agent session")
                     .font(.caption)
                     .foregroundStyle(KordiTheme.agentViolet)
                     .lineLimit(1)
@@ -293,40 +310,12 @@ private struct CompanionPanelHeader: View {
             .accessibilityLabel("Switch Ask Agent session")
             .accessibilityValue(conversation.displayName)
 
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-                    .font(.body.weight(.semibold))
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Close Ask Agent")
         }
         .padding(.leading, 16)
         .padding(.trailing, 6)
         .padding(.vertical, 5)
         .background(.bar)
         .overlay(alignment: .bottom) { Divider() }
-    }
-}
-
-private struct CompanionContextStrip: View {
-    let sourceName: String
-
-    var body: some View {
-        Label {
-            Text("Using \(sourceName) as context")
-                .lineLimit(1)
-        } icon: {
-            Image(systemName: "link")
-                .accessibilityHidden(true)
-        }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 16)
-        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemBackground))
-        .accessibilityElement(children: .combine)
     }
 }
 

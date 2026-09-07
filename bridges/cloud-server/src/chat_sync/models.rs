@@ -177,6 +177,20 @@ pub struct AdvanceConversationCursorRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AdvanceThreadReadRequest {
+    pub root_message_id: Uuid,
+    pub sequence: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ThreadReadSnapshot {
+    pub root_message_id: Uuid,
+    pub root_client_message_id: Uuid,
+    pub last_read_sequence: i64,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct HistoryQuery {
     pub before_sequence: Option<i64>,
     pub limit: Option<i64>,
@@ -256,6 +270,7 @@ pub struct CloudSessionPinSummary {
 
 #[derive(Debug, Serialize)]
 pub struct BootstrapResponse {
+    pub session_visibility: super::visibility::SessionVisibilitySnapshot,
     pub protocol_version: i32,
     pub conversations: Vec<ConversationSnapshot>,
     pub latest_messages: Vec<MessageSnapshot>,

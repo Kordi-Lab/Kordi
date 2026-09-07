@@ -1,4 +1,5 @@
 use super::*;
+use sqlx_core::query_scalar::query_scalar;
 
 // ============================================================================
 // Cloud session forks
@@ -48,22 +49,43 @@ pub(crate) async fn cloud_session_participants(
     pool: &PgPool,
     session_id: &str,
 ) -> Result<Vec<String>, sqlx_core::error::Error> {
+    let canonical_id = uuid::Uuid::parse_str(session_id.trim()).ok();
     let participants: Vec<(String,)> = query_as(
         "SELECT member.account_id
          FROM cloud_chat_conversations conversation
          JOIN cloud_chat_conversation_members member
            ON member.conversation_id = conversation.conversation_id
-         WHERE conversation.legacy_session_id = $1
+         WHERE (conversation.legacy_session_id = $1 OR conversation.conversation_id = $2)
            AND member.membership_state = 'active'
          ORDER BY member.account_id ASC",
     )
-    .bind(session_id)
+    .bind(session_id.trim())
+    .bind(canonical_id)
     .fetch_all(pool)
     .await?;
     Ok(participants
         .into_iter()
         .map(|(account_id,)| account_id)
         .collect())
+}
+
+async fn cloud_session_kind(
+    pool: &PgPool,
+    session_id: &str,
+) -> Result<Option<String>, sqlx_core::error::Error> {
+    let canonical_id = uuid::Uuid::parse_str(session_id.trim()).ok();
+    query_scalar(
+        "SELECT kind FROM cloud_chat_conversations
+         WHERE legacy_session_id = $1 OR conversation_id = $2",
+    )
+    .bind(session_id.trim())
+    .bind(canonical_id)
+    .fetch_optional(pool)
+    .await
+}
+
+fn session_kind_allows_fork(kind: Option<&str>) -> bool {
+    kind == Some("ai")
 }
 
 pub(super) async fn create_cloud_session_fork(
@@ -122,6 +144,43 @@ pub(super) async fn create_cloud_session_fork(
             "not_a_participant",
             "You can only fork sessions you participate in.",
             StatusCode::FORBIDDEN,
+        );
+    }
+    let source_kind = match cloud_session_kind(pool, &parent_session_id).await {
+        Ok(kind) => kind,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    if !session_kind_allows_fork(source_kind.as_deref()) {
+        return err(
+            "fork_not_supported",
+            "Only Agent sessions can be forked.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let existing_child_kind = match cloud_session_kind(pool, &fork_session_id).await {
+        Ok(kind) => kind,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    if existing_child_kind
+        .as_deref()
+        .is_some_and(|kind| !session_kind_allows_fork(Some(kind)))
+    {
+        return err(
+            "fork_not_supported",
+            "Agent forks cannot target a non-Agent conversation.",
+            StatusCode::BAD_REQUEST,
         );
     }
 
@@ -224,6 +283,23 @@ pub(super) async fn list_cloud_session_forks(
             StatusCode::FORBIDDEN,
         );
     }
+    let source_kind = match cloud_session_kind(pool, &parent_session_id).await {
+        Ok(kind) => kind,
+        Err(_) => {
+            return err(
+                "server_error",
+                "Database error.",
+                StatusCode::INTERNAL_SERVER_ERROR,
+            );
+        }
+    };
+    if !session_kind_allows_fork(source_kind.as_deref()) {
+        return err(
+            "fork_not_supported",
+            "Only Agent sessions can have forks.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
 
     let rows: Vec<(String, String, Option<String>, String, String)> = match query_as(
         "SELECT fork_session_id, parent_session_id, parent_message_id, created_by_account_id, created_at \
@@ -265,4 +341,17 @@ pub(super) async fn list_cloud_session_forks(
         .collect();
 
     Json(ListCloudSessionForksResponse { forks }).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::session_kind_allows_fork;
+
+    #[test]
+    fn only_agent_conversations_allow_forks() {
+        assert!(session_kind_allows_fork(Some("ai")));
+        assert!(!session_kind_allows_fork(Some("group")));
+        assert!(!session_kind_allows_fork(Some("direct")));
+        assert!(!session_kind_allows_fork(None));
+    }
 }

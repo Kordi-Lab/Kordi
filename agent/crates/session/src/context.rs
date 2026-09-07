@@ -10,6 +10,8 @@ mod active_path_tests;
 mod assembly;
 mod formatting;
 #[cfg(test)]
+mod shared_context_tests;
+#[cfg(test)]
 mod tests;
 
 /// Context information derived from one active session path.
@@ -97,6 +99,22 @@ pub fn explicit_thinking_level_from_path(path: &[EntryRow]) -> Result<Option<Thi
     Ok(None)
 }
 
+/// Shared-chat turns retain their transcript but only disclose context after the
+/// latest explicit snapshot boundary to the model and compactor.
+pub const SHARED_CONTEXT_BOUNDARY: &str = "shared_context_boundary";
+
+pub fn disclosed_path(path: &[EntryRow]) -> &[EntryRow] {
+    let start = path
+        .iter()
+        .rposition(|row| {
+            row.entry_type == "custom"
+                && matches!(store::parse_entry(row),
+            Ok(SessionEntry::Custom { custom_type, .. }) if custom_type == SHARED_CONTEXT_BOUNDARY)
+        })
+        .unwrap_or(0);
+    &path[start..]
+}
+
 /// Build context from a pre-computed path (for testing / reuse).
 pub fn build_context_from_path(path: &[EntryRow]) -> Result<SessionContext> {
     if path.is_empty() {
@@ -107,7 +125,7 @@ pub fn build_context_from_path(path: &[EntryRow]) -> Result<SessionContext> {
         });
     }
 
-    let entries: Vec<SessionEntry> = path
+    let entries: Vec<SessionEntry> = disclosed_path(path)
         .iter()
         .map(store::parse_entry)
         .collect::<Result<Vec<_>>>()?;
