@@ -11,6 +11,7 @@ import { proposalEvent } from './calendarProposal';
 import { digestEventLinks } from './links';
 import { DigestRelatedLinks } from './DigestRelatedLinks';
 import { DigestSplit } from './DigestSplit';
+import { useCalendarPreview } from './useCalendarPreview';
 import { MarkdownContent } from '@/kordi-app/components/markdown';
 import './digest.css';
 
@@ -86,14 +87,18 @@ function EventEditor({event,review,sources,accountId,onClose,onSave,onRemove}:{e
   const [end,setEnd]=useState(event.allDay?event.endAt?.slice(0,10)||'':localInput(event.endAt));
   const [minutes,setMinutes]=useState(event.reminderAt?String(Math.round((Date.parse(event.startAt)-Date.parse(event.reminderAt))/60000)):event.revision===0&&!event.allDay?'10':'');
   const [rule,setRule]=useState<CalendarRecurrence|null>(()=>event.recurrence?{...event.recurrence,...(!event.recurrence.count&&!event.recurrence.until?{count:event.recurrence.frequency==='yearly'?5:12}:{})}:null);
-  const [preview,setPreview]=useState<{signature:string;events:CalendarEvent[]}|null>(null);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState<string|null>(null);
+  const needsPreview=!!rule&&!event.revision&&review?.item.calendarAction!=='delete';
+  let previewRequest:string|null=null,previewValidation:string|null=null;
+  if(needsPreview){try{previewRequest=JSON.stringify(payload());}catch(error){previewValidation=calendarErrorMessage(error,'Check the event dates.');}}
+  const preview=useCalendarPreview(accountId,previewRequest);
   const links=<DigestRelatedLinks links={digestEventLinks(event,sources)}/>;
   const deviceZone=Intl.DateTimeFormat().resolvedOptions().timeZone;
   async function remove(){setBusy(true);try{await onRemove?.();}finally{setBusy(false);}}
   if(review?.item.calendarAction==='delete')return <Sheet title="Review cancellation" onClose={onClose}><h3>{event.title}</h3><p>{event.allDay?event.startAt.slice(0,10):timeLabel(event.startAt)}</p><p>{review.item.text}</p>{links}<p>Only this event will be removed from your personal Kordi calendar. Source calendars and invitations stay unchanged.</p><footer><button onClick={onClose}>Keep event</button><button disabled={busy} onClick={()=>void remove()}>Confirm removal</button></footer></Sheet>;
   function payload():CalendarEvent {
+    if(!start)throw new Error('Choose the start date and time.');
     const startAt=new Date(event.allDay?start+'T00:00:00Z':start===localInput(event.startAt)?event.startAt:start).toISOString();
     const endAt=end?new Date(event.allDay?end+'T00:00:00Z':end===localInput(event.endAt)?event.endAt!:end).toISOString():null;
     if(endAt&&Date.parse(endAt)<=Date.parse(startAt))throw new Error('End must follow start.');
@@ -101,15 +106,9 @@ function EventEditor({event,review,sources,accountId,onClose,onSave,onRemove}:{e
     if(reminderAt&&Date.parse(reminderAt)<Date.now())throw new Error('That reminder time has passed. Choose No reminder or a later date.');
     return {...event,title,startAt,endAt,reminderAt,recurrence:rule,timezone:rule?.timezone??event.timezone,confirmSingleOccurrence:!rule&&!event.revision};
   }
-  async function previewSeries(){
-    setBusy(true);setError(null);
-    try{const next=payload();const result=await digestClient.previewSeries(accountId,next);setPreview({signature:JSON.stringify(next),events:result.events});}
-    catch(error){setError(calendarErrorMessage(error,'Could not preview the series.'));}
-    finally{setBusy(false);}
-  }
   async function save(e:FormEvent){
     e.preventDefault();setError(null);
-    try{const next=payload();if(rule&&!event.revision&&preview?.signature!==JSON.stringify(next))throw new Error('Preview the current dates before confirming the series.');
+    try{const next=payload();if(needsPreview&&(!preview.ready||previewRequest!==JSON.stringify(next)))return;
       setBusy(true);await onSave(next);
     }catch(error){setError(calendarErrorMessage(error,'Could not save this event.'));}finally{setBusy(false);}
   }
@@ -127,15 +126,15 @@ function EventEditor({event,review,sources,accountId,onClose,onSave,onRemove}:{e
         {rule.frequency==='weekly'&&<div className="digest-repeat-weekdays">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day,index)=><label key={day}><input type="checkbox" checked={rule.weekdays.includes(index+1)} onChange={e=>setRule({...rule,weekdays:e.target.checked?[...rule.weekdays,index+1]:rule.weekdays.filter(value=>value!==index+1)})}/>{day}</label>)}</div>}
         <label>Ends<select value={rule.until?'until':'count'} onChange={e=>setRule({...rule,count:e.target.value==='count'?12:null,until:e.target.value==='until'?start.slice(0,10):null})}><option value="count">After a number of occurrences</option><option value="until">On a date (inclusive)</option></select></label>
         {rule.until?<label>Last date<input required type="date" value={rule.until} onChange={e=>setRule({...rule,until:e.target.value})}/></label>:<label>Occurrences<input required type="number" min="1" max="250" value={rule.count??12} onChange={e=>setRule({...rule,count:Number(e.target.value)})}/></label>}
-        <p className="digest-meta">The first time above is in your device timezone. Repeats keep the meeting timezone's clock time across daylight-saving changes. Review up to 250 dates within five years.</p>
-        <button type="button" disabled={busy||!start} onClick={()=>void previewSeries()}>Preview dates</button>
-        {preview&&<><p>{preview.events.length} occurrences to review. Changed details require a new preview.</p><ol className="digest-import-list">{preview.events.map(occurrence=><li key={occurrence.id}>{event.allDay?occurrence.startAt.slice(0,10):new Date(occurrence.startAt).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})}{!event.allDay&&occurrence.timezone&&occurrence.timezone!==deviceZone&&<small>{zonedEventLabel(occurrence.startAt,occurrence.timezone)}</small>}</li>)}</ol></>}
+        {preview.loading&&<p role="status" className="digest-meta">Loading dates…</p>}
+        {preview.ready&&<><p>{preview.events.length} dates</p><ol className="digest-import-list">{preview.events.map(occurrence=><li key={occurrence.id}>{event.allDay?occurrence.startAt.slice(0,10):new Date(occurrence.startAt).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})}{!event.allDay&&occurrence.timezone&&occurrence.timezone!==deviceZone&&<small>{zonedEventLabel(occurrence.startAt,occurrence.timezone)}</small>}</li>)}</ol></>}
+        {(previewValidation||preview.error)&&<p role="alert">{previewValidation||preview.error}{preview.error&&<> <button type="button" onClick={preview.retry}>Retry</button></>}</p>}
       </>}
     </fieldset>}
     {event.seriesId&&<p className="digest-meta">Part of a repeating series. Editing or removing here affects only this occurrence.</p>}
-    {links}{event.sourceIds.length>0&&<DigestPeople item={event} sources={sources} accountId={accountId} showMessages/>}{event.description&&<p className="digest-event-context">{event.description}</p>}
+    {links}{event.sourceIds.length>0&&<DigestPeople item={event} sources={sources} accountId={accountId} showMessages/>}{event.sourceIds.length===0&&event.description&&<p className="digest-event-context">{event.description}</p>}
     {error&&<p role="alert">{error}</p>}
-    <footer>{onRemove&&<button type="button" disabled={busy} onClick={()=>void remove()}>Remove event</button>}<button type="button" onClick={onClose}>Cancel</button><button type="submit" disabled={busy}>{rule&&!event.revision?'Confirm series':review?.item.calendarAction==='update'?'Confirm change':event.revision?'Save event':'Add to calendar'}</button></footer>
+    <footer>{onRemove&&<button type="button" disabled={busy} onClick={()=>void remove()}>Remove event</button>}<button type="button" onClick={onClose}>Cancel</button><button type="submit" disabled={busy||(needsPreview&&!preview.ready)}>{rule&&!event.revision?'Confirm series':review?.item.calendarAction==='update'?'Confirm change':event.revision?'Save event':'Add to calendar'}</button></footer>
   </form></Sheet>;
 }
 function ImportSheet({events,onClose,onImport}:{events:CalendarEvent[];onClose:()=>void;onImport:(events:CalendarEvent[])=>Promise<CalendarImportReport>}){

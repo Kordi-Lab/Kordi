@@ -19,8 +19,19 @@ struct DigestEventEditor: View {
     @State private var error: String?
     @State private var busy = false
     @State private var recurrence: DigestRecurrence?
-    @State private var previewedEvent: DigestCalendarEvent?
-    @State private var previewEvents: [DigestCalendarEvent] = []
+    @State private var preview = DigestSeriesPreview()
+    @State private var previewRetry = 0
+    private struct PreviewID: Equatable {
+        let accountId: String
+        let event: DigestCalendarEvent?
+        let retry: Int
+    }
+    private var needsPreview: Bool { event.revision == 0 && recurrence != nil && proposal?.calendarAction != "delete" }
+    private var previewRequest: DigestCalendarEvent? { needsPreview ? try? reviewedEvent() : nil }
+    private var previewValidation: String? {
+        guard needsPreview else { return nil }
+        do { _ = try reviewedEvent(); return nil } catch { return error.localizedDescription }
+    }
     init(event: DigestCalendarEvent, sources: [RollingDigestSource], accountId: String, contacts: [CloudContact], proposal: RollingDigestItem? = nil, original: DigestCalendarEvent? = nil, save: @escaping (DigestCalendarEvent) async throws -> Void, remove: @escaping () async throws -> Void) {
         self.event = event; self.sources = sources; self.accountId = accountId; self.contacts = contacts; self.save = save; self.remove = remove
         self.proposal = proposal; self.original = original
@@ -40,6 +51,9 @@ struct DigestEventEditor: View {
         return formatter.date(from: String(value.prefix(10)))
     }
     var body: some View {
+        let request = previewRequest
+        let previewError = preview.request == request && preview.accountId == accountId ? preview.error : nil
+        let ready = preview.isReady(for: request, accountId: accountId)
         Form {
             if proposal?.calendarAction == "delete" {
                 Section("Review cancellation") {
@@ -71,11 +85,14 @@ struct DigestEventEditor: View {
             if event.revision == 0 && proposal?.calendarAction != "delete" {
                 DigestRepeatEditor(rule: $recurrence, timezone: event.timezone ?? TimeZone.current.identifier)
                 if recurrence != nil {
-                    Button("Preview dates") { Task { await previewSeries() } }.disabled(busy || !hasStart)
-                    if !previewEvents.isEmpty {
-                        Section("\(previewEvents.count) occurrences to review") {
-                            Text("Changed details require a new preview.").font(.caption).foregroundStyle(.secondary)
-                            ForEach(previewEvents) { occurrence in
+                    if let validation = previewValidation { Text(validation).foregroundStyle(.red) }
+                    if request != nil && !ready && previewError == nil { ProgressView("Loading dates…") }
+                    if let previewError {
+                        Section { Text(previewError).foregroundStyle(.red); Button("Retry") { previewRetry += 1 } }
+                    }
+                    if ready {
+                        Section("\(preview.events.count) dates") {
+                            ForEach(preview.events) { occurrence in
                                 VStack(alignment: .leading) {
                                     Text(event.allDay ? String(occurrence.startAt.prefix(10)) : DigestDate.parse(occurrence.startAt)?.formatted(date: .abbreviated, time: .shortened) ?? occurrence.startAt)
                                     if !event.allDay, let zone = occurrence.timezone, zone != TimeZone.current.identifier {
@@ -94,13 +111,16 @@ struct DigestEventEditor: View {
                 Section("Related people") { DigestPeopleView(sourceIds: event.sourceIds, ownerAccountId: nil, sources: sources, accountId: accountId, contacts: contacts) }
                 DigestSourceMessages(sourceIds: event.sourceIds, sources: sources)
             }
-            if !event.description.isEmpty { Section("Context") { Text(event.description).textSelection(.enabled) } }
+            if event.sourceIds.isEmpty && !event.description.isEmpty { Section("Context") { Text(event.description).textSelection(.enabled) } }
             if let error { Section { Text(error).foregroundStyle(.red) } }
             if proposal?.calendarAction != "delete" {
-                Button(recurrence != nil && event.revision == 0 ? "Confirm series" : proposal?.calendarAction == "update" ? "Confirm change" : event.revision == 0 ? "Add to calendar" : "Save event") { Task { await submit() } }.disabled(busy || !hasStart || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button(recurrence != nil && event.revision == 0 ? "Confirm series" : proposal?.calendarAction == "update" ? "Confirm change" : event.revision == 0 ? "Add to calendar" : "Save event") { Task { await submit() } }.disabled(busy || !hasStart || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (needsPreview && !ready))
                 if event.revision > 0 { Button("Remove event", role: .destructive) { Task { await removeReviewedEvent() } }.disabled(busy) }
             }
         }.navigationTitle(event.revision == 0 ? "Review calendar event" : "Edit event").navigationBarTitleDisplayMode(.inline)
+            .task(id: PreviewID(accountId: accountId, event: request, retry: previewRetry)) {
+                await preview.update(request, accountId: accountId) { event in try await model.previewDigestCalendarSeries(event) }
+            }
     }
     private func removeReviewedEvent() async {
         busy = true; defer { busy = false }
@@ -120,19 +140,11 @@ struct DigestEventEditor: View {
         updated.confirmSingleOccurrence = recurrence == nil && event.revision == 0
         return updated
     }
-    private func previewSeries() async {
-        busy = true; defer { busy = false }
-        do {
-            let updated = try reviewedEvent()
-            previewEvents = try await model.previewDigestCalendarSeries(updated)
-            previewedEvent = updated; error = nil
-        } catch { self.error = error.localizedDescription }
-    }
     private func submit() async {
         busy = true; defer { busy = false }
         do {
             let updated = try reviewedEvent()
-            if recurrence != nil && event.revision == 0 && previewedEvent != updated { throw DigestCalendarError(message: "Preview the current dates before confirming the series.") }
+            if needsPreview && !preview.isReady(for: updated, accountId: accountId) { return }
             try await save(updated)
         } catch { self.error = error.localizedDescription }
     }

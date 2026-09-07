@@ -30,8 +30,37 @@ struct DigestRepeatEditor: View {
                 } else {
                     Stepper("\(value.count ?? 12) occurrences", value: Binding(get: { rule?.count ?? 12 }, set: { rule?.count = $0 }), in: 1...250)
                 }
-                Text("The first time is shown in your device timezone. Repeats keep the meeting timezone's clock time across daylight-saving changes. Review up to 250 dates within five years.").font(.caption).foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+@Observable
+@MainActor
+final class DigestSeriesPreview {
+    private(set) var accountId: String?
+    private(set) var request: DigestCalendarEvent?
+    private(set) var events: [DigestCalendarEvent] = []
+    private(set) var error: String?
+
+    func isReady(for event: DigestCalendarEvent?, accountId: String) -> Bool {
+        self.accountId == accountId && event != nil && request == event && !events.isEmpty && error == nil
+    }
+
+    func update(_ event: DigestCalendarEvent?, accountId: String, fetch: (DigestCalendarEvent) async throws -> [DigestCalendarEvent]) async {
+        guard !Task.isCancelled else { return }
+        self.accountId = accountId; request = event; events = []; error = nil
+        guard let event else { return }
+        do {
+            try await Task.sleep(for: .milliseconds(200))
+            let dates = try await fetch(event)
+            try Task.checkCancellation()
+            guard request == event, self.accountId == accountId else { return }
+            guard !dates.isEmpty else { throw DigestCalendarError(message: "No dates match this rule.") }
+            events = dates
+        } catch {
+            guard !Task.isCancelled, request == event, self.accountId == accountId else { return }
+            self.error = error.localizedDescription
         }
     }
 }

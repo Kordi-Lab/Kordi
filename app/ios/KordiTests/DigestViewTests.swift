@@ -4,6 +4,28 @@ import Testing
 
 @MainActor
 @Test
+func digestAutomaticDatesRejectStaleAndCancelledPreviews() async {
+    let preview = DigestSeriesPreview()
+    let first = DigestCalendarEvent(id: "first", title: "Review", startAt: "2099-09-08T12:00:00Z")
+    let second = DigestCalendarEvent(id: "second", title: "Review", startAt: "2099-09-09T12:00:00Z")
+    let cancelled = Task { await preview.update(first, accountId: "viewer") { [$0] } }
+    cancelled.cancel()
+    await cancelled.value
+    #expect(!preview.isReady(for: first, accountId: "viewer"))
+    await preview.update(second, accountId: "viewer") { [$0] }
+    #expect(preview.isReady(for: second, accountId: "viewer"))
+    #expect(!preview.isReady(for: first, accountId: "viewer"))
+    #expect(!preview.isReady(for: second, accountId: "another-account"))
+    await preview.update(second, accountId: "viewer") { _ in throw DigestCalendarError(message: "Network unavailable") }
+    #expect(preview.error != nil && !preview.isReady(for: second, accountId: "viewer"))
+    await preview.update(second, accountId: "viewer") { [$0] }
+    #expect(preview.isReady(for: second, accountId: "viewer"))
+    await preview.update(nil, accountId: "viewer") { _ in Issue.record("An empty request must not be fetched"); return [] }
+    #expect(preview.events.isEmpty && !preview.isReady(for: second, accountId: "viewer"))
+}
+
+@MainActor
+@Test
 func digestCalendarReviewPreservesIdentityAndLinksAcrossTimezones() throws {
     let raw = #"{"id":"move","title":"Review","text":"Move later","kind":"possible","sourceIds":[],"calendarAction":"update","existingEventId":"meeting","existingEventRevision":4,"startAt":"2026-09-08T13:00:00Z"}"#
     var item = try JSONDecoder().decode(RollingDigestItem.self, from: Data(raw.utf8))
