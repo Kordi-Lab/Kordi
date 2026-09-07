@@ -72,6 +72,8 @@ export function cloudAgentMentionCandidates(
     if (message.sourceTransport === 'canonical-fork-snapshot') return [];
     const incomingGroupRequest = message.senderRole === 'person'
       && message.sessionId.startsWith('session:group:');
+    const syncedGroupRequest = message.sourceTransport === 'cloud-group'
+      && message.sessionId.startsWith('session:group:');
     if ((!incomingGroupRequest && message.senderRole !== 'user') || message.status === 'failed') return [];
     if (message.sessionId.trim().startsWith('session:direct-person:')) return [];
     if (
@@ -87,7 +89,10 @@ export function cloudAgentMentionCandidates(
       if (normalizeCollaborationTargetKind(mention.targetKind) !== 'agent') {
         return [];
       }
-      if (cleanText(compatibleSourceHostId(mention)) !== CLOUD_HOST_SENTINEL) {
+      const sourceHostId = cleanText(compatibleSourceHostId(mention));
+      // iOS mentions omit the desktop host marker. Only a durable Cloud group
+      // row can supply that missing scope; an explicit foreign host stays foreign.
+      if (sourceHostId !== CLOUD_HOST_SENTINEL && !(syncedGroupRequest && !sourceHostId)) {
         return [];
       }
       const targetAccountId = cleanText(
@@ -103,7 +108,7 @@ export function cloudAgentMentionCandidates(
         : null;
       if (
         !targetAccountId
-        || (targetAccountId === accountId && !targetCloudAgentId && !incomingGroupRequest)
+        || (targetAccountId === accountId && !targetCloudAgentId && !incomingGroupRequest && !syncedGroupRequest)
       ) return [];
       const humanIdentity = identityByHumanId.get(targetAccountId);
       const agentIdentity = identityById.get(cloudAgentCanonicalIdentityId(mentionAgentId, targetAccountId))

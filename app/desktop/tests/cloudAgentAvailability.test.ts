@@ -16,8 +16,9 @@ import {
 } from '../src/features/cloud/cloudAgentFallbackClaims';
 import type { CanonicalSessionState } from '../src/kordi-app/types';
 import { createCanonicalSessionReadModel } from '../src/features/canonical/sessionReadModel';
-import { appendCloudGroupRequestingPlaceholder } from '../src/features/cloud/cloudAgentRequestState';
-import { encodeCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import { appendCloudGroupRequestingPlaceholder, removeCloudGroupPendingRowsForTerminalResponse } from '../src/features/cloud/cloudAgentRequestState';
+import { encodeCloudGroupControl, parseCloudGroupControl } from '../src/features/cloud/cloudGroupMessages';
+import { mergeCanonicalMessageRow } from '../src/features/canonical/canonicalStateReducers';
 
 const account: CloudAccount = {
   accountId: 'acct_me',
@@ -405,6 +406,48 @@ test('group progress candidates include the sender, Agent owner, and other membe
     });
     assert.equal(claims.length, viewer === 'sender' ? 1 : 0, 'progress observers cannot claim as the requester');
   }
+  const requestMessage = state.messages[0];
+  const iosMention = (requestMessage.content as { mentions: Array<Record<string, unknown>> }).mentions[0];
+  delete iosMention.sourceHostId;
+  requestMessage.sourceTransport = 'cloud-group';
+  for (const viewer of ['owner', 'member']) {
+    state.profile.humanIdentityId = `human:${viewer}`;
+    requestMessage.senderRole = viewer === 'owner' ? 'user' : 'person';
+    const candidates = cloudAgentMentionCandidates(state, viewer);
+    assert.equal(candidates.length, 1, `iOS request on ${viewer}'s Mac`);
+    const pendingState = appendCloudGroupRequestingPlaceholder(state, candidates[0], 'msg:cloud-agent-processing:request:owner')!;
+    const pending = createCanonicalSessionReadModel(pendingState).messages('session:group:team')
+      .filter(message => message.turn && !message.turn.completed);
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].sender, 'Renamed Agent');
+    assert.equal(pending[0].senderOwnerName, viewer === 'owner' ? 'You' : 'Agent Owner');
+    assert.equal(pending[0].role, viewer === 'owner' ? 'owned-agent' : 'external-agent');
+    assert.equal(pending[0].replyToMessageId, 'request');
+  }
+  const ownEnvelope = parseCloudGroupControl(body)!;
+  ownEnvelope.message!.senderAccountId = 'acct_owner';
+  const ownWire: CloudMessage = { messageId: 'own-wire', fromAccountId: 'acct_owner', toAccountId: 'acct_sender',
+    body: encodeCloudGroupControl(ownEnvelope), createdAt: new Date(10).toISOString(), readAt: null, direction: 'outgoing' };
+  assert.deepEqual(cloudFallbackRunClaimsForMessages({
+    account: { ...account, accountId: 'acct_owner' }, contacts: [], messagesByPeer: { acct_sender: [ownWire] },
+  }), [], 'observing the same account iOS request does not claim another Cloud run');
+  const candidate = cloudAgentMentionCandidates(state, 'member')[0];
+  const pendingState = appendCloudGroupRequestingPlaceholder(state, candidate, 'msg:cloud-agent-processing:request:owner')!;
+  const pendingRow = pendingState.messages.at(-1)!;
+  const completedState = mergeCanonicalMessageRow(pendingState, { ...pendingRow, status: 'received', contentText: 'Done',
+    content: { ...(pendingRow.content as Record<string, unknown>), deliveryState: 'complete' },
+    sourceTransport: 'cloud-group-agent', updatedAtMs: pendingRow.updatedAtMs + 1 });
+  const cleaned = removeCloudGroupPendingRowsForTerminalResponse(completedState, 'request', 'owner');
+  const replies = createCanonicalSessionReadModel(cleaned!).messages('session:group:team').filter(message => message.turn);
+  assert.equal(replies.length, 1);
+  assert.equal(replies[0].turn?.completed, true);
+  requestMessage.sourceTransport = 'desktop-bridge';
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'member'), [], 'missing host is accepted only on synced Cloud group rows');
+  requestMessage.sourceTransport = 'cloud-group';
+  iosMention.sourceHostId = 'another-host';
+  assert.deepEqual(cloudAgentMentionCandidates(state, 'member'), [], 'an explicit non-Cloud host cannot be relabeled');
+  requestMessage.sourceTransport = 'cloud-group-ui';
+  iosMention.sourceHostId = 'cloud';
   state.messages[0].senderRole = 'user';
   assert.deepEqual(cloudAgentMentionCandidates(state, 'owner'), [], 'own local requests keep local auth gating');
   state.messages[0].senderRole = 'external-agent';
