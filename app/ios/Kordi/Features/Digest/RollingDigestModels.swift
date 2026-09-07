@@ -11,6 +11,9 @@ struct RollingDigestSource: Codable, Identifiable, Equatable, Sendable {
     let createdAt: String
     let version: Int
     let isAgent: Bool?
+    let agentId: String?
+    let agentOwnerName: String?
+    let agentAvatarUrl: String?
 }
 struct RollingDigestItem: Codable, Identifiable, Equatable, Sendable {
     let id: String
@@ -56,6 +59,10 @@ struct RollingDigestResponse: Codable, Equatable {
     var dismissedSuggestions: [RollingDigestItem] {
         let dismissed = dismissedItemIDs
         return (snapshot?.suggestions ?? []).filter { dismissed.contains($0.id) }
+    }
+    var visibleSuggestions: [RollingDigestItem] {
+        let dismissed = dismissedItemIDs
+        return (snapshot?.suggestions ?? []).filter { !dismissed.contains($0.id) }
     }
 }
 struct DigestCalendarEvent: Codable, Identifiable, Equatable, Sendable {

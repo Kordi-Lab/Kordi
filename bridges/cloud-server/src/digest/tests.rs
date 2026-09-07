@@ -15,6 +15,9 @@ fn input() -> Input {
             created_at: "2026-09-07T09:00:00Z".into(),
             version: 1,
             is_agent: false,
+            agent_id: None,
+            agent_owner_name: None,
+            agent_avatar_url: None,
         }],
         calendar_events: vec![],
         existing_tasks: json!([]),
@@ -190,6 +193,68 @@ async fn postgres_scope_and_atomic_publication() {
         .unwrap();
     assert_eq!(input.sources.len(), 1);
     assert_eq!(input.sources[0].id, message.to_string());
+    query("UPDATE cloud_accounts SET display_name='Source owner' WHERE account_id=$1")
+        .bind(&author)
+        .execute(&pool)
+        .await
+        .unwrap();
+    query("UPDATE cloud_default_agent_profiles SET display_name='Renamed helper' WHERE owner_account_id=$1")
+        .bind(&author).execute(&pool).await.unwrap();
+    query("UPDATE cloud_chat_messages SET message_kind='assistant' WHERE message_id=$1")
+        .bind(message)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let agent_sources = store::sources(&pool, &viewer, Some(&[message.to_string()]))
+        .await
+        .unwrap();
+    assert_eq!(agent_sources[0].sender_name, "Renamed helper");
+    assert_eq!(
+        agent_sources[0].agent_owner_name.as_deref(),
+        Some("Source owner")
+    );
+    assert_eq!(
+        agent_sources[0].agent_id.as_deref(),
+        Some(format!("cloud-agent:{author}").as_str())
+    );
+    assert!(agent_sources[0].agent_avatar_url.is_some());
+    let custom = format!("cloud_agent_{suffix}");
+    query("INSERT INTO cloud_agent_definitions(agent_id,owner_account_id,name,role,system_prompt,created_at,updated_at) VALUES($1,$2,'Named researcher','research','test','test','test')")
+        .bind(&custom).bind(&author).execute(&pool).await.unwrap();
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    let envelope = json!({"kind":"group-message","message":{"senderKind":"agent","senderAccountId":author,"senderAgentId":custom,"senderDisplayName":"Stale name","text":"Analysis complete."}});
+    let agent_content = json!({"blocks":[{"type":"text","text":format!("kordi-cloud-group:{}",URL_SAFE_NO_PAD.encode(envelope.to_string()))}]});
+    query("UPDATE cloud_chat_messages SET message_kind='text',content=$2 WHERE message_id=$1")
+        .bind(message)
+        .bind(agent_content)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let custom_sources = store::sources(&pool, &viewer, Some(&[message.to_string()]))
+        .await
+        .unwrap();
+    assert_eq!(custom_sources[0].sender_name, "Named researcher");
+    assert_eq!(custom_sources[0].agent_id.as_deref(), Some(custom.as_str()));
+    query("UPDATE cloud_agent_definitions SET owner_account_id=$2 WHERE agent_id=$1")
+        .bind(&custom)
+        .bind(&viewer)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let mismatched = store::sources(&pool, &viewer, Some(&[message.to_string()]))
+        .await
+        .unwrap();
+    assert_eq!(mismatched[0].sender_name, "Agent");
+    assert!(
+        mismatched[0].agent_id.is_none(),
+        "A source must not claim another owner's Agent identity"
+    );
+    query("UPDATE cloud_chat_messages SET content=$2 WHERE message_id=$1")
+        .bind(message)
+        .bind(json!({"blocks":[{"type":"text","text":"Please review the draft."}]}))
+        .execute(&pool)
+        .await
+        .unwrap();
     let run = format!("digest_{}", uuid::Uuid::new_v4().simple());
     let now = chrono::Utc::now();
     query("UPDATE cloud_account_digests SET input_json=$2,active_run_id=$3 WHERE account_id=$1")

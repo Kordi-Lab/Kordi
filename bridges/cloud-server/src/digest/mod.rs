@@ -1,5 +1,6 @@
 pub mod models;
 mod routes;
+mod source_identity;
 mod store;
 mod worker;
 pub use routes::routes;

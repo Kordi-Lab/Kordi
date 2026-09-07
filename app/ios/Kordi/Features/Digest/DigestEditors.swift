@@ -1,42 +1,5 @@
 import SwiftUI
 
-struct DigestTaskEditor: View {
-    let item: RollingDigestItem
-    let sources: [RollingDigestSource]
-    let accountId: String
-    let contacts: [CloudContact]
-    let save: (DigestTaskInput) async throws -> Void
-    @State private var title: String
-    @State private var owner: String
-    @State private var hasDue: Bool
-    @State private var due: Date
-    @State private var error: String?
-    @State private var busy = false
-    init(item: RollingDigestItem, sources: [RollingDigestSource], accountId: String, contacts: [CloudContact], save: @escaping (DigestTaskInput) async throws -> Void) {
-        self.item = item; self.sources = sources; self.accountId = accountId; self.contacts = contacts; self.save = save
-        _title = State(initialValue: item.title); _owner = State(initialValue: item.ownerAccountId ?? "")
-        _hasDue = State(initialValue: DigestDate.parse(item.dueAt) != nil); _due = State(initialValue: DigestDate.parse(item.dueAt) ?? Date())
-    }
-    var body: some View {
-        Form {
-            Section("Related people") { DigestPeopleView(sourceIds: item.sourceIds, ownerAccountId: item.ownerAccountId, sources: sources, accountId: accountId, contacts: contacts) }
-            DigestSourceMessages(sourceIds: item.sourceIds, sources: sources)
-            Section {
-                TextField("Task title", text: $title)
-                Picker("Owner", selection: $owner) {
-                    Text("Unassigned").tag("")
-                    Text("You").tag(accountId)
-                    ForEach(Dictionary(grouping: sources.filter { $0.isAgent != true && item.sourceIds.contains($0.id) }, by: \.senderAccountId).values.compactMap(\.first).filter { $0.senderAccountId != accountId }.sorted { $0.senderName < $1.senderName }) { source in Text(source.senderAccountId == accountId ? "You" : source.senderName).tag(source.senderAccountId) }
-                }
-                Toggle("Set a due date", isOn: $hasDue)
-                if hasDue { DatePicker("Due", selection: $due) }
-            } footer: { Text("No task is created until you confirm.") }
-            if let error { Section { Text(error).foregroundStyle(.red) } }
-            Button("Create task") { busy = true; Task { defer { busy = false }; do { try await save(DigestTaskInput(title: title.trimmingCharacters(in: .whitespacesAndNewlines), ownerAccountId: owner.isEmpty ? nil : owner, dueAt: hasDue ? ISO8601DateFormatter().string(from: due) : nil)) } catch { self.error = error.localizedDescription } } }.disabled(busy || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }.navigationTitle("Review task").navigationBarTitleDisplayMode(.inline)
-    }
-}
-
 struct DigestEventEditor: View {
     let event: DigestCalendarEvent
     let sources: [RollingDigestSource]
@@ -110,7 +73,7 @@ struct DigestPeopleView: View {
     var onSource: ((RollingDigestSource) -> Void)? = nil
 
     var body: some View {
-        let authors = Dictionary(grouping: sources.filter { sourceIds.contains($0.id) }, by: { "\($0.senderAccountId):\($0.isAgent == true ? $0.senderName : "human")" }).values.compactMap(\.first).sorted { $0.senderName < $1.senderName }
+        let authors = Dictionary(grouping: sources.filter { sourceIds.contains($0.id) }, by: { "\($0.senderAccountId):\($0.isAgent == true ? $0.agentId ?? $0.senderName : "human")" }).values.compactMap(\.first).sorted { $0.senderName < $1.senderName }
         ScrollView(.horizontal) {
             HStack(spacing: 14) {
                 if let owner = ownerAccountId, !authors.contains(where: { $0.isAgent != true && $0.senderAccountId == owner }) {
@@ -118,19 +81,23 @@ struct DigestPeopleView: View {
                 }
                 ForEach(authors) { source in
                     let name = source.isAgent != true && source.senderAccountId == accountId ? "You" : source.senderName
+                    let ownerName = source.isAgent == true ? (source.senderAccountId == accountId ? "You" : source.agentOwnerName ?? "Unknown owner") : nil
                     if let onSource {
-                        Button { onSource(source) } label: { person(id: source.senderAccountId, name: name, agent: source.isAgent == true) }.buttonStyle(.plain)
+                        Button { onSource(source) } label: { person(id: source.senderAccountId, name: name, agent: source.isAgent == true, agentId: source.agentId, ownerName: ownerName, avatarURL: source.agentAvatarUrl) }.buttonStyle(.plain)
                     } else {
-                        person(id: source.senderAccountId, name: name, agent: source.isAgent == true)
+                        person(id: source.senderAccountId, name: name, agent: source.isAgent == true, agentId: source.agentId, ownerName: ownerName, avatarURL: source.agentAvatarUrl)
                     }
                 }
             }
         }.scrollIndicators(.hidden)
     }
-    private func person(id: String, name: String, agent: Bool) -> some View {
+    private func person(id: String, name: String, agent: Bool, agentId: String? = nil, ownerName: String? = nil, avatarURL: String? = nil) -> some View {
         HStack(spacing: 8) {
-            IdentityAvatar(name: name, imageSource: (agent ? nil : contacts.first(where: { $0.accountId == id })?.avatarUrl) ?? CanonicalAvatarSystem.previewURL(style: agent ? CanonicalAvatarSystem.agentStyle : CanonicalAvatarSystem.humanStyle, seed: id)?.absoluteString, kind: agent ? .agent : .person, size: 24, seed: id)
-            Text("@\(name)").font(.caption).foregroundStyle(.tint)
+            IdentityAvatar(name: name, imageSource: (agent ? avatarURL : contacts.first(where: { $0.accountId == id })?.avatarUrl) ?? CanonicalAvatarSystem.previewURL(style: agent ? CanonicalAvatarSystem.agentStyle : CanonicalAvatarSystem.humanStyle, seed: agentId ?? id)?.absoluteString, kind: agent ? .agent : .person, size: 24, seed: agentId ?? id)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("@\(name)").font(.caption).foregroundStyle(.tint)
+                if let ownerName { Text("Owner · \(ownerName)").font(.caption2).foregroundStyle(.secondary) }
+            }
         }
     }
 }

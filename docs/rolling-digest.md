@@ -1,6 +1,6 @@
 # Rolling digest and calendar
 
-Digest is a single account-private report, not a Daily/Weekly selector. Desktop and iOS read the same Cloud snapshot and calendar. The interface uses sentence-case headings, source-linked contact attribution, a persistent Brief / Next steps / Calendar layout, and explicit confirmation before creating tasks or events.
+Digest is a single account-private report, not a Daily/Weekly selector. Desktop and iOS read the same Cloud snapshot and calendar. The interface uses sentence-case headings, source-linked contact attribution, a persistent Brief / Next steps / Calendar layout, and explicit confirmation before adding calendar events. Next steps shows dismissible AI suggestions for the viewer, not Agent execution history or the generated commitments list. Commitments remain internal generation context and are not presented as the user's task inbox.
 
 ## Data and generation
 
@@ -9,6 +9,8 @@ Opening the authenticated `/v1/cloud/digest` endpoint enables the account's moni
 Generation reuses Cloud provider-auth snapshots and the existing runner lease protocol. While generating a digest, the runner renews its lease every 40 seconds through the same source-revalidating running endpoint. The generation and lease-renewal loop has a ten-minute timeout so a stalled report does not hold a lease indefinitely. Digest run IDs are created only by the server. Their dedicated runner path has `search_sessions` and `read_session` over a frozen, account-authorized input. The first model call includes the complete bounded source set so coverage does not depend on which sessions the model chooses to read. It never creates a sandbox or exposes shell, filesystem, messaging, task or calendar mutation tools. Strict structured output rejects missing/unknown sources, duplicate item IDs, unsupported kinds, invalid dates and unrelated owners. The previous source-backed open commitments are retained as context. Claims tied to edited or removed source versions are discarded before entering the next generation.
 
 Aggregation uses canonical v2 membership and per-account message/session visibility. Sources are checked before a lease is returned, when a run starts, before publication and on cached reads. A changed or inaccessible source suppresses the affected cached snapshot until it can be rebuilt. Completion does not create a chat message. Input, output and source evidence publish atomically.
+
+Agent sources retain the actual sender Agent ID, current configured name, and owner name. Default Agents also use their configured avatar. Names are resolved within the message sender's ownership scope; a mentioned target is not treated as the source author. Human and Agent authors remain separate even when they share an owner.
 
 Source work is bounded: the newest 500 candidate messages, up to 200 retained commitment references, approximately 100 KB of source payload, and up to 50 recent/upcoming calendar records. Truncation is recorded in the API response `partial` field; the iOS and macOS pages do not display a coverage notice. The initial sweep processes up to 20 eligible accounts per pass; a dedicated dirty-account queue is the next scaling step if this bound becomes a freshness bottleneck. This implementation does not claim unbounded historical recall or model entailment guarantees.
 

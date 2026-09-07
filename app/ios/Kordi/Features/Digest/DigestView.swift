@@ -3,8 +3,8 @@ import SwiftUI
 struct DigestMessageRoute: Hashable { let conversation: ConversationSummary; let messageID: String }
 private enum DigestPane: String, CaseIterable { case brief = "Brief", tasks = "Next steps", calendar = "Calendar" }
 private enum DigestSheet: Identifiable {
-    case source([String]), task(RollingDigestItem), event(DigestCalendarEvent), imports, connection, details
-    var id: String { switch self { case .source(let ids): "source:\(ids.joined(separator: ","))"; case .task(let item): "task:\(item.id)"; case .event(let event): "event:\(event.id)"; case .imports: "import"; case .connection: "connection"; case .details: "details" } }
+    case source([String]), event(DigestCalendarEvent), imports, connection, details
+    var id: String { switch self { case .source(let ids): "source:\(ids.joined(separator: ","))"; case .event(let event): "event:\(event.id)"; case .imports: "import"; case .connection: "connection"; case .details: "details" } }
 }
 
 struct DigestView: View {
@@ -27,7 +27,7 @@ struct DigestView: View {
     private var content: RollingDigestContent? { digest?.snapshot }
     private var visibleClaims: [RollingDigestItem] { digest?.visibleClaims ?? [] }
     private var dismissedSuggestions: [RollingDigestItem] { digest?.dismissedSuggestions ?? [] }
-    private var openTasks: [RollingDigestItem] { content?.commitments.filter { $0.kind != "done" } ?? [] }
+    private var visibleSuggestions: [RollingDigestItem] { digest?.visibleSuggestions ?? [] }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -41,7 +41,7 @@ struct DigestView: View {
                 ForEach(DigestPane.allCases, id: \.self) { tab in
                     Button { pane = tab } label: {
                         VStack(spacing: 8) {
-                            HStack(spacing: 4) { Text(tab.rawValue); if tab == .tasks { Text(openTasks.count, format: .number).foregroundStyle(.secondary) } }
+                            HStack(spacing: 4) { Text(tab.rawValue); if tab == .tasks { Text(visibleSuggestions.count, format: .number).foregroundStyle(.secondary) } }
                                 .font(.subheadline.weight(pane == tab ? .semibold : .regular))
                             Rectangle().fill(pane == tab ? Color.primary : .clear).frame(height: 2)
                         }
@@ -125,28 +125,15 @@ struct DigestView: View {
         }
     }
     @ViewBuilder private var tasks: some View {
-        Text("Commitments").font(.subheadline).foregroundStyle(.secondary)
-        ForEach(openTasks) { item in
-            VStack(alignment: .leading, spacing: 8) {
-                Text(item.title).font(.subheadline.weight(.semibold))
-                people(item)
-                Text(item.kind == "possible" ? "Possible follow-up" : item.ownerAccountId == nil ? "Owner not specified" : "Explicit commitment").font(.caption).foregroundStyle(.secondary)
-                if let due = DigestDate.parse(item.dueAt) { Text("Due \(due.formatted(date: .abbreviated, time: .shortened))").font(.caption).foregroundStyle(.secondary) }
-                citations(item)
-                if digest?.feedback.contains(where: { $0.id == item.id && $0.status == "task" }) == true { Text("Already a task").font(.caption).foregroundStyle(.secondary) }
-                else { Button("Review task") { selectedSheet = .task(item) }.buttonStyle(.bordered) }
-                Divider().padding(.top, 8)
-            }
-        }
-        if openTasks.isEmpty { Text("No open commitments.").foregroundStyle(.secondary) }
-        HStack { Text("Consider next"); Spacer(); Text("AI suggestions").font(.caption) }.font(.subheadline).foregroundStyle(.secondary)
-        ForEach(content?.suggestions.filter { item in digest?.feedback.contains(where: { $0.id == item.id && $0.status == "dismissed" }) != true } ?? []) { item in
+        Text("AI suggestions").font(.subheadline).foregroundStyle(.secondary)
+        ForEach(visibleSuggestions) { item in
             VStack(alignment: .leading, spacing: 8) {
                 Text(item.title).font(.subheadline.weight(.semibold)); Text(item.text).foregroundStyle(.secondary)
                 people(item); citations(item)
                 Button("Dismiss") { Task { await perform { try await model.dismissDigestItem(item.id, dismissed: true) } } }
             }
         }
+        if visibleSuggestions.isEmpty { Text("No suggestions to show.").foregroundStyle(.secondary) }
         if !dismissedSuggestions.isEmpty {
             Button("Restore dismissed suggestions") { Task { await perform { for item in dismissedSuggestions { try await model.dismissDigestItem(item.id, dismissed: false) } } } }
         }
@@ -234,7 +221,6 @@ struct DigestView: View {
                     }.padding().navigationTitle(first.sessionTitle)
                 } else { Text("This source is no longer accessible or included.").padding().navigationTitle("Source unavailable") }
             }.navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
-        case .task(let item): DigestTaskEditor(item: item, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts) { input in try await model.createDigestTask(item.id, input: input); await reloadAfterEdit() }
         case .event(let event): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.parse(updated.startAt) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: { try await model.removeDigestCalendarEvent(event); await reloadAfterEdit() }
         case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .connection: DigestConnectView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
@@ -257,7 +243,6 @@ struct DigestView: View {
             let accessibleIDs = Set(next.sources.map(\.id))
             if let sheet = selectedSheet {
                 switch sheet {
-                case .task(let item) where !item.sourceIds.allSatisfy(accessibleIDs.contains): selectedSheet = nil
                 case .event(let event) where !event.sourceIds.allSatisfy(accessibleIDs.contains): selectedSheet = nil
                 default: break
                 }

@@ -50,6 +50,7 @@
 .digest-people button { color: var(--digest-accent); }
 .digest-person { display: inline-flex; align-items: center; gap: 7px; }
 .digest-person-avatar { width: 26px; height: 26px; }
+.digest-agent-owner { display: block; color: var(--digest-muted); font-size: 11px; line-height: 1.4; }
 .digest-source-messages { margin-top: 16px; font-size: 12px; }
 .digest-source-messages summary { cursor: pointer; color: var(--digest-muted); }
 .digest-source-messages article { margin-top: 12px; }

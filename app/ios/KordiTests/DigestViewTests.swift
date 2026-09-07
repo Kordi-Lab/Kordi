@@ -104,6 +104,7 @@ func digestDismissalKeepsBriefAndSuggestionRestorationSeparate(hideSuggestion: B
     let response = try JSONDecoder().decode(RollingDigestResponse.self, from: Data(json.utf8))
     #expect(response.visibleClaims.map(\.id) == ["visible"])
     #expect(response.dismissedSuggestions.map(\.id) == (hideSuggestion ? ["suggestion"] : []))
+    #expect(response.visibleSuggestions.map(\.id) == (hideSuggestion ? ["task"] : ["suggestion", "task"]))
     #expect(response.snapshot?.claims.count == 2)
     #expect(response.partial)
 }

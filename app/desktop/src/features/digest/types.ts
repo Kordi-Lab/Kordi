@@ -1,6 +1,7 @@
 export type DigestSource = {
   id: string; conversationId: string; sessionId: string; sessionTitle: string;
   senderAccountId: string; senderName: string; text: string; createdAt: string; version: number; isAgent?: boolean;
+  agentId?: string | null; agentOwnerName?: string | null; agentAvatarUrl?: string | null;
 };
 export type DigestItem = {
   id: string; title: string; text: string; kind: string; sourceIds: string[];

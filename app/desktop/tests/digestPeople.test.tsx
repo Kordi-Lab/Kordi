@@ -10,7 +10,7 @@ test('Digest attribution keeps owner messages and separates their agent from the
   const sources = [
     source,
     { ...source, id: 'reply', senderAccountId: 'taylor', senderName: 'Taylor', text: 'I will bring it.' },
-    { ...source, id: 'agent', senderAccountId: 'taylor', senderName: 'Planning agent', isAgent: true, text: 'I summarized the plan.' },
+    { ...source, id: 'agent', senderAccountId: 'taylor', senderName: 'Planning agent', agentId: 'cloud-agent:taylor', agentOwnerName: 'Taylor', isAgent: true, text: 'I summarized the plan.' },
     { ...source, id: 'unrelated', senderName: 'Unrelated', text: 'Unrelated message.' },
   ];
   const html = renderToStaticMarkup(createElement(DigestPeople, { item: { sourceIds: ['request', 'reply', 'agent'], ownerAccountId: 'taylor' }, sources, accountId: 'taylor', showMessages: true }));
@@ -20,6 +20,8 @@ test('Digest attribution keeps owner messages and separates their agent from the
   assert.equal((html.match(/<blockquote>/g) ?? []).length, 3);
   assert.ok(html.includes('@You'));
   assert.ok(html.includes('@Planning agent'));
+  assert.ok(html.includes('Owner · You'));
+  assert.ok(!html.includes('Agent for Taylor'));
   assert.ok(html.includes('I will bring it.'));
   assert.ok(!html.includes('Unrelated message.'));
   assert.match(html, /<strong[^>]*>Taylor<\/strong>/);

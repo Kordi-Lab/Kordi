@@ -85,12 +85,12 @@ async fn read(
     let mut refs = Vec::new();
     let mut partial = false;
     if let Some(input) = input {
-        match store::input_is_currently_authorized(pool, &session.account_id, &input).await {
-            Ok(true) => {
-                refs = input.sources;
+        match store::authorized_input_sources(pool, &session.account_id, &input).await {
+            Ok(Some(current)) => {
+                refs = current;
                 partial = input.partial;
             }
-            Ok(false) => snapshot = None,
+            Ok(None) => snapshot = None,
             Err(_) => return failed(),
         }
     } else {

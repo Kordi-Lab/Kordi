@@ -25,6 +25,7 @@ test('Brief dismissal persists across remounts, restores entries, and retains en
     feedback: [], snapshot: { claims: [{ id: 'draft', title: 'Draft prepared', text: 'The draft is ready.', kind: 'progress', sourceIds: ['source'] }], commitments: [], suggestions: [{ id: 'suggestion', title: 'Review the draft', text: 'Consider a review.', kind: 'possible', sourceIds: ['source'] }], calendarCandidates: [] },
   };
   let fail = false;
+  response.snapshot!.commitments = [{ id: 'agent-execution', title: 'Agent already finished analysis', text: 'Completed Agent work is not a suggestion for the viewer.', kind: 'open', sourceIds: ['source'] }];
   digestClient.read = async () => structuredClone(response);
   digestClient.calendar = async () => ({ events: [] });
   digestClient.feedback = async (account, id, dismissed) => {
@@ -45,6 +46,7 @@ test('Brief dismissal persists across remounts, restores entries, and retains en
   try {
     await act(async () => root.render(createElement(DigestPage, { accountId: 'viewer' })));
     assert.doesNotMatch(host.textContent ?? '', /Partial coverage|bounded selection/);
+    assert.doesNotMatch(nextSteps().textContent ?? '', /Commitments|Agent already finished analysis|Review task/);
     await click('↗ Planning');
     const details = host.querySelector('dialog')!;
     assert.equal(details.querySelector('strong')?.textContent, 'Ready');
@@ -64,6 +66,7 @@ test('Brief dismissal persists across remounts, restores entries, and retains en
     assert.equal(brief().querySelector('article'), null);
     await click('Next steps', host.querySelector('nav')!);
     await click('Dismiss', nextSteps());
+    assert.match(nextSteps().textContent ?? '', /No suggestions to show/);
     await click('Restore dismissed suggestions', nextSteps());
     assert.equal(brief().querySelector('article'), null);
     assert.deepEqual(response.feedback, [{ id: 'draft', status: 'dismissed' }]);

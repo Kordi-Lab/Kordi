@@ -14,6 +14,12 @@ pub struct Source {
     pub version: i32,
     #[serde(default)]
     pub is_agent: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_owner_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_avatar_url: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]

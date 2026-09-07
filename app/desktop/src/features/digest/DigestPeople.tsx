@@ -10,7 +10,7 @@ export function DigestPeople({ item, sources, accountId, onSource, showMessages 
   showMessages?: boolean;
 }) {
   const related = sources.filter(source => item.sourceIds.includes(source.id));
-  const authorKey = (source: DigestSource) => `${source.senderAccountId}:${source.isAgent ? source.senderName : 'human'}`;
+  const authorKey = (source: DigestSource) => `${source.senderAccountId}:${source.isAgent ? source.agentId ?? source.senderName : 'human'}`;
   const authors = [...new Map(related.map(source => [authorKey(source), source])).values()];
   const name = (id: string, fallback: string, agent = false) => !agent && id === accountId ? 'You' : fallback;
   return <div className="digest-attribution">
@@ -21,8 +21,9 @@ export function DigestPeople({ item, sources, accountId, onSource, showMessages 
       </span>}
       {authors.map(source => {
         const label = name(source.senderAccountId, source.senderName, source.isAgent);
-        const content = <><IdentityAvatar kind={source.isAgent ? 'agent' : 'human'} seed={source.senderAccountId} isSelf={!source.isAgent && source.senderAccountId === accountId} name={label} className="digest-person-avatar"/><span>@{label}</span></>;
-        return onSource ? <button className="digest-person" key={authorKey(source)} aria-label={`Messages from ${label}`} onClick={() => onSource(related.filter(message => authorKey(message) === authorKey(source)).map(message => message.id))}>{content}</button> : <span className="digest-person" key={authorKey(source)}>{content}</span>;
+        const owner = source.senderAccountId === accountId ? 'You' : source.agentOwnerName ?? 'Unknown owner';
+        const content = <><IdentityAvatar kind={source.isAgent ? 'agent' : 'human'} seed={source.isAgent ? source.agentId ?? source.senderAccountId : source.senderAccountId} imageUrl={source.isAgent ? source.agentAvatarUrl : undefined} isSelf={!source.isAgent && source.senderAccountId === accountId} name={label} className="digest-person-avatar"/><span>@{label}{source.isAgent && <span className="digest-agent-owner">Owner · {owner}</span>}</span></>;
+        return onSource ? <button className="digest-person" key={authorKey(source)} aria-label={`Messages from ${label}${source.isAgent ? `, owned by ${owner}` : ''}`} onClick={() => onSource(related.filter(message => authorKey(message) === authorKey(source)).map(message => message.id))}>{content}</button> : <span className="digest-person" key={authorKey(source)}>{content}</span>;
       })}
     </div>
     {showMessages && related.length > 0 && <details className="digest-source-messages" open>
