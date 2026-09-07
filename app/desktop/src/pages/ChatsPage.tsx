@@ -1,4 +1,3 @@
-import {transcriptMessageNavigationIds} from '@/features/chat/transcriptMessageIdentity';
 import {useUnreadThreadNavigation} from './useUnreadThreadNavigation';
 import {ThreadShortcut} from '@/features/chat/ThreadShortcut';
 import { useCallback, useMemo, useState } from 'react';
@@ -7,10 +6,9 @@ import { useReducedMotion } from 'framer-motion';
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import type { Conversation, Message } from '@/kordi-app/types';
 import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
-import { projectMessageThreads, projectQueuedThreadMessages, resolveThreadMessageId, threadRootSource } from '@/features/chat/messageThreads';
-import { useThreadMessageSummaries } from './useThreadMessageSummaries';
+import { projectQueuedThreadMessages, threadRootSource } from '@/features/chat/messageThreads';
+import { useThreadMessageSummaries, useThreadTranscript, useActiveThread } from './useThreadMessageSummaries';
 import {useThreadReadStatus} from '@/features/cloud/useThreadReadStatus';
-import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
@@ -276,25 +274,7 @@ export function ChatsPage({
   const unreadThreads=useUnreadThreadNavigation(activeConv,cloudAccount?.accountId,openUnreadRoot,activeThreadRootId);
   const loadedThreadPage=unreadThreads.page;
   const notificationMessage=loadedThreadPage && !loadedThreadPage.isThread?loadedThreadPage.thread.root:undefined;
-  const transcriptMessages = useMemo(
-    () => collapseAdjacentSessionConfigNotices(
-      suppressLiveTurnEchoMessages(notificationMessage && !activeConv.messages.some(message=>transcriptMessageNavigationIds(message).includes(notificationMessage.id!))
-        ? [...activeConv.messages,notificationMessage].sort((a,b)=>(a.conversationSequence??0)-(b.conversationSequence??0)) : activeConv.messages, activeTranscriptLiveTurn),
-    ),
-    [activeConv.messages, activeTranscriptLiveTurn, notificationMessage],
-  );
-  const inferLatestHumanRequest = shouldInferLatestHumanReplyTarget(activeConv);
-  const locatedTranscript = useMemo(
-    () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
-      inferLatestHumanRequest,
-    }),
-    [activeTranscriptLiveTurn, inferLatestHumanRequest, transcriptMessages],
-  );
-  const locatedLiveTurn = locatedTranscript.liveTurn ?? activeTranscriptLiveTurn;
-  const threadProjection = useMemo(
-    () => projectMessageThreads(locatedTranscript.messages),
-    [locatedTranscript.messages],
-  );
+  const {threadProjection,locatedLiveTurn}=useThreadTranscript(activeConv,activeTranscriptLiveTurn,notificationMessage);
   const activeLiveTurnThreadRootId = locatedLiveTurn && !locatedLiveTurn.completed
     ? threadProjection.threadRootIdByMessageId.get(locatedLiveTurn.replyToMessageId?.trim() ?? '') ?? null
     : null;
@@ -303,16 +283,7 @@ export function ChatsPage({
     threadProjection, threadReadStatus.reads, activeConv.id, activeLiveTurnThreadRootId, openThreadState,
   );
   const [threadPanelWidth, setThreadPanelWidth] = useState(384);
-  const localActiveThread = useMemo(() => {
-    if (!activeThreadRootId) return null;
-    const rootId = resolveThreadMessageId(activeThreadRootId, threadProjection.primaryIdByAlias);
-    const existing = threadProjection.threads.get(rootId);
-    if (existing) return existing;
-    const root = attributedTranscriptMessages.find((message) => (
-      message.id === rootId || message.entryId === rootId
-    ));
-    return root ? { root, replies: [] } : null;
-  }, [activeThreadRootId, attributedTranscriptMessages, threadProjection.primaryIdByAlias, threadProjection.threads]);
+  const localActiveThread=useActiveThread(activeThreadRootId,threadProjection,attributedTranscriptMessages);
   const remoteThread=loadedThreadPage?.isThread?loadedThreadPage.thread:undefined;
   const activeThread=unreadThreads.merge(localActiveThread) ?? (remoteThread?.root.id===activeThreadRootId?remoteThread:null);
   const queuedThreadProjection = useMemo(

@@ -1,3 +1,5 @@
+import {cloudTaskActivitiesForSession,type CloudSessionActivityStore} from '@/features/cloud/cloudSessionActivity';
+import type {ThreadAttention} from '@/features/cloud/threadAttention';
 import { presenceStatusForAccount, type CloudPresenceStore } from '@/features/cloud/presence';
 import type { Conversation } from '@/kordi-app/types';
 
@@ -48,4 +50,28 @@ export function applyCloudPresenceToConversations(
     });
     return changed ? { ...conversation, canonicalParticipants } : conversation;
   });
+}
+
+export function decorateCloudConversations(conversations: Conversation[], cloudSessionActivity: CloudSessionActivityStore, threadAttention?: Record<string,ThreadAttention>) {
+    const withCloudActivity = conversations.map((conversation) => {
+      const sessionId = conversation.canonicalSessionId ?? conversation.id;
+      const cloudTaskActivities = cloudTaskActivitiesForSession(cloudSessionActivity, sessionId);
+      if (cloudTaskActivities.length === 0) return conversation;
+      const existingTaskActivities = 'taskActivities' in conversation
+        ? conversation.taskActivities ?? []
+        : [];
+      const existingIds = new Set(existingTaskActivities.map((activity) => activity.id));
+      return {
+        ...conversation,
+        taskActivities: [
+          ...existingTaskActivities,
+          ...cloudTaskActivities.filter((activity) => !existingIds.has(activity.id)),
+        ],
+      };
+    });
+    return withCloudActivity.map(conversation => {
+      const attention=threadAttention?.[conversation.canonicalSessionId??conversation.id];
+      return attention ? {...conversation,unread:attention.unread_count,threadAttention:attention,
+        collaborationUnreadByParentSessionId:{[conversation.canonicalSessionId??conversation.id]:attention.unread_count}} : conversation;
+    });
 }

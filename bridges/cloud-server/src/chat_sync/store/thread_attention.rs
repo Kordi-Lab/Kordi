@@ -14,12 +14,23 @@ pub struct ThreadAttention {
     pub muted: bool,
 }
 
+type ThreadAttentionRow = (
+    Uuid,
+    String,
+    i64,
+    i64,
+    i64,
+    Option<Uuid>,
+    Option<Uuid>,
+    bool,
+);
+
 pub async fn thread_attention(
     pool: &PgPool,
     account: &str,
     after: Option<Uuid>,
 ) -> Result<Vec<ThreadAttention>, StoreError> {
-    let rows: Vec<(Uuid, String, i64, i64, i64, Option<Uuid>, Option<Uuid>, bool)> = query_as(
+    let rows: Vec<ThreadAttentionRow> = query_as(
         r#"WITH conversations AS (
             SELECT c.conversation_id, COALESCE(c.legacy_session_id,c.conversation_id::text) session_id, viewer.last_read_sequence, COALESCE(viewer.muted_until>NOW(),false) muted
             FROM cloud_chat_conversations c JOIN cloud_chat_conversation_members viewer USING(conversation_id)

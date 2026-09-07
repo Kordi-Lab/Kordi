@@ -47,7 +47,7 @@ export function useUnreadThreadNavigation(
     try {
       const session = await loadSession();
       if (session?.accountId !== accountId) return;
-      const page = await new CloudAuthClient().threadPage(
+      const page = await new CloudAuthClient().chat.threadPage(
         session.token, conversation.canonicalSessionId ?? conversation.id, target, after,
       );
       if (scopeRef.current !== scope || generation.current !== attempt || (await loadSession())?.accountId !== accountId) return;
@@ -99,7 +99,7 @@ export function useUnreadThreadNavigation(
         try {
           const session = await loadSession();
           if (session?.accountId !== accountId) return;
-          const incoming = await client.threadPage(session.token, conversation.canonicalSessionId ?? conversation.id, activeRootId, tail);
+          const incoming = await client.chat.threadPage(session.token, conversation.canonicalSessionId ?? conversation.id, activeRootId, tail);
           if (cancelled || incoming.messages.length === 0 || (await loadSession())?.accountId !== accountId) return;
           const replies = incoming.messages.map(message => threadMessage(message, conversation, accountId));
           setResult(previous => previous?.scope === scope && previous.thread.root.id === activeRootId ? {
