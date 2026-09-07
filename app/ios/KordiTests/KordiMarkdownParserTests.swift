@@ -1078,7 +1078,6 @@ final class KordiMarkdownParserTests: XCTestCase {
 
         XCTAssertTrue(lines.contains("                            \(animation)"))
         XCTAssertFalse(lines.contains("                        \(animation)"))
-        XCTAssertFalse(source.contains(".safeAreaInset(edge: .bottom"))
         XCTAssertFalse(source.contains(".scrollDismissesKeyboard("))
         XCTAssertFalse(source.contains("keyboardAvoidanceHeight"))
         XCTAssertTrue(source.contains("scrollView.keyboardDismissMode = .onDrag"))

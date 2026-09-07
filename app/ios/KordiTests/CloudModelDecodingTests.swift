@@ -3,6 +3,27 @@ import Security
 @testable import Kordi
 
 final class CloudModelDecodingTests: XCTestCase {
+    func testCloudDatesAcceptWireTimestampVariants() {
+        let variants = [
+            "2024-01-02T03:04:05Z",
+            "2024-01-02T03:04:05.125Z",
+            "2024-01-02T03:04:05.125678+00:00",
+            "2024-01-02T06:04:05.125+03:00",
+            "2024-01-01T20:04:05.125-07:00",
+        ]
+        let wholeSeconds: TimeInterval = 1_704_164_645
+        for value in variants {
+            XCTAssertEqual(
+                parseCloudDate(value).timeIntervalSince1970,
+                wholeSeconds + (value.contains(".") ? 0.125 : 0),
+                accuracy: 0.001,
+                value
+            )
+        }
+        XCTAssertEqual(parseCloudDate("not-a-date"), .distantPast)
+        XCTAssertEqual(parseCloudDate(""), .distantPast)
+    }
+
     func testThreadAttentionKeepsTotalAndThreadCountsDistinct() throws {
         let json = #"{"conversation_id":"c","session_id":"s","unread_count":7,"thread_unread_count":3,"thread_count":2,"next_root_id":"root","next_message_id":"reply"}"#
         let attention = try JSONDecoder().decode(CloudThreadAttention.self, from: Data(json.utf8))

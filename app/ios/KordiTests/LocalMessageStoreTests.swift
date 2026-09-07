@@ -3,6 +3,32 @@ import XCTest
 
 @MainActor
 final class LocalMessageStoreTests: XCTestCase {
+    func testIncrementalCacheSavesPreserveUpdatesAndReinsertDeletedMessages() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let accountID = "synthetic-account"
+        let conversationID = "synthetic-direct"
+        var messages = (0..<100).map {
+            message(id: "synthetic-\($0)", conversationID: conversationID, text: "Original \($0)")
+        }
+        store.saveMessages(messages, conversationId: conversationID, accountId: accountID)
+        messages[50].text = "Edited"
+        messages[51].deliveryState = .read
+        store.saveMessages(messages, conversationId: conversationID, accountId: accountID)
+        XCTAssertEqual(
+            store.loadMessages(accountId: accountID, conversationId: conversationID),
+            messages.sorted(by: ChatMessage.timelinePrecedes)
+        )
+        store.deleteMessages([messages[50].id], accountId: accountID)
+        store.saveMessages(messages, conversationId: conversationID, accountId: accountID)
+        XCTAssertEqual(store.loadMessages(accountId: accountID, conversationId: conversationID).count, 100)
+        store.clear(accountId: accountID)
+        store.saveMessages(messages, conversationId: conversationID, accountId: accountID)
+        XCTAssertEqual(
+            store.loadMessages(accountId: accountID, conversationId: conversationID),
+            messages.sorted(by: ChatMessage.timelinePrecedes)
+        )
+    }
+
     func testConversationCacheKeepsLatestStickerPreview() throws {
         let store = try LocalMessageStore(inMemory: true)
         var source = conversation(id: "person:sticker", displayName: "Sticker chat")
@@ -190,6 +216,31 @@ final class LocalMessageStoreTests: XCTestCase {
             store.loadMessages(accountId: "account-b", conversationId: obsolete.id),
             [obsoleteMessage]
         )
+    }
+
+    func testRestoredSessionPersistsMessagesBeyondTheLatestPage() throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let accountID = "synthetic-account"
+        let restored = conversation(id: "person:restored", displayName: "Restored")
+        let messages = (0..<80).map {
+            message(id: "restored-\($0)", conversationID: restored.id, text: "Message \($0)")
+        }.sorted(by: ChatMessage.timelinePrecedes)
+        store.saveConversations([restored], accountId: accountID)
+        store.saveMessages(messages, conversationId: restored.id, accountId: accountID)
+        store.deleteSession(restored.sessionId, accountId: accountID)
+        XCTAssertTrue(store.loadMessages(accountId: accountID, conversationId: restored.id).isEmpty)
+
+        store.saveConversations([restored], accountId: accountID)
+        store.saveMessages(messages, conversationId: restored.id, accountId: accountID)
+
+        let latest = store.loadMessagePage(accountId: accountID, conversationId: restored.id, limit: 64)
+        XCTAssertEqual(latest.messages, Array(messages.suffix(64)))
+        let older = store.loadMessagePage(
+            accountId: accountID, conversationId: restored.id,
+            before: try XCTUnwrap(latest.messages.first), limit: 64
+        )
+        XCTAssertEqual(older.messages, Array(messages.prefix(16)))
+        XCTAssertEqual(store.loadMessages(accountId: accountID, conversationId: restored.id), messages)
     }
 
     func testCacheRoundTripsMessageReactions() throws {
