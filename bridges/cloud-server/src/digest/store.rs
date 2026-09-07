@@ -280,6 +280,7 @@ pub async fn input(
         partial,
         as_of: Utc::now().to_rfc3339(),
         viewer_account_id: account.into(),
+        changes: None,
     })
 }
 
@@ -312,11 +313,11 @@ pub(super) fn retain_previous_evidence(
 }
 
 fn input_hash(input: &Input) -> String {
-    let value = json!({"version":1,"sources":input.sources,"events":input.calendar_events,"tasks":input.existing_tasks,"locale":input.locale,"timezone":input.timezone,"dueReminders":input.calendar_events.iter().filter(|e|e.reminder_at.as_ref().and_then(|d|chrono::DateTime::parse_from_rfc3339(d).ok()).is_some_and(|d|d<=Utc::now())).map(|e|&e.id).collect::<Vec<_>>()});
+    let value = json!({"version":1,"sources":input.sources,"events":input.calendar_events,"tasks":input.existing_tasks,"locale":input.locale,"timezone":input.timezone,"dueReminders":super::incremental::due_reminders(input)});
     hex::encode(Sha256::digest(value.to_string().as_bytes()))
 }
 
-pub async fn refresh(pool: &PgPool, account: &str, force: bool) -> Result<()> {
+pub async fn refresh(pool: &PgPool, account: &str) -> Result<()> {
     type DigestState = (
         String,
         String,
@@ -333,9 +334,11 @@ pub async fn refresh(pool: &PgPool, account: &str, force: bool) -> Result<()> {
         return Ok(());
     }
     let previous = snapshot.and_then(|v| serde_json::from_value(v).ok());
+    let saved = saved_input
+        .and_then(|value| serde_json::from_value::<Input>(value).ok())
+        .filter(|saved| saved.viewer_account_id == account);
     let mut input = input(pool, account, &locale, &timezone, previous).await?;
     if let Some(previous) = &mut input.previous {
-        let saved = saved_input.and_then(|value| serde_json::from_value::<Input>(value).ok());
         retain_previous_evidence(
             previous,
             saved
@@ -346,8 +349,17 @@ pub async fn refresh(pool: &PgPool, account: &str, force: bool) -> Result<()> {
         );
     }
     let hash = input_hash(&input);
-    if hash == old_hash && !force {
+    if hash == old_hash {
         return Ok(());
+    }
+    if let Some(saved) = saved.as_ref().filter(|_| input.previous.is_some()) {
+        let changes = super::incremental::Changes::between(saved, &input);
+        if changes.is_empty() {
+            query("UPDATE cloud_account_digests SET input_hash=$2,error_code=NULL WHERE account_id=$1 AND active_run_id IS NULL")
+                .bind(account).bind(&hash).execute(pool).await?;
+            return Ok(());
+        }
+        input.changes = Some(changes);
     }
     if input.sources.is_empty() {
         query("UPDATE cloud_account_digests SET snapshot_json=$2,snapshot_input_json=$3,input_json=$3,input_hash=$4,error_code=NULL,revision=revision+1,updated_at=now() WHERE account_id=$1 AND active_run_id IS NULL")
@@ -361,8 +373,8 @@ pub async fn refresh(pool: &PgPool, account: &str, force: bool) -> Result<()> {
     }
     let mut tx = pool.begin().await?;
     let run = format!("{}{}", super::RUN_PREFIX, Uuid::new_v4().simple());
-    let changed=query("UPDATE cloud_account_digests SET active_run_id=$2,input_hash=$3,input_json=$4,error_code=NULL WHERE account_id=$1 AND active_run_id IS NULL AND (input_hash<>$3 OR $5)")
-        .bind(account).bind(&run).bind(&hash).bind(serde_json::to_value(&input).unwrap()).bind(force).execute(&mut *tx).await?;
+    let changed=query("UPDATE cloud_account_digests SET active_run_id=$2,input_hash=$3,input_json=$4,error_code=NULL WHERE account_id=$1 AND active_run_id IS NULL AND input_hash<>$3")
+        .bind(account).bind(&run).bind(&hash).bind(serde_json::to_value(&input).unwrap()).execute(&mut *tx).await?;
     if changed.rows_affected() == 0 {
         return Ok(());
     }
@@ -402,7 +414,21 @@ pub async fn authorized_input_sources(
             return Ok(None);
         }
     }
-    Ok(Some(current))
+    let current: HashMap<_, _> = current
+        .into_iter()
+        .map(|source| (source.id.clone(), source))
+        .collect();
+    let mut refs = input.sources.clone();
+    for source in &mut refs {
+        let latest = &current[&source.id];
+        source.sender_name = latest.sender_name.clone();
+        source.session_title = latest.session_title.clone();
+        source.is_agent = latest.is_agent;
+        source.agent_id = latest.agent_id.clone();
+        source.agent_owner_name = latest.agent_owner_name.clone();
+        source.agent_avatar_url = latest.agent_avatar_url.clone();
+    }
+    Ok(Some(refs))
 }
 
 pub async fn revalidate_run(pool: &PgPool, run: &str) -> Result<bool> {
@@ -434,6 +460,9 @@ pub async fn complete(pool: &PgPool, run: &str, runner: &str, text: &str) -> Res
         serde_json::from_value(value).map_err(|e| sqlx_core::Error::Decode(Box::new(e)))?;
     let output = serde_json::from_str::<Output>(text.trim());
     let Ok(output) = output else {
+        return fail(pool, run, Some(runner), "invalid_output").await;
+    };
+    let Ok(output) = super::incremental::merge_output(&input, output) else {
         return fail(pool, run, Some(runner), "invalid_output").await;
     };
     if validate_output(&output, &input).is_err() {

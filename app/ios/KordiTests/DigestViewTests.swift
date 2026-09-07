@@ -2,6 +2,31 @@ import XCTest
 import Testing
 @testable import Kordi
 
+@MainActor
+@Test
+func digestCalendarReviewPreservesIdentityAndLinksAcrossTimezones() throws {
+    let raw = #"{"id":"move","title":"Review","text":"Move later","kind":"possible","sourceIds":[],"calendarAction":"update","existingEventId":"meeting","existingEventRevision":4,"startAt":"2026-09-08T13:00:00Z"}"#
+    var item = try JSONDecoder().decode(RollingDigestItem.self, from: Data(raw.utf8))
+    let event = DigestCalendarEvent(id: "meeting", title: "Review", startAt: "2026-09-08T15:00:00+03:00", endAt: "2026-09-08T15:30:00+03:00", reminderAt: "2026-09-08T14:50:00+03:00", revision: 4, links: ["https://example.zoom.us/j/123"], timezone: "Asia/Riyadh")
+    let updated = try item.calendarReviewEvent(events: [event], sources: [], timezone: "America/New_York")
+    #expect(updated.id == "meeting" && updated.revision == 4)
+    #expect(updated.endAt == "2026-09-08T13:30:00Z")
+    #expect(updated.reminderAt == "2026-09-08T12:50:00Z")
+    #expect(updated.timezone == "Asia/Riyadh" && updated.links == event.links)
+    #expect(throws: (any Error).self) { try item.calendarReviewEvent(events: [], sources: [], timezone: "UTC") }
+    item.calendarAction = "delete"
+    #expect(try item.calendarReviewEvent(events: [event], sources: [], timezone: "UTC") == event)
+    #expect(item.calendarReviewLabel(events: [event]) == "Review cancellation")
+    let urls = KordiMarkdownParser.externalURLs(in: "[Zoom](https://example.zoom.us/j/123) **https://example.com/agenda** `https://code.example` [Unsafe](javascript:alert(1))")
+    #expect(urls.map(\.absoluteString) == ["https://example.zoom.us/j/123", "https://example.com/agenda"])
+    for zone in ["America/Los_Angeles", "Asia/Tokyo"] {
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = try #require(TimeZone(identifier: zone))
+        let day = try #require(DigestDate.parse("2026-09-08T12:00:00Z"))
+        var allDay = event; allDay.allDay = true; allDay.startAt = "2026-09-08T00:00:00Z"; allDay.endAt = nil
+        #expect(DigestDate.event(allDay, occursOn: day, calendar: calendar))
+    }
+}
+
 final class DigestViewTests: XCTestCase {
     @MainActor
     func testDeviceCalendarImportAcceptsInstantsAndContinuesPastInvalidRanges() async throws {

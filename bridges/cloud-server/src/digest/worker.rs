@@ -11,7 +11,7 @@ pub fn spawn(state: Arc<ServerState>) -> tokio::task::JoinHandle<()> {
             let accounts:Result<Vec<(String,)>,_>=query_as("UPDATE cloud_account_digests SET checked_at=now() WHERE account_id IN (SELECT account_id FROM cloud_account_digests WHERE retry_after<=now() AND active_run_id IS NULL ORDER BY checked_at LIMIT 20) RETURNING account_id").fetch_all(state.db_pool()).await;
             if let Ok(accounts) = accounts {
                 for (account,) in accounts {
-                    if super::store::refresh(state.db_pool(), &account, false)
+                    if super::store::refresh(state.db_pool(), &account)
                         .await
                         .is_err()
                     {

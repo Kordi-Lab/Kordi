@@ -114,6 +114,7 @@
 		E9903E8C12FFD9B876610EAC /* CloudWireCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45283A731378FF0892492602 /* CloudWireCacheTests.swift */; };
 		EB453D88857B3296BE127B94 /* ContactsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7057F708821F2D5D4A0AE795 /* ContactsView.swift */; };
 		ECE80F15C5A972C2619BE107 /* DigestEditors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DCB8DC1661FA97372B754E3 /* DigestEditors.swift */; };
+		DC429A13C50C427591065F10 /* DigestCalendarProposal.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC429A13C50C427591065F11 /* DigestCalendarProposal.swift */; };
 		ED0D7936BFA2433311A7D3C3 /* NotoEmojiTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E094A05643A2F44276E4EF06 /* NotoEmojiTests.swift */; };
 		ED22FF9AFFB08C5A52F41716 /* ComposerMentionTargetCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFB88FF6B392D071AA24EB46 /* ComposerMentionTargetCatalogTests.swift */; };
 		F01AE74E96BE2C02909E7D28 /* KordiAppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC40CA44539DE969C3129E9B /* KordiAppEnvironment.swift */; };
@@ -200,6 +201,7 @@
 		5BAE23D56402398862849C56 /* ProviderAuthenticationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAuthenticationTests.swift; sourceTree = "<group>"; };
 		5DC2D15EF36CFC29FD9543A9 /* AttachmentTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AttachmentTransfer.swift; sourceTree = "<group>"; };
 		5DCB8DC1661FA97372B754E3 /* DigestEditors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestEditors.swift; sourceTree = "<group>"; };
+		DC429A13C50C427591065F11 /* DigestCalendarProposal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DigestCalendarProposal.swift; sourceTree = "<group>"; };
 		5F7961C162F4B02B850937D4 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
 		63AC02B591615C13AB59E1FE /* Kordi.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Kordi.entitlements; sourceTree = "<group>"; };
 		6400B908DF86EAAA6883C9B4 /* CallView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CallView.swift; sourceTree = "<group>"; };
@@ -572,6 +574,7 @@
 				0F86440397C4BCD851D59AE4 /* CloudAPIClient+Digest.swift */,
 				D6B70D03EA8C02F0F10917A6 /* DigestCalendarService.swift */,
 				5DCB8DC1661FA97372B754E3 /* DigestEditors.swift */,
+				DC429A13C50C427591065F11 /* DigestCalendarProposal.swift */,
 				C0216215122D9CFCEADED62A /* DigestImportView.swift */,
 				FB201FE56A48A0CC09D85718 /* DigestMonthGrid.swift */,
 				96042CF63F22D2ED8FFE8C1E /* DigestView.swift */,
@@ -825,6 +828,7 @@
 				AB82AE16C983CF38F5213003 /* SubsessionConversation.swift in Sources */,
 				384CEA6FD6D3803D7750D658 /* DigestCalendarService.swift in Sources */,
 				ECE80F15C5A972C2619BE107 /* DigestEditors.swift in Sources */,
+				DC429A13C50C427591065F10 /* DigestCalendarProposal.swift in Sources */,
 				3DECEFF6E4E2E1A3DDBA1B6E /* DigestImportView.swift in Sources */,
 				2494E85EDBBFE73065C88EE9 /* DigestMonthGrid.swift in Sources */,
 				F4F1CE25C621F59E5EA38FC9 /* DigestView.swift in Sources */,

@@ -27,6 +27,8 @@ export const digestClient = {
   refresh: (accountId: string) => request<void>(accountId, `digest/refresh?${new URLSearchParams({ locale: navigator.language, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })}`, 'POST'),
   calendar: (accountId: string, signal?: AbortSignal) => request<{ events: CalendarEvent[] }>(accountId, 'calendar/events', 'GET', undefined, signal),
   saveEvent: (accountId: string, event: CalendarEvent) => request<CalendarEvent>(accountId, `calendar/events/${encodeURIComponent(event.id)}`, 'PUT', normalizeCalendarEvent(event)),
+  previewSeries: (accountId: string, event: CalendarEvent) => request<{events: CalendarEvent[]}>(accountId, 'calendar/series/preview', 'POST', normalizeCalendarEvent(event)),
+  saveSeries: (accountId: string, event: CalendarEvent) => request<{events: CalendarEvent[]}>(accountId, `calendar/series/${encodeURIComponent(event.id)}`, 'PUT', normalizeCalendarEvent(event)),
   removeEvent: (accountId: string, event: CalendarEvent) => request<void>(accountId, `calendar/events/${encodeURIComponent(event.id)}?revision=${event.revision}`, 'DELETE'),
   feedback: (accountId: string, id: string, dismissed: boolean) => request<void>(accountId, `digest/items/${encodeURIComponent(id)}/feedback`, 'PUT', { dismissed }),
   task: (accountId: string, id: string, input: { title: string; ownerAccountId: string | null; dueAt: string | null }) => request<{ taskId: string }>(accountId, `digest/items/${encodeURIComponent(id)}/task`, 'POST', input),

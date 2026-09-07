@@ -110,6 +110,13 @@
 .digest-sheet blockquote { margin: 18px 0; padding: 8px 14px; border-left: 2px solid var(--app-divider, #8885); white-space: pre-wrap; overflow-wrap: anywhere; }
 .digest-sheet footer { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
 .digest-import-list { max-height: 40vh; overflow: auto; }
+.digest-related-links { display: grid; gap: 8px; margin-block: 10px; }
+.digest-related-links a { display: flex; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--digest-line, #d7d9df); border-radius: 8px; color: var(--digest-accent, #216275); text-decoration: none; }
+.digest-related-links a > span { min-width: 0; overflow-wrap: anywhere; flex: 1; }
+.digest-related-links a > strong { font-weight: 500; white-space: nowrap; }
+.digest-related-links a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.digest-repeat-weekdays { display: flex; flex-wrap: wrap; gap: 10px; }
+.digest-repeat-weekdays label { display: flex; align-items: center; gap: 4px; }
 .digest-sheet .digest-import-list label, .digest-sheet .digest-choice { display: flex; align-items: flex-start; gap: 10px; }
 .digest-sheet input[type=checkbox] { width: 18px; margin-top: 4px; flex: none; }
 .digest-import-list small { display: block; color: var(--digest-muted, #737985); }

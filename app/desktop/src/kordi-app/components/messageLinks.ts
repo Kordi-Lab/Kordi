@@ -177,25 +177,40 @@ export function markdownHttpLinkPrefix(value: string): MessageLinkMatch | null {
   return null;
 }
 
-export function firstExternalMessageLink(text: string): Omit<MessageLinkMatch, 'matchedLength'> | null {
-  const visibleText = text
-    .replace(/```[\s\S]*?```/g, ' ')
-    .replace(/`[^`]*`/g, ' ');
-
+export function externalMessageLinks(text: string, limit = 10): Omit<MessageLinkMatch, 'matchedLength'>[] {
+  if (limit <= 0) return [];
+  const visibleText = text.replace(/```[\s\S]*?```/g, ' ').replace(/`[^`]*`/g, ' ');
+  const links = new Map<string, Omit<MessageLinkMatch, 'matchedLength'>>();
+  let consumedUntil = 0;
   for (const candidate of visibleText.matchAll(/\[|https?:\/\//gi)) {
+    if (candidate.index < consumedUntil) continue;
     const slice = visibleText.slice(candidate.index);
-    const markdownLink = markdownHttpLinkPrefix(slice);
-    if (markdownLink) {
-      return { href: markdownLink.href, label: markdownLink.label };
+    const markdown = markdownHttpLinkPrefix(slice);
+    if (markdown) {
+      consumedUntil = candidate.index + markdown.matchedLength;
+      if (!links.has(markdown.href)) links.set(markdown.href, {href: markdown.href, label: markdown.label});
+    } else {
+      let bare = slice.match(/^https?:\/\/[^\s<>"']+/i)?.[0];
+      if (!bare) continue;
+      consumedUntil = candidate.index + bare.length;
+      bare = splitBareHttpUrl(bare).href;
+      for (const marker of ['**', '__', '*', '_']) {
+        if (visibleText.slice(0, candidate.index).endsWith(marker) && bare.endsWith(marker)) {
+          bare = bare.slice(0, -marker.length);
+          break;
+        }
+      }
+      const {href} = splitBareHttpUrl(bare);
+      const safe = safeExternalHttpHref(href);
+      if (safe && !links.has(safe)) links.set(safe, {href: safe, label: href});
     }
-    const bare = slice.match(/^https?:\/\/[^\s<>"']+/i)?.[0];
-    if (!bare) continue;
-    const { href } = splitBareHttpUrl(bare);
-    const safeHref = safeExternalHttpHref(href);
-    if (safeHref) return { href: safeHref, label: href };
+    if (links.size >= limit) break;
   }
+  return [...links.values()];
+}
 
-  return null;
+export function firstExternalMessageLink(text: string): Omit<MessageLinkMatch, 'matchedLength'> | null {
+  return externalMessageLinks(text, 1)[0] ?? null;
 }
 
 function rememberSiteIconDescriptor(hostname: string, descriptor: SiteIconDescriptor) {

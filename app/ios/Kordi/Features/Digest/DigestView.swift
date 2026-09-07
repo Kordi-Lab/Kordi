@@ -3,8 +3,8 @@ import SwiftUI
 struct DigestMessageRoute: Hashable { let conversation: ConversationSummary; let messageID: String }
 private enum DigestPane: String, CaseIterable { case brief = "Brief", tasks = "Next steps", calendar = "Calendar" }
 private enum DigestSheet: Identifiable {
-    case source([String]), event(DigestCalendarEvent), imports, connection, details
-    var id: String { switch self { case .source(let ids): "source:\(ids.joined(separator: ","))"; case .event(let event): "event:\(event.id)"; case .imports: "import"; case .connection: "connection"; case .details: "details" } }
+    case source([String]), event(DigestCalendarEvent, RollingDigestItem? = nil, DigestCalendarEvent? = nil), imports, connection, details
+    var id: String { switch self { case .source(let ids): "source:\(ids.joined(separator: ","))"; case .event(let event, let proposal, _): "event:\(event.id):\(proposal?.id ?? "")"; case .imports: "import"; case .connection: "connection"; case .details: "details" } }
 }
 
 struct DigestView: View {
@@ -117,6 +117,7 @@ struct DigestView: View {
                     Text(item.text).foregroundStyle(.secondary)
                     people(item)
                     citations(item)
+                    DigestRelatedLinks(urls: DigestRelatedLinks.sourceURLs(item.sourceIds, sources: sources))
                     Divider().padding(.top, 8)
                 }
             }
@@ -153,17 +154,17 @@ struct DigestView: View {
                 Button { changeMonth(1) } label: { Image(systemName: "chevron.right") }.accessibilityLabel("Next month")
             }.buttonStyle(.plain)
             DigestMonthGrid(month: month, events: events, candidates: content?.calendarCandidates ?? [], selectedDay: $selectedCalendarDay, onSelect: { selectedSheet = .event($0) }, onReview: reviewCalendarCandidate)
+            Text("Shown in \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
             Divider().padding(.vertical, 4)
             Text("From your chats").font(.subheadline.weight(.semibold))
             ForEach(content?.calendarCandidates ?? []) { item in
-                let saved = events.first { $0.id == "digest-\(item.id)" }
                 VStack(alignment: .leading, spacing: 8) {
                     Text(item.title).font(.subheadline.weight(.semibold))
                     people(item)
                     HStack(alignment: .firstTextBaseline) {
                         Text(item.startAt.flatMap(DigestDate.parse)?.formatted(date: .abbreviated, time: .shortened) ?? "Date or time not agreed").font(.footnote).foregroundStyle(.secondary)
                         Spacer(minLength: 8)
-                        Button(saved == nil ? "Review & add" : "View event") {
+                        Button(item.calendarReviewLabel(events: events)) {
                             reviewCalendarCandidate(item)
                         }.font(.footnote.weight(.medium)).buttonStyle(.plain)
                     }
@@ -174,8 +175,10 @@ struct DigestView: View {
         }
     }
     private func reviewCalendarCandidate(_ item: RollingDigestItem) {
-        let saved = events.first { $0.id == "digest-\(item.id)" }
-        selectedSheet = .event(saved ?? DigestCalendarEvent(id: "digest-\(item.id)", title: item.title, startAt: item.startAt ?? "", endAt: item.endAt, sourceIds: item.sourceIds, description: item.text))
+        do {
+            let event = try item.calendarReviewEvent(events: events, sources: sources, timezone: digest?.timezone)
+            selectedSheet = .event(event, item, events.first { $0.id == item.existingEventId })
+        } catch { self.error = error.localizedDescription }
     }
     private func changeMonth(_ value: Int) {
         month = Calendar.current.date(byAdding: .month, value: value, to: month) ?? month
@@ -221,7 +224,7 @@ struct DigestView: View {
                     }.padding().navigationTitle(first.sessionTitle)
                 } else { Text("This source is no longer accessible or included.").padding().navigationTitle("Source unavailable") }
             }.navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
-        case .event(let event): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.parse(updated.startAt) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: { try await model.removeDigestCalendarEvent(event); await reloadAfterEdit() }
+        case .event(let event, let proposal, let original): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts, proposal: proposal, original: original) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.eventDate(updated) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: { try await model.removeDigestCalendarEvent(event); await reloadAfterEdit() }
         case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .connection: DigestConnectView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Updates follow your messages, sessions and calendar events."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("Live digest")
@@ -243,13 +246,13 @@ struct DigestView: View {
             let accessibleIDs = Set(next.sources.map(\.id))
             if let sheet = selectedSheet {
                 switch sheet {
-                case .event(let event) where !event.sourceIds.allSatisfy(accessibleIDs.contains): selectedSheet = nil
+                case .event(let event, _, _) where !event.sourceIds.allSatisfy(accessibleIDs.contains): selectedSheet = nil
                 default: break
                 }
             }
             if let eventID = notifications.pendingCalendarEventID {
                 pane = .calendar
-                if let event = nextEvents.first(where: { $0.id == eventID }) { month = DigestDate.parse(event.startAt) ?? Date(); selectedSheet = .event(event) }
+                if let event = nextEvents.first(where: { $0.id == eventID }) { month = DigestDate.eventDate(event) ?? Date(); selectedSheet = .event(event) }
                 notifications.consumeCalendarRoute()
             }
             if remoteReminders {

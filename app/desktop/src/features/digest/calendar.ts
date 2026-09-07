@@ -2,6 +2,11 @@ import type { CalendarEvent, CalendarConnection } from './types';
 import { isNativeDesktopShell } from '@/lib/desktop';
 
 export function dateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`; }
+export function zonedEventLabel(value: string, timezone: string): string {
+  const date = new Date(value);
+  try { return date.toLocaleString(undefined,{timeZone:timezone,dateStyle:'medium',timeStyle:'short'}) + ' · ' + timezone; }
+  catch { return date.toISOString() + ' · UTC (meeting timezone: ' + timezone + ')'; }
+}
 export function monthDays(month: string) {
   const start = new Date(`${month}-01T12:00:00`); start.setDate(start.getDate()-start.getDay());
   return Array.from({length:42},(_,i)=>{const day=new Date(start);day.setDate(day.getDate()+i);return dateKey(day);});

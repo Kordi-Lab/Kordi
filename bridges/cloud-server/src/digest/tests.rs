@@ -2,7 +2,7 @@ use super::{models::*, store};
 use serde_json::json;
 use sqlx_core::{query::query, query_as::query_as};
 
-fn input() -> Input {
+pub(super) fn input() -> Input {
     Input {
         sources: vec![Source {
             id: "m1".into(),
@@ -27,6 +27,7 @@ fn input() -> Input {
         partial: false,
         as_of: "2026-09-07T09:01:00Z".into(),
         viewer_account_id: "viewer".into(),
+        changes: None,
     }
 }
 #[test]
@@ -102,6 +103,12 @@ fn calendar_validation_rejects_invalid_times() {
         all_day: false,
         source_ids: vec![],
         description: String::new(),
+        links: None,
+        timezone: None,
+        recurrence: None,
+        series_id: None,
+        series_fingerprint: None,
+        confirm_single_occurrence: None,
         external_uid: None,
         revision: 0,
     };
@@ -218,6 +225,16 @@ async fn postgres_scope_and_atomic_publication() {
         Some(format!("cloud-agent:{author}").as_str())
     );
     assert!(agent_sources[0].agent_avatar_url.is_some());
+    let mut bounded = input.clone();
+    bounded.sources = agent_sources.clone();
+    bounded.sources[0].text = "Bounded preview".into();
+    bounded.sources[0].sender_name = "Stale label".into();
+    let refreshed = store::authorized_input_sources(&pool, &viewer, &bounded)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(refreshed[0].text, "Bounded preview");
+    assert_eq!(refreshed[0].sender_name, "Renamed helper");
     let custom = format!("cloud_agent_{suffix}");
     query("INSERT INTO cloud_agent_definitions(agent_id,owner_account_id,name,role,system_prompt,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at) VALUES($1,$2,'Named researcher','research','test','test','test','generated','thumbs',$1,'test',1,'test')")
         .bind(&custom).bind(&author).execute(&pool).await.unwrap();
@@ -287,6 +304,48 @@ async fn postgres_scope_and_atomic_publication() {
     assert_eq!(row.0, 1);
     assert!(row.1.is_none());
     assert!(row.2.is_some());
+    let mut delta = input.clone();
+    delta.previous = Some(output.clone());
+    delta.changes = Some(super::incremental::Changes {
+        preferences_changed: true,
+        ..Default::default()
+    });
+    let next_run = format!("digest_{}", uuid::Uuid::new_v4().simple());
+    query("INSERT INTO cloud_agent_fallback_runs(run_id,idempotency_key,request_message_id,session_id,owner_account_id,requester_account_id,status,prompt,claimed_by,lease_expires_at,created_at,updated_at) SELECT $2,$2,$2,session_id,owner_account_id,requester_account_id,'running',prompt,claimed_by,lease_expires_at,created_at,updated_at FROM cloud_agent_fallback_runs WHERE run_id=$1").bind(&run).bind(&next_run).execute(&pool).await.unwrap();
+    query("UPDATE cloud_account_digests SET input_json=$2,active_run_id=$3 WHERE account_id=$1")
+        .bind(&viewer)
+        .bind(json!(delta))
+        .bind(&next_run)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let patch = Output {
+        suggestions: vec![Item {
+            id: "consider-review".into(),
+            title: "Consider reviewing".into(),
+            source_ids: vec![message.to_string()],
+            kind: "possible".into(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+    store::complete(
+        &pool,
+        &next_run,
+        "test-runner",
+        &serde_json::to_string(&patch).unwrap(),
+    )
+    .await
+    .unwrap();
+    let merged: (serde_json::Value, i64) =
+        query_as("SELECT snapshot_json,revision FROM cloud_account_digests WHERE account_id=$1")
+            .bind(&viewer)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(merged.1, 2);
+    assert_eq!(merged.0["claims"][0]["id"], "review");
+    assert_eq!(merged.0["suggestions"][0]["id"], "consider-review");
     let count: (i64,) =
         query_as("SELECT COUNT(*) FROM cloud_chat_messages WHERE conversation_id=$1")
             .bind(public)
@@ -318,6 +377,12 @@ async fn postgres_scope_and_atomic_publication() {
         all_day: false,
         source_ids: vec![],
         description: String::new(),
+        links: None,
+        timezone: None,
+        recurrence: None,
+        series_id: None,
+        series_fingerprint: None,
+        confirm_single_occurrence: None,
         external_uid: None,
         revision: 0,
     };
@@ -360,6 +425,7 @@ async fn postgres_scope_and_atomic_publication() {
         axum::http::StatusCode::OK,
         "A full calendar must still allow edits"
     );
+    super::calendar_tests::postgres_calendar_contract(&pool, &author).await;
     query("DELETE FROM cloud_chat_conversations WHERE conversation_id=ANY($1)")
         .bind(vec![public, private])
         .execute(&pool)

@@ -2,11 +2,14 @@ import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState
 import { Bell, RefreshCw } from 'lucide-react';
 import { digestClient } from './client';
 import { useDigest } from './useDigest';
-import { connectedCalendars, fetchCalendarLink, dateKey, importCalendar, readDeviceEvents, syncReminders, type CalendarImport } from './calendar';
-import type { CalendarConnection, CalendarEvent, DigestItem, DigestSource } from './types';
+import { connectedCalendars, fetchCalendarLink, dateKey, importCalendar, readDeviceEvents, syncReminders, zonedEventLabel, type CalendarImport } from './calendar';
+import type { CalendarConnection, CalendarEvent, CalendarRecurrence, DigestItem, DigestSource } from './types';
 import { DigestCalendar, DigestAgenda } from './DigestCalendar';
 import { calendarErrorMessage, importCalendarEvents, type CalendarImportReport } from './calendarImport';
 import { DigestPeople } from './DigestPeople';
+import { proposalEvent } from './calendarProposal';
+import { digestEventLinks } from './links';
+import { DigestRelatedLinks } from './DigestRelatedLinks';
 import { MarkdownContent } from '@/kordi-app/components/markdown';
 import './digest.css';
 
@@ -29,6 +32,7 @@ export default function DigestPage({accountId}:{accountId:string}){
   const [selectedDay,setSelectedDay]=useState(()=>dateKey(new Date()));
   const [sourceId,setSourceId]=useState<string|string[]|null>(null);
   const [editEvent,setEditEvent]=useState<CalendarEvent|null>(null);
+  const [review,setReview]=useState<{item:DigestItem;original?:CalendarEvent}|null>(null);
   const [importOpen,setImportOpen]=useState(false);
   const [connections,setConnections]=useState<CalendarConnection[]|null>(null);
   const [busy,setBusy]=useState(false);const [actionError,setActionError]=useState<string|null>(null);
@@ -58,27 +62,80 @@ export default function DigestPage({accountId}:{accountId:string}){
     for(const id of item.sourceIds){const source=sources.find(s=>s.id===id);if(source)groups.set(source.sessionId,[...(groups.get(source.sessionId)??[]),source]);}
     return <div className="digest-evidence">{[...groups.entries()].map(([sessionId,group])=><button key={sessionId} onClick={()=>void act(async()=>{await reload();setSourceId(group.map(s=>s.id));})}>↗ {group[0].sessionTitle}{group.length>1?` · ${group.length} messages`:''}</button>)}</div>;
   }
-  function calendarCandidate(item:DigestItem){const existing=events.find(e=>e.id===`digest-${item.id}`);setEditEvent(existing??{id:`digest-${item.id}`,title:item.title,startAt:item.startAt??'',endAt:item.endAt,reminderAt:null,allDay:false,description:item.text,sourceIds:item.sourceIds,revision:0});}
+  function openEvent(event:CalendarEvent){setReview(null);setEditEvent(event);}
+  function calendarCandidate(item:DigestItem){try{const event=proposalEvent(item,events,sources,digest?.timezone);setReview({item,original:events.find(e=>e.id===item.existingEventId)});setEditEvent(event);}catch(error){setActionError(calendarErrorMessage(error,'Could not review this event.'));}}
   function changeMonth(next:string){setMonth(next);if(!selectedDay.startsWith(next))setSelectedDay(`${next}-01`);}
   return <ActionErrorContext.Provider value={{error:actionError,setError:setActionError}}><section className="digest-page" aria-label="Digest"><header className="digest-header"><div><h1>Digest</h1><div className="digest-header-actions"><button aria-label="Enable calendar reminders" onClick={()=>void act(async()=>setReminderState(await syncReminders(accountId,events,true)))}><Bell size={18}/></button><button aria-label="Refresh digest" disabled={busy||digest?.status==='updating'} onClick={()=>void act(()=>digestClient.refresh(accountId))}><RefreshCw size={18}/></button></div></div><div className="digest-status"><span>{digest?.status==='updating'?'Updating · previous brief available':digest?.updatedAt?`Updated ${timeLabel(digest.updatedAt)}`:'Preparing your digest'}</span><span className="digest-live"><i aria-hidden="true"/> Updates with your conversations</span></div><nav aria-label="Digest views">{(['brief','tasks','calendar'] as const).map(v=><button key={v} aria-pressed={view===v} onClick={()=>setView(v)}>{v==='brief'?'Brief':v==='tasks'?'Next steps':'Calendar'}</button>)}</nav></header>
     <div className="digest-notices" role="status">{(visibleActionError||error)&&<p className="digest-warning">{visibleActionError||error}</p>}{digest?.errorCode&&<p className="digest-warning">{digest.errorCode==='missing_provider_auth'?'Connect a model provider in account settings to generate your digest.':'The last update could not finish. Your previous brief remains available.'}</p>}{reminderState==='denied'&&<p className="digest-warning">Device notifications are off. Enable them in system settings to receive reminders.</p>}</div><div className="digest-body">
       <div className="digest-content-grid"><div className="digest-main" ref={mainRef} role="region" aria-label="Digest content" tabIndex={0} onScroll={event=>{scrollPositions.current[view]=event.currentTarget.scrollTop;}}>
       <section hidden={view!=='brief'} aria-label="Brief">{visibleClaims.length?visibleClaims.map(item=><article className="digest-row" key={item.id}><h3>{item.title}</h3><p>{item.text}</p>{people(item)}{evidence(item)}<button disabled={busy} aria-label={`Dismiss ${item.title}`} onClick={()=>void act(()=>digestClient.feedback(accountId,item.id,true))}>Dismiss</button></article>):<p className="digest-empty">{digest?.status==='ready'?(sources.length?'No brief entries to show.':'No conversations to summarize yet.'):digest?.status==='error'?'Refresh after checking your provider connection.':'Your sourced brief will appear here after the first update.'}</p>}{dismissedClaims.length>0&&<button disabled={busy} onClick={()=>void act(async()=>{for(const item of dismissedClaims)await digestClient.feedback(accountId,item.id,false);})}>Restore dismissed entries</button>}</section>
       <section hidden={view!=='tasks'} aria-label="Next steps"><h2>AI suggestions</h2>{visibleSuggestions.map(item=><article className="digest-row" key={item.id}><h3>{item.title}</h3><p>{item.text}</p>{people(item)}{evidence(item)}<button disabled={busy} aria-label={`Dismiss ${item.title}`} onClick={()=>void act(()=>digestClient.feedback(accountId,item.id,true))}>Dismiss</button></article>)}{visibleSuggestions.length===0&&<p className="digest-empty">No suggestions to show.</p>}{dismissedSuggestions.length>0&&<button disabled={busy} onClick={()=>void act(async()=>{for(const item of dismissedSuggestions)await digestClient.feedback(accountId,item.id,false);})}>Restore dismissed suggestions</button>}</section>
-      <section hidden={view!=='calendar'} aria-label="Calendar"><DigestCalendar month={month} selectedDay={selectedDay} events={events} candidates={output?.calendarCandidates??[]} onMonth={changeMonth} onDay={setSelectedDay} onEvent={setEditEvent} onCandidate={calendarCandidate}/></section>
-      </div><DigestAgenda day={selectedDay} events={events} candidates={output?.calendarCandidates??[]} people={people} evidence={evidence} onEvent={setEditEvent} onCandidate={calendarCandidate} onConnect={()=>void act(async()=>setConnections(await connectedCalendars()))} onImport={()=>setImportOpen(true)}/></div>
+      <section hidden={view!=='calendar'} aria-label="Calendar"><DigestCalendar month={month} selectedDay={selectedDay} events={events} candidates={output?.calendarCandidates??[]} onMonth={changeMonth} onDay={setSelectedDay} onEvent={openEvent} onCandidate={calendarCandidate}/></section>
+      </div><DigestAgenda day={selectedDay} events={events} candidates={output?.calendarCandidates??[]} sources={sources} people={people} evidence={evidence} onEvent={openEvent} onCandidate={calendarCandidate} onConnect={()=>void act(async()=>setConnections(await connectedCalendars()))} onImport={()=>setImportOpen(true)}/></div>
     </div>
     {sourceId&&<Sheet title={source?.sessionTitle||'Source unavailable'} onClose={()=>setSourceId(null)}>{source?<>{selectedSources.map(source=><article key={source.id}><p className="digest-meta">@{source.senderName} · {timeLabel(source.createdAt)}</p><blockquote><MarkdownContent text={source.text} tone="inherit" className="whitespace-normal" copySurface="message" preserveLineBreaks /></blockquote></article>)}</>:<p>This message is no longer included or accessible. Refresh the digest.</p>}</Sheet>}
-    {editEvent&&editEvent.sourceIds.every(id=>sources.some(s=>s.id===id))&&<EventEditor key={editEvent.id} event={editEvent} sources={sources} accountId={accountId} onClose={()=>setEditEvent(null)} onSave={event=>act(async()=>{await digestClient.saveEvent(accountId,event);setEditEvent(null);})} onRemove={editEvent.revision?()=>act(async()=>{await digestClient.removeEvent(accountId,editEvent);setEditEvent(null);}):undefined}/>}
+    {editEvent&&editEvent.sourceIds.every(id=>sources.some(s=>s.id===id))&&<EventEditor key={editEvent.id+(review?.item.id??'')} event={editEvent} review={review} sources={sources} accountId={accountId} onClose={()=>setEditEvent(null)} onSave={event=>act(async()=>{if(event.recurrence&&!event.revision)await digestClient.saveSeries(accountId,event);else await digestClient.saveEvent(accountId,event);setEditEvent(null);})} onRemove={editEvent.revision?()=>act(async()=>{await digestClient.removeEvent(accountId,editEvent);setEditEvent(null);}):undefined}/>}
     {importOpen&&<ImportSheet events={events} onClose={()=>setImportOpen(false)} onImport={saveImported}/>}
     {connections&&<ConnectSheet calendars={connections} onClose={()=>setConnections(null)} onImport={async ids=>{const from=new Date(),to=new Date();to.setFullYear(to.getFullYear()+1);return saveImported(await readDeviceEvents(ids,from.toISOString(),to.toISOString()));}}/>}
   </section></ActionErrorContext.Provider>;
 }
-function EventEditor({event,sources,accountId,onClose,onSave,onRemove}:{event:CalendarEvent;sources:DigestSource[];accountId:string;onClose:()=>void;onSave:(event:CalendarEvent)=>Promise<void>;onRemove?:()=>Promise<void>}){
-  const [title,setTitle]=useState(event.title),[start,setStart]=useState(event.allDay?event.startAt.slice(0,10):localInput(event.startAt)),[end,setEnd]=useState(event.allDay?event.endAt?.slice(0,10)||'':localInput(event.endAt)),[minutes,setMinutes]=useState(event.reminderAt?String(Math.round((new Date(event.startAt).getTime()-new Date(event.reminderAt).getTime())/60000)):event.revision===0&&!event.allDay?'10':'');
+function EventEditor({event,review,sources,accountId,onClose,onSave,onRemove}:{event:CalendarEvent;review:{item:DigestItem;original?:CalendarEvent}|null;sources:DigestSource[];accountId:string;onClose:()=>void;onSave:(event:CalendarEvent)=>Promise<void>;onRemove?:()=>Promise<void>}){
+  const [title,setTitle]=useState(event.title);
+  const [start,setStart]=useState(event.allDay?event.startAt.slice(0,10):localInput(event.startAt));
+  const [end,setEnd]=useState(event.allDay?event.endAt?.slice(0,10)||'':localInput(event.endAt));
+  const [minutes,setMinutes]=useState(event.reminderAt?String(Math.round((Date.parse(event.startAt)-Date.parse(event.reminderAt))/60000)):event.revision===0&&!event.allDay?'10':'');
+  const [rule,setRule]=useState<CalendarRecurrence|null>(()=>event.recurrence?{...event.recurrence,...(!event.recurrence.count&&!event.recurrence.until?{count:event.recurrence.frequency==='yearly'?5:12}:{})}:null);
+  const [preview,setPreview]=useState<{signature:string;events:CalendarEvent[]}|null>(null);
+  const [busy,setBusy]=useState(false);
   const [error,setError]=useState<string|null>(null);
-  function save(e:FormEvent){e.preventDefault();const startAt=new Date(event.allDay?`${start}T00:00:00Z`:start).toISOString();const endAt=end?new Date(event.allDay?`${end}T00:00:00Z`:end).toISOString():null;if(endAt&&endAt<startAt){setError('End cannot be before start.');return;}const reminderAt=minutes!==''?new Date(new Date(startAt).getTime()-Number(minutes)*60000).toISOString():null;if(reminderAt&&new Date(reminderAt)<new Date()){setError('That reminder time has passed. Choose No reminder or a later date.');return;}void onSave({...event,title,startAt,endAt,reminderAt});}
-  return <Sheet title={event.revision?'Edit event':'Review calendar event'} onClose={onClose}><form onSubmit={save}><label>Title<input required maxLength={500} value={title} onChange={e=>setTitle(e.target.value)}/></label><label>{event.allDay?'Start date':'Start time'}<input required type={event.allDay?'date':'datetime-local'} value={start} onChange={e=>setStart(e.target.value)}/></label><label>{event.allDay?'End date (exclusive)':'End time (optional)'}<input type={event.allDay?'date':'datetime-local'} value={end} onChange={e=>setEnd(e.target.value)}/></label>{!event.allDay&&<label>Remind me<select value={minutes} onChange={e=>setMinutes(e.target.value)}><option value="">No reminder</option><option value="0">At start</option><option value="5">5 minutes before</option><option value="10">10 minutes before</option><option value="15">15 minutes before</option><option value="60">1 hour before</option></select></label>}<p className="digest-meta">{Intl.DateTimeFormat().resolvedOptions().timeZone} · Personal calendar. No invitations are sent.</p>{event.sourceIds.length>0&&<DigestPeople item={event} sources={sources} accountId={accountId} showMessages/>}{event.description&&<p className="digest-event-context">{event.description}</p>}{error&&<p role="alert">{error}</p>}<footer>{onRemove&&<button type="button" onClick={()=>void onRemove()}>Remove event</button>}<button type="button" onClick={onClose}>Cancel</button><button type="submit">{event.revision?'Save event':'Add to calendar'}</button></footer></form></Sheet>;
+  const links=<DigestRelatedLinks links={digestEventLinks(event,sources)}/>;
+  const deviceZone=Intl.DateTimeFormat().resolvedOptions().timeZone;
+  async function remove(){setBusy(true);try{await onRemove?.();}finally{setBusy(false);}}
+  if(review?.item.calendarAction==='delete')return <Sheet title="Review cancellation" onClose={onClose}><h3>{event.title}</h3><p>{event.allDay?event.startAt.slice(0,10):timeLabel(event.startAt)}</p><p>{review.item.text}</p>{links}<p>Only this event will be removed from your personal Kordi calendar. Source calendars and invitations stay unchanged.</p><footer><button onClick={onClose}>Keep event</button><button disabled={busy} onClick={()=>void remove()}>Confirm removal</button></footer></Sheet>;
+  function payload():CalendarEvent {
+    const startAt=new Date(event.allDay?start+'T00:00:00Z':start===localInput(event.startAt)?event.startAt:start).toISOString();
+    const endAt=end?new Date(event.allDay?end+'T00:00:00Z':end===localInput(event.endAt)?event.endAt!:end).toISOString():null;
+    if(endAt&&Date.parse(endAt)<=Date.parse(startAt))throw new Error('End must follow start.');
+    const reminderAt=minutes!==''?new Date(Date.parse(startAt)-Number(minutes)*60000).toISOString():null;
+    if(reminderAt&&Date.parse(reminderAt)<Date.now())throw new Error('That reminder time has passed. Choose No reminder or a later date.');
+    return {...event,title,startAt,endAt,reminderAt,recurrence:rule,timezone:rule?.timezone??event.timezone,confirmSingleOccurrence:!rule&&!event.revision};
+  }
+  async function previewSeries(){
+    setBusy(true);setError(null);
+    try{const next=payload();const result=await digestClient.previewSeries(accountId,next);setPreview({signature:JSON.stringify(next),events:result.events});}
+    catch(error){setError(calendarErrorMessage(error,'Could not preview the series.'));}
+    finally{setBusy(false);}
+  }
+  async function save(e:FormEvent){
+    e.preventDefault();setError(null);
+    try{const next=payload();if(rule&&!event.revision&&preview?.signature!==JSON.stringify(next))throw new Error('Preview the current dates before confirming the series.');
+      setBusy(true);await onSave(next);
+    }catch(error){setError(calendarErrorMessage(error,'Could not save this event.'));}finally{setBusy(false);}
+  }
+  return <Sheet title={event.revision?'Edit event':'Review calendar event'} onClose={onClose}><form onSubmit={e=>void save(e)}>
+    {review?.original&&<p className="digest-meta">Currently: {review.original.title} · {review.original.allDay?review.original.startAt.slice(0,10):timeLabel(review.original.startAt)}</p>}
+    <label>Title<input required maxLength={500} value={title} onChange={e=>setTitle(e.target.value)}/></label>
+    <label>{event.allDay?'Start date':'Start time'}<input required type={event.allDay?'date':'datetime-local'} value={start} onChange={e=>setStart(e.target.value)}/></label>
+    <label>{event.allDay?'End date (exclusive)':'End time (optional)'}<input type={event.allDay?'date':'datetime-local'} value={end} onChange={e=>setEnd(e.target.value)}/></label>
+    {!event.allDay&&<label>Remind me<select value={minutes} onChange={e=>setMinutes(e.target.value)}><option value="">No reminder</option><option value="0">At start</option><option value="5">5 minutes before</option><option value="10">10 minutes before</option><option value="15">15 minutes before</option><option value="60">1 hour before</option></select></label>}
+    <p className="digest-meta">Shown in {deviceZone}{event.timezone?' · Event timezone: '+event.timezone:''} · Personal calendar. No invitations are sent.</p>
+    {!event.revision&&<fieldset><legend>Repeat</legend>
+      <label>Frequency<select value={rule?.frequency??''} onChange={e=>setRule(e.target.value?{frequency:e.target.value as CalendarRecurrence['frequency'],interval:1,weekdays:[],timezone:event.timezone??deviceZone,count:e.target.value==='yearly'?5:12}:null)}><option value="">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></label>
+      {rule&&<><label>Every<input type="number" min="1" max="99" value={rule.interval} onChange={e=>setRule({...rule,interval:Number(e.target.value)})}/></label>
+        <label>Meeting timezone<input required value={rule.timezone} onChange={e=>setRule({...rule,timezone:e.target.value})}/></label>
+        {rule.frequency==='weekly'&&<div className="digest-repeat-weekdays">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map((day,index)=><label key={day}><input type="checkbox" checked={rule.weekdays.includes(index+1)} onChange={e=>setRule({...rule,weekdays:e.target.checked?[...rule.weekdays,index+1]:rule.weekdays.filter(value=>value!==index+1)})}/>{day}</label>)}</div>}
+        <label>Ends<select value={rule.until?'until':'count'} onChange={e=>setRule({...rule,count:e.target.value==='count'?12:null,until:e.target.value==='until'?start.slice(0,10):null})}><option value="count">After a number of occurrences</option><option value="until">On a date (inclusive)</option></select></label>
+        {rule.until?<label>Last date<input required type="date" value={rule.until} onChange={e=>setRule({...rule,until:e.target.value})}/></label>:<label>Occurrences<input required type="number" min="1" max="250" value={rule.count??12} onChange={e=>setRule({...rule,count:Number(e.target.value)})}/></label>}
+        <p className="digest-meta">The first time above is in your device timezone. Repeats keep the meeting timezone's clock time across daylight-saving changes. Review up to 250 dates within five years.</p>
+        <button type="button" disabled={busy||!start} onClick={()=>void previewSeries()}>Preview dates</button>
+        {preview&&<><p>{preview.events.length} occurrences to review. Changed details require a new preview.</p><ol className="digest-import-list">{preview.events.map(occurrence=><li key={occurrence.id}>{event.allDay?occurrence.startAt.slice(0,10):new Date(occurrence.startAt).toLocaleString(undefined,{dateStyle:'medium',timeStyle:'short'})}{!event.allDay&&occurrence.timezone&&occurrence.timezone!==deviceZone&&<small>{zonedEventLabel(occurrence.startAt,occurrence.timezone)}</small>}</li>)}</ol></>}
+      </>}
+    </fieldset>}
+    {event.seriesId&&<p className="digest-meta">Part of a repeating series. Editing or removing here affects only this occurrence.</p>}
+    {links}{event.sourceIds.length>0&&<DigestPeople item={event} sources={sources} accountId={accountId} showMessages/>}{event.description&&<p className="digest-event-context">{event.description}</p>}
+    {error&&<p role="alert">{error}</p>}
+    <footer>{onRemove&&<button type="button" disabled={busy} onClick={()=>void remove()}>Remove event</button>}<button type="button" onClick={onClose}>Cancel</button><button type="submit" disabled={busy}>{rule&&!event.revision?'Confirm series':review?.item.calendarAction==='update'?'Confirm change':event.revision?'Save event':'Add to calendar'}</button></footer>
+  </form></Sheet>;
 }
 function ImportSheet({events,onClose,onImport}:{events:CalendarEvent[];onClose:()=>void;onImport:(events:CalendarEvent[])=>Promise<CalendarImportReport>}){
   const [report,setReport]=useState<CalendarImportReport|null>(null);

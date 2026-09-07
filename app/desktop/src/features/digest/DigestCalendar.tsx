@@ -1,7 +1,10 @@
 import type { ReactNode } from 'react';
 import { CalendarPlus, ChevronLeft, ChevronRight, FileUp } from 'lucide-react';
 import { dateKey, eventOnDay, monthDays } from './calendar';
-import type { CalendarEvent, DigestItem } from './types';
+import type { CalendarEvent, DigestItem, DigestSource } from './types';
+import { proposalLabel } from './calendarProposal';
+import { digestEventLinks, digestSourceLinks } from './links';
+import { DigestRelatedLinks } from './DigestRelatedLinks';
 
 export function DigestCalendar({ month, selectedDay, events, candidates, onMonth, onDay, onEvent, onCandidate }: {
   month: string; selectedDay: string; events: CalendarEvent[]; candidates: DigestItem[];
@@ -10,7 +13,7 @@ export function DigestCalendar({ month, selectedDay, events, candidates, onMonth
 }) {
   const monthDate = new Date(`${month}-01T12:00:00`);
   function step(delta: number) { const next = new Date(monthDate); next.setMonth(next.getMonth() + delta); onMonth(dateKey(next).slice(0, 7)); }
-  const pending = candidates.filter(item => !events.some(event => event.id === `digest-${item.id}`));
+  const pending = candidates.filter(item => !events.some(event => (event.id === `digest-${item.id}` || event.seriesId === `digest-${item.id}`)));
   return <section className="digest-calendar-view" aria-label="Month calendar">
     <div className="digest-month-header">
       <h2>{monthDate.toLocaleDateString(undefined, { month: 'long' })} <span>{monthDate.getFullYear()}</span></h2>
@@ -42,8 +45,9 @@ export function DigestCalendar({ month, selectedDay, events, candidates, onMonth
   </section>;
 }
 
-export function DigestAgenda({ day, events, candidates, people, evidence, onEvent, onCandidate, onConnect, onImport }: {
+export function DigestAgenda({ day, events, candidates, sources, people, evidence, onEvent, onCandidate, onConnect, onImport }: {
   day: string; events: CalendarEvent[]; candidates: DigestItem[];
+  sources: DigestSource[];
   people: (item: DigestItem) => ReactNode; evidence: (item: DigestItem) => ReactNode;
   onEvent: (event: CalendarEvent) => void; onCandidate: (item: DigestItem) => void;
   onConnect: () => void; onImport: () => void;
@@ -52,17 +56,19 @@ export function DigestAgenda({ day, events, candidates, people, evidence, onEven
   return <aside className="digest-agenda" aria-label="Schedule and calendar suggestions" tabIndex={0}>
     <section>
       <h2>{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</h2>
-      {scheduled.length ? scheduled.map(event => <button className="digest-agenda-event" key={event.id} onClick={() => onEvent(event)}><span>{event.allDay ? 'All day' : new Date(event.startAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span><strong>{event.title}</strong></button>) : <p className="digest-muted">No events scheduled for this day.</p>}
+      <p className="digest-meta">{Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
+      {scheduled.length ? scheduled.map(event => <div key={event.id}><button className="digest-agenda-event" onClick={() => onEvent(event)}><span>{event.allDay ? 'All day' : new Date(event.startAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span><strong>{event.title}</strong></button><DigestRelatedLinks links={digestEventLinks(event,sources)}/></div>) : <p className="digest-muted">No events scheduled for this day.</p>}
     </section>
     <section className="digest-proposals">
       <h2>From your chats</h2>
-      <p className="digest-muted">Review an arrangement before adding it.</p>
+      <p className="digest-muted">Review proposed additions, changes and cancellations.</p>
       {candidates.map(item => <article className="digest-proposal" key={item.id}>
-        <div className="digest-proposal-label">{events.some(event => event.id === `digest-${item.id}`) ? 'Scheduled' : 'To review'}</div>
+        <div className="digest-proposal-label">{events.some(event => (event.id === `digest-${item.id}` || event.seriesId === `digest-${item.id}`)) ? 'Scheduled' : 'To review'}</div>
         <h3>{item.title}</h3>
         <p className="digest-proposal-time">{item.startAt ? new Date(item.startAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Date or time not agreed'}</p>
         {people(item)}{evidence(item)}
-        <button className="digest-primary-action" onClick={() => onCandidate(item)}>{events.some(event => event.id === `digest-${item.id}`) ? 'View event' : 'Review & add'}</button>
+        <DigestRelatedLinks links={digestSourceLinks(item.sourceIds,sources)}/>
+        <button className="digest-primary-action" onClick={() => onCandidate(item)}>{proposalLabel(item,events)}</button>
       </article>)}
       {!candidates.length && <p className="digest-muted">New arrangements will appear here.</p>}
     </section>

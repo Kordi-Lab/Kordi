@@ -5,13 +5,45 @@ import { JSDOM } from 'jsdom';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { digestClient } from '../src/features/digest/client';
-import type { DigestResponse } from '../src/features/digest/types';
+import type { CalendarEvent, DigestResponse } from '../src/features/digest/types';
 
 const css = registerHooks({ load(url, context, next) {
   return url.endsWith('.css') ? { format: 'module', source: '', shortCircuit: true } : next(url, context);
 } });
 const { default: DigestPage } = await import('../src/features/digest/DigestPage');
 css.deregister();
+
+test('calendar changes and cancellations write only after explicit review confirmation', async () => {
+  const dom = new JSDOM('<div id="root"></div>', {pretendToBeVisual:true});
+  dom.window.HTMLDialogElement.prototype.showModal = function(){this.open=true;};
+  const previous={window:globalThis.window,document:globalThis.document,IS_REACT_ACT_ENVIRONMENT:(globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT};
+  Object.assign(globalThis,{window:dom.window,document:dom.window.document,IS_REACT_ACT_ENVIRONMENT:true});
+  const original={...digestClient};
+  let event:CalendarEvent={id:'saved-meeting',title:'Review meeting',startAt:'2099-09-08T12:00:00Z',endAt:'2099-09-08T12:30:00Z',allDay:false,sourceIds:['source'],description:'',revision:1};
+  const response:DigestResponse={accountId:'viewer',status:'ready',revision:1,updatedAt:'2026-09-07T00:00:00Z',partial:false,feedback:[],sources:[{id:'source',conversationId:'conversation',sessionId:'session',sessionTitle:'Planning',senderAccountId:'viewer',senderName:'Viewer',text:'Move our meeting an hour later. https://example.zoom.us/j/123',createdAt:'2026-09-07T00:00:00Z',version:1}],snapshot:{claims:[],commitments:[],suggestions:[],calendarCandidates:[{id:'move',title:'Review meeting',text:'Move one hour later.',kind:'possible',sourceIds:['source'],calendarAction:'update',existingEventId:'saved-meeting',existingEventRevision:1,startAt:'2099-09-08T13:00:00Z',endAt:'2099-09-08T13:30:00Z'}]}};
+  let writes=0,removals=0,previews=0,seriesWrites=0;
+  digestClient.read=async()=>structuredClone(response);
+  digestClient.calendar=async()=>({events:[event]});
+  digestClient.saveEvent=async(account,next)=>{assert.equal(account,'viewer');assert.equal(next.id,event.id);assert.equal(next.revision,1);writes++;event={...next,revision:2};response.snapshot!.calendarCandidates=[{...response.snapshot!.calendarCandidates[0],calendarAction:'delete',existingEventRevision:2}];return event;};
+  digestClient.removeEvent=async(account,next)=>{assert.equal(account,'viewer');assert.equal(next.id,event.id);assert.equal(next.revision,2);removals++;response.snapshot!.calendarCandidates=[{id:'series',title:'Weekly review',text:'Repeat twice.',kind:'possible',sourceIds:['source'],startAt:'2099-09-10T12:00:00Z',recurrence:{frequency:'weekly',interval:1,weekdays:[],timezone:'UTC',count:2}}];};
+  digestClient.previewSeries=async(account,next)=>{assert.equal(account,'viewer');previews++;return {events:[next,{...next,id:next.id+':occurrence:2',startAt:'2099-09-17T12:00:00Z'}]};};
+  digestClient.saveSeries=async(account,next)=>{assert.equal(account,'viewer');assert.equal(next.recurrence?.count,2);seriesWrites++;return {events:[next]};};
+  const host=dom.window.document.getElementById('root')!,root=createRoot(host);
+  async function click(label:string){const button=[...host.querySelectorAll('button')].find(button=>button.textContent===label);assert.ok(button,label);await act(async()=>button.click());}
+  try{
+    await act(async()=>root.render(createElement(DigestPage,{accountId:'viewer'})));
+    assert.equal(writes,0);await click('Review change');assert.equal(writes,0);
+    assert.match(host.querySelector('dialog')!.textContent??'',/Currently:/);
+    assert.equal(host.querySelector('dialog a')?.getAttribute('href'),'https://example.zoom.us/j/123');
+    await click('Confirm change');assert.equal(writes,1);assert.equal(removals,0);
+    await click('Review cancellation');assert.equal(removals,0);
+    await click('Keep event');assert.equal(removals,0);
+    await click('Review cancellation');await click('Confirm removal');assert.equal(removals,1);
+    await click('Review & add');await click('Confirm series');assert.equal(seriesWrites,0);assert.match(host.querySelector('dialog')!.textContent??'',/Preview the current dates/);
+    await click('Preview dates');assert.equal(previews,1);assert.equal(seriesWrites,0);
+    await click('Confirm series');assert.equal(seriesWrites,1);
+  }finally{await act(async()=>root.unmount());Object.assign(digestClient,original);Object.assign(globalThis,previous);dom.window.close();}
+});
 
 test('Brief dismissal persists across remounts, restores entries, and retains entries on failure', async () => {
   const dom = new JSDOM('<div id="root"></div>', { pretendToBeVisual: true });

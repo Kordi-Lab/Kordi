@@ -1,12 +1,15 @@
 import SwiftUI
 
 struct DigestEventEditor: View {
+    @EnvironmentObject private var model: AppModel
     let event: DigestCalendarEvent
     let sources: [RollingDigestSource]
     let accountId: String
     let contacts: [CloudContact]
     let save: (DigestCalendarEvent) async throws -> Void
     let remove: () async throws -> Void
+    let proposal: RollingDigestItem?
+    let original: DigestCalendarEvent?
     @State private var title: String
     @State private var hasStart: Bool
     @State private var start: Date
@@ -15,8 +18,16 @@ struct DigestEventEditor: View {
     @State private var reminder: Int
     @State private var error: String?
     @State private var busy = false
-    init(event: DigestCalendarEvent, sources: [RollingDigestSource], accountId: String, contacts: [CloudContact], save: @escaping (DigestCalendarEvent) async throws -> Void, remove: @escaping () async throws -> Void) {
+    @State private var recurrence: DigestRecurrence?
+    @State private var previewedEvent: DigestCalendarEvent?
+    @State private var previewEvents: [DigestCalendarEvent] = []
+    init(event: DigestCalendarEvent, sources: [RollingDigestSource], accountId: String, contacts: [CloudContact], proposal: RollingDigestItem? = nil, original: DigestCalendarEvent? = nil, save: @escaping (DigestCalendarEvent) async throws -> Void, remove: @escaping () async throws -> Void) {
         self.event = event; self.sources = sources; self.accountId = accountId; self.contacts = contacts; self.save = save; self.remove = remove
+        self.proposal = proposal; self.original = original
+        var rule = event.recurrence
+        let defaultCount = rule?.frequency == "yearly" ? 5 : 12
+        if rule != nil && rule?.count == nil && rule?.until == nil { rule?.count = defaultCount }
+        _recurrence = State(initialValue: rule)
         let start = Self.date(event.startAt, allDay: event.allDay), end = Self.date(event.endAt, allDay: event.allDay)
         _title = State(initialValue: event.title); _hasStart = State(initialValue: start != nil); _start = State(initialValue: start ?? Date())
         _hasEnd = State(initialValue: end != nil); _end = State(initialValue: end ?? (start ?? Date()).addingTimeInterval(1800))
@@ -30,6 +41,21 @@ struct DigestEventEditor: View {
     }
     var body: some View {
         Form {
+            if proposal?.calendarAction == "delete" {
+                Section("Review cancellation") {
+                    Text(event.title).font(.headline)
+                    Text(event.allDay ? String(event.startAt.prefix(10)) : DigestDate.parse(event.startAt)?.formatted(date: .abbreviated, time: .shortened) ?? event.startAt)
+                    Text(proposal?.text ?? "")
+                    Text("Only this event will be removed from your personal Kordi calendar. Source calendars and invitations stay unchanged.")
+                    Button("Confirm removal", role: .destructive) { Task { await removeReviewedEvent() } }.disabled(busy)
+                }
+            } else {
+            if let original {
+                Section("Currently scheduled") {
+                    Text(original.title)
+                    Text(original.allDay ? String(original.startAt.prefix(10)) : DigestDate.parse(original.startAt)?.formatted(date: .abbreviated, time: .shortened) ?? original.startAt)
+                }
+            }
             Section {
                 TextField("Event title", text: $title)
                 if !hasStart { Toggle("Choose a date and time", isOn: $hasStart) }
@@ -37,29 +63,78 @@ struct DigestEventEditor: View {
                 Toggle("Set an end", isOn: $hasEnd)
                 if hasEnd { DatePicker(event.allDay ? "End date (exclusive)" : "Ends", selection: $end, displayedComponents: event.allDay ? [.date] : [.date, .hourAndMinute]) }
                 if !event.allDay { Picker("Remind me", selection: $reminder) { Text("No reminder").tag(-1); Text("At start").tag(0); Text("5 minutes before").tag(5); Text("10 minutes before").tag(10); Text("15 minutes before").tag(15); Text("1 hour before").tag(60) } }
-            } footer: { Text("\(TimeZone.current.identifier) · Personal calendar. No invitations are sent.") }
+            } footer: {
+                Text("Shown in \(TimeZone.current.identifier) · Personal calendar. No invitations are sent.")
+                if let timezone = event.timezone { Text("Event timezone: \(timezone)") }
+            }
+            }
+            if event.revision == 0 && proposal?.calendarAction != "delete" {
+                DigestRepeatEditor(rule: $recurrence, timezone: event.timezone ?? TimeZone.current.identifier)
+                if recurrence != nil {
+                    Button("Preview dates") { Task { await previewSeries() } }.disabled(busy || !hasStart)
+                    if !previewEvents.isEmpty {
+                        Section("\(previewEvents.count) occurrences to review") {
+                            Text("Changed details require a new preview.").font(.caption).foregroundStyle(.secondary)
+                            ForEach(previewEvents) { occurrence in
+                                VStack(alignment: .leading) {
+                                    Text(event.allDay ? String(occurrence.startAt.prefix(10)) : DigestDate.parse(occurrence.startAt)?.formatted(date: .abbreviated, time: .shortened) ?? occurrence.startAt)
+                                    if !event.allDay, let zone = occurrence.timezone, zone != TimeZone.current.identifier {
+                                        Text(DigestDate.label(occurrence.startAt, timezone: zone)).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if event.seriesId != nil { Section { Text("Part of a repeating series. Editing or removing here affects only this occurrence.").font(.caption).foregroundStyle(.secondary) } }
+            let urls = DigestRelatedLinks.eventURLs(event, sources: sources)
+            if !urls.isEmpty { Section("Related links") { DigestRelatedLinks(urls: urls) } }
             if !event.sourceIds.isEmpty {
                 Section("Related people") { DigestPeopleView(sourceIds: event.sourceIds, ownerAccountId: nil, sources: sources, accountId: accountId, contacts: contacts) }
                 DigestSourceMessages(sourceIds: event.sourceIds, sources: sources)
             }
             if !event.description.isEmpty { Section("Context") { Text(event.description).textSelection(.enabled) } }
             if let error { Section { Text(error).foregroundStyle(.red) } }
-            Button(event.revision == 0 ? "Add to calendar" : "Save event") { Task { await submit() } }.disabled(busy || !hasStart || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            if event.revision > 0 { Button("Remove event", role: .destructive) { Task { busy = true; defer { busy = false }; do { try await remove() } catch { self.error = error.localizedDescription } } }.disabled(busy) }
+            if proposal?.calendarAction != "delete" {
+                Button(recurrence != nil && event.revision == 0 ? "Confirm series" : proposal?.calendarAction == "update" ? "Confirm change" : event.revision == 0 ? "Add to calendar" : "Save event") { Task { await submit() } }.disabled(busy || !hasStart || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if event.revision > 0 { Button("Remove event", role: .destructive) { Task { await removeReviewedEvent() } }.disabled(busy) }
+            }
         }.navigationTitle(event.revision == 0 ? "Review calendar event" : "Edit event").navigationBarTitleDisplayMode(.inline)
     }
-    private func submit() async {
-        guard hasStart else { error = "Choose the event date and time."; return }
-        if hasEnd && end < start { error = "End cannot be before start."; return }
+    private func removeReviewedEvent() async {
+        busy = true; defer { busy = false }
+        do { try await remove() } catch { self.error = error.localizedDescription }
+    }
+    private func reviewedEvent() throws -> DigestCalendarEvent {
+        guard hasStart else { throw DigestCalendarError(message: "Choose the event date and time.") }
+        if hasEnd && end <= start { throw DigestCalendarError(message: "End must follow start.") }
         let reminderDate = reminder >= 0 && !event.allDay ? start.addingTimeInterval(-Double(reminder) * 60) : nil
-        if let reminderDate, reminderDate < Date() { error = "That reminder time has passed. Choose No reminder or a later date."; return }
+        if let reminderDate, reminderDate < Date() { throw DigestCalendarError(message: "That reminder time has passed. Choose No reminder or a later date.") }
         var updated = event; updated.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let formatter = ISO8601DateFormatter()
         updated.startAt = event.allDay ? DigestDate.key(start) + "T00:00:00Z" : formatter.string(from: start)
         updated.endAt = hasEnd ? event.allDay ? DigestDate.key(end) + "T00:00:00Z" : formatter.string(from: end) : nil
         updated.reminderAt = reminderDate.map(formatter.string(from:))
+        updated.recurrence = recurrence; updated.timezone = recurrence?.timezone ?? event.timezone
+        updated.confirmSingleOccurrence = recurrence == nil && event.revision == 0
+        return updated
+    }
+    private func previewSeries() async {
         busy = true; defer { busy = false }
-        do { try await save(updated) } catch { self.error = error.localizedDescription }
+        do {
+            let updated = try reviewedEvent()
+            previewEvents = try await model.previewDigestCalendarSeries(updated)
+            previewedEvent = updated; error = nil
+        } catch { self.error = error.localizedDescription }
+    }
+    private func submit() async {
+        busy = true; defer { busy = false }
+        do {
+            let updated = try reviewedEvent()
+            if recurrence != nil && event.revision == 0 && previewedEvent != updated { throw DigestCalendarError(message: "Preview the current dates before confirming the series.") }
+            try await save(updated)
+        } catch { self.error = error.localizedDescription }
     }
 }
 
