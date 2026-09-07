@@ -15,12 +15,13 @@ css.deregister();
 
 test('Brief dismissal persists across remounts, restores entries, and retains entries on failure', async () => {
   const dom = new JSDOM('<div id="root"></div>', { pretendToBeVisual: true });
+  dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   const previous = { window: globalThis.window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT };
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
   const original = { ...digestClient };
   const response: DigestResponse = {
     accountId: 'viewer', status: 'ready', revision: 1, updatedAt: '2026-09-06T08:00:00Z', partial: true,
-    sources: [{ id: 'source', conversationId: 'conversation', sessionId: 'session', sessionTitle: 'Planning', senderAccountId: 'viewer', senderName: 'Viewer', text: 'The draft is ready.', createdAt: '2026-09-06T08:00:00Z', version: 1 }],
+    sources: [{ id: 'source', conversationId: 'conversation', sessionId: 'session', sessionTitle: 'Planning', senderAccountId: 'viewer', senderName: 'Viewer', text: '### Prepared draft\n\n**Ready** for review.\n\n- First item\n- Second item\n\n[Reference](https://example.com/reference) and `code`.\n\n<img src=x onerror=alert(1)>\n\n[Unsafe](javascript:alert(1))', createdAt: '2026-09-06T08:00:00Z', version: 1 }],
     feedback: [], snapshot: { claims: [{ id: 'draft', title: 'Draft prepared', text: 'The draft is ready.', kind: 'progress', sourceIds: ['source'] }], commitments: [], suggestions: [{ id: 'suggestion', title: 'Review the draft', text: 'Consider a review.', kind: 'possible', sourceIds: ['source'] }], calendarCandidates: [] },
   };
   let fail = false;
@@ -44,6 +45,15 @@ test('Brief dismissal persists across remounts, restores entries, and retains en
   try {
     await act(async () => root.render(createElement(DigestPage, { accountId: 'viewer' })));
     assert.doesNotMatch(host.textContent ?? '', /Partial coverage|bounded selection/);
+    await click('↗ Planning');
+    const details = host.querySelector('dialog')!;
+    assert.equal(details.querySelector('strong')?.textContent, 'Ready');
+    assert.equal(details.querySelectorAll('ul li').length, 2);
+    assert.equal(details.querySelector('a')?.getAttribute('href'), 'https://example.com/reference');
+    assert.equal(details.querySelector('code')?.textContent, 'code');
+    assert.equal(details.querySelector('img, [onerror], a[href^="javascript:"]'), null);
+    assert.doesNotMatch(details.textContent ?? '', /###|\*\*Ready\*\*/);
+    await click('Close', details);
     await click('Dismiss');
     assert.equal(brief().querySelector('article'), null);
     assert.match(brief().textContent ?? '', /No brief entries to show/);

@@ -145,7 +145,7 @@ private struct DigestSourceMessages: View {
                 ForEach(related) { source in
                     VStack(alignment: .leading, spacing: 6) {
                         Text("@\(source.senderName) · \(source.sessionTitle)").font(.caption).foregroundStyle(.secondary)
-                        Text(source.text).textSelection(.enabled)
+                        MarkdownMessageContent(text: source.text).textSelection(.enabled)
                     }
                 }
             }

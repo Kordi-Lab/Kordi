@@ -6,7 +6,7 @@ import { DigestPeople } from '../src/features/digest/DigestPeople';
 import type { DigestSource } from '../src/features/digest/types';
 
 test('Digest attribution keeps owner messages and separates their agent from the human', () => {
-  const source: DigestSource = { id: 'request', conversationId: 'room', sessionId: 'room', sessionTitle: 'Design review', senderAccountId: 'alex', senderName: 'Alex', text: 'Taylor, bring the prototype.', createdAt: '2026-09-05T10:00:00Z', version: 1 };
+  const source: DigestSource = { id: 'request', conversationId: 'room', sessionId: 'room', sessionTitle: 'Design review', senderAccountId: 'alex', senderName: 'Alex', text: '**Taylor**, bring the [prototype](https://example.com/prototype).', createdAt: '2026-09-05T10:00:00Z', version: 1 };
   const sources = [
     source,
     { ...source, id: 'reply', senderAccountId: 'taylor', senderName: 'Taylor', text: 'I will bring it.' },
@@ -22,4 +22,6 @@ test('Digest attribution keeps owner messages and separates their agent from the
   assert.ok(html.includes('@Planning agent'));
   assert.ok(html.includes('I will bring it.'));
   assert.ok(!html.includes('Unrelated message.'));
+  assert.match(html, /<strong[^>]*>Taylor<\/strong>/);
+  assert.match(html, /href="https:\/\/example.com\/prototype"/);
 });

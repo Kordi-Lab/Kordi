@@ -7,6 +7,7 @@ import type { CalendarConnection, CalendarEvent, DigestItem, DigestSource } from
 import { DigestCalendar, DigestAgenda } from './DigestCalendar';
 import { calendarErrorMessage, importCalendarEvents, type CalendarImportReport } from './calendarImport';
 import { DigestPeople } from './DigestPeople';
+import { MarkdownContent } from '@/kordi-app/components/markdown';
 import './digest.css';
 
 const timeLabel=(value:string)=>new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -68,7 +69,7 @@ export default function DigestPage({accountId}:{accountId:string}){
       <section hidden={view!=='calendar'} aria-label="Calendar"><DigestCalendar month={month} selectedDay={selectedDay} events={events} candidates={output?.calendarCandidates??[]} onMonth={changeMonth} onDay={setSelectedDay} onEvent={setEditEvent} onCandidate={calendarCandidate}/></section>
       </div><DigestAgenda day={selectedDay} events={events} candidates={output?.calendarCandidates??[]} people={people} evidence={evidence} onEvent={setEditEvent} onCandidate={calendarCandidate} onConnect={()=>void act(async()=>setConnections(await connectedCalendars()))} onImport={()=>setImportOpen(true)}/></div>
     </div>
-    {sourceId&&<Sheet title={source?.sessionTitle||'Source unavailable'} onClose={()=>setSourceId(null)}>{source?<>{selectedSources.map(source=><article key={source.id}><p className="digest-meta">@{source.senderName} · {timeLabel(source.createdAt)}</p><blockquote>{source.text}</blockquote></article>)}</>:<p>This message is no longer included or accessible. Refresh the digest.</p>}</Sheet>}
+    {sourceId&&<Sheet title={source?.sessionTitle||'Source unavailable'} onClose={()=>setSourceId(null)}>{source?<>{selectedSources.map(source=><article key={source.id}><p className="digest-meta">@{source.senderName} · {timeLabel(source.createdAt)}</p><blockquote><MarkdownContent text={source.text} tone="inherit" className="whitespace-normal" copySurface="message" preserveLineBreaks /></blockquote></article>)}</>:<p>This message is no longer included or accessible. Refresh the digest.</p>}</Sheet>}
     {editItem&&editItem.sourceIds.every(id=>sources.some(s=>s.id===id))&&<TaskEditor key={editItem.id} item={editItem} sources={sources} accountId={accountId} onClose={()=>setEditItem(null)} onSave={input=>act(async()=>{await digestClient.task(accountId,editItem.id,input);setEditItem(null);})}/>}
     {editEvent&&editEvent.sourceIds.every(id=>sources.some(s=>s.id===id))&&<EventEditor key={editEvent.id} event={editEvent} sources={sources} accountId={accountId} onClose={()=>setEditEvent(null)} onSave={event=>act(async()=>{await digestClient.saveEvent(accountId,event);setEditEvent(null);})} onRemove={editEvent.revision?()=>act(async()=>{await digestClient.removeEvent(accountId,editEvent);setEditEvent(null);}):undefined}/>}
     {importOpen&&<ImportSheet events={events} onClose={()=>setImportOpen(false)} onImport={saveImported}/>}

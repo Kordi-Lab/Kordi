@@ -223,7 +223,7 @@ struct DigestView: View {
                         ForEach(selected) { source in
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("@\(source.senderName)").font(.subheadline.weight(.medium))
-                                Text(source.text).font(.subheadline).textSelection(.enabled)
+                                MarkdownMessageContent(text: source.text).textSelection(.enabled)
                                 if let date = DigestDate.parse(source.createdAt) { Text(date.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary) }
                                 if let conversation = model.conversations.first(where: { $0.sessionId == source.sessionId || $0.id == source.conversationId }) {
                                     NavigationLink("Open conversation", value: DigestMessageRoute(conversation: conversation, messageID: source.id)).font(.footnote)

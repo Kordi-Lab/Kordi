@@ -1,4 +1,5 @@
 import { IdentityAvatar } from '@/kordi-app/components/IdentityAvatar';
+import { MarkdownContent } from '@/kordi-app/components/markdown';
 import type { DigestItem, DigestSource } from './types';
 
 export function DigestPeople({ item, sources, accountId, onSource, showMessages = false }: {
@@ -26,7 +27,7 @@ export function DigestPeople({ item, sources, accountId, onSource, showMessages 
     </div>
     {showMessages && related.length > 0 && <details className="digest-source-messages" open>
       <summary>Source messages · {related.length}</summary>
-      {related.map(source => <article key={source.id}><p>@{name(source.senderAccountId, source.senderName, source.isAgent)} · {source.sessionTitle}</p><blockquote>{source.text}</blockquote></article>)}
+      {related.map(source => <article key={source.id}><p>@{name(source.senderAccountId, source.senderName, source.isAgent)} · {source.sessionTitle}</p><blockquote><MarkdownContent text={source.text} tone="inherit" className="whitespace-normal" copySurface="message" preserveLineBreaks /></blockquote></article>)}
     </details>}
   </div>;
 }
