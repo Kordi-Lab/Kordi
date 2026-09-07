@@ -41,6 +41,9 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var activeRootMessageID: String?
     let conversation: ConversationSummary
+    let firstMessageID: String?
+    let showsUnreadDivider: Bool
+    let onNavigateThread: (String, String?) -> Void
     let onReplyInConversation: (MessageActionSource) -> Void
 
     @ViewBuilder
@@ -85,14 +88,18 @@ private struct ConversationThreadPresentationModifier: ViewModifier {
     private func threadDestination(rootID: String) -> some View {
         ConversationView(
             conversation: conversation,
+            initialMessageID: firstMessageID,
+            showsThreadUnreadDivider: showsUnreadDivider,
             allowsCompanionPanel: false,
             showsNavigationChrome: false,
             scopedThreadRootMessageID: rootID,
+            onNavigateThread: onNavigateThread,
             onReplyInConversation: { source in
                 onReplyInConversation(source)
                 activeRootMessageID = nil
             }
         )
+        .id(rootID)
         .navigationTitle("Thread")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
@@ -129,11 +136,13 @@ struct ConversationView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let initialConversation: ConversationSummary
     private let initialMessageID: String?
+    private let showsThreadUnreadDivider: Bool
     private let companionContext: CompanionChatContext?
     private let linkedBackgroundSession: BackgroundAgentSession?
     private let allowsCompanionPanel: Bool
     private let showsNavigationChrome: Bool
     private let scopedThreadRootMessageID: String?
+    private let onNavigateThread: ((String, String?) -> Void)?
     private let onReplyInConversation: ((MessageActionSource) -> Void)?
     @State private var draft = ""
     @State private var isSending = false
@@ -215,6 +224,14 @@ struct ConversationView: View {
     @State private var isReadPresentationVisible = false
     @State private var isNavigatingToMention = false
     @State private var activeThreadRootMessageID: String?
+    @State private var activeThreadFirstMessageID: String?
+    @State private var activeThreadShowsUnreadDivider = false
+    @State private var isNavigatingThread = false
+    @State private var threadNavigationError: String?
+    @State private var threadNotificationHandled = false
+    @State private var threadNotificationAttempt = 0
+    @State private var threadPageRetrySequence: Int64?
+    @State private var pendingThreadMessageID: String?
     @State private var threadReturnMessageID: String?
     @State private var currentScrollOffsetY: CGFloat?
     @State private var threadReturnScrollOffsetY: CGFloat?
@@ -226,20 +243,24 @@ struct ConversationView: View {
     init(
         conversation: ConversationSummary,
         initialMessageID: String? = nil,
+        showsThreadUnreadDivider: Bool = true,
         companionContext: CompanionChatContext? = nil,
         linkedBackgroundSession: BackgroundAgentSession? = nil,
         allowsCompanionPanel: Bool = true,
         showsNavigationChrome: Bool = true,
         scopedThreadRootMessageID: String? = nil,
+        onNavigateThread: ((String, String?) -> Void)? = nil,
         onReplyInConversation: ((MessageActionSource) -> Void)? = nil
     ) {
         initialConversation = conversation
         self.initialMessageID = initialMessageID
+        self.showsThreadUnreadDivider = showsThreadUnreadDivider
         self.companionContext = companionContext
         self.linkedBackgroundSession = linkedBackgroundSession
         self.allowsCompanionPanel = allowsCompanionPanel
         self.showsNavigationChrome = showsNavigationChrome
         self.scopedThreadRootMessageID = scopedThreadRootMessageID
+        self.onNavigateThread = onNavigateThread
         self.onReplyInConversation = onReplyInConversation
     }
 
@@ -440,6 +461,10 @@ struct ConversationView: View {
                                             let threadReplyCount = scopedThreadRootMessageID == nil
                                                 ? projection.replyCount(rootID: message.id)
                                                 : 0
+                                            if scopedThreadRootMessageID != nil, showsThreadUnreadDivider, message.id == initialMessageID {
+                                                HStack { Rectangle().frame(height: 1); Text("New replies").font(.caption); Rectangle().frame(height: 1) }
+                                                    .foregroundStyle(KordiTheme.signalBlue).padding(.vertical, 8)
+                                            }
                                             timelineMessageRow(
                                                 row: row,
                                                 presentation: presentation,
@@ -518,6 +543,11 @@ struct ConversationView: View {
                                         action: { navigateToNextMention(using: proxy) }
                                     )
                                     .transition(.scale(scale: 0.82).combined(with: .opacity))
+                                }
+                                if (model.threadAttentionBySession[conversation.sessionId]?.threadCount ?? 0) > 0 {
+                                    ThreadNavigationButton(count: model.threadAttentionBySession[conversation.sessionId]?.threadCount ?? 0, isLoading: isNavigatingThread) {
+                                        Task { await navigateToUnreadThread() }
+                                    }
                                 }
                                 if ConversationTimelineScrollBehavior.shouldShowLatestButton(
                                     isAtBottom: isAtBottom,
@@ -745,6 +775,24 @@ struct ConversationView: View {
                     proxy.scrollTo(bottomAnchorID, anchor: .bottom)
                     shouldFollowLatestAfterInputSurfaceChange = false
                 }
+            }
+            .task(id: "thread-route:\(initialMessageID ?? ""):\(threadNotificationAttempt)") {
+                guard scopedThreadRootMessageID == nil, let initialMessageID, !threadNotificationHandled else { return }
+                threadNotificationHandled = true
+                do {
+                    let destination = try await model.loadThread(in: conversation, messageId: initialMessageID)
+                    if destination.isThread {
+                        activeThreadFirstMessageID = destination.first ?? destination.target
+                        activeThreadShowsUnreadDivider = destination.first != nil
+                        openThread(rootMessageID: destination.root)
+                    } else { proxy.scrollTo(destination.root, anchor: .center); highlightReferencedMessage(destination.root) }
+                } catch { threadNavigationError = "Could not open this message. Please retry."; threadNotificationHandled = false }
+            }
+            .onChange(of: pendingThreadMessageID) { _, messageID in
+                guard let messageID else { return }
+                proxy.scrollTo(messageID, anchor: .top)
+                highlightReferencedMessage(messageID)
+                pendingThreadMessageID = nil
             }
             .onChange(of: activeThreadRootMessageID) { previousRootID, currentRootID in
                 guard previousRootID != nil, currentRootID == nil else { return }
@@ -1022,9 +1070,28 @@ struct ConversationView: View {
         .sheet(isPresented: $showsProviderAuthentication) {
             AccountSheet(openingAuthentication: true)
         }
+        .alert("Could not open discussion", isPresented: Binding(get: { threadNavigationError != nil }, set: { if !$0 { threadNavigationError = nil } })) {
+            Button("Retry") {
+                if let root = scopedThreadRootMessageID, let sequence = threadPageRetrySequence {
+                    Task { await loadMoreThreadReplies(root: root, after: sequence) }
+                } else if initialMessageID != nil, scopedThreadRootMessageID == nil {
+                    threadNotificationHandled = false; threadNotificationAttempt += 1
+                } else { Task { await navigateToUnreadThread() } }
+            }
+            Button("Cancel", role: .cancel) { threadNavigationError = nil }
+        } message: { Text(threadNavigationError ?? "") }
+        .safeAreaInset(edge: .bottom) {
+            if let root = scopedThreadRootMessageID, let next = model.threadNextPage[root] {
+                Button("Load more replies") { Task { await loadMoreThreadReplies(root: root, after: next) } }
+                    .disabled(isNavigatingThread).buttonStyle(.bordered).padding(8)
+            }
+        }
         .modifier(ConversationThreadPresentationModifier(
             activeRootMessageID: $activeThreadRootMessageID,
             conversation: conversation,
+            firstMessageID: activeThreadFirstMessageID,
+            showsUnreadDivider: activeThreadShowsUnreadDivider,
+            onNavigateThread: { root, first in activeThreadShowsUnreadDivider = first != nil; activeThreadFirstMessageID = first; openThread(rootMessageID: root) },
             onReplyInConversation: { replySource = $0 }
         ))
         .navigationDestination(isPresented: $showsCompanionPanel) {
@@ -1197,6 +1264,11 @@ struct ConversationView: View {
             }
         }
         .id(row.id)
+        .modifier(MentionPresentationModifier(isPending: scopedThreadRootMessageID != nil && scenePhase == .active && message.author != .me, viewportFrame: viewportFrame) {
+            guard let root = scopedThreadRootMessageID, let thread = threadProjection.thread(rootID: root),
+                  let sequence = message.conversationSequence else { return }
+            Task { try? await model.markThreadRead(sessionId: conversation.sessionId, thread: thread, through: sequence) }
+        })
         .modifier(MentionPresentationModifier(isPending: isPendingMention, viewportFrame: viewportFrame) {
             Task { await model.markMentionPresented(message, in: conversation) }
         })
@@ -1816,7 +1888,8 @@ struct ConversationView: View {
             conversationID: conversation.id,
             isPresented: isReadPresentationVisible && hasRevealedInitialViewport,
             isAppForeground: scenePhase == .active,
-            isAtLatest: isAtBottom
+            isAtLatest: isAtBottom,
+            threadRootID: scopedThreadRootMessageID
         )
     }
 
@@ -1884,6 +1957,36 @@ struct ConversationView: View {
     private var viewportMemoryKey: String {
         let surface = scopedThreadRootMessageID.map { "thread:\($0)" } ?? "conversation"
         return "\(model.account?.accountId.nonEmpty ?? "anonymous"):\(conversation.id):\(surface)"
+    }
+
+    @MainActor
+    private func loadMoreThreadReplies(root: String, after: Int64) async {
+        guard !isNavigatingThread else { return }
+        isNavigatingThread = true
+        defer { isNavigatingThread = false }
+        do {
+            isAtBottom = false
+            let destination = try await model.loadThread(in: conversation, messageId: root, after: after)
+            pendingThreadMessageID = destination.first
+            threadPageRetrySequence = nil
+        } catch {
+            threadPageRetrySequence = after
+            threadNavigationError = "Could not load more replies. Please retry."
+        }
+    }
+
+    @MainActor
+    private func navigateToUnreadThread(messageID: String? = nil) async {
+        guard !isNavigatingThread,
+              let target = messageID ?? model.threadAttentionBySession[conversation.sessionId]?.nextMessageId else { return }
+        isNavigatingThread = true
+        defer { isNavigatingThread = false }
+        do {
+            let destination = try await model.loadThread(in: conversation, messageId: target)
+            threadNavigationError = nil
+            if let onNavigateThread { onNavigateThread(destination.root, destination.first) }
+            else { activeThreadShowsUnreadDivider = destination.first != nil; activeThreadFirstMessageID = destination.first; openThread(rootMessageID: destination.root) }
+        } catch { threadNavigationError = "Could not open this discussion. Your unread replies are preserved." }
     }
 
     private func openThread(rootMessageID: String) {
@@ -3565,4 +3668,30 @@ private final class MessageDeleteParticleUIView: MTKView, MTKViewDelegate {
     }
     .environmentObject(AppModel(previewMode: true))
     .tint(KordiTheme.signalBlue)
+}
+
+
+private struct ThreadNavigationButton: View {
+    let count: Int
+    let isLoading: Bool
+    let action: () -> Void
+    @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 38
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.subheadline.weight(.semibold))
+                .frame(width: diameter, height: diameter)
+                .background(.regularMaterial, in: Circle())
+                .overlay { Circle().stroke(Color(uiColor: .separator).opacity(0.5), lineWidth: 0.5) }
+                .overlay(alignment: .topTrailing) {
+                    Text(ConversationAttentionBadge.countLabel(count)).font(.caption2.bold()).foregroundStyle(.white)
+                        .padding(.horizontal, 5).frame(minWidth: 20, minHeight: 20)
+                        .background(KordiTheme.signalBlue, in: Capsule()).offset(x: 7, y: -6)
+                }
+                .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+                .frame(width: max(44, diameter), height: max(44, diameter)).contentShape(Circle())
+        }
+        .buttonStyle(.plain).foregroundStyle(KordiTheme.signalBlue).disabled(isLoading).opacity(isLoading ? 0.6 : 1)
+        .accessibilityLabel("Jump to next unread thread").accessibilityValue("\(count) unread discussions")
+    }
 }

@@ -177,6 +177,7 @@ export function AgentSidebarRow({
         </div>
         <div className="app-agent-session-side">
           <SidebarSessionMetaColumn
+            threadAttention={conversation.threadAttention}
             timeLabel={rowTimeLabel}
             unreadCount={unreadCount}
             unreadScope="agent-session"

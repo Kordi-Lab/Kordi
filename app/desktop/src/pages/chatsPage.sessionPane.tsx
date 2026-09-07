@@ -325,6 +325,7 @@ export function ChatSessionPane({
   const {
     messages,
     composer,
+    navigationAccessory,
     queuedMessages = [],
   } = viewport;
   const {
@@ -441,6 +442,7 @@ export function ChatSessionPane({
 
   return (
     <>
+      <div className="relative flex min-h-0 flex-1 flex-col">
       {isInitialTranscriptLoading ? (
         <div className="contents" data-transcript-initial-loading="true">
           <TranscriptLoadingSkeleton
@@ -449,6 +451,8 @@ export function ChatSessionPane({
           />
         </div>
       ) : transcriptViewport}
+      {navigationAccessory}
+      </div>
       {messageSelectionMode && selectedMessageCount > 0 ? (
         <div className="px-5 pt-3">
           <div

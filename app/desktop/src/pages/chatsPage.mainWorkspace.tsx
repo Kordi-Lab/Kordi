@@ -91,6 +91,7 @@ type ChatMainWorkspaceProps = {
     openSession: (sessionId: string, isSubsession?: boolean) => void;
   };
   threadPanel?: ReactNode;
+  threadShortcut?: ReactNode;
 };
 
 export function ChatMainWorkspace({
@@ -104,6 +105,7 @@ export function ChatMainWorkspace({
   presentation,
   companion,
   threadPanel,
+  threadShortcut,
 }: ChatMainWorkspaceProps) {
   const { activeConv } = session;
   const openAuthentication =
@@ -312,6 +314,7 @@ export function ChatMainWorkspace({
                 onSelectAllMessages: composer.onSelectAllMessages,
               }}
               viewport={{
+                navigationAccessory: threadShortcut,
                 sessionKey: activeConv.id,
                 messages: presentation.messages,
                 scrollRef: transcript.chatTranscriptScrollRef,

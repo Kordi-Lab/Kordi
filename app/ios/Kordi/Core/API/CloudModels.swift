@@ -1524,3 +1524,25 @@ extension String {
         return value.isEmpty ? nil : value
     }
 }
+
+struct CloudThreadAttention: Codable, Hashable {
+    let conversationId: String
+    let sessionId: String
+    let unreadCount: Int
+    let threadUnreadCount: Int
+    let threadCount: Int
+    let nextRootId: String?
+    let nextMessageId: String?
+    enum CodingKeys: String, CodingKey {
+        case conversationId = "conversation_id", sessionId = "session_id"
+        case unreadCount = "unread_count", threadUnreadCount = "thread_unread_count", threadCount = "thread_count"
+        case nextRootId = "next_root_id", nextMessageId = "next_message_id"
+    }
+}
+struct CloudThreadPage {
+    let root: CloudMessageDTO
+    let messages: [CloudMessageDTO]
+    let firstUnreadMessageId: String?
+    let nextAfterSequence: Int64?
+    let isThread: Bool
+}

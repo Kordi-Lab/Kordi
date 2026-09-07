@@ -126,6 +126,7 @@ export type Conversation = {
   subtitle: string;
   unread: number;
   unreadMentions?: number;
+  threadAttention?: import('@/features/cloud/threadAttention').ThreadAttention;
   collaborationSources: string[];
   trust: string;
   directness: string;

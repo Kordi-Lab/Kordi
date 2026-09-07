@@ -192,7 +192,7 @@ export function useChatTranscriptViewport({
       animateLatestAppend={animateLatestAppend}
       getItemKey={(entry) => transcriptMessageRenderKey(entry.message, entry.originalIndex)}
       renderItem={({ message: msg, originalIndex: idx }) => (
-        <div>
+        <div data-incoming-sequence={!msg.isOwnMessage && msg.role!=='user'?msg.conversationSequence:undefined}>
           {timeSeparators[idx] ? (
             <div
               className="app-transcript-time-separator flex justify-center px-2 py-2 text-center text-[11px] font-normal leading-4 tabular-nums text-[color:var(--utility-muted-text)]"
@@ -201,6 +201,7 @@ export function useChatTranscriptViewport({
               <time dateTime={transcriptTimestampDateTime(msg.timestampMs)}>{timeSeparators[idx]}</time>
             </div>
           ) : null}
+          {presentation.firstUnreadMessageId && transcriptWindowMessageMatchesId(msg,presentation.firstUnreadMessageId,idx)?<div className="my-3 flex items-center gap-3 text-[11px] font-medium text-[color:var(--app-sidebar-accent)]"><span className="h-px flex-1 bg-current opacity-25"/>New replies<span className="h-px flex-1 bg-current opacity-25"/></div>:null}
           {(msg.role === 'user' || msg.role === 'person') && [msg.id, msg.entryId, ...(msg.replyAliasIds ?? [])].some((id) => id && syncedQueuedIds.has(id)) ? (
             <QueuedMessageBubble
               message={{ id: msg.id ?? '', sessionId: sessionKey, text: msg.text, time: msg.time, attachments: msg.attachments ?? [] }}
@@ -331,6 +332,7 @@ export function useChatTranscriptViewport({
     onTranscriptScroll,
     pinnedMessageIds,
     plainAgentResponse,
+    presentation.firstUnreadMessageId,
     pinActivityLabel,
     queuedMessages,
     relatedAgentSessionStatusById,

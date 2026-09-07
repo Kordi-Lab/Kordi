@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import {requestThreadNavigation,useThreadNavigation} from '@/features/cloud/threadAttention';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { participantSpaceCreateKey } from '@/app/useKordiAppModelHelpers';
 import { hasCachedCloudSessionVisibility } from '@/features/cloud/cloudDiffSync';
@@ -11,10 +12,6 @@ import { useWorkspaceViewModels } from '@/app/useWorkspaceViewModels';
 import { collaborationContactRequestsForContactsPage } from '@/app/viewModels/helpers';
 import { conversationWithHydratedSupportRoute } from '@/app/viewModels/conversationSelection';
 import { existingBlankSessionIdForParticipantSpace } from '@/features/chat/chatCreateFlows';
-import {
-  navigateToTranscriptMessage,
-  scrollTranscriptToBottom,
-} from '@/features/chat/transcriptNavigation';
 import {
   contactRequests as demoContactRequests,
 } from '@/kordi-app/data';
@@ -158,6 +155,7 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     activeCollaborationConversationHost,
     activeCollaborationAwaitingReply,
   } = useWorkspaceViewModels({
+    cloudAccountId: cloudSession.account?.accountId,
     cloudCatalogReady: !cloudSession.account || hasCachedCloudSessionVisibility(cloudSession.account.accountId),
     isNativeShell,
     isDesktopChatLoading,
@@ -289,6 +287,16 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     ? collaborationContactRequests
     : demoContactRequests;
 
+  const threadNavigation=useThreadNavigation();
+  const handledThreadNavigation=useRef<number|null>(null);
+  useEffect(()=>{
+    if(!threadNavigation || handledThreadNavigation.current===threadNavigation.nonce)return;
+    handledThreadNavigation.current=threadNavigation.nonce;
+    const conversation=chatConversations.find(item=>item.id===threadNavigation.sessionId || item.canonicalSessionId===threadNavigation.sessionId);
+    setActiveNav('chats');
+    setActiveConvId(conversation?.id??threadNavigation.sessionId);
+  },[threadNavigation,chatConversations,setActiveNav,setActiveConvId]);
+
   const openNotificationSession = useCallback((sessionId: string, messageId: string) => {
     const conversation = chatConversations.find((candidate) => (
       candidate.id === sessionId
@@ -296,16 +304,8 @@ export function useKordiWorkspaceState(foundation: KordiAppFoundation) {
     ));
     setActiveNav('chats');
     setActiveConvId(conversation?.id ?? sessionId);
-    const revealMessage = (attempt: number) => {
-      if (navigateToTranscriptMessage(messageId, chatTranscriptScrollRef)) return;
-      if (attempt < 8) {
-        window.setTimeout(() => revealMessage(attempt + 1), 120);
-      } else {
-        scrollTranscriptToBottom(chatTranscriptScrollRef);
-      }
-    };
-    window.setTimeout(() => revealMessage(0), 120);
-  }, [chatConversations, chatTranscriptScrollRef, setActiveConvId, setActiveNav]);
+    requestThreadNavigation(conversation?.canonicalSessionId ?? sessionId, messageId);
+  }, [chatConversations, setActiveConvId, setActiveNav]);
 
   const {
     activeContactRequest,

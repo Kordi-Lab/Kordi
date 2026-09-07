@@ -44,6 +44,7 @@ pub struct MessageAttentionEvent {
     pub session_id: Uuid,
     pub message_id: Uuid,
     pub message_sequence: i64,
+    pub thread_root_id: Option<Uuid>,
     pub conversation_kind: String,
     pub sender_display_name: String,
     pub preview_kind: String,
@@ -86,6 +87,8 @@ struct MessagePushPayload<'a> {
     account_id: &'a str,
     session_id: &'a str,
     message_id: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thread_root_id: Option<String>,
     #[serde(skip_serializing)]
     options: NotificationOptions<'a>,
     #[serde(skip_serializing)]
@@ -196,41 +199,45 @@ impl PushNotificationService {
     ) -> Result<(), sqlx_core::Error> {
         reconcile_message_deliveries(pool, recipient, message.id, &self.environment).await?;
 
-        let context: Option<(String, String, i64, i64)> = query_as(
+        let context: Option<(String, String, i64, Option<Uuid>)> = query_as(
             "SELECT COALESCE(sender.display_name, 'Kordi'), conversation.kind, \
-                    (SELECT COUNT(*) \
-                     FROM cloud_chat_conversation_members membership \
-                     JOIN cloud_chat_messages unread \
-                       ON unread.conversation_id = membership.conversation_id \
-                      AND unread.conversation_sequence > membership.last_read_sequence \
-                      AND (unread.sender_account_id <> membership.account_id OR \
-                           EXISTS (SELECT 1 FROM cloud_message_notification_events unread_event \
-                                   WHERE unread_event.recipient_account_id = membership.account_id \
-                                     AND unread_event.message_id = unread.message_id)) \
-                      AND unread.deleted_at IS NULL \
-                     WHERE membership.account_id = $1 \
-                       AND membership.membership_state = 'active'), \
                     (SELECT COUNT(*) \
                      FROM cloud_chat_message_attachments message_attachment \
                      JOIN cloud_attachments attachment \
                        ON attachment.attachment_id = message_attachment.attachment_id \
-                     WHERE message_attachment.message_id = $4 \
-                       AND LOWER(COALESCE(attachment.content_type, '')) LIKE 'image/%') \
+                     WHERE message_attachment.message_id = $3 \
+                       AND LOWER(COALESCE(attachment.content_type, '')) LIKE 'image/%'), \
+                    (SELECT thread_root_message_id FROM cloud_chat_messages WHERE message_id=$3) \
              FROM cloud_chat_conversations conversation \
-             JOIN cloud_accounts sender ON sender.account_id = $2 \
-             WHERE conversation.conversation_id = $3",
+             JOIN cloud_accounts sender ON sender.account_id = $1 \
+             WHERE conversation.conversation_id = $2",
         )
-        .bind(recipient)
         .bind(&message.sender_account_id)
         .bind(message.conversation_id)
         .bind(message.id)
         .fetch_optional(pool)
         .await?;
-        let Some((sender_display_name, conversation_kind, unread_count, image_attachment_count)) =
+        let Some((sender_display_name, conversation_kind, image_attachment_count, thread_root_id)) =
             context
         else {
             return Ok(());
         };
+        let mut unread_count = 0i64;
+        let mut after = None;
+        loop {
+            let summaries = crate::chat_sync::store::thread_attention(pool, recipient, after)
+                .await
+                .map_err(|_| sqlx_core::Error::Protocol("Unread summary unavailable".into()))?;
+            unread_count += summaries
+                .iter()
+                .filter(|summary| !summary.muted)
+                .map(|summary| summary.unread_count)
+                .sum::<i64>();
+            if summaries.len() < 200 {
+                break;
+            }
+            after = summaries.last().map(|summary| summary.conversation_id);
+        }
         let sender_display_name = notification_sender_display_name(message, sender_display_name);
         let (preview_kind, preview_text) =
             message_preview(message, image_attachment_count.max(0) as usize);
@@ -240,6 +247,7 @@ impl PushNotificationService {
             session_id: message.conversation_id,
             message_id: message.id,
             message_sequence: message.conversation_sequence,
+            thread_root_id,
             conversation_kind,
             sender_display_name,
             preview_kind,
@@ -399,6 +407,7 @@ impl PushNotificationService {
             account_id: &event.account_id,
             session_id: &session_id,
             message_id: &message_id,
+            thread_root_id: event.thread_root_id.map(|id| id.to_string()),
             options: NotificationOptions {
                 apns_id: Some(&event_id),
                 apns_push_type: Some(PushType::Alert),

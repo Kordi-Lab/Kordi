@@ -121,6 +121,7 @@ function ParticipantSpaceSessionRow({
       <div className="app-participant-space-session-side">
         <SidebarSessionMetaColumn
           timeLabel={sessionRowTimeLabel}
+          threadAttention={conversation.threadAttention}
           unreadCount={rowUnreadCount}
           unreadMentionCount={rowUnreadCount > 0 ? conversation.unreadMentions : 0}
           unreadScope="participant-session"
@@ -369,6 +370,7 @@ function ParticipantSpaceRow({
           <div className="app-participant-space-row-meta">
             <SidebarSessionMetaColumn
               timeLabel={rowTimeLabel}
+              threadAttention={isExpanded?undefined:space.sessions.find(item=>item.conversation.threadAttention?.thread_count)?.conversation.threadAttention}
               unreadCount={isExpanded ? 0 : spaceUnreadCount}
               unreadMentionCount={isExpanded ? 0 : spaceUnreadMentionCount}
               unreadScope="participant-space"

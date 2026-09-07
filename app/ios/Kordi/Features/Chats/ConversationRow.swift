@@ -7,6 +7,7 @@ enum ConversationRowPresentation: Equatable {
 }
 
 struct ConversationRow: View {
+    @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let conversation: ConversationSummary
     var presentation: ConversationRowPresentation = .standard
@@ -23,7 +24,7 @@ struct ConversationRow: View {
         }
         .contentShape(Rectangle())
         .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 64 : 48)
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(
             conversation.accessibilitySummary
                 + ChatListStateIndicators.accessibilitySuffix(isPinned: isPinned, isMuted: isMuted)
@@ -35,6 +36,11 @@ struct ConversationRow: View {
             avatar
             identityDetails
             Spacer(minLength: 8)
+            if (conversation.threadAttention?.threadCount ?? 0) > 0 {
+                Button { model.openUnreadThread(in: conversation) } label: {
+                    Image(systemName: "bubble.left.and.bubble.right").font(.subheadline).foregroundStyle(KordiTheme.signalBlue).frame(minWidth: 44, minHeight: 44)
+                }.buttonStyle(.borderless).accessibilityLabel("Jump to next unread thread")
+            }
             trailingStatus
         }
     }

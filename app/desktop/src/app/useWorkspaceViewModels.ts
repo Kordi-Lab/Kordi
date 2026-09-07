@@ -1,3 +1,4 @@
+import {useThreadAttention} from '@/features/cloud/threadAttention';
 import {
   useLayoutEffect,
   useMemo,
@@ -96,6 +97,7 @@ import { collaborationChatConversationRoutesToLocalAgentPage, collaborationChatC
 export { collaborationChatConversationRoutesToLocalAgentPage, collaborationChatConversationIsVisible } from './viewModels/collaborationVisibility';
 
 type UseWorkspaceViewModelsArgs = {
+  cloudAccountId?: string;
   cloudCatalogReady?: boolean;
   isNativeShell: boolean;
   isDesktopChatLoading: boolean;
@@ -133,6 +135,7 @@ type UseWorkspaceViewModelsArgs = {
 
 export function useWorkspaceViewModels({
   cloudCatalogReady = true,
+  cloudAccountId,
   isNativeShell,
   isDesktopChatLoading: _isDesktopChatLoading,
   desktopChatState, localAgentDisplayName = null,
@@ -166,6 +169,7 @@ export function useWorkspaceViewModels({
   cloudLegacyGroupSessionTitlesById = EMPTY_CLOUD_LEGACY_GROUP_SESSION_TITLES, cloudReliableGroupSessionTitleIds = EMPTY_DESKTOP_SESSION_IDS, cloudReliableGroupSessionActivityAtMs = EMPTY_CLOUD_GROUP_NUMBERS,
   transientChatConversations = [],
 }: UseWorkspaceViewModelsArgs) {
+  const threadAttention = useThreadAttention(cloudAccountId);
   const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
   const canonicalReadModel = useMemo(
     () => createCanonicalSessionReadModel(canonicalSessionState, {
@@ -407,8 +411,12 @@ export function useWorkspaceViewModels({
         ],
       };
     });
-    return hideRawConversationIds(withCloudActivity);
-  }, [cloudPresence, cloudSessionActivity, hydratedChatConversations]);
+    return hideRawConversationIds(withCloudActivity.map(conversation => {
+      const attention=threadAttention?.[conversation.canonicalSessionId??conversation.id];
+      return attention ? {...conversation,unread:attention.unread_count,threadAttention:attention,
+        collaborationUnreadByParentSessionId:{[conversation.canonicalSessionId??conversation.id]:attention.unread_count}} : conversation;
+    }));
+  }, [cloudPresence, cloudSessionActivity, hydratedChatConversations, threadAttention]);
   const rawBlankShellCollapsedChatConversations = useMemo(
     () => collapseBlankConversationShells(decoratedChatConversations),
     [decoratedChatConversations],

@@ -1,3 +1,5 @@
+#[path = "chat_sync_e2e/thread_attention.rs"]
+mod thread_attention;
 use kordi_cloud_server::chat_sync::models::{
     AddConversationMembersRequest, AdvanceConversationCursorRequest, ConversationKind,
     CreateConversationRequest, SendMessageRequest, UpdateConversationTitleRequest,

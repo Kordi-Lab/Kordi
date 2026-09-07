@@ -81,6 +81,7 @@ struct ConversationReadPresentation: Equatable {
     let isPresented: Bool
     let isAppForeground: Bool
     let isAtLatest: Bool
+    var threadRootID: String? = nil
 
     var canMarkRead: Bool {
         isPresented && isAppForeground && isAtLatest
@@ -152,6 +153,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var pinnedSessionIds = Set<String>()
     @Published private(set) var mutedSessionIds = Set<String>()
     @Published private(set) var markedUnreadSessionIds = Set<String>()
+    @Published private(set) var threadAttentionBySession: [String: CloudThreadAttention] = [:]
+    @Published var pendingThreadRoute: KordiMessageNotificationRoute?
+    @Published private(set) var threadNextPage: [String: Int64] = [:]
+
     @Published private(set) var threadReadCursors: [String: [String: Int64]] = [:]
     @Published private(set) var pinnedGroupSpaceIds = Set<String>()
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
@@ -518,6 +523,9 @@ final class AppModel: ObservableObject {
         mutedSessionIds = []
         markedUnreadSessionIds = []
         threadReadCursors = [:]
+        threadAttentionBySession = [:]
+        threadNextPage = [:]
+        pendingThreadRoute = nil
         pinnedGroupSpaceIds = []
         archivedConversations = []
         agentRunState = [:]
@@ -1130,7 +1138,7 @@ final class AppModel: ObservableObject {
               conversations[index].hasUnreadAttention else { return }
         let sessionId = conversations[index].sessionId
         let clearedManualUnread = markedUnreadSessionIds.remove(sessionId) != nil
-        conversations[index].unreadCount = 0
+        conversations[index].unreadCount = threadAttentionBySession[conversations[index].sessionId]?.threadUnreadCount ?? 0
         conversations[index].unreadMentionCount = 0
         conversations[index].lastReadSequence = max(
             conversations[index].lastReadSequence,
@@ -1149,21 +1157,23 @@ final class AppModel: ObservableObject {
         conversationID: String,
         isPresented: Bool,
         isAppForeground: Bool,
-        isAtLatest: Bool
+        isAtLatest: Bool,
+        threadRootID: String? = nil
     ) {
         if isPresented {
             conversationReadPresentations[id] = ConversationReadPresentation(
                 conversationID: conversationID,
                 isPresented: true,
                 isAppForeground: isAppForeground,
-                isAtLatest: isAtLatest
+                isAtLatest: isAtLatest,
+                threadRootID: threadRootID
             )
         } else {
             conversationReadPresentations[id] = nil
         }
 
         guard conversationReadPresentations.values.contains(where: {
-            $0.conversationID == conversationID && $0.canMarkRead
+            $0.conversationID == conversationID && $0.threadRootID == nil && $0.canMarkRead
         }), let conversation = conversations.first(where: { $0.id == conversationID }) else {
             return
         }
@@ -1173,12 +1183,20 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func isThreadActivelyReadable(conversationID: String, rootID: String) -> Bool {
+        guard let conversation = conversationForNotification(canonicalConversationID: conversationID) else { return false }
+        return conversationReadPresentations.values.contains { presentation in
+            guard presentation.conversationID == conversation.id, presentation.canMarkRead, let root = presentation.threadRootID else { return false }
+            return root == rootID || messagesByConversation[conversation.id]?.contains(where: { $0.id == root && $0.reactionTargetMessageId == rootID }) == true
+        }
+    }
+
     func isConversationActivelyReadable(canonicalConversationID: String) -> Bool {
         guard let conversation = conversationForNotification(
             canonicalConversationID: canonicalConversationID
         ) else { return false }
         return conversationReadPresentations.values.contains {
-            $0.conversationID == conversation.id && $0.canMarkRead
+            $0.conversationID == conversation.id && $0.threadRootID == nil && $0.canMarkRead
         }
     }
 
@@ -1271,6 +1289,42 @@ final class AppModel: ObservableObject {
         return tasks
     }
 
+    func refreshThreadAttention() async {
+        guard let token, let accountId = account?.accountId, !previewMode else { return }
+        do {
+            let rows = try await api.threadAttention(token: token)
+            guard self.token == token, account?.accountId == accountId, !Task.isCancelled else { return }
+            var next: [String: CloudThreadAttention] = [:]
+            for row in rows { next[row.sessionId] = row; next[row.conversationId] = row }
+            guard next != threadAttentionBySession else { return }
+            threadAttentionBySession = next
+            await rebuildConversationCatalog()
+        } catch { /* Keep confirmed unread state while reconnecting. */ }
+    }
+
+    func openUnreadThread(in conversation: ConversationSummary) {
+        guard let messageId = threadAttentionBySession[conversation.sessionId]?.nextMessageId else { return }
+        pendingThreadRoute = KordiMessageNotificationRoute(conversation: conversation, messageID: messageId)
+    }
+
+    func loadThread(in conversation: ConversationSummary, messageId: String, after: Int64? = nil) async throws -> (root: String, first: String?, isThread: Bool, target: String) {
+        guard let token, let accountId = account?.accountId else { throw URLError(.userAuthenticationRequired) }
+        let page = try await api.threadPage(token: token, sessionId: conversation.sessionId, messageId: messageId, after: after)
+        try Task.checkCancellation()
+        guard self.token == token, account?.accountId == accountId else { throw CancellationError() }
+        for message in [page.root] + page.messages { mergeCloudMessage(message, peerHint: nil) }
+        let wires = conversation.kind == .group ? Self.groupWireMessages(for: conversation, in: cloudMessagesByPeer.values.flatMap { $0 }) : Self.directWireMessages(for: conversation, in: cloudMessagesByPeer)
+        let projected = conversation.kind == .group ? Self.mapGroupMessages(wires, conversation: conversation, ownAccountId: accountId) : CloudDirectMessageProjector.project(wires, conversation: conversation, ownAccountId: accountId)
+        messagesByConversation[conversation.id] = projected
+        cacheCurrentMessages(conversation.id)
+        func resolved(_ id: String) -> String {
+            projected.first { $0.id == id || $0.reactionTargetMessageId == id || $0.clientMessageId == id }?.id ?? id
+        }
+        let root = resolved(page.root.messageId)
+        threadNextPage[root] = page.nextAfterSequence
+        return (root, page.firstUnreadMessageId.map(resolved), page.isThread, resolved(messageId))
+    }
+
     func refreshThreadReads(sessionId: String) async throws {
         guard let token, let accountId = account?.accountId, !previewMode else { return }
         let reads = try await api.threadReads(token: token, sessionId: sessionId)
@@ -1280,15 +1334,16 @@ final class AppModel: ObservableObject {
         if threadReadCursors[sessionId] != next { threadReadCursors[sessionId] = next }
     }
 
-    func markThreadRead(sessionId: String, thread: MessageThread) async throws {
+    func markThreadRead(sessionId: String, thread: MessageThread, through visibleSequence: Int64? = nil) async throws {
         guard let token, let accountId = account?.accountId, !previewMode,
               let key = thread.readKey, let cursors = threadReadCursors[sessionId] else { return }
-        let sequence = thread.replies.compactMap(\.conversationSequence).max() ?? 0
+        let sequence = visibleSequence ?? thread.replies.compactMap(\.conversationSequence).max() ?? 0
         guard sequence > (cursors[key] ?? 0) else { return }
         let read = try await api.markThreadRead(token: token, sessionId: sessionId, rootId: key, sequence: sequence)
         try Task.checkCancellation()
         guard account?.accountId == accountId else { throw CancellationError() }
         threadReadCursors[sessionId] = CloudThreadRead.merging([read], into: threadReadCursors[sessionId] ?? [:])
+        await refreshThreadAttention()
     }
 
     func agentSubsession(id: String, includeMessages: Bool = false) async throws -> CloudAgentSubsession {
@@ -1367,7 +1422,7 @@ final class AppModel: ObservableObject {
         for index in conversations.indices
         where conversationIds.contains(conversations[index].id)
             && conversations[index].hasUnreadAttention {
-            conversations[index].unreadCount = 0
+            conversations[index].unreadCount = threadAttentionBySession[conversations[index].sessionId]?.threadUnreadCount ?? 0
             conversations[index].unreadMentionCount = 0
             conversations[index].lastReadSequence = max(
                 conversations[index].lastReadSequence,
@@ -5330,6 +5385,7 @@ final class AppModel: ObservableObject {
                     // still surface their own actionable network errors.
                 }
 
+                await refreshThreadAttention()
                 if chatPollsUntilContactRefresh == 0 {
                     await refreshContactRequests()
                     chatPollsUntilContactRefresh = 2
@@ -5583,6 +5639,10 @@ final class AppModel: ObservableObject {
         guard self.account?.accountId == account.accountId, token == expectedToken, visibilityRevision == sessionVisibilityMutationRevision else { return }
         let projected = rebuilt.map { conversation in
             var copy = conversation
+            if let attention = threadAttentionBySession[conversation.sessionId] {
+                copy.threadAttention = attention
+                copy.unreadCount = attention.unreadCount
+            }
             if markedUnreadSnapshot.contains(conversation.sessionId), !copy.hasUnreadAttention {
                 copy.unreadCount = 1
             }
@@ -5621,7 +5681,7 @@ final class AppModel: ObservableObject {
     private func reconcileVisibleConversationReadState() async {
         let readableConversationIDs = Set(
             conversationReadPresentations.values
-                .filter(\.canMarkRead)
+                .filter { $0.canMarkRead && $0.threadRootID == nil }
                 .map(\.conversationID)
         )
         guard !readableConversationIDs.isEmpty else { return }

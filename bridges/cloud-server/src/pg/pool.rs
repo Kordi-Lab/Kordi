@@ -425,6 +425,11 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "immutable agent turn identity",
         sql: include_str!("../../migrations/0087_agent_turn_identity.sql"),
     },
+    EmbeddedMigration {
+        version: 88,
+        description: "indexed thread attention and independent unread totals",
+        sql: include_str!("../../migrations/0088_thread_attention.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
