@@ -339,7 +339,7 @@ export class CloudAuthClient {
   private readonly fetchImpl: typeof fetch;
   private readonly requestTimeoutMs: number;
   private activeAccountId: string | null = null;
-  private readonly chat: ChatSyncClient;
+  readonly chat: ChatSyncClient;
   private readonly devices: CloudDeviceClient;
   private readonly expressiveMedia: CloudExpressiveMediaClient;
   private readonly identity: CloudIdentityAuthClient;

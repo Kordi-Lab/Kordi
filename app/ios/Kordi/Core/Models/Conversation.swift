@@ -90,6 +90,7 @@ struct ConversationSummary: Identifiable, Hashable {
     var lastAttachment: ChatAttachment?
     var lastActivityAt: Date
     var unreadCount: Int
+    var threadAttention: CloudThreadAttention? = nil
     var unreadMentionCount: Int
     var lastReadSequence: Int64
     var avatarSource: String?

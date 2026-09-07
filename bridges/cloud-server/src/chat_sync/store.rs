@@ -248,3 +248,6 @@ pub use support::{
 pub use sync_events::append_account_hint;
 use sync_events::{insert_noncritical_sync_event, insert_sync_event, insert_sync_event_fanout};
 pub use titles::{update_personal_title, update_shared_title};
+
+mod thread_attention;
+pub use thread_attention::{thread_attention, thread_page};

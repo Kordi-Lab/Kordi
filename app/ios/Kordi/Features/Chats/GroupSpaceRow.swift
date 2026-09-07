@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct GroupSpaceRow: View {
+    @EnvironmentObject private var model: AppModel
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let space: GroupSpaceSummary
@@ -50,6 +51,11 @@ struct GroupSpaceRow: View {
                     )
                 HStack(spacing: 5) {
                     if !isExpanded {
+                        if let conversation = space.sessions.first(where: { ($0.threadAttention?.threadCount ?? 0) > 0 }) {
+                            Button { model.openUnreadThread(in: conversation) } label: {
+                                Image(systemName: "bubble.left.and.bubble.right").foregroundStyle(KordiTheme.signalBlue).frame(minWidth: 44, minHeight: 44)
+                            }.buttonStyle(.borderless).accessibilityLabel("Jump to next unread thread")
+                        }
                         ConversationAttentionBadge(
                             unreadCount: displayedUnreadCount,
                             mentionCount: displayedMentionCount,
@@ -69,7 +75,7 @@ struct GroupSpaceRow: View {
         }
         .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 64 : 48)
         .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(
             space.accessibilitySummary
                 + ChatListStateIndicators.accessibilitySuffix(isPinned: isPinned, isMuted: isMuted)

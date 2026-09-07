@@ -1,3 +1,5 @@
+import {MessagesSquare} from 'lucide-react';
+import {requestThreadNavigation,type ThreadAttention} from '@/features/cloud/threadAttention';
 import type { SessionStatusIndicator } from '@/kordi-app/types';
 import { cn } from '@/lib/utils';
 
@@ -68,6 +70,7 @@ export function SidebarSessionMetaColumn({
   timeLabel,
   unreadCount,
   unreadMentionCount,
+  threadAttention,
   unreadScope,
   indicator,
   active = false,
@@ -77,6 +80,7 @@ export function SidebarSessionMetaColumn({
   timeLabel: string;
   unreadCount?: number;
   unreadMentionCount?: number;
+  threadAttention?: ThreadAttention;
   unreadScope?: string;
   indicator?: SessionStatusIndicator;
   active?: boolean;
@@ -106,6 +110,9 @@ export function SidebarSessionMetaColumn({
             hasStatusLine ? 'w-auto' : 'w-0',
           )}
         >
+          {threadAttention?.thread_count ? <span role="button" tabIndex={0} aria-label="Jump to next unread thread" title="Jump to next unread thread" className="cursor-pointer rounded p-1 text-[color:var(--app-sidebar-accent)] focus-visible:outline"
+            onClick={event=>{event.stopPropagation();requestThreadNavigation(threadAttention.session_id,threadAttention.next_message_id??undefined);}}
+            onKeyDown={event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();requestThreadNavigation(threadAttention.session_id,threadAttention.next_message_id??undefined);}}}><MessagesSquare className="h-3.5 w-3.5" aria-hidden="true"/></span>:null}
           <SidebarUnreadBadge count={unreadCount} mentionCount={unreadMentionCount} scope={unreadScope} muted={muted} />
           <SidebarSessionStatusIndicator indicator={indicator} />
         </div>

@@ -475,6 +475,14 @@ struct MainTabView: View {
             selection = .digest
             digestPath = NavigationPath()
         }
+        .task(id: model.pendingThreadRoute) {
+            guard let route = model.pendingThreadRoute else { return }
+            let destination = MainTab.destination(for: route.conversation.kind)
+            selection = destination
+            if destination == .agents { agentsPath = NavigationPath(); agentsPath.append(route) }
+            else { chatsPath = NavigationPath(); chatsPath.append(route) }
+            model.pendingThreadRoute = nil
+        }
         .task(id: notificationCoordinator.pendingMessageRoute) {
             guard let route = notificationCoordinator.pendingMessageRoute else { return }
             let destination = MainTab.destination(for: route.conversation.kind)

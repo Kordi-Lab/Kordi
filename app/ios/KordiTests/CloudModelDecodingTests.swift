@@ -3,6 +3,17 @@ import Security
 @testable import Kordi
 
 final class CloudModelDecodingTests: XCTestCase {
+    func testThreadAttentionKeepsTotalAndThreadCountsDistinct() throws {
+        let json = #"{"conversation_id":"c","session_id":"s","unread_count":7,"thread_unread_count":3,"thread_count":2,"next_root_id":"root","next_message_id":"reply"}"#
+        let attention = try JSONDecoder().decode(CloudThreadAttention.self, from: Data(json.utf8))
+        XCTAssertEqual(attention.unreadCount, 7)
+        XCTAssertEqual(attention.threadUnreadCount, 3)
+        XCTAssertEqual(attention.threadCount, 2)
+        XCTAssertEqual(attention.nextMessageId, "reply")
+        let payload: [AnyHashable: Any] = ["notification_type":"message", "account_id":"account", "session_id":"s", "message_id":"reply", "thread_root_id":"root"]
+        XCTAssertEqual(KordiMessageNotificationPayload(payload)?.threadRootID, "root")
+    }
+
     func testInstallationDeviceIdentityIsStableAndDistinctAcrossStores() throws {
         let firstService = "io.kordi.tests.device.\(UUID().uuidString)"
         let secondService = "io.kordi.tests.device.\(UUID().uuidString)"

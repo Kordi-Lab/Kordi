@@ -1,3 +1,5 @@
+import {MessagesSquare} from 'lucide-react';
+import {refreshThreadAttention} from '@/features/cloud/threadAttention';
 import { useEffect, useMemo, useRef, useState, type ComponentProps, type PointerEvent as ReactPointerEvent } from 'react';
 import { X } from 'lucide-react';
 
@@ -19,6 +21,7 @@ import { useComposerMentionMenu } from '@/pages/useComposerReferenceOptions';
 export function ChatThreadPanel({
   conversation,
   thread,
+  navigationMessageId,firstUnreadMessageId,nextAfterSequence,onLoadMore,onNextUnread,unreadThreadCount,
   replyCount,
   liveTurn,
   liveTurnSender,
@@ -43,6 +46,7 @@ export function ChatThreadPanel({
 }: {
   conversation: Conversation;
   thread: MessageThread;
+  navigationMessageId?:string|null; firstUnreadMessageId?:string|null; nextAfterSequence?:number|null; onLoadMore?:()=>void; onNextUnread?:()=>void; unreadThreadCount?:number;
   replyCount: number;
   liveTurn?: DesktopChatTurnSnapshot | null;
   liveTurnSender: string;
@@ -111,10 +115,12 @@ export function ChatThreadPanel({
     let pending = false;
     const markVisibleRead = () => {
       const scroll = scrollRef.current;
-      if (pending || document.visibilityState !== 'visible' || !document.hasFocus() || !scroll
-        || scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 32) return;
+      if (pending || document.visibilityState !== 'visible' || !document.hasFocus() || !scroll) return;
+      const viewport=scroll.getBoundingClientRect();
+      const sequence=Math.max(readSequence,...Array.from(scroll.querySelectorAll<HTMLElement>('[data-incoming-sequence]')).flatMap(row=>{const box=row.getBoundingClientRect();return box.bottom>viewport.top && box.bottom<=viewport.bottom+1?[Number(row.dataset.incomingSequence)]:[];}));
+      if(sequence<=readSequence)return;
       pending = true;
-      void onMarkRead(readKey, latestSequence).catch(() => { pending = false; });
+      void onMarkRead(readKey, sequence).then(refreshThreadAttention).catch(() => { pending = false; });
     };
     const timer = setInterval(markVisibleRead, 1000);
     return () => clearInterval(timer);
@@ -192,7 +198,7 @@ export function ChatThreadPanel({
   };
 
   return (
-    <aside className="app-thread-panel relative flex h-full min-w-[19rem] max-w-[40rem] shrink-0 flex-col border-l border-[color:var(--app-divider)] bg-[color:var(--app-main-bg)]" style={{ width }} aria-label="Message thread">
+    <aside data-thread-root-id={readKey??undefined} data-thread-root-client-id={thread.root.clientMessageId} className="app-thread-panel relative flex h-full min-w-[19rem] max-w-[40rem] shrink-0 flex-col border-l border-[color:var(--app-divider)] bg-[color:var(--app-main-bg)]" style={{ width }} aria-label="Message thread">
       <div
         role="separator"
         aria-orientation="vertical"
@@ -218,12 +224,14 @@ export function ChatThreadPanel({
           </div>
           <p className="text-[11px] leading-5 text-[color:var(--utility-muted-text)]">{replyCount} discussed in thread</p>
         </div>
+        {unreadThreadCount ? <button type="button" onClick={onNextUnread} aria-label="Jump to next unread thread" title="Next unread thread" className="app-button-quiet grid h-9 w-9 place-items-center rounded-full text-[color:var(--app-sidebar-accent)]"><MessagesSquare className="h-4 w-4"/></button>:null}
         <button type="button" className="app-button-quiet grid h-9 w-9 place-items-center rounded-full" onClick={onClose} aria-label="Close thread">
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </header>
       <ChatSessionPane
         presentation={{
+          firstUnreadMessageId,
           liveTurn,
           liveTurnSender,
           shouldRenderLiveTurn: Boolean(liveTurn && !liveTurn.completed),
@@ -234,6 +242,7 @@ export function ChatThreadPanel({
         viewport={{
           sessionKey: `${conversation.id}:thread:${rootId}`,
           messages,
+          navigationRequest:navigationMessageId?{id:navigationMessageId,nonce:0,sessionKey:`${conversation.id}:thread:${rootId}`}:null,
           scrollRef,
           scrollClassName: 'app-chat-pane-transcript-scroll min-h-0 flex-1 overflow-x-hidden overscroll-contain px-1',
           queuedMessages,
@@ -241,6 +250,7 @@ export function ChatThreadPanel({
           onCancelQueuedMessage,
           composer: (
             <div className="shrink-0 px-3 pb-4 pt-3">
+              {nextAfterSequence!=null?<button type="button" onClick={onLoadMore} className="app-button-quiet mb-2 w-full rounded-lg p-2 text-xs">Load more replies</button>:null}
               <div className="app-composer-shell relative rounded-[26px] p-3">
                 <ComposerMentionMenu
                   id={mentionMenuId}

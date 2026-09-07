@@ -1,13 +1,14 @@
-import { useMemo, useState } from 'react';
+import {useUnreadThreadNavigation} from './useUnreadThreadNavigation';
+import {ThreadShortcut} from '@/features/chat/ThreadShortcut';
+import { useCallback, useMemo, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 import { localOwnedAgentSenderLabel, suppressLiveTurnEchoMessages } from '@/app/viewModels/helpers';
 import type { Conversation, Message } from '@/kordi-app/types';
 import { relatedAgentSessionStatusById } from '@/features/chat/relatedAgentSessions';
-import { projectMessageThreads, projectQueuedThreadMessages, resolveThreadMessageId, threadRootSource } from '@/features/chat/messageThreads';
-import { useThreadMessageSummaries } from './useThreadMessageSummaries';
+import { projectQueuedThreadMessages, threadRootSource } from '@/features/chat/messageThreads';
+import { useThreadMessageSummaries, useThreadTranscript, useActiveThread } from './useThreadMessageSummaries';
 import {useThreadReadStatus} from '@/features/cloud/useThreadReadStatus';
-import { buildReplyAttribution, shouldInferLatestHumanReplyTarget } from '@/features/chat/replyAttribution';
 import { collapseAdjacentSessionConfigNotices } from '@/features/chat/sessionConfigNotices';
 import { isGroupSessionId } from '@/features/chat/forkLineage';
 import { cloudCallTargetForConversation } from '@/features/cloud/cloudCalls';
@@ -254,24 +255,6 @@ export function ChatsPage({
       setOpenSelector: setCompanionOpenComposerSelector,
     },
   });
-  const transcriptMessages = useMemo(
-    () => collapseAdjacentSessionConfigNotices(
-      suppressLiveTurnEchoMessages(activeConv.messages, activeTranscriptLiveTurn),
-    ),
-    [activeConv.messages, activeTranscriptLiveTurn],
-  );
-  const inferLatestHumanRequest = shouldInferLatestHumanReplyTarget(activeConv);
-  const locatedTranscript = useMemo(
-    () => buildReplyAttribution(transcriptMessages, activeTranscriptLiveTurn, {
-      inferLatestHumanRequest,
-    }),
-    [activeTranscriptLiveTurn, inferLatestHumanRequest, transcriptMessages],
-  );
-  const locatedLiveTurn = locatedTranscript.liveTurn ?? activeTranscriptLiveTurn;
-  const threadProjection = useMemo(
-    () => projectMessageThreads(locatedTranscript.messages),
-    [locatedTranscript.messages],
-  );
   const {
     activeThreadRootId,
     closeThread,
@@ -287,24 +270,22 @@ export function ChatsPage({
     routeReplyMessage,
     clearReply: onClearChatQuote,
   });
+  const openUnreadRoot=useCallback((rootId:string)=>setOpenThreadState({conversationId:activeConv.id,rootId}),[activeConv.id,setOpenThreadState]);
+  const unreadThreads=useUnreadThreadNavigation(activeConv,cloudAccount?.accountId,openUnreadRoot,activeThreadRootId);
+  const loadedThreadPage=unreadThreads.page;
+  const notificationMessage=loadedThreadPage && !loadedThreadPage.isThread?loadedThreadPage.thread.root:undefined;
+  const {threadProjection,locatedLiveTurn}=useThreadTranscript(activeConv,activeTranscriptLiveTurn,notificationMessage);
   const activeLiveTurnThreadRootId = locatedLiveTurn && !locatedLiveTurn.completed
     ? threadProjection.threadRootIdByMessageId.get(locatedLiveTurn.replyToMessageId?.trim() ?? '') ?? null
     : null;
-  const threadReadStatus = useThreadReadStatus(activeSessionId, cloudAccount?.accountId, threadProjection.threads.size > 0);
+  const threadReadStatus = useThreadReadStatus(activeSessionId, cloudAccount?.accountId, threadProjection.threads.size > 0 || Boolean(activeConv.threadAttention?.thread_count));
   const attributedTranscriptMessages = useThreadMessageSummaries(
     threadProjection, threadReadStatus.reads, activeConv.id, activeLiveTurnThreadRootId, openThreadState,
   );
   const [threadPanelWidth, setThreadPanelWidth] = useState(384);
-  const activeThread = useMemo(() => {
-    if (!activeThreadRootId) return null;
-    const rootId = resolveThreadMessageId(activeThreadRootId, threadProjection.primaryIdByAlias);
-    const existing = threadProjection.threads.get(rootId);
-    if (existing) return existing;
-    const root = attributedTranscriptMessages.find((message) => (
-      message.id === rootId || message.entryId === rootId
-    ));
-    return root ? { root, replies: [] } : null;
-  }, [activeThreadRootId, attributedTranscriptMessages, threadProjection.primaryIdByAlias, threadProjection.threads]);
+  const localActiveThread=useActiveThread(activeThreadRootId,threadProjection,attributedTranscriptMessages);
+  const remoteThread=loadedThreadPage?.isThread?loadedThreadPage.thread:undefined;
+  const activeThread=unreadThreads.merge(localActiveThread) ?? (remoteThread?.root.id===activeThreadRootId?remoteThread:null);
   const queuedThreadProjection = useMemo(
     () => projectQueuedThreadMessages(transcript.queuedDesktopMessages, activeThreadRootId, threadProjection.primaryIdByAlias),
     [activeThreadRootId, threadProjection.primaryIdByAlias, transcript.queuedDesktopMessages],
@@ -329,6 +310,8 @@ export function ChatsPage({
     main: {
       conversation: activeConv,
       messages: attributedTranscriptMessages,
+      notificationMessage,
+      onNotificationNavigation: closeThread,
     },
     companion: {
       conversation: companionConversation,
@@ -465,10 +448,17 @@ export function ChatsPage({
               open: openSideAgentPanel,
               openSession: openRelatedAgentSession,
             }}
+            threadShortcut={<ThreadShortcut count={activeConv.threadAttention?.thread_count??0} busy={unreadThreads.busy} error={unreadThreads.error} onClick={()=>void (unreadThreads.error?unreadThreads.retry():unreadThreads.load())}/>}
             threadPanel={activeThread ? (
               <ChatThreadPanel
                 conversation={activeConv}
                 thread={activeThread}
+                navigationMessageId={loadedThreadPage?.target}
+                firstUnreadMessageId={loadedThreadPage?.first}
+                nextAfterSequence={loadedThreadPage?.next}
+                onLoadMore={()=>void unreadThreads.load(activeThread.root.id,loadedThreadPage?.next??undefined)}
+                onNextUnread={()=>void unreadThreads.load()}
+                unreadThreadCount={activeConv.threadAttention?.thread_count??0}
                 replyCount={Math.max(
                   activeThread.replies.length + Number(activeLiveTurnThreadRootId === activeThreadRootId),
                   activeThreadQueuedMessages.length,

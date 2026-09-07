@@ -331,6 +331,16 @@ export class ChatSyncConversationClient {
     await this.advanceChatCursor(token, conversation, 'read');
   }
 
+  async threadPage(token: string, sessionId: string, messageId: string, after?: number): Promise<import('./threadAttention').ThreadPage> {
+    const conversation = await this.mutationConversation(token,sessionId);
+    if(messageId.startsWith('collaboration-message:'))messageId=messageId.slice(messageId.lastIndexOf(':')+1);
+    const page = await this.state.send<{root:ChatSyncMessage; messages:ChatSyncMessage[]; first_unread_message_id:string|null; next_after_sequence:number|null;is_thread:boolean}>(
+      `/v2/chat/conversations/${encodeURIComponent(conversation.id)}/threads/${encodeURIComponent(messageId)}${after === undefined ? '' : `?after_sequence=${after}`}`,
+      {headers:{authorization:`Bearer ${token}`}},'Could not open this discussion. Please retry.');
+    const map=(message:ChatSyncMessage)=>cloudMessageFromChatSync(message,conversation,conversation.preferences.account_id);
+    return {root:map(page.root),messages:page.messages.map(map),firstUnreadMessageId:page.first_unread_message_id,nextAfterSequence:page.next_after_sequence,isThread:page.is_thread};
+  }
+
   async threadReads(token: string, sessionId: string): Promise<import('./chatSyncTypes').CloudThreadRead[]> {
     const conversation = await this.mutationConversation(token, sessionId);
     return await this.state.send<import('./chatSyncTypes').CloudThreadRead[]>(

@@ -1,3 +1,4 @@
+import {useThreadAttention} from '@/features/cloud/threadAttention';
 import {
   useLayoutEffect,
   useMemo,
@@ -8,7 +9,7 @@ import {
 import { mapCollaborationConversationToViewModel } from '@/features/collaboration/transcript';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
-import { EMPTY_CLOUD_SESSION_ACTIVITY, cloudTaskActivitiesForSession, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
+import { EMPTY_CLOUD_SESSION_ACTIVITY, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
 import { cloudAgentDefinitionToAgent, type CloudAgentDefinition } from '@/features/cloud/cloudAgents';
 import type { CloudPresenceStore } from '@/features/cloud/presence';
 import {
@@ -49,10 +50,9 @@ import type {
   Message,
   NavId,
   Project,
-  SessionTaskActivity,
 } from '@/kordi-app/types';
 import { getInitials } from '@/kordi-app/utils';
-import { applyCloudPresenceToConversations } from './viewModels/cloudConversationPresence';
+import { applyCloudPresenceToConversations, decorateCloudConversations } from './viewModels/cloudConversationPresence';
 import {
   backgroundSessionStatusIndicator,
   canonicalAvatarSeed,
@@ -75,8 +75,8 @@ import {
   buildOutreachInlineMessages,
   buildSessionStatusIndicator,
   canonicalProjectDisplayName,
-  preferLatestMessages,
   hideRawConversationIds,
+  preferLatestMessages,
   visibleCollaborationPeople,
   collaborationPeerIsReachableAgent,
 } from './viewModels/helpers';
@@ -96,6 +96,7 @@ import { collaborationChatConversationRoutesToLocalAgentPage, collaborationChatC
 export { collaborationChatConversationRoutesToLocalAgentPage, collaborationChatConversationIsVisible } from './viewModels/collaborationVisibility';
 
 type UseWorkspaceViewModelsArgs = {
+  cloudAccountId?: string;
   cloudCatalogReady?: boolean;
   isNativeShell: boolean;
   isDesktopChatLoading: boolean;
@@ -133,6 +134,7 @@ type UseWorkspaceViewModelsArgs = {
 
 export function useWorkspaceViewModels({
   cloudCatalogReady = true,
+  cloudAccountId,
   isNativeShell,
   isDesktopChatLoading: _isDesktopChatLoading,
   desktopChatState, localAgentDisplayName = null,
@@ -166,6 +168,7 @@ export function useWorkspaceViewModels({
   cloudLegacyGroupSessionTitlesById = EMPTY_CLOUD_LEGACY_GROUP_SESSION_TITLES, cloudReliableGroupSessionTitleIds = EMPTY_DESKTOP_SESSION_IDS, cloudReliableGroupSessionActivityAtMs = EMPTY_CLOUD_GROUP_NUMBERS,
   transientChatConversations = [],
 }: UseWorkspaceViewModelsArgs) {
+  const threadAttention = useThreadAttention(cloudAccountId);
   const [transcriptReferenceStabilizer] = useState(createTranscriptReferenceStabilizer);
   const canonicalReadModel = useMemo(
     () => createCanonicalSessionReadModel(canonicalSessionState, {
@@ -387,28 +390,9 @@ export function useWorkspaceViewModels({
   }, [collaborationChatConversations, canonicalReadModel, isNativeShell, localAgentDisplayName, localChatConversations, transientChatConversations, visibleCollaborationChatConversations]);
 
   const decoratedChatConversations = useMemo(() => {
-    const withCloudPresence = applyCloudPresenceToConversations(
-      hydratedChatConversations,
-      cloudPresence,
-    );
-    const withCloudActivity = withCloudPresence.map((conversation) => {
-      const sessionId = conversation.canonicalSessionId ?? conversation.id;
-      const cloudTaskActivities = cloudTaskActivitiesForSession(cloudSessionActivity, sessionId);
-      if (cloudTaskActivities.length === 0) return conversation;
-      const existingTaskActivities = 'taskActivities' in conversation
-        ? (conversation.taskActivities as SessionTaskActivity[] | undefined) ?? []
-        : [];
-      const existingIds = new Set(existingTaskActivities.map((activity) => activity.id));
-      return {
-        ...conversation,
-        taskActivities: [
-          ...existingTaskActivities,
-          ...cloudTaskActivities.filter((activity) => !existingIds.has(activity.id)),
-        ],
-      };
-    });
-    return hideRawConversationIds(withCloudActivity);
-  }, [cloudPresence, cloudSessionActivity, hydratedChatConversations]);
+    const withPresence=applyCloudPresenceToConversations(hydratedChatConversations,cloudPresence);
+    return hideRawConversationIds(decorateCloudConversations(withPresence,cloudSessionActivity,threadAttention));
+  },[hydratedChatConversations,cloudPresence,cloudSessionActivity,threadAttention]);
   const rawBlankShellCollapsedChatConversations = useMemo(
     () => collapseBlankConversationShells(decoratedChatConversations),
     [decoratedChatConversations],

@@ -222,6 +222,7 @@ fn message_payload_uses_absolute_badge_thread_and_opaque_routing_fields() {
         session_id: Uuid::now_v7(),
         message_id: Uuid::now_v7(),
         message_sequence: 8,
+        thread_root_id: Some(Uuid::now_v7()),
         conversation_kind: "direct".to_string(),
         sender_display_name: "Maya".to_string(),
         preview_kind: "text".to_string(),
@@ -246,6 +247,7 @@ fn message_payload_uses_absolute_badge_thread_and_opaque_routing_fields() {
         account_id: "recipient",
         session_id: &session_id,
         message_id: &message_id,
+        thread_root_id: event.thread_root_id.map(|id| id.to_string()),
         options: NotificationOptions {
             apns_id: Some(&event_id),
             ..Default::default()
@@ -256,6 +258,10 @@ fn message_payload_uses_absolute_badge_thread_and_opaque_routing_fields() {
     assert_eq!(value["aps"]["badge"], 5);
     assert_eq!(value["aps"]["category"], MESSAGE_CATEGORY);
     assert_eq!(value["aps"]["thread-id"], session_id);
+    assert_eq!(
+        value["thread_root_id"],
+        event.thread_root_id.unwrap().to_string()
+    );
     assert_eq!(value["notification_type"], "message");
     assert_eq!(value["message_id"], message_id);
 }

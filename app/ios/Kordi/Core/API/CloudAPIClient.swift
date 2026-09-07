@@ -939,6 +939,37 @@ actor CloudAPIClient {
         return conversation
     }
 
+    func threadAttention(token: String) async throws -> [CloudThreadAttention] {
+        var result: [CloudThreadAttention] = []
+        var after: String?
+        repeat {
+            let page: [CloudThreadAttention] = try await send(path: "/v2/chat/attention", method: "GET", token: token,
+                query: after.map { [URLQueryItem(name: "after", value: $0)] } ?? [], fallback: "Could not load unread replies.")
+            result.append(contentsOf: page)
+            if page.count < 200 { return result }
+            after = page.last?.conversationId
+            try Task.checkCancellation()
+        } while after != nil
+        return result
+    }
+
+    func threadPage(token: String, sessionId: String, messageId: String, after: Int64? = nil) async throws -> CloudThreadPage {
+        struct Response: Decodable {
+            let root: CloudChatMessage
+            let messages: [CloudChatMessage]
+            let first_unread_message_id: String?
+            let next_after_sequence: Int64?
+            let is_thread: Bool
+        }
+        let conversation = try await threadReadConversation(token: token, sessionId: sessionId)
+        let page: Response = try await send(path: "/v2/chat/conversations/\(escapedPath(conversation.id))/threads/\(escapedPath(messageId))",
+            method: "GET", token: token, query: after.map { [URLQueryItem(name: "after_sequence", value: String($0))] } ?? [], fallback: "Could not open this discussion. Please retry.")
+        for message in [page.root] + page.messages { chatMessagesById[message.id] = message }
+        return CloudThreadPage(root: legacyMessage(from: page.root, conversation: conversation, viewerAccountId: conversation.preferences.accountId),
+            messages: page.messages.map { legacyMessage(from: $0, conversation: conversation, viewerAccountId: conversation.preferences.accountId) },
+            firstUnreadMessageId: page.first_unread_message_id, nextAfterSequence: page.next_after_sequence, isThread: page.is_thread)
+    }
+
     func threadReads(token: String, sessionId: String) async throws -> [CloudThreadRead] {
         let conversation = try await threadReadConversation(token: token, sessionId: sessionId)
         return try await send(path: "/v2/chat/conversations/\(escapedPath(conversation.id))/threads/read",

@@ -244,6 +244,7 @@ export type ChatsPageProps = {
 };
 
 export type ChatSessionPaneViewport = {
+  navigationAccessory?: ReactNode;
   sessionKey: string;
   messages: readonly Message[];
   scrollRef: RefObject<HTMLDivElement | null>;
@@ -262,6 +263,7 @@ export type ChatSessionPaneViewport = {
 };
 
 export type ChatSessionPanePresentation = {
+  firstUnreadMessageId?: string|null;
   liveTurn?: DesktopChatTurnSnapshot | null;
   liveTurnSender: string;
   shouldRenderLiveTurn: boolean;

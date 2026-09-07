@@ -180,7 +180,9 @@ final class KordiNotificationCoordinator: ObservableObject {
             return []
         }
         guard messagesEnabled else { return [] }
-        if model?.isConversationActivelyReadable(canonicalConversationID: payload.sessionID) == true {
+        if let root = payload.threadRootID,
+           model?.isThreadActivelyReadable(conversationID: payload.sessionID, rootID: root) == true { return [] }
+        if payload.threadRootID == nil, model?.isConversationActivelyReadable(canonicalConversationID: payload.sessionID) == true {
             synchronizeBadge()
             return []
         }
@@ -265,10 +267,11 @@ final class KordiNotificationCoordinator: ObservableObject {
     }
 }
 
-private struct KordiMessageNotificationPayload {
+struct KordiMessageNotificationPayload {
     let accountID: String
     let sessionID: String
     let messageID: String
+    let threadRootID: String?
 
     init?(_ payload: [AnyHashable: Any]) {
         guard payload["notification_type"] as? String == "message",
@@ -283,5 +286,6 @@ private struct KordiMessageNotificationPayload {
         self.accountID = accountID
         self.sessionID = sessionID
         self.messageID = messageID
+        self.threadRootID = payload["thread_root_id"] as? String
     }
 }
