@@ -193,6 +193,44 @@ test('an older page prepends without replacing the existing ready tail', () => {
   assert.equal(store.hasOlderBySessionId['session:one'], false);
 });
 
+test('live replies fill gaps in a ready page without replaying older history', () => {
+  const base = catalog();
+  base.summaries[0].latestMessage = message('later', 'session:one', 104);
+  base.summaries[0].messageCount = 100;
+  let store = mergeCanonicalCatalog(createCanonicalStore(), base);
+  store = mergeCanonicalMessagePage(store, {
+    sessionId: 'session:one',
+    messages: [message('request', 'session:one', 100), message('later', 'session:one', 104)],
+    oldestSequenceNum: 100,
+    newestSequenceNum: 104,
+    hasOlder: true,
+  });
+  const current = canonicalStateFromStore(store)!;
+  const reply: CanonicalSessionMessage = {
+    ...message('agent-reply', 'session:one', 101),
+    senderIdentityId: 'agent:cloud:peer',
+    senderRole: 'external-agent',
+    messageKind: 'agent-turn',
+    parentMessageId: 'request',
+    status: 'received',
+    content: { deliveryState: 'complete', requestId: 'request' },
+  };
+  const replay = { ...current, messages: [
+    ...current.messages,
+    reply,
+    message('delayed-member', 'session:one', 102),
+    message('older', 'session:one', 99),
+    { ...message('replayed-older', 'session:one', 105), createdAtMs: 50 },
+  ] };
+  // The group replay buffer flushes through the real canonical store adapter.
+  store = applyCanonicalSessionStateAction(store, () => replay);
+  assert.deepEqual(store.messagesBySessionId['session:one']?.map(row => row.id), [
+    'request', 'agent-reply', 'delayed-member', 'later',
+  ]);
+  assert.equal(store.hasOlderBySessionId['session:one'], true);
+  assert.equal(applyCanonicalSessionStateAction(store, () => replay), store);
+});
+
 test('inactive canonical sessions retain only their catalog preview', () => {
   const base = catalog();
   const sessions = Array.from({ length: 10 }, (_, index) => ({

@@ -7,6 +7,7 @@ import type {
   CanonicalSessionState,
 } from '@/kordi-app/types';
 import type { CloudAccount, CloudMessage } from './authClient';
+import { canonicalMessageAction } from '@/features/canonical/readModel/messageActionMapping';
 import {
   cloudMessageMentionsLocalAgent,
   parseCloudAgentCancel,
@@ -25,7 +26,7 @@ import {
   type CloudAgentRequestCandidate,
 } from './cloudAgentRequestState';
 import { CLOUD_HOST_SENTINEL } from './cloudContactMapping';
-import { defaultCloudAgentId } from './cloudAgentIdentity';
+import { cloudAgentCanonicalIdentityId, defaultCloudAgentId } from './cloudAgentIdentity';
 
 export const CLOUD_AGENT_MENTION_WINDOW_MS = 10 * 60_000;
 
@@ -69,7 +70,9 @@ export function cloudAgentMentionCandidates(
 
   return state.messages.flatMap((message): CloudAgentRequestCandidate[] => {
     if (message.sourceTransport === 'canonical-fork-snapshot') return [];
-    if (message.senderRole !== 'user' || message.status === 'failed') return [];
+    const incomingGroupRequest = message.senderRole === 'person'
+      && message.sessionId.startsWith('session:group:');
+    if ((!incomingGroupRequest && message.senderRole !== 'user') || message.status === 'failed') return [];
     if (message.sessionId.trim().startsWith('session:direct-person:')) return [];
     if (
       recentSinceMs !== undefined
@@ -77,6 +80,7 @@ export function cloudAgentMentionCandidates(
       && !keepStaleIds?.has(message.id)
     ) return [];
     const content = objectContent(message.content);
+    if (!cloudMessageActionAllowsAgentTrigger(canonicalMessageAction(content.messageAction))) return [];
     const mentions = Array.isArray(content.mentions) ? content.mentions : [];
     return mentions.flatMap((rawMention): CloudAgentRequestCandidate[] => {
       const mention = objectContent(rawMention);
@@ -99,10 +103,11 @@ export function cloudAgentMentionCandidates(
         : null;
       if (
         !targetAccountId
-        || (targetAccountId === accountId && !targetCloudAgentId)
+        || (targetAccountId === accountId && !targetCloudAgentId && !incomingGroupRequest)
       ) return [];
       const humanIdentity = identityByHumanId.get(targetAccountId);
-      const agentIdentity = identityById.get(`agent:cloud:${targetAccountId}`);
+      const agentIdentity = identityById.get(cloudAgentCanonicalIdentityId(mentionAgentId, targetAccountId))
+        ?? identityById.get(`agent:cloud:${targetAccountId}`);
       const targetHumanDisplayName = cleanText(humanIdentity?.displayName)
         || cleanText(
           typeof mention.ownerName === 'string' ? mention.ownerName : null,
@@ -124,6 +129,7 @@ export function cloudAgentMentionCandidates(
           )
           || 'Shared Agent'
         : cleanText(agentIdentity?.displayName)
+          || cleanText(typeof mention.displayLabel === 'string' ? mention.displayLabel : null)
           || 'Kordi';
       return [{
         requestMessage: message,

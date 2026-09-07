@@ -74,14 +74,16 @@ function mergeReadyPageMessages(
 ) {
   if (existing.length === 0) return mergeMessages(existing, incoming);
   const existingIds = new Set(existing.map((message) => message.id));
-  const newest = existing.reduce((latest, message) => (
-    compareCanonicalMessages(latest, message) < 0 ? message : latest
+  const oldest = existing.reduce((earliest, message) => (
+    compareCanonicalMessages(earliest, message) > 0 ? message : earliest
   ));
+  // Delayed replies can fill a gap behind the live tail. Only history before
+  // the loaded page belongs behind the explicit pagination boundary.
   return mergeMessages(existing, incoming.filter((message) => (
     existingIds.has(message.id)
     || (
-      compareCanonicalMessages(newest, message) < 0
-      && message.createdAtMs >= newest.createdAtMs
+      compareCanonicalMessages(oldest, message) <= 0
+      && message.createdAtMs >= oldest.createdAtMs
     )
   )));
 }
