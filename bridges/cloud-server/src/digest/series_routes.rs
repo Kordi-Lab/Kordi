@@ -11,10 +11,91 @@ use axum::{
     response::{IntoResponse, Response},
     Extension, Json,
 };
+use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx_core::{query::query, query_as::query_as};
 use std::sync::Arc;
+
+#[derive(Deserialize)]
+pub(super) struct ExpectedEvent {
+    pub id: String,
+    pub revision: i64,
+}
+#[derive(Deserialize)]
+pub(super) struct Removal {
+    pub events: Vec<ExpectedEvent>,
+}
+
+pub(super) async fn remove(
+    State(state): State<Arc<ServerState>>,
+    Extension(session): Extension<CloudSession>,
+    Path(id): Path<String>,
+    Json(expected): Json<Removal>,
+) -> Response {
+    let ids: std::collections::HashSet<_> = expected
+        .events
+        .iter()
+        .map(|event| event.id.as_str())
+        .collect();
+    if id.is_empty()
+        || id.len() > 260
+        || expected.events.is_empty()
+        || expected.events.len() > 1000
+        || ids.len() != expected.events.len()
+        || expected
+            .events
+            .iter()
+            .any(|event| event.revision < 1 || event.id.len() > 300)
+    {
+        return error(
+            "invalid_series",
+            "Review the events before removing this series.",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let mut tx = match state.db_pool().begin().await {
+        Ok(tx) => tx,
+        Err(_) => return failed(),
+    };
+    if query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))")
+        .bind(format!("digest-calendar:{}", session.account_id))
+        .execute(&mut *tx)
+        .await
+        .is_err()
+    {
+        return failed();
+    }
+    let current: Vec<(String,i64)> = match query_as("SELECT event_id,revision FROM cloud_calendar_events WHERE account_id=$1 AND payload->>'seriesId'=$2 FOR UPDATE")
+        .bind(&session.account_id).bind(&id).fetch_all(&mut *tx).await { Ok(rows) => rows, Err(_) => return failed() };
+    if current.len() != expected.events.len()
+        || !current.iter().all(|(id, revision)| {
+            expected
+                .events
+                .iter()
+                .any(|event| &event.id == id && event.revision == *revision)
+        })
+    {
+        return error(
+            "version_conflict",
+            "This series changed. Reload and review the current dates before removing it.",
+            StatusCode::CONFLICT,
+        );
+    }
+    if query("DELETE FROM cloud_calendar_events WHERE account_id=$1 AND payload->>'seriesId'=$2")
+        .bind(&session.account_id)
+        .bind(&id)
+        .execute(&mut *tx)
+        .await
+        .is_err()
+    {
+        return failed();
+    }
+    if tx.commit().await.is_err() {
+        return failed();
+    }
+    StatusCode::NO_CONTENT.into_response()
+}
 
 pub(super) async fn preview(
     State(state): State<Arc<ServerState>>,

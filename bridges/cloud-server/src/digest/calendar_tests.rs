@@ -48,6 +48,17 @@ fn model_changes_require_the_exact_event_and_revision() {
     assert!(validate_output(&output, &input).is_ok());
     output.calendar_candidates[0].existing_event_revision = Some(3);
     assert!(validate_output(&output, &input).is_err());
+    input.calendar_events[0].series_id = Some("owned-series".into());
+    output.calendar_candidates[0].calendar_action = Some("delete".into());
+    output.calendar_candidates[0].calendar_scope = Some("series".into());
+    output.calendar_candidates[0].existing_series_id = Some("owned-series".into());
+    output.calendar_candidates[0].existing_event_id = None;
+    output.calendar_candidates[0].existing_event_revision = None;
+    assert!(validate_output(&output, &input).is_ok());
+    output.calendar_candidates[0].existing_series_id = Some("foreign-series".into());
+    assert!(validate_output(&output, &input).is_err());
+    output.calendar_candidates[0].calendar_scope = None;
+    output.calendar_candidates[0].existing_series_id = None;
     output.calendar_candidates[0].existing_event_revision = Some(4);
     output.calendar_candidates[0].existing_event_id = Some("another-account-event".into());
     assert!(validate_output(&output, &input).is_err());
@@ -179,12 +190,12 @@ pub(super) async fn postgres_calendar_contract(pool: &sqlx_postgres::PgPool, acc
     assert_eq!(remaining.len(), 2);
     assert_eq!(remaining[0].title, "Changed occurrence");
     assert_eq!(remaining[0].series_id.as_deref(), Some(base.id.as_str()));
-    let mut different = base;
+    let mut different = base.clone();
     different.title = "Different series".into();
     assert_eq!(
         series_routes::save(
-            State(state),
-            Extension(session),
+            State(state.clone()),
+            Extension(session.clone()),
             Path(different.id.clone()),
             Json(different)
         )
@@ -192,4 +203,134 @@ pub(super) async fn postgres_calendar_contract(pool: &sqlx_postgres::PgPool, acc
         .status(),
         axum::http::StatusCode::CONFLICT
     );
+    let expected = || series_routes::Removal {
+        events: remaining
+            .iter()
+            .map(|event| series_routes::ExpectedEvent {
+                id: event.id.clone(),
+                revision: event.revision,
+            })
+            .collect(),
+    };
+    let mut stale = expected();
+    stale.events[0].revision += 1;
+    assert_eq!(
+        series_routes::remove(
+            State(state.clone()),
+            Extension(session.clone()),
+            Path(base.id.clone()),
+            Json(stale)
+        )
+        .await
+        .status(),
+        axum::http::StatusCode::CONFLICT
+    );
+    assert_eq!(
+        super::store::calendar(pool, account).await.unwrap().len(),
+        2
+    );
+    let mut incomplete = expected();
+    incomplete.events.pop();
+    assert_eq!(
+        series_routes::remove(
+            State(state.clone()),
+            Extension(session.clone()),
+            Path(base.id.clone()),
+            Json(incomplete)
+        )
+        .await
+        .status(),
+        axum::http::StatusCode::CONFLICT
+    );
+    let mut other = session.clone();
+    other.account_id = "another-account".into();
+    assert_eq!(
+        series_routes::remove(
+            State(state.clone()),
+            Extension(other),
+            Path(base.id.clone()),
+            Json(expected())
+        )
+        .await
+        .status(),
+        axum::http::StatusCode::CONFLICT
+    );
+    assert_eq!(
+        super::store::calendar(pool, account).await.unwrap().len(),
+        2
+    );
+    assert_eq!(
+        series_routes::remove(
+            State(state),
+            Extension(session),
+            Path(base.id),
+            Json(expected())
+        )
+        .await
+        .status(),
+        axum::http::StatusCode::NO_CONTENT
+    );
+    assert!(super::store::calendar(pool, account)
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+pub(super) async fn postgres_reply_context(
+    pool: &sqlx_postgres::PgPool,
+    viewer: &str,
+    author: &str,
+    conversation: uuid::Uuid,
+    original: uuid::Uuid,
+) {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    let content = |value: serde_json::Value| json!({"blocks":[{"type":"text","text":format!("kordi-cloud-group:{}",URL_SAFE_NO_PAD.encode(value.to_string()))}]});
+    let original_body = content(
+        json!({"kind":"group-message","message":{"id":"original-ui-alias","text":"A weekly three-occurrence meeting","senderKind":"human"}}),
+    );
+    query("UPDATE cloud_chat_messages SET content=$2 WHERE message_id=$1")
+        .bind(original)
+        .bind(original_body)
+        .execute(pool)
+        .await
+        .unwrap();
+    let reply = uuid::Uuid::new_v4();
+    let body = content(
+        json!({"kind":"group-message","message":{"id":"reply-ui-alias","text":"That no longer works. Please cancel it.","senderKind":"human","messageAction":{"kind":"quote","source":{"sourceMessageId":"original-ui-alias","sourceSessionId":conversation.to_string(),"textPreview":"FORGED copied quote must not be trusted"}}}}),
+    );
+    query("INSERT INTO cloud_chat_messages(message_id,conversation_id,conversation_sequence,sender_account_id,client_message_id,request_fingerprint,content) VALUES($1,$2,2,$3,$4,'test',$5)").bind(reply).bind(conversation).bind(author).bind(uuid::Uuid::new_v4()).bind(body).execute(pool).await.unwrap();
+    let input = super::store::input(pool, viewer, "en", "UTC", None)
+        .await
+        .unwrap();
+    let source = input
+        .sources
+        .iter()
+        .find(|source| source.id == reply.to_string())
+        .unwrap();
+    assert_eq!(
+        source.reply_to_source_id.as_deref(),
+        Some(original.to_string().as_str())
+    );
+    assert_eq!(source.text, "That no longer works. Please cancel it.");
+    assert!(!serde_json::to_string(&input).unwrap().contains("FORGED"));
+    query("INSERT INTO cloud_chat_message_visibility(account_id,message_id) VALUES($1,$2)")
+        .bind(viewer)
+        .bind(original)
+        .execute(pool)
+        .await
+        .unwrap();
+    let input = super::store::input(pool, viewer, "en", "UTC", None)
+        .await
+        .unwrap();
+    assert!(input
+        .sources
+        .iter()
+        .find(|source| source.id == reply.to_string())
+        .unwrap()
+        .reply_to_source_id
+        .is_none());
+    assert!(!input
+        .sources
+        .iter()
+        .any(|source| source.id == original.to_string()));
 }

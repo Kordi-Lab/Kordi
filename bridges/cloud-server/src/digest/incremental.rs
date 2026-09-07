@@ -8,6 +8,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 #[serde(rename_all = "camelCase")]
 pub struct Changes {
     pub sources: Vec<Source>,
+    #[serde(default)]
+    pub related_sources: Vec<Source>,
     pub removed_source_ids: Vec<String>,
     pub calendar_events: Vec<CalendarEvent>,
     pub removed_calendar_event_ids: Vec<String>,
@@ -84,8 +86,22 @@ impl Changes {
                     .to_string()
             },
         );
+        let related_ids: HashSet<_> = sources
+            .iter()
+            .filter_map(|source| source.reply_to_source_id.as_ref())
+            .collect();
+        let related_sources = current
+            .sources
+            .iter()
+            .filter(|source| {
+                related_ids.contains(&source.id)
+                    && !sources.iter().any(|changed| changed.id == source.id)
+            })
+            .cloned()
+            .collect();
         Self {
             sources,
+            related_sources,
             removed_source_ids,
             calendar_events,
             removed_calendar_event_ids,
@@ -145,6 +161,12 @@ pub fn merge_output(input: &Input, patch: Output) -> Result<Output, &'static str
         return Err("Invalid incremental item identities");
     }
     next.calendar_candidates.retain(|item| {
+        if let Some(series) = &item.existing_series_id {
+            return input
+                .calendar_events
+                .iter()
+                .any(|event| event.series_id.as_ref() == Some(series));
+        }
         item.existing_event_id.as_ref().is_none_or(|id| {
             input.calendar_events.iter().any(|event| {
                 &event.id == id && Some(event.revision) == item.existing_event_revision
@@ -185,10 +207,13 @@ mod tests {
         let mut current = saved.clone();
         current.sources[1].version += 1;
         current.sources[1].text = "Updated time".into();
+        current.sources[1].reply_to_source_id = Some("old".into());
         let changes = Changes::between(&saved, &current);
         assert_eq!(changes.sources.len(), 1);
         assert_eq!(changes.sources[0].id, "edited");
         assert!(changes.removed_source_ids.is_empty());
+        assert_eq!(changes.related_sources.len(), 1);
+        assert_eq!(changes.related_sources[0].id, "old");
         current.sources.remove(0);
         current.existing_tasks = json!([]);
         let changes = Changes::between(&saved, &current);

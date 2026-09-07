@@ -8,153 +8,10 @@ use std::collections::{BTreeSet, HashMap};
 use uuid::Uuid;
 
 type Result<T> = std::result::Result<T, sqlx_core::Error>;
-// Keep authorization identical for aggregation, cached reads, evidence and conversion.
-const SOURCE_FROM: &str = " FROM cloud_chat_messages m
- JOIN cloud_chat_conversations c ON c.conversation_id=m.conversation_id
- JOIN cloud_chat_conversation_members member ON member.conversation_id=c.conversation_id AND member.account_id=$1 AND member.membership_state='active'
- JOIN cloud_accounts sender ON sender.account_id=m.sender_account_id
- LEFT JOIN cloud_default_agent_profiles profile ON profile.owner_account_id=m.sender_account_id
- LEFT JOIN cloud_agent_fallback_runs source_run ON source_run.response_message_id=m.message_id::text AND source_run.owner_account_id=m.sender_account_id
- WHERE m.deleted_at IS NULL
- AND NOT EXISTS (SELECT 1 FROM cloud_chat_message_visibility v WHERE v.account_id=$1 AND v.message_id=m.message_id)
- AND NOT EXISTS (SELECT 1 FROM cloud_account_session_visibility v WHERE v.account_id=$1 AND v.session_id=COALESCE(c.legacy_session_id,c.conversation_id::text) AND (v.hidden_at IS NOT NULL OR v.deleted_at IS NOT NULL))";
-
-pub fn visible_text(content: &Value) -> Option<String> {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-    let blocks = content.get("blocks")?.as_array()?;
-    let mut texts = Vec::new();
-    for block in blocks {
-        if block.get("type")?.as_str()? != "text" {
-            continue;
-        }
-        let raw = block.get("text")?.as_str()?.trim();
-        if raw.starts_with("kordi-cloud-") {
-            let (prefix, encoded) = raw.split_once(':')?;
-            let value: Value =
-                serde_json::from_slice(&URL_SAFE_NO_PAD.decode(encoded).ok()?).ok()?;
-            let kind = value.get("kind")?.as_str()?;
-            let text = match (prefix, kind) {
-                ("kordi-cloud-message", "message")
-                | ("kordi-cloud-agent-response", "agent-response") => {
-                    value.get("text")?.as_str()?
-                }
-                ("kordi-cloud-group", "group-message") => {
-                    value.get("message")?.get("text")?.as_str()?
-                }
-                _ => return None,
-            };
-            texts.push(text.to_string());
-        } else if !raw.is_empty() {
-            texts.push(raw.to_string());
-        }
-    }
-    (!texts.is_empty()).then(|| texts.join("\n"))
-}
-
-async fn source_page(
-    pool: &PgPool,
-    account: &str,
-    ids: Option<&[String]>,
-) -> Result<(Vec<Source>, bool)> {
-    let suffix = if ids.is_some() {
-        " AND m.message_id::text=ANY($2) ORDER BY m.created_at DESC,m.message_id DESC LIMIT 700"
-    } else {
-        " AND (m.generation_status IS NULL OR m.generation_status IN ('complete','completed')) ORDER BY m.created_at DESC,m.message_id DESC LIMIT 501"
-    };
-    let sql=format!("SELECT m.message_id::text,c.conversation_id::text,COALESCE(c.legacy_session_id,c.conversation_id::text),COALESCE(member.personal_title,c.shared_title,c.group_title,'Conversation'),m.sender_account_id,COALESCE(sender.display_name,'Contact'),m.content,m.created_at,m.version,m.message_kind,profile.display_name,profile.avatar_url,source_run.execution_agent_id{SOURCE_FROM}{suffix}");
-    type Row = (
-        String,
-        String,
-        String,
-        String,
-        String,
-        String,
-        Value,
-        chrono::DateTime<chrono::Utc>,
-        i32,
-        String,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-    );
-    let mut request = query_as::<_, Row>(&sql).bind(account);
-    if let Some(ids) = ids {
-        request = request.bind(ids);
-    }
-    let rows = request.fetch_all(pool).await?;
-    let limited = ids.is_none() && rows.len() > 500;
-    let source_agent_id = |r: &Row| {
-        r.12.clone()
-            .filter(|id| !id.trim().is_empty())
-            .or_else(|| super::source_identity::agent_id(&r.6, &r.9, &r.4))
-    };
-    let agent_ids: Vec<_> = rows
-        .iter()
-        .filter_map(source_agent_id)
-        .filter(|id| !id.starts_with("cloud-agent:"))
-        .collect();
-    let definitions: Vec<(String, String, String)> = if agent_ids.is_empty() {
-        Vec::new()
-    } else {
-        let owners: Vec<_> = rows.iter().map(|r| r.4.clone()).collect();
-        query_as("SELECT agent_id,owner_account_id,name FROM cloud_agent_definitions WHERE agent_id=ANY($1) AND owner_account_id=ANY($2)")
-            .bind(agent_ids).bind(owners).fetch_all(pool).await?
-    };
-    let names: HashMap<_, _> = definitions
-        .into_iter()
-        .map(|(id, owner, name)| ((id, owner), name))
-        .collect();
-    Ok((
-        rows.into_iter()
-            .filter_map(|r| {
-                let agent_id = source_agent_id(&r);
-                let is_agent = agent_id.is_some();
-                let default_agent =
-                    agent_id.as_deref() == Some(format!("cloud-agent:{}", r.4).as_str());
-                let sender_name = match &agent_id {
-                    Some(_) if default_agent => r.10.clone().unwrap_or_else(|| "Agent".into()),
-                    Some(id) => names
-                        .get(&(id.clone(), r.4.clone()))
-                        .cloned()
-                        .unwrap_or_else(|| "Agent".into()),
-                    None => r.5.clone(),
-                };
-                let agent_owner_name = agent_id.as_ref().map(|_| r.5.clone());
-                let agent_avatar_url = if default_agent { r.11 } else { None };
-                let agent_id = agent_id
-                    .filter(|id| default_agent || names.contains_key(&(id.clone(), r.4.clone())));
-                visible_text(&r.6).map(|text| Source {
-                    id: r.0,
-                    conversation_id: r.1,
-                    session_id: r.2,
-                    session_title: r.3,
-                    sender_account_id: r.4,
-                    sender_name,
-                    text,
-                    created_at: r.7.to_rfc3339(),
-                    version: r.8,
-                    is_agent,
-                    agent_id,
-                    agent_owner_name,
-                    agent_avatar_url,
-                })
-            })
-            .collect(),
-        limited,
-    ))
-}
-
-pub async fn sources(pool: &PgPool, account: &str, ids: Option<&[String]>) -> Result<Vec<Source>> {
-    Ok(source_page(pool, account, ids).await?.0)
-}
-
-pub async fn authorized(pool: &PgPool, account: &str, ids: &[String]) -> Result<bool> {
-    if ids.is_empty() {
-        return Ok(true);
-    }
-    let found = sources(pool, account, Some(ids)).await?;
-    Ok(ids.iter().all(|id| found.iter().any(|s| &s.id == id)))
-}
+use super::source_reader::source_page;
+#[cfg(test)]
+pub use super::source_reader::visible_text;
+pub use super::source_reader::{authorized, sources};
 
 pub async fn initialize_preferences(
     pool: &PgPool,
@@ -190,6 +47,18 @@ pub async fn input(
 ) -> Result<Input> {
     let (mut sources, mut partial) = source_page(pool, account, None).await?;
     sources.truncate(500);
+    let reply_ids: Vec<_> = sources
+        .iter()
+        .filter_map(|source| source.reply_to_source_id.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .take(200)
+        .collect();
+    for source in self::sources(pool, account, Some(&reply_ids)).await? {
+        if !sources.iter().any(|existing| existing.id == source.id) {
+            sources.push(source);
+        }
+    }
     if let Some(previous) = &previous {
         let ids: Vec<_> = previous
             .commitments
@@ -206,7 +75,7 @@ pub async fn input(
             }
         }
     }
-    let retained: BTreeSet<_> = previous
+    let mut retained: BTreeSet<_> = previous
         .as_ref()
         .into_iter()
         .flat_map(|p| {
@@ -216,6 +85,7 @@ pub async fn input(
                 .flat_map(|i| i.source_ids.iter().cloned())
         })
         .collect();
+    retained.extend(reply_ids);
     sources.sort_by_key(|source| !retained.contains(&source.id));
     let mut budget = 0;
     sources.retain_mut(|s| {
@@ -233,6 +103,16 @@ pub async fn input(
         true
     });
     sources.sort_by(|a, b| a.id.cmp(&b.id));
+    let source_ids: BTreeSet<_> = sources.iter().map(|source| source.id.clone()).collect();
+    for source in &mut sources {
+        if source
+            .reply_to_source_id
+            .as_ref()
+            .is_some_and(|id| !source_ids.contains(id))
+        {
+            source.reply_to_source_id = None;
+        }
+    }
     let sessions: Vec<_> = sources
         .iter()
         .map(|s| s.session_id.clone())
@@ -427,6 +307,10 @@ pub async fn authorized_input_sources(
         source.agent_id = latest.agent_id.clone();
         source.agent_owner_name = latest.agent_owner_name.clone();
         source.agent_avatar_url = latest.agent_avatar_url.clone();
+        source.reply_to_source_id = latest
+            .reply_to_source_id
+            .clone()
+            .filter(|id| ids.contains(id));
     }
     Ok(Some(refs))
 }

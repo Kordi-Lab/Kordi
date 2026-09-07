@@ -18,6 +18,7 @@ pub(super) fn input() -> Input {
             agent_id: None,
             agent_owner_name: None,
             agent_avatar_url: None,
+            reply_to_source_id: None,
         }],
         calendar_events: vec![],
         existing_tasks: json!([]),
@@ -356,6 +357,7 @@ async fn postgres_scope_and_atomic_publication() {
         count.0, 1,
         "No chat message is created by digest completion"
     );
+    super::calendar_tests::postgres_reply_context(&pool, &viewer, &author, public, message).await;
     query(
         "UPDATE cloud_chat_conversation_members SET membership_state='removed' WHERE account_id=$1",
     )

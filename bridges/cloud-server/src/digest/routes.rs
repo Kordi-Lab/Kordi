@@ -29,7 +29,7 @@ pub fn routes(state: Arc<ServerState>) -> Router {
         )
         .route(
             "/v1/cloud/calendar/series/:id",
-            put(super::series_routes::save),
+            put(super::series_routes::save).delete(super::series_routes::remove),
         )
         .route(
             "/v1/cloud/calendar/events/:id",

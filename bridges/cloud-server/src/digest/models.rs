@@ -20,6 +20,8 @@ pub struct Source {
     pub agent_owner_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_avatar_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to_source_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -45,6 +47,10 @@ pub struct Item {
     pub existing_event_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub existing_event_revision: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub calendar_scope: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub existing_series_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recurrence: Option<super::recurrence::Recurrence>,
 }
@@ -161,6 +167,28 @@ pub fn validate_output(output: &Output, input: &Input) -> Result<(), &'static st
     for item in &output.calendar_candidates {
         if let Some(rule) = &item.recurrence {
             super::recurrence::validate(rule, false)?;
+        }
+        if item.calendar_scope.as_deref() == Some("series") {
+            if item.calendar_action.as_deref() != Some("delete")
+                || item.existing_event_id.is_some()
+                || item.existing_event_revision.is_some()
+                || item.existing_series_id.is_none()
+                || !input
+                    .calendar_events
+                    .iter()
+                    .any(|event| event.series_id == item.existing_series_id)
+            {
+                return Err("A series cancellation must reference a saved series in this account.");
+            }
+            continue;
+        }
+        if item
+            .calendar_scope
+            .as_deref()
+            .is_some_and(|scope| scope != "occurrence")
+            || item.existing_series_id.is_some()
+        {
+            return Err("Invalid calendar change scope.");
         }
         match item.calendar_action.as_deref().unwrap_or("create") {
             "create"

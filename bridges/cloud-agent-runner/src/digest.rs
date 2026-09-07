@@ -25,7 +25,7 @@ fn model_context(input: &Value) -> Result<Value, ModelLoopError> {
         .map(|event| {
             json!({"id":event["id"],"revision":event["revision"],
             "title":event["title"],"startAt":event["startAt"],"endAt":event["endAt"],
-            "allDay":event["allDay"],"timezone":event["timezone"]})
+            "allDay":event["allDay"],"timezone":event["timezone"],"seriesId":event["seriesId"],"sourceIds":event["sourceIds"]})
         })
         .collect();
     Ok(
