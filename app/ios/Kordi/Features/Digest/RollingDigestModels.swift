@@ -14,6 +14,7 @@ struct RollingDigestSource: Codable, Identifiable, Equatable, Sendable {
     let agentId: String?
     let agentOwnerName: String?
     let agentAvatarUrl: String?
+    var replyToSourceId: String? = nil
 }
 struct RollingDigestItem: Codable, Identifiable, Equatable, Sendable {
     let id: String
@@ -30,6 +31,8 @@ struct RollingDigestItem: Codable, Identifiable, Equatable, Sendable {
     var calendarAction: String? = nil
     var existingEventId: String? = nil
     var existingEventRevision: Int64? = nil
+    var calendarScope: String? = nil
+    var existingSeriesId: String? = nil
     var recurrence: DigestRecurrence? = nil
 }
 struct RollingDigestContent: Codable, Equatable {
@@ -115,6 +118,14 @@ struct DigestTaskResult: Decodable { let taskId: String }
 struct DigestDismissInput: Encodable { let dismissed: Bool }
 
 enum DigestDate {
+    static func shiftedEnd(from start: Date, to nextStart: Date, end: Date?, allDay: Bool, calendar: Calendar = .current) -> Date {
+        if allDay {
+            let days = end.map { calendar.dateComponents([.day], from: start, to: $0).day ?? 0 } ?? 0
+            return calendar.date(byAdding: .day, value: max(1, days), to: nextStart) ?? nextStart.addingTimeInterval(86400)
+        }
+        let duration = end?.timeIntervalSince(start) ?? 0
+        return nextStart.addingTimeInterval(duration > 0 ? duration : 1800)
+    }
     static func eventDate(_ event: DigestCalendarEvent) -> Date? {
         guard event.allDay else { return parse(event.startAt) }
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -146,7 +157,14 @@ enum DigestDate {
     }
     static func pendingCandidates(_ candidates: [RollingDigestItem], events: [DigestCalendarEvent], on day: Date, calendar: Calendar = .current) -> [RollingDigestItem] {
         candidates.filter { item in
-            !events.contains { $0.id == "digest-\(item.id)" || $0.seriesId == "digest-\(item.id)" }
+            guard item.calendarProposalAvailable(events: events) else { return false }
+            if item.calendarAction == "delete" {
+                return events.contains { saved in
+                    item.calendarCancellationTargets(saved)
+                        && event(saved, occursOn: day, calendar: calendar)
+                }
+            }
+            return (item.calendarAction == "update" || !events.contains { $0.id == "digest-\(item.id)" || $0.seriesId == "digest-\(item.id)" })
                 && parse(item.startAt).map { calendar.isDate($0, inSameDayAs: day) } == true
         }
     }

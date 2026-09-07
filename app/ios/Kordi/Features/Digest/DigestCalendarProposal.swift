@@ -66,6 +66,12 @@ final class DigestSeriesPreview {
 }
 
 extension RollingDigestItem {
+    func calendarProposalAvailable(events: [DigestCalendarEvent]) -> Bool {
+        calendarAction != "delete" || events.contains(where: calendarCancellationTargets)
+    }
+    func calendarCancellationTargets(_ event: DigestCalendarEvent) -> Bool {
+        calendarAction == "delete" && event.revision > 0 && (calendarScope == "series" ? existingSeriesId != nil && event.seriesId == existingSeriesId : event.id == existingEventId)
+    }
     func calendarReviewLabel(events: [DigestCalendarEvent]) -> String {
         if calendarAction == "delete" { return "Review cancellation" }
         if calendarAction == "update" { return "Review change" }
@@ -73,6 +79,10 @@ extension RollingDigestItem {
     }
 
     func calendarReviewEvent(events: [DigestCalendarEvent], sources: [RollingDigestSource], timezone: String?) throws -> DigestCalendarEvent {
+        if calendarAction == "delete" && calendarScope == "series" {
+            guard let first = calendarReviewSeries(events: events)?.first else { throw DigestCalendarError(message: "This series changed. Refresh before reviewing its cancellation.") }
+            return first
+        }
         if calendarAction == "update" || calendarAction == "delete" {
             guard var saved = events.first(where: { $0.id == existingEventId }), saved.revision == existingEventRevision else {
                 throw DigestCalendarError(message: "This event changed. Refresh and review the latest suggestion.")
@@ -97,6 +107,11 @@ extension RollingDigestItem {
             sourceIds: sourceIds, description: text,
             links: DigestRelatedLinks.sourceURLs(sourceIds, sources: sources).map(\.absoluteString),
             timezone: recurrence?.timezone ?? self.timezone ?? timezone, recurrence: recurrence)
+    }
+
+    func calendarReviewSeries(events: [DigestCalendarEvent]) -> [DigestCalendarEvent]? {
+        guard calendarAction == "delete", calendarScope == "series", let existingSeriesId else { return nil }
+        return events.filter { $0.seriesId == existingSeriesId }.sorted { $0.startAt < $1.startAt }
     }
 }
 

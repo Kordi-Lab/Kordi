@@ -37,6 +37,10 @@ extension AppModel {
         let (api, token, _) = try digestContext()
         try await api.removeDigestEvent(token: token, event: event)
     }
+    func removeDigestCalendarSeries(_ id: String, events: [DigestCalendarEvent]) async throws {
+        let (api, token, _) = try digestContext()
+        try await api.removeDigestSeries(token: token, id: id, events: events)
+    }
     func dismissDigestItem(_ id: String, dismissed: Bool) async throws {
         let (api, token, _) = try digestContext()
         try await api.dismissDigestItem(token: token, id: id, dismissed: dismissed)

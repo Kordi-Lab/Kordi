@@ -3,8 +3,8 @@ import SwiftUI
 struct DigestMessageRoute: Hashable { let conversation: ConversationSummary; let messageID: String }
 private enum DigestPane: String, CaseIterable { case brief = "Brief", tasks = "Next steps", calendar = "Calendar" }
 private enum DigestSheet: Identifiable {
-    case source([String]), event(DigestCalendarEvent, RollingDigestItem? = nil, DigestCalendarEvent? = nil), imports, connection, details
-    var id: String { switch self { case .source(let ids): "source:\(ids.joined(separator: ","))"; case .event(let event, let proposal, _): "event:\(event.id):\(proposal?.id ?? "")"; case .imports: "import"; case .connection: "connection"; case .details: "details" } }
+    case source([String]), event(DigestCalendarEvent, RollingDigestItem? = nil, DigestCalendarEvent? = nil, [DigestCalendarEvent]? = nil), imports, connection, details
+    var id: String { switch self { case .source(let ids): "source:\(ids.joined(separator: ","))"; case .event(let event, let proposal, _, _): "event:\(event.id):\(proposal?.id ?? "")"; case .imports: "import"; case .connection: "connection"; case .details: "details" } }
 }
 
 struct DigestView: View {
@@ -28,6 +28,7 @@ struct DigestView: View {
     private var visibleClaims: [RollingDigestItem] { digest?.visibleClaims ?? [] }
     private var dismissedSuggestions: [RollingDigestItem] { digest?.dismissedSuggestions ?? [] }
     private var visibleSuggestions: [RollingDigestItem] { digest?.visibleSuggestions ?? [] }
+    private var calendarCandidates: [RollingDigestItem] { (content?.calendarCandidates ?? []).filter { $0.calendarProposalAvailable(events: events) } }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -153,20 +154,21 @@ struct DigestView: View {
                 Button("Today") { month = Date(); selectedCalendarDay = month }.font(.caption)
                 Button { changeMonth(1) } label: { Image(systemName: "chevron.right") }.accessibilityLabel("Next month")
             }.buttonStyle(.plain)
-            DigestMonthGrid(month: month, events: events, candidates: content?.calendarCandidates ?? [], selectedDay: $selectedCalendarDay, onSelect: { selectedSheet = .event($0) }, onReview: reviewCalendarCandidate)
+            DigestMonthGrid(month: month, events: events, candidates: calendarCandidates, selectedDay: $selectedCalendarDay, onSelect: { selectedSheet = .event($0) }, onReview: reviewCalendarCandidate)
             Text("Shown in \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
             Divider().padding(.vertical, 4)
             Text("From your chats").font(.subheadline.weight(.semibold))
-            ForEach(content?.calendarCandidates ?? []) { item in
+            ForEach(calendarCandidates) { item in
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(item.title).font(.subheadline.weight(.semibold))
+                    if item.calendarAction == "delete" { Text("Cancellation to review").font(.caption).foregroundStyle(KordiTheme.destructiveText) }
+                    Text(item.title).font(.subheadline.weight(.semibold)).foregroundStyle(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.primary)
                     people(item)
                     HStack(alignment: .firstTextBaseline) {
-                        Text(item.startAt.flatMap(DigestDate.parse)?.formatted(date: .abbreviated, time: .shortened) ?? "Date or time not agreed").font(.footnote).foregroundStyle(.secondary)
+                        Text(item.calendarScope == "series" ? "\(item.calendarReviewSeries(events: events)?.count ?? 0) events in this series" : item.startAt.flatMap(DigestDate.parse)?.formatted(date: .abbreviated, time: .shortened) ?? "Date or time not agreed").font(.footnote).foregroundStyle(.secondary)
                         Spacer(minLength: 8)
                         Button(item.calendarReviewLabel(events: events)) {
                             reviewCalendarCandidate(item)
-                        }.font(.footnote.weight(.medium)).buttonStyle(.plain)
+                        }.font(.footnote.weight(.medium)).buttonStyle(.plain).foregroundStyle(item.calendarAction == "delete" ? KordiTheme.destructiveText : Color.accentColor)
                     }
                     citations(item)
                     Divider().padding(.top, 8)
@@ -177,7 +179,7 @@ struct DigestView: View {
     private func reviewCalendarCandidate(_ item: RollingDigestItem) {
         do {
             let event = try item.calendarReviewEvent(events: events, sources: sources, timezone: digest?.timezone)
-            selectedSheet = .event(event, item, events.first { $0.id == item.existingEventId })
+            selectedSheet = .event(event, item, events.first { $0.id == item.existingEventId }, item.calendarReviewSeries(events: events))
         } catch { self.error = error.localizedDescription }
     }
     private func changeMonth(_ value: Int) {
@@ -224,7 +226,7 @@ struct DigestView: View {
                     }.padding().navigationTitle(first.sessionTitle)
                 } else { Text("This source is no longer accessible or included.").padding().navigationTitle("Source unavailable") }
             }.navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
-        case .event(let event, let proposal, let original): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts, proposal: proposal, original: original) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.eventDate(updated) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: { try await model.removeDigestCalendarEvent(event); await reloadAfterEdit() }
+        case .event(let event, let proposal, let original, let series): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts, proposal: proposal, original: original, series: series) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.eventDate(updated) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: { if let series, let id = proposal?.existingSeriesId { try await model.removeDigestCalendarSeries(id, events: series) } else { try await model.removeDigestCalendarEvent(event) }; await reloadAfterEdit() }
         case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .connection: DigestConnectView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Updates follow your messages, sessions and calendar events."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("Live digest")
@@ -246,7 +248,8 @@ struct DigestView: View {
             let accessibleIDs = Set(next.sources.map(\.id))
             if let sheet = selectedSheet {
                 switch sheet {
-                case .event(let event, _, _) where !event.sourceIds.allSatisfy(accessibleIDs.contains): selectedSheet = nil
+                case .event(let event, _, _, let series) where !(series?.flatMap(\.sourceIds) ?? event.sourceIds).allSatisfy(accessibleIDs.contains): selectedSheet = nil
+                case .event(let event, let proposal?, _, _) where event.revision == 0 && next.snapshot?.calendarCandidates.contains(where: { $0.id == proposal.id }) != true: selectedSheet = nil
                 default: break
                 }
             }

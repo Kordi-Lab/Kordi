@@ -1,14 +1,35 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { proposalEvent, proposalLabel } from '../src/features/digest/calendarProposal';
+import { calendarProposalAvailable, isPendingCalendarProposal, proposalEvent, proposalLabel } from '../src/features/digest/calendarProposal';
 import { digestEventLinks, digestLinkAction, digestSourceLinks } from '../src/features/digest/links';
 import { externalMessageLinks, firstExternalMessageLink } from '../src/kordi-app/components/messageLinks';
-import { eventOnDay, zonedEventLabel } from '../src/features/digest/calendar';
+import { eventOnDay, shiftedCalendarEnd, zonedEventLabel } from '../src/features/digest/calendar';
 import type { CalendarEvent, DigestItem, DigestSource } from '../src/features/digest/types';
 
 const source: DigestSource = {id:'message',conversationId:'conversation',sessionId:'session',sessionTitle:'Planning',senderAccountId:'viewer',senderName:'Viewer',text:'Join [Zoom](https://example.zoom.us/j/123?pwd=meeting) or **https://example.com/agenda**. `https://code.example/test`',createdAt:'2026-09-07T00:00:00Z',version:1};
 const saved: CalendarEvent = {id:'meeting',title:'Weekly review',startAt:'2026-09-09T15:00:00+03:00',endAt:'2026-09-09T15:30:00+03:00',reminderAt:'2026-09-09T14:50:00+03:00',allDay:false,sourceIds:['message'],description:'Context',timezone:'Asia/Riyadh',links:['https://example.zoom.us/j/123?pwd=meeting'],revision:4};
 const item: DigestItem = {id:'move-review',title:saved.title,text:'Move the meeting one hour later.',sourceIds:['message'],kind:'possible',calendarAction:'update',existingEventId:'meeting',existingEventRevision:4,startAt:'2026-09-09T13:00:00Z'};
+
+test('event drafts default to thirty minutes and moving a start preserves a valid duration',()=>{
+  const start='2026-09-09T23:45:00+03:00';
+  assert.equal(shiftedCalendarEnd(start),'2026-09-09T21:15:00.000Z');
+  assert.equal(shiftedCalendarEnd(start,start,'2026-09-07T12:30:00+03:00'),shiftedCalendarEnd(start));
+  assert.equal(shiftedCalendarEnd(start,saved.startAt,saved.endAt),shiftedCalendarEnd(start));
+  assert.equal(shiftedCalendarEnd(start,saved.startAt,'2026-09-09T16:00:00+03:00'),'2026-09-09T21:45:00.000Z');
+  assert.equal(shiftedCalendarEnd('2026-11-01T01:45:00-04:00'),'2026-11-01T06:15:00.000Z');
+  assert.equal(shiftedCalendarEnd('2026-12-31',null,null,true),'2027-01-01T00:00:00.000Z');
+  assert.equal(shiftedCalendarEnd(''),'');
+});
+
+test('red cancellations require a confirmed target and disappear once it is removed',()=>{
+  const cancel={...item,calendarAction:'delete' as const};
+  assert.equal(calendarProposalAvailable(cancel,[saved]),true);
+  assert.equal(calendarProposalAvailable(cancel,[{...saved,revision:0}]),false);
+  assert.equal(calendarProposalAvailable(cancel,[]),false);
+  assert.equal(isPendingCalendarProposal(cancel,[]),false);
+  assert.equal(calendarProposalAvailable({...cancel,calendarScope:'series',existingSeriesId:'owned'},[{...saved,seriesId:'owned'}]),true);
+  assert.equal(calendarProposalAvailable({...cancel,calendarScope:'series',existingSeriesId:'other'},[{...saved,seriesId:'owned'}]),false);
+});
 
 test('a reschedule targets the reviewed revision and preserves duration, reminders, links and timezone',()=>{
   const next=proposalEvent(item,[saved],[source]);

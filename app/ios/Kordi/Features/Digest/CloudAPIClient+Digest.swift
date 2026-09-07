@@ -28,6 +28,12 @@ extension CloudAPIClient {
         let id = event.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? event.id
         try await sendWithoutResponse(path: "/v1/cloud/calendar/events/\(id)", method: "DELETE", token: token, query: [URLQueryItem(name: "revision", value: String(event.revision))], fallback: "Could not remove the event.")
     }
+    func removeDigestSeries(token: String, id: String, events: [DigestCalendarEvent]) async throws {
+        struct Expected: Encodable { let id: String; let revision: Int64 }
+        struct Removal: Encodable { let events: [Expected] }
+        let pathID = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        try await sendWithoutResponse(path: "/v1/cloud/calendar/series/\(pathID)", method: "DELETE", token: token, body: Removal(events: events.map { Expected(id: $0.id, revision: $0.revision) }), fallback: "Could not remove the series.")
+    }
     func dismissDigestItem(token: String, id: String, dismissed: Bool) async throws {
         let id = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
         try await sendWithoutResponse(path: "/v1/cloud/digest/items/\(id)/feedback", method: "PUT", token: token, body: DigestDismissInput(dismissed: dismissed), fallback: "Could not update this suggestion.")

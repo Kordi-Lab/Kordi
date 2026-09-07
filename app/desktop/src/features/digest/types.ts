@@ -2,6 +2,7 @@ export type DigestSource = {
   id: string; conversationId: string; sessionId: string; sessionTitle: string;
   senderAccountId: string; senderName: string; text: string; createdAt: string; version: number; isAgent?: boolean;
   agentId?: string | null; agentOwnerName?: string | null; agentAvatarUrl?: string | null;
+  replyToSourceId?: string | null;
 };
 export type DigestItem = {
   id: string; title: string; text: string; kind: string; sourceIds: string[];
@@ -10,6 +11,7 @@ export type DigestItem = {
   timezone?: string | null;
   calendarAction?: 'create' | 'update' | 'delete' | null;
   existingEventId?: string | null; existingEventRevision?: number | null;
+  calendarScope?: 'occurrence' | 'series' | null; existingSeriesId?: string | null;
   recurrence?: CalendarRecurrence | null;
 };
 export type DigestSnapshot = { claims: DigestItem[]; commitments: DigestItem[]; suggestions: DigestItem[]; calendarCandidates: DigestItem[] };

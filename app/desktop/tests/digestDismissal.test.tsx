@@ -27,7 +27,7 @@ test('calendar changes and cancellations write only after explicit review confir
   digestClient.saveEvent=async(account,next)=>{assert.equal(account,'viewer');assert.equal(next.id,event.id);assert.equal(next.revision,1);writes++;event={...next,revision:2};response.snapshot!.calendarCandidates=[{...response.snapshot!.calendarCandidates[0],calendarAction:'delete',existingEventRevision:2}];return event;};
   digestClient.removeEvent=async(account,next)=>{assert.equal(account,'viewer');assert.equal(next.id,event.id);assert.equal(next.revision,2);removals++;response.snapshot!.calendarCandidates=[{id:'series',title:'Weekly review',text:'Repeat twice.',kind:'possible',sourceIds:['source'],startAt:'2099-09-10T12:00:00Z',recurrence:{frequency:'weekly',interval:1,weekdays:[],timezone:'UTC',count:2}}];};
   digestClient.previewSeries=async(account,next)=>{assert.equal(account,'viewer');previews++;return {events:[next,{...next,id:next.id+':occurrence:2',startAt:'2099-09-17T12:00:00Z'}]};};
-  digestClient.saveSeries=async(account,next)=>{assert.equal(account,'viewer');assert.equal(next.recurrence?.count,2);assert.equal(next.description,'Repeat twice.');seriesWrites++;return {events:[next]};};
+  digestClient.saveSeries=async(account,next)=>{assert.equal(account,'viewer');assert.equal(next.recurrence?.count,2);assert.equal(next.description,'Repeat twice.');assert.equal(Date.parse(next.endAt!)-Date.parse(next.startAt),1800000);seriesWrites++;return {events:[next]};};
   const host=dom.window.document.getElementById('root')!,root=createRoot(host);
   async function click(label:string){const button=[...host.querySelectorAll('button')].find(button=>button.textContent===label);assert.ok(button,label);await act(async()=>button.click());}
   try{
@@ -40,6 +40,9 @@ test('calendar changes and cancellations write only after explicit review confir
     await click('Keep event');assert.equal(removals,0);
     await click('Review cancellation');await click('Confirm removal');assert.equal(removals,1);
     await click('Review & add');await click('Confirm series');assert.equal(seriesWrites,0);
+    const [start,end]=host.querySelectorAll<HTMLInputElement>('dialog input[type="datetime-local"]');
+    assert.equal(Date.parse(end.value)-Date.parse(start.value),1800000);
+    assert.equal(end.min,start.value);
     assert.doesNotMatch(host.querySelector('dialog')!.textContent??'',/Preview dates|daylight-saving|within five years/);
     assert.doesNotMatch(host.querySelector('dialog')!.textContent??'',/Repeat twice\./);
     assert.equal(host.querySelector<HTMLButtonElement>('dialog button[type="submit"]')!.disabled,true);

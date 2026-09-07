@@ -10,6 +10,7 @@ struct DigestEventEditor: View {
     let remove: () async throws -> Void
     let proposal: RollingDigestItem?
     let original: DigestCalendarEvent?
+    let series: [DigestCalendarEvent]?
     @State private var title: String
     @State private var hasStart: Bool
     @State private var start: Date
@@ -32,16 +33,18 @@ struct DigestEventEditor: View {
         guard needsPreview else { return nil }
         do { _ = try reviewedEvent(); return nil } catch { return error.localizedDescription }
     }
-    init(event: DigestCalendarEvent, sources: [RollingDigestSource], accountId: String, contacts: [CloudContact], proposal: RollingDigestItem? = nil, original: DigestCalendarEvent? = nil, save: @escaping (DigestCalendarEvent) async throws -> Void, remove: @escaping () async throws -> Void) {
+    init(event: DigestCalendarEvent, sources: [RollingDigestSource], accountId: String, contacts: [CloudContact], proposal: RollingDigestItem? = nil, original: DigestCalendarEvent? = nil, series: [DigestCalendarEvent]? = nil, save: @escaping (DigestCalendarEvent) async throws -> Void, remove: @escaping () async throws -> Void) {
         self.event = event; self.sources = sources; self.accountId = accountId; self.contacts = contacts; self.save = save; self.remove = remove
         self.proposal = proposal; self.original = original
+        self.series = series
         var rule = event.recurrence
         let defaultCount = rule?.frequency == "yearly" ? 5 : 12
         if rule != nil && rule?.count == nil && rule?.until == nil { rule?.count = defaultCount }
         _recurrence = State(initialValue: rule)
         let start = Self.date(event.startAt, allDay: event.allDay), end = Self.date(event.endAt, allDay: event.allDay)
-        _title = State(initialValue: event.title); _hasStart = State(initialValue: start != nil); _start = State(initialValue: start ?? Date())
-        _hasEnd = State(initialValue: end != nil); _end = State(initialValue: end ?? (start ?? Date()).addingTimeInterval(1800))
+        let draftStart = start ?? Date()
+        _title = State(initialValue: event.title); _hasStart = State(initialValue: start != nil); _start = State(initialValue: draftStart)
+        _hasEnd = State(initialValue: true); _end = State(initialValue: DigestDate.shiftedEnd(from: draftStart, to: draftStart, end: end, allDay: event.allDay))
         _reminder = State(initialValue: start.flatMap { start in DigestDate.parse(event.reminderAt).map { max(0, Int(start.timeIntervalSince($0) / 60)) } } ?? (event.revision == 0 && !event.allDay ? 10 : -1))
     }
     private static func date(_ value: String?, allDay: Bool) -> Date? {
@@ -58,9 +61,13 @@ struct DigestEventEditor: View {
             if proposal?.calendarAction == "delete" {
                 Section("Review cancellation") {
                     Text(event.title).font(.headline)
-                    Text(event.allDay ? String(event.startAt.prefix(10)) : DigestDate.parse(event.startAt)?.formatted(date: .abbreviated, time: .shortened) ?? event.startAt)
-                    Text(proposal?.text ?? "")
-                    Text("Only this event will be removed from your personal Kordi calendar. Source calendars and invitations stay unchanged.")
+                    if let series {
+                        Text("\(series.count) events in this series")
+                        ForEach(series) { occurrence in
+                            Text(occurrence.allDay ? String(occurrence.startAt.prefix(10)) : DigestDate.parse(occurrence.startAt)?.formatted(date: .abbreviated, time: .shortened) ?? occurrence.startAt)
+                        }
+                    } else { Text(event.allDay ? String(event.startAt.prefix(10)) : DigestDate.parse(event.startAt)?.formatted(date: .abbreviated, time: .shortened) ?? event.startAt) }
+                    Text(series != nil ? "These events will be removed from your personal Kordi calendar. Source calendars and invitations stay unchanged." : "Only this event will be removed from your personal Kordi calendar. Source calendars and invitations stay unchanged.")
                     Button("Confirm removal", role: .destructive) { Task { await removeReviewedEvent() } }.disabled(busy)
                 }
             } else {
@@ -73,9 +80,12 @@ struct DigestEventEditor: View {
             Section {
                 TextField("Event title", text: $title)
                 if !hasStart { Toggle("Choose a date and time", isOn: $hasStart) }
-                if hasStart { DatePicker(event.allDay ? "Start date" : "Starts", selection: $start, displayedComponents: event.allDay ? [.date] : [.date, .hourAndMinute]) }
+                if hasStart { DatePicker(event.allDay ? "Start date" : "Starts", selection: Binding(get: { start }, set: { next in
+                    end = DigestDate.shiftedEnd(from: start, to: next, end: hasEnd ? end : nil, allDay: event.allDay)
+                    start = next
+                }), displayedComponents: event.allDay ? [.date] : [.date, .hourAndMinute]) }
                 Toggle("Set an end", isOn: $hasEnd)
-                if hasEnd { DatePicker(event.allDay ? "End date (exclusive)" : "Ends", selection: $end, displayedComponents: event.allDay ? [.date] : [.date, .hourAndMinute]) }
+                if hasEnd { DatePicker(event.allDay ? "End date (exclusive)" : "Ends", selection: $end, in: start..., displayedComponents: event.allDay ? [.date] : [.date, .hourAndMinute]) }
                 if !event.allDay { Picker("Remind me", selection: $reminder) { Text("No reminder").tag(-1); Text("At start").tag(0); Text("5 minutes before").tag(5); Text("10 minutes before").tag(10); Text("15 minutes before").tag(15); Text("1 hour before").tag(60) } }
             } footer: {
                 Text("Shown in \(TimeZone.current.identifier) · Personal calendar. No invitations are sent.")
@@ -104,7 +114,7 @@ struct DigestEventEditor: View {
                     }
                 }
             }
-            if event.seriesId != nil { Section { Text("Part of a repeating series. Editing or removing here affects only this occurrence.").font(.caption).foregroundStyle(.secondary) } }
+            if event.seriesId != nil && series == nil { Section { Text("Part of a repeating series. Editing or removing here affects only this occurrence.").font(.caption).foregroundStyle(.secondary) } }
             let urls = DigestRelatedLinks.eventURLs(event, sources: sources)
             if !urls.isEmpty { Section("Related links") { DigestRelatedLinks(urls: urls) } }
             if !event.sourceIds.isEmpty {

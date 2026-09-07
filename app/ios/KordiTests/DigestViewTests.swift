@@ -4,6 +4,39 @@ import Testing
 
 @MainActor
 @Test
+func digestSeriesCancellationUsesTheModelScopeAndRetainsReview() throws {
+    let json = #"{"id":"proposal","title":"Review","text":"A contextual request.","kind":"possible","sourceIds":["reply"],"calendarAction":"delete","calendarScope":"series","existingSeriesId":"owned-series"}"#
+    let item = try JSONDecoder().decode(RollingDigestItem.self, from: Data(json.utf8))
+    let first = DigestCalendarEvent(id: "digest-proposal", title: "Review", startAt: "2026-09-08T12:00:00Z", revision: 1, seriesId: "owned-series")
+    var second = first; second.id = "second"; second.startAt = "2026-09-15T12:00:00Z"
+    var other = first; other.id = "other"; other.seriesId = "different-series"
+    #expect(item.calendarReviewSeries(events: [other,second,first])?.map(\.id) == [first.id,second.id])
+    #expect(try item.calendarReviewEvent(events: [first,second], sources: [], timezone: "UTC").id == first.id)
+    #expect(item.calendarReviewLabel(events: [first,second]) == "Review cancellation")
+    var calendar = Calendar(identifier: .gregorian); calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    #expect(DigestDate.pendingCandidates([item], events: [first,second], on: try #require(DigestDate.parse(second.startAt)), calendar: calendar).count == 1)
+    #expect(item.calendarProposalAvailable(events: [first,second]))
+    #expect(!item.calendarProposalAvailable(events: []))
+    var draft = first; draft.revision = 0
+    #expect(!item.calendarProposalAvailable(events: [draft]))
+    #expect(DigestDate.pendingCandidates([item], events: [], on: try #require(DigestDate.parse(first.startAt)), calendar: calendar).isEmpty)
+}
+
+@MainActor
+@Test
+func digestEventDatesDefaultToThirtyMinutesAndPreserveDuration() throws {
+    let start = try #require(DigestDate.parse("2026-09-09T23:45:00+03:00"))
+    let next = start.addingTimeInterval(86400)
+    #expect(DigestDate.shiftedEnd(from: start, to: start, end: nil, allDay: false) == start.addingTimeInterval(1800))
+    #expect(DigestDate.shiftedEnd(from: start, to: next, end: start.addingTimeInterval(-60), allDay: false) == next.addingTimeInterval(1800))
+    #expect(DigestDate.shiftedEnd(from: start, to: next, end: start.addingTimeInterval(3600), allDay: false) == next.addingTimeInterval(3600))
+    var calendar = Calendar(identifier: .gregorian); calendar.timeZone = try #require(TimeZone(identifier: "America/New_York"))
+    let springDay = try #require(DigestDate.parse("2026-03-08T00:00:00-05:00"))
+    #expect(DigestDate.shiftedEnd(from: springDay, to: springDay, end: nil, allDay: true, calendar: calendar) == DigestDate.parse("2026-03-09T00:00:00-04:00"))
+}
+
+@MainActor
+@Test
 func digestAutomaticDatesRejectStaleAndCancelledPreviews() async {
     let preview = DigestSeriesPreview()
     let first = DigestCalendarEvent(id: "first", title: "Review", startAt: "2099-09-08T12:00:00Z")

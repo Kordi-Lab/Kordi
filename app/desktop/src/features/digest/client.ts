@@ -30,6 +30,7 @@ export const digestClient = {
   previewSeries: (accountId: string, event: CalendarEvent, signal?: AbortSignal) => request<{events: CalendarEvent[]}>(accountId, 'calendar/series/preview', 'POST', normalizeCalendarEvent(event), signal),
   saveSeries: (accountId: string, event: CalendarEvent) => request<{events: CalendarEvent[]}>(accountId, `calendar/series/${encodeURIComponent(event.id)}`, 'PUT', normalizeCalendarEvent(event)),
   removeEvent: (accountId: string, event: CalendarEvent) => request<void>(accountId, `calendar/events/${encodeURIComponent(event.id)}?revision=${event.revision}`, 'DELETE'),
+  removeSeries: (accountId: string, id: string, events: CalendarEvent[]) => request<void>(accountId, `calendar/series/${encodeURIComponent(id)}`, 'DELETE', {events:events.map(event=>({id:event.id,revision:event.revision}))}),
   feedback: (accountId: string, id: string, dismissed: boolean) => request<void>(accountId, `digest/items/${encodeURIComponent(id)}/feedback`, 'PUT', { dismissed }),
   task: (accountId: string, id: string, input: { title: string; ownerAccountId: string | null; dueAt: string | null }) => request<{ taskId: string }>(accountId, `digest/items/${encodeURIComponent(id)}/task`, 'POST', input),
 };
