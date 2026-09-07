@@ -219,7 +219,7 @@ async fn postgres_scope_and_atomic_publication() {
     );
     assert!(agent_sources[0].agent_avatar_url.is_some());
     let custom = format!("cloud_agent_{suffix}");
-    query("INSERT INTO cloud_agent_definitions(agent_id,owner_account_id,name,role,system_prompt,created_at,updated_at) VALUES($1,$2,'Named researcher','research','test','test','test')")
+    query("INSERT INTO cloud_agent_definitions(agent_id,owner_account_id,name,role,system_prompt,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at) VALUES($1,$2,'Named researcher','research','test','test','test','generated','thumbs',$1,'test',1,'test')")
         .bind(&custom).bind(&author).execute(&pool).await.unwrap();
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
     let envelope = json!({"kind":"group-message","message":{"senderKind":"agent","senderAccountId":author,"senderAgentId":custom,"senderDisplayName":"Stale name","text":"Analysis complete."}});
