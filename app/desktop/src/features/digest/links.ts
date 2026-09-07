@@ -14,6 +14,6 @@ export function digestEventLinks(event: CalendarEvent, sources: DigestSource[]):
 }
 
 export function digestLinkAction(href: string): string {
-  const host = new URL(href).hostname.toLowerCase();
-  return host === 'zoom.us' || host.endsWith('.zoom.us') ? 'Open Zoom' : 'Open link';
+  const url = new URL(href), host = url.hostname.toLowerCase();
+  return (host === 'zoom.us' || host.endsWith('.zoom.us')) && !/(?:\/ics|\.ics)\/?$/i.test(url.pathname) ? 'Open Zoom' : 'Open link';
 }
