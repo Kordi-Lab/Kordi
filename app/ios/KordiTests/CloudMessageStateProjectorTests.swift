@@ -15,14 +15,21 @@ import Testing
             ]
         )
     }
-    func request(author: MessageAuthor = .me) -> ChatMessage {
+    func request(author: MessageAuthor = .me, sourceHostID: String? = nil) -> ChatMessage {
         ChatMessage(
             id: "request", conversationId: conversation.id, conversationSequence: 10,
             author: author, authorName: "Sender", text: "@Researcher hello", createdAt: now.addingTimeInterval(-1),
             deliveryState: .delivered, errorMessage: nil, requestMessageId: nil,
             mentions: [MessageMention(label: "Researcher", targetKind: "agent", targetIdentityId: "agent:cloud-agent:acct_owner",
-                humanId: "acct_owner", agentId: "cloud-agent:acct_owner", displayLabel: "Researcher")]
+                sourceHostId: sourceHostID, humanId: "acct_owner", agentId: "cloud-agent:acct_owner", displayLabel: "Researcher")]
         )
+    }
+
+    @Test(arguments: [nil, "", "cloud", " cloud ", "another-host"] as [String?])
+    func waitingPreservesExplicitHostScope(sourceHostID: String?) {
+        let request = request(sourceHostID: sourceHostID)
+        let rows = CloudGroupAgentLifecycleProjector.withPendingRequests([request], conversation: conversation, now: now)
+        #expect(rows.count == (sourceHostID == "another-host" ? 1 : 2))
     }
 
     @Test(arguments: [MessageAuthor.me, .person])
