@@ -39,6 +39,7 @@ targets:
         type: folder
       - path: ../../shared/digest
         type: folder
+        createIntermediateGroups: false
         buildPhase: resources
     resources:
       - path: Kordi/Resources/Assets.xcassets
@@ -50,6 +51,8 @@ targets:
         aps-environment: $(APNS_ENVIRONMENT)
         com.apple.security.application-groups:
           - $(KORDI_SHARE_APP_GROUP)
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)$(KORDI_SHARE_CREDENTIAL_SERVICE)
     info:
       path: Kordi/Supporting/Info.plist
       properties:
@@ -75,6 +78,7 @@ targets:
         KordiHostAppURLScheme: $(KORDI_OAUTH_CALLBACK_SCHEME)
         KordiShareAppGroup: $(KORDI_SHARE_APP_GROUP)
         KordiShareCredentialService: $(KORDI_SHARE_CREDENTIAL_SERVICE)
+        KordiShareKeychainAccessGroup: $(AppIdentifierPrefix)$(KORDI_SHARE_CREDENTIAL_SERVICE)
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         UILaunchScreen:
@@ -144,6 +148,8 @@ targets:
       properties:
         com.apple.security.application-groups:
           - $(KORDI_SHARE_APP_GROUP)
+        keychain-access-groups:
+          - $(AppIdentifierPrefix)$(KORDI_SHARE_CREDENTIAL_SERVICE)
     info:
       path: KordiShareExtension/Supporting/Info.plist
       properties:
@@ -156,6 +162,7 @@ targets:
         KordiHostAppURLScheme: $(KORDI_OAUTH_CALLBACK_SCHEME)
         KordiShareAppGroup: $(KORDI_SHARE_APP_GROUP)
         KordiShareCredentialService: $(KORDI_SHARE_CREDENTIAL_SERVICE)
+        KordiShareKeychainAccessGroup: $(AppIdentifierPrefix)$(KORDI_SHARE_CREDENTIAL_SERVICE)
         NSExtension:
           NSExtensionAttributes:
             NSExtensionActivationRule:
