@@ -69,7 +69,7 @@ final class KordiNotificationCoordinator: ObservableObject {
     private weak var model: AppModel?
     private var pendingNotificationPayload: [AnyHashable: Any]?
     private var latestPushToken: String?
-    private var authorizationRequestInFlight = false
+    private var postLoginAuthorizationRequestInFlight = false
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -87,38 +87,67 @@ final class KordiNotificationCoordinator: ObservableObject {
     }
 
     func accountDidChange() {
-        guard model?.account != nil, model?.isPreviewMode != true else {
+        guard let accountID = model?.account?.accountId else {
             pendingMessageRoute = nil
             pendingCalendarEventID = nil
             Task { await setBadgeCount(0) }
             return
         }
-        requestAuthorizationIfNeeded()
+
+        if model?.isPreviewMode == true {
+            if permitsPreviewAuthorizationRequests {
+                requestPostLoginAuthorizationsIfNeeded(for: accountID)
+            }
+            return
+        }
+
+        requestPostLoginAuthorizationsIfNeeded(for: accountID)
         registerCurrentPushToken()
         routePendingNotificationIfPossible()
     }
 
-    private func requestAuthorizationIfNeeded() {
-        guard !authorizationRequestInFlight else { return }
-        authorizationRequestInFlight = true
+    private func requestPostLoginAuthorizationsIfNeeded(for accountID: String) {
+        guard !postLoginAuthorizationRequestInFlight else { return }
+        postLoginAuthorizationRequestInFlight = true
         Task { [weak self] in
             guard let self else { return }
-            defer { authorizationRequestInFlight = false }
-            await refreshAuthorizationState(registerIfAllowed: true)
-            guard shouldAutomaticallyRequestNotificationAuthorization(
+            defer { postLoginAuthorizationRequestInFlight = false }
+            let shouldRegisterForRemoteNotifications = model?.isPreviewMode != true
+            await refreshAuthorizationState(
+                registerIfAllowed: shouldRegisterForRemoteNotifications
+            )
+
+            guard model?.account?.accountId == accountID else { return }
+            if shouldAutomaticallyRequestNotificationAuthorization(
                 accountAvailable: model?.account != nil,
                 state: authorizationState
-            ) else { return }
-            await requestAuthorization()
+            ) {
+                await requestAuthorization(
+                    registerIfAllowed: shouldRegisterForRemoteNotifications
+                )
+            }
+
+            guard model?.account?.accountId == accountID else { return }
+            await DigestCalendarService.requestAccessIfNeeded(accountAvailable: true)
         }
     }
 
-    func requestAuthorization() async {
+    private var permitsPreviewAuthorizationRequests: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--preview-post-login-permissions")
+#else
+        false
+#endif
+    }
+
+    func requestAuthorization(registerIfAllowed: Bool = true) async {
         let center = UNUserNotificationCenter.current()
         _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
-        await refreshAuthorizationState(registerIfAllowed: true)
+        await refreshAuthorizationState(registerIfAllowed: registerIfAllowed)
         synchronizeBadge()
-        registerCurrentPushToken()
+        if registerIfAllowed {
+            registerCurrentPushToken()
+        }
     }
 
     func openSystemSettings() {

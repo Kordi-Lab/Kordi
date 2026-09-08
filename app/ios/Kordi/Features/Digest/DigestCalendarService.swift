@@ -8,9 +8,27 @@ struct DigestDeviceCalendar: Identifiable { let id: String; let title: String }
 struct DigestImportResult: Sendable { let events: [DigestCalendarEvent]; let warnings: [String] }
 struct DigestCalendarError: LocalizedError { let message: String; var errorDescription: String? { message } }
 
+func shouldAutomaticallyRequestCalendarAuthorization(
+    accountAvailable: Bool,
+    status: EKAuthorizationStatus
+) -> Bool {
+    accountAvailable && status == .notDetermined
+}
+
 @MainActor
 enum DigestCalendarService {
     private static var reminderOperation: Task<Void, Never>?
+
+    static func requestAccessIfNeeded(accountAvailable: Bool) async {
+        let status = EKEventStore.authorizationStatus(for: .event)
+        guard shouldAutomaticallyRequestCalendarAuthorization(
+            accountAvailable: accountAvailable,
+            status: status
+        ) else { return }
+
+        _ = try? await EKEventStore().requestFullAccessToEvents()
+    }
+
     static func calendars() async throws -> [DigestDeviceCalendar] {
         let store = EKEventStore()
         guard try await store.requestFullAccessToEvents() else { throw DigestCalendarError(message: "Calendar access is off. Allow Kordi in Settings, or import an ICS file.") }

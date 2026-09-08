@@ -1,3 +1,4 @@
+import EventKit
 import ImageIO
 import UIKit
 import XCTest
@@ -1471,6 +1472,33 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(shouldAutomaticallyRequestNotificationAuthorization(
             accountAvailable: true,
             state: .denied
+        ))
+    }
+
+    func testCalendarAuthorizationRequestsAutomaticallyOnlyAfterLogin() {
+        XCTAssertTrue(shouldAutomaticallyRequestCalendarAuthorization(
+            accountAvailable: true,
+            status: .notDetermined
+        ))
+        XCTAssertFalse(shouldAutomaticallyRequestCalendarAuthorization(
+            accountAvailable: false,
+            status: .notDetermined
+        ))
+        XCTAssertFalse(shouldAutomaticallyRequestCalendarAuthorization(
+            accountAvailable: true,
+            status: .fullAccess
+        ))
+        XCTAssertFalse(shouldAutomaticallyRequestCalendarAuthorization(
+            accountAvailable: true,
+            status: .writeOnly
+        ))
+        XCTAssertFalse(shouldAutomaticallyRequestCalendarAuthorization(
+            accountAvailable: true,
+            status: .denied
+        ))
+        XCTAssertFalse(shouldAutomaticallyRequestCalendarAuthorization(
+            accountAvailable: true,
+            status: .restricted
         ))
     }
 
