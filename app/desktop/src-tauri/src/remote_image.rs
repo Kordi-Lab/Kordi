@@ -1,8 +1,6 @@
 use std::{
-    collections::VecDeque,
     fmt::Display,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    sync::{Mutex, OnceLock},
     time::Duration,
 };
 
@@ -14,19 +12,19 @@ use reqwest::{
 };
 
 mod cache;
+mod client_pool;
 use cache::{
     active_remote_image_cache_dir, read_cached_remote_image, remote_image_data_url, sha256_hex,
     supported_image_media_type, unix_timestamp_seconds, write_cached_remote_image,
     RemoteImageCachePolicy, RemoteImagePayload, AVATAR_CACHE_POLICY, BLOB_EMOJI_CACHE_POLICY,
     MAX_REMOTE_IMAGE_BYTES,
 };
+use client_pool::pooled_remote_image_client;
+#[cfg(test)]
+use client_pool::remote_image_client;
 
 const MAX_REMOTE_IMAGE_REDIRECTS: usize = 3;
 const REMOTE_IMAGE_TIMEOUT: Duration = Duration::from_secs(15);
-const MAX_REMOTE_IMAGE_CLIENTS: usize = 16;
-
-type RemoteImageClientCache = VecDeque<(String, reqwest::Client)>;
-static REMOTE_IMAGE_CLIENTS: OnceLock<Mutex<RemoteImageClientCache>> = OnceLock::new();
 
 fn is_public_remote_ipv4(address: Ipv4Addr) -> bool {
     let [first, second, third, _fourth] = address.octets();
@@ -143,62 +141,6 @@ async fn resolve_public_remote_image_addrs(url: &Url) -> Result<Vec<SocketAddr>,
         return Err("Avatar image URL must resolve only to public addresses.".to_string());
     }
     Ok(addresses)
-}
-
-fn remote_image_client(url: &Url, addresses: &[SocketAddr]) -> Result<reqwest::Client, String> {
-    let host = url
-        .host_str()
-        .ok_or_else(|| "Avatar image URL is missing a host.".to_string())?;
-    // Some sites reject metadata and image requests without a User-Agent.
-    let builder = reqwest::Client::builder()
-        .user_agent(concat!("Kordi/", env!("CARGO_PKG_VERSION")))
-        .redirect(Policy::none());
-    let builder = if host.parse::<IpAddr>().is_ok() {
-        builder
-    } else {
-        // Pin public addresses to prevent a second DNS resolution to a private destination.
-        // Configured HTTP(S) proxies are trusted to apply their own destination policy.
-        builder.resolve_to_addrs(host, addresses)
-    };
-    builder
-        .build()
-        .map_err(|error| format!("Unable to prepare avatar image request: {error}"))
-}
-
-fn pooled_remote_image_client(
-    url: &Url,
-    addresses: &[SocketAddr],
-) -> Result<reqwest::Client, String> {
-    let host = url
-        .host_str()
-        .ok_or_else(|| "Avatar image URL is missing a host.".to_string())?;
-    let mut sorted_addresses = addresses.to_vec();
-    sorted_addresses.sort_unstable();
-    let key = format!(
-        "{}://{}:{}:{sorted_addresses:?}",
-        url.scheme(),
-        host,
-        url.port_or_known_default().unwrap_or_default(),
-    );
-    let cache = REMOTE_IMAGE_CLIENTS.get_or_init(|| Mutex::new(VecDeque::new()));
-    let mut cache = cache
-        .lock()
-        .map_err(|_| "Unable to access the remote image connection pool.".to_string())?;
-    if let Some(index) = cache.iter().position(|(cached_key, _)| cached_key == &key) {
-        let entry = cache
-            .remove(index)
-            .expect("the cached remote image client index remains valid");
-        let client = entry.1.clone();
-        cache.push_back(entry);
-        return Ok(client);
-    }
-
-    let client = remote_image_client(url, &sorted_addresses)?;
-    if cache.len() >= MAX_REMOTE_IMAGE_CLIENTS {
-        cache.pop_front();
-    }
-    cache.push_back((key, client.clone()));
-    Ok(client)
 }
 
 pub(crate) async fn request_public_remote_image(mut url: Url) -> Result<Response, String> {
