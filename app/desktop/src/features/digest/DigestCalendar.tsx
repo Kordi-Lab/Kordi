@@ -72,12 +72,13 @@ function DigestMonth({ month, selectedDay, events, candidates, onMonth, onDay, o
   </section>;
 }
 
-export function DigestAgenda({ day, events, candidates, sources, people, evidence, onEvent, onCandidate, onConnect, onImport }: {
+export function DigestAgenda({ day, events, candidates, sources, people, evidence, onEvent, onCandidate, onConnect, onImport, digestStatus, calendarStatus }: {
   day: string; events: CalendarEvent[]; candidates: DigestItem[];
   sources: DigestSource[];
   people: (item: DigestItem) => ReactNode; evidence: (item: DigestItem) => ReactNode;
   onEvent: (event: CalendarEvent) => void; onCandidate: (item: DigestItem) => void;
   onConnect: () => void; onImport: () => void;
+  digestStatus?: ReactNode; calendarStatus?: ReactNode;
 }) {
   const scheduled = events.filter(event => eventOnDay(event, day));
   const available=candidates.filter(item=>calendarProposalAvailable(item,events));
@@ -85,7 +86,7 @@ export function DigestAgenda({ day, events, candidates, sources, people, evidenc
     <section>
       <h2>{new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</h2>
       <p className="digest-meta">{Intl.DateTimeFormat().resolvedOptions().timeZone}</p>
-      {scheduled.length ? scheduled.map(event => <div key={event.id}><button className="digest-agenda-event" onClick={() => onEvent(event)}><span>{event.allDay ? 'All day' : new Date(event.startAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span><strong>{event.title}</strong></button><DigestRelatedLinks links={digestEventLinks(event,sources)}/></div>) : <p className="digest-muted">No events scheduled for this day.</p>}
+      {calendarStatus ?? (scheduled.length ? scheduled.map(event => <div key={event.id}><button className="digest-agenda-event" onClick={() => onEvent(event)}><span>{event.allDay ? 'All day' : new Date(event.startAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</span><strong>{event.title}</strong></button><DigestRelatedLinks links={digestEventLinks(event,sources)}/></div>) : <p className="digest-muted">No events scheduled for this day.</p>)}
     </section>
     <section className="digest-proposals">
       <h2>From your chats</h2>
@@ -98,7 +99,7 @@ export function DigestAgenda({ day, events, candidates, sources, people, evidenc
         <DigestRelatedLinks links={digestSourceLinks(item.sourceIds,sources)}/>
         <button className="digest-primary-action" onClick={() => onCandidate(item)}>{proposalLabel(item,events)}</button>
       </article>)}
-      {!available.length && <p className="digest-muted">New arrangements will appear here.</p>}
+      {digestStatus ?? (!available.length && <p className="digest-muted">New arrangements will appear here.</p>)}
     </section>
     <section className="digest-calendar-connections">
       <h2>Your calendars</h2>

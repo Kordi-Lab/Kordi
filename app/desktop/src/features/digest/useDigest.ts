@@ -9,9 +9,9 @@ export function useDigest(accountId: string) {
     let stopped = false;
     let cycle = 0;
     let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
+    const poll = async (initial = false) => {
       const current = ++cycle;
-      if (!document.hidden) {
+      if (initial || !document.hidden) {
         try { await store.refresh(); } catch { /* Retain content beside the section's error. */ }
       }
       if (!stopped && current === cycle) timer = setTimeout(poll, DIGEST_POLL_INTERVAL);
@@ -19,7 +19,7 @@ export function useDigest(accountId: string) {
     const resume = () => {
       if (!document.hidden) { clearTimeout(timer); void poll(); }
     };
-    void poll();
+    void poll(true);
     document.addEventListener('visibilitychange', resume);
     return () => {
       stopped = true;

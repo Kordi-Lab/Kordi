@@ -161,6 +161,24 @@ struct DigestEventEditor: View {
 }
 
 
+enum DigestPeopleIdentity {
+    static func avatar(for source: RollingDigestSource, contacts: [CloudContact]) -> String? {
+        if source.isAgent == true { return source.agentAvatarUrl.nonEmpty }
+        return source.senderAvatarUrl.nonEmpty
+            ?? contacts.first(where: { $0.accountId == source.senderAccountId })?.avatarUrl.nonEmpty
+    }
+
+    static func owner(id: String, sources: [RollingDigestSource], contacts: [CloudContact]) -> (name: String, avatar: String?) {
+        let related = sources.filter { $0.senderAccountId == id }
+        let contact = contacts.first { $0.accountId == id }
+        let name = related.first(where: { $0.isAgent != true })?.senderName.nonEmpty
+            ?? related.lazy.compactMap { $0.agentOwnerName.nonEmpty }.first
+            ?? contact?.preferredName.nonEmpty ?? "Contact"
+        let avatar = related.lazy.compactMap { $0.senderAvatarUrl.nonEmpty }.first ?? contact?.avatarUrl.nonEmpty
+        return (name, avatar)
+    }
+}
+
 struct DigestPeopleView: View {
     let sourceIds: [String]
     let ownerAccountId: String?
@@ -174,15 +192,16 @@ struct DigestPeopleView: View {
         ScrollView(.horizontal) {
             HStack(spacing: 14) {
                 if let owner = ownerAccountId, !authors.contains(where: { $0.isAgent != true && $0.senderAccountId == owner }) {
-                    person(id: owner, name: owner == accountId ? "You" : sources.first(where: { $0.senderAccountId == owner })?.senderName ?? "Contact", agent: false)
+                    let identity = DigestPeopleIdentity.owner(id: owner, sources: sources, contacts: contacts)
+                    person(id: owner, name: owner == accountId ? "You" : identity.name, agent: false, avatarURL: identity.avatar)
                 }
                 ForEach(authors) { source in
                     let name = source.isAgent != true && source.senderAccountId == accountId ? "You" : source.senderName
                     let ownerName = source.isAgent == true ? (source.senderAccountId == accountId ? "You" : source.agentOwnerName ?? "Unknown owner") : nil
                     if let onSource {
-                        Button { onSource(source) } label: { person(id: source.senderAccountId, name: name, agent: source.isAgent == true, agentId: source.agentId, ownerName: ownerName, avatarURL: source.agentAvatarUrl) }.buttonStyle(.plain)
+                        Button { onSource(source) } label: { person(id: source.senderAccountId, name: name, agent: source.isAgent == true, agentId: source.agentId, ownerName: ownerName, avatarURL: DigestPeopleIdentity.avatar(for: source, contacts: contacts)) }.buttonStyle(.plain)
                     } else {
-                        person(id: source.senderAccountId, name: name, agent: source.isAgent == true, agentId: source.agentId, ownerName: ownerName, avatarURL: source.agentAvatarUrl)
+                        person(id: source.senderAccountId, name: name, agent: source.isAgent == true, agentId: source.agentId, ownerName: ownerName, avatarURL: DigestPeopleIdentity.avatar(for: source, contacts: contacts))
                     }
                 }
             }
@@ -190,7 +209,7 @@ struct DigestPeopleView: View {
     }
     private func person(id: String, name: String, agent: Bool, agentId: String? = nil, ownerName: String? = nil, avatarURL: String? = nil) -> some View {
         HStack(spacing: 8) {
-            IdentityAvatar(name: name, imageSource: (agent ? avatarURL : contacts.first(where: { $0.accountId == id })?.avatarUrl) ?? CanonicalAvatarSystem.previewURL(style: agent ? CanonicalAvatarSystem.agentStyle : CanonicalAvatarSystem.humanStyle, seed: agentId ?? id)?.absoluteString, kind: agent ? .agent : .person, size: 24, seed: agentId ?? id)
+            IdentityAvatar(name: name, imageSource: avatarURL ?? CanonicalAvatarSystem.previewURL(style: agent ? CanonicalAvatarSystem.agentStyle : CanonicalAvatarSystem.humanStyle, seed: agentId ?? id)?.absoluteString, kind: agent ? .agent : .person, size: 24, seed: agentId ?? id)
             VStack(alignment: .leading, spacing: 2) {
                 Text("@\(name)").font(.caption).foregroundStyle(.tint)
                 if let ownerName { Text("Owner · \(ownerName)").font(.caption2).foregroundStyle(.secondary) }

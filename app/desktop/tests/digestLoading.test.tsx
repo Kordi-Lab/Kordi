@@ -29,6 +29,41 @@ function response(accountId = 'viewer'): DigestResponse {
   };
 }
 
+test('initial loading is not an empty result, errors offer a read-only retry, even in a hidden webview', async () => {
+  const dom = new JSDOM('<div id="root"></div>');
+  const previous = { window: globalThis.window, document: globalThis.document, IS_REACT_ACT_ENVIRONMENT: (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT };
+  Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
+  const original = { ...digestClient }, digest = deferred<DigestResponse>(), calendar = deferred<{ events: [] }>();
+  let reads = 0, generations = 0;
+  digestClient.read = () => { reads++; return digest.promise; };
+  digestClient.calendar = () => calendar.promise;
+  digestClient.refresh = async () => { generations++; };
+  const host = document.getElementById('root')!, root = createRoot(host);
+  try {
+    assert.equal(document.hidden, true);
+    await act(async () => root.render(createElement(DigestPage, { accountId: 'viewer' })));
+    assert.equal(reads, 1, 'Mount must initiate a read regardless of initial webview visibility');
+    assert.match(host.textContent!, /Loading digest/);
+    assert.match(host.textContent!, /Loading calendar/);
+    assert.doesNotMatch(host.textContent!, /No suggestions|No events scheduled|New arrangements|first update/);
+    await act(async () => { digest.reject(new Error('offline')); calendar.reject(new Error('offline')); });
+    assert.match(host.querySelector('[aria-label="Brief"]')!.textContent!, /Digest could not load/);
+    assert.doesNotMatch(host.textContent!, /No suggestions|No events scheduled|first update/);
+    digestClient.read = async () => { reads++; return response(); };
+    digestClient.calendar = async () => ({ events: [] });
+    const retry = host.querySelector<HTMLButtonElement>('[aria-label="Brief"] button')!;
+    assert.equal(retry.textContent, 'Try again');
+    await act(async () => retry.click());
+    assert.match(host.textContent!, /Prepared draft/);
+    assert.match(host.textContent!, /No events scheduled/);
+    assert.equal(reads, 2);
+    assert.equal(generations, 0);
+  } finally {
+    await act(async () => root.unmount());
+    Object.assign(digestClient, original); Object.assign(globalThis, previous); dom.window.close();
+  }
+});
+
 test('digest publishes before a delayed calendar and survives its failure', async () => {
   const original = { ...digestClient }, calendar = deferred<{ events: [] }>();
   digestClient.read = async () => response();

@@ -23,12 +23,17 @@ fn diff<T: Clone + PartialEq>(
     before: &[T],
     after: &[T],
     key: fn(&T) -> String,
+    unchanged: fn(&T, &T) -> bool,
 ) -> (Vec<T>, Vec<String>) {
     let saved: HashMap<_, _> = before.iter().map(|row| (key(row), row)).collect();
     let current: HashSet<_> = after.iter().map(key).collect();
     let changed = after
         .iter()
-        .filter(|row| saved.get(&key(row)).copied() != Some(*row))
+        .filter(|row| {
+            saved
+                .get(&key(row))
+                .is_none_or(|before| !unchanged(before, row))
+        })
         .cloned()
         .collect();
     let removed = saved
@@ -62,12 +67,26 @@ pub(super) fn due_reminders(input: &Input) -> BTreeSet<String> {
 impl Changes {
     pub fn between(saved: &Input, current: &Input) -> Self {
         // ponytail: diff existing bounded snapshots; use a durable event cursor if source limits grow.
-        let (sources, removed_source_ids) =
-            diff(&saved.sources, &current.sources, |source| source.id.clone());
-        let (calendar_events, removed_calendar_event_ids) =
-            diff(&saved.calendar_events, &current.calendar_events, |event| {
-                event.id.clone()
-            });
+        let (sources, removed_source_ids) = diff(
+            &saved.sources,
+            &current.sources,
+            |source| source.id.clone(),
+            |before, after| {
+                if before == after {
+                    return true;
+                }
+                // Account avatars are presentation metadata, not new evidence for the model.
+                let mut before = before.clone();
+                before.sender_avatar_url = after.sender_avatar_url.clone();
+                before == *after
+            },
+        );
+        let (calendar_events, removed_calendar_event_ids) = diff(
+            &saved.calendar_events,
+            &current.calendar_events,
+            |event| event.id.clone(),
+            PartialEq::eq,
+        );
         let (existing_tasks, removed_task_ids) = diff(
             saved
                 .existing_tasks
@@ -85,6 +104,7 @@ impl Changes {
                     .unwrap_or_default()
                     .to_string()
             },
+            PartialEq::eq,
         );
         let related_ids: HashSet<_> = sources
             .iter()

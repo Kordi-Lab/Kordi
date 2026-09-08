@@ -4,6 +4,60 @@ import SwiftUI
 import UIKit
 @testable import Kordi
 
+struct DigestIdentityAndStateTests {
+    private func source(agent: Bool, senderAvatar: String? = nil, agentAvatar: String? = nil) -> RollingDigestSource {
+        RollingDigestSource(id: "source", conversationId: "conversation", sessionId: "session", sessionTitle: "Session", senderAccountId: "owner", senderName: agent ? "Assistant" : "Human", text: "Message", createdAt: "", version: 1, isAgent: agent, agentId: agent ? "agent" : nil, agentOwnerName: agent ? "Human owner" : nil, agentAvatarUrl: agentAvatar, senderAvatarUrl: senderAvatar)
+    }
+    private var contact: CloudContact {
+        CloudContact(accountId: "owner", kordiId: nil, displayName: "Contact", avatarUrl: "https://example.invalid/contact.png", nodeId: nil, createdAt: "")
+    }
+
+    @Test func humanUsesSenderAvatarAndNeverTheAgentAvatar() {
+        let source = source(agent: false, senderAvatar: "https://example.invalid/human.png", agentAvatar: "https://example.invalid/agent.png")
+        #expect(DigestPeopleIdentity.avatar(for: source, contacts: [contact]) == source.senderAvatarUrl)
+        #expect(DigestPeopleIdentity.avatar(for: self.source(agent: false, agentAvatar: "https://example.invalid/agent.png"), contacts: []) == nil)
+    }
+
+    @Test func agentUsesAgentAvatarAndNeverTheOwnerContactAvatar() {
+        let source = source(agent: true, senderAvatar: "https://example.invalid/human.png", agentAvatar: "https://example.invalid/agent.png")
+        #expect(DigestPeopleIdentity.avatar(for: source, contacts: [contact]) == source.agentAvatarUrl)
+        #expect(DigestPeopleIdentity.avatar(for: self.source(agent: true, senderAvatar: source.senderAvatarUrl), contacts: [contact]) == nil)
+    }
+
+    @Test func ownerChipUsesHumanIdentityWhenOnlyAgentSourcesExist() {
+        let source = source(agent: true, senderAvatar: "https://example.invalid/owner.png", agentAvatar: "https://example.invalid/agent.png")
+        let owner = DigestPeopleIdentity.owner(id: "owner", sources: [source], contacts: [])
+        #expect(owner.name == "Human owner")
+        #expect(owner.avatar == source.senderAvatarUrl)
+    }
+
+    @Test func oldServerPayloadDecodesAndFallsBackToCanonicalContact() throws {
+        let data = Data(#"{"id":"source","conversationId":"conversation","sessionId":"session","sessionTitle":"Session","senderAccountId":"owner","senderName":"Human","text":"Message","createdAt":"","version":1}"#.utf8)
+        let source = try JSONDecoder().decode(RollingDigestSource.self, from: data)
+        #expect(source.senderAvatarUrl == nil)
+        #expect(DigestPeopleIdentity.avatar(for: source, contacts: [contact]) == contact.avatarUrl)
+    }
+
+    @Test func unavailableResponsesAreNotSuccessfulEmptyContent() {
+        #expect(DigestReadState(hasResponse: false, error: nil) == .loading)
+        #expect(DigestReadState(hasResponse: false, error: "Offline") == .failed)
+        #expect(DigestReadState(hasResponse: true, error: nil) == .content)
+        #expect(DigestReadState(hasResponse: true, error: "Offline") == .content)
+    }
+
+    @Test func inlineRetryOnlyReadsAndCalendarHasIndependentReadState() throws {
+        let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: directory.appendingPathComponent("Kordi/Features/Digest/DigestView.swift"), encoding: .utf8)
+        let start = try #require(source.range(of: "private func retryRead("))
+        let end = try #require(source.range(of: "private func reviewCalendarCandidate", range: start.upperBound..<source.endIndex))
+        let retry = source[start.lowerBound..<end.lowerBound]
+        #expect(retry.contains("loadCalendar(") && retry.contains("loadDigest("))
+        #expect(!retry.contains("refresh(") && !retry.contains("refreshRollingDigest"))
+        #expect(source.contains("if calendarReadState == .content"))
+        #expect(source.contains("else if digestReadState == .content"))
+    }
+}
+
 private final class DigestIndependentReadProtocol: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }

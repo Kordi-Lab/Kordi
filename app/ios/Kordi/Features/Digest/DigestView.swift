@@ -2,6 +2,31 @@ import SwiftUI
 
 struct DigestMessageRoute: Hashable { let conversation: ConversationSummary; let messageID: String }
 private enum DigestPane: String, CaseIterable { case brief = "Brief", tasks = "Next steps", calendar = "Calendar" }
+enum DigestReadState: Equatable {
+    case loading, failed, content
+    init(hasResponse: Bool, error: String?) {
+        self = hasResponse ? .content : error == nil ? .loading : .failed
+    }
+}
+
+private struct DigestReadNotice: View {
+    let name: String
+    let hasResponse: Bool
+    let error: String?
+    let retry: () -> Void
+
+    var body: some View {
+        if let error {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(error).foregroundStyle(.secondary)
+                Button("Try again", action: retry).buttonStyle(.plain)
+            }.accessibilityAddTraits(.updatesFrequently)
+        } else if !hasResponse {
+            ProgressView("Loading \(name)…")
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
 private enum DigestSheet: Identifiable {
     case source([String]), event(DigestCalendarEvent, RollingDigestItem? = nil, DigestCalendarEvent? = nil, [DigestCalendarEvent]? = nil), imports, connection, details
     var id: String { switch self { case .source(let ids): "source:\(ids.joined(separator: ","))"; case .event(let event, let proposal, _, _): "event:\(event.id):\(proposal?.id ?? "")"; case .imports: "import"; case .connection: "connection"; case .details: "details" } }
@@ -31,6 +56,8 @@ struct DigestView: View {
     private var dismissedSuggestions: [RollingDigestItem] { digest?.dismissedSuggestions ?? [] }
     private var visibleSuggestions: [RollingDigestItem] { digest?.visibleSuggestions ?? [] }
     private var calendarCandidates: [RollingDigestItem] { (content?.calendarCandidates ?? []).filter { $0.calendarProposalAvailable(events: events) } }
+    private var digestReadState: DigestReadState { DigestReadState(hasResponse: digest != nil, error: digestLoadError) }
+    private var calendarReadState: DigestReadState { DigestReadState(hasResponse: model.digestCalendarSnapshot != nil, error: calendarLoadError) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,7 +71,7 @@ struct DigestView: View {
                 ForEach(DigestPane.allCases, id: \.self) { tab in
                     Button { pane = tab } label: {
                         VStack(spacing: 8) {
-                            HStack(spacing: 4) { Text(tab.rawValue); if tab == .tasks { Text(visibleSuggestions.count, format: .number).foregroundStyle(.secondary) } }
+                            HStack(spacing: 4) { Text(tab.rawValue); if tab == .tasks, digestReadState == .content { Text(visibleSuggestions.count, format: .number).foregroundStyle(.secondary) } }
                                 .font(.subheadline.weight(pane == tab ? .semibold : .regular))
                             Rectangle().fill(pane == tab ? Color.primary : .clear).frame(height: 2)
                         }
@@ -93,6 +120,8 @@ struct DigestView: View {
         }
     }
     private var statusText: String {
+        if digestReadState == .failed { return "Could not load digest" }
+        if digestReadState == .loading { return "Loading digest…" }
         if digest?.status == "updating" { return "Updating · previous brief available" }
         if let date = DigestDate.parse(digest?.updatedAt) { return "Updated \(date.formatted(date: .omitted, time: .shortened))" }
         return "Preparing your digest"
@@ -100,7 +129,7 @@ struct DigestView: View {
     private func page<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                if let error = error ?? digestLoadError ?? calendarLoadError { Text(error).font(.subheadline).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) }
+                if let error { Text(error).font(.subheadline).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) }
                 if let code = digest?.errorCode {
                     Text(code == "missing_provider_auth" ? "Connect a model provider in account settings to generate your digest." : "The last update failed. Your previous brief remains available.")
                         .font(.subheadline).foregroundStyle(.secondary)
@@ -110,6 +139,7 @@ struct DigestView: View {
         }.refreshable { await refresh() }
     }
     @ViewBuilder private var brief: some View {
+        digestReadNotice
         if let lead = visibleClaims.first {
             VStack(alignment: .leading, spacing: 10) {
                 Text(lead.title).font(.subheadline.weight(.semibold))
@@ -127,12 +157,13 @@ struct DigestView: View {
                     Divider().padding(.top, 8)
                 }
             }
-        } else {
+        } else if digestReadState == .content {
             Text(digest?.status == "ready" ? (sources.isEmpty ? "No conversations to summarize yet." : "No brief entries to show.") : "Your sourced brief will appear after the first update.").foregroundStyle(.secondary).padding(.vertical, 24)
         }
     }
     @ViewBuilder private var tasks: some View {
         Text("AI suggestions").font(.subheadline).foregroundStyle(.secondary)
+        digestReadNotice
         ForEach(visibleSuggestions) { item in
             VStack(alignment: .leading, spacing: 8) {
                 Text(item.title).font(.subheadline.weight(.semibold)); Text(item.text).foregroundStyle(.secondary)
@@ -140,13 +171,16 @@ struct DigestView: View {
                 Button("Dismiss") { Task { await perform { try await model.dismissDigestItem(item.id, dismissed: true) } } }
             }
         }
-        if visibleSuggestions.isEmpty { Text("No suggestions to show.").foregroundStyle(.secondary) }
+        if visibleSuggestions.isEmpty, digestReadState == .content {
+            Text(content == nil && digest?.status != "ready" ? "Suggestions will appear after the first update." : "No suggestions to show.").foregroundStyle(.secondary)
+        }
         if !dismissedSuggestions.isEmpty {
             Button("Restore dismissed suggestions") { Task { await perform { for item in dismissedSuggestions { try await model.dismissDigestItem(item.id, dismissed: false) } } } }
         }
     }
     private var calendar: some View {
         VStack(alignment: .leading, spacing: 18) {
+            DigestReadNotice(name: "calendar", hasResponse: model.digestCalendarSnapshot != nil, error: calendarLoadError) { retryRead(calendar: true) }
             HStack(spacing: 22) {
                 Button { selectedSheet = .connection } label: { Label("Connect calendars", systemImage: "calendar.badge.plus") }
                 Button { selectedSheet = .imports } label: { Label("Import ICS", systemImage: "square.and.arrow.down") }
@@ -159,10 +193,14 @@ struct DigestView: View {
                 Button("Today") { month = Date(); selectedCalendarDay = month }.font(.caption)
                 Button { changeMonth(1) } label: { Image(systemName: "chevron.right") }.accessibilityLabel("Next month")
             }.buttonStyle(.plain)
-            DigestMonthGrid(month: month, events: events, candidates: calendarCandidates, selectedDay: $selectedCalendarDay, onSelect: { selectedSheet = .event($0) }, onReview: reviewCalendarCandidate)
+            if calendarReadState == .content {
+                DigestMonthGrid(month: month, events: events, candidates: calendarCandidates, selectedDay: $selectedCalendarDay, onSelect: { selectedSheet = .event($0) }, onReview: reviewCalendarCandidate)
+                if events.isEmpty { Text("No saved events.").font(.footnote).foregroundStyle(.secondary) }
+            }
             Text("Shown in \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
             Divider().padding(.vertical, 4)
             Text("From your chats").font(.subheadline.weight(.semibold))
+            digestReadNotice
             ForEach(calendarCandidates) { item in
                 VStack(alignment: .leading, spacing: 8) {
                     if item.calendarAction == "delete" { Text("Cancellation to review").font(.caption).foregroundStyle(KordiTheme.destructiveText) }
@@ -179,6 +217,18 @@ struct DigestView: View {
                     Divider().padding(.top, 8)
                 }
             }
+        }
+    }
+    private var digestReadNotice: some View {
+        DigestReadNotice(name: "digest", hasResponse: digest != nil, error: digestLoadError) { retryRead(calendar: false) }
+    }
+    private func retryRead(calendar: Bool) {
+        guard let accountId = model.account?.accountId else { return }
+        if calendar { calendarLoadError = nil } else { digestLoadError = nil }
+        let revision = loadRevision
+        Task {
+            if calendar { await loadCalendar(accountId: accountId, revision: revision) }
+            else { await loadDigest(accountId: accountId, revision: revision) }
         }
     }
     private func reviewCalendarCandidate(_ item: RollingDigestItem) {

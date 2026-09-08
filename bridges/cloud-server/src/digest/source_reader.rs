@@ -20,6 +20,7 @@ type Row = (
     Option<String>,
     Option<String>,
     String,
+    Option<String>,
 );
 // Keep authorization identical for aggregation, cached reads, evidence and conversion.
 const SOURCE_FROM: &str = " FROM cloud_chat_messages m
@@ -141,7 +142,9 @@ async fn fetch_rows(
     suffix: &str,
     ids: Option<&[String]>,
 ) -> Result<Vec<Row>> {
-    let sql=format!("SELECT m.message_id::text,c.conversation_id::text,COALESCE(c.legacy_session_id,c.conversation_id::text),COALESCE(member.personal_title,c.shared_title,c.group_title,'Conversation'),m.sender_account_id,COALESCE(sender.display_name,'Contact'),m.content,m.created_at,m.version,m.message_kind,profile.display_name,profile.avatar_url,source_run.execution_agent_id,m.reply_to_message_id::text,m.client_message_id::text{SOURCE_FROM}{suffix}");
+    let sql = format!(
+        "SELECT m.message_id::text,c.conversation_id::text,COALESCE(c.legacy_session_id,c.conversation_id::text),COALESCE(member.personal_title,c.shared_title,c.group_title,'Conversation'),m.sender_account_id,COALESCE(sender.display_name,'Contact'),m.content,m.created_at,m.version,m.message_kind,profile.display_name,profile.avatar_url,source_run.execution_agent_id,m.reply_to_message_id::text,m.client_message_id::text,sender.avatar_url{SOURCE_FROM}{suffix}"
+    );
     let mut request = query_as::<_, Row>(&sql).bind(account);
     if let Some(ids) = ids {
         request = request.bind(ids);
@@ -256,6 +259,7 @@ pub(super) async fn source_page(
                     session_title: r.3,
                     sender_account_id: r.4,
                     sender_name,
+                    sender_avatar_url: r.15,
                     text,
                     created_at: r.7.to_rfc3339(),
                     version: r.8,

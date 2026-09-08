@@ -15,6 +15,7 @@ struct RollingDigestSource: Codable, Identifiable, Equatable, Sendable {
     let agentOwnerName: String?
     let agentAvatarUrl: String?
     var replyToSourceId: String? = nil
+    var senderAvatarUrl: String? = nil
 }
 struct RollingDigestItem: Codable, Identifiable, Equatable, Sendable {
     let id: String

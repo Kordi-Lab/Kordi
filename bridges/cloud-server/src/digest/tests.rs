@@ -11,6 +11,7 @@ pub(super) fn input() -> Input {
             session_title: "Planning".into(),
             sender_account_id: "author".into(),
             sender_name: "Alex".into(),
+            sender_avatar_url: None,
             text: "Could someone review the draft?".into(),
             created_at: "2026-09-07T09:00:00Z".into(),
             version: 1,
@@ -30,6 +31,43 @@ pub(super) fn input() -> Input {
         viewer_account_id: "viewer".into(),
         changes: None,
     }
+}
+#[test]
+fn source_account_avatar_is_optional_and_preserves_canonical_markers() {
+    let mut source = input().sources.remove(0);
+    let legacy = serde_json::to_value(&source).unwrap();
+    assert!(legacy.get("senderAvatarUrl").is_none());
+    assert!(
+        serde_json::from_value::<Source>(legacy)
+            .unwrap()
+            .sender_avatar_url
+            .is_none()
+    );
+    for avatar in [
+        "kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef",
+        "kordi-avatar://test/lorelei/author?version=3",
+        "https://example.com/current-avatar.png",
+    ] {
+        source.sender_avatar_url = Some(avatar.into());
+        let serialized = serde_json::to_value(&source).unwrap();
+        assert_eq!(serialized["senderAvatarUrl"], avatar);
+        assert_eq!(
+            serde_json::from_value::<Source>(serialized).unwrap(),
+            source
+        );
+    }
+}
+#[test]
+fn account_avatar_updates_do_not_regenerate_unchanged_evidence() {
+    let saved = input();
+    let mut current = saved.clone();
+    current.sources[0].sender_avatar_url = Some("https://example.com/current.png".into());
+    assert!(super::incremental::Changes::between(&saved, &current).is_empty());
+    current.sources[0].text = "The draft was updated.".into();
+    assert_eq!(
+        super::incremental::Changes::between(&saved, &current).sources.len(),
+        1
+    );
 }
 #[test]
 fn output_requires_real_evidence_and_preserves_uncertainty() {
@@ -154,9 +192,10 @@ async fn postgres_scope_and_atomic_publication() {
     let viewer = format!("digest-viewer-{suffix}");
     let author = format!("digest-author-{suffix}");
     for account in [&viewer, &author] {
-        query("INSERT INTO cloud_accounts(account_id,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at) VALUES($1,$2,$2,'generated','lorelei',$1,'test',1,$2)")
+        query("INSERT INTO cloud_accounts(account_id,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at,avatar_url) VALUES($1,$2,$2,'generated','lorelei',$1,'test',1,$2,$3)")
             .bind(account)
             .bind(chrono::Utc::now().to_rfc3339())
+            .bind(crate::avatars::generated_avatar_marker("lorelei", account, 1))
             .execute(&pool)
             .await
             .unwrap();
@@ -201,11 +240,30 @@ async fn postgres_scope_and_atomic_publication() {
         .unwrap();
     assert_eq!(input.sources.len(), 1);
     assert_eq!(input.sources[0].id, message.to_string());
-    query("UPDATE cloud_accounts SET display_name='Source owner' WHERE account_id=$1")
-        .bind(&author)
-        .execute(&pool)
-        .await
-        .unwrap();
+    let generated_avatar: Option<String> = query_as::<_, (Option<String>,)>(
+        "SELECT avatar_url FROM cloud_accounts WHERE account_id=$1",
+    )
+    .bind(&author)
+    .fetch_one(&pool)
+    .await
+    .unwrap()
+    .0;
+    assert!(
+        generated_avatar
+            .as_deref()
+            .unwrap()
+            .starts_with("kordi-avatar://")
+    );
+    assert_eq!(input.sources[0].sender_avatar_url, generated_avatar);
+    let uploaded_avatar = "kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef";
+    query(
+        "UPDATE cloud_accounts SET display_name='Source owner',avatar_url=$2 WHERE account_id=$1",
+    )
+    .bind(&author)
+    .bind(uploaded_avatar)
+    .execute(&pool)
+    .await
+    .unwrap();
     query("UPDATE cloud_default_agent_profiles SET display_name='Renamed helper' WHERE owner_account_id=$1")
         .bind(&author).execute(&pool).await.unwrap();
     query("UPDATE cloud_chat_messages SET message_kind='assistant' WHERE message_id=$1")
@@ -226,16 +284,40 @@ async fn postgres_scope_and_atomic_publication() {
         Some(format!("cloud-agent:{author}").as_str())
     );
     assert!(agent_sources[0].agent_avatar_url.is_some());
+    assert_eq!(
+        agent_sources[0].sender_avatar_url.as_deref(),
+        Some(uploaded_avatar)
+    );
+    assert_ne!(
+        agent_sources[0].sender_avatar_url,
+        agent_sources[0].agent_avatar_url
+    );
     let mut bounded = input.clone();
     bounded.sources = agent_sources.clone();
     bounded.sources[0].text = "Bounded preview".into();
     bounded.sources[0].sender_name = "Stale label".into();
+    bounded.sources[0].sender_avatar_url = Some("https://example.com/stale.png".into());
     let refreshed = store::authorized_input_sources(&pool, &viewer, &bounded)
         .await
         .unwrap()
         .unwrap();
     assert_eq!(refreshed[0].text, "Bounded preview");
     assert_eq!(refreshed[0].sender_name, "Renamed helper");
+    assert_eq!(
+        refreshed[0].sender_avatar_url.as_deref(),
+        Some(uploaded_avatar)
+    );
+    query("UPDATE cloud_accounts SET avatar_url=$2 WHERE account_id=$1")
+        .bind(&author)
+        .bind(&generated_avatar)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let refreshed = store::authorized_input_sources(&pool, &viewer, &bounded)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(refreshed[0].sender_avatar_url, generated_avatar);
     let custom = format!("cloud_agent_{suffix}");
     query("INSERT INTO cloud_agent_definitions(agent_id,owner_account_id,name,role,system_prompt,created_at,updated_at,avatar_source,avatar_style,avatar_seed,avatar_renderer_version,avatar_version,avatar_updated_at) VALUES($1,$2,'Named researcher','research','test','test','test','generated','thumbs',$1,'test',1,'test')")
         .bind(&custom).bind(&author).execute(&pool).await.unwrap();

@@ -27,3 +27,22 @@ test('Digest attribution keeps owner messages and separates their agent from the
   assert.match(html, /<strong[^>]*>Taylor<\/strong>/);
   assert.match(html, /href="https:\/\/example.com\/prototype"/);
 });
+
+test('Digest renders canonical human and agent avatars separately, including owner-only chips', () => {
+  const source: DigestSource = { id: 'human', conversationId: 'room', sessionId: 'room', sessionTitle: 'Planning', senderAccountId: 'alex', senderName: 'Alex', text: 'A note.', createdAt: '2026-09-08T00:00:00Z', version: 1, senderAvatarUrl: 'https://example.com/human.jpg' };
+  const agent: DigestSource = { ...source, id: 'agent', senderName: 'Helper', isAgent: true, agentId: 'helper', agentOwnerName: 'Alex', agentAvatarUrl: 'https://example.com/agent.jpg' };
+  const render = (sourceIds: string[], ownerAccountId?: string) => renderToStaticMarkup(createElement(DigestPeople, { item: { sourceIds, ownerAccountId }, sources: [source, agent], accountId: 'viewer' }));
+  const human = render(['human']);
+  assert.match(human, /src="https:\/\/example.com\/human.jpg"/);
+  assert.doesNotMatch(human, /src="https:\/\/example.com\/agent.jpg"/);
+  const agentOnly = render(['agent']);
+  assert.match(agentOnly, /src="https:\/\/example.com\/agent.jpg"/);
+  assert.doesNotMatch(agentOnly, /src="https:\/\/example.com\/human.jpg"/);
+  const owner = render(['agent'], 'alex');
+  assert.match(owner, /src="https:\/\/example.com\/human.jpg"/);
+  assert.match(owner, /src="https:\/\/example.com\/agent.jpg"/);
+  source.senderAvatarUrl = 'https://example.com/updated.jpg';
+  assert.match(render(['human']), /src="https:\/\/example.com\/updated.jpg"/);
+  agent.agentAvatarUrl = null;
+  assert.doesNotMatch(render(['agent']), /src="https:\/\/example.com\/(human|updated).jpg"/);
+});
