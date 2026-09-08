@@ -372,6 +372,25 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertFalse(source.contains(".animation(inputSurfaceAnimation, value: isExpressivePickerPresented)"))
     }
 
+    func testPhotoLibraryPresentationWaitsForTheAttachmentMenuToDismiss() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private func presentPhotoLibrary()"))
+        let end = try XCTUnwrap(source.range(
+            of: "private func sendPhotoSelection",
+            range: start.upperBound..<source.endIndex
+        ))
+        let presentation = source[start.lowerBound..<end.lowerBound]
+        let menuDismissal = try XCTUnwrap(presentation.range(of: "Task.sleep(for: .milliseconds(350))"))
+        let fullScreenCover = try XCTUnwrap(presentation.range(of: "showPhotoPicker = true"))
+
+        XCTAssertTrue(source.contains("onChoosePhotos: presentPhotoLibrary"))
+        XCTAssertLessThan(menuDismissal.lowerBound, fullScreenCover.lowerBound)
+    }
+
     func testExpressivePickerDoesNotDragTheNativeInputSurface() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

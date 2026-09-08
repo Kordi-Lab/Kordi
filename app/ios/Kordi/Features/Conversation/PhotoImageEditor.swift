@@ -2,6 +2,158 @@ import Photos
 import SwiftUI
 import UIKit
 
+struct CameraPhotoSendReviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let sourceImage: UIImage
+    let onSend: (UIImage) async -> Bool
+
+    @State private var editedImage: UIImage?
+    @State private var strokes: [PhotoEditorStroke] = []
+    @State private var cropRect = PhotoEditorCrop.full
+    @State private var isCropping = false
+    @State private var isDrawing = false
+    @State private var isSending = false
+    @State private var errorMessage: String?
+
+    private var image: UIImage { editedImage ?? sourceImage }
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            PhotoEditorCanvas(
+                image: image,
+                isDrawing: isDrawing,
+                isCropping: isCropping,
+                strokes: $strokes,
+                cropRect: $cropRect
+            )
+        }
+        .safeAreaInset(edge: .top, spacing: 0) { header }
+        .safeAreaInset(edge: .bottom, spacing: 0) { controls }
+        .interactiveDismissDisabled(isSending)
+        .statusBarHidden(false)
+    }
+
+    private var header: some View {
+        ZStack {
+            Text("Photo")
+                .font(.headline)
+                .foregroundStyle(.white)
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .frame(minHeight: 44)
+                    .disabled(isSending)
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 54)
+        .background(Color.black.opacity(0.88))
+    }
+
+    private var controls: some View {
+        VStack(spacing: 4) {
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .accessibilityLabel("Error: \(errorMessage)")
+            }
+            HStack(spacing: 8) {
+                editorButton("Rotate photo", systemImage: "rotate.right", action: rotateImage)
+                editorButton("Crop photo", systemImage: "crop", isActive: isCropping, action: startCropping)
+                editorButton("Draw on photo", systemImage: "paintbrush", isActive: isDrawing, action: toggleDrawing)
+                Button(action: send) {
+                    Group {
+                        if isSending {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .font(.body.weight(.bold))
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(.white)
+                    .background(KordiTheme.signalBlue, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(isSending)
+                .accessibilityLabel("Send photo")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.black.opacity(0.88))
+        .overlay(alignment: .top) {
+            Divider().overlay(.white.opacity(0.16))
+        }
+    }
+
+    private func editorButton(
+        _ accessibilityLabel: String,
+        systemImage: String,
+        isActive: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.medium))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .foregroundStyle(.white)
+                .background(
+                    isActive ? KordiTheme.signalBlue.opacity(0.34) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(isSending)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private func rotateImage() {
+        editedImage = PhotoEditorRenderer.rotatedClockwise(
+            PhotoEditorRenderer.applying(strokes, to: image)
+        )
+        strokes = []
+        cropRect = PhotoEditorCrop.full
+        isCropping = false
+    }
+
+    private func startCropping() {
+        guard !isCropping else { return }
+        if cropRect.width >= 0.999, cropRect.height >= 0.999 {
+            cropRect = PhotoEditorCrop.initial
+        }
+        isCropping = true
+        isDrawing = false
+    }
+
+    private func toggleDrawing() {
+        isDrawing.toggle()
+        if isDrawing { isCropping = false }
+    }
+
+    private func send() {
+        guard !isSending else { return }
+        isSending = true
+        errorMessage = nil
+        let renderedImage = PhotoEditorRenderer.renderedImage(
+            image,
+            strokes: strokes,
+            cropRect: cropRect
+        )
+        Task {
+            if await onSend(renderedImage) {
+                dismiss()
+            } else {
+                errorMessage = "Photo could not be sent. Try again."
+                isSending = false
+            }
+        }
+    }
+}
+
 struct PhotoLibraryImageEditor: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -141,8 +293,11 @@ struct PhotoLibraryImageEditor: View {
 
     private func finishEditing() {
         guard let image else { return }
-        let flattened = PhotoEditorRenderer.applying(strokes, to: image)
-        let cropped = PhotoEditorRenderer.cropped(flattened, to: cropRect)
+        let cropped = PhotoEditorRenderer.renderedImage(
+            image,
+            strokes: strokes,
+            cropRect: cropRect
+        )
         guard let data = cropped.jpegData(compressionQuality: 0.92) else {
             errorMessage = "Kordi could not save this edit. Try again."
             return

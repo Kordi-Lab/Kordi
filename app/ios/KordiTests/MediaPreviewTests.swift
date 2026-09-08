@@ -180,6 +180,22 @@ final class MediaPreviewTests: XCTestCase {
         XCTAssertEqual(cropped.size, CGSize(width: 60, height: 40))
     }
 
+    func testPhotoEditorRenderedImageAppliesDrawingAndCropTogether() {
+        let source = UIGraphicsImageRenderer(size: CGSize(width: 100, height: 80)).image { context in
+            UIColor.white.setFill()
+            context.cgContext.fill(CGRect(x: 0, y: 0, width: 100, height: 80))
+        }
+
+        let rendered = PhotoEditorRenderer.renderedImage(
+            source,
+            strokes: [PhotoEditorStroke(points: [CGPoint(x: 0.1, y: 0.1), CGPoint(x: 0.4, y: 0.4)])],
+            cropRect: CGRect(x: 0, y: 0, width: 0.5, height: 0.5)
+        )
+
+        XCTAssertEqual(rendered.size, CGSize(width: 50, height: 40))
+        XCTAssertNotNil(rendered.pngData())
+    }
+
     func testSeparatePhotoPreparationCanEnterChatOnePhotoAtATime() {
         let selected = ["first", "second", "third"]
 

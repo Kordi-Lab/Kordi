@@ -10,6 +10,11 @@ private struct ConversationTimelineRow: Identifiable {
     let message: ChatMessage
 }
 
+private struct CameraPhotoReview: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
 enum MessageDeleteReflow {
     static func affectedIDs(deleting id: String, orderedIDs: [String]) -> Set<String> {
         guard let index = orderedIDs.firstIndex(of: id) else { return [] }
@@ -167,6 +172,7 @@ struct ConversationView: View {
     @State private var showFileImporter = false
     @State private var showPhotoPicker = false
     @State private var showCamera = false
+    @State private var cameraPhotoReview: CameraPhotoReview?
     @State private var videoReview: PendingAttachment?
     @State private var queuedVideoReviews: [PendingAttachment] = []
     @State private var isPreparingAttachments = false
@@ -647,11 +653,13 @@ struct ConversationView: View {
                             voiceRecorder: voiceRecorder,
                             destinationName: conversation.displayName,
                             cameraAvailable: UIImagePickerController.isSourceTypeAvailable(.camera),
-                            onTakePhoto: { showCamera = true },
-                            onChoosePhotos: {
+                            onTakePhoto: {
+                                dismissComposerPickers()
+                                dismissKeyboard()
                                 guard canPresentPhotoPicker() else { return }
-                                showPhotoPicker = true
+                                showCamera = true
                             },
+                            onChoosePhotos: presentPhotoLibrary,
                             onChooseFiles: { showFileImporter = true },
                             onSendExpressiveMedia: sendExpressiveMedia,
                             onSend: {
@@ -977,6 +985,7 @@ struct ConversationView: View {
             voiceRecorder.cancel()
             videoReview?.discardOwnedFile()
             queuedVideoReviews.forEach { $0.discardOwnedFile() }
+            cameraPhotoReview = nil
             videoReview = nil
             queuedVideoReviews = []
             videoPreview = nil
@@ -1000,7 +1009,7 @@ struct ConversationView: View {
             CameraCapturePicker(
                 onImage: { image in
                     showCamera = false
-                    importCameraImage(image)
+                    presentCameraPhotoReview(image)
                 },
                 onVideo: { url in
                     showCamera = false
@@ -1009,6 +1018,12 @@ struct ConversationView: View {
                 onCancel: { showCamera = false }
             )
             .ignoresSafeArea()
+        }
+        .fullScreenCover(item: $cameraPhotoReview) { review in
+            CameraPhotoSendReviewSheet(
+                sourceImage: review.image,
+                onSend: sendCameraPhoto
+            )
         }
         .fullScreenCover(item: $videoReview, onDismiss: presentNextVideoReview) { attachment in
             VideoSendReviewSheet(
@@ -2336,6 +2351,17 @@ struct ConversationView: View {
         )
     }
 
+    private func presentPhotoLibrary() {
+        guard canPresentPhotoPicker() else { return }
+        dismissComposerPickers()
+        dismissKeyboard()
+        Task { @MainActor in
+            // ponytail: bridge the system Menu dismissal; remove the delay when SwiftUI exposes a completion callback.
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            showPhotoPicker = true
+        }
+    }
+
     private func sendPhotoSelection(
         _ selectedPhotos: [PendingAttachment],
         grouping: PhotoSendGrouping
@@ -2448,22 +2474,27 @@ struct ConversationView: View {
         }
     }
 
-    private func importCameraImage(_ image: UIImage) {
-        guard !isPreparingAttachments else { return }
-        isPreparingAttachments = true
-        Task {
-            defer { isPreparingAttachments = false }
-            do {
-                let attachment = try await Task.detached(priority: .userInitiated) {
-                    try PendingAttachmentLoader.loadCameraImage(image)
-                }.value
-                guard attachments.count < PendingAttachmentLoader.maximumAttachmentCount else {
-                    throw AttachmentTransferError.tooManyFiles(PendingAttachmentLoader.maximumAttachmentCount)
-                }
-                attachments.append(attachment)
-            } catch {
-                model.errorMessage = error.localizedDescription
+    private func presentCameraPhotoReview(_ image: UIImage) {
+        Task { @MainActor in
+            await Task.yield()
+            cameraPhotoReview = CameraPhotoReview(image: image)
+        }
+    }
+
+    private func sendCameraPhoto(_ image: UIImage) async -> Bool {
+        do {
+            guard attachments.count < PendingAttachmentLoader.maximumAttachmentCount else {
+                throw AttachmentTransferError.tooManyFiles(
+                    PendingAttachmentLoader.maximumAttachmentCount
+                )
             }
+            let attachment = try await Task.detached(priority: .userInitiated) {
+                try PendingAttachmentLoader.loadCameraImage(image)
+            }.value
+            return await sendPhotoSelection([attachment], grouping: .combined)
+        } catch {
+            model.errorMessage = error.localizedDescription
+            return false
         }
     }
 
