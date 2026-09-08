@@ -10,17 +10,9 @@ import {
   type PointerEventHandler,
 } from 'react';
 
-import {
-  loadRemoteImageThroughNativeProxy,
-  shouldLoadRemoteImageThroughNativeProxy,
-} from '@/kordi-app/components/remoteAvatarImage';
 import { parseMessageInlineParts } from '@/kordi-app/components/messageLinks';
 import { cn } from '@/lib/utils';
-import {
-  blobEmojiAssetUrl,
-  blobEmojiTextParts,
-  type BlobEmoji,
-} from './blobEmoji';
+import { blobEmojiTextParts } from './blobEmoji';
 import {
   BLOB_EMOJI_CARET_ANCHOR_ATTRIBUTE,
   BLOB_EMOJI_CARET_MARKER,
@@ -28,6 +20,7 @@ import {
   blobEmojiComposerValue,
   blobEmojiTokenFor,
 } from './blobEmojiComposerDom';
+import { blobEmojiComposerNode } from './blobEmojiComposerMedia';
 import type { EmojiTextSelection } from './emojiText';
 
 const COMPOSER_MENTION_ATTRIBUTE = 'data-composer-mention';
@@ -56,63 +49,6 @@ function appendComposerText(
     cursor = end;
   }
   if (cursor < value.length) fragment.append(document.createTextNode(value.slice(cursor)));
-}
-
-function setBlobEmojiSource(
-  media: HTMLImageElement | HTMLCanvasElement,
-  source: string,
-) {
-  if (media.tagName === 'IMG') {
-    (media as HTMLImageElement).src = source;
-    return;
-  }
-  const canvas = media as HTMLCanvasElement;
-  const image = new Image();
-  image.onload = () => {
-    if (!canvas.isConnected) return;
-    canvas.width = image.naturalWidth || 128;
-    canvas.height = image.naturalHeight || 128;
-    canvas.getContext('2d')?.drawImage(image, 0, 0);
-  };
-  image.src = source;
-}
-
-function blobEmojiComposerNode(emoji: BlobEmoji, token: string) {
-  const wrapper = document.createElement('span');
-  wrapper.contentEditable = 'false';
-  wrapper.dataset.blobEmojiToken = token;
-  wrapper.className = 'app-composer-blob-emoji';
-
-  const reduceMotion = emoji.animated
-    && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-  const media = reduceMotion
-    ? document.createElement('canvas')
-    : document.createElement('img');
-  media.className = 'object-contain';
-  media.setAttribute('role', 'img');
-  media.setAttribute('aria-label', emoji.id);
-  if (media.tagName === 'IMG') {
-    const image = media as HTMLImageElement;
-    image.alt = emoji.id;
-    image.decoding = 'async';
-    image.draggable = false;
-  }
-  wrapper.append(media);
-
-  const remoteUrl = blobEmojiAssetUrl(emoji);
-  if (shouldLoadRemoteImageThroughNativeProxy(remoteUrl, undefined, true)) {
-    void loadRemoteImageThroughNativeProxy(remoteUrl, {
-      command: 'desktop_fetch_blob_emoji_data_url',
-      expectedSha256: emoji.sha256,
-    }).then((source) => {
-      if (wrapper.isConnected) setBlobEmojiSource(media, source);
-    }).catch(() => {
-      if (wrapper.isConnected) setBlobEmojiSource(media, remoteUrl);
-    });
-  } else {
-    setBlobEmojiSource(media, remoteUrl);
-  }
-  return wrapper;
 }
 
 function renderComposerValue(root: HTMLElement, value: string) {

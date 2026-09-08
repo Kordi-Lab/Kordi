@@ -36,7 +36,8 @@
 }
 
 .app-message-reaction-quick > img,
-.app-message-reaction-quick > canvas {
+.app-message-reaction-quick > canvas,
+.app-message-reaction-quick > .app-noto-emoji {
   width: 1.75rem;
   height: 1.75rem;
   object-fit: contain;
@@ -97,7 +98,8 @@
 }
 
 .app-message-reaction-chip > img,
-.app-message-reaction-chip > canvas {
+.app-message-reaction-chip > canvas,
+.app-message-reaction-chip > .app-noto-emoji {
   width: 1.25rem;
   height: 1.25rem;
   object-fit: contain;

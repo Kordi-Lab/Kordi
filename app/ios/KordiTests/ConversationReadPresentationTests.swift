@@ -959,6 +959,9 @@ final class ConversationReadPresentationTests: XCTestCase {
             maximumPixelSize: 64
         ))
         XCTAssertGreaterThan(decoded.images?.count ?? 1, 1)
+        XCTAssertTrue((decoded.images ?? [decoded]).allSatisfy {
+            ($0.cgImage?.width ?? 0) <= 64 && ($0.cgImage?.height ?? 0) <= 64
+        })
     }
 
     func testQuickReactionImagesAreBundledAndPrewarmed() async throws {

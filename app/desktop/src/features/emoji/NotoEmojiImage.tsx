@@ -6,6 +6,7 @@ import {
   useRemoteImage,
 } from '@/kordi-app/components/remoteAvatarImage';
 import { cn } from '@/lib/utils';
+import { isEmojiImageReady, markEmojiImageReady } from './emojiImageReadiness';
 import { useNearEmojiViewport } from './emojiViewport';
 import { notoEmojiAssetUrl, type NotoEmoji } from './notoEmoji';
 
@@ -31,9 +32,16 @@ export const NotoEmojiImage = memo(function NotoEmojiImage({
   const nearViewport = useNearEmojiViewport(imageRef, native);
   const remote = useRemoteImage(remoteUrl, native && nearViewport);
   const source = native ? (remote.status === 'ready' ? remote.dataUrl : null) : remoteUrl;
-  const [loadedSource, setLoadedSource] = useState<string | null>(null);
+  const readinessKey = `noto:${remoteUrl}`;
+  const [loadedKey, setLoadedKey] = useState<string | null>(() => (
+    isEmojiImageReady(readinessKey) ? readinessKey : null
+  ));
   const [failedSource, setFailedSource] = useState<string | null>(null);
-  const ready = Boolean(source && source === loadedSource && source !== failedSource);
+  const ready = Boolean(
+    source
+    && (loadedKey === readinessKey || isEmojiImageReady(readinessKey))
+    && source !== failedSource,
+  );
   const failed = native
     ? format !== 'webp' && remote.status === 'failed'
     : Boolean(source && source === failedSource);
@@ -58,11 +66,12 @@ export const NotoEmojiImage = memo(function NotoEmojiImage({
         src={source ?? undefined}
         alt=""
         data-ready={ready}
-        loading="lazy"
+        loading={native ? 'eager' : 'lazy'}
         decoding="async"
         draggable={false}
         onLoad={() => {
-          setLoadedSource(source);
+          markEmojiImageReady(readinessKey);
+          setLoadedKey(readinessKey);
           setFailedSource(null);
         }}
         onError={() => {
