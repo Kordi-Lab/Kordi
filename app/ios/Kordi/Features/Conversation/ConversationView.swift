@@ -661,6 +661,8 @@ struct ConversationView: View {
                             },
                             onChoosePhotos: {
                                 guard canPresentPhotoPicker() else { return }
+                                dismissComposerPickers()
+                                dismissKeyboard()
                                 showPhotoPicker = true
                             },
                             onChooseFiles: { showFileImporter = true },
