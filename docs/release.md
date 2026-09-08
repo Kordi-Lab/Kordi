@@ -423,7 +423,16 @@ Never promote or replace the immutable beta.6 preview objects. Never create the 
 
 ### Version metadata to bump
 
-For each beta release, update and verify all desktop release metadata:
+The publisher accepts stable versions such as `0.0.1`, beta versions such as
+`0.0.1-beta.20`, and corrective beta versions such as `0.0.1-beta.19.3`.
+Stable versions use the existing `acceptance` verification and `beta` distribution
+channels; the channel name does not require a beta version suffix. The rollback
+command also accepts a stable `--expected-current-version`. Stable release links
+use tags such as `V0.0.1`; preparing metadata or running a local publisher dry run
+does not create a tag or GitHub release. Reserve immutable production object keys
+for the final verified artifacts; use dry runs for prerelease preparation.
+
+For each stable or beta release, update and verify all desktop release metadata:
 
 - root `CHANGELOG.md`
 - `app/desktop/package.json`

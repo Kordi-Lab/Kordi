@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
+import { VERSION_PATTERN } from './desktop-release-version.mjs';
 
-const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)(?:\.(?:0|[1-9]\d*))?$/;
 const MAX_RELEASE_NOTES_LENGTH = 16_384;
 
 function escapeRegExp(value) {
@@ -20,7 +20,7 @@ function validatePublishedReleaseNotes(value, label) {
 
 export function releaseNotesFromChangelog(changelog, version) {
   if (typeof changelog !== 'string') throw new Error('CHANGELOG.md contents are required');
-  if (!VERSION_PATTERN.test(version)) throw new Error('Release version must be a beta semantic version');
+  if (!VERSION_PATTERN.test(version)) throw new Error('Release version must be a stable or beta semantic version');
   const match = changelog.match(new RegExp(
     `^## \\[${escapeRegExp(version)}\\] - \\d{4}-\\d{2}-\\d{2}\\n([\\s\\S]*?)(?=^## \\[|(?![\\s\\S]))`,
     'm',
