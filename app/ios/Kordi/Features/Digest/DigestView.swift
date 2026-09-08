@@ -225,7 +225,9 @@ struct DigestView: View {
                         }
                     }.padding().navigationTitle(first.sessionTitle)
                 } else { Text("This source is no longer accessible or included.").padding().navigationTitle("Source unavailable") }
-            }.navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
         case .event(let event, let proposal, let original, let series): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts, proposal: proposal, original: original, series: series) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.eventDate(updated) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: { if let series, let id = proposal?.existingSeriesId { try await model.removeDigestCalendarSeries(id, events: series) } else { try await model.removeDigestCalendarEvent(event) }; await reloadAfterEdit() }
         case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .connection: DigestConnectView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
