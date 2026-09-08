@@ -172,9 +172,9 @@
 
     .tool-row {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
       gap: var(--space-xs);
-      margin-block-end: var(--space-xs);
+      align-items: center;
     }
 
     .tool-button {
@@ -204,12 +204,6 @@
     .tool-button[aria-pressed="true"] {
       background: var(--color-surface-active);
       color: var(--color-text);
-    }
-
-    .send-row {
-      display: flex;
-      justify-content: flex-end;
-      align-items: center;
     }
 
     .send-button {
@@ -283,8 +277,6 @@
         <button class="tool-button" data-tool="draw" type="button" aria-label="Draw on photo" title="Draw" aria-pressed="false">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 4.5 5 5"/><path d="M3 21c3.5 0 4.5-1 4.5-3.5L18 7a2.12 2.12 0 0 0-3-3L4.5 14.5C2 17 2 18 3 21Z"/></svg>
         </button>
-      </div>
-      <div class="send-row">
         <button class="send-button" id="send" type="button" aria-label="Send photo">↑</button>
       </div>
       <p class="visually-hidden" id="status" aria-live="polite">Preview only — no message will be sent.</p>
