@@ -7,7 +7,7 @@
   <style>
     /* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
     /* Hallmark · genre: modern-minimal · macrostructure: Workbench · theme: existing Kordi iOS
-     * audience: Kordi iOS chat users · use: review, edit, caption, and send a captured photo
+     * audience: Kordi iOS chat users · use: review, edit, and send a captured photo
      * contrast: pass (40–41) · chrome: pass (47) · tokens: pass (48)
      * responsive: pass (34, 49–57)
      */
@@ -207,27 +207,10 @@
     }
 
     .send-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: var(--space-xs);
+      display: flex;
+      justify-content: flex-end;
       align-items: center;
     }
-
-    .caption {
-      width: 100%;
-      height: var(--control-height);
-      min-width: 0;
-      border: 1px solid var(--color-rule);
-      border-radius: var(--radius-round);
-      outline: 2px solid transparent;
-      padding-inline: var(--space-md);
-      background: var(--color-surface);
-      color: var(--color-text);
-    }
-
-    .caption::placeholder { color: var(--color-muted); }
-    .caption:hover { background: var(--color-surface-raised); }
-    .caption:focus { border-color: var(--color-accent); }
 
     .send-button {
       display: grid;
@@ -302,7 +285,6 @@
         </button>
       </div>
       <div class="send-row">
-        <input class="caption" id="caption" type="text" maxlength="1024" placeholder="Add a caption…" aria-label="Photo caption" />
         <button class="send-button" id="send" type="button" aria-label="Send photo">↑</button>
       </div>
       <p class="visually-hidden" id="status" aria-live="polite">Preview only — no message will be sent.</p>
@@ -415,10 +397,7 @@
     });
 
     document.querySelector('#send').addEventListener('click', () => {
-      const caption = document.querySelector('#caption').value.trim();
-      status.textContent = caption
-        ? 'Preview: the photo and caption would send together.'
-        : 'Preview: the photo would send immediately.';
+      status.textContent = 'Preview: the photo would send immediately.';
     });
   </script>
 </body>
