@@ -2356,7 +2356,8 @@ struct ConversationView: View {
         dismissComposerPickers()
         dismissKeyboard()
         Task { @MainActor in
-            await Task.yield()
+            // ponytail: bridge the system Menu dismissal; remove the delay when SwiftUI exposes a completion callback.
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
             showPhotoPicker = true
         }
     }

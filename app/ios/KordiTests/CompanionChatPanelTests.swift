@@ -384,7 +384,7 @@ final class CompanionChatPanelTests: XCTestCase {
             range: start.upperBound..<source.endIndex
         ))
         let presentation = source[start.lowerBound..<end.lowerBound]
-        let menuDismissal = try XCTUnwrap(presentation.range(of: "await Task.yield()"))
+        let menuDismissal = try XCTUnwrap(presentation.range(of: "Task.sleep(for: .milliseconds(350))"))
         let fullScreenCover = try XCTUnwrap(presentation.range(of: "showPhotoPicker = true"))
 
         XCTAssertTrue(source.contains("onChoosePhotos: presentPhotoLibrary"))
