@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useReducedMotion } from 'framer-motion';
 
 import {
@@ -7,6 +7,7 @@ import {
 } from '@/kordi-app/components/remoteAvatarImage';
 import { cn } from '@/lib/utils';
 import { blobEmojiAssetUrl, type BlobEmoji } from './blobEmoji';
+import { isEmojiImageReady, markEmojiImageReady } from './emojiImageReadiness';
 import { useNearEmojiViewport } from './emojiViewport';
 
 function useBlobEmojiSource(emoji: BlobEmoji, nearViewport: boolean) {
@@ -36,6 +37,8 @@ function ReducedMotionBlobEmoji({
   const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl, undefined, true);
   const nearViewport = useNearEmojiViewport(canvasRef, native);
   const { source } = useBlobEmojiSource(emoji, nearViewport);
+  const readinessKey = `blob:${emoji.sha256}:still`;
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (!source) return;
@@ -46,15 +49,18 @@ function ReducedMotionBlobEmoji({
       canvas.width = image.naturalWidth || 128;
       canvas.height = image.naturalHeight || 128;
       canvas.getContext('2d')?.drawImage(image, 0, 0);
+      markEmojiImageReady(readinessKey);
+      setLoadedKey(readinessKey);
     };
     image.src = source;
     return () => { image.onload = null; };
-  }, [source]);
+  }, [readinessKey, source]);
 
   return (
     <canvas
       ref={canvasRef}
-      className={className}
+      className={cn('app-blob-emoji-image', className)}
+      data-ready={source && loadedKey === readinessKey || undefined}
       role={decorative ? undefined : 'img'}
       aria-label={decorative ? undefined : emoji.id}
       aria-hidden={decorative || undefined}
@@ -104,16 +110,26 @@ function LoadedBlobEmojiImage({
   const native = shouldLoadRemoteImageThroughNativeProxy(remoteUrl, undefined, true);
   const nearViewport = useNearEmojiViewport(imageRef, native);
   const { source } = useBlobEmojiSource(emoji, nearViewport);
+  const readinessKey = `blob:${emoji.sha256}:animated`;
+  const [loadedKey, setLoadedKey] = useState<string | null>(() => (
+    isEmojiImageReady(readinessKey) ? readinessKey : null
+  ));
+  const ready = Boolean(source && (loadedKey === readinessKey || isEmojiImageReady(readinessKey)));
   return (
     <img
       ref={imageRef}
       src={source ?? undefined}
-      className={cn('object-contain', className)}
+      className={cn('app-blob-emoji-image object-contain', className)}
+      data-ready={ready || undefined}
       alt={decorative ? '' : emoji.id}
       aria-hidden={decorative || undefined}
-      loading="lazy"
+      loading={native ? 'eager' : 'lazy'}
       decoding="async"
       draggable={false}
+      onLoad={() => {
+        markEmojiImageReady(readinessKey);
+        setLoadedKey(readinessKey);
+      }}
     />
   );
 }

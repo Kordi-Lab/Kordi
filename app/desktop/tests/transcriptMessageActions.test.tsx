@@ -326,6 +326,16 @@ test('message context menu shows Blob Emoji reactions for synced messages', () =
   assert.doesNotMatch(markup, />Details</);
 });
 
+test('message reaction surfaces size wrapped Noto Emoji', () => {
+  const css = readFileSync(
+    new URL('../src/styles/shell-message-actions.css', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(css, /\.app-message-reaction-quick > \.app-noto-emoji \{[\s\S]*?width:\s*1\.75rem;[\s\S]*?height:\s*1\.75rem;/);
+  assert.match(css, /\.app-message-reaction-chip > \.app-noto-emoji \{[\s\S]*?width:\s*1\.25rem;[\s\S]*?height:\s*1\.25rem;/);
+});
+
 test('message reaction expansion chooses Noto when no emoji history exists', () => {
   const source = readFileSync(
     new URL('../src/kordi-app/components/messageReactions.tsx', import.meta.url),

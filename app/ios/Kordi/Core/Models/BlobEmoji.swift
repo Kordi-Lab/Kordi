@@ -62,8 +62,16 @@ enum BlobEmojiCatalog {
         )
     }
 
-    static func cachedImage(for emoji: BlobEmoji, animated: Bool) -> UIImage? {
-        BlobEmojiImageCache.image(for: emoji, animated: animated)
+    static func cachedImage(
+        for emoji: BlobEmoji,
+        animated: Bool,
+        maximumPixelSize: CGFloat? = nil
+    ) -> UIImage? {
+        BlobEmojiImageCache.image(
+            for: emoji,
+            animated: animated,
+            maximumPixelSize: maximumPixelSize
+        )
     }
 
     static func prewarmQuickReactions(storedRecentEmojiIDs: String) async {
@@ -313,15 +321,18 @@ enum BlobEmojiRecentStore {
 
 struct BlobEmojiView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
     let emoji: BlobEmoji
     let size: CGFloat
     @State private var image: UIImage?
 
     var body: some View {
         let animated = emoji.animated && !reduceMotion
+        let maximumPixelSize = size * displayScale
         let displayedImage = BlobEmojiCatalog.cachedImage(
             for: emoji,
-            animated: animated
+            animated: animated,
+            maximumPixelSize: animated ? maximumPixelSize : nil
         ) ?? BlobEmojiCatalog.cachedImage(for: emoji, animated: false) ?? image
         Group {
             if let displayedImage {
@@ -338,10 +349,17 @@ struct BlobEmojiView: View {
         .scaledToFit()
         .frame(width: size, height: size)
         .clipped()
-        .task(id: "\(emoji.id):\(reduceMotion)") {
+        .task(id: "\(emoji.id):\(reduceMotion):\(Int(maximumPixelSize.rounded(.up)))") {
+            image = nil
             image = await BlobEmojiImageLoader.shared.image(
                 for: emoji,
-                animated: animated
+                animated: false
+            )
+            guard animated, !Task.isCancelled else { return }
+            image = await BlobEmojiImageLoader.shared.image(
+                for: emoji,
+                animated: true,
+                maximumPixelSize: maximumPixelSize
             )
         }
         .accessibilityLabel(emoji.accessibilityName)
@@ -449,33 +467,72 @@ enum AnimatedImageDecoder {
 private enum BlobEmojiImageCache {
     private static let storage: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
-        cache.countLimit = 48
+        cache.countLimit = 192
         cache.totalCostLimit = 32 * 1_024 * 1_024
         return cache
     }()
 
-    static func image(for emoji: BlobEmoji, animated: Bool) -> UIImage? {
-        storage.object(forKey: key(for: emoji, animated: animated))
+    static func image(
+        for emoji: BlobEmoji,
+        animated: Bool,
+        maximumPixelSize: CGFloat? = nil
+    ) -> UIImage? {
+        storage.object(forKey: key(
+            for: emoji,
+            animated: animated,
+            maximumPixelSize: maximumPixelSize
+        ))
     }
 
-    static func insert(_ image: UIImage, for emoji: BlobEmoji, animated: Bool, cost: Int) {
-        storage.setObject(image, forKey: key(for: emoji, animated: animated), cost: cost)
+    static func insert(
+        _ image: UIImage,
+        for emoji: BlobEmoji,
+        animated: Bool,
+        maximumPixelSize: CGFloat? = nil,
+        cost: Int
+    ) {
+        storage.setObject(
+            image,
+            forKey: key(
+                for: emoji,
+                animated: animated,
+                maximumPixelSize: maximumPixelSize
+            ),
+            cost: cost
+        )
     }
 
-    private static func key(for emoji: BlobEmoji, animated: Bool) -> NSString {
-        "\(emoji.id):\(animated)" as NSString
+    private static func key(
+        for emoji: BlobEmoji,
+        animated: Bool,
+        maximumPixelSize: CGFloat?
+    ) -> NSString {
+        let pixelSize = maximumPixelSize.map { String(Int($0.rounded(.up))) } ?? "original"
+        return "\(emoji.id):\(animated):\(pixelSize)" as NSString
     }
 }
 
 private actor BlobEmojiImageLoader {
     static let shared = BlobEmojiImageLoader()
 
-    func image(for emoji: BlobEmoji, animated: Bool) -> UIImage? {
-        if let cached = BlobEmojiImageCache.image(for: emoji, animated: animated) {
+    func image(
+        for emoji: BlobEmoji,
+        animated: Bool,
+        maximumPixelSize: CGFloat? = nil
+    ) -> UIImage? {
+        if let cached = BlobEmojiImageCache.image(
+            for: emoji,
+            animated: animated,
+            maximumPixelSize: maximumPixelSize
+        ) {
             return cached
         }
         guard let url = BlobEmojiCatalog.assetURL(for: emoji) else { return nil }
-        let image = AnimatedImageDecoder.image(at: url, animated: animated)
+        let image = AnimatedImageDecoder.image(
+            at: url,
+            animated: animated,
+            maximumPixelSize: maximumPixelSize
+        )
         if let image {
             let cost = (image.images ?? [image]).reduce(0) { total, frame in
                 total + (frame.cgImage.map { $0.bytesPerRow * $0.height } ?? 0)
@@ -484,6 +541,7 @@ private actor BlobEmojiImageLoader {
                 image,
                 for: emoji,
                 animated: animated,
+                maximumPixelSize: maximumPixelSize,
                 cost: cost
             )
         }

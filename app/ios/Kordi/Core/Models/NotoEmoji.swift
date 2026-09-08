@@ -53,6 +53,18 @@ enum NotoEmojiCatalog {
         return URL(string: "\(cdnOrigin)/s/e/notoemoji/latest/\(emoji.id)/512.\(format.rawValue)")
     }
 
+    static func cachedImage(
+        for emoji: NotoEmoji,
+        animated: Bool,
+        maximumPixelSize: CGFloat
+    ) -> UIImage? {
+        NotoEmojiImageCache.image(for: NotoEmojiImageCache.key(
+            for: emoji,
+            animated: animated,
+            maximumPixelSize: maximumPixelSize
+        ))
+    }
+
     private static func validID(_ value: String) -> Bool {
         !value.isEmpty && value.split(separator: "_").allSatisfy { codepoint in
             !codepoint.isEmpty && codepoint.allSatisfy(\.isHexDigit)
@@ -183,6 +195,7 @@ enum EmojiRecentStore {
 
 struct NotoEmojiView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.displayScale) private var displayScale
     let emoji: NotoEmoji
     let size: CGFloat
     let animated: Bool
@@ -198,13 +211,19 @@ struct NotoEmojiView: View {
 
     var body: some View {
         let shouldAnimate = animated && !reduceMotion
-        let loadKey = "\(emoji.id):\(shouldAnimate):\(Int(size.rounded()))"
+        let maximumPixelSize = size * displayScale
+        let loadKey = "\(emoji.id):\(shouldAnimate):\(Int(maximumPixelSize.rounded()))"
+        let cachedImage = NotoEmojiCatalog.cachedImage(
+            for: emoji,
+            animated: shouldAnimate,
+            maximumPixelSize: maximumPixelSize
+        )
         Group {
-            if loadedKey == loadKey, let image {
-                if shouldAnimate {
-                    AnimatedUIImage(image: image)
+            if let displayedImage = loadedKey == loadKey ? image : cachedImage {
+                if shouldAnimate && (displayedImage.images?.count ?? 0) > 1 {
+                    AnimatedUIImage(image: displayedImage)
                 } else {
-                    Image(uiImage: image).resizable()
+                    Image(uiImage: displayedImage).resizable()
                 }
             } else if failedKey == loadKey {
                 Text(verbatim: emoji.value)
@@ -222,7 +241,7 @@ struct NotoEmojiView: View {
             let loaded = await NotoEmojiImageLoader.shared.image(
                 for: emoji,
                 animated: shouldAnimate,
-                maximumPixelSize: size * UIScreen.main.scale
+                maximumPixelSize: maximumPixelSize
             )
             guard !Task.isCancelled else { return }
             image = loaded
@@ -236,7 +255,7 @@ struct NotoEmojiView: View {
 private enum NotoEmojiImageCache {
     private static let storage: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
-        cache.countLimit = 48
+        cache.countLimit = 192
         cache.totalCostLimit = 32 * 1_024 * 1_024
         return cache
     }()
@@ -247,6 +266,14 @@ private enum NotoEmojiImageCache {
 
     static func insert(_ image: UIImage, for key: NSString, cost: Int) {
         storage.setObject(image, forKey: key, cost: cost)
+    }
+
+    static func key(
+        for emoji: NotoEmoji,
+        animated: Bool,
+        maximumPixelSize: CGFloat
+    ) -> NSString {
+        "\(emoji.id):\(animated):\(Int(maximumPixelSize.rounded()))" as NSString
     }
 }
 
@@ -259,7 +286,11 @@ private actor NotoEmojiImageLoader {
         animated: Bool,
         maximumPixelSize: CGFloat
     ) async -> UIImage? {
-        let key = "\(emoji.id):\(animated):\(Int(maximumPixelSize.rounded()))" as NSString
+        let key = NotoEmojiImageCache.key(
+            for: emoji,
+            animated: animated,
+            maximumPixelSize: maximumPixelSize
+        )
         if let cached = NotoEmojiImageCache.image(for: key) { return cached }
 
         let formats: [NotoEmojiAssetFormat] = animated ? [.webp, .gif] : [.png]

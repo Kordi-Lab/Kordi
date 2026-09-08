@@ -28,6 +28,7 @@ import {
   blobEmojiComposerValue,
   blobEmojiTokenFor,
 } from './blobEmojiComposerDom';
+import { isEmojiImageReady, markEmojiImageReady } from './emojiImageReadiness';
 import type { EmojiTextSelection } from './emojiText';
 
 const COMPOSER_MENTION_ATTRIBUTE = 'data-composer-mention';
@@ -61,9 +62,16 @@ function appendComposerText(
 function setBlobEmojiSource(
   media: HTMLImageElement | HTMLCanvasElement,
   source: string,
+  readinessKey: string,
 ) {
+  media.dataset.ready = isEmojiImageReady(readinessKey) ? 'true' : 'false';
   if (media.tagName === 'IMG') {
-    (media as HTMLImageElement).src = source;
+    const image = media as HTMLImageElement;
+    image.onload = () => {
+      markEmojiImageReady(readinessKey);
+      image.dataset.ready = 'true';
+    };
+    image.src = source;
     return;
   }
   const canvas = media as HTMLCanvasElement;
@@ -73,6 +81,8 @@ function setBlobEmojiSource(
     canvas.width = image.naturalWidth || 128;
     canvas.height = image.naturalHeight || 128;
     canvas.getContext('2d')?.drawImage(image, 0, 0);
+    markEmojiImageReady(readinessKey);
+    canvas.dataset.ready = 'true';
   };
   image.src = source;
 }
@@ -88,7 +98,7 @@ function blobEmojiComposerNode(emoji: BlobEmoji, token: string) {
   const media = reduceMotion
     ? document.createElement('canvas')
     : document.createElement('img');
-  media.className = 'object-contain';
+  media.className = 'app-blob-emoji-image object-contain';
   media.setAttribute('role', 'img');
   media.setAttribute('aria-label', emoji.id);
   if (media.tagName === 'IMG') {
@@ -100,17 +110,18 @@ function blobEmojiComposerNode(emoji: BlobEmoji, token: string) {
   wrapper.append(media);
 
   const remoteUrl = blobEmojiAssetUrl(emoji);
+  const readinessKey = `blob:${emoji.sha256}:${reduceMotion ? 'still' : 'animated'}`;
   if (shouldLoadRemoteImageThroughNativeProxy(remoteUrl, undefined, true)) {
     void loadRemoteImageThroughNativeProxy(remoteUrl, {
       command: 'desktop_fetch_blob_emoji_data_url',
       expectedSha256: emoji.sha256,
     }).then((source) => {
-      if (wrapper.isConnected) setBlobEmojiSource(media, source);
+      if (wrapper.isConnected) setBlobEmojiSource(media, source, readinessKey);
     }).catch(() => {
-      if (wrapper.isConnected) setBlobEmojiSource(media, remoteUrl);
+      if (wrapper.isConnected) setBlobEmojiSource(media, remoteUrl, readinessKey);
     });
   } else {
-    setBlobEmojiSource(media, remoteUrl);
+    setBlobEmojiSource(media, remoteUrl, readinessKey);
   }
   return wrapper;
 }
