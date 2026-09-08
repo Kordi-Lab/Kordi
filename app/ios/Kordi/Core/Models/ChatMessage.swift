@@ -329,6 +329,7 @@ enum ChatAttachmentSubtype: String, Codable, Hashable {
 }
 
 struct ChatAttachment: Identifiable, Codable, Hashable {
+    let livePhoto: LivePhotoAttachment?
     let attachmentId: String
     let name: String
     let kind: ChatAttachmentKind
@@ -344,6 +345,7 @@ struct ChatAttachment: Identifiable, Codable, Hashable {
 
     init(
         attachmentId: String,
+        livePhoto: LivePhotoAttachment? = nil,
         name: String,
         kind: ChatAttachmentKind,
         subtype: ChatAttachmentSubtype? = nil,
@@ -354,6 +356,7 @@ struct ChatAttachment: Identifiable, Codable, Hashable {
         heightPixels: Int? = nil,
         previewURL: String?
     ) {
+        self.livePhoto = livePhoto
         self.attachmentId = attachmentId
         self.name = name
         self.kind = kind
@@ -633,6 +636,7 @@ struct MessageThreadProjection: Equatable {
 }
 
 struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
+    var livePhotoFiles: LivePhotoFiles? = nil
     let id: String
     let name: String
     let kind: ChatAttachmentKind
@@ -687,8 +691,9 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
     }
 
     func discardOwnedFile() {
+        livePhotoFiles?.discardOwnedFiles()
         guard let fileURL,
-              fileURL.lastPathComponent.hasPrefix("kordi-video-"),
+              (fileURL.lastPathComponent.hasPrefix("kordi-video-") || fileURL.lastPathComponent.hasPrefix("kordi-live-")),
               fileURL.deletingLastPathComponent().standardizedFileURL
                 == FileManager.default.temporaryDirectory.standardizedFileURL else {
             return
@@ -699,6 +704,7 @@ struct PendingAttachment: Identifiable, Hashable, @unchecked Sendable {
     var optimisticAttachment: ChatAttachment {
         ChatAttachment(
             attachmentId: "pending:\(id)",
+            livePhoto: livePhotoFiles?.optimisticMetadata(draftID: id),
             name: name,
             kind: kind,
             subtype: subtype,

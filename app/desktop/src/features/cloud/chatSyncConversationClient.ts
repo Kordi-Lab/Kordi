@@ -1,3 +1,4 @@
+import { livePhotoAttachmentIds } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudSessionTitle, SendCloudMessageOptions, UpdateCloudSessionTitleInput } from './authClient';
 import {
   cloudMessageFromChatSync,
@@ -169,7 +170,7 @@ export class ChatSyncConversationClient {
               options.voiceMessage,
             ),
             reply_to_message_id: null,
-            attachment_ids: attachments.map((attachment) => attachment.attachmentId),
+            attachment_ids: [...new Set(attachments.flatMap(livePhotoAttachmentIds))],
           }),
         },
         'Could not send message.',

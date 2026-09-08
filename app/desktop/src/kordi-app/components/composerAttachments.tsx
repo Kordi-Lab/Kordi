@@ -1,3 +1,6 @@
+import { LivePhotoIcon } from './livePhotoIcon';
+import type { LivePhotoFiles } from '@/features/chat/livePhotos';
+import { LivePhotoComposerReview } from './livePhotoComposerReview';
 import {
   useCallback,
   useEffect,
@@ -28,6 +31,8 @@ import type { AttachmentItem } from '@/features/chat/composerController.types';
 import { ComposerImageEditor } from './composerImageEditor';
 
 export type ComposerAttachmentPresentation = {
+  livePhotoFiles?: LivePhotoFiles;
+  previewUrl?: string | null;
   id: string;
   name: string;
   kind: 'image' | 'file';
@@ -181,7 +186,7 @@ export function ComposerAttachmentList({
                 )}
                 aria-hidden="true"
               >
-                <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />
+                {attachment.livePhotoFiles ? <LivePhotoIcon className="size-4" /> : <Icon className="h-3.5 w-3.5" strokeWidth={1.8} />}
               </span>
               <span className="min-w-0 max-w-[220px] flex-1 truncate text-[11.5px] font-medium leading-none">
                 {attachment.name}
@@ -194,7 +199,7 @@ export function ComposerAttachmentList({
                     setEditingAttachmentId(attachment.id);
                   }}
                   className="app-button-quiet grid h-6 w-6 shrink-0 place-items-center rounded-full p-0"
-                  aria-label={`Edit ${attachment.name} before sending`}
+                  aria-label={`${attachment.livePhotoFiles ? "Review Live Photo" : "Edit"} ${attachment.name} before sending`}
                 >
                   <Pencil className="h-3 w-3" aria-hidden="true" />
                 </button>
@@ -247,7 +252,7 @@ export function ComposerAttachmentList({
       </div>
       {editingAttachment && onReplace && typeof document !== 'undefined'
         ? createPortal(
-            <ComposerImageEditor
+            editingAttachment.livePhotoFiles ? <LivePhotoComposerReview attachment={editingAttachment as AttachmentItem} onClose={closeEditor} /> : <ComposerImageEditor
               attachment={editingAttachment as AttachmentItem}
               onClose={closeEditor}
               onSave={(replacement) => onReplace(editingAttachment.id, replacement)}

@@ -1,3 +1,4 @@
+import { LivePhotoIcon } from './livePhotoIcon';
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import {
   attachmentMediaGalleryIndex,
@@ -48,10 +49,7 @@ import { imageTileClass, isAttachmentSending } from './transcriptAttachmentPrese
 import { AttachmentVideoCard } from './transcriptVideoAttachment';
 import type { Message, MessageAttachment } from '../types';
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
-export {
-  clearAttachmentPreviewRecoveryStateForTests,
-  recoverAttachmentPreviewOnce,
-} from './transcriptAttachmentPreviewRecovery';
+export { clearAttachmentPreviewRecoveryStateForTests, recoverAttachmentPreviewOnce } from './transcriptAttachmentPreviewRecovery';
 export { attachmentImageDeliveryVisual };
 export { AttachmentContextMenu } from './transcriptAttachmentContextMenu';
 export { shouldCloseAttachmentContextMenuForTarget } from './transcriptAttachmentContextMenuState';
@@ -323,6 +321,7 @@ function AttachmentImageCard({
           transparent={isSticker}
         />
       )}
+      {attachment.livePhoto || attachment.livePhotoFiles ? <span role="img" aria-label="Live Photo" className="pointer-events-none absolute left-2 top-2 grid size-7 place-items-center rounded-full bg-black/65 text-[#fff] ring-1 ring-inset ring-white/20"><LivePhotoIcon className="size-5" strokeWidth={1.8} /></span> : null}
       {showOriginalAction ? (
         <div className="absolute bottom-2 right-2 z-10">
           <AttachmentActions attachment={attachment} variant="original" />
@@ -331,7 +330,6 @@ function AttachmentImageCard({
     </div>
   );
 }
-
 export function AttachmentPreview({
   msg,
   imageGallery,

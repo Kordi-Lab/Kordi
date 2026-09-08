@@ -5,6 +5,8 @@ import type { AttachmentItem } from '../composerController.types';
 export function toOptimisticAttachments(attachments: AttachmentItem[]) {
   return attachments.map((attachment) => ({
     kind: attachment.kind,
+    ...(attachment.livePhoto ? { livePhoto: attachment.livePhoto } : {}),
+    ...(attachment.livePhotoFiles ? { livePhotoFiles: attachment.livePhotoFiles } : {}),
     ...(attachment.subtype === 'sticker'
       ? { subtype: 'sticker' as const }
       : attachment.subtype === 'meme' ? {

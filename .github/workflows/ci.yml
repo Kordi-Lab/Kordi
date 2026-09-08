@@ -76,7 +76,7 @@ jobs:
         run: pnpm --dir app/desktop exec playwright install chromium
 
       - name: Compare transient surfaces
-        run: pnpm --dir app/desktop test:visual
+        run: pnpm --dir app/desktop test:visual --project chromium
 
   rust:
     name: Rust checks

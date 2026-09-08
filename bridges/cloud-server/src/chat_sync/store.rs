@@ -220,6 +220,7 @@ type SyncEventRow = (
 
 mod conversation;
 mod cursors;
+mod live_photo_validation;
 mod members;
 mod meme_validation;
 mod message;

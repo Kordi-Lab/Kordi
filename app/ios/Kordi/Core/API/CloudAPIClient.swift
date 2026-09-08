@@ -59,6 +59,7 @@ actor CloudAPIClient {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let deviceIdentityStore: KeychainSessionStore
+    private var livePhotoUploads: [String: CloudMessageAttachment] = [:]
     private var activeAccountId: String?
     private var chatConversationsById: [String: CloudChatConversation] = [:]
     private var chatConversationsBySessionId: [String: CloudChatConversation] = [:]
@@ -337,6 +338,7 @@ actor CloudAPIClient {
     }
 
     private func resetChatCache() {
+        livePhotoUploads.removeAll()
         chatBootstrapGeneration &+= 1
         chatConversationsById = [:]
         chatConversationsBySessionId = [:]
@@ -1099,7 +1101,7 @@ actor CloudAPIClient {
                 kind: messageKind.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty ?? "text",
                 content: CloudChatContent(body: body, attachments: attachments, voiceMessage: voiceMessage),
                 replyToMessageId: nil,
-                attachmentIds: attachments.map(\.attachmentId)
+                attachmentIds: Array(Set(attachments.flatMap { [$0.attachmentId] + ($0.livePhoto?.attachmentIds ?? []) })).sorted()
             ),
             fallback: "Could not send the message."
         )
@@ -1360,6 +1362,8 @@ actor CloudAPIClient {
         attachment: PendingAttachment,
         progress: (@Sendable (Double) async -> Void)? = nil
     ) async throws -> CloudMessageAttachment {
+        let uploadAccount = activeAccountId
+        if attachment.livePhotoFiles != nil, let completed = livePhotoUploads[attachment.id] { return completed }
         let uploaded: AttachmentUploadResponse
         if attachment.fileURL == nil,
            attachment.data.count <= AttachmentUploadChunking.directUploadLimitBytes {
@@ -1372,7 +1376,7 @@ actor CloudAPIClient {
             )
         }
         if let previewURL = attachment.previewURL {
-            if attachment.isMP4Video {
+            if attachment.isMP4Video || attachment.livePhotoFiles != nil {
                 try await updateAttachmentPreview(
                     token: token,
                     attachmentId: uploaded.attachmentId,
@@ -1385,15 +1389,28 @@ actor CloudAPIClient {
                     previewURL: previewURL
                 )
             }
-        } else if attachment.isMP4Video {
+        } else if attachment.isMP4Video || attachment.livePhotoFiles != nil {
             throw CloudAPIError(
                 code: "VIDEO_POSTER_REQUIRED",
                 message: "This video could not prepare a poster. Choose another MP4 file.",
                 statusCode: 422
             )
         }
-        return CloudMessageAttachment(
+        var livePhoto: LivePhotoAttachment?
+        if let files = attachment.livePhotoFiles {
+            let video = try await uploadAttachment(token: token, attachment: files.attachment(playback: false, previewURL: nil))
+            let playback = try await uploadAttachment(token: token, attachment: files.attachment(playback: true, previewURL: attachment.previewURL))
+            try Task.checkCancellation()
+            livePhoto = LivePhotoAttachment(
+                video: LivePhotoResource(attachmentId: video.attachmentId, name: video.name,
+                                         mimeType: "video/quicktime", sizeBytes: video.sizeBytes ?? 0),
+                playback: LivePhotoResource(attachmentId: playback.attachmentId, name: playback.name,
+                                            mimeType: "video/mp4", sizeBytes: playback.sizeBytes ?? 0)
+            )
+        }
+        let result = CloudMessageAttachment(
             attachmentId: uploaded.attachmentId,
+            livePhoto: livePhoto,
             name: attachment.name,
             kind: attachment.kind.rawValue,
             subtype: attachment.subtype == .sticker ? nil : attachment.subtype,
@@ -1405,6 +1422,15 @@ actor CloudAPIClient {
             downloadUrl: nil,
             previewUrl: nil // Uploaded bytes are referenced by ID; never embed local data URLs in message JSON.
         )
+        if attachment.livePhotoFiles != nil, activeAccountId == uploadAccount {
+            livePhotoUploads[attachment.id] = result
+        }
+        return result
+
+    }
+
+    func forgetLivePhotoUploads(_ draftIDs: [String]) {
+        draftIDs.forEach { livePhotoUploads.removeValue(forKey: $0) }
     }
 
     private func uploadDirectAttachment(

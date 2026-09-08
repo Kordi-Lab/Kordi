@@ -1,3 +1,4 @@
+import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudMessageAttachment } from './authClient';
 import { safeCloudAttachmentPreviewUrl } from './cloudAttachments';
 import {
@@ -56,9 +57,7 @@ type ActiveWrite = {
   settle: () => void;
 };
 
-function cleanText(value: unknown) {
-  return typeof value === 'string' ? value.trim() : '';
-}
+const cleanText = (value: unknown) => typeof value === 'string' ? value.trim() : '';
 
 export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessageAttachment | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -86,6 +85,7 @@ export function cloudMessageAttachmentMetadataOnly(value: unknown): CloudMessage
     mimeType,
     sizeBytes,
     ...(normalizedImagePixelDimensions(record.widthPixels, record.heightPixels) ?? {}),
+    ...(normalizedLivePhoto(record.livePhoto) ? { livePhoto: normalizedLivePhoto(record.livePhoto) } : {}),
     ...(previewAttachmentId ? { previewAttachmentId } : {}),
     ...(previewUrl ? { previewUrl } : {}),
   };

@@ -1,3 +1,4 @@
+import { importLivePhotos } from '@/features/chat/importLivePhotos';
 import { useCallback } from 'react';
 
 import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
@@ -381,13 +382,14 @@ export function useComposerInputActions({
       setDesktopChatError(null);
       const selectedPaths = paths ?? await pickDesktopChatAttachmentPaths();
       if (selectedPaths.length === 0) return [] as AttachmentItem[];
-      const saved = await Promise.all(selectedPaths.map(async (sourcePath) => {
+      const liveImport = await importLivePhotos(selectedPaths);
+      const saved = [...liveImport.photos, ...await Promise.all(liveImport.remaining.map(async (sourcePath) => {
         const rawName = composerAttachmentNameFromPath(sourcePath);
         const kind = composerAttachmentKindFromName(rawName);
         const displayName = friendlyAttachmentName(rawName, kind);
         const stored = await storeDesktopChatAttachmentPath(sourcePath, displayName);
         return composerAttachmentItemFromStoredPath({ sourcePath, stored, displayName });
-      }));
+      }))];
 
       setChatComposerAttachments((current) => {
         const seen = new Set(current.map((item) => item.path));

@@ -3,7 +3,7 @@ import type { CloudMessageAttachment } from './authClient';
 
 export type CloudGroupAttachmentReferenceInput = Pick<
   CloudMessageAttachment,
-  'attachmentId' | 'name' | 'kind' | 'subtype' | 'altText'
+  'attachmentId' | 'name' | 'kind' | 'subtype' | 'altText' | 'livePhoto'
 > & {
   mimeType?: string | null;
   sizeBytes?: number | null;
@@ -18,6 +18,7 @@ export function cloudGroupAttachmentReferences(
     attachmentId: attachment.attachmentId,
     name: attachment.name,
     kind: attachment.kind,
+    ...(attachment.livePhoto ? { livePhoto: attachment.livePhoto } : {}),
     ...(attachment.subtype === 'sticker' ? { subtype: 'sticker' as const }
       : attachment.subtype === 'meme' ? { subtype: 'meme' as const, altText: attachment.altText ?? null } : {}),
     mimeType: attachment.mimeType ?? null,

@@ -2593,6 +2593,14 @@ private struct MessageImageAttachment: View {
         .task(id: "\(attachment.id):\(reloadToken):\(reduceMotion)") {
             await loadImage()
         }
+        .overlay(alignment: .topLeading) {
+            if attachment.livePhoto != nil {
+                Image(systemName: "livephoto").font(.system(size: 16, weight: .medium))
+                    .frame(width: 28, height: 28).foregroundStyle(.white)
+                    .background(.black.opacity(0.45), in: Circle()).padding(6)
+                    .accessibilityLabel("Live Photo")
+            }
+        }
         .accessibilityLabel(
             attachment.subtype == .sticker
                 ? "Sticker \(attachment.name)"

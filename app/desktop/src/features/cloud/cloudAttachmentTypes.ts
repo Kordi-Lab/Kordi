@@ -1,4 +1,6 @@
+import type { LivePhoto } from '@/features/chat/livePhotos';
 export type CloudMessageAttachment = {
+  livePhoto?: LivePhoto | null;
   attachmentId: string;
   previewAttachmentId?: string | null;
   name: string;
@@ -15,6 +17,7 @@ export type CloudMessageAttachment = {
 };
 
 export type SendCloudMessageAttachmentInput = {
+  livePhoto?: LivePhoto | null;
   attachmentId: string;
   name: string;
   kind: 'image' | 'file';

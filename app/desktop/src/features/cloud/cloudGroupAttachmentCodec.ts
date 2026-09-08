@@ -1,3 +1,4 @@
+import { normalizedLivePhoto } from '@/features/chat/livePhotos';
 import type { CloudMessageAttachment } from './authClient';
 import { normalizedImagePixelDimensions } from '@/lib/imageDimensions';
 
@@ -31,6 +32,7 @@ function cloudMessageAttachmentFromRecord(value: unknown): CloudMessageAttachmen
     mimeType,
     sizeBytes,
     ...(dimensions ?? {}),
+      ...(normalizedLivePhoto(record.livePhoto) ? { livePhoto: normalizedLivePhoto(record.livePhoto) } : {}),
     downloadUrl,
     previewUrl,
   };

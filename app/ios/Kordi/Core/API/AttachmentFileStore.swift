@@ -81,22 +81,26 @@ actor AttachmentFileStore {
         uploaded: [CloudMessageAttachment],
         accountId: String
     ) {
-        for (draft, result) in zip(drafts, uploaded)
-            where draft.kind == .image || draft.isMP4Video {
-            if let fileURL = draft.fileURL {
-                _ = try? store(
-                    fileAt: fileURL,
-                    attachment: result.chatAttachment,
-                    accountId: accountId,
-                    variant: .original
-                )
-            } else if !draft.data.isEmpty {
-                _ = try? store(
-                    draft.data,
-                    attachment: result.chatAttachment,
-                    accountId: accountId,
-                    variant: .original
-                )
+        for (draft, result) in zip(drafts, uploaded) where draft.kind == .image || draft.isMP4Video {
+            try? cacheOriginals(draft, attachment: result.chatAttachment, accountId: accountId)
+        }
+    }
+
+    func cachePendingOriginals(_ drafts: [PendingAttachment], accountId: String) throws {
+        for draft in drafts {
+            try cacheOriginals(draft, attachment: draft.optimisticAttachment, accountId: accountId)
+        }
+    }
+
+    private func cacheOriginals(_ draft: PendingAttachment, attachment: ChatAttachment, accountId: String) throws {
+        if let fileURL = draft.fileURL {
+            _ = try store(fileAt: fileURL, attachment: attachment, accountId: accountId)
+        } else if !draft.data.isEmpty {
+            _ = try store(draft.data, attachment: attachment, accountId: accountId)
+        }
+        if let files = draft.livePhotoFiles, let live = attachment.livePhoto {
+            for (url, resource) in [(files.videoURL, live.video), (files.playbackURL, live.playback)] {
+                _ = try store(fileAt: url, attachment: resource.chatAttachment, accountId: accountId)
             }
         }
     }

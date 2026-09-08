@@ -186,6 +186,7 @@ extension CloudMessageAttachment {
     func chatAttachment(messageKind: String?) -> ChatAttachment {
         ChatAttachment(
             attachmentId: attachmentId,
+            livePhoto: livePhoto,
             name: name,
             kind: inferredChatAttachmentKind,
             subtype: messageKind == "sticker" ? .sticker : subtype,

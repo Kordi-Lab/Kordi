@@ -18,6 +18,7 @@ export function cloudGroupOutboxAttachmentSources(
 ): CloudGroupOutboxAttachmentSource[] {
   return attachments.map((attachment) => ({
     id: attachment.id,
+    ...(attachment.livePhotoFiles ? { livePhotoFiles: attachment.livePhotoFiles } : {}),
     path: attachment.path,
     name: attachment.name,
     kind: attachment.kind,
