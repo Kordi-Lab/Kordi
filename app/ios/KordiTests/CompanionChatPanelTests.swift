@@ -372,6 +372,18 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertFalse(source.contains(".animation(inputSurfaceAnimation, value: isExpressivePickerPresented)"))
     }
 
+    func testComposerGlassSurfacesDoNotCrossMorphAfterAFullScreenPicker() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/ComposerView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertFalse(source.contains("GlassEffectContainer"))
+        XCTAssertTrue(source.contains(".glassEffect(.regular.interactive(), in: .circle)"))
+        XCTAssertTrue(source.contains(".glassEffect(.regular, in: .rect(cornerRadius: messageFieldCornerRadius))"))
+    }
+
     func testExpressivePickerDoesNotDragTheNativeInputSurface() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

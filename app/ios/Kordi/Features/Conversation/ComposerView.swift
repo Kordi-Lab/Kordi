@@ -202,7 +202,7 @@ struct ComposerView: View {
     @ScaledMetric(relativeTo: .caption) private var mentionPickerChromeHeight: CGFloat = 44
 
     var body: some View {
-        composerContainer
+        composerContent
             .overlay(alignment: .bottomTrailing) {
                 VoiceRecordingGestureCapture(
                     isEnabled: isVoiceInputMode
@@ -275,17 +275,6 @@ struct ComposerView: View {
                 selectedExpressiveMediaPhotos = []
                 finishExpressiveMediaImport(items)
             }
-    }
-
-    @ViewBuilder
-    private var composerContainer: some View {
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: 8) {
-                composerContent
-            }
-        } else {
-            composerContent
-        }
     }
 
     private var composerContent: some View {
