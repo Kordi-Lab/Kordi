@@ -2,6 +2,137 @@ import XCTest
 import Testing
 @testable import Kordi
 
+struct CloudCatalogBucketingTests {
+    @Test func multipleGroupsKeepAliasCallAndUnreadGoldenResults() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let account = PreviewData.make(now: now).account
+        let peer = "acct_catalog_peer"
+        let groupA = "session:group:bucket-a"
+        let groupB = "session:group:bucket-b"
+        let groupC = "session:group:bucket-empty"
+        func canonical(_ sessionId: String, title: String, read: Int64) -> CloudChatConversation {
+            CloudChatConversation(id: "canonical-\(sessionId)", kind: "group", sharedTitle: title,
+                version: 1, createdByAccountId: account.accountId, legacySessionId: sessionId,
+                forkedFromSessionId: nil, forkedFromMessageId: nil, latestMessageSequence: 9,
+                createdAt: "2026-08-08T10:00:00Z", updatedAt: "2026-08-08T10:01:00Z",
+                members: [CloudChatMember(accountId: account.accountId, displayName: "Viewer", avatarUrl: nil,
+                    defaultAgentId: nil, defaultAgentDisplayName: nil, defaultAgentAvatarUrl: nil,
+                    role: "owner", membershipState: "active", version: 1, lastDeliveredSequence: 9,
+                    lastReadSequence: read, joinedAt: "2026-08-08T10:00:00Z", leftAt: nil)],
+                preferences: CloudChatPreferences(conversationId: "canonical-\(sessionId)",
+                    accountId: account.accountId, personalTitle: nil, version: 1))
+        }
+        let canonicals = [canonical(groupA, title: "Channel A", read: 1),
+            canonical(groupB, title: "Channel B", read: 2), canonical(groupC, title: "Empty", read: 0)]
+        func wire(_ id: String, _ body: String, session: String, minute: Int, sequence: Int64, kind: String? = nil) -> CloudMessageDTO {
+            CloudMessageDTO(messageId: id, fromAccountId: peer, toAccountId: account.accountId,
+                body: body, createdAt: String(format: "2026-08-08T10:%02d:00Z", minute),
+                deliveredAt: nil, readAt: nil, direction: "incoming", sessionId: session,
+                attachments: [], messageKind: kind, conversationSequence: sequence)
+        }
+        let members = [CloudGroupParticipant(accountId: account.accountId, displayName: "Viewer", avatarUrl: nil, role: "owner"),
+            CloudGroupParticipant(accountId: peer, displayName: "Peer", avatarUrl: nil, role: "person")]
+        func envelope(kind: String, message: CloudGroupMessagePayload?) throws -> String {
+            try CloudGroupMessageCodec.encode(CloudGroupControlEnvelope(kind: kind, groupId: groupA,
+                groupSpaceId: groupA, groupTitle: "Shared group", createdByAccountId: account.accountId,
+                actor: members[1], participants: members, message: message))
+        }
+        let payload = try envelope(kind: "group-message", message: CloudGroupMessagePayload(
+            id: "embedded-a", senderAccountId: peer, text: "Embedded A",
+            createdAtMs: parseCloudDate("2026-08-08T10:04:00Z").timeIntervalSince1970 * 1_000,
+            senderKind: "human", senderDisplayName: "Peer", deliveryState: "complete",
+            replyToMessageId: nil, requestId: nil))
+        let aliasCall = try envelope(kind: "group-update", message: nil)
+        let plainA = wire("plain-a", "Unread A", session: groupA, minute: 3, sequence: 3)
+        let messages = [
+            wire("read-a", "Read A", session: groupA, minute: 0, sequence: 1), plainA, plainA,
+            wire("normal-alias", payload, session: groupB, minute: 4, sequence: 4),
+            wire("normal-fanout", payload, session: groupB, minute: 4, sequence: 4),
+            wire("alias-call", aliasCall, session: groupB, minute: 2, sequence: 2, kind: "call.started.alias"),
+            wire("call-a", "Older A call", session: groupA, minute: 5, sequence: 5, kind: "call.ended.a"),
+            wire("call-a", "Newest A call", session: groupA, minute: 6, sequence: 6, kind: "call.ended.a"),
+            wire("plain-b", "Read B", session: groupB, minute: 1, sequence: 2),
+            wire("malformed-b", "kordi-cloud-group:not-base64", session: groupB, minute: 5, sequence: 3),
+            wire("call-b", "Newest B call", session: groupB, minute: 7, sequence: 7, kind: "call.ended.b"),
+            wire("unrelated", "Not a group message", session: "unrelated", minute: 9, sequence: 9),
+            wire("canonical-id-only", "Do not invent a session alias", session: canonicals[1].id, minute: 9, sequence: 9),
+        ]
+        func groups(_ rows: [CloudMessageDTO], hidden: Set<String> = []) -> [String: ConversationSummary] {
+            let catalog = CloudConversationCatalog.build(account: account, contacts: [], ownedAgents: [], sharedAgents: [],
+                messagesByPeer: [peer: rows], canonicalConversations: canonicals, hiddenSessionIds: hidden, now: now)
+            return Dictionary(uniqueKeysWithValues: catalog.filter { $0.kind == .group }.map { ($0.sessionId, $0) })
+        }
+        for rows in [messages, Array(messages.reversed())] {
+            let catalog = groups(rows)
+            #expect(catalog.count == 3)
+            #expect(catalog[groupA]?.displayName == "Channel A")
+            #expect(catalog[groupA]?.lastMessage == "Newest A call")
+            #expect(catalog[groupA]?.lastActivityAt == parseCloudDate("2026-08-08T10:06:00Z"))
+            #expect(catalog[groupA]?.messageCount == 5)
+            #expect(catalog[groupA]?.unreadCount == 2)
+            #expect(catalog[groupB]?.lastMessage == "Newest B call")
+            #expect(catalog[groupB]?.messageCount == 4)
+            #expect(catalog[groupB]?.unreadCount == 1)
+            #expect(catalog[groupC]?.messageCount == 0)
+            #expect(catalog[groupC]?.unreadCount == 0)
+            let hidden = groups(rows, hidden: [groupB])
+            #expect(hidden[groupB] == nil)
+            #expect(hidden[groupA]?.messageCount == 3)
+            #expect(hidden[groupA]?.unreadCount == 1)
+        }
+    }
+}
+
+struct CloudDateCacheTests {
+    @Test(arguments: ["1970-01-01T00:00:00Z", "1970-01-01T00:00:00.125Z",
+        "2026-09-08T03:12:45.123456+03:00", "2026-03-08T01:30:00-08:00",
+        "2026-03-08T03:30:00-07:00", "", "not-a-date", "2026-99-99T99:99:99Z"])
+    func matchesExistingISOParsing(_ value: String) {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let expected = fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value) ?? .distantPast
+        #expect(parseCloudDate(value) == expected)
+        #expect(parseCloudDate(value) == expected)
+    }
+
+    @Test func timezoneOffsetsAndFractionsKeepAbsoluteTime() {
+        #expect(parseCloudDate("1970-01-01T03:00:00+03:00") == Date(timeIntervalSince1970: 0))
+        #expect(parseCloudDate("1969-12-31T17:00:00-07:00") == Date(timeIntervalSince1970: 0))
+        #expect(parseCloudDate("1970-01-01T00:00:00.125Z") == Date(timeIntervalSince1970: 0.125))
+        #expect(parseCloudDate("2026-03-08T01:30:00-08:00") == parseCloudDate("2026-03-08T09:30:00Z"))
+        #expect(parseCloudDate("2026-03-08T03:30:00-07:00") == parseCloudDate("2026-03-08T10:30:00Z"))
+        #expect(parseCloudDate("not-a-date") == .distantPast)
+    }
+
+    @Test func concurrentReadersReturnIdenticalDates() async {
+        let inputs: [(String, Date)] = [
+            ("1970-01-01T00:00:00.125Z", Date(timeIntervalSince1970: 0.125)),
+            ("1970-01-01T03:00:00+03:00", Date(timeIntervalSince1970: 0)),
+            ("invalid-concurrent-date", .distantPast),
+        ]
+        let matches = await withTaskGroup(of: Bool.self) { group in
+            for _ in 0..<32 {
+                group.addTask {
+                    for _ in 0..<32 {
+                        for (value, expected) in inputs where parseCloudDate(value) != expected { return false }
+                    }
+                    return true
+                }
+            }
+            for await result in group where !result { return false }
+            return true
+        }
+        #expect(matches)
+    }
+}
+
+@Test(arguments: ["group-invite", "group-update", "group-title-update"])
+func groupControlsDoNotPublishMemberPrivateTitles(kind: String) {
+    #expect(AppModel.groupControlTitle(kind: kind, displayTitle: "My private label", sharedTitle: nil) == nil)
+    #expect(AppModel.groupControlTitle(kind: kind, displayTitle: "My private label", sharedTitle: "Public channel") == "Public channel")
+    #expect(AppModel.groupControlTitle(kind: "session-title-update", displayTitle: "Explicit rename", sharedTitle: "Previous public title") == "Explicit rename")
+}
+
 @Test(arguments: [true, false])
 @MainActor
 func renamedAgentProfileWinsOverHistoricalSessionLabels(isOwner: Bool) throws {
@@ -1418,7 +1549,8 @@ final class CloudConversationCatalogTests: XCTestCase {
             sessionId: sessionId,
             latestSequence: 1,
             lastReadSequence: 1,
-            sharedTitle: "English study group"
+            sharedTitle: "English study group",
+            personalTitle: "My private study label"
         )
 
         let catalog = CloudConversationCatalog.build(
@@ -1442,6 +1574,17 @@ final class CloudConversationCatalogTests: XCTestCase {
         )
 
         XCTAssertEqual(catalog.first { $0.kind == .group }?.displayName, "English study group")
+
+        let migrated = canonicalConversation(
+            id: canonical.id, kind: "group", sessionId: sessionId,
+            latestSequence: 1, lastReadSequence: 1, personalTitle: "My private study label"
+        )
+        let migratedCatalog = CloudConversationCatalog.build(
+            account: account, contacts: [contact], ownedAgents: [], sharedAgents: [],
+            messagesByPeer: [:], canonicalConversations: [migrated]
+        )
+        XCTAssertEqual(migratedCatalog.first { $0.kind == .group }?.displayName, "Channel 1")
+        XCTAssertNil(migrated.sharedTitle)
     }
 
     func testGroupParticipantAvatarsAreEnrichedFromCurrentProfiles() throws {

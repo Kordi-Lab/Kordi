@@ -95,7 +95,7 @@ struct KordiApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            RootView(hasTopAccessory: showsPreviewThemeControls || callCoordinator.isMinimized)
                 .environmentObject(model)
                 .environmentObject(callCoordinator)
                 .environmentObject(notificationCoordinator)
@@ -297,6 +297,7 @@ private struct PreviewThemeControls: View {
 private struct RootView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
+    var hasTopAccessory = false
 
     @ViewBuilder
     var body: some View {
@@ -403,7 +404,7 @@ private struct RootView: View {
         case .signedOut:
             LoginView()
         case .signedIn:
-            MainTabView()
+            MainTabView(hasTopAccessory: hasTopAccessory)
         }
     }
 }
@@ -443,6 +444,10 @@ private struct LaunchingView: View {
 struct MainTabView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var notificationCoordinator: KordiNotificationCoordinator
+    @EnvironmentObject private var callCoordinator: KordiCallCoordinator
+    @Environment(\.kordiChatTheme) private var chatTheme
+    @Environment(\.scenePhase) private var scenePhase
+    var hasTopAccessory = false
     @State private var selection: MainTab = {
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--preview-digest-tab") {
@@ -455,45 +460,51 @@ struct MainTabView: View {
 #endif
         return .chats
     }()
-    @State private var chatsPath = NavigationPath()
-    @State private var agentsPath = NavigationPath()
-    @State private var contactsPath = NavigationPath()
-    @State private var digestPath = NavigationPath()
-    @State private var accountPath = NavigationPath()
+    @State private var path: [MainNavigationRoute] = []
 
     var body: some View {
-        Group {
-            if #available(iOS 18.0, *) {
-                modernTabView
-            } else {
-                legacyTabView
+        MainNavigationHost(path: $path) {
+            Group {
+                if #available(iOS 18.0, *) {
+                    modernTabView
+                } else {
+                    legacyTabView
+                }
             }
+            .environmentObject(model)
+            .environmentObject(notificationCoordinator)
+            .environmentObject(callCoordinator)
+            .environment(\.kordiChatTheme, chatTheme)
+            .environment(\.scenePhase, scenePhase)
+            .tint(KordiTheme.signalBlue)
+        } destination: { route in
+            MainNavigationDestination(path: $path, route: route, selectedTab: selection)
+                .environmentObject(model)
+                .environmentObject(notificationCoordinator)
+                .environmentObject(callCoordinator)
+                .environment(\.kordiChatTheme, chatTheme)
+                .environment(\.scenePhase, scenePhase)
+                .tint(KordiTheme.signalBlue)
         }
+        .ignoresSafeArea(.container, edges: hasTopAccessory ? .bottom : .vertical)
         .sensoryFeedback(.selection, trigger: selection)
         .task(id: notificationCoordinator.pendingCalendarEventID) {
             guard notificationCoordinator.pendingCalendarEventID != nil else { return }
             selection = .digest
-            digestPath = NavigationPath()
+            path = []
         }
         .task(id: model.pendingThreadRoute) {
             guard let route = model.pendingThreadRoute else { return }
             let destination = MainTab.destination(for: route.conversation.kind)
             selection = destination
-            if destination == .agents { agentsPath = NavigationPath(); agentsPath.append(route) }
-            else { chatsPath = NavigationPath(); chatsPath.append(route) }
+            path = [.message(route)]
             model.pendingThreadRoute = nil
         }
         .task(id: notificationCoordinator.pendingMessageRoute) {
             guard let route = notificationCoordinator.pendingMessageRoute else { return }
             let destination = MainTab.destination(for: route.conversation.kind)
             selection = destination
-            if destination == .agents {
-                agentsPath = NavigationPath()
-                agentsPath.append(route)
-            } else {
-                chatsPath = NavigationPath()
-                chatsPath.append(route)
-            }
+            path = [.message(route)]
             notificationCoordinator.consumePendingRoute()
         }
 #if DEBUG
@@ -577,52 +588,43 @@ struct MainTabView: View {
     }
 
     private var contactsRoot: some View {
-        NavigationStack(path: $contactsPath) {
-            ContactsView()
+        NavigationStack {
+            ContactsView(onOpenConversation: { path.append(.conversation($0)) })
         }
-        .kordiTabBarVisibility(isRoot: contactsPath.isEmpty)
     }
 
     private var chatsRoot: some View {
-        NavigationStack(path: $chatsPath) {
+        NavigationStack {
             ChatHomeView(
                 channel: .contact,
-                onOpenConversation: { chatsPath.append($0) },
-                onOpenNewChat: { chatsPath.append($0) },
-                onOpenArchivedChats: {
-                    chatsPath.append(ArchivedChatsRoute(channel: .contact))
-                }
+                onOpenConversation: { path.append(.conversation($0)) },
+                onOpenNewChat: { path.append(.newChat($0)) },
+                onOpenArchivedChats: { path.append(.archived(.contact)) }
             )
         }
-        .kordiTabBarVisibility(isRoot: chatsPath.isEmpty)
     }
 
     private var agentsRoot: some View {
-        NavigationStack(path: $agentsPath) {
+        NavigationStack {
             ChatHomeView(
                 channel: .agent,
-                onOpenConversation: { agentsPath.append($0) },
-                onOpenNewChat: { agentsPath.append($0) },
-                onOpenArchivedChats: {
-                    agentsPath.append(ArchivedChatsRoute(channel: .agent))
-                }
+                onOpenConversation: { path.append(.conversation($0)) },
+                onOpenNewChat: { path.append(.newChat($0)) },
+                onOpenArchivedChats: { path.append(.archived(.agent)) }
             )
         }
-        .kordiTabBarVisibility(isRoot: agentsPath.isEmpty)
     }
 
     private var digestRoot: some View {
-        NavigationStack(path: $digestPath) {
+        NavigationStack {
             DigestView()
         }
-        .kordiTabBarVisibility(isRoot: digestPath.isEmpty)
     }
 
     private var accountRoot: some View {
-        NavigationStack(path: $accountPath) {
+        NavigationStack {
             AccountSheet(embeddedInNavigationStack: true)
         }
-        .kordiTabBarVisibility(isRoot: accountPath.isEmpty)
     }
 
     private var accountTabLabel: some View {
@@ -673,19 +675,10 @@ struct MainTabUnreadCounts: Equatable {
     }
 }
 
-private extension View {
-    @ViewBuilder
-    func kordiTabBarVisibility(isRoot: Bool) -> some View {
-        if #available(iOS 18.0, *) {
-            toolbarVisibility(isRoot ? .visible : .hidden, for: .tabBar)
-        } else {
-            toolbar(isRoot ? .visible : .hidden, for: .tabBar)
-        }
-    }
-}
-
 #Preview("App · Mobile destinations") {
     MainTabView()
         .environmentObject(AppModel(previewMode: true))
+        .environmentObject(KordiNotificationCoordinator())
+        .environmentObject(KordiCallCoordinator())
         .tint(KordiTheme.signalBlue)
 }

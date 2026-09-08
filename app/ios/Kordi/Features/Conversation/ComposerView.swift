@@ -669,11 +669,14 @@ struct ComposerView: View {
     private var attachmentMenu: some View {
         if #available(iOS 26.0, *) {
             attachmentMenuContent
-                .buttonStyle(.plain)
-                .glassEffect(.regular.interactive(), in: .circle)
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .buttonSizing(.flexible)
+                .frame(width: composerControlHeight, height: composerControlHeight)
         } else {
             attachmentMenuContent
                 .buttonStyle(.plain)
+                .frame(width: composerControlHeight, height: composerControlHeight)
                 .background(.ultraThinMaterial, in: Circle())
                 .overlay {
                     Circle()
@@ -708,7 +711,7 @@ struct ComposerView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: composerControlHeight, height: composerControlHeight)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
         }
         .contentShape(Rectangle())

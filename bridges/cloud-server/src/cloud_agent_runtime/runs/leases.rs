@@ -127,6 +127,7 @@ async fn lease_run(
                     AND lease_expires_at IS NOT NULL \
                     AND lease_expires_at::timestamptz <= $3::timestamptz \
                 )) \
+             AND NOT candidate.legacy_duplicate \
              AND ($4::text IS NULL OR candidate.run_id=$4) \
              AND (NOT EXISTS(SELECT 1 FROM cloud_agent_subsession_chat q WHERE q.run_id=candidate.run_id) OR ( \
                  NOT EXISTS(SELECT 1 FROM cloud_agent_fallback_runs earlier LEFT JOIN cloud_agent_subsession_chat e ON e.run_id=earlier.run_id JOIN cloud_agent_subsession_chat current ON current.run_id=candidate.run_id WHERE earlier.subsession_id=candidate.subsession_id AND earlier.run_id<>candidate.run_id AND earlier.status IN ('queued','leased','running') AND (e.sequence IS NULL OR e.sequence<current.sequence)) \

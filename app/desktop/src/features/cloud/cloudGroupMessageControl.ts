@@ -98,12 +98,10 @@ export async function applyCloudGroupMessageControl({
   let nextState = context.nextState;
   const message = envelope.message;
   if (!message) {
-    setCanonicalState(nextState);
     return null;
   }
   const senderHumanIdentityId = identityIdByAccount.get(message.senderAccountId);
   if (!senderHumanIdentityId) {
-    setCanonicalState(nextState);
     return null;
   }
 
@@ -135,7 +133,6 @@ export async function applyCloudGroupMessageControl({
     : null;
   const incomingSource = cloudGroupCanonicalMessageSource(cloudMessage, envelope);
   if (!incomingSource) {
-    setCanonicalState(nextState);
     return null;
   }
   const {
@@ -179,6 +176,7 @@ export async function applyCloudGroupMessageControl({
       metadata: { accountId: message.senderAccountId, cloudGroupAgent: true },
     });
     nextState = stateOps.upsertIdentity(nextState, senderIdentity) ?? nextState;
+    setCanonicalState((current) => stateOps.upsertIdentity(current, senderIdentity));
   }
   const cloudAttachments = cloudMessage.attachments?.length
     ? cloudMessage.attachments
@@ -234,7 +232,7 @@ export async function applyCloudGroupMessageControl({
       } satisfies AppendCanonicalMessageRequest;
       const persistedMessage = await upsertCanonicalMessageFast(attachmentUpdateRequest);
       nextState = mergeCanonicalMessageRow(nextState, persistedMessage) ?? nextState;
-      setCanonicalState(nextState);
+      setCanonicalState((current) => mergeCanonicalMessageRow(current, persistedMessage));
     }
   }
 
@@ -256,7 +254,7 @@ export async function applyCloudGroupMessageControl({
     && responseProcessingSlot.id !== existingCloudGroupMessage?.id
   ) {
     nextState = stateOps.removeMessage(nextState, responseProcessingSlot.id) ?? nextState;
-    setCanonicalState(nextState);
+    setCanonicalState((current) => stateOps.removeMessage(current, responseProcessingSlot.id));
   }
 
   if (!messageAlreadyExists) {
@@ -293,7 +291,6 @@ export async function applyCloudGroupMessageControl({
       existingStableRowTerminalLocked
       && isPendingAgentDeliveryState(agentDeliveryState)
     ) {
-      setCanonicalState(nextState);
       return null;
     }
     const replacementAgentSlot = existingStableRow ?? responseProcessingSlot;
@@ -370,13 +367,16 @@ export async function applyCloudGroupMessageControl({
     };
     const persistedMessage = await upsertCanonicalMessageFast(messageRequest);
     nextState = mergeCanonicalMessageRow(nextState, persistedMessage) ?? nextState;
+    setCanonicalState((current) => mergeCanonicalMessageRow(current, persistedMessage));
     if (senderIsAgent && messageReplyToId) {
       const offlinePlaceholderId = `msg:cloud-agent-offline:${messageReplyToId}:${message.senderAccountId}`;
       nextState = isPendingAgentDeliveryState(agentDeliveryState)
         ? stateOps.removeOfflinePlaceholder(nextState, offlinePlaceholderId) ?? nextState
         : stateOps.removePendingRows(nextState, messageReplyToId, message.senderAccountId) ?? nextState;
+      setCanonicalState((current) => isPendingAgentDeliveryState(agentDeliveryState)
+        ? stateOps.removeOfflinePlaceholder(current, offlinePlaceholderId) ?? current
+        : stateOps.removePendingRows(current, messageReplyToId, message.senderAccountId) ?? current);
     }
-    setCanonicalState(nextState);
   }
 
   if (
@@ -391,7 +391,9 @@ export async function applyCloudGroupMessageControl({
       ?? nextState;
     if (cleanedState !== nextState) {
       nextState = cleanedState;
-      setCanonicalState(nextState);
+      setCanonicalState((current) => stateOps.removePendingRows(current, messageReplyToId, message.senderAccountId)
+        ?? stateOps.removeTimeoutPlaceholder(current, offlinePlaceholderId)
+        ?? current);
     }
   }
   return {

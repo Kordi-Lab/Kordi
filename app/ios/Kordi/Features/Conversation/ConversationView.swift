@@ -42,6 +42,62 @@ enum ConversationThreadLoadPolicy {
     }
 }
 
+private struct ConversationScrollAnchorPolicy: ViewModifier {
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+                .defaultScrollAnchor(.bottom, for: .initialOffset)
+                .defaultScrollAnchor(.bottom, for: .alignment)
+        } else {
+            // Initial positioning is also handled explicitly by ScrollViewReader.
+            content
+        }
+    }
+}
+
+private struct ConversationNativeScrollObserver: ViewModifier {
+    let update: (ConversationScrollGeometrySnapshot) -> Void
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: ConversationScrollGeometrySnapshot.self) { geometry in
+                ConversationScrollGeometrySnapshot(
+                    isAtLatest: geometry.contentOffset.y + geometry.containerSize.height + 12
+                        >= geometry.contentSize.height + geometry.contentInsets.bottom,
+                    contentOffsetY: geometry.contentOffset.y,
+                    isValid: geometry.containerSize.height > 0 && geometry.contentSize.height > 0
+                )
+            } action: { _, snapshot in
+                update(snapshot)
+            }
+        } else {
+            content
+        }
+    }
+}
+
+private struct ConversationLegacyScrollObserver: ViewModifier {
+    let viewportFrame: CGRect
+    let update: (ConversationScrollGeometrySnapshot) -> Void
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content
+        } else {
+            content.onGeometryChange(for: ConversationScrollGeometrySnapshot.self) { geometry in
+                let frame = geometry.frame(in: .global)
+                return ConversationScrollGeometrySnapshot(
+                    isAtLatest: frame.height <= viewportFrame.height || frame.maxY <= viewportFrame.maxY + 12,
+                    contentOffsetY: viewportFrame.minY - frame.minY,
+                    isValid: frame.height > 0
+                )
+            } action: { snapshot in
+                update(snapshot)
+            }
+        }
+    }
+}
+
 private struct ConversationThreadPresentationModifier: ViewModifier {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var activeRootMessageID: String?
@@ -149,6 +205,7 @@ struct ConversationView: View {
     private let scopedThreadRootMessageID: String?
     private let onNavigateThread: ((String, String?) -> Void)?
     private let onReplyInConversation: ((MessageActionSource) -> Void)?
+    private let onOpenSessionDetails: ((ConversationSummary) -> Void)?
     @State private var draft = ""
     @State private var isSending = false
     @State private var visibleMessageLimit = ConversationTimelineWindow.initialLimit
@@ -241,7 +298,7 @@ struct ConversationView: View {
     @State private var threadPageRetrySequence: Int64?
     @State private var pendingThreadMessageID: String?
     @State private var threadReturnMessageID: String?
-    @State private var currentScrollOffsetY: CGFloat?
+    @State private var scrollPosition = ConversationScrollPosition()
     @State private var threadReturnScrollOffsetY: CGFloat?
     @State private var threadReturnWasAtBottom = false
     @State private var exactScrollRestoreRequest: ConversationScrollRestoreRequest?
@@ -258,7 +315,8 @@ struct ConversationView: View {
         showsNavigationChrome: Bool = true,
         scopedThreadRootMessageID: String? = nil,
         onNavigateThread: ((String, String?) -> Void)? = nil,
-        onReplyInConversation: ((MessageActionSource) -> Void)? = nil
+        onReplyInConversation: ((MessageActionSource) -> Void)? = nil,
+        onOpenSessionDetails: ((ConversationSummary) -> Void)? = nil
     ) {
         initialConversation = conversation
         self.initialMessageID = initialMessageID
@@ -270,6 +328,7 @@ struct ConversationView: View {
         self.scopedThreadRootMessageID = scopedThreadRootMessageID
         self.onNavigateThread = onNavigateThread
         self.onReplyInConversation = onReplyInConversation
+        self.onOpenSessionDetails = onOpenSessionDetails
     }
 
     /// Navigation can outlive a sync pass. Resolve the current summary by its
@@ -306,7 +365,7 @@ struct ConversationView: View {
         linkedBackgroundSession?.resolvedState(in: model.conversations)
     }
     private var isWaitingForLinkedBackgroundSession: Bool {
-        messages.isEmpty && linkedBackgroundSessionState == .running
+        linkedBackgroundSessionState == .running && messages.isEmpty
     }
     private var mentionTargetRefreshID: [String] {
         [conversation.id] + ComposerMentionTargetCatalog.ownerAccountIDs(
@@ -318,7 +377,9 @@ struct ConversationView: View {
     private let timelineVerticalInset: CGFloat = 14
 
     var body: some View {
-        let projection = threadProjection
+        let renderedMessages = allMessages
+        let projection = MessageThreadProjection(messages: renderedMessages)
+        let threadReadCursors = model.threadReadCursors[conversation.sessionId]
         let timeline: [ChatMessage]
         if let scopedThreadRootMessageID {
             timeline = projection.thread(rootID: scopedThreadRootMessageID)?.messages ?? []
@@ -351,7 +412,7 @@ struct ConversationView: View {
             })?.id
         }
         let visibleStartIndex = timeline.count - visibleTimeline.count
-        let messagesById = Dictionary(uniqueKeysWithValues: allMessages.map { ($0.id, $0) })
+        let messagesById = Dictionary(uniqueKeysWithValues: renderedMessages.map { ($0.id, $0) })
         let presentationStartIndex = max(timeline.startIndex, visibleStartIndex - 1)
         let timelinePresentation = ConversationTimelinePresentation.make(
             messages: Array(timeline[presentationStartIndex..<timeline.endIndex]),
@@ -431,11 +492,9 @@ struct ConversationView: View {
                     ZStack {
                         GeometryReader { viewport in
                             ZStack(alignment: .bottomTrailing) {
-                            // The explicit transcript window already bounds the initial rows.
-                            // ponytail: measure that window eagerly; use measured virtualization
-                            // if rendering many manually loaded pages becomes expensive.
+                            // History pages retain their data, not every offscreen message view.
                             ScrollView {
-                                VStack(spacing: 0) {
+                                LazyVStack(spacing: 0) {
                                     if timeline.isEmpty {
                                         EmptyConversation(
                                             conversation: conversation,
@@ -466,27 +525,31 @@ struct ConversationView: View {
                                             let message = row.message
                                             let index = visibleStartIndex + row.offset
                                             let presentation = timelinePresentation[index - presentationStartIndex]
+                                            let thread = projection.threadsByRootID[message.id]
                                             let threadReplyCount = scopedThreadRootMessageID == nil
                                                 ? projection.replyCount(rootID: message.id)
                                                 : 0
-                                            if scopedThreadRootMessageID != nil, showsThreadUnreadDivider, message.id == initialMessageID {
-                                                HStack { Rectangle().frame(height: 1); Text("New replies").font(.caption); Rectangle().frame(height: 1) }
-                                                    .foregroundStyle(KordiTheme.signalBlue).padding(.vertical, 8)
+                                            VStack(spacing: 0) {
+                                                if scopedThreadRootMessageID != nil, showsThreadUnreadDivider, message.id == initialMessageID {
+                                                    HStack { Rectangle().frame(height: 1); Text("New replies").font(.caption); Rectangle().frame(height: 1) }
+                                                        .foregroundStyle(KordiTheme.signalBlue).padding(.vertical, 8)
+                                                }
+                                                timelineMessageRow(
+                                                    row: row,
+                                                    presentation: presentation,
+                                                    timeline: timeline,
+                                                    messagesByID: messagesById,
+                                                    mentionTargets: mentionTargets,
+                                                    isPendingMention: pendingMentionMessageIDs.contains(message.id),
+                                                    pinnedMessageIDs: pinnedMessageIDs,
+                                                    previewActionMessageID: previewActionMessageID,
+                                                    threadReplyCount: threadReplyCount,
+                                                    threadHasUnread: threadReadCursors.map { thread?.hasUnread(cursors: $0) ?? false } ?? false,
+                                                    threadAgentState: thread?.agentState,
+                                                    viewportFrame: viewport.frame(in: .global),
+                                                    proxy: proxy
+                                                )
                                             }
-                                            timelineMessageRow(
-                                                row: row,
-                                                presentation: presentation,
-                                                timeline: timeline,
-                                                messagesByID: messagesById,
-                                                mentionTargets: mentionTargets,
-                                                isPendingMention: pendingMentionMessageIDs.contains(message.id),
-                                                pinnedMessageIDs: pinnedMessageIDs,
-                                                previewActionMessageID: previewActionMessageID,
-                                                threadReplyCount: threadReplyCount,
-                                                threadAgentState: projection.thread(rootID: message.id)?.agentState,
-                                                viewportFrame: viewport.frame(in: .global),
-                                                proxy: proxy
-                                            )
                                         }
                                     }
 
@@ -500,15 +563,15 @@ struct ConversationView: View {
                                         .frame(height: 1)
                                         .padding(.bottom, timelineVerticalInset)
                                         .id(bottomAnchorID)
-                                        .background(
-                                            ConversationScrollCommandBridge(
-                                                scrollToBottomRequest: immediateBottomRequest,
-                                                animateBottomScroll: animateBottomScroll,
-                                                exactRestoreRequest: $exactScrollRestoreRequest
-                                            )
-                                        )
                                 }
                                 .scrollTargetLayout()
+                                .background(
+                                    ConversationScrollCommandBridge(
+                                        scrollToBottomRequest: immediateBottomRequest,
+                                        animateBottomScroll: animateBottomScroll,
+                                        exactRestoreRequest: $exactScrollRestoreRequest
+                                    )
+                                )
                                 .frame(
                                     minHeight: max(
                                         0,
@@ -518,23 +581,12 @@ struct ConversationView: View {
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.top, timelineVerticalInset)
-                                .onGeometryChange(for: ConversationScrollGeometrySnapshot.self) { [viewportFrame = viewport.frame(in: .global)] geometry in
-                                    let frame = geometry.frame(in: .global)
-                                    return ConversationScrollGeometrySnapshot(
-                                        isAtLatest: frame.height <= viewportFrame.height
-                                            || frame.maxY <= viewportFrame.maxY + 12,
-                                        contentOffsetY: viewportFrame.minY - frame.minY
-                                    )
-                                } action: { snapshot in
-                                    guard hasRevealedInitialViewport else { return }
-                                    currentScrollOffsetY = snapshot.contentOffsetY
-                                    isAtBottom = snapshot.isAtLatest
-                                    if !snapshot.isAtLatest, trackedMessageID == bottomAnchorID {
-                                        trackedMessageID = nil
-                                    }
-                                }
+                                .modifier(ConversationLegacyScrollObserver(
+                                    viewportFrame: viewport.frame(in: .global), update: recordScrollGeometry
+                                ))
                             }
-                            .defaultScrollAnchor(.bottom)
+                            .modifier(ConversationScrollAnchorPolicy())
+                            .modifier(ConversationNativeScrollObserver(update: recordScrollGeometry))
                             .scrollDisabled(messageActionMessage != nil)
                             .simultaneousGesture(
                                 TapGesture().onEnded {
@@ -820,6 +872,7 @@ struct ConversationView: View {
             }
             .task(id: ConversationIdentityResolver.loadingTaskID(for: conversation)) {
                 await loadAndRevealInitialConversation(using: proxy)
+                guard !Task.isCancelled else { return }
                 if conversation.subsessionId == nil { await model.refreshActiveCall(in: conversation) }
             }
         }
@@ -901,7 +954,7 @@ struct ConversationView: View {
                 replySource = nil
             }
             if ProcessInfo.processInfo.arguments.contains("--preview-session-detail") {
-                showSessionDetails = true
+                openSessionDetails()
             }
             if ProcessInfo.processInfo.arguments.contains("--preview-agent-model")
                 || ProcessInfo.processInfo.arguments.contains("--preview-contact-model") {
@@ -1139,6 +1192,7 @@ struct ConversationView: View {
         pinnedMessageIDs: Set<String>,
         previewActionMessageID: String?,
         threadReplyCount: Int,
+        threadHasUnread: Bool,
         threadAgentState: BackgroundAgentSession.State?,
         viewportFrame: CGRect,
         proxy: ScrollViewProxy
@@ -1181,9 +1235,7 @@ struct ConversationView: View {
                     isSelected: selectedMessageIDs.contains(message.id),
                     allowsQuotedReplies: conversation.kind.supportsQuotedReplies,
                     threadReplyCount: threadReplyCount,
-                    threadHasUnread: model.threadReadCursors[conversation.sessionId].map {
-                        threadProjection.thread(rootID: message.id)?.hasUnread(cursors: $0) ?? false
-                    } ?? false,
+                    threadHasUnread: threadHasUnread,
                     threadAgentState: threadAgentState,
                     showsAvatarSlot: message.author != .agent,
                     authorAvatarName: avatar.name,
@@ -1860,6 +1912,7 @@ struct ConversationView: View {
 
     @MainActor
     private func loadAndRevealInitialConversation(using proxy: ScrollViewProxy) async {
+        guard !Task.isCancelled else { return }
         prepareInitialConversationForDisplay()
         let latestMessageIDAtEntry = messages.last?.id
         let viewportAtEntry = initialViewport
@@ -1876,8 +1929,10 @@ struct ConversationView: View {
             return
         }
 
-        let didLoad = await model.loadConversation(conversation)
         guard !Task.isCancelled else { return }
+        let accountIDAtStart = model.account?.accountId
+        let didLoad = await model.loadConversation(conversation)
+        guard !Task.isCancelled, model.account?.accountId == accountIDAtStart else { return }
         if !didLoad, messages.isEmpty {
             initialLoadFailed = true
             return
@@ -1914,6 +1969,13 @@ struct ConversationView: View {
             isAtLatest: isAtBottom,
             threadRootID: scopedThreadRootMessageID
         )
+    }
+
+    private func recordScrollGeometry(_ snapshot: ConversationScrollGeometrySnapshot) {
+        guard hasRevealedInitialViewport, isReadPresentationVisible, snapshot.isValid else { return }
+        scrollPosition.contentOffsetY = snapshot.contentOffsetY
+        if isAtBottom != snapshot.isAtLatest { isAtBottom = snapshot.isAtLatest }
+        if !snapshot.isAtLatest, trackedMessageID == bottomAnchorID { trackedMessageID = nil }
     }
 
     private func prepareInitialViewport(in timeline: [ChatMessage], now: Date = Date()) {
@@ -1971,7 +2033,7 @@ struct ConversationView: View {
             key: viewportMemoryKey,
             messageID: visibleMessageID,
             latestMessageID: timeline.last?.id,
-            contentOffsetY: isAtBottom ? nil : currentScrollOffsetY,
+            contentOffsetY: isAtBottom ? nil : scrollPosition.contentOffsetY,
             visibleMessageLimit: visibleMessageLimit,
             at: now
         )
@@ -2014,7 +2076,7 @@ struct ConversationView: View {
 
     private func openThread(rootMessageID: String) {
         threadReturnMessageID = trackedMessageID ?? (isAtBottom ? bottomAnchorID : nil)
-        threadReturnScrollOffsetY = currentScrollOffsetY
+        threadReturnScrollOffsetY = scrollPosition.contentOffsetY
         threadReturnWasAtBottom = isAtBottom
         rememberViewport(in: messages)
         activeThreadRootMessageID = rootMessageID
@@ -2196,7 +2258,11 @@ struct ConversationView: View {
 
     private func openSessionDetails() {
         dismissComposerPickers()
-        showSessionDetails = true
+        if let onOpenSessionDetails {
+            onOpenSessionDetails(conversation)
+        } else {
+            showSessionDetails = true
+        }
     }
 
     private var askAgentButton: some View {
@@ -3303,9 +3369,15 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     }
 }
 
+// Pixel offsets are bookkeeping, not inputs to transcript rendering.
+final class ConversationScrollPosition {
+    var contentOffsetY: CGFloat?
+}
+
 private struct ConversationScrollGeometrySnapshot: Equatable {
     let isAtLatest: Bool
     let contentOffsetY: CGFloat
+    let isValid: Bool
 }
 
 private struct ConversationInitialFailureView: View {

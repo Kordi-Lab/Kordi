@@ -18,6 +18,9 @@ use sqlx_core::query::query;
 use sqlx_core::query_as::query_as;
 use sqlx_postgres::{PgConnectOptions, PgPool, PgPoolOptions};
 
+mod migrate;
+pub(crate) use migrate::apply_migrations;
+
 #[cfg(test)]
 mod upgrade_tests;
 
@@ -430,6 +433,16 @@ const EMBEDDED_MIGRATIONS: &[EmbeddedMigration] = &[
         description: "indexed thread attention and independent unread totals",
         sql: include_str!("../../migrations/0088_thread_attention.sql"),
     },
+    EmbeddedMigration {
+        version: 89,
+        description: "preserve legacy conversation and execution identities",
+        sql: include_str!("../../migrations/0089_legacy_identity_compatibility.sql"),
+    },
+    EmbeddedMigration {
+        version: 90,
+        description: "recover historical channel names without exposing private titles",
+        sql: include_str!("../../migrations/0090_preserve_group_channel_names.sql"),
+    },
 ];
 
 /// Open a `PgPool` against `database_url`, configure conservative defaults,
@@ -452,45 +465,4 @@ pub async fn init_pool(database_url: &str) -> Result<PgPool, PgPoolError> {
 
     apply_migrations(&pool).await?;
     Ok(pool)
-}
-
-pub(crate) async fn apply_migrations(pool: &PgPool) -> Result<(), PgPoolError> {
-    query(
-        "CREATE TABLE IF NOT EXISTS cloud_schema_versions (\n             version     BIGINT PRIMARY KEY,\n             description TEXT NOT NULL,\n             applied_at  TIMESTAMPTZ NOT NULL DEFAULT now()\n         );",
-    )
-    .execute(pool)
-    .await
-    .map_err(PgPoolError::Migrate)?;
-
-    for migration in EMBEDDED_MIGRATIONS {
-        let already: Option<(i64,)> =
-            query_as("SELECT version FROM cloud_schema_versions WHERE version = $1")
-                .bind(migration.version)
-                .fetch_optional(pool)
-                .await
-                .map_err(PgPoolError::Migrate)?;
-
-        if already.is_some() {
-            continue;
-        }
-
-        // Each migration runs in its own transaction so a partial failure
-        // doesn't leave the schema in an inconsistent state. The migration
-        // body uses the simple-query protocol (no prepare) so multi-statement
-        // SQL is allowed; the version-tracking insert below is parameterised.
-        let mut tx = pool.begin().await.map_err(PgPoolError::Migrate)?;
-        sqlx_core::raw_sql::raw_sql(migration.sql)
-            .execute(&mut *tx)
-            .await
-            .map_err(PgPoolError::Migrate)?;
-        query("INSERT INTO cloud_schema_versions (version, description) VALUES ($1, $2)")
-            .bind(migration.version)
-            .bind(migration.description)
-            .execute(&mut *tx)
-            .await
-            .map_err(PgPoolError::Migrate)?;
-        tx.commit().await.map_err(PgPoolError::Migrate)?;
-    }
-
-    Ok(())
 }

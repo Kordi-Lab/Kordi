@@ -5,6 +5,7 @@ import type { AgentsPageProps } from '@/kordi-app/agents/model';
 import type { NavId } from '@/kordi-app/types';
 import { ChatsPage } from '@/pages/ChatsPage';
 import { CloudContactsAdapter } from '@/features/cloud/CloudContactsAdapter';
+import { useDigestWarmup } from '@/features/digest/useDigestWarmup';
 import type { UseCloudSessionResult } from '@/features/cloud/useCloudSession';
 
 const AgentsPage = lazy(() => import('@/kordi-app/agents/AgentsPage').then((module) => ({
@@ -28,6 +29,7 @@ export function MainContentSwitch({
   agentsPageProps,
   chatsPageProps,
 }: MainContentSwitchProps) {
+  useDigestWarmup(cloudSession.account?.accountId);
   switch (activeNav) {
     case 'digest':
       return <Suspense fallback={<div aria-busy="true">Loading digest…</div>}>{cloudSession.account ? <DigestPage key={cloudSession.account.accountId} accountId={cloudSession.account.accountId} /> : <div className="p-6">Sign in to open your digest.</div>}</Suspense>;

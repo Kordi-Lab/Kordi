@@ -131,6 +131,62 @@ struct CloudRealtimeServerFrame: Decodable {
     }
 }
 
+struct ConversationHistoryLoadKey: Hashable {
+    let accountID: String
+    let conversationID: String
+    let sessionID: String
+}
+
+@MainActor
+final class ConversationHistoryLoads {
+    private var completed = Set<ConversationHistoryLoadKey>()
+    private var running: [ConversationHistoryLoadKey: (id: UUID, task: Task<Bool, Never>)] = [:]
+
+    func load(
+        key: ConversationHistoryLoadKey,
+        reuseCompleted: Bool,
+        operation: @escaping @MainActor () async -> Bool
+    ) async -> Bool {
+        guard !Task.isCancelled else { return false }
+        if reuseCompleted, completed.contains(key) { return true }
+        if let existing = running[key] {
+            let result = await existing.task.value
+            return !Task.isCancelled && result
+        }
+        completed.remove(key)
+        let id = UUID()
+        // The account owns the fetch, not a transient screen waiting for it.
+        let task = Task { @MainActor [weak self] in
+            let succeeded = await operation()
+            guard let self, self.running[key]?.id == id else { return false }
+            self.running[key] = nil
+            guard succeeded, !Task.isCancelled else { return false }
+            self.completed.insert(key)
+            return true
+        }
+        running[key] = (id, task)
+        let result = await task.value
+        return !Task.isCancelled && result
+    }
+
+    func invalidate(conversationID: String) {
+        completed = completed.filter { $0.conversationID != conversationID }
+        for key in Array(running.keys) where key.conversationID == conversationID {
+            running.removeValue(forKey: key)?.task.cancel()
+        }
+    }
+
+    func isLoading(conversationID: String) -> Bool {
+        running.keys.contains { $0.conversationID == conversationID }
+    }
+
+    func reset() {
+        running.values.forEach { $0.task.cancel() }
+        running.removeAll()
+        completed.removeAll()
+    }
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     private static let attachmentPreviewImageCache: NSCache<NSString, UIImage> = {
@@ -145,7 +201,18 @@ final class AppModel: ObservableObject {
     private static let cachedConversationPageLimit = 8
 
     @Published private(set) var phase: AppPhase = .launching
-    @Published private(set) var account: CloudAccount?
+    @Published private(set) var account: CloudAccount? {
+        didSet {
+            if oldValue?.accountId != account?.accountId { resetDigestReads() }
+        }
+    }
+    @Published var rollingDigestSnapshot: RollingDigestResponse?
+    @Published var digestCalendarSnapshot: DigestCalendarResponse?
+    @Published var digestMutationState = DigestMutationState()
+    var digestMutationTasks: [String: (id: UUID, task: Task<Void, Error>)] = [:]
+    let rollingDigestRead = DigestReadCoordinator<RollingDigestResponse>()
+    let digestCalendarRead = DigestReadCoordinator<DigestCalendarResponse>()
+    let digestWarmup = DigestWarmupCoordinator()
     @Published private(set) var contacts: [CloudContact] = []
     @Published private(set) var contactPresenceByAccountID: [String: CloudPresenceAccount] = [:]
     @Published private(set) var contactRequests: [CloudContactRequest] = []
@@ -243,6 +310,7 @@ final class AppModel: ObservableObject {
     private var pendingMentionByMessageId: [String: ComposerMentionTarget] = [:]
     private var pendingAgentContextByMessageId: [String: String] = [:]
     private var conversationLoadCounts: [String: Int] = [:]
+    private let conversationHistoryLoads = ConversationHistoryLoads()
     private var conversationHistoryBeforeSequence: [String: Int64] = [:]
     private var conversationsWithEarlierHistory = Set<String>()
     private var conversationsWithEarlierCachedHistory = Set<String>()
@@ -369,6 +437,7 @@ final class AppModel: ObservableObject {
                     && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
             }
             phase = .signedIn
+            scheduleDigestWarmup()
             presencePublisher.start(token: savedToken)
             startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
                 hasHydratedWireSnapshot: hasHydratedWireSnapshot,
@@ -459,6 +528,7 @@ final class AppModel: ObservableObject {
     }
 
     func signOut() async {
+        digestWarmup.reset()
         let oldToken = token
         let oldAccountId = account?.accountId
         if let oldToken {
@@ -533,6 +603,7 @@ final class AppModel: ObservableObject {
         agentExecutionLocation = [:]
         loadingConversationIDs = []
         conversationLoadCounts = [:]
+        conversationHistoryLoads.reset()
         conversationHistoryBeforeSequence = [:]
         conversationsWithEarlierHistory = []
         conversationsWithEarlierCachedHistory = []
@@ -736,6 +807,7 @@ final class AppModel: ObservableObject {
 
     func appDidBecomeActive() async {
         guard phase == .signedIn, !previewMode, let token else { return }
+        scheduleDigestWarmup()
         presencePublisher.start(token: token)
         await refreshWorkspace()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
@@ -1113,10 +1185,13 @@ final class AppModel: ObservableObject {
     private func retainCachedConversationPage(_ conversationID: String) {
         let previousIDs = Set(recentCachedConversationIDs)
         recentCachedConversationIDs = Self.recentCachedConversationIDs(
-            recentCachedConversationIDs.filter { messagesByConversation[$0] != nil },
+            recentCachedConversationIDs.filter {
+                messagesByConversation[$0] != nil || conversationHistoryLoads.isLoading(conversationID: $0)
+            },
             adding: conversationID
         )
         for evicted in previousIDs.subtracting(recentCachedConversationIDs) {
+            conversationHistoryLoads.invalidate(conversationID: evicted)
             messagesByConversation[evicted] = nil
             conversationsWithEarlierCachedHistory.remove(evicted)
             conversationsWithEarlierHistory.remove(evicted)
@@ -1220,16 +1295,45 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func loadConversation(_ conversation: ConversationSummary) async -> Bool {
+    func loadConversation(_ conversation: ConversationSummary, forceReload: Bool = false) async -> Bool {
+        guard !Task.isCancelled else { return false }
         if let id = conversation.subsessionId {
             do { _ = try await agentSubsession(id: id, includeMessages: true); return true }
             catch { return false }
         }
         let conversation = ConversationIdentityResolver.current(conversation, in: conversations)
         guard !conversation.isLocalDraft else { return true }
+        guard let token, let accountID = account?.accountId else { return false }
         retainCachedConversationPage(conversation.id)
+        let key = ConversationHistoryLoadKey(accountID: accountID,
+            conversationID: conversation.id, sessionID: conversation.sessionId)
+        return await conversationHistoryLoads.load(
+            key: key,
+            reuseCompleted: !forceReload && messagesByConversation[conversation.id] != nil
+                && messageSyncState == .upToDate && (previewMode || cloudSyncTask != nil)
+        ) { [weak self] in
+            guard let self, self.token == token, self.account?.accountId == accountID else { return false }
+            let succeeded = await self.fetchConversationHistory(conversation)
+            guard succeeded, !Task.isCancelled, self.token == token,
+                  self.account?.accountId == accountID else { return false }
+            // A successfully fetched empty session is cached too.
+            if self.messagesByConversation[conversation.id] == nil {
+                self.messagesByConversation[conversation.id] = []
+            }
+            return true
+        }
+    }
+
+    private func fetchConversationHistory(_ conversation: ConversationSummary) async -> Bool {
+        guard !Task.isCancelled else { return false }
+        let loadingToken = token
+        let loadingAccountID = account?.accountId
         beginConversationLoad(conversation.id)
-        defer { endConversationLoad(conversation.id) }
+        defer {
+            if token == loadingToken, account?.accountId == loadingAccountID {
+                endConversationLoad(conversation.id)
+            }
+        }
 
         if previewMode {
             guard ProcessInfo.processInfo.arguments.contains("--preview-slow-session-load") else {
@@ -1251,12 +1355,17 @@ final class AppModel: ObservableObject {
                 sessionId: conversation.sessionId
             )
             try Task.checkCancellation()
+            guard self.token == token, self.account?.accountId == account.accountId else { return false }
             _ = await applyConversationHistoryPage(page, to: conversation, account: account)
+            try Task.checkCancellation()
+            guard self.token == token, self.account?.accountId == account.accountId else { return false }
             reconcilePendingAgentRequest(
                 conversationId: conversation.id,
                 wireMessages: page.messages
             )
             await rebuildConversationCatalog()
+            try Task.checkCancellation()
+            guard self.token == token, self.account?.accountId == account.accountId else { return false }
             if let pin = await fetchedPin {
                 sessionPinsByID[conversation.sessionId] = pin
             }
@@ -3237,13 +3346,17 @@ final class AppModel: ObservableObject {
     }
 
     func loadSessionActivity(_ conversation: ConversationSummary) async {
-        guard let token else { return }
+        guard !Task.isCancelled, let token, let accountId = account?.accountId else { return }
         do {
-            sessionActivityByID[conversation.sessionId] = try await api.sessionActivity(
+            let activity = try await api.sessionActivity(
                 token: token,
                 sessionId: conversation.sessionId
             )
+            guard !Task.isCancelled, self.token == token, account?.accountId == accountId else { return }
+            sessionActivityByID[conversation.sessionId] = activity
         } catch {
+            guard self.token == token, account?.accountId == accountId,
+                  CloudTransportErrorPolicy.shouldSurface(error, taskIsCancelled: Task.isCancelled) else { return }
             errorMessage = userFacing(error, fallback: "Could not load session activity.")
         }
     }
@@ -3939,6 +4052,7 @@ final class AppModel: ObservableObject {
     }
 
     private func removeConversationLocally(_ conversation: ConversationSummary) {
+        conversationHistoryLoads.invalidate(conversationID: conversation.id)
         deletedCloudSessionIds.insert(conversation.sessionId)
         hiddenCloudSessionIds.remove(conversation.sessionId)
         pinnedSessionIds.remove(conversation.sessionId)
@@ -4763,6 +4877,7 @@ final class AppModel: ObservableObject {
         account: CloudAccount,
         requestedBeforeSequence: Int64? = nil
     ) async -> Int {
+        guard !Task.isCancelled, self.account?.accountId == account.accountId else { return 0 }
         let existing = messagesByConversation[conversation.id, default: []]
         let existingIDs = Set(existing.map(\.id))
         removeCloudMessages(Self.cloudMessageIDsMissingFromHistoryPage(
@@ -4782,6 +4897,7 @@ final class AppModel: ObservableObject {
             accountId: account.accountId,
             kind: .sticker
         )
+        guard !Task.isCancelled, self.account?.accountId == account.accountId else { return 0 }
         knownStickerAttachmentSignatures = stickerSignatures
         let projection = await Task.detached(priority: .userInitiated) {
             MessageImageInteraction.markingKnownStickers(
@@ -4793,6 +4909,7 @@ final class AppModel: ObservableObject {
                 matching: stickerSignatures
             )
         }.value
+        guard !Task.isCancelled, self.account?.accountId == account.accountId else { return 0 }
         let merged = Self.mergePartialProjection(projection, preserving: existing)
         if merged != existing {
             messagesByConversation[conversation.id] = merged
@@ -5032,6 +5149,12 @@ final class AppModel: ObservableObject {
         return byAccountID.values.sorted(by: CloudGroupParticipant.canonicalPrecedes)
     }
 
+    nonisolated static func groupControlTitle(kind: String, displayTitle: String, sharedTitle: String?) -> String? {
+        // Only an explicit channel rename may publish the displayed title.
+        // Historical member-private labels must never become shared channel names.
+        kind == "session-title-update" ? displayTitle.nonEmpty : sharedTitle.nonEmpty
+    }
+
     private func sendGroupControl(
         kind: String,
         conversation: ConversationSummary,
@@ -5043,6 +5166,12 @@ final class AppModel: ObservableObject {
         memberJoins: [CloudGroupMemberJoin] = []
     ) async throws {
         guard let actor = participants.first(where: { $0.accountId == account.accountId }) else { return }
+        let canonical = await api.cachedChatConversations().first {
+            $0.id == conversation.sessionId || $0.legacySessionId == conversation.sessionId
+        }
+        let publicSessionTitle = Self.groupControlTitle(
+            kind: kind, displayTitle: conversation.displayName, sharedTitle: canonical?.sharedTitle
+        )
         let envelope = CloudGroupControlEnvelope(
             kind: kind,
             groupId: conversation.sessionId,
@@ -5051,7 +5180,7 @@ final class AppModel: ObservableObject {
             createdByAccountId: account.accountId,
             actor: actor,
             participants: participants,
-            sessionTitle: conversation.displayName.nonEmpty.map {
+            sessionTitle: publicSessionTitle.map {
                 CloudGroupSessionTitleSnapshot(
                     title: $0,
                     titleSource: "manual",
@@ -6745,6 +6874,7 @@ final class AppModel: ObservableObject {
         }
         phase = .signedIn
         presencePublisher.start(token: response.session.token)
+        scheduleDigestWarmup()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
             hasHydratedWireSnapshot: hasHydratedWireSnapshot,
             hasHydratedForkLineage: hasHydratedForkLineage

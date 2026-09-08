@@ -5,10 +5,6 @@ enum ChatChannel: Hashable {
     case agent
 }
 
-struct ArchivedChatsRoute: Hashable {
-    let channel: ChatChannel
-}
-
 struct ChatHomeView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -171,26 +167,11 @@ struct ChatHomeView: View {
                 )
             }
         }
-        .navigationDestination(for: ConversationSummary.self) { selected in
-            ConversationView(conversation: selected)
-        }
-        .navigationDestination(for: KordiMessageNotificationRoute.self) { route in
-            ConversationView(
-                conversation: route.conversation,
-                initialMessageID: route.messageID
-            )
-        }
         .navigationDestination(item: $composedConversation) { selected in
             ConversationView(conversation: selected)
         }
         .navigationDestination(isPresented: $showingArchivedChats) {
             ArchivedChatsView(channel: channel)
-        }
-        .navigationDestination(for: ArchivedChatsRoute.self) { route in
-            ArchivedChatsView(
-                channel: route.channel,
-                onOpenConversation: onOpenConversation
-            )
         }
         .toolbar {
             if #available(iOS 26.0, *) {
@@ -215,9 +196,6 @@ struct ChatHomeView: View {
             }
         }
         .navigationDestination(item: $newChatMode) { mode in
-            newChatDestination(for: mode)
-        }
-        .navigationDestination(for: NewChatMode.self) { mode in
             newChatDestination(for: mode)
         }
         .sheet(item: $groupManagementPresentation) { presentation in
@@ -811,7 +789,7 @@ struct ChatHomeView: View {
 
 }
 
-private struct ArchivedChatsView: View {
+struct ArchivedChatsView: View {
     @EnvironmentObject private var model: AppModel
     let channel: ChatChannel
     private let onOpenConversation: ((ConversationSummary) -> Void)?
@@ -879,6 +857,7 @@ private struct ArchivedChatsView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Archived Chats")
+        .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(item: $selectedConversation) { conversation in
             ConversationView(conversation: conversation)
         }

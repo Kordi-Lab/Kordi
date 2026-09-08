@@ -9,6 +9,8 @@ pub struct Source {
     pub session_title: String,
     pub sender_account_id: String,
     pub sender_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sender_avatar_url: Option<String>,
     pub text: String,
     pub created_at: String,
     pub version: i32,

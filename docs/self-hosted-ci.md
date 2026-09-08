@@ -82,6 +82,16 @@ Record that result in the pull request; a green CI visual job reports Chromium
 coverage only. Do not run pull-request code under an operator account or weaken
 the runner account isolation to obtain a graphical session.
 
+## Synthetic database tests
+
+The Rust job prepares checksum-pinned PostgreSQL 16.14 from the official source
+archive in its job-owned temporary directory. Migration tests use a new cluster
+and private Unix socket, stop it on exit, and never connect to an existing
+database. This does not require access to another account's Docker daemon,
+administrator privileges, or production credentials. The same required upgrade
+and runtime test matrix runs locally with Docker or with these native binaries.
+See [Database upgrade validation](database-upgrade-validation.md).
+
 ## Caches and maintenance
 
 pnpm, Playwright, Rust toolchains, and Cargo registries persist in the isolated

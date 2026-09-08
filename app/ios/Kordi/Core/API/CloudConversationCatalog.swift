@@ -198,6 +198,21 @@ enum CloudConversationCatalog {
             canonicalConversations: canonicalConversations,
             lineage: canonicalLineage
         )
+        var contentBySessionId: [String: [CloudMessageDTO]] = [:]
+        var callsBySessionId: [String: [CloudMessageDTO]] = [:]
+        for message in messages {
+            let envelope = CloudGroupMessageCodec.parse(message.body)
+            let isCall = ChatCallActivity(messageKind: message.messageKind) != nil
+            guard isCall || envelope == nil else { continue }
+            // Keep the same wire/envelope aliases as sessionKeys(for:), without reparsing per group.
+            var sessionKeys = Set<String>()
+            if let sessionId = message.sessionId?.nonEmpty { sessionKeys.insert(sessionId) }
+            if let groupId = envelope?.groupId.nonEmpty { sessionKeys.insert(groupId) }
+            for sessionId in sessionKeys where grouped[sessionId] != nil {
+                if isCall { callsBySessionId[sessionId, default: []].append(message) }
+                else { contentBySessionId[sessionId, default: []].append(message) }
+            }
+        }
 
         return grouped.compactMap { groupId, rows in
             guard !KordiSupportIdentity.isSystemAgentSession(groupId) else { return nil }
@@ -219,19 +234,12 @@ enum CloudConversationCatalog {
             let peers = participants.filter { $0.accountId != account.accountId }
             let groupMessages = deduplicatedGroupMessages(sorted)
             let latestMessage = groupMessages.last
-            let canonicalContentMessages = messages.filter {
-                CloudMessageStateProjector.sessionKeys(for: $0).contains(groupId)
-                    && ChatCallActivity(messageKind: $0.messageKind) == nil
-                    && CloudGroupMessageCodec.parse($0.body) == nil
-            }
+            let canonicalContentMessages = contentBySessionId[groupId] ?? []
             let latestCanonicalMessage = canonicalContentMessages.max {
                 parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt)
             }
             let callMessages = Dictionary(
-                grouping: messages.filter {
-                    ChatCallActivity(messageKind: $0.messageKind) != nil
-                        && CloudMessageStateProjector.sessionKeys(for: $0).contains(groupId)
-                },
+                grouping: callsBySessionId[groupId] ?? [],
                 by: \.messageId
             ).compactMap { _, rows in
                 rows.max { parseCloudDate($0.createdAt) < parseCloudDate($1.createdAt) }
@@ -287,7 +295,7 @@ enum CloudConversationCatalog {
                 ?? groupId
             let groupTitle = groupTitlesBySpaceId[groupSpaceId]
                 ?? localGroupTitle
-            let title = nonGenericTitle(canonical?.sharedTitle)
+            let title = canonical?.sharedTitle.nonEmpty
                 ?? sessionTitle
                 ?? defaultChannelTitles[groupId]
                 ?? "Channel 1"
@@ -987,8 +995,19 @@ func defaultSelfAgentSessionId(_ accountId: String) -> String {
     "session:self-agent:\(accountId):default"
 }
 
+private let cloudDateCache: NSCache<NSString, NSDate> = {
+    let cache = NSCache<NSString, NSDate>()
+    cache.countLimit = 4_096
+    cache.totalCostLimit = 512 * 1_024
+    return cache
+}()
+
 func parseCloudDate(_ value: String) -> Date {
+    let key = value as NSString
+    if let cached = cloudDateCache.object(forKey: key) { return cached as Date }
     let fractional = ISO8601DateFormatter()
     fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value) ?? .distantPast
+    let date = fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value) ?? .distantPast
+    cloudDateCache.setObject(date as NSDate, forKey: key, cost: value.utf8.count + MemoryLayout<TimeInterval>.size)
+    return date
 }

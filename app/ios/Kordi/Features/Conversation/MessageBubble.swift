@@ -1081,18 +1081,15 @@ private struct BackgroundAgentSessionRow: View {
         )
         .accessibilityHint("Opens the linked agent session")
         .task(id: presentation.session.sessionId) {
-            var failures = 0
             while !Task.isCancelled {
                 do {
                     let next = try await model.agentSubsession(id: presentation.session.sessionId)
                     try Task.checkCancellation()
                     if next != snapshot { snapshot = next }
-                    failures = 0
                     syncUnavailable = false
                 } catch {
-                    if Task.isCancelled { return }
-                    failures += 1
-                    syncUnavailable = failures >= 3
+                    if Task.isCancelled || CloudTransportErrorPolicy.isCancellation(error) { return }
+                    syncUnavailable = true
                 }
                 do { try await Task.sleep(for: .seconds(state == .running ? 1.5 : 10)) }
                 catch { return }
@@ -2418,7 +2415,7 @@ enum MessageGestureArbitration {
     }
 }
 
-private struct MessageInteractionGestureBridge: UIViewRepresentable {
+struct MessageInteractionGestureBridge: UIViewRepresentable {
     let minimumPressDuration: TimeInterval
     let isEnabled: Bool
     let onTap: (() -> Void)?
@@ -2433,33 +2430,32 @@ private struct MessageInteractionGestureBridge: UIViewRepresentable {
         view.backgroundColor = .clear
         view.isUserInteractionEnabled = false
         context.coordinator.attachmentView = view
-        view.onSuperviewChange = { [weak coordinator = context.coordinator, weak view] in
-            if let view { coordinator?.attachToEnclosingScrollView(from: view) }
-        }
+        view.coordinator = context.coordinator
         return view
     }
 
     func updateUIView(_ uiView: AttachmentView, context: Context) {
         context.coordinator.parent = self
-        context.coordinator.updateMinimumPressDuration()
         context.coordinator.attachToEnclosingScrollView(from: uiView)
     }
 
     static func dismantleUIView(_ uiView: AttachmentView, coordinator: Coordinator) {
+        uiView.coordinator = nil
+        coordinator.attachmentView = nil
         coordinator.detach()
     }
 
     final class AttachmentView: UIView {
-        var onSuperviewChange: (() -> Void)?
+        weak var coordinator: Coordinator?
 
         override func didMoveToSuperview() {
             super.didMoveToSuperview()
-            onSuperviewChange?()
+            coordinator?.attachToEnclosingScrollView(from: self)
         }
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            onSuperviewChange?()
+            coordinator?.attachToEnclosingScrollView(from: self)
         }
     }
 
@@ -2468,7 +2464,10 @@ private struct MessageInteractionGestureBridge: UIViewRepresentable {
         weak var attachmentView: UIView?
         weak var targetView: UIView?
 
-        private lazy var longPressRecognizer: UILongPressGestureRecognizer = {
+        private var longPressRecognizer: UILongPressGestureRecognizer?
+        private var tapRecognizer: UITapGestureRecognizer?
+
+        private func makeLongPressRecognizer() -> UILongPressGestureRecognizer {
             let recognizer = UILongPressGestureRecognizer(
                 target: self,
                 action: #selector(handleLongPress(_:))
@@ -2478,18 +2477,7 @@ private struct MessageInteractionGestureBridge: UIViewRepresentable {
             recognizer.cancelsTouchesInView = false
             recognizer.delegate = self
             return recognizer
-        }()
-
-        private lazy var tapRecognizer: UITapGestureRecognizer = {
-            let recognizer = UITapGestureRecognizer(
-                target: self,
-                action: #selector(handleTap(_:))
-            )
-            recognizer.cancelsTouchesInView = false
-            recognizer.delegate = self
-            recognizer.require(toFail: longPressRecognizer)
-            return recognizer
-        }()
+        }
 
         init(parent: MessageInteractionGestureBridge) {
             self.parent = parent
@@ -2497,10 +2485,13 @@ private struct MessageInteractionGestureBridge: UIViewRepresentable {
         }
 
         func updateMinimumPressDuration() {
+            guard let longPressRecognizer,
+                  longPressRecognizer.minimumPressDuration != parent.minimumPressDuration else { return }
             longPressRecognizer.minimumPressDuration = parent.minimumPressDuration
         }
 
         func attachToEnclosingScrollView(from view: UIView) {
+            guard parent.isEnabled, view.window != nil else { detach(); return }
             var candidate = view.superview
             while let current = candidate {
                 if let scrollView = current as? UIScrollView {
@@ -2509,29 +2500,60 @@ private struct MessageInteractionGestureBridge: UIViewRepresentable {
                 }
                 candidate = current.superview
             }
+            detach()
         }
 
         private func attach(to view: UIView) {
-            guard targetView !== view else { return }
-            detach()
-            targetView = view
-            view.addGestureRecognizer(longPressRecognizer)
-            view.addGestureRecognizer(tapRecognizer)
+            if targetView !== view {
+                detach()
+                targetView = view
+            }
+            let longPress = longPressRecognizer ?? makeLongPressRecognizer()
+            longPressRecognizer = longPress
+            updateMinimumPressDuration()
+            if longPress.view !== view { view.addGestureRecognizer(longPress) }
+            if parent.onTap != nil {
+                if tapRecognizer == nil {
+                    let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+                    tap.cancelsTouchesInView = false
+                    tap.delegate = self
+                    tap.require(toFail: longPress)
+                    tapRecognizer = tap
+                }
+                if let tapRecognizer, tapRecognizer.view !== view { view.addGestureRecognizer(tapRecognizer) }
+            } else if let tapRecognizer, let attachedView = tapRecognizer.view {
+                attachedView.removeGestureRecognizer(tapRecognizer)
+            }
         }
 
         func detach() {
-            targetView?.removeGestureRecognizer(longPressRecognizer)
-            targetView?.removeGestureRecognizer(tapRecognizer)
+            if let longPressRecognizer, let view = longPressRecognizer.view {
+                view.removeGestureRecognizer(longPressRecognizer)
+            }
+            if let tapRecognizer, let view = tapRecognizer.view {
+                view.removeGestureRecognizer(tapRecognizer)
+            }
             targetView = nil
         }
 
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        func acceptsTouch(at location: CGPoint) -> Bool {
             guard parent.isEnabled,
-                  let attachmentView,
-                  let targetView else { return false }
-            if gestureRecognizer === tapRecognizer, parent.onTap == nil { return false }
+                  let attachmentView, let window = attachmentView.window,
+                  let targetView, targetView.window === window else { return false }
             let frame = attachmentView.convert(attachmentView.bounds, to: targetView)
-            return frame.contains(gestureRecognizer.location(in: targetView))
+            return !frame.isEmpty && frame.contains(location)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            guard let targetView else { return false }
+            if gestureRecognizer === tapRecognizer, parent.onTap == nil { return false }
+            return acceptsTouch(at: touch.location(in: targetView))
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let targetView else { return false }
+            if gestureRecognizer === tapRecognizer, parent.onTap == nil { return false }
+            return acceptsTouch(at: gestureRecognizer.location(in: targetView))
         }
 
         func gestureRecognizer(
@@ -2545,6 +2567,7 @@ private struct MessageInteractionGestureBridge: UIViewRepresentable {
 
         @objc private func handleLongPress(_ gestureRecognizer: UILongPressGestureRecognizer) {
             guard gestureRecognizer.state == .began,
+                  gestureRecognizerShouldBegin(gestureRecognizer),
                   let attachmentView,
                   let window = attachmentView.window else { return }
             let frame = attachmentView.convert(attachmentView.bounds, to: window)
@@ -2553,7 +2576,8 @@ private struct MessageInteractionGestureBridge: UIViewRepresentable {
         }
 
         @objc private func handleTap(_ gestureRecognizer: UITapGestureRecognizer) {
-            guard gestureRecognizer.state == .ended else { return }
+            guard gestureRecognizer.state == .ended,
+                  gestureRecognizerShouldBegin(gestureRecognizer) else { return }
             parent.onTap?()
         }
     }

@@ -122,6 +122,12 @@ jobs:
       - name: Test Cloud server
         run: cargo test -p kordi-cloud-server
 
+      - name: Prepare account-isolated test PostgreSQL
+        run: bash scripts/prepare-ci-postgres.sh
+
+      - name: Test database upgrade compatibility
+        run: bash scripts/test-cloud-migrations.sh
+
   hygiene:
     name: Repository hygiene
     runs-on: [self-hosted, macOS, ARM64, kordi-ci]

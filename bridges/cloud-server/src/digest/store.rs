@@ -302,6 +302,7 @@ pub async fn authorized_input_sources(
     for source in &mut refs {
         let latest = &current[&source.id];
         source.sender_name = latest.sender_name.clone();
+        source.sender_avatar_url = latest.sender_avatar_url.clone();
         source.session_title = latest.session_title.clone();
         source.is_agent = latest.is_agent;
         source.agent_id = latest.agent_id.clone();

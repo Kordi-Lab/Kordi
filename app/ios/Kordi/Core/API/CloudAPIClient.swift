@@ -924,12 +924,24 @@ actor CloudAPIClient {
         )
     }
 
-    func agentSubsession(token: String, id: String, includeMessages: Bool) async throws -> CloudAgentSubsession {
-        try await send(
-            path: "/v1/cloud/agent-subsessions/\(escapedPath(id))", method: "GET", token: token,
-            query: [URLQueryItem(name: "includeMessages", value: includeMessages ? "true" : "false")],
-            fallback: "Could not load this agent task."
-        )
+    func agentSubsession(token: String, id: String, includeMessages: Bool, timeout: Duration = .seconds(10)) async throws -> CloudAgentSubsession {
+        let path = "/v1/cloud/agent-subsessions/\(escapedPath(id))"
+        return try await withThrowingTaskGroup(of: CloudAgentSubsession.self) { group in
+            group.addTask {
+                try await self.send(
+                    path: path, method: "GET", token: token,
+                    query: [URLQueryItem(name: "includeMessages", value: includeMessages ? "true" : "false")],
+                    fallback: "Could not load this agent task."
+                )
+            }
+            group.addTask {
+                try await Task.sleep(for: timeout)
+                throw URLError(.timedOut)
+            }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else { throw CancellationError() }
+            return result
+        }
     }
 
     private func threadReadConversation(token: String, sessionId: String) async throws -> CloudChatConversation {

@@ -14,6 +14,8 @@ import type {
   DesktopChatTurnSnapshot,
 } from '@/kordi-app/types';
 import { canonicalCallActivityIdentity } from '@/features/canonical/readModel/callActivity';
+import { createCloudCanonicalStateUpdates } from './cloudCanonicalStateUpdates';
+import type { CanonicalSessionStateSetter } from './cloudGroupControlContext';
 import type {
   CloudAccount,
   CloudAuthClient,
@@ -252,23 +254,25 @@ export function useCloudGroupControlApplication({
     accountId: string | null;
     entries: CloudGroupSessionPreparationCache;
   }>({ accountId: null, entries: new Map() });
-  const publishCanonicalState = useCallback<Dispatch<SetStateAction<CanonicalSessionState | null>>>(
-    (action) => {
-      const nextState = typeof action === 'function'
-        ? action(canonicalStateRef.current)
-        : action;
-      canonicalStateRef.current = nextState;
-    },
-    [canonicalStateRef],
+  const stateUpdates = useMemo(
+    () => createCloudCanonicalStateUpdates(account?.accountId ?? null),
+    [account?.accountId],
   );
+  useEffect(() => {
+    stateUpdates.activate();
+    return () => stateUpdates.dispose();
+  }, [stateUpdates]);
+  const publishCanonicalState = useCallback<CanonicalSessionStateSetter>((update) => {
+    if (!stateUpdates.isActive()) return;
+    const nextState = update(canonicalStateRef.current);
+    canonicalStateRef.current = nextState;
+    stateUpdates.publish(update);
+  }, [canonicalStateRef, stateUpdates]);
   const flushCanonicalState = useCallback(() => {
     if (!setCanonicalState) return;
-    const nextState = canonicalStateRef.current;
-    setCanonicalState((currentState) => (
-      currentState === nextState ? currentState : nextState
-    ));
-  }, [canonicalStateRef, setCanonicalState]);
-  const publishCanonicalStateImmediately = useCallback<Dispatch<SetStateAction<CanonicalSessionState | null>>>(
+    stateUpdates.flush(setCanonicalState);
+  }, [stateUpdates, setCanonicalState]);
+  const publishCanonicalStateImmediately = useCallback<CanonicalSessionStateSetter>(
     (action) => {
       publishCanonicalState(action);
       flushCanonicalState();

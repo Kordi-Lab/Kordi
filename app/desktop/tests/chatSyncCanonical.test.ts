@@ -299,6 +299,7 @@ test('group bootstrap uses the shared Cloud channel title and ignores personal t
     preferences: { ...conversation.preferences, personal_title: 'Legacy local title' },
   };
   assert.equal(chatSyncSessionTitle(groupConversation), 'Channel planning');
+  assert.equal(chatSyncSessionTitle({ ...groupConversation, shared_title: null }), '');
 
   const client = new CloudAuthClient({
     baseUrl: 'http://srv',

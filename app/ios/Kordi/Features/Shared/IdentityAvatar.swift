@@ -216,7 +216,9 @@ struct GroupAvatarStack: View {
 
 private struct AvatarSourceImage: View {
     let source: String
+    @Environment(\.scenePhase) private var scenePhase
     @State private var image: UIImage?
+    @State private var retry = 0
 
     init(source: String) {
         self.source = source
@@ -233,10 +235,19 @@ private struct AvatarSourceImage: View {
                     .transition(.opacity)
             }
             }
-            .task(id: source) {
-                guard let loaded = await AvatarImageLoader.image(from: source),
-                      !Task.isCancelled else { return }
-                image = loaded
+            .task(id: "\(source):\(retry)") {
+                for delay in [0, 1, 3] {
+                    do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+                    guard !Task.isCancelled else { return }
+                    if let loaded = await AvatarImageLoader.image(from: source) {
+                        guard !Task.isCancelled else { return }
+                        image = loaded
+                        return
+                    }
+                }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active, image == nil { retry += 1 }
             }
     }
 }

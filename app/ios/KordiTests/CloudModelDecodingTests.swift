@@ -1,6 +1,147 @@
 import XCTest
 import Security
+import Testing
 @testable import Kordi
+
+private final class SubsessionReadURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard request.value(forHTTPHeaderField: "X-Test-Subsession") != "hang" else { return }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"sessionId":"task","parentSessionId":"parent","parentRequestId":"request","ownerAccountId":"owner","agentId":"agent","ownerDisplayName":"Owner","agentDisplayName":"Helper","title":"Background task","status":"failed","version":1,"messages":[],"updatedAt":"2026-09-08T00:00:00Z"}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+struct SubsessionFailureTests {
+    private func client(hangs: Bool) -> (CloudAPIClient, URLSession) {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SubsessionReadURLProtocol.self]
+        configuration.httpAdditionalHeaders = ["X-Test-Subsession": hangs ? "hang" : "failed"]
+        let session = URLSession(configuration: configuration)
+        return (CloudAPIClient(session: session), session)
+    }
+
+    @Test func nonRespondingReadHasABoundedDeadline() async {
+        let (api, session) = client(hangs: true)
+        defer { session.invalidateAndCancel() }
+        let clock = ContinuousClock(), start = ContinuousClock.now
+        do {
+            _ = try await api.agentSubsession(token: "synthetic", id: "task", includeMessages: true, timeout: .milliseconds(50))
+            Issue.record("A nonresponding read must time out")
+        } catch {
+            #expect((error as? URLError)?.code == .timedOut)
+            #expect(AgentSubsessionLoadFailure(error: error) == .timedOut)
+        }
+        #expect(start.duration(to: clock.now) < .seconds(2))
+    }
+
+    @Test func failedTaskRemainsFailedWhenItsHistoryIsEmpty() async throws {
+        let (api, session) = client(hangs: false)
+        defer { session.invalidateAndCancel() }
+        let task = try await api.agentSubsession(token: "synthetic", id: "task", includeMessages: true)
+        #expect(task.state == .failed)
+        #expect(task.conversation.agentActivity == .failed)
+        #expect(task.messages.isEmpty)
+    }
+
+    @Test func cancelledViewReadIsNotReportedAsTaskFailure() async {
+        let (api, session) = client(hangs: true)
+        defer { session.invalidateAndCancel() }
+        let read = Task { try await api.agentSubsession(token: "synthetic", id: "task", includeMessages: true) }
+        read.cancel()
+        do { _ = try await read.value; Issue.record("The read should be cancelled") }
+        catch { #expect(CloudTransportErrorPolicy.isCancellation(error)) }
+    }
+
+    @Test func accessAndConnectionFailuresRemainDistinctFromExecutionFailure() {
+        #expect(AgentSubsessionLoadFailure(error: URLError(.notConnectedToInternet)) == .unavailable)
+        for status in [401, 403, 404] {
+            #expect(AgentSubsessionLoadFailure(error: CloudAPIError(code: "unavailable", message: "Unavailable", statusCode: status)) == .inaccessible)
+        }
+    }
+}
+
+private final class SessionActivityCancellationURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        if request.value(forHTTPHeaderField: "X-Test-Activity-Result") == "cancel" {
+            client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
+            return
+        }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 503, httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"code":"synthetic_failure","message":"Synthetic activity failure."}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+@MainActor
+struct SessionActivityCancellationTests {
+    private func model(result: String) -> (AppModel, URLSession) {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SessionActivityCancellationURLProtocol.self]
+        configuration.httpAdditionalHeaders = ["X-Test-Activity-Result": result]
+        let session = URLSession(configuration: configuration)
+        return (AppModel(api: CloudAPIClient(session: session), previewMode: true), session)
+    }
+
+    @Test func cancelledActivityLoadPreservesExistingNoticeAndActivity() async throws {
+        let (model, session) = model(result: "cancel")
+        defer { session.invalidateAndCancel() }
+        let conversation = try #require(model.conversations.first)
+        let previousActivity = model.sessionActivityByID
+        model.errorMessage = "Existing notice"
+        await model.loadSessionActivity(conversation)
+        #expect(model.errorMessage == "Existing notice")
+        #expect(model.sessionActivityByID == previousActivity)
+    }
+
+    @Test func realActivityFailureStillSurfaces() async throws {
+        let (model, session) = model(result: "failure")
+        defer { session.invalidateAndCancel() }
+        let conversation = try #require(model.conversations.first)
+        await model.loadSessionActivity(conversation)
+        #expect(model.errorMessage == "Synthetic activity failure.")
+    }
+
+    @Test func alreadyCancelledActivityLoadDoesNotSurfaceAnError() async throws {
+        let (model, session) = model(result: "failure")
+        defer { session.invalidateAndCancel() }
+        let conversation = try #require(model.conversations.first)
+        model.errorMessage = "Existing notice"
+        let task = Task { @MainActor in await model.loadSessionActivity(conversation) }
+        task.cancel()
+        await task.value
+        #expect(model.errorMessage == "Existing notice")
+    }
+
+    @Test func detailLoadChecksCancellationBetweenRequestsAndBeforePublishing() throws {
+        let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let detail = try String(contentsOf: directory.appendingPathComponent("Kordi/Features/Conversation/SessionDetailSheet.swift"), encoding: .utf8)
+        let start = try #require(detail.range(of: ".sensoryFeedback(.selection, trigger: notificationsMuted)"))
+        let end = try #require(detail.range(of: ".quickLookPreview", range: start.upperBound..<detail.endIndex))
+        let loading = detail[start.upperBound..<end.lowerBound]
+        #expect(loading.components(separatedBy: "guard !Task.isCancelled else { return }").count == 4)
+        let source = try String(contentsOf: directory.appendingPathComponent("Kordi/App/AppModel.swift"), encoding: .utf8)
+        let activityStart = try #require(source.range(of: "func loadSessionActivity("))
+        let activityEnd = try #require(source.range(of: "func lookupContact(", range: activityStart.upperBound..<source.endIndex))
+        let activity = source[activityStart.lowerBound..<activityEnd.lowerBound]
+        #expect(activity.contains("guard !Task.isCancelled, let token, let accountId = account?.accountId"))
+        #expect(activity.contains("guard !Task.isCancelled, self.token == token, account?.accountId == accountId"))
+        #expect(activity.contains("guard self.token == token, account?.accountId == accountId,"))
+        #expect(activity.contains("CloudTransportErrorPolicy.shouldSurface(error, taskIsCancelled: Task.isCancelled)"))
+    }
+}
 
 final class CloudModelDecodingTests: XCTestCase {
     func testThreadAttentionKeepsTotalAndThreadCountsDistinct() throws {

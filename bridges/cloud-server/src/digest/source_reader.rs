@@ -20,6 +20,7 @@ type Row = (
     Option<String>,
     Option<String>,
     String,
+    Option<String>,
 );
 // Keep authorization identical for aggregation, cached reads, evidence and conversion.
 const SOURCE_FROM: &str = " FROM cloud_chat_messages m
@@ -111,7 +112,20 @@ fn reply_reference(row: &Row) -> Option<(String, Option<String>)> {
         .then(|| (id.to_string(), Some(session.to_string())))
 }
 
-fn resolve_reply(reference: &(String, Option<String>), rows: &[&Row]) -> Option<String> {
+fn legacy_message_ids(rows: &[Row]) -> HashMap<String, String> {
+    rows.iter()
+        .filter_map(|row| {
+            let payload = message_payload(&row.6)?;
+            Some((row.0.clone(), payload.get("id")?.as_str()?.to_string()))
+        })
+        .collect()
+}
+
+fn resolve_reply(
+    reference: &(String, Option<String>),
+    rows: &[&Row],
+    legacy_ids: &HashMap<String, String>,
+) -> Option<String> {
     let matches: std::collections::BTreeSet<_> = rows
         .iter()
         .filter(|row| {
@@ -122,11 +136,7 @@ fn resolve_reply(reference: &(String, Option<String>), rows: &[&Row]) -> Option<
                 && (reference.0 == row.0
                     || reference.0 == row.14
                     || reference.0 == format!("ios_{}", row.14)
-                    || message_payload(&row.6)
-                        .and_then(|value| value.get("id").cloned())
-                        .and_then(|value| value.as_str().map(str::to_string))
-                        .as_deref()
-                        == Some(reference.0.as_str()))
+                    || legacy_ids.get(&row.0) == Some(&reference.0))
         })
         .map(|row| row.0.clone())
         .collect();
@@ -141,7 +151,9 @@ async fn fetch_rows(
     suffix: &str,
     ids: Option<&[String]>,
 ) -> Result<Vec<Row>> {
-    let sql=format!("SELECT m.message_id::text,c.conversation_id::text,COALESCE(c.legacy_session_id,c.conversation_id::text),COALESCE(member.personal_title,c.shared_title,c.group_title,'Conversation'),m.sender_account_id,COALESCE(sender.display_name,'Contact'),m.content,m.created_at,m.version,m.message_kind,profile.display_name,profile.avatar_url,source_run.execution_agent_id,m.reply_to_message_id::text,m.client_message_id::text{SOURCE_FROM}{suffix}");
+    let sql = format!(
+        "SELECT m.message_id::text,c.conversation_id::text,COALESCE(c.legacy_session_id,c.conversation_id::text),COALESCE(member.personal_title,c.shared_title,c.group_title,'Conversation'),m.sender_account_id,COALESCE(sender.display_name,'Contact'),m.content,m.created_at,m.version,m.message_kind,profile.display_name,profile.avatar_url,source_run.execution_agent_id,m.reply_to_message_id::text,m.client_message_id::text,sender.avatar_url{SOURCE_FROM}{suffix}"
+    );
     let mut request = query_as::<_, Row>(&sql).bind(account);
     if let Some(ids) = ids {
         request = request.bind(ids);
@@ -160,6 +172,8 @@ pub(super) async fn source_page(
         " AND (m.generation_status IS NULL OR m.generation_status IN ('complete','completed')) ORDER BY m.created_at DESC,m.message_id DESC LIMIT 501"
     };
     let rows = fetch_rows(pool, account, suffix, ids).await?;
+    // Decode authorized envelopes once per page, not once per candidate for every reply.
+    let mut legacy_ids = legacy_message_ids(&rows);
     let limited = ids.is_none() && rows.len() > 500;
     let references: HashMap<_, _> = rows
         .iter()
@@ -168,7 +182,7 @@ pub(super) async fn source_page(
     let initial: Vec<_> = rows.iter().collect();
     let lookup_ids: Vec<_> = references
         .values()
-        .filter(|reference| resolve_reply(reference, &initial).is_none())
+        .filter(|reference| resolve_reply(reference, &initial, &legacy_ids).is_none())
         .flat_map(|reference| {
             [
                 reference.0.clone(),
@@ -185,10 +199,11 @@ pub(super) async fn source_page(
     } else {
         fetch_rows(pool, account, " AND (m.message_id::text=ANY($2) OR m.client_message_id::text=ANY($2)) ORDER BY m.created_at DESC LIMIT 700", Some(&lookup_ids)).await?
     };
+    legacy_ids.extend(legacy_message_ids(&extra));
     let available: Vec<_> = rows.iter().chain(&extra).collect();
     let sessions: Vec<_> = references
         .values()
-        .filter(|reference| resolve_reply(reference, &available).is_none())
+        .filter(|reference| resolve_reply(reference, &available, &legacy_ids).is_none())
         .filter_map(|reference| reference.1.clone())
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
@@ -197,13 +212,14 @@ pub(super) async fn source_page(
     if !sessions.is_empty() {
         // Legacy UI message IDs live in envelopes. Search only the referenced authorized sessions.
         extra.extend(fetch_rows(pool,account," AND (COALESCE(c.legacy_session_id,c.conversation_id::text)=ANY($2) OR c.conversation_id::text=ANY($2)) ORDER BY m.created_at DESC LIMIT 700",Some(&sessions)).await?);
+        legacy_ids.extend(legacy_message_ids(&extra));
     }
     let available: Vec<_> = rows.iter().chain(&extra).collect();
     // Only canonical, authorized source records are context. Never trust a client's copied quote text.
     let replies: HashMap<_, _> = references
         .into_iter()
         .filter_map(|(id, reference)| {
-            resolve_reply(&reference, &available)
+            resolve_reply(&reference, &available, &legacy_ids)
                 .filter(|target| target != &id)
                 .map(|target| (id, target))
         })
@@ -256,6 +272,7 @@ pub(super) async fn source_page(
                     session_title: r.3,
                     sender_account_id: r.4,
                     sender_name,
+                    sender_avatar_url: r.15,
                     text,
                     created_at: r.7.to_rfc3339(),
                     version: r.8,
@@ -280,4 +297,133 @@ pub async fn authorized(pool: &PgPool, account: &str, ids: &[String]) -> Result<
     }
     let found = sources(pool, account, Some(ids)).await?;
     Ok(ids.iter().all(|id| found.iter().any(|s| &s.id == id)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use serde_json::json;
+
+    fn row(index: usize, session: &str, legacy_id: &str) -> Row {
+        let payload = json!({"kind":"message", "id":legacy_id, "text":"x".repeat(4096)});
+        (
+            format!("canonical-{index}"),
+            format!("conversation-{session}"),
+            session.into(),
+            "Session".into(),
+            "sender".into(),
+            "Sender".into(),
+            json!({"blocks":[{"type":"text", "text":format!("kordi-cloud-message:{}", URL_SAFE_NO_PAD.encode(payload.to_string()))}]}),
+            chrono::Utc::now(),
+            1,
+            "text".into(),
+            None,
+            None,
+            None,
+            None,
+            format!("client-{index}"),
+            None,
+        )
+    }
+
+    #[test]
+    fn reply_alias_index_preserves_canonical_client_legacy_and_ambiguity_rules() {
+        let mut rows = vec![
+            row(0, "first", "shared-alias"),
+            row(1, "second", "shared-alias"),
+        ];
+        let ids = legacy_message_ids(&rows);
+        let available: Vec<_> = rows.iter().collect();
+        for reference in ["canonical-0", "client-0", "ios_client-0"] {
+            assert_eq!(
+                resolve_reply(&(reference.into(), None), &available, &ids),
+                Some("canonical-0".into())
+            );
+        }
+        assert_eq!(
+            resolve_reply(&("shared-alias".into(), None), &available, &ids),
+            None
+        );
+        for session in ["first", "conversation-first"] {
+            assert_eq!(
+                resolve_reply(
+                    &("shared-alias".into(), Some(session.into())),
+                    &available,
+                    &ids
+                ),
+                Some("canonical-0".into())
+            );
+        }
+        assert_eq!(
+            resolve_reply(
+                &("canonical-0".into(), Some("second".into())),
+                &available,
+                &ids
+            ),
+            None
+        );
+        rows[1].6 = json!({"blocks":[{"type":"text","text":"kordi-cloud-message:malformed"}]});
+        let ids = legacy_message_ids(&rows);
+        assert_eq!(ids.len(), 1);
+        assert_eq!(
+            resolve_reply(
+                &("shared-alias".into(), None),
+                &rows.iter().collect::<Vec<_>>(),
+                &ids
+            ),
+            Some("canonical-0".into())
+        );
+    }
+
+    #[test]
+    fn indexed_reply_resolution_matches_uncached_resolution_for_large_pages() {
+        let rows: Vec<_> = (0..184)
+            .map(|index| row(index, "session", &format!("legacy-{index}")))
+            .collect();
+        let available: Vec<_> = rows.iter().collect();
+        let references: Vec<_> = (0..64)
+            .map(|index| (format!("legacy-{index}"), Some("session".into())))
+            .collect();
+        let before = std::time::Instant::now();
+        let expected: Vec<_> = references
+            .iter()
+            .map(|reference| {
+                let matches: std::collections::BTreeSet<_> = available
+                    .iter()
+                    .filter(|row| {
+                        reference
+                            .1
+                            .as_ref()
+                            .is_none_or(|session| session == &row.1 || session == &row.2)
+                            && (reference.0 == row.0
+                                || reference.0 == row.14
+                                || reference.0 == format!("ios_{}", row.14)
+                                || message_payload(&row.6)
+                                    .and_then(|value| value.get("id").cloned())
+                                    .and_then(|value| value.as_str().map(str::to_string))
+                                    .as_deref()
+                                    == Some(reference.0.as_str()))
+                    })
+                    .map(|row| row.0.clone())
+                    .collect();
+                (matches.len() == 1)
+                    .then(|| matches.into_iter().next())
+                    .flatten()
+            })
+            .collect();
+        let old_elapsed = before.elapsed();
+        let after = std::time::Instant::now();
+        let ids = legacy_message_ids(&rows);
+        let actual: Vec<_> = references
+            .iter()
+            .map(|reference| resolve_reply(reference, &available, &ids))
+            .collect();
+        assert_eq!(actual, expected);
+        eprintln!(
+            "Synthetic reply resolution: uncached={}ms, indexed={}ms",
+            old_elapsed.as_millis(),
+            after.elapsed().as_millis()
+        );
+    }
 }

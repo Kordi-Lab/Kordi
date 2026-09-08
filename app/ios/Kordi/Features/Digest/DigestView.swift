@@ -2,6 +2,31 @@ import SwiftUI
 
 struct DigestMessageRoute: Hashable { let conversation: ConversationSummary; let messageID: String }
 private enum DigestPane: String, CaseIterable { case brief = "Brief", tasks = "Next steps", calendar = "Calendar" }
+enum DigestReadState: Equatable {
+    case loading, failed, content
+    init(hasResponse: Bool, error: String?) {
+        self = hasResponse ? .content : error == nil ? .loading : .failed
+    }
+}
+
+private struct DigestReadNotice: View {
+    let name: String
+    let hasResponse: Bool
+    let error: String?
+    let retry: () -> Void
+
+    var body: some View {
+        if let error {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(error).foregroundStyle(.secondary)
+                Button("Try again", action: retry).buttonStyle(.plain)
+            }.accessibilityAddTraits(.updatesFrequently)
+        } else if !hasResponse {
+            ProgressView("Loading \(name)…")
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
 private enum DigestSheet: Identifiable {
     case source([String]), event(DigestCalendarEvent, RollingDigestItem? = nil, DigestCalendarEvent? = nil, [DigestCalendarEvent]? = nil), imports, connection, details
     var id: String { switch self { case .source(let ids): "source:\(ids.joined(separator: ","))"; case .event(let event, let proposal, _, _): "event:\(event.id):\(proposal?.id ?? "")"; case .imports: "import"; case .connection: "connection"; case .details: "details" } }
@@ -12,23 +37,30 @@ struct DigestView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var notifications: KordiNotificationCoordinator
     @State private var pane = DigestPane.brief
-    @State private var digest: RollingDigestResponse?
-    @State private var events: [DigestCalendarEvent] = []
+    private var digest: RollingDigestResponse? { model.rollingDigestSnapshot }
+    private var events: [DigestCalendarEvent] {
+        let removed = model.digestMutationState.removedEventIDs
+        return (model.digestCalendarSnapshot?.events ?? []).filter { !removed.contains($0.id) }
+    }
     @State private var error: String?
+    @State private var digestLoadError: String?
+    @State private var calendarLoadError: String?
     @State private var selectedSheet: DigestSheet?
     @State private var month = Date()
     @State private var selectedCalendarDay = Date()
     @State private var calendarScrollRevision = 0
     @State private var remindersAllowed = true
-    @State private var remoteReminders = false
+    private var remoteReminders: Bool { model.digestCalendarSnapshot?.pushAvailable ?? false }
     @State private var isRefreshing = false
     @State private var loadRevision = 0
     private var sources: [RollingDigestSource] { digest?.sources ?? [] }
     private var content: RollingDigestContent? { digest?.snapshot }
     private var visibleClaims: [RollingDigestItem] { digest?.visibleClaims ?? [] }
-    private var dismissedSuggestions: [RollingDigestItem] { digest?.dismissedSuggestions ?? [] }
-    private var visibleSuggestions: [RollingDigestItem] { digest?.visibleSuggestions ?? [] }
+    private var dismissedSuggestions: [RollingDigestItem] { model.digestMutationState.suggestions(in: digest, dismissed: true) }
+    private var visibleSuggestions: [RollingDigestItem] { model.digestMutationState.suggestions(in: digest, dismissed: false) }
     private var calendarCandidates: [RollingDigestItem] { (content?.calendarCandidates ?? []).filter { $0.calendarProposalAvailable(events: events) } }
+    private var digestReadState: DigestReadState { DigestReadState(hasResponse: digest != nil, error: digestLoadError) }
+    private var calendarReadState: DigestReadState { DigestReadState(hasResponse: model.digestCalendarSnapshot != nil, error: calendarLoadError) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,7 +74,7 @@ struct DigestView: View {
                 ForEach(DigestPane.allCases, id: \.self) { tab in
                     Button { pane = tab } label: {
                         VStack(spacing: 8) {
-                            HStack(spacing: 4) { Text(tab.rawValue); if tab == .tasks { Text(visibleSuggestions.count, format: .number).foregroundStyle(.secondary) } }
+                            HStack(spacing: 4) { Text(tab.rawValue); if tab == .tasks, digestReadState == .content { Text(visibleSuggestions.count, format: .number).foregroundStyle(.secondary) } }
                                 .font(.subheadline.weight(pane == tab ? .semibold : .regular))
                             Rectangle().fill(pane == tab ? Color.primary : .clear).frame(height: 2)
                         }
@@ -65,12 +97,15 @@ struct DigestView: View {
             }
         }
         .task(id: model.account?.accountId) {
-            guard let accountId = model.account?.accountId else { digest = nil; events = []; selectedSheet = nil; return }
-            if digest?.accountId != accountId { digest = nil; events = [] }
+            guard let accountId = model.account?.accountId else { return }
             while !Task.isCancelled {
                 await load(accountId: accountId)
                 do { try await Task.sleep(for: .seconds(5)) } catch { return }
             }
+        }
+        .onChange(of: model.account?.accountId) { _, _ in
+            selectedSheet = nil
+            error = nil; digestLoadError = nil; calendarLoadError = nil
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, let accountId = model.account?.accountId {
@@ -88,6 +123,8 @@ struct DigestView: View {
         }
     }
     private var statusText: String {
+        if digestReadState == .failed { return "Could not load digest" }
+        if digestReadState == .loading { return "Loading digest…" }
         if digest?.status == "updating" { return "Updating · previous brief available" }
         if let date = DigestDate.parse(digest?.updatedAt) { return "Updated \(date.formatted(date: .omitted, time: .shortened))" }
         return "Preparing your digest"
@@ -95,6 +132,11 @@ struct DigestView: View {
     private func page<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                if !model.digestMutationState.pending.isEmpty { ProgressView("Saving changes…").controlSize(.small) }
+                ForEach(model.digestMutationState.errors.keys.sorted(), id: \.self) { key in
+                    Text(model.digestMutationState.errors[key] ?? "").font(.footnote).foregroundStyle(.secondary)
+                        .accessibilityAddTraits(.updatesFrequently)
+                }
                 if let error { Text(error).font(.subheadline).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) }
                 if let code = digest?.errorCode {
                     Text(code == "missing_provider_auth" ? "Connect a model provider in account settings to generate your digest." : "The last update failed. Your previous brief remains available.")
@@ -105,6 +147,7 @@ struct DigestView: View {
         }.refreshable { await refresh() }
     }
     @ViewBuilder private var brief: some View {
+        digestReadNotice
         if let lead = visibleClaims.first {
             VStack(alignment: .leading, spacing: 10) {
                 Text(lead.title).font(.subheadline.weight(.semibold))
@@ -122,26 +165,32 @@ struct DigestView: View {
                     Divider().padding(.top, 8)
                 }
             }
-        } else {
+        } else if digestReadState == .content {
             Text(digest?.status == "ready" ? (sources.isEmpty ? "No conversations to summarize yet." : "No brief entries to show.") : "Your sourced brief will appear after the first update.").foregroundStyle(.secondary).padding(.vertical, 24)
         }
     }
     @ViewBuilder private var tasks: some View {
         Text("AI suggestions").font(.subheadline).foregroundStyle(.secondary)
+        digestReadNotice
         ForEach(visibleSuggestions) { item in
             VStack(alignment: .leading, spacing: 8) {
                 Text(item.title).font(.subheadline.weight(.semibold)); Text(item.text).foregroundStyle(.secondary)
                 people(item); citations(item)
-                Button("Dismiss") { Task { await perform { try await model.dismissDigestItem(item.id, dismissed: true) } } }
+                Button("Dismiss") { setSuggestionDismissed(item.id, dismissed: true) }
             }
         }
-        if visibleSuggestions.isEmpty { Text("No suggestions to show.").foregroundStyle(.secondary) }
+        if visibleSuggestions.isEmpty, digestReadState == .content {
+            Text(content == nil && digest?.status != "ready" ? "Suggestions will appear after the first update." : "No suggestions to show.").foregroundStyle(.secondary)
+        }
         if !dismissedSuggestions.isEmpty {
-            Button("Restore dismissed suggestions") { Task { await perform { for item in dismissedSuggestions { try await model.dismissDigestItem(item.id, dismissed: false) } } } }
+            Button("Restore dismissed suggestions") {
+                for item in dismissedSuggestions { setSuggestionDismissed(item.id, dismissed: false) }
+            }.disabled(model.digestMutationState.hasPendingFeedback)
         }
     }
     private var calendar: some View {
         VStack(alignment: .leading, spacing: 18) {
+            DigestReadNotice(name: "calendar", hasResponse: model.digestCalendarSnapshot != nil, error: calendarLoadError) { retryRead(calendar: true) }
             HStack(spacing: 22) {
                 Button { selectedSheet = .connection } label: { Label("Connect calendars", systemImage: "calendar.badge.plus") }
                 Button { selectedSheet = .imports } label: { Label("Import ICS", systemImage: "square.and.arrow.down") }
@@ -154,10 +203,14 @@ struct DigestView: View {
                 Button("Today") { month = Date(); selectedCalendarDay = month }.font(.caption)
                 Button { changeMonth(1) } label: { Image(systemName: "chevron.right") }.accessibilityLabel("Next month")
             }.buttonStyle(.plain)
-            DigestMonthGrid(month: month, events: events, candidates: calendarCandidates, selectedDay: $selectedCalendarDay, onSelect: { selectedSheet = .event($0) }, onReview: reviewCalendarCandidate)
+            if calendarReadState == .content {
+                DigestMonthGrid(month: month, events: events, candidates: calendarCandidates, selectedDay: $selectedCalendarDay, onSelect: { selectedSheet = .event($0) }, onReview: reviewCalendarCandidate)
+                if events.isEmpty, !model.digestMutationState.hasPendingRemoval { Text("No saved events.").font(.footnote).foregroundStyle(.secondary) }
+            }
             Text("Shown in \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
             Divider().padding(.vertical, 4)
             Text("From your chats").font(.subheadline.weight(.semibold))
+            digestReadNotice
             ForEach(calendarCandidates) { item in
                 VStack(alignment: .leading, spacing: 8) {
                     if item.calendarAction == "delete" { Text("Cancellation to review").font(.caption).foregroundStyle(KordiTheme.destructiveText) }
@@ -176,6 +229,22 @@ struct DigestView: View {
             }
         }
     }
+    private var digestReadNotice: some View {
+        DigestReadNotice(name: "digest", hasResponse: digest != nil, error: digestLoadError) { retryRead(calendar: false) }
+    }
+    private func setSuggestionDismissed(_ id: String, dismissed: Bool) {
+        do { _ = try model.beginDismissingDigestItem(id, dismissed: dismissed) }
+        catch { self.error = error.localizedDescription }
+    }
+    private func retryRead(calendar: Bool) {
+        guard let accountId = model.account?.accountId else { return }
+        if calendar { calendarLoadError = nil } else { digestLoadError = nil }
+        let revision = loadRevision
+        Task {
+            if calendar { await loadCalendar(accountId: accountId, revision: revision) }
+            else { await loadDigest(accountId: accountId, revision: revision) }
+        }
+    }
     private func reviewCalendarCandidate(_ item: RollingDigestItem) {
         do {
             let event = try item.calendarReviewEvent(events: events, sources: sources, timezone: digest?.timezone)
@@ -192,7 +261,7 @@ struct DigestView: View {
             ForEach(groups, id: \.first?.sessionId) { group in
                 if let source = group.first {
                     Button {
-                        Task { await perform { digest = try await model.loadRollingDigest(); selectedSheet = .source(group.map(\.id)) } }
+                        selectedSheet = .source(group.map(\.id))
                     } label: {
                         Label(source.sessionTitle + (group.count > 1 ? " · \(group.count) messages" : ""), systemImage: "arrow.up.right")
                     }.font(.caption).foregroundStyle(.secondary).padding(.vertical, 4)
@@ -202,7 +271,7 @@ struct DigestView: View {
     }
     private func people(_ item: RollingDigestItem) -> some View {
         DigestPeopleView(sourceIds: item.sourceIds, ownerAccountId: item.ownerAccountId, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts) { source in
-            Task { await perform { digest = try await model.loadRollingDigest(); selectedSheet = .source([source.id]) } }
+            selectedSheet = .source([source.id])
         }
     }
     @ViewBuilder private func sheetBody(_ sheet: DigestSheet) -> some View {
@@ -228,7 +297,11 @@ struct DigestView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
-        case .event(let event, let proposal, let original, let series): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts, proposal: proposal, original: original, series: series) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.eventDate(updated) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: { if let series, let id = proposal?.existingSeriesId { try await model.removeDigestCalendarSeries(id, events: series) } else { try await model.removeDigestCalendarEvent(event) }; await reloadAfterEdit() }
+        case .event(let event, let proposal, let original, let series): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts, proposal: proposal, original: original, series: series) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.eventDate(updated) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: {
+            if let series, let id = proposal?.existingSeriesId { _ = try model.beginRemovingDigestCalendarSeries(id, events: series) }
+            else { _ = try model.beginRemovingDigestCalendarEvent(event) }
+            selectedSheet = nil
+        }
         case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .connection: DigestConnectView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Updates follow your messages, sessions and calendar events."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("Live digest")
@@ -238,15 +311,16 @@ struct DigestView: View {
     private func load(accountId: String) async {
         loadRevision += 1
         let revision = loadRevision
+        async let digestRead: Void = loadDigest(accountId: accountId, revision: revision)
+        async let calendarRead: Void = loadCalendar(accountId: accountId, revision: revision)
+        _ = await (digestRead, calendarRead)
+    }
+    private func loadDigest(accountId: String, revision: Int) async {
         do {
-            async let report = model.loadRollingDigest()
-            async let calendar = model.loadDigestCalendar()
-            let (next, calendarResponse) = try await (report, calendar)
-            let nextEvents = calendarResponse.events
+            let next = try await model.loadRollingDigest()
             try Task.checkCancellation()
             guard model.account?.accountId == accountId, revision == loadRevision else { return }
-            remoteReminders = calendarResponse.pushAvailable
-            digest = next; events = nextEvents; error = nil
+            digestLoadError = nil
             let accessibleIDs = Set(next.sources.map(\.id))
             if let sheet = selectedSheet {
                 switch sheet {
@@ -255,6 +329,15 @@ struct DigestView: View {
                 default: break
                 }
             }
+        } catch { if shouldRecordLoadError(error, accountId: accountId, revision: revision) { digestLoadError = error.localizedDescription } }
+    }
+    private func loadCalendar(accountId: String, revision: Int) async {
+        do {
+            let calendarResponse = try await model.loadDigestCalendar()
+            let nextEvents = calendarResponse.events
+            try Task.checkCancellation()
+            guard model.account?.accountId == accountId, revision == loadRevision else { return }
+            calendarLoadError = nil
             if let eventID = notifications.pendingCalendarEventID {
                 pane = .calendar
                 if let event = nextEvents.first(where: { $0.id == eventID }) { month = DigestDate.eventDate(event) ?? Date(); selectedSheet = .event(event) }
@@ -265,7 +348,11 @@ struct DigestView: View {
                 await notifications.refreshAuthorizationState(registerIfAllowed: true)
                 remindersAllowed = notifications.authorizationState.canRegisterForRemoteNotifications
             } else { remindersAllowed = try await DigestCalendarService.syncReminders(accountId: accountId, events: nextEvents, isCurrentAccount: { model.account?.accountId == accountId }) }
-        } catch { if !Task.isCancelled, revision == loadRevision, model.account?.accountId == accountId { self.error = error.localizedDescription } }
+        } catch { if shouldRecordLoadError(error, accountId: accountId, revision: revision) { calendarLoadError = error.localizedDescription } }
+    }
+    private func shouldRecordLoadError(_ error: Error, accountId: String, revision: Int) -> Bool {
+        CloudTransportErrorPolicy.shouldSurface(error, taskIsCancelled: Task.isCancelled)
+            && revision == loadRevision && model.account?.accountId == accountId
     }
     private func refresh() async { isRefreshing = true; defer { isRefreshing = false }; await perform { try await model.refreshRollingDigest() }; if let id = model.account?.accountId { await load(accountId: id) } }
     private func requestReminders() async { if remoteReminders { await notifications.requestAuthorization(); remindersAllowed = notifications.authorizationState.canRegisterForRemoteNotifications; return }; guard let id = model.account?.accountId else { return }; await perform { remindersAllowed = try await DigestCalendarService.syncReminders(accountId: id, events: events, requestPermission: true, isCurrentAccount: { model.account?.accountId == id }) } }

@@ -5,7 +5,8 @@ extension CloudAgentSubsession {
         ConversationSummary(id: "subsession:\(sessionId)", kind: .agent,
             peerAccountId: ownerAccountId, agentId: agentId, ownerDisplayName: ownerDisplayName,
             displayName: title, lastMessage: messages.last?.text ?? "", lastActivityAt: .distantPast,
-            unreadCount: 0, avatarSource: agentAvatarUrl, agentActivity: state == .running && live != false ? .replying : .ready,
+            unreadCount: 0, avatarSource: agentAvatarUrl,
+            agentActivity: state == .failed ? .failed : state == .running && live != false ? .replying : .ready,
             sessionId: sessionId, agentDisplayName: agentDisplayName,
             groupParticipants: (participants ?? []).map {
                 CloudGroupParticipant(accountId: $0.accountId, displayName: $0.displayName,
