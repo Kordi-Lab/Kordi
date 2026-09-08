@@ -99,7 +99,7 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
     <div className={controlsTarget ? "flex h-full items-center gap-2" : "absolute bottom-5 z-20 flex flex-col items-center gap-2"} data-attachment-image-lightbox-control="true">
       {failed ? <span role="status" className="text-xs text-white/70">Live playback unavailable. Try again.</span> : null}
       <button type="button" onClick={() => void play()} disabled={loading && !playing}
-        className={controlsTarget ? "flex h-full items-center justify-center rounded-full bg-white/10 aria-pressed:bg-white/25 px-3 text-sm text-white" : "flex min-h-11 items-center justify-center rounded-full bg-black/60 px-3 text-sm text-white backdrop-blur"}
+        className={controlsTarget ? "flex h-full items-center justify-center rounded-full bg-white/10 aria-pressed:bg-white/25 px-3 text-sm text-[#fff]" : "flex min-h-11 items-center justify-center rounded-full bg-black/60 px-3 text-sm text-[#fff] backdrop-blur"}
         title={playing ? 'Stop Live Photo' : 'Play Live Photo'}
         aria-label={playing ? 'Stop Live Photo' : 'Play Live Photo'} aria-pressed={playing}>
         {loading ? <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />

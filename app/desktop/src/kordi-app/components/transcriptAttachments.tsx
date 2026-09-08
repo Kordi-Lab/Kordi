@@ -324,7 +324,7 @@ function AttachmentImageCard({
           transparent={isSticker}
         />
       )}
-      {attachment.livePhoto || attachment.livePhotoFiles ? <span role="img" aria-label="Live Photo" className="pointer-events-none absolute left-2 top-2 grid size-7 place-items-center rounded-full bg-black/45 text-white"><LivePhotoIcon className="size-4" /></span> : null}
+      {attachment.livePhoto || attachment.livePhotoFiles ? <span role="img" aria-label="Live Photo" className="pointer-events-none absolute left-2 top-2 grid size-7 place-items-center rounded-full bg-black/65 text-[#fff] ring-1 ring-inset ring-white/20"><LivePhotoIcon className="size-5" strokeWidth={1.8} /></span> : null}
       {showOriginalAction ? (
         <div className="absolute bottom-2 right-2 z-10">
           <AttachmentActions attachment={attachment} variant="original" />

@@ -12,7 +12,7 @@ export function LivePhotoComposerReview({ attachment, onClose }: { attachment: A
     return () => element?.close();
   }, []);
   return <dialog ref={dialog} onCancel={onClose} onClose={onClose}
-    className="fixed inset-0 m-auto h-[80vh] w-[90vw] max-w-5xl rounded-2xl bg-neutral-950 p-0 text-white backdrop:bg-black/70"
+    className="fixed inset-0 m-auto h-[80vh] w-[90vw] max-w-5xl rounded-2xl bg-neutral-950 p-0 text-[#fff] backdrop:bg-black/70"
     aria-label="Review Live Photo before sending">
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center justify-between gap-4 px-5 py-3">
