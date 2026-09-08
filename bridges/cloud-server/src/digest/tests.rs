@@ -32,43 +32,8 @@ pub(super) fn input() -> Input {
         changes: None,
     }
 }
-#[test]
-fn source_account_avatar_is_optional_and_preserves_canonical_markers() {
-    let mut source = input().sources.remove(0);
-    let legacy = serde_json::to_value(&source).unwrap();
-    assert!(legacy.get("senderAvatarUrl").is_none());
-    assert!(
-        serde_json::from_value::<Source>(legacy)
-            .unwrap()
-            .sender_avatar_url
-            .is_none()
-    );
-    for avatar in [
-        "kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef",
-        "kordi-avatar://test/lorelei/author?version=3",
-        "https://example.com/current-avatar.png",
-    ] {
-        source.sender_avatar_url = Some(avatar.into());
-        let serialized = serde_json::to_value(&source).unwrap();
-        assert_eq!(serialized["senderAvatarUrl"], avatar);
-        assert_eq!(
-            serde_json::from_value::<Source>(serialized).unwrap(),
-            source
-        );
-    }
-}
-#[test]
-fn account_avatar_updates_do_not_regenerate_unchanged_evidence() {
-    let saved = input();
-    let mut current = saved.clone();
-    current.sources[0].sender_avatar_url = Some("https://example.com/current.png".into());
-    assert!(super::incremental::Changes::between(&saved, &current).is_empty());
-    current.sources[0].text = "The draft was updated.".into();
-    assert_eq!(
-        super::incremental::Changes::between(&saved, &current).sources.len(),
-        1
-    );
-}
+mod avatar_tests;
+
 #[test]
 fn output_requires_real_evidence_and_preserves_uncertainty() {
     let mut input = input();
@@ -248,12 +213,10 @@ async fn postgres_scope_and_atomic_publication() {
     .await
     .unwrap()
     .0;
-    assert!(
-        generated_avatar
-            .as_deref()
-            .unwrap()
-            .starts_with("kordi-avatar://")
-    );
+    assert!(generated_avatar
+        .as_deref()
+        .unwrap()
+        .starts_with("kordi-avatar://"));
     assert_eq!(input.sources[0].sender_avatar_url, generated_avatar);
     let uploaded_avatar = "kordi-avatar://uploaded/ava_0123456789abcdef0123456789abcdef";
     query(

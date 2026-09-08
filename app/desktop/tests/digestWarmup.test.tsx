@@ -24,7 +24,7 @@ function environment() {
 }
 
 test('authenticated shell warms Digest before entry without blocking interactions or duplicating the route read', async () => {
-  const { dom, cleanup } = environment(), original = { ...digestClient };
+  const { cleanup } = environment(), original = { ...digestClient };
   const report = deferred<DigestResponse>(), started = deferred<void>();
   let reads = 0, calendars = 0;
   digestClient.read = () => { reads++; started.resolve(); return report.promise; };

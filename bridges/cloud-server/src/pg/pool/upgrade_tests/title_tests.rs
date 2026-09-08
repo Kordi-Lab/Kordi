@@ -140,7 +140,7 @@ async fn upgrade_from_75_preserves_shared_and_private_group_names() {
             .await,
         );
     }
-    let before_titles: Vec<(Uuid, Option<String>, i64, String)> = query_as(
+    let before_titles: Vec<(Uuid, Option<String>, i32, String)> = query_as(
         "SELECT conversation_id,shared_title,version,updated_at::text FROM cloud_chat_conversations WHERE conversation_id=ANY($1) ORDER BY conversation_id",
     ).bind(&explicit_titles).fetch_all(&pool).await.unwrap();
     let before_members = members(&pool).await;
@@ -148,7 +148,7 @@ async fn upgrade_from_75_preserves_shared_and_private_group_names() {
     a.unwrap();
     b.unwrap();
     latest_version(&pool).await;
-    let after_titles: Vec<(Uuid, Option<String>, i64, String)> = query_as(
+    let after_titles: Vec<(Uuid, Option<String>, i32, String)> = query_as(
         "SELECT conversation_id,shared_title,version,updated_at::text FROM cloud_chat_conversations WHERE conversation_id=ANY($1) ORDER BY conversation_id",
     ).bind(&explicit_titles).fetch_all(&pool).await.unwrap();
     assert_eq!(

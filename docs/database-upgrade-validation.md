@@ -1,8 +1,8 @@
 # Database upgrade validation
 
-Run `bash scripts/test-cloud-migrations.sh` before releasing database migration changes. It requires Docker and Cargo, creates its own loopback-only PostgreSQL container, uses synthetic data, and removes only that container on exit. It never reuses an existing `DATABASE_URL`.
+Run `bash scripts/test-cloud-migrations.sh` before releasing database migration changes. It requires Cargo and uses only synthetic data. By default it creates its own loopback-only PostgreSQL container. With an explicit `KORDI_MIGRATION_PG_BIN`, it creates a new native cluster using a private Unix socket instead. Both modes remove only their own fixture database on exit and never reuse an existing `DATABASE_URL`.
 
-The Rust CI job runs this script as a required step, not an optional or skipped test. Its runner must provide Docker; missing prerequisites fail the check. Production backups and recovery manifests must never be inputs to this synthetic CI job.
+The Rust CI job runs this script as a required step, not an optional or skipped test. On the isolated macOS runner, `scripts/prepare-ci-postgres.sh` builds checksum-pinned PostgreSQL 16.14 inside the job's temporary directory without administrator access. The native fixture listens only on its private socket; no Docker socket access or runner-account permission change is needed. Missing prerequisites fail the check. Production backups and recovery manifests must never be inputs to this synthetic CI job.
 
 The dedicated upgrade tests are explicitly ignored by ordinary unit-test runs. The script supplies a fresh database to each test and explicitly runs them; an absent URL, a non-fixture database, or an existing account schema is an error. Configured chat/runtime integration databases now fail tests on migration errors instead of reporting skipped tests as passes.
 
