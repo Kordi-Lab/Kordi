@@ -67,6 +67,14 @@ enum PhotoEditorCrop {
 }
 
 enum PhotoEditorRenderer {
+    static func renderedImage(
+        _ image: UIImage,
+        strokes: [PhotoEditorStroke],
+        cropRect: CGRect
+    ) -> UIImage {
+        cropped(applying(strokes, to: image), to: cropRect)
+    }
+
     static func downsampledImage(data: Data, maximumPixelSize: CGFloat = 4_096) -> UIImage? {
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
         guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else {
