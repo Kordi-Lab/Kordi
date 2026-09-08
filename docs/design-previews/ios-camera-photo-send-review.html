@@ -132,8 +132,7 @@
     .photo-stage[data-rotation="180"] .photo-stage__image { transform: rotate(180deg); }
     .photo-stage[data-rotation="270"] .photo-stage__image { transform: rotate(270deg) scale(0.76); }
 
-    .crop-guide,
-    .draw-mark {
+    .crop-guide {
       position: absolute;
       inset: 8% 7%;
       pointer-events: none;
@@ -148,17 +147,20 @@
         linear-gradient(to bottom, transparent 33%, var(--color-crop) 33%, var(--color-crop) calc(33% + 1px), transparent calc(33% + 1px), transparent 66%, var(--color-crop) 66%, var(--color-crop) calc(66% + 1px), transparent calc(66% + 1px));
     }
 
-    .draw-mark {
-      inset: auto auto 31% 22%;
-      width: 55%;
-      height: 15%;
-      border-block-end: 0.32rem solid var(--color-draw);
-      border-radius: 50%;
-      transform: rotate(-8deg);
+    .draw-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      touch-action: none;
     }
 
-    .photo-stage[data-tool="crop"] .crop-guide,
-    .photo-stage[data-tool="draw"] .draw-mark { opacity: 1; }
+    .photo-stage[data-tool="crop"] .crop-guide { opacity: 1; }
+    .photo-stage[data-tool="draw"] .draw-canvas {
+      pointer-events: auto;
+      cursor: crosshair;
+    }
 
     .editor__controls {
       position: relative;
@@ -284,7 +286,7 @@
     <section class="photo-stage" id="photo-stage" data-tool="none" data-rotation="0" aria-label="Photo preview">
       <img class="photo-stage__image" src="../../agent/assets/title-figure.png" width="998" height="432" alt="Selected Kordi illustration ready to edit and send" />
       <div class="crop-guide" aria-hidden="true"></div>
-      <div class="draw-mark" aria-hidden="true"></div>
+      <canvas class="draw-canvas" id="draw-canvas" aria-label="Drawing surface"></canvas>
     </section>
 
     <footer class="editor__controls">
@@ -310,7 +312,84 @@
   <script>
     const stage = document.querySelector('#photo-stage');
     const status = document.querySelector('#status');
+    const canvas = document.querySelector('#draw-canvas');
+    const context = canvas.getContext('2d');
+    const strokes = [];
+    let activeStroke = null;
     const toolButtons = [...document.querySelectorAll('[data-tool]')].filter((button) => button !== stage);
+
+    function point(event) {
+      const bounds = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - bounds.left) / bounds.width,
+        y: (event.clientY - bounds.top) / bounds.height,
+      };
+    }
+
+    function drawStroke(stroke) {
+      if (stroke.length === 1) {
+        context.beginPath();
+        context.arc(stroke[0].x * canvas.clientWidth, stroke[0].y * canvas.clientHeight, 2.5, 0, Math.PI * 2);
+        context.fill();
+        return;
+      }
+      context.beginPath();
+      stroke.forEach((item, index) => {
+        const x = item.x * canvas.clientWidth;
+        const y = item.y * canvas.clientHeight;
+        if (index === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      });
+      context.stroke();
+    }
+
+    function drawSegment(from, to) {
+      context.beginPath();
+      context.moveTo(from.x * canvas.clientWidth, from.y * canvas.clientHeight);
+      context.lineTo(to.x * canvas.clientWidth, to.y * canvas.clientHeight);
+      context.stroke();
+    }
+
+    function redraw() {
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.round(canvas.clientWidth * ratio);
+      canvas.height = Math.round(canvas.clientHeight * ratio);
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--color-draw');
+      context.fillStyle = context.strokeStyle;
+      context.lineWidth = 5;
+      context.lineCap = 'round';
+      context.lineJoin = 'round';
+      strokes.forEach(drawStroke);
+    }
+
+    new ResizeObserver(redraw).observe(canvas);
+
+    canvas.addEventListener('pointerdown', (event) => {
+      if (stage.dataset.tool !== 'draw') return;
+      canvas.setPointerCapture(event.pointerId);
+      activeStroke = [point(event)];
+      strokes.push(activeStroke);
+      drawStroke(activeStroke);
+    });
+
+    canvas.addEventListener('pointermove', (event) => {
+      if (!activeStroke) return;
+      const previous = activeStroke[activeStroke.length - 1];
+      const next = point(event);
+      activeStroke.push(next);
+      drawSegment(previous, next);
+    });
+
+    function finishStroke(event) {
+      if (!activeStroke) return;
+      activeStroke = null;
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      status.textContent = 'Drawing added.';
+    }
+
+    canvas.addEventListener('pointerup', finishStroke);
+    canvas.addEventListener('pointercancel', finishStroke);
 
     toolButtons.forEach((button) => {
       button.addEventListener('click', () => {
