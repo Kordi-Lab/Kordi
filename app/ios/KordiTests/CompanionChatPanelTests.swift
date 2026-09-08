@@ -372,16 +372,23 @@ final class CompanionChatPanelTests: XCTestCase {
         XCTAssertFalse(source.contains(".animation(inputSurfaceAnimation, value: isExpressivePickerPresented)"))
     }
 
-    func testComposerGlassSurfacesDoNotCrossMorphAfterAFullScreenPicker() throws {
+    func testPhotoLibraryPresentationWaitsForTheAttachmentMenuToDismiss() throws {
         let sourceURL = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
-            .appendingPathComponent("Kordi/Features/Conversation/ComposerView.swift")
+            .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private func presentPhotoLibrary()"))
+        let end = try XCTUnwrap(source.range(
+            of: "private func sendPhotoSelection",
+            range: start.upperBound..<source.endIndex
+        ))
+        let presentation = source[start.lowerBound..<end.lowerBound]
+        let menuDismissal = try XCTUnwrap(presentation.range(of: "await Task.yield()"))
+        let fullScreenCover = try XCTUnwrap(presentation.range(of: "showPhotoPicker = true"))
 
-        XCTAssertFalse(source.contains("GlassEffectContainer"))
-        XCTAssertTrue(source.contains(".glassEffect(.regular.interactive(), in: .circle)"))
-        XCTAssertTrue(source.contains(".glassEffect(.regular, in: .rect(cornerRadius: messageFieldCornerRadius))"))
+        XCTAssertTrue(source.contains("onChoosePhotos: presentPhotoLibrary"))
+        XCTAssertLessThan(menuDismissal.lowerBound, fullScreenCover.lowerBound)
     }
 
     func testExpressivePickerDoesNotDragTheNativeInputSurface() throws {

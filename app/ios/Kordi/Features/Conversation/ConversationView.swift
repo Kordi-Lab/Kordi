@@ -659,12 +659,7 @@ struct ConversationView: View {
                                 guard canPresentPhotoPicker() else { return }
                                 showCamera = true
                             },
-                            onChoosePhotos: {
-                                guard canPresentPhotoPicker() else { return }
-                                dismissComposerPickers()
-                                dismissKeyboard()
-                                showPhotoPicker = true
-                            },
+                            onChoosePhotos: presentPhotoLibrary,
                             onChooseFiles: { showFileImporter = true },
                             onSendExpressiveMedia: sendExpressiveMedia,
                             onSend: {
@@ -2354,6 +2349,16 @@ struct ConversationView: View {
         return canSendWithCurrentAuthentication(
             mention: resolvedMentionTarget(in: message)
         )
+    }
+
+    private func presentPhotoLibrary() {
+        guard canPresentPhotoPicker() else { return }
+        dismissComposerPickers()
+        dismissKeyboard()
+        Task { @MainActor in
+            await Task.yield()
+            showPhotoPicker = true
+        }
     }
 
     private func sendPhotoSelection(
