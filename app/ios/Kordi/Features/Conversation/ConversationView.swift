@@ -1109,7 +1109,13 @@ struct ConversationView: View {
             SessionDetailView(conversation: conversation)
         }
         .navigationDestination(item: $authorProfileConversation) { destination in
-            SessionDetailView(conversation: destination)
+            SessionDetailView(
+                conversation: destination,
+                presentationContext: .authorProfile(
+                    sourceConversation: conversation,
+                    destination: destination
+                )
+            )
         }
         .navigationDestination(item: $selectedBackgroundSession) { session in
             AgentSubsessionView(sessionId: session.sessionId)
