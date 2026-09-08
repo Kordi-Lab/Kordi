@@ -20,6 +20,13 @@ import {
   loadRemoteImageThroughNativeProxy,
   shouldLoadAvatarThroughNativeProxy,
 } from '../src/kordi-app/components/remoteAvatarImage';
+import { BlobEmojiImage } from '../src/features/emoji/BlobEmojiImage';
+import { blobEmojiCatalog } from '../src/features/emoji/blobEmoji';
+import {
+  clearEmojiImageReadinessForTests,
+  isEmojiImageReady,
+  markEmojiImageReady,
+} from '../src/features/emoji/emojiImageReadiness';
 
 function installNativeDom() {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {
@@ -71,6 +78,35 @@ test('native desktop routes remote HTTPS avatars through its proxy-aware image l
     shouldLoadAvatarThroughNativeProxy('http://localhost:17185/blob.webp', true, true, true),
     false,
   );
+});
+
+test('Blob Emoji stays transparent until its image has decoded', () => {
+  const installed = installNativeDom();
+  try {
+    const markup = renderToStaticMarkup(
+      <BlobEmojiImage emoji={blobEmojiCatalog[0]} decorative className="h-8 w-8" />,
+    );
+    const styles = readFileSync(
+      new URL('../src/styles/shell-expressive-picker.css', import.meta.url),
+      'utf8',
+    );
+
+    assert.match(markup, /app-blob-emoji-image/);
+    assert.doesNotMatch(markup, /data-ready="true"/);
+    assert.match(styles, /\.app-blob-emoji-image\s*\{\s*opacity:\s*0;/);
+    assert.match(styles, /\.app-blob-emoji-image\[data-ready='true'\]\s*\{\s*opacity:\s*1;/);
+  } finally {
+    installed.restore();
+  }
+});
+
+test('emoji decode readiness survives picker remounts', () => {
+  clearEmojiImageReadinessForTests();
+  const key = `blob:${blobEmojiCatalog[0].sha256}:animated`;
+
+  assert.equal(isEmojiImageReady(key), false);
+  markEmojiImageReady(key);
+  assert.equal(isEmojiImageReady(key), true);
 });
 
 test('remote avatar image requests share one native load per URL', async () => {

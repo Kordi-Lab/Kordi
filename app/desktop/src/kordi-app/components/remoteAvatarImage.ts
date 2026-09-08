@@ -15,7 +15,7 @@ export type RemoteAvatarImageSnapshot =
   | { status: 'ready'; dataUrl: string; error: null }
   | { status: 'failed'; dataUrl: null; error: unknown };
 
-const MAX_CACHED_REMOTE_AVATARS = 64;
+const MAX_CACHED_REMOTE_AVATARS = 192;
 const MAX_CACHED_REMOTE_AVATAR_BYTES = 16 * 1024 * 1024;
 const MAX_FAILED_REMOTE_AVATARS = 64;
 const FAILED_REMOTE_AVATAR_RETRY_COOLDOWN_MS = 30_000;

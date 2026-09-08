@@ -209,6 +209,14 @@
   object-fit: contain;
 }
 
+.app-blob-emoji-image {
+  opacity: 0;
+}
+
+.app-blob-emoji-image[data-ready='true'] {
+  opacity: 1;
+}
+
 .app-blob-emoji-composer[data-empty="true"]::before {
   color: var(--utility-muted-text);
   content: attr(data-placeholder);
