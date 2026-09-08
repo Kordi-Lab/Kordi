@@ -4,6 +4,142 @@ import SwiftUI
 import UIKit
 @testable import Kordi
 
+private final class DigestIndependentReadProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        guard request.url?.path == "/v1/cloud/digest" else { return }
+        let body: [String: Any] = ["accountId": request.value(forHTTPHeaderField: "X-Test-Account") ?? "", "sources": [], "partial": false, "revision": 1, "updatedAt": "", "status": "ready", "feedback": []]
+        let status = Int(request.value(forHTTPHeaderField: "X-Test-Status") ?? "200") ?? 200
+        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+
+@MainActor
+private final class DigestReadGate {
+    var started = false
+    private var continuation: CheckedContinuation<Int, Never>?
+    func wait() async -> Int {
+        started = true
+        return await withCheckedContinuation { continuation = $0 }
+    }
+    func release() { continuation?.resume(returning: 7); continuation = nil }
+}
+
+@MainActor
+struct DigestReadReuseTests {
+    @Test(arguments: [401, 403]) func authorizationFailureDiscardsCachedPrivateContent(status: Int) async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DigestIndependentReadProtocol.self]
+        configuration.httpAdditionalHeaders = ["X-Test-Account": PreviewData.make().account.accountId, "X-Test-Status": String(status)]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+        let model = AppModel(api: CloudAPIClient(session: session), previewMode: true)
+        model.rollingDigestSnapshot = RollingDigestResponse(accountId: model.account!.accountId, snapshot: nil, sources: [], partial: false, revision: 1, updatedAt: "", status: "ready", errorCode: nil, feedback: [])
+        model.digestCalendarSnapshot = DigestCalendarResponse(events: [], pushAvailable: true)
+        do { _ = try await model.loadRollingDigest(); Issue.record("Expected authorization failure") }
+        catch { #expect((error as? CloudAPIError)?.statusCode == status) }
+        #expect(model.rollingDigestSnapshot == nil)
+        #expect(model.digestCalendarSnapshot == nil)
+    }
+
+    @Test func tokenOrLocaleChangesDoNotReuseAnOldResponse() async throws {
+        let reads = DigestReadCoordinator<Int>()
+        var calls = 0
+        for scope in [["account", "token", "en", "UTC"], ["account", "new-token", "en", "UTC"], ["account", "new-token", "zh", "UTC"], ["account", "new-token", "zh", "Asia/Riyadh"]] {
+            _ = try await reads.read(scope: scope) { calls += 1; return calls }
+        }
+        #expect(calls == 4)
+    }
+
+    @Test func digestPublishesWhileCalendarRequestHasNotCompleted() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DigestIndependentReadProtocol.self]
+        configuration.httpAdditionalHeaders = ["X-Test-Account": PreviewData.make().account.accountId]
+        let session = URLSession(configuration: configuration)
+        let model = AppModel(api: CloudAPIClient(session: session), previewMode: true)
+        let calendar = Task { try await model.loadDigestCalendar() }
+        defer { model.resetDigestReads(); calendar.cancel(); session.invalidateAndCancel() }
+        _ = try await model.loadRollingDigest()
+        #expect(model.rollingDigestSnapshot?.revision == 1)
+        #expect(model.digestCalendarSnapshot == nil)
+    }
+
+    @Test func rapidReentryReusesCompletedReadAndExpiredReadRefreshes() async throws {
+        let reads = DigestReadCoordinator<Int>()
+        var calls = 0
+        for _ in 0..<5 {
+            #expect(try await reads.read(scope: ["account", "token"]) { calls += 1; return calls } == 1)
+        }
+        #expect(calls == 1)
+        #expect(try await reads.read(scope: ["account", "token"], maximumAge: .zero) { calls += 1; return calls } == 2)
+    }
+
+    @Test func cancelledScreenDoesNotCancelSharedReadOrLoseItsResult() async throws {
+        let reads = DigestReadCoordinator<Int>(), gate = DigestReadGate()
+        defer { gate.release(); reads.reset() }
+        var calls = 0
+        let first = Task { try await reads.read(scope: ["account"]) { calls += 1; return await gate.wait() } }
+        for _ in 0..<100 where !gate.started { await Task.yield() }
+        try #require(gate.started)
+        let second = Task { try await reads.read(scope: ["account"]) { calls += 1; return 99 } }
+        first.cancel()
+        gate.release()
+        do { _ = try await first.value; Issue.record("Cancelled waiter must not update its screen") }
+        catch { #expect(CloudTransportErrorPolicy.isCancellation(error)) }
+        #expect(try await second.value == 7)
+        #expect(try await reads.read(scope: ["account"]) { calls += 1; return 99 } == 7)
+        #expect(calls == 1)
+    }
+
+    @Test func accountResetRejectsLateReadsAndDoesNotReuseAnotherAccount() async throws {
+        let reads = DigestReadCoordinator<Int>(), gate = DigestReadGate()
+        defer { gate.release(); reads.reset() }
+        let old = Task { try await reads.read(scope: ["old"]) { await gate.wait() } }
+        for _ in 0..<100 where !gate.started { await Task.yield() }
+        try #require(gate.started)
+        reads.reset()
+        #expect(try await reads.read(scope: ["new"]) { 9 } == 9)
+        gate.release()
+        do { _ = try await old.value; Issue.record("Reset must reject old results") }
+        catch { #expect(CloudTransportErrorPolicy.isCancellation(error)) }
+        #expect(try await reads.read(scope: ["new"]) { 10 } == 9)
+    }
+
+    @Test func failedReadsRemainRetryable() async throws {
+        let reads = DigestReadCoordinator<Int>()
+        do { _ = try await reads.read(scope: ["account"]) { throw URLError(.notConnectedToInternet) }; Issue.record("Expected network failure") }
+        catch { #expect((error as? URLError)?.code == .notConnectedToInternet) }
+        #expect(try await reads.read(scope: ["account"]) { 8 } == 8)
+    }
+
+    @Test func resettingModelClearsBothSnapshots() {
+        let model = AppModel(previewMode: true)
+        model.rollingDigestSnapshot = RollingDigestResponse(accountId: model.account!.accountId, snapshot: nil, sources: [], partial: false, revision: 1, updatedAt: "", status: "ready", errorCode: nil, feedback: [])
+        model.digestCalendarSnapshot = DigestCalendarResponse(events: [], pushAvailable: true)
+        model.resetDigestReads()
+        #expect(model.rollingDigestSnapshot == nil)
+        #expect(model.digestCalendarSnapshot == nil)
+    }
+
+    @Test func sourceOpeningUsesCachedContentWithoutWaitingForARead() throws {
+        let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let source = try String(contentsOf: directory.appendingPathComponent("Kordi/Features/Digest/DigestView.swift"), encoding: .utf8)
+        let start = try #require(source.range(of: "private func citations("))
+        let end = try #require(source.range(of: "@ViewBuilder private func sheetBody", range: start.upperBound..<source.endIndex))
+        let actions = source[start.lowerBound..<end.lowerBound]
+        #expect(!actions.contains("Task") && !actions.contains("await") && !actions.contains("loadRollingDigest"))
+        #expect(actions.contains("selectedSheet = .source"))
+        #expect(source.contains("private var digest: RollingDigestResponse? { model.rollingDigestSnapshot }"))
+        #expect(source.contains("async let digestRead: Void = loadDigest"))
+        #expect(source.contains("async let calendarRead: Void = loadCalendar"))
+    }
+}
+
 @MainActor
 private final class SessionTabProbe: ObservableObject {
     @Published var path: [MainNavigationRoute] = []

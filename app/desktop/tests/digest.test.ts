@@ -38,6 +38,44 @@ test('Digest requests cannot use a different account session', async () => {
   finally { globalThis.fetch = originalFetch; __setSessionBackendForTests(null); }
 });
 
+test('Digest requests keep a timeout when supplied a shared cancellation signal', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const originalFetch = globalThis.fetch;
+  const parent = new AbortController();
+  let started!: () => void;
+  const fetching = new Promise<void>(resolve => { started = resolve; });
+  __setSessionBackendForTests({ load: async () => ({ token: 'test-only-token', accountId: 'viewer', expiresAt: '2099-01-01T00:00:00Z' }), save: async () => {}, clear: async () => {} });
+  globalThis.fetch = (_, init) => new Promise((_, reject) => {
+    init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), { once: true });
+    started();
+  });
+  try {
+    const result = assert.rejects(digestClient.read('viewer', parent.signal), /request timed out/);
+    await fetching;
+    t.mock.timers.tick(15_000);
+    await result;
+    assert.equal(parent.signal.aborted, false, 'A request timeout must not poison shared cancellation');
+  } finally { globalThis.fetch = originalFetch; __setSessionBackendForTests(null); }
+});
+
+test('Digest cancellation propagates without being reported as a timeout', async () => {
+  const originalFetch = globalThis.fetch;
+  const parent = new AbortController();
+  let started!: () => void;
+  const fetching = new Promise<void>(resolve => { started = resolve; });
+  __setSessionBackendForTests({ load: async () => ({ token: 'test-only-token', accountId: 'viewer', expiresAt: '2099-01-01T00:00:00Z' }), save: async () => {}, clear: async () => {} });
+  globalThis.fetch = (_, init) => new Promise((_, reject) => {
+    init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), { once: true });
+    started();
+  });
+  try {
+    const result = assert.rejects(digestClient.read('viewer', parent.signal), { name: 'AbortError' });
+    await fetching;
+    parent.abort();
+    await result;
+  } finally { globalThis.fetch = originalFetch; __setSessionBackendForTests(null); }
+});
+
 test('Calendar import normalizes instant events, isolates bad records, and deduplicates retries', async () => {
   const { importCalendarEvents, normalizeCalendarEvent } = await import('../src/features/digest/calendarImport');
   const base: CalendarEvent = { id: 'instant', title: 'Point event', startAt: '2026-09-06T12:00:00Z', endAt: '2026-09-06T15:00:00+03:00', allDay: false, description: '', sourceIds: [], revision: 0 };

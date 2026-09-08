@@ -1,34 +1,31 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { digestClient } from './client';
-import type { CalendarEvent, DigestResponse } from './types';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { DIGEST_POLL_INTERVAL, digestStoreFor } from './store';
 
 export function useDigest(accountId: string) {
-  const [digest, setDigest] = useState<DigestResponse | null>(null);
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [calendarLoaded, setCalendarLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const generation = useRef(0);
-  const controllerRef = useRef<AbortController | null>(null);
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    const current = ++generation.current;
-    signal ??= controllerRef.current?.signal;
-    try {
-      const [next, calendar] = await Promise.all([digestClient.read(accountId, signal), digestClient.calendar(accountId, signal)]);
-      if (current === generation.current && !signal?.aborted) { setDigest(next); setEvents(calendar.events); setCalendarLoaded(true); setError(null); }
-      return next;
-    } catch (caught) {
-      if (current === generation.current && !signal?.aborted) setError(caught instanceof Error ? caught.message : 'Could not load the digest.');
-      throw caught;
-    }
-  }, [accountId]);
+  const store = digestStoreFor(accountId);
+  const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const reload = useCallback(() => store.refresh(true), [store]);
   useEffect(() => {
-    const controller = new AbortController(); controllerRef.current = controller; let timer: ReturnType<typeof setTimeout>;
+    let stopped = false;
+    let cycle = 0;
+    let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      try { await reload(controller.signal); } catch { /* Error is visible beside the retained snapshot. */ }
-      if (!controller.signal.aborted) timer = setTimeout(poll, 5000);
+      const current = ++cycle;
+      if (!document.hidden) {
+        try { await store.refresh(); } catch { /* Retain content beside the section's error. */ }
+      }
+      if (!stopped && current === cycle) timer = setTimeout(poll, DIGEST_POLL_INTERVAL);
+    };
+    const resume = () => {
+      if (!document.hidden) { clearTimeout(timer); void poll(); }
     };
     void poll();
-    return () => { controller.abort(); clearTimeout(timer); };
-  }, [reload]);
-  return { digest, events, error, reload, calendarLoaded };
+    document.addEventListener('visibilitychange', resume);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', resume);
+    };
+  }, [store]);
+  return { ...state, error: state.digestError ?? state.calendarError, reload };
 }

@@ -201,7 +201,15 @@ final class AppModel: ObservableObject {
     private static let cachedConversationPageLimit = 8
 
     @Published private(set) var phase: AppPhase = .launching
-    @Published private(set) var account: CloudAccount?
+    @Published private(set) var account: CloudAccount? {
+        didSet {
+            if oldValue?.accountId != account?.accountId { resetDigestReads() }
+        }
+    }
+    @Published var rollingDigestSnapshot: RollingDigestResponse?
+    @Published var digestCalendarSnapshot: DigestCalendarResponse?
+    let rollingDigestRead = DigestReadCoordinator<RollingDigestResponse>()
+    let digestCalendarRead = DigestReadCoordinator<DigestCalendarResponse>()
     @Published private(set) var contacts: [CloudContact] = []
     @Published private(set) var contactPresenceByAccountID: [String: CloudPresenceAccount] = [:]
     @Published private(set) var contactRequests: [CloudContactRequest] = []

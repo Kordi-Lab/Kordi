@@ -12,15 +12,17 @@ struct DigestView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var notifications: KordiNotificationCoordinator
     @State private var pane = DigestPane.brief
-    @State private var digest: RollingDigestResponse?
-    @State private var events: [DigestCalendarEvent] = []
+    private var digest: RollingDigestResponse? { model.rollingDigestSnapshot }
+    private var events: [DigestCalendarEvent] { model.digestCalendarSnapshot?.events ?? [] }
     @State private var error: String?
+    @State private var digestLoadError: String?
+    @State private var calendarLoadError: String?
     @State private var selectedSheet: DigestSheet?
     @State private var month = Date()
     @State private var selectedCalendarDay = Date()
     @State private var calendarScrollRevision = 0
     @State private var remindersAllowed = true
-    @State private var remoteReminders = false
+    private var remoteReminders: Bool { model.digestCalendarSnapshot?.pushAvailable ?? false }
     @State private var isRefreshing = false
     @State private var loadRevision = 0
     private var sources: [RollingDigestSource] { digest?.sources ?? [] }
@@ -65,12 +67,15 @@ struct DigestView: View {
             }
         }
         .task(id: model.account?.accountId) {
-            guard let accountId = model.account?.accountId else { digest = nil; events = []; selectedSheet = nil; return }
-            if digest?.accountId != accountId { digest = nil; events = [] }
+            guard let accountId = model.account?.accountId else { return }
             while !Task.isCancelled {
                 await load(accountId: accountId)
                 do { try await Task.sleep(for: .seconds(5)) } catch { return }
             }
+        }
+        .onChange(of: model.account?.accountId) { _, _ in
+            selectedSheet = nil
+            error = nil; digestLoadError = nil; calendarLoadError = nil
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active, let accountId = model.account?.accountId {
@@ -95,7 +100,7 @@ struct DigestView: View {
     private func page<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                if let error { Text(error).font(.subheadline).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) }
+                if let error = error ?? digestLoadError ?? calendarLoadError { Text(error).font(.subheadline).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) }
                 if let code = digest?.errorCode {
                     Text(code == "missing_provider_auth" ? "Connect a model provider in account settings to generate your digest." : "The last update failed. Your previous brief remains available.")
                         .font(.subheadline).foregroundStyle(.secondary)
@@ -192,7 +197,7 @@ struct DigestView: View {
             ForEach(groups, id: \.first?.sessionId) { group in
                 if let source = group.first {
                     Button {
-                        Task { await perform { digest = try await model.loadRollingDigest(); selectedSheet = .source(group.map(\.id)) } }
+                        selectedSheet = .source(group.map(\.id))
                     } label: {
                         Label(source.sessionTitle + (group.count > 1 ? " · \(group.count) messages" : ""), systemImage: "arrow.up.right")
                     }.font(.caption).foregroundStyle(.secondary).padding(.vertical, 4)
@@ -202,7 +207,7 @@ struct DigestView: View {
     }
     private func people(_ item: RollingDigestItem) -> some View {
         DigestPeopleView(sourceIds: item.sourceIds, ownerAccountId: item.ownerAccountId, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts) { source in
-            Task { await perform { digest = try await model.loadRollingDigest(); selectedSheet = .source([source.id]) } }
+            selectedSheet = .source([source.id])
         }
     }
     @ViewBuilder private func sheetBody(_ sheet: DigestSheet) -> some View {
@@ -238,15 +243,16 @@ struct DigestView: View {
     private func load(accountId: String) async {
         loadRevision += 1
         let revision = loadRevision
+        async let digestRead: Void = loadDigest(accountId: accountId, revision: revision)
+        async let calendarRead: Void = loadCalendar(accountId: accountId, revision: revision)
+        _ = await (digestRead, calendarRead)
+    }
+    private func loadDigest(accountId: String, revision: Int) async {
         do {
-            async let report = model.loadRollingDigest()
-            async let calendar = model.loadDigestCalendar()
-            let (next, calendarResponse) = try await (report, calendar)
-            let nextEvents = calendarResponse.events
+            let next = try await model.loadRollingDigest()
             try Task.checkCancellation()
             guard model.account?.accountId == accountId, revision == loadRevision else { return }
-            remoteReminders = calendarResponse.pushAvailable
-            digest = next; events = nextEvents; error = nil
+            digestLoadError = nil
             let accessibleIDs = Set(next.sources.map(\.id))
             if let sheet = selectedSheet {
                 switch sheet {
@@ -255,6 +261,15 @@ struct DigestView: View {
                 default: break
                 }
             }
+        } catch { if shouldRecordLoadError(error, accountId: accountId, revision: revision) { digestLoadError = error.localizedDescription } }
+    }
+    private func loadCalendar(accountId: String, revision: Int) async {
+        do {
+            let calendarResponse = try await model.loadDigestCalendar()
+            let nextEvents = calendarResponse.events
+            try Task.checkCancellation()
+            guard model.account?.accountId == accountId, revision == loadRevision else { return }
+            calendarLoadError = nil
             if let eventID = notifications.pendingCalendarEventID {
                 pane = .calendar
                 if let event = nextEvents.first(where: { $0.id == eventID }) { month = DigestDate.eventDate(event) ?? Date(); selectedSheet = .event(event) }
@@ -265,7 +280,11 @@ struct DigestView: View {
                 await notifications.refreshAuthorizationState(registerIfAllowed: true)
                 remindersAllowed = notifications.authorizationState.canRegisterForRemoteNotifications
             } else { remindersAllowed = try await DigestCalendarService.syncReminders(accountId: accountId, events: nextEvents, isCurrentAccount: { model.account?.accountId == accountId }) }
-        } catch { if !Task.isCancelled, revision == loadRevision, model.account?.accountId == accountId { self.error = error.localizedDescription } }
+        } catch { if shouldRecordLoadError(error, accountId: accountId, revision: revision) { calendarLoadError = error.localizedDescription } }
+    }
+    private func shouldRecordLoadError(_ error: Error, accountId: String, revision: Int) -> Bool {
+        CloudTransportErrorPolicy.shouldSurface(error, taskIsCancelled: Task.isCancelled)
+            && revision == loadRevision && model.account?.accountId == accountId
     }
     private func refresh() async { isRefreshing = true; defer { isRefreshing = false }; await perform { try await model.refreshRollingDigest() }; if let id = model.account?.accountId { await load(accountId: id) } }
     private func requestReminders() async { if remoteReminders { await notifications.requestAuthorization(); remindersAllowed = notifications.authorizationState.canRegisterForRemoteNotifications; return }; guard let id = model.account?.accountId else { return }; await perform { remindersAllowed = try await DigestCalendarService.syncReminders(accountId: id, events: events, requestPermission: true, isCurrentAccount: { model.account?.accountId == id }) } }

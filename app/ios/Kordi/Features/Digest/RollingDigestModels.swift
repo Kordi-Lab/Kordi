@@ -112,7 +112,7 @@ extension DigestCalendarEvent {
         return event
     }
 }
-struct DigestCalendarResponse: Decodable { let events: [DigestCalendarEvent]; let pushAvailable: Bool }
+struct DigestCalendarResponse: Decodable, Equatable { let events: [DigestCalendarEvent]; let pushAvailable: Bool }
 struct DigestTaskInput: Encodable { let title: String; let ownerAccountId: String?; let dueAt: String? }
 struct DigestTaskResult: Decodable { let taskId: String }
 struct DigestDismissInput: Encodable { let dismissed: Bool }

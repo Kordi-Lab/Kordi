@@ -57,12 +57,12 @@ export default function DigestPage({accountId}:{accountId:string}){
   }
   const visibleActionError=sourceId||editEvent||importOpen||connections?null:actionError;
   function people(item:DigestItem){
-    return <DigestPeople item={item} sources={sources} accountId={accountId} onSource={ids=>void act(async()=>{await reload();setSourceId(ids);})}/>;
+    return <DigestPeople item={item} sources={sources} accountId={accountId} onSource={setSourceId}/>;
   }
   function evidence(item:DigestItem){
     const groups=new Map<string,DigestSource[]>();
     for(const id of item.sourceIds){const source=sources.find(s=>s.id===id);if(source)groups.set(source.sessionId,[...(groups.get(source.sessionId)??[]),source]);}
-    return <div className="digest-evidence">{[...groups.entries()].map(([sessionId,group])=><button key={sessionId} onClick={()=>void act(async()=>{await reload();setSourceId(group.map(s=>s.id));})}>↗ {group[0].sessionTitle}{group.length>1?` · ${group.length} messages`:''}</button>)}</div>;
+    return <div className="digest-evidence">{[...groups.entries()].map(([sessionId,group])=><button key={sessionId} onClick={()=>setSourceId(group.map(s=>s.id))}>↗ {group[0].sessionTitle}{group.length>1?` · ${group.length} messages`:''}</button>)}</div>;
   }
   function openEvent(event:CalendarEvent){setReview(null);setEditEvent(event);}
   function calendarCandidate(item:DigestItem){try{const event=proposalEvent(item,events,sources,digest?.timezone);setReview({item,original:events.find(e=>e.id===item.existingEventId),series:proposalSeries(item,events)});setEditEvent(event);}catch(error){setActionError(calendarErrorMessage(error,'Could not review this event.'));}}
