@@ -72,11 +72,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install visual-test browsers
-        run: pnpm --dir app/desktop exec playwright install chromium webkit
+      - name: Install visual-test browser
+        run: pnpm --dir app/desktop exec playwright install chromium
 
       - name: Compare transient surfaces
-        run: pnpm --dir app/desktop test:visual
+        run: pnpm --dir app/desktop test:visual --project chromium
 
   rust:
     name: Rust checks

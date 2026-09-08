@@ -67,6 +67,21 @@ Logs are stored under
 `/Users/kordi-ci/Library/Logs/KordiCI/` and runner diagnostics under
 `/Users/kordi-ci/actions-runner/_diag/`.
 
+## Browser coverage
+
+The system LaunchDaemon runs the Chromium visual regression project. WebKit
+cannot start in this account's background session and times out before tests
+execute. Keep its Live Photo checks enabled for a logged-in development Mac:
+
+```bash
+pnpm --dir app/desktop exec playwright install webkit
+pnpm --dir app/desktop test:visual livePhoto.spec.ts --project webkit-live-photo
+```
+
+Record that result in the pull request; a green CI visual job reports Chromium
+coverage only. Do not run pull-request code under an operator account or weaken
+the runner account isolation to obtain a graphical session.
+
 ## Caches and maintenance
 
 pnpm, Playwright, Rust toolchains, and Cargo registries persist in the isolated
