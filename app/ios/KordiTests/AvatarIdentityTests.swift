@@ -3,6 +3,38 @@ import XCTest
 @testable import Kordi
 
 final class AvatarIdentityTests: XCTestCase {
+    func testGroupParticipantProfileChatOpensTheResolvedDirectConversation() {
+        XCTAssertFalse(SessionDetailPresentationContext.conversation.opensConversationOnChat)
+        XCTAssertTrue(SessionDetailPresentationContext.groupParticipantProfile.opensConversationOnChat)
+    }
+
+    func testAuthorProfileChatContextDependsOnTheSourceConversation() {
+        let direct = makePersonConversation(accountId: "acct_maya", displayName: "Maya")
+        let group = makeGroupConversation(participants: [
+            CloudGroupParticipant(
+                accountId: "acct_maya",
+                displayName: "Maya",
+                avatarUrl: nil,
+                role: "member"
+            )
+        ])
+
+        XCTAssertEqual(
+            SessionDetailPresentationContext.authorProfile(
+                sourceConversation: group,
+                destination: direct
+            ),
+            .groupParticipantProfile
+        )
+        XCTAssertEqual(
+            SessionDetailPresentationContext.authorProfile(
+                sourceConversation: direct,
+                destination: direct
+            ),
+            .conversation
+        )
+    }
+
     func testKordiSupportUsesTheOfficialSupportIdentityFallback() {
         XCTAssertTrue(KordiSupportIdentity.matches(name: "Kordi Support", seed: nil))
         XCTAssertTrue(KordiSupportIdentity.matches(name: nil, seed: "acct_kordi_support"))
