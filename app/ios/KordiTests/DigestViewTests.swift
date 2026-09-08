@@ -4,6 +4,173 @@ import SwiftUI
 import UIKit
 @testable import Kordi
 
+@MainActor
+private final class DigestMutationGate {
+    private var continuation: CheckedContinuation<Void, Error>?
+    var calls = 0
+    func wait() async throws {
+        calls += 1
+        try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+    func finish(_ result: Result<Void, Error> = .success(())) { continuation?.resume(with: result); continuation = nil }
+}
+
+private final class DigestFailedReadProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() { client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)) }
+    override func stopLoading() {}
+}
+
+@MainActor
+struct DigestOptimisticMutationTests {
+    private func digest(_ model: AppModel, dismissed: [String] = []) -> RollingDigestResponse {
+        let items = ["first", "second"].map { RollingDigestItem(id: $0, title: $0, text: "Suggestion", sourceIds: [], kind: "suggestion", ownerAccountId: nil, dueAt: nil, existingTaskId: nil, startAt: nil, endAt: nil) }
+        return RollingDigestResponse(accountId: model.account!.accountId, snapshot: RollingDigestContent(claims: [], commitments: [], suggestions: items, calendarCandidates: []), sources: [], partial: false, revision: 1, updatedAt: "", status: "ready", errorCode: nil, feedback: dismissed.map { RollingDigestFeedback(id: $0, status: "dismissed", taskId: nil) })
+    }
+    private func begin(_ model: AppModel, _ change: DigestOptimisticChange, gate: DigestMutationGate) throws -> Task<Void, Error> {
+        let (_, token, accountId) = try model.digestContext()
+        return try model.beginDigestMutation(change, token: token, accountId: accountId) { try await gate.wait() }
+    }
+    private func started(_ gate: DigestMutationGate) async throws {
+        for _ in 0..<100 where gate.calls == 0 { await Task.yield() }
+        try #require(gate.calls > 0)
+    }
+
+    @Test func dismissIsImmediateDeduplicatedAndPendingRestoreIsRejected() async throws {
+        let model = AppModel(previewMode: true), gate = DigestMutationGate()
+        defer { gate.finish(); model.resetDigestReads() }
+        let snapshot = digest(model)
+        let change = DigestOptimisticChange.feedback(id: "first", dismissed: true)
+        let save = try begin(model, change, gate: gate)
+        #expect(model.digestMutationState.suggestions(in: snapshot, dismissed: false).map(\.id) == ["second"])
+        #expect(model.digestMutationState.hasPendingFeedback)
+        _ = try begin(model, change, gate: gate)
+        do { _ = try begin(model, .feedback(id: "first", dismissed: false), gate: gate); Issue.record("Pending restore must not race dismiss") }
+        catch { #expect(error is DigestCalendarError) }
+        try await started(gate)
+        #expect(gate.calls == 1)
+        gate.finish()
+        try await save.value
+        try await begin(model, change, gate: gate).value
+        #expect(gate.calls == 1)
+        #expect(model.digestMutationState.pending.isEmpty)
+        model.digestMutationState.reconcile(digest: snapshot)
+        #expect(model.digestMutationState.overlays[change.key] == change)
+        model.digestMutationState.reconcile(digest: digest(model, dismissed: ["first"]))
+        #expect(model.digestMutationState.overlays[change.key] == nil)
+    }
+
+    @Test func oneFailureRollsBackOnlyItsItemAndKeepsPersistentRetryError() async throws {
+        let model = AppModel(previewMode: true), first = DigestMutationGate(), second = DigestMutationGate()
+        defer { first.finish(); second.finish(); model.resetDigestReads() }
+        let failed = try begin(model, .feedback(id: "first", dismissed: true), gate: first)
+        let saved = try begin(model, .feedback(id: "second", dismissed: true), gate: second)
+        try await started(first); try await started(second)
+        first.finish(.failure(URLError(.notConnectedToInternet)))
+        _ = try? await failed.value
+        #expect(model.digestMutationState.suggestions(in: digest(model), dismissed: false).map(\.id) == ["first"])
+        #expect(model.digestMutationState.pending == ["suggestion:second"])
+        #expect(model.digestMutationState.errors["suggestion:first"] != nil)
+        model.digestMutationState.reconcile(digest: digest(model))
+        #expect(model.digestMutationState.errors["suggestion:first"] != nil)
+        second.finish(); try await saved.value
+        let retry = try begin(model, .feedback(id: "first", dismissed: true), gate: first)
+        #expect(model.digestMutationState.errors["suggestion:first"] == nil)
+        for _ in 0..<100 where first.calls < 2 { await Task.yield() }
+        try #require(first.calls == 2)
+        first.finish(); try await retry.value
+    }
+
+    @Test func readStartedBeforeWriteCannotPublishAfterOptimisticAction() async throws {
+        let model = AppModel(previewMode: true), readGate = DigestMutationGate(), writeGate = DigestMutationGate()
+        defer { readGate.finish(); writeGate.finish(); model.resetDigestReads() }
+        let snapshot = digest(model)
+        let oldRead = Task { try await model.rollingDigestRead.read(scope: ["account"]) { try await readGate.wait(); return snapshot } }
+        try await started(readGate)
+        let save = try begin(model, .feedback(id: "first", dismissed: true), gate: writeGate)
+        readGate.finish()
+        do { _ = try await oldRead.value; Issue.record("Pre-write reads must be invalidated") }
+        catch { #expect(CloudTransportErrorPolicy.isCancellation(error)) }
+        #expect(model.digestMutationState.suggestions(in: snapshot, dismissed: false).map(\.id) == ["second"])
+        try await started(writeGate); writeGate.finish(); try await save.value
+    }
+
+    @Test func confirmedSeriesRemovalHidesAllTargetsAndPollingCannotUndoPendingChange() async throws {
+        let model = AppModel(previewMode: true), gate = DigestMutationGate()
+        defer { gate.finish(); model.resetDigestReads() }
+        #expect(model.digestMutationState.removedEventIDs.isEmpty)
+        let save = try begin(model, .removal(key: "series:series", eventIDs: ["one", "two"]), gate: gate)
+        #expect(model.digestMutationState.removedEventIDs == ["one", "two"])
+        model.digestMutationState.reconcile(calendar: DigestCalendarResponse(events: [], pushAvailable: false))
+        #expect(model.digestMutationState.removedEventIDs == ["one", "two"])
+        do { _ = try begin(model, .removal(key: "event:one", eventIDs: ["one"]), gate: gate); Issue.record("Overlapping saves must not race") }
+        catch { #expect(error is DigestCalendarError) }
+        try await started(gate)
+        gate.finish(.failure(URLError(.badServerResponse)))
+        _ = try? await save.value
+        #expect(model.digestMutationState.removedEventIDs.isEmpty)
+        #expect(model.digestMutationState.errors["series:series"] != nil)
+    }
+
+    @Test func successfulRemovalIsNotUndoneWhenFollowupReadFails() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DigestFailedReadProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let model = AppModel(api: CloudAPIClient(session: session), previewMode: true), gate = DigestMutationGate()
+        defer { gate.finish(); model.resetDigestReads(); session.invalidateAndCancel() }
+        let save = try begin(model, .removal(key: "event:one", eventIDs: ["one"]), gate: gate)
+        try await started(gate); gate.finish(); try await save.value
+        do { _ = try await model.loadDigestCalendar(); Issue.record("Expected failed refresh") } catch {}
+        #expect(model.digestMutationState.pending.isEmpty)
+        #expect(model.digestMutationState.removedEventIDs == ["one"])
+        #expect(model.digestMutationState.errors.isEmpty)
+        model.digestMutationState.reconcile(calendar: DigestCalendarResponse(events: [], pushAvailable: false))
+        #expect(model.digestMutationState.removedEventIDs.isEmpty)
+    }
+
+    @Test func accountResetSuppressesLateSuccessAndPreservesNewOperation() async throws {
+        let model = AppModel(previewMode: true), old = DigestMutationGate(), current = DigestMutationGate()
+        defer { old.finish(); current.finish(); model.resetDigestReads() }
+        let change = DigestOptimisticChange.feedback(id: "first", dismissed: true)
+        let stale = try begin(model, change, gate: old)
+        try await started(old)
+        model.resetDigestReads()
+        #expect(model.digestMutationState == DigestMutationState())
+        let next = try begin(model, change, gate: current)
+        try await started(current); old.finish()
+        _ = try? await stale.value
+        #expect(model.digestMutationState.pending == [change.key])
+        #expect(model.digestMutationState.errors.isEmpty)
+        current.finish(); try await next.value
+    }
+
+    @Test func failedRestoreKeepsPriorAcknowledgedDismissal() async throws {
+        let model = AppModel(previewMode: true), gate = DigestMutationGate()
+        defer { gate.finish(); model.resetDigestReads() }
+        let dismiss = try begin(model, .feedback(id: "first", dismissed: true), gate: gate)
+        try await started(gate); gate.finish(); try await dismiss.value
+        let restore = try begin(model, .feedback(id: "first", dismissed: false), gate: gate)
+        #expect(model.digestMutationState.suggestions(in: digest(model), dismissed: false).count == 2)
+        for _ in 0..<100 where gate.calls < 2 { await Task.yield() }
+        try #require(gate.calls == 2)
+        gate.finish(.failure(URLError(.notConnectedToInternet))); _ = try? await restore.value
+        #expect(model.digestMutationState.suggestions(in: digest(model), dismissed: false).map(\.id) == ["second"])
+    }
+
+    @Test func deletionRemainsBehindExplicitReviewAndClosesBeforeAcknowledgment() throws {
+        let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let editor = try String(contentsOf: directory.appendingPathComponent("Kordi/Features/Digest/DigestEditors.swift"), encoding: .utf8)
+        #expect(editor.contains("Button(\"Confirm removal\", role: .destructive) { Task { await removeReviewedEvent() } }"))
+        let view = try String(contentsOf: directory.appendingPathComponent("Kordi/Features/Digest/DigestView.swift"), encoding: .utf8)
+        let start = try #require(view.range(of: "} remove: {"))
+        let end = try #require(view.range(of: "case .imports:", range: start.upperBound..<view.endIndex))
+        let removal = view[start.lowerBound..<end.lowerBound]
+        #expect(removal.contains("beginRemovingDigestCalendar") && removal.contains("selectedSheet = nil"))
+        #expect(!removal.contains("await"))
+    }
+}
+
 struct DigestIdentityAndStateTests {
     private func source(agent: Bool, senderAvatar: String? = nil, agentAvatar: String? = nil) -> RollingDigestSource {
         RollingDigestSource(id: "source", conversationId: "conversation", sessionId: "session", sessionTitle: "Session", senderAccountId: "owner", senderName: agent ? "Assistant" : "Human", text: "Message", createdAt: "", version: 1, isAgent: agent, agentId: agent ? "agent" : nil, agentOwnerName: agent ? "Human owner" : nil, agentAvatarUrl: agentAvatar, senderAvatarUrl: senderAvatar)

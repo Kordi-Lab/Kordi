@@ -38,7 +38,10 @@ struct DigestView: View {
     @EnvironmentObject private var notifications: KordiNotificationCoordinator
     @State private var pane = DigestPane.brief
     private var digest: RollingDigestResponse? { model.rollingDigestSnapshot }
-    private var events: [DigestCalendarEvent] { model.digestCalendarSnapshot?.events ?? [] }
+    private var events: [DigestCalendarEvent] {
+        let removed = model.digestMutationState.removedEventIDs
+        return (model.digestCalendarSnapshot?.events ?? []).filter { !removed.contains($0.id) }
+    }
     @State private var error: String?
     @State private var digestLoadError: String?
     @State private var calendarLoadError: String?
@@ -53,8 +56,8 @@ struct DigestView: View {
     private var sources: [RollingDigestSource] { digest?.sources ?? [] }
     private var content: RollingDigestContent? { digest?.snapshot }
     private var visibleClaims: [RollingDigestItem] { digest?.visibleClaims ?? [] }
-    private var dismissedSuggestions: [RollingDigestItem] { digest?.dismissedSuggestions ?? [] }
-    private var visibleSuggestions: [RollingDigestItem] { digest?.visibleSuggestions ?? [] }
+    private var dismissedSuggestions: [RollingDigestItem] { model.digestMutationState.suggestions(in: digest, dismissed: true) }
+    private var visibleSuggestions: [RollingDigestItem] { model.digestMutationState.suggestions(in: digest, dismissed: false) }
     private var calendarCandidates: [RollingDigestItem] { (content?.calendarCandidates ?? []).filter { $0.calendarProposalAvailable(events: events) } }
     private var digestReadState: DigestReadState { DigestReadState(hasResponse: digest != nil, error: digestLoadError) }
     private var calendarReadState: DigestReadState { DigestReadState(hasResponse: model.digestCalendarSnapshot != nil, error: calendarLoadError) }
@@ -129,6 +132,11 @@ struct DigestView: View {
     private func page<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                if !model.digestMutationState.pending.isEmpty { ProgressView("Saving changes…").controlSize(.small) }
+                ForEach(model.digestMutationState.errors.keys.sorted(), id: \.self) { key in
+                    Text(model.digestMutationState.errors[key] ?? "").font(.footnote).foregroundStyle(.secondary)
+                        .accessibilityAddTraits(.updatesFrequently)
+                }
                 if let error { Text(error).font(.subheadline).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) }
                 if let code = digest?.errorCode {
                     Text(code == "missing_provider_auth" ? "Connect a model provider in account settings to generate your digest." : "The last update failed. Your previous brief remains available.")
@@ -168,14 +176,16 @@ struct DigestView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(item.title).font(.subheadline.weight(.semibold)); Text(item.text).foregroundStyle(.secondary)
                 people(item); citations(item)
-                Button("Dismiss") { Task { await perform { try await model.dismissDigestItem(item.id, dismissed: true) } } }
+                Button("Dismiss") { setSuggestionDismissed(item.id, dismissed: true) }
             }
         }
         if visibleSuggestions.isEmpty, digestReadState == .content {
             Text(content == nil && digest?.status != "ready" ? "Suggestions will appear after the first update." : "No suggestions to show.").foregroundStyle(.secondary)
         }
         if !dismissedSuggestions.isEmpty {
-            Button("Restore dismissed suggestions") { Task { await perform { for item in dismissedSuggestions { try await model.dismissDigestItem(item.id, dismissed: false) } } } }
+            Button("Restore dismissed suggestions") {
+                for item in dismissedSuggestions { setSuggestionDismissed(item.id, dismissed: false) }
+            }.disabled(model.digestMutationState.hasPendingFeedback)
         }
     }
     private var calendar: some View {
@@ -195,7 +205,7 @@ struct DigestView: View {
             }.buttonStyle(.plain)
             if calendarReadState == .content {
                 DigestMonthGrid(month: month, events: events, candidates: calendarCandidates, selectedDay: $selectedCalendarDay, onSelect: { selectedSheet = .event($0) }, onReview: reviewCalendarCandidate)
-                if events.isEmpty { Text("No saved events.").font(.footnote).foregroundStyle(.secondary) }
+                if events.isEmpty, !model.digestMutationState.hasPendingRemoval { Text("No saved events.").font(.footnote).foregroundStyle(.secondary) }
             }
             Text("Shown in \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
             Divider().padding(.vertical, 4)
@@ -221,6 +231,10 @@ struct DigestView: View {
     }
     private var digestReadNotice: some View {
         DigestReadNotice(name: "digest", hasResponse: digest != nil, error: digestLoadError) { retryRead(calendar: false) }
+    }
+    private func setSuggestionDismissed(_ id: String, dismissed: Bool) {
+        do { _ = try model.beginDismissingDigestItem(id, dismissed: dismissed) }
+        catch { self.error = error.localizedDescription }
     }
     private func retryRead(calendar: Bool) {
         guard let accountId = model.account?.accountId else { return }
@@ -283,7 +297,11 @@ struct DigestView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: DigestMessageRoute.self) { route in ConversationView(conversation: route.conversation, initialMessageID: route.messageID) }
-        case .event(let event, let proposal, let original, let series): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts, proposal: proposal, original: original, series: series) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.eventDate(updated) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: { if let series, let id = proposal?.existingSeriesId { try await model.removeDigestCalendarSeries(id, events: series) } else { try await model.removeDigestCalendarEvent(event) }; await reloadAfterEdit() }
+        case .event(let event, let proposal, let original, let series): DigestEventEditor(event: event, sources: sources, accountId: model.account?.accountId ?? "", contacts: model.contacts, proposal: proposal, original: original, series: series) { updated in try await model.saveDigestCalendarEvent(updated); await reloadAfterEdit(); if let date = DigestDate.eventDate(updated) { month = date; selectedCalendarDay = date }; pane = .calendar; calendarScrollRevision += 1 } remove: {
+            if let series, let id = proposal?.existingSeriesId { _ = try model.beginRemovingDigestCalendarSeries(id, events: series) }
+            else { _ = try model.beginRemovingDigestCalendarEvent(event) }
+            selectedSheet = nil
+        }
         case .imports: DigestImportView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .connection: DigestConnectView(existing: events) { incoming in let report = try await model.importDigestCalendar(incoming); if let id = model.account?.accountId { await load(accountId: id) }; return report }
         case .details: ScrollView { VStack(alignment: .leading, spacing: 16) { Text("Updates follow your messages, sessions and calendar events."); Text("Open work stays in the digest until later evidence resolves it."); Text("\(sources.count) source messages are currently included. Only accessible sources may be opened.").foregroundStyle(.secondary) }.padding() }.navigationTitle("Live digest")

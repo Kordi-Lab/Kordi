@@ -208,6 +208,8 @@ final class AppModel: ObservableObject {
     }
     @Published var rollingDigestSnapshot: RollingDigestResponse?
     @Published var digestCalendarSnapshot: DigestCalendarResponse?
+    @Published var digestMutationState = DigestMutationState()
+    var digestMutationTasks: [String: (id: UUID, task: Task<Void, Error>)] = [:]
     let rollingDigestRead = DigestReadCoordinator<RollingDigestResponse>()
     let digestCalendarRead = DigestReadCoordinator<DigestCalendarResponse>()
     @Published private(set) var contacts: [CloudContact] = []

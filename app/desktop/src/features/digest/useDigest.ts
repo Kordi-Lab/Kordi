@@ -27,5 +27,6 @@ export function useDigest(accountId: string) {
       document.removeEventListener('visibilitychange', resume);
     };
   }, [store]);
-  return { ...state, error: state.digestError ?? state.calendarError, reload };
+  return { ...state, error: state.digestError ?? state.calendarError, reload,
+    setFeedback: store.setFeedback, removeEvents: store.removeEvents, retryMutation: store.retryMutation };
 }
