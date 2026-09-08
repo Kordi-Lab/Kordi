@@ -24,6 +24,7 @@ struct ChatHomeView: View {
     @State private var showingArchivedChats = false
     @State private var groupManagementPresentation: GroupManagementPresentation?
     @State private var pullRefreshState: ChatPullRefreshVisualState = .idle
+    @State private var activeSwipeRowID: String?
     private let onOpenConversation: ((ConversationSummary) -> Void)?
     private let onOpenNewChat: ((NewChatMode) -> Void)?
     private let onOpenArchivedChats: (() -> Void)?
@@ -370,6 +371,7 @@ struct ChatHomeView: View {
         case let .group(space):
             let isExpanded = groupIsExpanded(space)
             Button {
+                guard !dismissActiveSwipeActions() else { return }
                 toggleGroupSpace(space)
             } label: {
                 GroupSpaceRow(
@@ -426,12 +428,12 @@ struct ChatHomeView: View {
                     Label("Archive group", systemImage: "archivebox")
                 }
             }
-            .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                groupLeadingSwipeActions(for: space)
-            }
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                groupTrailingSwipeActions(for: space)
-            }
+            .circularChatSwipeActions(
+                rowID: "group:\(space.id)",
+                activeRowID: $activeSwipeRowID,
+                leading: groupLeadingCircularActions(for: space),
+                trailing: groupTrailingCircularActions(for: space)
+            )
             .accessibilityAction(named: groupIsPinned(space) ? "Unpin group" : "Pin group") {
                 toggleGroupPinned(space)
             }
@@ -496,6 +498,7 @@ struct ChatHomeView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         Button {
+            guard !dismissActiveSwipeActions() else { return }
             openConversation(conversation)
         } label: {
             content()
@@ -504,12 +507,12 @@ struct ChatHomeView: View {
         .contextMenu {
             sessionContextMenu(for: conversation)
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            sessionLeadingSwipeActions(for: conversation)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            sessionTrailingSwipeActions(for: conversation)
-        }
+        .circularChatSwipeActions(
+            rowID: conversation.sessionId,
+            activeRowID: $activeSwipeRowID,
+            leading: sessionLeadingCircularActions(for: conversation),
+            trailing: sessionTrailingCircularActions(for: conversation)
+        )
         .accessibilityAction(named: model.pinnedSessionIds.contains(conversation.sessionId) ? "Unpin" : "Pin") {
             togglePinned(conversation)
         }
@@ -551,12 +554,12 @@ struct ChatHomeView: View {
         .contextMenu {
             sessionContextMenu(for: item.conversation)
         }
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            sessionLeadingSwipeActions(for: item.conversation)
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            sessionTrailingSwipeActions(for: item.conversation)
-        }
+        .circularChatSwipeActions(
+            rowID: item.conversation.sessionId,
+            activeRowID: $activeSwipeRowID,
+            leading: sessionLeadingCircularActions(for: item.conversation),
+            trailing: sessionTrailingCircularActions(for: item.conversation)
+        )
         .accessibilityAction(named: model.pinnedSessionIds.contains(item.conversation.sessionId) ? "Unpin" : "Pin") {
             togglePinned(item.conversation)
         }
@@ -578,6 +581,7 @@ struct ChatHomeView: View {
 
     private func agentSessionButton(_ item: AgentSessionListItem) -> some View {
         Button {
+            guard !dismissActiveSwipeActions() else { return }
             openConversation(item.conversation)
         } label: {
             AgentSessionRow(
@@ -593,6 +597,7 @@ struct ChatHomeView: View {
 
     private func agentForkButton(_ item: AgentSessionListItem) -> some View {
         Button {
+            guard !dismissActiveSwipeActions() else { return }
             toggleAgentForks(for: item.conversation)
         } label: {
             HStack(spacing: 5) {
@@ -612,6 +617,72 @@ struct ChatHomeView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(collapsedAgentForkParentIds.contains(item.conversation.sessionId) ? "Show forks" : "Hide forks")
+    }
+
+    private func sessionLeadingCircularActions(
+        for conversation: ConversationSummary
+    ) -> [ChatCircularSwipeAction] {
+        let isPinned = model.pinnedSessionIds.contains(conversation.sessionId)
+        let isUnread = conversation.hasUnreadAttention
+        return [
+            ChatCircularSwipeAction(id: "pin", label: isPinned ? "Unpin" : "Pin", systemImage: isPinned ? "pin.slash" : "pin", color: .green) {
+                togglePinned(conversation)
+            },
+            ChatCircularSwipeAction(id: "unread", label: isUnread ? "Mark as read" : "Mark as unread", systemImage: isUnread ? "checkmark.message" : "envelope.badge", color: KordiTheme.signalBlue) {
+                toggleUnread(conversation)
+            }
+        ]
+    }
+
+    private func sessionTrailingCircularActions(
+        for conversation: ConversationSummary
+    ) -> [ChatCircularSwipeAction] {
+        let isMuted = model.mutedSessionIds.contains(conversation.sessionId)
+        return [
+            ChatCircularSwipeAction(id: "archive", label: "Archive", systemImage: "archivebox", color: .gray) {
+                Task { _ = await model.archiveConversation(conversation) }
+            },
+            ChatCircularSwipeAction(id: "delete", label: "Delete", systemImage: "trash", color: .red, role: .destructive) {
+                requestDelete(conversation)
+            },
+            ChatCircularSwipeAction(id: "mute", label: isMuted ? "Unmute" : "Mute", systemImage: isMuted ? "bell" : "bell.slash", color: .orange) {
+                toggleMuted(conversation)
+            }
+        ]
+    }
+
+    private func groupLeadingCircularActions(
+        for space: GroupSpaceSummary
+    ) -> [ChatCircularSwipeAction] {
+        [
+            ChatCircularSwipeAction(id: "pin", label: groupIsPinned(space) ? "Unpin group" : "Pin group", systemImage: groupIsPinned(space) ? "pin.slash" : "pin", color: .green) {
+                toggleGroupPinned(space)
+            },
+            ChatCircularSwipeAction(id: "read", label: "Mark group as read", systemImage: "checkmark.message", color: KordiTheme.signalBlue) {
+                Task { await model.markGroupSpaceRead(space) }
+            }
+        ]
+    }
+
+    private func groupTrailingCircularActions(
+        for space: GroupSpaceSummary
+    ) -> [ChatCircularSwipeAction] {
+        [
+            ChatCircularSwipeAction(id: "archive", label: "Archive group", systemImage: "archivebox", color: .gray) {
+                Task { _ = await model.archiveGroupSpace(space) }
+            },
+            ChatCircularSwipeAction(id: "mute", label: groupIsMuted(space) ? "Unmute group" : "Mute group", systemImage: groupIsMuted(space) ? "bell" : "bell.slash", color: .orange) {
+                toggleGroupMuted(space)
+            }
+        ]
+    }
+
+    private func dismissActiveSwipeActions() -> Bool {
+        guard activeSwipeRowID != nil else { return false }
+        withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.9)) {
+            activeSwipeRowID = nil
+        }
+        return true
     }
 
     @ViewBuilder
@@ -663,55 +734,6 @@ struct ChatHomeView: View {
         }
     }
 
-    @ViewBuilder
-    private func sessionLeadingSwipeActions(for conversation: ConversationSummary) -> some View {
-        let isPinned = model.pinnedSessionIds.contains(conversation.sessionId)
-        let isUnread = conversation.hasUnreadAttention
-        Button {
-            togglePinned(conversation)
-        } label: {
-            Image(systemName: isPinned ? "pin.slash" : "pin")
-        }
-        .tint(.green)
-        .accessibilityLabel(isPinned ? "Unpin" : "Pin")
-
-        Button {
-            toggleUnread(conversation)
-        } label: {
-            Image(systemName: isUnread ? "checkmark.message" : "envelope.badge")
-        }
-        .tint(KordiTheme.signalBlue)
-        .accessibilityLabel(isUnread ? "Mark as read" : "Mark as unread")
-    }
-
-    @ViewBuilder
-    private func sessionTrailingSwipeActions(for conversation: ConversationSummary) -> some View {
-        let isMuted = model.mutedSessionIds.contains(conversation.sessionId)
-        Button {
-            toggleMuted(conversation)
-        } label: {
-            Image(systemName: isMuted ? "bell" : "bell.slash")
-        }
-        .tint(.orange)
-        .accessibilityLabel(isMuted ? "Unmute" : "Mute")
-
-        Button {
-            requestDelete(conversation)
-        } label: {
-            Image(systemName: "trash")
-        }
-        .tint(.red)
-        .accessibilityLabel("Delete")
-
-        Button {
-            Task { _ = await model.archiveConversation(conversation) }
-        } label: {
-            Image(systemName: "archivebox")
-        }
-        .tint(.gray)
-        .accessibilityLabel("Archive")
-    }
-
     private func togglePinned(_ conversation: ConversationSummary) {
         let pinned = !model.pinnedSessionIds.contains(conversation.sessionId)
         Task { _ = await model.setConversationPinned(conversation, pinned: pinned) }
@@ -735,44 +757,6 @@ struct ChatHomeView: View {
     private func requestDelete(_ conversation: ConversationSummary) {
         guard deleteTarget == nil else { return }
         deleteTarget = conversation
-    }
-
-    @ViewBuilder
-    private func groupLeadingSwipeActions(for space: GroupSpaceSummary) -> some View {
-        Button {
-            toggleGroupPinned(space)
-        } label: {
-            Image(systemName: groupIsPinned(space) ? "pin.slash" : "pin")
-        }
-        .tint(.green)
-        .accessibilityLabel(groupIsPinned(space) ? "Unpin group" : "Pin group")
-
-        Button {
-            Task { await model.markGroupSpaceRead(space) }
-        } label: {
-            Image(systemName: "checkmark.message")
-        }
-        .tint(KordiTheme.signalBlue)
-        .accessibilityLabel("Mark group as read")
-    }
-
-    @ViewBuilder
-    private func groupTrailingSwipeActions(for space: GroupSpaceSummary) -> some View {
-        Button {
-            toggleGroupMuted(space)
-        } label: {
-            Image(systemName: groupIsMuted(space) ? "bell" : "bell.slash")
-        }
-        .tint(.orange)
-        .accessibilityLabel(groupIsMuted(space) ? "Unmute group" : "Mute group")
-
-        Button {
-            Task { _ = await model.archiveGroupSpace(space) }
-        } label: {
-            Image(systemName: "archivebox")
-        }
-        .tint(.gray)
-        .accessibilityLabel("Archive group")
     }
 
     private func toggleGroupPinned(_ space: GroupSpaceSummary) {
@@ -834,6 +818,7 @@ private struct ArchivedChatsView: View {
     @State private var deleteTarget: ConversationSummary?
     @State private var selectedConversation: ConversationSummary?
     @State private var expandedGroupSpaceIds = Set<String>()
+    @State private var activeSwipeRowID: String?
 
     init(
         channel: ChatChannel,
@@ -936,6 +921,7 @@ private struct ArchivedChatsView: View {
 
     private func archivedSessionActionRow(_ conversation: ConversationSummary) -> some View {
         Button {
+            guard !dismissActiveSwipeActions() else { return }
             if let onOpenConversation {
                 onOpenConversation(conversation)
             } else {
@@ -966,22 +952,18 @@ private struct ArchivedChatsView: View {
                 Label("Delete chat", systemImage: "trash")
             }
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button {
-                requestDelete(conversation)
-            } label: {
-                Image(systemName: "trash")
-            }
-            .tint(.red)
-            .accessibilityLabel("Delete")
-            Button {
-                Task { _ = await model.restoreConversation(conversation) }
-            } label: {
-                Image(systemName: "archivebox.fill")
-            }
-            .tint(.blue)
-            .accessibilityLabel("Restore")
-        }
+        .circularChatSwipeActions(
+            rowID: conversation.sessionId,
+            activeRowID: $activeSwipeRowID,
+            trailing: [
+                ChatCircularSwipeAction(id: "restore", label: "Restore", systemImage: "archivebox.fill", color: .blue) {
+                    Task { _ = await model.restoreConversation(conversation) }
+                },
+                ChatCircularSwipeAction(id: "delete", label: "Delete", systemImage: "trash", color: .red, role: .destructive) {
+                    requestDelete(conversation)
+                }
+            ]
+        )
         .accessibilityAction(named: "Restore") {
             Task { _ = await model.restoreConversation(conversation) }
         }
@@ -994,6 +976,7 @@ private struct ArchivedChatsView: View {
 
     private func archivedGroupActionRow(_ space: GroupSpaceSummary) -> some View {
         Button {
+            guard !dismissActiveSwipeActions() else { return }
             toggleGroupSpace(space)
         } label: {
             GroupSpaceRow(
@@ -1020,15 +1003,15 @@ private struct ArchivedChatsView: View {
                 )
             }
         }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button {
-                Task { _ = await model.restoreGroupSpace(space) }
-            } label: {
-                Image(systemName: "archivebox.fill")
-            }
-            .tint(.blue)
-            .accessibilityLabel("Restore group")
-        }
+        .circularChatSwipeActions(
+            rowID: "group:\(space.id)",
+            activeRowID: $activeSwipeRowID,
+            trailing: [
+                ChatCircularSwipeAction(id: "restore", label: "Restore group", systemImage: "archivebox.fill", color: .blue) {
+                    Task { _ = await model.restoreGroupSpace(space) }
+                }
+            ]
+        )
         .accessibilityAction(named: "Restore group") {
             Task { _ = await model.restoreGroupSpace(space) }
         }
@@ -1039,6 +1022,14 @@ private struct ArchivedChatsView: View {
     private func requestDelete(_ conversation: ConversationSummary) {
         guard deleteTarget == nil else { return }
         deleteTarget = conversation
+    }
+
+    private func dismissActiveSwipeActions() -> Bool {
+        guard activeSwipeRowID != nil else { return false }
+        withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.9)) {
+            activeSwipeRowID = nil
+        }
+        return true
     }
 
     private func groupIsMuted(_ space: GroupSpaceSummary) -> Bool {
@@ -1254,7 +1245,213 @@ private struct ChatPullOffsetPreferenceKey: PreferenceKey {
     }
 }
 
+private struct ChatCircularSwipeAction: Identifiable {
+    let id: String
+    let label: String
+    let systemImage: String
+    let color: Color
+    let role: ButtonRole?
+    let action: () -> Void
+
+    init(
+        id: String,
+        label: String,
+        systemImage: String,
+        color: Color,
+        role: ButtonRole? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.id = id
+        self.label = label
+        self.systemImage = systemImage
+        self.color = color
+        self.role = role
+        self.action = action
+    }
+}
+
+private struct ChatCircularSwipeActionsModifier: ViewModifier {
+    let rowID: String
+    @Binding var activeRowID: String?
+    let leading: [ChatCircularSwipeAction]
+    let trailing: [ChatCircularSwipeAction]
+    @State private var restingOffset: CGFloat = 0
+    @GestureState private var dragOffset: CGFloat = 0
+
+    private let actionDiameter: CGFloat = 44
+    private let actionSpacing: CGFloat = 8
+    private let edgePadding: CGFloat = 16
+    private let minimumActionScale: CGFloat = 0.3
+    private let revealStartOverlap: CGFloat = 10
+    private let revealEndDistance: CGFloat = 10
+    private let revealProgressResponse: CGFloat = 2.7
+
+    private var leadingWidth: CGFloat { actionWidth(for: leading) }
+    private var trailingWidth: CGFloat { actionWidth(for: trailing) }
+    private var displayedOffset: CGFloat {
+        guard activeRowID == rowID else { return 0 }
+        return min(leadingWidth, max(-trailingWidth, restingOffset + dragOffset))
+    }
+
+    func body(content: Content) -> some View {
+        ZStack {
+            if activeRowID == rowID {
+                HStack(spacing: 0) {
+                    if displayedOffset > 0 {
+                        actionButtons(leading, edge: .leading)
+                    }
+                    Spacer(minLength: 0)
+                    if displayedOffset < 0 {
+                        actionButtons(trailing, edge: .trailing)
+                    }
+                }
+            }
+
+            content
+                .background(Color(uiColor: .systemBackground))
+                .offset(x: displayedOffset)
+                .highPriorityGesture(horizontalDragGesture)
+                .zIndex(1)
+        }
+        .clipped()
+        .overlay {
+            GeometryReader { proxy in
+                if restingOffset != 0, activeRowID == rowID {
+                    HStack(spacing: 0) {
+                        if restingOffset > 0 {
+                            Spacer(minLength: 0)
+                        }
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .frame(width: max(0, proxy.size.width - abs(restingOffset)))
+                            .onTapGesture { close() }
+                            .highPriorityGesture(horizontalDragGesture)
+                        if restingOffset < 0 {
+                            Spacer(minLength: 0)
+                        }
+                    }
+                }
+            }
+        }
+        .onChange(of: activeRowID) {
+            if activeRowID != rowID, restingOffset != 0 {
+                restingOffset = 0
+            }
+        }
+    }
+
+    private var horizontalDragGesture: some Gesture {
+        DragGesture(minimumDistance: 10)
+            .updating($dragOffset) { value, offset, _ in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                offset = value.translation.width
+            }
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                if activeRowID != rowID {
+                    activeRowID = rowID
+                    restingOffset = 0
+                }
+            }
+            .onEnded { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                let projectedOffset = restingOffset + value.predictedEndTranslation.width
+                let destination: CGFloat
+                if projectedOffset > max(36, leadingWidth / 2), !leading.isEmpty {
+                    destination = leadingWidth
+                } else if projectedOffset < -max(36, trailingWidth / 2), !trailing.isEmpty {
+                    destination = -trailingWidth
+                } else {
+                    destination = 0
+                }
+                withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
+                    restingOffset = destination
+                    activeRowID = destination == 0 ? nil : rowID
+                }
+            }
+    }
+
+    private func actionWidth(for actions: [ChatCircularSwipeAction]) -> CGFloat {
+        guard !actions.isEmpty else { return 0 }
+        return edgePadding * 2 + CGFloat(actions.count) * actionDiameter
+            + CGFloat(actions.count - 1) * actionSpacing
+    }
+
+    private func close() {
+        withAnimation(.interactiveSpring(response: 0.24, dampingFraction: 0.9)) {
+            restingOffset = 0
+            activeRowID = nil
+        }
+    }
+
+    private func perform(_ action: ChatCircularSwipeAction) {
+        close()
+        action.action()
+    }
+
+    private func actionButtons(
+        _ actions: [ChatCircularSwipeAction],
+        edge: HorizontalEdge
+    ) -> some View {
+        HStack(spacing: actionSpacing) {
+            ForEach(actions) { action in
+                let index = actions.firstIndex(where: { $0.id == action.id }) ?? 0
+                let progress = actionRevealProgress(
+                    index: index,
+                    count: actions.count,
+                    edge: edge
+                )
+                Button(role: action.role) {
+                    perform(action)
+                } label: {
+                    Image(systemName: action.systemImage)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: actionDiameter, height: actionDiameter)
+                        .background(action.color, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(action.label)
+                .scaleEffect(minimumActionScale + (1 - minimumActionScale) * progress)
+                .opacity(progress)
+                .allowsHitTesting(progress > 0.9)
+            }
+        }
+        .padding(edge == .leading ? .leading : .trailing, edgePadding)
+        .accessibilityHidden(activeRowID != rowID || (edge == .leading ? displayedOffset <= 0 : displayedOffset >= 0))
+    }
+
+    private func actionRevealProgress(
+        index: Int,
+        count: Int,
+        edge: HorizontalEdge
+    ) -> CGFloat {
+        let distanceFromEdge = edge == .leading ? index : count - 1 - index
+        let fullRevealDistance = edgePadding + actionDiameter
+            + CGFloat(distanceFromEdge) * (actionDiameter + actionSpacing)
+        let linearProgress = (
+            abs(displayedOffset) - fullRevealDistance + revealStartOverlap
+        ) / max(1, revealStartOverlap + revealEndDistance)
+        let clampedProgress = min(1, max(0, linearProgress))
+        return 1 - pow(1 - clampedProgress, revealProgressResponse)
+    }
+}
+
 private extension View {
+    func circularChatSwipeActions(
+        rowID: String,
+        activeRowID: Binding<String?>,
+        leading: [ChatCircularSwipeAction] = [],
+        trailing: [ChatCircularSwipeAction] = []
+    ) -> some View {
+        modifier(ChatCircularSwipeActionsModifier(
+            rowID: rowID,
+            activeRowID: activeRowID,
+            leading: leading,
+            trailing: trailing
+        ))
+    }
+
     func chatHomeRow(separatorLeading: CGFloat) -> some View {
         frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 16)
