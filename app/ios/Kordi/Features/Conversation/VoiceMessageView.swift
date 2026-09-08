@@ -10,7 +10,10 @@ enum VoiceRecordingGestureIntent: Equatable {
 }
 
 struct VoiceRecordingGestureCapture: UIViewRepresentable {
+    static let activationDelay: TimeInterval = 0.18
+
     let isEnabled: Bool
+    let onPressingChanged: (Bool) -> Void
     let onBegan: () -> Void
     let onChanged: (CGSize) -> Void
     let onEnded: (CGSize) -> Void
@@ -22,6 +25,10 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
 
         init(parent: VoiceRecordingGestureCapture) {
             self.parent = parent
+        }
+
+        func setPressing(_ isPressing: Bool) {
+            parent.onPressingChanged(isPressing)
         }
 
         @objc func handle(_ recognizer: UILongPressGestureRecognizer) {
@@ -55,17 +62,18 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UIView {
-        let view = UIView()
+        let view = VoiceRecordingCaptureView()
         view.backgroundColor = .clear
         view.isAccessibilityElement = false
         view.accessibilityElementsHidden = true
+        view.onPressingChanged = context.coordinator.setPressing
         let gesture = UILongPressGestureRecognizer(
             target: context.coordinator,
             action: #selector(Coordinator.handle(_:))
         )
-        gesture.minimumPressDuration = 0.25
+        gesture.minimumPressDuration = Self.activationDelay
         gesture.allowableMovement = .greatestFiniteMagnitude
-        gesture.cancelsTouchesInView = true
+        gesture.cancelsTouchesInView = false
         view.addGestureRecognizer(gesture)
         return view
     }
@@ -73,6 +81,35 @@ struct VoiceRecordingGestureCapture: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {
         context.coordinator.parent = self
         uiView.isUserInteractionEnabled = isEnabled
+        if !isEnabled {
+            (uiView as? VoiceRecordingCaptureView)?.setPressing(false)
+        }
+    }
+}
+
+private final class VoiceRecordingCaptureView: UIView {
+    var onPressingChanged: (Bool) -> Void = { _ in }
+    private var isPressing = false
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesBegan(touches, with: event)
+        setPressing(true)
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesEnded(touches, with: event)
+        setPressing(false)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        super.touchesCancelled(touches, with: event)
+        setPressing(false)
+    }
+
+    func setPressing(_ isPressing: Bool) {
+        guard self.isPressing != isPressing else { return }
+        self.isPressing = isPressing
+        onPressingChanged(isPressing)
     }
 }
 
