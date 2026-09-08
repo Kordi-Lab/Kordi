@@ -176,15 +176,25 @@
     }
 
     .tool-button {
+      display: grid;
+      place-items: center;
       min-width: 0;
       min-height: var(--control-height);
       border: 0;
       border-radius: var(--radius-control);
       background: transparent;
       color: var(--color-muted);
-      font-size: 0.8125rem;
-      font-weight: 600;
       cursor: pointer;
+    }
+
+    .tool-button svg {
+      width: 1.4rem;
+      height: 1.4rem;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
     }
 
     .tool-button:hover { background: var(--color-surface-raised); }
@@ -236,12 +246,16 @@
     .send-button:hover { transform: scale(1.04); }
     .send-button:active { transform: scale(0.96); }
 
-    .status {
-      min-height: 1lh;
-      margin: var(--space-2xs) var(--space-xs) 0;
-      color: var(--color-muted);
-      font-size: 0.75rem;
-      text-align: center;
+    .visually-hidden {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
 
     @media (min-width: 48rem) {
@@ -275,15 +289,21 @@
 
     <footer class="editor__controls">
       <div class="tool-row" aria-label="Photo editing tools">
-        <button class="tool-button" id="rotate" type="button">↻&nbsp; Rotate</button>
-        <button class="tool-button" data-tool="crop" type="button" aria-pressed="false">Crop</button>
-        <button class="tool-button" data-tool="draw" type="button" aria-pressed="false">Draw</button>
+        <button class="tool-button" id="rotate" type="button" aria-label="Rotate photo" title="Rotate">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M18.5 15a7 7 0 1 1-1.2-8.3L20 9"/></svg>
+        </button>
+        <button class="tool-button" data-tool="crop" type="button" aria-label="Crop photo" title="Crop" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M2 6h14a2 2 0 0 1 2 2v14"/></svg>
+        </button>
+        <button class="tool-button" data-tool="draw" type="button" aria-label="Draw on photo" title="Draw" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 4.5 5 5"/><path d="M3 21c3.5 0 4.5-1 4.5-3.5L18 7a2.12 2.12 0 0 0-3-3L4.5 14.5C2 17 2 18 3 21Z"/></svg>
+        </button>
       </div>
       <div class="send-row">
         <input class="caption" id="caption" type="text" maxlength="1024" placeholder="Add a caption…" aria-label="Photo caption" />
         <button class="send-button" id="send" type="button" aria-label="Send photo">↑</button>
       </div>
-      <p class="status" id="status" aria-live="polite">Preview only — no message will be sent.</p>
+      <p class="visually-hidden" id="status" aria-live="polite">Preview only — no message will be sent.</p>
     </footer>
   </main>
 
@@ -298,7 +318,7 @@
         const nextTool = stage.dataset.tool === tool ? 'none' : tool;
         stage.dataset.tool = nextTool;
         toolButtons.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate.dataset.tool === nextTool)));
-        status.textContent = nextTool === 'none' ? 'Editing tool closed.' : `${button.textContent.trim()} tool selected.`;
+        status.textContent = nextTool === 'none' ? 'Editing tool closed.' : `${button.getAttribute('title')} tool selected.`;
       });
     });
 
