@@ -160,15 +160,18 @@ test("iOS conversation taps navigate before bounded asynchronous hydration", asy
     /ConversationThreadLoadPolicy\.usesCachedTimeline\([\s\S]*return[\s\S]*model\.loadConversation/,
   );
   assert.match(conversation, /Button\("Try again", action: retry\)/);
-  assert.match(model, /func loadConversation\(_ conversation: ConversationSummary\) async -> Bool/);
+  assert.match(model, /func loadConversation\(_ conversation: ConversationSummary, forceReload: Bool = false\) async -> Bool/);
+  assert.match(model, /return await conversationHistoryLoads\.load\([\s\S]*reuseCompleted: !forceReload/);
   assert.doesNotMatch(model, /prepareConversationForPresentation/);
   assert.match(model, /applyConversationHistoryPage[\s\S]*Task\.detached\(priority: \.userInitiated\)/);
 });
 
-test("iOS archived chats update the owning tab navigation path", async () => {
-  const [app, home] = await readFiles([
+test("iOS archived chats update the shared outer navigation path", async () => {
+  const [app, home, destinations, host] = await readFiles([
     "app/ios/Kordi/App/KordiApp.swift",
     "app/ios/Kordi/Features/Chats/ChatHomeView.swift",
+    "app/ios/Kordi/App/MainNavigationDestinations.swift",
+    "app/ios/Kordi/App/MainNavigationHost.swift",
   ]);
   const archivedAction = home.slice(
     home.indexOf("private func archivedSessionActionRow"),
@@ -177,13 +180,20 @@ test("iOS archived chats update the owning tab navigation path", async () => {
 
   assert.match(
     app,
-    /onOpenArchivedChats:\s*\{\s*chatsPath\.append\(ArchivedChatsRoute\(channel: \.contact\)\)/,
+    /onOpenArchivedChats:\s*\{\s*path\.append\(\.archived\(\.contact\)\)/,
   );
   assert.match(
     app,
-    /onOpenArchivedChats:\s*\{\s*agentsPath\.append\(ArchivedChatsRoute\(channel: \.agent\)\)/,
+    /onOpenArchivedChats:\s*\{\s*path\.append\(\.archived\(\.agent\)\)/,
   );
-  assert.match(app, /kordiTabBarVisibility\(isRoot: chatsPath\.isEmpty\)/);
+  assert.match(app, /MainNavigationHost\(path: \$path\)/);
+  assert.match(app, /MainNavigationDestination\(path: \$path, route: route, selectedTab: selection\)/);
+  assert.match(destinations, /@Binding var path: \[MainNavigationRoute\]/);
+  assert.match(
+    destinations,
+    /case \.archived\(let channel\):\s*ArchivedChatsView\(channel: channel, onOpenConversation: \{ path\.append\(\.conversation\(\$0\)\) \}\)/,
+  );
+  assert.match(host, /let stack: \[UIViewController\] = \[rootController\] \+ destinations/);
   assert.match(archivedAction, /if let onOpenConversation/);
   assert.match(archivedAction, /onOpenConversation\(conversation\)/);
 });
