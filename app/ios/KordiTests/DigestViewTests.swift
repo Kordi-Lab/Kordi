@@ -5,6 +5,85 @@ import UIKit
 @testable import Kordi
 
 @MainActor
+struct DigestWarmupTests {
+    private func settle(until condition: () -> Bool) async throws {
+        for _ in 0..<200 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try #require(condition())
+    }
+
+    @Test func schedulingReturnsWithoutWaitingForTheDelayedRead() async {
+        let warmup = DigestWarmupCoordinator()
+        var calls = 0
+        warmup.schedule(scope: ["account"], delay: .seconds(30)) { calls += 1 }
+        #expect(calls == 0)
+        warmup.reset()
+        for _ in 0..<10 { await Task.yield() }
+        #expect(calls == 0)
+    }
+
+    @Test func openingDigestJoinsAnInFlightWarmupInsteadOfReadingTwice() async throws {
+        let warmup = DigestWarmupCoordinator(), reads = DigestReadCoordinator<Int>(), gate = DigestMutationGate()
+        defer { gate.finish(); reads.reset(); warmup.reset() }
+        var calls = 0
+        warmup.schedule(scope: ["account"], delay: .zero) {
+            _ = try? await reads.read(scope: ["account"]) { calls += 1; try await gate.wait(); return 7 }
+        }
+        try await settle { gate.calls == 1 }
+        try #require(gate.calls == 1)
+        let visibleRead = Task { try await reads.read(scope: ["account"]) { calls += 1; return 99 } }
+        gate.finish()
+        #expect(try await visibleRead.value == 7)
+        #expect(try await reads.read(scope: ["account"]) { calls += 1; return 99 } == 7)
+        #expect(calls == 1)
+    }
+
+    @Test func repeatedForegroundSignalsAreRateLimitedWithoutAPollingLoop() async throws {
+        let warmup = DigestWarmupCoordinator(), now = ContinuousClock.now
+        defer { warmup.reset() }
+        var calls = 0
+        warmup.schedule(scope: ["account"], now: now, delay: .zero) { calls += 1 }
+        try await settle { calls == 1 }
+        try #require(calls == 1)
+        for _ in 0..<10 { warmup.schedule(scope: ["account"], now: now.advanced(by: .seconds(5)), delay: .zero) { calls += 1 } }
+        for _ in 0..<10 { await Task.yield() }
+        #expect(calls == 1)
+        warmup.schedule(scope: ["account"], now: now.advanced(by: .seconds(31)), delay: .zero) { calls += 1 }
+        try await settle { calls == 2 }
+        #expect(calls == 2)
+    }
+
+    @Test func accountChangeCancelsOldWarmupAndDoesNotThrottleTheNewAccount() async throws {
+        let warmup = DigestWarmupCoordinator()
+        defer { warmup.reset() }
+        var oldCalls = 0, newCalls = 0
+        warmup.schedule(scope: ["old"], delay: .seconds(30)) { oldCalls += 1 }
+        warmup.schedule(scope: ["new"], delay: .zero) { newCalls += 1 }
+        try await settle { newCalls == 1 }
+        #expect(oldCalls == 0)
+        #expect(newCalls == 1)
+    }
+
+    @Test func readyLifecycleSchedulesOnlySilentReadsAndResetCancelsWarmup() throws {
+        let directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        let model = try String(contentsOf: directory.appendingPathComponent("Kordi/App/AppModel.swift"), encoding: .utf8)
+        #expect(model.contains("phase = .signedIn\n            scheduleDigestWarmup()"))
+        #expect(!model.contains("await scheduleDigestWarmup"))
+        let source = try String(contentsOf: directory.appendingPathComponent("Kordi/Features/Digest/AppModel+Digest.swift"), encoding: .utf8)
+        let start = try #require(source.range(of: "func scheduleDigestWarmup()"))
+        let end = try #require(source.range(of: "func resetDigestReads()", range: start.upperBound..<source.endIndex))
+        let warmup = source[start.lowerBound..<end.lowerBound]
+        #expect(warmup.contains("phase == .signedIn"))
+        #expect(warmup.contains("async let digest = try? self.loadRollingDigest()"))
+        #expect(warmup.contains("async let calendar = try? self.loadDigestCalendar()"))
+        #expect(!warmup.contains("refreshRollingDigest") && !warmup.contains("errorMessage"))
+        #expect(source.contains("func resetDigestReads() {\n        digestWarmup.reset()"))
+    }
+}
+
+@MainActor
 private final class DigestMutationGate {
     private var continuation: CheckedContinuation<Void, Error>?
     var calls = 0

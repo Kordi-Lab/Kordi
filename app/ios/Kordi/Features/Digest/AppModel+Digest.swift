@@ -1,5 +1,36 @@
 import Foundation
 
+@MainActor
+final class DigestWarmupCoordinator {
+    private var scope: [String]?
+    private var lastScheduledAt: ContinuousClock.Instant?
+    private var running: (id: UUID, task: Task<Void, Never>)?
+
+    func schedule(scope: [String], now: ContinuousClock.Instant = .now,
+                  delay: Duration = .seconds(1), minimumInterval: Duration = .seconds(30),
+                  operation: @escaping @MainActor () async -> Void) {
+        if self.scope != scope { reset(); self.scope = scope }
+        guard running == nil,
+              lastScheduledAt.map({ $0.duration(to: now) >= minimumInterval }) ?? true else { return }
+        lastScheduledAt = now
+        let id = UUID()
+        let task = Task(priority: .utility) { @MainActor [weak self] in
+            defer { if self?.running?.id == id { self?.running = nil } }
+            do { try await Task.sleep(for: delay) } catch { return }
+            guard !Task.isCancelled, self?.running?.id == id else { return }
+            await operation()
+        }
+        running = (id, task)
+    }
+
+    func reset() {
+        running?.task.cancel()
+        running = nil
+        lastScheduledAt = nil
+        scope = nil
+    }
+}
+
 enum DigestOptimisticChange: Equatable {
     case feedback(id: String, dismissed: Bool)
     case removal(key: String, eventIDs: Set<String>)
@@ -98,7 +129,21 @@ final class DigestReadCoordinator<Value> {
 }
 
 extension AppModel {
+    func scheduleDigestWarmup() {
+        guard phase == .signedIn, let (_, token, accountId) = try? digestContext() else { return }
+        digestWarmup.schedule(scope: [accountId, token, Locale.current.identifier, TimeZone.current.identifier]) { [weak self] in
+            guard let self, self.phase == .signedIn,
+                  let (_, currentToken, currentAccount) = try? self.digestContext(),
+                  currentToken == token, currentAccount == accountId else { return }
+            // Both are ordinary reads. Neither generates a digest nor registers reminders.
+            async let digest = try? self.loadRollingDigest()
+            async let calendar = try? self.loadDigestCalendar()
+            _ = await (digest, calendar)
+        }
+    }
+
     func resetDigestReads() {
+        digestWarmup.reset()
         invalidateDigestReads()
         digestMutationTasks.values.forEach { $0.task.cancel() }
         digestMutationTasks = [:]

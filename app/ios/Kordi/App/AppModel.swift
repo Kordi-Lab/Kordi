@@ -212,6 +212,7 @@ final class AppModel: ObservableObject {
     var digestMutationTasks: [String: (id: UUID, task: Task<Void, Error>)] = [:]
     let rollingDigestRead = DigestReadCoordinator<RollingDigestResponse>()
     let digestCalendarRead = DigestReadCoordinator<DigestCalendarResponse>()
+    let digestWarmup = DigestWarmupCoordinator()
     @Published private(set) var contacts: [CloudContact] = []
     @Published private(set) var contactPresenceByAccountID: [String: CloudPresenceAccount] = [:]
     @Published private(set) var contactRequests: [CloudContactRequest] = []
@@ -436,6 +437,7 @@ final class AppModel: ObservableObject {
                     && snapshot.forkLineageVersion == CloudWireSnapshot.currentForkLineageVersion
             }
             phase = .signedIn
+            scheduleDigestWarmup()
             presencePublisher.start(token: savedToken)
             startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
                 hasHydratedWireSnapshot: hasHydratedWireSnapshot,
@@ -526,6 +528,7 @@ final class AppModel: ObservableObject {
     }
 
     func signOut() async {
+        digestWarmup.reset()
         let oldToken = token
         let oldAccountId = account?.accountId
         if let oldToken {
@@ -804,6 +807,7 @@ final class AppModel: ObservableObject {
 
     func appDidBecomeActive() async {
         guard phase == .signedIn, !previewMode, let token else { return }
+        scheduleDigestWarmup()
         presencePublisher.start(token: token)
         await refreshWorkspace()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
@@ -6870,6 +6874,7 @@ final class AppModel: ObservableObject {
         }
         phase = .signedIn
         presencePublisher.start(token: response.session.token)
+        scheduleDigestWarmup()
         startCloudSync(resetCursor: CloudSyncRecoveryPolicy.requiresBootstrap(
             hasHydratedWireSnapshot: hasHydratedWireSnapshot,
             hasHydratedForkLineage: hasHydratedForkLineage
