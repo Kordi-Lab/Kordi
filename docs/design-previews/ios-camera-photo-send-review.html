@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Kordi iOS camera photo send review</title>
+  <style>
+    /* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
+    /* Hallmark · genre: modern-minimal · macrostructure: Workbench · theme: existing Kordi iOS
+     * audience: Kordi iOS chat users · use: review, edit, caption, and send a captured photo
+     * contrast: pass (40–41) · chrome: pass (47) · tokens: pass (48)
+     * responsive: pass (34, 49–57)
+     */
+    :root {
+      color-scheme: dark;
+      --color-canvas: #000000;
+      --color-surface: #111214;
+      --color-surface-raised: #202124;
+      --color-surface-active: #263d68;
+      --color-rule: #34363a;
+      --color-text: #f7f7f8;
+      --color-muted: #a9abb0;
+      --color-accent: #2563eb;
+      --color-accent-ink: #ffffff;
+      --color-focus: #8bb4ff;
+      --color-overlay: rgba(0, 0, 0, 0.58);
+      --color-crop: rgba(255, 255, 255, 0.72);
+      --color-draw: #ff453a;
+      --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+      --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+      --space-2xs: 0.25rem;
+      --space-xs: 0.5rem;
+      --space-sm: 0.75rem;
+      --space-md: 1rem;
+      --space-lg: 1.5rem;
+      --control-height: 2.75rem;
+      --radius-control: 0.875rem;
+      --radius-round: 999px;
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+      --duration-short: 180ms;
+      --shadow-send: 0 0.5rem 1.4rem rgba(37, 99, 235, 0.34);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      overflow-x: clip;
+      background: var(--color-canvas);
+      color: var(--color-text);
+      font-family: var(--font-body);
+    }
+
+    button,
+    input { font: inherit; }
+
+    button {
+      color: inherit;
+      white-space: nowrap;
+    }
+
+    button:focus-visible,
+    input:focus-visible {
+      outline: 2px solid var(--color-focus);
+      outline-offset: 2px;
+    }
+
+    .editor {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      width: min(100%, 27rem);
+      min-height: 100dvh;
+      margin-inline: auto;
+      background: var(--color-canvas);
+    }
+
+    .editor__header {
+      position: relative;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+      align-items: center;
+      min-height: 3.5rem;
+      padding-inline: max(var(--space-sm), env(safe-area-inset-left));
+      padding-block-start: env(safe-area-inset-top);
+      background: var(--color-overlay);
+      backdrop-filter: blur(1rem);
+    }
+
+    .editor__title {
+      min-width: 0;
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 1rem;
+      font-style: normal;
+      font-weight: 650;
+      overflow-wrap: anywhere;
+    }
+
+    .header-button {
+      min-width: 2.75rem;
+      min-height: 2.75rem;
+      border: 0;
+      border-radius: var(--radius-control);
+      background: transparent;
+      color: var(--color-text);
+      cursor: pointer;
+    }
+
+    .header-button:first-child { justify-self: start; }
+    .header-button:last-child { justify-self: end; }
+
+    .photo-stage {
+      position: relative;
+      display: grid;
+      min-height: 0;
+      overflow: hidden;
+      background: var(--color-canvas);
+    }
+
+    .photo-stage__image {
+      width: 100%;
+      height: 100%;
+      min-height: 0;
+      object-fit: contain;
+      transition: transform var(--duration-short) var(--ease-out);
+    }
+
+    .photo-stage[data-rotation="90"] .photo-stage__image { transform: rotate(90deg) scale(0.76); }
+    .photo-stage[data-rotation="180"] .photo-stage__image { transform: rotate(180deg); }
+    .photo-stage[data-rotation="270"] .photo-stage__image { transform: rotate(270deg) scale(0.76); }
+
+    .crop-guide,
+    .draw-mark {
+      position: absolute;
+      inset: 8% 7%;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity var(--duration-short) var(--ease-out);
+    }
+
+    .crop-guide {
+      border: 1px solid var(--color-crop);
+      background-image:
+        linear-gradient(to right, transparent 33%, var(--color-crop) 33%, var(--color-crop) calc(33% + 1px), transparent calc(33% + 1px), transparent 66%, var(--color-crop) 66%, var(--color-crop) calc(66% + 1px), transparent calc(66% + 1px)),
+        linear-gradient(to bottom, transparent 33%, var(--color-crop) 33%, var(--color-crop) calc(33% + 1px), transparent calc(33% + 1px), transparent 66%, var(--color-crop) 66%, var(--color-crop) calc(66% + 1px), transparent calc(66% + 1px));
+    }
+
+    .draw-mark {
+      inset: auto auto 31% 22%;
+      width: 55%;
+      height: 15%;
+      border-block-end: 0.32rem solid var(--color-draw);
+      border-radius: 50%;
+      transform: rotate(-8deg);
+    }
+
+    .photo-stage[data-tool="crop"] .crop-guide,
+    .photo-stage[data-tool="draw"] .draw-mark { opacity: 1; }
+
+    .editor__controls {
+      position: relative;
+      z-index: 2;
+      padding: var(--space-xs) max(var(--space-sm), env(safe-area-inset-right)) max(var(--space-sm), env(safe-area-inset-bottom));
+      background: var(--color-overlay);
+      backdrop-filter: blur(1rem);
+    }
+
+    .tool-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: var(--space-xs);
+      margin-block-end: var(--space-xs);
+    }
+
+    .tool-button {
+      min-width: 0;
+      min-height: var(--control-height);
+      border: 0;
+      border-radius: var(--radius-control);
+      background: transparent;
+      color: var(--color-muted);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .tool-button:hover { background: var(--color-surface-raised); }
+    .tool-button:active { transform: translateY(1px); }
+    .tool-button[aria-pressed="true"] {
+      background: var(--color-surface-active);
+      color: var(--color-text);
+    }
+
+    .send-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: var(--space-xs);
+      align-items: center;
+    }
+
+    .caption {
+      width: 100%;
+      height: var(--control-height);
+      min-width: 0;
+      border: 1px solid var(--color-rule);
+      border-radius: var(--radius-round);
+      outline: 2px solid transparent;
+      padding-inline: var(--space-md);
+      background: var(--color-surface);
+      color: var(--color-text);
+    }
+
+    .caption::placeholder { color: var(--color-muted); }
+    .caption:hover { background: var(--color-surface-raised); }
+    .caption:focus { border-color: var(--color-accent); }
+
+    .send-button {
+      display: grid;
+      place-items: center;
+      width: var(--control-height);
+      height: var(--control-height);
+      border: 0;
+      border-radius: var(--radius-round);
+      background: var(--color-accent);
+      color: var(--color-accent-ink);
+      font-size: 1.35rem;
+      font-weight: 700;
+      box-shadow: var(--shadow-send);
+      cursor: pointer;
+      transition: transform var(--duration-short) var(--ease-out);
+    }
+
+    .send-button:hover { transform: scale(1.04); }
+    .send-button:active { transform: scale(0.96); }
+
+    .status {
+      min-height: 1lh;
+      margin: var(--space-2xs) var(--space-xs) 0;
+      color: var(--color-muted);
+      font-size: 0.75rem;
+      text-align: center;
+    }
+
+    @media (min-width: 48rem) {
+      body { background: var(--color-surface); }
+      .editor { box-shadow: 0 0 0 1px var(--color-rule); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="editor" aria-label="Captured photo send review preview">
+    <header class="editor__header">
+      <button class="header-button" id="cancel" type="button" aria-label="Cancel photo review">Cancel</button>
+      <h1 class="editor__title">Photo</h1>
+      <button class="header-button" id="more" type="button" aria-label="More photo actions">•••</button>
+    </header>
+
+    <section class="photo-stage" id="photo-stage" data-tool="none" data-rotation="0" aria-label="Photo preview">
+      <img class="photo-stage__image" src="../../agent/assets/title-figure.png" width="998" height="432" alt="Selected Kordi illustration ready to edit and send" />
+      <div class="crop-guide" aria-hidden="true"></div>
+      <div class="draw-mark" aria-hidden="true"></div>
+    </section>
+
+    <footer class="editor__controls">
+      <div class="tool-row" aria-label="Photo editing tools">
+        <button class="tool-button" id="rotate" type="button">↻&nbsp; Rotate</button>
+        <button class="tool-button" data-tool="crop" type="button" aria-pressed="false">Crop</button>
+        <button class="tool-button" data-tool="draw" type="button" aria-pressed="false">Draw</button>
+      </div>
+      <div class="send-row">
+        <input class="caption" id="caption" type="text" maxlength="1024" placeholder="Add a caption…" aria-label="Photo caption" />
+        <button class="send-button" id="send" type="button" aria-label="Send photo">↑</button>
+      </div>
+      <p class="status" id="status" aria-live="polite">Preview only — no message will be sent.</p>
+    </footer>
+  </main>
+
+  <script>
+    const stage = document.querySelector('#photo-stage');
+    const status = document.querySelector('#status');
+    const toolButtons = [...document.querySelectorAll('[data-tool]')].filter((button) => button !== stage);
+
+    toolButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const tool = button.dataset.tool;
+        const nextTool = stage.dataset.tool === tool ? 'none' : tool;
+        stage.dataset.tool = nextTool;
+        toolButtons.forEach((candidate) => candidate.setAttribute('aria-pressed', String(candidate.dataset.tool === nextTool)));
+        status.textContent = nextTool === 'none' ? 'Editing tool closed.' : `${button.textContent.trim()} tool selected.`;
+      });
+    });
+
+    document.querySelector('#rotate').addEventListener('click', () => {
+      stage.dataset.rotation = String((Number(stage.dataset.rotation) + 90) % 360);
+      status.textContent = 'Photo rotated clockwise.';
+    });
+
+    document.querySelector('#cancel').addEventListener('click', () => {
+      status.textContent = 'Cancel returns to the conversation without attaching the photo.';
+    });
+
+    document.querySelector('#more').addEventListener('click', () => {
+      status.textContent = 'No additional actions are proposed for this first version.';
+    });
+
+    document.querySelector('#send').addEventListener('click', () => {
+      const caption = document.querySelector('#caption').value.trim();
+      status.textContent = caption
+        ? 'Preview: the photo and caption would send together.'
+        : 'Preview: the photo would send immediately.';
+    });
+  </script>
+</body>
+</html>
