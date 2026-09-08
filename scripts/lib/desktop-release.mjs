@@ -35,13 +35,13 @@ import {
   verifyUnpublishedChannelWithConvergence as verifyUnpublishedChannel,
 } from './desktop-release-public.mjs';
 import { releaseNotesForPublication } from './desktop-release-notes.mjs';
+import { VERSION_PATTERN, MANIFEST_KEY_PATTERN } from './desktop-release-version.mjs';
 
 export { PRODUCT_ORIGIN } from './desktop-release-public.mjs';
 export const TAURI_UPDATER_PUBLIC_KEY = 'dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDY3N0JBRkMwRDRDNzFEOUIKUldTYkhjZlV3Szk3WjVXWWVmNzZGanNDakFlRkxTZ3UwZ1dLelpJenl3NnY3YmkvZCtEcUxxUWcK';
 
 const REPO_ROOT = dirname(fileURLToPath(new URL('../../package.json', import.meta.url)));
 const IMMUTABLE_CACHE_CONTROL = 'public, max-age=31536000, immutable';
-const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-beta\.(0|[1-9]\d*)(?:\.(?:0|[1-9]\d*))?$/;
 const SAFE_CHANNELS = new Set(['beta', 'acceptance']);
 const SENSITIVE_PATTERNS = [
   'pi-clipboard',
@@ -203,7 +203,7 @@ function validateOptions(options) {
   const pubDate = options?.pubDate === undefined
     ? new Date().toISOString()
     : requireString(options.pubDate, '--pub-date');
-  if (!VERSION_PATTERN.test(version)) throw new Error('Release version must be a beta semantic version');
+  if (!VERSION_PATTERN.test(version)) throw new Error('Release version must be a stable or beta semantic version');
   if (!SAFE_CHANNELS.has(channel)) throw new Error('Release channel must be beta or acceptance');
   if (!['production', 'adhoc-preview'].includes(releaseProfile)) {
     throw new Error('Release profile must be production or adhoc-preview');
@@ -561,7 +561,7 @@ async function loadChannelSnapshot(store, channel, updaterPublicKey = TAURI_UPDA
     throw new Error('Prior channel pointer is invalid');
   }
   assertDigest(pointer.releaseManifestSha256, 'Prior channel pointer manifest');
-  if (!/^desktop\/releases\/(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-beta\.(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*))?\/release\.json$/.test(pointer.releaseManifestKey)) {
+  if (!MANIFEST_KEY_PATTERN.test(pointer.releaseManifestKey)) {
     throw new Error('Prior channel pointer manifest key is invalid');
   }
 
@@ -695,7 +695,7 @@ export async function rollbackDesktopBetaChannel(options, dependencies = {}) {
     '--expected-current-version',
   );
   if (!VERSION_PATTERN.test(expectedCurrentVersion)) {
-    throw new Error('Expected current version must be a beta semantic version');
+    throw new Error('Expected current version must be a stable or beta semantic version');
   }
   const { store } = dependencies;
   if (!store || typeof store.getObject !== 'function' || typeof store.putObject !== 'function') {
