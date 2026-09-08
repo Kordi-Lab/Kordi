@@ -23,11 +23,30 @@ private struct SessionFeatureNotice {
     )
 }
 
+enum SessionDetailPresentationContext: Equatable {
+    case conversation
+    case groupParticipantProfile
+
+    static func authorProfile(
+        sourceConversation: ConversationSummary,
+        destination: ConversationSummary
+    ) -> Self {
+        sourceConversation.kind == .group && destination.kind == .person
+            ? .groupParticipantProfile
+            : .conversation
+    }
+
+    var opensConversationOnChat: Bool {
+        self == .groupParticipantProfile
+    }
+}
+
 struct SessionDetailView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
     @Environment(\.dismiss) private var dismiss
     let conversation: ConversationSummary
+    private let presentationContext: SessionDetailPresentationContext
     @State private var tab: SessionDetailTab
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
@@ -38,13 +57,18 @@ struct SessionDetailView: View {
     @State private var groupInviteSpace: GroupSpaceSummary?
     @State private var relatedConversation: ConversationSummary?
     @State private var participantProfileConversation: ConversationSummary?
+    @State private var chatConversation: ConversationSummary?
     @State private var callStartTask: Task<Void, Never>?
     @State private var agentThreads: [CloudAgentSubsessionTask] = []
     @State private var agentThreadError = false
     @State private var selectedAgentThread: CloudAgentSubsessionTask?
 
-    init(conversation: ConversationSummary) {
+    init(
+        conversation: ConversationSummary,
+        presentationContext: SessionDetailPresentationContext = .conversation
+    ) {
         self.conversation = conversation
+        self.presentationContext = presentationContext
         _tab = State(initialValue: conversation.kind == .group ? .members : .media)
     }
 
@@ -205,7 +229,7 @@ struct SessionDetailView: View {
                         tint: heroTint,
                         notificationsMuted: notificationsMuted,
                         isCallStarting: callCoordinator.isStartingCall,
-                        onChat: dismiss.callAsFunction,
+                        onChat: openChat,
                         onCall: { startOrJoinCall(kind: .voice) },
                         onVideo: { startOrJoinCall(kind: .video) },
                         onMute: toggleNotificationsMuted,
@@ -296,7 +320,13 @@ struct SessionDetailView: View {
             ConversationView(conversation: destination)
         }
         .navigationDestination(item: $participantProfileConversation) { destination in
-            SessionDetailView(conversation: destination)
+            SessionDetailView(
+                conversation: destination,
+                presentationContext: .groupParticipantProfile
+            )
+        }
+        .navigationDestination(item: $chatConversation) { destination in
+            ConversationView(conversation: destination)
         }
         .onDisappear {
             callStartTask?.cancel()
@@ -504,6 +534,14 @@ struct SessionDetailView: View {
 
     private func showFeatureNotice(_ notice: SessionFeatureNotice) {
         featureNotice = notice
+    }
+
+    private func openChat() {
+        if presentationContext.opensConversationOnChat {
+            chatConversation = currentConversation
+        } else {
+            dismiss()
+        }
     }
 
     private func openParticipantProfile(_ participant: CloudGroupParticipant) {
