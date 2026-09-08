@@ -4,6 +4,51 @@ This file records notable user-facing changes to Kordi Desktop.
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-09-08
+
+### Added
+
+- Added a private rolling Digest and personal calendar across macOS and iOS,
+  with source-message links, calendar imports, reviewed event proposals, and
+  reminders. ([#1421], [#1429])
+- Added Agent execution subsessions, message discussions, and private forks,
+  with shared progress and follow-up messages across devices. ([#1391])
+- Added unread-thread shortcuts on macOS and iOS. ([#1431])
+- Added unified composer references and mentions. ([#1398])
+- Added Noto animated emoji. ([#1404])
+- Added Live Photo sending, review, and playback on macOS and iOS. ([#1433])
+- Added camera-photo review before sending on iOS. ([#1437])
+- Added support for GPT-6 Astra and Fable 5.1. ([#1417])
+
+### Changed
+
+- Made Digest updates incremental and calendar changes explicitly reviewable,
+  including recurring events and cancellation proposals. ([#1429])
+- Improved Digest loading, cached source navigation, event feedback, and compact
+  source titles. ([#1444], [#1442])
+- Added particle-dissolve feedback when deleting messages. ([#1390])
+- Improved iOS hold-to-talk press feedback and circular chat swipe actions.
+  ([#1443], [#1440])
+- Request iOS calendar access after login and keep model initialization quiet.
+  ([#1436], [#1417])
+
+### Fixed
+
+- Stabilized cross-device conversation identity, shared titles, ordering,
+  reactions, archive, mute, pin, unread state, and Agent reply progress.
+  ([#1391])
+- Preserved legacy conversation and execution history during database upgrades
+  and improved iOS navigation, history reuse, cancellation, and avatar recovery.
+  ([#1444])
+- Require a channel name before creation and preserve the shared group identity
+  on macOS and iOS. ([#1451])
+- Corrected participant-profile chat routing and composer mention highlighting.
+  ([#1449], [#1409])
+- Fixed macOS link-preview metadata and artwork loading. ([#1412])
+- Fixed emoji loading and reaction rendering. ([#1445])
+- Excluded development endpoints from production iOS builds and preserved shared
+  Keychain configuration during project generation. ([#1389], [#1454])
+
 ## [0.0.1-beta.19.3] - 2026-09-02
 
 ### Added
@@ -394,7 +439,8 @@ This file records notable user-facing changes to Kordi Desktop.
 This release is the comparison baseline for beta.8. See the
 [beta.7 release notes] for its packaged artifacts and release details.
 
-[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta19.3...HEAD
+[Unreleased]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1...HEAD
+[0.0.1]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta19.3...V0.0.1
 [0.0.1-beta.19.3]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta18...V0.0.1.beta19.3
 [0.0.1-beta.18]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta17...V0.0.1.beta18
 [0.0.1-beta.17]: https://github.com/Kordi-Lab/Kordi/compare/V0.0.1.beta16...V0.0.1.beta17
@@ -594,3 +640,25 @@ This release is the comparison baseline for beta.8. See the
 [#1363]: https://github.com/Kordi-Lab/Kordi/pull/1363
 [#1365]: https://github.com/Kordi-Lab/Kordi/issues/1365
 [#1372]: https://github.com/Kordi-Lab/Kordi/pull/1372
+[#1389]: https://github.com/Kordi-Lab/Kordi/pull/1389
+[#1390]: https://github.com/Kordi-Lab/Kordi/pull/1390
+[#1391]: https://github.com/Kordi-Lab/Kordi/pull/1391
+[#1398]: https://github.com/Kordi-Lab/Kordi/pull/1398
+[#1404]: https://github.com/Kordi-Lab/Kordi/pull/1404
+[#1409]: https://github.com/Kordi-Lab/Kordi/pull/1409
+[#1412]: https://github.com/Kordi-Lab/Kordi/pull/1412
+[#1417]: https://github.com/Kordi-Lab/Kordi/pull/1417
+[#1421]: https://github.com/Kordi-Lab/Kordi/pull/1421
+[#1429]: https://github.com/Kordi-Lab/Kordi/pull/1429
+[#1431]: https://github.com/Kordi-Lab/Kordi/pull/1431
+[#1433]: https://github.com/Kordi-Lab/Kordi/pull/1433
+[#1436]: https://github.com/Kordi-Lab/Kordi/pull/1436
+[#1437]: https://github.com/Kordi-Lab/Kordi/pull/1437
+[#1440]: https://github.com/Kordi-Lab/Kordi/pull/1440
+[#1442]: https://github.com/Kordi-Lab/Kordi/pull/1442
+[#1443]: https://github.com/Kordi-Lab/Kordi/pull/1443
+[#1444]: https://github.com/Kordi-Lab/Kordi/pull/1444
+[#1445]: https://github.com/Kordi-Lab/Kordi/pull/1445
+[#1449]: https://github.com/Kordi-Lab/Kordi/pull/1449
+[#1451]: https://github.com/Kordi-Lab/Kordi/pull/1451
+[#1454]: https://github.com/Kordi-Lab/Kordi/pull/1454
