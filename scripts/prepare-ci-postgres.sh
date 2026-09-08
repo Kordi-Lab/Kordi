@@ -14,8 +14,9 @@ chmod 700 "$build_root"
 archive="$build_root/postgresql.tar.bz2"
 build_log="$build_root/build.log"
 
+# Connection resets (curl 56) must retry too, with bounded connection/attempt time.
 curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
-  --retry 3 "https://ftp.postgresql.org/pub/source/v${version}/postgresql-${version}.tar.bz2" \
+  --connect-timeout 20 --max-time 180 --retry 5 --retry-all-errors --retry-delay 2 "https://ftp.postgresql.org/pub/source/v${version}/postgresql-${version}.tar.bz2" \
   --output "$archive"
 printf '%s  %s\n' "$checksum" "$archive" | shasum -a 256 --check --status
 tar -xjf "$archive" -C "$build_root"
