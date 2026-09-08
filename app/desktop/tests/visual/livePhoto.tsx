@@ -15,6 +15,8 @@ function Preview() {
   return <main className="app-attachment-image-lightbox fixed inset-0 flex items-center justify-center" aria-label="Live Photo preview">
     <img ref={imageRef} src={photo} alt="Generated teal test card" className="app-attachment-image-lightbox-image" style={{ width: 800 }} />
     {visible ? <LivePhotoPlayback imageRef={imageRef} controlsTarget={controls} loadSource={async () => {
+      document.body.dataset.liveSourceRequests = String(Number(document.body.dataset.liveSourceRequests ?? 0) + 1);
+      if (location.search.includes('slow-source')) await new Promise((resolve) => setTimeout(resolve, 600));
       if (location.search.includes('failure')) throw new Error('Offline');
       return video;
     }} /> : null}

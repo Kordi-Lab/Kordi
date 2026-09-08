@@ -28,6 +28,7 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mounted = useRef(true);
+  const playbackRequested = useRef(false);
   const [frame, setFrame] = useState<{ width: number; height: number } | null>(null);
   const [source, setSource] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
@@ -45,7 +46,7 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
       video?.removeAttribute('src');
       video?.load();
     };
-  }, [playing, source]);
+  }, [source]);
 
   useEffect(() => {
     const image = imageRef?.current;
@@ -55,19 +56,43 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
     return () => observer.disconnect();
   }, [imageRef]);
 
+  function stop() {
+    playbackRequested.current = false;
+    videoRef.current?.pause();
+    setPlaying(false);
+    setLoading(false);
+  }
+
+  function fail() {
+    if (!mounted.current) return;
+    stop();
+    setFailed(true);
+    setSource(null);
+  }
+
   async function play() {
-    if (playing) { videoRef.current?.pause(); setPlaying(false); setLoading(false); return; }
+    if (playing) { stop(); return; }
     setLoading(true);
     setFailed(false);
     try {
+      const video = videoRef.current;
+      if (source && video) {
+        playbackRequested.current = true;
+        setPlaying(true);
+        video.currentTime = 0;
+        await video.play().catch(() => { if (playbackRequested.current) fail(); });
+        return;
+      }
       const url = loadSource ? await loadSource()
         : localVideoPath ? convertFileSrc(localVideoPath)
         : livePhoto ? await playbackSource(livePhoto) : null;
       if (!url) throw new Error('Live Photo unavailable');
-      if (mounted.current) { setSource(url); setPlaying(true); }
-    } catch {
-      if (mounted.current) { setFailed(true); setLoading(false); }
-    }
+      if (mounted.current) {
+        playbackRequested.current = true;
+        setSource(url);
+        setPlaying(true);
+      }
+    } catch { fail(); }
   }
 
   const controls = (
@@ -84,23 +109,22 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
   );
 
   return <>
-    {playing && source ? (
+    {source ? (
       <video ref={videoRef} src={source} playsInline preload="auto"
         className="app-attachment-image-lightbox-image absolute object-contain"
-        style={{ ...frame, transform: `scale(${zoom})`, background: "black", opacity: loading ? 0 : 1 }}
+        style={{ ...frame, transform: `scale(${zoom})`, background: "black", opacity: loading ? 0 : 1, visibility: playing ? "visible" : "hidden" }}
         data-attachment-image-lightbox-control="true"
         aria-label="Live Photo motion"
         onCanPlay={(event) => {
+          if (!playbackRequested.current) return;
           setLoading(false);
           const video = event.currentTarget;
-          void video.play().catch(() => {
-            if (mounted.current && video.isConnected) { setFailed(true); setPlaying(false); setLoading(false); }
-          });
+          if (video.paused) void video.play().catch(() => { if (playbackRequested.current) fail(); });
         }}
-        onWaiting={() => setLoading(true)}
+        onWaiting={() => { if (playbackRequested.current) setLoading(true); }}
         onPlaying={() => setLoading(false)}
-        onEnded={() => { setPlaying(false); setLoading(false); }}
-        onError={() => { setFailed(true); setPlaying(false); setLoading(false); }}
+        onEnded={stop}
+        onError={fail}
       />
     ) : null}
     {controlsTarget ? createPortal(controls, controlsTarget) : controls}

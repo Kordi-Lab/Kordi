@@ -18,7 +18,7 @@ test('Live playback shares the photo frame, returns to still, and releases media
     return photo.width === video.width && photo.height === video.height && photo.x === video.x && photo.y === video.y;
   });
   expect(framesMatch).toBe(true);
-  await expect(page.locator('video')).toHaveCount(0);
+  await expect(page.locator('video')).toBeHidden();
   await page.getByRole('button', { name: 'Play Live Photo' }).click();
   await expect(page.locator('video')).toHaveCount(1);
   const video = await page.locator('video').elementHandle();
@@ -44,6 +44,26 @@ test('buffering keeps the still visible and can be stopped', async ({ page }) =>
   await expect(page.locator('video')).toHaveCSS('opacity', '0');
   await expect(page.getByRole('img')).toBeVisible();
   await page.getByRole('button', { name: 'Stop Live Photo' }).click();
-  await expect(page.locator('video')).toHaveCount(0);
+  await expect(page.locator('video')).toBeHidden();
+  await page.waitForFunction(() => (document.querySelector('video')?.readyState ?? 0) >= 3);
+  expect(await page.locator('video').evaluate((video) => (video as HTMLVideoElement).paused)).toBe(true);
+  await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+
+test('replay uses the same buffered video without preparing another source', async ({ page }) => {
+  await page.goto('/tests/visual/livePhoto.html?slow-source');
+  await page.getByRole('button', { name: 'Play Live Photo' }).click();
+  await page.waitForFunction(() => (document.querySelector('video')?.currentTime ?? 0) > 0.1);
+  const video = await page.locator('video').elementHandle();
+  await expect(page.locator('video')).toBeHidden();
+  await page.route('**/live-photo.mp4', (route) => route.abort());
+  await page.getByRole('button', { name: 'Play Live Photo' }).click();
+  await page.waitForFunction(() => {
+    const video = document.querySelector('video');
+    return video && !video.paused && video.currentTime > 0.1;
+  });
+  expect(await video!.evaluate((element) => element === document.querySelector('video'))).toBe(true);
+  await expect(page.locator('body')).toHaveAttribute('data-live-source-requests', '1');
   await expect(page.getByRole('status')).toHaveCount(0);
 });
