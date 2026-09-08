@@ -432,7 +432,9 @@ export async function resolveForwardAttachmentItems({
       const blob = await client.downloadAttachmentContent(token, resource.attachmentId);
       return storeAttachment(resource.name, Array.from(new Uint8Array(await blob.arrayBuffer())));
     }));
-    attachment.livePhotoFiles = { videoPath: paths[0], playbackPath: paths[1] };
+    const previewBytes = new Uint8Array(await (await fetch(attachment.previewUrl)).arrayBuffer());
+    const previewPath = await storeAttachment('Live.preview.jpg', Array.from(previewBytes));
+    attachment.livePhotoFiles = { videoPath: paths[0], playbackPath: paths[1], previewPath };
   }
   return resolved;
 }

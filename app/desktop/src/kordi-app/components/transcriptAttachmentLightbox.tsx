@@ -103,7 +103,7 @@ export function AttachmentImageLightbox({
           {previewStatus === 'unavailable' ? 'Image preview unavailable' : 'Opening image…'}
         </div>
       )}
-      {attachment.livePhoto || attachment.livePhotoFiles ? <LivePhotoPlayback key={attachment.attachmentId ?? attachment.localPath ?? attachment.name} livePhoto={attachment.livePhoto} localVideoPath={attachment.livePhotoFiles?.playbackPath} zoom={zoom} controlsTarget={liveControls} imageRef={imageRef} /> : null}
+      {attachment.livePhoto || attachment.livePhotoFiles ? <LivePhotoPlayback key={attachment.attachmentId ?? attachment.localPath ?? attachment.name} livePhoto={attachment.livePhoto} localVideoPath={attachment.livePhotoFiles?.playbackPath} zoom={zoom} controlsTarget={liveControls} imageRef={imageRef} imageUrl={previewUrl} /> : null}
       {canGoNext && onNext ? (
         <button
           type="button"

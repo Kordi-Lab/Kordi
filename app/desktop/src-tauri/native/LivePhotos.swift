@@ -91,6 +91,9 @@ private func prepare(_ input: ImportRequest) throws -> [[String: Any]] {
                 if bytes.length <= 260_000 { thumbnail = image; preview = bytes as Data; break }
             }
             guard thumbnail != nil, let preview else { throw LiveError.invalid }
+            let previewFile = base.appendingPathExtension("preview.jpg")
+            created.append(previewFile)
+            try preview.write(to: previewFile, options: .atomic)
             result.append([
                 "sourcePhotoPath": photo.path, "sourceVideoPath": video.path,
                 "path": storedPhoto.path, "name": photo.lastPathComponent,
@@ -98,7 +101,7 @@ private func prepare(_ input: ImportRequest) throws -> [[String: Any]] {
                 "sizeBytes": try storedPhoto.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0,
                 "previewUrl": "data:image/jpeg;base64," + preview.base64EncodedString(),
                 "widthPixels": width, "heightPixels": height,
-                "livePhotoFiles": ["videoPath": storedVideo.path, "playbackPath": playback.path]
+                "livePhotoFiles": ["videoPath": storedVideo.path, "playbackPath": playback.path, "previewPath": previewFile.path]
             ])
             used.insert(video)
             break

@@ -101,6 +101,7 @@ private func fixture(in directory: URL) throws -> (URL, URL) {
                 let photoUnchanged = try Data(contentsOf: URL(fileURLWithPath: result["path"] as! String)) == Data(contentsOf: photo)
                 let videoUnchanged = try Data(contentsOf: URL(fileURLWithPath: resources["videoPath"]!)) == Data(contentsOf: video)
                 precondition(photoUnchanged && videoUnchanged)
+                precondition(FileManager.default.fileExists(atPath: resources["previewPath"]!))
                 if let output = CommandLine.arguments.dropFirst().first {
                     let target = URL(fileURLWithPath: output)
                     try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)

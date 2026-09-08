@@ -72,8 +72,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install visual-test browser
-        run: pnpm --dir app/desktop exec playwright install chromium
+      - name: Install visual-test browsers
+        run: pnpm --dir app/desktop exec playwright install chromium webkit
 
       - name: Compare transient surfaces
         run: pnpm --dir app/desktop test:visual

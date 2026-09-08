@@ -9,7 +9,8 @@ test.beforeAll(() => {
 });
 
 test('Live playback shares the photo frame, returns to still, and releases media when closed', async ({ page }) => {
-  await page.goto('/tests/visual/livePhoto.html');
+  await page.goto('/tests/visual/livePhoto.html?delayed-photo');
+  await expect(page.getByRole('img')).toBeVisible();
   await page.getByRole('button', { name: 'Play Live Photo' }).click();
   await page.waitForFunction(() => (document.querySelector('video')?.currentTime ?? 0) > 0.1);
   const framesMatch = await page.evaluate(() => {
@@ -66,4 +67,36 @@ test('replay uses the same buffered video without preparing another source', asy
   expect(await video!.evaluate((element) => element === document.querySelector('video'))).toBe(true);
   await expect(page.locator('body')).toHaveAttribute('data-live-source-requests', '1');
   await expect(page.getByRole('status')).toHaveCount(0);
+});
+
+
+test('a restored Live Photo draft recovers its local preview before uploading', async ({ page }) => {
+  await page.goto('/tests/visual/livePhoto.html');
+  const result = await page.evaluate(async () => {
+    const { parseStoredComposerAttachments, serializeStoredComposerAttachments } = await import('/src/features/chat/composerAttachments.ts');
+    const { uploadComposerAttachments } = await import('/src/features/cloud/cloudComposerAttachments.ts');
+    const draft = { id: 'draft', name: 'Photo.heic', kind: 'image', path: '/tmp/photo.heic', mimeType: 'image/heic', sizeBytes: 100,
+      livePhotoFiles: { videoPath: '/tmp/motion.mov', playbackPath: '/tmp/playback.mp4', previewPath: '/tmp/preview.jpg' } };
+    const restored = parseStoredComposerAttachments(serializeStoredComposerAttachments([draft]));
+    const reads: string[] = [];
+    let previewStored = false;
+    const sent = await uploadComposerAttachments({ token: 'test-token', attachments: restored, useNativeUpload: true,
+      readAttachment: async (path: string) => {
+        reads.push(path);
+        const bytes = await (await fetch('/tests/visual/generated/live-photo/live-photo.jpg')).arrayBuffer();
+        return Array.from(new Uint8Array(bytes));
+      },
+      client: {
+        uploadAttachment: async () => { throw new Error('Native upload expected'); },
+        updateAttachmentPreview: async (_token: string, _id: string, preview: string) => {
+          previewStored = preview.startsWith('data:image/jpeg;base64,');
+          return { attachmentId: 'photo', previewUrl: preview, updatedLinks: 0 };
+        },
+      },
+      nativeUpload: async ({ path }: { path: string }) => ({ attachmentId: path, sizeBytes: 100, contentType: null }),
+      persistAttachmentPath: async () => null,
+    });
+    return { reads, previewStored, hasLivePhoto: Boolean(sent[0]?.livePhoto), count: sent.length };
+  });
+  expect(result).toEqual({ reads: ['/tmp/preview.jpg'], previewStored: true, hasLivePhoto: true, count: 1 });
 });

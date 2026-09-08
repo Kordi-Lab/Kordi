@@ -6,7 +6,7 @@ import type {
   CloudAuthClient,
   SendCloudMessageAttachmentInput,
 } from './authClient';
-import { createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
+import { blobToDataUrl, createCompressedImagePreviewDataUrl } from './cloudAttachmentPreviewGeneration';
 import {
   cacheCloudAttachmentLocalPath,
   persistCloudAttachmentPreviewDataUrl,
@@ -60,6 +60,10 @@ export async function uploadComposerAttachments({
       let previewUrl = supportsPreview
         ? safeCloudAttachmentPreviewUrl(attachment.previewUrl)
         : null;
+      if (!previewUrl && attachment.livePhotoFiles?.previewPath) {
+        const bytes = await readAttachment(attachment.livePhotoFiles.previewPath);
+        previewUrl = safeCloudAttachmentPreviewUrl(await blobToDataUrl(new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' })));
+      }
       if (attachment.livePhotoFiles && (!previewUrl?.startsWith('data:image/') || !client.updateAttachmentPreview)) {
         throw new Error('This Live Photo could not prepare its still preview. Try attaching it again.');
       }

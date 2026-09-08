@@ -18,13 +18,14 @@ async function playbackSource(livePhoto: LivePhoto) {
   return cloudAttachmentPlaybackUrl(defaultCloudAuthClient(), session.token, resource.attachmentId);
 }
 
-export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSource, controlsTarget, imageRef }: {
+export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSource, controlsTarget, imageRef, imageUrl }: {
   livePhoto?: LivePhoto | null;
   localVideoPath?: string;
   zoom?: number;
   loadSource?: () => Promise<string>;
   controlsTarget?: HTMLElement | null;
   imageRef?: RefObject<HTMLImageElement | null>;
+  imageUrl?: string | null;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mounted = useRef(true);
@@ -54,7 +55,7 @@ export function LivePhotoPlayback({ livePhoto, localVideoPath, zoom = 1, loadSou
     const observer = new ResizeObserver(() => setFrame({ width: image.clientWidth, height: image.clientHeight }));
     observer.observe(image);
     return () => observer.disconnect();
-  }, [imageRef]);
+  }, [imageRef, imageUrl]);
 
   function stop() {
     playbackRequested.current = false;

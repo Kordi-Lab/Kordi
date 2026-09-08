@@ -18,7 +18,7 @@ const attachment = { attachmentId: 'still', kind: 'image' as const, name: 'photo
 const draft: AttachmentItem = {
   id: 'draft', name: 'photo.heic', kind: 'image', path: '/tmp/live/photo.heic', mimeType: 'image/heic',
   sizeBytes: 100, previewUrl: 'data:image/jpeg;base64,cG9zdGVy',
-  livePhotoFiles: { videoPath: '/tmp/live/motion.mov', playbackPath: '/tmp/live/playback.mp4' },
+  livePhotoFiles: { videoPath: '/tmp/live/motion.mov', playbackPath: '/tmp/live/playback.mp4', previewPath: '/tmp/live/preview.jpg' },
 };
 
 test('Live Photo survives group transport, canonical mapping, cache, and outbox reload as one photo', () => {
@@ -84,7 +84,7 @@ test('forwarding keeps both motion files and re-uploads them under new IDs', asy
   });
   assert.equal(forwarded.length, 1);
   assert.deepEqual(downloaded.sort(), ['motion', 'playback', 'still']);
-  assert.deepEqual(forwarded[0]?.livePhotoFiles, { videoPath: '/tmp/forwarded-live/Live.mov', playbackPath: '/tmp/forwarded-live/Live.mp4' });
+  assert.deepEqual(forwarded[0]?.livePhotoFiles, { videoPath: '/tmp/forwarded-live/Live.mov', playbackPath: '/tmp/forwarded-live/Live.mp4', previewPath: '/tmp/forwarded-live/Live.preview.jpg' });
   const uploaded = await uploadComposerAttachments({
     token: 'test-token', attachments: forwarded, useNativeUpload: true,
     client: { uploadAttachment: async () => { throw new Error('native upload expected'); }, updateAttachmentPreview: async () => ({ attachmentId: 'new', previewUrl: draft.previewUrl!, updatedLinks: 0 }) },

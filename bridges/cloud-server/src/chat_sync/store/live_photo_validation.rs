@@ -41,6 +41,15 @@ pub(super) fn live_photo_resources(
             (&live["video"], &["video/quicktime"][..], MAX_MOTION_BYTES),
             (&live["playback"], &["video/mp4"][..], MAX_MOTION_BYTES),
         ] {
+            if value
+                .get("name")
+                .and_then(Value::as_str)
+                .is_none_or(|name| name.trim().is_empty())
+            {
+                return Err(StoreError::InvalidInput(
+                    "Live Photo resource name is invalid",
+                ));
+            }
             let id = value
                 .get("attachmentId")
                 .and_then(Value::as_str)
@@ -112,14 +121,19 @@ mod tests {
     fn live_photo_requires_all_distinct_linked_typed_resources() {
         let ids = vec!["photo".into(), "video".into(), "playback".into()];
         let mut content = json!({ "legacy_attachments": [{
-            "attachmentId": "photo", "kind": "image", "mimeType": "image/heic", "sizeBytes": 100,
+            "attachmentId": "photo", "name": "Photo.heic", "kind": "image", "mimeType": "image/heic", "sizeBytes": 100,
             "livePhoto": {
-                "video": { "attachmentId": "video", "mimeType": "video/quicktime", "sizeBytes": 200 },
-                "playback": { "attachmentId": "playback", "mimeType": "video/mp4", "sizeBytes": 300 }
+                "video": { "attachmentId": "video", "name": "Live.mov", "mimeType": "video/quicktime", "sizeBytes": 200 },
+                "playback": { "attachmentId": "playback", "name": "Live.mp4", "mimeType": "video/mp4", "sizeBytes": 300 }
             }
         }] });
         assert_eq!(live_photo_resources(&content, &ids).unwrap().len(), 3);
         assert!(live_photo_resources(&content, &ids[..1]).is_err());
+        for name in [Value::Null, json!(42), json!(" ")] {
+            let mut malformed = content.clone();
+            malformed["legacy_attachments"][0]["livePhoto"]["video"]["name"] = name;
+            assert!(live_photo_resources(&malformed, &ids).is_err());
+        }
         content["legacy_attachments"][0]["livePhoto"]["video"]["attachmentId"] = json!("photo");
         assert!(live_photo_resources(&content, &ids).is_err());
         content["legacy_attachments"][0]["livePhoto"]["video"]["attachmentId"] = json!("video");

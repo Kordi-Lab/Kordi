@@ -23,9 +23,9 @@ pub(super) fn detected_supported_content_type(bytes: &[u8]) -> Option<&'static s
         if box_size < 16 || box_size > bytes.len() {
             return None;
         }
-        let major = &bytes[8..12];
+        let major = bytes[8..12].first_chunk::<4>()?;
         let heic = std::iter::once(major)
-            .chain(bytes[16..box_size].chunks_exact(4))
+            .chain(bytes[16..box_size].as_chunks::<4>().0.iter())
             .any(|brand| matches!(brand, b"heic" | b"heix" | b"hevc" | b"hevx"));
         if heic {
             return Some("image/heic");

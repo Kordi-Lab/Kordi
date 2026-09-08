@@ -9,6 +9,8 @@ Kordi keeps a Live Photo as one image attachment with its original paired MOV an
 - **Received photos:** Open the image and activate the **Live Photo** icon. iPhone uses native Live Photo playback and press-and-hold after loading. Mac plays the MP4 in the still image's frame and returns to the still at the end. Replaying in the same viewer reuses the buffered video without preparing another URL or loading the file again; closing or navigating releases it. Motion loads on demand; errors retain the still and offer retry. Live controls sit in the toolbar outside the photo. iPhone previews fit the complete image between the header and footer in portrait and landscape.
 - **Save:** On iPhone, use **Save Live Photo** in the viewer. On Mac, **Download Live Photo originals** saves the photo and MOV for importing together into Photos. Forwarding uploads the complete pair and playback rendition under the forwarding sender's account.
 
+Mac keeps the generated JPEG preview beside imported or forwarded originals so an unsent draft remains previewable and sendable after restart.
+
 Mac import accepts at most 16 selected files per pairing operation. Original photos are limited to 32 MiB; the MOV and MP4 are each limited to 256 MiB. A lone image remains an ordinary image. Motion Photo formats from other platforms and a custom Live Photo editor are outside this implementation.
 
 ## Transport
@@ -29,7 +31,7 @@ The ordinary image metadata gains an optional `livePhoto` object:
 }
 ```
 
-All three IDs belong in the canonical request's `attachment_ids`, while `legacy_attachments` contains one logical image. Existing JSON storage and attachment membership links preserve the references without a database migration. Before publication, the server checks linkage, ownership, finalization, detected media types, and actual sizes for all resources. The existing authenticated download and playback routes apply to every component. Clients must finish every upload and store a still preview before sending; they must not silently fall back to a still when motion fails.
+All three IDs belong in the canonical request's `attachment_ids`, while `legacy_attachments` contains one logical image. Existing JSON storage and attachment membership links preserve the references without a database migration. Before publication, the server checks resource names, linkage, ownership, finalization, detected media types, and actual sizes for all resources. The existing authenticated download and playback routes apply to every component. Clients must finish every upload and store a still preview before sending; they must not silently fall back to a still when motion fails.
 
 Older clients can render the image through the existing JPEG preview endpoint and ignore the optional Live metadata. Client-side native reconstruction validates that the original files constitute a Live Photo; MIME verification on the server is not a substitute for PhotoKit pair validation.
 

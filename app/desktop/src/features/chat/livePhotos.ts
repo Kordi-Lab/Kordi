@@ -6,7 +6,7 @@ export type LivePhotoResource = {
   sizeBytes: number;
 };
 export type LivePhoto = { video: LivePhotoResource; playback: LivePhotoResource };
-export type LivePhotoFiles = { videoPath: string; playbackPath: string };
+export type LivePhotoFiles = { videoPath: string; playbackPath: string; previewPath?: string };
 
 export function normalizedLivePhoto(value: unknown): LivePhoto | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -31,7 +31,8 @@ export function normalizedLivePhotoFiles(value: unknown): LivePhotoFiles | undef
   const r = value as Record<string, unknown>;
   return typeof r.videoPath === 'string' && r.videoPath.trim()
     && typeof r.playbackPath === 'string' && r.playbackPath.trim()
-    ? { videoPath: r.videoPath, playbackPath: r.playbackPath } : undefined;
+    ? { videoPath: r.videoPath, playbackPath: r.playbackPath,
+        ...(typeof r.previewPath === 'string' && r.previewPath.trim() ? { previewPath: r.previewPath } : {}) } : undefined;
 }
 
 export function livePhotoAttachmentIds(attachment: { attachmentId: string; livePhoto?: LivePhoto | null }): string[] {

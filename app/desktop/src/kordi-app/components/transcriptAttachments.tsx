@@ -49,10 +49,7 @@ import { imageTileClass, isAttachmentSending } from './transcriptAttachmentPrese
 import { AttachmentVideoCard } from './transcriptVideoAttachment';
 import type { Message, MessageAttachment } from '../types';
 export { AttachmentImageLightbox } from './transcriptAttachmentLightbox';
-export {
-  clearAttachmentPreviewRecoveryStateForTests,
-  recoverAttachmentPreviewOnce,
-} from './transcriptAttachmentPreviewRecovery';
+export { clearAttachmentPreviewRecoveryStateForTests, recoverAttachmentPreviewOnce } from './transcriptAttachmentPreviewRecovery';
 export { attachmentImageDeliveryVisual };
 export { AttachmentContextMenu } from './transcriptAttachmentContextMenu';
 export { shouldCloseAttachmentContextMenuForTarget } from './transcriptAttachmentContextMenuState';
