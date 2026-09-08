@@ -26,10 +26,11 @@ test('a single emoji keeps its visible size without a message bubble', () => {
     msg: { ...message, text: 'Look 😀' },
   }));
 
-  assert.match(emojiMarkup, /app-standalone-emoji-message relative h-11 w-\[4\.5rem\]/);
+  assert.match(emojiMarkup, /app-standalone-emoji-message inline-flex items-end gap-1 pr-4/);
   assert.match(emojiMarkup, /app-noto-emoji h-11 w-11/);
-  assert.match(emojiMarkup, /absolute -bottom-0\.5 -right-2/);
-  assert.match(peerMarkup, /app-standalone-emoji-message relative h-11 w-11/);
+  assert.doesNotMatch(emojiMarkup, /-bottom-0\.5|-right-2|w-\[4\.5rem\]/);
+  assert.match(emojiMarkup, /app-message-delivery-footer inline-flex shrink-0/);
+  assert.match(peerMarkup, /app-standalone-emoji-message inline-flex items-end gap-1/);
   assert.match(emojiMarkup, /data-message-delivery-status="sent"/);
   assert.doesNotMatch(emojiMarkup, /app-message-bubble-shape/);
   assert.doesNotMatch(emojiMarkup, /px-4 py-2\.5/);
