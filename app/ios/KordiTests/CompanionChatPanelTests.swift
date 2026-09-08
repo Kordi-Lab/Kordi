@@ -1,7 +1,127 @@
 import XCTest
 import SwiftUI
 import Testing
+import Combine
 @testable import Kordi
+
+@MainActor
+private final class HistoryLoadGate {
+    private var continuations: [CheckedContinuation<Bool, Never>] = []
+    func wait() async -> Bool {
+        await withCheckedContinuation { continuations.append($0) }
+    }
+    func release() {
+        let pending = continuations
+        continuations.removeAll()
+        pending.forEach { $0.resume(returning: true) }
+    }
+}
+
+@MainActor
+struct ConversationLoadReuseTests {
+    private let key = ConversationHistoryLoadKey(accountID: "account", conversationID: "chat", sessionID: "session")
+
+    @Test func successfulHistorySurvivesRepeatedScreenCallers() async {
+        let loads = ConversationHistoryLoads()
+        var requests = 0
+        for _ in 0..<20 {
+            let result = await loads.load(key: key, reuseCompleted: true) { requests += 1; return true }
+            #expect(result)
+        }
+        #expect(requests == 1)
+    }
+
+    @Test func failuresEvictionsAndExplicitRefreshRemainRetryable() async {
+        let loads = ConversationHistoryLoads()
+        var requests = 0
+        #expect(await loads.load(key: key, reuseCompleted: true) { requests += 1; return false } == false)
+        #expect(await loads.load(key: key, reuseCompleted: true) { requests += 1; return true })
+        #expect(requests == 2)
+        loads.invalidate(conversationID: key.conversationID)
+        #expect(await loads.load(key: key, reuseCompleted: true) { requests += 1; return true })
+        #expect(await loads.load(key: key, reuseCompleted: false) { requests += 1; return true })
+        loads.reset()
+        #expect(await loads.load(key: key, reuseCompleted: true) { requests += 1; return true })
+        #expect(requests == 5)
+    }
+
+    @Test func accountsAndSessionsNeverShareSuccessfulLoads() async {
+        let loads = ConversationHistoryLoads()
+        var requests = 0
+        for scope in [key,
+            ConversationHistoryLoadKey(accountID: "other", conversationID: "chat", sessionID: "session"),
+            ConversationHistoryLoadKey(accountID: "account", conversationID: "chat", sessionID: "other")] {
+            #expect(await loads.load(key: scope, reuseCompleted: true) { requests += 1; return true })
+        }
+        #expect(requests == 3)
+    }
+
+    @Test func cancelledScreenDoesNotRestartOrCancelAnotherScreenFetch() async throws {
+        let loads = ConversationHistoryLoads(), gate = HistoryLoadGate()
+        defer { gate.release(); loads.reset() }
+        var requests = 0
+        let first = Task { await loads.load(key: key, reuseCompleted: true) { requests += 1; return await gate.wait() } }
+        for _ in 0..<100 where requests == 0 { await Task.yield() }
+        try #require(requests == 1)
+        #expect(loads.isLoading(conversationID: key.conversationID))
+        let second = Task { await loads.load(key: key, reuseCompleted: true) { requests += 1; return await gate.wait() } }
+        await Task.yield()
+        first.cancel()
+        gate.release()
+        #expect(await first.value == false)
+        #expect(await second.value)
+        #expect(requests == 1)
+        #expect(!loads.isLoading(conversationID: key.conversationID))
+    }
+
+    @Test func invalidatedOldFetchCannotReplaceTheNewFetch() async throws {
+        let loads = ConversationHistoryLoads(), oldGate = HistoryLoadGate(), newGate = HistoryLoadGate()
+        defer { oldGate.release(); newGate.release(); loads.reset() }
+        var requests = 0
+        let old = Task { await loads.load(key: key, reuseCompleted: true) { requests += 1; return await oldGate.wait() } }
+        for _ in 0..<100 where requests == 0 { await Task.yield() }
+        try #require(requests == 1)
+        loads.invalidate(conversationID: key.conversationID)
+        let current = Task { await loads.load(key: key, reuseCompleted: true) { requests += 1; return await newGate.wait() } }
+        for _ in 0..<100 where requests < 2 { await Task.yield() }
+        try #require(requests == 2)
+        oldGate.release()
+        #expect(await old.value == false)
+        newGate.release()
+        #expect(await current.value)
+        #expect(await loads.load(key: key, reuseCompleted: true) { requests += 1; return true })
+        #expect(requests == 2)
+    }
+
+    @Test func modelReentryAndEmptyHistoryReuseTheAccountCache() async throws {
+        let model = AppModel(previewMode: true)
+        let conversation = try #require(model.conversations.first { $0.subsessionId == nil && !$0.isLocalDraft })
+        var loadCycles = 0
+        let subscription = model.$loadingConversationIDs.sink { ids in
+            if ids.contains(conversation.id) { loadCycles += 1 }
+        }
+        defer { subscription.cancel() }
+        #expect(await model.loadConversation(conversation))
+        #expect(await model.loadConversation(conversation))
+        #expect(loadCycles == 1)
+        #expect(await model.loadConversation(conversation, forceReload: true))
+        #expect(loadCycles == 2)
+        for index in 0..<9 {
+            let empty = ConversationSummary(id: "empty-\(index)", kind: .person,
+                peerAccountId: "peer", agentId: nil, ownerDisplayName: nil,
+                displayName: "Empty", lastMessage: "", lastActivityAt: .distantPast,
+                unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: "empty-session-\(index)")
+            var emptyLoads = 0
+            let observation = model.$loadingConversationIDs.sink { if $0.contains(empty.id) { emptyLoads += 1 } }
+            #expect(await model.loadConversation(empty))
+            #expect(await model.loadConversation(empty))
+            #expect(emptyLoads == 1)
+            observation.cancel()
+        }
+        #expect(await model.loadConversation(conversation))
+        #expect(loadCycles == 3, "Evicted histories must refresh, even if later hydrated from disk")
+    }
+}
 
 struct ConversationBoundaryTests {
 @Test func askAgentOmitsTheContextNoticeWithoutChangingItsPrivateScope() throws {
@@ -71,6 +191,122 @@ struct ConversationBoundaryTests {
     #expect(!MessageThread(root:root,replies:[reply,own]).hasUnread(cursors:cursors))
     let answer = ChatMessage(id:"agent",conversationId:"parent",conversationSequence:4,author:.agent,authorName:"Researcher",text:"New result",createdAt:.now,deliveryState:.delivered,errorMessage:nil,requestMessageId:nil)
     #expect(MessageThread(root:root,replies:[reply,own,answer]).hasUnread(cursors:cursors))
+}
+
+@Test func testSharedThreadProjectionPreservesLargeTranscriptReadAndAgentStateSemantics() throws {
+    let states: [BackgroundAgentSession.State?] = [.running, .done, .failed, .stopped, nil]
+    let fixtures = (0..<256).map { index -> MessageThread in
+        let sequence = Int64(index * 4 + 1)
+        let wireID = String(format: "10000000-0000-4000-8000-%012d", index + 1)
+        let clientID = String(format: "20000000-0000-4000-8000-%012d", index + 1)
+        var root = ChatMessage(id: "root-\(index)", clientMessageId: clientID,
+            conversationId: "synthetic-group", conversationSequence: sequence,
+            author: .person, authorName: "Peer", text: "Root \(index)",
+            createdAt: Date(timeIntervalSince1970: Double(sequence)), deliveryState: .delivered,
+            errorMessage: nil, requestMessageId: nil)
+        root.reactionTargetMessageId = wireID
+        let references = [root.id, wireID, clientID, "collaboration-message:viewer:\(wireID)"]
+        var reply = ChatMessage(id: "reply-\(index)", conversationId: "synthetic-group",
+            conversationSequence: sequence + 1, author: .person, authorName: "Peer", text: "Follow-up",
+            createdAt: Date(timeIntervalSince1970: Double(sequence + 1)), deliveryState: .delivered,
+            errorMessage: nil, requestMessageId: nil)
+        reply.messageAction = .thread(MessageActionSource(sourceSessionId: "synthetic-group",
+            sourceMessageId: references[index % references.count], senderLabel: "Peer",
+            textPreview: root.text, attachmentCount: 0))
+        var answer = ChatMessage(id: "answer-\(index)", conversationId: "synthetic-group",
+            conversationSequence: sequence + 2, author: index % 5 == 4 ? .me : .agent,
+            authorName: "Participant", text: "Answer", createdAt: Date(timeIntervalSince1970: Double(sequence + 2)),
+            deliveryState: .delivered, errorMessage: nil, requestMessageId: reply.id)
+        answer.replyToMessageId = reply.id
+        if index % 5 == 0 {
+            answer.agentExecution = AgentExecutionSnapshot(phase: .queued, summary: "Queued", steps: [],
+                startedAtMs: nil, updatedAtMs: 1, completed: false)
+        } else if index % 5 == 2 {
+            answer.deliveryState = .failed
+        } else if index % 5 == 3 {
+            answer.deliveryState = .cancelled
+        }
+        return MessageThread(root: root, replies: [reply, answer])
+    }
+    let transcript = fixtures.flatMap(\.messages)
+    let projection = MessageThreadProjection(messages: transcript)
+    #expect(projection.mainMessages.map(\.id) == fixtures.map(\.root.id))
+    for (index, expected) in fixtures.enumerated() {
+        let wireID = try #require(expected.root.reactionTargetMessageId)
+        let clientID = try #require(expected.root.clientMessageId)
+        let lastSequence = try #require(expected.replies.last?.conversationSequence)
+        for reference in [expected.id, wireID, clientID, "collaboration-message:viewer:\(wireID)"] {
+            let thread = try #require(projection.thread(rootID: reference))
+            #expect(thread == expected)
+            #expect(projection.replyCount(rootID: reference) == 2)
+            #expect(thread.agentState == states[index % states.count])
+            let cursorSnapshots: [[String: Int64]?] = [nil, [:], [wireID: lastSequence - 2], [wireID: lastSequence]]
+            for (cursorIndex, cursors) in cursorSnapshots.enumerated() {
+                let sharedUnread = cursors.map { thread.hasUnread(cursors: $0) } ?? false
+                #expect(sharedUnread == (cursorIndex == 1 || cursorIndex == 2))
+                #expect(sharedUnread == (cursors.map { expected.hasUnread(cursors: $0) } ?? false))
+            }
+        }
+    }
+}
+
+@Test func testConversationRowsReceiveSharedThreadProjectionPresentation() throws {
+    let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift"), encoding: .utf8)
+    let view = try #require(source.range(of: "struct ConversationView: View"))
+    let body = try #require(source.range(of: "var body: some View", range: view.upperBound..<source.endIndex))
+    let row = try #require(source.range(of: "private func timelineMessageRow("))
+    let callbacks = try #require(source.range(of: ".modifier(MentionPresentationModifier(", range: row.upperBound..<source.endIndex))
+    let display = source[row.lowerBound..<callbacks.lowerBound]
+    let caller = source[body.lowerBound..<row.lowerBound]
+    #expect(caller.contains("let renderedMessages = allMessages"))
+    #expect(caller.contains("let projection = MessageThreadProjection(messages: renderedMessages)"))
+    #expect(caller.contains("Dictionary(uniqueKeysWithValues: renderedMessages.map"))
+    #expect(caller.contains("let threadReadCursors = model.threadReadCursors[conversation.sessionId]"))
+    #expect(!caller.contains("model.threadReadCursors[conversation.sessionId] ?? [:]"))
+    #expect(caller.contains("let thread = projection.threadsByRootID[message.id]"))
+    #expect(caller.contains("threadHasUnread: threadReadCursors.map { thread?.hasUnread(cursors: $0) ?? false } ?? false"))
+    #expect(caller.contains("threadAgentState: thread?.agentState"))
+    #expect(display.contains("threadHasUnread: Bool"))
+    #expect(display.contains("threadHasUnread: threadHasUnread"))
+    #expect(!display.contains("threadProjection") && !display.contains("MessageThreadProjection("))
+    #expect(!display.contains("model.threadReadCursors"))
+}
+
+@Test func conversationScrollBookkeepingPreservesOffsetsWithoutPublishingPixels() throws {
+    let position = ConversationScrollPosition()
+    let samePosition = position
+    #expect(position.contentOffsetY == nil)
+    for offset in stride(from: 0.0, through: 250.0, by: 0.25) {
+        position.contentOffsetY = offset
+    }
+    #expect(samePosition.contentOffsetY == 250)
+    let threadReturnOffset = position.contentOffsetY
+    position.contentOffsetY = 900
+    #expect(threadReturnOffset == 250)
+    #expect(samePosition.contentOffsetY == 900)
+
+    let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Kordi/Features/Conversation/ConversationView.swift"), encoding: .utf8)
+    #expect(source.contains("@State private var scrollPosition = ConversationScrollPosition()"))
+    #expect(!source.contains("currentScrollOffsetY"))
+    #expect(source.contains("if isAtBottom != snapshot.isAtLatest"))
+    #expect(source.contains("contentOffsetY: isAtBottom ? nil : scrollPosition.contentOffsetY"))
+    #expect(source.contains("threadReturnScrollOffsetY = scrollPosition.contentOffsetY"))
+    #expect(source.contains("linkedBackgroundSessionState == .running && messages.isEmpty"))
+}
+
+@Test func ordinaryMessageRowsNeedNoThreadLookupOrAgentState() {
+    let message = ChatMessage(id: "10000000-0000-4000-8000-000000000001",
+        conversationId: "synthetic", author: .person, authorName: "Peer", text: "Hello",
+        createdAt: .distantPast, deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
+    let projection = MessageThreadProjection(messages: [message])
+    let rowThread = projection.threadsByRootID[message.id]
+    #expect(rowThread == nil)
+    #expect((rowThread?.hasUnread(cursors: [:]) ?? false) == projection.thread(rootID: message.id)?.hasUnread(cursors: [:]))
+    #expect(rowThread?.agentState == projection.thread(rootID: message.id)?.agentState)
 }
 
 @Test func sharedTaskInstructionsUseAgentIdentityWithoutBecomingLiveAnswers() throws {

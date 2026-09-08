@@ -31,13 +31,11 @@ mod session_visibility;
 mod support_migration;
 async fn try_pool() -> Option<PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
-    match init_pool(&url).await {
-        Ok(pool) => Some(pool),
-        Err(error) => {
-            eprintln!("[chat_sync_e2e] init_pool failed, skipping: {error}");
-            None
-        }
-    }
+    Some(
+        init_pool(&url)
+            .await
+            .expect("configured chat test database must migrate successfully"),
+    )
 }
 
 async fn account(pool: &PgPool, label: &str) -> String {

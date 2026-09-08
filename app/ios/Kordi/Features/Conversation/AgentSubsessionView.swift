@@ -1,9 +1,31 @@
 import SwiftUI
 
+enum AgentSubsessionLoadFailure: Equatable {
+    case timedOut, inaccessible, unavailable
+
+    init(error: Error) {
+        if (error as? URLError)?.code == .timedOut {
+            self = .timedOut
+        } else if let error = error as? CloudAPIError, [401, 403, 404].contains(error.statusCode) {
+            self = .inaccessible
+        } else {
+            self = .unavailable
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .timedOut: "The connection timed out. Check your connection and try again."
+        case .inaccessible: "This task is unavailable or you no longer have access."
+        case .unavailable: "Could not connect. Your task may still be running. Try again."
+        }
+    }
+}
+
 struct AgentSubsessionView: View {
     @EnvironmentObject private var model: AppModel
     let sessionId: String
-    @State private var loadError = false
+    @State private var loadFailure: AgentSubsessionLoadFailure?
     @State private var retry = 0
 
     var body: some View {
@@ -11,16 +33,23 @@ struct AgentSubsessionView: View {
             if let snapshot = model.subsessions[sessionId] {
                 ConversationView(conversation: snapshot.conversation, allowsCompanionPanel: false)
                     .overlay(alignment: .top) {
-                        if loadError {
-                            Button("Connection interrupted. Try again") { retry += 1 }
-                                .padding(8).background(.regularMaterial)
+                        VStack(spacing: 4) {
+                            if snapshot.state == .failed {
+                                Label("Task failed", systemImage: "exclamationmark.circle.fill")
+                                    .foregroundStyle(.red)
+                                    .padding(8).background(.regularMaterial)
+                            }
+                            if loadFailure != nil {
+                                Button("Connection interrupted. Try again") { retry += 1 }
+                                    .padding(8).background(.regularMaterial)
+                            }
                         }
                     }
-            } else if loadError {
+            } else if let loadFailure {
                 ContentUnavailableView {
                     Label("Couldn't load messages", systemImage: "exclamationmark.circle")
                 } description: {
-                    Text("Check access or try again after synchronization.")
+                    Text(loadFailure.message)
                 } actions: {
                     Button("Try again") { retry += 1 }
                 }
@@ -29,17 +58,15 @@ struct AgentSubsessionView: View {
             }
         }
         .task(id: "\(sessionId):\(model.account?.accountId ?? ""):\(retry)") {
-            var failures = 0
+            loadFailure = nil
             while !Task.isCancelled {
                 do {
                     _ = try await model.agentSubsession(id: sessionId, includeMessages: true)
                     try Task.checkCancellation()
-                    loadError = false
-                    failures = 0
+                    loadFailure = nil
                 } catch {
-                    if Task.isCancelled { return }
-                    failures += 1
-                    loadError = failures >= 3
+                    if Task.isCancelled || CloudTransportErrorPolicy.isCancellation(error) { return }
+                    loadFailure = AgentSubsessionLoadFailure(error: error)
                 }
                 do { try await Task.sleep(for: .seconds(1.5)) }
                 catch { return }

@@ -28,6 +28,7 @@ struct SessionDetailView: View {
     @EnvironmentObject private var callCoordinator: KordiCallCoordinator
     @Environment(\.dismiss) private var dismiss
     let conversation: ConversationSummary
+    private let onBack: (() -> Void)?
     @State private var tab: SessionDetailTab
     @State private var previewURL: URL?
     @State private var mediaPreview: MediaPreviewPresentation?
@@ -43,8 +44,9 @@ struct SessionDetailView: View {
     @State private var agentThreadError = false
     @State private var selectedAgentThread: CloudAgentSubsessionTask?
 
-    init(conversation: ConversationSummary) {
+    init(conversation: ConversationSummary, onBack: (() -> Void)? = nil) {
         self.conversation = conversation
+        self.onBack = onBack
         _tab = State(initialValue: conversation.kind == .group ? .members : .media)
     }
 
@@ -205,7 +207,7 @@ struct SessionDetailView: View {
                         tint: heroTint,
                         notificationsMuted: notificationsMuted,
                         isCallStarting: callCoordinator.isStartingCall,
-                        onChat: dismiss.callAsFunction,
+                        onChat: closeDetails,
                         onCall: { startOrJoinCall(kind: .voice) },
                         onVideo: { startOrJoinCall(kind: .video) },
                         onMute: toggleNotificationsMuted,
@@ -239,7 +241,7 @@ struct SessionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .topLeading) {
-            Button(action: dismiss.callAsFunction) {
+            Button(action: closeDetails) {
                 Image(systemName: "chevron.left")
                     .font(.title3.weight(.semibold))
                     .frame(width: 50, height: 50)
@@ -255,8 +257,11 @@ struct SessionDetailView: View {
         .tint(heroTint)
         .sensoryFeedback(.selection, trigger: notificationsMuted)
         .task {
+            guard !Task.isCancelled else { return }
             await model.loadConversation(currentConversation)
+            guard !Task.isCancelled else { return }
             await model.loadSessionActivity(currentConversation)
+            guard !Task.isCancelled else { return }
             await model.refreshActiveCall(in: currentConversation)
         }
         .quickLookPreview($previewURL)
@@ -498,8 +503,12 @@ struct SessionDetailView: View {
         case .copyKordiID:
             UIPasteboard.general.string = contact?.kordiId?.nonEmpty
         case .backToChat:
-            dismiss()
+            closeDetails()
         }
+    }
+
+    private func closeDetails() {
+        if let onBack { onBack() } else { dismiss() }
     }
 
     private func showFeatureNotice(_ notice: SessionFeatureNotice) {

@@ -122,6 +122,9 @@ jobs:
       - name: Test Cloud server
         run: cargo test -p kordi-cloud-server
 
+      - name: Test database upgrade compatibility
+        run: bash scripts/test-cloud-migrations.sh
+
   hygiene:
     name: Repository hygiene
     runs-on: [self-hosted, macOS, ARM64, kordi-ci]

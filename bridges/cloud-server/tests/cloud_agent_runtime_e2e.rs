@@ -32,13 +32,11 @@ struct TestAccount {
 async fn try_pool() -> Option<sqlx_postgres::PgPool> {
     let url = std::env::var("DATABASE_URL").ok()?;
     let _guard = INIT_POOL_LOCK.lock().await;
-    match init_pool(&url).await {
-        Ok(pool) => Some(pool),
-        Err(err) => {
-            eprintln!("[cloud_agent_runtime_e2e] init_pool failed, skipping: {err}");
-            None
-        }
-    }
+    Some(
+        init_pool(&url)
+            .await
+            .expect("configured runtime test database must migrate successfully"),
+    )
 }
 
 fn test_router(state: Arc<ServerState>) -> axum::Router {

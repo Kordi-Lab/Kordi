@@ -17,7 +17,10 @@ import type { CloudGroupControlEnvelope, CloudGroupParticipant } from './cloudGr
 import type { CloudMessageIndex } from './cloudMessageIndex';
 import type { CloudSessionActivityStore } from './cloudSessionActivity';
 
-export type CanonicalSessionStateSetter = Dispatch<SetStateAction<CanonicalSessionState | null>>;
+// Async group work must publish operations against the latest state, never a
+// captured whole-state snapshot whose missing rows could mean either stale or deleted.
+export type CanonicalSessionStateUpdate = (current: CanonicalSessionState | null) => CanonicalSessionState | null;
+export type CanonicalSessionStateSetter = (update: CanonicalSessionStateUpdate) => void;
 
 export type CloudGroupControlContext = {
   account: CloudAccount;

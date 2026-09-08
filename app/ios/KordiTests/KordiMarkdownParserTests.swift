@@ -1,10 +1,172 @@
 import CallKit
 import LinkPresentation
+import UIKit
 import XCTest
 import Testing
 @testable import Kordi
 
-@Test func conversationWindowMeasuresRowsAndTailBeforeRestoringPosition() throws {
+@MainActor
+private final class MessageGestureTestScrollView: UIScrollView {
+    var addedRecognizers = 0
+    var removedRecognizers = 0
+
+    override func addGestureRecognizer(_ gestureRecognizer: UIGestureRecognizer) {
+        addedRecognizers += 1
+        super.addGestureRecognizer(gestureRecognizer)
+    }
+
+    override func removeGestureRecognizer(_ gestureRecognizer: UIGestureRecognizer) {
+        removedRecognizers += 1
+        super.removeGestureRecognizer(gestureRecognizer)
+    }
+}
+
+@MainActor
+struct MessageGestureRegistrationTests {
+    private func bridge(enabled: Bool = true, tap: Bool = false, duration: TimeInterval = 0.5) -> MessageInteractionGestureBridge {
+        MessageInteractionGestureBridge(minimumPressDuration: duration, isEnabled: enabled,
+            onTap: tap ? {} : nil, onLongPress: { _ in })
+    }
+
+    private func anchor(
+        in scroll: UIScrollView, frame: CGRect,
+        coordinator: MessageInteractionGestureBridge.Coordinator
+    ) -> MessageInteractionGestureBridge.AttachmentView {
+        let anchor = MessageInteractionGestureBridge.AttachmentView(frame: frame)
+        anchor.coordinator = coordinator
+        coordinator.attachmentView = anchor
+        scroll.addSubview(anchor)
+        return anchor
+    }
+
+    private func recognizers(in view: UIView, for coordinator: MessageInteractionGestureBridge.Coordinator) -> [UIGestureRecognizer] {
+        (view.gestureRecognizers ?? []).filter { $0.delegate === coordinator }
+    }
+
+    @Test func earlyAdmissionRejectsOtherRowsAndDisabledTouches() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 640))
+        defer { window.subviews.forEach { $0.removeFromSuperview() } }
+        let scroll = UIScrollView(frame: window.bounds)
+        window.addSubview(scroll)
+        let first = bridge().makeCoordinator()
+        let second = bridge().makeCoordinator()
+        let firstAnchor = anchor(in: scroll, frame: CGRect(x: 10, y: 10, width: 100, height: 60), coordinator: first)
+        let secondAnchor = anchor(in: scroll, frame: CGRect(x: 10, y: 100, width: 100, height: 60), coordinator: second)
+        #expect(first.acceptsTouch(at: CGPoint(x: 30, y: 30)))
+        #expect(!second.acceptsTouch(at: CGPoint(x: 30, y: 30)))
+        #expect(second.acceptsTouch(at: CGPoint(x: 30, y: 120)))
+        #expect(!first.acceptsTouch(at: CGPoint(x: 300, y: 600)))
+        #expect(!second.acceptsTouch(at: CGPoint(x: 300, y: 600)))
+        first.parent = bridge(enabled: false)
+        #expect(!first.acceptsTouch(at: CGPoint(x: 30, y: 30)))
+        first.attachToEnclosingScrollView(from: firstAnchor)
+        #expect(recognizers(in: scroll, for: first).isEmpty)
+        secondAnchor.removeFromSuperview()
+        #expect(!second.acceptsTouch(at: CGPoint(x: 30, y: 120)))
+        #expect(recognizers(in: scroll, for: second).isEmpty)
+    }
+
+    @Test func registrationTracksOnlyNeededGesturesWithoutChurn() throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 640))
+        defer { window.subviews.forEach { $0.removeFromSuperview() } }
+        let scroll = MessageGestureTestScrollView(frame: window.bounds)
+        window.addSubview(scroll)
+        let coordinator = bridge(enabled: false).makeCoordinator()
+        let anchor = anchor(in: scroll, frame: CGRect(x: 10, y: 10, width: 100, height: 60), coordinator: coordinator)
+        #expect(recognizers(in: scroll, for: coordinator).isEmpty)
+        coordinator.parent = bridge()
+        coordinator.attachToEnclosingScrollView(from: anchor)
+        let initial = recognizers(in: scroll, for: coordinator)
+        let longPress = try #require(initial.first as? UILongPressGestureRecognizer)
+        #expect(initial.count == 1)
+        #expect(longPress.minimumPressDuration == 0.5)
+        #expect(longPress.allowableMovement == 10)
+        #expect(!longPress.cancelsTouchesInView)
+        let additions = scroll.addedRecognizers
+        let removals = scroll.removedRecognizers
+        for _ in 0..<20 { coordinator.attachToEnclosingScrollView(from: anchor) }
+        #expect(scroll.addedRecognizers == additions)
+        #expect(scroll.removedRecognizers == removals)
+        coordinator.parent = bridge(tap: true, duration: 0.75)
+        coordinator.attachToEnclosingScrollView(from: anchor)
+        let withTap = recognizers(in: scroll, for: coordinator)
+        #expect(withTap.count == 2)
+        #expect(withTap.contains { $0 === longPress })
+        #expect(longPress.minimumPressDuration == 0.75)
+        #expect(withTap.allSatisfy { !$0.cancelsTouchesInView })
+        coordinator.parent = bridge()
+        coordinator.attachToEnclosingScrollView(from: anchor)
+        #expect(recognizers(in: scroll, for: coordinator).count == 1)
+        #expect(longPress.minimumPressDuration == 0.5)
+        coordinator.parent = bridge(enabled: false)
+        coordinator.attachToEnclosingScrollView(from: anchor)
+        let disabledRemovals = scroll.removedRecognizers
+        for _ in 0..<20 { coordinator.attachToEnclosingScrollView(from: anchor) }
+        #expect(recognizers(in: scroll, for: coordinator).isEmpty)
+        #expect(scroll.removedRecognizers == disabledRemovals)
+    }
+
+    @Test func reparentingAndWindowDetachLeaveNoRecognizersBehind() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 640))
+        defer { window.subviews.forEach { $0.removeFromSuperview() } }
+        let first = UIScrollView(frame: window.bounds)
+        let second = UIScrollView(frame: window.bounds)
+        window.addSubview(first)
+        window.addSubview(second)
+        let coordinator = bridge(tap: true).makeCoordinator()
+        let anchor = anchor(in: first, frame: CGRect(x: 10, y: 10, width: 100, height: 60), coordinator: coordinator)
+        for _ in 0..<10 {
+            second.addSubview(anchor)
+            #expect(recognizers(in: first, for: coordinator).isEmpty)
+            #expect(recognizers(in: second, for: coordinator).count == 2)
+            first.addSubview(anchor)
+            #expect(recognizers(in: first, for: coordinator).count == 2)
+            #expect(recognizers(in: second, for: coordinator).isEmpty)
+        }
+        first.removeFromSuperview()
+        #expect(recognizers(in: first, for: coordinator).isEmpty)
+        #expect(coordinator.targetView == nil)
+        window.addSubview(first)
+        #expect(recognizers(in: first, for: coordinator).count == 2)
+        MessageInteractionGestureBridge.dismantleUIView(anchor, coordinator: coordinator)
+        second.addSubview(anchor)
+        #expect(recognizers(in: first, for: coordinator).isEmpty)
+        #expect(recognizers(in: second, for: coordinator).isEmpty)
+    }
+
+    @Test func nativeAdmissionKeepsExistingPanAndLongPressArbitration() throws {
+        #expect(!MessageGestureArbitration.allowsSimultaneousRecognition(with: UIPanGestureRecognizer()))
+        #expect(MessageGestureArbitration.allowsSimultaneousRecognition(with: UITapGestureRecognizer()))
+        #expect(MessageGestureArbitration.allowsSimultaneousRecognition(with: UILongPressGestureRecognizer()))
+        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Kordi/Features/Conversation/MessageBubble.swift"), encoding: .utf8)
+        #expect(source.contains("shouldReceive touch: UITouch"))
+        #expect(source.contains("acceptsTouch(at: touch.location(in: targetView))"))
+        #expect(source.contains("acceptsTouch(at: gestureRecognizer.location(in: targetView))"))
+        #expect(source.contains("longPressRecognizer.minimumPressDuration != parent.minimumPressDuration"))
+        #expect(source.contains("tap.require(toFail: longPress)"))
+    }
+
+    @Test func dismantledAnchorsDoNotRetainCoordinator() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 640))
+        defer { window.subviews.forEach { $0.removeFromSuperview() } }
+        let scroll = UIScrollView(frame: window.bounds)
+        window.addSubview(scroll)
+        weak var released: MessageInteractionGestureBridge.Coordinator?
+        do {
+            let coordinator = bridge(tap: true).makeCoordinator()
+            released = coordinator
+            let anchor = anchor(in: scroll, frame: CGRect(x: 10, y: 10, width: 100, height: 60), coordinator: coordinator)
+            #expect(recognizers(in: scroll, for: coordinator).count == 2)
+            MessageInteractionGestureBridge.dismantleUIView(anchor, coordinator: coordinator)
+            #expect(recognizers(in: scroll, for: coordinator).isEmpty)
+        }
+        #expect(released == nil)
+    }
+}
+
+@Test func conversationWindowVirtualizesRowsAndKeepsScrollCommandsAttached() throws {
     let sourceURL = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
@@ -14,11 +176,24 @@ import Testing
     let end = try #require(source.range(of: ".scrollTargetLayout()", range: start.upperBound..<source.endIndex))
     let content = source[start.upperBound..<end.lowerBound]
 
-    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("VStack(spacing: 0)"))
-    #expect(!content.contains("LazyVStack("))
+    #expect(content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("LazyVStack(spacing: 0)"))
     #expect(content.contains(".onGeometryChange(for: Bool.self)"))
     #expect(content.contains("ForEach(visibleTimelineRows)"))
     #expect(content.contains(".id(bottomAnchorID)"))
+    // A command bridge in a lazy row would disappear when that row scrolls away.
+    #expect(!content.contains("ConversationScrollCommandBridge("))
+    let scrollEnd = try #require(source.range(of: ".modifier(ConversationScrollAnchorPolicy())", range: end.upperBound..<source.endIndex))
+    let container = source[end.upperBound..<scrollEnd.lowerBound]
+    #expect(container.contains("ConversationScrollCommandBridge("))
+    #expect(container.contains("alignment: timeline.isEmpty ? .top : .bottom"))
+    #expect(source.contains(".defaultScrollAnchor(.bottom, for: .initialOffset)"))
+    #expect(source.contains(".defaultScrollAnchor(.bottom, for: .alignment)"))
+    #expect(!source.contains(".defaultScrollAnchor(.bottom)"))
+    #expect(!source.contains(".defaultScrollAnchor(.bottom, for: .sizeChanges)"))
+    let rowsStart = try #require(content.range(of: "ForEach(visibleTimelineRows)"))
+    let rowWrapper = try #require(content.range(of: "VStack(spacing: 0)", range: rowsStart.upperBound..<content.endIndex))
+    let unreadDivider = try #require(content.range(of: "if scopedThreadRootMessageID != nil, showsThreadUnreadDivider", range: rowsStart.upperBound..<content.endIndex))
+    #expect(rowWrapper.lowerBound < unreadDivider.lowerBound)
 }
 
 final class KordiMarkdownParserTests: XCTestCase {

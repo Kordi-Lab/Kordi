@@ -115,7 +115,7 @@ pub async fn lookup_run_for_request(
     let row: Option<(String, String, Option<String>, String, String, String)> = query_as(
         "SELECT run_id, status, sandbox_id, created_at, updated_at, execution_backend \
          FROM cloud_agent_fallback_runs \
-         WHERE request_message_id = $1 AND (owner_account_id = $2 OR requester_account_id = $2) \
+         WHERE request_message_id = $1 AND NOT legacy_duplicate AND (owner_account_id = $2 OR requester_account_id = $2) \
          ORDER BY created_at DESC LIMIT 1",
     )
     .bind(request_message_id)
@@ -155,7 +155,7 @@ async fn claim_run_with_executor(
     let agent_id = super::execution_agent_id(pool, input).await?;
     let existing: Option<(String, String, Option<String>, String, String, String)> = query_as(
         "SELECT run_id, status, sandbox_id, created_at, updated_at, execution_backend \
-         FROM cloud_agent_fallback_runs WHERE owner_account_id = $1 AND execution_agent_id = $2 AND request_message_id = $3",
+         FROM cloud_agent_fallback_runs WHERE owner_account_id = $1 AND execution_agent_id = $2 AND request_message_id = $3 AND NOT legacy_duplicate",
     )
     .bind(&input.owner_account_id)
     .bind(&agent_id)
@@ -193,7 +193,7 @@ async fn claim_run_with_executor(
             requester_account_id, status, prompt, system_prompt, sandbox_id, runtime_route_json, created_at, updated_at,
             execution_backend, execution_agent_id, claimed_by, lease_expires_at
          ) VALUES ($1, $2, $3, $4, $5, $6, $12, $7, $8, $9, $10, $11, $11, $13, $14, $15, $16)
-         ON CONFLICT (owner_account_id, execution_agent_id, request_message_id) DO UPDATE SET request_message_id = cloud_agent_fallback_runs.request_message_id
+         ON CONFLICT (owner_account_id, execution_agent_id, request_message_id) WHERE NOT legacy_duplicate DO UPDATE SET request_message_id = cloud_agent_fallback_runs.request_message_id
          RETURNING run_id, status, sandbox_id, created_at, updated_at, execution_backend",
     )
     .bind(&run_id)

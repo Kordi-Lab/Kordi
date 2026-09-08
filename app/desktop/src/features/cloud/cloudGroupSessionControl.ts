@@ -179,6 +179,7 @@ export async function applyCloudGroupSessionControl({
     identityIdByAccount.set(participant.accountId, request.id ?? '');
     const identity = await upsertCanonicalIdentityFast(request);
     nextState = stateOps.upsertIdentity(nextState, identity);
+    canonical.setState((current) => stateOps.upsertIdentity(current, identity));
   }
   if (!nextState) return null;
 
@@ -201,7 +202,6 @@ export async function applyCloudGroupSessionControl({
       await upsertCanonicalMessageFast(noticeRequest);
     }
     if (envelope.kind !== 'group-message' || !envelope.message) {
-      canonical.setState(nextState);
       return null;
     }
     return {
@@ -337,6 +337,7 @@ export async function applyCloudGroupSessionControl({
     metadata: groupMetadata,
   });
   nextState = stateOps.mergeOpenSession(nextState, openResult);
+  canonical.setState((current) => stateOps.mergeOpenSession(current, openResult));
   if (!nextState) return null;
 
   if (envelope.kind === 'session-title-update' && authorizedSessionTitle) {
@@ -353,6 +354,7 @@ export async function applyCloudGroupSessionControl({
     ))) {
       const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
       nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;
+      canonical.setState((current) => mergeCanonicalMessageRow(current, persistedNotice));
     }
   }
   if (envelope.kind === 'group-title-update') {
@@ -367,6 +369,7 @@ export async function applyCloudGroupSessionControl({
     ))) {
       const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
       nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;
+      canonical.setState((current) => mergeCanonicalMessageRow(current, persistedNotice));
     }
   }
   for (const noticeRequest of cloudGroupMemberJoinNoticeRequests({
@@ -377,6 +380,7 @@ export async function applyCloudGroupSessionControl({
   })) {
     const persistedNotice = await upsertCanonicalMessageFast(noticeRequest);
     nextState = mergeCanonicalMessageRow(nextState, persistedNotice) ?? nextState;
+    canonical.setState((current) => mergeCanonicalMessageRow(current, persistedNotice));
   }
   for (const memberLeave of envelope.memberLeaves ?? []) {
     const removedIdentityId = identityIdByAccount.get(memberLeave.accountId)
@@ -392,6 +396,17 @@ export async function applyCloudGroupSessionControl({
       identityId: removedIdentityId,
       removedByIdentityId: actorIdentityId,
     });
+    const removedParticipant = nextState.participants.find((participant) => (
+      participant.sessionId === envelope.groupId && participant.identityId === removedIdentityId
+    ));
+    canonical.setState((current) => current && ({
+      ...current,
+      participants: current.participants.flatMap((participant) => (
+        participant.sessionId === envelope.groupId && participant.identityId === removedIdentityId
+          ? removedParticipant ? [removedParticipant] : []
+          : [participant]
+      )),
+    }));
   }
   if (envelope.kind === 'group-message') {
     runtime.sessionPreparationCache.set(envelope.groupId, {
@@ -403,7 +418,6 @@ export async function applyCloudGroupSessionControl({
     });
   }
   if (envelope.kind !== 'group-message' || !envelope.message) {
-    canonical.setState(nextState);
     return null;
   }
   return {

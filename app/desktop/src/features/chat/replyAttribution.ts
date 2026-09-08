@@ -90,7 +90,13 @@ function compactUnique(values: Array<string | null | undefined>) {
 }
 
 function messageSourceLookupIds(message: Message, messageId: string) {
-  return compactUnique([messageId, message.entryId, message.clientMessageId, message.reactionTargetMessageId, ...(message.replyAliasIds ?? [])]);
+  const replyTargetIds = new Set(compactUnique([
+    message.replyToMessageId, message.turn?.replyToMessageId,
+    message.sourceMessage?.messageId, message.turn?.sourceMessage?.messageId,
+  ]));
+  // A parent/request reference is an edge, not an alias for the response.
+  return compactUnique([messageId, message.entryId, message.clientMessageId, message.reactionTargetMessageId, ...(message.replyAliasIds ?? [])])
+    .filter((id) => id === messageId || !replyTargetIds.has(id));
 }
 
 function mentionTargetsForRequest(message: Message) {
@@ -409,7 +415,9 @@ export function buildReplyAttribution(
     }
     const sourceMessage = sourceByMessageId.get(replyTargetId)
       ?? [message.sourceMessage, message.turn?.sourceMessage].find(source => source?.messageId === replyTargetId);
-    if (!sourceMessage) return suppressAgentReplyAttribution ? withoutAgentReplyAttribution(message) : withSourceMessage(message);
+    if (!sourceMessage || sourceMessage.messageId === messageId) {
+      return suppressAgentReplyAttribution ? withoutAgentReplyAttribution(message) : withSourceMessage(message);
+    }
 
     const noProviderDedupeKey = noProviderReplyDedupeKey(message, sourceMessage);
     if (noProviderDedupeKey) {

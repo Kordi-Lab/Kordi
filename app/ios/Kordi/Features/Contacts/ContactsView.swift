@@ -4,6 +4,7 @@ struct ContactsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var showAddContact = false
+    var onOpenConversation: ((ConversationSummary) -> Void)? = nil
 
     private var contacts: [CloudContact] {
         guard !searchText.isEmpty else { return model.contacts }
@@ -53,10 +54,18 @@ struct ContactsView: View {
                 } else {
                     ForEach(contacts) { contact in
                         if let conversation = model.conversationForContact(contact) {
-                            NavigationLink(value: conversation) {
-                                ContactIdentityRow(contact: contact)
+                            if let onOpenConversation {
+                                Button { onOpenConversation(conversation) } label: {
+                                    ContactIdentityRow(contact: contact)
+                                }
+                                .buttonStyle(.plain)
+                                .kordiListRow()
+                            } else {
+                                NavigationLink(value: conversation) {
+                                    ContactIdentityRow(contact: contact)
+                                }
+                                .kordiListRow()
                             }
-                            .kordiListRow()
                         }
                     }
                 }

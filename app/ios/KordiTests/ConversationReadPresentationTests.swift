@@ -7,24 +7,26 @@ import SwiftUI
 
 @MainActor
 private final class HistoryNavigationProbe: ObservableObject {
-    @Published var isPresented = false
+    @Published var path: [MainNavigationRoute] = []
 }
 
 private struct HistoryNavigationProbeView: View {
     @ObservedObject var navigation: HistoryNavigationProbe
     let model: AppModel
     let calls: KordiCallCoordinator
+    let notifications: KordiNotificationCoordinator
     let conversation: ConversationSummary
 
     var body: some View {
-        NavigationStack {
+        MainNavigationHost(path: $navigation.path) {
             Text("Conversations")
-                .navigationDestination(isPresented: $navigation.isPresented) {
-                    ConversationView(conversation: conversation)
-                }
+        } destination: { route in
+            MainNavigationDestination(path: $navigation.path, route: route, selectedTab: .chats)
         }
+        .ignoresSafeArea(.container, edges: .vertical)
         .environmentObject(model)
         .environmentObject(calls)
+        .environmentObject(notifications)
         .preferredColorScheme(.light)
     }
 }
@@ -61,16 +63,36 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil }
         let navigation = HistoryNavigationProbe()
         let controller = UIHostingController(rootView: HistoryNavigationProbeView(
-            navigation: navigation, model: model, calls: calls, conversation: conversation
+            navigation: navigation, model: model, calls: calls,
+            notifications: KordiNotificationCoordinator(), conversation: conversation
         ))
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.frame = window.bounds
         controller.view.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(100))
+        func navigationController(in host: UIViewController) -> UINavigationController? {
+            if let navigation = host as? UINavigationController { return navigation }
+            return host.children.lazy.compactMap { navigationController(in: $0) }.first
+        }
+        func waitForStack(count: Int) async throws -> UIViewController {
+            for _ in 0..<150 {
+                controller.view.layoutIfNeeded()
+                if let outer = navigationController(in: controller),
+                   outer.viewControllers.count == count,
+                   outer.transitionCoordinator == nil,
+                   let top = outer.topViewController, top.view.window === window {
+                    return top
+                }
+                try await Task.sleep(for: .milliseconds(20))
+            }
+            XCTFail("The actual Product navigation stack did not finish transitioning to \(count) controllers")
+            throw HistoryNavigationWaitError.incompleteTransition
+        }
+        _ = try await waitForStack(count: 1)
         for entry in 0..<5 {
-            navigation.isPresented = true
-            try await Task.sleep(for: .seconds(2))
+            navigation.path = [.conversation(conversation)]
+            let destination = try await waitForStack(count: 2)
+            try await Task.sleep(for: .milliseconds(300))
             controller.view.layoutIfNeeded()
             XCTAssertEqual(model.messages(for: conversation).count, messages.count)
 
@@ -112,18 +134,22 @@ final class CachedAgentHistoryViewportTests: XCTestCase {
                 if let scroll = view as? UIScrollView, !(scroll is UITextView) { return scroll }
                 return view.subviews.lazy.compactMap { scrollView(in: $0) }.first
             }
-            let scroll = try XCTUnwrap(scrollView(in: controller.view))
+            let scroll = try XCTUnwrap(scrollView(in: destination.view))
             let targetOffset = max(0, scroll.contentSize.height - scroll.bounds.height) * 0.5
             scroll.setContentOffset(CGPoint(x: 0, y: targetOffset), animated: false)
             try await Task.sleep(for: .milliseconds(300))
-            navigation.isPresented = false
-            try await Task.sleep(for: .milliseconds(800))
+            navigation.path = []
+            _ = try await waitForStack(count: 1)
             XCTAssertNotNil(model.conversationViewportMemory.resumedPosition(
                 for: "\(accountID):\(conversation.id):conversation", latestMessageID: messages.last?.id,
                 availableMessageIDs: Set(messages.map(\.id)), now: Date()
             ), "Entry \(entry), offset \(scroll.contentOffset.y), target \(targetOffset), content \(scroll.contentSize.height), viewport \(scroll.bounds.height)")
         }
     }
+}
+
+private enum HistoryNavigationWaitError: Error {
+    case incompleteTransition
 }
 
 final class ConversationReadPresentationTests: XCTestCase {
@@ -1091,7 +1117,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(imageSource.contains("onLongPress: openActions"))
         XCTAssertTrue(gestureSource.contains("UILongPressGestureRecognizer"))
         XCTAssertTrue(gestureSource.contains("UITapGestureRecognizer"))
-        XCTAssertTrue(gestureSource.contains("recognizer.require(toFail: longPressRecognizer)"))
+        XCTAssertTrue(gestureSource.contains("tap.require(toFail: longPress)"))
         XCTAssertTrue(gestureSource.contains("current as? UIScrollView"))
         XCTAssertTrue(gestureSource.contains("recognizer.cancelsTouchesInView = false"))
         XCTAssertFalse(imageSource.contains(".onGeometryChange(for: CGRect.self)"))
