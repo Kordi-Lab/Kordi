@@ -156,6 +156,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
     let participants: [CloudGroupParticipant]
     let sessionTitle: CloudGroupSessionTitleSnapshot?
     let sessionTitleSyncOnly: Bool?
+    let channelCreated: Bool?
     let memberJoins: [CloudGroupMemberJoin]?
     let message: CloudGroupMessagePayload?
 
@@ -169,6 +170,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         participants: [CloudGroupParticipant],
         sessionTitle: CloudGroupSessionTitleSnapshot? = nil,
         sessionTitleSyncOnly: Bool? = nil,
+        channelCreated: Bool? = nil,
         memberJoins: [CloudGroupMemberJoin]? = nil,
         message: CloudGroupMessagePayload?
     ) {
@@ -181,6 +183,7 @@ struct CloudGroupControlEnvelope: Codable, Hashable {
         self.participants = participants
         self.sessionTitle = sessionTitle
         self.sessionTitleSyncOnly = sessionTitleSyncOnly
+        self.channelCreated = channelCreated
         self.memberJoins = memberJoins
         self.message = message
     }
@@ -200,6 +203,9 @@ enum CloudGroupMessageCodec {
         for envelope: CloudGroupControlEnvelope
     ) -> (text: String, messageKind: String)? {
         let actorName = envelope.actor.displayName.nonEmpty ?? "Someone"
+        if envelope.kind == "group-invite", envelope.channelCreated == true {
+            return ("\(actorName) created this channel.", ChatMessage.channelCreatedMessageKind)
+        }
         if envelope.kind == "group-title-update",
            let title = envelope.groupTitle?.nonEmpty {
             return (
@@ -243,6 +249,7 @@ enum CloudGroupMessageCodec {
             participants: envelope.participants.map(transportParticipant),
             sessionTitle: envelope.kind == "group-title-update" ? nil : envelope.sessionTitle,
             sessionTitleSyncOnly: envelope.sessionTitleSyncOnly,
+            channelCreated: envelope.channelCreated,
             memberJoins: envelope.memberJoins,
             message: envelope.message
         )

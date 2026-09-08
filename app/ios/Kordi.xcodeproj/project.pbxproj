@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		41C365E4CB341F02B4DFEA8E /* ChannelCreateSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CAA18D0490D157E5CBB0794 /* ChannelCreateSheet.swift */; };
 		76A00FABDC02FA26E7C31DA4 /* CloudInitialStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 134F1B1ED00BEA5F6A8E081E /* CloudInitialStateTests.swift */; };
 		AB82AE16C983CF38F5213001 /* AgentSubsessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB82AE16C983CF38F5213002 /* AgentSubsessionView.swift */; };
 		AB82AE16C983CF38F5213003 /* SubsessionConversation.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB82AE16C983CF38F5213004 /* SubsessionConversation.swift */; };
@@ -161,6 +162,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		1CAA18D0490D157E5CBB0794 /* ChannelCreateSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelCreateSheet.swift; sourceTree = "<group>"; };
 		134F1B1ED00BEA5F6A8E081E /* CloudInitialStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudInitialStateTests.swift; sourceTree = "<group>"; };
 		AB82AE16C983CF38F5213002 /* AgentSubsessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSubsessionView.swift; sourceTree = "<group>"; };
 		AB82AE16C983CF38F5213004 /* SubsessionConversation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubsessionConversation.swift; sourceTree = "<group>"; };
@@ -435,6 +437,7 @@
 			children = (
 				8AD0EB50947B85C39FEB9B7C /* AgentSessionRow.swift */,
 				958064210641FA020E27EF19 /* ChatHomeView.swift */,
+				1CAA18D0490D157E5CBB0794 /* ChannelCreateSheet.swift */,
 				A020F6E80156312C56FA7D0F /* ConversationRow.swift */,
 				0B7E8E86F8830C031FE1EC87 /* GroupManagementSheet.swift */,
 				95CE270CEA87A8CE6D97F559 /* GroupSessionListView.swift */,
@@ -849,6 +852,7 @@
 				A773B53EDC6BABED2ED8AB19 /* CallView.swift in Sources */,
 				AF598700C5EE149CD1F16DD7 /* CameraImagePicker.swift in Sources */,
 				B5A4DEDE26C34B90346FAD9F /* ChatHomeView.swift in Sources */,
+				41C365E4CB341F02B4DFEA8E /* ChannelCreateSheet.swift in Sources */,
 				47B79CF9AA8EC25BDF7701E1 /* ChatMessage.swift in Sources */,
 				04C1E641012B45A98CFB6C0F /* CloudAPIClient+Digest.swift in Sources */,
 				798E25FC71EFE3AFBBD92A56 /* CloudAPIClient.swift in Sources */,

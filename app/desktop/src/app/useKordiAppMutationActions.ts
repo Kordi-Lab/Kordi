@@ -203,17 +203,14 @@ export function useKordiAppMutationActions({
   const handleCreateChatSessionInParticipantSpace =
     useKordiParticipantSpaceContinuation({
       canonicalState: canonicalSessionState,
+      account: cloudSession.account,
+      sendCloudGroupControl,
       createOwnedAgentSession: runtime.sessions.handleCreateChatSession,
-      draftByKeyRef: participantSpaceDraftByKeyRef,
-      draftBySessionIdRef: participantSpaceDraftBySessionIdRef,
       isNativeShell,
       pendingCreateRef: pendingParticipantSpaceCreateRef,
       selectNewSession: selectNewChatSession,
-      setActiveConversationId: setActiveConvId,
-      setActiveNav,
       setCanonicalState: setCanonicalSessionState,
       setDesktopError: setDesktopChatError,
-      setDrafts: setParticipantSpaceDrafts,
     });
 
   const handleRenameChatGroup = useKordiGroupRename({

@@ -4,6 +4,26 @@ import { cloudGroupMemberJoinNoticeRequests, cloudGroupSessionTitleSnapshotForCo
 import { legacyCloudGroupTitleNoticeClassifications } from '../src/features/cloud/legacyCloudGroupTitleNotices';
 import { cloudGroupHistoryReplayPreservesSessionShell } from '../src/features/cloud/cloudGroupSessionControl';
 
+test('channel creation survives transport and produces one stable system notice per channel', () => {
+  const actor = { accountId: 'acct_creator', displayName: 'Alex', avatarUrl: null, role: 'admin' as const };
+  const envelope = parseCloudGroupControl(encodeCloudGroupControl({
+    kind: 'group-invite', groupId: 'session:group:channel', groupSpaceId: 'session:group:root',
+    groupTitle: 'Team', createdByAccountId: actor.accountId, actor, participants: [actor],
+    channelCreated: true,
+    sessionTitle: { title: 'Announcements', titleSource: 'manual', titleRevision: 1,
+      titlePolicyVersion: 1, updatedAtMs: 1000, updatedByAccountId: actor.accountId },
+  }));
+  assert.ok(envelope);
+  assert.equal(envelope.channelCreated, true);
+  assert.equal(envelope.sessionTitle?.title, 'Announcements');
+  const input = { envelope, actorIdentityId: 'human:creator', createdAtMs: 1000, cloudMessageId: 'wire-1' };
+  const notice = cloudSessionTitleUpdateNoticeRequest(input);
+  assert.equal(notice?.contentText, 'Alex created this channel.');
+  assert.equal(notice?.senderRole, 'system');
+  assert.equal(notice?.id, cloudSessionTitleUpdateNoticeRequest({ ...input, cloudMessageId: 'wire-retry' })?.id);
+  assert.equal(cloudSessionTitleUpdateNoticeRequest({ ...input, envelope: { ...envelope, channelCreated: undefined } }), null);
+});
+
 test('history replay preserves an existing group session shell', () => {
   assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, true), true);
   assert.equal(cloudGroupHistoryReplayPreservesSessionShell(true, false), false);

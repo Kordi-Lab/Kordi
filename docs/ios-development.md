@@ -129,6 +129,7 @@ Launch arguments keep visual work deterministic and prevent accidental productio
 | `--preview-photo-send` | One-page photo picker with grouped-message control |
 | `--preview-group-chat` | Group conversation |
 | `--preview-group-only` | Contact timeline containing only group spaces |
+| `--preview-channel-create` | Centered channel-name dialog for the sample group; combine with `--preview-data` |
 | `--preview-expanded-groups` | Group rows with their session list expanded |
 | `--preview-group-management` | Group-management sheet |
 | `--preview-group-invite` | Group-management sheet opened to invitations |

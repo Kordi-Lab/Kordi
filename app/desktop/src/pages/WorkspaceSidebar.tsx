@@ -4,6 +4,7 @@ import { Archive, ChevronLeft } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { ChatCreateDialog } from '@/pages/ChatCreateDialog';
+import { ChannelCreateDialog } from '@/pages/ChannelCreateDialog';
 import type {
   ChatCreateMode,
   ChatCreatePopoverAnchor,
@@ -153,6 +154,7 @@ export function WorkspaceSidebar({
 
   const [sessionContextMenu, setSessionContextMenu] =
     useState<SessionContextMenuTarget | null>(null);
+  const [channelCreateSpace, setChannelCreateSpace] = useState<Parameters<typeof onCreateChatSessionInParticipantSpace>[0] | null>(null);
   const [groupContextMenu, setGroupContextMenu] =
     useState<GroupContextMenuTarget | null>(null);
   const [removeSessionTarget, setRemoveSessionTarget] =
@@ -308,7 +310,10 @@ export function WorkspaceSidebar({
                           setGroupDetailsAnchor(anchor);
                           setIsGroupDetailsDialogOpen(true);
                         },
-                        onCreateChatSessionInParticipantSpace,
+                        onCreateChatSessionInParticipantSpace: (space) => {
+                          if (space.kind === 'group') setChannelCreateSpace(space);
+                          else void onCreateChatSessionInParticipantSpace(space);
+                        },
                       }}
                       onOpenAgentCreate={openAgentCreate}
                     />
@@ -361,6 +366,16 @@ export function WorkspaceSidebar({
           }}
           onRestore={(groupSpaceId, sessionIds) => {
             void onSetChatGroupArchived(groupSpaceId, sessionIds, false);
+          }}
+        />
+      ) : null}
+      {channelCreateSpace ? (
+        <ChannelCreateDialog
+          groupName={channelCreateSpace.title}
+          onCancel={() => setChannelCreateSpace(null)}
+          onCreate={async (name) => {
+            await onCreateChatSessionInParticipantSpace(channelCreateSpace, name);
+            setChannelCreateSpace(null);
           }}
         />
       ) : null}

@@ -3579,6 +3579,63 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func createChannel(in space: GroupSpaceSummary, title: String, sessionID: String) async -> ConversationSummary? {
+        let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.count <= 200 else {
+            errorMessage = "Enter a channel name of 1–200 characters."
+            return nil
+        }
+        guard let account, let source = space.sessions.first else {
+            errorMessage = "This group is not ready yet. Try again."
+            return nil
+        }
+        let participants = groupParticipantsIncludingSelf(source, account: account)
+        let recipients = Set(participants.map(\.accountId)).subtracting([account.accountId])
+        guard !recipients.isEmpty else {
+            errorMessage = "Group members are not available yet. Try again."
+            return nil
+        }
+        let created = ConversationSummary(
+            id: "group:\(sessionID)", kind: .group,
+            peerAccountId: source.peerAccountId, agentId: nil,
+            ownerDisplayName: space.displayName, displayName: name,
+            lastMessage: "\(account.preferredName) created this channel.", lastActivityAt: Date(),
+            unreadCount: 0, avatarSource: nil, agentActivity: nil,
+            sessionId: sessionID, groupSpaceId: space.preferenceId,
+            groupParticipants: participants, messageCount: 0
+        )
+        errorMessage = nil
+        if previewMode {
+            conversations.append(created)
+            messagesByConversation[created.id] = [ChatMessage(
+                id: "channel-created:\(sessionID)", conversationId: created.id,
+                author: .me, authorName: account.preferredName, text: created.lastMessage,
+                createdAt: created.lastActivityAt, deliveryState: .delivered,
+                errorMessage: nil, requestMessageId: nil,
+                messageKind: ChatMessage.channelCreatedMessageKind
+            )]
+            return created
+        }
+        guard let token else {
+            errorMessage = "Sign in before creating a channel."
+            return nil
+        }
+        do {
+            try await sendGroupControl(
+                kind: "group-invite", conversation: created, participants: participants,
+                groupTitle: space.displayName, targetAccountIds: recipients,
+                token: token, account: account, channelCreated: true
+            )
+            cloudConnectionState = .connected
+            await rebuildConversationCatalog()
+            return conversations.first(where: { $0.sessionId == sessionID }) ?? created
+        } catch {
+            recordCloudConnectionFailure(error)
+            errorMessage = userFacing(error, fallback: "Could not create this channel. Try again.")
+            return nil
+        }
+    }
+
     func createGroup(with selectedContacts: [CloudContact], title: String?) async -> ConversationSummary? {
         guard let token, let account else { return nil }
 
@@ -5163,7 +5220,8 @@ final class AppModel: ObservableObject {
         targetAccountIds: Set<String>,
         token: String,
         account: CloudAccount,
-        memberJoins: [CloudGroupMemberJoin] = []
+        memberJoins: [CloudGroupMemberJoin] = [],
+        channelCreated: Bool = false
     ) async throws {
         guard let actor = participants.first(where: { $0.accountId == account.accountId }) else { return }
         let canonical = await api.cachedChatConversations().first {
@@ -5190,6 +5248,7 @@ final class AppModel: ObservableObject {
                     updatedByAccountId: account.accountId
                 )
             },
+            channelCreated: channelCreated ? true : nil,
             memberJoins: memberJoins.isEmpty ? nil : memberJoins,
             message: nil
         )
@@ -5206,7 +5265,7 @@ final class AppModel: ObservableObject {
             clientMessageId: "\(kind):\(UUID().uuidString.lowercased())",
             conversationKind: "group",
             memberAccountIds: participants.map(\.accountId),
-            sharedTitle: groupTitle
+            sharedTitle: channelCreated ? conversation.displayName : groupTitle
         )
         mergeMessages([sent], for: recipient)
     }
@@ -5306,7 +5365,9 @@ final class AppModel: ObservableObject {
             guard envelope.groupId == conversation.sessionId else { continue }
             let titleUpdate = CloudGroupMessageCodec.titleUpdateNotice(for: envelope)
             if let titleUpdate {
-                let messageID = "msg:title-update:\(wire.messageId)"
+                let messageID = envelope.channelCreated == true
+                    ? "channel-created:\(envelope.groupId)"
+                    : "msg:title-update:\(wire.messageId)"
                 let actorName = envelope.actor.displayName.nonEmpty ?? "Someone"
                 titleUpdateMessagesByID[messageID] = ChatMessage(
                     id: messageID,

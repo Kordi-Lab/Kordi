@@ -147,7 +147,7 @@ function ParticipantSpaceRow({
 }) {
   const latestSession = space.sessions[0];
   const isDirectHuman = space.kind === 'direct-human';
-  const hasBlankSession = space.sessions.some(isBlankParticipantSpaceSession);
+  const hasBlankSession = space.kind !== 'group' && space.sessions.some(isBlankParticipantSpaceSession);
   const isActiveSpace = model.activeParticipantSpaceId === space.id;
   const isPrimarySessionActive = Boolean(
     latestSession
