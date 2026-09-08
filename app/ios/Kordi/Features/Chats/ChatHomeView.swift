@@ -23,6 +23,7 @@ struct ChatHomeView: View {
     @State private var deleteTarget: ConversationSummary?
     @State private var showingArchivedChats = false
     @State private var groupManagementPresentation: GroupManagementPresentation?
+    @State private var channelCreationSpace: GroupSpaceSummary?
     @State private var pullRefreshState: ChatPullRefreshVisualState = .idle
     @State private var activeSwipeRowID: String?
     private let onOpenConversation: ((ConversationSummary) -> Void)?
@@ -151,6 +152,10 @@ struct ChatHomeView: View {
         .background(Color(uiColor: .systemBackground))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
+            if ProcessInfo.processInfo.arguments.contains("--preview-channel-create"),
+               channelCreationSpace == nil {
+                channelCreationSpace = groupSpaces.first
+            }
             if let previewNewChatMode = newChatMode {
                 newChatMode = nil
                 if let onOpenNewChat {
@@ -224,6 +229,13 @@ struct ChatHomeView: View {
             GroupManagementSheet(presentation: presentation)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        .fullScreenCover(item: $channelCreationSpace) { space in
+            ChannelCreateSheet(space: space) { created in
+                expandedGroupSpaceIds.insert(space.id)
+                openConversation(created)
+            }
+            .presentationBackground(.clear)
         }
         .alert(renameTarget?.kind == .group ? "Rename channel" : "Rename session", isPresented: Binding(
             get: { renameTarget != nil },
@@ -385,6 +397,11 @@ struct ChatHomeView: View {
             .buttonStyle(.plain)
             .contextMenu {
                 Button {
+                    channelCreationSpace = space
+                } label: {
+                    Label("Create channel", systemImage: "plus")
+                }
+                Button {
                     groupManagementPresentation = GroupManagementPresentation(
                         space: space,
                         startsInInviteMode: false
@@ -446,7 +463,7 @@ struct ChatHomeView: View {
             .accessibilityAction(named: "Archive group") {
                 Task { _ = await model.archiveGroupSpace(space) }
             }
-            .accessibilityHint("Double-tap to show sessions. Touch and hold to manage or invite people.")
+            .accessibilityHint("Double-tap to show channels. Touch and hold to create a channel or manage the group.")
             .chatHomeRow(separatorLeading: 71)
         case let .groupSession(session):
             sessionActionRow(for: session) {

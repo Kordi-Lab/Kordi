@@ -61,6 +61,66 @@ func sharedAgentWaitingPresentation() throws {
 }
 
 final class CloudGroupMessageCodecTests: XCTestCase {
+    func testChannelCreationRetryIdentityTracksTheSubmittedTitle() {
+        let first = ChannelCreationAttempt(title: "Announcements")
+        let retry = ChannelCreationAttempt(title: "  Announcements  ", previous: first)
+        XCTAssertEqual(retry.sessionID, first.sessionID)
+        XCTAssertEqual(retry.title, "Announcements")
+
+        let edited = ChannelCreationAttempt(title: "Planning", previous: retry)
+        XCTAssertNotEqual(edited.sessionID, first.sessionID)
+        XCTAssertEqual(edited.title, "Planning")
+        XCTAssertEqual(ChannelCreationAttempt(title: "Planning", previous: edited).sessionID, edited.sessionID)
+    }
+
+    @MainActor
+    func testCreateChannelRequiresNameAndKeepsGroupAndInitialNotice() async throws {
+        let model = AppModel(previewMode: true)
+        let account = try XCTUnwrap(model.account)
+        let space = try XCTUnwrap(GroupSpaceCatalog.build(conversations: model.conversations, ownAccountId: account.accountId).first)
+        let count = model.conversations.count
+        let rejected = await model.createChannel(in: space, title: " \n ", sessionID: "session:group:rejected")
+        XCTAssertNil(rejected)
+        XCTAssertEqual(model.conversations.count, count)
+        let result = await model.createChannel(in: space, title: "  Announcements  ", sessionID: "session:group:test-channel")
+        let created = try XCTUnwrap(result)
+        XCTAssertEqual(created.displayName, "Announcements")
+        XCTAssertEqual(created.groupSpaceId, space.preferenceId)
+        XCTAssertEqual(model.conversations.count, count + 1)
+        XCTAssertEqual(model.messagesByConversation[created.id]?.count, 1)
+        XCTAssertEqual(model.messagesByConversation[created.id]?.first?.text, "\(account.preferredName) created this channel.")
+        XCTAssertEqual(model.messagesByConversation[created.id]?.first?.isSystemNotice, true)
+    }
+
+    func testChannelCreationNoticeRoundTripAndReplay() throws {
+        let actor = CloudGroupParticipant(accountId: "acct_alex", displayName: "Alex", avatarUrl: nil, role: "admin")
+        let envelope = CloudGroupControlEnvelope(
+            kind: "group-invite", groupId: "session:group:channel", groupSpaceId: "session:group:root",
+            groupTitle: "Team", createdByAccountId: actor.accountId, actor: actor, participants: [actor],
+            sessionTitle: CloudGroupSessionTitleSnapshot(title: "Announcements", titleSource: "manual",
+                titleRevision: 1, titlePolicyVersion: 1, updatedAtMs: 1000, updatedByAccountId: actor.accountId),
+            channelCreated: true, message: nil
+        )
+        let body = try CloudGroupMessageCodec.encode(envelope)
+        let parsed = try XCTUnwrap(CloudGroupMessageCodec.parse(body))
+        XCTAssertEqual(parsed.channelCreated, true)
+        XCTAssertEqual(parsed.sessionTitle?.title, "Announcements")
+        let conversation = ConversationSummary(
+            id: "group:channel", kind: .group, peerAccountId: actor.accountId, agentId: nil,
+            ownerDisplayName: "Team", displayName: "Announcements", lastMessage: "", lastActivityAt: Date(),
+            unreadCount: 0, avatarSource: nil, agentActivity: nil, sessionId: envelope.groupId
+        )
+        let wires = ["first", "retry"].map { id in
+            CloudMessageDTO(messageId: id, fromAccountId: actor.accountId, toAccountId: "acct_viewer",
+                body: body, createdAt: "2026-09-01T00:00:01Z", deliveredAt: nil, readAt: nil,
+                direction: "incoming", sessionId: envelope.groupId)
+        }
+        let messages = AppModel.mapGroupMessages(wires, conversation: conversation, ownAccountId: "acct_viewer")
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages.first?.text, "Alex created this channel.")
+        XCTAssertEqual(messages.first?.isSystemNotice, true)
+    }
+
     func testLegacyGroupForkControlIsRejected() throws {
         let json = #"{"kind":"session-fork","groupId":"session:group:old","createdByAccountId":"acct_me","actor":{"accountId":"acct_me","displayName":"Me"},"participants":[{"accountId":"acct_me","displayName":"Me"}]}"#
         let encoded = try XCTUnwrap(json.data(using: .utf8))

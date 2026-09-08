@@ -25,6 +25,7 @@ export type SendCloudGroupControlInput = {
   memberLeaves?: CloudGroupMemberLeave[];
   sessionTitle?: CloudGroupSessionTitleSnapshot | null;
   sessionTitleSyncOnly?: boolean;
+  channelCreated?: boolean;
   collaborationParticipants?: DesktopCollaborationSessionParticipant[];
   message?: CloudGroupControlEnvelope['message'];
   attachments?: AttachmentItem[];

@@ -22,6 +22,7 @@ import {
   cloudGroupNonGenericTitle,
   cloudGroupParticipantsWithProfiles,
   cloudGroupSelfParticipant,
+  cloudGroupSessionTitleSnapshotForControl,
   cloudGroupTitleUpdateNoticeRequest,
   cloudTitleUpdateNoticeEquivalent,
   cloudSessionTitleUpdateNoticeRequest,
@@ -192,6 +193,15 @@ export async function applyCloudGroupSessionControl({
   )) {
     const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId)
       ?? envelopeSession!.createdByIdentityId;
+    const creationNotice = cloudSessionTitleUpdateNoticeRequest({
+      envelope, actorIdentityId, createdAtMs: Date.parse(cloudMessage.createdAt) || Date.now(),
+      cloudMessageId: cloudMessage.messageId,
+    });
+    if (creationNotice && envelope.channelCreated === true
+      && !nextState.messages.some((message) => message.id === creationNotice.id)) {
+      const persisted = await upsertCanonicalMessageFast(creationNotice);
+      nextState = mergeCanonicalMessageRow(nextState, persisted) ?? nextState;
+    }
     for (const noticeRequest of cloudGroupMemberJoinNoticeRequests({
       envelope,
       actorIdentityId,
@@ -289,7 +299,11 @@ export async function applyCloudGroupSessionControl({
     storedAdminUpdatedAtMs: Math.max(envelopeAdminUpdatedAtMs, rootAdminUpdatedAtMs),
   });
   const actorIdentityId = identityIdByAccount.get(envelope.actor.accountId) ?? createdByIdentityId;
-  const authorizedSessionTitle = stateOps.resolveSessionTitle({
+  const initialChannelTitle = !envelopeSession && envelope.kind === 'group-invite'
+    && envelope.channelCreated === true
+    && envelope.sessionTitle?.updatedByAccountId === envelope.actor.accountId
+    ? cloudGroupSessionTitleSnapshotForControl(envelope, controlCreatedAtMs) : null;
+  const authorizedSessionTitle = initialChannelTitle ?? stateOps.resolveSessionTitle({
     envelope,
     controlCreatedAtMs,
     identityIdByAccount,
@@ -339,8 +353,9 @@ export async function applyCloudGroupSessionControl({
   nextState = stateOps.mergeOpenSession(nextState, openResult);
   if (!nextState) return null;
 
-  if (envelope.kind === 'session-title-update' && authorizedSessionTitle) {
-    const titleAuthorAccountId = authorizedSessionTitle.updatedByAccountId;
+  if ((envelope.kind === 'session-title-update' && authorizedSessionTitle)
+    || (envelope.kind === 'group-invite' && envelope.channelCreated === true)) {
+    const titleAuthorAccountId = authorizedSessionTitle?.updatedByAccountId ?? envelope.actor.accountId;
     const noticeRequest = cloudSessionTitleUpdateNoticeRequest({
       envelope,
       actorIdentityId: identityIdByAccount.get(titleAuthorAccountId) ?? actorIdentityId,

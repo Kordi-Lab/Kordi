@@ -314,7 +314,7 @@ test('WorkspaceSidebar expanded group space keeps contextual create on the first
   assert.match(markup, /data-session-updated-at="10:00"/);
 });
 
-test('WorkspaceSidebar grays and disables group create while a blank New chat already exists', () => {
+test('WorkspaceSidebar keeps group channel creation available when an empty chat exists', () => {
   const renderCreateButton = (hasMessage: boolean) => {
     const chatConversations = [conversation({
       id: 'session:group:new-chat',
@@ -349,8 +349,8 @@ test('WorkspaceSidebar grays and disables group create while a blank New chat al
   const enabledButton = renderCreateButton(true);
   const shellCss = readDesktopShellCss();
 
-  assert.match(disabledButton, /disabled=""/);
-  assert.match(disabledButton, /aria-label="New session unavailable in Alice, Bob: a blank chat already exists"/);
+  assert.doesNotMatch(disabledButton, /disabled=""/);
+  assert.match(disabledButton, /aria-label="Create session in Alice, Bob"/);
   assert.doesNotMatch(enabledButton, /disabled=""/);
   assert.match(shellCss, /\.app-participant-space-context-create:disabled[\s\S]*?cursor:\s*not-allowed;[\s\S]*?opacity:\s*0\.38;/);
 });

@@ -183,6 +183,7 @@ export function useCloudGroupControlSender({
         participants,
         sessionTitle,
         sessionTitleSyncOnly: input.sessionTitleSyncOnly,
+        channelCreated: input.channelCreated,
         memberJoins: input.memberJoins,
         memberLeaves: input.memberLeaves,
         message,
@@ -330,6 +331,7 @@ export function useCloudGroupControlSender({
             ...(clientCreatedAt ? { clientCreatedAt } : {}),
             conversationKind: 'group',
             memberAccountIds: targetAccountIds,
+            ...(input.channelCreated ? { sharedTitle: sessionTitle?.title } : {}),
           },
         );
         recordFirstAck(

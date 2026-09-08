@@ -101,6 +101,7 @@ export type WorkspaceSidebarChats = {
   addContactPlaceholder?: string;
   onCreateChatSessionInParticipantSpace: (
     space: WorkspaceSidebarParticipantSpace,
+    channelName?: string,
   ) => Promise<void> | void;
   onRenameChatGroup: (sessionIds: string[], name: string) => Promise<void> | void;
   onRenameChatSession: (sessionId: string, title: string) => void;

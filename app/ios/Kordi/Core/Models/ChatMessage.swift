@@ -1084,6 +1084,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     static let groupMemberJoinMessageKind = "group-member-joined"
     static let groupTitleUpdateMessageKind = "group-title-update"
     static let channelTitleUpdateMessageKind = "channel-title-update"
+    static let channelCreatedMessageKind = "channel-created"
     private static let agentModelChangePrefix = "Switched model to "
     private static let agentRuntimeRouteNoticePrefix = "Model: "
     private static let agentRuntimeRouteNoticeSeparator = " · Thinking effort: "
@@ -1168,6 +1169,7 @@ struct ChatMessage: Identifiable, Codable, Hashable {
     var isTitleUpdateNotice: Bool {
         messageKind == Self.groupTitleUpdateMessageKind
             || messageKind == Self.channelTitleUpdateMessageKind
+            || messageKind == Self.channelCreatedMessageKind
     }
 
     var isSystemNotice: Bool {
