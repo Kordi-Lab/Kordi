@@ -49,6 +49,12 @@ final class VoiceMessageTests: XCTestCase {
     }
 
     @MainActor
+    func testHoldToTalkActivationDelayKeepsFeedbackResponsive() {
+        XCTAssertLessThanOrEqual(VoiceRecordingGestureCapture.activationDelay, 0.2)
+        XCTAssertGreaterThan(VoiceRecordingGestureCapture.activationDelay, 0)
+    }
+
+    @MainActor
     func testNativeTranscriptionFallsBackToChineseLocales() {
         XCTAssertEqual(
             VoiceMessageRecorder.transcriptionLocaleIdentifiers(preferred: "en-US"),

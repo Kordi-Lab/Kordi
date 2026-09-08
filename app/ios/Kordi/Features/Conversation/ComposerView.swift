@@ -188,6 +188,7 @@ struct ComposerView: View {
     @State private var isDraftPanePresented = false
     @State private var keyboardFocusRequest = 0
     @State private var isVoiceInputMode = false
+    @State private var isVoicePressing = false
     @State private var voiceGestureActive = false
     @State private var voiceGestureEnded = false
     @State private var shortVoiceFeedback = 0
@@ -212,6 +213,7 @@ struct ComposerView: View {
                         && !isPreparingAttachments
                         && voiceRecorder.phase != .failed
                         && !voiceRecorder.isLocked,
+                    onPressingChanged: updateVoicePressing,
                     onBegan: beginVoiceRecordingGesture,
                     onChanged: updateVoiceRecordingGesture,
                     onEnded: endVoiceRecordingGesture,
@@ -445,16 +447,45 @@ struct ComposerView: View {
             guard UIAccessibility.isVoiceOverRunning else { return }
             Task { await voiceRecorder.start() }
         } label: {
-            Text("Hold to Talk")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, minHeight: composerControlHeight)
-                .padding(.trailing, sendButtonDiameter + 8)
-                .contentShape(.rect)
+            HStack(spacing: 8) {
+                Image(systemName: isVoicePressing ? "waveform" : "mic.fill")
+                    .font(.body.weight(.semibold))
+                    .frame(width: 18)
+                    .symbolEffect(.variableColor, isActive: isVoicePressing && !reduceMotion)
+                    .accessibilityHidden(true)
+                Text(isVoicePressing ? "Keep holding…" : "Hold to Talk")
+                    .font(.body.weight(.semibold))
+            }
+            .foregroundStyle(isVoicePressing ? KordiTheme.signalBlue : .primary)
+            .frame(maxWidth: .infinity, minHeight: composerControlHeight)
+            .padding(.trailing, sendButtonDiameter + 8)
+            .background {
+                Capsule()
+                    .fill(KordiTheme.signalBlue.opacity(isVoicePressing ? 0.14 : 0))
+                    .padding(.vertical, 4)
+                    .padding(.trailing, sendButtonDiameter + 8)
+            }
+            .scaleEffect(
+                reduceMotion || !isVoicePressing ? 1 : 0.985,
+                anchor: .center
+            )
+            .animation(
+                reduceMotion
+                    ? nil
+                    : isVoicePressing
+                        ? .easeOut(duration: 0.08)
+                        : .spring(response: 0.22, dampingFraction: 0.78),
+                value: isVoicePressing
+            )
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .disabled(isSending || isPreparingAttachments)
+        .sensoryFeedback(.impact(weight: .light), trigger: isVoicePressing) { oldValue, newValue in
+            !oldValue && newValue
+        }
         .accessibilityLabel("Hold to Talk")
+        .accessibilityValue(isVoicePressing ? "Pressed" : "Ready")
         .accessibilityHint("Hold to record. Recordings shorter than one second are discarded.")
     }
 
@@ -771,6 +802,14 @@ struct ComposerView: View {
                 completeVoiceRecordingGesture()
             }
         }
+    }
+
+    private func updateVoicePressing(_ isPressing: Bool) {
+        guard isVoiceInputMode, !isSending, !isPreparingAttachments else {
+            self.isVoicePressing = false
+            return
+        }
+        self.isVoicePressing = isPressing
     }
 
     private func updateVoiceRecordingGesture(_ translation: CGSize) {
