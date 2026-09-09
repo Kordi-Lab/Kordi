@@ -303,6 +303,10 @@ export a signed IPA.
 
 ### Archive and export
 
+The [fast release checklist](release-quickstart.md#archive-with-symbol-path-remapping)
+provides the complete archive command with prepared package paths and compiler
+remapping, plus local export and signed-in Xcode upload commands.
+
 Archive with the signed-in production Xcode account:
 
 ```bash

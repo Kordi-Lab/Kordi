@@ -8,6 +8,11 @@ beta and iOS TestFlight release from one merged source commit. Use the detailed
 [call hosting guide](../call-hosting.md) for platform-specific commands and
 recovery procedures.
 
+For a concise command checklist with current dependency preparation, symbol
+path remapping, and the signed-in Xcode upload path, use the
+[fast release checklist](../release-quickstart.md). This document remains the
+source of truth for the standard phase order and verification gates.
+
 The standard order is:
 
 ```text

@@ -4,6 +4,9 @@ This document describes how the Kordi monorepo is expected to package and releas
 
 Before any product deploy, restart, hosted validation, or release publication, select the authorized target through [Development environment isolation](development-environments.md) and the [hosted environment preflight](hosted-cloud-developer-guide.md#required-preflight-before-preview-or-debug). Obtain real product infrastructure values privately and keep them out of commits and shared logs. A release that includes the call client or hosted call services must also pass [Hosting Kordi voice and video calls](call-hosting.md) before artifact publication.
 
+For the next release, use the [fast macOS and iOS checklist](release-quickstart.md)
+for the ordered commands and verified troubleshooting steps.
+
 ## Product surfaces
 
 ### Desktop app
