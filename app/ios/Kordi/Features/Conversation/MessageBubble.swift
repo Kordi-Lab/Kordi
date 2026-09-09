@@ -288,13 +288,12 @@ struct MessageBubble: View, Equatable {
                                     onOpenActions(frame, nil)
                                 }
                                 if automaticallyPresentsActions,
-                                   !hasImageAttachments,
                                    !didAutomaticallyPresentActions,
                                    !frame.isEmpty {
                                     didAutomaticallyPresentActions = true
                                     Task { @MainActor in
                                         try? await Task.sleep(for: .milliseconds(500))
-                                        onOpenActions(actionFrame, nil)
+                                        onOpenActions(actionFrame, message.attachments.first(where: { $0.kind == .image }))
                                     }
                                 }
                             }

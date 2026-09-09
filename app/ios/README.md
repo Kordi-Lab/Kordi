@@ -71,6 +71,8 @@ xcodebuild \
 
 Choose another installed simulator from `xcrun simctl list devices available` when needed.
 
+The `Kordi Beta` test action uses offline preview data. Its `KordiDeletionUITests` target exercises text and photo deletion through the message menu, preserves neighboring messages, and saves screenshots. On iOS 26 or later it also records deletion hitch metrics. Run it on a connected iPhone by selecting the phone destination and adding `-only-testing:KordiDeletionUITests` to the test command. Keep the phone unlocked during UI tests.
+
 The `Kordi Keyboard UI` scheme runs the real app with offline preview data. Run it on an iOS 27 simulator to check the rounded keyboard background, scrolling while typing, interactive dismissal, and reopening the keyboard. The keyboard viewport regression in `KordiTests` also covers long history, input-height changes, and keeping the same bottom content visible.
 
 For project structure, production boundaries, physical-device setup, TestFlight, and troubleshooting, read [Developing Kordi for iPhone](../../docs/ios-development.md). The hosted API contract is recorded in [Kordi iOS cloud contract](../../docs/cloud-mobile.md).
