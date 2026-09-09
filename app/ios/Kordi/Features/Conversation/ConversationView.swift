@@ -208,6 +208,7 @@ struct ConversationView: View {
     private let onOpenSessionDetails: ((ConversationSummary) -> Void)?
     @State private var draft = ""
     @State private var isSending = false
+    @State private var stagedMessageIDs: [String] = []
     @State private var visibleMessageLimit = ConversationTimelineWindow.initialLimit
     @State private var isLoadingEarlier = false
     @State private var isAtBottom = false
@@ -554,6 +555,12 @@ struct ConversationView: View {
                                                 )
                                             }
                                             .zIndex(messageActionMessage?.id == message.id ? 1 : 0)
+                                            .modifier(OutgoingMessageEntrance(
+                                                shouldAnimate: stagedMessageIDs.contains(message.clientMessageId ?? message.id),
+                                                onAnimationStarted: {
+                                                    stagedMessageIDs.removeAll { $0 == (message.clientMessageId ?? message.id) }
+                                                }
+                                            ))
                                         }
                                     }
 
@@ -1886,7 +1893,7 @@ struct ConversationView: View {
     }
 
     private func scrollToBottom(animated: Bool = false) {
-        animateBottomScroll = animated
+        animateBottomScroll = animated && !reduceMotion
         immediateBottomRequest &+= 1
         initialViewport = .latest
         hasPositionedInitialTimeline = true
@@ -2397,7 +2404,6 @@ struct ConversationView: View {
             reply: outgoingReply,
             mention: outgoingMention
         )
-        isSending = false
     }
 
     private func sendExpressiveMedia(_ attachment: PendingAttachment) async {
@@ -2412,7 +2418,6 @@ struct ConversationView: View {
             reply: outgoingReply,
             mention: nil
         )
-        isSending = false
     }
 
     private func sendVoiceMessage() async {
@@ -2488,7 +2493,6 @@ struct ConversationView: View {
             reply: outgoingReply,
             mention: outgoingMention
         )
-        isSending = false
         return true
     }
 
@@ -2533,7 +2537,13 @@ struct ConversationView: View {
                 mentioning: index == 0 ? mention : nil,
                 messageAction: index == 0 ? scopedThreadMessageAction : nil,
                 agentContext: index == 0 ? companionContext?.referenceText : nil,
-                to: conversation
+                to: conversation,
+                onStaged: { messageID in
+                    if let messageID {
+                        stagedMessageIDs = Array((stagedMessageIDs + [messageID]).suffix(32))
+                    }
+                    if index == batches.count - 1 { isSending = false }
+                }
             )
         }
     }
@@ -3355,8 +3365,10 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
                 return
             }
             guard shouldScrollToBottom else { return }
-            scrollView.layer.removeAllAnimations()
-            scrollView.setContentOffset(scrollView.contentOffset, animated: false)
+            if !animateBottomScroll {
+                scrollView.layer.removeAllAnimations()
+                scrollView.setContentOffset(scrollView.contentOffset, animated: false)
+            }
             if scrollView.panGestureRecognizer.state != .possible {
                 scrollView.panGestureRecognizer.isEnabled = false
                 scrollView.panGestureRecognizer.isEnabled = true
@@ -3372,9 +3384,9 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
                 return
             }
             UIView.animate(
-                withDuration: 0.42,
+                withDuration: 0.2,
                 delay: 0,
-                options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut]
+                options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseOut]
             ) {
                 scrollView.contentOffset = CGPoint(x: scrollView.contentOffset.x, y: targetY)
             }
@@ -3837,5 +3849,30 @@ private struct ThreadNavigationButton: View {
         }
         .buttonStyle(.plain).foregroundStyle(KordiTheme.signalBlue).disabled(isLoading).opacity(isLoading ? 0.6 : 1)
         .accessibilityLabel("Jump to next unread thread").accessibilityValue("\(count) unread discussions")
+    }
+}
+
+/// Only locally staged messages enter; hydration and delivery receipts never replay it.
+private struct OutgoingMessageEntrance: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let shouldAnimate: Bool
+    let onAnimationStarted: () -> Void
+    @State private var hasAppeared = false
+
+    func body(content: Content) -> some View {
+        let entering = shouldAnimate && !hasAppeared
+        content
+            .opacity(entering ? 0.72 : 1)
+            .offset(y: entering && !reduceMotion ? 9 : 0)
+            .onAppear {
+                guard shouldAnimate, !hasAppeared else {
+                    hasAppeared = true
+                    return
+                }
+                withAnimation(.timingCurve(0.23, 1, 0.32, 1, duration: 0.15)) {
+                    hasAppeared = true
+                    onAnimationStarted()
+                }
+            }
     }
 }

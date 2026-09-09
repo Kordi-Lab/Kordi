@@ -210,7 +210,6 @@ export function VirtualTranscript<Item>({
     if (tailAlignmentFrameRef.current !== null) {
       window.cancelAnimationFrame(tailAlignmentFrameRef.current);
     }
-    if (revealFromIndex !== undefined) cancelTailLiftAnimation();
     tailAlignmentActiveRef.current = true;
     const liftedRows = alignAndRevealMeasuredTranscriptRows({
       alignToTail: alignViewportToTail,
@@ -232,7 +231,7 @@ export function VirtualTranscript<Item>({
       }
     };
     tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
-  }, [alignViewportToTail, cancelTailLiftAnimation, gap, virtualizer]);
+  }, [alignViewportToTail, gap, virtualizer]);
 
   useEffect(() => {
     // React Strict Mode intentionally runs an extra setup/cleanup cycle in

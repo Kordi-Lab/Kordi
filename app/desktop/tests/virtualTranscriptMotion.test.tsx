@@ -10,8 +10,14 @@ import {
   transcript,
 } from './support/virtualTranscriptHarness';
 
+const animations = new WeakMap<HTMLElement, { frames: Keyframe[]; cancelled: boolean }>();
 test.before(async () => {
   await installVirtualTranscriptHarness();
+  HTMLElement.prototype.animate = function(frames) {
+    const record = { frames: frames as Keyframe[], cancelled: false };
+    animations.set(this, record);
+    return { cancel: () => { record.cancelled = true; }, onfinish: null } as unknown as Animation;
+  };
 });
 
 test.afterEach(async () => {
@@ -46,23 +52,32 @@ test('an outgoing append lifts only existing rows by its measured height and hon
     const appendedRow = view.host.querySelector<HTMLElement>('[data-index="20"]');
     assert.ok(previousRow);
     assert.ok(appendedRow);
-    assert.equal(previousRow.style.getPropertyValue('--app-transcript-row-lift'), '144px');
-    assert.equal(
-      previousRow.style.animation,
-      'app-transcript-existing-row-lift 150ms cubic-bezier(0.23, 1, 0.32, 1)',
-    );
-    assert.equal(appendedRow.style.animation, '');
+    assert.deepEqual(animations.get(previousRow)?.frames, [
+      { translate: '0 144px' }, { translate: '0 0' },
+    ]);
+    assert.equal(animations.has(appendedRow), false);
+    const firstAnimation = animations.get(previousRow);
+    // Simulate an unfinished lift when a second message arrives.
+    previousRow.style.translate = '0 60px';
+    await view.rerender(transcript({
+      items: [...initialItems, { id: 'motion-20', height: 140 }, { id: 'motion-21', height: 80 }],
+      sessionKey: 'motion-tail-follow', animateLatestAppend: true,
+    }));
+    assert.equal(firstAnimation?.cancelled, true);
+    assert.deepEqual(animations.get(previousRow)?.frames, [
+      { translate: '0 144px' }, { translate: '0 0' },
+    ]);
 
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
       value: () => ({ matches: true }) as MediaQueryList,
     });
     await view.rerender(transcript({
-      items: [...initialItems, { id: 'motion-20', height: 140 }, { id: 'motion-21', height: 80 }],
+      items: [...initialItems, { id: 'motion-20', height: 140 }, { id: 'motion-21', height: 80 }, { id: 'motion-22', height: 80 }],
       sessionKey: 'motion-tail-follow',
       animateLatestAppend: true,
     }));
-    assert.equal(previousRow.style.animation, 'none');
+    assert.equal(animations.get(previousRow)?.cancelled, true);
     assert.equal(view.host.querySelector<HTMLElement>('[data-index="21"]')?.style.animation, '');
   } finally {
     if (originalMatchMedia) Object.defineProperty(window, 'matchMedia', originalMatchMedia);

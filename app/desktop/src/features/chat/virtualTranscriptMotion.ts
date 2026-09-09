@@ -6,20 +6,17 @@ type TranscriptVirtualizer = {
   measureElement: (node: HTMLDivElement | null) => void;
 };
 
+const rowLiftAnimations = new WeakMap<HTMLElement, Animation>();
+
 export function cancelTranscriptRowLift(rows: readonly HTMLElement[]) {
   for (const row of rows) {
-    row.style.animation = 'none';
-    row.style.removeProperty('--app-transcript-row-lift');
+    rowLiftAnimations.get(row)?.cancel();
+    rowLiftAnimations.delete(row);
   }
 }
 
 export function alignAndRevealMeasuredTranscriptRows({
-  alignToTail,
-  gap,
-  reduceMotion,
-  revealFromIndex,
-  sizeContainer,
-  virtualizer,
+  alignToTail, gap, reduceMotion, revealFromIndex, sizeContainer, virtualizer,
 }: {
   alignToTail: () => void;
   gap: number;
@@ -32,29 +29,37 @@ export function alignAndRevealMeasuredTranscriptRows({
     alignToTail();
     return [];
   }
-  const rows = [
-    ...sizeContainer.querySelectorAll<HTMLDivElement>('[data-transcript-window-item="true"]'),
-  ];
+  const rows = [...sizeContainer.querySelectorAll<HTMLDivElement>('[data-transcript-window-item="true"]')];
   const appendedRows = rows.filter((row) => Number(row.dataset.index) >= revealFromIndex);
   for (const row of appendedRows) virtualizer.measureElement(row);
   alignToTail();
-  if (reduceMotion) return [];
+  if (reduceMotion) {
+    cancelTranscriptRowLift(rows);
+    return [];
+  }
 
-  const liftDistance = appendedRows.reduce(
-    (height, row) => height + row.offsetHeight + gap,
-    0,
-  );
+  const liftDistance = appendedRows.reduce((height, row) => height + row.offsetHeight + gap, 0);
   if (liftDistance <= 1) return [];
-
   const previousRows = rows.filter((row) => Number(row.dataset.index) < revealFromIndex);
-  for (const row of previousRows) {
-    row.style.setProperty('--app-transcript-row-lift', `${liftDistance}px`);
-    row.style.animation = 'none';
-  }
-  void sizeContainer.offsetWidth;
-  for (const row of previousRows) {
-    row.style.animation = 'app-transcript-existing-row-lift 150ms cubic-bezier(0.23, 1, 0.32, 1)';
-  }
+  // Read every presentation offset before cancelling anything. A burst continues
+  // from the visible position instead of snapping to the previous animation's end.
+  const offsets = previousRows.map((row) => {
+    if (!rowLiftAnimations.has(row)) return 0;
+    const translate = getComputedStyle(row).translate.split(/\s+/);
+    return Number.parseFloat(translate[1] ?? '0') || 0;
+  });
+  previousRows.forEach((row, index) => {
+    rowLiftAnimations.get(row)?.cancel();
+    if (typeof row.animate !== 'function') return;
+    const animation = row.animate([
+      { translate: `0 ${liftDistance + offsets[index]}px` },
+      { translate: '0 0' },
+    ], { duration: 150, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' });
+    rowLiftAnimations.set(row, animation);
+    animation.onfinish = () => {
+      if (rowLiftAnimations.get(row) === animation) rowLiftAnimations.delete(row);
+    };
+  });
   return previousRows;
 }
 

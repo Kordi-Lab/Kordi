@@ -8,6 +8,8 @@ export type ChatPerformanceSpanName =
   | 'session-click-to-first-message'
   | 'transcript-virtual-render'
   | 'sidebar-virtual-render'
+  | 'cloud-send-to-optimistic'
+  | 'cloud-send-queue-wait'
   | 'cloud-send-to-first-ack'
   | 'cloud-group-replay'
   | 'cloud-agent-ownership-guard'
