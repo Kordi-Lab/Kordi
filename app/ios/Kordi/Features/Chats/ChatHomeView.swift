@@ -1272,7 +1272,7 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
     let leading: [ChatCircularSwipeAction]
     let trailing: [ChatCircularSwipeAction]
     @State private var restingOffset: CGFloat = 0
-    @GestureState private var dragOffset: CGFloat = 0
+    @State private var dragOffset: CGFloat = 0
 
     private let actionDiameter: CGFloat = 44
     private let actionSpacing: CGFloat = 8
@@ -1306,7 +1306,7 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
             content
                 .background(Color(uiColor: .systemBackground))
                 .offset(x: displayedOffset)
-                .highPriorityGesture(horizontalDragGesture)
+                .chatRowSwipeGesture(onChanged: updateSwipe, onEnded: finishSwipe, onCancelled: cancelSwipe)
                 .zIndex(1)
         }
         .clipped()
@@ -1321,7 +1321,7 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
                             .contentShape(Rectangle())
                             .frame(width: max(0, proxy.size.width - abs(restingOffset)))
                             .onTapGesture { close() }
-                            .highPriorityGesture(horizontalDragGesture)
+                            .chatRowSwipeGesture(onChanged: updateSwipe, onEnded: finishSwipe, onCancelled: cancelSwipe)
                         if restingOffset < 0 {
                             Spacer(minLength: 0)
                         }
@@ -1336,35 +1336,34 @@ private struct ChatCircularSwipeActionsModifier: ViewModifier {
         }
     }
 
-    private var horizontalDragGesture: some Gesture {
-        DragGesture(minimumDistance: 10)
-            .updating($dragOffset) { value, offset, _ in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                offset = value.translation.width
-            }
-            .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                if activeRowID != rowID {
-                    activeRowID = rowID
-                    restingOffset = 0
-                }
-            }
-            .onEnded { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                let projectedOffset = restingOffset + value.predictedEndTranslation.width
-                let destination: CGFloat
-                if projectedOffset > max(36, leadingWidth / 2), !leading.isEmpty {
-                    destination = leadingWidth
-                } else if projectedOffset < -max(36, trailingWidth / 2), !trailing.isEmpty {
-                    destination = -trailingWidth
-                } else {
-                    destination = 0
-                }
-                withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
-                    restingOffset = destination
-                    activeRowID = destination == 0 ? nil : rowID
-                }
-            }
+    private func updateSwipe(_ translation: CGFloat) {
+        if activeRowID != rowID {
+            activeRowID = rowID
+            restingOffset = 0
+        }
+        dragOffset = translation
+    }
+
+    private func finishSwipe(_ projectedTranslation: CGFloat) {
+        let projectedOffset = restingOffset + projectedTranslation
+        let destination: CGFloat
+        if projectedOffset > max(36, leadingWidth / 2), !leading.isEmpty {
+            destination = leadingWidth
+        } else if projectedOffset < -max(36, trailingWidth / 2), !trailing.isEmpty {
+            destination = -trailingWidth
+        } else {
+            destination = 0
+        }
+        withAnimation(.interactiveSpring(response: 0.28, dampingFraction: 0.86)) {
+            dragOffset = 0
+            restingOffset = destination
+            activeRowID = destination == 0 ? nil : rowID
+        }
+    }
+
+    private func cancelSwipe() {
+        dragOffset = 0
+        if restingOffset == 0, activeRowID == rowID { activeRowID = nil }
     }
 
     private func actionWidth(for actions: [ChatCircularSwipeAction]) -> CGFloat {
