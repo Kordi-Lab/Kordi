@@ -45,6 +45,10 @@ Load approved infrastructure/account values from private operator configuration.
 Read the applicable local operating rules. Keep credentials, team IDs, device
 IDs, private paths, and raw logs out of commits and release notes.
 
+Run these examples in a private operator shell. Keep verbose build, signing,
+and upload output in protected log files outside the repository; share only
+sanitized pass/fail summaries, never raw logs or credentials.
+
 Set these private shell variables before using the examples:
 
 | Variable | Meaning |
@@ -142,7 +146,7 @@ export CXXFLAGS="$CFLAGS"
 export TMPDIR="$CARGO_TARGET_DIR/tmp/"
 unset VITE_KORDI_CLOUD_API_BASE VITE_KORDI_DEV_PROFILE
 # APPLE_SIGNING_IDENTITY and updater/notarization credentials are already loaded.
-pnpm --dir app/desktop tauri:build:cloud:dmg
+pnpm --dir app/desktop tauri:build:cloud:dmg > "$RELEASE_BUILD_ROOT/macos-build.private.log" 2>&1
 
 export MAC_APP="$CARGO_TARGET_DIR/release/bundle/macos/Kordi.app"
 export RELEASE_STAGE="$RELEASE_BUILD_ROOT/verified-release"
@@ -229,7 +233,7 @@ xcodebuild -resolvePackageDependencies \
   -project app/ios/Kordi.xcodeproj -scheme Kordi \
   -clonedSourcePackagesDirPath "$KORDI_IOS_PACKAGES" \
   -derivedDataPath "$KORDI_IOS_DERIVED_DATA" \
-  -onlyUsePackageVersionsFromResolvedFile
+  -onlyUsePackageVersionsFromResolvedFile > "$KORDI_IOS_ROOT/packages.private.log" 2>&1
 python3 scripts/prepare-ios-uniffi.py \
   --source "$KORDI_UNIFFI_SOURCE" --build "$KORDI_UNIFFI_BUILD" \
   --packages "$KORDI_IOS_PACKAGES"
@@ -258,7 +262,7 @@ xcodebuild -project app/ios/Kordi.xcodeproj \
   SWIFT_SERIALIZE_DEBUGGING_OPTIONS=NO \
   'OTHER_SWIFT_FLAGS=$(inherited) -debug-prefix-map /var/folders=/build/tmp -file-prefix-map /var/folders=/build/tmp -debug-prefix-map /private/tmp=/build/tmp -file-prefix-map /private/tmp=/build/tmp' \
   'OTHER_CFLAGS=$(inherited) -fdebug-prefix-map=/var/folders=/build/tmp -ffile-prefix-map=/var/folders=/build/tmp' \
-  archive
+  archive > "$KORDI_IOS_ROOT/archive.private.log" 2>&1
 ```
 
 Create private export/upload options without placing team values in source:
@@ -281,7 +285,7 @@ PY
 xcodebuild -exportArchive -archivePath "$IOS_ARCHIVE" \
   -exportPath "$KORDI_IOS_ROOT/Export" \
   -exportOptionsPlist "$KORDI_IOS_ROOT/ExportOptions.plist" \
-  -allowProvisioningUpdates
+  -allowProvisioningUpdates > "$KORDI_IOS_ROOT/export.private.log" 2>&1
 ```
 
 Extract the IPA and apply the [export verification checklist](ios-development.md#archive-and-export)
@@ -303,7 +307,7 @@ Otherwise use the signed-in Xcode account with the same verified archive:
 xcodebuild -exportArchive -archivePath "$IOS_ARCHIVE" \
   -exportPath "$KORDI_IOS_ROOT/Upload" \
   -exportOptionsPlist "$KORDI_IOS_ROOT/UploadOptions.plist" \
-  -allowProvisioningUpdates
+  -allowProvisioningUpdates > "$KORDI_IOS_ROOT/upload.private.log" 2>&1
 ```
 
 The second command distributes the archive through Xcode; it may export/sign
