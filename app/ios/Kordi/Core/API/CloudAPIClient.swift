@@ -944,6 +944,15 @@ actor CloudAPIClient {
         }
     }
 
+    func stopAgentSubsession(token: String, id: String, expectedStartedAtMs: Int64?) async throws -> CloudAgentSubsession {
+        struct StopRequest: Encodable { let expectedStartedAtMs: Int64? }
+        return try await send(
+            path: "/v1/cloud/agent-subsessions/\(escapedPath(id))/stop", method: "POST", token: token,
+            body: StopRequest(expectedStartedAtMs: expectedStartedAtMs),
+            fallback: "Could not stop this task. Try again."
+        )
+    }
+
     private func threadReadConversation(token: String, sessionId: String) async throws -> CloudChatConversation {
         if let cached = chatConversationsBySessionId[sessionId] ?? chatConversationsById[sessionId] { return cached }
         _ = try await bootstrapChat(token: token)

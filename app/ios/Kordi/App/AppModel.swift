@@ -229,6 +229,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var pinnedGroupSpaceIds = Set<String>()
     @Published private(set) var messagesByConversation: [String: [ChatMessage]] = [:]
     @Published private(set) var subsessions: [String: CloudAgentSubsession] = [:]
+    @Published private(set) var stoppingSubsessionIDs: Set<String> = []
     @Published private(set) var callsByConversationID: [String: CloudCall] = [:]
     @Published private(set) var latestCallSnapshot: CloudCall?
     @Published private(set) var sessionActivityByID: [String: CloudSessionActivity] = [:]
@@ -335,6 +336,7 @@ final class AppModel: ObservableObject {
             arguments: ProcessInfo.processInfo.arguments,
             launchRequested: ProcessInfo.processInfo.arguments.contains("--preview-launching")
                 || ProcessInfo.processInfo.arguments.contains("--preview-data")
+                || ProcessInfo.processInfo.arguments.contains("--preview-background-stop")
                 || ProcessInfo.processInfo.arguments.contains("--preview-markdown")
                 || ProcessInfo.processInfo.arguments.contains("--preview-login")
                 || ProcessInfo.processInfo.arguments.contains("--preview-signup")
@@ -569,6 +571,7 @@ final class AppModel: ObservableObject {
         conversations = []
         messagesByConversation = [:]
         subsessions = [:]
+        stoppingSubsessionIDs = []
         callsByConversationID = [:]
         latestCallSnapshot = nil
         endedCallIDs = []
@@ -1386,18 +1389,9 @@ final class AppModel: ObservableObject {
 
     func agentSubsessionTasks(parentSessionId: String) async throws -> [CloudAgentSubsessionTask] {
         guard let token, let account, !previewMode else { return [] }
-        var tasks: [CloudAgentSubsessionTask] = []
-        var after: String?
-        var seen = Set<String>()
-        repeat {
-            let page = try await api.agentSubsessionTasks(token: token, parentSessionId: parentSessionId, after: after)
-            try Task.checkCancellation()
-            guard self.account?.accountId == account.accountId else { throw CancellationError() }
-            tasks.append(contentsOf: page.sessions)
-            after = page.nextCursor
-            if let after, !seen.insert(after).inserted { throw URLError(.cannotParseResponse) }
-        } while after != nil
-        return tasks
+        return try await AgentSubsessionOperations.tasks(api: api, token: token, parentSessionId: parentSessionId) {
+            self.account?.accountId == account.accountId
+        }
     }
 
     func refreshThreadAttention() async {
@@ -1458,6 +1452,7 @@ final class AppModel: ObservableObject {
     }
 
     func agentSubsession(id: String, includeMessages: Bool = false) async throws -> CloudAgentSubsession {
+        if previewMode, let snapshot = subsessions[id] { return snapshot }
         guard let token, let accountId = account?.accountId else { throw URLError(.userAuthenticationRequired) }
         let result: CloudAgentSubsession
         do {
@@ -1472,6 +1467,26 @@ final class AppModel: ObservableObject {
             subsessions[id] = result
         }
         return result
+    }
+
+    func stopAgentSubsession(_ snapshot: CloudAgentSubsession) async throws {
+        guard let accountId = account?.accountId, snapshot.canStop(accountId: accountId) else {
+            throw URLError(.userAuthenticationRequired)
+        }
+        guard stoppingSubsessionIDs.insert(snapshot.sessionId).inserted else { return }
+        defer { stoppingSubsessionIDs.remove(snapshot.sessionId) }
+        let result = try await AgentSubsessionOperations.stop(snapshot, api: api, token: token, previewMode: previewMode)
+        guard self.account?.accountId == accountId else { throw CancellationError() }
+        if (subsessions[snapshot.sessionId]?.version ?? -1) <= result.version {
+            subsessions[snapshot.sessionId] = result
+        }
+    }
+
+    func installSubsessionStopPreview(_ snapshot: CloudAgentSubsession, reset: Bool = false) {
+        guard previewMode, reset || subsessions[snapshot.sessionId] == nil else { return }
+        var preview = snapshot
+        preview.version = (subsessions[snapshot.sessionId]?.version ?? 0) + 1
+        subsessions[snapshot.sessionId] = preview
     }
 
     func loadEarlierMessages(for conversation: ConversationSummary) async {

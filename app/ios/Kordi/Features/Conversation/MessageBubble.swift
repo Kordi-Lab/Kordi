@@ -1060,7 +1060,7 @@ private struct BackgroundSessionThreadConnector: Shape {
     }
 }
 
-private struct BackgroundAgentSessionRow: View {
+struct BackgroundAgentSessionRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var model: AppModel
     @State private var snapshot: CloudAgentSubsession?
@@ -1069,10 +1069,18 @@ private struct BackgroundAgentSessionRow: View {
     let agentName: String
     let isEnabled: Bool
     let onOpen: (BackgroundAgentSession) -> Void
-    private var state: BackgroundAgentSession.State { snapshot?.state ?? presentation.state }
-    private var statusText: String { syncUnavailable ? "Sync unavailable" : snapshot?.statusNotice ?? state.label }
+    private var current: CloudAgentSubsession? {
+        if let saved = model.subsessions[presentation.id], saved.version >= (snapshot?.version ?? -1) { return saved }
+        return snapshot
+    }
+    private var state: BackgroundAgentSession.State { current?.state ?? presentation.state }
+    private var statusText: String {
+        if model.stoppingSubsessionIDs.contains(presentation.id) { return "Stopping…" }
+        return syncUnavailable ? "Sync unavailable" : current?.statusNotice ?? state.label
+    }
 
     var body: some View {
+        HStack(spacing: 8) {
         Button {
             onOpen(presentation.session)
         } label: {
@@ -1129,6 +1137,10 @@ private struct BackgroundAgentSessionRow: View {
             "\(snapshot?.title ?? presentation.session.title), \(snapshot?.agentDisplayName ?? agentName), background session, \(statusText)"
         )
         .accessibilityHint("Opens the linked agent session")
+        if let current, isEnabled {
+            AgentSubsessionStopButton(snapshot: current)
+        }
+        }
         .task(id: presentation.session.sessionId) {
             while !Task.isCancelled {
                 do {

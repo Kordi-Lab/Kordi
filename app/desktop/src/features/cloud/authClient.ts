@@ -7,7 +7,8 @@ import { type CloudAgentRun,type CloudAgentRunClaimInput,type CloudAgentRunLooku
 // Production sessions never silently fall back to localhost; local tunnels remain
 // available only by explicitly setting VITE_KORDI_CLOUD_API_BASE.
 import type { DesktopChatContextMessage } from '@/lib/desktop';
-import type { CloudAgentSubsession,NativeAgentSubsession } from './agentSubsessionTypes';
+import type { NativeAgentSubsession } from './agentSubsessionTypes';
+import { CloudAgentSubsessionClient } from './cloudAgentSubsessionClient';
 import { ChatSyncClient } from './chatSyncClient';
 import type {
   ChatSyncBootstrapResponse,
@@ -309,31 +310,23 @@ export function defaultCloudRequestTimeoutMs(baseUrl: string): number {
 }
 
 export class CloudAuthClient {
-  listAgentSubsessionTasks(token: string, parentSessionId: string, after?: string): Promise<{sessions: import('./agentSubsessionTypes').AgentSubsessionTask[]; nextCursor: string | null}> {
-    const query = new URLSearchParams({ parentSessionId, ...(after ? { after } : {}) });
-    return this.send(`/v1/cloud/agent-subsessions?${query}`, {
-      method: 'GET', headers: { Authorization: `Bearer ${token}` },
-    }, 'Could not load Agent threads.');
+  listAgentSubsessionTasks(token: string, parentSessionId: string, after?: string) {
+    return this.subsessionClient.listAgentSubsessionTasks(token, parentSessionId, after);
   }
-
-  getAgentSubsession(token: string, id: string, includeMessages = false): Promise<CloudAgentSubsession> {
-    return this.send(`/v1/cloud/agent-subsessions/${encodeURIComponent(id)}?includeMessages=${includeMessages}`, {
-      method: 'GET', headers: { Authorization: `Bearer ${token}` },
-    }, 'Could not load this agent task.');
+  getAgentSubsession(token: string, id: string, includeMessages = false) {
+    return this.subsessionClient.getAgentSubsession(token, id, includeMessages);
   }
-
-  putAgentSubsession(token: string, value: NativeAgentSubsession, expectedVersion: number): Promise<CloudAgentSubsession> {
-    return this.send(`/v1/cloud/agent-subsessions/${encodeURIComponent(value.sessionId)}`, {
-      method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parentSessionId: value.parentSessionId, parentRequestId: value.parentRequestId,
-        title: value.title, status: value.status, messages: value.messages, activity: value.activity, expectedVersion }),
-    }, 'Could not synchronize this agent task.');
+  stopAgentSubsession(token: string, id: string, expectedStartedAtMs: number | null) {
+    return this.subsessionClient.stopAgentSubsession(token, id, expectedStartedAtMs);
   }
-  sendAgentSubsessionMessage(token: string, id: string, clientMessageId: string, text: string, mentions: unknown[]): Promise<CloudAgentSubsession> {
-    return this.send(`/v1/cloud/agent-subsessions/${encodeURIComponent(id)}/messages`, { method:'POST', headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'}, body:JSON.stringify({clientMessageId,text,mentions}) }, 'Could not send this message.');
+  putAgentSubsession(token: string, value: NativeAgentSubsession, expectedVersion: number) {
+    return this.subsessionClient.putAgentSubsession(token, value, expectedVersion);
   }
-  pendingAgentSubsessionMessages(token:string): Promise<Array<{runId:string;subsessionId:string;messageId:string;senderAccountId:string;text:string;contextMessages?:DesktopChatContextMessage[]}>> {
-    return this.send('/v1/cloud/agent-subsessions/pending', {method:'GET',headers:{Authorization:`Bearer ${token}`}}, 'Could not load queued task messages.');
+  sendAgentSubsessionMessage(token: string, id: string, clientMessageId: string, text: string, mentions: unknown[]) {
+    return this.subsessionClient.sendAgentSubsessionMessage(token, id, clientMessageId, text, mentions);
+  }
+  pendingAgentSubsessionMessages(token: string) {
+    return this.subsessionClient.pendingAgentSubsessionMessages(token);
   }
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -341,6 +334,7 @@ export class CloudAuthClient {
   private activeAccountId: string | null = null;
   readonly chat: ChatSyncClient;
   private readonly devices: CloudDeviceClient;
+  private readonly subsessionClient: CloudAgentSubsessionClient;
   private readonly expressiveMedia: CloudExpressiveMediaClient;
   private readonly identity: CloudIdentityAuthClient;
   private readonly sessionList: CloudSessionListClient;
@@ -350,6 +344,7 @@ export class CloudAuthClient {
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
     this.requestTimeoutMs = options.requestTimeoutMs ?? defaultCloudRequestTimeoutMs(this.baseUrl);
     const deviceRegistration = options.deviceRegistration ?? installationDeviceRegistration;
+    this.subsessionClient = new CloudAgentSubsessionClient((path, init, fallback) => this.send(path, init, fallback));
     this.devices = new CloudDeviceClient(
       (path, init, fallbackMessage) => this.send(path, init, fallbackMessage),
       deviceRegistration,
