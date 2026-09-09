@@ -10,6 +10,12 @@ Run the commands from the repository root in a clean, pinned release worktree.
 archive/export/upload -> TestFlight verification. An explicitly requested
 platform-only release follows that platform's gates and records the scope.
 
+Choose the requested scope first. Metadata-only preparation stops after step 1.
+For an explicitly requested signed-build-only task, produce and verify local
+artifacts without tags, storage publication, or App Store upload; record them
+as built/verified. Publication requires a request that includes that phase;
+do not ask again when the user has already authorized it.
+
 ## 1. Prepare the candidate before release day
 
 - Merge implementation fixes and their focused tests first. Qualify changed
