@@ -247,6 +247,40 @@ implementation PRs and must already be recorded on the merged candidate.
 6. Resolve packages into a task-owned DerivedData directory and scan downloaded
    binary frameworks for forbidden private build paths before archive.
 
+### Source-built LiveKit device framework
+
+The pinned LiveKit UniFFI 0.0.6 device binary embeds upstream build-machine
+paths. Before an iOS release archive, replace its binary dependency declaration
+in the **task-owned** SwiftPM checkout with a source-built device framework:
+
+```bash
+python3 scripts/prepare-ios-uniffi.py \
+  --source "$KORDI_UNIFFI_SOURCE" \
+  --build "$KORDI_UNIFFI_BUILD" \
+  --packages "$KORDI_IOS_PACKAGES"
+```
+
+Set `DEVELOPER_DIR` explicitly and supply separate, private source/build/package
+directories. Resolve the project's pinned packages into `KORDI_IOS_PACKAGES`
+first. The helper requires Rust, the iOS Rust target, and `protoc`. It pins the
+upstream Swift wrapper, Rust source, and protocol submodule; compiles with path
+remapping; compares generated Swift bindings and C headers; checks architecture,
+install name, and private paths; then creates a new XCFramework and records its
+source revisions and binary digest. The original downloaded artifact remains
+untouched. The source revision is qualified against the pinned generated
+interface, rather than inferred from the hosting package's version number.
+
+Both package manifests explicitly select the new local binary target; the
+helper never claims the rebuilt bytes match the upstream ZIP checksum. Use
+that same package directory for the archive with
+`-clonedSourcePackagesDirPath "$KORDI_IOS_PACKAGES"`,
+`-disableAutomaticPackageResolution`, and `-skipPackageUpdates`. Do not reset or
+resolve packages between preparation and archive. This override supports only
+physical iOS devices; use ordinary pinned packages for development platforms.
+Keep the provenance alongside release evidence, verify the selected framework
+digest before signing, and scan the exported IPA after signing. A failed source or
+interface check stops release preparation; do not edit binary strings.
+
 ### Apple account and capability preflight
 
 Before archive creation:
