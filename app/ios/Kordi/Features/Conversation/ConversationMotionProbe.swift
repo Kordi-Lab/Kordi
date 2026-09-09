@@ -12,6 +12,7 @@ enum ConversationMotionProbeRegistry {
     static var enabled = false
     static var setDraft: ((String) -> Void)?
     static var send: (() -> Void)?
+    static var goToLatest: (() -> Void)?
     static var views: [String: WeakView] = [:]
 
     static func frame(for id: String, in window: UIWindow) -> CGRect? {

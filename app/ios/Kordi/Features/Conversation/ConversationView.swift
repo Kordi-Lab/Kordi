@@ -55,49 +55,6 @@ private struct ConversationScrollAnchorPolicy: ViewModifier {
     }
 }
 
-private struct ConversationNativeScrollObserver: ViewModifier {
-    let update: (ConversationScrollGeometrySnapshot) -> Void
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content.onScrollGeometryChange(for: ConversationScrollGeometrySnapshot.self) { geometry in
-                ConversationScrollGeometrySnapshot(
-                    isAtLatest: geometry.contentOffset.y + geometry.containerSize.height + 12
-                        >= geometry.contentSize.height + geometry.contentInsets.bottom,
-                    contentOffsetY: geometry.contentOffset.y,
-                    isValid: geometry.containerSize.height > 0 && geometry.contentSize.height > 0
-                )
-            } action: { _, snapshot in
-                update(snapshot)
-            }
-        } else {
-            content
-        }
-    }
-}
-
-private struct ConversationLegacyScrollObserver: ViewModifier {
-    let viewportFrame: CGRect
-    let update: (ConversationScrollGeometrySnapshot) -> Void
-
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 18.0, *) {
-            content
-        } else {
-            content.onGeometryChange(for: ConversationScrollGeometrySnapshot.self) { geometry in
-                let frame = geometry.frame(in: .global)
-                return ConversationScrollGeometrySnapshot(
-                    isAtLatest: frame.height <= viewportFrame.height || frame.maxY <= viewportFrame.maxY + 12,
-                    contentOffsetY: viewportFrame.minY - frame.minY,
-                    isValid: frame.height > 0
-                )
-            } action: { snapshot in
-                update(snapshot)
-            }
-        }
-    }
-}
-
 private struct ConversationThreadPresentationModifier: ViewModifier {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Binding var activeRootMessageID: String?
@@ -592,6 +549,7 @@ struct ConversationView: View {
                                         animateBottomScroll: animateBottomScroll,
                                         reduceMotion: reduceMotion,
                                         exactRestoreRequest: $exactScrollRestoreRequest,
+                                        onScrollGeometryChange: recordScrollGeometry,
                                         onTailPositioned: stagedMessageIDs.isEmpty ? nil : { [messageIDs = stagedMessageIDs] in
                                             stagedMessageIDs.removeAll { messageIDs.contains($0) }
                                             isAtBottom = true
@@ -608,13 +566,9 @@ struct ConversationView: View {
                                 )
                                 .padding(.horizontal, 12)
                                 .padding(.top, timelineVerticalInset)
-                                .modifier(ConversationLegacyScrollObserver(
-                                    viewportFrame: viewport.frame(in: .global), update: recordScrollGeometry
-                                ))
                             }
                             .modifier(ConversationOutgoingAvatarOverlay())
                             .modifier(ConversationScrollAnchorPolicy())
-                            .modifier(ConversationNativeScrollObserver(update: recordScrollGeometry))
                             .scrollDisabled(messageActionMessage != nil)
                             .simultaneousGesture(
                                 TapGesture().onEnded {
@@ -644,6 +598,13 @@ struct ConversationView: View {
                                     LatestMessageButton(count: newMessageCount) {
                                         scrollToBottom(animated: true)
                                     }
+                                    #if DEBUG
+                                    .background {
+                                        if ConversationMotionProbeRegistry.enabled {
+                                            ConversationMotionProbe(id: "latest-message-button")
+                                        }
+                                    }
+                                    #endif
                                     .transition(.scale(scale: 0.82).combined(with: .opacity))
                                 }
                             }
@@ -804,6 +765,7 @@ struct ConversationView: View {
                 if ConversationMotionProbeRegistry.enabled {
                     ConversationMotionProbeRegistry.setDraft = { draft = $0 }
                     ConversationMotionProbeRegistry.send = { Task { await send() } }
+                    ConversationMotionProbeRegistry.goToLatest = { scrollToBottom(animated: true) }
                 }
             }
             #endif
@@ -3351,11 +3313,14 @@ private struct ConversationScrollRestoreRequest: Equatable {
     let contentOffsetY: CGFloat
 }
 
+// Observe the same UIScrollView used by scroll commands. SwiftUI geometry
+// callbacks can leave read presentation stale after a UIKit-driven jump.
 private struct ConversationScrollCommandBridge: UIViewRepresentable {
     let scrollToBottomRequest: Int
     let animateBottomScroll: Bool
     let reduceMotion: Bool
     @Binding var exactRestoreRequest: ConversationScrollRestoreRequest?
+    let onScrollGeometryChange: (ConversationScrollGeometrySnapshot) -> Void
     let onTailPositioned: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -3391,6 +3356,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         DispatchQueue.main.async { [weak view] in
             guard let view,
                   let scrollView = enclosingScrollView(from: view) else { return }
+            coordinator.observeGeometry(in: scrollView, update: onScrollGeometryChange)
             scrollView.keyboardDismissMode = .onDrag
             if let restoreRequest {
                 guard coordinator.lastHandledRestoreRequestID != restoreRequest.id else { return }
@@ -3430,6 +3396,8 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
             }
             if shouldScrollToBottom, coordinator.lastHandledRequest == scrollToBottomRequest {
                 coordinator.lastAttachedRequest = scrollToBottomRequest
+                // A jump at the existing destination emits no offset change.
+                coordinator.scheduleGeometryUpdate()
             }
         }
     }
@@ -3444,7 +3412,7 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: UIView, coordinator: Coordinator) {
-        coordinator.tailAnimator.disconnect()
+        coordinator.disconnect()
     }
 
     @MainActor
@@ -3453,6 +3421,51 @@ private struct ConversationScrollCommandBridge: UIViewRepresentable {
         var lastHandledRequest = 0
         var lastAttachedRequest = 0
         var lastHandledRestoreRequestID = 0
+        private weak var observedScrollView: UIScrollView?
+        private var geometryObservations: [NSKeyValueObservation] = []
+        private var geometryUpdate: ((ConversationScrollGeometrySnapshot) -> Void)?
+        private var isGeometryUpdateScheduled = false
+
+        func observeGeometry(
+            in scrollView: UIScrollView,
+            update: @escaping (ConversationScrollGeometrySnapshot) -> Void
+        ) {
+            geometryUpdate = update
+            if observedScrollView !== scrollView {
+                geometryObservations = []
+                observedScrollView = scrollView
+                geometryObservations = [
+                    scrollView.observe(\.contentOffset) { [weak self] _, _ in self?.scheduleGeometryUpdate() },
+                    scrollView.observe(\.contentSize) { [weak self] _, _ in self?.scheduleGeometryUpdate() },
+                    scrollView.observe(\.bounds) { [weak self] _, _ in self?.scheduleGeometryUpdate() },
+                    scrollView.observe(\.adjustedContentInset) { [weak self] _, _ in self?.scheduleGeometryUpdate() }
+                ]
+            }
+        }
+
+        func scheduleGeometryUpdate() {
+            guard !isGeometryUpdateScheduled else { return }
+            isGeometryUpdateScheduled = true
+            // Coalesce layout/offset changes and never mutate SwiftUI state
+            // synchronously from updateUIView or a UIKit layout callback.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.isGeometryUpdateScheduled = false
+                guard let scrollView = self.observedScrollView else { return }
+                self.geometryUpdate?(ConversationScrollGeometrySnapshot(
+                    isAtLatest: scrollView.contentOffset.y >= ConversationTailScrollAnimator.targetOffset(in: scrollView) - 12,
+                    contentOffsetY: scrollView.contentOffset.y,
+                    isValid: scrollView.window != nil && scrollView.bounds.height > 0 && scrollView.contentSize.height > 0
+                ))
+            }
+        }
+
+        func disconnect() {
+            geometryObservations = []
+            observedScrollView = nil
+            geometryUpdate = nil
+            tailAnimator.disconnect()
+        }
     }
 }
 
