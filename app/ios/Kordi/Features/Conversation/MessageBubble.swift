@@ -29,6 +29,7 @@ struct MessageBubble: View, Equatable {
     let isHighlighted: Bool
     let isActionPresented: Bool
     var pendingSendEntrance = false
+    var outgoingAvatarGroupID: String? = nil
     var actionPlacement: MessageActionBubblePlacement? = nil
     var actionViewportFrame: CGRect = .zero
     let isPinned: Bool
@@ -85,6 +86,7 @@ struct MessageBubble: View, Equatable {
             && lhs.isHighlighted == rhs.isHighlighted
             && lhs.isActionPresented == rhs.isActionPresented
             && lhs.pendingSendEntrance == rhs.pendingSendEntrance
+            && lhs.outgoingAvatarGroupID == rhs.outgoingAvatarGroupID
             && lhs.actionPlacement == rhs.actionPlacement
             && lhs.actionViewportFrame == rhs.actionViewportFrame
             && lhs.isPinned == rhs.isPinned
@@ -335,7 +337,7 @@ struct MessageBubble: View, Equatable {
 
             if showsAvatarSlot && message.author == .me {
                 Group {
-                    if showAvatar {
+                    if showAvatar && outgoingAvatarGroupID == nil {
                         IdentityAvatar(
                             name: authorAvatarName,
                             imageSource: authorAvatarSource,

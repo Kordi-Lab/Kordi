@@ -612,6 +612,7 @@ struct ConversationView: View {
                                     viewportFrame: viewport.frame(in: .global), update: recordScrollGeometry
                                 ))
                             }
+                            .modifier(ConversationOutgoingAvatarOverlay())
                             .modifier(ConversationScrollAnchorPolicy())
                             .modifier(ConversationNativeScrollObserver(update: recordScrollGeometry))
                             .scrollDisabled(messageActionMessage != nil)
@@ -1265,6 +1266,7 @@ struct ConversationView: View {
                     isHighlighted: highlightedMessageID == message.id,
                     isActionPresented: messageActionMessage?.id == message.id,
                     pendingSendEntrance: stagedMessageIDs.contains(message.clientMessageId ?? message.id),
+                    outgoingAvatarGroupID: presentation.outgoingAvatarGroupID,
                     actionPlacement: messageActionMessage?.id == message.id && !messageActionPreviewFrame.isEmpty
                         ? MessageActionBubblePlacement(sourceFrame: messageActionFrame, previewFrame: messageActionPreviewFrame)
                         : nil,
@@ -1374,6 +1376,16 @@ struct ConversationView: View {
                     }
                 )
                 .equatable()
+                .background(alignment: .bottomTrailing) {
+                    if presentation.showsAvatar, let groupID = presentation.outgoingAvatarGroupID {
+                        ConversationOutgoingAvatarAnchorView(
+                            groupID: groupID, name: avatar.name, source: avatar.source,
+                            seed: avatar.seed ?? avatar.name,
+                            isPositionPending: stagedMessageIDs.contains(message.clientMessageId ?? message.id)
+                        )
+                        .padding(.bottom, 2)
+                    }
+                }
                 .padding(.top, presentation.groupedWithPrevious ? 2 : 7)
                 .padding(.bottom, presentation.groupedWithNext ? 0 : 2)
             }
@@ -3037,6 +3049,7 @@ struct ConversationMessagePresentation: Equatable {
     let groupedWithPrevious: Bool
     let groupedWithNext: Bool
     let showsAvatar: Bool
+    let outgoingAvatarGroupID: String?
 }
 
 enum ConversationTimelinePresentation {
@@ -3075,6 +3088,7 @@ enum ConversationTimelinePresentation {
                 || current.timeIntervalSince(previous) >= timestampGap
         }
 
+        var outgoingAvatarGroupID: String?
         return messages.indices.map { index in
             let key = groupKeys[index]
             let groupedWithPrevious = index > messages.startIndex
@@ -3086,11 +3100,19 @@ enum ConversationTimelinePresentation {
                 && !timestampVisibility[nextIndex]
                 && key != nil
                 && key == groupKeys[nextIndex]
+            if messages[index].author == .me, key != nil {
+                if !groupedWithPrevious {
+                    outgoingAvatarGroupID = messages[index].clientMessageId ?? messages[index].id
+                }
+            } else {
+                outgoingAvatarGroupID = nil
+            }
             return ConversationMessagePresentation(
                 showsTimestamp: timestampVisibility[index],
                 groupedWithPrevious: groupedWithPrevious,
                 groupedWithNext: groupedWithNext,
-                showsAvatar: key != nil && !groupedWithNext
+                showsAvatar: key != nil && !groupedWithNext,
+                outgoingAvatarGroupID: outgoingAvatarGroupID
             )
         }
     }
