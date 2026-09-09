@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 import { isLegacyCanonicalCollaborationSessionId, isCanonicalCloudSessionId } from '@/features/canonical/sessionResolver';
+import { isCloudCollaborationConversationId } from '@/features/collaboration/conversationIds';
 import type { DesktopChatState } from '@/kordi-app/types';
 import { startSessionClickToFirstMessage } from '@/features/performance/chatPerformance';
 import {
@@ -103,7 +104,7 @@ export function useDesktopSessionController({
         await hydrateCanonicalSessionPage(sessionId);
         return true;
       }
-      if (isLocalDraftChatConversationId(sessionId) || sessionId.startsWith('bridge:')) return true;
+      if (isLocalDraftChatConversationId(sessionId) || sessionId.startsWith('bridge:') || isCloudCollaborationConversationId(sessionId)) return true;
       const isKnownSession = desktopChatState?.activeSession.id === sessionId
         || desktopChatState?.sessions.some((session) => session.id === sessionId);
       const loaded = await preloadDesktopSessionTranscript(sessionId);
@@ -144,6 +145,7 @@ export function useDesktopSessionController({
     if (
       isLocalDraftChatConversationId(sessionId)
       || sessionId.startsWith('bridge:')
+      || isCloudCollaborationConversationId(sessionId)
     ) {
       setActiveConvId(sessionId);
       setDesktopChatError(null);

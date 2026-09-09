@@ -1,3 +1,6 @@
+import { appendCanonicalRequestToLocalState, mergeCanonicalSessionState } from './canonicalSendState';
+import { beginChatPerformanceSpan, finishChatPerformanceSpan } from '@/features/performance/chatPerformance';
+import { ConversationSendQueue } from './conversationSendQueue';
 import { mergeCanonicalMessageRow } from '@/features/canonical/canonicalStateReducers';
 import { resolvedPublishedAgentRuntimeRoute } from '@/features/chat/agentSessionRuntimeRoute';
 import { cloudAgentContextMessagesFromConversation } from '@/features/chat/chatCreateFlows';
@@ -12,8 +15,6 @@ cloudGroupTargetAccountIds,
 shouldRouteMentionThroughCloudGroup,
 } from '@/features/cloud/cloudGroupMessages';
 import type {
-AppendCanonicalMessageRequest,
-CanonicalSessionState,
 ComposerQuoteState,
 DesktopChatState,
 DesktopChatTurnSnapshot,
@@ -124,70 +125,6 @@ async function persistCanonicalGroupMessageFailure(
   const request = failedCanonicalGroupMessageRequest(prepared, detail, recipientIds);
   if (!request) return;
   await upsertCanonicalMessage(request);
-}
-
-function mergeCanonicalSessionState(current: CanonicalSessionState | null, next: CanonicalSessionState | null): CanonicalSessionState | null {
-  if (!current) return next;
-  if (!next) return current;
-  const nextSessionIds = new Set(next.sessions.map((session) => session.id));
-  const nextMessageIds = new Set(next.messages.map((message) => message.id));
-  return {
-    ...next,
-    sessions: [
-      ...next.sessions,
-      ...current.sessions.filter((session) => !nextSessionIds.has(session.id)),
-    ],
-    messages: [
-      ...next.messages,
-      ...current.messages.filter((message) => !nextMessageIds.has(message.id)),
-    ],
-  };
-}
-
-function appendCanonicalRequestToLocalState(
-  current: CanonicalSessionState | null,
-  request: AppendCanonicalMessageRequest | null,
-): CanonicalSessionState | null {
-  if (!current || !request) return current;
-  const id = request.id?.trim() || `msg:local:${request.sessionId}:${request.sourceEventId ?? Date.now()}`;
-  if (current.messages.some((message) => message.id === id)) return current;
-  const createdAtMs = request.createdAtMs ?? Date.now();
-  const sequenceNum = current.messages
-    .filter((message) => message.sessionId === request.sessionId)
-    .reduce((max, message) => Math.max(max, message.sequenceNum), 0) + 1;
-  return {
-    ...current,
-    sessions: current.sessions.map((session) => (
-      session.id === request.sessionId
-        ? {
-            ...session,
-            updatedAtMs: Math.max(session.updatedAtMs, createdAtMs),
-            lastMessageAtMs: Math.max(session.lastMessageAtMs ?? 0, createdAtMs),
-          }
-        : session
-    )),
-    messages: [
-      ...current.messages,
-      {
-        id,
-        sessionId: request.sessionId,
-        senderIdentityId: request.senderIdentityId,
-        senderRole: request.senderRole,
-        messageKind: request.messageKind,
-        contentText: request.contentText,
-        content: request.content ?? {},
-        parentMessageId: request.parentMessageId,
-        delegatedExchangeId: request.delegatedExchangeId,
-        status: request.status ?? 'sent',
-        sequenceNum,
-        createdAtMs,
-        updatedAtMs: createdAtMs,
-        contentHash: null,
-        sourceTransport: request.sourceTransport,
-        sourceEventId: request.sourceEventId,
-      },
-    ],
-  };
 }
 
 export function chatSendShouldAutoFollowMain(
@@ -373,7 +310,6 @@ export function useChatMessageActions({
   handleLocalSlashCommand,
   isNativeShell,
   queuedDesktopMessagesBySession,
-  collaborationSendInFlightConversationIdsRef,
   localChatSendInFlightRef,
   selectedChatAgentMentionRef,
   refreshDesktopChat,
@@ -420,6 +356,17 @@ export function useChatMessageActions({
     canonicalSessionId: activeConvCanonicalSessionId,
     lockedTarget: lockedSupportAgentTarget,
   }) ?? resolvedActiveCloudConversationId;
+  // A new draft can be submitted while the previous draft is being delivered.
+  // Claims belong to a rendered draft, so repeated submission of that draft is ignored.
+  const collaborationDraft = useMemo(() => ({
+    conversationId: activeConvId,
+    text: composerDrafts.chat,
+    attachments: chatComposerAttachments,
+    quote: activeChatQuote,
+    claims: new Set<string>(),
+  }), [activeConvId, composerDrafts.chat, chatComposerAttachments, activeChatQuote]);
+  const collaborationDraftSendClaims = collaborationDraft.claims;
+  const collaborationSendQueue = useRef(new ConversationSendQueue());
   const queuedDesktopMessagesBySessionRef = useRef(queuedDesktopMessagesBySession);
   const flushQueuedDesktopMessagesForSessionRef = useRef<(sessionId: string) => void>(() => {});
   const waitingSessionTurnsRef = useRef(new Map<string, string>());
@@ -759,6 +706,7 @@ export function useChatMessageActions({
     }
   }, [
     activeChatQuote,
+    attachmentSummaryText,
     canonicalHumanIdentityId,
     canonicalSessionState,
     chatComposerAttachments,
@@ -958,7 +906,6 @@ export function useChatMessageActions({
     canonicalHumanIdentityId,
     chatConversations,
     desktopCollaborationState,
-    desktopChatState,
     isNativeShell,
     localChatSendInFlightRef,
     materializeLocalChatTarget,
@@ -971,9 +918,7 @@ export function useChatMessageActions({
     setCloudCollaborationState,
     setComposerDrafts,
     setDesktopChatError,
-    setDesktopChatState,
     shouldAutoFollowChatRef,
-    watchLocalTurnAndFlushQueue,
   ]);
 
   const handleSendChatMessage = useCallback(async (
@@ -1000,6 +945,9 @@ export function useChatMessageActions({
     const text = rawText.trim();
     const attachmentsToSend = retryAttachments ?? attachmentOverride ?? chatComposerAttachments; const voiceFields = voiceMessageSendFields(attachmentsToSend);
     const preserveComposer = attachmentOverride !== undefined;
+    const collaborationSendClaimId = JSON.stringify([
+      activeCloudConversationId, text, attachmentsToSend.map((item) => item.id), quoteForSend,
+    ]);
     if (!text && attachmentsToSend.length === 0) return;
     if (!activeConversationMatchesSendScope(activeConvId, activeConvMentionScope)) { setDesktopChatError('Chat is still loading. Try again in a moment.'); return; }
     const memeValidationError = memeAttachmentDraftError(attachmentsToSend, {
@@ -1009,6 +957,8 @@ export function useChatMessageActions({
       setDesktopChatError(memeValidationError);
       return;
     }
+    const optimisticSendSpan = !retryMessage && activeConversationUsesCollaboration
+      ? beginChatPerformanceSpan('cloud-send-to-optimistic') : null;
     const isTransientDraftConversation = isLocalDraftChatConversationId(activeConvId);
     const activeGroupSessionScope = {
       canonicalSessionId: activeConvCanonicalSessionId ?? activeConvId,
@@ -1221,7 +1171,7 @@ export function useChatMessageActions({
         setDesktopChatError('Unable to resolve group recipients.');
         return;
       }
-      if (!claimConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId)) return;
+      if (!claimConversationSend(collaborationDraftSendClaims, collaborationSendClaimId)) return;
       const sentAt = formatDesktopEventTime();
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         activeConvCanonicalSessionId,
@@ -1242,32 +1192,34 @@ export function useChatMessageActions({
       }
       try {
         if (followMainTranscript) shouldAutoFollowChatRef.current = true;
-        setIsDesktopChatSending(true);
         setDesktopChatError(null);
         if (!preserveComposer) clearComposerAfterSend([activeConvId]);
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-        await persistCanonicalUserMessage(preparedCanonicalMessage);
-        await sendCloudGroupControl({
-          targetAccountIds: cloudAgentMentionTargetIds,
-          kind: 'group-message',
-          groupId: cloudAgentMentionSessionId,
-          groupSpaceId: activeGroupSessionSpaceId,
-          groupTitle: null,
-          collaborationParticipants: cloudAgentMentionParticipants,
-          message: {
-            id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
-            senderAccountId: '',
-            text,
-            mentions: messageMentions,
-            createdAtMs: Date.now(),
-            messageAction: quoteForSend?.source ? composerMessageAction(quoteForSend) : null,
-            targetCloudAgentId,
-            targetCloudAgentName,
-            targetCloudAgentOwnerAccountId: targetCloudAgentId ? mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null : null,
-            targetCloudAgentOwnerName: targetCloudAgentId ? mentionedTarget?.peer.ownerName ?? null : null,
-            agentRuntimeRoute: resolveChatRuntimeRoute(cloudAgentMentionSessionId), ...voiceFields,
-          },
-          attachments: attachmentsToSend,
+        finishChatPerformanceSpan(optimisticSendSpan, { attachmentCount: attachmentsToSend.length, resultClass: 'success' });
+        await collaborationSendQueue.current.run(activeConvCanonicalSessionId, async () => {
+          await persistCanonicalUserMessage(preparedCanonicalMessage);
+          await sendCloudGroupControl({
+            targetAccountIds: cloudAgentMentionTargetIds,
+            kind: 'group-message',
+            groupId: cloudAgentMentionSessionId,
+            groupSpaceId: activeGroupSessionSpaceId,
+            groupTitle: null,
+            collaborationParticipants: cloudAgentMentionParticipants,
+            message: {
+              id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
+              senderAccountId: '',
+              text,
+              mentions: messageMentions,
+              createdAtMs: Date.now(),
+              messageAction: quoteForSend?.source ? composerMessageAction(quoteForSend) : null,
+              targetCloudAgentId,
+              targetCloudAgentName,
+              targetCloudAgentOwnerAccountId: targetCloudAgentId ? mentionedTarget?.peer.humanId ?? mentionedTarget?.peer.nodeId ?? null : null,
+              targetCloudAgentOwnerName: targetCloudAgentId ? mentionedTarget?.peer.ownerName ?? null : null,
+              agentRuntimeRoute: resolveChatRuntimeRoute(cloudAgentMentionSessionId), ...voiceFields,
+            },
+            attachments: attachmentsToSend,
+          });
         });
       } catch (error) {
         const failureDetail = collaborationSendFailureDetail(error, 'Unable to send group mention');
@@ -1286,8 +1238,7 @@ export function useChatMessageActions({
           setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
         });
       } finally {
-        releaseConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId);
-        setIsDesktopChatSending(false);
+        releaseConversationSend(collaborationDraftSendClaims, collaborationSendClaimId);
       }
       return;
     }
@@ -1301,7 +1252,7 @@ export function useChatMessageActions({
         setDesktopChatError('Group chat is still loading. Try again in a moment.');
         return;
       }
-      if (!claimConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId)) return;
+      if (!claimConversationSend(collaborationDraftSendClaims, collaborationSendClaimId)) return;
       const sentAt = formatDesktopEventTime();
       const preparedCanonicalMessage = prepareCanonicalUserMessage(
         activeConvCanonicalSessionId,
@@ -1322,27 +1273,29 @@ export function useChatMessageActions({
       }
       try {
         if (followMainTranscript) shouldAutoFollowChatRef.current = true;
-        setIsDesktopChatSending(true);
         setDesktopChatError(null);
         if (!preserveComposer) clearComposerAfterSend([activeConvId]);
         setCanonicalSessionState((current) => appendOptimisticCanonicalMessage(current, preparedCanonicalMessage));
-        await persistCanonicalUserMessage(preparedCanonicalMessage);
-        await sendCloudGroupControl({
-          targetAccountIds: cloudGroupTargetIds,
-          kind: 'group-message',
-          groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId }),
-          groupSpaceId: activeGroupSessionSpaceId,
-          groupTitle: null,
-          collaborationParticipants: activeGroupSessionParticipants,
-          message: {
-            id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
-            senderAccountId: '',
-            text,
-            mentions: messageMentions,
-            createdAtMs: Date.now(),
-            messageAction: quoteForSend?.source ? composerMessageAction(quoteForSend) : null, ...voiceFields,
-          },
-          attachments: attachmentsToSend,
+        finishChatPerformanceSpan(optimisticSendSpan, { attachmentCount: attachmentsToSend.length, resultClass: 'success' });
+        await collaborationSendQueue.current.run(activeConvCanonicalSessionId, async () => {
+          await persistCanonicalUserMessage(preparedCanonicalMessage);
+          await sendCloudGroupControl({
+            targetAccountIds: cloudGroupTargetIds,
+            kind: 'group-message',
+            groupId: cloudGroupMessageSessionId({ activeConvCanonicalSessionId, activeGroupSessionSpaceId }),
+            groupSpaceId: activeGroupSessionSpaceId,
+            groupTitle: null,
+            collaborationParticipants: activeGroupSessionParticipants,
+            message: {
+              id: preparedCanonicalMessage?.messageId ?? `cloud-group-message-${Date.now()}`,
+              senderAccountId: '',
+              text,
+              mentions: messageMentions,
+              createdAtMs: Date.now(),
+              messageAction: quoteForSend?.source ? composerMessageAction(quoteForSend) : null, ...voiceFields,
+            },
+            attachments: attachmentsToSend,
+          });
         });
       } catch (error) {
         const failureDetail = collaborationSendFailureDetail(error, 'Unable to send group message');
@@ -1361,8 +1314,7 @@ export function useChatMessageActions({
           setDesktopChatError(saveError instanceof Error ? saveError.message : 'Unable to save message');
         });
       } finally {
-        releaseConversationSend(collaborationSendInFlightConversationIdsRef.current, activeConvCanonicalSessionId);
-        setIsDesktopChatSending(false);
+        releaseConversationSend(collaborationDraftSendClaims, collaborationSendClaimId);
       }
       return;
     }
@@ -1372,18 +1324,18 @@ export function useChatMessageActions({
         setDesktopChatError('Chat is still loading. Try again in a moment.');
         return;
       }
-      if (!claimConversationSend(collaborationSendInFlightConversationIdsRef.current, activeCloudConversationId)) return;
+      if (!claimConversationSend(collaborationDraftSendClaims, collaborationSendClaimId)) return;
       const sentAt = formatDesktopEventTime();
       const optimisticMessageId = createCloudCollaborationClientMessageId();
       const appendedOptimisticCollaborationMessage = shouldAppendOptimisticCollaborationMessage(activeCloudConversationId);
       try {
         if (followMainTranscript) shouldAutoFollowChatRef.current = true;
-        setIsDesktopChatSending(true);
         setDesktopChatError(null);
         if (!preserveComposer) clearComposerAfterSend([activeConvId]);
         if (appendedOptimisticCollaborationMessage) {
           setCloudCollaborationState((current) => appendOptimisticCollaborationMessage(current, activeCloudConversationId, text, sentAt, optimisticMessageId, attachmentsToSend, attachmentSummaryText(text, attachmentsToSend), quoteForSend, messageMentions));
         }
+        finishChatPerformanceSpan(optimisticSendSpan, { attachmentCount: attachmentsToSend.length, resultClass: 'success' });
         const directHostedAgentTarget = resolveDirectHostedAgentTarget({
           mentionedAgentId: targetCloudAgentId,
           mentionedTarget,
@@ -1406,12 +1358,12 @@ export function useChatMessageActions({
               ...(directHostedAgentTarget ?? {}),
             })
           : text;
-        const canonicalMessage = await sendCloudCollaborationMessage(
+        const canonicalMessage = await collaborationSendQueue.current.run(activeCloudConversationId, () => sendCloudCollaborationMessage(
           activeCloudConversationId,
           cloudBody,
           attachmentsToSend,
           { clientMessageId: optimisticMessageId, ...voiceFields },
-        );
+        ));
         if (appendedOptimisticCollaborationMessage && isCloudCollaborationConversationId(activeCloudConversationId)) {
           setCloudCollaborationState(reconcileOptimisticCollaborationMessageUpdater(activeCloudConversationId, optimisticMessageId, canonicalMessage));
         }
@@ -1422,8 +1374,7 @@ export function useChatMessageActions({
           setDesktopChatError(failure.detail);
         }
       } finally {
-        releaseConversationSend(collaborationSendInFlightConversationIdsRef.current, activeCloudConversationId);
-        setIsDesktopChatSending(false);
+        releaseConversationSend(collaborationDraftSendClaims, collaborationSendClaimId);
       }
       return;
     }
@@ -1801,7 +1752,7 @@ export function useChatMessageActions({
     hasLocalProviderAuth, openAgentAuthentication,
     desktopLiveTurn,
     clearComposerAfterSend,
-    collaborationSendInFlightConversationIdsRef,
+    collaborationDraftSendClaims,
     handleLocalSlashCommand,
     isNativeShell,
     localChatSendInFlightRef,
@@ -1812,6 +1763,10 @@ export function useChatMessageActions({
     resolveChatRuntimeRoute,
     setActiveConvId,
     setCanonicalSessionState,
+    setComposerDrafts,
+    setDesktopLiveTurnsBySession,
+    selectedChatAgentMentionRef,
+    sendLocalAgentChatMessage,
     setCloudCollaborationState,
     sendCloudCollaborationMessage,
     sendCloudGroupControl,

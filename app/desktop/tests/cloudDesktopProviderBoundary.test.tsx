@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { CloudAuthError } from '../src/features/cloud/cloudAuthError';
 import { JSDOM } from 'jsdom';
 import React, { act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -72,7 +73,7 @@ test('an unauthenticated owner opens provider settings before publishing a menti
         composerDrafts: { chat: text, project: '' }, composerSelections: { chat: { model: 'test', thinking: 'default', mode: 'agent' } }, chatComposerAttachments: [],
         selectedChatAgentMentionRef: { current: { targetKind: 'agent', value: `${targetOwner}Agent`, label: `${targetOwner} Assistant`,
           sourceHostId: 'cloud', nodeId: targetOwner, humanId: targetOwner, agentId: `cloud-agent:${targetOwner}`, runtime: 'kordi-desktop' } },
-        collaborationSendInFlightConversationIdsRef: { current: new Set() }, localChatSendInFlightRef: { current: null },
+        localChatSendInFlightRef: { current: null },
         shouldAutoFollowChatRef: { current: false }, attachmentSummaryText: (value: string) => value,
         resolveChatRuntimeRoute: () => null, openAgentAuthentication: () => { loginRequests++; },
         handleLocalSlashCommand: async () => assert.fail('The auth dialog must not navigate away and lose the draft'),
@@ -164,4 +165,67 @@ test('owner admission failures become terminal UI state instead of an endless pr
       }
     });
   } finally { __setSessionBackendForTests(null); }
+});
+
+test('rapid drafts appear immediately while a slow first delivery stays ordered and duplicate submits are ignored', async () => {
+  await withDom(async root => {
+    const pending: Array<{ text: string; resolve: (message: CloudMessage) => void; reject: (error: Error) => void }> = [];
+    const draftsCleared: string[] = [];
+    const errors: string[] = [];
+    let optimisticState = { hosts: [], conversations: [{ id: 'cloud:conversation:peer:person', peerRuntime: 'person', messages: [] }] } as unknown as DesktopCollaborationState;
+    let actions!: ReturnType<typeof useChatMessageActions>;
+    let changeDraft!: (text: string) => void;
+    const attachments: never[] = [];
+    const scope = { id: 'cloud:conversation:peer:person', canonicalSessionId: 'session:direct-person:owner:peer' };
+    function Harness() {
+      const [draft, setDraft] = React.useState('first');
+      changeDraft = setDraft;
+      actions = useChatMessageActions({
+        activeConvId: scope.id, activeConvCanonicalSessionId: scope.canonicalSessionId,
+        activeConversationUsesCollaboration: true, activeConvMessages: [], chatConversations: [],
+        activeConvCollaborationTarget: { hostId: 'cloud', nodeId: 'peer', humanId: 'peer', runtime: 'person' },
+        activeConvMentionScope: scope, isNativeShell: true, hasAnyDesktopAuth: true,
+        desktopChatState: null, canonicalSessionState: null, desktopCollaborationState: null,
+        desktopLiveTurn: null, queuedDesktopMessagesBySession: {},
+        composerDrafts: { chat: draft, project: '' },
+        composerSelections: { chat: { model: 'test', thinking: 'default', mode: 'agent' } },
+        chatComposerAttachments: attachments, selectedChatAgentMentionRef: { current: null },
+        localChatSendInFlightRef: { current: null }, shouldAutoFollowChatRef: { current: false },
+        attachmentSummaryText: (value: string) => value, resolveChatRuntimeRoute: () => null,
+        sendCloudCollaborationMessage: (_id: string, text: string) => new Promise<CloudMessage>((resolve, reject) => {
+          pending.push({ text, resolve, reject });
+        }),
+        setComposerDrafts: () => { draftsCleared.push(draft); setDraft(''); },
+        setCloudCollaborationState: (update: (state: DesktopCollaborationState) => DesktopCollaborationState) => {
+          optimisticState = update(optimisticState);
+        },
+        setDesktopChatError: (error: string | null) => { if (error) errors.push(error); },
+        setIsDesktopChatSending: () => assert.fail('Cloud delivery must not lock the composer'),
+        setActiveConvId: noop, setCanonicalSessionState: noop, setChatComposerAttachments: noop,
+        setDesktopChatState: noop, setDesktopLiveTurnsBySession: noop, setOpenComposerSelector: noop,
+        setPendingUserChatMessage: noop, setQueuedDesktopMessagesBySession: noop,
+      } as unknown as UseChatMessageActionsArgs);
+      return null;
+    }
+    await act(async () => root.render(<Harness />));
+    let first!: Promise<void>;
+    await act(async () => {
+      const submit = actions.handleSendChatMessage;
+      first = submit();
+      await submit(); // Same rendered draft must be claimed only once.
+    });
+    assert.equal(pending.length, 1);
+    await act(async () => changeDraft('second'));
+    let second!: Promise<void>;
+    await act(async () => { second = actions.handleSendChatMessage(); });
+    assert.deepEqual(draftsCleared, ['first', 'second']);
+    assert.equal(pending.length, 1, 'second delivery waits, but its optimistic bubble does not');
+    const messages = optimisticState.conversations.flatMap(conversation => conversation.messages);
+    assert.deepEqual(messages.map(message => message.text), ['first', 'second']);
+    await act(async () => { pending[0].reject(new CloudAuthError('invalid_attachment', 'Message rejected', 400)); await first; });
+    assert.deepEqual(pending.map(item => item.text), ['first', 'second']);
+    assert.ok(errors.length > 0);
+    assert.equal(optimisticState.conversations[0].messages[0].deliveryState, 'failed');
+    await act(async () => { pending[1].resolve({ ...request(owner), body: 'second' }); await second; });
+  });
 });

@@ -302,6 +302,7 @@ final class AppModel: ObservableObject {
     private var agentRequestPresentationIds: [String: String] = [:]
     private var pendingProviderAuthBindingsBySessionID: [String: String] = [:]
     private var providerAuthenticationSyncTask: Task<Void, Never>?
+    private let conversationSendQueue = ConversationSendQueue()
     private var pendingAttachmentDraftsByMessageId: [String: [PendingAttachment]] = [:]
     private var videoCacheTasks: [String: Task<Void, Never>] = [:]
     private var pendingVoiceDraftsByMessageId: [String: PendingVoiceMessage] = [:]
@@ -1597,8 +1598,11 @@ final class AppModel: ObservableObject {
         messageAction actionOverride: MessageActionMetadata? = nil,
         agentContext: String? = nil,
         to conversation: ConversationSummary,
-        retrying retryMessage: ChatMessage? = nil
+        retrying retryMessage: ChatMessage? = nil,
+        onStaged: (String?) -> Void = { _ in }
     ) async {
+        var didStage = false
+        defer { if !didStage { onStaged(nil) } }
         var text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         let outgoingAttachments = voiceMessage.map { [$0.attachment] } ?? attachments
         guard (!text.isEmpty || !outgoingAttachments.isEmpty), let token, let account else { return }
@@ -1615,6 +1619,11 @@ final class AppModel: ObservableObject {
                 deliveryState: .sending, errorMessage: nil, requestMessageId: nil, mentions: mentions)
             messagesByConversation[conversation.id, default: []].removeAll { $0.id == retryMessage?.id }
             messagesByConversation[conversation.id, default: []].append(optimistic)
+            didStage = true
+            onStaged(messageId)
+            await conversationSendQueue.acquire(conversation.id)
+            defer { conversationSendQueue.release(conversation.id) }
+            guard self.account?.accountId == account.accountId else { return }
             do {
                 let result = try await api.sendSubsessionMessage(token: token, id: id, clientMessageId: messageId, text: text, mentions: mentions)
                 guard self.account?.accountId == account.accountId else { return }
@@ -1724,6 +1733,11 @@ final class AppModel: ObservableObject {
             attachment: voiceMessage == nil ? outgoingAttachments.first?.optimisticAttachment : nil,
             date: optimistic.createdAt
         )
+        didStage = true
+        onStaged(clientMessageId)
+        await conversationSendQueue.acquire(conversation.id)
+        defer { conversationSendQueue.release(conversation.id) }
+        guard self.account?.accountId == account.accountId else { return }
         if previewMode {
             do {
                 try await attachmentFileStore.cachePendingOriginals(outgoingAttachments, accountId: account.accountId)

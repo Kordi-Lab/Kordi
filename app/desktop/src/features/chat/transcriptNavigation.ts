@@ -1,5 +1,7 @@
 import type { RefObject } from 'react';
 
+export const TRANSCRIPT_FOLLOW_TAIL_EVENT = 'kordi:transcript-follow-tail';
+
 export function transcriptMessageDomId(messageId: string) {
   return `app-transcript-message-${messageId.replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
 }
@@ -85,6 +87,10 @@ export function scrollTranscriptToBottom(
 ) {
   const scrollContainer = scrollRef?.current;
   if (!scrollContainer) return false;
+  if (scrollContainer.dataset?.virtualTranscriptScroll === 'true') {
+    scrollContainer.dispatchEvent(new Event(TRANSCRIPT_FOLLOW_TAIL_EVENT));
+    return true;
+  }
   if (typeof scrollContainer.scrollTo === 'function') {
     scrollContainer.scrollTo({
       top: scrollContainer.scrollHeight,

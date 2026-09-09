@@ -51,8 +51,8 @@ test('targeted sends check Cloud group routing before direct Cloud bridge routin
 
 test('direct cloud first sends and retries share the same idempotency key', () => {
   const source = chatMessagesSource();
-  assert.match(source, /if \(!claimConversationSend\(collaborationSendInFlightConversationIdsRef\.current, activeCloudConversationId\)\) return;/);
-  assert.match(source, /finally \{\s*releaseConversationSend\(collaborationSendInFlightConversationIdsRef\.current, activeCloudConversationId\);/);
+  assert.match(source, /if \(!claimConversationSend\(collaborationDraftSendClaims, collaborationSendClaimId\)\) return;/);
+  assert.match(source, /finally \{\s*releaseConversationSend\(collaborationDraftSendClaims, collaborationSendClaimId\);/);
   assert.match(
     source,
     /const retryCloudBody = retryDirectHostedAgentTarget[\s\S]*?encodeCloudDirectMessageEnvelope\([\s\S]*?: text;[\s\S]*?sendCloudCollaborationMessage\(\s*activeCloudConversationId,\s*retryCloudBody,\s*retryAttachments,\s*\{\s*clientMessageId: retryMessageId,[\s\S]*?\},/,

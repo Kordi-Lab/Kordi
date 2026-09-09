@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react';
 
-import { mapCollaborationConversationToViewModel } from '@/features/collaboration/transcript';
+import { createCollaborationConversationMapper } from '@/features/collaboration/conversationProjectionCache';
 import { isCollaborationAgentRuntime } from '@/features/collaboration/runtime';
 import { isCloudAgentRuntimeSessionId } from '@/features/cloud/cloudAgentMessages';
 import { EMPTY_CLOUD_SESSION_ACTIVITY, type CloudSessionActivityStore } from '@/features/cloud/cloudSessionActivity';
@@ -342,27 +342,27 @@ export function useWorkspaceViewModels({
     });
   }, [activeConvId, activeNav, cachedChatSessionMessages, cachedDesktopSessionSourceMessages, canonicalSessionState, desktopCollaborationState, desktopChatState, desktopLiveTurnsForViewModel, hydratedDesktopSessionIds, isNativeShell, localSessionUnreadCounts, mapDesktopMessages, outreachThreadsByParentSession]);
 
+  const mapCollaborationConversationToViewModel = useMemo(() => createCollaborationConversationMapper(), []);
+  const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
+  const collaborationHostById = useMemo(() => new Map((desktopCollaborationState?.hosts ?? []).map(host => [host.id, host])), [desktopCollaborationState?.hosts]);
+
   const localAgentCollaborationReachoutConversations = useMemo(() => {
     if (!isNativeShell) return [];
-    const hostById = new Map((desktopCollaborationState?.hosts ?? []).map((host) => [host.id, host]));
-    const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
     return (desktopCollaborationState?.conversations ?? [])
       .filter(collaborationChatConversationRoutesToLocalAgentPage)
       .map((conversation) => (
-        mapCollaborationConversationToViewModel(conversation, hostById.get(conversation.hostId), localAgentLabel)
+        mapCollaborationConversationToViewModel(conversation, collaborationHostById.get(conversation.hostId), localAgentLabel)
       ));
-  }, [desktopCollaborationState, desktopChatState?.localAgent?.label, isNativeShell]);
+  }, [desktopCollaborationState, localAgentLabel, isNativeShell, mapCollaborationConversationToViewModel, collaborationHostById]);
 
   const collaborationChatConversations = useMemo(() => {
     if (!isNativeShell) return [];
-    const hostById = new Map((desktopCollaborationState?.hosts ?? []).map((host) => [host.id, host]));
-    const localAgentLabel = desktopChatState?.localAgent?.label || 'My agent';
     return (desktopCollaborationState?.conversations ?? [])
       .filter((conversation) => !collaborationChatConversationRoutesToLocalAgentPage(conversation))
       .map((conversation) => (
-        mapCollaborationConversationToViewModel(conversation, hostById.get(conversation.hostId), localAgentLabel)
+        mapCollaborationConversationToViewModel(conversation, collaborationHostById.get(conversation.hostId), localAgentLabel)
       ));
-  }, [desktopCollaborationState, desktopChatState?.localAgent?.label, isNativeShell]);
+  }, [desktopCollaborationState, localAgentLabel, isNativeShell, mapCollaborationConversationToViewModel, collaborationHostById]);
 
   const visibleCollaborationChatConversations = useMemo(
     () => collaborationChatConversations.filter(collaborationChatConversationIsVisible),

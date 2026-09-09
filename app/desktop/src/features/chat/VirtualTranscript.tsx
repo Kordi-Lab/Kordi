@@ -1,4 +1,7 @@
+import { useTranscriptTailAlignment } from './useTranscriptTailAlignment';
+import { TRANSCRIPT_FOLLOW_TAIL_EVENT } from './transcriptNavigation';
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -6,6 +9,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
   type UIEvent,
+  type ReactNode,
 } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -14,8 +18,8 @@ import {
   TRANSCRIPT_WINDOW_ESTIMATED_MESSAGE_HEIGHT,
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
-import { preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP } from '@/features/chat/virtualTranscriptLayout';
-import { alignAndRevealMeasuredTranscriptRows, cancelTranscriptRowLift, useStableTranscriptSessionReveal } from '@/features/chat/virtualTranscriptMotion';
+import { transcriptLayoutMaxScrollTop, preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP } from '@/features/chat/virtualTranscriptLayout';
+import { hasActiveTranscriptRowLift, useStableTranscriptSessionReveal } from '@/features/chat/virtualTranscriptMotion';
 import {
   TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS,
   useVirtualTranscriptNavigation,
@@ -43,6 +47,17 @@ import type {
 
 export type { VirtualTranscriptNavigationRequest } from '@/features/chat/useVirtualTranscriptNavigation';
 export type { VirtualTranscriptProps } from './virtualTranscriptTypes';
+
+function TranscriptItemContent<Item>({ item, index, renderItem }: {
+  item: Item;
+  index: number;
+  renderItem: (item: Item, index: number) => ReactNode;
+}) {
+  return renderItem(item, index);
+}
+
+// Geometry and scroll updates move the row shell without rebuilding its content.
+const MemoizedTranscriptItemContent = memo(TranscriptItemContent) as typeof TranscriptItemContent;
 
 export function VirtualTranscript<Item>({
   items,
@@ -88,7 +103,6 @@ export function VirtualTranscript<Item>({
   } | null>(null);
   const viewportWasAtTailRef = useRef(true);
   const tailAlignmentActiveRef = useRef(false);
-  const tailAlignmentFrameRef = useRef<number | null>(null);
   const tailAlignmentTargetRef = useRef<number | null>(null);
   const tailLiftRowsRef = useRef<HTMLElement[]>([]);
   const sizeContainerRef = useRef<HTMLDivElement | null>(null);
@@ -150,20 +164,10 @@ export function VirtualTranscript<Item>({
     if (node) node.style.height = `${totalSize}px`;
   }, [totalSize, virtualizer]);
 
-  const cancelTailLiftAnimation = useCallback(() => {
-    cancelTranscriptRowLift(tailLiftRowsRef.current);
-    tailLiftRowsRef.current = [];
-  }, []);
-
-  const cancelTailAlignment = useCallback(() => {
-    cancelTailLiftAnimation();
-    tailAlignmentActiveRef.current = false;
-    tailAlignmentTargetRef.current = null;
-    if (tailAlignmentFrameRef.current !== null) {
-      window.cancelAnimationFrame(tailAlignmentFrameRef.current);
-      tailAlignmentFrameRef.current = null;
-    }
-  }, [cancelTailLiftAnimation]);
+  const { cancelTailLiftAnimation, cancelTailAlignment, scheduleTailAlignment } = useTranscriptTailAlignment({
+    internalScrollRef, viewportWasAtTailRef, tailAlignmentActiveRef, tailAlignmentTargetRef,
+    tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange,
+  });
 
   const selectionViewportProps = useTranscriptSelectionViewportProps({ cancelTailAlignment, viewportRef: internalScrollRef, selectionMode, onSelectAllMessages, onCancelMessageSelection });
 
@@ -194,45 +198,6 @@ export function VirtualTranscript<Item>({
     };
     stableDisclosureReleaseFrameRef.current = window.requestAnimationFrame(release);
   }, [cancelStableDisclosureRelease, disconnectStableDisclosureResizeObserver]);
-
-  const alignViewportToTail = useCallback(() => {
-    const element = internalScrollRef.current;
-    if (!element) return;
-    const target = Math.max(0, element.scrollHeight - element.clientHeight);
-    tailAlignmentTargetRef.current = target;
-    element.scrollTop = target;
-    viewportWasAtTailRef.current = true;
-    setIsAtTail(true);
-    onTailChange?.(true);
-  }, [onTailChange]);
-
-  const scheduleTailAlignment = useCallback((revealFromIndex?: number) => {
-    if (tailAlignmentFrameRef.current !== null) {
-      window.cancelAnimationFrame(tailAlignmentFrameRef.current);
-    }
-    if (revealFromIndex !== undefined) cancelTailLiftAnimation();
-    tailAlignmentActiveRef.current = true;
-    const liftedRows = alignAndRevealMeasuredTranscriptRows({
-      alignToTail: alignViewportToTail,
-      gap,
-      reduceMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-      revealFromIndex,
-      sizeContainer: sizeContainerRef.current,
-      virtualizer,
-    });
-    if (revealFromIndex !== undefined) tailLiftRowsRef.current = liftedRows;
-    let framesRemaining = 4;
-    const settle = () => {
-      tailAlignmentFrameRef.current = null;
-      if (!tailAlignmentActiveRef.current) return;
-      alignViewportToTail();
-      framesRemaining -= 1;
-      if (framesRemaining > 0) {
-        tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
-      }
-    };
-    tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
-  }, [alignViewportToTail, cancelTailLiftAnimation, gap, virtualizer]);
 
   useEffect(() => {
     // React Strict Mode intentionally runs an extra setup/cleanup cycle in
@@ -298,7 +263,7 @@ export function VirtualTranscript<Item>({
 
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const element = event.currentTarget;
-    const distanceFromTail = element.scrollHeight - (element.scrollTop + element.clientHeight);
+    const distanceFromTail = transcriptLayoutMaxScrollTop(element) - element.scrollTop;
     const isAtTail = distanceFromTail <= Math.max(4, gap);
     const matchesAlignmentTarget = tailAlignmentActiveRef.current
       && tailAlignmentTargetRef.current !== null
@@ -472,7 +437,9 @@ export function VirtualTranscript<Item>({
       viewportWasAtTailRef.current = true;
       setIsAtTail(true);
       tailAlignmentActiveRef.current = true;
-      if (items.length > 0) {
+      const tailIsMounted = virtualizer.getVirtualItems().some(item => item.index === items.length - 1);
+      if (items.length > 0 && (!tailIsMounted
+        || (revealFromIndex === undefined && !hasActiveTranscriptRowLift(tailLiftRowsRef.current)))) {
         virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
       }
       scheduleTailAlignment(revealFromIndex);
@@ -494,6 +461,17 @@ export function VirtualTranscript<Item>({
     if (items.length > 0) virtualizer.scrollToIndex(items.length - 1, { align: 'end' });
     scheduleTailAlignment();
   }, [items.length, scheduleTailAlignment, virtualizer]);
+
+  useEffect(() => {
+    const element = internalScrollRef.current;
+    if (!element) return;
+    const followTail = () => {
+      // Appending while already following is handled in the layout transaction.
+      if (!viewportWasAtTailRef.current) scrollToLatest();
+    };
+    element.addEventListener(TRANSCRIPT_FOLLOW_TAIL_EVENT, followTail);
+    return () => element.removeEventListener(TRANSCRIPT_FOLLOW_TAIL_EVENT, followTail);
+  }, [scrollToLatest]);
 
   const virtualItems = virtualizer.getVirtualItems();
   const sessionRevealed = useStableTranscriptSessionReveal({
@@ -549,7 +527,7 @@ export function VirtualTranscript<Item>({
     <div className="relative flex min-h-0 flex-1 overflow-hidden" data-virtual-transcript-shell="true">
       <ScrollArea
         ref={setScrollElement}
-        className={`${scrollClassName ?? ''} h-full w-full`}
+        className={`${scrollClassName ?? ''} relative h-full w-full`}
         style={scrollStyle}
         onScroll={handleScroll}
         onClickCapture={handleClickCapture}
@@ -582,13 +560,14 @@ export function VirtualTranscript<Item>({
                       : ''
                   }`}
                 >
-                  {renderItem(item, virtualItem.index)}
+                  <MemoizedTranscriptItemContent item={item} index={virtualItem.index} renderItem={renderItem} />
                 </div>
               );
             })}
           </div>
         ) : emptyState}
         {tail}
+        <div data-virtual-transcript-end="true" aria-hidden="true" />
       </ScrollArea>
       {!isAtTail && items.length > 0 ? (
         <TranscriptLatestButton

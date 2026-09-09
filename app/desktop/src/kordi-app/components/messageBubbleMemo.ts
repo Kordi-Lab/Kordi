@@ -19,11 +19,27 @@ function messageUsesRelatedAgentStatuses(message: MessageBubbleProps['msg']) {
   return relatedAgentSessionsFromTools(message.turn?.tools).length > 0;
 }
 
+function selectionId(message: MessageBubbleProps['msg']) {
+  return message.id ?? message.entryId ?? message.turn?.id ?? '';
+}
+
+function isSelected(props: MessageBubbleProps) {
+  const id = selectionId(props.msg);
+  return Boolean(id && props.selectedMessageIds?.has(id));
+}
+
+function isPinned(props: MessageBubbleProps) {
+  const id = selectionId(props.msg);
+  return Boolean(id && props.pinnedMessageIds?.includes(id));
+}
+
 export function messageBubblePropsEqual(
   previous: MessageBubbleProps,
   next: MessageBubbleProps,
 ) {
-  return previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
+  return previous.onOpenSource === next.onOpenSource
+    && previous.onOpenMessageThread === next.onOpenMessageThread
+    && previous.onStopCollaborationAgentRequest === next.onStopCollaborationAgentRequest
     && previous.onStopActiveTurn === next.onStopActiveTurn
     && previous.onNavigateToMessage === next.onNavigateToMessage
     && previous.onOpenArtifact === next.onOpenArtifact
@@ -50,9 +66,9 @@ export function messageBubblePropsEqual(
     && previous.onRequestPinMessage === next.onRequestPinMessage
     && previous.onRequestUnpinMessage === next.onRequestUnpinMessage
     && previous.onReactMessage === next.onReactMessage
-    && messageBubblePinnedIdsEqual(previous.pinnedMessageIds, next.pinnedMessageIds)
+    && isPinned(previous) === isPinned(next)
     && previous.selectionMode === next.selectionMode
-    && previous.selectedMessageIds === next.selectedMessageIds
+    && isSelected(previous) === isSelected(next)
     && previous.isMessageSelectable === next.isMessageSelectable
     && previous.onToggleSelectedMessage === next.onToggleSelectedMessage
     && previous.onSelectionDragStart === next.onSelectionDragStart

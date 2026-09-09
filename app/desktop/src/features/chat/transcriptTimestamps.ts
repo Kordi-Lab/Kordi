@@ -26,34 +26,73 @@ function isTranscriptEvent(message: Message) {
   return message.role === 'system' || Boolean(message.callActivity);
 }
 
-/**
- * Produces one label slot per rendered message. The first timestamped message
- * is labelled, followed by another label when at least thirty minutes have
- * elapsed since the last displayed label or the viewer's calendar day changes.
- */
+type SeparatorInput = {
+  timestampMs: number | null | undefined;
+  canAnchor: boolean;
+  isEvent: boolean;
+};
+
+type SeparatorAnchor = { timestampMs: number; calendarDay: string } | null;
+
+/** Cache the unchanged prefix so receipts and appends do not reformat old dates. */
+export function createTranscriptTimeSeparatorCache() {
+  let contextKey = '';
+  let inputs: SeparatorInput[] = [];
+  let anchors: SeparatorAnchor[] = [];
+  let labels: Array<string | null> = [];
+
+  return (messages: readonly Message[], options: TranscriptTimeSeparatorOptions = {}) => {
+    const gapMs = Math.max(0, options.gapMs ?? TRANSCRIPT_TIME_SEPARATOR_GAP_MS);
+    const now = options.now ?? Date.now();
+    const nextContextKey = JSON.stringify([
+      formatDesktopDate(now, { timeZone: options.timeZone }),
+      options.timeZone, options.locales, gapMs,
+    ]);
+    let start = 0;
+    if (contextKey === nextContextKey) {
+      while (start < messages.length && start < inputs.length) {
+        const message = messages[start];
+        const previous = inputs[start];
+        if (!Object.is(previous.timestampMs, message.timestampMs)
+          || previous.canAnchor !== canAnchorTranscriptTime(message)
+          || previous.isEvent !== isTranscriptEvent(message)) break;
+        start += 1;
+      }
+      if (start === messages.length && start === inputs.length) return labels;
+    }
+
+    const nextInputs = inputs.slice(0, start);
+    const nextAnchors = anchors.slice(0, start);
+    const nextLabels = labels.slice(0, start);
+    let anchor = nextAnchors[start - 1] ?? null;
+    for (let index = start; index < messages.length; index += 1) {
+      const message = messages[index];
+      const timestampMs = message.timestampMs;
+      const input = { timestampMs, canAnchor: canAnchorTranscriptTime(message), isEvent: isTranscriptEvent(message) };
+      nextInputs.push(input);
+      let label: string | null = null;
+      if (input.canAnchor && usableTimestamp(timestampMs) && (!anchor || timestampMs >= anchor.timestampMs)) {
+        const calendarDay = formatDesktopDate(timestampMs, { timeZone: options.timeZone });
+        if (input.isEvent || !anchor || calendarDay !== anchor.calendarDay || timestampMs - anchor.timestampMs >= gapMs) {
+          label = formatDesktopTranscriptTimeLabel(timestampMs, { ...options, now });
+          anchor = { timestampMs, calendarDay };
+        }
+      }
+      nextLabels.push(label);
+      nextAnchors.push(anchor);
+    }
+    contextKey = nextContextKey;
+    inputs = nextInputs;
+    anchors = nextAnchors;
+    labels = nextLabels;
+    return labels;
+  };
+}
+
+/** One slot per message; label the first timestamp, day changes, and 30-minute gaps. */
 export function transcriptTimeSeparatorLabels(
   messages: readonly Message[],
   options: TranscriptTimeSeparatorOptions = {},
 ) {
-  const labels: Array<string | null> = Array.from({ length: messages.length }, () => null);
-  const gapMs = Math.max(0, options.gapMs ?? TRANSCRIPT_TIME_SEPARATOR_GAP_MS);
-  let lastShownTimestampMs: number | null = null;
-  let lastShownCalendarDay: string | null = null;
-
-  messages.forEach((message, index) => {
-    const timestampMs = message.timestampMs;
-    if (!canAnchorTranscriptTime(message) || !usableTimestamp(timestampMs)) return;
-    if (lastShownTimestampMs !== null && timestampMs < lastShownTimestampMs) return;
-    const calendarDay = formatDesktopDate(timestampMs, { timeZone: options.timeZone });
-    const isFirstTimestamp = lastShownTimestampMs === null;
-    const isLaterCalendarDay = lastShownCalendarDay !== null && calendarDay !== lastShownCalendarDay;
-    const reachesGap = lastShownTimestampMs !== null && timestampMs - lastShownTimestampMs >= gapMs;
-    if (!isTranscriptEvent(message) && !isFirstTimestamp && !isLaterCalendarDay && !reachesGap) return;
-
-    labels[index] = formatDesktopTranscriptTimeLabel(timestampMs, options);
-    lastShownTimestampMs = timestampMs;
-    lastShownCalendarDay = calendarDay;
-  });
-
-  return labels;
+  return createTranscriptTimeSeparatorCache()(messages, options);
 }
