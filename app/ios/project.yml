@@ -232,6 +232,18 @@ targets:
           PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.tests
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.tests
+  KordiKeyboardUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: KordiKeyboardUITests
+    dependencies:
+      - target: Kordi
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: ai.kordi.ios.beta.keyboard-uitests
+        TEST_TARGET_NAME: Kordi
 schemes:
   Kordi:
     build:
@@ -267,3 +279,13 @@ schemes:
       config: Beta
     archive:
       config: Beta
+  Kordi Keyboard UI:
+    build:
+      targets:
+        Kordi: all
+    run:
+      config: Beta
+    test:
+      config: Beta
+      targets:
+        - KordiKeyboardUITests

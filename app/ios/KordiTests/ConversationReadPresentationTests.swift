@@ -33,6 +33,149 @@ private struct HistoryNavigationProbeView: View {
 
 @MainActor
 final class CachedAgentHistoryViewportTests: XCTestCase {
+    func testKeyboardKeepsLatestMessageVisibleAndPreservesHistoryPosition() async throws {
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let conversation = ConversationSummary(
+            id: "person:keyboard-test", kind: .person, peerAccountId: "keyboard-peer", agentId: nil,
+            ownerDisplayName: "Tester", displayName: "Keyboard visibility",
+            lastMessage: "Message 39", lastActivityAt: Date(), unreadCount: 0,
+            avatarSource: nil, agentActivity: nil, sessionId: "keyboard-test"
+        )
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let messages = (0..<40).map { index in
+            ChatMessage(
+                id: "keyboard-message-\(index)", conversationId: conversation.id,
+                author: index.isMultiple(of: 2) ? .me : .person,
+                authorName: "Keyboard tester",
+                text: index == 37
+                    ? String(repeating: "A tall history message that must stay above the keyboard.\n", count: 8)
+                    : "Message \(index): checking the visible conversation.",
+                createdAt: Date(timeIntervalSince1970: Double(1_000 + index)),
+                cloudMessageVersion: 1, deliveryState: .read, errorMessage: nil, requestMessageId: nil
+            )
+        }
+        store.saveMessages(messages, conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        let controller = UIHostingController(rootView:
+            MainTabView(initialPath: [.conversation(conversation)])
+                .environmentObject(model)
+                .environmentObject(KordiCallCoordinator())
+                .environmentObject(KordiNotificationCoordinator())
+                .environment(\.kordiChatTheme, .sand)
+                .preferredColorScheme(.light)
+        )
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.endEditing(true)
+            window.isHidden = true
+            window.rootViewController = nil
+            previousWindow?.makeKeyAndVisible()
+        }
+        func settle() async throws {
+            try await Task.sleep(for: .milliseconds(800))
+            controller.view.layoutIfNeeded()
+        }
+        func descendants(_ view: UIView) -> [UIView] {
+            [view] + view.subviews.flatMap(descendants)
+        }
+        func bottomGap(_ scroll: UIScrollView) -> CGFloat {
+            scroll.contentSize.height + scroll.adjustedContentInset.bottom
+                - scroll.contentOffset.y - scroll.bounds.height
+        }
+        try await settle()
+        let editor = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UITextView }.first)
+        let scroll = try XCTUnwrap(descendants(controller.view).compactMap { $0 as? UIScrollView }
+            .filter { !($0 is UITextView) }.max { $0.contentSize.height < $1.contentSize.height })
+        XCTAssertLessThanOrEqual(abs(bottomGap(scroll)), 14, "Chat must start at latest")
+        XCTAssertTrue(scroll.keyboardDismissMode == .interactive || scroll.keyboardDismissMode == .interactiveWithAccessory)
+        let closedHeight = scroll.bounds.height
+        func navigationController(in host: UIViewController) -> UINavigationController? {
+            if let navigation = host as? UINavigationController { return navigation }
+            return host.children.lazy.compactMap { navigationController(in: $0) }.first
+        }
+        let navigationController = try XCTUnwrap(navigationController(in: controller))
+        let navigationHeight = navigationController.view.bounds.height
+        XCTAssertTrue(editor.becomeFirstResponder())
+        var navigationHeights: [CGFloat] = []
+        for _ in 0..<40 {
+            try await Task.sleep(for: .milliseconds(16))
+            navigationHeights.append(navigationController.view.layer.presentation()?.bounds.height
+                ?? navigationController.view.bounds.height)
+        }
+        XCTAssertLessThanOrEqual(
+            navigationHeights.map { abs($0 - navigationHeight) }.max() ?? 0, 1,
+            "The outer navigation host must not resize ahead of its keyboard-aware conversation"
+        )
+        try await settle()
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let attachment = XCTAttachment(image: image)
+        attachment.name = "Conversation with keyboard open"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        let backingImage = try XCTUnwrap(image.cgImage)
+        let corner = try XCTUnwrap(backingImage.cropping(to: CGRect(
+            x: 3, y: backingImage.height - 30, width: 1, height: 1
+        )))
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = try XCTUnwrap(CGContext(
+            data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.draw(corner, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        XCTAssertEqual(Double(pixel[0]), 242, accuracy: 8, "The keyboard's uncovered corners must have the chat wallpaper")
+        XCTAssertEqual(Double(pixel[1]), 235, accuracy: 8)
+        XCTAssertEqual(Double(pixel[2]), 221, accuracy: 8)
+        XCTAssertEqual(model.messages(for: conversation).count, 40)
+        XCTAssertTrue(scroll.keyboardDismissMode == .interactive || scroll.keyboardDismissMode == .interactiveWithAccessory)
+        XCTAssertLessThan(scroll.bounds.height, closedHeight - 100, "The real keyboard must resize the transcript")
+        XCTAssertLessThanOrEqual(abs(bottomGap(scroll)), 14, "Keyboard must keep the latest message above the composer")
+
+        let textKeyboardHeight = scroll.bounds.height
+        let accessory = UIView(frame: CGRect(x: 0, y: 0, width: window.bounds.width, height: 80))
+        accessory.backgroundColor = .secondarySystemBackground
+        editor.inputAccessoryView = accessory
+        editor.reloadInputViews()
+        try await settle()
+        XCTAssertGreaterThan(abs(scroll.bounds.height - textKeyboardHeight), 20, "Expanding the input surface must exercise a different height")
+        XCTAssertLessThanOrEqual(abs(bottomGap(scroll)), 14, "Changing input height must keep latest visible")
+        editor.inputAccessoryView = nil
+        editor.reloadInputViews()
+        try await settle()
+        XCTAssertLessThanOrEqual(abs(bottomGap(scroll)), 14, "Returning to the text keyboard must keep latest visible")
+        editor.resignFirstResponder()
+        try await settle()
+        XCTAssertLessThanOrEqual(abs(bottomGap(scroll)), 14, "Dismissing the keyboard must keep latest visible")
+
+        // Reading history must not be mistaken for following the latest message.
+        scroll.setContentOffset(CGPoint(x: 0, y: max(0, scroll.contentOffset.y - 250)), animated: false)
+        try await settle()
+        let historyOffset = scroll.contentOffset.y
+        let historyViewportHeight = scroll.bounds.height
+        XCTAssertGreaterThan(bottomGap(scroll), 100)
+        XCTAssertTrue(editor.becomeFirstResponder())
+        try await settle()
+        let raisedHistoryOffset = historyOffset + historyViewportHeight - scroll.bounds.height
+        XCTAssertEqual(scroll.contentOffset.y, raisedHistoryOffset, accuracy: 14,
+            "The bottom visible history must move above the composer with the keyboard")
+        XCTAssertGreaterThan(bottomGap(scroll), 100)
+        let didEdit = await model.editMessage(
+            messages[39],
+            text: String(repeating: "An updated message below the reading position.\n", count: 20),
+            in: conversation
+        )
+        XCTAssertTrue(didEdit)
+        try await settle()
+        XCTAssertEqual(scroll.contentOffset.y, raisedHistoryOffset, accuracy: 14, "Content growth must not pull the reader to latest")
+        editor.resignFirstResponder()
+        try await settle()
+    }
+
     func testCachedAgentHistoryRendersAfterRepeatedEntry() async throws {
         let store = try LocalMessageStore(inMemory: true)
         let model = AppModel(cache: store, previewMode: true)
@@ -512,7 +655,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertFalse(source.contains("messageCountText"))
     }
 
-    func testGroupExpansionScopesAnimationToTheChevron() throws {
+    func testGroupExpansionSharesMotionAndHonorsReducedMotion() throws {
         let chatsDirectory = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -530,9 +673,9 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertEqual(groupToggles.count, 2)
         for suffix in groupToggles {
             let end = suffix.range(of: "\n    private func ")?.lowerBound ?? suffix.endIndex
-            XCTAssertFalse(suffix[..<end].contains("withAnimation"))
+            XCTAssertTrue(suffix[..<end].contains("withAnimation(reduceMotion ? nil : GroupChannelDisclosureMotion.animation)"))
         }
-        XCTAssertTrue(rowSource.contains("accessibilityReduceMotion ? nil : .snappy(duration: 0.22)"))
+        XCTAssertTrue(rowSource.contains("accessibilityReduceMotion ? nil : GroupChannelDisclosureMotion.animation"))
         XCTAssertTrue(rowSource.contains("value: isExpanded"))
     }
 

@@ -56,6 +56,7 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         }
         store.saveMessages(seed, conversationId: conversation.id, accountId: accountID, hasEarlier: false)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
         let navigation = SendMotionNavigation()
@@ -65,6 +66,7 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         window.makeKeyAndVisible()
         defer {
             window.isHidden = true; window.rootViewController = nil
+            previousWindow?.makeKeyAndVisible()
             ConversationMotionProbeRegistry.enabled = false
             ConversationMotionProbeRegistry.views = [:]
             ConversationMotionProbeRegistry.setDraft = nil
@@ -85,21 +87,26 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         ConversationMotionProbeRegistry.setDraft?(draft)
         let composer = try XCTUnwrap(editor(in: controller.view))
         composer.becomeFirstResponder()
+        func presentedEditorFrame() -> CGRect? {
+            guard let layer = composer.layer.presentation(), let root = window.layer.presentation(),
+                  !layer.bounds.isEmpty else { return nil }
+            return layer.convert(layer.bounds, to: root)
+        }
         var previousEditorTop: CGFloat?
         var stableKeyboardFrames = 0
         for _ in 0..<250 {
             try await Task.sleep(for: .milliseconds(20))
-            let frame = composer.convert(composer.bounds, to: window)
+            guard let frame = presentedEditorFrame() else { continue }
             if frame.maxY < window.bounds.maxY - 120, let previousEditorTop,
-               abs(previousEditorTop - frame.minY) < 0.5 {
+               abs(previousEditorTop - frame.minY) < 0.1 {
                 stableKeyboardFrames += 1
             } else {
                 stableKeyboardFrames = 0
             }
             previousEditorTop = frame.minY
-            if stableKeyboardFrames >= 3 { break }
+            if stableKeyboardFrames >= 6 { break }
         }
-        XCTAssertGreaterThanOrEqual(stableKeyboardFrames, 3, "The software keyboard must finish opening before measuring send motion")
+        XCTAssertGreaterThanOrEqual(stableKeyboardFrames, 6, "The software keyboard must finish opening before measuring send motion")
         XCTAssertNotNil(ConversationMotionProbeRegistry.send)
         if rapid {
             ConversationMotionProbeRegistry.setDraft?("First message")
@@ -154,7 +161,18 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         }
         print("Synthetic bubble growth widths=\(widths.map { Int($0.rounded()) })")
         composer.resignFirstResponder()
-        try await Task.sleep(for: .milliseconds(250))
+        var stableClosedFrames = 0
+        previousEditorTop = nil
+        for _ in 0..<100 {
+            try await Task.sleep(for: .milliseconds(20))
+            guard let frame = presentedEditorFrame() else { continue }
+            if frame.maxY > window.bounds.maxY - 100, let previousEditorTop,
+               abs(previousEditorTop - frame.minY) < 0.1 {
+                stableClosedFrames += 1
+            } else { stableClosedFrames = 0 }
+            previousEditorTop = frame.minY
+            if stableClosedFrames >= 6 { break }
+        }
     }
     private func attachSnapshot(of window: UIWindow, name: String) {
         let format = UIGraphicsImageRendererFormat()

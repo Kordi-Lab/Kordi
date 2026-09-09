@@ -77,6 +77,7 @@
 		81A5A5B135938E1C332EB16D /* ConversationSendMotionIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09BA4667BF4AE8544BDA7C41 /* ConversationSendMotionIntegrationTests.swift */; };
 		85F8CFC2AC23D0C91408C596 /* AttachmentFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B308FF37FF8E42CB0F5166D6 /* AttachmentFileStore.swift */; };
 		88B8C4BC617FD7B9CE4EC7CC /* AgentModelSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E218169E718634BB75B216F1 /* AgentModelSheet.swift */; };
+		88C1FE174B3F8BD66EB97D76 /* KeyboardBehaviorUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 429CDBD0C83D6E209FAE2D3F /* KeyboardBehaviorUITests.swift */; };
 		89AF5B2FC468A8F70E1699A7 /* AvatarIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DB852A1AC3BAABE284AC4D5 /* AvatarIdentityTests.swift */; };
 		8AF4705D22CA6731B2670C42 /* MarkdownMessageContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C89A8FB63D5B1DFD7576809C /* MarkdownMessageContent.swift */; };
 		8C8A23245680BF38E4E1B061 /* NotoEmoji.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFFD604ABA6CBEE2041D4D75 /* NotoEmoji.swift */; };
@@ -146,6 +147,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		31BA151619035586C621445E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2B713D82C9E5176BF299CFD8 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D5F4FA76E42E729EF0631448;
+			remoteInfo = Kordi;
+		};
 		6BB5479F0B7A82FBCEDBE99A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 2B713D82C9E5176BF299CFD8 /* Project object */;
@@ -208,6 +216,7 @@
 		4021DE92BF82560F7905E214 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 		416A049DC931011ECA554628 /* EmojiAnimationRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiAnimationRepository.swift; sourceTree = "<group>"; };
 		4283D70BD56B4D3DC3CF784D /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		429CDBD0C83D6E209FAE2D3F /* KeyboardBehaviorUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardBehaviorUITests.swift; sourceTree = "<group>"; };
 		4341AB98A04360584EC3B4BD /* PhotoSendReviewSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoSendReviewSheet.swift; sourceTree = "<group>"; };
 		44A3C66207D7BD48F04030BF /* CloudConversationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudConversationCatalogTests.swift; sourceTree = "<group>"; };
 		44C7E9E4C6857663B73F5B81 /* KordiShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = KordiShareExtension.entitlements; sourceTree = "<group>"; };
@@ -297,6 +306,7 @@
 		D8A0D4656EE35E183A198472 /* SessionRuntimeRouteStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRuntimeRouteStore.swift; sourceTree = "<group>"; };
 		DA243B6979BEEBADE478E33E /* CloudMessageStateProjectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudMessageStateProjectorTests.swift; sourceTree = "<group>"; };
 		DDB063759C8072686227B4C1 /* GroupSpaceSummary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupSpaceSummary.swift; sourceTree = "<group>"; };
+		DEC89F60CD61E0F5DC5C94D9 /* KordiKeyboardUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = KordiKeyboardUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF5E40C4B38433BB725BE9EB /* MessageActionSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageActionSheets.swift; sourceTree = "<group>"; };
 		E094A05643A2F44276E4EF06 /* NotoEmojiTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotoEmojiTests.swift; sourceTree = "<group>"; };
 		E218169E718634BB75B216F1 /* AgentModelSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentModelSheet.swift; sourceTree = "<group>"; };
@@ -485,6 +495,14 @@
 			path = Design;
 			sourceTree = "<group>";
 		};
+		8B5EA6D1AD264599870C0BEF /* KordiKeyboardUITests */ = {
+			isa = PBXGroup;
+			children = (
+				429CDBD0C83D6E209FAE2D3F /* KeyboardBehaviorUITests.swift */,
+			);
+			path = KordiKeyboardUITests;
+			sourceTree = "<group>";
+		};
 		8B691975F639EEE5046572D6 /* Persistence */ = {
 			isa = PBXGroup;
 			children = (
@@ -499,6 +517,7 @@
 			isa = PBXGroup;
 			children = (
 				C2C92D12ECE57C3C9CF3F00F /* Kordi */,
+				8B5EA6D1AD264599870C0BEF /* KordiKeyboardUITests */,
 				1BFF2E6850CAEDE7718C890D /* KordiShareExtension */,
 				D259025D837BD67D0E7B9B7E /* KordiTests */,
 				EC7028A6ADF145A7DE23EB58 /* digest */,
@@ -606,6 +625,7 @@
 			isa = PBXGroup;
 			children = (
 				E89F1206EB556B444390594D /* Kordi.app */,
+				DEC89F60CD61E0F5DC5C94D9 /* KordiKeyboardUITests.xctest */,
 				CF2ED6EF5EAC14BB658712DE /* KordiShareExtension.appex */,
 				758049F3F18473348374B2D9 /* KordiTests.xctest */,
 			);
@@ -691,6 +711,24 @@
 			productReference = 758049F3F18473348374B2D9 /* KordiTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		79376369001A0366253E57BD /* KordiKeyboardUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 377E3428D6FA8EFFD8058437 /* Build configuration list for PBXNativeTarget "KordiKeyboardUITests" */;
+			buildPhases = (
+				26BB7E3C3900EB47696A9705 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				DDAE8DBC698B084BE52D2F99 /* PBXTargetDependency */,
+			);
+			name = KordiKeyboardUITests;
+			packageProductDependencies = (
+			);
+			productName = KordiKeyboardUITests;
+			productReference = DEC89F60CD61E0F5DC5C94D9 /* KordiKeyboardUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		D5F4FA76E42E729EF0631448 /* Kordi */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 4F16A02F5029C0F79DB873A0 /* Build configuration list for PBXNativeTarget "Kordi" */;
@@ -742,6 +780,10 @@
 					31BA3E20115AC90B477CB0A8 = {
 						ProvisioningStyle = Automatic;
 					};
+					79376369001A0366253E57BD = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = D5F4FA76E42E729EF0631448;
+					};
 					D5F4FA76E42E729EF0631448 = {
 						ProvisioningStyle = Automatic;
 					};
@@ -770,6 +812,7 @@
 				D5F4FA76E42E729EF0631448 /* Kordi */,
 				FEC52B16CB2A21DB78546D16 /* KordiShareExtension */,
 				31BA3E20115AC90B477CB0A8 /* KordiTests */,
+				79376369001A0366253E57BD /* KordiKeyboardUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -816,6 +859,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		26BB7E3C3900EB47696A9705 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				88C1FE174B3F8BD66EB97D76 /* KeyboardBehaviorUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		993120D9E321CDAE32868919 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -979,6 +1030,11 @@
 			isa = PBXTargetDependency;
 			target = D5F4FA76E42E729EF0631448 /* Kordi */;
 			targetProxy = 6BB5479F0B7A82FBCEDBE99A /* PBXContainerItemProxy */;
+		};
+		DDAE8DBC698B084BE52D2F99 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D5F4FA76E42E729EF0631448 /* Kordi */;
+			targetProxy = 31BA151619035586C621445E /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1190,6 +1246,23 @@
 			};
 			name = Debug;
 		};
+		63E45C4E1953883E8E6E47F4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.keyboard-uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = Debug;
+		};
 		6AB0357B3291CA57FEDBFAB8 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1368,6 +1441,40 @@
 			};
 			name = Debug;
 		};
+		CC0A27FEA1BC4BF3BBC2D2C8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.keyboard-uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = Release;
+		};
+		ED4C52353CCB53F127082CF9 /* Beta */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.kordi.ios.beta.keyboard-uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Kordi;
+			};
+			name = Beta;
+		};
 		F202FA0210166E965A934A66 /* Beta */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1398,6 +1505,16 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		377E3428D6FA8EFFD8058437 /* Build configuration list for PBXNativeTarget "KordiKeyboardUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ED4C52353CCB53F127082CF9 /* Beta */,
+				63E45C4E1953883E8E6E47F4 /* Debug */,
+				CC0A27FEA1BC4BF3BBC2D2C8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		4F16A02F5029C0F79DB873A0 /* Build configuration list for PBXNativeTarget "Kordi" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
