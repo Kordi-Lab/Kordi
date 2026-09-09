@@ -116,26 +116,28 @@ pub(in crate::canonical_sessions) fn desktop_canonical_mark_session_read(
 
 pub(in crate::canonical_sessions) fn desktop_canonical_delete_cloud_message(
     cloud_message_id: &str,
+    account_id: Option<&str>,
 ) -> Result<Vec<String>, String> {
     let cloud_message_id = cloud_message_id.trim();
     if cloud_message_id.is_empty() {
         return Err("Cloud message id is required".to_string());
     }
-    let mut conn = open_db()?;
-    delete_cloud_message_in_db(&mut conn, cloud_message_id)
+    let active = crate::cloud_account_paths::cloud_account_storage_current()?;
+    let account_id = account_id
+        .or_else(|| active.as_ref().map(|value| value.account_id.as_str()))
+        .ok_or("Cloud account identity is unavailable")?
+        .trim();
+    let mut conn = super::super::chat_sync::open_account_db(account_id)?;
+    delete_cloud_message_in_db(&mut conn, cloud_message_id, account_id)
 }
 
 pub(super) fn delete_cloud_message_in_db(
     conn: &mut rusqlite::Connection,
     cloud_message_id: &str,
+    account_id: &str,
 ) -> Result<Vec<String>, String> {
     let transaction = conn.transaction().map_err(|error| error.to_string())?;
-    transaction
-        .execute(
-            "DELETE FROM chat_sync_messages WHERE message_id = ?1",
-            rusqlite::params![cloud_message_id],
-        )
-        .map_err(|error| error.to_string())?;
+    super::super::chat_sync::mark_message_deleted(&transaction, account_id, cloud_message_id)?;
     let rows = {
         let mut statement = transaction
             .prepare(

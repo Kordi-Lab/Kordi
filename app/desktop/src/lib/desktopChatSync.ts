@@ -184,6 +184,11 @@ export async function loadChatSyncRecoveryMessageIds(
   );
 }
 
+export async function loadChatSyncDeletedMessageIds(accountId: string): Promise<string[]> {
+  if (!isNativeDesktopShell()) return [];
+  return invokeDesktop<string[]>('desktop_chat_sync_deleted_message_ids', { accountId });
+}
+
 export async function applyChatSyncLocalBatch(request: ApplyChatSyncRequest) {
   if (!isNativeDesktopShell()) return null;
   const result = await invokeDesktop<ChatSyncApplyResult>('desktop_chat_sync_apply', { request });

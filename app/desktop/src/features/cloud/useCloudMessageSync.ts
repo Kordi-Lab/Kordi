@@ -1,3 +1,4 @@
+import { cloudMessageDeletions } from './cloudMessageDeletions';
 import {
   useCallback,
   useEffect,
@@ -233,9 +234,10 @@ export function useCloudMessageSync({
       if (!result.hasMore) break;
     }
     if (cancelledRef.current || !coordinator.isCurrentGeneration(generation)) return;
-    messagesRef.current = mergeCloudMessagesByPeerSnapshot(messagesRef.current, messagesByPeer, deletedMessageIds);
+    const suppressedMessageIds = new Set([...deletedMessageIds, ...cloudMessageDeletions.ids(account.accountId)]);
+    messagesRef.current = mergeCloudMessagesByPeerSnapshot(messagesRef.current, messagesByPeer, suppressedMessageIds);
     setMessages((current) => {
-      const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer, deletedMessageIds);
+      const merged = mergeCloudMessagesByPeerSnapshot(current, messagesByPeer, suppressedMessageIds);
       if (cloudMessagesByPeerEqual(current, merged)) return current;
       return merged;
     });

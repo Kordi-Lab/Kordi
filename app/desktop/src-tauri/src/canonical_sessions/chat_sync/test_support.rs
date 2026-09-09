@@ -19,6 +19,9 @@ pub(super) fn test_connection() -> rusqlite::Connection {
             PRIMARY KEY(account_id, message_id),
             UNIQUE(account_id, conversation_id, conversation_sequence)
          );
+         CREATE TABLE chat_sync_message_deletions (
+            account_id TEXT, message_id TEXT, PRIMARY KEY(account_id, message_id)
+         );
          CREATE TABLE chat_sync_pending_operations (
             account_id TEXT, operation_id TEXT, PRIMARY KEY(account_id, operation_id)
          );",

@@ -1,6 +1,9 @@
+import { cloudMessageDeletions } from '@/features/cloud/cloudMessageDeletions';
+import { filterDeletedCanonicalStore } from '@/features/canonical/canonicalMessageDeletions';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -116,6 +119,8 @@ export function useKordiCanonicalSessionStore({
     () => createCanonicalStore(),
   );
   const storeRef = useRef(store);
+  const accountIdRef = useRef(accountId);
+  useLayoutEffect(() => { accountIdRef.current = accountId; }, [accountId]);
   const refreshFlightRef = useRef(createSingleFlightState());
   const pageFlightsRef = useRef(
     new Map<string, Promise<CanonicalMessagePage | null>>(),
@@ -133,14 +138,16 @@ export function useKordiCanonicalSessionStore({
   const updateStore = useCallback((
     action: SetStateAction<CanonicalStore>,
   ) => {
+    if (accountIdRef.current !== accountId) return;
     const current = storeRef.current;
-    const next = typeof action === 'function'
+    const candidate = typeof action === 'function'
       ? action(current)
       : action;
+    const next = filterDeletedCanonicalStore(candidate, cloudMessageDeletions.ids(accountId));
     if (Object.is(next, current)) return;
     storeRef.current = next;
     setStoreValue(next);
-  }, []);
+  }, [accountId]);
 
   const { catalog, messagesBySessionId } = store;
   const state = useMemo(() => canonicalStateFromStore({

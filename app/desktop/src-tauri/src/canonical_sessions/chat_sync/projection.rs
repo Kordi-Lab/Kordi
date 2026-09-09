@@ -61,6 +61,32 @@ pub(super) fn upsert_message(
     message: &Value,
 ) -> Result<(), String> {
     let message_id = required_text(message, "id")?;
+    let pending_client_message_id = message
+        .get("client_message_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    if let Some(client_message_id) = pending_client_message_id {
+        tx.execute(
+            "DELETE FROM chat_sync_pending_operations
+             WHERE account_id = ?1 AND operation_id = ?2",
+            params![account_id, client_message_id],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    if message
+        .get("deleted_at")
+        .is_some_and(|value| !value.is_null())
+    {
+        return mark_message_deleted(tx, account_id, message_id);
+    }
+    let removed: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM chat_sync_message_deletions WHERE account_id = ?1 AND message_id = ?2)",
+        params![account_id, message_id], |row| row.get(0),
+    ).map_err(|error| error.to_string())?;
+    if removed {
+        return Ok(());
+    }
     let conversation_id = required_text(message, "conversation_id")?;
     let sequence = required_i64(message, "conversation_sequence")?;
     let version = required_i64(message, "version")?;
@@ -104,14 +130,6 @@ pub(super) fn upsert_message(
         ],
     )
     .map_err(|error| error.to_string())?;
-    if let Some(client_message_id) = client_message_id {
-        tx.execute(
-            "DELETE FROM chat_sync_pending_operations
-             WHERE account_id = ?1 AND operation_id = ?2",
-            params![account_id, client_message_id],
-        )
-        .map_err(|error| error.to_string())?;
-    }
     Ok(())
 }
 
@@ -251,11 +269,7 @@ pub(super) fn apply_event(
     }
     if matches!(event_type, "message.deleted" | "message.hidden") {
         let message_id = required_text(event, "entity_id")?;
-        tx.execute(
-            "DELETE FROM chat_sync_messages WHERE account_id = ?1 AND message_id = ?2",
-            params![account_id, message_id],
-        )
-        .map_err(|error| error.to_string())?;
+        mark_message_deleted(tx, account_id, message_id)?;
         return Ok(());
     }
     if event_type == "membership.removed" {

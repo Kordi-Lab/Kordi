@@ -1,3 +1,4 @@
+import { cloudMessageDeletions, type CloudMessageDeletions } from './cloudMessageDeletions';
 import type {
   ChatSyncBootstrapResponse,
   ChatSyncConversation,
@@ -26,6 +27,7 @@ export class ChatSyncState {
     private readonly getAccountId: () => string | null,
     private readonly setAccountId: (value: string) => void,
     readonly errorStatus: (error: unknown) => number | null,
+    readonly deletions: CloudMessageDeletions = cloudMessageDeletions,
   ) {}
 
   get activeAccountId(): string | null {
@@ -58,9 +60,28 @@ export class ChatSyncState {
     }
   }
 
+  removeMessage(messageId: string, accountId = this.activeAccountId): void {
+    this.deletions.remember(accountId, [messageId]);
+    if (accountId === this.activeAccountId) this.messageById.delete(messageId);
+  }
+
+  retainMessages(messages: ChatSyncMessage[], accountId = this.activeAccountId): ChatSyncMessage[] {
+    const kept = messages.filter((message) => {
+      if (message.deleted_at) {
+        this.removeMessage(message.id, accountId);
+        return false;
+      }
+      return !this.deletions.ids(accountId).has(message.id);
+    });
+    if (accountId === this.activeAccountId) {
+      kept.forEach((message) => this.messageById.set(message.id, message));
+    }
+    return kept;
+  }
+
   rememberBootstrap(response: ChatSyncBootstrapResponse): void {
     response.conversations.forEach((conversation) => this.rememberConversation(conversation));
-    response.latest_messages.forEach((message) => this.messageById.set(message.id, message));
+    this.retainMessages(response.latest_messages);
   }
 
   knownSessionIds(accountId: string): string[] {

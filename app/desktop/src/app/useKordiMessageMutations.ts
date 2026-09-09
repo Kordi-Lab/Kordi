@@ -143,12 +143,12 @@ export function useKordiMessageMutations({
           try {
             await deletion;
             const deletedCanonicalIds = new Set(await deleteCanonicalCloudMessage(messageId));
-            if (deletedCanonicalIds.size > 0) {
-              setCanonicalState((current) => current && ({
-                ...current,
-                messages: current.messages.filter((message) => !deletedCanonicalIds.has(message.id)),
-              }));
-            }
+            // Also apply the confirmed-deletion filter when the transport has
+            // already removed the native rows and returns no local identifiers.
+            setCanonicalState((current) => current && ({
+              ...current,
+              messages: current.messages.filter((message) => !deletedCanonicalIds.has(message.id)),
+            }));
           } catch (error) {
             deletionAnimation?.cancel();
             setCanonicalState((current) => {
