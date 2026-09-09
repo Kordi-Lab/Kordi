@@ -145,7 +145,7 @@ test("iOS conversation taps navigate before bounded asynchronous hydration", asy
   );
   assert.match(
     conversation,
-    /onChange\(of: timeline\.count\)[\s\S]*oldCount == 0[\s\S]*newCount > 0[\s\S]*positionAndRevealInitialViewport/,
+    /onChange\(of: timeline\.count(?:,\s*initial:\s*true)?\)[\s\S]*oldCount == 0[\s\S]*newCount > 0[\s\S]*positionAndRevealInitialViewport/,
   );
   assert.match(
     conversation,

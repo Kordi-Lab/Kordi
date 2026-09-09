@@ -93,3 +93,32 @@ test('an outgoing append preserves actual row displacement through interruption 
     else delete (window as Partial<Window>).matchMedia;
   }
 });
+
+test('moving the viewport does not invent an outgoing row animation', async () => {
+  const { captureTranscriptRowLayoutTops, alignAndRevealMeasuredTranscriptRows } = await import('../src/features/chat/virtualTranscriptMotion');
+  const viewport = document.createElement('div');
+  viewport.dataset.virtualTranscriptScroll = 'true';
+  const content = document.createElement('div');
+  const row = document.createElement('div');
+  row.dataset.transcriptWindowItem = 'true';
+  row.dataset.index = '0';
+  viewport.append(content);
+  content.append(row);
+  let viewportTop = 20;
+  viewport.getBoundingClientRect = () => new window.DOMRect(0, viewportTop, 400, 200);
+  row.getBoundingClientRect = () => new window.DOMRect(0, viewportTop + 80, 400, 40);
+  Object.defineProperty(row, 'offsetHeight', { value: 40 });
+  const previousRowTops = captureTranscriptRowLayoutTops(content);
+  viewportTop = 10;
+  const animated = alignAndRevealMeasuredTranscriptRows({
+    alignToTail: () => {}, gap: 4, reduceMotion: false, revealFromIndex: 1,
+    sizeContainer: content, previousRowTops,
+    virtualizer: {
+      getTotalSize: () => 120,
+      getVirtualItems: () => [{ index: 0, size: 40, start: 80 }],
+      measureElement: () => {},
+    },
+  });
+  assert.deepEqual(animated, []);
+  assert.equal(animations.has(row), false);
+});

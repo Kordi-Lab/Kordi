@@ -1,5 +1,6 @@
 import { performance } from 'node:perf_hooks';
-import { createCollaborationConversationMapper, mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
+import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
+import { createCollaborationConversationMapper } from '../src/features/collaboration/conversationProjectionCache';
 import { buildScaleCollaborationConversation } from '../tests/fixtures/chatScale';
 
 const map = process.argv.includes('--uncached')

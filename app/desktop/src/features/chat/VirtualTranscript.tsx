@@ -1,3 +1,4 @@
+import { useTranscriptTailAlignment } from './useTranscriptTailAlignment';
 import { TRANSCRIPT_FOLLOW_TAIL_EVENT } from './transcriptNavigation';
 import {
   memo,
@@ -18,7 +19,7 @@ import {
   TRANSCRIPT_WINDOW_OVERSCAN,
 } from '@/features/chat/transcriptWindowing';
 import { transcriptLayoutMaxScrollTop, preserveMeasuredDisclosurePosition, preserveMeasuredTranscriptRow, STABLE_DISCLOSURE_SETTLE_MS, TRANSCRIPT_DISCLOSURE_MIN_BODY_HEIGHT, TRANSCRIPT_DISCLOSURE_VIEWPORT_GAP } from '@/features/chat/virtualTranscriptLayout';
-import { hasActiveTranscriptRowLift, captureTranscriptRowLayoutTops, alignAndRevealMeasuredTranscriptRows, cancelTranscriptRowLift, useStableTranscriptSessionReveal } from '@/features/chat/virtualTranscriptMotion';
+import { hasActiveTranscriptRowLift, useStableTranscriptSessionReveal } from '@/features/chat/virtualTranscriptMotion';
 import {
   TRANSCRIPT_NAVIGATION_HIGHLIGHT_CLASS,
   useVirtualTranscriptNavigation,
@@ -102,10 +103,8 @@ export function VirtualTranscript<Item>({
   } | null>(null);
   const viewportWasAtTailRef = useRef(true);
   const tailAlignmentActiveRef = useRef(false);
-  const tailAlignmentFrameRef = useRef<number | null>(null);
   const tailAlignmentTargetRef = useRef<number | null>(null);
   const tailLiftRowsRef = useRef<HTMLElement[]>([]);
-  const rowLayoutTopsRef = useRef(new Map<HTMLElement, number>());
   const sizeContainerRef = useRef<HTMLDivElement | null>(null);
   const stableDisclosureAnchorRef = useRef<StableDisclosureAnchor | null>(null);
   const stableDisclosureReleaseFrameRef = useRef<number | null>(null);
@@ -165,20 +164,10 @@ export function VirtualTranscript<Item>({
     if (node) node.style.height = `${totalSize}px`;
   }, [totalSize, virtualizer]);
 
-  const cancelTailLiftAnimation = useCallback(() => {
-    cancelTranscriptRowLift(tailLiftRowsRef.current);
-    tailLiftRowsRef.current = [];
-  }, []);
-
-  const cancelTailAlignment = useCallback(() => {
-    cancelTailLiftAnimation();
-    tailAlignmentActiveRef.current = false;
-    tailAlignmentTargetRef.current = null;
-    if (tailAlignmentFrameRef.current !== null) {
-      window.cancelAnimationFrame(tailAlignmentFrameRef.current);
-      tailAlignmentFrameRef.current = null;
-    }
-  }, [cancelTailLiftAnimation]);
+  const { cancelTailLiftAnimation, cancelTailAlignment, scheduleTailAlignment } = useTranscriptTailAlignment({
+    internalScrollRef, viewportWasAtTailRef, tailAlignmentActiveRef, tailAlignmentTargetRef,
+    tailLiftRowsRef, sizeContainerRef, virtualizer, gap, setIsAtTail, onTailChange,
+  });
 
   const selectionViewportProps = useTranscriptSelectionViewportProps({ cancelTailAlignment, viewportRef: internalScrollRef, selectionMode, onSelectAllMessages, onCancelMessageSelection });
 
@@ -209,46 +198,6 @@ export function VirtualTranscript<Item>({
     };
     stableDisclosureReleaseFrameRef.current = window.requestAnimationFrame(release);
   }, [cancelStableDisclosureRelease, disconnectStableDisclosureResizeObserver]);
-
-  const alignViewportToTail = useCallback(() => {
-    const element = internalScrollRef.current;
-    if (!element) return;
-    const target = transcriptLayoutMaxScrollTop(element);
-    tailAlignmentTargetRef.current = target;
-    element.scrollTop = target;
-    viewportWasAtTailRef.current = true;
-    setIsAtTail(true);
-    onTailChange?.(true);
-  }, [onTailChange]);
-
-  const scheduleTailAlignment = useCallback((revealFromIndex?: number) => {
-    if (tailAlignmentFrameRef.current !== null) {
-      window.cancelAnimationFrame(tailAlignmentFrameRef.current);
-    }
-    tailAlignmentActiveRef.current = true;
-    const liftedRows = alignAndRevealMeasuredTranscriptRows({
-      alignToTail: alignViewportToTail,
-      gap,
-      reduceMotion: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
-      revealFromIndex,
-      previousRowTops: rowLayoutTopsRef.current,
-      sizeContainer: sizeContainerRef.current,
-      virtualizer,
-    });
-    if (revealFromIndex !== undefined) tailLiftRowsRef.current = liftedRows;
-    rowLayoutTopsRef.current = captureTranscriptRowLayoutTops(sizeContainerRef.current);
-    let framesRemaining = 4;
-    const settle = () => {
-      tailAlignmentFrameRef.current = null;
-      if (!tailAlignmentActiveRef.current) return;
-      alignViewportToTail();
-      framesRemaining -= 1;
-      if (framesRemaining > 0) {
-        tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
-      }
-    };
-    tailAlignmentFrameRef.current = window.requestAnimationFrame(settle);
-  }, [alignViewportToTail, gap, virtualizer]);
 
   useEffect(() => {
     // React Strict Mode intentionally runs an extra setup/cleanup cycle in

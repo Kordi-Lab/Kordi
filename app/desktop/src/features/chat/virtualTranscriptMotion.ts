@@ -25,9 +25,15 @@ function rowLiftOffset(row: HTMLElement) {
   return Number.parseFloat(getComputedStyle(row).translate.split(/\s+/)[1] ?? '0') || 0;
 }
 
+function transcriptViewportTop(sizeContainer: HTMLDivElement | null) {
+  return sizeContainer?.closest<HTMLElement>('[data-virtual-transcript-scroll]')?.getBoundingClientRect().top ?? 0;
+}
+
 export function captureTranscriptRowLayoutTops(sizeContainer: HTMLDivElement | null) {
+  // A composer resize can move the whole pane without moving rows within it.
+  const viewportTop = transcriptViewportTop(sizeContainer);
   return new Map([...(sizeContainer?.querySelectorAll<HTMLElement>('[data-transcript-window-item="true"]') ?? [])]
-    .map(row => [row, row.getBoundingClientRect().top - rowLiftOffset(row)]));
+    .map(row => [row, row.getBoundingClientRect().top - viewportTop - rowLiftOffset(row)]));
 }
 
 export function alignAndRevealMeasuredTranscriptRows({
@@ -47,9 +53,10 @@ export function alignAndRevealMeasuredTranscriptRows({
   }
   const rows = [...sizeContainer.querySelectorAll<HTMLDivElement>('[data-transcript-window-item="true"]')];
   const previousRows = revealFromIndex === undefined ? [] : rows.filter(row => Number(row.dataset.index) < revealFromIndex);
+  const viewportTop = transcriptViewportTop(sizeContainer);
   const presentationTops = previousRows.map(row => {
     const previousTop = previousRowTops?.get(row);
-    return previousTop === undefined ? undefined : previousTop + rowLiftOffset(row);
+    return previousTop === undefined ? undefined : previousTop + viewportTop + rowLiftOffset(row);
   });
   // A new neighbor can change the previous bubble's grouping height too.
   // Commit measured geometry before the first paint, rather than aligning to

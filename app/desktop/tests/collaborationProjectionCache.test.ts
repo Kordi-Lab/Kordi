@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createCollaborationConversationMapper, mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
+import { mapCollaborationConversationToViewModel } from '../src/features/collaboration/transcript';
+import { createCollaborationConversationMapper } from '../src/features/collaboration/conversationProjectionCache';
 import { COLLABORATION_PROCESSING_PLACEHOLDER_MAX_AGE_MS } from '../src/features/collaboration/collaborationProcessingState';
 import type { DesktopCollaborationHost } from '../src/kordi-app/types';
 import { buildScaleCollaborationConversation } from './fixtures/chatScale';

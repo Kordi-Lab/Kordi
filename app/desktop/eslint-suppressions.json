@@ -139,7 +139,7 @@
   },
   "src/features/chat/messageActions/chatMessages.ts": {
     "react-hooks/exhaustive-deps": {
-      "count": 3
+      "count": 2
     }
   },
   "src/features/chat/messageActions/projectMessages.ts": {
@@ -529,9 +529,6 @@
     }
   },
   "src/kordi-app/components/transcript.tsx": {
-    "@typescript-eslint/no-misused-promises": {
-      "count": 1
-    },
     "react-refresh/only-export-components": {
       "count": 2
     }
