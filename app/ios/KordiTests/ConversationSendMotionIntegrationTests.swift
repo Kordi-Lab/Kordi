@@ -40,7 +40,11 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         try await checkSend(count: 40, draft: "Second message", rapid: true)
     }
 
-    private func checkSend(count: Int, draft: String = "New message", rapid: Bool = false) async throws {
+    func testSendDuringKeyboardOpeningKeepsTheBubbleWithItsComposer() async throws {
+        try await checkSend(count: 40, waitForKeyboard: false)
+    }
+
+    private func checkSend(count: Int, draft: String = "New message", rapid: Bool = false, waitForKeyboard: Bool = true) async throws {
         ConversationMotionProbeRegistry.enabled = true
         ConversationMotionProbeRegistry.views = [:]
         let store = try LocalMessageStore(inMemory: true)
@@ -94,19 +98,21 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         }
         var previousEditorTop: CGFloat?
         var stableKeyboardFrames = 0
-        for _ in 0..<250 {
-            try await Task.sleep(for: .milliseconds(20))
-            guard let frame = presentedEditorFrame() else { continue }
-            if frame.maxY < window.bounds.maxY - 120, let previousEditorTop,
-               abs(previousEditorTop - frame.minY) < 0.1 {
-                stableKeyboardFrames += 1
-            } else {
-                stableKeyboardFrames = 0
+        if waitForKeyboard {
+            for _ in 0..<250 {
+                try await Task.sleep(for: .milliseconds(20))
+                guard let frame = presentedEditorFrame() else { continue }
+                if frame.maxY < window.bounds.maxY - 120, let previousEditorTop,
+                   abs(previousEditorTop - frame.minY) < 0.1 {
+                    stableKeyboardFrames += 1
+                } else {
+                    stableKeyboardFrames = 0
+                }
+                previousEditorTop = frame.minY
+                if stableKeyboardFrames >= 6 { break }
             }
-            previousEditorTop = frame.minY
-            if stableKeyboardFrames >= 6 { break }
+            XCTAssertGreaterThanOrEqual(stableKeyboardFrames, 6, "The software keyboard must finish opening before measuring send motion")
         }
-        XCTAssertGreaterThanOrEqual(stableKeyboardFrames, 6, "The software keyboard must finish opening before measuring send motion")
         XCTAssertNotNil(ConversationMotionProbeRegistry.send)
         if rapid {
             ConversationMotionProbeRegistry.setDraft?("First message")
@@ -142,9 +148,17 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         XCTAssertNotNil(firstVisibleTime, "Every accepted send must become visible")
         let maximumDownwardStep = zip(positions, positions.dropFirst()).map { $1 - $0 }.max() ?? 0
         print("Synthetic send motion count=\(count), positions=\(positions.map { Int($0.rounded()) }), maximumDownwardStep=\(maximumDownwardStep), firstVisibleMs=\(((firstVisibleTime ?? sendTime) - sendTime) * 1000)")
-        XCTAssertLessThanOrEqual(maximumDownwardStep, 1, "The real chat must not jump down after its initial upward movement")
+        if waitForKeyboard {
+            XCTAssertLessThanOrEqual(maximumDownwardStep, 1, "The real chat must not jump down after its initial upward movement")
+        }
         let positionRange = (positions.max() ?? 0) - (positions.min() ?? 0)
-        XCTAssertLessThanOrEqual(positionRange, 1, "The first visible frame must already use the final message position")
+        if waitForKeyboard {
+            XCTAssertLessThanOrEqual(positionRange, 1, "The first visible frame must already use the final message position")
+        } else {
+            XCTAssertGreaterThan(composerGaps.count, 5)
+            let gapRange = (composerGaps.max() ?? 0) - (composerGaps.min() ?? 0)
+            XCTAssertLessThanOrEqual(gapRange, 1, "A send during keyboard movement must stay anchored to the composer")
+        }
         print("Synthetic composer gap count=\(count), gaps=\(composerGaps.map { Int($0.rounded()) })")
         if count == 40, draft == "New message", !rapid {
             attachSnapshot(of: window, name: "Settled message frame")
@@ -156,7 +170,10 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         XCTAssertGreaterThan(settledWidth - smallestWidth, settledWidth * 0.02, "A new bubble must visibly grow to full size")
         let largestShrink = zip(widths, widths.dropFirst()).map { $0 - $1 }.max() ?? 0
         XCTAssertLessThanOrEqual(largestShrink, 1, "Bubble growth must not reverse or replay during delivery updates")
-        for anchor in [bubbleFrames.map(\.maxX), bubbleFrames.map(\.maxY)] {
+        let anchors = waitForKeyboard
+            ? [bubbleFrames.map(\.maxX), bubbleFrames.map(\.maxY)]
+            : [bubbleFrames.map(\.maxX)]
+        for anchor in anchors {
             XCTAssertLessThanOrEqual((anchor.max() ?? 0) - (anchor.min() ?? 0), 1, "The bottom trailing bubble anchor must remain fixed")
         }
         print("Synthetic bubble growth widths=\(widths.map { Int($0.rounded()) })")
