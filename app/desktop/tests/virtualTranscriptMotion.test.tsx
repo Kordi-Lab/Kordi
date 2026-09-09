@@ -13,6 +13,13 @@ import {
 const animations = new WeakMap<HTMLElement, { frames: Keyframe[]; cancelled: boolean }>();
 test.before(async () => {
   await installVirtualTranscriptHarness();
+  HTMLElement.prototype.getBoundingClientRect = function() {
+    const y = Number(this.style.transform.match(/translate3d\([^,]+,\s*([-\d.]+)px/)?.[1] ?? 0);
+    const offset = Number.parseFloat(this.style.translate.split(/\s+/)[1] ?? '0') || 0;
+    const scrollTop = this.closest<HTMLElement>('[data-virtual-transcript-scroll]')?.scrollTop ?? 0;
+    return { top: y + offset - scrollTop, bottom: y + offset - scrollTop + this.offsetHeight,
+      left: 0, right: 800, width: 800, height: this.offsetHeight, x: 0, y: y + offset - scrollTop, toJSON() {} };
+  };
   HTMLElement.prototype.animate = function(frames) {
     const record = { frames: frames as Keyframe[], cancelled: false };
     animations.set(this, record);
@@ -33,7 +40,7 @@ test('a switched session stays hidden until its measured tail is stable', async 
   assert.equal(sizeContainer?.dataset.virtualTranscriptSessionReady, 'true');
 });
 
-test('an outgoing append lifts only existing rows by its measured height and honors reduced motion', async () => {
+test('an outgoing append preserves actual row displacement through interruption and reduced motion', async () => {
   const originalMatchMedia = Object.getOwnPropertyDescriptor(window, 'matchMedia');
   try {
     const initialItems = rows('motion-', 0, 20, 50);
@@ -55,7 +62,9 @@ test('an outgoing append lifts only existing rows by its measured height and hon
     assert.deepEqual(animations.get(previousRow)?.frames, [
       { translate: '0 144px' }, { translate: '0 0' },
     ]);
-    assert.equal(animations.has(appendedRow), false);
+    assert.deepEqual(animations.get(appendedRow)?.frames, [
+      { translate: '0 144px' }, { translate: '0 0' },
+    ]);
     const firstAnimation = animations.get(previousRow);
     // Simulate an unfinished lift when a second message arrives.
     previousRow.style.translate = '0 60px';

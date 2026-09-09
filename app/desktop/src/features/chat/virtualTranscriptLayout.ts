@@ -26,3 +26,11 @@ export function preserveMeasuredTranscriptRow(
   }
   return preserve;
 }
+
+/** Transforms can extend scrollHeight; the flow marker records layout extent only. */
+export function transcriptLayoutMaxScrollTop(container: HTMLElement) {
+  const end = container.querySelector<HTMLElement>('[data-virtual-transcript-end]');
+  const paddingBottom = Number.parseFloat(getComputedStyle(container).paddingBottom) || 0;
+  const layoutHeight = end?.offsetTop ? end.offsetTop + paddingBottom : container.scrollHeight;
+  return Math.max(0, layoutHeight - container.clientHeight);
+}

@@ -245,7 +245,7 @@ export function useKordiUiEffects({
     transcriptScrollMetricsRef.current = null;
 
     const container = chatTranscriptScrollRef.current;
-    if (container) {
+    if (container && container.dataset.virtualTranscriptScroll !== 'true') {
       container.scrollTop = container.scrollHeight;
     }
   }, [activeConvId, activeNav, activeProjectSessionId, chatTranscriptScrollRef, setChatTranscriptAtLatest, shouldAutoFollowChatRef]);
@@ -255,6 +255,9 @@ export function useKordiUiEffects({
 
     const container = chatTranscriptScrollRef.current;
     if (!container) return;
+
+    // Virtual transcripts own measurement and tail alignment in one transaction.
+    if (container.dataset.virtualTranscriptScroll === 'true') return;
 
     const previousMetrics = transcriptScrollMetricsRef.current;
     const previousDistanceFromBottom = previousMetrics
