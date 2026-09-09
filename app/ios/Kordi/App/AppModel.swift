@@ -642,7 +642,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshWorkspace(showSyncActivity: Bool = true) async {
-        guard let token, let account, !isRefreshing else { return }
+        guard !previewMode, let token, let account, !isRefreshing else { return }
         let callSnapshotGenerationAtStart = callSnapshotGeneration
         let sessionVisibilityRevisionAtStart = sessionVisibilityMutationRevision
         let previousOwnedAgents = Dictionary(

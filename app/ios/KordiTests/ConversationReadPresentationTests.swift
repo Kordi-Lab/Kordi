@@ -361,15 +361,13 @@ final class ConversationReadPresentationTests: XCTestCase {
         )
 
         XCTAssertTrue(source.contains("private let actionDiameter: CGFloat = 44"))
-        XCTAssertTrue(source.contains("private let minimumActionScale: CGFloat = 0.3"))
-        XCTAssertTrue(source.contains("private let revealProgressResponse: CGFloat = 2.7"))
         XCTAssertTrue(source.contains(".background(action.color, in: Circle())"))
-        XCTAssertTrue(source.contains(".scaleEffect(minimumActionScale + (1 - minimumActionScale) * progress)"))
+        XCTAssertTrue(source.contains(".scaleEffect(reduceMotion ? 1 : minimumActionScale + (1 - minimumActionScale) * progress)"))
         XCTAssertTrue(source.contains(".opacity(progress)"))
-        XCTAssertTrue(source.contains(".highPriorityGesture(horizontalDragGesture)"))
+        XCTAssertTrue(source.contains(".chatRowSwipeGesture(onChanged: updateSwipe, onEnded: finishSwipe, onCancelled: cancelSwipe)"))
         XCTAssertTrue(source.contains(".offset(x: displayedOffset)"))
         XCTAssertTrue(source.contains(".zIndex(1)"))
-        XCTAssertTrue(source.contains(".interactiveSpring(response: 0.28, dampingFraction: 0.86)"))
+        XCTAssertTrue(source.contains("ChatRowSwipeMotion.settlingAnimation(reduceMotion: reduceMotion)"))
         XCTAssertEqual(
             source.components(separatedBy: "guard !dismissActiveSwipeActions() else { return }").count - 1,
             6
