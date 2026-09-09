@@ -28,6 +28,7 @@ struct MessageBubble: View, Equatable {
     let replySourceMessage: ChatMessage?
     let isHighlighted: Bool
     let isActionPresented: Bool
+    var pendingSendEntrance = false
     var actionPlacement: MessageActionBubblePlacement? = nil
     var actionViewportFrame: CGRect = .zero
     let isPinned: Bool
@@ -83,6 +84,7 @@ struct MessageBubble: View, Equatable {
             && lhs.replySourceMessage == rhs.replySourceMessage
             && lhs.isHighlighted == rhs.isHighlighted
             && lhs.isActionPresented == rhs.isActionPresented
+            && lhs.pendingSendEntrance == rhs.pendingSendEntrance
             && lhs.actionPlacement == rhs.actionPlacement
             && lhs.actionViewportFrame == rhs.actionViewportFrame
             && lhs.isPinned == rhs.isPinned
@@ -199,6 +201,23 @@ struct MessageBubble: View, Equatable {
                             )
                             .allowsHitTesting(false)
                     }
+                    #if DEBUG
+                    .background {
+                        if ConversationMotionProbeRegistry.enabled {
+                            ConversationMotionProbe(id: "bubble-" + (message.clientMessageId ?? message.id))
+                        }
+                    }
+                    #endif
+                    // Reserve the final layout size while growing only the bubble.
+                    // The measured tail-position gate releases this entrance once.
+                    .compositingGroup()
+                    .modifier(MessageSendEntranceTransform(
+                        scale: !reduceMotion && message.author == .me && pendingSendEntrance ? 0.8 : 1
+                    ))
+                    .animation(
+                        reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.22),
+                        value: pendingSendEntrance
+                    )
                     .scaleEffect(
                         reduceMotion
                             ? 1
@@ -3122,5 +3141,22 @@ struct MessageDeliveryGlyph: View {
             return "Seen by \(readByCount)"
         }
         return state.label
+    }
+}
+
+/// Interpolates one presentation value without leaving nested layer animations.
+private struct MessageSendEntranceTransform: AnimatableModifier {
+    var scale: CGFloat
+
+    var animatableData: CGFloat {
+        get { scale }
+        set { scale = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(scale, anchor: .bottomTrailing)
+            .opacity(Double(min(1, max(0, (scale - 0.8) / 0.2))))
+            .transaction { $0.animation = nil }
     }
 }

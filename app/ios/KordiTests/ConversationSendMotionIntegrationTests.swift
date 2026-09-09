@@ -112,15 +112,18 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         var firstVisibleTime: CFTimeInterval?
         var positions: [CGFloat] = []
         var composerGaps: [CGFloat] = []
+        var bubbleFrames: [CGRect] = []
         for _ in 0..<45 {
             try await Task.sleep(for: .milliseconds(10))
             if let last = model.messages(for: conversation).last, last.text == draft,
                let frame = ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: last), in: window) {
+                if let bubble = ConversationMotionProbeRegistry.frame(
+                    for: "bubble-" + (last.clientMessageId ?? last.id), in: window
+                ) {
+                    bubbleFrames.append(bubble)
+                }
                 if firstVisibleTime == nil {
                     firstVisibleTime = CACurrentMediaTime()
-                    if count == 40, draft == "New message", !rapid {
-                        attachSnapshot(of: window, name: "First visible message frame")
-                    }
                 }
                 positions.append(frame.minY)
                 if let editorLayer = composer.layer.presentation(), let root = window.layer.presentation() {
@@ -139,6 +142,17 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         if count == 40, draft == "New message", !rapid {
             attachSnapshot(of: window, name: "Settled message frame")
         }
+        XCTAssertGreaterThan(bubbleFrames.count, 5)
+        let widths = bubbleFrames.map(\.width)
+        let settledWidth = try XCTUnwrap(widths.last)
+        let smallestWidth = try XCTUnwrap(widths.min())
+        XCTAssertGreaterThan(settledWidth - smallestWidth, settledWidth * 0.02, "A new bubble must visibly grow to full size")
+        let largestShrink = zip(widths, widths.dropFirst()).map { $0 - $1 }.max() ?? 0
+        XCTAssertLessThanOrEqual(largestShrink, 1, "Bubble growth must not reverse or replay during delivery updates")
+        for anchor in [bubbleFrames.map(\.maxX), bubbleFrames.map(\.maxY)] {
+            XCTAssertLessThanOrEqual((anchor.max() ?? 0) - (anchor.min() ?? 0), 1, "The bottom trailing bubble anchor must remain fixed")
+        }
+        print("Synthetic bubble growth widths=\(widths.map { Int($0.rounded()) })")
         composer.resignFirstResponder()
         try await Task.sleep(for: .milliseconds(250))
     }

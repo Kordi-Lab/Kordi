@@ -1264,6 +1264,7 @@ struct ConversationView: View {
                     replySourceMessage: message.quotedReplyMessageId.flatMap { messagesByID[$0] },
                     isHighlighted: highlightedMessageID == message.id,
                     isActionPresented: messageActionMessage?.id == message.id,
+                    pendingSendEntrance: stagedMessageIDs.contains(message.clientMessageId ?? message.id),
                     actionPlacement: messageActionMessage?.id == message.id && !messageActionPreviewFrame.isEmpty
                         ? MessageActionBubblePlacement(sourceFrame: messageActionFrame, previewFrame: messageActionPreviewFrame)
                         : nil,
@@ -3879,7 +3880,6 @@ private struct ThreadNavigationButton: View {
 
 /// A send becomes visible only after its measured row and viewport are aligned.
 private struct OutgoingMessageEntrance: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let pendingPosition: Bool
 
     func body(content: Content) -> some View {
@@ -3887,6 +3887,5 @@ private struct OutgoingMessageEntrance: ViewModifier {
             .opacity(pendingPosition ? 0 : 1)
             .allowsHitTesting(!pendingPosition)
             .accessibilityHidden(pendingPosition)
-            .animation(reduceMotion ? nil : .timingCurve(0.23, 1, 0.32, 1, duration: 0.15), value: pendingPosition)
     }
 }
