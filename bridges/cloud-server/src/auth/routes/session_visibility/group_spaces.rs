@@ -24,13 +24,18 @@ async fn set_group_space_archived(
             );
         }
     };
+    // Old groups without catalog metadata use the normalized session identity
+    // on clients. Historical members must also be able to clean up their list.
     let conversations: Vec<(uuid::Uuid, Option<String>)> = match query_as(
         "SELECT conversation.conversation_id, conversation.legacy_session_id \
          FROM cloud_chat_conversations conversation \
          JOIN cloud_chat_conversation_members member \
            ON member.conversation_id = conversation.conversation_id \
-         WHERE conversation.kind = 'group' AND conversation.group_space_id = $2 \
-           AND member.account_id = $1 AND member.membership_state = 'active' \
+         WHERE conversation.kind = 'group' \
+           AND COALESCE(conversation.group_space_id, \
+               regexp_replace(COALESCE(conversation.legacy_session_id, \
+                   conversation.conversation_id::text), '^(group:)+', '')) = $2 \
+           AND member.account_id = $1 \
          ORDER BY conversation.created_at ASC, conversation.conversation_id ASC",
     )
     .bind(&session.account_id)
