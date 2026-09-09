@@ -4,6 +4,7 @@ mod artifacts;
 pub mod bash;
 pub mod bash_policy;
 pub mod browser_fetch;
+pub mod calendar;
 mod diff;
 pub mod edit;
 pub mod find;

@@ -36,12 +36,6 @@ pub(crate) async fn read_context(
     .fetch_optional(pool)
     .await?;
     let (session_id, request_message_id, owner, requester) = run.ok_or(RunError::NotFound)?;
-    let args = &input.arguments;
-    let search = input.tool == "search_sessions";
-    if !search && (input.tool != "read_session" || args["sessionId"].as_str() != Some(&session_id))
-    {
-        return Err(RunError::NotFound);
-    }
     let claim = ClaimRunRequest {
         session_id: session_id.clone(),
         request_message_id: request_message_id.clone(),
@@ -52,6 +46,36 @@ pub(crate) async fn read_context(
         idempotency_key: String::new(),
     };
     if !super::authorization::validate_shared_cloud_agent_claim(pool, &claim).await? {
+        return Err(RunError::NotFound);
+    }
+    if input.tool == "read_calendar" {
+        if owner != requester {
+            return Err(RunError::NotFound);
+        }
+        let child: (bool,) = query_as("SELECT subsession_id IS NOT NULL OR parent_run_id IS NOT NULL FROM cloud_agent_fallback_runs WHERE run_id=$1")
+            .bind(run_id).fetch_one(pool).await?;
+        if child.0 {
+            return Err(RunError::NotFound);
+        }
+        let mut calendar: crate::digest::chat_calendar::CalendarReadInput =
+            serde_json::from_value(input.arguments).map_err(|_| RunError::NotFound)?;
+        if calendar.session_id.is_some() || calendar.request_message_id.is_some() {
+            return Err(RunError::NotFound);
+        }
+        if session_id.starts_with("session:group:")
+            || session_id.starts_with("session:direct-person:")
+        {
+            calendar.session_id = Some(session_id);
+            calendar.request_message_id = Some(request_message_id);
+        } else if !session_id.starts_with("session:self-agent:") {
+            return Err(RunError::NotFound);
+        }
+        return crate::digest::chat_calendar::read(pool, &owner, calendar).await;
+    }
+    let args = &input.arguments;
+    let search = input.tool == "search_sessions";
+    if !search && (input.tool != "read_session" || args["sessionId"].as_str() != Some(&session_id))
+    {
         return Err(RunError::NotFound);
     }
     // Both the requesting person and executing owner must still belong to this conversation.
