@@ -6788,6 +6788,26 @@ final class AppModel: ObservableObject {
         }
     }
 
+    #if DEBUG
+    func deliverPreviewIncomingMessage() {
+        guard previewMode,
+              let index = conversations.firstIndex(where: { $0.id == "person:acct_maya" }) else { return }
+        let conversation = conversations[index]
+        let isReadingLatest = conversationReadPresentations.values.contains {
+            $0.conversationID == conversation.id && $0.threadRootID == nil && $0.canMarkRead
+        }
+        let message = ChatMessage(
+            id: "preview-incoming-\(UUID().uuidString)", conversationId: conversation.id,
+            author: .person, authorName: "Maya Chen",
+            text: "Here is your test message. Tap the down arrow to read it and check that the unread badge disappears.",
+            createdAt: Date(), deliveryState: .delivered, errorMessage: nil, requestMessageId: nil
+        )
+        messagesByConversation[conversation.id, default: []].append(message)
+        updateConversationPreview(conversation.id, text: message.text, attachment: nil, date: message.createdAt)
+        if !isReadingLatest { conversations[index].unreadCount += 1 }
+    }
+    #endif
+
     private func installPreviewData() {
         let fixture = PreviewData.make()
         var previewRouting = CloudModelRouting.empty
@@ -6825,6 +6845,19 @@ final class AppModel: ObservableObject {
         })
         conversations = fixture.conversations
         messagesByConversation = fixture.messagesByConversation
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--preview-incoming-message"),
+           let index = conversations.firstIndex(where: { $0.id == "person:acct_maya" }),
+           let history = messagesByConversation[conversations[index].id],
+           let anchor = history.first(where: { $0.id == "maya-history-60" }) {
+            let conversationID = conversations[index].id
+            conversations[index].unreadCount = 0
+            conversationViewportMemory.remember(
+                key: "\(fixture.account.accountId):\(conversationID):conversation",
+                messageID: anchor.id, latestMessageID: history.last?.id, at: Date()
+            )
+        }
+        #endif
         ownedCloudAgents = [
             CloudAgent(
                 agentId: "cloud_agent_research",

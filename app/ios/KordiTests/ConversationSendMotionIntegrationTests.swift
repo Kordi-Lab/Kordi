@@ -75,6 +75,7 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
             ConversationMotionProbeRegistry.views = [:]
             ConversationMotionProbeRegistry.setDraft = nil
             ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
         }
         controller.view.layoutIfNeeded()
         navigation.path = [.conversation(conversation)]
@@ -203,4 +204,136 @@ final class ConversationSendMotionIntegrationTests: XCTestCase {
         add(attachment)
     }
 
+}
+
+@MainActor
+final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
+    func testJumpToLatestClearsUnreadWithoutComposerInteraction() async throws {
+        try await checkReadingLatest(useButton: true)
+    }
+
+    func testScrollingToLatestClearsUnreadWithoutComposerInteraction() async throws {
+        try await checkReadingLatest(useButton: false)
+    }
+
+    func testLatestAlreadyVisibleDoesNotKeepUnreadIndicator() async throws {
+        try await checkReadingLatest(useButton: true, resumeAtLatest: true)
+    }
+
+    func testKeyboardAndTypingPreserveUnreadUntilJumpingToLatest() async throws {
+        try await checkReadingLatest(useButton: true, opensKeyboard: true)
+    }
+
+    private func checkReadingLatest(
+        useButton: Bool,
+        resumeAtLatest: Bool = false,
+        opensKeyboard: Bool = false
+    ) async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = try XCTUnwrap(model.conversations.first { $0.id == "person:acct_maya" })
+        let initialUnreadCount = conversation.unreadCount
+        // Exercise cache hydration with fixed-height text instead of preview
+        // media whose asynchronous layout can change the scroll destination.
+        model.hydrateCachedMessages(for: conversation)
+        for other in model.conversations where other.id != conversation.id {
+            model.hydrateCachedMessages(for: other)
+        }
+        let messages = (0..<40).map { index in
+            ChatMessage(id: "latest-fixture-\(index)", conversationId: conversation.id,
+                author: .person, authorName: "Fixture peer", text: "Message \(index)",
+                createdAt: Date().addingTimeInterval(Double(index - 40)),
+                deliveryState: .delivered, errorMessage: nil, requestMessageId: nil)
+        }
+        store.saveMessages(messages, conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        model.hydrateCachedMessages(for: conversation)
+        XCTAssertEqual(model.messages(for: conversation).map(\.id), messages.map(\.id))
+        XCTAssertGreaterThan(initialUnreadCount, 0)
+        model.conversationViewportMemory.remember(
+            key: "\(accountID):\(conversation.id):conversation", messageID: resumeAtLatest ? messages.last?.id : messages[0].id,
+            latestMessageID: messages.last?.id, at: Date()
+        )
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        let navigation = SendMotionNavigation()
+        let controller = UIHostingController(rootView: SendMotionHost(navigation: navigation, model: model,
+            calls: KordiCallCoordinator(), notifications: KordiNotificationCoordinator())
+            .environment(\.scenePhase, .active))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true
+            window.rootViewController = nil
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil
+            ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
+        controller.view.layoutIfNeeded()
+        navigation.path = [.conversation(conversation)]
+        for _ in 0..<200 {
+            if ConversationMotionProbeRegistry.frame(for: "latest-message-button", in: window) != nil
+                || (resumeAtLatest && model.conversations.first { $0.id == conversation.id }?.unreadCount == 0) { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        if !resumeAtLatest {
+            XCTAssertNotNil(ConversationMotionProbeRegistry.frame(for: "latest-message-button", in: window))
+            XCTAssertEqual(model.conversations.first { $0.id == conversation.id }?.unreadCount, initialUnreadCount, "Browsing history must preserve unread messages")
+        }
+        func timelineScroll(in view: UIView) -> UIScrollView? {
+            if let scroll = view as? UIScrollView, !(scroll is UITextView),
+               scroll.contentSize.height > scroll.bounds.height + 100 { return scroll }
+            return view.subviews.lazy.compactMap { timelineScroll(in: $0) }.first
+        }
+        let scroll = try XCTUnwrap(timelineScroll(in: controller.view))
+        func editor(in view: UIView) -> UITextView? {
+            if let editor = view as? UITextView, editor.isEditable { return editor }
+            return view.subviews.lazy.compactMap { editor(in: $0) }.first
+        }
+        let composer = try XCTUnwrap(editor(in: controller.view))
+        if opensKeyboard {
+            composer.becomeFirstResponder()
+            ConversationMotionProbeRegistry.setDraft?("Draft while reading history")
+            try await Task.sleep(for: .milliseconds(600))
+            XCTAssertTrue(composer.isFirstResponder)
+            XCTAssertEqual(model.conversations.first { $0.id == conversation.id }?.unreadCount, initialUnreadCount,
+                "Keyboard focus and typing must not acknowledge unseen messages")
+            XCTAssertNotNil(ConversationMotionProbeRegistry.frame(for: "latest-message-button", in: window))
+        }
+        if useButton {
+            let action = try XCTUnwrap(ConversationMotionProbeRegistry.goToLatest)
+            action()
+        } else {
+            scroll.setContentOffset(CGPoint(x: 0, y: ConversationTailScrollAnimator.targetOffset(in: scroll)), animated: false)
+        }
+        for _ in 0..<100 {
+            try await Task.sleep(for: .milliseconds(20))
+            if model.conversations.first { $0.id == conversation.id }?.unreadCount == 0,
+               ConversationMotionProbeRegistry.frame(for: "latest-message-button", in: window) == nil { break }
+        }
+        XCTAssertEqual(scroll.contentOffset.y, ConversationTailScrollAnimator.targetOffset(in: scroll), accuracy: 12)
+        XCTAssertNil(ConversationMotionProbeRegistry.frame(for: "latest-message-button", in: window), "The control must disappear after reaching the latest messages, without focusing or typing")
+        XCTAssertEqual(model.conversations.first { $0.id == conversation.id }?.unreadCount, 0, "Read acknowledgement must follow actual viewport arrival")
+        if !opensKeyboard {
+            XCTAssertFalse(composer.isFirstResponder, "Clearing the indicator must not require composer focus")
+        }
+        if useButton && !resumeAtLatest && !opensKeyboard {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "Latest messages read with keyboard closed"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
+        composer.resignFirstResponder()
+    }
 }
