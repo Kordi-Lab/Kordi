@@ -57,6 +57,7 @@ export function useCloudCollaborationTransport({
   ) => void;
 }) {
   const publishCanonicalDeletion = useCallback(async (deletedMessageIds: string[]) => {
+    setCanonicalState?.((current) => current);
     if (deletedMessageIds.length === 0) return;
     const deletedCanonicalIds = new Set(deletedMessageIds);
     if (setCanonicalState) {

@@ -1,3 +1,4 @@
+import { cloudMessageDeletions } from './cloudMessageDeletions';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { cloudSessionIdFromConversationId } from '@/features/collaboration/conversationIds';
@@ -104,7 +105,7 @@ export function useCloudCollaborationMessageStore(
     const current = fullMessagesAccountIdRef.current === accountId
       ? fullMessagesByPeerRef.current
       : {};
-    const next = typeof update === 'function' ? update(current) : update;
+    const next = cloudMessageDeletions.filter(accountId, typeof update === 'function' ? update(current) : update);
     fullMessagesAccountIdRef.current = accountId;
     fullMessagesByPeerRef.current = next;
     const rendererValue = nativeShell && rendererCompactedRef.current

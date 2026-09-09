@@ -1,3 +1,4 @@
+import { cloudMessageDeletions } from './cloudMessageDeletions';
 import {
   useCallback,
   useEffect,
@@ -156,9 +157,10 @@ export function useCloudDirectMessaging({
       );
       void syncDiff().catch(() => undefined);
     } catch (error) {
-      if (accountIdRef.current === accountId) {
+      if (accountIdRef.current === accountId && !cloudMessageDeletions.ids(accountId).has(input.messageId)) {
         setMessagesByPeer((current) => rollbackCloudMessageDelete(current, previous, input));
       }
+      void syncDiff().catch(() => undefined);
       throw error;
     }
   }, [account?.accountId, client, messagesByPeerRef, setMessagesByPeer, syncDiff]);

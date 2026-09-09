@@ -116,12 +116,15 @@ pub struct ChatSyncPendingOperation {
 
 mod apply;
 mod compaction;
+pub(crate) mod deletions;
+pub(super) use deletions::mark_message_deleted;
 mod message_reads;
 mod outbox;
 mod projection;
 pub mod unread;
 mod visibility;
 
+pub(super) use apply::open_account_db;
 pub use apply::ChatSyncConversationHead;
 use apply::*;
 use message_reads::*;
@@ -487,3 +490,7 @@ mod test_support;
 #[cfg(test)]
 #[path = "chat_sync/unread_tests.rs"]
 mod unread_tests;
+
+#[cfg(test)]
+#[path = "chat_sync/deletion_tests.rs"]
+mod deletion_tests;

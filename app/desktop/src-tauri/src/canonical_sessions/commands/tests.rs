@@ -103,10 +103,12 @@ fn cloud_message_cleanup_covers_versions_self_agent_and_authoritative_pruning() 
         vec!["derived-offline", "keep-group", "keep-self"]
     );
 
-    let deleted_group = super::lifecycle::delete_cloud_message_in_db(&mut conn, "wire-keep")
-        .expect("delete group message");
-    let deleted_self = super::lifecycle::delete_cloud_message_in_db(&mut conn, "self-keep")
-        .expect("delete self-agent message");
+    let deleted_group =
+        super::lifecycle::delete_cloud_message_in_db(&mut conn, "wire-keep", "acct_me")
+            .expect("delete group message");
+    let deleted_self =
+        super::lifecycle::delete_cloud_message_in_db(&mut conn, "self-keep", "acct_me")
+            .expect("delete self-agent message");
     assert_eq!(deleted_group, vec!["keep-group"]);
     assert_eq!(deleted_self, vec!["keep-self"]);
     let synced_rows: i64 = conn

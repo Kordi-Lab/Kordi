@@ -192,6 +192,11 @@ pub(super) fn initialize_schema(conn: &Connection) -> Result<(), String> {
          );
          CREATE INDEX IF NOT EXISTS idx_chat_sync_message_history
              ON chat_sync_messages(account_id, conversation_id, conversation_sequence DESC);
+         CREATE TABLE IF NOT EXISTS chat_sync_message_deletions (
+             account_id TEXT NOT NULL,
+             message_id TEXT NOT NULL,
+             PRIMARY KEY(account_id, message_id)
+         );
          CREATE TABLE IF NOT EXISTS chat_sync_pending_operations (
              account_id TEXT NOT NULL,
              operation_id TEXT NOT NULL,

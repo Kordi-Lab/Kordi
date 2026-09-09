@@ -1,3 +1,4 @@
+import { deleteCanonicalCloudMessage } from '@/features/canonical/canonicalMessageSources';
 import { livePhotoAttachmentIds } from '@/features/chat/livePhotos';
 import type { CloudMessage, CloudSessionTitle, SendCloudMessageOptions, UpdateCloudSessionTitleInput } from './authClient';
 import {
@@ -176,7 +177,7 @@ export class ChatSyncConversationClient {
         'Could not send message.',
       );
       if (!response?.message) throw new Error('Empty response from chat sync server.');
-      this.state.messageById.set(response.message.id, response.message);
+      this.state.retainMessages([response.message]);
       const advancedConversation = {
         ...conversation,
         version: conversation.version + 1,
@@ -268,7 +269,7 @@ export class ChatSyncConversationClient {
       'Could not edit message.',
     );
     if (!response?.message) throw new Error('Empty response from chat sync server.');
-    this.state.messageById.set(response.message.id, response.message);
+    this.state.retainMessages([response.message]);
     return cloudMessageFromChatSync(
       response.message,
       conversation,
@@ -291,7 +292,11 @@ export class ChatSyncConversationClient {
       },
       'Could not delete message.',
     );
-    this.state.messageById.delete(messageId);
+    const accountId = conversation.preferences.account_id;
+    this.state.removeMessage(messageId, accountId);
+    // Persist only after the server confirms deletion, including when the
+    // message has never been downloaded on this device.
+    await deleteCanonicalCloudMessage(messageId, accountId);
   }
 
   async setReaction(
@@ -312,7 +317,7 @@ export class ChatSyncConversationClient {
       active ? 'Could not add the reaction.' : 'Could not remove the reaction.',
     );
     if (!response?.message) throw new Error('Empty response from chat sync server.');
-    this.state.messageById.set(response.message.id, response.message);
+    this.state.retainMessages([response.message]);
     return cloudMessageFromChatSync(
       response.message,
       conversation,
