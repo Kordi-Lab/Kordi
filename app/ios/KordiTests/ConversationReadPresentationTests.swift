@@ -1094,7 +1094,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(conversationSource.contains("rememberViewport(in: messages)"))
         XCTAssertTrue(conversationSource.contains("proxy.scrollTo(returnMessageID, anchor: initialViewport.scrollAnchor)"))
         XCTAssertTrue(conversationSource.contains("isNavigationReturnPending: threadReturnMessageID != nil"))
-        XCTAssertTrue(conversationSource.contains("contentOffsetY: viewportFrame.minY - frame.minY"))
+        XCTAssertTrue(conversationSource.contains("contentOffsetY: scrollView.contentOffset.y"))
         XCTAssertTrue(conversationSource.contains("exactScrollRestoreRequest = ConversationScrollRestoreRequest("))
         XCTAssertTrue(conversationSource.contains("restoreThreadReturnPosition(using: proxy)"))
         XCTAssertTrue(conversationSource.contains("threadReturnMessageID != nil || threadReturnScrollOffsetY != nil"))

@@ -116,7 +116,7 @@ pub struct ChatSyncPendingOperation {
 
 mod apply;
 mod compaction;
-mod deletions;
+pub(crate) mod deletions;
 pub(super) use deletions::mark_message_deleted;
 mod message_reads;
 mod outbox;
@@ -137,18 +137,6 @@ pub async fn desktop_chat_sync_apply(
     tauri::async_runtime::spawn_blocking(move || apply(request))
         .await
         .map_err(|error| error.to_string())?
-}
-
-#[tauri::command]
-pub async fn desktop_chat_sync_deleted_message_ids(
-    account_id: String,
-) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let conn = open_account_db(account_id.trim())?;
-        deletions::load_deleted_message_ids(&conn, account_id.trim())
-    })
-    .await
-    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

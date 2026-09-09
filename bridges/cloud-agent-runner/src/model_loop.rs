@@ -213,6 +213,27 @@ async fn execute_model_tool<C: CloudAgentRunClient + Sync>(
             }
         }
     }
+    if call.name == "read_calendar" {
+        if run.owner_account_id != run.requester_account_id || run.subsession_id.is_some() {
+            return format!(
+                "Calendar reads require a direct request to the owner's own Agent. {}",
+                kordi_tools::calendar::CALENDAR_UNAVAILABLE
+            );
+        }
+        if (run.session_id.starts_with("session:group:")
+            || run.session_id.starts_with("session:direct-person:"))
+            && call.arguments["shareInConversation"] != true
+        {
+            return format!("Calendar disclosure requires the owner's explicit request in this conversation. {}", kordi_tools::calendar::CALENDAR_UNAVAILABLE);
+        }
+        return match client
+            .read_context(&run.run_id, &call.name, call.arguments.clone())
+            .await
+        {
+            Ok(value) => value.to_string(),
+            Err(_) => kordi_tools::calendar::CALENDAR_UNAVAILABLE.to_string(),
+        };
+    }
     if matches!(call.name.as_str(), "search_sessions" | "read_session") {
         return match client.read_context(&run.run_id, &call.name, call.arguments.clone()).await {
             Ok(value) => value.to_string(),

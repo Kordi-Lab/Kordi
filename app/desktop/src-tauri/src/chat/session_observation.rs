@@ -5,9 +5,11 @@ use std::sync::Arc;
 pub(super) fn build_session_observation_runtime(
     session_id: Option<String>,
     directory: Option<String>,
+    calendar: Option<kordi_tools::calendar::CalendarRuntime>,
 ) -> SessionObservationRuntime {
     let search_scope = session_id.clone();
     SessionObservationRuntime {
+        calendar,
         search_sessions: Arc::new(move |request: SearchSessionsRequest| {
             let session_id = search_scope.clone();
             Box::pin(async move {
@@ -64,7 +66,7 @@ mod tests {
 
     #[tokio::test]
     async fn group_context_cannot_read_another_session() {
-        let runtime = build_session_observation_runtime(Some("group-a".to_string()), None);
+        let runtime = build_session_observation_runtime(Some("group-a".to_string()), None, None);
         let result = (runtime.read_session)(ReadSessionRequest {
             offset: None,
             session_id: "private-session".to_string(),
