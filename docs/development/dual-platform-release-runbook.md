@@ -8,6 +8,11 @@ beta and iOS TestFlight release from one merged source commit. Use the detailed
 [call hosting guide](../call-hosting.md) for platform-specific commands and
 recovery procedures.
 
+For a concise command checklist with current dependency preparation, symbol
+path remapping, and the signed-in Xcode upload path, use the
+[fast release checklist](../release-quickstart.md). This document remains the
+source of truth for the standard phase order and verification gates.
+
 The standard order is:
 
 ```text
@@ -20,6 +25,11 @@ release-preparation PR
   -> confirm TestFlight processing and internal visibility
   -> clean up and record final state
 ```
+
+An explicit metadata-only or signed-build-only request is preparation, not a
+full publication run. Local archives may be prepared for the requested
+platforms, but tags, storage publication, and App Store uploads remain outside
+that scope. Record local artifact readiness separately from released state.
 
 Do not silently reorder these phases. Do not call a release complete because a
 version bump merged, a build finished, an object uploaded, or App Store upload
@@ -107,8 +117,9 @@ gate owned by the current phase.
   DMG exists and every product URL returns its exact bytes.
 - Product deployment is diff-driven. Verify and reuse a compatible deployed
   backend; do not redeploy unchanged server or runner code.
-- macOS publication completes on `kordi.ai` and GitHub before iOS archive and
-  upload begin.
+- In a full publication run, macOS publication completes on `kordi.ai` and
+  GitHub before the iOS release phase. Explicit build-only preparation may
+  produce local iOS archives earlier without publishing either platform.
 - The macOS app is Developer ID signed, notarized, stapled, Gatekeeper-valid,
   updater-signed, privacy-clean, and packaged in a verified DMG.
 - The iOS app uses the production `Kordi` scheme, approved product team,
