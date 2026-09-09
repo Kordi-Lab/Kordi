@@ -621,6 +621,28 @@ final class CloudMessageCodecTests: XCTestCase {
     }
 
     @MainActor
+    func testGroupAgentRepliesToOneRequestHaveDistinctStableTimelineIdentities() {
+        func response(_ id: String, text: String) -> ChatMessage {
+            ChatMessage(id: id, conversationId: "group:fixture", author: .agent,
+                authorName: "Kordi", senderOwnerName: "Same display name",
+                text: text, createdAt: Date(timeIntervalSince1970: 1),
+                deliveryState: .delivered, errorMessage: nil, requestMessageId: "shared-request")
+        }
+        let first = response("first-agent-response", text: "Working")
+        let second = response("second-agent-response", text: "Done")
+        let updated = response("first-agent-response", text: "Updated response")
+        let identity = { AppModel.timelineIdentity(for: $0, requestPresentationIds: [:]) }
+        XCTAssertNotEqual(identity(first), identity(second), "Replies must not share a SwiftUI row ID")
+        XCTAssertEqual(identity(first), identity(updated), "Content updates must keep the same row")
+        var unlinked = first
+        unlinked.requestMessageId = nil
+        XCTAssertEqual(identity(first), identity(unlinked), "Attaching request metadata must keep the same row")
+        XCTAssertEqual(identity(first), AppModel.timelineIdentity(for: first,
+            requestPresentationIds: ["shared-request": "optimistic-request"]),
+            "Request promotion must not change a group reply's identity")
+    }
+
+    @MainActor
     func testOptimisticAgentRequestKeepsItsTimelineIdentityAfterServerPromotion() {
         let local = ChatMessage(
             id: "ios-local-request",

@@ -337,3 +337,88 @@ final class ConversationLatestIndicatorIntegrationTests: XCTestCase {
         composer.resignFirstResponder()
     }
 }
+
+@MainActor
+final class ConversationHistoryLayoutIntegrationTests: XCTestCase {
+    func testMixedHeightGroupHistoryFillsViewportWhileScrolling() async throws {
+        ConversationMotionProbeRegistry.enabled = true
+        ConversationMotionProbeRegistry.views = [:]
+        let store = try LocalMessageStore(inMemory: true)
+        let model = AppModel(cache: store, previewMode: true)
+        let accountID = try XCTUnwrap(model.account?.accountId)
+        let conversation = ConversationSummary(id: "group:history-layout", kind: .group,
+            peerAccountId: "fixture-peer", agentId: nil, ownerDisplayName: nil,
+            displayName: "History layout fixture", lastMessage: "Ready", lastActivityAt: Date(),
+            unreadCount: 0, avatarSource: nil, agentActivity: .ready, sessionId: "history-layout")
+        var messages: [ChatMessage] = []
+        for index in 0..<48 {
+            let isQuestion = index % 3 == 0
+            let response = Array(repeating: "A synthetic calendar response with a proposed meeting and more details.", count: 1 + index % 9).joined(separator: "\n\n")
+            let message = ChatMessage(id: "history-layout-\(index)", conversationId: conversation.id,
+                author: isQuestion ? .person : .agent,
+                authorName: isQuestion ? "Fixture person" : "Fixture agent",
+                text: isQuestion ? "@Kordi What is on my calendar?" : response,
+                createdAt: Date().addingTimeInterval(Double(index - 48) * 60),
+                deliveryState: .delivered, errorMessage: nil,
+                requestMessageId: isQuestion ? nil : "history-layout-\(index - index % 3)")
+            messages.append(message)
+        }
+        XCTAssertEqual(Set(messages.map(model.timelineIdentity(for:))).count, messages.count,
+            "Each group reply needs its own row even when request and display names match")
+        store.saveMessages(messages, conversationId: conversation.id, accountId: accountID, hasEarlier: false)
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previousWindow = scene.windows.first(where: \.isKeyWindow)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        let navigation = SendMotionNavigation()
+        let controller = UIHostingController(rootView: SendMotionHost(navigation: navigation, model: model,
+            calls: KordiCallCoordinator(), notifications: KordiNotificationCoordinator()))
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer {
+            window.isHidden = true; window.rootViewController = nil
+            previousWindow?.makeKeyAndVisible()
+            ConversationMotionProbeRegistry.enabled = false
+            ConversationMotionProbeRegistry.views = [:]
+            ConversationMotionProbeRegistry.setDraft = nil
+            ConversationMotionProbeRegistry.send = nil
+            ConversationMotionProbeRegistry.goToLatest = nil
+        }
+        controller.view.layoutIfNeeded()
+        navigation.path = [.conversation(conversation)]
+        for _ in 0..<250 {
+            if ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: messages[47]), in: window) != nil { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        func timelineScroll(in view: UIView) -> UIScrollView? {
+            if let scroll = view as? UIScrollView, !(scroll is UITextView),
+               scroll.contentSize.height > scroll.bounds.height + 100 { return scroll }
+            return view.subviews.lazy.compactMap { timelineScroll(in: $0) }.first
+        }
+        let scroll = try XCTUnwrap(timelineScroll(in: controller.view))
+        for fraction in [0.75, 0.5, 0.25, 0, 0.25, 0.5, 0.75, 1.0] {
+            let target = max(0, ConversationTailScrollAnimator.targetOffset(in: scroll)) * fraction
+            scroll.setContentOffset(CGPoint(x: 0, y: target), animated: false)
+            try await Task.sleep(for: .milliseconds(400))
+            let viewport = scroll.convert(scroll.bounds, to: window).insetBy(dx: 0, dy: 20)
+            let frames = messages.compactMap { message in
+                ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: message), in: window)
+            }.filter { $0.intersects(viewport) }.sorted { $0.minY < $1.minY }
+            XCTAssertFalse(frames.isEmpty, "History must render rows at scroll fraction \(fraction)")
+            guard let first = frames.first, let last = frames.last else { continue }
+            let gap = max(first.minY - viewport.minY, viewport.maxY - last.maxY,
+                zip(frames, frames.dropFirst()).map { $1.minY - $0.maxY }.max() ?? 0)
+            if gap > 40 || fraction == 0.5 {
+                let format = UIGraphicsImageRendererFormat(); format.scale = 1
+                let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+                    window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+                }
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "Synthetic group history at \(fraction)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+            XCTAssertLessThanOrEqual(gap, 40, "Visible history must remain contiguous at scroll fraction \(fraction)")
+        }
+    }
+}
