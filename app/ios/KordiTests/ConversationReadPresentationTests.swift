@@ -366,7 +366,7 @@ final class ConversationReadPresentationTests: XCTestCase {
         XCTAssertTrue(source.contains(".background(action.color, in: Circle())"))
         XCTAssertTrue(source.contains(".scaleEffect(minimumActionScale + (1 - minimumActionScale) * progress)"))
         XCTAssertTrue(source.contains(".opacity(progress)"))
-        XCTAssertFalse(source.contains(".highPriorityGesture(horizontalDragGesture)"))
+        XCTAssertTrue(source.contains(".highPriorityGesture(horizontalDragGesture)"))
         XCTAssertTrue(source.contains(".offset(x: displayedOffset)"))
         XCTAssertTrue(source.contains(".zIndex(1)"))
         XCTAssertTrue(source.contains(".interactiveSpring(response: 0.28, dampingFraction: 0.86)"))
