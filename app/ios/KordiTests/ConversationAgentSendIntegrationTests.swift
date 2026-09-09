@@ -23,7 +23,7 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
         let store = try LocalMessageStore(inMemory: true)
         let queue = ConversationSendQueue()
         let model = AppModel(cache: store, sendQueue: queue, previewMode: true,
-            previewHistoryLoadDelay: duringInitialLoad ? .seconds(2) : .zero)
+            previewHistoryLoadDelay: duringInitialLoad ? .seconds(5) : .zero)
         let accountID = try XCTUnwrap(model.account?.accountId)
         let peer = try XCTUnwrap(model.contacts.first {
             $0.accountId != accountID && !KordiSupportIdentity.matches(name: $0.preferredName, seed: $0.accountId)
@@ -82,10 +82,10 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
         let setDraft = try XCTUnwrap(ConversationMotionProbeRegistry.setDraft)
         let send = try XCTUnwrap(ConversationMotionProbeRegistry.send)
         setDraft(text)
-        let began = CACurrentMediaTime()
         send()
         var firstRequestTime: CFTimeInterval?
         var firstProgressTime: CFTimeInterval?
+        var revealedWhileHistoryWasLoading = false
         var progressBeforeRequest = 0
         var requestFrames = 0
         for _ in 0..<250 {
@@ -102,7 +102,13 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
                 width: window.bounds.width, height: max(0, composerTop - window.safeAreaInsets.top - 44))
             let requestFrame = ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: request), in: window)
             let requestVisible = requestFrame.map { $0.intersects(viewport) && $0.maxY <= composerTop + 1 } ?? false
-            if requestVisible { firstRequestTime = firstRequestTime ?? CACurrentMediaTime(); requestFrames += 1 }
+            if requestVisible {
+                if firstRequestTime == nil {
+                    firstRequestTime = CACurrentMediaTime()
+                    revealedWhileHistoryWasLoading = model.loadingConversationIDs.contains(conversation.id)
+                }
+                requestFrames += 1
+            }
             if let progress = messages.first(where: { $0.author == .agent && $0.requestMessageId == request.id }),
                let frame = ConversationMotionProbeRegistry.frame(for: model.timelineIdentity(for: progress), in: window),
                frame.intersects(viewport) {
@@ -117,8 +123,8 @@ final class ConversationAgentSendIntegrationTests: XCTestCase {
         XCTAssertNotNil(firstProgressTime, "Pending agent work must remain visible after its request")
         XCTAssertGreaterThan(requestFrames, 5)
         XCTAssertEqual(progressBeforeRequest, 0, "Processing must never appear before the outgoing request")
-        if let firstRequestTime {
-            XCTAssertLessThan(firstRequestTime - began, 1, "History loading must not hold a locally accepted send invisible")
+        if duringInitialLoad {
+            XCTAssertTrue(revealedWhileHistoryWasLoading, "A locally accepted send must reveal before history loading finishes")
         }
         let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)

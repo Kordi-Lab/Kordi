@@ -23,6 +23,8 @@ final class ConversationTailScrollAnimator: NSObject {
     private struct PositionedGeometry: Equatable {
         let contentSize: CGSize
         let viewportSize: CGSize
+        // Keyboard layout can commit final bounds before their animation ends.
+        let presentedViewportBounds: CGRect
         let insets: UIEdgeInsets
         let contentBounds: CGRect
         let targetY: CGFloat
@@ -172,6 +174,7 @@ final class ConversationTailScrollAnimator: NSObject {
         PositionedGeometry(
             contentSize: scrollView.contentSize,
             viewportSize: scrollView.bounds.size,
+            presentedViewportBounds: scrollView.layer.presentation()?.bounds ?? scrollView.bounds,
             insets: scrollView.adjustedContentInset,
             contentBounds: contentView?.bounds ?? .zero,
             targetY: Self.targetOffset(in: scrollView)
